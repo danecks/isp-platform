@@ -1,0 +1,13 @@
+packages:
+  "framer-motion": "For premium smooth reveal animations on scroll"
+  "react-hook-form": "For professional form handling"
+  "@hookform/resolvers": "For zod validation in forms"
+
+images:
+  - path: "artifacts/isp-web/public/images/logo-icon.png"
+    description: "Minimalist, premium metallic gold shield logo icon on transparent background"
+    aspect_ratio: "1:1"
+
+notes:
+  - Application is frontend-only as requested. Forms use React Hook Form + Zod and simulate successful submission via toast messages.
+  - The design is forced into a dark, premium corporate theme by configuring the CSS variables.
