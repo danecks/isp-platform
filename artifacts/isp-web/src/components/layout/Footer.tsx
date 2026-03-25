@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Phone, Mail, MapPin, ChevronRight } from "lucide-react";
+import { Phone, Mail, MapPin, ChevronRight, MessageSquare } from "lucide-react";
 
 const logoImg = "/images/logo-isp.jpg";
 
@@ -7,9 +7,12 @@ export function Footer() {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="bg-[#030811] border-t border-border pt-16 pb-8 text-sm">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 lg:gap-8 mb-12">
+    <footer className="bg-[#030a14] relative text-sm">
+      {/* Top Gold Line */}
+      <div className="w-full h-[1px] bg-primary opacity-20" />
+      
+      <div className="pt-16 pb-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 lg:gap-8 mb-16">
           
           {/* Brand Col */}
           <div className="flex flex-col gap-6">
@@ -22,104 +25,116 @@ export function Footer() {
                 />
               </div>
               <div className="flex flex-col">
-                <span className="font-display font-bold text-xl tracking-tight leading-none text-foreground">
+                <span className="font-display font-bold text-xl tracking-tight leading-none text-white">
                   ISP S.A.
                 </span>
-                <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">
+                <span className="text-[10px] uppercase tracking-widest text-primary font-semibold">
                   Seguridad Profesional
                 </span>
               </div>
             </Link>
-            <p className="text-muted-foreground leading-relaxed">
-              Soluciones integrales de seguridad privada de alto nivel corporativo. Protegiendo los activos más valiosos de las empresas en Guatemala.
+            <p className="text-white/70 leading-relaxed text-sm">
+              Soluciones de seguridad privada de alto nivel corporativo para empresas guatemaltecas.
             </p>
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 w-fit">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 w-fit mt-2">
               <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-              <span className="text-xs font-medium text-white/80">Operaciones 24/7</span>
+              <span className="text-xs font-medium text-white/90">Operaciones 24/7 · 365 días</span>
             </div>
+            <p className="text-xs text-white/40 mt-2">Licencia de Operación: MEG-XXX-2024</p>
           </div>
 
-          {/* Links Col 1 */}
+          {/* Empresa Col */}
           <div>
-            <h4 className="font-display font-semibold text-white mb-6 uppercase tracking-wider text-xs">Compañía</h4>
+            <h4 className="font-display font-bold text-white mb-6 uppercase tracking-wider text-sm">Empresa</h4>
             <ul className="flex flex-col gap-4">
               <li>
-                <Link href="/nosotros" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-2">
-                  <ChevronRight className="w-3 h-3" /> Nosotros
+                <Link href="/nosotros" className="text-white/70 hover:text-primary transition-colors flex items-center gap-2">
+                  <ChevronRight className="w-4 h-4 text-primary/50" /> Nosotros
                 </Link>
               </li>
               <li>
-                <Link href="/servicios" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-2">
-                  <ChevronRight className="w-3 h-3" /> Nuestros Servicios
+                <Link href="/servicios" className="text-white/70 hover:text-primary transition-colors flex items-center gap-2">
+                  <ChevronRight className="w-4 h-4 text-primary/50" /> Servicios
                 </Link>
               </li>
               <li>
-                <Link href="/sectores" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-2">
-                  <ChevronRight className="w-3 h-3" /> Sectores que Atendemos
+                <Link href="/sectores" className="text-white/70 hover:text-primary transition-colors flex items-center gap-2">
+                  <ChevronRight className="w-4 h-4 text-primary/50" /> Sectores
                 </Link>
               </li>
               <li>
-                <Link href="/reclutamiento" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-2">
-                  <ChevronRight className="w-3 h-3" /> Únete al Equipo
+                <Link href="/reclutamiento" className="text-white/70 hover:text-primary transition-colors flex items-center gap-2">
+                  <ChevronRight className="w-4 h-4 text-primary/50" /> Reclutamiento
+                </Link>
+              </li>
+              <li>
+                <Link href="/contacto" className="text-white/70 hover:text-primary transition-colors flex items-center gap-2">
+                  <ChevronRight className="w-4 h-4 text-primary/50" /> Contacto
                 </Link>
               </li>
             </ul>
           </div>
 
-          {/* Links Col 2 */}
+          {/* Servicios Col */}
           <div>
-            <h4 className="font-display font-semibold text-white mb-6 uppercase tracking-wider text-xs">Servicios</h4>
+            <h4 className="font-display font-bold text-white mb-6 uppercase tracking-wider text-sm">Servicios</h4>
             <ul className="flex flex-col gap-4">
               <li>
-                <Link href="/servicios/seguridad-fisica" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-2">
-                  <ChevronRight className="w-3 h-3" /> Seguridad Física
+                <Link href="/servicios/seguridad-fisica" className="text-white/70 hover:text-primary transition-colors flex items-center gap-2">
+                  <ChevronRight className="w-4 h-4 text-primary/50" /> Seguridad Física
                 </Link>
               </li>
               <li>
-                <Link href="/servicios/custodia-transporte" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-2">
-                  <ChevronRight className="w-3 h-3" /> Custodia de Transporte
+                <Link href="/servicios/custodia-transporte" className="text-white/70 hover:text-primary transition-colors flex items-center gap-2">
+                  <ChevronRight className="w-4 h-4 text-primary/50" /> Custodia de Transporte
                 </Link>
               </li>
               <li>
-                <Link href="/servicios" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-2">
-                  <ChevronRight className="w-3 h-3" /> Operaciones Móviles
+                <Link href="/servicios" className="text-white/70 hover:text-primary transition-colors flex items-center gap-2">
+                  <ChevronRight className="w-4 h-4 text-primary/50" /> Operaciones Móviles
                 </Link>
               </li>
               <li>
-                <Link href="/acceso-clientes" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-2">
-                  <ChevronRight className="w-3 h-3" /> Portal de Clientes
+                <Link href="/acceso-clientes" className="text-white/70 hover:text-primary transition-colors flex items-center gap-2">
+                  <ChevronRight className="w-4 h-4 text-primary/50" /> Portal de Clientes <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded text-white/50 ml-1">Próximamente</span>
                 </Link>
               </li>
             </ul>
           </div>
 
-          {/* Contact Col */}
+          {/* Contacto Col */}
           <div>
-            <h4 className="font-display font-semibold text-white mb-6 uppercase tracking-wider text-xs">Contacto</h4>
-            <ul className="flex flex-col gap-4">
-              <li className="flex items-start gap-3 text-muted-foreground">
+            <h4 className="font-display font-bold text-white mb-6 uppercase tracking-wider text-sm">Contacto</h4>
+            <ul className="flex flex-col gap-5">
+              <li className="flex items-start gap-3 text-white/70">
                 <MapPin className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-                <span>Ciudad de Guatemala, Guatemala<br/>Centro Corporativo, Zona 10</span>
+                <span>Ciudad de Guatemala, Zona 10</span>
               </li>
-              <li className="flex items-center gap-3 text-muted-foreground">
+              <li className="flex items-center gap-3 text-white/70">
                 <Phone className="w-5 h-5 text-primary shrink-0" />
                 <span>+502 2200-0000</span>
               </li>
-              <li className="flex items-center gap-3 text-muted-foreground">
+              <li className="flex items-center gap-3 text-white/70">
                 <Mail className="w-5 h-5 text-primary shrink-0" />
                 <span>contacto@isp-guatemala.com</span>
+              </li>
+              <li className="pt-2">
+                <a href="https://wa.me/50250000000" target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#20bd5a] text-white px-4 py-2 rounded-full text-sm font-medium transition-colors shadow-lg shadow-[#25D366]/20">
+                  <MessageSquare className="w-4 h-4" />
+                  Escribir por WhatsApp
+                </a>
               </li>
             </ul>
           </div>
 
         </div>
 
-        <div className="pt-8 border-t border-border flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-muted-foreground">
+        <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-white/50">
           <p>&copy; {currentYear} Investigaciones y Seguridad Profesional S.A. Todos los derechos reservados.</p>
           <div className="flex items-center gap-4">
-            <span>Licencia de Operación: MEG-XXX-2024</span>
-            <span className="hidden md:inline">|</span>
-            <Link href="#" className="hover:text-white transition-colors">Términos Legales</Link>
+            <span>Licencia MEG-XXX-2024</span>
+            <span className="hidden md:inline text-white/20">|</span>
+            <Link href="#" className="hover:text-white transition-colors">Términos</Link>
           </div>
         </div>
       </div>

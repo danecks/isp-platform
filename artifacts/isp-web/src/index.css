@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Montserrat:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Oswald:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
@@ -40,8 +40,8 @@
   --color-destructive-foreground: hsl(var(--destructive-foreground));
   --color-destructive-border: var(--destructive-border);
 
-  --font-sans: 'Inter', sans-serif;
-  --font-display: 'Montserrat', sans-serif;
+  --font-sans: var(--app-font-sans);
+  --font-display: var(--app-font-display);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -49,40 +49,54 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* 
-  Forcing a Premium Dark Corporate Theme 
-  Deep navy/charcoal background with gold/cool-white accents
-*/
 :root, .dark {
-  --background: 222 47% 5%; /* Deep dark navy */
-  --foreground: 210 40% 98%; /* Crisp white */
+  --background: 220 25% 7%;
+  --foreground: 210 20% 96%;
+  --border: 220 15% 14%;
+  
+  --card: 220 22% 10%;
+  --card-foreground: 210 20% 94%;
+  --card-border: 220 15% 16%;
+  
+  --sidebar: 220 25% 6%;
+  --sidebar-foreground: 210 20% 90%;
+  --sidebar-border: 220 15% 13%;
+  --sidebar-primary: 44 90% 50%;
+  --sidebar-primary-foreground: 220 25% 7%;
+  --sidebar-accent: 220 15% 16%;
+  --sidebar-accent-foreground: 210 20% 90%;
+  --sidebar-ring: 44 90% 50%;
+  
+  --popover: 220 22% 10%;
+  --popover-foreground: 210 20% 94%;
+  --popover-border: 220 15% 16%;
+  
+  --primary: 44 90% 50%;
+  --primary-foreground: 220 25% 7%;
+  
+  --secondary: 220 15% 16%;
+  --secondary-foreground: 210 20% 90%;
+  
+  --muted: 220 18% 13%;
+  --muted-foreground: 210 15% 55%;
+  
+  --accent: 220 15% 18%;
+  --accent-foreground: 210 20% 94%;
+  
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 98%;
+  
+  --input: 220 15% 18%;
+  --ring: 44 90% 50%;
 
-  --card: 222 47% 8%; /* Slightly lighter than bg */
-  --card-foreground: 210 40% 98%;
-  --card-border: 222 47% 15%;
+  --chart-1: 44 90% 50%;
+  --chart-2: 210 60% 45%;
+  --chart-3: 220 15% 35%;
+  --chart-4: 44 70% 35%;
+  --chart-5: 210 40% 25%;
 
-  --popover: 222 47% 8%;
-  --popover-foreground: 210 40% 98%;
-  --popover-border: 222 47% 15%;
-
-  --primary: 45 93% 47%; /* Corporate Gold */
-  --primary-foreground: 0 0% 0%;
-
-  --secondary: 222 47% 15%;
-  --secondary-foreground: 210 40% 98%;
-
-  --muted: 222 47% 12%;
-  --muted-foreground: 215 20% 65%;
-
-  --accent: 222 47% 15%;
-  --accent-foreground: 45 93% 47%;
-
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 210 40% 98%;
-
-  --border: 222 47% 15%;
-  --input: 222 47% 15%;
-  --ring: 45 93% 47%;
+  --app-font-sans: 'Inter', 'Helvetica Neue', sans-serif;
+  --app-font-display: 'Oswald', 'Arial Narrow', sans-serif;
 
   --radius: 0.5rem;
 }
@@ -97,20 +111,35 @@
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-display);
+    font-family: var(--app-font-display);
     @apply font-bold tracking-tight;
   }
 }
 
-/* Custom Utilities for premium feel */
 @layer utilities {
   .text-gradient-gold {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-[#D4AF37] via-[#F3E5AB] to-[#D4AF37];
+    background: linear-gradient(135deg, #e8c44a 0%, #c9a227 50%, #a07e15 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
   
   .glass-panel {
-    @apply bg-background/60 backdrop-blur-lg border border-white/5 shadow-2xl;
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.07);
   }
+
+  .divider-gold {
+    width: 48px;
+    height: 3px;
+    background: linear-gradient(90deg, #c9a227, transparent);
+    border-radius: 2px;
+    margin-bottom: 1.5rem;
+  }
+
+  .font-display { font-family: var(--app-font-display), sans-serif; }
 
   .hover-elevate {
     @apply transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/5 hover:border-primary/30;
