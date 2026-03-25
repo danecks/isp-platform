@@ -1,0 +1,166 @@
+Sobre el proyecto actual que ya existe, ahora quiero que construyas la **segunda capa del sistema**: un dashboard interno real, no solo placeholders visuales.
+
+Importante:
+
+* no rehagas la web pública
+* no elimines la página actual
+* trabaja sobre el proyecto existente
+* agrega una sección privada/interna tipo admin
+* quiero estructura real de dashboard, aunque todavía use datos mock
+* debe quedar listo para conectar luego formularios web y eventos de WhatsApp
+
+Objetivo:
+Construir dentro del proyecto actual un dashboard interno profesional para **Investigaciones y Seguridad Profesional S.A.** en Guatemala.
+
+Quiero estas rutas reales:
+
+* /admin
+* /admin/dashboard
+* /admin/incidencias
+* /admin/reclutamiento
+* /admin/comercial
+* /admin/tareas
+* /admin/kpi
+* /admin/custodias
+* /admin/clientes
+
+Diseño:
+
+* estilo centro de operaciones
+* sidebar izquierdo
+* topbar
+* tarjetas KPI
+* tablas profesionales
+* badges de estado
+* filtros básicos
+* responsive
+* visualmente consistente con la web pública
+
+Requisito clave:
+Este dashboard debe estar preparado para que en el futuro reciba datos de:
+
+1. formularios de la web
+2. chatbot de WhatsApp
+3. tareas sincronizadas con Trello
+
+Por ahora usa datos simulados, pero deja clara la arquitectura.
+
+Quiero módulos funcionales con mock data:
+
+1. Dashboard principal
+   Mostrar:
+
+* incidencias abiertas
+* postulaciones nuevas
+* leads comerciales nuevos
+* tareas pendientes
+* custodias activas
+* SLA cumplido
+* tiempo promedio de respuesta
+
+Además:
+
+* tabla de eventos recientes
+* tabla de incidencias recientes
+* tabla de tareas recientes
+
+2. Incidencias
+   Tabla con:
+
+* id
+* fecha
+* origen (web / whatsapp / manual)
+* cliente
+* ubicación
+* tipo
+* prioridad
+* estado
+* responsable
+* tarea asociada
+
+3. Reclutamiento
+   Tabla con:
+
+* nombre
+* teléfono
+* correo
+* experiencia
+* ubicación
+* canal de entrada
+* estado
+
+4. Comercial
+   Tabla con:
+
+* empresa
+* contacto
+* servicio solicitado
+* ubicación
+* canal
+* estado
+* ejecutivo asignado
+
+5. Tareas
+   Tabla con:
+
+* título
+* incidencia relacionada
+* prioridad
+* estado
+* asignado a
+* trelloCardId placeholder
+* trelloList placeholder
+
+6. KPI
+   Dashboard visual con:
+
+* tiempo de respuesta
+* tiempo de resolución
+* incidencias por cliente
+* leads del mes
+* postulaciones del mes
+* custodias activas
+* tareas cerradas
+* SLA cumplido
+
+7. Custodias
+   Tabla o tarjetas con:
+
+* cliente
+* origen
+* destino
+* agente asignado
+* estado
+* hora de salida
+* incidentes asociados
+
+8. Clientes
+   Tabla con:
+
+* cliente
+* servicios activos
+* incidencias del mes
+* tiempo promedio de respuesta
+* estado general
+
+Arquitectura:
+
+* usar componentes reutilizables
+* crear layout específico para /admin
+* crear carpeta de mocks
+* crear types para incidencias, leads, postulaciones, tareas y KPI
+* crear badges y tablas reutilizables
+* mantener el proyecto compilando
+
+Muy importante:
+Quiero que se note que esto ya es un dashboard de verdad, aunque aún no tenga backend real.
+No quiero simples páginas vacías con un título.
+Quiero tablas, tarjetas, navegación y datos simulados coherentes.
+
+Agregar además un bloque informativo en el dashboard que diga:
+“En el futuro, los eventos capturados desde formularios web y WhatsApp alimentarán automáticamente estos módulos internos.”
+
+Al terminar:
+
+* muéstrame los archivos creados
+* explica cómo está organizado el admin
