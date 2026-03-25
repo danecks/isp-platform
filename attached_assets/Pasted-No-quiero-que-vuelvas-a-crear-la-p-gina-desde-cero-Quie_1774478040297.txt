@@ -1,0 +1,239 @@
+No quiero que vuelvas a crear la página desde cero.
+
+Quiero que **adaptes el proyecto actual existente** para convertirlo en la base profesional de la plataforma web de mi empresa de seguridad:
+
+**Investigaciones y Seguridad Profesional S.A.**
+Guatemala
+
+Contexto importante:
+
+* La web ya existe en este proyecto
+* Debes trabajar **sobre la base actual**
+* No reemplaces todo si no es necesario
+* Conserva lo que ya funciona
+* Mejora estructura, diseño, textos, navegación y arquitectura
+* Quiero que el proyecto quede listo para crecer a dashboard, WhatsApp, Trello, KPI y portal de clientes
+
+Objetivo de esta adaptación:
+
+1. Ajustar branding y contenido al negocio real
+2. Hacer el diseño más corporativo y premium
+3. Dejar la web lista para evolucionar a una plataforma operativa
+4. Conectar conceptualmente la web con dashboard interno, WhatsApp y Trello
+5. Mantener el código limpio y compilando sin errores
+
+Información real del negocio:
+
+* Empresa de seguridad privada en Guatemala
+* Aproximadamente 400 agentes
+* Operación con agentes físicos
+* Operación con agentes móviles
+* Custodios de camiones / transporte
+* Ya existe un sistema separado para pagos, contabilidad, bancos e inventario
+* Ese sistema seguirá usándose
+* Esta web será la base comercial y tecnológica del nuevo ecosistema
+
+Requisito muy importante:
+**El chatbot de WhatsApp debe entenderse como parte del mismo sistema.**
+Si por WhatsApp entra:
+
+* un incidente
+* una solicitud de empleo
+* una cotización
+* una emergencia
+
+eso en el futuro debe aparecer en el dashboard.
+
+Por ahora no conectes la API real, pero adapta la web para dejar clara esa visión.
+
+Lo que quiero que hagas sobre el proyecto actual:
+
+## 1. Revisar y mejorar branding
+
+* Cambia textos genéricos por contenido adaptado a:
+  **Investigaciones y Seguridad Profesional S.A.**
+* Tono corporativo, serio y premium
+* Enfoque en seguridad física, custodias, supervisión y control operativo
+* Evita texto de startup tecnológica genérica
+* Evita lorem ipsum
+
+## 2. Mejorar Home
+
+Adapta la página principal para que tenga:
+
+* hero más fuerte
+* propuesta de valor clara
+* mensaje de confianza
+* bloque de capacidad operativa
+* bloque de servicios principales
+* sectores atendidos
+* supervisión y seguimiento
+* CTA para solicitar servicio
+* CTA para WhatsApp
+
+Quiero mensajes orientados a:
+
+* empresas
+* logística
+* industria
+* clientes corporativos
+
+## 3. Ajustar menú y navegación
+
+Asegúrate de que existan o queden bien planteadas estas secciones:
+
+* Inicio
+* Nosotros
+* Servicios
+* Seguridad Física
+* Custodia de Transporte
+* Sectores
+* Reclutamiento
+* Solicitar Servicio
+* Contacto
+* Acceso Clientes
+
+Si algunas ya existen, adáptalas.
+Si faltan, créalas sin romper la estructura actual.
+
+## 4. Adaptar formularios
+
+Revisa los formularios actuales y ajústalos para que sirvan a mi negocio.
+
+### Formulario de reclutamiento:
+
+Debe incluir campos tipo:
+
+* nombre completo
+* teléfono
+* correo
+* DPI
+* experiencia
+* municipio/departamento
+* tipo de puesto
+
+### Formulario de solicitud de servicio:
+
+Debe incluir:
+
+* empresa
+* contacto
+* teléfono
+* correo
+* tipo de servicio
+* ubicación
+* cantidad estimada de agentes
+* detalles del requerimiento
+
+No conectes backend real todavía si no existe, pero deja el código limpio y preparado.
+
+## 5. Preparar “Acceso Clientes”
+
+Crea o adapta una página placeholder profesional para futuro portal de clientes.
+Debe comunicar que luego habrá:
+
+* reportes
+* incidencias
+* seguimiento
+* control operativo
+* KPI
+* visibilidad del servicio
+
+## 6. Preparar base para sistema futuro
+
+Sin romper la web actual, deja preparada una estructura para futura expansión a:
+
+* dashboard interno
+* incidencias
+* reclutamiento interno
+* leads comerciales
+* KPI
+* Trello
+* WhatsApp
+* portal de clientes
+
+No implementes toda la lógica todavía, pero sí:
+
+* deja rutas o placeholders si tiene sentido
+* deja arquitectura limpia
+* deja componentes reutilizables
+* deja comentarios útiles
+
+## 7. Integración conceptual con WhatsApp
+
+Quiero que dentro del proyecto quede claro que:
+
+* WhatsApp no será un sistema separado
+* será un canal conectado al backend principal
+* incidentes, solicitudes de empleo y cotizaciones enviadas por WhatsApp deberán reflejarse en el dashboard
+
+Haz esto de forma visual o documental:
+
+* agrega un bloque en alguna página o documentación interna
+* o agrega un archivo en /docs explicándolo
+
+## 8. Integración conceptual con Trello
+
+También deja claro que:
+
+* incidencias o problemas operativos podrán crear tareas
+* esas tareas podrán sincronizarse con Trello
+* el objetivo es ver quién tomó el caso y cuándo se resolvió
+
+No conectes Trello aún si no existe backend, pero deja documentado el flujo.
+
+## 9. Mejorar estilo visual
+
+Sobre el diseño actual:
+
+* hazlo más premium
+* más corporativo
+* más sólido
+* más parecido al nivel visual de una firma internacional de seguridad
+* mejor spacing
+* mejor jerarquía visual
+* mejor consistencia en botones, tarjetas y secciones
+* responsive limpio
+* mantener paleta sobria
+
+## 10. Reorganizar arquitectura si hace falta
+
+Sin destruir el proyecto actual:
+
+* mejora nombres de componentes
+* separa componentes reutilizables
+* limpia código repetido
+* organiza carpetas
+* prepara estructura para crecimiento
+
+## 11. Documentación
+
+Agrega o actualiza README con:
+
+* cómo correr el proyecto
+* dónde cambiar textos
+* dónde cambiar branding
+* dónde cambiar datos de contacto
+* qué partes quedaron listas para expansión futura
+
+Crea además un archivo /docs/vision-plataforma.md explicando:
+
+* la web pública
+* el futuro dashboard interno
+* el futuro canal WhatsApp
+* el futuro seguimiento con Trello
+* que el sistema actual administrativo sigue separado
+
+Muy importante:
+
+* trabaja sobre el proyecto actual
+* no rehagas todo innecesariamente
+* conserva lo bueno
+* mejora lo necesario
+* mantén el proyecto compilando sin errores
+
+Al terminar:
+
+1. muéstrame qué archivos cambiaste
+2. resume qué mejoraste
+3. explica cómo seguir con la siguiente fase
