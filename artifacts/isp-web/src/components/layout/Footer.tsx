@@ -1,5 +1,7 @@
 import { Link } from "wouter";
-import { Shield, Phone, Mail, MapPin, ChevronRight } from "lucide-react";
+import { Phone, Mail, MapPin, ChevronRight } from "lucide-react";
+
+const logoImg = "/images/logo-isp.jpg";
 
 export function Footer() {
   const currentYear = new Date().getFullYear();
@@ -12,7 +14,13 @@ export function Footer() {
           {/* Brand Col */}
           <div className="flex flex-col gap-6">
             <Link href="/" className="flex items-center gap-3">
-              <Shield className="w-8 h-8 text-primary" />
+              <div className="flex items-center justify-center w-14 h-14 rounded-full bg-white p-1 shadow-md shrink-0">
+                <img
+                  src={logoImg}
+                  alt="ISP S.A. Logo"
+                  className="w-full h-full object-contain rounded-full"
+                />
+              </div>
               <div className="flex flex-col">
                 <span className="font-display font-bold text-xl tracking-tight leading-none text-foreground">
                   ISP S.A.

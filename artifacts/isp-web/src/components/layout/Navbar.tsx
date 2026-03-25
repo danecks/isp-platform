@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { Shield, Menu, X, ChevronDown } from "lucide-react";
+import { Menu, X, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+
+const logoImg = "/images/logo-isp.jpg";
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -48,11 +50,15 @@ export function Navbar() {
         <div className="flex items-center justify-between h-20">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="relative flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors duration-300">
-              <Shield className="w-6 h-6" />
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-white p-1 shadow-md">
+              <img
+                src={logoImg}
+                alt="ISP S.A. Logo"
+                className="w-full h-full object-contain rounded-full"
+              />
             </div>
             <div className="flex flex-col">
-              <span className="font-display font-bold text-xl tracking-tight leading-none text-foreground">
+              <span className="font-display font-bold text-lg tracking-tight leading-none text-foreground">
                 ISP S.A.
               </span>
               <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">
