@@ -59,7 +59,7 @@ export default function SeguridadFisica() {
               <FadeIn delay={0.2}>
                 <h3 className="text-2xl font-bold mb-6">Perfil de nuestros agentes</h3>
                 <p className="text-muted-foreground mb-6">
-                  Todo el personal de ISP atraviesa estrictos filtros de seguridad: pruebas psicométricas, estudio socioeconómico, carencia de antecedentes penales y policíacos, e inducción corporativa antes de pisar un puesto de servicio.
+                  Todo el personal de ISP, S.A. atraviesa estrictos filtros de seguridad: pruebas psicométricas, estudio socioeconómico, carencia de antecedentes penales y policíacos, e inducción corporativa antes de pisar un puesto de servicio.
                 </p>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-6 bg-card rounded-xl border border-white/5 text-center">

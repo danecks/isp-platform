@@ -151,6 +151,11 @@ Seed data: `artifacts/api-server/src/seed.ts` — run with `cd artifacts/api-ser
 ### Modules with Mock Data (not yet connected to DB)
 - Tareas, KPI, Custodias, Clientes
 
+### Branding Config (Central Source of Truth)
+- `artifacts/isp-web/src/config/branding.ts` — exports `brand` object with `legalName`, `shortName` ("ISP, S.A."), `acronym`, `taglineShort`, `systemName`, `copyright(year)`.
+- All layouts (Navbar, Footer, AdminSidebar, AdminTopbar, Login) import from this file.
+- Rule: use `brand.shortName` for UI headers, `brand.legalName` for legal/formal text.
+
 ### Key Files
 - `artifacts/isp-web/src/lib/api.ts` — API client (all endpoints + TypeScript interfaces)
 - `artifacts/isp-web/src/contexts/AuthContext.tsx` — auth state + credentials

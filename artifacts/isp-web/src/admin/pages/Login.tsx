@@ -5,6 +5,7 @@ import { Shield, Eye, EyeOff, AlertCircle, Lock, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { brand } from "@/config/branding";
 
 export default function AdminLogin() {
   const [, navigate] = useLocation();
@@ -51,8 +52,8 @@ export default function AdminLogin() {
           <div className="w-20 h-20 mx-auto rounded-2xl bg-card border border-primary/20 flex items-center justify-center mb-5 shadow-2xl shadow-primary/10">
             <Shield className="w-10 h-10 text-primary" />
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">ISP S.A.</h1>
-          <p className="text-sm text-muted-foreground mt-1">Sistema de Operaciones Internas</p>
+          <h1 className="text-2xl font-bold text-white tracking-tight">{brand.shortName}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{brand.systemName}</p>
         </div>
 
         {/* Card */}
@@ -133,7 +134,7 @@ export default function AdminLogin() {
 
           <div className="mt-8 pt-6 border-t border-white/5 text-center">
             <p className="text-xs text-muted-foreground">
-              Acceso exclusivo para personal autorizado de ISP S.A.
+              Acceso exclusivo para personal autorizado de {brand.shortName}
             </p>
           </div>
         </div>

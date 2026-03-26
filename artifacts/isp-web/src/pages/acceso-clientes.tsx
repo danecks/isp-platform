@@ -75,7 +75,7 @@ function LoginPanel() {
         </div>
         <div>
           <h3 className="font-bold text-white text-base">Acceso al Portal</h3>
-          <p className="text-xs text-muted-foreground">Personal autorizado ISP S.A.</p>
+          <p className="text-xs text-muted-foreground">Personal autorizado ISP, S.A.</p>
         </div>
       </div>
 
@@ -162,7 +162,7 @@ export default function AccesoClientes() {
             {/* Left: Info */}
             <FadeIn>
               <div className="inline-block px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-semibold text-muted-foreground mb-6 uppercase tracking-widest">
-                Portal Operativo · ISP S.A.
+                Portal Operativo · ISP, S.A.
               </div>
 
               <h1 className="text-4xl md:text-5xl font-display font-bold mb-6 text-white tracking-tight">
@@ -320,7 +320,7 @@ export default function AccesoClientes() {
                     <MessageSquare className="w-6 h-6 text-[#25D366]" />
                   </div>
                   <div>
-                    <p className="font-bold text-white">Canal WhatsApp ISP</p>
+                    <p className="font-bold text-white">Canal WhatsApp ISP, S.A.</p>
                     <p className="text-sm text-[#25D366]">Integración futura con dashboard</p>
                   </div>
                 </div>
@@ -332,7 +332,7 @@ export default function AccesoClientes() {
                   </div>
                   <div className="bg-primary/15 rounded-xl p-4 max-w-[85%] ml-auto">
                     <p className="text-sm text-white/80">Recibido. Nuestro ejecutivo lo contactará en los próximos 30 minutos. Su solicitud fue registrada con folio #2024-0891.</p>
-                    <p className="text-[10px] text-muted-foreground mt-1">ISP Operaciones · 09:15 am</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">ISP, S.A. · Operaciones · 09:15 am</p>
                   </div>
                   <div className="bg-white/5 rounded-xl p-4 max-w-[85%]">
                     <p className="text-sm text-white/80">"Hay un incidente en el ingreso norte, agente requiere apoyo."</p>
@@ -367,7 +367,7 @@ export default function AccesoClientes() {
                   </div>
                   <div>
                     <p className="font-bold text-white text-sm">Tablero: Incidencias Operativas</p>
-                    <p className="text-xs text-blue-400">ISP · Integración futura con Trello</p>
+                    <p className="text-xs text-blue-400">ISP, S.A. · Integración futura con Trello</p>
                   </div>
                 </div>
 
@@ -427,7 +427,7 @@ export default function AccesoClientes() {
                 Incidencias vinculadas a Trello
               </h2>
               <p className="text-muted-foreground leading-relaxed mb-6">
-                Cada incidencia registrada en el sistema podrá convertirse automáticamente en una tarjeta dentro del tablero operativo de ISP en Trello. El supervisor asignado, el tiempo de respuesta y la resolución quedan documentados en un solo lugar.
+                Cada incidencia registrada en el sistema podrá convertirse automáticamente en una tarjeta dentro del tablero operativo de ISP, S.A. en Trello. El supervisor asignado, el tiempo de respuesta y la resolución quedan documentados en un solo lugar.
               </p>
 
               <ul className="space-y-4">
@@ -457,7 +457,7 @@ export default function AccesoClientes() {
           <FadeIn>
             <Shield className="w-12 h-12 text-primary mx-auto mb-6" />
             <h2 className="text-2xl md:text-3xl font-display font-bold text-white mb-4">
-              ¿Es cliente actual de ISP S.A.?
+              ¿Es cliente actual de ISP, S.A.?
             </h2>
             <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
               Mientras la plataforma está en desarrollo, contamos con atención directa para reportes, incidencias y requerimientos. Su ejecutivo de cuenta está disponible de inmediato.

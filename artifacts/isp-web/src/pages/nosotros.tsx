@@ -9,7 +9,7 @@ export default function Nosotros() {
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=2000&auto=format&fit=crop')] opacity-[0.03] bg-cover bg-center" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <FadeIn>
-            <h1 className="text-4xl md:text-6xl font-bold mb-6">Sobre ISP S.A.</h1>
+            <h1 className="text-4xl md:text-6xl font-bold mb-6">Sobre ISP, S.A.</h1>
             <p className="text-xl text-muted-foreground max-w-3xl">
               Nuestra trayectoria en la industria de la seguridad privada guatemalteca se fundamenta en el compromiso inquebrantable con la protección corporativa y la mejora continua.
             </p>

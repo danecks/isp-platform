@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Menu, X, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { brand } from "@/config/branding";
 
 const logoImg = "/images/logo-isp.jpg";
 
@@ -54,16 +55,16 @@ export function Navbar() {
             <div className="flex items-center justify-center w-12 h-12 rounded-full bg-white p-1 shadow-md">
               <img
                 src={logoImg}
-                alt="ISP S.A. Logo"
+                alt={`${brand.shortName} Logo`}
                 className="w-full h-full object-contain rounded-full"
               />
             </div>
             <div className="flex flex-col">
               <span className="font-display font-bold text-lg tracking-tight leading-none text-white">
-                ISP S.A.
+                {brand.shortName}
               </span>
               <span className="text-[10px] uppercase tracking-widest text-primary font-semibold">
-                Seguridad Profesional
+                {brand.taglineShort}
               </span>
             </div>
           </Link>

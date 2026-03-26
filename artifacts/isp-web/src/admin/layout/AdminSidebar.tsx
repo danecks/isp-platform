@@ -11,6 +11,7 @@ import {
   X,
   ExternalLink,
 } from "lucide-react";
+import { brand } from "@/config/branding";
 
 const logoImg = "/images/logo-isp.jpg";
 
@@ -50,12 +51,12 @@ export function AdminSidebar({ open, onClose }: AdminSidebarProps) {
           <div className="flex items-center gap-3">
             <img
               src={logoImg}
-              alt="ISP S.A."
+              alt={brand.shortName}
               className="w-8 h-8 object-contain rounded-full"
               onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
             />
             <div>
-              <p className="text-xs font-bold text-white leading-none">ISP S.A.</p>
+              <p className="text-xs font-bold text-white leading-none">{brand.shortName}</p>
               <p className="text-[9px] text-primary uppercase tracking-widest">Operaciones</p>
             </div>
           </div>

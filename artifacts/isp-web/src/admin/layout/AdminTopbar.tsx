@@ -1,6 +1,7 @@
 import { Menu, Bell, User, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLocation } from "wouter";
+import { brand } from "@/config/branding";
 
 interface AdminTopbarProps {
   title: string;
@@ -49,7 +50,7 @@ export function AdminTopbar({ title, onMenuOpen }: AdminTopbarProps) {
           </div>
           <div className="hidden sm:block">
             <p className="text-xs font-semibold text-white leading-none">{currentUser || "Coordinación"}</p>
-            <p className="text-[9px] text-white/30 mt-0.5">ISP Operaciones</p>
+            <p className="text-[9px] text-white/30 mt-0.5">{brand.shortName} · Operaciones</p>
           </div>
         </div>
 

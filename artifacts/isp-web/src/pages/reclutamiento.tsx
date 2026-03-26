@@ -76,7 +76,7 @@ export default function Reclutamiento() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
           <FadeIn>
             <UserPlus className="w-12 h-12 text-primary mx-auto mb-6" />
-            <h1 className="text-4xl md:text-5xl font-bold mb-6">Únete al Equipo ISP</h1>
+            <h1 className="text-4xl md:text-5xl font-bold mb-6">Únete al Equipo ISP, S.A.</h1>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
               Buscamos personas íntegras, disciplinadas y con vocación de servicio para formar parte de la élite de seguridad en Guatemala.
             </p>

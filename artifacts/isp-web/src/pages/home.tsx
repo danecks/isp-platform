@@ -211,7 +211,7 @@ export default function Home() {
                 <p className="text-sm font-bold tracking-widest text-muted-foreground uppercase mb-2">Capacidad Operativa</p>
                 <h2 className="text-4xl md:text-5xl font-display font-bold text-white mb-6">Un cuerpo de seguridad listo para cualquier escenario.</h2>
                 <p className="text-lg text-muted-foreground leading-relaxed mb-8">
-                  ISP S.A. cuenta con la infraestructura humana y logística para responder ante cualquier requerimiento de seguridad. Desde un puesto fijo hasta una operación de custodia nacional de múltiple unidad.
+                  ISP, S.A. cuenta con la infraestructura humana y logística para responder ante cualquier requerimiento de seguridad. Desde un puesto fijo hasta una operación de custodia nacional de múltiple unidad.
                 </p>
                 <Link href="/solicitar-servicio">
                   <Button variant="outline" className="rounded-full border-primary text-primary hover:bg-primary/10 h-12 px-8">
@@ -260,7 +260,7 @@ export default function Home() {
           <FadeIn>
             <div className="mb-16">
               <div className="divider-gold" />
-              <h2 className="text-4xl md:text-5xl font-display font-bold text-white">¿Por qué elegir ISP S.A.?</h2>
+              <h2 className="text-4xl md:text-5xl font-display font-bold text-white">¿Por qué elegir ISP, S.A.?</h2>
             </div>
           </FadeIn>
 
@@ -312,7 +312,7 @@ export default function Home() {
             <span className="text-primary text-sm font-bold tracking-widest uppercase mb-4 block">Control Operativo</span>
             <h2 className="text-5xl md:text-6xl font-display font-bold text-white mb-8">Supervisión Continua. Control Total.</h2>
             <p className="text-xl text-muted-foreground mb-16 leading-relaxed">
-              Cada puesto de ISP S.A. está respaldado por un sistema de supervisión que combina rondas físicas, reportes digitales y comunicación directa con el supervisor de zona. Nuestros clientes cuentan con visibilidad operativa en todo momento.
+              Cada puesto de ISP, S.A. está respaldado por un sistema de supervisión que combina rondas físicas, reportes digitales y comunicación directa con el supervisor de zona. Nuestros clientes cuentan con visibilidad operativa en todo momento.
             </p>
           </FadeIn>
 

@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { Phone, Mail, MapPin, ChevronRight, MessageSquare } from "lucide-react";
+import { brand } from "@/config/branding";
 
 const logoImg = "/images/logo-isp.jpg";
 
@@ -20,16 +21,16 @@ export function Footer() {
               <div className="flex items-center justify-center w-14 h-14 rounded-full bg-white p-1 shadow-md shrink-0">
                 <img
                   src={logoImg}
-                  alt="ISP S.A. Logo"
+                  alt={`${brand.shortName} Logo`}
                   className="w-full h-full object-contain rounded-full"
                 />
               </div>
               <div className="flex flex-col">
                 <span className="font-display font-bold text-xl tracking-tight leading-none text-white">
-                  ISP S.A.
+                  {brand.shortName}
                 </span>
                 <span className="text-[10px] uppercase tracking-widest text-primary font-semibold">
-                  Seguridad Profesional
+                  {brand.taglineShort}
                 </span>
               </div>
             </Link>
@@ -130,7 +131,7 @@ export function Footer() {
         </div>
 
         <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-white/50">
-          <p>&copy; {currentYear} Investigaciones y Seguridad Profesional S.A. Todos los derechos reservados.</p>
+          <p>{brand.copyright(currentYear)}</p>
           <div className="flex items-center gap-4">
             <span>Licencia MEG-XXX-2024</span>
             <span className="hidden md:inline text-white/20">|</span>
