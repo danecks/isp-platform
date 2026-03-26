@@ -9,6 +9,7 @@ import portalRouter from "./portal";
 import whatsappWebhookRouter from "./whatsapp-webhook";
 import trelloRouter from "./trello";
 import anticiposRouter from "./anticipos";
+import { aliasRouter } from "./alias";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(portalRouter);
 router.use(whatsappWebhookRouter);
 router.use(trelloRouter);
 router.use(anticiposRouter);
+router.use(aliasRouter);
 
 export default router;

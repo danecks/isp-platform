@@ -150,6 +150,72 @@ export const usersTable = pgTable("users", {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CLIENTS — clientes operativos de ISP, S.A.
+//
+// Entidad central del sistema de alias. Separada de `users` (que maneja acceso
+// al portal). Un client puede vincularse opcionalmente al portal via portalClienteId.
+// ─────────────────────────────────────────────────────────────────────────────
+export const clientsTable = pgTable("clients", {
+  id: serial("id").primaryKey(),
+  nombre: varchar("nombre", { length: 255 }).notNull(),          // Nombre legal
+  nombreComercial: varchar("nombre_comercial", { length: 255 }), // Nombre comercial
+  nit: varchar("nit", { length: 50 }),
+  sector: varchar("sector", { length: 100 }),                    // industria | comercio | banca | salud | gobierno
+  estado: varchar("estado", { length: 20 }).notNull().default("activo"),
+  portalClienteId: varchar("portal_cliente_id", { length: 100 }), // → users.clienteId (ej: "CLI-001")
+  notas: text("notas"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLIENT_ALIASES — alias y nombres comunes para cada cliente
+//
+// Permite que agentes usen términos como "gallo", "custodio gallo" o "salvavidas"
+// y el sistema los mapee al cliente legal correcto.
+// ─────────────────────────────────────────────────────────────────────────────
+export const clientAliasesTable = pgTable("client_aliases", {
+  id: serial("id").primaryKey(),
+  clientId: integer("client_id").notNull(),   // → clients.id
+  alias: varchar("alias", { length: 255 }).notNull(),
+  tipoAlias: varchar("tipo_alias", { length: 50 }).notNull().default("comun"),
+  // 'comercial' | 'operativo' | 'comun'
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SERVICE_LOCATIONS — puestos, rutas y servicios por cliente
+//
+// Representa cada punto operativo donde ISP brinda servicio a un cliente.
+// ─────────────────────────────────────────────────────────────────────────────
+export const serviceLocationsTable = pgTable("service_locations", {
+  id: serial("id").primaryKey(),
+  clientId: integer("client_id").notNull(),   // → clients.id
+  nombrePuesto: varchar("nombre_puesto", { length: 255 }).notNull(),
+  ubicacion: varchar("ubicacion", { length: 255 }),
+  tipo: varchar("tipo", { length: 50 }).notNull().default("vigilancia"),
+  // 'puerta' | 'bodega' | 'ruta' | 'planta' | 'perimetral' | 'vigilancia'
+  estado: varchar("estado", { length: 20 }).notNull().default("activo"),
+  notas: text("notas"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POSITION_ALIASES — alias para puestos/rutas específicos
+//
+// Permite que "ruta norte gallo", "bodega gallo" o "puerta dolores" apunten
+// al puesto correcto dentro del cliente correspondiente.
+// ─────────────────────────────────────────────────────────────────────────────
+export const positionAliasesTable = pgTable("position_aliases", {
+  id: serial("id").primaryKey(),
+  puestoId: integer("puesto_id").notNull(),   // → service_locations.id
+  alias: varchar("alias", { length: 255 }).notNull(),
+  tipoAlias: varchar("tipo_alias", { length: 50 }).notNull().default("comun"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ANTICIPOS — solicitudes de anticipo salarial de colaboradores
 //
 // FLUJO WA:
@@ -187,6 +253,10 @@ export const anticiposTable = pgTable("anticipos", {
 // Zod insert schemas
 // ─────────────────────────────────────────────────────────────────────────────
 export const insertAnticipSchema = createInsertSchema(anticiposTable).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertClientSchema = createInsertSchema(clientsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertClientAliasSchema = createInsertSchema(clientAliasesTable).omit({ id: true, createdAt: true });
+export const insertServiceLocationSchema = createInsertSchema(serviceLocationsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertPositionAliasSchema = createInsertSchema(positionAliasesTable).omit({ id: true, createdAt: true });
 export const insertLeadSchema = createInsertSchema(leadsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertApplicationSchema = createInsertSchema(applicationsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertIncidentSchema = createInsertSchema(incidentsTable).omit({ createdAt: true, updatedAt: true });
@@ -211,3 +281,11 @@ export type AgentAssignment = typeof agentAssignmentsTable.$inferSelect;
 export type InsertAgentAssignment = z.infer<typeof insertAgentAssignmentSchema>;
 export type Anticipo = typeof anticiposTable.$inferSelect;
 export type InsertAnticipo = z.infer<typeof insertAnticipSchema>;
+export type Client = typeof clientsTable.$inferSelect;
+export type InsertClient = z.infer<typeof insertClientSchema>;
+export type ClientAlias = typeof clientAliasesTable.$inferSelect;
+export type InsertClientAlias = z.infer<typeof insertClientAliasSchema>;
+export type ServiceLocation = typeof serviceLocationsTable.$inferSelect;
+export type InsertServiceLocation = z.infer<typeof insertServiceLocationSchema>;
+export type PositionAlias = typeof positionAliasesTable.$inferSelect;
+export type InsertPositionAlias = z.infer<typeof insertPositionAliasSchema>;

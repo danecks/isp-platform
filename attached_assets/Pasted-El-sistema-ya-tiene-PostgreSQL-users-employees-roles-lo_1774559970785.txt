@@ -1,0 +1,130 @@
+El sistema ya tiene:
+
+* PostgreSQL
+* users + employees
+* roles
+* login real
+* portal de clientes
+* WhatsApp fase 1
+* incidencias reales
+* anticipos por WhatsApp
+* integración inicial con Trello
+
+No quiero romper nada del sistema actual.
+
+Quiero avanzar a la siguiente fase: **Alias de clientes y puestos fase 1**.
+
+Objetivo:
+permitir que guardias, custodios y operadores puedan referirse a clientes, rutas y puestos usando alias o nombres comunes, sin necesidad de escribir el nombre legal exacto.
+
+Ejemplos esperados:
+
+* "gallo"
+* "custodio gallo"
+* "salvavidas"
+* "ruta gallo"
+* "tienda dolores"
+
+El sistema debe poder mapear esos términos a:
+
+* cliente legal correcto
+* puesto/servicio/ruta correcto
+* ubicación correcta cuando aplique
+
+Haz esto:
+
+1. Crea estructura de datos para clientes y alias
+   Si no existe o si hace falta ampliarla, agrega algo como:
+
+* clients
+* client_aliases
+
+Campos sugeridos para alias:
+
+* id
+* clientId
+* alias
+* tipoAlias (comercial, operativo, comun)
+* createdAt
+
+2. Crea estructura de datos para puestos/servicios/rutas y sus alias
+   Por ejemplo:
+
+* service_locations o assignments o puestos
+* position_aliases (o equivalente)
+
+Campos sugeridos:
+
+* id
+* clientId
+* nombrePuesto
+* ubicacion
+* tipo
+* estado
+* createdAt
+
+Alias:
+
+* id
+* puestoId
+* alias
+* tipoAlias
+* createdAt
+
+3. Crea módulo admin para gestionar alias
+   Rutas sugeridas:
+
+* /admin/clientes
+* o una subvista nueva tipo /admin/clientes/alias
+* o /admin/configuracion/alias
+
+Quiero poder:
+
+* ver alias por cliente
+* crear alias
+* editar alias
+* ver alias por puesto/ruta
+* agregar alias operativos
+
+4. Implementa una función de resolución de alias
+   Entrada:
+   texto libre del usuario
+   Salida:
+   cliente o puesto encontrado
+
+Debe soportar:
+
+* coincidencia exacta
+* coincidencia parcial básica
+* respuesta con múltiples opciones si hay ambigüedad
+
+5. Integra esa lógica con el flujo de incidencias o una utilidad reusable
+   No hace falta todavía meter un bot completo conversacional.
+   Pero sí quiero que quede lista la utilidad para que WhatsApp y formularios internos puedan usarla después.
+
+6. Crea una forma simple de probar la resolución con ejemplos reales en la documentación o con endpoint de prueba si conviene.
+
+7. Agrega datos de ejemplo realistas, por ejemplo:
+
+* Cervecería Centro Americana → alias: Gallo, Cervecería, custodio gallo
+* Embotelladora / Agua Pura Salvavidas → alias: Salvavidas, agua salvavidas
+* puestos/rutas ejemplo asociados
+
+8. No rompas:
+
+* portal
+* Trello
+* anticipos
+* incidencias
+* login
+* WhatsApp fase 1
+
+9. Documenta:
+
+* qué tablas o modelos agregaste
+* cómo funciona la resolución de alias
+* cómo se manejará ambigüedad
+* cómo se integrará esto luego con WhatsApp, incidencias y emergencias
+
+Muy importante:
+quiero que esta fase deje resuelto el problema operativo de que los agentes no recuerdan nombres legales exactos.

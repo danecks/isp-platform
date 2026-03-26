@@ -223,6 +223,49 @@ Integración de Trello que crea tarjetas completas desde el panel admin de incid
 - Después de enviar: badge "Tarjeta creada" + items en azul + enlace a la URL
 - Reabriendo la incidencia: muestra estado "Ya en Trello" directamente
 
+## Alias de Clientes y Puestos — Fase 1
+
+Sistema que permite a guardias, custodios y operadores usar nombres comunes ("gallo", "custodio gallo", "salvavidas") para referirse a clientes y puestos sin necesitar el nombre legal exacto.
+
+**Tablas nuevas:**
+- `clients` — clientes operativos de ISP (separados de `users` que maneja acceso al portal). Campo `portalClienteId` enlaza opcionalmente con el sistema de portal (ej: `"CLI-001"`).
+- `client_aliases` — alias y nombres comunes por cliente. Tipos: `comercial` | `operativo` | `comun`.
+- `service_locations` — puestos, rutas y servicios por cliente. Tipos: `puerta` | `bodega` | `ruta` | `planta` | `perimetral` | `vigilancia`.
+- `position_aliases` — alias para puestos/rutas específicos.
+
+**Servicio de resolución:** `artifacts/api-server/src/services/alias/resolver.ts`
+- Entrada: texto libre (ej. `"gallo"`, `"tienda dolores"`, `"ruta norte gallo"`)
+- Normalización: minúsculas + strip acentos + limpieza
+- Puntuación: exacta (1.0) → substring (0.88/0.78) → palabras (0.4‒0.7) → nombre legal (0.85×)
+- Manejo de ambigüedad: si hay más de un resultado con confianza ≥ 0.7, se marca como `ambiguo: true` y se listan las opciones
+- Salida: `{ input, resultados[], totalCoincidencias, confianzaMaxima, ambiguo, sugerencia }`
+
+**API:** `artifacts/api-server/src/routes/alias.ts` → `/api/alias/*`
+- `GET /api/alias/clientes` — lista clientes con sus aliases
+- `POST /api/alias/clientes/:id/alias` — agregar alias a cliente
+- `DELETE /api/alias/clientes/alias/:aliasId` — eliminar alias de cliente
+- `GET /api/alias/puestos` — lista puestos con aliases y cliente
+- `POST /api/alias/puestos/:id/alias` — agregar alias a puesto
+- `DELETE /api/alias/puestos/alias/:aliasId` — eliminar alias de puesto
+- `POST /api/alias/resolver` / `GET /api/alias/resolver?q=texto` — resolver texto libre
+
+**Admin UI:** `/admin/clientes` — 3 pestañas:
+1. **Clientes** — tabla expandible con aliases por cliente, botón para agregar/eliminar alias
+2. **Puestos y Rutas** — tabla expandible de service_locations con aliases
+3. **Resolver Alias** — input en tiempo real con ejemplos rápidos y visualización de confianza
+
+**Datos de ejemplo sembrados automáticamente (auto-seed):**
+- Cervecería Centro Americana S.A. → alias: "gallo", "cerveceria", "custodio gallo", "ruta gallo", "cc"
+- Embotelladora La Mariposa S.A. (Salvavidas) → alias: "salvavidas", "agua salvavidas", "mariposa"
+- Tienda La Dolores S.A. → alias: "dolores", "tienda dolores", "la dolores"
+- Distribuidora Nacional S.A. → alias: "distnac", "distribuidora", "cli-001" (vinculada al portal CLI-001)
+- 8 puestos/rutas con sus aliases operativos (ej. "bodega gallo", "puerta gallo", "ruta norte gallo")
+
+**Integración futura:** El servicio `resolverAlias(texto)` está listo para ser importado por:
+- WhatsApp webhook: para validar cliente/puesto cuando el agente reporta un incidente
+- Formularios internos de incidencias: autocompletar cliente/puesto desde texto libre
+- Emergencias: resolver rápidamente la ubicación del incidente
+
 ## External Dependencies
 - **PostgreSQL:** Primary database for all application data.
 - **Drizzle ORM:** Used for interacting with the PostgreSQL database.

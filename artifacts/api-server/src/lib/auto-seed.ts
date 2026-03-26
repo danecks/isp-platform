@@ -1,4 +1,14 @@
-import { db, usersTable, employeesTable, agentAssignmentsTable, anticiposTable } from "@workspace/db";
+import {
+  db,
+  usersTable,
+  employeesTable,
+  agentAssignmentsTable,
+  anticiposTable,
+  clientsTable,
+  clientAliasesTable,
+  serviceLocationsTable,
+  positionAliasesTable,
+} from "@workspace/db";
 import { pool } from "@workspace/db";
 import { count, eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
@@ -33,6 +43,61 @@ export async function runAutoMigrations(): Promise<void> {
       )
     `);
     logger.info("Auto-migrate: tabla 'anticipos' verificada/creada");
+
+    // Tablas del sistema de alias (Fase 1 — alias de clientes y puestos)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS clients (
+        id                  SERIAL PRIMARY KEY,
+        nombre              VARCHAR(255) NOT NULL,
+        nombre_comercial    VARCHAR(255),
+        nit                 VARCHAR(50),
+        sector              VARCHAR(100),
+        estado              VARCHAR(20) NOT NULL DEFAULT 'activo',
+        portal_cliente_id   VARCHAR(100),
+        notas               TEXT,
+        created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'clients' verificada/creada");
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS client_aliases (
+        id          SERIAL PRIMARY KEY,
+        client_id   INTEGER NOT NULL,
+        alias       VARCHAR(255) NOT NULL,
+        tipo_alias  VARCHAR(50) NOT NULL DEFAULT 'comun',
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'client_aliases' verificada/creada");
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS service_locations (
+        id              SERIAL PRIMARY KEY,
+        client_id       INTEGER NOT NULL,
+        nombre_puesto   VARCHAR(255) NOT NULL,
+        ubicacion       VARCHAR(255),
+        tipo            VARCHAR(50) NOT NULL DEFAULT 'vigilancia',
+        estado          VARCHAR(20) NOT NULL DEFAULT 'activo',
+        notas           TEXT,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'service_locations' verificada/creada");
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS position_aliases (
+        id          SERIAL PRIMARY KEY,
+        puesto_id   INTEGER NOT NULL,
+        alias       VARCHAR(255) NOT NULL,
+        tipo_alias  VARCHAR(50) NOT NULL DEFAULT 'comun',
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'position_aliases' verificada/creada");
+
   } catch (err) {
     logger.error({ err }, "Auto-migrate: error — continuando de todas formas");
   }
@@ -235,6 +300,191 @@ export async function runAutoSeed(): Promise<void> {
     }
   } catch (err) {
     logger.error({ err }, "Auto-seed: error en asignaciones");
+  }
+
+  // ── 4. Alias de clientes y puestos ───────────────────────────────────
+  try {
+    const [{ total: clientCount }] = await db.select({ total: count() }).from(clientsTable);
+    if (Number(clientCount) === 0) {
+      logger.info("Auto-seed: creando clientes y alias de muestra...");
+
+      // ── Cervecería Centro Americana ──────────────────────────────────
+      const [cerveceria] = await db.insert(clientsTable).values({
+        nombre: "Cervecería Centro Americana S.A.",
+        nombreComercial: "Cervecería / Gallo",
+        nit: "CF-001",
+        sector: "industria",
+        estado: "activo",
+        notas: "Cliente premium. Múltiples puestos de custodia y vigilancia.",
+      }).returning();
+
+      await db.insert(clientAliasesTable).values([
+        { clientId: cerveceria.id, alias: "gallo", tipoAlias: "comun" },
+        { clientId: cerveceria.id, alias: "cerveceria", tipoAlias: "comercial" },
+        { clientId: cerveceria.id, alias: "cervecería centro americana", tipoAlias: "comercial" },
+        { clientId: cerveceria.id, alias: "custodio gallo", tipoAlias: "operativo" },
+        { clientId: cerveceria.id, alias: "ruta gallo", tipoAlias: "operativo" },
+        { clientId: cerveceria.id, alias: "cc", tipoAlias: "comun" },
+      ]);
+
+      const [ppGallo] = await db.insert(serviceLocationsTable).values({
+        clientId: cerveceria.id,
+        nombrePuesto: "Puerta Principal — Planta Central",
+        ubicacion: "Cervecería Centro Americana, Zona 12, Guatemala",
+        tipo: "puerta",
+        estado: "activo",
+      }).returning();
+      await db.insert(positionAliasesTable).values([
+        { puestoId: ppGallo.id, alias: "puerta gallo", tipoAlias: "operativo" },
+        { puestoId: ppGallo.id, alias: "entrada gallo", tipoAlias: "comun" },
+        { puestoId: ppGallo.id, alias: "puerta principal gallo", tipoAlias: "operativo" },
+      ]);
+
+      const [bodGallo] = await db.insert(serviceLocationsTable).values({
+        clientId: cerveceria.id,
+        nombrePuesto: "Bodega Central",
+        ubicacion: "Planta de Producción — Zona 12",
+        tipo: "bodega",
+        estado: "activo",
+      }).returning();
+      await db.insert(positionAliasesTable).values([
+        { puestoId: bodGallo.id, alias: "bodega gallo", tipoAlias: "operativo" },
+        { puestoId: bodGallo.id, alias: "bodega cerveceria", tipoAlias: "comun" },
+      ]);
+
+      const [rutaGallo] = await db.insert(serviceLocationsTable).values({
+        clientId: cerveceria.id,
+        nombrePuesto: "Ruta de Distribución Norte",
+        ubicacion: "Ruta al Atlántico — Zona Vial Norte",
+        tipo: "ruta",
+        estado: "activo",
+      }).returning();
+      await db.insert(positionAliasesTable).values([
+        { puestoId: rutaGallo.id, alias: "ruta norte gallo", tipoAlias: "operativo" },
+        { puestoId: rutaGallo.id, alias: "custodio ruta norte", tipoAlias: "comun" },
+        { puestoId: rutaGallo.id, alias: "ruta norte", tipoAlias: "comun" },
+      ]);
+
+      // ── Embotelladora Salvavidas ─────────────────────────────────────
+      const [salvavidas] = await db.insert(clientsTable).values({
+        nombre: "Embotelladora La Mariposa S.A. (Salvavidas)",
+        nombreComercial: "Salvavidas",
+        nit: "CF-002",
+        sector: "industria",
+        estado: "activo",
+        notas: "Custodia de valores y vigilancia en planta.",
+      }).returning();
+
+      await db.insert(clientAliasesTable).values([
+        { clientId: salvavidas.id, alias: "salvavidas", tipoAlias: "comun" },
+        { clientId: salvavidas.id, alias: "agua salvavidas", tipoAlias: "comercial" },
+        { clientId: salvavidas.id, alias: "mariposa", tipoAlias: "comun" },
+        { clientId: salvavidas.id, alias: "embotelladora", tipoAlias: "comercial" },
+        { clientId: salvavidas.id, alias: "agua pura", tipoAlias: "comun" },
+      ]);
+
+      const [plantaSV] = await db.insert(serviceLocationsTable).values({
+        clientId: salvavidas.id,
+        nombrePuesto: "Planta de Producción",
+        ubicacion: "Embotelladora La Mariposa — Villa Nueva",
+        tipo: "planta",
+        estado: "activo",
+      }).returning();
+      await db.insert(positionAliasesTable).values([
+        { puestoId: plantaSV.id, alias: "planta salvavidas", tipoAlias: "operativo" },
+        { puestoId: plantaSV.id, alias: "planta villa nueva", tipoAlias: "comun" },
+      ]);
+
+      const [despachoSV] = await db.insert(serviceLocationsTable).values({
+        clientId: salvavidas.id,
+        nombrePuesto: "Área de Despacho",
+        ubicacion: "Zona de Carga — Planta Villa Nueva",
+        tipo: "bodega",
+        estado: "activo",
+      }).returning();
+      await db.insert(positionAliasesTable).values([
+        { puestoId: despachoSV.id, alias: "despacho salvavidas", tipoAlias: "operativo" },
+        { puestoId: despachoSV.id, alias: "carga salvavidas", tipoAlias: "comun" },
+      ]);
+
+      // ── Tienda La Dolores ────────────────────────────────────────────
+      const [dolores] = await db.insert(clientsTable).values({
+        nombre: "Tienda La Dolores S.A.",
+        nombreComercial: "La Dolores",
+        nit: "CF-003",
+        sector: "comercio",
+        estado: "activo",
+        notas: "Vigilancia perimetral y control de acceso.",
+      }).returning();
+
+      await db.insert(clientAliasesTable).values([
+        { clientId: dolores.id, alias: "dolores", tipoAlias: "comun" },
+        { clientId: dolores.id, alias: "tienda dolores", tipoAlias: "comercial" },
+        { clientId: dolores.id, alias: "la dolores", tipoAlias: "comun" },
+      ]);
+
+      const [entradaDolores] = await db.insert(serviceLocationsTable).values({
+        clientId: dolores.id,
+        nombrePuesto: "Entrada Principal",
+        ubicacion: "Tienda La Dolores — Zona 1",
+        tipo: "puerta",
+        estado: "activo",
+      }).returning();
+      await db.insert(positionAliasesTable).values([
+        { puestoId: entradaDolores.id, alias: "puerta dolores", tipoAlias: "operativo" },
+        { puestoId: entradaDolores.id, alias: "entrada dolores", tipoAlias: "comun" },
+      ]);
+
+      // ── Distribuidora Nacional (portal CLI-001) ──────────────────────
+      const [distnac] = await db.insert(clientsTable).values({
+        nombre: "Distribuidora Nacional S.A.",
+        nombreComercial: "DistNac",
+        nit: "CF-004",
+        sector: "comercio",
+        estado: "activo",
+        portalClienteId: "CLI-001",
+        notas: "Vinculado al portal. Múltiples bodegas y rutas de distribución.",
+      }).returning();
+
+      await db.insert(clientAliasesTable).values([
+        { clientId: distnac.id, alias: "distnac", tipoAlias: "comun" },
+        { clientId: distnac.id, alias: "distribuidora", tipoAlias: "comercial" },
+        { clientId: distnac.id, alias: "distribuidora nacional", tipoAlias: "comercial" },
+        { clientId: distnac.id, alias: "nacional", tipoAlias: "comun" },
+        { clientId: distnac.id, alias: "cli-001", tipoAlias: "operativo" },
+      ]);
+
+      const [bodDistnac] = await db.insert(serviceLocationsTable).values({
+        clientId: distnac.id,
+        nombrePuesto: "Bodega Central — Zona 10",
+        ubicacion: "Distribuidora Nacional — Bodega Zona 10",
+        tipo: "bodega",
+        estado: "activo",
+      }).returning();
+      await db.insert(positionAliasesTable).values([
+        { puestoId: bodDistnac.id, alias: "bodega distnac", tipoAlias: "operativo" },
+        { puestoId: bodDistnac.id, alias: "bodega zona 10", tipoAlias: "comun" },
+        { puestoId: bodDistnac.id, alias: "distnac zona 10", tipoAlias: "comun" },
+      ]);
+
+      const [puerteDistNac] = await db.insert(serviceLocationsTable).values({
+        clientId: distnac.id,
+        nombrePuesto: "Puerta Principal — Oficinas",
+        ubicacion: "Distribuidora Nacional — Oficinas Zona 10",
+        tipo: "puerta",
+        estado: "activo",
+      }).returning();
+      await db.insert(positionAliasesTable).values([
+        { puestoId: puerteDistNac.id, alias: "puerta distnac", tipoAlias: "operativo" },
+        { puestoId: puerteDistNac.id, alias: "oficinas distnac", tipoAlias: "comun" },
+      ]);
+
+      logger.info("Auto-seed: clientes y alias creados (4 clientes, alias y puestos)");
+    } else {
+      logger.info({ count: clientCount }, "Auto-seed: clientes ya existen");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-seed: error en clientes/alias");
   }
 
   logger.info("Auto-seed completado");
