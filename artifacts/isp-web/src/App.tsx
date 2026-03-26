@@ -2,6 +2,8 @@ import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthGuard } from "@/components/AuthGuard";
 
 // Public pages
 import Home from "@/pages/home";
@@ -17,6 +19,7 @@ import AccesoClientes from "@/pages/acceso-clientes";
 import NotFound from "@/pages/not-found";
 
 // Admin pages
+import AdminLogin from "@/admin/pages/Login";
 import AdminDashboard from "@/admin/pages/Dashboard";
 import AdminIncidencias from "@/admin/pages/Incidencias";
 import AdminReclutamiento from "@/admin/pages/Reclutamiento";
@@ -43,18 +46,39 @@ function Router() {
       <Route path="/contacto" component={Contacto} />
       <Route path="/acceso-clientes" component={AccesoClientes} />
 
-      {/* Admin routes */}
+      {/* Admin login (public) */}
+      <Route path="/admin/login" component={AdminLogin} />
+
+      {/* Admin redirect */}
       <Route path="/admin">
         {() => <Redirect to="/admin/dashboard" />}
       </Route>
-      <Route path="/admin/dashboard" component={AdminDashboard} />
-      <Route path="/admin/incidencias" component={AdminIncidencias} />
-      <Route path="/admin/reclutamiento" component={AdminReclutamiento} />
-      <Route path="/admin/comercial" component={AdminComercial} />
-      <Route path="/admin/tareas" component={AdminTareas} />
-      <Route path="/admin/kpi" component={AdminKPI} />
-      <Route path="/admin/custodias" component={AdminCustodias} />
-      <Route path="/admin/clientes" component={AdminClientes} />
+
+      {/* Protected admin routes */}
+      <Route path="/admin/dashboard">
+        {() => <AuthGuard><AdminDashboard /></AuthGuard>}
+      </Route>
+      <Route path="/admin/incidencias">
+        {() => <AuthGuard><AdminIncidencias /></AuthGuard>}
+      </Route>
+      <Route path="/admin/reclutamiento">
+        {() => <AuthGuard><AdminReclutamiento /></AuthGuard>}
+      </Route>
+      <Route path="/admin/comercial">
+        {() => <AuthGuard><AdminComercial /></AuthGuard>}
+      </Route>
+      <Route path="/admin/tareas">
+        {() => <AuthGuard><AdminTareas /></AuthGuard>}
+      </Route>
+      <Route path="/admin/kpi">
+        {() => <AuthGuard><AdminKPI /></AuthGuard>}
+      </Route>
+      <Route path="/admin/custodias">
+        {() => <AuthGuard><AdminCustodias /></AuthGuard>}
+      </Route>
+      <Route path="/admin/clientes">
+        {() => <AuthGuard><AdminClientes /></AuthGuard>}
+      </Route>
 
       <Route component={NotFound} />
     </Switch>
@@ -65,10 +89,12 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
+        <AuthProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <Router />
+          </WouterRouter>
+          <Toaster />
+        </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

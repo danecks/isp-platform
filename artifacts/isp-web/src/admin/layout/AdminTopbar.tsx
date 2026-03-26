@@ -1,4 +1,6 @@
-import { Menu, Bell, User } from "lucide-react";
+import { Menu, Bell, User, LogOut } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useLocation } from "wouter";
 
 interface AdminTopbarProps {
   title: string;
@@ -6,6 +8,14 @@ interface AdminTopbarProps {
 }
 
 export function AdminTopbar({ title, onMenuOpen }: AdminTopbarProps) {
+  const { currentUser, logout } = useAuth();
+  const [, navigate] = useLocation();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/admin/login");
+  };
+
   const now = new Date().toLocaleDateString("es-GT", {
     weekday: "long",
     year: "numeric",
@@ -38,10 +48,18 @@ export function AdminTopbar({ title, onMenuOpen }: AdminTopbarProps) {
             <User className="w-3.5 h-3.5 text-primary" />
           </div>
           <div className="hidden sm:block">
-            <p className="text-xs font-semibold text-white leading-none">Coordinación</p>
+            <p className="text-xs font-semibold text-white leading-none">{currentUser || "Coordinación"}</p>
             <p className="text-[9px] text-white/30 mt-0.5">ISP Operaciones</p>
           </div>
         </div>
+
+        <button
+          onClick={handleLogout}
+          title="Cerrar sesión"
+          className="p-1.5 text-white/30 hover:text-red-400 transition-colors"
+        >
+          <LogOut className="w-4 h-4" />
+        </button>
       </div>
     </header>
   );

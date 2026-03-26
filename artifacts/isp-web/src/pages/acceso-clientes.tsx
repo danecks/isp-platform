@@ -1,5 +1,8 @@
+import { useState } from "react";
+import { useLocation } from "wouter";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { FadeIn } from "@/components/animations/FadeIn";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Shield,
   Lock,
@@ -11,52 +14,198 @@ import {
   AlertTriangle,
   Users,
   BarChart3,
-  Zap,
   ChevronRight,
   ArrowRight,
+  Eye,
+  EyeOff,
+  User,
+  LogIn,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Link } from "wouter";
+
+function LoginPanel() {
+  const [, navigate] = useLocation();
+  const { login, isAuthenticated } = useAuth();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  if (isAuthenticated) {
+    return (
+      <div className="bg-[#07111f] border border-primary/20 rounded-2xl p-8 text-center shadow-2xl">
+        <div className="w-14 h-14 mx-auto rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center mb-4">
+          <Shield className="w-7 h-7 text-primary" />
+        </div>
+        <h3 className="font-bold text-white text-lg mb-2">Sesión Activa</h3>
+        <p className="text-sm text-muted-foreground mb-6">Ya tiene una sesión iniciada en el sistema.</p>
+        <Button
+          onClick={() => navigate("/admin/dashboard")}
+          className="w-full h-11 bg-primary text-[#050d1a] font-bold hover:bg-primary/90 rounded-lg"
+        >
+          Ir al Dashboard <ArrowRight className="ml-2 w-4 h-4" />
+        </Button>
+      </div>
+    );
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    await new Promise((r) => setTimeout(r, 600));
+    const ok = login(username, password);
+    setLoading(false);
+    if (ok) {
+      navigate("/admin/dashboard");
+    } else {
+      setError("Usuario o contraseña incorrectos.");
+    }
+  };
+
+  return (
+    <div className="bg-[#07111f] border border-white/8 rounded-2xl p-8 shadow-2xl">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-10 h-10 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center">
+          <LogIn className="w-5 h-5 text-primary" />
+        </div>
+        <div>
+          <h3 className="font-bold text-white text-base">Acceso al Portal</h3>
+          <p className="text-xs text-muted-foreground">Personal autorizado ISP S.A.</p>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="portal-user" className="text-xs text-white/60 font-medium">Usuario</Label>
+          <div className="relative">
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              id="portal-user"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Nombre de usuario"
+              className="pl-10 bg-[#060e1c] border-white/10 text-white placeholder:text-white/25 focus:border-primary/50 h-10"
+              required
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="portal-pass" className="text-xs text-white/60 font-medium">Contraseña</Label>
+          <div className="relative">
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              id="portal-pass"
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              className="pl-10 pr-10 bg-[#060e1c] border-white/10 text-white placeholder:text-white/25 focus:border-primary/50 h-10"
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-white transition-colors"
+            >
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <div className="flex items-center gap-2 bg-red-950/40 border border-red-500/20 rounded-lg px-3 py-2.5">
+            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+            <p className="text-xs text-red-400">{error}</p>
+          </div>
+        )}
+
+        <Button
+          type="submit"
+          disabled={loading}
+          className="w-full h-10 bg-primary text-[#050d1a] font-bold hover:bg-primary/90 rounded-lg mt-1"
+        >
+          {loading ? (
+            <span className="flex items-center gap-2">
+              <span className="w-3.5 h-3.5 border-2 border-[#050d1a]/30 border-t-[#050d1a] rounded-full animate-spin" />
+              Verificando...
+            </span>
+          ) : (
+            <>Ingresar al Sistema <ArrowRight className="ml-2 w-4 h-4" /></>
+          )}
+        </Button>
+      </form>
+
+      <p className="text-xs text-muted-foreground text-center mt-5">
+        Acceso exclusivo para operaciones autorizadas
+      </p>
+    </div>
+  );
+}
 
 export default function AccesoClientes() {
   return (
     <PageLayout>
-      {/* HERO — Portal Placeholder */}
+      {/* HERO — Portal con Login */}
       <section className="pt-32 pb-20 bg-background relative overflow-hidden border-b border-white/5">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-primary/8 via-background to-background pointer-events-none" />
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 blur-[120px] rounded-full pointer-events-none" />
 
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
-          <FadeIn>
-            <div className="w-20 h-20 mx-auto rounded-2xl bg-card border border-primary/20 flex items-center justify-center mb-8 shadow-xl shadow-primary/10">
-              <Lock className="w-10 h-10 text-primary" />
-            </div>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            {/* Left: Info */}
+            <FadeIn>
+              <div className="inline-block px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-semibold text-muted-foreground mb-6 uppercase tracking-widest">
+                Portal Operativo · ISP S.A.
+              </div>
 
-            <div className="inline-block px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-semibold text-muted-foreground mb-6 uppercase tracking-widest">
-              Plataforma Digital · En Desarrollo
-            </div>
+              <h1 className="text-4xl md:text-5xl font-display font-bold mb-6 text-white tracking-tight">
+                Portal de <span className="text-gradient-gold">Clientes ISP</span>
+              </h1>
 
-            <h1 className="text-4xl md:text-6xl font-display font-bold mb-6 text-white tracking-tight">
-              Portal de <span className="text-gradient-gold">Clientes ISP</span>
-            </h1>
+              <p className="text-lg text-muted-foreground mb-6 leading-relaxed">
+                Acceso exclusivo al sistema de operaciones internas. Visibilidad total del servicio, gestión de incidencias y reportes operativos en tiempo real.
+              </p>
 
-            <p className="text-xl text-muted-foreground max-w-3xl mx-auto mb-10 leading-relaxed">
-              Estamos desarrollando una plataforma integral exclusiva para nuestros clientes corporativos. Visibilidad total del servicio, reportes de operación y seguimiento de incidencias en tiempo real.
-            </p>
+              <ul className="space-y-3 mb-8">
+                {[
+                  "Dashboard de operaciones en tiempo real",
+                  "Gestión y seguimiento de incidencias",
+                  "Reportes y métricas de seguridad (KPIs)",
+                  "Control de custodias y reclutamiento",
+                ].map((item, i) => (
+                  <li key={i} className="flex items-center gap-3 text-sm text-white/70">
+                    <Shield className="w-4 h-4 text-primary shrink-0" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
 
-            <div className="flex flex-col sm:flex-row justify-center gap-4">
-              <Link href="/contacto">
-                <Button size="lg" className="rounded-full px-8 h-12 bg-primary text-[#050d1a] font-bold hover:bg-primary/90">
-                  Contactar a Operaciones <ArrowRight className="ml-2 w-4 h-4" />
-                </Button>
-              </Link>
-              <a href="https://wa.me/50250000000" target="_blank" rel="noreferrer">
-                <Button size="lg" variant="outline" className="rounded-full px-8 h-12 bg-transparent border-white/20 text-white hover:bg-white/5">
-                  <MessageSquare className="w-4 h-4 mr-2" /> WhatsApp Directo
-                </Button>
-              </a>
-            </div>
-          </FadeIn>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Link href="/contacto">
+                  <Button size="sm" variant="outline" className="rounded-full px-6 bg-transparent border-white/20 text-white hover:bg-white/5">
+                    Contactar Operaciones
+                  </Button>
+                </Link>
+                <a href="https://wa.me/50250000000" target="_blank" rel="noreferrer">
+                  <Button size="sm" variant="outline" className="rounded-full px-6 bg-transparent border-white/20 text-white hover:bg-white/5">
+                    <MessageSquare className="w-4 h-4 mr-2" /> WhatsApp
+                  </Button>
+                </a>
+              </div>
+            </FadeIn>
+
+            {/* Right: Login Panel */}
+            <FadeIn delay={0.15}>
+              <LoginPanel />
+            </FadeIn>
+          </div>
         </div>
       </section>
 
@@ -176,7 +325,6 @@ export default function AccesoClientes() {
                   </div>
                 </div>
 
-                {/* Mock conversation UI */}
                 <div className="space-y-4">
                   <div className="bg-white/5 rounded-xl p-4 max-w-[85%]">
                     <p className="text-sm text-white/80">"Buen día, necesito cotización para 3 agentes en bodega zona 12."</p>
@@ -212,7 +360,6 @@ export default function AccesoClientes() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
             <FadeIn delay={0.2} className="order-2 lg:order-1">
-              {/* Mock Trello board */}
               <div className="glass-panel rounded-2xl p-6 border border-blue-500/10">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center">
