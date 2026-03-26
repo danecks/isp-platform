@@ -110,9 +110,11 @@ export function Navbar() {
             })}
           </nav>
 
-          <div className="hidden lg:flex items-center gap-6">
-            <Link href="/acceso-clientes" className="text-sm font-medium text-white/60 hover:text-white transition-colors">
-              Portal Clientes
+          <div className="hidden lg:flex items-center gap-3">
+            <Link href="/acceso-clientes">
+              <Button variant="outline" className="rounded-full px-5 py-2 text-sm font-semibold border-white/20 text-white hover:bg-white/8 hover:text-white bg-transparent">
+                Portal Clientes
+              </Button>
             </Link>
             <Link href="/solicitar-servicio">
               <Button className="bg-primary text-[#050d1a] hover:bg-primary/90 rounded-full px-5 py-2 text-sm font-semibold shadow-lg shadow-primary/20">
