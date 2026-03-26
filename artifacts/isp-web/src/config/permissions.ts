@@ -8,6 +8,7 @@ import {
   BarChart3,
   Building2,
   UserCog,
+  Wallet,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -61,6 +62,12 @@ export const NAV_ITEMS: NavItem[] = [
     path: "/admin/reclutamiento",
     label: "Reclutamiento",
     icon: Users,
+    roles: ["admin", "rrhh"],
+  },
+  {
+    path: "/admin/anticipos",
+    label: "Anticipos",
+    icon: Wallet,
     roles: ["admin", "rrhh"],
   },
   {

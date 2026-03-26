@@ -1,4 +1,10 @@
-export type MessageClassification = "incidencia" | "postulacion" | "lead";
+export type MessageClassification = "anticipo" | "incidencia" | "postulacion" | "lead";
+
+const ANTICIPO_KEYWORDS = [
+  "anticipo", "quiero anticipo", "solicitar anticipo", "pedir anticipo",
+  "adelanto", "quiero adelanto", "solicitar adelanto", "necesito anticipo",
+  "anticipo salarial", "pago anticipado",
+];
 
 const INCIDENCIA_KEYWORDS = [
   "incidencia", "emergencia", "reporto", "reporte", "alerta",
@@ -31,6 +37,10 @@ function normalize(text: string): string {
 export function classifyMessage(messageText: string): MessageClassification {
   const text = normalize(messageText);
 
+  // Anticipo tiene prioridad máxima (antes de incidencia)
+  for (const kw of ANTICIPO_KEYWORDS) {
+    if (text.includes(normalize(kw))) return "anticipo";
+  }
   for (const kw of INCIDENCIA_KEYWORDS) {
     if (text.includes(normalize(kw))) return "incidencia";
   }

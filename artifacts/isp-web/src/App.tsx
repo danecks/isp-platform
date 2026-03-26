@@ -30,6 +30,7 @@ import AdminKPI from "@/admin/pages/KPI";
 import AdminCustodias from "@/admin/pages/Custodias";
 import AdminClientes from "@/admin/pages/Clientes";
 import AdminUsuarios from "@/admin/pages/Usuarios";
+import AdminAnticipos from "@/admin/pages/Anticipos";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
@@ -106,6 +107,9 @@ function Router() {
       </Route>
       <Route path="/admin/usuarios">
         {() => <AuthGuard requiredRoles={["admin"]}><AdminUsuarios /></AuthGuard>}
+      </Route>
+      <Route path="/admin/anticipos">
+        {() => <AuthGuard requiredRoles={["admin", "rrhh"]}><AdminAnticipos /></AuthGuard>}
       </Route>
 
       <Route component={NotFound} />

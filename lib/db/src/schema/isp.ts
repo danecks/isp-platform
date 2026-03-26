@@ -150,8 +150,43 @@ export const usersTable = pgTable("users", {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ANTICIPOS — solicitudes de anticipo salarial de colaboradores
+//
+// FLUJO WA:
+//   1. Colaborador envía "quiero anticipo" por WhatsApp
+//   2. Sistema valida número → employees.telefono (normalizado)
+//   3. Sistema valida fecha → días habilitados (10 y 25 de cada mes ±1 día)
+//   4. Sistema valida duplicado → no hay anticipo pendiente en el mismo período
+//   5. Solicita DPI (si no existe en employees) y monto
+//   6. Guarda con origen="whatsapp", estado="pendiente"
+//
+// PERÍODO: formato "YYYY-MM-dia10" o "YYYY-MM-dia25"
+// ─────────────────────────────────────────────────────────────────────────────
+export const anticiposTable = pgTable("anticipos", {
+  id: serial("id").primaryKey(),
+  // Referencia al empleado (nullable: si en futuro se flexibiliza)
+  employeeId: integer("employee_id"),                    // → employees.id
+  // Datos del colaborador (capturados en el momento de la solicitud)
+  nombre: varchar("nombre", { length: 255 }).notNull(),
+  puesto: varchar("puesto", { length: 255 }),
+  dpi: varchar("dpi", { length: 20 }),
+  telefono: varchar("telefono", { length: 50 }),
+  // Solicitud
+  cantidad: integer("cantidad").notNull(),               // Monto en Quetzales (entero)
+  origen: varchar("origen", { length: 50 }).notNull().default("manual"), // "whatsapp" | "manual"
+  estado: varchar("estado", { length: 50 }).notNull().default("pendiente"),
+  // "pendiente" | "aprobada" | "rechazada" | "pagada"
+  periodo: varchar("periodo", { length: 30 }),           // "2026-03-dia10"
+  fechaSolicitud: timestamp("fecha_solicitud", { withTimezone: true }).notNull().defaultNow(),
+  observaciones: text("observaciones"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Zod insert schemas
 // ─────────────────────────────────────────────────────────────────────────────
+export const insertAnticipSchema = createInsertSchema(anticiposTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertLeadSchema = createInsertSchema(leadsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertApplicationSchema = createInsertSchema(applicationsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertIncidentSchema = createInsertSchema(incidentsTable).omit({ createdAt: true, updatedAt: true });
@@ -174,3 +209,5 @@ export type Employee = typeof employeesTable.$inferSelect;
 export type InsertEmployee = z.infer<typeof insertEmployeeSchema>;
 export type AgentAssignment = typeof agentAssignmentsTable.$inferSelect;
 export type InsertAgentAssignment = z.infer<typeof insertAgentAssignmentSchema>;
+export type Anticipo = typeof anticiposTable.$inferSelect;
+export type InsertAnticipo = z.infer<typeof insertAnticipSchema>;

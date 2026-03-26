@@ -121,6 +121,65 @@ Webhook que convierte mensajes de WhatsApp en registros reales en la BD.
 **Módulos con datos mock (pendientes de conectar a BD):**
 - Tareas, KPI (admin), Custodias, Clientes
 
+## Anticipos Fase 1 — Solicitudes vía WhatsApp + Módulo Admin RRHH
+
+### Base de datos
+- Nueva tabla `anticipos`: id, employeeId, nombre, puesto, dpi, telefono, cantidad, origen, estado, periodo, fechaSolicitud, observaciones
+- Estados: `pendiente` | `aprobada` | `rechazada` | `pagada`
+- Período formato: `YYYY-MM-dia10` o `YYYY-MM-dia25`
+
+### Archivos nuevos/modificados
+- `lib/db/src/schema/isp.ts` — tabla `anticipos` + tipos TypeScript
+- `artifacts/api-server/src/services/whatsapp/anticipo-session.ts` — session manager en memoria
+- `artifacts/api-server/src/services/whatsapp/classifier.ts` — tipo `anticipo` añadido (prioridad máxima)
+- `artifacts/api-server/src/routes/anticipos.ts` — API REST (GET, PATCH, config, export CSV)
+- `artifacts/api-server/src/routes/whatsapp-webhook.ts` — flujo multi-turno anticipo integrado
+- `artifacts/api-server/src/routes/index.ts` — router registrado
+- `artifacts/isp-web/src/admin/pages/Anticipos.tsx` — módulo RRHH completo
+- `artifacts/isp-web/src/App.tsx` — ruta `/admin/anticipos` añadida
+- `artifacts/isp-web/src/config/permissions.ts` — nav item Anticipos (roles: admin, rrhh)
+- `artifacts/isp-web/src/lib/api.ts` — tipos e interfaz anticiposApi
+
+### Flujo WhatsApp (multi-turno en memoria)
+1. Colaborador envía "anticipo", "quiero anticipo", "adelanto", etc.
+2. Sistema verifica número contra `employees.telefono` (normalizado, solo dígitos)
+3. Si no es empleado activo → responde que no está registrado
+4. Verifica fecha habilitada: días 10 y 25 de cada mes ±1 día de tolerancia
+5. Si fuera de rango → responde con próximo día habilitado
+6. Verifica duplicado: no debe haber anticipo `pendiente` del mismo empleado en el mismo período
+7. Si employee.dpi existe → pide solo el monto; si no → pide DPI primero, luego monto
+8. Monto recibido → crea registro en `anticipos` con `origen="whatsapp"` → confirma con referencia ANT-N
+
+### API Endpoints
+- `GET /api/anticipos` — lista con filtros (estado, origen, periodo, desde, hasta) + totales
+- `GET /api/anticipos/:id` — detalle
+- `PATCH /api/anticipos/:id` — actualizar estado y observaciones
+- `GET /api/anticipos/config` — días habilitados, período actual, si está activo
+- `GET /api/anticipos/export` — CSV con BOM UTF-8 (funciona en Excel español)
+
+### Módulo Admin RRHH `/admin/anticipos`
+- Banner de período (verde = activo, amarillo = cerrado)
+- 4 stat cards por estado con totales monetarios (monto pendiente / monto aprobado)
+- Tabla con: ID, colaborador, puesto, DPI, monto, canal (badge WA verde), estado, período, fecha
+- Filtros por estado y canal (todos / whatsapp / manual)
+- Botón "Revisar" → modal con cambio de estado + observaciones
+- Exportar CSV con filtros activos
+
+### CSV — Columnas exportadas
+fecha, nombre, puesto, dpi, cantidad, telefono, estado, periodo, origen
+
+### Acceso por rol
+- `admin` y `rrhh` ven el módulo Anticipos en el sidebar
+- Icono: Wallet (billetera)
+
+### Pendiente Fase 2
+- Envío de respuestas reales a WhatsApp via Meta API
+- Aprobación automática con reglas configurables
+- Conexión con sistema administrativo externo (nómina)
+- Límites de monto por empleado configurables
+- Notificación a RRHH al llegar nueva solicitud
+- Sesión persistente en DB (actualmente en memoria)
+
 ## Trello Fase 1.5 — Tarjetas con Checklist y Miembros
 
 Integración de Trello que crea tarjetas completas desde el panel admin de incidencias.

@@ -147,3 +147,53 @@ export const trelloApi = {
   sendIncident: (id: string) =>
     apiFetch<TrelloCardResult>(`/trello/send-incident/${id}`, { method: "POST" }),
 };
+
+// --- ANTICIPOS ---
+export interface Anticipo {
+  id: number;
+  employeeId: number | null;
+  nombre: string;
+  puesto: string | null;
+  dpi: string | null;
+  telefono: string | null;
+  cantidad: number;
+  origen: string;
+  estado: string;
+  periodo: string | null;
+  fechaSolicitud: string;
+  observaciones: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AnticipoTotales {
+  pendiente: number;
+  aprobada: number;
+  rechazada: number;
+  pagada: number;
+  total: number;
+  montoPendiente: number;
+  montoAprobado: number;
+}
+
+export interface AnticipoPeriodoConfig {
+  diasHabilitados: number[];
+  toleranciaDias: number;
+  periodoActual: string | null;
+  habilitadoAhora: boolean;
+  estadosValidos: string[];
+}
+
+export const anticiposApi = {
+  getAll: (params?: { estado?: string; origen?: string; periodo?: string; desde?: string; hasta?: string }) => {
+    const qs = new URLSearchParams(params as Record<string, string> ?? {}).toString();
+    return apiFetch<{ anticipos: Anticipo[]; totales: AnticipoTotales }>(`/anticipos${qs ? "?" + qs : ""}`);
+  },
+  getConfig: () => apiFetch<AnticipoPeriodoConfig>("/anticipos/config"),
+  update: (id: number, data: { estado?: string; observaciones?: string }) =>
+    apiFetch<Anticipo>(`/anticipos/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  exportCsv: (params?: { estado?: string; periodo?: string; desde?: string; hasta?: string }) => {
+    const qs = new URLSearchParams(params as Record<string, string> ?? {}).toString();
+    return `${API_BASE}/anticipos/export${qs ? "?" + qs : ""}`;
+  },
+};

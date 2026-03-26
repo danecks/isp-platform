@@ -1,0 +1,117 @@
+El sistema ya tiene:
+
+* PostgreSQL
+* users + employees
+* roles
+* login real
+* admin funcional
+* portal de clientes
+* WhatsApp fase 1
+* incidencias reales
+* integración inicial con Trello
+
+No quiero romper nada del sistema actual.
+
+Quiero avanzar a la siguiente fase: **Anticipos fase 1**.
+
+Objetivo:
+permitir que colaboradores autorizados puedan solicitar anticipos desde WhatsApp y que esas solicitudes queden registradas en el sistema para revisión de RRHH y exportación.
+
+En esta fase no quiero todavía aprobación automática ni integración con el sistema administrativo externo.
+Quiero una base real, segura y usable.
+
+Haz esto:
+
+1. Crea una nueva entidad/tabla para solicitudes de anticipo, por ejemplo:
+
+* id
+* employeeId nullable si aún no se resuelve siempre
+* nombre
+* puesto
+* dpi
+* telefono
+* cantidad
+* origen
+* estado
+* fechaSolicitud
+* periodo
+* observaciones
+* createdAt
+* updatedAt
+
+2. Estados iniciales:
+
+* pendiente
+* aprobada
+* rechazada
+* pagada
+
+3. Crea módulo admin para RRHH, por ejemplo:
+
+* /admin/anticipos
+
+Con:
+
+* tabla de solicitudes
+* filtros por estado, fecha y origen
+* totales del período
+* exportación CSV
+
+4. Integra este flujo con WhatsApp usando la infraestructura ya existente
+
+5. En esta fase soporta mensaje inicial tipo:
+
+* "quiero anticipo"
+* "solicitar anticipo"
+* "anticipo"
+
+6. Validaciones mínimas:
+
+* el número debe corresponder a un colaborador/empleado registrado o usuario interno autorizado
+* si el número no está registrado, no crear solicitud
+* si no está dentro de fecha permitida, responder indicando que la fecha no está habilitada
+* si ya existe una solicitud pendiente del mismo colaborador en el mismo período, bloquear duplicado o advertir
+
+7. Configura fechas permitidas como parámetros editables o constantes, por ejemplo:
+
+* día 10
+* día 25
+
+8. Captura de datos solicitados:
+
+* nombre
+* puesto
+* DPI
+* cantidad
+
+9. Todo debe guardarse con `origen = "whatsapp"`
+
+10. Agrega exportación CSV con columnas:
+
+* fecha
+* nombre
+* puesto
+* dpi
+* cantidad
+* telefono
+* estado
+
+11. Mantén el diseño actual
+12. No rompas:
+
+* portal
+* Trello
+* incidencias
+* login
+* WhatsApp fase 1
+
+13. Documenta:
+
+* qué archivos cambiaste
+* cómo funciona la validación por número
+* cómo se calcula el período
+* cómo exportar el CSV
+* qué faltará para una fase 2 con aprobación y conexión al sistema administrativo
+
+Muy importante:
+quiero una base real y segura para anticipos, no una demo vacía.

@@ -1,6 +1,11 @@
 import { Router } from "express";
 import { db, incidentsTable, applicationsTable, leadsTable } from "@workspace/db";
 import { classifyMessage, extractPhoneFromWaId } from "../services/whatsapp/classifier";
+import {
+  getSession,
+  iniciarAnticipo,
+  continuarAnticipo,
+} from "../services/whatsapp/anticipo-session";
 
 const router = Router();
 
@@ -107,21 +112,46 @@ async function processLead(
   return { tabla: "leads", id: inserted[0].id };
 }
 
+/**
+ * Procesa un mensaje entrante de WhatsApp.
+ *
+ * Prioridad:
+ *   1. Si hay sesión de anticipo activa → continuar flujo de anticipo
+ *   2. Clasificar mensaje → anticipo / incidencia / postulación / lead
+ */
 async function handleIncomingMessage(
   nombre: string,
   telefono: string,
   texto: string,
   waMessageId: string
-) {
+): Promise<{ tipo: string; id?: string | number; respuesta?: string }> {
+
+  // 1. ¿Hay sesión de anticipo activa para este número?
+  const sesionActiva = getSession(telefono);
+  if (sesionActiva) {
+    const { respuesta, completada } = await continuarAnticipo(sesionActiva, texto);
+    console.log(`[WA-Webhook] Anticipo en curso para ${telefono}: estado=${sesionActiva.state}, completada=${completada}`);
+    return { tipo: "anticipo_sesion", respuesta };
+  }
+
+  // 2. Clasificar mensaje nuevo
   const tipo = classifyMessage(texto);
+
+  if (tipo === "anticipo") {
+    const respuesta = await iniciarAnticipo(nombre, telefono);
+    console.log(`[WA-Webhook] Anticipo iniciado para ${telefono}`);
+    return { tipo: "anticipo_inicio", respuesta };
+  }
 
   if (tipo === "incidencia") {
     return { tipo, ...(await processIncidencia(nombre, telefono, texto, waMessageId)) };
-  } else if (tipo === "postulacion") {
-    return { tipo, ...(await processPostulacion(nombre, telefono, texto)) };
-  } else {
-    return { tipo: "lead", ...(await processLead(nombre, telefono, texto)) };
   }
+
+  if (tipo === "postulacion") {
+    return { tipo, ...(await processPostulacion(nombre, telefono, texto)) };
+  }
+
+  return { tipo: "lead", ...(await processLead(nombre, telefono, texto)) };
 }
 
 // ── GET /webhooks/whatsapp — Verificación de Meta ──────────────────────────
@@ -170,7 +200,13 @@ router.post("/webhooks/whatsapp", async (req, res) => {
           console.log(`[WA-Webhook] Mensaje de ${nombre} (${telefono}): "${texto}"`);
 
           const result = await handleIncomingMessage(nombre, telefono, texto, msg.id);
-          console.log(`[WA-Webhook] Procesado → tipo=${result.tipo}, id=${result.id}`);
+          console.log(`[WA-Webhook] Procesado → tipo=${result.tipo}, id=${result.id ?? "sesion"}`);
+
+          // Aquí se enviaría la respuesta al usuario vía Meta API (Fase 2)
+          // Por ahora: solo se loggea
+          if (result.respuesta) {
+            console.log(`[WA-Webhook] Respuesta: "${result.respuesta.substring(0, 80)}..."`);
+          }
         }
       }
     }
@@ -179,7 +215,7 @@ router.post("/webhooks/whatsapp", async (req, res) => {
   }
 });
 
-// ── POST /webhooks/whatsapp/simulate — Simulación local de mensajes ────────
+// ── POST /webhooks/whatsapp/simulate — Simulación local ────────────────────
 router.post("/webhooks/whatsapp/simulate", async (req, res) => {
   try {
     const { scenario, nombre: nombreCustom, telefono: telCustom, mensaje: mensajeCustom } = req.body;
@@ -203,32 +239,35 @@ router.post("/webhooks/whatsapp/simulate", async (req, res) => {
     };
 
     const base = SCENARIOS[scenario];
-    if (!base) {
+    if (!base && !mensajeCustom) {
       return res.status(400).json({
         error: "Escenario inválido.",
-        disponibles: Object.keys(SCENARIOS),
+        disponibles: [...Object.keys(SCENARIOS), "(o usa nombre+telefono+mensaje personalizado)"],
         uso: 'POST /api/webhooks/whatsapp/simulate con body: { "scenario": "postulacion" | "lead" | "incidencia" }',
       });
     }
 
-    const nombre = nombreCustom ?? base.nombre;
-    const telefono = telCustom ?? base.telefono;
-    const mensaje = mensajeCustom ?? base.mensaje;
+    const nombre = nombreCustom ?? base?.nombre ?? "Simulado";
+    const telefono = telCustom ?? base?.telefono ?? "+50200000000";
+    const mensaje = mensajeCustom ?? base?.mensaje ?? "";
     const waMessageId = `sim-${Date.now()}`;
 
-    console.log(`[WA-Simulate] Escenario: ${scenario}, mensaje: "${mensaje}"`);
+    console.log(`[WA-Simulate] Escenario: ${scenario ?? "personalizado"}, mensaje: "${mensaje}"`);
 
     const result = await handleIncomingMessage(nombre, telefono, mensaje, waMessageId);
 
-    console.log(`[WA-Simulate] Resultado: tipo=${result.tipo}, id=${result.id}`);
+    console.log(`[WA-Simulate] Resultado: tipo=${result.tipo}, id=${result.id ?? "sesion"}`);
 
     res.status(201).json({
       simulacion: true,
-      scenario,
+      scenario: scenario ?? "personalizado",
       entrada: { nombre, telefono, mensaje },
       clasificacion: result.tipo,
-      resultado: result,
-      nota: "Registro guardado en la base de datos real. Visible en el admin de inmediato.",
+      resultado: { id: result.id },
+      respuesta_wa: result.respuesta ?? null,
+      nota: result.respuesta
+        ? "Flujo de anticipo activo. Continúa enviando mensajes con el mismo teléfono."
+        : "Registro guardado en la base de datos real. Visible en el admin de inmediato.",
     });
   } catch (err) {
     console.error("[WA-Simulate] Error:", err);
