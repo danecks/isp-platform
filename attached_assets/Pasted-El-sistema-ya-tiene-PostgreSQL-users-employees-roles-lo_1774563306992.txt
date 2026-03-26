@@ -1,0 +1,124 @@
+El sistema ya tiene:
+
+* PostgreSQL
+* users + employees
+* roles
+* login real
+* portal de clientes
+* WhatsApp fase 1
+* anticipos
+* incidencias reales
+* Trello unificado
+* configuración WhatsApp administrable
+* alias de clientes y puestos ya funcionando
+
+No quiero romper nada del sistema actual.
+
+Quiero avanzar a la siguiente fase: **Emergencias restringidas**.
+
+Objetivo:
+permitir que solo usuarios autorizados (guardias y clientes autorizados) puedan reportar emergencias desde WhatsApp de forma rápida, y que estas queden registradas como incidencias críticas en el sistema.
+
+Haz esto:
+
+## 1. Reglas de acceso
+
+Solo pueden activar el flujo de emergencia:
+
+* usuarios con rol guardia o equivalente cuando exista su acceso
+* usuarios con rol cliente autorizados
+* opcionalmente supervisores
+* nunca usuarios externos o no registrados
+
+Agrega la estructura necesaria para validar permiso, por ejemplo:
+
+* canReportEmergency
+  o equivalente por usuario/rol
+
+## 2. Detección de emergencia
+
+El flujo de WhatsApp debe detectar mensajes como:
+
+* emergencia
+* auxilio
+* apoyo urgente
+* robo
+* incidente armado
+* intrusión
+* ayuda
+
+## 3. Flujo corto de captura
+
+Cuando un usuario autorizado active emergencia:
+
+* validar identidad
+* pedir ubicación, cliente o puesto
+* usar el motor de alias si el texto contiene alias operativos
+* pedir tipo de emergencia
+* pedir descripción breve
+* crear incidencia con prioridad crítica o urgente
+
+## 4. Integración con alias
+
+Usar el resolver de alias ya existente para mapear textos como:
+
+* gallo
+* custodio gallo
+* salvavidas
+* tienda dolores
+
+Si hay ambigüedad, pedir confirmación simple.
+
+## 5. Datos guardados
+
+Registrar la emergencia como incidencia real con campos adecuados:
+
+* origen = whatsapp
+* prioridad = critica o urgente
+* tipo = emergencia
+* cliente o clienteId cuando se resuelva
+* ubicación
+* reportadoPor
+* descripción
+* fecha/hora
+
+## 6. Admin
+
+Haz que estas emergencias aparezcan claramente en el admin:
+
+* badge especial de emergencia
+* prioridad visible
+* filtros por emergencia
+* destacar en dashboard si es posible
+
+## 7. Configuración admin
+
+Si ya existe módulo de configuración WhatsApp, dejar preparado o conectar:
+
+* tipos de emergencia editables
+* mensajes de confirmación editables
+* mensaje para usuario no autorizado
+
+## 8. No romper
+
+* portal
+* anticipos
+* incidencias
+* Trello
+* alias
+* login
+* roles
+* branding
+
+## 9. Documentación
+
+Explica:
+
+* qué archivos cambiaste
+* cómo se valida quién puede reportar emergencia
+* cómo se usa alias dentro del flujo
+* cómo queda registrada la emergencia
+* qué faltará para una futura fase de alertas más avanzadas
+
+Muy importante:
+quiero un flujo rápido, seguro y usable en campo. No un menú largo ni una demo vacía.

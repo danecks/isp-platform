@@ -113,6 +113,8 @@ export interface Incident {
   responsable: string | null;
   tareaAsociada: string | null;
   descripcion: string | null;
+  esEmergencia: boolean;
+  reportadoPor: string | null;
   createdAt: string;
   updatedAt: string;
 }

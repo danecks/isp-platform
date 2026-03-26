@@ -62,6 +62,10 @@ export const incidentsTable = pgTable("incidents", {
   responsable: varchar("responsable", { length: 255 }).default("Sin asignar"),
   tareaAsociada: varchar("tarea_asociada", { length: 50 }),
   descripcion: text("descripcion"),
+  // ── Emergencias ─────────────────────────────────────────────────────────
+  esEmergencia: boolean("es_emergencia").notNull().default(false),
+  reportadoPor: varchar("reportado_por", { length: 255 }),   // nombre o teléfono del reportante
+  // ────────────────────────────────────────────────────────────────────────
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -147,6 +151,10 @@ export const usersTable = pgTable("users", {
   telefono: varchar("telefono", { length: 50 }),
   clienteId: varchar("cliente_id", { length: 100 }),
   employeeId: integer("employee_id"),
+  // Permiso explícito para reportar emergencias (null = derivado del rol)
+  // Roles con permiso por defecto: admin, operaciones, supervisor
+  // Roles que requieren habilitación explícita: cliente, rrhh, comercial
+  canReportEmergency: boolean("can_report_emergency"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

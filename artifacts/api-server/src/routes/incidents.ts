@@ -61,9 +61,11 @@ router.post("/incidents", async (req, res) => {
     if (!cliente?.trim()) return res.status(400).json({ error: "El campo 'cliente' es requerido" });
     if (!tipo?.trim()) return res.status(400).json({ error: "El campo 'tipo' es requerido" });
 
-    const PRIORIDADES_VALIDAS = ["alta", "media", "baja", "urgente"];
+    const PRIORIDADES_VALIDAS = ["alta", "media", "baja", "urgente", "critica"];
     const ORIGENES_VALIDOS = ["manual", "web", "whatsapp", "llamada", "portal"];
     const ESTADOS_VALIDOS = ["abierta", "en_proceso", "resuelta", "cerrada"];
+
+    const { esEmergencia, reportadoPor } = req.body;
 
     const id = generateId();
     const inserted = await db
@@ -78,6 +80,8 @@ router.post("/incidents", async (req, res) => {
         estado: ESTADOS_VALIDOS.includes(req.body.estado) ? req.body.estado : "abierta",
         responsable: responsable?.trim() || "Sin asignar",
         descripcion: descripcion?.trim() || null,
+        esEmergencia: esEmergencia === true || esEmergencia === "true",
+        reportadoPor: reportadoPor?.trim() || null,
       })
       .returning();
 
@@ -104,6 +108,8 @@ router.patch("/incidents/:id", async (req, res) => {
     }
 
     // Construimos solo los campos que llegan
+    const { esEmergencia, reportadoPor } = req.body;
+
     const patch: Partial<typeof incidentsTable.$inferInsert> & { updatedAt: Date } = {
       updatedAt: new Date(),
     };
@@ -114,6 +120,8 @@ router.patch("/incidents/:id", async (req, res) => {
     if (notas !== undefined) patch.descripcion = notas?.trim() || null;
     if (descripcion !== undefined) patch.descripcion = descripcion?.trim() || null;
     if (tareaAsociada !== undefined) patch.tareaAsociada = tareaAsociada?.trim() || null;
+    if (esEmergencia !== undefined) patch.esEmergencia = esEmergencia === true || esEmergencia === "true";
+    if (reportadoPor !== undefined) patch.reportadoPor = reportadoPor?.trim() || null;
 
     const updated = await db
       .update(incidentsTable)

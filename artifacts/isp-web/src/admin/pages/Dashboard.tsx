@@ -8,7 +8,7 @@ import { mockKPI } from "../mocks/kpi";
 import { leadsApi, applicationsApi, incidentsApi } from "@/lib/api";
 import {
   AlertTriangle, Users, Briefcase, CheckSquare, Truck,
-  ShieldCheck, Timer, Zap, MessageSquare, Trello, Globe, Database,
+  ShieldCheck, Timer, Zap, MessageSquare, Trello, Globe, Database, Siren,
 } from "lucide-react";
 
 function fmtTime(iso: string) {
@@ -21,6 +21,7 @@ export default function Dashboard() {
   const { data: postulantes = [] } = useQuery({ queryKey: ["applications"], queryFn: applicationsApi.getAll, refetchInterval: 30000 });
 
   const abiertas = incidencias.filter((i) => i.estado === "abierta" || i.estado === "en_proceso").length;
+  const emergenciasActivas = incidencias.filter((i) => i.esEmergencia && (i.estado === "abierta" || i.estado === "en_proceso")).length;
   const leadsNuevos = leads.filter((l) => l.estado === "nuevo").length;
   const nuevasPostulaciones = postulantes.filter((p) => p.estado === "recibido").length;
   const tareasPendientes = mockTareas.filter((t) => t.estado === "pendiente" || t.estado === "en_proceso").length;
@@ -60,16 +61,35 @@ export default function Dashboard() {
           <span>Incidencias, Leads y Postulaciones conectados a base de datos real · Tareas, Custodias y KPI en datos de prueba</span>
         </div>
 
+        {/* ALERTA DE EMERGENCIAS ACTIVAS */}
+        {emergenciasActivas > 0 && (
+          <a
+            href="/admin/incidencias"
+            className="flex items-center gap-3 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 hover:bg-red-500/15 transition-colors"
+          >
+            <div className="relative">
+              <Siren className="w-5 h-5 text-red-400" />
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full animate-ping" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-bold text-red-300">
+                {emergenciasActivas} emergencia{emergenciasActivas !== 1 ? "s" : ""} activa{emergenciasActivas !== 1 ? "s" : ""} — atención inmediata requerida
+              </p>
+              <p className="text-[10px] text-red-400/70">Ver en módulo de Incidencias →</p>
+            </div>
+          </a>
+        )}
+
         {/* STATS */}
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
           <StatCard icon={AlertTriangle} label="Incidencias Activas" value={abiertas} sub="Abiertas o en proceso" color="red" />
+          <StatCard icon={Siren} label="Emergencias Activas" value={emergenciasActivas} sub="Atención inmediata" color="red" />
           <StatCard icon={Users} label="Postulaciones Nuevas" value={nuevasPostulaciones} sub="Sin revisar" color="blue" />
           <StatCard icon={Briefcase} label="Leads Nuevos" value={leadsNuevos} sub="Sin asignar" color="gold" />
           <StatCard icon={CheckSquare} label="Tareas Pendientes" value={tareasPendientes} sub="Por atender" color="purple" />
           <StatCard icon={Truck} label="Custodias Activas" value={custodiasActivas} sub="En ruta o planificadas" color="blue" />
           <StatCard icon={ShieldCheck} label="SLA Cumplido" value={`${mockKPI.slaCumplido}%`} sub="Mes actual" color="green" />
           <StatCard icon={Timer} label="Resp. Promedio" value={`${mockKPI.tiempoRespuestaPromedio} min`} sub="Tiempo de respuesta" color="gold" />
-          <StatCard icon={CheckSquare} label="Tareas Cerradas" value={mockKPI.tareasCerradas} sub="Este mes" color="green" />
         </div>
 
         {/* INFO BLOCK */}

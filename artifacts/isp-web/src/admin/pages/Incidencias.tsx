@@ -5,7 +5,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { NuevaIncidenciaModal } from "../components/NuevaIncidenciaModal";
 import { EditarIncidenciaModal } from "../components/EditarIncidenciaModal";
 import { incidentsApi, type Incident } from "@/lib/api";
-import { AlertTriangle, Filter, Loader2, Plus, RefreshCw, ChevronRight } from "lucide-react";
+import { AlertTriangle, Filter, Loader2, Plus, RefreshCw, ChevronRight, Siren } from "lucide-react";
 
 type EstadoFilter = "todos" | "abierta" | "en_proceso" | "resuelta" | "cerrada";
 type PrioridadFilter = "todos" | "urgente" | "alta" | "media" | "baja";
@@ -50,7 +50,9 @@ export default function Incidencias() {
   const [estadoFiltro, setEstadoFiltro] = useState<EstadoFilter>("todos");
   const [prioridadFiltro, setPrioridadFiltro] = useState<PrioridadFilter>("todos");
   const [origenFiltro, setOrigenFiltro] = useState<OrigenFilter>("todos");
+  const [soloEmergencias, setSoloEmergencias] = useState(false);
   const [showNueva, setShowNueva] = useState(false);
+  const [showNuevaEmergencia, setShowNuevaEmergencia] = useState(false);
   const [editando, setEditando] = useState<Incident | null>(null);
 
   const { data: incidencias = [], isLoading, isError, refetch, isFetching } = useQuery({
@@ -59,7 +61,11 @@ export default function Incidencias() {
     refetchInterval: 15000,
   });
 
+  const emergenciasAbiertas = incidencias.filter((i) => i.esEmergencia && i.estado === "abierta").length;
+  const totalEmergencias = incidencias.filter((i) => i.esEmergencia).length;
+
   const filtradas = incidencias.filter((i) => {
+    if (soloEmergencias && !i.esEmergencia) return false;
     if (estadoFiltro !== "todos" && i.estado !== estadoFiltro) return false;
     if (prioridadFiltro !== "todos" && i.prioridad !== prioridadFiltro) return false;
     if (origenFiltro !== "todos" && i.origen !== origenFiltro) return false;
@@ -74,8 +80,57 @@ export default function Incidencias() {
     <AdminLayout title="Gestión de Incidencias">
       <div className="space-y-6 max-w-[1400px]">
 
+        {/* ALERTA DE EMERGENCIAS ACTIVAS */}
+        {!isLoading && emergenciasAbiertas > 0 && (
+          <div
+            className="flex items-center gap-3 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 cursor-pointer hover:bg-red-500/15 transition-colors"
+            onClick={() => setSoloEmergencias(true)}
+          >
+            <div className="relative">
+              <Siren className="w-5 h-5 text-red-400" />
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-bold text-red-300">
+                {emergenciasAbiertas} emergencia{emergenciasAbiertas !== 1 ? "s" : ""} activa{emergenciasAbiertas !== 1 ? "s" : ""}
+              </p>
+              <p className="text-[10px] text-red-400/70">Haga clic para filtrar — atención inmediata requerida</p>
+            </div>
+            {soloEmergencias && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setSoloEmergencias(false); }}
+                className="text-[10px] text-red-400/60 hover:text-red-300 underline underline-offset-2"
+              >
+                Ver todas
+              </button>
+            )}
+          </div>
+        )}
+
         {/* STAT CARDS — clicables para filtrar */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {/* Card emergencias */}
+          <button
+            onClick={() => setSoloEmergencias((v) => !v)}
+            className={`bg-[#0c1829] border rounded-xl p-4 text-left transition-all cursor-pointer group ${
+              soloEmergencias ? "border-red-500/40 bg-red-500/5" : "border-white/5 hover:border-red-500/20"
+            }`}
+          >
+            <div className="flex items-center gap-1.5 mb-1">
+              <Siren className="w-3 h-3 text-red-400" />
+              {emergenciasAbiertas > 0 && (
+                <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+              )}
+            </div>
+            <p className="text-2xl font-bold text-red-300">{isLoading ? "—" : totalEmergencias}</p>
+            <div className="mt-1.5 flex items-center gap-2">
+              <span className="text-[10px] text-red-400/70">Emergencias</span>
+              {soloEmergencias && (
+                <span className="text-[9px] text-red-400/60 uppercase tracking-wide">Filtrado</span>
+              )}
+            </div>
+          </button>
+
           {ESTADO_COUNTS.map(({ key, label }) => {
             const cnt = incidencias.filter((i) => i.estado === key).length;
             const isActive = estadoFiltro === key;
@@ -156,6 +211,13 @@ export default function Incidencias() {
               <span className="hidden sm:inline">Actualizar</span>
             </button>
             <button
+              onClick={() => setShowNuevaEmergencia(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition-colors"
+            >
+              <Siren className="w-3.5 h-3.5" />
+              Emergencia
+            </button>
+            <button
               onClick={() => setShowNueva(true)}
               className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-[#0a1628] text-xs font-bold rounded-lg transition-colors"
             >
@@ -217,25 +279,44 @@ export default function Incidencias() {
                 <tbody>
                   {filtradas.map((inc) => {
                     const isUrgente = inc.prioridad === "urgente";
+                    const esEmerg = inc.esEmergencia === true;
                     return (
                       <tr
                         key={inc.id}
                         onClick={() => setEditando(inc)}
                         className={`border-b border-white/3 hover:bg-white/3 transition-colors cursor-pointer group ${
-                          isUrgente ? "bg-red-500/3" : ""
+                          esEmerg ? "bg-red-500/5 hover:bg-red-500/8" : isUrgente ? "bg-red-500/3" : ""
                         }`}
                       >
                         <td className="px-5 py-3">
-                          <span className="text-primary font-mono font-semibold text-[10px]">{inc.id}</span>
+                          <div className="flex items-center gap-2">
+                            {esEmerg && (
+                              <span className="relative flex-shrink-0" aria-label="Emergencia activa" role="img" title="Emergencia">
+                                <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-60 animate-ping" />
+                                <Siren className="w-3 h-3 text-red-400 relative" aria-hidden="true" />
+                              </span>
+                            )}
+                            <span className="text-primary font-mono font-semibold text-[10px]">{inc.id}</span>
+                          </div>
                         </td>
                         <td className="px-3 py-3 text-white/50 whitespace-nowrap">{fmtDate(inc.fecha)}</td>
                         <td className="px-3 py-3"><StatusBadge value={inc.origen as any} /></td>
                         <td className="px-3 py-3 text-white/80 font-medium max-w-[140px] truncate">{inc.cliente}</td>
                         <td className="px-3 py-3 text-white/40 max-w-[130px] truncate">{inc.ubicacion ?? "—"}</td>
-                        <td className="px-3 py-3 text-white/60 max-w-[130px] truncate">{inc.tipo}</td>
+                        <td className="px-3 py-3 text-white/60 max-w-[130px] truncate">
+                          {esEmerg && <span className="text-red-400 font-semibold mr-1">⚡</span>}
+                          {inc.tipo}
+                        </td>
                         <td className="px-3 py-3"><StatusBadge value={inc.prioridad as any} /></td>
                         <td className="px-3 py-3"><StatusBadge value={inc.estado as any} /></td>
-                        <td className="px-3 py-3 text-white/50">{inc.responsable ?? "Sin asignar"}</td>
+                        <td className="px-3 py-3 text-white/50">
+                          {inc.responsable ?? "Sin asignar"}
+                          {esEmerg && inc.reportadoPor && (
+                            <div className="text-[9px] text-red-400/60 truncate max-w-[80px]">
+                              Rep: {inc.reportadoPor}
+                            </div>
+                          )}
+                        </td>
                         <td className="px-3 py-3">
                           <ChevronRight className="w-3.5 h-3.5 text-white/15 group-hover:text-primary/50 transition-colors" />
                         </td>
@@ -272,6 +353,14 @@ export default function Incidencias() {
       {/* MODAL — NUEVA INCIDENCIA */}
       {showNueva && (
         <NuevaIncidenciaModal onClose={() => setShowNueva(false)} />
+      )}
+
+      {/* MODAL — NUEVA EMERGENCIA */}
+      {showNuevaEmergencia && (
+        <NuevaIncidenciaModal
+          onClose={() => setShowNuevaEmergencia(false)}
+          defaultEmergencia
+        />
       )}
 
       {/* MODAL — EDITAR INCIDENCIA */}

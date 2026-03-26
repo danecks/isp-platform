@@ -114,6 +114,12 @@ export async function runAutoMigrations(): Promise<void> {
     await pool.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS tarea_asociada VARCHAR(255)`);
     logger.info("Auto-migrate: columnas extra en 'incidents' verificadas");
 
+    // Columnas de emergencia en incidents y users
+    await pool.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS es_emergencia BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS reportado_por VARCHAR(255)`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS can_report_emergency BOOLEAN`);
+    logger.info("Auto-migrate: columnas de emergencia en 'incidents' y 'users' verificadas");
+
     // Tablas de configuración WA
     await pool.query(`
       CREATE TABLE IF NOT EXISTS wa_config (
@@ -611,6 +617,18 @@ export async function runAutoSeed(): Promise<void> {
     } else {
       logger.info({ count: cfgCount }, "Auto-seed: wa_config ya existe");
     }
+
+    // Mensajes de emergencia — insertar si no existen (ON CONFLICT DO NOTHING)
+    // Esto permite actualizar instalaciones existentes sin duplicar mensajes.
+    await pool.query(`
+      INSERT INTO wa_messages (clave, texto, descripcion) VALUES
+        ('emergencia_no_autorizado', 'Su cuenta no tiene permiso para reportar emergencias por este canal. En caso de emergencia real llame al 110 (PNC) o 122 (Bomberos). Para habilitar este permiso contacte al administrador del sistema.', 'Usuario sin permiso de emergencia'),
+        ('emergencia_ambiguedad', 'Se encontraron varias ubicaciones que coinciden. Por favor indique: {opciones}. Responda con el número de la opción correcta.', 'Confirmación de alias ambiguo en emergencia'),
+        ('emergencia_pedir_ubicacion', 'Por favor indique su ubicación exacta o el nombre del puesto/cliente (ej: Gallo Zona 12, Puerta principal Mariposa).', 'Solicitar ubicación en flujo de emergencia'),
+        ('emergencia_pedir_tipo', 'Seleccione el tipo de emergencia:\n1. Robo / Asalto\n2. Intrusión no autorizada\n3. Incidente armado\n4. Emergencia médica\n5. Incendio\n6. Evacuación\n7. Disturbio\n8. Otro', 'Solicitar tipo de emergencia al usuario')
+      ON CONFLICT (clave) DO NOTHING
+    `);
+    logger.info("Auto-migrate: mensajes de emergencia verificados en wa_messages");
   } catch (err) {
     logger.error({ err }, "Auto-seed: error en wa_config/mensajes/menús");
   }

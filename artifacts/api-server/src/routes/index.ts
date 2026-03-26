@@ -11,6 +11,7 @@ import trelloRouter from "./trello";
 import anticiposRouter from "./anticipos";
 import { aliasRouter } from "./alias";
 import { waConfigRouter } from "./wa-config";
+import emergenciasRouter from "./emergencias";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(trelloRouter);
 router.use(anticiposRouter);
 router.use(aliasRouter);
 router.use(waConfigRouter);
+router.use(emergenciasRouter);
 
 export default router;
