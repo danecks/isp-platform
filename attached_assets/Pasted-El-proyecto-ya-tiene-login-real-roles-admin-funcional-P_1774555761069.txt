@@ -1,0 +1,72 @@
+El proyecto ya tiene:
+
+* login real
+* roles
+* admin funcional
+* PostgreSQL
+* módulos reales de Comercial, Reclutamiento e Incidencias
+* portal de clientes con filtrado por clienteId
+* estructura lista para RH externo
+
+No quiero romper nada del sistema actual.
+
+Quiero avanzar a la siguiente fase: **WhatsApp fase 1**.
+
+Objetivo:
+dejar el sistema preparado para recibir eventos desde WhatsApp y convertirlos en registros reales dentro del sistema, usando `origen = "whatsapp"`.
+
+En esta fase NO quiero todavía un bot conversacional completo.
+Quiero primero la base técnica y funcional para que WhatsApp sea un canal de entrada real del sistema.
+
+Haz esto:
+
+1. Crea una estructura de integración preparada para WhatsApp Cloud API
+2. Agrega una carpeta o módulo claro para webhooks de WhatsApp
+3. Crea endpoints o rutas necesarias para:
+
+* recibir eventos entrantes
+* validar estructura de mensajes
+* procesar mensajes básicos
+
+4. En esta fase soporta 3 tipos de entrada:
+
+* incidencia
+* postulación / reclutamiento
+* lead / solicitud comercial
+
+5. Usa lógica inicial simple basada en payload o mocks controlados si todavía no hay credenciales reales de Meta
+
+6. Todo lo que entre por este flujo debe guardarse con `origen = "whatsapp"` en la base de datos real
+
+7. Conecta estos flujos con las tablas actuales:
+
+* Incident
+* Application
+* Lead
+
+8. No rompas formularios web existentes
+
+9. No rompas portal ni admin
+
+10. Mantén el diseño actual
+
+11. Agrega una manera de probar localmente o en el proyecto con payloads simulados de WhatsApp para estos casos:
+
+* "quiero aplicar como guardia"
+* "necesito cotización para custodias"
+* "reporto incidencia en planta norte"
+
+12. El dashboard admin debe reflejar automáticamente estos registros como ya hace con los datos reales
+
+13. Si es posible, agrega una marca visual clara para `origen = whatsapp`
+
+14. Documenta:
+
+* qué archivos cambiaste
+* cómo se conectará luego la WhatsApp Cloud API real
+* qué parte ya funciona con datos reales
+* cómo probar el flujo sin credenciales reales
+* qué faltará para WhatsApp fase 2
+
+Muy importante:
+quiero la base real de WhatsApp como canal de entrada, no todavía el bot completo de roles, anticipos y emergencias.

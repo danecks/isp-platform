@@ -6,6 +6,8 @@ import { leadsApi } from "@/lib/api";
 import { Briefcase, Filter, Loader2, RefreshCw } from "lucide-react";
 
 type EstadoLead = "nuevo" | "contactado" | "cotizado" | "ganado" | "perdido";
+type CanalFilter = "todos" | "whatsapp" | "web" | "otro";
+
 const ESTADOS: (EstadoLead | "todos")[] = ["todos", "nuevo", "contactado", "cotizado", "ganado", "perdido"];
 
 function fmtDate(iso: string) {
@@ -14,6 +16,7 @@ function fmtDate(iso: string) {
 
 export default function Comercial() {
   const [filtro, setFiltro] = useState<EstadoLead | "todos">("todos");
+  const [canalFiltro, setCanalFiltro] = useState<CanalFilter>("todos");
 
   const { data: leads = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["leads"],
@@ -21,7 +24,15 @@ export default function Comercial() {
     refetchInterval: 30000,
   });
 
-  const filtrados = filtro === "todos" ? leads : leads.filter((l) => l.estado === filtro);
+  const filtrados = leads.filter((l) => {
+    if (filtro !== "todos" && l.estado !== filtro) return false;
+    if (canalFiltro === "whatsapp" && l.canal !== "whatsapp") return false;
+    if (canalFiltro === "web" && l.canal !== "web") return false;
+    if (canalFiltro === "otro" && (l.canal === "whatsapp" || l.canal === "web")) return false;
+    return true;
+  });
+
+  const waCount = leads.filter((l) => l.canal === "whatsapp").length;
 
   return (
     <AdminLayout title="Gestión Comercial — Leads">
@@ -47,26 +58,59 @@ export default function Comercial() {
         </div>
 
         {/* FILTERS */}
-        <div className="flex flex-wrap items-center gap-3">
-          <Filter className="w-4 h-4 text-white/30" />
-          <div className="flex flex-wrap gap-2">
-            {ESTADOS.map((e) => (
-              <button
-                key={e}
-                onClick={() => setFiltro(e)}
-                className={`text-xs px-3 py-1 rounded-full border transition-all ${
-                  filtro === e
-                    ? "bg-primary/15 border-primary/30 text-primary"
-                    : "bg-white/3 border-white/8 text-white/40 hover:text-white"
-                }`}
-              >
-                {e === "todos" ? "Todos" : <StatusBadge value={e} />}
-              </button>
-            ))}
+        <div className="flex flex-wrap items-start gap-3">
+          <Filter className="w-4 h-4 text-white/30 mt-1 shrink-0" />
+
+          <div className="flex-1 flex flex-col gap-2">
+            {/* Fila 1: Estado */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] text-white/25 uppercase tracking-widest w-14 shrink-0">Estado</span>
+              {ESTADOS.map((e) => (
+                <button
+                  key={e}
+                  onClick={() => setFiltro(e)}
+                  className={`text-xs px-3 py-1 rounded-full border transition-all ${
+                    filtro === e
+                      ? "bg-primary/15 border-primary/30 text-primary"
+                      : "bg-white/3 border-white/8 text-white/40 hover:text-white"
+                  }`}
+                >
+                  {e === "todos" ? "Todos" : <StatusBadge value={e} />}
+                </button>
+              ))}
+            </div>
+
+            {/* Fila 2: Canal */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] text-white/25 uppercase tracking-widest w-14 shrink-0">Canal</span>
+              {(["todos", "whatsapp", "web", "otro"] as CanalFilter[]).map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setCanalFiltro(canalFiltro === c ? "todos" : c)}
+                  className={`text-xs px-3 py-1 rounded-full border transition-all ${
+                    canalFiltro === c
+                      ? "bg-primary/15 border-primary/30 text-primary"
+                      : "bg-white/3 border-white/8 text-white/40 hover:text-white"
+                  }`}
+                >
+                  {c === "todos" ? (
+                    <span>Todos</span>
+                  ) : (
+                    <StatusBadge value={c as any} />
+                  )}
+                </button>
+              ))}
+              {waCount > 0 && (
+                <span className="text-[10px] text-[#25D366]/70 bg-[#25D366]/8 border border-[#25D366]/15 px-2 py-0.5 rounded-full">
+                  {waCount} via WhatsApp
+                </span>
+              )}
+            </div>
           </div>
+
           <button
             onClick={() => refetch()}
-            className="ml-auto flex items-center gap-1.5 text-xs text-white/30 hover:text-white transition-colors"
+            className="ml-auto flex items-center gap-1.5 text-xs text-white/30 hover:text-white transition-colors shrink-0"
           >
             <RefreshCw className="w-3 h-3" /> Actualizar
           </button>
@@ -114,13 +158,18 @@ export default function Comercial() {
                 </thead>
                 <tbody>
                   {filtrados.map((l) => (
-                    <tr key={l.id} className="border-b border-white/3 hover:bg-white/2 transition-colors">
+                    <tr
+                      key={l.id}
+                      className={`border-b border-white/3 hover:bg-white/2 transition-colors ${
+                        l.canal === "whatsapp" ? "bg-[#25D366]/3" : ""
+                      }`}
+                    >
                       <td className="px-5 py-3 text-primary font-mono font-semibold">#{l.id}</td>
                       <td className="px-3 py-3 text-white/80 font-medium max-w-[150px] truncate">{l.empresa}</td>
                       <td className="px-3 py-3 text-white/60">{l.contacto}</td>
                       <td className="px-3 py-3 text-white/50">{l.servicio}</td>
                       <td className="px-3 py-3 text-white/40 max-w-[130px] truncate">{l.ubicacion}</td>
-                      <td className="px-3 py-3"><StatusBadge value={l.canal} /></td>
+                      <td className="px-3 py-3"><StatusBadge value={l.canal as any} /></td>
                       <td className="px-3 py-3"><StatusBadge value={l.estado} /></td>
                       <td className="px-3 py-3 text-white/50">{l.ejecutivo}</td>
                       <td className="px-3 py-3 text-white/30 whitespace-nowrap">{fmtDate(l.createdAt)}</td>

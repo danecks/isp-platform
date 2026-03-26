@@ -6,6 +6,7 @@ import incidentsRouter from "./incidents";
 import usersRouter from "./users";
 import employeesRouter from "./employees";
 import portalRouter from "./portal";
+import whatsappWebhookRouter from "./whatsapp-webhook";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(incidentsRouter);
 router.use(usersRouter);
 router.use(employeesRouter);
 router.use(portalRouter);
+router.use(whatsappWebhookRouter);
 
 export default router;

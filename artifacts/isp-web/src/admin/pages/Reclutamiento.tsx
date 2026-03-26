@@ -6,6 +6,8 @@ import { applicationsApi } from "@/lib/api";
 import { Users, Filter, Loader2, RefreshCw } from "lucide-react";
 
 type EstadoPostulante = "recibido" | "en_revision" | "entrevista" | "aprobado" | "descartado";
+type CanalFilter = "todos" | "whatsapp" | "web" | "otro";
+
 const ESTADOS: (EstadoPostulante | "todos")[] = ["todos", "recibido", "en_revision", "entrevista", "aprobado", "descartado"];
 
 function fmtDate(iso: string) {
@@ -14,6 +16,7 @@ function fmtDate(iso: string) {
 
 export default function Reclutamiento() {
   const [filtro, setFiltro] = useState<EstadoPostulante | "todos">("todos");
+  const [canalFiltro, setCanalFiltro] = useState<CanalFilter>("todos");
 
   const { data: postulantes = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["applications"],
@@ -21,7 +24,15 @@ export default function Reclutamiento() {
     refetchInterval: 30000,
   });
 
-  const filtrados = filtro === "todos" ? postulantes : postulantes.filter((p) => p.estado === filtro);
+  const filtrados = postulantes.filter((p) => {
+    if (filtro !== "todos" && p.estado !== filtro) return false;
+    if (canalFiltro === "whatsapp" && p.canal !== "whatsapp") return false;
+    if (canalFiltro === "web" && p.canal !== "web") return false;
+    if (canalFiltro === "otro" && (p.canal === "whatsapp" || p.canal === "web")) return false;
+    return true;
+  });
+
+  const waCount = postulantes.filter((p) => p.canal === "whatsapp").length;
 
   return (
     <AdminLayout title="Gestión de Reclutamiento">
@@ -47,26 +58,59 @@ export default function Reclutamiento() {
         </div>
 
         {/* FILTERS */}
-        <div className="flex flex-wrap items-center gap-3">
-          <Filter className="w-4 h-4 text-white/30" />
-          <div className="flex flex-wrap gap-2">
-            {ESTADOS.map((e) => (
-              <button
-                key={e}
-                onClick={() => setFiltro(e)}
-                className={`text-xs px-3 py-1 rounded-full border transition-all ${
-                  filtro === e
-                    ? "bg-primary/15 border-primary/30 text-primary"
-                    : "bg-white/3 border-white/8 text-white/40 hover:text-white"
-                }`}
-              >
-                {e === "todos" ? "Todos" : <StatusBadge value={e} />}
-              </button>
-            ))}
+        <div className="flex flex-wrap items-start gap-3">
+          <Filter className="w-4 h-4 text-white/30 mt-1 shrink-0" />
+
+          <div className="flex-1 flex flex-col gap-2">
+            {/* Fila 1: Estado */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] text-white/25 uppercase tracking-widest w-14 shrink-0">Estado</span>
+              {ESTADOS.map((e) => (
+                <button
+                  key={e}
+                  onClick={() => setFiltro(e)}
+                  className={`text-xs px-3 py-1 rounded-full border transition-all ${
+                    filtro === e
+                      ? "bg-primary/15 border-primary/30 text-primary"
+                      : "bg-white/3 border-white/8 text-white/40 hover:text-white"
+                  }`}
+                >
+                  {e === "todos" ? "Todos" : <StatusBadge value={e} />}
+                </button>
+              ))}
+            </div>
+
+            {/* Fila 2: Canal */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] text-white/25 uppercase tracking-widest w-14 shrink-0">Canal</span>
+              {(["todos", "whatsapp", "web", "otro"] as CanalFilter[]).map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setCanalFiltro(canalFiltro === c ? "todos" : c)}
+                  className={`text-xs px-3 py-1 rounded-full border transition-all ${
+                    canalFiltro === c
+                      ? "bg-primary/15 border-primary/30 text-primary"
+                      : "bg-white/3 border-white/8 text-white/40 hover:text-white"
+                  }`}
+                >
+                  {c === "todos" ? (
+                    <span>Todos</span>
+                  ) : (
+                    <StatusBadge value={c as any} />
+                  )}
+                </button>
+              ))}
+              {waCount > 0 && (
+                <span className="text-[10px] text-[#25D366]/70 bg-[#25D366]/8 border border-[#25D366]/15 px-2 py-0.5 rounded-full">
+                  {waCount} via WhatsApp
+                </span>
+              )}
+            </div>
           </div>
+
           <button
             onClick={() => refetch()}
-            className="ml-auto flex items-center gap-1.5 text-xs text-white/30 hover:text-white transition-colors"
+            className="ml-auto flex items-center gap-1.5 text-xs text-white/30 hover:text-white transition-colors shrink-0"
           >
             <RefreshCw className="w-3 h-3" /> Actualizar
           </button>
@@ -115,7 +159,12 @@ export default function Reclutamiento() {
                 </thead>
                 <tbody>
                   {filtrados.map((p) => (
-                    <tr key={p.id} className="border-b border-white/3 hover:bg-white/2 transition-colors">
+                    <tr
+                      key={p.id}
+                      className={`border-b border-white/3 hover:bg-white/2 transition-colors ${
+                        p.canal === "whatsapp" ? "bg-[#25D366]/3" : ""
+                      }`}
+                    >
                       <td className="px-5 py-3 text-primary font-mono font-semibold">#{p.id}</td>
                       <td className="px-3 py-3 text-white/80 font-medium">{p.nombre}</td>
                       <td className="px-3 py-3 text-white/50">{p.telefono}</td>
@@ -123,7 +172,7 @@ export default function Reclutamiento() {
                       <td className="px-3 py-3 text-white/60 max-w-[140px] truncate">{p.puesto}</td>
                       <td className="px-3 py-3 text-white/50">{p.experiencia}</td>
                       <td className="px-3 py-3 text-white/40 max-w-[130px] truncate">{p.ubicacion}</td>
-                      <td className="px-3 py-3"><StatusBadge value={p.canal} /></td>
+                      <td className="px-3 py-3"><StatusBadge value={p.canal as any} /></td>
                       <td className="px-3 py-3"><StatusBadge value={p.estado} /></td>
                       <td className="px-3 py-3 text-white/30 whitespace-nowrap">{fmtDate(p.createdAt)}</td>
                     </tr>
