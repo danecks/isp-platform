@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { runAutoSeed } from "./lib/auto-seed";
+import { runAutoMigrations, runAutoSeed } from "./lib/auto-seed";
 
 const rawPort = process.env["PORT"];
 
@@ -16,7 +16,7 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-runAutoSeed().then(() => {
+runAutoMigrations().then(() => runAutoSeed()).then(() => {
   app.listen(port, (err) => {
     if (err) {
       logger.error({ err }, "Error listening on port");
