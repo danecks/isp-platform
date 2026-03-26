@@ -9,6 +9,7 @@ import {
   Building2,
   UserCog,
   Wallet,
+  MessageSquare,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -98,6 +99,12 @@ export const NAV_ITEMS: NavItem[] = [
     path: "/admin/usuarios",
     label: "Usuarios",
     icon: UserCog,
+    roles: ["admin"],
+  },
+  {
+    path: "/admin/configuracion/whatsapp",
+    label: "Config. WhatsApp",
+    icon: MessageSquare,
     roles: ["admin"],
   },
 ];

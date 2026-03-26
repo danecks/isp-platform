@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, varchar, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, varchar, text, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -17,6 +17,7 @@ export const leadsTable = pgTable("leads", {
   estado: varchar("estado", { length: 50 }).notNull().default("nuevo"),
   ejecutivo: varchar("ejecutivo", { length: 255 }).default("Sin asignar"),
   notas: text("notas"),
+  tareaAsociada: varchar("tarea_asociada", { length: 255 }),  // URL tarjeta Trello
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -35,6 +36,7 @@ export const applicationsTable = pgTable("applications", {
   canal: varchar("canal", { length: 50 }).notNull().default("web"),
   estado: varchar("estado", { length: 50 }).notNull().default("recibido"),
   notas: text("notas"),
+  tareaAsociada: varchar("tarea_asociada", { length: 255 }),  // URL tarjeta Trello
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -216,6 +218,66 @@ export const positionAliasesTable = pgTable("position_aliases", {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// WA_CONFIG — configuración general del asistente de WhatsApp
+//
+// Tabla clave-valor. Permite editar el comportamiento del bot desde el admin
+// sin tocar código. Tipos soportados: texto | enum | hora | booleano
+// ─────────────────────────────────────────────────────────────────────────────
+export const waConfigTable = pgTable("wa_config", {
+  id: serial("id").primaryKey(),
+  clave: varchar("clave", { length: 100 }).notNull().unique(),
+  valor: text("valor").notNull(),
+  tipo: varchar("tipo", { length: 50 }).notNull().default("texto"),
+  descripcion: varchar("descripcion", { length: 255 }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WA_MESSAGES — mensajes automáticos configurables del bot
+//
+// Cada clave corresponde a un evento del flujo WA (anticipo_fuera_fecha,
+// usuario_no_registrado, etc.). El backend lee estos textos en runtime.
+// ─────────────────────────────────────────────────────────────────────────────
+export const waMessagesTable = pgTable("wa_messages", {
+  id: serial("id").primaryKey(),
+  clave: varchar("clave", { length: 100 }).notNull().unique(),
+  texto: text("texto").notNull(),
+  descripcion: varchar("descripcion", { length: 255 }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WA_MENU_OPTIONS — opciones de menú del bot por rol
+//
+// Roles: externo | guardia | supervisor | cliente
+// Permite activar/desactivar opciones y cambiar su orden desde admin.
+// ─────────────────────────────────────────────────────────────────────────────
+export const waMenuOptionsTable = pgTable("wa_menu_options", {
+  id: serial("id").primaryKey(),
+  rol: varchar("rol", { length: 50 }).notNull(),   // externo | guardia | supervisor | cliente
+  texto: varchar("texto", { length: 255 }).notNull(),
+  accion: varchar("accion", { length: 100 }).notNull(),  // clave interna: anticipo, incidencia, emergencia...
+  activo: boolean("activo").notNull().default(true),
+  orden: integer("orden").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WA_AUDIT_LOG — auditoría de cambios en configuración
+//
+// Registra quién cambió qué y cuándo, con el valor anterior y el nuevo.
+// ─────────────────────────────────────────────────────────────────────────────
+export const waAuditLogTable = pgTable("wa_audit_log", {
+  id: serial("id").primaryKey(),
+  modulo: varchar("modulo", { length: 50 }).notNull(),   // wa_config | wa_messages | wa_menu_options
+  clave: varchar("clave", { length: 100 }).notNull(),
+  valorAnterior: text("valor_anterior"),
+  valorNuevo: text("valor_nuevo").notNull(),
+  usuario: varchar("usuario", { length: 100 }),           // username del admin
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ANTICIPOS — solicitudes de anticipo salarial de colaboradores
 //
 // FLUJO WA:
@@ -289,3 +351,7 @@ export type ServiceLocation = typeof serviceLocationsTable.$inferSelect;
 export type InsertServiceLocation = z.infer<typeof insertServiceLocationSchema>;
 export type PositionAlias = typeof positionAliasesTable.$inferSelect;
 export type InsertPositionAlias = z.infer<typeof insertPositionAliasSchema>;
+export type WaConfig = typeof waConfigTable.$inferSelect;
+export type WaMessage = typeof waMessagesTable.$inferSelect;
+export type WaMenuOption = typeof waMenuOptionsTable.$inferSelect;
+export type WaAuditLog = typeof waAuditLogTable.$inferSelect;

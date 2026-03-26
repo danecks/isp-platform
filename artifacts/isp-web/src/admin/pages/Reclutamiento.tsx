@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "../layout/AdminLayout";
 import { StatusBadge } from "../components/StatusBadge";
 import { applicationsApi } from "@/lib/api";
-import { Users, Filter, Loader2, RefreshCw } from "lucide-react";
+import { Users, Filter, Loader2, RefreshCw, ExternalLink, Send, CheckCircle2 } from "lucide-react";
 
 type EstadoPostulante = "recibido" | "en_revision" | "entrevista" | "aprobado" | "descartado";
 type CanalFilter = "todos" | "whatsapp" | "web" | "otro";
@@ -14,9 +14,25 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("es-GT", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+const API = "/api";
+
+async function sendApplicationToTrello(id: number): Promise<{ ok: boolean; url?: string; msg?: string }> {
+  try {
+    const r = await fetch(`${API}/trello/send-application/${id}`, { method: "POST" });
+    const data = await r.json();
+    if (r.status === 409) return { ok: true, url: data.trelloUrl, msg: "Ya existe" };
+    if (!r.ok) throw new Error(data.error || "Error");
+    return { ok: true, url: data.card?.shortUrl };
+  } catch (err) {
+    return { ok: false, msg: (err as Error).message };
+  }
+}
+
 export default function Reclutamiento() {
   const [filtro, setFiltro] = useState<EstadoPostulante | "todos">("todos");
   const [canalFiltro, setCanalFiltro] = useState<CanalFilter>("todos");
+  const [sendingId, setSendingId] = useState<number | null>(null);
+  const [trelloUrls, setTrelloUrls] = useState<Record<number, string>>({});
 
   const { data: postulantes = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["applications"],
@@ -155,10 +171,13 @@ export default function Reclutamiento() {
                     <th className="text-left px-3 py-3">Canal</th>
                     <th className="text-left px-3 py-3">Estado</th>
                     <th className="text-left px-3 py-3">Fecha</th>
+                    <th className="text-left px-3 py-3">Trello</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtrados.map((p) => (
+                  {filtrados.map((p) => {
+                    const trelloUrl = trelloUrls[p.id] || (p as any).tareaAsociada;
+                    return (
                     <tr
                       key={p.id}
                       className={`border-b border-white/3 hover:bg-white/2 transition-colors ${
@@ -175,11 +194,35 @@ export default function Reclutamiento() {
                       <td className="px-3 py-3"><StatusBadge value={p.canal as any} /></td>
                       <td className="px-3 py-3"><StatusBadge value={p.estado} /></td>
                       <td className="px-3 py-3 text-white/30 whitespace-nowrap">{fmtDate(p.createdAt)}</td>
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        {trelloUrl ? (
+                          <a href={trelloUrl} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[#0079BF] hover:text-blue-300 text-xs">
+                            <CheckCircle2 size={12} className="text-green-400" />
+                            <ExternalLink size={11} />
+                          </a>
+                        ) : (
+                          <button
+                            onClick={async () => {
+                              setSendingId(p.id);
+                              const res = await sendApplicationToTrello(p.id);
+                              if (res.ok && res.url) setTrelloUrls(prev => ({ ...prev, [p.id]: res.url! }));
+                              setSendingId(null);
+                            }}
+                            disabled={sendingId === p.id}
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-[#0079BF]/20 hover:bg-[#0079BF]/30 text-[#0079BF] hover:text-blue-300 text-xs rounded-lg transition-colors disabled:opacity-50"
+                            title="Enviar a Trello"
+                          >
+                            {sendingId === p.id ? <RefreshCw size={11} className="animate-spin" /> : <Send size={11} />}
+                          </button>
+                        )}
+                      </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {filtrados.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="px-5 py-10 text-center text-white/30 text-xs">
+                      <td colSpan={11} className="px-5 py-10 text-center text-white/30 text-xs">
                         No hay postulantes con los filtros aplicados.
                       </td>
                     </tr>

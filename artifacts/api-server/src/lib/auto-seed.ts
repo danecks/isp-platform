@@ -8,6 +8,9 @@ import {
   clientAliasesTable,
   serviceLocationsTable,
   positionAliasesTable,
+  waConfigTable,
+  waMessagesTable,
+  waMenuOptionsTable,
 } from "@workspace/db";
 import { pool } from "@workspace/db";
 import { count, eq } from "drizzle-orm";
@@ -97,6 +100,69 @@ export async function runAutoMigrations(): Promise<void> {
       )
     `);
     logger.info("Auto-migrate: tabla 'position_aliases' verificada/creada");
+
+    // Columna tarea_asociada en leads
+    await pool.query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS tarea_asociada VARCHAR(255)`);
+    logger.info("Auto-migrate: columna 'leads.tarea_asociada' verificada");
+
+    // Columna tarea_asociada en applications
+    await pool.query(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS tarea_asociada VARCHAR(255)`);
+    logger.info("Auto-migrate: columna 'applications.tarea_asociada' verificada");
+
+    // Columna clienteRefId e tarea_asociada en incidents (si no existen)
+    await pool.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS cliente_ref_id VARCHAR(100)`);
+    await pool.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS tarea_asociada VARCHAR(255)`);
+    logger.info("Auto-migrate: columnas extra en 'incidents' verificadas");
+
+    // Tablas de configuración WA
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS wa_config (
+        id          SERIAL PRIMARY KEY,
+        clave       VARCHAR(100) NOT NULL UNIQUE,
+        valor       TEXT NOT NULL,
+        tipo        VARCHAR(50) NOT NULL DEFAULT 'texto',
+        descripcion VARCHAR(255),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'wa_config' verificada");
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS wa_messages (
+        id          SERIAL PRIMARY KEY,
+        clave       VARCHAR(100) NOT NULL UNIQUE,
+        texto       TEXT NOT NULL,
+        descripcion VARCHAR(255),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'wa_messages' verificada");
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS wa_menu_options (
+        id          SERIAL PRIMARY KEY,
+        rol         VARCHAR(50) NOT NULL,
+        texto       VARCHAR(255) NOT NULL,
+        accion      VARCHAR(100) NOT NULL,
+        activo      BOOLEAN NOT NULL DEFAULT TRUE,
+        orden       INTEGER NOT NULL DEFAULT 0,
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'wa_menu_options' verificada");
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS wa_audit_log (
+        id              SERIAL PRIMARY KEY,
+        modulo          VARCHAR(50) NOT NULL,
+        clave           VARCHAR(100) NOT NULL,
+        valor_anterior  TEXT,
+        valor_nuevo     TEXT NOT NULL,
+        usuario         VARCHAR(100),
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'wa_audit_log' verificada");
 
   } catch (err) {
     logger.error({ err }, "Auto-migrate: error — continuando de todas formas");
@@ -485,6 +551,68 @@ export async function runAutoSeed(): Promise<void> {
     }
   } catch (err) {
     logger.error({ err }, "Auto-seed: error en clientes/alias");
+  }
+
+  // ── 6. WA Config — configuración general del bot ──────────────────────
+  try {
+    const [{ total: cfgCount }] = await db.select({ total: count() }).from(waConfigTable);
+    if (Number(cfgCount) === 0) {
+      logger.info("Auto-seed: creando configuración inicial de WhatsApp...");
+      await db.insert(waConfigTable).values([
+        { clave: "nombre_asistente",      valor: "Asistente ISP",     tipo: "texto",  descripcion: "Nombre del bot en respuestas automáticas" },
+        { clave: "estado_bot",            valor: "activo",            tipo: "enum",   descripcion: "Estado del bot: activo | mantenimiento | solo_lectura" },
+        { clave: "horario_inicio",        valor: "06:00",             tipo: "hora",   descripcion: "Hora de inicio de atención (24h, GT)" },
+        { clave: "horario_fin",           valor: "20:00",             tipo: "hora",   descripcion: "Hora de fin de atención (24h, GT)" },
+        { clave: "mensaje_bienvenida",    valor: "Bienvenido a ISP — Investigaciones y Seguridad Profesional S.A. ¿En qué le podemos ayudar?", tipo: "texto", descripcion: "Mensaje inicial de bienvenida" },
+        { clave: "mensaje_fuera_horario", valor: "Gracias por contactarnos. En este momento estamos fuera del horario de atención (6:00–20:00 hrs). Su mensaje será atendido el próximo día hábil.", tipo: "texto", descripcion: "Mensaje enviado fuera de horario" },
+        { clave: "mensaje_error",         valor: "Lo sentimos, ocurrió un error procesando su solicitud. Por favor intente de nuevo o comuníquese al PBX (502) 2220-0000.", tipo: "texto", descripcion: "Mensaje de error genérico" },
+        { clave: "max_reintentos",        valor: "3",                 tipo: "texto",  descripcion: "Número máximo de opciones inválidas antes de transferir a humano" },
+      ]);
+      logger.info("Auto-seed: wa_config creada (8 entradas)");
+
+      await db.insert(waMessagesTable).values([
+        { clave: "usuario_no_registrado",  texto: "Su número no está registrado en nuestro sistema. Para registrarse o verificar su información, comuníquese al (502) 2220-0000.", descripcion: "El número WA no está en la BD" },
+        { clave: "anticipo_fuera_fecha",   texto: "Las solicitudes de anticipo se procesan únicamente entre el 1 y el 10 de cada mes. Fuera de ese período no es posible gestionar solicitudes.", descripcion: "Anticipo fuera del período permitido" },
+        { clave: "anticipo_duplicado",     texto: "Usted ya tiene un anticipo pendiente o aprobado en este período. Solo se permite una solicitud activa por colaborador.", descripcion: "Ya existe anticipo activo en el período" },
+        { clave: "anticipo_registrado",    texto: "Su solicitud de anticipo ha sido registrada. El área de RRHH la revisará y le notificará el resultado en 1-2 días hábiles.", descripcion: "Confirmación de anticipo registrado" },
+        { clave: "anticipo_aprobado",      texto: "Su anticipo ha sido aprobado. El depósito se realizará en el próximo procesamiento de planilla. Consultas comuníquese con RRHH.", descripcion: "Anticipo aprobado" },
+        { clave: "anticipo_rechazado",     texto: "Su solicitud de anticipo no pudo ser aprobada. Para mayor información comuníquese directamente con el área de Recursos Humanos.", descripcion: "Anticipo rechazado" },
+        { clave: "incidencia_registrada",  texto: "Incidencia registrada exitosamente (Código: {codigo}). Nuestro equipo operativo fue notificado y tomará acciones correspondientes.", descripcion: "Confirmación de incidencia desde WA" },
+        { clave: "emergencia_recibida",    texto: "EMERGENCIA RECIBIDA. Su alerta fue enviada al equipo de respuesta inmediata ISP. Manténgase seguro. En peligro inmediato llame al 110 (PNC) o 122 (Bomberos).", descripcion: "Confirmación de emergencia" },
+        { clave: "lead_registrado",        texto: "Gracias por su interés en ISP S.A. Hemos registrado su solicitud. Un asesor comercial le contactará en las próximas 24 horas hábiles.", descripcion: "Confirmación de lead desde WA" },
+        { clave: "postulacion_registrada", texto: "Gracias por su interés en ISP S.A. Su postulación fue registrada. El equipo de RRHH revisará su perfil y le contactará si cumple el perfil requerido.", descripcion: "Confirmación de postulación desde WA" },
+        { clave: "sin_coincidencia",       texto: "No encontré una opción válida. Por favor seleccione una opción del menú o comuníquese al PBX (502) 2220-0000.", descripcion: "Opción no reconocida" },
+        { clave: "opcion_invalida",        texto: "La opción ingresada no es válida. Por favor elija una de las opciones disponibles.", descripcion: "Opción de menú fuera de rango" },
+      ]);
+      logger.info("Auto-seed: wa_messages creados (12 mensajes)");
+
+      await db.insert(waMenuOptionsTable).values([
+        { rol: "externo",    texto: "Solicitar cotización de servicios de seguridad", accion: "lead",           activo: true, orden: 1 },
+        { rol: "externo",    texto: "Postularme como agente de seguridad",            accion: "postulacion",    activo: true, orden: 2 },
+        { rol: "externo",    texto: "Información general sobre ISP S.A.",             accion: "info_general",   activo: true, orden: 3 },
+        { rol: "externo",    texto: "Contactar con un asesor",                        accion: "contacto_humano",activo: true, orden: 4 },
+        { rol: "guardia",    texto: "Solicitar anticipo salarial",                    accion: "anticipo",       activo: true, orden: 1 },
+        { rol: "guardia",    texto: "Reportar incidencia en mi puesto",               accion: "incidencia",     activo: true, orden: 2 },
+        { rol: "guardia",    texto: "Reportar emergencia",                            accion: "emergencia",     activo: true, orden: 3 },
+        { rol: "guardia",    texto: "Consultar estado de mi anticipo",                accion: "estado_anticipo",activo: true, orden: 4 },
+        { rol: "guardia",    texto: "Hablar con RRHH",                                accion: "contacto_rrhh",  activo: true, orden: 5 },
+        { rol: "supervisor", texto: "Registrar incidencia operativa",                 accion: "incidencia",     activo: true, orden: 1 },
+        { rol: "supervisor", texto: "Reportar emergencia",                            accion: "emergencia",     activo: true, orden: 2 },
+        { rol: "supervisor", texto: "Consultar asignaciones de agentes",              accion: "asignaciones",   activo: true, orden: 3 },
+        { rol: "supervisor", texto: "Solicitar anticipo colaborador",                 accion: "anticipo",       activo: true, orden: 4 },
+        { rol: "supervisor", texto: "Contactar con operaciones",                      accion: "contacto_ops",   activo: true, orden: 5 },
+        { rol: "cliente",    texto: "Ver mis agentes asignados",                      accion: "mis_agentes",    activo: true, orden: 1 },
+        { rol: "cliente",    texto: "Reportar incidencia en mi empresa",              accion: "incidencia",     activo: true, orden: 2 },
+        { rol: "cliente",    texto: "Reportar emergencia",                            accion: "emergencia",     activo: true, orden: 3 },
+        { rol: "cliente",    texto: "Solicitar cotización de servicio adicional",     accion: "lead",           activo: true, orden: 4 },
+        { rol: "cliente",    texto: "Hablar con mi ejecutivo de cuenta",              accion: "contacto_humano",activo: true, orden: 5 },
+      ]);
+      logger.info("Auto-seed: wa_menu_options creadas (19 opciones, 4 roles)");
+    } else {
+      logger.info({ count: cfgCount }, "Auto-seed: wa_config ya existe");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-seed: error en wa_config/mensajes/menús");
   }
 
   logger.info("Auto-seed completado");

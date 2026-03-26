@@ -1,0 +1,235 @@
+El sistema ya tiene:
+
+* PostgreSQL
+* users + employees
+* roles
+* login real
+* portal de clientes
+* WhatsApp fase 1 funcionando
+* anticipos por WhatsApp
+* incidencias reales
+* integración inicial con Trello (solo incidencias)
+
+No quiero romper nada de lo que ya funciona.
+
+Quiero avanzar a la siguiente fase combinada:
+
+1. **Módulo de configuración de WhatsApp administrable desde el panel**
+2. **Unificación de la integración de Trello para todos los módulos**
+
+---
+
+# PARTE 1 — CONFIGURACIÓN DE WHATSAPP
+
+Objetivo:
+hacer que el comportamiento del chat de WhatsApp sea configurable desde el admin, sin tocar código.
+
+## 1. Crear módulo:
+
+* /admin/configuracion/whatsapp
+
+Acceso:
+
+* solo admin (por ahora)
+
+---
+
+## 2. Secciones del módulo
+
+### A. Configuración general
+
+Campos:
+
+* nombre del asistente
+* mensaje de bienvenida
+* mensaje fuera de horario
+* mensaje de error genérico
+* estado del bot (activo / mantenimiento / solo lectura)
+* horario de atención
+
+---
+
+### B. Menús por rol
+
+Permitir configurar opciones visibles para:
+
+* externo
+* guardia
+* supervisor
+* cliente
+
+Cada opción:
+
+* texto
+* activa/inactiva
+* orden
+
+---
+
+### C. Mensajes automáticos
+
+Configurar textos editables para:
+
+* usuario no registrado
+* anticipo fuera de fecha
+* anticipo duplicado
+* incidencia registrada
+* emergencia recibida
+* lead registrado
+* postulación registrada
+* mensaje sin coincidencia
+
+---
+
+### D. Reglas editables
+
+Conectar al menos:
+
+* anticipos (usar configuración ya creada de fechas)
+
+Dejar preparado para:
+
+* incidencias
+* emergencias
+* comercial
+* reclutamiento
+
+---
+
+### E. Catálogos (estructura base)
+
+Preparar soporte para:
+
+* tipos de incidencia
+* tipos de emergencia
+* tipos de servicio
+* alias de clientes
+* alias de puestos
+
+No es necesario conectar todo aún, pero sí crear base de datos y estructura.
+
+---
+
+### F. Auditoría
+
+Guardar:
+
+* usuario que hizo el cambio
+* fecha
+* valor anterior
+* valor nuevo
+
+---
+
+## 3. Integración con backend
+
+El sistema de WhatsApp debe dejar de usar valores hardcodeados y leer:
+
+* mensajes
+* reglas
+* menús
+
+desde base de datos.
+
+---
+
+# PARTE 2 — UNIFICACIÓN DE TRELLO
+
+Objetivo:
+permitir que TODOS los módulos usen Trello de forma consistente.
+
+---
+
+## 1. Refactorizar servicio de Trello
+
+Crear servicio central reutilizable con funciones:
+
+* createCard
+* addChecklist
+* assignMembers
+
+---
+
+## 2. Extender integración a módulos:
+
+Actualmente:
+
+* incidencias ✔
+
+Agregar:
+
+* tareas
+* comercial (leads)
+* reclutamiento (postulaciones)
+
+---
+
+## 3. Cada módulo debe permitir:
+
+* botón "Enviar a Trello"
+* asignación de miembros
+* checklist automático
+* guardar:
+
+  * trelloCardId
+  * URL
+
+---
+
+## 4. Configuración por módulo
+
+Preparar soporte para:
+
+* board por módulo
+* lista por módulo
+* miembros por defecto
+
+Ejemplo:
+
+* TRELLO_BOARD_OPERACIONES
+* TRELLO_BOARD_RRHH
+* TRELLO_BOARD_COMERCIAL
+
+---
+
+## 5. Mantener:
+
+* modo mock
+* bloqueo de duplicados
+* URL persistente en BD
+
+---
+
+# REGLAS GENERALES
+
+No romper:
+
+* WhatsApp fase 1
+* anticipos
+* portal de clientes
+* incidencias
+* login
+* roles
+* branding ISP, S.A.
+
+Mantener diseño actual.
+
+---
+
+# DOCUMENTACIÓN FINAL
+
+Explicar:
+
+* qué tablas nuevas se crearon (configuración WhatsApp)
+* cómo editar mensajes desde admin
+* cómo el sistema usa esos valores en lugar de código
+* qué módulos ahora tienen Trello
+* cómo configurar boards/listas
+* cómo funciona asignación de miembros
+* cómo extender esto en el futuro
+
+---
+
+MUY IMPORTANTE:
+
+Quiero que el sistema deje de depender de valores hardcodeados y pase a ser administrable desde el panel, tanto para WhatsApp como para Trello.

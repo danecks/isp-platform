@@ -10,6 +10,7 @@ import whatsappWebhookRouter from "./whatsapp-webhook";
 import trelloRouter from "./trello";
 import anticiposRouter from "./anticipos";
 import { aliasRouter } from "./alias";
+import { waConfigRouter } from "./wa-config";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(whatsappWebhookRouter);
 router.use(trelloRouter);
 router.use(anticiposRouter);
 router.use(aliasRouter);
+router.use(waConfigRouter);
 
 export default router;

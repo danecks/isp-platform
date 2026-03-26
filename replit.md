@@ -1,21 +1,17 @@
 # Workspace
 
 ## Overview
-This project is a pnpm workspace monorepo using TypeScript, designed for "Investigaciones y Seguridad Profesional S.A." (Guatemala). It includes a corporate website and an admin dashboard with a premium dark navy/gold design, all text in corporate Spanish.
-
-The monorepo contains:
-- `artifacts/isp-web`: A React + Vite + Tailwind + shadcn/ui Single Page Application (SPA) that serves both the public corporate site and the admin dashboard.
-- `artifacts/api-server`: An Express 5 REST API handling all backend logic, data persistence, and business rules.
+This project is a pnpm workspace monorepo for "Investigaciones y Seguridad Profesional S.A." (Guatemala), encompassing a corporate website and an admin dashboard with a dark navy/gold design, all in corporate Spanish. It provides a comprehensive digital platform to streamline internal operations, enhance client interaction, and establish an online presence.
 
 Key capabilities include:
-- **Comprehensive Admin Modules:** Dashboard, Commercial (leads CRM), Recruitment (job applications), and Incidents Management.
-- **Robust Authentication & RBAC:** User roles (admin, operaciones, rrhh, comercial, supervisor, cliente) with granular permissions for accessing different modules and features, stored in a PostgreSQL database with bcrypt-hashed passwords.
-- **Client Portal:** A dedicated, secure portal for clients to view their specific incidents, KPIs, and assigned agents.
-- **External System Integration Readiness:** Designed with placeholder services and database fields for future integration with external HR systems.
-- **Branding Consistency:** Centralized branding configuration ensures a consistent corporate identity across the application.
-- **Scalable Architecture:** Built on a monorepo structure with shared libraries for OpenAPI specification, generated API clients, and database access.
-
-The project aims to provide a comprehensive digital platform for ISP S.A., streamlining internal operations, enhancing client interaction, and establishing a strong online presence.
+- **Comprehensive Admin Modules:** Dashboard, Commercial (leads CRM), Recruitment (job applications), Incidents Management, and HR Advances.
+- **Robust Authentication & RBAC:** Granular permissions for user roles (admin, operaciones, rrhh, comercial, supervisor, cliente).
+- **Client Portal:** Secure portal for clients to view incidents and KPIs.
+- **Trello Integration:** Full Trello board integration for Incidencias, Leads (Comercial), and Postulaciones (Reclutamiento) — each module has a send-to-Trello button; mock mode when credentials not set.
+- **WhatsApp Configuration Admin:** New admin module at `/admin/configuracion/whatsapp` with 4 tabs: General (bot settings), Mensajes (12 automatic messages), Opciones de Menú (19 options across 4 roles), and Auditoría (change history).
+- **WhatsApp Integration:** Transforms WhatsApp messages into database records for leads, applications, incidents, and advance requests.
+- **Client and Position Aliases:** Allows using common names for clients and service locations in incident reporting.
+- **Branding Consistency:** Centralized configuration ensures a consistent corporate identity.
 
 ## User Preferences
 I prefer simple language. I want iterative development. Ask before making major changes. Do not make changes to the `lib/api-spec` folder. Do not make changes to the `orval.config.ts` file.
@@ -23,253 +19,49 @@ I prefer simple language. I want iterative development. Ask before making major 
 ## System Architecture
 
 ### Monorepo Structure
-The project is organized as a pnpm workspace monorepo with the following high-level structure:
-- `artifacts/`: Deployable applications (e.g., `api-server`, `isp-web`).
-- `lib/`: Shared libraries (e.g., `api-spec`, `api-client-react`, `api-zod`, `db`).
-- `scripts/`: Utility scripts.
-
-All packages extend a base TypeScript configuration (`tsconfig.base.json`) with `composite: true`, enabling efficient type-checking and build processes across the monorepo.
+The project is a pnpm workspace monorepo with `artifacts/` for deployable applications (`api-server`, `isp-web`), `lib/` for shared libraries (`api-spec`, `api-client-react`, `api-zod`, `db`), and `scripts/` for utilities. It uses a base TypeScript configuration for efficient type-checking and build processes.
 
 ### Technology Stack
 - **Monorepo Tool:** pnpm workspaces
 - **Node.js:** v24
-- **Package Manager:** pnpm
 - **TypeScript:** v5.9
 - **API Framework:** Express 5
 - **Database:** PostgreSQL with Drizzle ORM
 - **Validation:** Zod (`zod/v4`), `drizzle-zod`
 - **API Codegen:** Orval (from OpenAPI spec)
 - **Frontend:** React, Vite, Tailwind CSS, shadcn/ui
-- **Build Tool:** esbuild (for CJS bundles)
+- **Build Tool:** esbuild
 
 ### UI/UX Decisions
 - **Design System:** Premium dark navy/gold theme.
-- **Component Library:** shadcn/ui for consistent and accessible UI components.
+- **Component Library:** shadcn/ui for consistent and accessible UI.
 - **Language:** All user-facing text is in corporate Spanish.
-- **Branding:** Centralized branding configuration (`artifacts/isp-web/src/config/branding.ts`) for legal names, short names, taglines, and copyright information, ensuring consistency across all layouts (Navbar, Footer, AdminSidebar, AdminTopbar, Login).
+- **Branding:** Centralized branding configuration for consistent corporate identity across all layouts.
 
 ### Technical Implementations & Feature Specifications
-- **API Server (`@workspace/api-server`):**
-    - Express 5 server with routes in `src/routes/`.
-    - Uses `@workspace/api-zod` for request/response validation and `@workspace/db` for persistence.
-    - Routes are mounted at `/api`.
-- **Database Layer (`@workspace/db`):**
-    - Drizzle ORM with PostgreSQL.
-    - Exports a Drizzle client and schema models.
-    - `drizzle.config.ts` for Drizzle Kit.
-    - Supports migrations (handled by Replit in production, `pnpm --filter @workspace/db run push` in development).
-- **API Specification & Codegen (`@workspace/api-spec`):**
-    - Owns the OpenAPI 3.1 spec (`openapi.yaml`).
-    - Uses Orval for codegen, generating:
-        - React Query hooks (`lib/api-client-react`).
-        - Zod schemas (`lib/api-zod`).
-- **Authentication & Authorization:**
-    - PostgreSQL `users` table with bcrypt-hashed passwords.
-    - Session stored in `sessionStorage`.
-    - Role-Based Access Control (RBAC) with predefined roles: `admin`, `operaciones`, `rrhh`, `comercial`, `supervisor`, `cliente`.
-    - `AuthGuard` component protects routes based on user roles.
-    - Updated login flow redirects users based on their role (`/portal/dashboard` for `cliente`, `/admin/dashboard` for others).
+- **API Server (`@workspace/api-server`):** Express 5 server handling all backend logic, data persistence, and business rules.
+- **Database Layer (`@workspace/db`):** Drizzle ORM with PostgreSQL, supporting schema models and migrations.
+- **API Specification & Codegen (`@workspace/api-spec`):** Defines the OpenAPI 3.1 spec and uses Orval to generate React Query hooks and Zod schemas.
+- **Authentication & Authorization:** PostgreSQL `users` table with bcrypt-hashed passwords. Role-Based Access Control (RBAC) with roles: `admin`, `operaciones`, `rrhh`, `comercial`, `supervisor`, `cliente`. `AuthGuard` protects routes based on user roles, redirecting to `/portal/dashboard` for `cliente` and `/admin/dashboard` for others.
 - **Admin Dashboard Modules:**
     - **Dashboard:** Live counts from leads, applications, incidents.
-    - **Comercial (`/admin/comercial`):** Manages leads (CRM pipeline).
-    - **Reclutamiento (`/admin/reclutamiento`):** Manages job applications.
-    - **Incidencias (`/admin/incidencias`):** Full operational module with table, filters, stat cards, and modals for creating/editing incidents. Uses React Query with a 15s refetch interval.
-- **Client Portal (`/portal/*`):**
-    - Separate section for users with `rol='cliente'`.
-    - Protected by `PortalGuard` and `AuthGuard` to ensure role-specific access and redirection.
-    - Filters all data by `users.clienteId` (e.g., incidents, assigned agents).
-    - API endpoints (`/api/portal/*`) enforce `x-isp-role` and `x-isp-clienteid` headers for data isolation.
-    - Displays client-specific dashboard, incidents, KPIs, and assigned agents (with sensitive employee data excluded).
-- **Employee Management (Future RH Integration):**
-    - `employees` table with fields for external ID, source system, sync status, and last sync timestamp.
-    - `users.employeeId` for linking users to employees (nullable, no hard FK).
-    - API endpoints for listing, creating, updating employees and checking sync status.
-    - Placeholder `HRSyncService` for integrating with external HR SQL databases.
-    - Portal agents (`/portal/agentes`) consume `agent_assignments JOIN employees`.
-- **Database Tables:**
-    - `leads`: `id`, `empresa`, `contacto`, `servicio`, `canal`, `estado`, `ejecutivo`.
-    - `applications`: `id`, `nombre`, `telefono`, `puesto`, `canal`, `estado`.
-    - `incidents`: `id` (INC-YYMMDD-XXXX), `cliente`, `tipo`, `origen`, `prioridad`, `estado`, `responsable`, `descripcion`, `clienteRefId`.
-    - `users`: `id`, `username`, `passwordHash`, `nombre`, `rol`, `clienteId`, `employeeId`.
-    - `agent_assignments`: `employeeId`, `clienteId`, `codigoAsignacion`, `puesto`, `servicio`, `ubicacion`, `supervisorNombre`, `fechaInicio`, `fechaFin`, `estado`.
-
-## WhatsApp Fase 1 — Canal de Entrada Real
-
-Webhook que convierte mensajes de WhatsApp en registros reales en la BD.
-
-**Nuevos archivos:**
-- `artifacts/api-server/src/routes/whatsapp-webhook.ts` — router del webhook (verificación Meta + recepción + simulador)
-- `artifacts/api-server/src/services/whatsapp/classifier.ts` — clasificador de mensajes por palabras clave en español
-- `artifacts/api-server/WA-WEBHOOK-README.md` — documentación completa de endpoints, formato Meta, cómo probar y cómo conectar la API real
-
-**Endpoints:**
-- `GET /api/webhooks/whatsapp` — verificación Meta (hub.challenge), usa `WA_VERIFY_TOKEN`
-- `POST /api/webhooks/whatsapp` — recibe payload de Meta Cloud API (responde 200 inmediato, procesa async)
-- `POST /api/webhooks/whatsapp/simulate` — simulador local con 3 escenarios: `postulacion`, `lead`, `incidencia`
-
-**Lógica de clasificación:**
-- Palabras clave de incidencia → `incidentsTable`, `origen = "whatsapp"`, ID `WA-YYMMDD-XXXX`
-- Palabras clave de postulación → `applicationsTable`, `canal = "whatsapp"`
-- Palabras clave de lead / default → `leadsTable`, `canal = "whatsapp"`
-
-**Visual en admin:**
-- Badge verde (#25D366) con ícono MessageCircle en `StatusBadge`
-- Highlight verde tenue en filas con `canal = "whatsapp"` en Reclutamiento y Comercial
-- Filtro de canal "WhatsApp" agregado a Reclutamiento y Comercial
-- Contador "N via WhatsApp" visible en filtros
-
-**Módulos con datos mock (pendientes de conectar a BD):**
-- Tareas, KPI (admin), Custodias, Clientes
-
-## Anticipos Fase 1 — Solicitudes vía WhatsApp + Módulo Admin RRHH
-
-### Base de datos
-- Nueva tabla `anticipos`: id, employeeId, nombre, puesto, dpi, telefono, cantidad, origen, estado, periodo, fechaSolicitud, observaciones
-- Estados: `pendiente` | `aprobada` | `rechazada` | `pagada`
-- Período formato: `YYYY-MM-dia10` o `YYYY-MM-dia25`
-
-### Archivos nuevos/modificados
-- `lib/db/src/schema/isp.ts` — tabla `anticipos` + tipos TypeScript
-- `artifacts/api-server/src/services/whatsapp/anticipo-session.ts` — session manager en memoria
-- `artifacts/api-server/src/services/whatsapp/classifier.ts` — tipo `anticipo` añadido (prioridad máxima)
-- `artifacts/api-server/src/routes/anticipos.ts` — API REST (GET, PATCH, config, export CSV)
-- `artifacts/api-server/src/routes/whatsapp-webhook.ts` — flujo multi-turno anticipo integrado
-- `artifacts/api-server/src/routes/index.ts` — router registrado
-- `artifacts/isp-web/src/admin/pages/Anticipos.tsx` — módulo RRHH completo
-- `artifacts/isp-web/src/App.tsx` — ruta `/admin/anticipos` añadida
-- `artifacts/isp-web/src/config/permissions.ts` — nav item Anticipos (roles: admin, rrhh)
-- `artifacts/isp-web/src/lib/api.ts` — tipos e interfaz anticiposApi
-
-### Flujo WhatsApp (multi-turno en memoria)
-1. Colaborador envía "anticipo", "quiero anticipo", "adelanto", etc.
-2. Sistema verifica número contra `employees.telefono` (normalizado, solo dígitos)
-3. Si no es empleado activo → responde que no está registrado
-4. Verifica fecha habilitada: días 10 y 25 de cada mes ±1 día de tolerancia
-5. Si fuera de rango → responde con próximo día habilitado
-6. Verifica duplicado: no debe haber anticipo `pendiente` del mismo empleado en el mismo período
-7. Si employee.dpi existe → pide solo el monto; si no → pide DPI primero, luego monto
-8. Monto recibido → crea registro en `anticipos` con `origen="whatsapp"` → confirma con referencia ANT-N
-
-### API Endpoints
-- `GET /api/anticipos` — lista con filtros (estado, origen, periodo, desde, hasta) + totales
-- `GET /api/anticipos/:id` — detalle
-- `PATCH /api/anticipos/:id` — actualizar estado y observaciones
-- `GET /api/anticipos/config` — días habilitados, período actual, si está activo
-- `GET /api/anticipos/export` — CSV con BOM UTF-8 (funciona en Excel español)
-
-### Módulo Admin RRHH `/admin/anticipos`
-- Banner de período (verde = activo, amarillo = cerrado)
-- 4 stat cards por estado con totales monetarios (monto pendiente / monto aprobado)
-- Tabla con: ID, colaborador, puesto, DPI, monto, canal (badge WA verde), estado, período, fecha
-- Filtros por estado y canal (todos / whatsapp / manual)
-- Botón "Revisar" → modal con cambio de estado + observaciones
-- Exportar CSV con filtros activos
-
-### CSV — Columnas exportadas
-fecha, nombre, puesto, dpi, cantidad, telefono, estado, periodo, origen
-
-### Acceso por rol
-- `admin` y `rrhh` ven el módulo Anticipos en el sidebar
-- Icono: Wallet (billetera)
-
-### Pendiente Fase 2
-- Envío de respuestas reales a WhatsApp via Meta API
-- Aprobación automática con reglas configurables
-- Conexión con sistema administrativo externo (nómina)
-- Límites de monto por empleado configurables
-- Notificación a RRHH al llegar nueva solicitud
-- Sesión persistente en DB (actualmente en memoria)
-
-## Trello Fase 1.5 — Tarjetas con Checklist y Miembros
-
-Integración de Trello que crea tarjetas completas desde el panel admin de incidencias.
-
-**Nuevos archivos:**
-- `artifacts/api-server/src/services/trello/trello.service.ts` — wrapper de Trello API con modo mock
-- `artifacts/api-server/src/routes/trello.ts` — router con 2 endpoints
-- `artifacts/api-server/TRELLO-README.md` — documentación completa
-
-**Endpoints:**
-- `GET /api/trello/config` — estado de configuración (configured, mockMode, checklistItems)
-- `POST /api/trello/send-incident/:id` — crea tarjeta en Trello (real o mock), guarda URL en `tareaAsociada`, previene doble envío (409)
-
-**Qué incluye cada tarjeta:**
-- Nombre con emoji de prioridad: `🔴 INC-260326-1234 — Robo en Bodega`
-- Descripción completa en markdown (cliente, tipo, prioridad, ubicación, responsable, origen, fecha)
-- Checklist "Protocolo de Incidencia ISP" con 6 ítems predefinidos
-- Asignación automática de miembros configurables via env vars
-
-**Checklist estándar (editable en `trello.service.ts`):**
-1. Validar incidente con el cliente
-2. Contactar al cliente / lugar del evento
-3. Asignar recurso y supervisor
-4. Ejecutar acción operativa
-5. Registrar evidencia / fotografías
-6. Cerrar incidente en sistema ISP
-
-**Variables de entorno para modo real:**
-- `TRELLO_API_KEY` — API key de Trello
-- `TRELLO_TOKEN` — token de acceso
-- `TRELLO_LIST_ID` — ID de la lista destino
-- `TRELLO_MEMBER_SUPERVISOR` — ID de miembro supervisor (opcional)
-- `TRELLO_MEMBER_OPERACIONES` — ID de miembro operaciones (opcional)
-
-**Modo mock:** Sin credenciales, responde igual pero no llama a Trello. Badge "Simulación" en UI.
-
-**UX en el modal de incidencias:**
-- Sección "Integración Trello" al final del modal
-- Preview del checklist de 6 ítems (gris claro)
-- Botón azul "Enviar a Trello"
-- Después de enviar: badge "Tarjeta creada" + items en azul + enlace a la URL
-- Reabriendo la incidencia: muestra estado "Ya en Trello" directamente
-
-## Alias de Clientes y Puestos — Fase 1
-
-Sistema que permite a guardias, custodios y operadores usar nombres comunes ("gallo", "custodio gallo", "salvavidas") para referirse a clientes y puestos sin necesitar el nombre legal exacto.
-
-**Tablas nuevas:**
-- `clients` — clientes operativos de ISP (separados de `users` que maneja acceso al portal). Campo `portalClienteId` enlaza opcionalmente con el sistema de portal (ej: `"CLI-001"`).
-- `client_aliases` — alias y nombres comunes por cliente. Tipos: `comercial` | `operativo` | `comun`.
-- `service_locations` — puestos, rutas y servicios por cliente. Tipos: `puerta` | `bodega` | `ruta` | `planta` | `perimetral` | `vigilancia`.
-- `position_aliases` — alias para puestos/rutas específicos.
-
-**Servicio de resolución:** `artifacts/api-server/src/services/alias/resolver.ts`
-- Entrada: texto libre (ej. `"gallo"`, `"tienda dolores"`, `"ruta norte gallo"`)
-- Normalización: minúsculas + strip acentos + limpieza
-- Puntuación: exacta (1.0) → substring (0.88/0.78) → palabras (0.4‒0.7) → nombre legal (0.85×)
-- Manejo de ambigüedad: si hay más de un resultado con confianza ≥ 0.7, se marca como `ambiguo: true` y se listan las opciones
-- Salida: `{ input, resultados[], totalCoincidencias, confianzaMaxima, ambiguo, sugerencia }`
-
-**API:** `artifacts/api-server/src/routes/alias.ts` → `/api/alias/*`
-- `GET /api/alias/clientes` — lista clientes con sus aliases
-- `POST /api/alias/clientes/:id/alias` — agregar alias a cliente
-- `DELETE /api/alias/clientes/alias/:aliasId` — eliminar alias de cliente
-- `GET /api/alias/puestos` — lista puestos con aliases y cliente
-- `POST /api/alias/puestos/:id/alias` — agregar alias a puesto
-- `DELETE /api/alias/puestos/alias/:aliasId` — eliminar alias de puesto
-- `POST /api/alias/resolver` / `GET /api/alias/resolver?q=texto` — resolver texto libre
-
-**Admin UI:** `/admin/clientes` — 3 pestañas:
-1. **Clientes** — tabla expandible con aliases por cliente, botón para agregar/eliminar alias
-2. **Puestos y Rutas** — tabla expandible de service_locations con aliases
-3. **Resolver Alias** — input en tiempo real con ejemplos rápidos y visualización de confianza
-
-**Datos de ejemplo sembrados automáticamente (auto-seed):**
-- Cervecería Centro Americana S.A. → alias: "gallo", "cerveceria", "custodio gallo", "ruta gallo", "cc"
-- Embotelladora La Mariposa S.A. (Salvavidas) → alias: "salvavidas", "agua salvavidas", "mariposa"
-- Tienda La Dolores S.A. → alias: "dolores", "tienda dolores", "la dolores"
-- Distribuidora Nacional S.A. → alias: "distnac", "distribuidora", "cli-001" (vinculada al portal CLI-001)
-- 8 puestos/rutas con sus aliases operativos (ej. "bodega gallo", "puerta gallo", "ruta norte gallo")
-
-**Integración futura:** El servicio `resolverAlias(texto)` está listo para ser importado por:
-- WhatsApp webhook: para validar cliente/puesto cuando el agente reporta un incidente
-- Formularios internos de incidencias: autocompletar cliente/puesto desde texto libre
-- Emergencias: resolver rápidamente la ubicación del incidente
+    - **Comercial (`/admin/comercial`):** Leads CRM.
+    - **Reclutamiento (`/admin/reclutamiento`):** Job applications.
+    - **Incidencias (`/admin/incidencias`):** Full operational module with tables, filters, and modals for incident management.
+    - **Anticipos (`/admin/anticipos`):** HR module for managing advance requests with status tracking, filtering, and CSV export.
+- **Client Portal (`/portal/*`):** Dedicated section for `cliente` role users, displaying client-specific incidents, KPIs, and assigned agents. API endpoints enforce headers for data isolation.
+- **Employee Management:** Supports `employees` table with fields for external HR system integration and links users to employees.
+- **WhatsApp Integration:** Webhook (`/api/webhooks/whatsapp`) classifies incoming messages (incidents, applications, leads, advance requests) based on keywords and creates corresponding database entries. Includes a local simulator. WhatsApp-originated entries are visually highlighted in the admin UI.
+- **HR Advances (Anticipos):** Manages advance requests via a dedicated API and admin module. Supports multi-turn WhatsApp flow for requests, validates employee status, eligible dates, and prevents duplicates.
+- **Trello Integration:** Creates Trello cards for incidents from the admin panel (`/api/trello/send-incident/:id`). Cards include incident details, a predefined checklist, and auto-assignment to configured members. Supports mock mode.
+- **Client and Position Aliases:** New tables (`clients`, `client_aliases`, `service_locations`, `position_aliases`) allow the system to resolve free-text inputs to specific clients or service locations using a scoring algorithm for fuzzy matching. Admin UI allows managing aliases.
 
 ## External Dependencies
-- **PostgreSQL:** Primary database for all application data.
-- **Drizzle ORM:** Used for interacting with the PostgreSQL database.
-- **Orval:** For generating API client code and Zod schemas from the OpenAPI specification.
+- **PostgreSQL:** Primary database.
+- **Drizzle ORM:** Database interaction.
+- **Orval:** API client and Zod schema generation.
 - **Vite:** Frontend build tool.
-- **Tailwind CSS:** Utility-first CSS framework for styling.
-- **shadcn/ui:** Reusable UI components.
+- **Tailwind CSS:** Styling framework.
+- **shadcn/ui:** UI component library.
+- **Meta Cloud API:** For WhatsApp integration (implicit, as it handles webhooks).
+- **Trello:** For task management integration.
