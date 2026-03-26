@@ -121,6 +121,49 @@ Webhook que convierte mensajes de WhatsApp en registros reales en la BD.
 **Módulos con datos mock (pendientes de conectar a BD):**
 - Tareas, KPI (admin), Custodias, Clientes
 
+## Trello Fase 1.5 — Tarjetas con Checklist y Miembros
+
+Integración de Trello que crea tarjetas completas desde el panel admin de incidencias.
+
+**Nuevos archivos:**
+- `artifacts/api-server/src/services/trello/trello.service.ts` — wrapper de Trello API con modo mock
+- `artifacts/api-server/src/routes/trello.ts` — router con 2 endpoints
+- `artifacts/api-server/TRELLO-README.md` — documentación completa
+
+**Endpoints:**
+- `GET /api/trello/config` — estado de configuración (configured, mockMode, checklistItems)
+- `POST /api/trello/send-incident/:id` — crea tarjeta en Trello (real o mock), guarda URL en `tareaAsociada`, previene doble envío (409)
+
+**Qué incluye cada tarjeta:**
+- Nombre con emoji de prioridad: `🔴 INC-260326-1234 — Robo en Bodega`
+- Descripción completa en markdown (cliente, tipo, prioridad, ubicación, responsable, origen, fecha)
+- Checklist "Protocolo de Incidencia ISP" con 6 ítems predefinidos
+- Asignación automática de miembros configurables via env vars
+
+**Checklist estándar (editable en `trello.service.ts`):**
+1. Validar incidente con el cliente
+2. Contactar al cliente / lugar del evento
+3. Asignar recurso y supervisor
+4. Ejecutar acción operativa
+5. Registrar evidencia / fotografías
+6. Cerrar incidente en sistema ISP
+
+**Variables de entorno para modo real:**
+- `TRELLO_API_KEY` — API key de Trello
+- `TRELLO_TOKEN` — token de acceso
+- `TRELLO_LIST_ID` — ID de la lista destino
+- `TRELLO_MEMBER_SUPERVISOR` — ID de miembro supervisor (opcional)
+- `TRELLO_MEMBER_OPERACIONES` — ID de miembro operaciones (opcional)
+
+**Modo mock:** Sin credenciales, responde igual pero no llama a Trello. Badge "Simulación" en UI.
+
+**UX en el modal de incidencias:**
+- Sección "Integración Trello" al final del modal
+- Preview del checklist de 6 ítems (gris claro)
+- Botón azul "Enviar a Trello"
+- Después de enviar: badge "Tarjeta creada" + items en azul + enlace a la URL
+- Reabriendo la incidencia: muestra estado "Ya en Trello" directamente
+
 ## External Dependencies
 - **PostgreSQL:** Primary database for all application data.
 - **Drizzle ORM:** Used for interacting with the PostgreSQL database.

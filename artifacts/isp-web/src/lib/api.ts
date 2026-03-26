@@ -123,3 +123,27 @@ export const incidentsApi = {
   create: (data: Partial<Incident>) => apiFetch<Incident>("/incidents", { method: "POST", body: JSON.stringify(data) }),
   update: (id: string, data: Partial<Incident>) => apiFetch<Incident>(`/incidents/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
 };
+
+// --- TRELLO ---
+export interface TrelloCardResult {
+  incidenciaId: string;
+  card: { id: string; name: string; url: string; shortUrl: string };
+  checklistId: string;
+  checklistItems: string[];
+  membersAssigned: string[];
+  mockMode: boolean;
+}
+
+export interface TrelloConfigStatus {
+  configured: boolean;
+  hasMemberSupervisor: boolean;
+  hasMemberOperaciones: boolean;
+  checklistItems: string[];
+  mockMode: boolean;
+}
+
+export const trelloApi = {
+  getConfig: () => apiFetch<TrelloConfigStatus>("/trello/config"),
+  sendIncident: (id: string) =>
+    apiFetch<TrelloCardResult>(`/trello/send-incident/${id}`, { method: "POST" }),
+};

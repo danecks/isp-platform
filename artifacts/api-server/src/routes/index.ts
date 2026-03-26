@@ -7,6 +7,7 @@ import usersRouter from "./users";
 import employeesRouter from "./employees";
 import portalRouter from "./portal";
 import whatsappWebhookRouter from "./whatsapp-webhook";
+import trelloRouter from "./trello";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(usersRouter);
 router.use(employeesRouter);
 router.use(portalRouter);
 router.use(whatsappWebhookRouter);
+router.use(trelloRouter);
 
 export default router;

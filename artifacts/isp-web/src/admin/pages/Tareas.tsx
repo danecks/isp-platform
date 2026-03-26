@@ -36,13 +36,21 @@ export default function Tareas() {
         </div>
 
         {/* TRELLO INFO BLOCK */}
-        <div className="bg-[#0c1829] border border-blue-500/10 rounded-xl p-4">
-          <div className="flex items-center gap-3">
-            <Trello className="w-4 h-4 text-blue-400" />
-            <div>
-              <p className="text-xs font-bold text-white">Sincronización con Trello — Próxima fase</p>
-              <p className="text-[10px] text-white/30 mt-0.5">
-                Cada tarea con trelloCardId activo será vinculada a una tarjeta de Trello. Los cambios de estado se sincronizarán automáticamente.
+        <div className="bg-[#0c1829] border border-blue-500/15 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <Trello className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-bold text-white">Trello — Fase 1.5 activa</p>
+                <span className="text-[10px] text-blue-400/70 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full">
+                  Disponible desde Incidencias
+                </span>
+              </div>
+              <p className="text-[10px] text-white/35 leading-relaxed">
+                Las tarjetas de Trello se crean desde el modal de edición de cada incidencia. Cada tarjeta incluye el checklist de 6 pasos del protocolo ISP y asignación automática de responsables.
+              </p>
+              <p className="text-[10px] text-white/20">
+                Fase 2: sincronización bidireccional de estado — cambios en Trello se reflejarán aquí automáticamente.
               </p>
             </div>
           </div>
