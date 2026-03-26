@@ -1,0 +1,149 @@
+El sistema ya tiene PostgreSQL, users, employees, roles, login real, módulos admin funcionales y arquitectura preparada para RH externo.
+
+No quiero romper nada del admin ni del sistema actual.
+
+Quiero avanzar a la siguiente fase: **portal de clientes real**, dejando preparado desde ahora el módulo para que el cliente pueda ver los agentes asignados a su cuenta.
+
+Objetivo:
+crear una experiencia separada para usuarios con rol `cliente`, donde solo vean la información de su propia cuenta usando `clienteId`, incluyendo una sección de agentes asignados preparada para futura integración con la base de RH.
+
+Haz esto:
+
+## 1. Crear portal de clientes
+
+Crea una sección separada del admin con su propio layout, sidebar/topbar o navegación consistente.
+
+Rutas:
+
+* /portal
+* /portal/dashboard
+* /portal/incidencias
+* /portal/kpi
+* /portal/agentes
+
+## 2. Reglas de acceso
+
+* Si el usuario autenticado tiene rol `cliente`, no debe poder entrar al /admin general
+* Debe ser redirigido a /portal/dashboard
+* Si el usuario no tiene rol `cliente`, no debe poder entrar al portal
+* Implementa guards reales por rol, no solo visuales
+
+## 3. Filtrado real por clienteId
+
+Usa `clienteId` del usuario autenticado para filtrar toda la información del portal.
+Muy importante:
+quiero filtrado real por clienteId, no solo ocultar menús.
+
+## 4. Dashboard del cliente
+
+El dashboard del cliente debe mostrar solo información de su cuenta:
+
+* incidencias activas
+* incidencias recientes
+* métricas básicas del servicio
+* estado general
+* resumen visual profesional
+
+Si algunas métricas todavía no tienen toda la relación lista, deja la estructura bien hecha y documenta qué falta.
+
+## 5. Módulo /portal/incidencias
+
+Mostrar solo las incidencias de ese cliente.
+Usar datos reales si ya es posible con la estructura actual.
+Mantener diseño profesional y consistente.
+
+## 6. Módulo /portal/kpi
+
+Crear un dashboard básico para el cliente con:
+
+* incidencias del período
+* activas
+* resueltas
+* tiempo promedio de respuesta si ya existe base suficiente
+* tendencia simple o resumen visual
+
+Usar datos reales cuando sea posible.
+Si alguna métrica aún no está lista, dejarlo documentado sin romper el portal.
+
+## 7. Módulo /portal/agentes
+
+Este módulo es muy importante.
+
+Quiero dejarlo preparado desde ahora para que, cuando se conecte la base de RH externa, el cliente pueda ver qué agentes están asignados a su cuenta/servicio.
+
+Implementa una primera versión profesional con esta lógica:
+
+### a) Crear una estructura de asignaciones
+
+Si aún no existe, prepara una entidad o tabla para asignaciones de agentes a clientes, algo como:
+
+* id
+* employeeId
+* clienteId
+* puesto o servicio
+* ubicacion
+* supervisor
+* fechaInicio
+* fechaFin nullable
+* estado
+
+### b) No romper la arquitectura actual
+
+Si todavía no se puede poblar automáticamente desde RH, usa datos de ejemplo o relaciones mínimas con `employees`, pero deja todo preparado para futura sync.
+
+### c) Vista del cliente
+
+En /portal/agentes el cliente debe ver solo los agentes asignados a su cuenta.
+
+Mostrar una ficha básica y segura por agente, por ejemplo:
+
+* nombre completo
+* código o identificador interno
+* puesto o servicio asignado
+* ubicación o sede
+* supervisor asignado
+* fecha de asignación
+* estado operativo
+
+### d) Privacidad
+
+No mostrar datos sensibles como:
+
+* DPI completo
+* salario
+* datos bancarios
+* dirección personal
+* teléfono personal
+* información disciplinaria interna
+
+Solo ficha operativa básica y controlada.
+
+## 8. Integración futura con RH
+
+Deja el código preparado para que más adelante el módulo de agentes se alimente desde:
+
+* employees
+* asignaciones
+* sync desde RH externa
+
+Documenta claramente qué parte ya queda lista para esa integración futura.
+
+## 9. Mantener lo existente
+
+* no romper login
+* no romper users
+* no romper employees
+* no romper admin
+* no cambiar branding
+* mantener diseño profesional consistente con ISP, S.A.
+
+## 10. Documentación final
+
+Al terminar explícame:
+
+* qué archivos cambiaste
+* cómo funciona la redirección por rol
+* cómo se evita que un cliente vea datos de otro
+* qué módulos del portal ya usan datos reales
+* qué parte del módulo de agentes quedó lista para futura integración con RH
+* cómo se relacionarían después employees + assignments + portal del cliente

@@ -23,7 +23,13 @@ export default function AdminLogin() {
     const result = await login(username, password);
     setLoading(false);
     if (result.ok) {
-      navigate("/admin/dashboard");
+      try {
+        const raw = sessionStorage.getItem("isp_admin_session_v2");
+        const user = raw ? JSON.parse(raw) : null;
+        navigate(user?.rol === "cliente" ? "/portal/dashboard" : "/admin/dashboard");
+      } catch {
+        navigate("/admin/dashboard");
+      }
     } else {
       setError(result.error ?? "Usuario o contraseña incorrectos.");
     }

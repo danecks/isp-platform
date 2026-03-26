@@ -179,8 +179,58 @@ Seed data: `artifacts/api-server/src/seed.ts` — run with `cd artifacts/api-ser
 3. Registrar adaptador en `hrSyncService.registerAdapter(new HRSqlAdapter())`
 4. El upsert usa `(externalId, sourceSystem)` como llave — no rompe datos manuales existentes
 
+### Portal de Clientes — `/portal/*`
+
+Sección completamente separada del admin, exclusiva para usuarios con `rol='cliente'`.
+
+**Rutas:**
+| Ruta | Componente | Datos |
+|---|---|---|
+| `/portal/dashboard` | `PortalDashboard.tsx` | Resumen: activas, resueltas, agentes, estado |
+| `/portal/incidencias` | `PortalIncidencias.tsx` | Incidencias filtradas por clienteId |
+| `/portal/kpi` | `PortalKPI.tsx` | Métricas + tendencia 6 meses |
+| `/portal/agentes` | `PortalAgentes.tsx` | Agentes asignados (solo datos operativos) |
+
+**Seguridad y guards (doble protección):**
+- `PortalGuard` — protege `/portal/*`: solo `rol=cliente`; sin sesión → `/admin/login`; otro rol → `/admin/dashboard`
+- `AuthGuard` (actualizado) — bloquea al `rol=cliente` del admin: si intenta acceder a `/admin/*` → `/portal/dashboard`
+- Login actualizado: tras autenticarse, detecta el rol desde sessionStorage y redirige a `/portal/dashboard` o `/admin/dashboard`
+
+**Filtrado real por clienteId:**
+- Todo el portal filtra por `users.clienteId` (ej: `CLI-001`)
+- Incidencias: filtradas por `incidentsTable.clienteRefId = clienteId`
+- Agentes: filtrados por `agentAssignmentsTable.clienteId = clienteId`
+- API valida `x-isp-role=cliente` + `x-isp-clienteid` en cada request — no hay forma de ver datos de otro cliente
+
+**Nueva tabla: `agent_assignments`**
+- `employeeId` → `employees.id` (agente asignado)
+- `clienteId` → `users.clienteId` (cuenta del cliente)
+- `codigoAsignacion` (ISP-AGNT-C001-001 etc.)
+- `puesto`, `servicio`, `ubicacion`, `supervisorNombre`, `fechaInicio`, `fechaFin`, `estado`
+- 4 asignaciones sembradas para CLI-001
+
+**Campo nuevo en `incidentsTable`: `clienteRefId` (varchar, nullable)**
+- Vincula incidencias al portal de clientes sin romper el admin (que usa el campo `cliente` con nombre libre)
+- 8 incidencias demo sembradas para CLI-001
+
+**API Portal (`/api/portal/*`):**
+- `GET /portal/dashboard` → stats + incidencias recientes
+- `GET /portal/incidencias` → lista de incidencias (filtros: ?estado=, ?tipo=)
+- `GET /portal/kpi` → métricas agregadas + tendencia 6 meses
+- `GET /portal/agentes` → asignaciones JOIN employees (solo campos seguros, sin DPI/teléfono)
+- `GET /portal/agentes` NO expone: DPI, teléfono, correo, dirección, datos disciplinarios
+
+**Helper frontend:** `artifacts/isp-web/src/lib/portalApi.ts` — inyecta `x-isp-role` y `x-isp-clienteid` en cada llamada al API.
+
+**Listo para integración con RH:**
+- `PortalAgentes` ya consume `agent_assignments JOIN employees`
+- Cuando `employees` se sincronice desde RH, el portal lo mostrará automáticamente
+- El campo `empleadoFuente` muestra "Verificado con RH" para registros de `hr_sql_external`
+
+**Seed portal:** `artifacts/api-server/src/seed-assignments.ts`
+
 ### Modules with Mock Data (not yet connected to DB)
-- Tareas, KPI, Custodias, Clientes
+- Tareas, KPI (admin), Custodias, Clientes
 
 ### Auth & RBAC System (Real DB)
 The authentication system uses a real PostgreSQL `users` table with bcrypt-hashed passwords.

@@ -5,6 +5,7 @@ import applicationsRouter from "./applications";
 import incidentsRouter from "./incidents";
 import usersRouter from "./users";
 import employeesRouter from "./employees";
+import portalRouter from "./portal";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(applicationsRouter);
 router.use(incidentsRouter);
 router.use(usersRouter);
 router.use(employeesRouter);
+router.use(portalRouter);
 
 export default router;

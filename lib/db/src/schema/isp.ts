@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, varchar, text, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, varchar, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -22,7 +22,7 @@ export const leadsTable = pgTable("leads", {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// APPLICATIONS — postulaciones de reclutamiento externo (formulario web/WA)
+// APPLICATIONS — postulaciones de reclutamiento externo
 // ─────────────────────────────────────────────────────────────────────────────
 export const applicationsTable = pgTable("applications", {
   id: serial("id").primaryKey(),
@@ -41,12 +41,18 @@ export const applicationsTable = pgTable("applications", {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // INCIDENTS — incidencias operativas de seguridad
+//
+// Campo clienteRefId (nullable): vincula la incidencia al clienteId del
+// usuario del portal (users.clienteId). Permite filtrado en el portal de
+// clientes sin afectar el flujo del admin que usa el campo `cliente` (nombre).
 // ─────────────────────────────────────────────────────────────────────────────
 export const incidentsTable = pgTable("incidents", {
   id: varchar("id", { length: 20 }).primaryKey(),
   fecha: timestamp("fecha", { withTimezone: true }).notNull().defaultNow(),
   origen: varchar("origen", { length: 50 }).notNull().default("manual"),
   cliente: varchar("cliente", { length: 255 }).notNull(),
+  // Referencia al clienteId del portal (nullable, no rompe filas existentes)
+  clienteRefId: varchar("cliente_ref_id", { length: 100 }),
   ubicacion: varchar("ubicacion", { length: 255 }),
   tipo: varchar("tipo", { length: 100 }).notNull(),
   prioridad: varchar("prioridad", { length: 20 }).notNull().default("media"),
@@ -60,82 +66,73 @@ export const incidentsTable = pgTable("incidents", {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EMPLOYEES — colaboradores/empleados de ISP, S.A.
-//
-// PROPÓSITO:
-//   Representa al personal interno de la empresa. Estos registros pueden
-//   crearse manualmente (sourceSystem='manual') o sincronizarse en el futuro
-//   desde la base SQL externa de Recursos Humanos (sourceSystem='hr_sql_external').
-//
-// DIFERENCIA CLAVE:
-//   • employees = persona física que trabaja en ISP, S.A.
-//   • users     = cuenta de acceso al sistema operativo (puede o no estar vinculada a un employee)
-//   • leads     = contacto de empresa cliente potencial (externos)
-//
-// FUTURA INTEGRACIÓN RH:
-//   Cuando la base SQL de RH esté disponible, el servicio hr-sync leerá registros
-//   de esa fuente y los upsertará aquí usando externalId + sourceSystem como llave.
-//   Ver: artifacts/api-server/src/services/hr-sync/
+// Ver services/hr-sync/HR-SYNC-README.md para futura integración con RH.
 // ─────────────────────────────────────────────────────────────────────────────
 export const employeesTable = pgTable("employees", {
   id: serial("id").primaryKey(),
-
-  // ── Campos de integración con sistema externo de RH ──────────────────────
-  // Cuando sourceSystem='hr_sql_external', externalId contiene el ID del empleado
-  // en la base de RH. Este par (externalId, sourceSystem) identifica unívocamente
-  // al empleado en su sistema de origen y se usa para hacer upsert en sincronizaciones.
   externalId: varchar("external_id", { length: 100 }),
   sourceSystem: varchar("source_system", { length: 50 }).notNull().default("manual"),
-  // 'manual'          → creado manualmente en este sistema
-  // 'hr_sql_external' → importado desde la base SQL de RH
-  // 'api'             → importado vía API externa
-
   syncStatus: varchar("sync_status", { length: 20 }).notNull().default("manual"),
-  // 'manual'  → no sincronizado, creado localmente
-  // 'synced'  → coincide con la fuente de RH (última sync exitosa)
-  // 'pending' → pendiente de sincronizar (cola de sync)
-  // 'error'   → última sincronización falló (ver notas)
-
   lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
-
-  // ── Datos personales del colaborador ─────────────────────────────────────
   nombreCompleto: varchar("nombre_completo", { length: 255 }).notNull(),
-  dpi: varchar("dpi", { length: 20 }),                    // Documento Personal de Identificación (Guatemala)
+  dpi: varchar("dpi", { length: 20 }),
   telefono: varchar("telefono", { length: 50 }),
   correo: varchar("correo", { length: 255 }),
-
-  // ── Datos laborales ───────────────────────────────────────────────────────
-  puesto: varchar("puesto", { length: 255 }),             // Cargo/posición
-  area: varchar("area", { length: 100 }),                 // Área o departamento
+  puesto: varchar("puesto", { length: 255 }),
+  area: varchar("area", { length: 100 }),
   estadoLaboral: varchar("estado_laboral", { length: 50 }).notNull().default("activo"),
-  // 'activo' | 'inactivo' | 'licencia' | 'suspendido' | 'baja'
-
-  sede: varchar("sede", { length: 100 }),                 // Ciudad/sitio de trabajo
-  supervisorNombre: varchar("supervisor_nombre", { length: 255 }), // Nombre del supervisor directo
+  sede: varchar("sede", { length: 100 }),
+  supervisorNombre: varchar("supervisor_nombre", { length: 255 }),
   fechaIngreso: timestamp("fecha_ingreso", { withTimezone: true }),
-
-  // ── Notas adicionales (errores de sync, observaciones, etc.) ─────────────
   notas: text("notas"),
-
-  // ── Timestamps ────────────────────────────────────────────────────────────
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// USERS — cuentas de acceso al sistema operativo de ISP, S.A.
+// AGENT ASSIGNMENTS — asignación de agentes/empleados a cuentas de cliente
 //
 // PROPÓSITO:
-//   Gestiona la autenticación y autorización de personas que usan el sistema.
-//   Un usuario puede ser un empleado (vinculado via employeeId) o un acceso
-//   externo (cliente, proveedor, auditor) sin empleado asociado.
+//   Representa los agentes desplegados para un cliente específico.
+//   Permite al portal de clientes ver sus agentes asignados de forma segura.
 //
-// RELACIÓN CON EMPLOYEES:
-//   users.employeeId → employees.id  (nullable, sin FK hard en DB)
-//   La relación es soft para permitir crear usuarios sin necesidad de
-//   tener el registro de empleado, y vice-versa.
+// FUTURA INTEGRACIÓN RH:
+//   Cuando el módulo de RH externo esté activo, las asignaciones se crearán
+//   automáticamente al hacer sync de employees. Los campos employeeId y clienteId
+//   corresponden a employees.id y users.clienteId respectivamente.
 //
-// ROLES DEL SISTEMA:
-//   admin | operaciones | rrhh | comercial | supervisor | cliente
+// PRIVACIDAD:
+//   La API del portal solo expone nombre, puesto, ubicacion, supervisor y estado.
+//   DPI, teléfono, correo y otros datos sensibles NO se envían al cliente.
+// ─────────────────────────────────────────────────────────────────────────────
+export const agentAssignmentsTable = pgTable("agent_assignments", {
+  id: serial("id").primaryKey(),
+  // Referencias
+  employeeId: integer("employee_id").notNull(),      // → employees.id
+  clienteId: varchar("cliente_id", { length: 100 }).notNull(), // → users.clienteId
+
+  // Datos de la asignación (pueden diferir de los datos base del empleado)
+  puesto: varchar("puesto", { length: 255 }),         // Puesto en esta asignación específica
+  servicio: varchar("servicio", { length: 100 }),     // Tipo de servicio (custodia, vigilancia, etc.)
+  ubicacion: varchar("ubicacion", { length: 255 }),   // Ubicación del puesto de trabajo
+  supervisorNombre: varchar("supervisor_nombre", { length: 255 }),
+  codigoAsignacion: varchar("codigo_asignacion", { length: 50 }), // Código interno (ISP-AGNT-XXX)
+
+  // Vigencia
+  fechaInicio: timestamp("fecha_inicio", { withTimezone: true }).notNull().defaultNow(),
+  fechaFin: timestamp("fecha_fin", { withTimezone: true }),    // NULL = activo indefinidamente
+
+  // Estado de la asignación
+  estado: varchar("estado", { length: 50 }).notNull().default("activo"),
+  // 'activo' | 'suspendido' | 'finalizado'
+
+  notas: text("notas"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USERS — cuentas de acceso al sistema (admin + portal clientes)
 // ─────────────────────────────────────────────────────────────────────────────
 export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -147,9 +144,6 @@ export const usersTable = pgTable("users", {
   estado: varchar("estado", { length: 20 }).notNull().default("activo"),
   telefono: varchar("telefono", { length: 50 }),
   clienteId: varchar("cliente_id", { length: 100 }),
-  // Vínculo opcional con la tabla employees (soft reference, nullable)
-  // Si este campo tiene valor, indica que el usuario es un empleado interno.
-  // Si es NULL, puede ser un cliente, proveedor, o acceso externo.
   employeeId: integer("employee_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -163,6 +157,7 @@ export const insertApplicationSchema = createInsertSchema(applicationsTable).omi
 export const insertIncidentSchema = createInsertSchema(incidentsTable).omit({ createdAt: true, updatedAt: true });
 export const insertUserSchema = createInsertSchema(usersTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertEmployeeSchema = createInsertSchema(employeesTable).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertAgentAssignmentSchema = createInsertSchema(agentAssignmentsTable).omit({ id: true, createdAt: true, updatedAt: true });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TypeScript types
@@ -177,3 +172,5 @@ export type User = typeof usersTable.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Employee = typeof employeesTable.$inferSelect;
 export type InsertEmployee = z.infer<typeof insertEmployeeSchema>;
+export type AgentAssignment = typeof agentAssignmentsTable.$inferSelect;
+export type InsertAgentAssignment = z.infer<typeof insertAgentAssignmentSchema>;

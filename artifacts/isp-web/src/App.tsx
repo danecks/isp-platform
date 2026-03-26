@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AuthGuard } from "@/components/AuthGuard";
+import { PortalGuard } from "@/components/PortalGuard";
 
 // Public pages
 import Home from "@/pages/home";
@@ -30,12 +31,18 @@ import AdminCustodias from "@/admin/pages/Custodias";
 import AdminClientes from "@/admin/pages/Clientes";
 import AdminUsuarios from "@/admin/pages/Usuarios";
 
+// Portal de clientes
+import PortalDashboard from "@/portal/pages/PortalDashboard";
+import PortalIncidencias from "@/portal/pages/PortalIncidencias";
+import PortalKPI from "@/portal/pages/PortalKPI";
+import PortalAgentes from "@/portal/pages/PortalAgentes";
+
 const queryClient = new QueryClient();
 
 function Router() {
   return (
     <Switch>
-      {/* Public routes */}
+      {/* ── Rutas públicas ─────────────────────────────────────────────── */}
       <Route path="/" component={Home} />
       <Route path="/nosotros" component={Nosotros} />
       <Route path="/servicios" component={Servicios} />
@@ -47,15 +54,32 @@ function Router() {
       <Route path="/contacto" component={Contacto} />
       <Route path="/acceso-clientes" component={AccesoClientes} />
 
-      {/* Admin login (public) */}
+      {/* ── Login unificado (admin + clientes) ─────────────────────────── */}
       <Route path="/admin/login" component={AdminLogin} />
 
-      {/* Admin redirect */}
+      {/* ── Redirecciones de acceso directo ────────────────────────────── */}
       <Route path="/admin">
         {() => <Redirect to="/admin/dashboard" />}
       </Route>
+      <Route path="/portal">
+        {() => <Redirect to="/portal/dashboard" />}
+      </Route>
 
-      {/* Protected admin routes */}
+      {/* ── Portal de clientes (solo rol: cliente) ──────────────────────── */}
+      <Route path="/portal/dashboard">
+        {() => <PortalGuard><PortalDashboard /></PortalGuard>}
+      </Route>
+      <Route path="/portal/incidencias">
+        {() => <PortalGuard><PortalIncidencias /></PortalGuard>}
+      </Route>
+      <Route path="/portal/kpi">
+        {() => <PortalGuard><PortalKPI /></PortalGuard>}
+      </Route>
+      <Route path="/portal/agentes">
+        {() => <PortalGuard><PortalAgentes /></PortalGuard>}
+      </Route>
+
+      {/* ── Panel administrativo (rol admin, operaciones, rrhh, etc.) ───── */}
       <Route path="/admin/dashboard">
         {() => <AuthGuard><AdminDashboard /></AuthGuard>}
       </Route>
