@@ -1,0 +1,67 @@
+El proyecto ya tiene usuarios reales, login funcional, roles y base de datos PostgreSQL conectada.
+
+No quiero conectar todavía la base de datos de Recursos Humanos porque en este momento no tengo acceso, pero sé que en el futuro los colaboradores/empleados vendrán desde una base SQL externa de RH.
+
+Quiero dejar el sistema preparado desde ahora para esa futura integración, sin romper lo que ya funciona.
+
+Objetivo:
+preparar la arquitectura de usuarios y colaboradores para futura sincronización con una base SQL externa de Recursos Humanos.
+
+Haz esto:
+
+1. Mantén el sistema actual de usuarios funcionando
+2. No rompas login, roles ni usuarios actuales
+3. Agrega una nueva entidad o tabla llamada `employees` (o equivalente) para representar colaboradores/empleados provenientes de RH
+
+Campos sugeridos para employees:
+
+* id
+* externalId
+* sourceSystem
+* nombreCompleto
+* dpi
+* telefono
+* puesto
+* area
+* estadoLaboral
+* sede
+* supervisorNombre o supervisorId si aplica después
+* fechaIngreso opcional
+* lastSyncAt
+* createdAt
+* updatedAt
+
+4. Relaciona users con employees de forma opcional, por ejemplo:
+
+* users.employeeId nullable
+
+5. Agrega campos útiles para integración futura, por ejemplo:
+
+* externalSource
+* externalId
+* syncStatus
+* lastSyncAt
+
+6. No conectes ninguna base externa todavía
+7. Crea una estructura preparada para futura sincronización, por ejemplo:
+
+* carpeta o servicio placeholder tipo `services/hr-sync`
+* archivo de documentación explicando cómo se conectará después a una SQL externa de RH
+
+8. Documenta claramente la diferencia entre:
+
+* usuarios del sistema
+* empleados/colaboradores
+* clientes
+
+9. Si hace sentido, crea seed de ejemplo con algunos empleados simulados vinculados a usuarios existentes
+10. No cambies el diseño general del sistema
+11. No rompas APIs existentes
+12. Mantén todo compilando
+
+Al final explícame:
+
+* qué modelos agregaste
+* cómo se relacionan users y employees
+* qué parte quedó lista para futura integración con la base SQL de RH
+* cómo se migrarían luego los colaboradores desde RH sin romper el sistema actual

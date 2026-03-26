@@ -148,6 +148,37 @@ Seed data: `artifacts/api-server/src/seed.ts` — run with `cd artifacts/api-ser
   - React Query refetchInterval: 15s
   - Modals use `createPortal` to avoid React DOM tree conflicts
 
+### Módulo Employees — Colaboradores / Futura integración RH
+
+**Tabla DB**: `employees` (9 registros de ejemplo sembrados)
+
+**Campos de integración (preparados para sync con SQL externo de RH)**:
+- `externalId` — ID del empleado en la base de RH externa
+- `sourceSystem` — Origen: `manual` | `hr_sql_external` | `api`
+- `syncStatus` — Estado: `manual` | `synced` | `pending` | `error`
+- `lastSyncAt` — Timestamp de última sincronización exitosa
+
+**Vínculo users ↔ employees**: `users.employeeId` nullable integer. Sin FK hard en DB para máxima flexibilidad. 4 usuarios vinculados: ops01, supervisor01, rrhh01, comercial01.
+
+**Endpoints disponibles (`/api/employees`)**:
+- `GET /employees` — lista (filtros: `?syncStatus=`, `?estadoLaboral=`, `?area=`, `?sourceSystem=`)
+- `GET /employees/:id` — empleado individual
+- `POST /employees` — crear manualmente
+- `PATCH /employees/:id` — actualizar
+- `GET /employees/sync/status` — resumen de estado de sincronización
+
+**Servicio HR Sync (placeholder)**: `artifacts/api-server/src/services/hr-sync/`
+- `index.ts` — interfaces `IHRAdapter`, `HRSyncService`, tipos `SyncSource`, `SyncResult`
+- `HR-SYNC-README.md` — instrucciones completas de integración futura con base SQL de RH
+
+**Seed de empleados**: `artifacts/api-server/src/seed-employees.ts`
+
+**Para conectar la base de RH cuando esté disponible**:
+1. Configurar env vars `HR_DB_HOST`, `HR_DB_NAME`, etc.
+2. Implementar `adapters/hr-sql.adapter.ts` con la clase `HRSqlAdapter`
+3. Registrar adaptador en `hrSyncService.registerAdapter(new HRSqlAdapter())`
+4. El upsert usa `(externalId, sourceSystem)` como llave — no rompe datos manuales existentes
+
 ### Modules with Mock Data (not yet connected to DB)
 - Tareas, KPI, Custodias, Clientes
 

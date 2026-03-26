@@ -4,6 +4,7 @@ import leadsRouter from "./leads";
 import applicationsRouter from "./applications";
 import incidentsRouter from "./incidents";
 import usersRouter from "./users";
+import employeesRouter from "./employees";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use(leadsRouter);
 router.use(applicationsRouter);
 router.use(incidentsRouter);
 router.use(usersRouter);
+router.use(employeesRouter);
 
 export default router;
