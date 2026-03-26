@@ -1,0 +1,165 @@
+El sistema ya tiene:
+
+* PostgreSQL
+* users + employees
+* roles
+* login real
+* portal de clientes
+* WhatsApp fase 1
+* anticipos
+* incidencias reales
+* Trello unificado
+* configuración WhatsApp administrable
+
+No quiero romper nada del sistema actual.
+
+Quiero avanzar a la siguiente fase: **Alias de clientes y puestos**.
+
+Objetivo:
+permitir que guardias, custodios, supervisores y operadores puedan referirse a clientes, puestos, rutas y servicios usando alias operativos o nombres comunes, sin necesidad de escribir el nombre legal exacto.
+
+Ejemplos esperados:
+
+* "gallo"
+* "custodio gallo"
+* "salvavidas"
+* "ruta gallo"
+* "tienda dolores"
+
+El sistema debe poder mapear esos términos a:
+
+* cliente legal correcto
+* puesto/ruta/servicio correcto
+* ubicación cuando aplique
+
+Haz esto:
+
+## 1. Base de datos
+
+Crea o amplía la estructura necesaria para soportar alias.
+
+### Tabla client_aliases
+
+Campos sugeridos:
+
+* id
+* clientId
+* alias
+* aliasType (comercial, operativo, comun)
+* isActive
+* createdAt
+* updatedAt
+
+### Tabla positions o service_locations si no existe equivalente
+
+Campos sugeridos:
+
+* id
+* clientId
+* nombre
+* tipo (puesto, ruta, servicio, sede)
+* ubicacion
+* estado
+* createdAt
+* updatedAt
+
+### Tabla position_aliases
+
+Campos sugeridos:
+
+* id
+* positionId
+* alias
+* aliasType
+* isActive
+* createdAt
+* updatedAt
+
+## 2. Resolver alias
+
+Crea una utilidad o servicio reusable para resolver alias a partir de texto libre.
+
+Entrada:
+
+* string con texto libre
+
+Salida:
+
+* cliente encontrado
+* puesto/ruta encontrado
+* coincidencias múltiples si aplica
+
+Debe soportar:
+
+* coincidencia exacta
+* coincidencia parcial básica
+* respuesta con múltiples resultados si hay ambigüedad
+
+## 3. Endpoints/API
+
+Crea endpoints para:
+
+* listar alias de clientes
+* crear alias de clientes
+* editar alias de clientes
+* listar puestos/rutas
+* crear alias de puestos/rutas
+* probar resolución de alias
+
+## 4. Admin UI
+
+Crea una vista admin para gestionar alias.
+Ruta sugerida:
+
+* /admin/configuracion/alias
+  o equivalente consistente con el proyecto
+
+Debe permitir:
+
+* ver clientes con sus alias
+* crear alias
+* editar alias
+* activar/desactivar alias
+* ver puestos/rutas por cliente
+* crear alias para puestos/rutas
+* probar un texto y ver cómo lo resolvería el sistema
+
+## 5. Datos de ejemplo
+
+Crea ejemplos realistas como:
+
+* Cervecería Centro Americana → alias: Gallo, Cervecería, custodio gallo
+* Embotelladora / Agua Pura Salvavidas → alias: Salvavidas, agua salvavidas
+* puestos/rutas asociados con alias operativos
+
+## 6. Integración futura
+
+Deja esta fase preparada para que después:
+
+* WhatsApp use esta resolución antes de crear incidencias
+* emergencias usen alias para ubicar cliente/puesto
+* supervisores puedan referirse a tareas por alias de puesto
+
+No hace falta conectar todavía todos los flujos, pero sí dejar el servicio listo y documentado.
+
+## 7. Reglas
+
+* no romper portal
+* no romper Trello
+* no romper anticipos
+* no romper incidencias
+* no romper login ni roles
+* mantener branding ISP, S.A.
+
+## 8. Documentación
+
+Explica:
+
+* qué tablas/modelos agregaste
+* cómo funciona la resolución de alias
+* cómo se maneja ambigüedad
+* cómo integrar luego esta lógica con WhatsApp e incidencias
+* qué parte ya quedó lista para producción
+
+Muy importante:
+quiero resolver el problema operativo de que el personal no recuerda nombres legales exactos y usa nombres comunes o alias.
