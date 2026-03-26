@@ -1,40 +1,67 @@
 import { createContext, useContext, useState, ReactNode } from "react";
+import type { Rol } from "@/config/permissions";
 
-const CREDENTIALS = { username: "dan2336", password: "1234" };
-const STORAGE_KEY = "isp_admin_session";
+export type { Rol };
+
+export interface AuthUser {
+  id: number;
+  nombre: string;
+  username: string;
+  correo?: string | null;
+  rol: Rol;
+  estado: string;
+  telefono?: string | null;
+  clienteId?: string | null;
+}
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  currentUser: string | null;
-  login: (username: string, password: string) => boolean;
+  currentUser: AuthUser | null;
+  login: (username: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
 }
 
+const STORAGE_KEY = "isp_admin_session_v2";
+
 const AuthContext = createContext<AuthContextType | null>(null);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return sessionStorage.getItem(STORAGE_KEY) === "true";
-  });
-  const [currentUser, setCurrentUser] = useState<string | null>(() => {
-    return sessionStorage.getItem(STORAGE_KEY + "_user") || null;
-  });
+function loadUserFromStorage(): AuthUser | null {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as AuthUser;
+  } catch {
+    return null;
+  }
+}
 
-  const login = (username: string, password: string): boolean => {
-    if (username.trim() === CREDENTIALS.username && password === CREDENTIALS.password) {
-      sessionStorage.setItem(STORAGE_KEY, "true");
-      sessionStorage.setItem(STORAGE_KEY + "_user", username.trim());
-      setIsAuthenticated(true);
-      setCurrentUser(username.trim());
-      return true;
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(loadUserFromStorage);
+
+  const isAuthenticated = currentUser !== null && currentUser.estado === "activo";
+
+  const login = async (username: string, password: string): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim(), password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { ok: false, error: data.error ?? "Credenciales inválidas" };
+      }
+      const user = data.user as AuthUser;
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+      setCurrentUser(user);
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "Error de conexión con el servidor" };
     }
-    return false;
   };
 
   const logout = () => {
     sessionStorage.removeItem(STORAGE_KEY);
-    sessionStorage.removeItem(STORAGE_KEY + "_user");
-    setIsAuthenticated(false);
     setCurrentUser(null);
   };
 

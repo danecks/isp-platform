@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, text, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -49,9 +49,24 @@ export const incidentsTable = pgTable("incidents", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const usersTable = pgTable("users", {
+  id: serial("id").primaryKey(),
+  nombre: varchar("nombre", { length: 255 }).notNull(),
+  username: varchar("username", { length: 100 }).notNull().unique(),
+  correo: varchar("correo", { length: 255 }),
+  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+  rol: varchar("rol", { length: 50 }).notNull().default("operaciones"),
+  estado: varchar("estado", { length: 20 }).notNull().default("activo"),
+  telefono: varchar("telefono", { length: 50 }),
+  clienteId: varchar("cliente_id", { length: 100 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const insertLeadSchema = createInsertSchema(leadsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertApplicationSchema = createInsertSchema(applicationsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertIncidentSchema = createInsertSchema(incidentsTable).omit({ createdAt: true, updatedAt: true });
+export const insertUserSchema = createInsertSchema(usersTable).omit({ id: true, createdAt: true, updatedAt: true });
 
 export type Lead = typeof leadsTable.$inferSelect;
 export type InsertLead = z.infer<typeof insertLeadSchema>;
@@ -59,3 +74,5 @@ export type Application = typeof applicationsTable.$inferSelect;
 export type InsertApplication = z.infer<typeof insertApplicationSchema>;
 export type Incident = typeof incidentsTable.$inferSelect;
 export type InsertIncident = z.infer<typeof insertIncidentSchema>;
+export type User = typeof usersTable.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;

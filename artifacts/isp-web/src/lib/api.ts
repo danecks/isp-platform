@@ -1,4 +1,45 @@
+import type { AuthUser } from "@/contexts/AuthContext";
+
 const API_BASE = "/api";
+
+// --- USERS ---
+export type { AuthUser as User };
+
+export interface UserSafe {
+  id: number;
+  nombre: string;
+  username: string;
+  correo: string | null;
+  rol: string;
+  estado: string;
+  telefono: string | null;
+  clienteId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const usersApi = {
+  getAll: () => apiFetch<UserSafe[]>("/users"),
+  create: (data: {
+    nombre: string;
+    username: string;
+    password: string;
+    correo?: string;
+    rol?: string;
+    estado?: string;
+    telefono?: string;
+    clienteId?: string;
+  }) => apiFetch<UserSafe>("/users", { method: "POST", body: JSON.stringify(data) }),
+  update: (id: number, data: Partial<{
+    nombre: string;
+    correo: string;
+    rol: string;
+    estado: string;
+    telefono: string;
+    clienteId: string;
+    password: string;
+  }>) => apiFetch<UserSafe>(`/users/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+};
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {

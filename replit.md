@@ -151,6 +151,52 @@ Seed data: `artifacts/api-server/src/seed.ts` — run with `cd artifacts/api-ser
 ### Modules with Mock Data (not yet connected to DB)
 - Tareas, KPI, Custodias, Clientes
 
+### Auth & RBAC System (Real DB)
+The authentication system uses a real PostgreSQL `users` table with bcrypt-hashed passwords.
+
+**Login flow**: POST `/api/auth/login` → validates username/password against DB → returns user object (no hash) → stored in `sessionStorage` key `isp_admin_session_v2`
+
+**Roles**: `admin` | `operaciones` | `rrhh` | `comercial` | `supervisor` | `cliente`
+
+**Role permissions** (see `artifacts/isp-web/src/config/permissions.ts`):
+| Módulo | admin | operaciones | rrhh | comercial | supervisor |
+|---|---|---|---|---|---|
+| Dashboard | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Incidencias | ✓ | ✓ | — | — | ✓ |
+| Custodias | ✓ | ✓ | — | — | ✓ |
+| Reclutamiento | ✓ | — | ✓ | — | — |
+| Comercial | ✓ | — | — | ✓ | — |
+| Tareas | ✓ | ✓ | — | — | ✓ |
+| KPI | ✓ | — | — | — | — |
+| Clientes | ✓ | ✓ | — | ✓ | — |
+| Usuarios | ✓ | — | — | — | — |
+
+**Seed users** (run `cd artifacts/api-server && pnpm exec tsx src/seed-users.ts`):
+- `dan2336` / `1234` → admin
+- `admin` / `Admin2024!` → admin
+- `ops01` / `Ops2024!` → operaciones
+- `rrhh01` / `RRHH2024!` → rrhh
+- `comercial01` / `Comercial2024!` → comercial
+- `supervisor01` / `Supervisor2024!` → supervisor
+- `cliente01` / `Cliente2024!` → cliente
+
+**Key files**:
+- `lib/db/src/schema/isp.ts` → `usersTable` schema
+- `artifacts/api-server/src/routes/users.ts` → Auth login + Users CRUD API
+- `artifacts/isp-web/src/config/permissions.ts` → Role definitions + nav filter
+- `artifacts/isp-web/src/contexts/AuthContext.tsx` → Real API auth, stores `AuthUser` object
+- `artifacts/isp-web/src/components/AuthGuard.tsx` → Route protection by role
+- `artifacts/isp-web/src/admin/pages/Usuarios.tsx` → Full CRUD page (list, create, edit, toggle)
+
+**Admin Users API** (`/api`):
+- `POST /auth/login` — authenticate (returns user without passwordHash)
+- `GET /users` — list all users (no password)
+- `POST /users` — create user (requires nombre, username, password)
+- `PATCH /users/:id` — update fields or reset password
+- `GET /users/:id` — single user
+
+**Future portal clientes**: The `cliente` role and `clienteId` field are in place. A `/cliente` portal can use the same login API and check `rol === 'cliente'` to show client-specific views.
+
 ### Branding Config (Central Source of Truth)
 - `artifacts/isp-web/src/config/branding.ts` — exports `brand` object with `legalName`, `shortName` ("ISP, S.A."), `acronym`, `taglineShort`, `systemName`, `copyright(year)`.
 - All layouts (Navbar, Footer, AdminSidebar, AdminTopbar, Login) import from this file.

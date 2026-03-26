@@ -28,6 +28,7 @@ import AdminTareas from "@/admin/pages/Tareas";
 import AdminKPI from "@/admin/pages/KPI";
 import AdminCustodias from "@/admin/pages/Custodias";
 import AdminClientes from "@/admin/pages/Clientes";
+import AdminUsuarios from "@/admin/pages/Usuarios";
 
 const queryClient = new QueryClient();
 
@@ -78,6 +79,9 @@ function Router() {
       </Route>
       <Route path="/admin/clientes">
         {() => <AuthGuard><AdminClientes /></AuthGuard>}
+      </Route>
+      <Route path="/admin/usuarios">
+        {() => <AuthGuard requiredRoles={["admin"]}><AdminUsuarios /></AuthGuard>}
       </Route>
 
       <Route component={NotFound} />

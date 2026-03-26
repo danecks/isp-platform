@@ -1,30 +1,11 @@
 import { Link, useLocation } from "wouter";
-import {
-  LayoutDashboard,
-  AlertTriangle,
-  Users,
-  Briefcase,
-  CheckSquare,
-  BarChart3,
-  Truck,
-  Building2,
-  X,
-  ExternalLink,
-} from "lucide-react";
+import { X, ExternalLink } from "lucide-react";
 import { brand } from "@/config/branding";
+import { navParaRol, ROL_LABELS, ROL_COLORES } from "@/config/permissions";
+import { useAuth } from "@/contexts/AuthContext";
+import type { Rol } from "@/config/permissions";
 
 const logoImg = "/images/logo-isp.jpg";
-
-const navItems = [
-  { path: "/admin/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-  { path: "/admin/incidencias", icon: AlertTriangle, label: "Incidencias" },
-  { path: "/admin/custodias", icon: Truck, label: "Custodias" },
-  { path: "/admin/reclutamiento", icon: Users, label: "Reclutamiento" },
-  { path: "/admin/comercial", icon: Briefcase, label: "Comercial" },
-  { path: "/admin/tareas", icon: CheckSquare, label: "Tareas" },
-  { path: "/admin/kpi", icon: BarChart3, label: "KPI & Métricas" },
-  { path: "/admin/clientes", icon: Building2, label: "Clientes" },
-];
 
 interface AdminSidebarProps {
   open: boolean;
@@ -33,6 +14,9 @@ interface AdminSidebarProps {
 
 export function AdminSidebar({ open, onClose }: AdminSidebarProps) {
   const [location] = useLocation();
+  const { currentUser } = useAuth();
+  const rol = currentUser?.rol as Rol | undefined;
+  const navItems = navParaRol(rol);
 
   return (
     <>
@@ -47,6 +31,7 @@ export function AdminSidebar({ open, onClose }: AdminSidebarProps) {
         className={`fixed top-0 left-0 h-full w-64 bg-[#060e1c] border-r border-white/5 flex flex-col z-30 transition-transform duration-300
           ${open ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0`}
       >
+        {/* Header */}
         <div className="flex items-center justify-between px-5 h-16 border-b border-white/5">
           <div className="flex items-center gap-3">
             <img
@@ -65,13 +50,30 @@ export function AdminSidebar({ open, onClose }: AdminSidebarProps) {
           </button>
         </div>
 
+        {/* Role badge */}
+        {currentUser && (
+          <div className="px-5 py-3 border-b border-white/5">
+            <p className="text-[10px] text-white/40 mb-1">Acceso como</p>
+            <span
+              className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${
+                ROL_COLORES[currentUser.rol as Rol] ?? "text-white/50 bg-white/5 border-white/10"
+              }`}
+            >
+              {ROL_LABELS[currentUser.rol as Rol] ?? currentUser.rol}
+            </span>
+          </div>
+        )}
+
+        {/* Nav items */}
         <div className="px-3 py-2 flex-1 overflow-y-auto">
           <p className="text-[9px] uppercase tracking-widest text-white/25 px-2 pt-3 pb-1 font-semibold">
             Módulos
           </p>
           <nav className="space-y-0.5">
             {navItems.map((item) => {
-              const isActive = location === item.path || (item.path !== "/admin" && location.startsWith(item.path));
+              const isActive =
+                location === item.path ||
+                (item.path !== "/admin" && location.startsWith(item.path));
               return (
                 <Link key={item.path} href={item.path} onClick={onClose}>
                   <div
@@ -93,6 +95,7 @@ export function AdminSidebar({ open, onClose }: AdminSidebarProps) {
           </nav>
         </div>
 
+        {/* Footer */}
         <div className="p-3 border-t border-white/5">
           <Link href="/">
             <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs text-white/30 hover:text-white/60 cursor-pointer transition-colors">
@@ -102,7 +105,7 @@ export function AdminSidebar({ open, onClose }: AdminSidebarProps) {
           </Link>
           <div className="flex items-center gap-2 px-3 py-2.5">
             <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-            <span className="text-[10px] text-white/30">Modo Operaciones Activo</span>
+            <span className="text-[10px] text-white/30">Sistema Activo</span>
           </div>
         </div>
       </aside>

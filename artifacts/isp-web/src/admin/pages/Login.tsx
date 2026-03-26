@@ -20,13 +20,12 @@ export default function AdminLogin() {
     e.preventDefault();
     setError("");
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 600));
-    const ok = login(username, password);
+    const result = await login(username, password);
     setLoading(false);
-    if (ok) {
+    if (result.ok) {
       navigate("/admin/dashboard");
     } else {
-      setError("Usuario o contraseña incorrectos.");
+      setError(result.error ?? "Usuario o contraseña incorrectos.");
     }
   };
 

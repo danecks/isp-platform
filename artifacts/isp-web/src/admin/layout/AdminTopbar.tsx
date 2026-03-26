@@ -49,8 +49,8 @@ export function AdminTopbar({ title, onMenuOpen }: AdminTopbarProps) {
             <User className="w-3.5 h-3.5 text-primary" />
           </div>
           <div className="hidden sm:block">
-            <p className="text-xs font-semibold text-white leading-none">{currentUser || "Coordinación"}</p>
-            <p className="text-[9px] text-white/30 mt-0.5">{brand.shortName} · Operaciones</p>
+            <p className="text-xs font-semibold text-white leading-none">{currentUser?.nombre ?? currentUser?.username ?? "Coordinación"}</p>
+            <p className="text-[9px] text-white/30 mt-0.5">{brand.shortName} · {currentUser?.rol ?? "Sistema"}</p>
           </div>
         </div>
 
