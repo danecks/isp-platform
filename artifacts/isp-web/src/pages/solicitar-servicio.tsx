@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Building, ShieldCheck } from "lucide-react";
+import { leadsApi } from "@/lib/api";
 
 const formSchema = z.object({
   company: z.string().min(2, "Nombre de la empresa es requerido"),
@@ -41,13 +42,32 @@ export default function SolicitarServicio() {
     }
   });
 
-  const onSubmit = (values: z.infer<typeof formSchema>) => {
-    toast({
-      title: "Solicitud de Evaluación Recibida",
-      description: "Un ejecutivo de cuentas corporativas se comunicará con usted en menos de 24 horas.",
-      duration: 6000,
-    });
-    form.reset();
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    try {
+      await leadsApi.create({
+        empresa: values.company,
+        contacto: `${values.contact} (${values.position})`,
+        telefono: values.phone,
+        correo: values.email,
+        servicio: `${values.serviceType} — ${values.agentsCount} agentes`,
+        ubicacion: values.location,
+        canal: "web",
+        notas: values.details,
+      });
+      toast({
+        title: "Solicitud de Evaluación Recibida",
+        description: "Un ejecutivo de cuentas corporativas se comunicará con usted en menos de 24 horas.",
+        duration: 6000,
+      });
+      form.reset();
+    } catch {
+      toast({
+        title: "Error al enviar",
+        description: "Intente nuevamente o contáctenos por WhatsApp.",
+        variant: "destructive",
+        duration: 5000,
+      });
+    }
   };
 
   return (

@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ShieldCheck, UserPlus } from "lucide-react";
+import { applicationsApi } from "@/lib/api";
 
 const formSchema = z.object({
   fullName: z.string().min(4, "Ingrese su nombre completo"),
@@ -41,13 +42,32 @@ export default function Reclutamiento() {
     }
   });
 
-  const onSubmit = (values: z.infer<typeof formSchema>) => {
-    toast({
-      title: "Solicitud enviada correctamente",
-      description: "Recursos Humanos evaluará su perfil y se pondrá en contacto.",
-      duration: 5000,
-    });
-    form.reset();
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    try {
+      await applicationsApi.create({
+        nombre: values.fullName,
+        telefono: values.phone,
+        correo: values.email,
+        experiencia: values.experience,
+        ubicacion: values.location,
+        puesto: values.position,
+        canal: "web",
+        notas: values.gunLicense ? `Licencia de armas: ${values.gunLicense}. ${values.message ?? ""}` : values.message,
+      });
+      toast({
+        title: "Solicitud enviada correctamente",
+        description: "Recursos Humanos evaluará su perfil y se pondrá en contacto.",
+        duration: 5000,
+      });
+      form.reset();
+    } catch {
+      toast({
+        title: "Error al enviar",
+        description: "Intente nuevamente o contáctenos por WhatsApp.",
+        variant: "destructive",
+        duration: 5000,
+      });
+    }
   };
 
   return (
