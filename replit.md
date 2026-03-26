@@ -94,3 +94,70 @@ Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHea
 ### `scripts` (`@workspace/scripts`)
 
 Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.
+
+---
+
+## ISP S.A. — Corporate Website & Admin Dashboard
+
+### Overview
+Full corporate site for "Investigaciones y Seguridad Profesional S.A." (Guatemala). Premium dark navy/gold design. All text in corporate Spanish.
+
+### Artifacts
+- `artifacts/isp-web` — React + Vite + Tailwind + shadcn/ui SPA (public site + admin dashboard)
+- `artifacts/api-server` — Express 5 REST API on port 8080, served at `/api`
+
+### Authentication
+- Hardcoded credentials: `dan2336` / `1234` (in `src/contexts/AuthContext.tsx`)
+- Session stored in `sessionStorage` — clears on window close
+- All `/admin/*` routes protected by `AuthGuard` component
+- Login page: `/admin/login`
+
+### Database Tables (PostgreSQL via Drizzle ORM)
+Schema: `lib/db/src/schema/isp.ts`
+
+| Table | Primary Key | Key Fields |
+|-------|-------------|-----------|
+| `leads` | `serial id` | empresa, contacto, servicio, canal, estado, ejecutivo |
+| `applications` | `serial id` | nombre, telefono, puesto, canal, estado |
+| `incidents` | `varchar id` (INC-YYMMDD-XXXX) | cliente, tipo, origen, prioridad, estado, responsable, descripcion |
+
+Seed data: `artifacts/api-server/src/seed.ts` — run with `cd artifacts/api-server && pnpm exec tsx src/seed.ts`
+
+### API Endpoints (`/api`)
+- `GET /leads` — all leads ordered by createdAt desc
+- `POST /leads` — create lead (required: empresa, contacto, servicio)
+- `PATCH /leads/:id` — update lead fields
+- `GET /applications` — all applications
+- `POST /applications` — create application (required: nombre, telefono)
+- `PATCH /applications/:id` — update application fields
+- `GET /incidents` — all incidents ordered by fecha desc
+- `GET /incidents/count` — count of active incidents (abierta + en_proceso)
+- `GET /incidents/:id` — single incident detail
+- `POST /incidents` — create incident (required: cliente, tipo; auto-generates ID)
+- `PATCH /incidents/:id` — update: estado, prioridad, responsable, notas, tareaAsociada
+
+### Admin Modules with Real Database Data
+- **Dashboard** — reads live counts from leads, applications, incidents
+- **Comercial** (`/admin/comercial`) — manages leads (CRM pipeline)
+- **Reclutamiento** (`/admin/reclutamiento`) — manages job applications
+- **Incidencias** (`/admin/incidencias`) — full operational module:
+  - Table with all incidents, filterable by estado + prioridad + origen
+  - Stat cards (clickable to filter by estado)
+  - "Nueva Incidencia" modal: creates incident with validation
+  - Edit modal (click any row): edit estado, prioridad, responsable, notas
+  - React Query refetchInterval: 15s
+  - Modals use `createPortal` to avoid React DOM tree conflicts
+
+### Modules with Mock Data (not yet connected to DB)
+- Tareas, KPI, Custodias, Clientes
+
+### Key Files
+- `artifacts/isp-web/src/lib/api.ts` — API client (all endpoints + TypeScript interfaces)
+- `artifacts/isp-web/src/contexts/AuthContext.tsx` — auth state + credentials
+- `artifacts/isp-web/src/admin/components/NuevaIncidenciaModal.tsx` — create incident modal
+- `artifacts/isp-web/src/admin/components/EditarIncidenciaModal.tsx` — edit incident modal
+- `artifacts/isp-web/src/admin/components/StatusBadge.tsx` — badge for all status/origin/priority values
+- `artifacts/api-server/src/routes/incidents.ts` — full incident CRUD
+
+### WhatsApp Integration (Future)
+Incidents with `origen: "whatsapp"` will be created automatically when the WhatsApp channel is connected. The PATCH endpoint and edit modal are ready to handle them the same as manual incidents. No code changes needed in the modal or table — just the webhook that calls `POST /api/incidents` with `origen: "whatsapp"`.
