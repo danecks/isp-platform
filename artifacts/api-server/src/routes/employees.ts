@@ -4,6 +4,7 @@ import { eq, asc, or, ilike, and, ne, desc } from "drizzle-orm";
 import { calcularLimiteAnticipo } from "../services/anticipo-limite";
 import { getPeriodoActivo } from "../services/whatsapp/anticipo-session";
 import { calcularKPIDisciplinario } from "../services/disciplinary-kpi";
+import { calcularKPIRotacion } from "../services/rotation-kpi";
 
 const employeesRouter = Router();
 
@@ -515,6 +516,24 @@ employeesRouter.get("/employees/:id/disciplinary", async (req, res) => {
     res.json(kpi);
   } catch (err) {
     res.status(500).json({ error: "Error al calcular KPI disciplinario" });
+  }
+});
+
+// GET /api/employees/:id/rotation — KPI de rotación operativa ────────────────
+employeesRouter.get("/employees/:id/rotation", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+  try {
+    const [emp] = await db
+      .select({ id: employeesTable.id, nombre: employeesTable.nombreCompleto })
+      .from(employeesTable)
+      .where(eq(employeesTable.id, id))
+      .limit(1);
+    if (!emp) return res.status(404).json({ error: "Empleado no encontrado" });
+    const kpi = await calcularKPIRotacion(id);
+    res.json(kpi);
+  } catch (err) {
+    res.status(500).json({ error: "Error al calcular KPI de rotación" });
   }
 });
 

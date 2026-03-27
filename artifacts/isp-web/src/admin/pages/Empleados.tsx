@@ -11,7 +11,7 @@ import {
   LayoutGrid, ChevronDown, UserX, UserCheck2, MessageSquare,
   Link2, Unlink, Lock, Save, Banknote, MessageCircle, XCircle,
   TrendingDown, Minus, ShieldAlert, ShieldCheck, ShieldOff,
-  ArrowUpRight, ArrowDownRight,
+  ArrowUpRight, ArrowDownRight, Repeat2, ArrowLeftRight, MapPinned,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -122,6 +122,33 @@ interface KPIDisciplinario {
   tendencia: "sube" | "baja" | "estable";
   alertas: string[];
   eventos: EventoKPIFront[];
+}
+
+interface MovimientoRotacion {
+  id: number;
+  tipo: string;
+  rol: "entrante" | "saliente";
+  clienteNombre: string | null;
+  puestoNombre: string | null;
+  contraparte: string | null;
+  fechaHora: string;
+}
+
+interface KPIRotacion {
+  score: number;
+  nivel: "bajo" | "medio" | "alto";
+  totalMovimientos: number;
+  totalSalidas: number;
+  totalEntradas: number;
+  sustituciones: number;
+  puestosDistintos: number;
+  clientesDistintos: number;
+  movimientos90d: number;
+  movimientosPrev90d: number;
+  tendencia: "sube" | "baja" | "estable";
+  ultimoMovimiento: string | null;
+  alertas: string[];
+  historial: MovimientoRotacion[];
 }
 
 interface FormState {
@@ -276,6 +303,256 @@ const TIPO_EVENTO_CFG: Record<string, { label: string; color: string; bg: string
   falta:      { label: "Falta",      color: "text-orange-400", bg: "bg-orange-400/10 border-orange-400/20" },
   suspension: { label: "Suspensión", color: "text-red-400",    bg: "bg-red-400/10 border-red-400/20"       },
 };
+
+const ROTACION_NIVEL_CFG = {
+  bajo:  { label: "Estable",    color: "text-green-400",  dot: "bg-green-400",  bg: "bg-green-400/10 border-green-400/20"  },
+  medio: { label: "Moderada",   color: "text-yellow-400", dot: "bg-yellow-500", bg: "bg-yellow-400/10 border-yellow-400/20" },
+  alto:  { label: "Alta",       color: "text-red-400",    dot: "bg-red-400",    bg: "bg-red-400/10 border-red-400/20"       },
+} as const;
+
+const ROL_MOV_CFG = {
+  entrante: { label: "Asignado",   color: "text-teal-400",   bg: "bg-teal-400/10 border-teal-400/20"   },
+  saliente: { label: "Removido",   color: "text-orange-400", bg: "bg-orange-400/10 border-orange-400/20" },
+} as const;
+
+// ─── Sección KPI de Rotación Operativa ────────────────────────────────────────
+
+function SeccionRotacion({ empId }: { empId: number }) {
+  const { data: rot, isLoading } = useQuery<KPIRotacion>({
+    queryKey: ["employee-rotation", empId],
+    queryFn: () => fetch(`${API_BASE}/employees/${empId}/rotation`).then((r) => r.json()),
+    staleTime: 60_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 py-4 text-white/30 text-xs">
+        <Loader2 className="w-4 h-4 animate-spin" /> Cargando KPI de rotación…
+      </div>
+    );
+  }
+  if (!rot) return null;
+
+  const nivelCfg = ROTACION_NIVEL_CFG[rot.nivel];
+  const tendCfg  = TENDENCIA_CFG[rot.tendencia];
+  const TendIcon = tendCfg.icon;
+
+  return (
+    <div className="space-y-4">
+      {/* Separador */}
+      <div className="flex items-center gap-3 pt-1">
+        <div className="h-px flex-1 bg-white/8" />
+        <span className="text-[10px] text-white/25 uppercase tracking-widest flex items-center gap-1.5">
+          <Repeat2 className="w-3 h-3" /> KPI Rotación Operativa
+        </span>
+        <div className="h-px flex-1 bg-white/8" />
+      </div>
+
+      {/* Alertas */}
+      {rot.alertas.length > 0 && (
+        <div className="space-y-1.5">
+          {rot.alertas.map((alerta, i) => (
+            <div key={i} className="flex items-start gap-2 bg-orange-400/5 border border-orange-400/20 rounded-lg px-3 py-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-orange-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-orange-300">{alerta}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Score estabilidad + Nivel de rotación */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className={`rounded-xl border p-4 text-center ${nivelCfg.bg}`}>
+          <Repeat2 className={`w-5 h-5 mx-auto mb-1 ${nivelCfg.color}`} />
+          <p className={`text-3xl font-bold ${nivelCfg.color}`}>{rot.score}</p>
+          <p className={`text-[10px] mt-0.5 font-semibold uppercase tracking-wider ${nivelCfg.color}`}>
+            Estabilidad
+          </p>
+          <p className="text-[9px] text-white/25 mt-1">Score / 100</p>
+        </div>
+        <div className="bg-[#0c1929] border border-white/8 rounded-xl p-4 text-center">
+          <div className={`w-2.5 h-2.5 rounded-full mx-auto mb-1.5 ${nivelCfg.dot}`} />
+          <p className={`text-lg font-bold ${nivelCfg.color}`}>{nivelCfg.label}</p>
+          <p className="text-[10px] text-white/30 mt-0.5 uppercase tracking-wider">Rotación</p>
+          <div className={`flex items-center justify-center gap-1 mt-2 text-[10px] ${tendCfg.color}`}>
+            <TendIcon className="w-3 h-3" />
+            <span>Tendencia: {tendCfg.label}</span>
+          </div>
+          {rot.ultimoMovimiento && (
+            <p className="text-[9px] text-white/20 mt-1.5">
+              Último mov.: {fmtRelativa(rot.ultimoMovimiento)}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Métricas */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-[#0c1929] border border-white/8 rounded-xl p-3 text-center">
+          <p className={`text-2xl font-bold ${rot.totalMovimientos === 0 ? "text-white/30" : rot.totalMovimientos >= 5 ? "text-red-400" : "text-blue-400"}`}>
+            {rot.totalMovimientos}
+          </p>
+          <p className="text-[10px] text-white/30 mt-0.5">Movimientos totales</p>
+        </div>
+        <div className="bg-[#0c1929] border border-white/8 rounded-xl p-3 text-center">
+          <p className={`text-2xl font-bold ${rot.totalSalidas === 0 ? "text-white/30" : rot.totalSalidas >= 3 ? "text-red-400" : "text-orange-400"}`}>
+            {rot.totalSalidas}
+          </p>
+          <p className="text-[10px] text-white/30 mt-0.5">Salidas de puesto</p>
+        </div>
+        <div className="bg-[#0c1929] border border-white/8 rounded-xl p-3 text-center">
+          <p className={`text-2xl font-bold ${rot.sustituciones === 0 ? "text-white/30" : "text-teal-400"}`}>
+            {rot.sustituciones}
+          </p>
+          <p className="text-[10px] text-white/30 mt-0.5">Sustituciones</p>
+        </div>
+        <div className="bg-[#0c1929] border border-white/8 rounded-xl p-3 text-center">
+          <p className={`text-2xl font-bold ${rot.movimientos90d === 0 ? "text-white/30" : rot.movimientos90d >= 4 ? "text-red-400" : "text-yellow-400"}`}>
+            {rot.movimientos90d}
+          </p>
+          <p className="text-[10px] text-white/30 mt-0.5">Movim. · 90 días</p>
+        </div>
+      </div>
+
+      {/* Cobertura */}
+      <div className="bg-[#0c1929] border border-white/8 rounded-xl p-3">
+        <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+          <MapPinned className="w-3 h-3" /> Cobertura registrada
+        </p>
+        <div className="grid grid-cols-2 gap-3 text-center">
+          <div>
+            <p className={`text-xl font-bold ${rot.clientesDistintos >= 4 ? "text-red-400" : rot.clientesDistintos >= 3 ? "text-yellow-400" : "text-white/70"}`}>
+              {rot.clientesDistintos}
+            </p>
+            <p className="text-[10px] text-white/30">Clientes distintos</p>
+          </div>
+          <div>
+            <p className={`text-xl font-bold ${rot.puestosDistintos >= 5 ? "text-red-400" : rot.puestosDistintos >= 3 ? "text-yellow-400" : "text-white/70"}`}>
+              {rot.puestosDistintos}
+            </p>
+            <p className="text-[10px] text-white/30">Puestos distintos</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Historial de movimientos */}
+      {rot.historial.length > 0 && (
+        <div>
+          <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+            <Clock className="w-3 h-3" /> Historial de movimientos ({rot.totalMovimientos})
+          </p>
+          <div className="space-y-1.5">
+            {rot.historial.map((mov) => {
+              const rolCfg = ROL_MOV_CFG[mov.rol];
+              return (
+                <div key={mov.id} className={`rounded-lg px-3 py-2.5 border flex items-center gap-3 ${rolCfg.bg}`}>
+                  <ArrowLeftRight className={`w-3.5 h-3.5 shrink-0 ${rolCfg.color}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${rolCfg.color}`}>
+                        {rolCfg.label}
+                      </span>
+                      {mov.tipo === "sustitucion" && (
+                        <span className="text-[10px] bg-white/5 border border-white/10 text-white/40 rounded px-1.5">SUSTITUCIóN</span>
+                      )}
+                      {mov.puestoNombre && (
+                        <span className="text-[10px] text-white/40">{mov.puestoNombre}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {mov.clienteNombre && (
+                        <span className="text-[10px] text-white/25">{mov.clienteNombre}</span>
+                      )}
+                      {mov.contraparte && (
+                        <span className="text-[10px] text-white/20">↔ {mov.contraparte}</span>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-white/25 shrink-0">
+                    {new Date(mov.fechaHora).toLocaleDateString("es-GT", { day: "2-digit", month: "short", year: "numeric" })}
+                  </p>
+                </div>
+              );
+            })}
+            {rot.totalMovimientos > 15 && (
+              <p className="text-[10px] text-white/20 text-center pt-1">
+                +{rot.totalMovimientos - 15} movimientos más en el historial
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {rot.historial.length === 0 && (
+        <div className="text-center py-4">
+          <Repeat2 className="w-8 h-8 text-white/10 mx-auto mb-2" />
+          <p className="text-xs text-white/25">Sin movimientos operativos registrados</p>
+        </div>
+      )}
+
+      {/* Leyenda */}
+      <p className="text-[10px] text-white/15 border-t border-white/5 pt-3 leading-relaxed">
+        Score = 100 − (salidas × 15) − (sustituciones extra × 8) − (clientes extra × 10) − (puestos extra × 5) · Estable ≥ 80 · Moderada 60–79 · Alta &lt; 60
+      </p>
+    </div>
+  );
+}
+
+// ─── Resumen de dimensiones KPI ────────────────────────────────────────────────
+
+function ResumenDimensionesKPI({ empId }: { empId: number }) {
+  const { data: disc } = useQuery<KPIDisciplinario>({
+    queryKey: ["employee-disciplinary", empId],
+    queryFn: () => fetch(`${API_BASE}/employees/${empId}/disciplinary`).then((r) => r.json()),
+    staleTime: 60_000,
+  });
+  const { data: rot } = useQuery<KPIRotacion>({
+    queryKey: ["employee-rotation", empId],
+    queryFn: () => fetch(`${API_BASE}/employees/${empId}/rotation`).then((r) => r.json()),
+    staleTime: 60_000,
+  });
+
+  const dimDisc = disc
+    ? { label: "Disciplinario", score: disc.score, nivel: CLASIFICACION_CFG[disc.clasificacion].label, color: CLASIFICACION_CFG[disc.clasificacion].color, icon: ShieldCheck }
+    : null;
+  const dimRot = rot
+    ? { label: "Rotación", score: rot.score, nivel: ROTACION_NIVEL_CFG[rot.nivel].label, color: ROTACION_NIVEL_CFG[rot.nivel].color, icon: Repeat2 }
+    : null;
+
+  if (!dimDisc && !dimRot) return null;
+
+  const dims = [dimDisc, dimRot].filter(Boolean) as NonNullable<typeof dimDisc>[];
+
+  return (
+    <div className="bg-[#0a1628] border border-white/8 rounded-xl p-4">
+      <p className="text-[10px] text-white/30 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+        <BarChart2 className="w-3 h-3" /> Resumen de dimensiones KPI
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        {dims.map((d) => {
+          const Icon = d.icon;
+          const pct = Math.max(0, Math.min(100, d.score));
+          const barColor = pct >= 80 ? "bg-green-500" : pct >= 60 ? "bg-yellow-500" : "bg-red-500";
+          return (
+            <div key={d.label} className="space-y-1.5">
+              <div className="flex items-center gap-1.5">
+                <Icon className={`w-3.5 h-3.5 ${d.color}`} />
+                <span className="text-[10px] text-white/50 uppercase tracking-wider">{d.label}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <p className={`text-xl font-bold ${d.color}`}>{d.score}</p>
+                <span className={`text-[10px] font-semibold ${d.color}`}>{d.nivel}</span>
+              </div>
+              <div className="h-1.5 bg-white/8 rounded-full overflow-hidden">
+                <div className={`h-full ${barColor} rounded-full transition-all`} style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function SeccionDisciplinaria({ empId }: { empId: number }) {
   const { data: disc, isLoading } = useQuery<KPIDisciplinario>({
@@ -456,6 +733,8 @@ function TabKPI({ empId }: { empId: number }) {
           <KpiCard icon={Shield} label="Asignaciones activas" value={kpi.asignaciones.activas} color="text-white/40" />
         </div>
         <SeccionDisciplinaria empId={empId} />
+        <SeccionRotacion empId={empId} />
+        <ResumenDimensionesKPI empId={empId} />
       </div>
     );
   }
@@ -511,8 +790,10 @@ function TabKPI({ empId }: { empId: number }) {
         </div>
       )}
       <SeccionDisciplinaria empId={empId} />
+      <SeccionRotacion empId={empId} />
+      <ResumenDimensionesKPI empId={empId} />
       <p className="text-[11px] text-white/20 border-t border-white/5 pt-3">
-        KPI alimentado desde: Tareas (vía usuario) · Anticipos (FK directa) · Incidencias (por nombre de responsable)
+        KPI alimentado desde: Tareas (vía usuario) · Anticipos (FK directa) · Incidencias (por nombre de responsable) · Movimientos operativos
       </p>
     </div>
   );
