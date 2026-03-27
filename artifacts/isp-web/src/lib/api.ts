@@ -2,6 +2,20 @@ import type { AuthUser } from "@/contexts/AuthContext";
 
 const API_BASE = "/api";
 
+// --- EMPLOYEES (slim) ---
+export interface EmpleadoSlim {
+  id: number;
+  nombreCompleto: string;
+  puesto: string | null;
+  dpi: string | null;
+  telefono: string | null;
+  estadoLaboral: string;
+}
+
+export const employeesApi = {
+  getAll: () => apiFetch<EmpleadoSlim[]>("/employees"),
+};
+
 // --- USERS ---
 export type { AuthUser as User };
 

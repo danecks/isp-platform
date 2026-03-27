@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { AdminLayout } from "../layout/AdminLayout";
 import { StatusBadge } from "../components/StatusBadge";
-import { anticiposApi, type Anticipo } from "@/lib/api";
+import { anticiposApi, employeesApi, type Anticipo, type EmpleadoSlim } from "@/lib/api";
 import {
   Wallet,
   Filter,
@@ -58,7 +58,10 @@ export default function Anticipos() {
   const [observacion, setObservacion] = useState<string>("");
 
   const [modalNuevo, setModalNuevo] = useState(false);
+  const [formEmpleadoId, setFormEmpleadoId] = useState<number | null>(null);
   const [formNombre, setFormNombre] = useState("");
+  const [formBusqueda, setFormBusqueda] = useState("");
+  const [mostrarDropdown, setMostrarDropdown] = useState(false);
   const [formCantidad, setFormCantidad] = useState("");
   const [formPuesto, setFormPuesto] = useState("");
   const [formDpi, setFormDpi] = useState("");
@@ -80,6 +83,39 @@ export default function Anticipos() {
     staleTime: 60000,
   });
 
+  const { data: empleados = [] } = useQuery<EmpleadoSlim[]>({
+    queryKey: ["empleados-slim"],
+    queryFn: employeesApi.getAll,
+    enabled: modalNuevo,
+    staleTime: 120000,
+  });
+
+  const empleadosFiltrados = formBusqueda.length >= 1
+    ? empleados.filter((e) =>
+        e.nombreCompleto.toLowerCase().includes(formBusqueda.toLowerCase()) ||
+        (e.dpi ?? "").includes(formBusqueda)
+      ).slice(0, 8)
+    : [];
+
+  function seleccionarEmpleado(emp: EmpleadoSlim) {
+    setFormEmpleadoId(emp.id);
+    setFormNombre(emp.nombreCompleto);
+    setFormBusqueda(emp.nombreCompleto);
+    setFormPuesto(emp.puesto ?? "");
+    setFormDpi(emp.dpi ?? "");
+    setFormTelefono(emp.telefono ?? "");
+    setMostrarDropdown(false);
+  }
+
+  function limpiarSeleccionEmpleado() {
+    setFormEmpleadoId(null);
+    setFormNombre("");
+    setFormBusqueda("");
+    setFormPuesto("");
+    setFormDpi("");
+    setFormTelefono("");
+  }
+
   const { mutate: actualizarEstado, isPending: guardando } = useMutation({
     mutationFn: ({ id, estado, observaciones }: { id: number; estado: string; observaciones?: string }) =>
       anticiposApi.update(id, { estado, observaciones }),
@@ -96,6 +132,7 @@ export default function Anticipos() {
       anticiposApi.create({
         nombre: formNombre.trim(),
         cantidad: parseFloat(formCantidad),
+        empleadoId: formEmpleadoId,
         puesto: formPuesto.trim() || undefined,
         dpi: formDpi.trim() || undefined,
         telefono: formTelefono.trim() || undefined,
@@ -104,8 +141,9 @@ export default function Anticipos() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["anticipos"] });
       setModalNuevo(false);
-      setFormNombre(""); setFormCantidad(""); setFormPuesto("");
-      setFormDpi(""); setFormTelefono(""); setFormObservaciones("");
+      setFormEmpleadoId(null); setFormNombre(""); setFormBusqueda("");
+      setFormCantidad(""); setFormPuesto(""); setFormDpi("");
+      setFormTelefono(""); setFormObservaciones(""); setMostrarDropdown(false);
       toast({ title: "Anticipo creado", description: "El anticipo manual fue registrado." });
     },
     onError: () => toast({ title: "Error", description: "No se pudo crear el anticipo.", variant: "destructive" }),
@@ -496,18 +534,65 @@ export default function Anticipos() {
             </div>
 
             <div className="space-y-3">
-              {/* Nombre */}
+              {/* Colaborador — buscador */}
               <div>
                 <label className="block text-xs text-white/40 uppercase tracking-wider mb-1.5">
                   Colaborador <span className="text-red-400">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={formNombre}
-                  onChange={(e) => setFormNombre(e.target.value)}
-                  placeholder="Nombre completo del colaborador"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-primary/40"
-                />
+
+                {formEmpleadoId ? (
+                  /* Colaborador seleccionado */
+                  <div className="flex items-center gap-2 bg-primary/10 border border-primary/30 rounded-lg px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-white truncate">{formNombre}</p>
+                      {formPuesto && <p className="text-xs text-white/40 truncate">{formPuesto}</p>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={limpiarSeleccionEmpleado}
+                      className="text-white/30 hover:text-white text-lg leading-none shrink-0"
+                      title="Cambiar colaborador"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ) : (
+                  /* Campo de búsqueda */
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={formBusqueda}
+                      onChange={(e) => { setFormBusqueda(e.target.value); setMostrarDropdown(true); }}
+                      onFocus={() => setMostrarDropdown(true)}
+                      onBlur={() => setTimeout(() => setMostrarDropdown(false), 150)}
+                      placeholder="Buscar por nombre o DPI..."
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-primary/40"
+                    />
+                    {mostrarDropdown && empleadosFiltrados.length > 0 && (
+                      <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-[#0d1f38] border border-white/10 rounded-lg shadow-xl overflow-hidden">
+                        {empleadosFiltrados.map((emp) => (
+                          <button
+                            key={emp.id}
+                            type="button"
+                            onMouseDown={() => seleccionarEmpleado(emp)}
+                            className="w-full text-left px-3 py-2.5 hover:bg-white/5 transition-colors border-b border-white/5 last:border-0"
+                          >
+                            <p className="text-sm text-white font-medium">{emp.nombreCompleto}</p>
+                            <p className="text-xs text-white/40 mt-0.5">
+                              {emp.puesto ?? "—"}
+                              {emp.dpi ? ` · ${emp.dpi}` : ""}
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {mostrarDropdown && formBusqueda.length >= 1 && empleadosFiltrados.length === 0 && (
+                      <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-[#0d1f38] border border-white/10 rounded-lg px-3 py-3 text-xs text-white/40">
+                        Sin resultados para "{formBusqueda}"
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Monto */}
