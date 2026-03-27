@@ -1,0 +1,192 @@
+Claro. Aquí tienes el prompt listo para pegar en Replit:
+
+:::writing{variant=“standard” id=“64921”}
+El sistema ya tiene:
+	•	módulo de anticipos (WhatsApp + manual)
+	•	integración con employees (empleadoId)
+	•	validación por DPI y número
+	•	historial de anticipos en la base de datos
+	•	módulo de empleados con ficha completa
+
+No quiero romper nada de lo existente.
+
+Quiero mejorar el sistema de anticipos agregando control de límite autorizado por colaborador, validación dinámica y mejor experiencia en WhatsApp.
+
+Objetivo
+
+Que cada colaborador tenga un monto máximo autorizado por período, editable desde su ficha, y que el sistema valide cuánto ya solicitó y cuánto le queda disponible antes de aceptar una nueva solicitud.
+
+1. Límite de anticipo por colaborador
+
+Agregar en la tabla employees o donde corresponda campos como:
+	•	limiteAnticipo
+	•	tipoLimitePeriodo (por ejemplo: quincenal o mensual, si aplica)
+	•	ultimaActualizacionLimiteAt
+
+Este valor debe poder editarse manualmente desde la ficha del colaborador.
+
+2. UI en ficha del colaborador
+
+En /admin/empleados/[id] agregar una sección llamada:
+Configuración de anticipos
+
+Campos y datos visibles:
+	•	Límite autorizado (Q)
+	•	Período del límite
+	•	Total solicitado en el período actual
+	•	Total aprobado en el período actual
+	•	Disponible restante
+
+Ejemplo visual:
+	•	Límite: Q500
+	•	Solicitado en período: Q100
+	•	Disponible: Q400
+
+3. Historial de anticipos en ficha del colaborador
+
+En la ficha del colaborador agregar una pestaña o sección:
+Historial de anticipos
+
+Mostrar:
+	•	fecha
+	•	período
+	•	monto
+	•	estado
+	•	origen (whatsapp / manual)
+	•	observaciones
+
+4. Regla de cálculo del disponible
+
+Para cada colaborador calcular:
+
+restante = limiteAnticipo - totalSolicitadoValidoDelPeriodo
+
+Definir claramente qué estados cuentan para el cálculo, por ejemplo:
+	•	pendiente
+	•	aprobada
+y excluir:
+	•	rechazada
+	•	anulada si existe
+
+Documentar esta decisión.
+
+5. Validación al crear anticipo (manual y WhatsApp)
+
+Aplicar esta lógica tanto en:
+	•	flujo manual desde admin
+	•	flujo por WhatsApp
+
+Caso A — Dentro del límite
+
+Si el monto solicitado es menor o igual al restante:
+	•	aceptar normalmente
+
+Caso B — Excede el límite
+
+Si el monto solicitado excede el restante:
+	•	no rechazar de forma seca
+	•	responder con una lógica humana y guiada
+
+Ejemplo:
+Límite Q500, ya pidió Q100, restante Q400.
+Si solicita Q500, el sistema debe responder:
+
+“Tu monto disponible para este período es de Q400.
+Puedes:
+	1.	Solicitar el monto disponible (Q400)
+	2.	Ingresar un monto menor
+	3.	Cancelar la solicitud”
+
+Y esperar la siguiente respuesta del usuario.
+
+6. Flujo WhatsApp mejorado
+
+Actualizar el flujo de anticipo en WhatsApp para que:
+	1.	identifique al colaborador por número o por validación DPI
+	2.	obtenga su empleadoId
+	3.	lea limiteAnticipo
+	4.	calcule el restante del período
+	5.	si el monto excede, ofrezca:
+	•	aceptar el restante
+	•	ingresar un monto menor
+	•	cancelar
+
+También aceptar respuestas humanas como:
+	•	“sí”
+	•	“si”
+	•	“1”
+	•	“acepto”
+	•	“Q400”
+	•	“300”
+	•	“cancelar”
+
+7. Flujo manual en admin
+
+En el modal o formulario de anticipo manual:
+	•	mostrar el límite disponible en tiempo real
+	•	si el monto excede, mostrar advertencia clara
+	•	permitir:
+	•	ajustar al máximo disponible
+	•	o forzar manualmente solo si el rol es admin o rrhh
+
+Documentar si decides permitir o no el forzado.
+
+8. Si ya no tiene saldo disponible
+
+Si el colaborador ya no tiene saldo en el período:
+	•	bloquear la creación automática normal
+	•	mostrar mensaje claro
+
+Ejemplo:
+“Ya no tienes saldo disponible para este período.”
+
+9. Integración con período actual
+
+Mantener la lógica actual de ventanas de recepción:
+	•	del 1 al 10
+	•	del 16 al 26
+
+El cálculo del límite debe aplicarse al período vigente, no de forma global infinita.
+
+10. Base de datos y consultas
+
+Asegurar que:
+	•	los anticipos creados por WhatsApp queden vinculados a empleadoId
+	•	se puedan consultar por empleado y período
+	•	las consultas de restante sean consistentes y reutilizables
+
+11. Simulador WhatsApp
+
+Actualizar el simulador para mostrar en el panel debug:
+	•	colaborador identificado
+	•	empleadoId
+	•	límite total
+	•	solicitado acumulado
+	•	restante
+	•	monto solicitado
+	•	decisión tomada por el flujo
+
+12. No romper
+
+No romper:
+	•	anticipos actuales
+	•	flujo de WhatsApp
+	•	autenticación por DPI
+	•	empleados
+	•	exportación CSV
+	•	RRHH
+	•	portal
+	•	login y roles
+
+13. Documentación
+
+Explica al final:
+	•	qué archivos cambiaste
+	•	cómo se configura el límite por colaborador
+	•	cómo se calcula el restante
+	•	qué estados cuentan en el cálculo
+	•	cómo se comporta el flujo cuando el monto excede
+	•	cómo funciona en WhatsApp y cómo funciona en admin manual
+
+Muy importante:
+quiero evitar sobrepagos y mantener trazabilidad, pero con una experiencia flexible y humana para el colaborador que solicita anticipos por WhatsApp.

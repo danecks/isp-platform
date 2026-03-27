@@ -11,6 +11,7 @@ import { Router } from "express";
 import { db, anticiposTable } from "@workspace/db";
 import { eq, desc, and, gte, lte } from "drizzle-orm";
 import { DIAS_HABILITADOS, getPeriodoActivo } from "../services/whatsapp/anticipo-session";
+import { calcularLimiteAnticipo } from "../services/anticipo-limite";
 
 const anticiposRouter = Router();
 
@@ -118,6 +119,24 @@ anticiposRouter.post("/anticipos", async (req, res) => {
 
   try {
     const periodo = getPeriodoActivo() ?? `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-manual`;
+
+    // Validar límite si el colaborador está vinculado
+    if (empleadoId) {
+      const limite = await calcularLimiteAnticipo(Number(empleadoId), periodo);
+      if (limite.tieneLimite && limite.restante !== null && monto > limite.restante) {
+        return res.status(422).json({
+          error: "excede_limite",
+          mensaje:
+            limite.restante === 0
+              ? `${nombre} ya no tiene saldo disponible para este período.`
+              : `El monto Q${monto} excede el disponible de Q${limite.restante} para este período.`,
+          limite: limite.limite,
+          solicitado: limite.solicitado,
+          restante: limite.restante,
+          periodo,
+        });
+      }
+    }
 
     const [created] = await db
       .insert(anticiposTable)

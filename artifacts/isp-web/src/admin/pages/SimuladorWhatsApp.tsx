@@ -48,7 +48,7 @@ interface DebugInfo {
   validacion: { telefono: string; autorizado: boolean; motivo: string | null };
   usuario: { id: number | null; nombre: string | null; rol: string | null; estado: string | null; tieneTelefono: boolean } | null;
   clasificacion: { intencion: string; mensajeOriginal: string };
-  sesion: { activa: boolean; estado: string | null };
+  sesion: { activa: boolean; estado: string | null; limiteTotal?: number | null; limiteRestante?: number | null; montoSolicitado?: number | null };
   entidad: { creada: boolean; tabla: string | null; id: string | number | null; dryRun: boolean };
   alias: string | null;
   persistencia: "real" | "simulado";
@@ -785,6 +785,19 @@ function DebugSidePanel({ debug }: { debug: DebugInfo | null }) {
                 <Section title="Sesión anticipo" icon={<Activity size={11} />}>
                   <Row label="Activa" value="Sí" color="text-yellow-400" />
                   <Row label="Estado" value={debug.sesion.estado ?? "—"} />
+                  {debug.sesion.limiteTotal != null && (
+                    <Row label="Límite total" value={`Q${debug.sesion.limiteTotal.toLocaleString("es-GT")}`} color="text-blue-400" />
+                  )}
+                  {debug.sesion.montoSolicitado != null && (
+                    <Row label="Monto pedido" value={`Q${debug.sesion.montoSolicitado.toLocaleString("es-GT")}`} color="text-yellow-400" />
+                  )}
+                  {debug.sesion.limiteRestante != null && (
+                    <Row
+                      label="Saldo disponible"
+                      value={`Q${debug.sesion.limiteRestante.toLocaleString("es-GT")}`}
+                      color={debug.sesion.limiteRestante <= 0 ? "text-red-400" : "text-green-400"}
+                    />
+                  )}
                 </Section>
               )}
 

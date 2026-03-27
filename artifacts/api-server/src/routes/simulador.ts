@@ -263,6 +263,9 @@ async function simularMensaje(params: SimularParams): Promise<SimularResult> {
   if (sesionActiva) {
     debug.sesion.activa = true;
     debug.sesion.estado = sesionActiva.state;
+    (debug.sesion as Record<string, unknown>).limiteTotal = sesionActiva.limiteTotal ?? null;
+    (debug.sesion as Record<string, unknown>).limiteRestante = sesionActiva.limiteRestante ?? null;
+    (debug.sesion as Record<string, unknown>).montoSolicitado = sesionActiva.montoSolicitado ?? null;
     debug.clasificacion.intencion = "anticipo_sesion";
 
     const { respuesta, completada } = await continuarAnticipo(sesionActiva, mensaje);

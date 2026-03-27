@@ -98,6 +98,10 @@ export const employeesTable = pgTable("employees", {
   telefonoVerificadoAt: timestamp("telefono_verificado_at", { withTimezone: true }),
   fechaIngreso: timestamp("fecha_ingreso", { withTimezone: true }),
   notas: text("notas"),
+  // ── Configuración de anticipos ───────────────────────────────────────────
+  limiteAnticipo: integer("limite_anticipo"),                 // null = sin límite configurado
+  tipoLimitePeriodo: varchar("tipo_limite_periodo", { length: 30 }).default("quincenal"),
+  ultimaActualizacionLimiteAt: timestamp("ultima_actualizacion_limite_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

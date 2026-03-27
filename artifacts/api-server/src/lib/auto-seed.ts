@@ -964,6 +964,9 @@ Por favor ingresa al sistema o responde para continuar.',
     await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS cliente_id INTEGER`);
     await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS wa_autorizado BOOLEAN NOT NULL DEFAULT FALSE`);
     await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS telefono_verificado_at TIMESTAMPTZ`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS limite_anticipo INTEGER`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS tipo_limite_periodo VARCHAR(30) DEFAULT 'quincenal'`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS ultima_actualizacion_limite_at TIMESTAMPTZ`);
     logger.info("Auto-migrate: columnas de gestión de colaboradores en 'employees' verificadas");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: error en columnas de employees (módulo colaboradores)");

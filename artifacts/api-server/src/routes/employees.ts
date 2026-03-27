@@ -1,6 +1,8 @@
 import { Router } from "express";
-import { db, employeesTable, usersTable, pool } from "@workspace/db";
-import { eq, asc, or, ilike, and, ne } from "drizzle-orm";
+import { db, employeesTable, usersTable, anticiposTable, pool } from "@workspace/db";
+import { eq, asc, or, ilike, and, ne, desc } from "drizzle-orm";
+import { calcularLimiteAnticipo } from "../services/anticipo-limite";
+import { getPeriodoActivo } from "../services/whatsapp/anticipo-session";
 
 const employeesRouter = Router();
 
@@ -497,6 +499,61 @@ employeesRouter.post("/employees", async (req, res) => {
   }
 });
 
+// GET /api/employees/:id/anticipos — historial + config de límite ────────────
+employeesRouter.get("/employees/:id/anticipos", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+
+  try {
+    // Verificar que el empleado existe
+    const [emp] = await db
+      .select({
+        id: employeesTable.id,
+        nombre: employeesTable.nombreCompleto,
+        limiteAnticipo: employeesTable.limiteAnticipo,
+        tipoLimitePeriodo: employeesTable.tipoLimitePeriodo,
+        ultimaActualizacionLimiteAt: employeesTable.ultimaActualizacionLimiteAt,
+      })
+      .from(employeesTable)
+      .where(eq(employeesTable.id, id))
+      .limit(1);
+
+    if (!emp) return res.status(404).json({ error: "Empleado no encontrado" });
+
+    // Historial completo de anticipos
+    const historial = await db
+      .select()
+      .from(anticiposTable)
+      .where(eq(anticiposTable.employeeId, id))
+      .orderBy(desc(anticiposTable.fechaSolicitud));
+
+    // Límite del período activo (si existe)
+    const periodoActual = getPeriodoActivo();
+    const limiteInfo = periodoActual
+      ? await calcularLimiteAnticipo(id, periodoActual)
+      : {
+          limite: emp.limiteAnticipo,
+          tipoLimitePeriodo: emp.tipoLimitePeriodo ?? "quincenal",
+          solicitado: 0,
+          restante: emp.limiteAnticipo,
+          tieneLimite: emp.limiteAnticipo !== null,
+          periodo: null,
+        };
+
+    res.json({
+      config: {
+        limiteAnticipo: emp.limiteAnticipo,
+        tipoLimitePeriodo: emp.tipoLimitePeriodo ?? "quincenal",
+        ultimaActualizacionLimiteAt: emp.ultimaActualizacionLimiteAt,
+      },
+      periodoActual: limiteInfo,
+      historial,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Error al obtener anticipos del empleado" });
+  }
+});
+
 // PATCH /api/employees/:id — update employee
 employeesRouter.patch("/employees/:id", async (req, res) => {
   const id = parseInt(req.params.id);
@@ -507,6 +564,7 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
     puesto, tipoServicio, area, estadoLaboral, sede,
     supervisorNombre, supervisorId, clienteId, fechaIngreso, notas,
     externalId, sourceSystem, syncStatus, lastSyncAt,
+    limiteAnticipo, tipoLimitePeriodo,
   } = req.body ?? {};
 
   // Validar unicidad de DPI (excluir el propio empleado)
@@ -542,6 +600,11 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
   if (sourceSystem !== undefined) updates.sourceSystem = sourceSystem;
   if (syncStatus !== undefined) updates.syncStatus = syncStatus;
   if (lastSyncAt !== undefined) updates.lastSyncAt = lastSyncAt ? new Date(lastSyncAt) : null;
+  if (limiteAnticipo !== undefined) {
+    updates.limiteAnticipo = limiteAnticipo === null || limiteAnticipo === "" ? null : parseInt(limiteAnticipo);
+    updates.ultimaActualizacionLimiteAt = new Date();
+  }
+  if (tipoLimitePeriodo !== undefined) updates.tipoLimitePeriodo = tipoLimitePeriodo || "quincenal";
 
   try {
     const [emp] = await db

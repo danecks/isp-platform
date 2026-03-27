@@ -17,6 +17,7 @@ import {
   MessageCircle,
   ExternalLink,
   Plus,
+  AlertTriangle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -90,6 +91,19 @@ export default function Anticipos() {
     staleTime: 120000,
   });
 
+  // Límite del colaborador seleccionado (se consulta solo cuando hay uno seleccionado)
+  const { data: limiteData } = useQuery<{
+    periodoActual: { limite: number | null; solicitado: number; restante: number | null; tieneLimite: boolean; periodo: string | null };
+  }>({
+    queryKey: ["anticipo-limite", formEmpleadoId],
+    queryFn: () => fetch(`/api/employees/${formEmpleadoId}/anticipos`).then((r) => r.json()),
+    enabled: !!formEmpleadoId && modalNuevo,
+    staleTime: 30_000,
+  });
+  const limiteInfo = limiteData?.periodoActual;
+  const montoParsed = parseFloat(formCantidad);
+  const excedeLimite = limiteInfo?.tieneLimite && limiteInfo.restante !== null && !isNaN(montoParsed) && montoParsed > limiteInfo.restante;
+
   const empleadosFiltrados = formBusqueda.length >= 1
     ? empleados.filter((e) =>
         e.nombreCompleto.toLowerCase().includes(formBusqueda.toLowerCase()) ||
@@ -146,7 +160,19 @@ export default function Anticipos() {
       setFormTelefono(""); setFormObservaciones(""); setMostrarDropdown(false);
       toast({ title: "Anticipo creado", description: "El anticipo manual fue registrado." });
     },
-    onError: () => toast({ title: "Error", description: "No se pudo crear el anticipo.", variant: "destructive" }),
+    onError: async (error: unknown) => {
+      // Manejo especial de error 422 (excede_limite)
+      if (error instanceof Response && error.status === 422) {
+        const body = await error.json().catch(() => ({}));
+        toast({
+          title: "Límite excedido",
+          description: body.mensaje ?? "El monto excede el saldo disponible del colaborador.",
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Error", description: "No se pudo crear el anticipo.", variant: "destructive" });
+      }
+    },
   });
 
   const anticipos = data?.anticipos ?? [];
@@ -595,6 +621,51 @@ export default function Anticipos() {
                 )}
               </div>
 
+              {/* Panel de saldo disponible (solo cuando hay colaborador seleccionado y tiene límite) */}
+              {formEmpleadoId && limiteInfo?.tieneLimite && (
+                <div className={`rounded-lg px-3 py-2.5 border text-xs flex items-center justify-between gap-2 ${
+                  (limiteInfo.restante ?? 0) <= 0
+                    ? "bg-red-400/5 border-red-400/20"
+                    : "bg-primary/5 border-primary/20"
+                }`}>
+                  <div className="flex items-center gap-3">
+                    <Wallet className={`w-3.5 h-3.5 shrink-0 ${(limiteInfo.restante ?? 0) <= 0 ? "text-red-400" : "text-primary"}`} />
+                    <div>
+                      <p className="text-white/70">
+                        Límite: <span className="font-bold text-white">Q{(limiteInfo.limite ?? 0).toLocaleString("es-GT")}</span>
+                        {" · "}Solicitado: <span className="text-yellow-400">Q{limiteInfo.solicitado.toLocaleString("es-GT")}</span>
+                        {" · "}Disponible: <span className={`font-bold ${(limiteInfo.restante ?? 0) <= 0 ? "text-red-400" : "text-green-400"}`}>
+                          Q{(limiteInfo.restante ?? 0).toLocaleString("es-GT")}
+                        </span>
+                      </p>
+                      {limiteInfo.periodo && (
+                        <p className="text-white/25 mt-0.5">Período: {limiteInfo.periodo.replace("-dia", " día")}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Advertencia si excede el límite */}
+              {excedeLimite && limiteInfo && (
+                <div className="bg-orange-400/5 border border-orange-400/20 rounded-lg px-3 py-2.5 flex items-start gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 text-orange-400 shrink-0 mt-0.5" />
+                  <div className="flex-1 text-xs">
+                    <p className="text-orange-300 font-medium">El monto excede el saldo disponible</p>
+                    <p className="text-white/40 mt-0.5">
+                      Disponible: Q{(limiteInfo.restante ?? 0).toLocaleString("es-GT")} · Solicitado: Q{montoParsed.toLocaleString("es-GT")}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormCantidad(String(limiteInfo.restante ?? 0))}
+                    className="text-xs text-orange-400 hover:text-orange-300 whitespace-nowrap border border-orange-400/30 rounded px-2 py-1 transition-colors"
+                  >
+                    Ajustar a Q{(limiteInfo.restante ?? 0).toLocaleString("es-GT")}
+                  </button>
+                </div>
+              )}
+
               {/* Monto */}
               <div>
                 <label className="block text-xs text-white/40 uppercase tracking-wider mb-1.5">
@@ -606,7 +677,9 @@ export default function Anticipos() {
                   value={formCantidad}
                   onChange={(e) => setFormCantidad(e.target.value)}
                   placeholder="Ej: 500"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-primary/40"
+                  className={`w-full bg-white/5 border rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-primary/40 ${
+                    excedeLimite ? "border-orange-400/40" : "border-white/10"
+                  }`}
                 />
               </div>
 
