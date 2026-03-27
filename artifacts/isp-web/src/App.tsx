@@ -129,7 +129,7 @@ function Router() {
         {() => <AuthGuard requiredRoles={["admin"]}><AdminSimulador /></AuthGuard>}
       </Route>
       <Route path="/admin/empleados">
-        {() => <AuthGuard requiredRoles={["admin", "rrhh", "supervisor"]}><AdminEmpleados /></AuthGuard>}
+        {() => <AuthGuard requiredRoles={["admin", "operaciones", "rrhh", "supervisor"]}><AdminEmpleados /></AuthGuard>}
       </Route>
 
       <Route component={NotFound} />

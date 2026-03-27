@@ -1,0 +1,245 @@
+El sistema ya tiene:
+- users (con roles y autenticación)
+- employees (tabla base existente)
+- clientes
+- incidencias
+- emergencias
+- tareas con evidencia
+- anticipos
+- portal de clientes
+- WhatsApp (simulación + configuración)
+- validación por DPI
+- alias de clientes y puestos
+- Trello integrado
+
+No quiero romper nada del sistema actual.
+
+Quiero implementar una nueva fase: Módulo completo de Gestión de Empleados (CORE del sistema).
+
+Objetivo:
+convertir employees en la entidad central de colaboradores, enlazada con todos los módulos operativos, con ficha completa, control de teléfonos, validación por DPI y KPI individual.
+
+---
+
+# 1. Módulo Admin
+
+Crear sección:
+- /admin/empleados
+
+Acceso para:
+- admin
+- operaciones
+- rrhh
+
+---
+
+# 2. Vista principal (tabla)
+
+Columnas:
+- nombre completo
+- DPI (mostrar solo parcial, ej: ****0101)
+- teléfono principal
+- cliente asignado
+- puesto
+- supervisor
+- estado (activo, suspendido, baja)
+
+Filtros:
+- estado
+- cliente
+- supervisor
+- búsqueda por nombre/DPI/teléfono
+
+---
+
+# 3. Ficha del empleado (MUY IMPORTANTE)
+
+Vista detallada con pestañas:
+
+## A. Datos personales
+- nombre completo
+- DPI (seguro, no editable sin control)
+- teléfono principal
+- teléfono secundario
+- estado laboral
+
+## B. Asignación
+- cliente
+- puesto / ubicación
+- supervisor
+- tipo de servicio
+
+## C. Sistema
+- userId (si tiene cuenta)
+- rol
+- permisos
+- último acceso
+
+## D. Operación
+- tareas asignadas
+- tareas completadas
+- incidencias relacionadas
+- emergencias reportadas
+- anticipos solicitados
+
+## E. KPI individual
+Mostrar:
+- tareas asignadas
+- tareas completadas
+- incidencias relacionadas
+- emergencias reportadas
+- anticipos solicitados
+- última actividad
+
+Si no hay datos:
+mostrar “Sin actividad trazable en el período” en lugar de inventar métricas.
+
+---
+
+# 4. CRUD de empleados
+
+Permitir:
+- crear empleado manual
+- editar datos
+- actualizar teléfonos
+- activar/inactivar empleado
+
+Validaciones:
+- DPI único
+- teléfono en formato internacional
+- evitar duplicados
+
+---
+
+# 5. Relación con users
+
+- un empleado puede tener user o no
+- permitir vincular employeeId ↔ userId
+- no obligar la relación
+
+---
+
+# 6. Teléfonos y WhatsApp
+
+Integrar con lo ya construido:
+
+- teléfono principal
+- teléfono secundario
+- whatsappAuthorized
+- telefonoVerificadoAt
+
+Cuando un número se valide por DPI desde WhatsApp:
+- actualizar aquí automáticamente
+- registrar auditoría
+
+---
+
+# 7. Validación por DPI
+
+Asegurar que:
+
+- el campo DPI vive en employees
+- el flujo de autenticación fallback usa employees
+- no depender de users para validar identidad
+
+---
+
+# 8. Integración con módulos
+
+Relacionar employees con:
+
+## Tareas
+- assignedEmployeeId
+- closedByEmployeeId
+
+## Incidencias
+- reportedByEmployeeId
+- assignedEmployeeId
+
+## Emergencias
+- reportedByEmployeeId
+
+## Anticipos
+- employeeId
+
+## Portal cliente
+- mostrar empleados asignados
+
+---
+
+# 9. Estado del empleado
+
+Manejar estados:
+- activo
+- suspendido
+- baja
+
+Reglas:
+- si está inactivo, no puede usar funciones internas
+
+---
+
+# 10. Auditoría
+
+Registrar cambios en:
+- teléfono
+- DPI
+- estado
+- asignación
+- validaciones por WhatsApp
+
+---
+
+# 11. Preparación para RRHH
+
+Dejar listo para integración futura:
+
+Campos:
+- externalId
+- sourceSystem (manual, hr_sql_external)
+- syncStatus
+- lastSyncAt
+
+No romper los registros manuales existentes.
+
+---
+
+# 12. UI/UX
+
+- mantener diseño actual del admin
+- ficha clara y ordenada
+- navegación sencilla
+- evitar sobrecarga visual
+
+---
+
+# 13. No romper
+
+- anticipos
+- emergencias
+- tareas
+- incidencias
+- portal
+- Trello
+- WhatsApp
+- login
+- roles
+
+---
+
+# 14. Documentación
+
+Explicar:
+
+- estructura de employees
+- relación con users
+- relación con clientes
+- cómo se usa en validación DPI
+- cómo se conecta con módulos operativos
+- cómo se alimenta el KPI individual
+- cómo se actualizarán teléfonos desde WhatsApp
+
+---
+
+MUY IMPORTANTE:
+quiero que employees se convierta en la entidad central del sistema, sobre la cual se construye la operación, la autenticación y la reportería futura.

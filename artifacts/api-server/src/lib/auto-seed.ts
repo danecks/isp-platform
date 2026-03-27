@@ -956,5 +956,18 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: error en phone_auth_log o mensajes DPI");
   }
 
+  // ── EMPLOYEES: nuevos campos del módulo de gestión de colaboradores ─────────
+  try {
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS telefono_secundario VARCHAR(50)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS tipo_servicio VARCHAR(100)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS supervisor_id INTEGER`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS cliente_id INTEGER`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS wa_autorizado BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS telefono_verificado_at TIMESTAMPTZ`);
+    logger.info("Auto-migrate: columnas de gestión de colaboradores en 'employees' verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: error en columnas de employees (módulo colaboradores)");
+  }
+
   logger.info("Auto-seed completado");
 }

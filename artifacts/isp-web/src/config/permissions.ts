@@ -81,7 +81,7 @@ export const NAV_ITEMS: NavItem[] = [
     path: "/admin/empleados",
     label: "Colaboradores",
     icon: HardHat,
-    roles: ["admin", "rrhh", "supervisor"],
+    roles: ["admin", "operaciones", "rrhh", "supervisor"],
   },
   {
     path: "/admin/comercial",

@@ -1,13 +1,16 @@
 import { Router } from "express";
 import { db, employeesTable, usersTable, pool } from "@workspace/db";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, or, ilike, and, ne } from "drizzle-orm";
 
 const employeesRouter = Router();
 
-// GET /api/employees — list all employees
+// GET /api/employees — list all employees with optional filters
 employeesRouter.get("/employees", async (req, res) => {
   try {
-    const { syncStatus, estadoLaboral, area, sourceSystem } = req.query as Record<string, string>;
+    const {
+      syncStatus, estadoLaboral, area, sourceSystem,
+      clienteId, supervisorId, q,
+    } = req.query as Record<string, string>;
 
     const results = await db
       .select()
@@ -19,6 +22,18 @@ employeesRouter.get("/employees", async (req, res) => {
       if (estadoLaboral && e.estadoLaboral !== estadoLaboral) return false;
       if (area && e.area !== area) return false;
       if (sourceSystem && e.sourceSystem !== sourceSystem) return false;
+      if (clienteId && String(e.clienteId) !== clienteId) return false;
+      if (supervisorId && String(e.supervisorId) !== supervisorId) return false;
+      if (q) {
+        const lq = q.toLowerCase();
+        const matchNombre = e.nombreCompleto.toLowerCase().includes(lq);
+        const matchDpi = e.dpi?.toLowerCase().includes(lq) ?? false;
+        const matchTel = e.telefono?.toLowerCase().includes(lq) ?? false;
+        const matchTelSec = e.telefonoSecundario?.toLowerCase().includes(lq) ?? false;
+        const matchPuesto = e.puesto?.toLowerCase().includes(lq) ?? false;
+        const matchArea = e.area?.toLowerCase().includes(lq) ?? false;
+        if (!matchNombre && !matchDpi && !matchTel && !matchTelSec && !matchPuesto && !matchArea) return false;
+      }
       return true;
     });
 
@@ -62,7 +77,6 @@ employeesRouter.get("/employees/:id/kpi", async (req, res) => {
   if (isNaN(empId)) return res.status(400).json({ error: "ID inválido" });
 
   try {
-    // Obtener datos del empleado
     const [emp] = await db
       .select()
       .from(employeesTable)
@@ -71,7 +85,7 @@ employeesRouter.get("/employees/:id/kpi", async (req, res) => {
     if (!emp) return res.status(404).json({ error: "Empleado no encontrado" });
 
     const nombre = emp.nombreCompleto;
-    const periodo = 90; // días
+    const periodo = 90;
 
     // ── Tareas (via users.employee_id → tareas.asignado_id) ─────────────────
     const { rows: tareasRows } = await pool.query<{
@@ -166,7 +180,6 @@ employeesRouter.get("/employees/:id/kpi", async (req, res) => {
 
     const asignaciones = asignacionesRows[0] ?? { activas: 0, total: 0 };
 
-    // ── Última actividad global ───────────────────────────────────────────────
     const timestamps = [
       tareas.ultima_tarea,
       anticipos.ultima_solicitud,
@@ -178,7 +191,6 @@ employeesRouter.get("/employees/:id/kpi", async (req, res) => {
       ? new Date(Math.max(...timestamps.map((d) => new Date(d).getTime())))
       : null;
 
-    // ── tieneDatos ────────────────────────────────────────────────────────────
     const tieneDatos =
       Number(tareas.asignadas) > 0 ||
       Number(anticipos.solicitados) > 0 ||
@@ -270,6 +282,148 @@ employeesRouter.get("/employees/:id/asignaciones", async (req, res) => {
   }
 });
 
+// GET /api/employees/:id/user — usuario vinculado al empleado
+employeesRouter.get("/employees/:id/user", async (req, res) => {
+  const empId = parseInt(req.params.id);
+  if (isNaN(empId)) return res.status(400).json({ error: "ID inválido" });
+
+  try {
+    const { rows } = await pool.query<{
+      id: number;
+      nombre: string;
+      username: string;
+      correo: string | null;
+      rol: string;
+      estado: string;
+      telefono: string | null;
+      last_login: Date | null;
+      created_at: Date;
+    }>(`
+      SELECT
+        u.id,
+        u.nombre,
+        u.username,
+        u.correo,
+        u.rol,
+        u.estado,
+        u.telefono,
+        u.created_at
+      FROM users u
+      WHERE u.employee_id = $1
+      LIMIT 1
+    `, [empId]);
+
+    if (!rows.length) {
+      return res.json(null);
+    }
+    res.json(rows[0]);
+  } catch (err) {
+    console.error("[Employee/user] Error:", err);
+    res.status(500).json({ error: "Error al obtener usuario vinculado" });
+  }
+});
+
+// GET /api/employees/:id/operacion — actividad operativa reciente del empleado
+employeesRouter.get("/employees/:id/operacion", async (req, res) => {
+  const empId = parseInt(req.params.id);
+  if (isNaN(empId)) return res.status(400).json({ error: "ID inválido" });
+
+  try {
+    const [emp] = await db
+      .select({ nombreCompleto: employeesTable.nombreCompleto })
+      .from(employeesTable)
+      .where(eq(employeesTable.id, empId))
+      .limit(1);
+    if (!emp) return res.status(404).json({ error: "Empleado no encontrado" });
+
+    const nombre = emp.nombreCompleto;
+
+    // Tareas asignadas (via users.employee_id)
+    const { rows: tareas } = await pool.query<{
+      id: string;
+      titulo: string;
+      estado: string;
+      prioridad: string;
+      fecha_vencimiento: Date | null;
+      created_at: Date;
+    }>(`
+      SELECT
+        t.id, t.titulo, t.estado, t.prioridad, t.fecha_vencimiento, t.created_at
+      FROM tareas t
+      JOIN users u ON t.asignado_id = u.id
+      WHERE u.employee_id = $1
+      ORDER BY t.created_at DESC
+      LIMIT 10
+    `, [empId]);
+
+    // Incidencias relacionadas por nombre
+    const { rows: incidencias } = await pool.query<{
+      id: string;
+      tipo: string;
+      cliente: string;
+      estado: string;
+      prioridad: string;
+      es_emergencia: boolean;
+      created_at: Date;
+    }>(`
+      SELECT
+        id, tipo, cliente, estado, prioridad, es_emergencia, created_at
+      FROM incidents
+      WHERE LOWER(responsable) LIKE LOWER($1)
+      ORDER BY created_at DESC
+      LIMIT 10
+    `, [`%${nombre}%`]);
+
+    // Anticipos del empleado
+    const { rows: anticipos } = await pool.query<{
+      id: number;
+      cantidad: number;
+      estado: string;
+      periodo: string | null;
+      fecha_solicitud: Date;
+      origen: string;
+    }>(`
+      SELECT id, cantidad, estado, periodo, fecha_solicitud, origen
+      FROM anticipos
+      WHERE employee_id = $1
+      ORDER BY fecha_solicitud DESC
+      LIMIT 10
+    `, [empId]);
+
+    res.json({ tareas, incidencias, anticipos });
+  } catch (err) {
+    console.error("[Employee/operacion] Error:", err);
+    res.status(500).json({ error: "Error al obtener actividad operativa" });
+  }
+});
+
+// PATCH /api/employees/:id/estado — cambio rápido de estado laboral
+employeesRouter.patch("/employees/:id/estado", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+
+  const { estadoLaboral } = req.body ?? {};
+  const ESTADOS_VALIDOS = ["activo", "suspendido", "baja", "licencia"];
+  if (!estadoLaboral || !ESTADOS_VALIDOS.includes(estadoLaboral)) {
+    return res.status(400).json({
+      error: `Estado inválido. Valores permitidos: ${ESTADOS_VALIDOS.join(", ")}`,
+    });
+  }
+
+  try {
+    const [emp] = await db
+      .update(employeesTable)
+      .set({ estadoLaboral, updatedAt: new Date() })
+      .where(eq(employeesTable.id, id))
+      .returning();
+
+    if (!emp) return res.status(404).json({ error: "Empleado no encontrado" });
+    res.json(emp);
+  } catch (err) {
+    res.status(500).json({ error: "Error al actualizar estado" });
+  }
+});
+
 // GET /api/employees/:id — single employee
 employeesRouter.get("/employees/:id", async (req, res) => {
   const id = parseInt(req.params.id);
@@ -290,13 +444,26 @@ employeesRouter.get("/employees/:id", async (req, res) => {
 // POST /api/employees — create employee (manual entry)
 employeesRouter.post("/employees", async (req, res) => {
   const {
-    nombreCompleto, dpi, telefono, correo, puesto, area,
-    estadoLaboral, sede, supervisorNombre, fechaIngreso, notas,
+    nombreCompleto, dpi, telefono, telefonoSecundario, correo,
+    puesto, tipoServicio, area, estadoLaboral, sede,
+    supervisorNombre, supervisorId, clienteId, fechaIngreso, notas,
     externalId, sourceSystem, syncStatus,
   } = req.body ?? {};
 
   if (!nombreCompleto) {
     return res.status(400).json({ error: "nombreCompleto es requerido" });
+  }
+
+  // Validar unicidad de DPI
+  if (dpi) {
+    const [existing] = await db
+      .select({ id: employeesTable.id })
+      .from(employeesTable)
+      .where(eq(employeesTable.dpi, dpi))
+      .limit(1);
+    if (existing) {
+      return res.status(409).json({ error: "Ya existe un empleado con ese DPI" });
+    }
   }
 
   try {
@@ -306,12 +473,16 @@ employeesRouter.post("/employees", async (req, res) => {
         nombreCompleto,
         dpi: dpi || null,
         telefono: telefono || null,
+        telefonoSecundario: telefonoSecundario || null,
         correo: correo || null,
         puesto: puesto || null,
+        tipoServicio: tipoServicio || null,
         area: area || null,
         estadoLaboral: estadoLaboral || "activo",
         sede: sede || null,
         supervisorNombre: supervisorNombre || null,
+        supervisorId: supervisorId ? parseInt(supervisorId) : null,
+        clienteId: clienteId ? parseInt(clienteId) : null,
         fechaIngreso: fechaIngreso ? new Date(fechaIngreso) : null,
         notas: notas || null,
         externalId: externalId || null,
@@ -332,22 +503,39 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
   if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
 
   const {
-    nombreCompleto, dpi, telefono, correo, puesto, area,
-    estadoLaboral, sede, supervisorNombre, fechaIngreso, notas,
+    nombreCompleto, dpi, telefono, telefonoSecundario, correo,
+    puesto, tipoServicio, area, estadoLaboral, sede,
+    supervisorNombre, supervisorId, clienteId, fechaIngreso, notas,
     externalId, sourceSystem, syncStatus, lastSyncAt,
   } = req.body ?? {};
+
+  // Validar unicidad de DPI (excluir el propio empleado)
+  if (dpi) {
+    const [existing] = await db
+      .select({ id: employeesTable.id })
+      .from(employeesTable)
+      .where(and(eq(employeesTable.dpi, dpi), ne(employeesTable.id, id)))
+      .limit(1);
+    if (existing) {
+      return res.status(409).json({ error: "Ya existe otro empleado con ese DPI" });
+    }
+  }
 
   const updates: Record<string, unknown> = { updatedAt: new Date() };
 
   if (nombreCompleto !== undefined) updates.nombreCompleto = nombreCompleto;
   if (dpi !== undefined) updates.dpi = dpi || null;
   if (telefono !== undefined) updates.telefono = telefono || null;
+  if (telefonoSecundario !== undefined) updates.telefonoSecundario = telefonoSecundario || null;
   if (correo !== undefined) updates.correo = correo || null;
   if (puesto !== undefined) updates.puesto = puesto || null;
+  if (tipoServicio !== undefined) updates.tipoServicio = tipoServicio || null;
   if (area !== undefined) updates.area = area || null;
   if (estadoLaboral !== undefined) updates.estadoLaboral = estadoLaboral;
   if (sede !== undefined) updates.sede = sede || null;
   if (supervisorNombre !== undefined) updates.supervisorNombre = supervisorNombre || null;
+  if (supervisorId !== undefined) updates.supervisorId = supervisorId ? parseInt(supervisorId) : null;
+  if (clienteId !== undefined) updates.clienteId = clienteId ? parseInt(clienteId) : null;
   if (fechaIngreso !== undefined) updates.fechaIngreso = fechaIngreso ? new Date(fechaIngreso) : null;
   if (notas !== undefined) updates.notas = notas || null;
   if (externalId !== undefined) updates.externalId = externalId || null;

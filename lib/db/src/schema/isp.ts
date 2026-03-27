@@ -83,12 +83,19 @@ export const employeesTable = pgTable("employees", {
   nombreCompleto: varchar("nombre_completo", { length: 255 }).notNull(),
   dpi: varchar("dpi", { length: 20 }),
   telefono: varchar("telefono", { length: 50 }),
+  telefonoSecundario: varchar("telefono_secundario", { length: 50 }),
   correo: varchar("correo", { length: 255 }),
   puesto: varchar("puesto", { length: 255 }),
+  tipoServicio: varchar("tipo_servicio", { length: 100 }),
   area: varchar("area", { length: 100 }),
   estadoLaboral: varchar("estado_laboral", { length: 50 }).notNull().default("activo"),
+  // 'activo' | 'suspendido' | 'baja' | 'licencia'
   sede: varchar("sede", { length: 100 }),
   supervisorNombre: varchar("supervisor_nombre", { length: 255 }),
+  supervisorId: integer("supervisor_id"),   // → employees.id (self-ref, nullable)
+  clienteId: integer("cliente_id"),         // → clients.id (nullable)
+  waAutorizado: boolean("wa_autorizado").notNull().default(false),
+  telefonoVerificadoAt: timestamp("telefono_verificado_at", { withTimezone: true }),
   fechaIngreso: timestamp("fecha_ingreso", { withTimezone: true }),
   notas: text("notas"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -1,14 +1,17 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "../layout/AdminLayout";
 import {
-  Users, Search, Filter, X, Loader2, RefreshCw,
+  Users, Search, X, Loader2, RefreshCw,
   Building2, MapPin, Phone, Mail, Calendar, Hash,
   Shield, Briefcase, BarChart2, CheckSquare, Wallet,
   AlertTriangle, Zap, Activity, Clock, TrendingUp,
-  ChevronRight, UserCheck, ExternalLink, BadgeCheck,
+  UserCheck, BadgeCheck, Plus, Pencil, LayoutList,
+  LayoutGrid, ChevronDown, UserX, UserCheck2, MessageSquare,
+  Link2, Unlink, Lock,
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const API_BASE = "/api";
 
@@ -19,17 +22,25 @@ interface Empleado {
   nombreCompleto: string;
   dpi: string | null;
   telefono: string | null;
+  telefonoSecundario: string | null;
   correo: string | null;
   puesto: string | null;
+  tipoServicio: string | null;
   area: string | null;
   estadoLaboral: string;
   sede: string | null;
   supervisorNombre: string | null;
+  supervisorId: number | null;
+  clienteId: number | null;
+  waAutorizado: boolean;
+  telefonoVerificadoAt: string | null;
   fechaIngreso: string | null;
   notas: string | null;
   sourceSystem: string;
   syncStatus: string;
+  externalId: string | null;
   updatedAt: string | null;
+  createdAt: string | null;
 }
 
 interface KpiData {
@@ -60,22 +71,57 @@ interface Asignacion {
   created_at: string;
 }
 
+interface UserVinculado {
+  id: number;
+  nombre: string;
+  username: string;
+  correo: string | null;
+  rol: string;
+  estado: string;
+  telefono: string | null;
+  created_at: string;
+}
+
+interface OperacionData {
+  tareas: {
+    id: string; titulo: string; estado: string; prioridad: string;
+    fecha_vencimiento: string | null; created_at: string;
+  }[];
+  incidencias: {
+    id: string; tipo: string; cliente: string; estado: string;
+    prioridad: string; es_emergencia: boolean; created_at: string;
+  }[];
+  anticipos: {
+    id: number; cantidad: number; estado: string;
+    periodo: string | null; fecha_solicitud: string; origen: string;
+  }[];
+}
+
+interface FormState {
+  nombreCompleto: string;
+  dpi: string;
+  telefono: string;
+  telefonoSecundario: string;
+  correo: string;
+  puesto: string;
+  tipoServicio: string;
+  area: string;
+  estadoLaboral: string;
+  sede: string;
+  supervisorNombre: string;
+  fechaIngreso: string;
+  notas: string;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function iniciales(nombre: string) {
-  return nombre
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((n) => n[0]?.toUpperCase() ?? "")
-    .join("");
+  return nombre.split(" ").filter(Boolean).slice(0, 2).map((n) => n[0]?.toUpperCase() ?? "").join("");
 }
 
 function fmtFecha(iso: string | null) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("es-GT", {
-    day: "2-digit", month: "short", year: "numeric",
-  });
+  return new Date(iso).toLocaleDateString("es-GT", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function fmtRelativa(iso: string | null) {
@@ -93,11 +139,20 @@ function fmtQ(n: number) {
   return `Q${n.toLocaleString("es-GT")}`;
 }
 
-const ESTADO_LAB: Record<string, { label: string; color: string }> = {
-  activo:      { label: "Activo",      color: "text-green-400 bg-green-400/10 border-green-400/20" },
-  inactivo:    { label: "Inactivo",    color: "text-gray-400 bg-gray-400/10 border-gray-400/20" },
-  licencia:    { label: "Licencia",    color: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20" },
-  suspendido:  { label: "Suspendido",  color: "text-red-400 bg-red-400/10 border-red-400/20" },
+function maskDpi(dpi: string | null): string {
+  if (!dpi) return "—";
+  if (dpi.length <= 4) return "****";
+  return `****${dpi.slice(-4)}`;
+}
+
+// ─── Constantes ───────────────────────────────────────────────────────────────
+
+const ESTADO_LAB: Record<string, { label: string; color: string; dot: string }> = {
+  activo:     { label: "Activo",     color: "text-green-400 bg-green-400/10 border-green-400/20",   dot: "bg-green-400" },
+  suspendido: { label: "Suspendido", color: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20", dot: "bg-yellow-400" },
+  baja:       { label: "Baja",       color: "text-red-400 bg-red-400/10 border-red-400/20",         dot: "bg-red-400" },
+  licencia:   { label: "Licencia",   color: "text-blue-400 bg-blue-400/10 border-blue-400/20",      dot: "bg-blue-400" },
+  inactivo:   { label: "Inactivo",   color: "text-gray-400 bg-gray-400/10 border-gray-400/20",      dot: "bg-gray-400" },
 };
 
 const AVATAR_COLORS = [
@@ -108,6 +163,24 @@ const AVATAR_COLORS = [
 function avatarColor(nombre: string) {
   const sum = nombre.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
   return AVATAR_COLORS[sum % AVATAR_COLORS.length];
+}
+
+const FORM_EMPTY: FormState = {
+  nombreCompleto: "", dpi: "", telefono: "", telefonoSecundario: "",
+  correo: "", puesto: "", tipoServicio: "", area: "", estadoLaboral: "activo",
+  sede: "", supervisorNombre: "", fechaIngreso: "", notas: "",
+};
+
+// ─── Badges ───────────────────────────────────────────────────────────────────
+
+function EstadoBadge({ estado }: { estado: string }) {
+  const cfg = ESTADO_LAB[estado] ?? { label: estado, color: "text-white/40 bg-white/5 border-white/10", dot: "bg-white/40" };
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-semibold ${cfg.color}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+      {cfg.label}
+    </span>
+  );
 }
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
@@ -133,8 +206,6 @@ function KpiCard({
   );
 }
 
-// ─── KPI Progress Bar ─────────────────────────────────────────────────────────
-
 function ProgressBar({ label, value, total, color = "bg-blue-500" }: {
   label: string; value: number; total: number; color?: string;
 }) {
@@ -152,7 +223,7 @@ function ProgressBar({ label, value, total, color = "bg-blue-500" }: {
   );
 }
 
-// ─── Pestaña KPI ──────────────────────────────────────────────────────────────
+// ─── Tab: KPI ─────────────────────────────────────────────────────────────────
 
 function TabKPI({ empId }: { empId: number }) {
   const { data: kpi, isLoading, isError } = useQuery<KpiData>({
@@ -170,11 +241,7 @@ function TabKPI({ empId }: { empId: number }) {
     );
   }
   if (isError || !kpi) {
-    return (
-      <div className="text-center py-16 text-white/30 text-sm">
-        No se pudo cargar el KPI. Intente nuevamente.
-      </div>
-    );
+    return <div className="text-center py-16 text-white/30 text-sm">No se pudo cargar el KPI.</div>;
   }
 
   if (!kpi.tieneDatos) {
@@ -186,10 +253,9 @@ function TabKPI({ empId }: { empId: number }) {
           <p className="text-white/25 text-xs mt-1">{kpi.periodo}</p>
           <p className="text-white/20 text-xs mt-3">
             Los KPI se alimentan automáticamente desde Tareas, Anticipos e Incidencias
-            una vez que el colaborador registre actividad en el sistema.
+            una vez que el colaborador registre actividad.
           </p>
         </div>
-        {/* Mostrar métricas en 0 igualmente */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           <KpiCard icon={CheckSquare} label="Tareas asignadas" value={0} color="text-white/40" />
           <KpiCard icon={TrendingUp} label="Completadas" value={0} color="text-white/40" />
@@ -208,7 +274,6 @@ function TabKPI({ empId }: { empId: number }) {
 
   return (
     <div className="space-y-5">
-      {/* Período */}
       <div className="flex items-center gap-2 text-xs text-white/35">
         <Clock className="w-3.5 h-3.5" />
         <span>Métricas de los {kpi.periodo}</span>
@@ -216,108 +281,51 @@ function TabKPI({ empId }: { empId: number }) {
           <span className="text-white/25">· última actividad {fmtRelativa(kpi.ultimaActividad)}</span>
         )}
       </div>
-
-      {/* Tarjetas principales */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <KpiCard
-          icon={CheckSquare}
-          label="Tareas asignadas"
-          value={kpi.tareas.asignadas}
+        <KpiCard icon={CheckSquare} label="Tareas asignadas" value={kpi.tareas.asignadas}
           sub={kpi.tareas.ultimaTarea ? `última: ${fmtRelativa(kpi.tareas.ultimaTarea)}` : null}
-          color="text-blue-400"
-        />
-        <KpiCard
-          icon={TrendingUp}
-          label="Completadas"
-          value={kpi.tareas.completadas}
+          color="text-blue-400" />
+        <KpiCard icon={TrendingUp} label="Completadas" value={kpi.tareas.completadas}
           sub={`${tasaCompletadas}% de tasa`}
-          color={tasaCompletadas >= 70 ? "text-green-400" : tasaCompletadas >= 40 ? "text-yellow-400" : "text-red-400"}
-        />
-        <KpiCard
-          icon={Wallet}
-          label="Anticipos solicitados"
-          value={kpi.anticipos.solicitados}
+          color={tasaCompletadas >= 70 ? "text-green-400" : tasaCompletadas >= 40 ? "text-yellow-400" : "text-red-400"} />
+        <KpiCard icon={Wallet} label="Anticipos solicitados" value={kpi.anticipos.solicitados}
           sub={kpi.anticipos.montoTotal > 0 ? `Total: ${fmtQ(kpi.anticipos.montoTotal)}` : null}
-          color="text-yellow-400"
-        />
-        <KpiCard
-          icon={AlertTriangle}
-          label="Incidencias relacionadas"
-          value={kpi.incidencias.relacionadas}
+          color="text-yellow-400" />
+        <KpiCard icon={AlertTriangle} label="Incidencias relacionadas" value={kpi.incidencias.relacionadas}
           sub={kpi.incidencias.ultimaIncidencia ? fmtRelativa(kpi.incidencias.ultimaIncidencia) : null}
-          color={kpi.incidencias.relacionadas > 5 ? "text-red-400" : "text-orange-400"}
-        />
-        <KpiCard
-          icon={Zap}
-          label="Emergencias reportadas"
-          value={kpi.emergencias.reportadas}
+          color={kpi.incidencias.relacionadas > 5 ? "text-red-400" : "text-orange-400"} />
+        <KpiCard icon={Zap} label="Emergencias reportadas" value={kpi.emergencias.reportadas}
           sub={kpi.emergencias.ultimaEmergencia ? fmtRelativa(kpi.emergencias.ultimaEmergencia) : null}
-          color={kpi.emergencias.reportadas > 0 ? "text-rose-400" : "text-white/40"}
-        />
-        <KpiCard
-          icon={Shield}
-          label="Asignaciones activas"
-          value={kpi.asignaciones.activas}
-          sub={`de ${kpi.asignaciones.total} total`}
-          color="text-teal-400"
-        />
+          color={kpi.emergencias.reportadas > 0 ? "text-rose-400" : "text-white/40"} />
+        <KpiCard icon={Shield} label="Asignaciones activas" value={kpi.asignaciones.activas}
+          sub={`de ${kpi.asignaciones.total} total`} color="text-teal-400" />
       </div>
-
-      {/* Desglose tareas */}
       {kpi.tareas.asignadas > 0 && (
         <div className="bg-[#0c1929] border border-white/8 rounded-xl p-4 space-y-3">
           <p className="text-xs text-white/40 font-semibold uppercase tracking-widest">Desglose de tareas</p>
-          <ProgressBar
-            label="Completadas"
-            value={kpi.tareas.completadas}
-            total={kpi.tareas.asignadas}
-            color="bg-green-500"
-          />
-          <ProgressBar
-            label="En proceso"
-            value={kpi.tareas.enProceso}
-            total={kpi.tareas.asignadas}
-            color="bg-blue-500"
-          />
-          <ProgressBar
-            label="Pendientes"
-            value={kpi.tareas.pendientes}
-            total={kpi.tareas.asignadas}
-            color="bg-yellow-500"
-          />
+          <ProgressBar label="Completadas" value={kpi.tareas.completadas} total={kpi.tareas.asignadas} color="bg-green-500" />
+          <ProgressBar label="En proceso" value={kpi.tareas.enProceso} total={kpi.tareas.asignadas} color="bg-blue-500" />
+          <ProgressBar label="Pendientes" value={kpi.tareas.pendientes} total={kpi.tareas.asignadas} color="bg-yellow-500" />
         </div>
       )}
-
-      {/* Anticipos desglose */}
       {kpi.anticipos.solicitados > 0 && (
         <div className="bg-[#0c1929] border border-white/8 rounded-xl p-4">
           <p className="text-xs text-white/40 font-semibold uppercase tracking-widest mb-3">Anticipos en el período</p>
           <div className="grid grid-cols-3 gap-4 text-center">
-            <div>
-              <p className="text-lg font-bold text-yellow-400">{kpi.anticipos.solicitados}</p>
-              <p className="text-[10px] text-white/35">Solicitados</p>
-            </div>
-            <div>
-              <p className="text-lg font-bold text-green-400">{kpi.anticipos.aprobados}</p>
-              <p className="text-[10px] text-white/35">Aprobados</p>
-            </div>
-            <div>
-              <p className="text-lg font-bold text-white/60">{kpi.anticipos.pendientes}</p>
-              <p className="text-[10px] text-white/35">Pendientes</p>
-            </div>
+            <div><p className="text-lg font-bold text-yellow-400">{kpi.anticipos.solicitados}</p><p className="text-[10px] text-white/35">Solicitados</p></div>
+            <div><p className="text-lg font-bold text-green-400">{kpi.anticipos.aprobados}</p><p className="text-[10px] text-white/35">Aprobados</p></div>
+            <div><p className="text-lg font-bold text-white/60">{kpi.anticipos.pendientes}</p><p className="text-[10px] text-white/35">Pendientes</p></div>
           </div>
         </div>
       )}
-
-      {/* Nota de alimentación */}
       <p className="text-[11px] text-white/20 border-t border-white/5 pt-3">
-        KPI individual alimentado desde: Tareas (vía asignación de usuario) · Anticipos (FK directa) · Incidencias (por nombre de responsable) · Emergencias (incidencias críticas) · Asignaciones operativas
+        KPI alimentado desde: Tareas (vía usuario) · Anticipos (FK directa) · Incidencias (por nombre de responsable)
       </p>
     </div>
   );
 }
 
-// ─── Pestaña Asignaciones ─────────────────────────────────────────────────────
+// ─── Tab: Asignaciones ────────────────────────────────────────────────────────
 
 function TabAsignaciones({ empId }: { empId: number }) {
   const { data: asignaciones = [], isLoading } = useQuery<Asignacion[]>({
@@ -327,13 +335,8 @@ function TabAsignaciones({ empId }: { empId: number }) {
   });
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-10">
-        <Loader2 className="w-5 h-5 animate-spin text-primary" />
-      </div>
-    );
+    return <div className="flex items-center justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>;
   }
-
   if (!asignaciones.length) {
     return (
       <div className="text-center py-14">
@@ -346,97 +349,60 @@ function TabAsignaciones({ empId }: { empId: number }) {
   return (
     <div className="space-y-3">
       {asignaciones.map((a) => (
-        <div
-          key={a.id}
-          className={`border rounded-xl p-4 ${
-            a.estado === "activo"
-              ? "bg-teal-500/5 border-teal-500/20"
-              : "bg-[#0c1929] border-white/8"
-          }`}
-        >
+        <div key={a.id} className={`border rounded-xl p-4 ${a.estado === "activo" ? "bg-teal-500/5 border-teal-500/20" : "bg-[#0c1929] border-white/8"}`}>
           <div className="flex items-start justify-between gap-2 mb-2">
             <div>
               <p className="text-sm font-semibold text-white">{a.puesto ?? "Agente de Seguridad"}</p>
               <p className="text-xs text-white/40">{a.servicio ?? "Seguridad General"}</p>
             </div>
-            <span
-              className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${
-                a.estado === "activo"
-                  ? "text-teal-400 bg-teal-400/10 border-teal-400/20"
-                  : "text-gray-400 bg-gray-400/10 border-gray-400/20"
-              }`}
-            >
+            <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${a.estado === "activo" ? "text-teal-400 bg-teal-400/10 border-teal-400/20" : "text-gray-400 bg-gray-400/10 border-gray-400/20"}`}>
               {a.estado}
             </span>
           </div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-white/40">
-            {a.ubicacion && (
-              <div className="flex items-center gap-1">
-                <MapPin className="w-3 h-3" />
-                <span>{a.ubicacion}</span>
-              </div>
-            )}
-            {a.cliente_id && (
-              <div className="flex items-center gap-1">
-                <Building2 className="w-3 h-3" />
-                <span>Cliente: {a.cliente_id}</span>
-              </div>
-            )}
-            {a.supervisor_nombre && (
-              <div className="flex items-center gap-1">
-                <UserCheck className="w-3 h-3" />
-                <span>Sup: {a.supervisor_nombre}</span>
-              </div>
-            )}
-            {a.fecha_inicio && (
-              <div className="flex items-center gap-1">
-                <Calendar className="w-3 h-3" />
-                <span>Desde: {fmtFecha(a.fecha_inicio)}</span>
-              </div>
-            )}
-            {a.codigo_asignacion && (
-              <div className="flex items-center gap-1">
-                <Hash className="w-3 h-3" />
-                <span>{a.codigo_asignacion}</span>
-              </div>
-            )}
+            {a.ubicacion && <div className="flex items-center gap-1"><MapPin className="w-3 h-3" /><span>{a.ubicacion}</span></div>}
+            {a.cliente_id && <div className="flex items-center gap-1"><Building2 className="w-3 h-3" /><span>Cliente: {a.cliente_id}</span></div>}
+            {a.supervisor_nombre && <div className="flex items-center gap-1"><UserCheck className="w-3 h-3" /><span>Sup: {a.supervisor_nombre}</span></div>}
+            {a.fecha_inicio && <div className="flex items-center gap-1"><Calendar className="w-3 h-3" /><span>Desde: {fmtFecha(a.fecha_inicio)}</span></div>}
           </div>
-          {a.notas && (
-            <p className="text-xs text-white/30 mt-2 border-t border-white/5 pt-2">{a.notas}</p>
-          )}
+          {a.notas && <p className="text-xs text-white/30 mt-2 border-t border-white/5 pt-2">{a.notas}</p>}
         </div>
       ))}
     </div>
   );
 }
 
-// ─── Pestaña Perfil ───────────────────────────────────────────────────────────
+// ─── Tab: Perfil ──────────────────────────────────────────────────────────────
 
 function TabPerfil({ emp }: { emp: Empleado }) {
   const rows = [
-    { icon: Hash, label: "DPI", value: emp.dpi },
-    { icon: Phone, label: "Teléfono", value: emp.telefono },
+    { icon: Hash, label: "DPI", value: emp.dpi ? maskDpi(emp.dpi) : null },
+    { icon: Phone, label: "Teléfono principal", value: emp.telefono },
+    { icon: Phone, label: "Teléfono secundario", value: emp.telefonoSecundario },
+    { icon: MessageSquare, label: "WhatsApp autorizado", value: emp.waAutorizado ? "Sí" : null },
+    { icon: Clock, label: "Verificado WA", value: emp.telefonoVerificadoAt ? fmtFecha(emp.telefonoVerificadoAt) : null },
     { icon: Mail, label: "Correo", value: emp.correo },
     { icon: Briefcase, label: "Puesto", value: emp.puesto },
+    { icon: Shield, label: "Tipo de servicio", value: emp.tipoServicio },
     { icon: Building2, label: "Área", value: emp.area },
     { icon: MapPin, label: "Sede", value: emp.sede },
     { icon: UserCheck, label: "Supervisor", value: emp.supervisorNombre },
     { icon: Calendar, label: "Fecha de ingreso", value: fmtFecha(emp.fechaIngreso) },
-    { icon: Activity, label: "Fuente", value: emp.sourceSystem },
-    { icon: BadgeCheck, label: "Estado sync", value: emp.syncStatus },
+    { icon: BadgeCheck, label: "Fuente", value: emp.sourceSystem },
+    { icon: Activity, label: "Estado sync", value: emp.syncStatus },
   ];
 
   return (
     <div className="space-y-1">
-      {rows.map(({ icon: Icon, label, value }) => (
+      {rows.map(({ icon: Icon, label, value }) =>
         value && value !== "—" ? (
           <div key={label} className="flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0">
             <Icon className="w-3.5 h-3.5 text-white/25 shrink-0" />
-            <span className="text-xs text-white/40 w-28 shrink-0">{label}</span>
+            <span className="text-xs text-white/40 w-36 shrink-0">{label}</span>
             <span className="text-sm text-white/80 flex-1 text-right">{value}</span>
           </div>
         ) : null
-      ))}
+      )}
       {emp.notas && (
         <div className="bg-[#0c1929] border border-white/8 rounded-lg p-3 mt-3">
           <p className="text-[10px] text-white/30 uppercase tracking-widest mb-1">Notas</p>
@@ -447,21 +413,264 @@ function TabPerfil({ emp }: { emp: Empleado }) {
   );
 }
 
-// ─── Modal de Ficha ───────────────────────────────────────────────────────────
+// ─── Tab: Sistema ─────────────────────────────────────────────────────────────
 
-function FichaModal({ emp, onClose }: { emp: Empleado; onClose: () => void }) {
-  const [tab, setTab] = useState<"perfil" | "asignaciones" | "kpi">("perfil");
-  const est = ESTADO_LAB[emp.estadoLaboral] ?? { label: emp.estadoLaboral, color: "text-white/40 bg-white/5 border-white/10" };
+function TabSistema({ emp }: { emp: Empleado }) {
+  const { data: user, isLoading } = useQuery<UserVinculado | null>({
+    queryKey: ["employee-user", emp.id],
+    queryFn: () => fetch(`${API_BASE}/employees/${emp.id}/user`).then((r) => r.json()),
+    staleTime: 60_000,
+  });
+
+  const ROL_LABELS: Record<string, string> = {
+    admin: "Administrador", operaciones: "Operaciones", rrhh: "RRHH",
+    comercial: "Comercial", supervisor: "Supervisor", guardia: "Guardia", cliente: "Cliente",
+  };
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* IDs de sistema */}
+      <div className="bg-[#0c1929] border border-white/8 rounded-xl p-4 space-y-2">
+        <p className="text-[10px] text-white/30 uppercase tracking-widest mb-3">Identifiers</p>
+        <div className="flex justify-between items-center">
+          <span className="text-xs text-white/40">Employee ID</span>
+          <code className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded">EMP-{emp.id}</code>
+        </div>
+        {emp.externalId && (
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-white/40">External ID</span>
+            <code className="text-xs text-white/60 bg-white/5 px-2 py-0.5 rounded">{emp.externalId}</code>
+          </div>
+        )}
+        <div className="flex justify-between items-center">
+          <span className="text-xs text-white/40">Fuente</span>
+          <span className="text-xs text-white/60">{emp.sourceSystem}</span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="text-xs text-white/40">Sync status</span>
+          <span className="text-xs text-white/60">{emp.syncStatus}</span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="text-xs text-white/40">Actualizado</span>
+          <span className="text-xs text-white/60">{fmtFecha(emp.updatedAt)}</span>
+        </div>
+      </div>
+
+      {/* Usuario vinculado */}
+      {user ? (
+        <div className="bg-[#0c1929] border border-green-500/15 rounded-xl p-4 space-y-2">
+          <div className="flex items-center gap-2 mb-3">
+            <Link2 className="w-4 h-4 text-green-400" />
+            <p className="text-xs text-green-400 font-semibold uppercase tracking-widest">Usuario vinculado</p>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-white/40">Nombre</span>
+            <span className="text-sm text-white/80">{user.nombre}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-white/40">Username</span>
+            <code className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded">@{user.username}</code>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-white/40">Rol</span>
+            <span className="text-xs text-white/70">{ROL_LABELS[user.rol] ?? user.rol}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-white/40">Estado cuenta</span>
+            <span className={`text-xs font-semibold ${user.estado === "activo" ? "text-green-400" : "text-red-400"}`}>
+              {user.estado}
+            </span>
+          </div>
+          {user.correo && (
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-white/40">Correo</span>
+              <span className="text-xs text-white/60">{user.correo}</span>
+            </div>
+          )}
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-white/40">Cuenta creada</span>
+            <span className="text-xs text-white/40">{fmtFecha(user.created_at)}</span>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-[#0c1929] border border-white/8 rounded-xl p-5 text-center">
+          <Unlink className="w-8 h-8 text-white/10 mx-auto mb-3" />
+          <p className="text-white/40 text-sm font-medium">Sin cuenta de sistema</p>
+          <p className="text-white/20 text-xs mt-1">
+            Este colaborador no tiene usuario vinculado. Para crear uno, ve a la sección Usuarios y asigna el Employee ID.
+          </p>
+        </div>
+      )}
+
+      {/* Permisos WA */}
+      <div className="bg-[#0c1929] border border-white/8 rounded-xl p-4 space-y-2">
+        <p className="text-[10px] text-white/30 uppercase tracking-widest mb-3">WhatsApp</p>
+        <div className="flex justify-between items-center">
+          <span className="text-xs text-white/40">Número autorizado</span>
+          <span className={`text-xs font-semibold ${emp.waAutorizado ? "text-green-400" : "text-white/30"}`}>
+            {emp.waAutorizado ? "Sí" : "No"}
+          </span>
+        </div>
+        {emp.telefonoVerificadoAt && (
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-white/40">Verificado</span>
+            <span className="text-xs text-white/60">{fmtFecha(emp.telefonoVerificadoAt)}</span>
+          </div>
+        )}
+        {emp.telefonoSecundario && (
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-white/40">Tel. secundario</span>
+            <span className="text-xs text-white/60">{emp.telefonoSecundario}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Tab: Operación ───────────────────────────────────────────────────────────
+
+function TabOperacion({ empId }: { empId: number }) {
+  const { data, isLoading } = useQuery<OperacionData>({
+    queryKey: ["employee-operacion", empId],
+    queryFn: () => fetch(`${API_BASE}/employees/${empId}/operacion`).then((r) => r.json()),
+    staleTime: 60_000,
+  });
+
+  const ESTADO_TAREA: Record<string, string> = {
+    pendiente: "text-yellow-400", en_proceso: "text-blue-400",
+    completada: "text-green-400", cancelada: "text-gray-400",
+  };
+  const ESTADO_INC: Record<string, string> = {
+    abierta: "text-yellow-400", en_proceso: "text-blue-400",
+    cerrada: "text-green-400", resuelta: "text-green-400",
+  };
+  const ESTADO_ANT: Record<string, string> = {
+    pendiente: "text-yellow-400", aprobada: "text-green-400",
+    rechazada: "text-red-400", pagada: "text-teal-400",
+  };
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>;
+  }
+  if (!data) {
+    return <div className="text-center py-10 text-white/30 text-sm">Error al cargar actividad operativa.</div>;
+  }
+
+  const hayActividad = data.tareas.length > 0 || data.incidencias.length > 0 || data.anticipos.length > 0;
+
+  if (!hayActividad) {
+    return (
+      <div className="text-center py-14">
+        <Activity className="w-8 h-8 text-white/10 mx-auto mb-3" />
+        <p className="text-white/30 text-sm">Sin actividad operativa registrada</p>
+        <p className="text-white/15 text-xs mt-1">Las tareas, incidencias y anticipos aparecerán aquí.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Tareas */}
+      {data.tareas.length > 0 && (
+        <div>
+          <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+            <CheckSquare className="w-3 h-3" /> Tareas recientes ({data.tareas.length})
+          </p>
+          <div className="space-y-1.5">
+            {data.tareas.map((t) => (
+              <div key={t.id} className="bg-[#0c1929] border border-white/6 rounded-lg px-3 py-2 flex items-center justify-between gap-2">
+                <p className="text-xs text-white/70 truncate flex-1">{t.titulo}</p>
+                <span className={`text-[10px] font-semibold shrink-0 ${ESTADO_TAREA[t.estado] ?? "text-white/30"}`}>
+                  {t.estado.replace("_", " ")}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Incidencias */}
+      {data.incidencias.length > 0 && (
+        <div>
+          <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+            <AlertTriangle className="w-3 h-3" /> Incidencias relacionadas ({data.incidencias.length})
+          </p>
+          <div className="space-y-1.5">
+            {data.incidencias.map((i) => (
+              <div key={i.id} className="bg-[#0c1929] border border-white/6 rounded-lg px-3 py-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  {i.es_emergencia && <Zap className="w-3 h-3 text-rose-400 shrink-0" />}
+                  <p className="text-xs text-white/70 truncate">{i.tipo} — {i.cliente}</p>
+                </div>
+                <span className={`text-[10px] font-semibold shrink-0 ${ESTADO_INC[i.estado] ?? "text-white/30"}`}>
+                  {i.estado}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Anticipos */}
+      {data.anticipos.length > 0 && (
+        <div>
+          <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+            <Wallet className="w-3 h-3" /> Anticipos ({data.anticipos.length})
+          </p>
+          <div className="space-y-1.5">
+            {data.anticipos.map((a) => (
+              <div key={a.id} className="bg-[#0c1929] border border-white/6 rounded-lg px-3 py-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-white/70">{fmtQ(a.cantidad)}</p>
+                  {a.periodo && <span className="text-[10px] text-white/30">{a.periodo}</span>}
+                </div>
+                <span className={`text-[10px] font-semibold ${ESTADO_ANT[a.estado] ?? "text-white/30"}`}>
+                  {a.estado}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Modal: Ficha de Empleado (5 pestañas) ────────────────────────────────────
+
+function FichaModal({
+  emp,
+  onClose,
+  onEdit,
+  onEstado,
+}: {
+  emp: Empleado;
+  onClose: () => void;
+  onEdit: (e: Empleado) => void;
+  onEstado: (e: Empleado, estado: string) => void;
+}) {
+  const [tab, setTab] = useState<"perfil" | "asignaciones" | "sistema" | "operacion" | "kpi">("perfil");
+  const [showEstado, setShowEstado] = useState(false);
+  const est = ESTADO_LAB[emp.estadoLaboral] ?? { label: emp.estadoLaboral, color: "text-white/40 bg-white/5 border-white/10", dot: "bg-white/40" };
 
   const tabs = [
     { key: "perfil",       label: "Perfil",        icon: UserCheck },
     { key: "asignaciones", label: "Asignaciones",   icon: Briefcase },
-    { key: "kpi",          label: "KPI Individual", icon: BarChart2 },
+    { key: "sistema",      label: "Sistema",        icon: Lock },
+    { key: "operacion",    label: "Operación",      icon: Activity },
+    { key: "kpi",          label: "KPI",            icon: BarChart2 },
   ] as const;
+
+  const ESTADOS_CAMBIO = ["activo", "suspendido", "baja", "licencia"].filter((e) => e !== emp.estadoLaboral);
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 backdrop-blur-sm p-4 pt-8 overflow-auto">
-      <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-xl shadow-2xl">
+      <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-2xl shadow-2xl">
         {/* Header */}
         <div className="flex items-start gap-4 p-5 border-b border-white/8">
           <div className={`w-14 h-14 rounded-xl flex items-center justify-center text-xl font-bold text-white shrink-0 ${avatarColor(emp.nombreCompleto)}`}>
@@ -470,36 +679,69 @@ function FichaModal({ emp, onClose }: { emp: Empleado; onClose: () => void }) {
           <div className="flex-1 min-w-0">
             <h2 className="text-base font-bold text-white truncate">{emp.nombreCompleto}</h2>
             <p className="text-xs text-white/50 mt-0.5">{emp.puesto ?? "Colaborador"} · {emp.area ?? "—"}</p>
-            <div className="flex items-center gap-2 mt-2">
-              <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${est.color}`}>
-                {est.label}
-              </span>
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              <EstadoBadge estado={emp.estadoLaboral} />
               {emp.sede && (
                 <span className="flex items-center gap-1 text-[10px] text-white/30">
-                  <MapPin className="w-3 h-3" />
-                  {emp.sede}
+                  <MapPin className="w-3 h-3" />{emp.sede}
+                </span>
+              )}
+              {emp.dpi && (
+                <span className="flex items-center gap-1 text-[10px] text-white/30">
+                  <Hash className="w-3 h-3" />{maskDpi(emp.dpi)}
                 </span>
               )}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-white/30 hover:text-white mt-0.5 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Cambio rápido de estado */}
+            <div className="relative">
+              <button
+                onClick={() => setShowEstado(!showEstado)}
+                className="flex items-center gap-1 text-xs text-white/40 hover:text-white/70 bg-white/5 hover:bg-white/8 border border-white/10 rounded-lg px-2.5 py-1.5 transition-colors"
+              >
+                <ChevronDown className="w-3.5 h-3.5" />
+                Estado
+              </button>
+              {showEstado && (
+                <div className="absolute right-0 top-full mt-1 bg-[#07111f] border border-white/10 rounded-xl shadow-xl z-10 overflow-hidden min-w-[130px]">
+                  {ESTADOS_CAMBIO.map((e) => {
+                    const cfg = ESTADO_LAB[e];
+                    return (
+                      <button
+                        key={e}
+                        onClick={() => { onEstado(emp, e); setShowEstado(false); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-white/60 hover:bg-white/5 transition-colors"
+                      >
+                        <span className={`w-2 h-2 rounded-full ${cfg?.dot ?? "bg-white/40"}`} />
+                        {cfg?.label ?? e}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => onEdit(emp)}
+              className="flex items-center gap-1 text-xs text-white/40 hover:text-white/70 bg-white/5 hover:bg-white/8 border border-white/10 rounded-lg px-2.5 py-1.5 transition-colors"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              Editar
+            </button>
+            <button onClick={onClose} className="text-white/30 hover:text-white transition-colors ml-1">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-white/8">
+        <div className="flex border-b border-white/8 overflow-x-auto">
           {tabs.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
               onClick={() => setTab(key)}
-              className={`flex items-center gap-1.5 px-4 py-3 text-xs font-medium transition-colors flex-1 justify-center ${
-                tab === key
-                  ? "text-primary border-b-2 border-primary"
-                  : "text-white/40 hover:text-white"
+              className={`flex items-center gap-1.5 px-4 py-3 text-xs font-medium transition-colors whitespace-nowrap flex-1 justify-center ${
+                tab === key ? "text-primary border-b-2 border-primary" : "text-white/40 hover:text-white"
               }`}
             >
               <Icon className="w-3.5 h-3.5" />
@@ -509,11 +751,173 @@ function FichaModal({ emp, onClose }: { emp: Empleado; onClose: () => void }) {
         </div>
 
         {/* Contenido */}
-        <div className="p-5 max-h-[60vh] overflow-y-auto">
+        <div className="p-5 max-h-[65vh] overflow-y-auto">
           {tab === "perfil" && <TabPerfil emp={emp} />}
           {tab === "asignaciones" && <TabAsignaciones empId={emp.id} />}
+          {tab === "sistema" && <TabSistema emp={emp} />}
+          {tab === "operacion" && <TabOperacion empId={emp.id} />}
           {tab === "kpi" && <TabKPI empId={emp.id} />}
         </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── Modal: Formulario CRUD ───────────────────────────────────────────────────
+
+function FormModal({
+  modo,
+  emp,
+  onClose,
+  onSave,
+}: {
+  modo: "crear" | "editar";
+  emp?: Empleado;
+  onClose: () => void;
+  onSave: (data: Partial<FormState>) => Promise<void>;
+}) {
+  const [form, setForm] = useState<FormState>(() => ({
+    nombreCompleto: emp?.nombreCompleto ?? "",
+    dpi: emp?.dpi ?? "",
+    telefono: emp?.telefono ?? "",
+    telefonoSecundario: emp?.telefonoSecundario ?? "",
+    correo: emp?.correo ?? "",
+    puesto: emp?.puesto ?? "",
+    tipoServicio: emp?.tipoServicio ?? "",
+    area: emp?.area ?? "",
+    estadoLaboral: emp?.estadoLaboral ?? "activo",
+    sede: emp?.sede ?? "",
+    supervisorNombre: emp?.supervisorNombre ?? "",
+    fechaIngreso: emp?.fechaIngreso ? emp.fechaIngreso.split("T")[0] : "",
+    notas: emp?.notas ?? "",
+  }));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function set(field: keyof FormState, value: string) {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  async function handleSubmit(ev: React.FormEvent) {
+    ev.preventDefault();
+    if (!form.nombreCompleto.trim()) { setError("El nombre completo es requerido."); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(form);
+      onClose();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Error al guardar");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const field = (label: string, key: keyof FormState, type = "text", opts?: { placeholder?: string; required?: boolean }) => (
+    <div className="space-y-1">
+      <label className="text-xs text-white/50 font-medium">{label}{opts?.required && <span className="text-rose-400 ml-0.5">*</span>}</label>
+      <input
+        type={type}
+        value={form[key]}
+        onChange={(e) => set(key, e.target.value)}
+        placeholder={opts?.placeholder ?? ""}
+        className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50 transition-colors"
+      />
+    </div>
+  );
+
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/75 backdrop-blur-sm p-4 pt-8 overflow-auto">
+      <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
+          <h3 className="text-sm font-bold text-white">
+            {modo === "crear" ? "Nuevo Colaborador" : "Editar Colaborador"}
+          </h3>
+          <button onClick={onClose} className="text-white/30 hover:text-white transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-xs text-red-400">
+              {error}
+            </div>
+          )}
+
+          {/* Datos personales */}
+          <p className="text-[10px] text-white/30 uppercase tracking-widest">Datos personales</p>
+          <div className="grid grid-cols-1 gap-3">
+            {field("Nombre completo", "nombreCompleto", "text", { required: true })}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {field("DPI", "dpi", "text", { placeholder: "Número de DPI" })}
+            {field("Fecha de ingreso", "fechaIngreso", "date")}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {field("Teléfono principal", "telefono", "tel", { placeholder: "+502 XXXX XXXX" })}
+            {field("Teléfono secundario", "telefonoSecundario", "tel", { placeholder: "+502 XXXX XXXX" })}
+          </div>
+          {field("Correo electrónico", "correo", "email", { placeholder: "correo@ejemplo.com" })}
+
+          {/* Asignación */}
+          <p className="text-[10px] text-white/30 uppercase tracking-widest pt-2">Asignación</p>
+          <div className="grid grid-cols-2 gap-3">
+            {field("Puesto", "puesto", "text", { placeholder: "Agente de seguridad" })}
+            {field("Tipo de servicio", "tipoServicio", "text", { placeholder: "Custodia, vigilancia…" })}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {field("Área / Departamento", "area", "text")}
+            {field("Sede", "sede", "text")}
+          </div>
+          {field("Supervisor", "supervisorNombre", "text")}
+
+          {/* Estado */}
+          <div className="space-y-1">
+            <label className="text-xs text-white/50 font-medium">Estado laboral</label>
+            <select
+              value={form.estadoLaboral}
+              onChange={(e) => set("estadoLaboral", e.target.value)}
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50 appearance-none"
+            >
+              <option value="activo">Activo</option>
+              <option value="suspendido">Suspendido</option>
+              <option value="licencia">Licencia</option>
+              <option value="baja">Baja</option>
+            </select>
+          </div>
+
+          {/* Notas */}
+          <div className="space-y-1">
+            <label className="text-xs text-white/50 font-medium">Notas</label>
+            <textarea
+              value={form.notas}
+              onChange={(e) => set("notas", e.target.value)}
+              rows={3}
+              placeholder="Observaciones adicionales…"
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50 resize-none"
+            />
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white hover:border-white/20 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex-1 py-2.5 rounded-xl bg-primary text-xs font-bold text-white hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+            >
+              {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {modo === "crear" ? "Crear colaborador" : "Guardar cambios"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>,
     document.body
@@ -523,7 +927,6 @@ function FichaModal({ emp, onClose }: { emp: Empleado; onClose: () => void }) {
 // ─── Tarjeta de Empleado ──────────────────────────────────────────────────────
 
 function EmpleadoCard({ emp, onClick }: { emp: Empleado; onClick: () => void }) {
-  const est = ESTADO_LAB[emp.estadoLaboral] ?? { label: emp.estadoLaboral, color: "text-white/40 bg-white/5 border-white/10" };
   return (
     <div
       onClick={onClick}
@@ -539,28 +942,74 @@ function EmpleadoCard({ emp, onClick }: { emp: Empleado; onClick: () => void }) 
           </p>
           <p className="text-[11px] text-white/40 truncate">{emp.puesto ?? "Colaborador"}</p>
         </div>
-        <ChevronRight className="w-4 h-4 text-white/20 group-hover:text-primary/60 transition-colors shrink-0" />
       </div>
-
       <div className="flex items-center justify-between">
         <div className="flex flex-wrap gap-1.5">
-          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${est.color}`}>
-            {est.label}
-          </span>
+          <EstadoBadge estado={emp.estadoLaboral} />
           {emp.area && (
             <span className="text-[10px] px-2 py-0.5 rounded-full border text-white/40 bg-white/4 border-white/8">
               {emp.area}
             </span>
           )}
         </div>
-        {emp.sede && (
+        {emp.telefono && (
           <span className="flex items-center gap-1 text-[10px] text-white/25">
-            <MapPin className="w-2.5 h-2.5" />
-            {emp.sede}
+            <Phone className="w-2.5 h-2.5" />
+            {emp.telefono}
           </span>
         )}
       </div>
     </div>
+  );
+}
+
+// ─── Fila de Empleado (tabla) ─────────────────────────────────────────────────
+
+function EmpleadoRow({ emp, onClick, onEdit }: { emp: Empleado; onClick: () => void; onEdit: () => void }) {
+  return (
+    <tr className="border-b border-white/5 hover:bg-white/2 transition-colors group cursor-pointer" onClick={onClick}>
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-3">
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white shrink-0 ${avatarColor(emp.nombreCompleto)}`}>
+            {iniciales(emp.nombreCompleto)}
+          </div>
+          <div>
+            <p className="text-sm text-white font-medium group-hover:text-primary transition-colors">{emp.nombreCompleto}</p>
+            {emp.correo && <p className="text-[11px] text-white/30">{emp.correo}</p>}
+          </div>
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <code className="text-xs text-white/40 font-mono">{maskDpi(emp.dpi)}</code>
+      </td>
+      <td className="px-4 py-3">
+        <div>
+          {emp.telefono ? <p className="text-xs text-white/70">{emp.telefono}</p> : <span className="text-xs text-white/20">—</span>}
+          {emp.telefonoSecundario && <p className="text-[10px] text-white/30">{emp.telefonoSecundario}</p>}
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <div>
+          <p className="text-xs text-white/70">{emp.puesto ?? "—"}</p>
+          {emp.area && <p className="text-[10px] text-white/35">{emp.area}</p>}
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <p className="text-xs text-white/60">{emp.supervisorNombre ?? "—"}</p>
+      </td>
+      <td className="px-4 py-3">
+        <EstadoBadge estado={emp.estadoLaboral} />
+      </td>
+      <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+        <button
+          onClick={onEdit}
+          className="text-white/25 hover:text-primary transition-colors p-1"
+          title="Editar"
+        >
+          <Pencil className="w-3.5 h-3.5" />
+        </button>
+      </td>
+    </tr>
   );
 }
 
@@ -570,7 +1019,12 @@ export default function Empleados() {
   const [busqueda, setBusqueda] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<string>("todos");
   const [filtroArea, setFiltroArea] = useState<string>("todos");
+  const [vista, setVista] = useState<"tabla" | "tarjetas">("tabla");
   const [fichaAbierta, setFichaAbierta] = useState<Empleado | null>(null);
+  const [formModal, setFormModal] = useState<{ modo: "crear" | "editar"; emp?: Empleado } | null>(null);
+
+  const qc = useQueryClient();
+  const { toast } = useToast();
 
   const { data: empleados = [], isLoading, isError, refetch } = useQuery<Empleado[]>({
     queryKey: ["empleados"],
@@ -578,10 +1032,47 @@ export default function Empleados() {
     staleTime: 60_000,
   });
 
-  // Áreas únicas para filtro
+  // ─── Mutaciones ──────────────────────────────────────────────────────────────
+
+  async function apiCall(url: string, method: string, body?: object) {
+    const r = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ error: "Error desconocido" }));
+      throw new Error(err.error ?? "Error al guardar");
+    }
+    return r.json();
+  }
+
+  async function handleSave(data: Partial<FormState>) {
+    if (formModal?.modo === "crear") {
+      await apiCall(`${API_BASE}/employees`, "POST", data);
+      toast({ title: "Colaborador creado", description: data.nombreCompleto });
+    } else if (formModal?.emp) {
+      await apiCall(`${API_BASE}/employees/${formModal.emp.id}`, "PATCH", data);
+      toast({ title: "Colaborador actualizado", description: data.nombreCompleto });
+    }
+    qc.invalidateQueries({ queryKey: ["empleados"] });
+  }
+
+  async function handleEstado(emp: Empleado, estado: string) {
+    try {
+      const updated = await apiCall(`${API_BASE}/employees/${emp.id}/estado`, "PATCH", { estadoLaboral: estado });
+      toast({ title: "Estado actualizado", description: `${emp.nombreCompleto} → ${ESTADO_LAB[estado]?.label ?? estado}` });
+      qc.invalidateQueries({ queryKey: ["empleados"] });
+      if (fichaAbierta?.id === emp.id) setFichaAbierta(updated);
+    } catch (e) {
+      toast({ title: "Error", description: "No se pudo cambiar el estado", variant: "destructive" });
+    }
+  }
+
+  // ─── Filtros ─────────────────────────────────────────────────────────────────
+
   const areas = Array.from(new Set(empleados.map((e) => e.area).filter(Boolean))) as string[];
 
-  // Filtrado
   const filtrados = empleados.filter((e) => {
     if (filtroEstado !== "todos" && e.estadoLaboral !== filtroEstado) return false;
     if (filtroArea !== "todos" && e.area !== filtroArea) return false;
@@ -591,53 +1082,59 @@ export default function Empleados() {
         e.nombreCompleto.toLowerCase().includes(q) ||
         e.puesto?.toLowerCase().includes(q) ||
         e.area?.toLowerCase().includes(q) ||
-        e.sede?.toLowerCase().includes(q)
+        e.sede?.toLowerCase().includes(q) ||
+        e.dpi?.includes(q) ||
+        e.telefono?.includes(q) ||
+        e.telefonoSecundario?.includes(q)
       );
     }
     return true;
   });
 
-  // Estadísticas rápidas
+  // ─── Stats rápidas ───────────────────────────────────────────────────────────
+
   const total = empleados.length;
   const activos = empleados.filter((e) => e.estadoLaboral === "activo").length;
-  const conAsignacion = empleados.filter((e) => e.sourceSystem !== "manual").length;
+  const suspendidos = empleados.filter((e) => e.estadoLaboral === "suspendido" || e.estadoLaboral === "baja").length;
+  const conDpi = empleados.filter((e) => e.dpi).length;
 
   return (
     <AdminLayout title="Colaboradores">
       <div className="space-y-5">
 
-        {/* Stats rápidas */}
-        <div className="grid grid-cols-3 md:grid-cols-3 gap-3">
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="bg-[#0c1929] border border-white/8 rounded-xl p-4 text-center">
             <p className="text-2xl font-bold text-white">{total}</p>
-            <p className="text-[11px] text-white/35 mt-0.5">Total colaboradores</p>
+            <p className="text-[11px] text-white/35 mt-0.5">Total</p>
           </div>
           <div className="bg-[#0c1929] border border-green-500/15 rounded-xl p-4 text-center">
             <p className="text-2xl font-bold text-green-400">{activos}</p>
             <p className="text-[11px] text-white/35 mt-0.5">Activos</p>
           </div>
+          <div className="bg-[#0c1929] border border-yellow-500/10 rounded-xl p-4 text-center">
+            <p className="text-2xl font-bold text-yellow-400">{suspendidos}</p>
+            <p className="text-[11px] text-white/35 mt-0.5">Suspendidos / Baja</p>
+          </div>
           <div className="bg-[#0c1929] border border-white/8 rounded-xl p-4 text-center">
-            <p className="text-2xl font-bold text-blue-400">{areas.length}</p>
-            <p className="text-[11px] text-white/35 mt-0.5">Áreas</p>
+            <p className="text-2xl font-bold text-blue-400">{conDpi}</p>
+            <p className="text-[11px] text-white/35 mt-0.5">Con DPI registrado</p>
           </div>
         </div>
 
-        {/* Barra de búsqueda y filtros */}
+        {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative flex-1 min-w-[180px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
             <input
               type="text"
-              placeholder="Buscar por nombre, puesto, área…"
+              placeholder="Buscar por nombre, DPI, teléfono, área…"
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
               className="w-full bg-[#0c1929] border border-white/8 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-white/25 outline-none focus:border-primary/40"
             />
             {busqueda && (
-              <button
-                onClick={() => setBusqueda("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-white/30 hover:text-white"
-              >
+              <button onClick={() => setBusqueda("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-white/30 hover:text-white">
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
@@ -650,9 +1147,10 @@ export default function Empleados() {
           >
             <option value="todos">Todos los estados</option>
             <option value="activo">Activo</option>
-            <option value="inactivo">Inactivo</option>
-            <option value="licencia">Licencia</option>
             <option value="suspendido">Suspendido</option>
+            <option value="baja">Baja</option>
+            <option value="licencia">Licencia</option>
+            <option value="inactivo">Inactivo</option>
           </select>
 
           {areas.length > 0 && (
@@ -662,56 +1160,136 @@ export default function Empleados() {
               className="bg-[#0c1929] border border-white/8 rounded-lg px-3 py-2 text-sm text-white/70 outline-none focus:border-primary/40 appearance-none cursor-pointer"
             >
               <option value="todos">Todas las áreas</option>
-              {areas.map((a) => (
-                <option key={a} value={a}>{a}</option>
-              ))}
+              {areas.map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
           )}
 
+          {/* Toggle vista */}
+          <div className="flex items-center bg-[#0c1929] border border-white/8 rounded-lg overflow-hidden">
+            <button
+              onClick={() => setVista("tabla")}
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs transition-colors ${vista === "tabla" ? "bg-primary/20 text-primary" : "text-white/40 hover:text-white"}`}
+            >
+              <LayoutList className="w-3.5 h-3.5" />
+              Tabla
+            </button>
+            <button
+              onClick={() => setVista("tarjetas")}
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs transition-colors ${vista === "tarjetas" ? "bg-primary/20 text-primary" : "text-white/40 hover:text-white"}`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              Tarjetas
+            </button>
+          </div>
+
           <button
             onClick={() => refetch()}
-            className="p-2 rounded-lg bg-[#0c1929] border border-white/8 text-white/40 hover:text-white transition-colors"
-            title="Actualizar lista"
+            className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white border border-white/8 rounded-lg px-3 py-2 transition-colors bg-[#0c1929]"
           >
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
+
+          <button
+            onClick={() => setFormModal({ modo: "crear" })}
+            className="flex items-center gap-1.5 text-xs font-semibold text-white bg-primary hover:bg-primary/90 rounded-lg px-3 py-2 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Nuevo
           </button>
         </div>
 
-        {/* Contador */}
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-white/30">
-            {filtrados.length} colaborador{filtrados.length !== 1 ? "es" : ""} mostrado{filtrados.length !== 1 ? "s" : ""}
-            {(filtroEstado !== "todos" || filtroArea !== "todos" || busqueda) && " (filtrado)"}
-          </p>
-          <p className="text-[10px] text-white/20">Clic en un colaborador para ver su ficha y KPI</p>
-        </div>
+        {/* Resultados */}
+        {isLoading && (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-6 h-6 animate-spin text-primary mr-2" />
+            <span className="text-sm text-white/40">Cargando colaboradores…</span>
+          </div>
+        )}
 
-        {/* Lista */}
-        {isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+        {isError && (
+          <div className="text-center py-10">
+            <p className="text-red-400 text-sm">Error al cargar datos.</p>
           </div>
-        ) : isError ? (
-          <div className="text-center py-16 text-red-400/70 text-sm">
-            Error al cargar colaboradores. Recarga la página.
-          </div>
-        ) : filtrados.length === 0 ? (
+        )}
+
+        {!isLoading && !isError && filtrados.length === 0 && (
           <div className="text-center py-16">
             <Users className="w-10 h-10 text-white/10 mx-auto mb-3" />
-            <p className="text-white/30 text-sm">No se encontraron colaboradores</p>
+            <p className="text-white/30 text-sm">
+              {empleados.length === 0 ? "No hay colaboradores registrados." : "Sin resultados para los filtros aplicados."}
+            </p>
+            {empleados.length === 0 && (
+              <button
+                onClick={() => setFormModal({ modo: "crear" })}
+                className="mt-4 flex items-center gap-2 mx-auto text-xs text-primary hover:text-primary/80 transition-colors"
+              >
+                <Plus className="w-4 h-4" /> Crear primer colaborador
+              </button>
+            )}
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            {filtrados.map((emp) => (
-              <EmpleadoCard key={emp.id} emp={emp} onClick={() => setFichaAbierta(emp)} />
+        )}
+
+        {/* Vista tabla */}
+        {!isLoading && !isError && filtrados.length > 0 && vista === "tabla" && (
+          <div className="bg-[#0c1929] border border-white/8 rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+              <p className="text-xs text-white/40">{filtrados.length} colaboradore{filtrados.length !== 1 ? "s" : ""}</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="border-b border-white/5">
+                    <th className="px-4 py-2.5 text-[10px] text-white/30 uppercase tracking-widest font-semibold">Colaborador</th>
+                    <th className="px-4 py-2.5 text-[10px] text-white/30 uppercase tracking-widest font-semibold">DPI</th>
+                    <th className="px-4 py-2.5 text-[10px] text-white/30 uppercase tracking-widest font-semibold">Teléfono</th>
+                    <th className="px-4 py-2.5 text-[10px] text-white/30 uppercase tracking-widest font-semibold">Puesto / Área</th>
+                    <th className="px-4 py-2.5 text-[10px] text-white/30 uppercase tracking-widest font-semibold">Supervisor</th>
+                    <th className="px-4 py-2.5 text-[10px] text-white/30 uppercase tracking-widest font-semibold">Estado</th>
+                    <th className="px-4 py-2.5 text-right text-[10px] text-white/30 uppercase tracking-widest font-semibold">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtrados.map((e) => (
+                    <EmpleadoRow
+                      key={e.id}
+                      emp={e}
+                      onClick={() => setFichaAbierta(e)}
+                      onEdit={() => setFormModal({ modo: "editar", emp: e })}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Vista tarjetas */}
+        {!isLoading && !isError && filtrados.length > 0 && vista === "tarjetas" && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filtrados.map((e) => (
+              <EmpleadoCard key={e.id} emp={e} onClick={() => setFichaAbierta(e)} />
             ))}
           </div>
         )}
       </div>
 
-      {/* Modal de ficha */}
+      {/* Modales */}
       {fichaAbierta && (
-        <FichaModal emp={fichaAbierta} onClose={() => setFichaAbierta(null)} />
+        <FichaModal
+          emp={fichaAbierta}
+          onClose={() => setFichaAbierta(null)}
+          onEdit={(e) => { setFichaAbierta(null); setFormModal({ modo: "editar", emp: e }); }}
+          onEstado={handleEstado}
+        />
+      )}
+
+      {formModal && (
+        <FormModal
+          modo={formModal.modo}
+          emp={formModal.emp}
+          onClose={() => setFormModal(null)}
+          onSave={handleSave}
+        />
       )}
     </AdminLayout>
   );
