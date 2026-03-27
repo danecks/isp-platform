@@ -320,8 +320,68 @@ export const anticiposTable = pgTable("anticipos", {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TAREAS — tareas operativas de ISP, S.A.
+//
+// Reemplaza el mock de tareas. Cada tarea puede estar ligada a una incidencia
+// y opcionalmente a una tarjeta de Trello.
+//
+// CIERRE CON EVIDENCIA:
+//   Para marcar estado = "completada", se requiere registrar una entrada en
+//   task_evidencias con foto y comentario. El endpoint POST /tareas/:id/cerrar
+//   valida esto antes de actualizar el estado.
+//
+// INTEGRACIÓN FUTURA WHATSAPP:
+//   El servicio de WA puede hacer POST /tareas/:id/cerrar con canal="whatsapp"
+//   una vez que se reciban foto y comentario del supervisor.
+// ─────────────────────────────────────────────────────────────────────────────
+export const tareasTable = pgTable("tareas", {
+  id: varchar("id", { length: 20 }).primaryKey(),
+  titulo: varchar("titulo", { length: 500 }).notNull(),
+  descripcion: text("descripcion"),
+  incidenciaId: varchar("incidencia_id", { length: 20 }),   // → incidents.id (nullable)
+  prioridad: varchar("prioridad", { length: 20 }).notNull().default("media"),
+  estado: varchar("estado", { length: 50 }).notNull().default("pendiente"),
+  // "pendiente" | "en_proceso" | "completada" | "cancelada"
+  asignado: varchar("asignado", { length: 255 }),            // Nombre del supervisor/responsable
+  asignadoId: integer("asignado_id"),                        // → users.id (nullable)
+  trelloCardId: varchar("trello_card_id", { length: 100 }),
+  trelloCardUrl: varchar("trello_card_url", { length: 500 }),
+  fechaVencimiento: timestamp("fecha_vencimiento", { withTimezone: true }),
+  canal: varchar("canal", { length: 50 }).notNull().default("manual"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TASK_EVIDENCIAS — evidencia de cierre de tareas con foto y comentario
+//
+// REGLAS:
+//   - foto_url y comentario son OBLIGATORIOS para cerrar una tarea
+//   - Solo supervisor o admin pueden crear evidencias
+//   - Una tarea puede tener como máximo una evidencia de cierre (relación 1:1)
+//
+// FOTO:
+//   Almacenada como data URL base64 (jpeg/png). Tamaño máximo recomendado: 1MB.
+//   Para producción migrar a object storage (S3/GCS) y guardar solo la URL.
+// ─────────────────────────────────────────────────────────────────────────────
+export const taskEvidenciasTable = pgTable("task_evidencias", {
+  id: serial("id").primaryKey(),
+  tareaId: varchar("tarea_id", { length: 20 }).notNull(),    // → tareas.id
+  supervisorId: integer("supervisor_id"),                     // → users.id (nullable: puede venir de WA)
+  supervisorNombre: varchar("supervisor_nombre", { length: 255 }).notNull(),
+  comentario: text("comentario").notNull(),
+  fotoUrl: text("foto_url").notNull(),                       // base64 data URL o URL externa
+  canal: varchar("canal", { length: 50 }).notNull().default("admin"),
+  // "admin" | "whatsapp"
+  fechaCierre: timestamp("fecha_cierre", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Zod insert schemas
 // ─────────────────────────────────────────────────────────────────────────────
+export const insertTareaSchema = createInsertSchema(tareasTable).omit({ createdAt: true, updatedAt: true });
+export const insertTaskEvidenciaSchema = createInsertSchema(taskEvidenciasTable).omit({ id: true, createdAt: true });
 export const insertAnticipSchema = createInsertSchema(anticiposTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertClientSchema = createInsertSchema(clientsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertClientAliasSchema = createInsertSchema(clientAliasesTable).omit({ id: true, createdAt: true });
@@ -363,3 +423,8 @@ export type WaConfig = typeof waConfigTable.$inferSelect;
 export type WaMessage = typeof waMessagesTable.$inferSelect;
 export type WaMenuOption = typeof waMenuOptionsTable.$inferSelect;
 export type WaAuditLog = typeof waAuditLogTable.$inferSelect;
+
+export type Tarea = typeof tareasTable.$inferSelect;
+export type InsertTarea = z.infer<typeof insertTareaSchema>;
+export type TaskEvidencia = typeof taskEvidenciasTable.$inferSelect;
+export type InsertTaskEvidencia = z.infer<typeof insertTaskEvidenciaSchema>;

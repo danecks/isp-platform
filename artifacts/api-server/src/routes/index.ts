@@ -12,6 +12,7 @@ import anticiposRouter from "./anticipos";
 import { aliasRouter } from "./alias";
 import { waConfigRouter } from "./wa-config";
 import emergenciasRouter from "./emergencias";
+import tareasRouter from "./tareas";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(anticiposRouter);
 router.use(aliasRouter);
 router.use(waConfigRouter);
 router.use(emergenciasRouter);
+router.use(tareasRouter);
 
 export default router;

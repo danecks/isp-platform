@@ -1,0 +1,92 @@
+El sistema ya tiene:
+- PostgreSQL
+- users + employees
+- roles
+- login real
+- portal de clientes
+- WhatsApp fase 1
+- anticipos
+- incidencias reales
+- Trello unificado
+- configuración WhatsApp administrable
+- alias de clientes y puestos
+- emergencias restringidas
+
+No quiero romper nada del sistema actual.
+
+Quiero avanzar a la siguiente fase: Supervisores con evidencia y cierre de tarea.
+
+Objetivo:
+permitir que un supervisor autorizado pueda finalizar una tarea operativa dejando evidencia real, comentario de cierre y trazabilidad completa.
+
+Haz esto:
+
+## 1. Modelo de cierre/evidencia
+Crea la estructura necesaria para guardar evidencia de cierre de tareas, por ejemplo:
+- id
+- tareaId
+- supervisorId
+- comentario
+- fotoUrl
+- canal
+- fechaCierre
+- createdAt
+
+Si hace falta ampliar la tabla de tareas, hazlo sin romper lo actual.
+
+## 2. Reglas
+Solo usuarios con rol supervisor o admin pueden cerrar tareas operativas.
+Una tarea no debe poder marcarse como finalizada si no tiene:
+- foto obligatoria
+- comentario obligatorio
+
+## 3. Admin UI
+En el módulo de tareas:
+- agregar opción de cerrar tarea con evidencia
+- modal o vista con:
+  - detalle de tarea
+  - campo comentario
+  - carga de foto
+  - botón finalizar
+
+## 4. Preparar WhatsApp
+Aunque no se conecte todavía a la API real si complica, deja listo el flujo para que el supervisor pueda hacer esto desde WhatsApp después:
+- ver tareas
+- seleccionar tarea
+- enviar foto
+- enviar comentario
+- cerrar
+
+## 5. Persistencia
+Guardar:
+- quién cerró la tarea
+- cuándo
+- evidencia
+- comentario
+- canal = admin o whatsapp
+
+## 6. Visualización
+Mostrar en el admin:
+- tareas cerradas con evidencia
+- enlace o preview de la foto si es posible
+- supervisor que cerró
+- fecha y hora
+
+## 7. No romper
+- portal
+- Trello
+- emergencias
+- anticipos
+- alias
+- login
+- roles
+
+## 8. Documentación
+Explica:
+- qué archivos cambiaste
+- cómo funciona el cierre con evidencia
+- qué parte queda lista para futura integración con WhatsApp real
+- qué faltará para mover automáticamente la tarjeta de Trello al cerrar
+
+Muy importante:
+quiero cerrar el ciclo operativo con evidencia real, no solo cambiar estados manualmente.

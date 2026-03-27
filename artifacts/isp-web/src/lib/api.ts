@@ -199,3 +199,81 @@ export const anticiposApi = {
     return `${API_BASE}/anticipos/export${qs ? "?" + qs : ""}`;
   },
 };
+
+// ─── TAREAS ───────────────────────────────────────────────────────────────────
+export interface TareaEvidencia {
+  id: number;
+  tareaId: string;
+  supervisorId: number | null;
+  supervisorNombre: string;
+  comentario: string;
+  fotoUrl: string;
+  canal: string;
+  fechaCierre: string;
+  createdAt: string;
+}
+
+export interface Tarea {
+  id: string;
+  titulo: string;
+  descripcion: string | null;
+  incidenciaId: string | null;
+  prioridad: string;
+  estado: string;
+  asignado: string | null;
+  asignadoId: number | null;
+  trelloCardId: string | null;
+  trelloCardUrl: string | null;
+  fechaVencimiento: string | null;
+  canal: string;
+  createdAt: string;
+  updatedAt: string;
+  evidencia: TareaEvidencia | null;
+}
+
+export interface TareaStats {
+  pendiente: number;
+  en_proceso: number;
+  completada: number;
+  cancelada: number;
+}
+
+export const tareasApi = {
+  getAll: () => apiFetch<Tarea[]>("/tareas"),
+  getStats: () => apiFetch<TareaStats>("/tareas/stats"),
+  getById: (id: string) => apiFetch<Tarea>(`/tareas/${id}`),
+  create: (data: {
+    titulo: string;
+    descripcion?: string;
+    incidenciaId?: string;
+    prioridad?: string;
+    estado?: string;
+    asignado?: string;
+    asignadoId?: number;
+    trelloCardId?: string;
+    trelloCardUrl?: string;
+    fechaVencimiento?: string;
+    canal?: string;
+  }) => apiFetch<Tarea>("/tareas", { method: "POST", body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<{
+    titulo: string;
+    descripcion: string;
+    prioridad: string;
+    estado: string;
+    asignado: string;
+    trelloCardId: string;
+    trelloCardUrl: string;
+  }>) => apiFetch<Tarea>(`/tareas/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  cerrar: (id: string, data: {
+    supervisorNombre: string;
+    supervisorId?: number;
+    rolSupervisor: string;
+    comentario: string;
+    fotoUrl: string;
+    canal?: string;
+  }) => apiFetch<{ tarea: Tarea; evidencia: TareaEvidencia }>(`/tareas/${id}/cerrar`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  }),
+  cancelar: (id: string) => apiFetch<{ ok: boolean }>(`/tareas/${id}`, { method: "DELETE" }),
+};

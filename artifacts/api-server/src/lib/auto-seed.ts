@@ -11,6 +11,7 @@ import {
   waConfigTable,
   waMessagesTable,
   waMenuOptionsTable,
+  tareasTable,
 } from "@workspace/db";
 import { pool } from "@workspace/db";
 import { count, eq } from "drizzle-orm";
@@ -631,6 +632,168 @@ export async function runAutoSeed(): Promise<void> {
     logger.info("Auto-migrate: mensajes de emergencia verificados en wa_messages");
   } catch (err) {
     logger.error({ err }, "Auto-seed: error en wa_config/mensajes/menús");
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // TAREAS Y EVIDENCIAS — Fase: Supervisores con evidencia y cierre de tarea
+  // ═══════════════════════════════════════════════════════════════════════
+  try {
+    // 1. Crear tablas si no existen (seguro en cualquier entorno)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS tareas (
+        id                VARCHAR(20) PRIMARY KEY,
+        titulo            VARCHAR(500) NOT NULL,
+        descripcion       TEXT,
+        incidencia_id     VARCHAR(20),
+        prioridad         VARCHAR(20) NOT NULL DEFAULT 'media',
+        estado            VARCHAR(50) NOT NULL DEFAULT 'pendiente',
+        asignado          VARCHAR(255),
+        asignado_id       INTEGER,
+        trello_card_id    VARCHAR(100),
+        trello_card_url   VARCHAR(500),
+        fecha_vencimiento TIMESTAMPTZ,
+        canal             VARCHAR(50) NOT NULL DEFAULT 'manual',
+        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'tareas' verificada/creada");
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS task_evidencias (
+        id                  SERIAL PRIMARY KEY,
+        tarea_id            VARCHAR(20) NOT NULL,
+        supervisor_id       INTEGER,
+        supervisor_nombre   VARCHAR(255) NOT NULL,
+        comentario          TEXT NOT NULL,
+        foto_url            TEXT NOT NULL,
+        canal               VARCHAR(50) NOT NULL DEFAULT 'admin',
+        fecha_cierre        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'task_evidencias' verificada/creada");
+
+    // 2. Mensajes WA para flujo de cierre con evidencia (supervisor vía WhatsApp)
+    await pool.query(`
+      INSERT INTO wa_messages (clave, texto, descripcion) VALUES
+        ('tarea_ver_lista',       'Tiene {total} tareas asignadas:\n{lista}\n\nResponda con el número de la tarea que desea gestionar.', 'Lista de tareas asignadas al supervisor'),
+        ('tarea_detalle',         'Tarea {id}: {titulo}\nEstado: {estado} | Prioridad: {prioridad}\nIncidencia: {incidencia}\n\nRespuesta:\n1. Cerrar con evidencia\n2. Actualizar estado\n3. Volver', 'Detalle de tarea para el supervisor'),
+        ('tarea_pedir_foto',      'Envíe una foto como evidencia del cierre de la tarea {id}. La imagen debe mostrar claramente el estado final de la situación.', 'Solicitar foto de cierre al supervisor'),
+        ('tarea_pedir_comentario','Foto recibida. Ahora escriba un comentario de cierre describiendo qué se realizó y el estado actual.', 'Solicitar comentario de cierre al supervisor'),
+        ('tarea_cerrada_ok',      'Tarea {id} cerrada exitosamente.\nSupervisor: {supervisor}\nFecha: {fecha}\n\nEvidencia registrada en el sistema ISP.', 'Confirmación de tarea cerrada vía WA'),
+        ('tarea_sin_permiso',     'No tiene permiso para cerrar tareas. Esta acción está reservada para supervisores y administradores. Contacte a su coordinador.', 'Sin permiso para cerrar tarea')
+      ON CONFLICT (clave) DO NOTHING
+    `);
+    logger.info("Auto-migrate: mensajes WA de tareas verificados (6 mensajes)");
+
+    // 3. Seed de tareas iniciales si la tabla está vacía
+    const [{ tareaCount }] = await db.select({ tareaCount: count() }).from(tareasTable);
+    if (tareaCount === 0) {
+      await db.insert(tareasTable).values([
+        {
+          id: "TASK-0091",
+          titulo: "Investigar acceso no autorizado — Bodega Retalhuleu",
+          descripcion: "Se detectó acceso a la bodega principal fuera del horario autorizado. Revisar cámaras, verificar bitácora de guardias y emitir informe.",
+          incidenciaId: "INC-0406",
+          prioridad: "alta",
+          estado: "pendiente",
+          asignado: "Sup. García",
+          trelloCardId: "trello-card-8821",
+          trelloCardUrl: null,
+          canal: "manual",
+        },
+        {
+          id: "TASK-0090",
+          titulo: "Refuerzo de agentes en bodega norte Zona 12",
+          descripcion: "Desplegar 2 agentes adicionales en turno nocturno durante los próximos 5 días. Coordinar con jefe de zona.",
+          incidenciaId: "INC-0412",
+          prioridad: "alta",
+          estado: "en_proceso",
+          asignado: "Sup. Ramírez",
+          trelloCardId: "trello-card-8820",
+          trelloCardUrl: null,
+          canal: "manual",
+        },
+        {
+          id: "TASK-0089",
+          titulo: "Seguimiento intrusión Distribuidora Nacional",
+          descripcion: "Dar seguimiento a intrusión reportada. Coordinación con cliente y PNC. Informe de hallazgos en 48 horas.",
+          incidenciaId: "INC-0412",
+          prioridad: "alta",
+          estado: "en_proceso",
+          asignado: "Sup. Ramírez",
+          trelloCardId: "trello-card-8819",
+          trelloCardUrl: null,
+          canal: "manual",
+        },
+        {
+          id: "TASK-0088",
+          titulo: "Revisión sistema de alarmas Cervecería Centro Americana",
+          descripcion: "Revisión completa del sistema de alarmas instalado. Verificar sensores, panel central y comunicación con monitoreo.",
+          incidenciaId: "INC-0411",
+          prioridad: "media",
+          estado: "completada",
+          asignado: "Sup. López",
+          trelloCardId: "trello-card-8815",
+          trelloCardUrl: null,
+          canal: "manual",
+        },
+        {
+          id: "TASK-0087",
+          titulo: "Renovación de contrato — Banco Industrial Q1",
+          descripcion: "Gestionar renovación de contrato de servicios de seguridad para el primer trimestre. Incluir revisión de tarifas.",
+          incidenciaId: null,
+          prioridad: "media",
+          estado: "pendiente",
+          asignado: "Ejecutivo A. Fuentes",
+          trelloCardId: null,
+          trelloCardUrl: null,
+          canal: "manual",
+        },
+        {
+          id: "TASK-0086",
+          titulo: "Entrevista candidatos Quetzaltenango — lote marzo",
+          descripcion: "Coordinar entrevistas presenciales para lote de 8 candidatos en sede Xela. Incluir prueba física y psicométrica.",
+          incidenciaId: null,
+          prioridad: "baja",
+          estado: "en_proceso",
+          asignado: "RRHH Coordinación",
+          trelloCardId: null,
+          trelloCardUrl: null,
+          canal: "manual",
+        },
+        {
+          id: "TASK-0085",
+          titulo: "Informe mensual Banco Industrial — Marzo 2024",
+          descripcion: "Elaborar y entregar informe mensual de operaciones de seguridad al cliente. Incluir incidencias, métricas de respuesta y recomendaciones.",
+          incidenciaId: "INC-0409",
+          prioridad: "media",
+          estado: "pendiente",
+          asignado: "Sup. Morales",
+          trelloCardId: "trello-card-8810",
+          trelloCardUrl: null,
+          canal: "manual",
+        },
+        {
+          id: "TASK-0084",
+          titulo: "Capacitación manejo de crisis — agentes nuevos",
+          descripcion: "Sesión de capacitación para 12 agentes nuevos. Temas: manejo de crisis, comunicación de emergencias, protocolos ISP.",
+          incidenciaId: null,
+          prioridad: "baja",
+          estado: "completada",
+          asignado: "Coordinación Operativa",
+          trelloCardId: null,
+          trelloCardUrl: null,
+          canal: "manual",
+        },
+      ]);
+      logger.info("Auto-seed: 8 tareas iniciales creadas");
+    } else {
+      logger.info({ count: tareaCount }, "Auto-seed: tareas ya existen");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-seed: error en tablas de tareas/evidencias");
   }
 
   logger.info("Auto-seed completado");
