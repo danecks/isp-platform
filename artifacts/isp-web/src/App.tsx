@@ -35,6 +35,7 @@ import AdminWhatsappConfig from "@/admin/pages/configuracion/WhatsappConfig";
 import AdminReportes from "@/admin/pages/Reportes";
 import AdminCMS from "@/admin/pages/CMS";
 import AdminSimulador from "@/admin/pages/SimuladorWhatsApp";
+import AdminEmpleados from "@/admin/pages/Empleados";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
@@ -126,6 +127,9 @@ function Router() {
       </Route>
       <Route path="/admin/simulador-whatsapp">
         {() => <AuthGuard requiredRoles={["admin"]}><AdminSimulador /></AuthGuard>}
+      </Route>
+      <Route path="/admin/empleados">
+        {() => <AuthGuard requiredRoles={["admin", "rrhh", "supervisor"]}><AdminEmpleados /></AuthGuard>}
       </Route>
 
       <Route component={NotFound} />

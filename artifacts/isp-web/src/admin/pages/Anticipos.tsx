@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { AdminLayout } from "../layout/AdminLayout";
 import { StatusBadge } from "../components/StatusBadge";
 import { anticiposApi, type Anticipo } from "@/lib/api";
@@ -14,6 +15,7 @@ import {
   Clock,
   Banknote,
   MessageCircle,
+  ExternalLink,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -274,7 +276,14 @@ export default function Anticipos() {
                     >
                       <td className="px-5 py-3 font-mono text-xs text-white/40">ANT-{a.id}</td>
                       <td className="px-4 py-3">
-                        <p className="font-medium text-white text-sm">{a.nombre}</p>
+                        <div className="flex items-center gap-1 group/emp">
+                          <p className="font-medium text-white text-sm">{a.nombre}</p>
+                          {a.employeeId && (
+                            <Link href="/admin/empleados">
+                              <ExternalLink className="w-3 h-3 text-white/20 group-hover/emp:text-primary/60 transition-colors cursor-pointer shrink-0" />
+                            </Link>
+                          )}
+                        </div>
                         {a.telefono && (
                           <p className="text-xs text-white/30 mt-0.5">{a.telefono}</p>
                         )}

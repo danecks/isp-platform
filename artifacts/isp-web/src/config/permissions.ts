@@ -13,6 +13,7 @@ import {
   FileBarChart2,
   Globe,
   FlaskConical,
+  HardHat,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -75,6 +76,12 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Anticipos",
     icon: Wallet,
     roles: ["admin", "rrhh"],
+  },
+  {
+    path: "/admin/empleados",
+    label: "Colaboradores",
+    icon: HardHat,
+    roles: ["admin", "rrhh", "supervisor"],
   },
   {
     path: "/admin/comercial",
