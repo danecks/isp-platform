@@ -1,0 +1,111 @@
+El sistema ya tiene:
+- WhatsApp fase 1
+- configuración administrable de WhatsApp
+- anticipos
+- emergencias restringidas
+- incidencias
+- tareas
+- alias de clientes y puestos
+- users, employees y roles
+- log de mensajes o estructura de mensajería
+
+No quiero romper nada del sistema actual.
+
+Quiero crear una nueva funcionalidad: Simulador de WhatsApp dentro del admin.
+
+Objetivo:
+poder simular cómo se comporta el chat de WhatsApp con diferentes tipos de usuarios, diferentes mensajes y usuarios no autorizados, sin necesidad de conectar la API real.
+
+Haz esto:
+
+## 1. Crear módulo admin
+Ruta:
+- /admin/simulador-whatsapp
+
+## 2. Interfaz tipo chat
+Crear una interfaz visual tipo conversación de WhatsApp donde se vea:
+- mensajes del usuario
+- respuestas del sistema
+- timestamps
+- estilo claro tipo chat/simulador
+
+## 3. Selector de perfil
+Permitir simular el mensaje como:
+- guardia
+- supervisor
+- cliente
+- rrhh
+- admin
+- externo / no registrado
+
+## 4. Selector de usuario o número
+Permitir:
+- elegir un usuario real del sistema
+- o escribir un número no registrado manualmente
+
+## 5. Entrada manual de mensajes
+El admin debe poder escribir cualquier mensaje y enviarlo al simulador.
+
+Ejemplos:
+- quiero anticipo
+- emergencia en custodio gallo
+- necesito cotización
+- quiero aplicar como guardia
+- finalizar tarea
+- hola
+
+## 6. Procesamiento real del flujo
+El simulador debe reutilizar la lógica real del sistema en la medida de lo posible:
+- clasificación de intención
+- validación de usuario
+- validación de permisos
+- resolución de alias
+- respuestas configuradas
+- creación de entidades si está habilitado
+
+## 7. Modos de simulación
+Agregar al menos dos modos:
+- modo simulación sin persistencia (no guarda nada real)
+- modo simulación con persistencia (sí crea registros reales en DB)
+
+## 8. Panel de depuración
+Agregar un panel lateral o bloque técnico que muestre:
+- usuario detectado
+- rol detectado
+- número
+- intención clasificada
+- alias resuelto
+- entidad creada o acción ejecutada
+- errores o validaciones disparadas
+
+## 9. Escenarios rápidos
+Agregar botones para escenarios comunes:
+- anticipo
+- emergencia
+- lead comercial
+- postulación
+- incidencia
+- número no autorizado
+- mensaje ambiguo por alias
+
+## 10. No romper
+- WhatsApp fase 1
+- anticipos
+- emergencias
+- incidencias
+- tareas
+- portal
+- Trello
+- login
+- configuración WhatsApp
+
+## 11. Documentación
+Explica:
+- qué archivos cambiaste
+- cómo funciona el simulador
+- qué lógica real reutiliza
+- qué diferencia hay entre simulación con y sin persistencia
+- cómo servirá esto para pruebas antes de conectar WhatsApp real
+
+Muy importante:
+quiero que este simulador sea útil tanto para pruebas internas como para demostraciones del sistema, no una simple maqueta visual.

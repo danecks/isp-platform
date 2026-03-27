@@ -12,6 +12,7 @@ import {
   MessageSquare,
   FileBarChart2,
   Globe,
+  FlaskConical,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -121,6 +122,12 @@ export const NAV_ITEMS: NavItem[] = [
     path: "/admin/cms",
     label: "CMS Web",
     icon: Globe,
+    roles: ["admin"],
+  },
+  {
+    path: "/admin/simulador-whatsapp",
+    label: "Simulador WA",
+    icon: FlaskConical,
     roles: ["admin"],
   },
 ];
