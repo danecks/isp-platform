@@ -36,6 +36,7 @@ import AdminReportes from "@/admin/pages/Reportes";
 import AdminCMS from "@/admin/pages/CMS";
 import AdminSimulador from "@/admin/pages/SimuladorWhatsApp";
 import AdminEmpleados from "@/admin/pages/Empleados";
+import AdminOperaciones from "@/admin/pages/Operaciones";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
@@ -130,6 +131,9 @@ function Router() {
       </Route>
       <Route path="/admin/empleados">
         {() => <AuthGuard requiredRoles={["admin", "operaciones", "rrhh", "supervisor"]}><AdminEmpleados /></AuthGuard>}
+      </Route>
+      <Route path="/admin/operaciones">
+        {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminOperaciones /></AuthGuard>}
       </Route>
 
       <Route component={NotFound} />

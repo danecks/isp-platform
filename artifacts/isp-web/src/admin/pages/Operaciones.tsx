@@ -1,0 +1,1261 @@
+import { useState, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  DndContext,
+  DragOverlay,
+  useDraggable,
+  useDroppable,
+  type DragEndEvent,
+  type DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  TouchSensor,
+} from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
+import { AdminLayout } from "../layout/AdminLayout";
+import {
+  Users, Loader2, RefreshCw, Plus, X, AlertTriangle,
+  CheckCircle2, Clock, User, Phone, MapPin, ArrowLeftRight,
+  History, Trash2, Shield, Activity, Zap, ChevronDown,
+  ChevronRight, Info, Building2, Circle, GripVertical,
+  UserMinus, UserPlus, XCircle, RotateCcw,
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+
+const API_BASE = "/api";
+
+// ─── Tipos ────────────────────────────────────────────────────────────────────
+
+interface Puesto {
+  id: number;
+  cliente_id: number | null;
+  cliente_nombre: string;
+  nombre: string;
+  turno: string;
+  agente_id: number | null;
+  agente_nombre: string | null;
+  estado: string; // cubierto | descubierto
+  agente_estado_laboral: string | null;
+  agente_telefono: string | null;
+  agente_area: string | null;
+  notas: string | null;
+  orden: number;
+}
+
+interface ClienteBoard {
+  clienteId: number | null;
+  clienteNombre: string;
+  puestos: Puesto[];
+}
+
+interface Agente {
+  id: number;
+  nombre_completo: string;
+  estado_laboral: string;
+  puesto: string | null;
+  area: string | null;
+  sede: string | null;
+  telefono: string | null;
+  wa_autorizado: boolean;
+  supervisor_id: number | null;
+}
+
+interface Pool {
+  disponibles: Agente[];
+  enPuesto: Agente[];
+  enDescanso: Agente[];
+  suspendidos: Agente[];
+  total: number;
+}
+
+interface Movimiento {
+  id: number;
+  puesto_id: number | null;
+  cliente_nombre: string;
+  puesto_nombre: string;
+  agente_saliente_nombre: string | null;
+  agente_entrante_nombre: string | null;
+  tipo: string;
+  motivo: string | null;
+  usuario_cambio: string;
+  notas: string | null;
+  fecha_hora: string;
+}
+
+interface ClienteDisponible {
+  id: number;
+  nombre: string;
+  nombre_comercial: string | null;
+  portal_cliente_id: string | null;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function iniciales(n: string) {
+  return n.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
+}
+
+function fmtHora(iso: string) {
+  return new Date(iso).toLocaleString("es-GT", {
+    day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+  });
+}
+
+async function apiPost(url: string, body: object) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json();
+  if (!r.ok) throw { status: r.status, ...data };
+  return data;
+}
+
+async function apiDelete(url: string) {
+  const r = await fetch(url, { method: "DELETE" });
+  if (!r.ok) throw new Error("Error al eliminar");
+  return r.json();
+}
+
+const AVATAR_COLORS = [
+  "bg-blue-600", "bg-purple-600", "bg-teal-600", "bg-orange-600",
+  "bg-rose-600", "bg-emerald-600", "bg-indigo-600", "bg-amber-600",
+];
+
+function avatarColor(nombre: string) {
+  const sum = nombre.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  return AVATAR_COLORS[sum % AVATAR_COLORS.length];
+}
+
+const TURNO_COLORS: Record<string, string> = {
+  "día":    "text-yellow-400 bg-yellow-400/10 border-yellow-400/20",
+  "noche":  "text-blue-400 bg-blue-400/10 border-blue-400/20",
+  "24h":    "text-purple-400 bg-purple-400/10 border-purple-400/20",
+  "mixto":  "text-teal-400 bg-teal-400/10 border-teal-400/20",
+};
+
+const TIPO_MOV: Record<string, { label: string; icon: React.ComponentType<{className?: string}>; color: string }> = {
+  asignacion:  { label: "Asignación",  icon: UserPlus,    color: "text-green-400" },
+  sustitucion: { label: "Sustitución", icon: ArrowLeftRight, color: "text-yellow-400" },
+  liberacion:  { label: "Liberación",  icon: UserMinus,   color: "text-red-400" },
+};
+
+// ─── Miniatura de Agente (para pool y DragOverlay) ────────────────────────────
+
+function MiniAgente({ agente, compact = false }: { agente: Agente; compact?: boolean }) {
+  return (
+    <div className={`flex items-center gap-2 ${compact ? "" : ""}`}>
+      <div className={`${compact ? "w-7 h-7 text-xs" : "w-8 h-8 text-xs"} rounded-lg flex items-center justify-center font-bold text-white shrink-0 ${avatarColor(agente.nombre_completo)}`}>
+        {iniciales(agente.nombre_completo)}
+      </div>
+      {!compact && (
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-white/90 truncate leading-none">{agente.nombre_completo}</p>
+          {agente.puesto && <p className="text-[10px] text-white/35 truncate mt-0.5">{agente.puesto}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Agente Draggable (pool) ──────────────────────────────────────────────────
+
+function DraggableAgente({
+  agente,
+  onClick,
+  isSelected,
+  disabled,
+}: {
+  agente: Agente;
+  onClick: () => void;
+  isSelected: boolean;
+  disabled?: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `agent-${agente.id}`,
+    disabled,
+  });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Translate.toString(transform),
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 999 : undefined,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      onClick={onClick}
+      className={`
+        relative flex items-center gap-2.5 p-2.5 rounded-xl border cursor-grab active:cursor-grabbing
+        transition-all select-none group
+        ${isSelected
+          ? "bg-primary/15 border-primary/40 shadow-md shadow-primary/10"
+          : "bg-[#0c1929] border-white/8 hover:border-white/15 hover:bg-white/4"}
+        ${disabled ? "opacity-40 cursor-not-allowed" : ""}
+      `}
+    >
+      <div {...attributes} {...listeners} className="shrink-0 text-white/15 hover:text-white/30 cursor-grab">
+        <GripVertical className="w-3 h-3" />
+      </div>
+      <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white shrink-0 ${avatarColor(agente.nombre_completo)}`}>
+        {iniciales(agente.nombre_completo)}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-white/90 truncate">{agente.nombre_completo}</p>
+        <p className="text-[10px] text-white/35 truncate">{agente.puesto ?? "Agente"}</p>
+      </div>
+      {isSelected && (
+        <div className="w-2 h-2 rounded-full bg-primary shrink-0 animate-pulse" />
+      )}
+    </div>
+  );
+}
+
+// ─── Tarjeta de Puesto (droppable) ────────────────────────────────────────────
+
+function DroppablePuesto({
+  puesto,
+  isAgenteSeleccionado,
+  onClick,
+  onLiberar,
+}: {
+  puesto: Puesto;
+  isAgenteSeleccionado: boolean;
+  onClick: () => void;
+  onLiberar: () => void;
+}) {
+  const { isOver, setNodeRef } = useDroppable({ id: `puesto-${puesto.id}` });
+  const cubierto = puesto.estado === "cubierto" && puesto.agente_id;
+
+  return (
+    <div
+      ref={setNodeRef}
+      onClick={onClick}
+      className={`
+        relative rounded-xl border p-3 transition-all cursor-pointer group
+        ${isOver
+          ? "border-primary bg-primary/10 shadow-lg shadow-primary/20 scale-[1.02]"
+          : cubierto
+            ? "bg-[#081620] border-green-500/20 hover:border-green-400/30"
+            : "bg-[#0c0a16] border-red-500/25 hover:border-red-400/35"
+        }
+        ${isAgenteSeleccionado && !cubierto ? "ring-1 ring-primary/50 border-primary/30" : ""}
+      `}
+    >
+      {/* Indicador estado puesto */}
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-white/80 truncate">{puesto.nombre}</p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold ${TURNO_COLORS[puesto.turno] ?? "text-white/30 bg-white/5 border-white/10"}`}>
+              {puesto.turno}
+            </span>
+          </div>
+        </div>
+        <div className="shrink-0 mt-0.5">
+          {cubierto
+            ? <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+            : <Circle className="w-3.5 h-3.5 text-red-400 animate-pulse" />
+          }
+        </div>
+      </div>
+
+      {/* Agente asignado */}
+      {cubierto && puesto.agente_nombre ? (
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className={`w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarColor(puesto.agente_nombre)}`}>
+              {iniciales(puesto.agente_nombre)}
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] text-white/80 font-medium truncate">{puesto.agente_nombre}</p>
+              {puesto.agente_telefono && (
+                <p className="text-[10px] text-white/25 truncate">{puesto.agente_telefono}</p>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); onLiberar(); }}
+            className="opacity-0 group-hover:opacity-100 text-red-400/60 hover:text-red-400 transition-all p-0.5"
+            title="Remover agente"
+          >
+            <XCircle className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ) : (
+        <div className={`flex items-center gap-2 transition-colors ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/20"}`}>
+          <User className="w-4 h-4 shrink-0" />
+          <p className="text-[11px]">
+            {isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : "Puesto descubierto"}
+          </p>
+        </div>
+      )}
+
+      {/* Overlay drag-over */}
+      {isOver && (
+        <div className="absolute inset-0 rounded-xl border-2 border-primary border-dashed pointer-events-none" />
+      )}
+    </div>
+  );
+}
+
+// ─── Columna de Cliente ───────────────────────────────────────────────────────
+
+function ClienteColumna({
+  cliente,
+  agenteSeleccionadoId,
+  onPuestoClick,
+  onLiberar,
+  onNuevoPuesto,
+  onEliminarPuesto,
+}: {
+  cliente: ClienteBoard;
+  agenteSeleccionadoId: number | null;
+  onPuestoClick: (puesto: Puesto) => void;
+  onLiberar: (puesto: Puesto) => void;
+  onNuevoPuesto: (cliente: ClienteBoard) => void;
+  onEliminarPuesto: (puesto: Puesto) => void;
+}) {
+  const cubiertos   = cliente.puestos.filter((p) => p.estado === "cubierto" && p.agente_id).length;
+  const total       = cliente.puestos.length;
+  const pct         = total > 0 ? Math.round((cubiertos / total) * 100) : 0;
+  const colorBarra  = pct === 100 ? "bg-green-500" : pct >= 60 ? "bg-yellow-500" : "bg-red-500";
+
+  return (
+    <div className="flex-shrink-0 w-64 bg-[#060f1a] border border-white/8 rounded-2xl overflow-hidden flex flex-col max-h-full">
+      {/* Header cliente */}
+      <div className="px-3 py-3 border-b border-white/8">
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="min-w-0">
+            <h3 className="text-xs font-bold text-white truncate">{cliente.clienteNombre}</h3>
+            <p className="text-[10px] text-white/35 mt-0.5">{cubiertos}/{total} puestos cubiertos</p>
+          </div>
+          <button
+            onClick={() => onNuevoPuesto(cliente)}
+            className="text-white/20 hover:text-primary transition-colors shrink-0 mt-0.5"
+            title="Agregar puesto"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+        </div>
+        {/* Barra de cobertura */}
+        <div className="h-1 bg-white/8 rounded-full overflow-hidden">
+          <div className={`h-full ${colorBarra} rounded-full transition-all`} style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+
+      {/* Puestos */}
+      <div className="flex-1 overflow-y-auto p-2 space-y-2">
+        {cliente.puestos.map((p) => (
+          <div key={p.id} className="group/puesto relative">
+            <DroppablePuesto
+              puesto={p}
+              isAgenteSeleccionado={agenteSeleccionadoId !== null}
+              onClick={() => onPuestoClick(p)}
+              onLiberar={() => onLiberar(p)}
+            />
+            {/* Botón eliminar puesto */}
+            <button
+              onClick={(e) => { e.stopPropagation(); onEliminarPuesto(p); }}
+              className="absolute -top-1.5 -right-1.5 opacity-0 group-hover/puesto:opacity-100 bg-red-500/80 hover:bg-red-500 text-white rounded-full p-0.5 transition-all z-10"
+              title="Eliminar puesto"
+            >
+              <X className="w-2.5 h-2.5" />
+            </button>
+          </div>
+        ))}
+        {cliente.puestos.length === 0 && (
+          <div className="text-center py-4">
+            <p className="text-[11px] text-white/20">Sin puestos</p>
+            <button
+              onClick={() => onNuevoPuesto(cliente)}
+              className="text-[10px] text-primary/60 hover:text-primary mt-1 transition-colors"
+            >
+              Agregar puesto
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Panel lateral: Historial + Pool info ─────────────────────────────────────
+
+function PanelHistorial({
+  movimientos,
+  isLoading,
+  onClose,
+}: {
+  movimientos: Movimiento[];
+  isLoading: boolean;
+  onClose: () => void;
+}) {
+  return createPortal(
+    <div className="fixed inset-y-0 right-0 z-40 w-80 bg-[#06111e] border-l border-white/8 shadow-2xl flex flex-col">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
+        <div className="flex items-center gap-2">
+          <History className="w-4 h-4 text-white/40" />
+          <h3 className="text-sm font-bold text-white">Historial de movimientos</h3>
+        </div>
+        <button onClick={onClose} className="text-white/30 hover:text-white transition-colors">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        {isLoading && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-4 h-4 animate-spin text-primary" />
+          </div>
+        )}
+        {!isLoading && movimientos.length === 0 && (
+          <div className="text-center py-10 text-white/25 text-xs">
+            Sin movimientos registrados aún
+          </div>
+        )}
+        {movimientos.map((m) => {
+          const cfg = TIPO_MOV[m.tipo] ?? { label: m.tipo, icon: Activity, color: "text-white/40" };
+          const Icon = cfg.icon;
+          return (
+            <div key={m.id} className="bg-[#0c1929] border border-white/6 rounded-xl p-3">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Icon className={`w-3.5 h-3.5 ${cfg.color}`} />
+                <span className={`text-[10px] font-semibold ${cfg.color}`}>{cfg.label}</span>
+                <span className="text-[10px] text-white/25 ml-auto">{fmtHora(m.fecha_hora)}</span>
+              </div>
+              <p className="text-[11px] text-white/60 font-medium">
+                {m.cliente_nombre} · {m.puesto_nombre}
+              </p>
+              {m.tipo === "sustitucion" && (
+                <p className="text-[10px] text-white/35 mt-0.5">
+                  {m.agente_saliente_nombre} → {m.agente_entrante_nombre}
+                </p>
+              )}
+              {m.tipo === "asignacion" && (
+                <p className="text-[10px] text-white/35 mt-0.5">
+                  Asignado: {m.agente_entrante_nombre}
+                </p>
+              )}
+              {m.tipo === "liberacion" && (
+                <p className="text-[10px] text-white/35 mt-0.5">
+                  Removido: {m.agente_saliente_nombre}
+                </p>
+              )}
+              {m.motivo && (
+                <p className="text-[10px] text-white/25 mt-0.5">Motivo: {m.motivo}</p>
+              )}
+              <p className="text-[9px] text-white/20 mt-1">por {m.usuario_cambio}</p>
+            </div>
+          );
+        })}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── Modal: Confirmar Sustitución / Asignación ────────────────────────────────
+
+function ModalSustitucion({
+  puesto,
+  agenteEntrante,
+  onConfirm,
+  onCancel,
+  advertencia,
+}: {
+  puesto: Puesto;
+  agenteEntrante: Agente;
+  onConfirm: (motivo: string, notas: string, forzar: boolean) => Promise<void>;
+  onCancel: () => void;
+  advertencia?: string;
+}) {
+  const [motivo, setMotivo] = useState("rotacion");
+  const [notas, setNotas] = useState("");
+  const [loading, setLoading] = useState(false);
+  const esSustitucion = !!puesto.agente_id;
+
+  async function handleConfirm() {
+    setLoading(true);
+    try {
+      await onConfirm(motivo, notas, !!advertencia);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-sm shadow-2xl">
+        <div className="px-5 py-4 border-b border-white/8">
+          <div className="flex items-center gap-2">
+            {esSustitucion
+              ? <ArrowLeftRight className="w-4 h-4 text-yellow-400" />
+              : <UserPlus className="w-4 h-4 text-green-400" />
+            }
+            <h3 className="text-sm font-bold text-white">
+              {esSustitucion ? "Confirmar sustitución" : "Confirmar asignación"}
+            </h3>
+          </div>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Advertencia de conflicto */}
+          {advertencia && (
+            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-yellow-300/80">{advertencia}</p>
+            </div>
+          )}
+
+          {/* Resumen del movimiento */}
+          <div className="bg-[#0c1929] border border-white/8 rounded-xl p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <Building2 className="w-3 h-3 text-white/25" />
+              <span className="text-xs text-white/50">{puesto.cliente_nombre} · {puesto.nombre}</span>
+            </div>
+            {esSustitucion && puesto.agente_nombre && (
+              <div className="flex items-center gap-2">
+                <UserMinus className="w-3 h-3 text-red-400/60" />
+                <span className="text-xs text-white/50">Sale: <span className="text-white/70">{puesto.agente_nombre}</span></span>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <UserPlus className="w-3 h-3 text-green-400/60" />
+              <span className="text-xs text-white/50">Entra: <span className="text-white/70">{agenteEntrante.nombre_completo}</span></span>
+            </div>
+          </div>
+
+          {/* Motivo */}
+          {esSustitucion && (
+            <div className="space-y-1">
+              <label className="text-xs text-white/40">Motivo de la sustitución</label>
+              <select
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50 appearance-none"
+              >
+                <option value="rotacion">Rotación de turno</option>
+                <option value="falta">Falta del agente</option>
+                <option value="descanso">Descanso / tiempo libre</option>
+                <option value="suspension">Suspensión</option>
+                <option value="emergencia">Emergencia</option>
+                <option value="voluntario">Solicitud voluntaria</option>
+                <option value="otro">Otro</option>
+              </select>
+            </div>
+          )}
+
+          {/* Notas */}
+          <div className="space-y-1">
+            <label className="text-xs text-white/40">Notas (opcional)</label>
+            <textarea
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+              rows={2}
+              placeholder="Observación adicional…"
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50 resize-none"
+            />
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={onCancel}
+              className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleConfirm}
+              disabled={loading}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-colors flex items-center justify-center gap-2
+                ${esSustitucion
+                  ? "bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50"
+                  : "bg-green-600 hover:bg-green-500 disabled:opacity-50"}`}
+            >
+              {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {advertencia ? "Forzar y confirmar" : esSustitucion ? "Confirmar sustitución" : "Asignar"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── Modal: Nuevo Puesto ──────────────────────────────────────────────────────
+
+function ModalNuevoPuesto({
+  clientePreseleccionado,
+  clientes,
+  onSave,
+  onClose,
+}: {
+  clientePreseleccionado?: ClienteBoard;
+  clientes: ClienteDisponible[];
+  onSave: (data: { clienteId: number | null; clienteNombre: string; nombre: string; turno: string; notas: string }) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [clienteId, setClienteId]     = useState<string>(clientePreseleccionado?.clienteId?.toString() ?? "");
+  const [clienteNombreCustom, setClienteNombreCustom] = useState(clientePreseleccionado?.clienteNombre ?? "");
+  const [nombre, setNombre]           = useState("");
+  const [turno, setTurno]             = useState("día");
+  const [notas, setNotas]             = useState("");
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState("");
+
+  // Resolver nombre del cliente seleccionado
+  const clienteSeleccionado = clientes.find((c) => c.id.toString() === clienteId);
+  const clienteNombreFinal  = clienteSeleccionado
+    ? (clienteSeleccionado.nombre_comercial || clienteSeleccionado.nombre)
+    : clienteNombreCustom;
+
+  async function handleSave() {
+    if (!nombre.trim()) { setError("El nombre del puesto es requerido."); return; }
+    if (!clienteNombreFinal.trim()) { setError("Selecciona o escribe un cliente."); return; }
+    setLoading(true);
+    setError("");
+    try {
+      await onSave({
+        clienteId: clienteId ? parseInt(clienteId) : null,
+        clienteNombre: clienteNombreFinal,
+        nombre: nombre.trim(),
+        turno,
+        notas,
+      });
+      onClose();
+    } catch (e: any) {
+      setError(e.error ?? "Error al crear puesto");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-sm shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
+          <div className="flex items-center gap-2">
+            <Plus className="w-4 h-4 text-primary" />
+            <h3 className="text-sm font-bold text-white">Nuevo Puesto</h3>
+          </div>
+          <button onClick={onClose} className="text-white/30 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-5 space-y-3">
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-2.5 text-xs text-red-400">{error}</div>
+          )}
+          <div className="space-y-1">
+            <label className="text-xs text-white/40">Cliente</label>
+            <select
+              value={clienteId}
+              onChange={(e) => setClienteId(e.target.value)}
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50 appearance-none"
+            >
+              <option value="">— Escribir manualmente —</option>
+              {clientes.map((c) => (
+                <option key={c.id} value={c.id}>{c.nombre_comercial || c.nombre}</option>
+              ))}
+            </select>
+          </div>
+          {!clienteId && (
+            <div className="space-y-1">
+              <label className="text-xs text-white/40">Nombre del cliente (manual)</label>
+              <input
+                type="text"
+                value={clienteNombreCustom}
+                onChange={(e) => setClienteNombreCustom(e.target.value)}
+                placeholder="Nombre del cliente…"
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50"
+              />
+            </div>
+          )}
+          <div className="space-y-1">
+            <label className="text-xs text-white/40">Nombre del puesto <span className="text-rose-400">*</span></label>
+            <input
+              type="text"
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              placeholder="Garita Principal, Recepción…"
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-white/40">Turno</label>
+            <select
+              value={turno}
+              onChange={(e) => setTurno(e.target.value)}
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50 appearance-none"
+            >
+              <option value="día">Día</option>
+              <option value="noche">Noche</option>
+              <option value="24h">24 horas</option>
+              <option value="mixto">Mixto</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-white/40">Notas (opcional)</label>
+            <input
+              type="text"
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+              placeholder="Instrucciones especiales…"
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50"
+            />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors">
+              Cancelar
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={loading}
+              className="flex-1 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-sm font-bold text-white disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+            >
+              {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              Crear puesto
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── Modal: Liberar agente ────────────────────────────────────────────────────
+
+function ModalLiberar({
+  puesto,
+  onConfirm,
+  onClose,
+}: {
+  puesto: Puesto;
+  onConfirm: (motivo: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [motivo, setMotivo] = useState("descanso");
+  const [loading, setLoading] = useState(false);
+
+  async function handleConfirm() {
+    setLoading(true);
+    try { await onConfirm(motivo); } finally { setLoading(false); }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-xs shadow-2xl p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <UserMinus className="w-4 h-4 text-red-400" />
+          <h3 className="text-sm font-bold text-white">Remover agente del puesto</h3>
+        </div>
+        <div className="bg-[#0c1929] border border-white/8 rounded-xl p-3 text-xs text-white/60">
+          <p><span className="text-white/80">{puesto.agente_nombre}</span> será removido de</p>
+          <p className="text-white/40 mt-0.5">{puesto.cliente_nombre} · {puesto.nombre}</p>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-white/40">Motivo</label>
+          <select
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none appearance-none"
+          >
+            <option value="descanso">Descanso</option>
+            <option value="falta">Falta</option>
+            <option value="suspension">Suspensión</option>
+            <option value="rotacion">Rotación</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors">
+            Cancelar
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={loading}
+            className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-sm font-bold text-white disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+          >
+            {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            Remover
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── Página principal ─────────────────────────────────────────────────────────
+
+export default function Operaciones() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const { currentUser } = useAuth();
+
+  // ── Estado UI ──────────────────────────────────────────────────────────────
+  const [agenteSeleccionado, setAgenteSeleccionado] = useState<Agente | null>(null);
+  const [draggingAgente, setDraggingAgente]         = useState<Agente | null>(null);
+  const [historialAbierto, setHistorialAbierto]     = useState(false);
+  const [nuevoPuestoData, setNuevoPuestoData]        = useState<ClienteBoard | null | "nuevo">(null);
+  const [modalSustitucion, setModalSustitucion]      = useState<{ puesto: Puesto; agente: Agente; advertencia?: string } | null>(null);
+  const [modalLiberar, setModalLiberar]              = useState<Puesto | null>(null);
+  const [poolTab, setPoolTab]                        = useState<"disponibles" | "enDescanso" | "suspendidos" | "enPuesto">("disponibles");
+  const [busquedaPool, setBusquedaPool]              = useState("");
+
+  // ── Sensores DnD ──────────────────────────────────────────────────────────
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
+  );
+
+  // ── Queries ───────────────────────────────────────────────────────────────
+  const { data: tablero = [], isLoading: loadingTablero, refetch: refetchTablero } = useQuery<ClienteBoard[]>({
+    queryKey: ["operaciones-tablero"],
+    queryFn: () => fetch(`${API_BASE}/operaciones/tablero`).then((r) => r.json()),
+    refetchInterval: 30_000,
+  });
+
+  const { data: pool, isLoading: loadingPool, refetch: refetchPool } = useQuery<Pool>({
+    queryKey: ["operaciones-pool"],
+    queryFn: () => fetch(`${API_BASE}/operaciones/pool`).then((r) => r.json()),
+    refetchInterval: 30_000,
+  });
+
+  const { data: historial = [], isLoading: loadingHistorial } = useQuery<Movimiento[]>({
+    queryKey: ["operaciones-historial"],
+    queryFn: () => fetch(`${API_BASE}/operaciones/historial?limit=80`).then((r) => r.json()),
+    enabled: historialAbierto,
+    refetchInterval: historialAbierto ? 15_000 : false,
+  });
+
+  const { data: clientesDisponibles = [] } = useQuery<ClienteDisponible[]>({
+    queryKey: ["operaciones-clientes"],
+    queryFn: () => fetch(`${API_BASE}/operaciones/clientes-disponibles`).then((r) => r.json()),
+  });
+
+  // ── Invalidar y refrescar ─────────────────────────────────────────────────
+  function invalidate() {
+    qc.invalidateQueries({ queryKey: ["operaciones-tablero"] });
+    qc.invalidateQueries({ queryKey: ["operaciones-pool"] });
+    qc.invalidateQueries({ queryKey: ["operaciones-historial"] });
+  }
+
+  // ── DnD: inicio ───────────────────────────────────────────────────────────
+  function handleDragStart(event: DragStartEvent) {
+    const agenteId = parseInt(event.active.id.toString().replace("agent-", ""));
+    const agente = [
+      ...(pool?.disponibles ?? []),
+      ...(pool?.enDescanso ?? []),
+      ...(pool?.suspendidos ?? []),
+      ...(pool?.enPuesto ?? []),
+    ].find((a) => a.id === agenteId);
+    if (agente) setDraggingAgente(agente);
+  }
+
+  // ── DnD: fin ──────────────────────────────────────────────────────────────
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    setDraggingAgente(null);
+
+    if (!over) return;
+
+    const agenteId = parseInt(active.id.toString().replace("agent-", ""));
+    const puestoId = parseInt(over.id.toString().replace("puesto-", ""));
+
+    const agente = [
+      ...(pool?.disponibles ?? []),
+      ...(pool?.enDescanso ?? []),
+      ...(pool?.suspendidos ?? []),
+      ...(pool?.enPuesto ?? []),
+    ].find((a) => a.id === agenteId);
+
+    const puesto = tablero.flatMap((c) => c.puestos).find((p) => p.id === puestoId);
+
+    if (!agente || !puesto) return;
+
+    await iniciarAsignacion(puesto, agente);
+  }
+
+  // ── Lógica de asignación/sustitución ─────────────────────────────────────
+  async function iniciarAsignacion(puesto: Puesto, agente: Agente) {
+    // Si ya tiene el mismo agente, no hacer nada
+    if (puesto.agente_id === agente.id) return;
+
+    // Si el puesto tiene agente → sustitución
+    // Si no tiene agente → asignación directa
+    // Primero verificar disponibilidad
+    try {
+      const disp = await fetch(`${API_BASE}/operaciones/agentes/${agente.id}/disponibilidad`).then((r) => r.json());
+      if (disp.puestosActivos.length > 0) {
+        const yaTiene = disp.puestosActivos[0];
+        setModalSustitucion({
+          puesto,
+          agente,
+          advertencia: `${agente.nombre_completo} ya está en ${yaTiene.cliente_nombre} — ${yaTiene.nombre}. ¿Forzar?`,
+        });
+      } else {
+        setModalSustitucion({ puesto, agente });
+      }
+    } catch {
+      setModalSustitucion({ puesto, agente });
+    }
+  }
+
+  // ── Click en puesto: asignar agente seleccionado ──────────────────────────
+  async function handlePuestoClick(puesto: Puesto) {
+    if (!agenteSeleccionado) return;
+    await iniciarAsignacion(puesto, agenteSeleccionado);
+  }
+
+  // ── Confirmar sustitución / asignación ───────────────────────────────────
+  async function confirmarSustitucion(motivo: string, notas: string, forzar: boolean) {
+    if (!modalSustitucion) return;
+    const { puesto, agente } = modalSustitucion;
+
+    try {
+      if (puesto.agente_id) {
+        await apiPost(`${API_BASE}/operaciones/sustituir`, {
+          puestoId: puesto.id,
+          agenteEntranteId: agente.id,
+          motivo,
+          notas,
+          forzar,
+          usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+        });
+        toast({ title: "Sustitución registrada", description: `${puesto.agente_nombre} → ${agente.nombre_completo}` });
+      } else {
+        await apiPost(`${API_BASE}/operaciones/asignar`, {
+          puestoId: puesto.id,
+          agenteId: agente.id,
+          notas,
+          usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+        });
+        toast({ title: "Agente asignado", description: `${agente.nombre_completo} → ${puesto.nombre}` });
+      }
+      setModalSustitucion(null);
+      setAgenteSeleccionado(null);
+      invalidate();
+    } catch (e: any) {
+      if (e.advertencia) {
+        setModalSustitucion((prev) => prev ? { ...prev, advertencia: e.error } : null);
+        return;
+      }
+      toast({ title: "Error", description: e.error ?? "Error al procesar", variant: "destructive" });
+    }
+  }
+
+  // ── Confirmar liberación ──────────────────────────────────────────────────
+  async function confirmarLiberar(motivo: string) {
+    if (!modalLiberar) return;
+    try {
+      await apiPost(`${API_BASE}/operaciones/liberar`, {
+        puestoId: modalLiberar.id,
+        motivo,
+        usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+      });
+      toast({ title: "Puesto liberado", description: `${modalLiberar.agente_nombre} removido de ${modalLiberar.nombre}` });
+      setModalLiberar(null);
+      invalidate();
+    } catch (e: any) {
+      toast({ title: "Error", description: e.error ?? "Error al liberar", variant: "destructive" });
+    }
+  }
+
+  // ── Crear puesto ──────────────────────────────────────────────────────────
+  async function crearPuesto(data: { clienteId: number | null; clienteNombre: string; nombre: string; turno: string; notas: string }) {
+    await apiPost(`${API_BASE}/operaciones/puestos`, data);
+    toast({ title: "Puesto creado", description: `${data.nombre} — ${data.clienteNombre}` });
+    invalidate();
+  }
+
+  // ── Eliminar puesto ───────────────────────────────────────────────────────
+  async function eliminarPuesto(puesto: Puesto) {
+    if (!confirm(`¿Eliminar el puesto "${puesto.nombre}" de ${puesto.cliente_nombre}?`)) return;
+    try {
+      await apiDelete(`${API_BASE}/operaciones/puestos/${puesto.id}`);
+      toast({ title: "Puesto eliminado" });
+      invalidate();
+    } catch {
+      toast({ title: "Error", description: "No se pudo eliminar", variant: "destructive" });
+    }
+  }
+
+  // ── Pool filtrado ─────────────────────────────────────────────────────────
+  const poolActual: Agente[] = (() => {
+    if (!pool) return [];
+    let lista = pool[poolTab] ?? [];
+    if (busquedaPool.trim()) {
+      const q = busquedaPool.toLowerCase();
+      lista = lista.filter((a) =>
+        a.nombre_completo.toLowerCase().includes(q) ||
+        a.puesto?.toLowerCase().includes(q) ||
+        a.area?.toLowerCase().includes(q)
+      );
+    }
+    return lista;
+  })();
+
+  // ── Stats generales ───────────────────────────────────────────────────────
+  const totalPuestos   = tablero.flatMap((c) => c.puestos).length;
+  const puestosCubiertos = tablero.flatMap((c) => c.puestos).filter((p) => p.estado === "cubierto").length;
+  const puestosDescubiertos = totalPuestos - puestosCubiertos;
+  const coberturaGlobal = totalPuestos > 0 ? Math.round((puestosCubiertos / totalPuestos) * 100) : 0;
+
+  // ─────────────────────────────────────────────────────────────────────────
+
+  return (
+    <AdminLayout title="Pizarrón Operativo">
+      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <div className="flex flex-col h-full gap-4" style={{ minHeight: 0 }}>
+
+          {/* ── Barra de acciones ────────────────────────────────────────── */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {/* Stats */}
+            <div className="flex items-center gap-3 bg-[#0c1929] border border-white/8 rounded-xl px-4 py-2">
+              <div className="text-center">
+                <p className="text-lg font-bold text-white leading-none">{coberturaGlobal}%</p>
+                <p className="text-[10px] text-white/30 mt-0.5">Cobertura</p>
+              </div>
+              <div className="w-px h-8 bg-white/8" />
+              <div className="text-center">
+                <p className="text-lg font-bold text-green-400 leading-none">{puestosCubiertos}</p>
+                <p className="text-[10px] text-white/30 mt-0.5">Cubiertos</p>
+              </div>
+              <div className="w-px h-8 bg-white/8" />
+              <div className="text-center">
+                <p className={`text-lg font-bold leading-none ${puestosDescubiertos > 0 ? "text-red-400 animate-pulse" : "text-white/30"}`}>{puestosDescubiertos}</p>
+                <p className="text-[10px] text-white/30 mt-0.5">Descubiertos</p>
+              </div>
+              <div className="w-px h-8 bg-white/8" />
+              <div className="text-center">
+                <p className="text-lg font-bold text-blue-400 leading-none">{pool?.disponibles?.length ?? 0}</p>
+                <p className="text-[10px] text-white/30 mt-0.5">Disponibles</p>
+              </div>
+            </div>
+
+            <div className="flex-1" />
+
+            {agenteSeleccionado && (
+              <div className="flex items-center gap-2 bg-primary/10 border border-primary/25 rounded-xl px-3 py-2">
+                <div className={`w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold text-white ${avatarColor(agenteSeleccionado.nombre_completo)}`}>
+                  {iniciales(agenteSeleccionado.nombre_completo)}
+                </div>
+                <span className="text-xs text-white/80 font-medium">{agenteSeleccionado.nombre_completo}</span>
+                <span className="text-[10px] text-primary/70">seleccionado → toca un puesto</span>
+                <button onClick={() => setAgenteSeleccionado(null)} className="text-white/30 hover:text-white ml-1">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            <button
+              onClick={() => setNuevoPuestoData("nuevo")}
+              className="flex items-center gap-1.5 text-xs font-semibold text-white bg-primary hover:bg-primary/90 rounded-xl px-3 py-2 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" /> Nuevo puesto
+            </button>
+
+            <button
+              onClick={() => setHistorialAbierto(!historialAbierto)}
+              className={`flex items-center gap-1.5 text-xs rounded-xl px-3 py-2 border transition-colors
+                ${historialAbierto
+                  ? "bg-white/8 border-white/15 text-white"
+                  : "bg-[#0c1929] border-white/8 text-white/40 hover:text-white"}`}
+            >
+              <History className="w-3.5 h-3.5" /> Historial
+            </button>
+
+            <button
+              onClick={() => { refetchTablero(); refetchPool(); }}
+              className="text-white/30 hover:text-white border border-white/8 rounded-xl px-2.5 py-2 bg-[#0c1929] transition-colors"
+              title="Refrescar"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* ── Tablero ──────────────────────────────────────────────────── */}
+          <div className="flex-1 overflow-auto" style={{ minHeight: 0 }}>
+            {loadingTablero ? (
+              <div className="flex items-center justify-center h-full">
+                <Loader2 className="w-6 h-6 animate-spin text-primary mr-2" />
+                <span className="text-sm text-white/40">Cargando pizarrón…</span>
+              </div>
+            ) : tablero.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full gap-3">
+                <Shield className="w-12 h-12 text-white/10" />
+                <p className="text-white/30 text-sm">No hay puestos operativos configurados</p>
+                <button
+                  onClick={() => setNuevoPuestoData("nuevo")}
+                  className="flex items-center gap-2 text-xs text-primary hover:text-primary/80 transition-colors border border-primary/20 rounded-xl px-4 py-2"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Crear primer puesto
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-3 h-full pb-2">
+                {tablero.map((cliente) => (
+                  <ClienteColumna
+                    key={cliente.clienteNombre}
+                    cliente={cliente}
+                    agenteSeleccionadoId={agenteSeleccionado?.id ?? null}
+                    onPuestoClick={handlePuestoClick}
+                    onLiberar={(p) => setModalLiberar(p)}
+                    onNuevoPuesto={(c) => setNuevoPuestoData(c)}
+                    onEliminarPuesto={eliminarPuesto}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── Pool de agentes ───────────────────────────────────────────── */}
+          <div className="shrink-0 bg-[#060f1a] border border-white/8 rounded-2xl overflow-hidden">
+            {/* Header pool */}
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/8">
+              <Users className="w-3.5 h-3.5 text-white/30" />
+              <span className="text-xs font-bold text-white/60 uppercase tracking-widest">Pool de agentes</span>
+              <div className="flex-1" />
+
+              {/* Tabs del pool */}
+              {[
+                { key: "disponibles" as const, label: "Disponibles", count: pool?.disponibles?.length ?? 0, color: "text-green-400" },
+                { key: "enDescanso"  as const, label: "Descanso",    count: pool?.enDescanso?.length ?? 0,  color: "text-blue-400" },
+                { key: "enPuesto"   as const, label: "En puesto",   count: pool?.enPuesto?.length ?? 0,   color: "text-teal-400" },
+                { key: "suspendidos" as const, label: "Suspendidos", count: pool?.suspendidos?.length ?? 0, color: "text-red-400" },
+              ].map(({ key, label, count, color }) => (
+                <button
+                  key={key}
+                  onClick={() => setPoolTab(key)}
+                  className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors ${poolTab === key ? "bg-white/8 text-white" : "text-white/30 hover:text-white/60"}`}
+                >
+                  {label}
+                  <span className={`text-[10px] font-bold ${color}`}>{count}</span>
+                </button>
+              ))}
+
+              {/* Búsqueda en pool */}
+              <div className="relative">
+                <input
+                  type="text"
+                  value={busquedaPool}
+                  onChange={(e) => setBusquedaPool(e.target.value)}
+                  placeholder="Buscar agente…"
+                  className="bg-[#060e1c] border border-white/8 rounded-lg px-3 py-1.5 text-xs text-white placeholder-white/20 outline-none focus:border-primary/40 w-36"
+                />
+                {busquedaPool && (
+                  <button onClick={() => setBusquedaPool("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-white/20 hover:text-white">
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+
+              <span className="text-xs text-white/20">
+                {agenteSeleccionado ? "Toca un puesto en el tablero" : "Arrastra o selecciona un agente"}
+              </span>
+            </div>
+
+            {/* Agentes en el pool */}
+            <div className="flex gap-2 p-3 overflow-x-auto min-h-[80px]">
+              {loadingPool ? (
+                <div className="flex items-center justify-center w-full">
+                  <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                </div>
+              ) : poolActual.length === 0 ? (
+                <div className="flex items-center justify-center w-full text-white/20 text-xs">
+                  {poolTab === "disponibles" ? "No hay agentes disponibles" :
+                   poolTab === "enDescanso"  ? "No hay agentes en descanso" :
+                   poolTab === "enPuesto"    ? "Ningún agente está en puesto activo" :
+                   "No hay agentes suspendidos"}
+                </div>
+              ) : (
+                poolActual.map((agente) => (
+                  <div key={agente.id} className="shrink-0 w-52">
+                    <DraggableAgente
+                      agente={agente}
+                      isSelected={agenteSeleccionado?.id === agente.id}
+                      onClick={() => setAgenteSeleccionado(
+                        agenteSeleccionado?.id === agente.id ? null : agente
+                      )}
+                      disabled={poolTab === "enPuesto"}
+                    />
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Leyenda */}
+            <div className="flex items-center gap-4 px-4 py-2 border-t border-white/5 text-[10px] text-white/20">
+              <span className="flex items-center gap-1"><CheckCircle2 className="w-2.5 h-2.5 text-green-400" /> Cubierto</span>
+              <span className="flex items-center gap-1"><Circle className="w-2.5 h-2.5 text-red-400" /> Descubierto</span>
+              <span className="flex items-center gap-1"><GripVertical className="w-2.5 h-2.5" /> Arrastrar agente al puesto</span>
+              <span className="flex items-center gap-1"><XCircle className="w-2.5 h-2.5" /> Hover sobre puesto para remover</span>
+              <div className="flex-1" />
+              <span>Se refresca cada 30 seg automáticamente</span>
+            </div>
+          </div>
+        </div>
+
+        {/* DragOverlay — miniatura flotante del agente arrastrado */}
+        <DragOverlay>
+          {draggingAgente && (
+            <div className="bg-[#07111f] border border-primary/40 rounded-xl px-3 py-2 shadow-2xl shadow-primary/20 flex items-center gap-2 opacity-95 rotate-1">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white shrink-0 ${avatarColor(draggingAgente.nombre_completo)}`}>
+                {iniciales(draggingAgente.nombre_completo)}
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-white">{draggingAgente.nombre_completo}</p>
+                <p className="text-[10px] text-white/40">{draggingAgente.puesto ?? "Agente"}</p>
+              </div>
+            </div>
+          )}
+        </DragOverlay>
+      </DndContext>
+
+      {/* ── Modales ───────────────────────────────────────────────────────── */}
+      {historialAbierto && (
+        <PanelHistorial
+          movimientos={historial}
+          isLoading={loadingHistorial}
+          onClose={() => setHistorialAbierto(false)}
+        />
+      )}
+
+      {modalSustitucion && (
+        <ModalSustitucion
+          puesto={modalSustitucion.puesto}
+          agenteEntrante={modalSustitucion.agente}
+          advertencia={modalSustitucion.advertencia}
+          onConfirm={confirmarSustitucion}
+          onCancel={() => setModalSustitucion(null)}
+        />
+      )}
+
+      {modalLiberar && (
+        <ModalLiberar
+          puesto={modalLiberar}
+          onConfirm={confirmarLiberar}
+          onClose={() => setModalLiberar(null)}
+        />
+      )}
+
+      {nuevoPuestoData && (
+        <ModalNuevoPuesto
+          clientePreseleccionado={typeof nuevoPuestoData === "object" ? nuevoPuestoData : undefined}
+          clientes={clientesDisponibles}
+          onSave={crearPuesto}
+          onClose={() => setNuevoPuestoData(null)}
+        />
+      )}
+    </AdminLayout>
+  );
+}

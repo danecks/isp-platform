@@ -14,6 +14,7 @@ import {
   Globe,
   FlaskConical,
   HardHat,
+  LayoutGrid,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -52,6 +53,12 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Dashboard",
     icon: LayoutDashboard,
     roles: ["admin", "operaciones", "rrhh", "comercial", "supervisor"],
+  },
+  {
+    path: "/admin/operaciones",
+    label: "Pizarrón Operativo",
+    icon: LayoutGrid,
+    roles: ["admin", "operaciones", "supervisor"],
   },
   {
     path: "/admin/incidencias",

@@ -969,5 +969,78 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: error en columnas de employees (módulo colaboradores)");
   }
 
+  // ── PIZARRÓN OPERATIVO: puestos_operativos + movimientos_operativos ─────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS puestos_operativos (
+        id              SERIAL PRIMARY KEY,
+        cliente_id      INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+        cliente_nombre  VARCHAR(255) NOT NULL DEFAULT '',
+        nombre          VARCHAR(150) NOT NULL,
+        turno           VARCHAR(20)  NOT NULL DEFAULT 'día',
+        agente_id       INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        agente_nombre   VARCHAR(255),
+        estado          VARCHAR(30)  NOT NULL DEFAULT 'descubierto',
+        orden           INTEGER      NOT NULL DEFAULT 0,
+        activo          BOOLEAN      NOT NULL DEFAULT TRUE,
+        notas           TEXT,
+        created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'puestos_operativos' verificada/creada");
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS movimientos_operativos (
+        id                      SERIAL PRIMARY KEY,
+        puesto_id               INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        cliente_nombre          VARCHAR(255),
+        puesto_nombre           VARCHAR(150),
+        agente_saliente_id      INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        agente_saliente_nombre  VARCHAR(255),
+        agente_entrante_id      INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        agente_entrante_nombre  VARCHAR(255),
+        tipo                    VARCHAR(30) NOT NULL DEFAULT 'asignacion',
+        motivo                  VARCHAR(50),
+        usuario_cambio          VARCHAR(100),
+        notas                   TEXT,
+        fecha_hora              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'movimientos_operativos' verificada/creada");
+
+    // Seed inicial de puestos si existen clientes y empleados
+    const clientCount = await pool.query(`SELECT COUNT(*) FROM clients WHERE estado='activo'`);
+    const puestoCount = await pool.query(`SELECT COUNT(*) FROM puestos_operativos`);
+    if (parseInt(clientCount.rows[0].count) > 0 && parseInt(puestoCount.rows[0].count) === 0) {
+      const clients = await pool.query(`SELECT id, nombre, nombre_comercial FROM clients WHERE estado='activo' LIMIT 4`);
+      const empleados = await pool.query(`SELECT id, nombre_completo FROM employees WHERE estado_laboral='activo' LIMIT 8`);
+      let orden = 0;
+      let empIdx = 0;
+      const puestoTemplates = ["Garita Principal", "Garita Secundaria", "Recepción", "Bodega"];
+      const turnos = ["día", "noche", "día", "noche"];
+      for (const cli of clients.rows) {
+        for (let i = 0; i < 2; i++) {
+          const nombrePuesto = puestoTemplates[orden % puestoTemplates.length];
+          const turno = turnos[orden % turnos.length];
+          const agente = empleados.rows[empIdx];
+          const agenteId = agente?.id ?? null;
+          const agenteNombre = agente?.nombre_completo ?? null;
+          await pool.query(
+            `INSERT INTO puestos_operativos (cliente_id, cliente_nombre, nombre, turno, agente_id, agente_nombre, estado, orden)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [cli.id, cli.nombre_comercial || cli.nombre, nombrePuesto, turno, agenteId, agenteNombre, agenteId ? 'cubierto' : 'descubierto', orden]
+          );
+          orden++;
+          if (agenteId) empIdx++;
+        }
+      }
+      logger.info(`Auto-seed: puestos_operativos iniciales creados (${orden})`);
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: error en pizarrón operativo");
+  }
+
   logger.info("Auto-seed completado");
 }

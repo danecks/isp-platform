@@ -1,0 +1,347 @@
+import { Router } from "express";
+import { pool } from "@workspace/db";
+import { logger } from "../lib/logger";
+
+const operacionesRouter = Router();
+
+// ─── GET /api/operaciones/tablero ─────────────────────────────────────────────
+// Devuelve: clientes con sus puestos y el agente asignado en cada uno
+operacionesRouter.get("/operaciones/tablero", async (req, res) => {
+  try {
+    const { rows: puestos } = await pool.query(`
+      SELECT
+        po.id,
+        po.cliente_id,
+        po.cliente_nombre,
+        po.nombre,
+        po.turno,
+        po.agente_id,
+        po.agente_nombre,
+        po.estado,
+        po.orden,
+        po.notas,
+        po.updated_at,
+        e.estado_laboral AS agente_estado_laboral,
+        e.puesto         AS agente_puesto,
+        e.telefono       AS agente_telefono,
+        e.area           AS agente_area,
+        e.sede           AS agente_sede
+      FROM puestos_operativos po
+      LEFT JOIN employees e ON e.id = po.agente_id
+      WHERE po.activo = TRUE
+      ORDER BY po.cliente_nombre, po.orden, po.nombre
+    `);
+
+    // Agrupar por cliente
+    const mapaClientes: Record<string, {
+      clienteId: number | null;
+      clienteNombre: string;
+      puestos: typeof puestos;
+    }> = {};
+
+    for (const p of puestos) {
+      const key = p.cliente_nombre;
+      if (!mapaClientes[key]) {
+        mapaClientes[key] = { clienteId: p.cliente_id, clienteNombre: p.cliente_nombre, puestos: [] };
+      }
+      mapaClientes[key].puestos.push(p);
+    }
+
+    res.json(Object.values(mapaClientes));
+  } catch (err) {
+    logger.error({ err }, "GET /operaciones/tablero error");
+    res.status(500).json({ error: "Error al cargar tablero" });
+  }
+});
+
+// ─── GET /api/operaciones/pool ────────────────────────────────────────────────
+// Pool de agentes: disponibles / en descanso / sin asignación
+operacionesRouter.get("/operaciones/pool", async (req, res) => {
+  try {
+    // IDs de agentes ya asignados en el tablero
+    const { rows: asignadosRows } = await pool.query(`
+      SELECT DISTINCT agente_id FROM puestos_operativos
+      WHERE activo = TRUE AND agente_id IS NOT NULL
+    `);
+    const asignadosIds = asignadosRows.map((r: any) => r.agente_id);
+
+    const { rows: agentes } = await pool.query(`
+      SELECT
+        id, nombre_completo, estado_laboral, puesto, area, sede,
+        telefono, wa_autorizado, supervisor_id
+      FROM employees
+      WHERE estado_laboral IN ('activo', 'suspendido', 'licencia')
+      ORDER BY estado_laboral, nombre_completo
+    `);
+
+    const disponibles  = agentes.filter((a: any) => a.estado_laboral === 'activo'    && !asignadosIds.includes(a.id));
+    const enPuesto     = agentes.filter((a: any) => a.estado_laboral === 'activo'    &&  asignadosIds.includes(a.id));
+    const enDescanso   = agentes.filter((a: any) => a.estado_laboral === 'licencia');
+    const suspendidos  = agentes.filter((a: any) => a.estado_laboral === 'suspendido');
+
+    res.json({ disponibles, enPuesto, enDescanso, suspendidos, total: agentes.length });
+  } catch (err) {
+    logger.error({ err }, "GET /operaciones/pool error");
+    res.status(500).json({ error: "Error al cargar pool" });
+  }
+});
+
+// ─── POST /api/operaciones/asignar ───────────────────────────────────────────
+// Asignar agente a puesto (sin agente previo)
+operacionesRouter.post("/operaciones/asignar", async (req, res) => {
+  const { puestoId, agenteId, usuario, notas } = req.body;
+  if (!puestoId || !agenteId) return res.status(400).json({ error: "puestoId y agenteId son requeridos" });
+
+  try {
+    const { rows: puestoRows } = await pool.query(`SELECT * FROM puestos_operativos WHERE id=$1`, [puestoId]);
+    if (!puestoRows.length) return res.status(404).json({ error: "Puesto no encontrado" });
+    const puesto = puestoRows[0];
+
+    const { rows: agenteRows } = await pool.query(`SELECT * FROM employees WHERE id=$1`, [agenteId]);
+    if (!agenteRows.length) return res.status(404).json({ error: "Agente no encontrado" });
+    const agente = agenteRows[0];
+
+    // Verificar que no esté ya asignado a otro puesto
+    const { rows: yaAsignadoRows } = await pool.query(
+      `SELECT po.nombre, po.cliente_nombre FROM puestos_operativos po
+       WHERE po.agente_id=$1 AND po.activo=TRUE AND po.id!=$2`,
+      [agenteId, puestoId]
+    );
+    if (yaAsignadoRows.length > 0) {
+      return res.status(409).json({
+        error: `${agente.nombre_completo} ya está asignado en ${yaAsignadoRows[0].cliente_nombre} — ${yaAsignadoRows[0].nombre}`,
+        advertencia: true,
+      });
+    }
+
+    // Actualizar puesto
+    await pool.query(
+      `UPDATE puestos_operativos SET agente_id=$1, agente_nombre=$2, estado='cubierto', updated_at=NOW()
+       WHERE id=$3`,
+      [agenteId, agente.nombre_completo, puestoId]
+    );
+
+    // Registrar movimiento
+    await pool.query(
+      `INSERT INTO movimientos_operativos
+         (puesto_id, cliente_nombre, puesto_nombre, agente_entrante_id, agente_entrante_nombre, tipo, usuario_cambio, notas)
+       VALUES ($1, $2, $3, $4, $5, 'asignacion', $6, $7)`,
+      [puestoId, puesto.cliente_nombre, puesto.nombre, agenteId, agente.nombre_completo, usuario || 'sistema', notas || null]
+    );
+
+    res.json({ ok: true, mensaje: `${agente.nombre_completo} asignado a ${puesto.nombre}` });
+  } catch (err) {
+    logger.error({ err }, "POST /operaciones/asignar error");
+    res.status(500).json({ error: "Error al asignar agente" });
+  }
+});
+
+// ─── POST /api/operaciones/sustituir ─────────────────────────────────────────
+// Sustituir agente en un puesto (hay uno previo)
+operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
+  const { puestoId, agenteEntranteId, motivo, usuario, notas, forzar } = req.body;
+  if (!puestoId || !agenteEntranteId) return res.status(400).json({ error: "puestoId y agenteEntranteId son requeridos" });
+
+  try {
+    const { rows: puestoRows } = await pool.query(`SELECT * FROM puestos_operativos WHERE id=$1`, [puestoId]);
+    if (!puestoRows.length) return res.status(404).json({ error: "Puesto no encontrado" });
+    const puesto = puestoRows[0];
+
+    const { rows: entranteRows } = await pool.query(`SELECT * FROM employees WHERE id=$1`, [agenteEntranteId]);
+    if (!entranteRows.length) return res.status(404).json({ error: "Agente entrante no encontrado" });
+    const entrante = entranteRows[0];
+
+    // Advertir si el entrante ya está en otro puesto (a menos que forzar=true)
+    if (!forzar) {
+      const { rows: yaRows } = await pool.query(
+        `SELECT po.nombre, po.cliente_nombre FROM puestos_operativos po
+         WHERE po.agente_id=$1 AND po.activo=TRUE AND po.id!=$2`,
+        [agenteEntranteId, puestoId]
+      );
+      if (yaRows.length > 0) {
+        return res.status(409).json({
+          error: `${entrante.nombre_completo} ya tiene el puesto ${yaRows[0].nombre} en ${yaRows[0].cliente_nombre}`,
+          advertencia: true,
+        });
+      }
+    }
+
+    const agenteSalienteId    = puesto.agente_id;
+    const agenteSalienteNombre = puesto.agente_nombre;
+
+    // Actualizar puesto con el nuevo agente
+    await pool.query(
+      `UPDATE puestos_operativos SET agente_id=$1, agente_nombre=$2, estado='cubierto', updated_at=NOW()
+       WHERE id=$3`,
+      [agenteEntranteId, entrante.nombre_completo, puestoId]
+    );
+
+    // Registrar movimiento de sustitución
+    await pool.query(
+      `INSERT INTO movimientos_operativos
+         (puesto_id, cliente_nombre, puesto_nombre,
+          agente_saliente_id, agente_saliente_nombre,
+          agente_entrante_id, agente_entrante_nombre,
+          tipo, motivo, usuario_cambio, notas)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'sustitucion', $8, $9, $10)`,
+      [
+        puestoId, puesto.cliente_nombre, puesto.nombre,
+        agenteSalienteId, agenteSalienteNombre,
+        agenteEntranteId, entrante.nombre_completo,
+        motivo || null, usuario || 'sistema', notas || null,
+      ]
+    );
+
+    res.json({ ok: true, mensaje: `Sustitución registrada: ${agenteSalienteNombre} → ${entrante.nombre_completo}` });
+  } catch (err) {
+    logger.error({ err }, "POST /operaciones/sustituir error");
+    res.status(500).json({ error: "Error al registrar sustitución" });
+  }
+});
+
+// ─── POST /api/operaciones/liberar ───────────────────────────────────────────
+// Quitar agente de un puesto (queda descubierto)
+operacionesRouter.post("/operaciones/liberar", async (req, res) => {
+  const { puestoId, motivo, usuario, notas } = req.body;
+  if (!puestoId) return res.status(400).json({ error: "puestoId es requerido" });
+
+  try {
+    const { rows: puestoRows } = await pool.query(`SELECT * FROM puestos_operativos WHERE id=$1`, [puestoId]);
+    if (!puestoRows.length) return res.status(404).json({ error: "Puesto no encontrado" });
+    const puesto = puestoRows[0];
+
+    if (!puesto.agente_id) return res.status(400).json({ error: "El puesto no tiene agente asignado" });
+
+    await pool.query(
+      `UPDATE puestos_operativos SET agente_id=NULL, agente_nombre=NULL, estado='descubierto', updated_at=NOW()
+       WHERE id=$1`,
+      [puestoId]
+    );
+
+    await pool.query(
+      `INSERT INTO movimientos_operativos
+         (puesto_id, cliente_nombre, puesto_nombre,
+          agente_saliente_id, agente_saliente_nombre,
+          tipo, motivo, usuario_cambio, notas)
+       VALUES ($1, $2, $3, $4, $5, 'liberacion', $6, $7, $8)`,
+      [
+        puestoId, puesto.cliente_nombre, puesto.nombre,
+        puesto.agente_id, puesto.agente_nombre,
+        motivo || null, usuario || 'sistema', notas || null,
+      ]
+    );
+
+    res.json({ ok: true, mensaje: `${puesto.agente_nombre} removido de ${puesto.nombre}` });
+  } catch (err) {
+    logger.error({ err }, "POST /operaciones/liberar error");
+    res.status(500).json({ error: "Error al liberar puesto" });
+  }
+});
+
+// ─── POST /api/operaciones/puestos ───────────────────────────────────────────
+// Crear un nuevo puesto operativo
+operacionesRouter.post("/operaciones/puestos", async (req, res) => {
+  const { clienteId, clienteNombre, nombre, turno, notas } = req.body;
+  if (!clienteNombre || !nombre) return res.status(400).json({ error: "clienteNombre y nombre son requeridos" });
+
+  try {
+    const { rows: ordenRows } = await pool.query(
+      `SELECT COALESCE(MAX(orden), -1) + 1 AS siguiente FROM puestos_operativos WHERE cliente_nombre=$1`,
+      [clienteNombre]
+    );
+    const orden = ordenRows[0].siguiente;
+
+    const { rows } = await pool.query(
+      `INSERT INTO puestos_operativos (cliente_id, cliente_nombre, nombre, turno, orden, notas)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [clienteId || null, clienteNombre, nombre, turno || 'día', orden, notas || null]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "POST /operaciones/puestos error");
+    res.status(500).json({ error: "Error al crear puesto" });
+  }
+});
+
+// ─── DELETE /api/operaciones/puestos/:id ─────────────────────────────────────
+operacionesRouter.delete("/operaciones/puestos/:id", async (req, res) => {
+  try {
+    await pool.query(`UPDATE puestos_operativos SET activo=FALSE WHERE id=$1`, [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "DELETE /operaciones/puestos/:id error");
+    res.status(500).json({ error: "Error al eliminar puesto" });
+  }
+});
+
+// ─── GET /api/operaciones/historial ──────────────────────────────────────────
+// Últimos movimientos registrados
+operacionesRouter.get("/operaciones/historial", async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const puestoId = req.query.puestoId;
+
+    let sql = `
+      SELECT id, puesto_id, cliente_nombre, puesto_nombre,
+             agente_saliente_nombre, agente_entrante_nombre,
+             tipo, motivo, usuario_cambio, notas, fecha_hora
+      FROM movimientos_operativos
+    `;
+    const params: any[] = [];
+    if (puestoId) {
+      sql += ` WHERE puesto_id=$1`;
+      params.push(puestoId);
+    }
+    sql += ` ORDER BY fecha_hora DESC LIMIT $${params.length + 1}`;
+    params.push(limit);
+
+    const { rows } = await pool.query(sql, params);
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "GET /operaciones/historial error");
+    res.status(500).json({ error: "Error al cargar historial" });
+  }
+});
+
+// ─── GET /api/operaciones/agentes/:id/disponibilidad ─────────────────────────
+operacionesRouter.get("/operaciones/agentes/:id/disponibilidad", async (req, res) => {
+  try {
+    const { rows: puestos } = await pool.query(
+      `SELECT po.nombre, po.cliente_nombre, po.turno
+       FROM puestos_operativos po
+       WHERE po.agente_id=$1 AND po.activo=TRUE`,
+      [req.params.id]
+    );
+    const { rows: emp } = await pool.query(
+      `SELECT id, nombre_completo, estado_laboral, puesto FROM employees WHERE id=$1`,
+      [req.params.id]
+    );
+    if (!emp.length) return res.status(404).json({ error: "Agente no encontrado" });
+
+    res.json({
+      agente: emp[0],
+      puestosActivos: puestos,
+      disponible: puestos.length === 0 && emp[0].estado_laboral === 'activo',
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /operaciones/agentes/:id/disponibilidad error");
+    res.status(500).json({ error: "Error al verificar disponibilidad" });
+  }
+});
+
+// ─── GET /api/operaciones/clientes-disponibles ───────────────────────────────
+// Lista de clientes para el selector de "Nuevo Puesto"
+operacionesRouter.get("/operaciones/clientes-disponibles", async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, nombre, nombre_comercial, portal_cliente_id FROM clients WHERE estado='activo' ORDER BY nombre`
+    );
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "GET /operaciones/clientes-disponibles error");
+    res.status(500).json({ error: "Error al cargar clientes" });
+  }
+});
+
+export default operacionesRouter;

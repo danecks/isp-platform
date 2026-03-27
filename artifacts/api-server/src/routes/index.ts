@@ -16,6 +16,7 @@ import tareasRouter from "./tareas";
 import reportesRouter from "./reportes";
 import cmsRouter from "./cms";
 import simuladorRouter from "./simulador";
+import operacionesRouter from "./operaciones";
 
 const router: IRouter = Router();
 
@@ -36,5 +37,6 @@ router.use(tareasRouter);
 router.use(reportesRouter);
 router.use(cmsRouter);
 router.use(simuladorRouter);
+router.use(operacionesRouter);
 
 export default router;
