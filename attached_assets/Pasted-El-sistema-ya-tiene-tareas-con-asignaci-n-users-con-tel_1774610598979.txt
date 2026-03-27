@@ -1,0 +1,109 @@
+El sistema ya tiene:
+- tareas con asignación
+- users con teléfono
+- roles
+- WhatsApp fase 1 (simulación o webhook preparado)
+- configuración de mensajes en el módulo WhatsApp
+
+No quiero romper nada del sistema actual.
+
+Quiero implementar una nueva funcionalidad:
+
+👉 Notificar automáticamente por WhatsApp cuando se asigna una tarea a un usuario
+
+---
+
+## 1. Objetivo
+
+Cuando una tarea sea creada o asignada a un usuario (supervisor, RRHH, operaciones, etc.), el sistema debe enviar un mensaje automático por WhatsApp al número registrado de ese usuario.
+
+---
+
+## 2. Flujo
+
+Cuando se crea o actualiza una tarea con responsable:
+
+1. Detectar el usuario asignado (responsableId o equivalente)
+2. Obtener su número de teléfono desde users
+3. Validar:
+   - que exista
+   - que esté activo
+4. Enviar mensaje WhatsApp
+
+---
+
+## 3. Mensaje
+
+Usar mensaje configurable desde la tabla de mensajes de WhatsApp:
+
+Clave sugerida:
+- tarea_nueva_asignada
+
+Ejemplo de mensaje:
+“📌 Tienes una nueva tarea asignada en ISP, S.A.
+🧾 Tarea: {titulo}
+📍 Cliente/Puesto: {cliente}
+⚠ Prioridad: {prioridad}
+Por favor ingresa al sistema o responde para continuar.”
+
+---
+
+## 4. Modo actual (sin WhatsApp real)
+
+Si no hay integración real:
+- simular envío
+- guardar log en consola o DB
+- marcar como enviado
+
+---
+
+## 5. Preparación para WhatsApp real
+
+Dejar preparado:
+- función sendWhatsAppMessage(phone, message)
+- soporte para templates en el futuro
+
+---
+
+## 6. Logs
+
+Registrar:
+- tareaId
+- usuarioId
+- telefono
+- fechaEnvio
+- estado (enviado, error, simulado)
+
+---
+
+## 7. Reglas
+
+- no enviar si usuario está inactivo
+- no enviar si no tiene teléfono
+- no duplicar notificación si no cambió el responsable
+
+---
+
+## 8. No romper
+
+- cierre de tareas
+- evidencias
+- Trello
+- incidencias
+- emergencias
+- anticipos
+
+---
+
+## 9. Documentación
+
+Explicar:
+- cuándo se dispara la notificación
+- cómo se obtiene el número
+- cómo funciona el modo simulado
+- cómo conectar WhatsApp real después
+
+---
+
+Muy importante:
+quiero que el sistema empiece a comportarse como un sistema activo que notifica automáticamente, no solo pasivo.

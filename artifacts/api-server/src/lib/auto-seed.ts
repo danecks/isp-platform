@@ -830,5 +830,42 @@ export async function runAutoSeed(): Promise<void> {
     logger.error({ err }, "Auto-migrate: error en tabla page_content");
   }
 
+  // ── WA_NOTIFICACIONES_LOG: registro de notificaciones automáticas ───────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS wa_notificaciones_log (
+        id          SERIAL PRIMARY KEY,
+        tarea_id    VARCHAR(20),
+        usuario_id  INTEGER,
+        telefono    VARCHAR(20),
+        mensaje     TEXT,
+        evento      VARCHAR(80) NOT NULL DEFAULT 'tarea_asignada',
+        estado      VARCHAR(20) NOT NULL DEFAULT 'simulado',
+        error_msg   TEXT,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'wa_notificaciones_log' verificada/creada");
+
+    // Sembrar mensaje plantilla para notificación de tarea asignada
+    await pool.query(`
+      INSERT INTO wa_messages (clave, texto, descripcion)
+      VALUES (
+        'tarea_nueva_asignada',
+        '📌 Tienes una nueva tarea asignada en ISP, S.A.
+🧾 Tarea: {titulo}
+🔑 ID: {id}
+⚠ Prioridad: {prioridad}
+📍 Referencia: {cliente}
+Por favor ingresa al sistema o responde para continuar.',
+        'Notificación automática al responsable cuando se le asigna una tarea nueva'
+      )
+      ON CONFLICT (clave) DO NOTHING
+    `);
+    logger.info("Auto-seed: mensaje 'tarea_nueva_asignada' verificado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: error en wa_notificaciones_log");
+  }
+
   logger.info("Auto-seed completado");
 }

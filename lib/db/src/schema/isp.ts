@@ -380,6 +380,27 @@ export const taskEvidenciasTable = pgTable("task_evidencias", {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// WA_NOTIFICACIONES_LOG — registro de notificaciones WhatsApp enviadas
+//
+// Registra cada intento de notificación automática (ej: tarea asignada).
+//   estado: "simulado" | "enviado" | "error"
+//   "simulado" = modo actual sin integración real
+//   "enviado"  = cuando se conecte la API de WhatsApp real
+//   "error"    = falla en el envío
+// ─────────────────────────────────────────────────────────────────────────────
+export const waNotificacionesLogTable = pgTable("wa_notificaciones_log", {
+  id: serial("id").primaryKey(),
+  tareaId: varchar("tarea_id", { length: 20 }),
+  usuarioId: integer("usuario_id"),
+  telefono: varchar("telefono", { length: 20 }),
+  mensaje: text("mensaje"),
+  evento: varchar("evento", { length: 80 }).notNull().default("tarea_asignada"),
+  estado: varchar("estado", { length: 20 }).notNull().default("simulado"),
+  errorMsg: text("error_msg"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Zod insert schemas
 // ─────────────────────────────────────────────────────────────────────────────
 export const insertTareaSchema = createInsertSchema(tareasTable).omit({ createdAt: true, updatedAt: true });
@@ -427,6 +448,7 @@ export type WaMenuOption = typeof waMenuOptionsTable.$inferSelect;
 export type WaAuditLog = typeof waAuditLogTable.$inferSelect;
 
 export type Tarea = typeof tareasTable.$inferSelect;
+export type WaNotificacionLog = typeof waNotificacionesLogTable.$inferSelect;
 export type InsertTarea = z.infer<typeof insertTareaSchema>;
 export type TaskEvidencia = typeof taskEvidenciasTable.$inferSelect;
 export type InsertTaskEvidencia = z.infer<typeof insertTaskEvidenciaSchema>;

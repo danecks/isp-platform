@@ -22,10 +22,11 @@
  */
 
 import { Router } from "express";
-import { db, tareasTable, taskEvidenciasTable } from "@workspace/db";
+import { db, tareasTable, taskEvidenciasTable, waNotificacionesLogTable } from "@workspace/db";
 import { pool } from "@workspace/db";
 import { eq, desc, count } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { notifyTareaAsignada } from "../services/whatsapp/notificaciones.service";
 
 const router = Router();
 
@@ -96,6 +97,47 @@ router.get("/tareas", async (_req, res) => {
   } catch (err) {
     logger.error({ err }, "GET /api/tareas error");
     res.status(500).json({ error: "Error al obtener tareas" });
+  }
+});
+
+// ─── GET /api/notificaciones ──────────────────────────────────────────────────
+// Log de notificaciones WhatsApp automáticas (ej: tarea asignada)
+// Query params: ?limit=50&tareaId=TASK-240315-1234
+router.get("/notificaciones", async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(String(req.query.limit ?? "100")), 500);
+    const tareaId = req.query.tareaId as string | undefined;
+
+    let query = `
+      SELECT
+        n.id,
+        n.tarea_id    AS "tareaId",
+        n.usuario_id  AS "usuarioId",
+        n.telefono,
+        n.mensaje,
+        n.evento,
+        n.estado,
+        n.error_msg   AS "errorMsg",
+        n.created_at  AS "createdAt",
+        u.nombre      AS "usuarioNombre"
+      FROM wa_notificaciones_log n
+      LEFT JOIN users u ON u.id = n.usuario_id
+    `;
+    const params: unknown[] = [];
+
+    if (tareaId) {
+      query += ` WHERE n.tarea_id = $1`;
+      params.push(tareaId);
+    }
+
+    query += ` ORDER BY n.created_at DESC LIMIT $${params.length + 1}`;
+    params.push(limit);
+
+    const { rows } = await pool.query(query, params);
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "GET /api/notificaciones error");
+    res.status(500).json({ error: "Error al obtener log de notificaciones" });
   }
 });
 
@@ -184,6 +226,20 @@ router.post("/tareas", async (req, res) => {
 
     logger.info({ id }, "Tarea creada");
     res.status(201).json(tarea);
+
+    // ── Notificación WhatsApp al responsable (no bloquea la respuesta) ────────
+    if (asignadoId) {
+      notifyTareaAsignada(
+        {
+          id: tarea.id,
+          titulo: tarea.titulo,
+          prioridad: tarea.prioridad,
+          incidenciaId: tarea.incidenciaId,
+          asignado: tarea.asignado,
+        },
+        parseInt(asignadoId)
+      ).catch(() => {}); // silenciar — ya se loguea internamente
+    }
   } catch (err) {
     logger.error({ err }, "POST /api/tareas error");
     res.status(500).json({ error: "Error al crear tarea" });
@@ -198,12 +254,16 @@ router.patch("/tareas/:id", async (req, res) => {
     if (!existing) return res.status(404).json({ error: "Tarea no encontrada" });
 
     const allowed = ["titulo", "descripcion", "prioridad", "estado", "asignado",
-                     "trelloCardId", "trelloCardUrl", "fechaVencimiento"] as const;
+                     "asignadoId", "trelloCardId", "trelloCardUrl", "fechaVencimiento"] as const;
 
     const patch: Record<string, unknown> = { updatedAt: new Date() };
     for (const key of allowed) {
       if (req.body[key] !== undefined) {
-        patch[key === "trelloCardId" ? "trelloCardId" : key] = req.body[key];
+        if (key === "asignadoId") {
+          patch.asignadoId = req.body[key] ? parseInt(req.body[key]) : null;
+        } else {
+          patch[key] = req.body[key];
+        }
       }
     }
 
@@ -228,6 +288,25 @@ router.patch("/tareas/:id", async (req, res) => {
       .returning();
 
     res.json(updated);
+
+    // ── Notificación WA si el responsable cambió ────────────────────────────
+    const nuevoAsignadoId = patch.asignadoId as number | null | undefined;
+    const anteriorAsignadoId = existing.asignadoId;
+    if (
+      nuevoAsignadoId &&
+      nuevoAsignadoId !== anteriorAsignadoId
+    ) {
+      notifyTareaAsignada(
+        {
+          id: updated.id,
+          titulo: updated.titulo,
+          prioridad: updated.prioridad,
+          incidenciaId: updated.incidenciaId,
+          asignado: updated.asignado,
+        },
+        nuevoAsignadoId
+      ).catch(() => {});
+    }
   } catch (err) {
     logger.error({ err }, "PATCH /api/tareas/:id error");
     res.status(500).json({ error: "Error al actualizar tarea" });

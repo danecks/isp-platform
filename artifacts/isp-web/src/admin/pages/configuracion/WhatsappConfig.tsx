@@ -29,16 +29,31 @@ import {
   X,
   ToggleLeft,
   ToggleRight,
+  Bell,
+  Phone,
+  Zap,
 } from "lucide-react";
 
 const API = "/api";
 
-type Tab = "general" | "mensajes" | "menus" | "auditoria";
+type Tab = "general" | "mensajes" | "menus" | "auditoria" | "notificaciones";
 
 interface ConfigRow { id: number; clave: string; valor: string; tipo: string; descripcion?: string; updatedAt: string; }
 interface MessageRow { id: number; clave: string; texto: string; descripcion?: string; updatedAt: string; }
 interface MenuOption { id: number; rol: string; texto: string; accion: string; activo: boolean; orden: number; updatedAt: string; }
 interface AuditRow { id: number; modulo: string; clave: string; valorAnterior?: string; valorNuevo: string; usuario?: string; createdAt: string; }
+interface NotificacionRow {
+  id: number;
+  tareaId: string | null;
+  usuarioId: number | null;
+  usuarioNombre: string | null;
+  telefono: string | null;
+  mensaje: string | null;
+  evento: string;
+  estado: string;
+  errorMsg: string | null;
+  createdAt: string;
+}
 
 const ROL_LABELS: Record<string, string> = {
   externo: "Externo / Público",
@@ -624,15 +639,167 @@ function TabAuditoria() {
   );
 }
 
+// ─── TAB: NOTIFICACIONES ──────────────────────────────────────────────────────
+const ESTADO_STYLE: Record<string, string> = {
+  simulado: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+  enviado:  "bg-green-500/20 text-green-300 border-green-500/30",
+  omitido:  "bg-gray-500/20 text-gray-400 border-gray-500/30",
+  error:    "bg-red-500/20 text-red-300 border-red-500/30",
+};
+const ESTADO_LABELS: Record<string, string> = {
+  simulado: "Simulado",
+  enviado:  "Enviado",
+  omitido:  "Omitido",
+  error:    "Error",
+};
+
+function TabNotificaciones() {
+  const [rows, setRows] = useState<NotificacionRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<number | null>(null);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const r = await fetch(`${API}/notificaciones?limit=100`);
+      setRows(await r.json());
+    } catch {}
+    setLoading(false);
+  }
+
+  useEffect(() => { load(); }, []);
+
+  const counts = rows.reduce<Record<string, number>>((acc, r) => {
+    acc[r.estado] = (acc[r.estado] || 0) + 1;
+    return acc;
+  }, {});
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-base font-semibold text-white">Log de Notificaciones Automáticas</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Registro de cada mensaje WhatsApp enviado automáticamente por el sistema
+            (asignación de tareas, etc).
+          </p>
+        </div>
+        <button onClick={load} className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">
+          <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+        </button>
+      </div>
+
+      {/* Modo simulado banner */}
+      <div className="mb-4 flex items-start gap-3 bg-blue-900/20 border border-blue-700/30 rounded-xl px-4 py-3">
+        <Zap size={16} className="text-blue-400 mt-0.5 shrink-0" />
+        <div className="text-xs text-blue-300 leading-relaxed">
+          <span className="font-semibold">Modo simulado activo.</span> Las notificaciones se generan y registran
+          pero no se envían por red. Para activar el envío real, configure la API de WhatsApp en el servidor
+          (función <code className="bg-blue-900/40 px-1 rounded">sendWhatsAppMessage</code> en
+          <code className="bg-blue-900/40 px-1 rounded ml-1">notificaciones.service.ts</code>).
+        </div>
+      </div>
+
+      {/* Contadores */}
+      {!loading && rows.length > 0 && (
+        <div className="grid grid-cols-4 gap-3 mb-5">
+          {Object.entries(ESTADO_LABELS).map(([key, label]) => (
+            <div key={key} className={`rounded-xl border px-3 py-2 text-center ${ESTADO_STYLE[key]}`}>
+              <div className="text-lg font-bold">{counts[key] || 0}</div>
+              <div className="text-xs opacity-80">{label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <RefreshCw size={24} className="animate-spin text-green-400" />
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="text-center py-20">
+          <Bell size={40} className="mx-auto text-gray-600 mb-3" />
+          <p className="text-gray-500 font-medium">Sin notificaciones registradas</p>
+          <p className="text-gray-600 text-xs mt-1">
+            Las notificaciones aparecerán aquí cuando se asignen tareas a usuarios con teléfono.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {rows.map(row => {
+            const isExpanded = expanded === row.id;
+            return (
+              <div
+                key={row.id}
+                className="bg-gray-800/40 border border-gray-700/40 rounded-xl overflow-hidden"
+              >
+                {/* Row header */}
+                <button
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-700/20"
+                  onClick={() => setExpanded(isExpanded ? null : row.id)}
+                >
+                  <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full border font-medium ${ESTADO_STYLE[row.estado] || ESTADO_STYLE.simulado}`}>
+                    {ESTADO_LABELS[row.estado] || row.estado}
+                  </span>
+                  <span className="text-xs font-mono text-amber-400">{row.tareaId ?? "—"}</span>
+                  <span className="text-xs text-gray-300 flex items-center gap-1">
+                    <User size={11} />
+                    {row.usuarioNombre ?? `Usuario #${row.usuarioId}`}
+                  </span>
+                  {row.telefono && (
+                    <span className="text-xs text-gray-500 flex items-center gap-1">
+                      <Phone size={11} />
+                      {row.telefono}
+                    </span>
+                  )}
+                  <span className="text-xs text-gray-600 flex items-center gap-1 ml-auto shrink-0">
+                    <Clock size={11} />
+                    {new Date(row.createdAt).toLocaleString("es-GT")}
+                  </span>
+                  {isExpanded ? <ChevronUp size={14} className="text-gray-500 shrink-0" /> : <ChevronDown size={14} className="text-gray-500 shrink-0" />}
+                </button>
+
+                {/* Expanded: message + error */}
+                {isExpanded && (
+                  <div className="border-t border-gray-700/40 px-4 py-3 bg-gray-900/20 space-y-3">
+                    {row.mensaje ? (
+                      <div>
+                        <p className="text-xs text-gray-400 mb-1 font-medium">Mensaje enviado</p>
+                        <pre className="text-xs text-gray-300 whitespace-pre-wrap font-sans bg-gray-800/60 rounded-lg px-3 py-2 leading-relaxed">
+                          {row.mensaje}
+                        </pre>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-500 italic">No se generó mensaje (omitido)</p>
+                    )}
+                    {row.errorMsg && (
+                      <div className="bg-red-900/20 border border-red-700/30 rounded-lg px-3 py-2">
+                        <p className="text-xs text-red-400 font-medium mb-1">Motivo del error / omisión</p>
+                        <p className="text-xs text-gray-300 font-mono">{row.errorMsg}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
 export default function WhatsappConfig() {
   const [tab, setTab] = useState<Tab>("general");
 
   const TABS: { id: Tab; label: string; icon: (props: any) => JSX.Element }[] = [
-    { id: "general",   label: "General",         icon: Settings },
-    { id: "mensajes",  label: "Mensajes",         icon: MessageSquare },
-    { id: "menus",     label: "Opciones de Menú", icon: Menu },
-    { id: "auditoria", label: "Auditoría",        icon: ClipboardList },
+    { id: "general",        label: "General",          icon: Settings },
+    { id: "mensajes",       label: "Mensajes",          icon: MessageSquare },
+    { id: "menus",          label: "Opciones de Menú",  icon: Menu },
+    { id: "auditoria",      label: "Auditoría",         icon: ClipboardList },
+    { id: "notificaciones", label: "Notificaciones",    icon: Bell },
   ];
 
   return (
@@ -680,10 +847,11 @@ export default function WhatsappConfig() {
 
         {/* Tab content */}
         <div>
-          {tab === "general"   && <TabGeneral   />}
-          {tab === "mensajes"  && <TabMensajes  />}
-          {tab === "menus"     && <TabMenus     />}
-          {tab === "auditoria" && <TabAuditoria />}
+          {tab === "general"        && <TabGeneral        />}
+          {tab === "mensajes"       && <TabMensajes       />}
+          {tab === "menus"          && <TabMenus          />}
+          {tab === "auditoria"      && <TabAuditoria      />}
+          {tab === "notificaciones" && <TabNotificaciones />}
         </div>
       </div>
     </AdminLayout>
