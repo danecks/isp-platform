@@ -1,0 +1,199 @@
+El sistema ya tiene:
+- PostgreSQL
+- users + employees
+- roles
+- login real
+- portal de clientes
+- WhatsApp fase 1
+- anticipos
+- incidencias reales
+- emergencias restringidas
+- alias de clientes y puestos
+- Trello unificado
+- tareas con cierre y evidencia
+- configuración WhatsApp administrable
+
+No quiero romper nada del sistema actual.
+
+Quiero avanzar a la siguiente fase: Módulo de Reportería Profesional con exportación a PDF membretado.
+
+Objetivo:
+crear un sistema de reportes útil para operación, gerencia y clientes, con visualización en dashboard y exportación formal con hoja membretada de ISP, S.A.
+
+---
+
+# 1. ESTRUCTURA GENERAL
+
+Crear módulo:
+- /admin/reportes
+
+Con pestañas:
+
+- Operaciones
+- Emergencias
+- Tareas
+- RRHH
+- Comercial
+- KPI Ejecutivo
+
+---
+
+# 2. FILTROS GLOBALES
+
+Agregar filtros en todos los reportes:
+- rango de fechas
+- cliente
+- estado
+- canal (whatsapp, web, manual)
+- prioridad
+
+---
+
+# 3. REPORTES
+
+## A. Operaciones (Incidencias)
+- total incidencias
+- abiertas / cerradas
+- por cliente
+- por tipo
+- por prioridad
+- por origen
+- tiempo de respuesta (si hay datos)
+- tiempo de cierre (si existe fechaCierre)
+
+---
+
+## B. Emergencias
+- total emergencias
+- por cliente
+- por tipo
+- por horario
+- quién reporta
+- incidencias críticas activas
+
+---
+
+## C. Tareas / Supervisión
+- tareas asignadas
+- tareas cerradas
+- tareas con evidencia
+- tiempo promedio de cierre
+- por supervisor
+- cumplimiento por cliente
+
+---
+
+## D. RRHH
+
+### Anticipos
+- total solicitudes
+- total monto
+- pendientes / aprobadas / pagadas
+- por período
+- por empleado
+
+### Reclutamiento
+- postulaciones
+- por canal
+- por estado
+- tiempo de respuesta
+
+---
+
+## E. Comercial
+- leads por período
+- por canal
+- por servicio
+- por ejecutivo
+- conversiones (si aplica)
+
+---
+
+## F. KPI Ejecutivo
+Dashboard resumen:
+- incidencias activas
+- emergencias activas
+- tareas cerradas
+- SLA básico
+- tiempo promedio de respuesta
+- tiempo promedio de cierre
+- clientes más activos
+
+---
+
+# 4. EXPORTACIÓN
+
+## A. CSV / Excel
+Permitir exportar cada reporte en formato:
+- CSV
+- Excel compatible
+
+---
+
+## B. PDF MEMBRETADO (MUY IMPORTANTE)
+
+Todos los reportes deben poder exportarse a PDF con formato profesional.
+
+### Encabezado:
+- Logo de ISP, S.A.
+- Nombre completo: Investigaciones y Seguridad Profesional S.A.
+- Título del reporte
+- Fecha de emisión
+- Rango de fechas
+- Cliente (si aplica)
+
+### Cuerpo:
+- resumen ejecutivo
+- tablas organizadas
+- métricas clave
+- secciones bien estructuradas
+
+### Pie:
+- datos de contacto
+- confidencialidad (opcional)
+- numeración de páginas
+
+---
+
+# 5. DISEÑO
+
+- mantener estilo actual del admin
+- usar gráficas simples (barras o tarjetas)
+- no usar gráficos complejos innecesarios
+
+---
+
+# 6. PERFORMANCE
+
+- usar queries optimizados
+- evitar recalcular todo innecesariamente
+- cache opcional si hace falta
+
+---
+
+# 7. NO ROMPER
+
+- portal
+- Trello
+- anticipos
+- emergencias
+- tareas
+- WhatsApp
+- login
+- roles
+
+---
+
+# 8. DOCUMENTACIÓN
+
+Explica:
+- qué endpoints se crearon
+- cómo funcionan los filtros
+- cómo se generan los PDF
+- cómo se construye la hoja membretada
+- cómo extender reportes en el futuro
+
+---
+
+MUY IMPORTANTE:
+quiero reportes que sirvan para operación real, no dashboards decorativos.

@@ -32,6 +32,7 @@ import AdminClientes from "@/admin/pages/Clientes";
 import AdminUsuarios from "@/admin/pages/Usuarios";
 import AdminAnticipos from "@/admin/pages/Anticipos";
 import AdminWhatsappConfig from "@/admin/pages/configuracion/WhatsappConfig";
+import AdminReportes from "@/admin/pages/Reportes";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
@@ -114,6 +115,9 @@ function Router() {
       </Route>
       <Route path="/admin/configuracion/whatsapp">
         {() => <AuthGuard requiredRoles={["admin"]}><AdminWhatsappConfig /></AuthGuard>}
+      </Route>
+      <Route path="/admin/reportes">
+        {() => <AuthGuard requiredRoles={["admin", "operaciones", "rrhh", "comercial", "supervisor"]}><AdminReportes /></AuthGuard>}
       </Route>
 
       <Route component={NotFound} />

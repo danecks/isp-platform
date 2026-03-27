@@ -10,6 +10,7 @@ import {
   UserCog,
   Wallet,
   MessageSquare,
+  FileBarChart2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -82,6 +83,12 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Tareas",
     icon: CheckSquare,
     roles: ["admin", "operaciones", "supervisor"],
+  },
+  {
+    path: "/admin/reportes",
+    label: "Reportería",
+    icon: FileBarChart2,
+    roles: ["admin", "operaciones", "rrhh", "comercial", "supervisor"],
   },
   {
     path: "/admin/kpi",
