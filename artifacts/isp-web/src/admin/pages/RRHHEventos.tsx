@@ -8,6 +8,8 @@ import {
   User, Building2, Briefcase, Search,
   Shield, Calendar, BookOpen, Ban, XCircle,
   AlertCircle, ChevronDown,
+  ShieldAlert, ShieldCheck, ShieldOff, BarChart2,
+  TrendingUp, ArrowUpRight, Minus, Users2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -518,6 +520,29 @@ export default function RRHHEventos() {
     staleTime: 60_000,
   });
 
+  interface EmpleadoRiesgo {
+    employeeId: number; employeeNombre: string;
+    score: number; nivel: "bajo" | "medio" | "alto";
+    faltas30d: number; faltasTotal: number; suspensionesTotal: number;
+  }
+  interface TopEmpleado {
+    employeeId: number; employeeNombre: string; faltas: number; suspensiones: number;
+  }
+  interface TendenciaMes { mes: string; faltas: number; suspensiones: number; }
+
+  const { data: discData } = useQuery<{
+    top: TopEmpleado[];
+    tendencia: TendenciaMes[];
+    enRiesgo: EmpleadoRiesgo[];
+    resumen: { totalAlto: number; totalMedio: number; totalBajo: number };
+  }>({
+    queryKey: ["rrhh-disciplinario"],
+    queryFn: () => apiFetch(`${API}/rrhh/disciplinario`),
+    staleTime: 60_000,
+  });
+
+  const [showDashboard, setShowDashboard] = useState(false);
+
   function invalidar() {
     qc.invalidateQueries({ queryKey: ["rrhh-eventos"] });
     qc.invalidateQueries({ queryKey: ["rrhh-stats"] });
@@ -633,6 +658,153 @@ export default function RRHHEventos() {
             ))}
           </div>
         )}
+
+        {/* ── Dashboard Disciplinario ─────────────────────────────────────── */}
+        <div className="bg-[#07111f] border border-white/8 rounded-2xl overflow-hidden">
+          <button
+            onClick={() => setShowDashboard(!showDashboard)}
+            className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-white/3 transition-colors"
+          >
+            <div className="flex items-center gap-2.5">
+              <BarChart2 className="w-4 h-4 text-purple-400" />
+              <span className="text-sm font-semibold text-white/80">Dashboard Disciplinario</span>
+              {discData && discData.resumen.totalAlto > 0 && (
+                <span className="text-[10px] bg-red-400/10 border border-red-400/20 text-red-400 px-2 py-0.5 rounded-full font-semibold">
+                  {discData.resumen.totalAlto} en riesgo alto
+                </span>
+              )}
+            </div>
+            <ChevronDown className={`w-4 h-4 text-white/30 transition-transform ${showDashboard ? "rotate-180" : ""}`} />
+          </button>
+
+          {showDashboard && discData && (
+            <div className="border-t border-white/8 p-5 space-y-5">
+
+              {/* Resumen de riesgo */}
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { nivel: "Alto",  count: discData.resumen.totalAlto,  icon: ShieldOff,   color: "text-red-400",    bg: "bg-red-400/5 border-red-400/15"    },
+                  { nivel: "Medio", count: discData.resumen.totalMedio, icon: ShieldAlert, color: "text-yellow-400", bg: "bg-yellow-400/5 border-yellow-400/15" },
+                  { nivel: "Bajo",  count: discData.resumen.totalBajo,  icon: ShieldCheck, color: "text-green-400",  bg: "bg-green-400/5 border-green-400/15"  },
+                ].map(({ nivel, count, icon: Icon, color, bg }) => (
+                  <div key={nivel} className={`${bg} border rounded-xl p-3 text-center`}>
+                    <Icon className={`w-5 h-5 mx-auto mb-1 ${color}`} />
+                    <p className={`text-2xl font-bold ${color}`}>{count}</p>
+                    <p className="text-[10px] text-white/30 mt-0.5">Riesgo {nivel}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Top empleados con más eventos */}
+              {discData.top.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                    <Users2 className="w-3 h-3" /> Empleados con más eventos (top {discData.top.length})
+                  </p>
+                  <div className="space-y-1.5">
+                    {discData.top.map((emp, i) => {
+                      const score = Math.max(0, 100 - emp.faltas * 10 - emp.suspensiones * 20);
+                      const clsColor = score >= 90 ? "text-green-400" : score >= 70 ? "text-yellow-400" : "text-red-400";
+                      return (
+                        <div key={emp.employeeId} className="flex items-center gap-3 bg-[#0c1929] border border-white/6 rounded-xl px-3 py-2">
+                          <span className="text-[10px] text-white/20 w-4 shrink-0">#{i + 1}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-white/70 truncate">{emp.employeeNombre}</p>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            {emp.faltas > 0 && (
+                              <span className="text-[10px] text-orange-400 bg-orange-400/10 border border-orange-400/20 px-1.5 py-0.5 rounded">
+                                {emp.faltas} falta{emp.faltas !== 1 ? "s" : ""}
+                              </span>
+                            )}
+                            {emp.suspensiones > 0 && (
+                              <span className="text-[10px] text-red-400 bg-red-400/10 border border-red-400/20 px-1.5 py-0.5 rounded">
+                                {emp.suspensiones} susp.
+                              </span>
+                            )}
+                            <span className={`text-[10px] font-bold ${clsColor}`}>{score}pts</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Empleados en riesgo alto */}
+              {discData.enRiesgo.filter(e => e.nivel === "alto").length > 0 && (
+                <div>
+                  <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                    <ShieldOff className="w-3 h-3 text-red-400" /> Empleados en riesgo alto
+                  </p>
+                  <div className="space-y-1.5">
+                    {discData.enRiesgo.filter(e => e.nivel === "alto").map((emp) => (
+                      <div key={emp.employeeId} className="flex items-center gap-3 bg-red-400/3 border border-red-400/15 rounded-xl px-3 py-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-white/70 truncate">{emp.employeeNombre}</p>
+                          <p className="text-[10px] text-white/30 mt-0.5">
+                            {emp.faltas30d > 0 && `${emp.faltas30d} faltas en 30 días · `}
+                            {emp.suspensionesTotal > 0 && `${emp.suspensionesTotal} suspensión(es) · `}
+                            Score: {emp.score}pts
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-bold text-red-400 bg-red-400/10 border border-red-400/20 px-2 py-0.5 rounded">
+                          RIESGO ALTO
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Tendencia mensual */}
+              {discData.tendencia.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-white/30 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                    <TrendingUp className="w-3 h-3" /> Tendencia últimos 6 meses
+                  </p>
+                  <div className="flex gap-3 overflow-x-auto pb-1">
+                    {discData.tendencia.map((mes) => {
+                      const total = mes.faltas + mes.suspensiones;
+                      const maxVal = Math.max(...discData.tendencia.map(m => m.faltas + m.suspensiones), 1);
+                      const pct = Math.round((total / maxVal) * 100);
+                      return (
+                        <div key={mes.mes} className="flex flex-col items-center gap-1.5 min-w-[52px]">
+                          <div className="flex items-end h-12 gap-0.5">
+                            <div
+                              className="w-3 bg-orange-400/60 rounded-t transition-all"
+                              style={{ height: `${Math.round((mes.faltas / maxVal) * 48)}px` }}
+                              title={`${mes.faltas} faltas`}
+                            />
+                            <div
+                              className="w-3 bg-red-400/60 rounded-t transition-all"
+                              style={{ height: `${Math.round((mes.suspensiones / maxVal) * 48)}px` }}
+                              title={`${mes.suspensiones} suspensiones`}
+                            />
+                          </div>
+                          <p className="text-[9px] text-white/25 text-center leading-tight">
+                            {mes.mes.slice(5)}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center gap-3 mt-1">
+                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-sm bg-orange-400/60" /><span className="text-[9px] text-white/20">Faltas</span></div>
+                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-sm bg-red-400/60" /><span className="text-[9px] text-white/20">Suspensiones</span></div>
+                  </div>
+                </div>
+              )}
+
+              {discData.enRiesgo.length === 0 && discData.top.length === 0 && (
+                <div className="text-center py-6">
+                  <ShieldCheck className="w-10 h-10 text-green-400/20 mx-auto mb-2" />
+                  <p className="text-sm text-white/30">Sin eventos disciplinarios registrados</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* ── Filtros ────────────────────────────────────────────────────── */}
         <div className="flex flex-wrap gap-3">

@@ -10,6 +10,8 @@ import {
   UserCheck, BadgeCheck, Plus, Pencil, LayoutList,
   LayoutGrid, ChevronDown, UserX, UserCheck2, MessageSquare,
   Link2, Unlink, Lock, Save, Banknote, MessageCircle, XCircle,
+  TrendingDown, Minus, ShieldAlert, ShieldCheck, ShieldOff,
+  ArrowUpRight, ArrowDownRight,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -95,6 +97,31 @@ interface OperacionData {
     id: number; cantidad: number; estado: string;
     periodo: string | null; fecha_solicitud: string; origen: string;
   }[];
+}
+
+interface EventoKPIFront {
+  id: number;
+  tipoEvento: string;
+  fecha: string;
+  estado: string;
+  anulado: boolean;
+  clienteNombre: string | null;
+  puestoNombre: string | null;
+  observaciones: string | null;
+}
+
+interface KPIDisciplinario {
+  score: number;
+  clasificacion: "excelente" | "regular" | "riesgo";
+  nivelRiesgo: "bajo" | "medio" | "alto";
+  totalFaltas: number;
+  totalSuspensiones: number;
+  faltas30d: number;
+  faltas90d: number;
+  suspensiones90d: number;
+  tendencia: "sube" | "baja" | "estable";
+  alertas: string[];
+  eventos: EventoKPIFront[];
 }
 
 interface FormState {
@@ -225,6 +252,170 @@ function ProgressBar({ label, value, total, color = "bg-blue-500" }: {
 
 // ─── Tab: KPI ─────────────────────────────────────────────────────────────────
 
+// ── Helpers visuales del KPI disciplinario ──────────────────────────────────
+
+const CLASIFICACION_CFG = {
+  excelente: { label: "Excelente", color: "text-green-400",  bg: "bg-green-400/10 border-green-400/20",  icon: ShieldCheck },
+  regular:   { label: "Regular",   color: "text-yellow-400", bg: "bg-yellow-400/10 border-yellow-400/20", icon: ShieldAlert  },
+  riesgo:    { label: "Riesgo",    color: "text-red-400",    bg: "bg-red-400/10 border-red-400/20",       icon: ShieldOff    },
+} as const;
+
+const RIESGO_CFG = {
+  bajo:  { label: "Bajo",  color: "text-green-400",  dot: "bg-green-400"  },
+  medio: { label: "Medio", color: "text-yellow-400", dot: "bg-yellow-500" },
+  alto:  { label: "Alto",  color: "text-red-400",    dot: "bg-red-400"    },
+} as const;
+
+const TENDENCIA_CFG = {
+  sube:    { label: "Sube",    icon: ArrowUpRight,   color: "text-red-400"    },
+  baja:    { label: "Baja",    icon: ArrowDownRight, color: "text-green-400"  },
+  estable: { label: "Estable", icon: Minus,          color: "text-white/40"   },
+} as const;
+
+const TIPO_EVENTO_CFG: Record<string, { label: string; color: string; bg: string }> = {
+  falta:      { label: "Falta",      color: "text-orange-400", bg: "bg-orange-400/10 border-orange-400/20" },
+  suspension: { label: "Suspensión", color: "text-red-400",    bg: "bg-red-400/10 border-red-400/20"       },
+};
+
+function SeccionDisciplinaria({ empId }: { empId: number }) {
+  const { data: disc, isLoading } = useQuery<KPIDisciplinario>({
+    queryKey: ["employee-disciplinary", empId],
+    queryFn: () => fetch(`${API_BASE}/employees/${empId}/disciplinary`).then((r) => r.json()),
+    staleTime: 60_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 py-4 text-white/30 text-xs">
+        <Loader2 className="w-4 h-4 animate-spin" /> Cargando KPI disciplinario…
+      </div>
+    );
+  }
+  if (!disc) return null;
+
+  const cls  = CLASIFICACION_CFG[disc.clasificacion];
+  const rsg  = RIESGO_CFG[disc.nivelRiesgo];
+  const tend = TENDENCIA_CFG[disc.tendencia];
+  const TendIcon = tend.icon;
+  const ClsIcon  = cls.icon;
+
+  return (
+    <div className="space-y-4">
+      {/* Separador */}
+      <div className="flex items-center gap-3 pt-1">
+        <div className="h-px flex-1 bg-white/8" />
+        <span className="text-[10px] text-white/25 uppercase tracking-widest">KPI Disciplinario</span>
+        <div className="h-px flex-1 bg-white/8" />
+      </div>
+
+      {/* Alertas automáticas */}
+      {disc.alertas.length > 0 && (
+        <div className="space-y-1.5">
+          {disc.alertas.map((alerta, i) => (
+            <div key={i} className="flex items-start gap-2 bg-red-400/5 border border-red-400/20 rounded-lg px-3 py-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-red-300">{alerta}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Score + Nivel de riesgo */}
+      <div className="grid grid-cols-2 gap-3">
+        {/* Puntuación */}
+        <div className={`rounded-xl border p-4 text-center ${cls.bg}`}>
+          <ClsIcon className={`w-5 h-5 mx-auto mb-1 ${cls.color}`} />
+          <p className={`text-3xl font-bold ${cls.color}`}>{disc.score}</p>
+          <p className={`text-[10px] mt-0.5 font-semibold uppercase tracking-wider ${cls.color}`}>{cls.label}</p>
+          <p className="text-[9px] text-white/25 mt-1">Puntuación / 100</p>
+        </div>
+        {/* Nivel de riesgo */}
+        <div className="bg-[#0c1929] border border-white/8 rounded-xl p-4 text-center">
+          <div className={`w-2.5 h-2.5 rounded-full mx-auto mb-1.5 ${rsg.dot}`} />
+          <p className={`text-lg font-bold ${rsg.color}`}>{rsg.label}</p>
+          <p className="text-[10px] text-white/30 mt-0.5 uppercase tracking-wider">Nivel de riesgo</p>
+          <div className={`flex items-center justify-center gap-1 mt-2 text-[10px] ${tend.color}`}>
+            <TendIcon className="w-3 h-3" />
+            <span>Tendencia: {tend.label}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Métricas disciplinarias */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-[#0c1929] border border-white/8 rounded-xl p-3 text-center">
+          <p className="text-2xl font-bold text-orange-400">{disc.totalFaltas}</p>
+          <p className="text-[10px] text-white/30 mt-0.5">Faltas totales</p>
+        </div>
+        <div className="bg-[#0c1929] border border-white/8 rounded-xl p-3 text-center">
+          <p className="text-2xl font-bold text-red-400">{disc.totalSuspensiones}</p>
+          <p className="text-[10px] text-white/30 mt-0.5">Suspensiones</p>
+        </div>
+        <div className="bg-[#0c1929] border border-white/8 rounded-xl p-3 text-center">
+          <p className={`text-2xl font-bold ${disc.faltas30d >= 3 ? "text-red-400" : disc.faltas30d >= 1 ? "text-yellow-400" : "text-white/30"}`}>
+            {disc.faltas30d}
+          </p>
+          <p className="text-[10px] text-white/30 mt-0.5">Faltas · 30 días</p>
+        </div>
+        <div className="bg-[#0c1929] border border-white/8 rounded-xl p-3 text-center">
+          <p className={`text-2xl font-bold ${disc.faltas90d >= 5 ? "text-red-400" : disc.faltas90d >= 3 ? "text-yellow-400" : "text-white/30"}`}>
+            {disc.faltas90d}
+          </p>
+          <p className="text-[10px] text-white/30 mt-0.5">Faltas · 90 días</p>
+        </div>
+      </div>
+
+      {/* Historial de eventos disciplinarios */}
+      {disc.eventos.length > 0 && (
+        <div>
+          <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+            <Clock className="w-3 h-3" /> Historial disciplinario ({disc.eventos.length})
+          </p>
+          <div className="space-y-1.5">
+            {disc.eventos.slice(0, 10).map((ev) => {
+              const cfg = TIPO_EVENTO_CFG[ev.tipoEvento] ?? { label: ev.tipoEvento, color: "text-white/50", bg: "bg-white/5 border-white/10" };
+              return (
+                <div key={ev.id} className={`rounded-lg px-3 py-2.5 border flex items-center gap-3 ${ev.anulado ? "opacity-40" : cfg.bg}`}>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${cfg.color}`}>{cfg.label}</span>
+                      {ev.anulado && <span className="text-[10px] bg-white/5 border border-white/10 text-white/30 rounded px-1.5">ANULADO</span>}
+                      {ev.puestoNombre && <span className="text-[10px] text-white/30">{ev.puestoNombre}</span>}
+                    </div>
+                    {ev.observaciones && (
+                      <p className="text-[10px] text-white/30 mt-0.5 truncate">{ev.observaciones}</p>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-white/25 shrink-0">
+                    {new Date(ev.fecha).toLocaleDateString("es-GT", { day: "2-digit", month: "short", year: "numeric" })}
+                  </p>
+                </div>
+              );
+            })}
+            {disc.eventos.length > 10 && (
+              <p className="text-[10px] text-white/20 text-center pt-1">
+                +{disc.eventos.length - 10} eventos más en el historial
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {disc.eventos.length === 0 && (
+        <div className="text-center py-4">
+          <ShieldCheck className="w-8 h-8 text-green-400/20 mx-auto mb-2" />
+          <p className="text-xs text-white/25">Sin eventos disciplinarios registrados</p>
+        </div>
+      )}
+
+      {/* Leyenda de cálculo */}
+      <p className="text-[10px] text-white/15 border-t border-white/5 pt-3 leading-relaxed">
+        Score = 100 − (faltas × 10) − (suspensiones × 20) · Excelente ≥ 90 · Regular 70–89 · Riesgo &lt; 70
+      </p>
+    </div>
+  );
+}
+
 function TabKPI({ empId }: { empId: number }) {
   const { data: kpi, isLoading, isError } = useQuery<KpiData>({
     queryKey: ["employee-kpi", empId],
@@ -264,6 +455,7 @@ function TabKPI({ empId }: { empId: number }) {
           <KpiCard icon={Zap} label="Emergencias" value={0} color="text-white/40" />
           <KpiCard icon={Shield} label="Asignaciones activas" value={kpi.asignaciones.activas} color="text-white/40" />
         </div>
+        <SeccionDisciplinaria empId={empId} />
       </div>
     );
   }
@@ -318,6 +510,7 @@ function TabKPI({ empId }: { empId: number }) {
           </div>
         </div>
       )}
+      <SeccionDisciplinaria empId={empId} />
       <p className="text-[11px] text-white/20 border-t border-white/5 pt-3">
         KPI alimentado desde: Tareas (vía usuario) · Anticipos (FK directa) · Incidencias (por nombre de responsable)
       </p>

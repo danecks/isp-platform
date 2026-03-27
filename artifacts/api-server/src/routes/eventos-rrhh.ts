@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
+import { calcularKPIDisciplinario } from "../services/disciplinary-kpi";
 
 export const eventosRrhhRouter = Router();
 
@@ -281,5 +282,116 @@ eventosRrhhRouter.get("/rrhh/stats", async (_req, res) => {
   } catch (err) {
     logger.error({ err }, "GET /rrhh/stats error");
     res.status(500).json({ error: "Error al obtener estadísticas" });
+  }
+});
+
+// ─── GET /api/rrhh/disciplinario — Dashboard disciplinario global ─────────────
+// Retorna: top empleados con más faltas, empleados en riesgo, tendencias globales
+eventosRrhhRouter.get("/rrhh/disciplinario", async (_req, res) => {
+  try {
+    // Top 10 empleados con más faltas/suspensiones (no anuladas)
+    const { rows: topRows } = await pool.query<{
+      employee_id: number;
+      employee_nombre: string;
+      faltas: string;
+      suspensiones: string;
+    }>(`
+      SELECT
+        employee_id,
+        employee_nombre,
+        COUNT(*) FILTER (WHERE tipo_evento = 'falta')       AS faltas,
+        COUNT(*) FILTER (WHERE tipo_evento = 'suspension')  AS suspensiones
+      FROM eventos_rrhh
+      WHERE employee_id IS NOT NULL
+        AND anulado_por IS NULL
+      GROUP BY employee_id, employee_nombre
+      HAVING COUNT(*) > 0
+      ORDER BY (COUNT(*) FILTER (WHERE tipo_evento = 'suspension') * 2 +
+                COUNT(*) FILTER (WHERE tipo_evento = 'falta')) DESC
+      LIMIT 10
+    `);
+
+    // Tendencia mensual: eventos últimos 6 meses
+    const { rows: tendenciaRows } = await pool.query<{
+      mes: string;
+      faltas: string;
+      suspensiones: string;
+    }>(`
+      SELECT
+        TO_CHAR(DATE_TRUNC('month', fecha), 'YYYY-MM') AS mes,
+        COUNT(*) FILTER (WHERE tipo_evento = 'falta')       AS faltas,
+        COUNT(*) FILTER (WHERE tipo_evento = 'suspension')  AS suspensiones
+      FROM eventos_rrhh
+      WHERE fecha >= NOW() - INTERVAL '6 months'
+        AND anulado_por IS NULL
+      GROUP BY DATE_TRUNC('month', fecha)
+      ORDER BY DATE_TRUNC('month', fecha) ASC
+    `);
+
+    // Estadísticas globales de riesgo (empleados activos con eventos)
+    const { rows: riesgoRows } = await pool.query<{
+      employee_id: number;
+      employee_nombre: string;
+      faltas_30d: string;
+      faltas_total: string;
+      suspensiones_total: string;
+    }>(`
+      SELECT
+        employee_id,
+        employee_nombre,
+        COUNT(*) FILTER (WHERE tipo_evento = 'falta' AND fecha >= NOW() - INTERVAL '30 days')  AS faltas_30d,
+        COUNT(*) FILTER (WHERE tipo_evento = 'falta')                                           AS faltas_total,
+        COUNT(*) FILTER (WHERE tipo_evento = 'suspension')                                      AS suspensiones_total
+      FROM eventos_rrhh
+      WHERE employee_id IS NOT NULL
+        AND anulado_por IS NULL
+      GROUP BY employee_id, employee_nombre
+      HAVING COUNT(*) > 0
+    `);
+
+    // Clasificar por nivel de riesgo
+    const enRiesgo = riesgoRows
+      .map((r) => {
+        const f30 = Number(r.faltas_30d);
+        const fTotal = Number(r.faltas_total);
+        const sTotal = Number(r.suspensiones_total);
+        const score = Math.max(0, 100 - fTotal * 10 - sTotal * 20);
+        let nivel: "bajo" | "medio" | "alto" = "bajo";
+        if (score < 70 || f30 >= 3 || sTotal > 0) nivel = "alto";
+        else if (score < 90 || f30 >= 2 || fTotal >= 3) nivel = "medio";
+        return {
+          employeeId: r.employee_id,
+          employeeNombre: r.employee_nombre,
+          score,
+          nivel,
+          faltas30d: f30,
+          faltasTotal: fTotal,
+          suspensionesTotal: sTotal,
+        };
+      })
+      .sort((a, b) => a.score - b.score);
+
+    res.json({
+      top: topRows.map((r) => ({
+        employeeId: r.employee_id,
+        employeeNombre: r.employee_nombre,
+        faltas: Number(r.faltas),
+        suspensiones: Number(r.suspensiones),
+      })),
+      tendencia: tendenciaRows.map((r) => ({
+        mes: r.mes,
+        faltas: Number(r.faltas),
+        suspensiones: Number(r.suspensiones),
+      })),
+      enRiesgo,
+      resumen: {
+        totalAlto:  enRiesgo.filter((e) => e.nivel === "alto").length,
+        totalMedio: enRiesgo.filter((e) => e.nivel === "medio").length,
+        totalBajo:  enRiesgo.filter((e) => e.nivel === "bajo").length,
+      },
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /rrhh/disciplinario error");
+    res.status(500).json({ error: "Error al obtener dashboard disciplinario" });
   }
 });

@@ -3,6 +3,7 @@ import { db, employeesTable, usersTable, anticiposTable, pool } from "@workspace
 import { eq, asc, or, ilike, and, ne, desc } from "drizzle-orm";
 import { calcularLimiteAnticipo } from "../services/anticipo-limite";
 import { getPeriodoActivo } from "../services/whatsapp/anticipo-session";
+import { calcularKPIDisciplinario } from "../services/disciplinary-kpi";
 
 const employeesRouter = Router();
 
@@ -496,6 +497,24 @@ employeesRouter.post("/employees", async (req, res) => {
     res.status(201).json(emp);
   } catch (err) {
     res.status(500).json({ error: "Error al crear empleado" });
+  }
+});
+
+// GET /api/employees/:id/disciplinary — KPI disciplinario ────────────────────
+employeesRouter.get("/employees/:id/disciplinary", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+  try {
+    const [emp] = await db
+      .select({ id: employeesTable.id, nombre: employeesTable.nombreCompleto })
+      .from(employeesTable)
+      .where(eq(employeesTable.id, id))
+      .limit(1);
+    if (!emp) return res.status(404).json({ error: "Empleado no encontrado" });
+    const kpi = await calcularKPIDisciplinario(id);
+    res.json(kpi);
+  } catch (err) {
+    res.status(500).json({ error: "Error al calcular KPI disciplinario" });
   }
 });
 
