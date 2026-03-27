@@ -104,6 +104,47 @@ anticiposRouter.get("/anticipos", async (req, res) => {
   }
 });
 
+// ── POST /api/anticipos — crear anticipo manual ────────────────────────────
+anticiposRouter.post("/anticipos", async (req, res) => {
+  const { nombre, cantidad, empleadoId, puesto, dpi, telefono, observaciones } = req.body ?? {};
+
+  if (!nombre || !cantidad) {
+    return res.status(400).json({ error: "nombre y cantidad son requeridos" });
+  }
+  const monto = Number(cantidad);
+  if (isNaN(monto) || monto <= 0) {
+    return res.status(400).json({ error: "cantidad debe ser un número mayor a 0" });
+  }
+
+  try {
+    const periodo = getPeriodoActivo() ?? `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-manual`;
+
+    const [created] = await db
+      .insert(anticiposTable)
+      .values({
+        employeeId: empleadoId ? Number(empleadoId) : null,
+        nombre: String(nombre).trim(),
+        puesto: puesto ? String(puesto).trim() : null,
+        dpi: dpi ? String(dpi).trim() : null,
+        telefono: telefono ? String(telefono).trim() : null,
+        cantidad: monto,
+        origen: "manual",
+        estado: "pendiente",
+        periodo,
+        observaciones: observaciones ? String(observaciones).trim() : null,
+        fechaSolicitud: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    res.status(201).json(created);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error al crear anticipo" });
+  }
+});
+
 // ── GET /api/anticipos/:id ─────────────────────────────────────────────────
 anticiposRouter.get("/anticipos/:id", async (req, res) => {
   const id = parseInt(req.params.id);

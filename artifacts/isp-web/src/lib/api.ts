@@ -203,6 +203,15 @@ export const anticiposApi = {
   getConfig: () => apiFetch<AnticipoPeriodoConfig>("/anticipos/config"),
   update: (id: number, data: { estado?: string; observaciones?: string }) =>
     apiFetch<Anticipo>(`/anticipos/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  create: (data: {
+    nombre: string;
+    cantidad: number;
+    empleadoId?: number | null;
+    puesto?: string;
+    dpi?: string;
+    telefono?: string;
+    observaciones?: string;
+  }) => apiFetch<Anticipo>("/anticipos", { method: "POST", body: JSON.stringify(data) }),
   exportCsv: (params?: { estado?: string; periodo?: string; desde?: string; hasta?: string }) => {
     const qs = new URLSearchParams(params as Record<string, string> ?? {}).toString();
     return `${API_BASE}/anticipos/export${qs ? "?" + qs : ""}`;

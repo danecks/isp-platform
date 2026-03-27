@@ -16,6 +16,7 @@ import {
   Banknote,
   MessageCircle,
   ExternalLink,
+  Plus,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -56,6 +57,14 @@ export default function Anticipos() {
   const [nuevoEstado, setNuevoEstado] = useState<string>("");
   const [observacion, setObservacion] = useState<string>("");
 
+  const [modalNuevo, setModalNuevo] = useState(false);
+  const [formNombre, setFormNombre] = useState("");
+  const [formCantidad, setFormCantidad] = useState("");
+  const [formPuesto, setFormPuesto] = useState("");
+  const [formDpi, setFormDpi] = useState("");
+  const [formTelefono, setFormTelefono] = useState("");
+  const [formObservaciones, setFormObservaciones] = useState("");
+
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -80,6 +89,26 @@ export default function Anticipos() {
       toast({ title: "Estado actualizado", description: "La solicitud fue actualizada." });
     },
     onError: () => toast({ title: "Error", description: "No se pudo actualizar.", variant: "destructive" }),
+  });
+
+  const { mutate: crearAnticipo, isPending: creando } = useMutation({
+    mutationFn: () =>
+      anticiposApi.create({
+        nombre: formNombre.trim(),
+        cantidad: parseFloat(formCantidad),
+        puesto: formPuesto.trim() || undefined,
+        dpi: formDpi.trim() || undefined,
+        telefono: formTelefono.trim() || undefined,
+        observaciones: formObservaciones.trim() || undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["anticipos"] });
+      setModalNuevo(false);
+      setFormNombre(""); setFormCantidad(""); setFormPuesto("");
+      setFormDpi(""); setFormTelefono(""); setFormObservaciones("");
+      toast({ title: "Anticipo creado", description: "El anticipo manual fue registrado." });
+    },
+    onError: () => toast({ title: "Error", description: "No se pudo crear el anticipo.", variant: "destructive" }),
   });
 
   const anticipos = data?.anticipos ?? [];
@@ -232,6 +261,13 @@ export default function Anticipos() {
                 <Download className="w-3.5 h-3.5" />
                 Exportar CSV
               </a>
+              <button
+                onClick={() => setModalNuevo(true)}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary/90 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Nuevo anticipo
+              </button>
             </div>
           </div>
         </div>
@@ -439,6 +475,118 @@ export default function Anticipos() {
                 className="flex-1 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
                 {guardando ? "Guardando..." : "Guardar cambios"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* MODAL NUEVO ANTICIPO MANUAL */}
+      {modalNuevo && (
+        <div
+          className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setModalNuevo(false); }}
+        >
+          <div className="bg-[#0c1829] border border-white/10 rounded-2xl w-full max-w-md p-6 space-y-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white">Nuevo anticipo manual</h2>
+                <p className="text-xs text-white/40 mt-0.5">Se registrará con origen "Manual" y estado "Pendiente"</p>
+              </div>
+              <button onClick={() => setModalNuevo(false)} className="text-white/30 hover:text-white text-xl leading-none">×</button>
+            </div>
+
+            <div className="space-y-3">
+              {/* Nombre */}
+              <div>
+                <label className="block text-xs text-white/40 uppercase tracking-wider mb-1.5">
+                  Colaborador <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formNombre}
+                  onChange={(e) => setFormNombre(e.target.value)}
+                  placeholder="Nombre completo del colaborador"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-primary/40"
+                />
+              </div>
+
+              {/* Monto */}
+              <div>
+                <label className="block text-xs text-white/40 uppercase tracking-wider mb-1.5">
+                  Monto (Q) <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={formCantidad}
+                  onChange={(e) => setFormCantidad(e.target.value)}
+                  placeholder="Ej: 500"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-primary/40"
+                />
+              </div>
+
+              {/* Puesto + DPI en fila */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-white/40 uppercase tracking-wider mb-1.5">Puesto</label>
+                  <input
+                    type="text"
+                    value={formPuesto}
+                    onChange={(e) => setFormPuesto(e.target.value)}
+                    placeholder="Ej: Agente"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-primary/40"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-white/40 uppercase tracking-wider mb-1.5">DPI</label>
+                  <input
+                    type="text"
+                    value={formDpi}
+                    onChange={(e) => setFormDpi(e.target.value)}
+                    placeholder="No. DPI"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-primary/40"
+                  />
+                </div>
+              </div>
+
+              {/* Teléfono */}
+              <div>
+                <label className="block text-xs text-white/40 uppercase tracking-wider mb-1.5">Teléfono</label>
+                <input
+                  type="text"
+                  value={formTelefono}
+                  onChange={(e) => setFormTelefono(e.target.value)}
+                  placeholder="Ej: 50200000000"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-primary/40"
+                />
+              </div>
+
+              {/* Observaciones */}
+              <div>
+                <label className="block text-xs text-white/40 uppercase tracking-wider mb-1.5">Observaciones</label>
+                <textarea
+                  value={formObservaciones}
+                  onChange={(e) => setFormObservaciones(e.target.value)}
+                  placeholder="Notas adicionales..."
+                  rows={2}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-primary/40 resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setModalNuevo(false)}
+                className="flex-1 py-2 rounded-xl bg-white/5 text-white/50 text-sm hover:bg-white/10 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => crearAnticipo()}
+                disabled={creando || !formNombre.trim() || !formCantidad || parseFloat(formCantidad) <= 0}
+                className="flex-1 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                {creando ? "Guardando..." : "Registrar anticipo"}
               </button>
             </div>
           </div>
