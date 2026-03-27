@@ -152,6 +152,13 @@ eventosRrhhRouter.patch("/rrhh/eventos/:id/estado", async (req, res) => {
   }
 
   try {
+    // No permitir modificar eventos anulados
+    const { rows: check } = await pool.query(`SELECT estado FROM eventos_rrhh WHERE id=$1`, [id]);
+    if (!check.length) return res.status(404).json({ error: "Evento no encontrado" });
+    if (check[0].estado === "anulado") {
+      return res.status(409).json({ error: "No se puede modificar un evento anulado" });
+    }
+
     const { rows } = await pool.query(
       `UPDATE eventos_rrhh
        SET estado=$1, notas=COALESCE($2, notas), updated_at=NOW()
@@ -160,11 +167,65 @@ eventosRrhhRouter.patch("/rrhh/eventos/:id/estado", async (req, res) => {
       [estado, notas || null, id],
     );
 
-    if (!rows.length) return res.status(404).json({ error: "Evento no encontrado" });
     res.json({ ok: true, evento: rows[0] });
   } catch (err) {
     logger.error({ err }, "PATCH /rrhh/eventos/:id/estado error");
     res.status(500).json({ error: "Error al actualizar estado" });
+  }
+});
+
+// ─── POST /api/rrhh/eventos/:id/anular ───────────────────────────────────────
+// Anulación controlada con auditoría completa
+eventosRrhhRouter.post("/rrhh/eventos/:id/anular", async (req, res) => {
+  const id = Number(req.params.id);
+  const { motivoAnulacion, usuario } = req.body;
+
+  const MOTIVOS_VALIDOS = ["error_registro", "agente_asistio", "duplicado", "otro"];
+  if (!motivoAnulacion || !MOTIVOS_VALIDOS.includes(motivoAnulacion)) {
+    return res.status(400).json({
+      error: `motivoAnulacion requerido. Válidos: ${MOTIVOS_VALIDOS.join(", ")}`,
+    });
+  }
+  if (!usuario) {
+    return res.status(400).json({ error: "usuario requerido para anular" });
+  }
+
+  try {
+    // Obtener estado actual
+    const { rows: current } = await pool.query(
+      `SELECT id, estado, employee_nombre FROM eventos_rrhh WHERE id=$1`,
+      [id],
+    );
+    if (!current.length) return res.status(404).json({ error: "Evento no encontrado" });
+
+    const estadoActual = current[0].estado;
+    if (estadoActual === "anulado") {
+      return res.status(409).json({ error: "El evento ya está anulado" });
+    }
+
+    // Registrar anulación con auditoría completa
+    const { rows } = await pool.query(
+      `UPDATE eventos_rrhh
+       SET estado           = 'anulado',
+           estado_anterior  = $1,
+           anulado_por      = $2,
+           anulado_at       = NOW(),
+           motivo_anulacion = $3,
+           updated_at       = NOW()
+       WHERE id = $4
+       RETURNING *`,
+      [estadoActual, usuario, motivoAnulacion, id],
+    );
+
+    logger.info(
+      { id, empleado: current[0].employee_nombre, motivo: motivoAnulacion, por: usuario },
+      "Evento RRHH anulado",
+    );
+
+    res.json({ ok: true, evento: rows[0] });
+  } catch (err) {
+    logger.error({ err }, "POST /rrhh/eventos/:id/anular error");
+    res.status(500).json({ error: "Error al anular evento" });
   }
 });
 
@@ -209,6 +270,7 @@ eventosRrhhRouter.get("/rrhh/stats", async (_req, res) => {
         COUNT(*) FILTER (WHERE estado = 'pendiente')                   AS pendientes,
         COUNT(*) FILTER (WHERE estado = 'en_proceso')                  AS en_proceso,
         COUNT(*) FILTER (WHERE estado = 'cerrado')                     AS cerrados,
+        COUNT(*) FILTER (WHERE estado = 'anulado')                     AS anulados,
         COUNT(*) FILTER (WHERE tipo_evento = 'falta')                  AS faltas,
         COUNT(*) FILTER (WHERE tipo_evento = 'suspension')             AS suspensiones,
         COUNT(*) FILTER (WHERE fecha >= NOW() - INTERVAL '7 days')     AS ultimos_7_dias,

@@ -1067,6 +1067,13 @@ Por favor ingresa al sistema o responde para continuar.',
       )
     `);
     logger.info("Auto-migrate: tabla 'eventos_rrhh' verificada/creada");
+
+    // Columnas de auditoría de anulación (pueden no existir en instancias anteriores)
+    await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS anulado_por       VARCHAR(100)`);
+    await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS anulado_at        TIMESTAMPTZ`);
+    await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS motivo_anulacion  TEXT`);
+    await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS estado_anterior   VARCHAR(30)`);
+    logger.info("Auto-migrate: columnas de anulación verificadas/creadas");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: error en tabla eventos_rrhh");
   }

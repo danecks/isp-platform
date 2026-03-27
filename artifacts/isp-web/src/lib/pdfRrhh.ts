@@ -24,11 +24,15 @@ export interface EventoRrhh {
   supervisor_nombre?: string;
   generado_desde?: string;
   estado: string;
+  estado_anterior?: string;
   observaciones?: string;
   notas?: string;
   usuario_generador?: string;
   documentos_generados?: Array<{ tipo: string; usuario: string; fecha: string }>;
   created_at?: string;
+  anulado_por?: string;
+  anulado_at?: string;
+  motivo_anulacion?: string;
 }
 
 const fmtFecha = (iso: string): string => {
@@ -62,6 +66,13 @@ const tipoLabel = (tipo: string): string => {
     suspension: "SUSPENSIÓN LABORAL",
   };
   return map[tipo] ?? tipo.toUpperCase();
+};
+
+export const MOTIVO_ANULACION_LABELS: Record<string, string> = {
+  error_registro: "Error de registro",
+  agente_asistio: "El agente sí asistió",
+  duplicado: "Registro duplicado",
+  otro: "Otro motivo",
 };
 
 // ─── Boleta de Descuento ──────────────────────────────────────────────────────
@@ -259,5 +270,110 @@ export async function generarActaAdministrativa(evento: EventoRrhh): Promise<voi
   );
 
   const filename = `acta-administrativa-${numActa}-${evento.employee_nombre.split(" ")[0].toLowerCase()}.pdf`;
+  pdf.save(filename);
+}
+
+// ─── Documento de Anulación (con marca ANULADO) ───────────────────────────────
+export async function generarDocumentoAnulacion(evento: EventoRrhh): Promise<void> {
+  const numEvento = `ERH-${String(evento.id).padStart(4, "0")}`;
+  const motivoLabel = MOTIVO_ANULACION_LABELS[evento.motivo_anulacion ?? ""] ?? evento.motivo_anulacion ?? "No especificado";
+
+  const pdf = new IspPdf({
+    titulo: "ACTA DE ANULACIÓN",
+    subtitulo: `Evento ${numEvento} — DOCUMENTO ANULADO`,
+    preparedBy: evento.anulado_por || "Sistema",
+  });
+
+  await pdf.build();
+
+  pdf.addSeccionTitulo("Aviso de Anulación");
+
+  pdf.addTextoResumen(
+    `El presente documento certifica la ANULACIÓN FORMAL del evento RRHH con referencia ${numEvento}, ` +
+    `correspondiente al colaborador ${evento.employee_nombre}. La anulación fue procesada el ` +
+    `${fmtFecha(evento.anulado_at || new Date().toISOString())} por ${evento.anulado_por || "un usuario autorizado"}, ` +
+    `dejando sin efecto los documentos originalmente generados (boleta de descuento y/o acta administrativa).`,
+  );
+
+  pdf.addEspacio(4);
+  pdf.addSeccionTitulo("I. Datos del Evento Anulado");
+
+  pdf.addTabla(
+    ["Campo", "Información"],
+    [
+      ["No. de evento", numEvento],
+      ["Colaborador", evento.employee_nombre],
+      ["DPI (últimos 4)", evento.employee_dpi ? evento.employee_dpi.replace(/\*/g, "●") : "No disponible"],
+      ["Tipo de evento original", tipoLabel(evento.tipo_evento)],
+      ["Fecha del evento original", fmtFecha(evento.fecha)],
+      ["Cliente / Instalación", evento.cliente_nombre || "No especificado"],
+      ["Puesto operativo", evento.puesto_nombre || "No especificado"],
+      ["Estado anterior", evento.estado_anterior || "Desconocido"],
+    ],
+  );
+
+  pdf.addEspacio(4);
+  pdf.addSeccionTitulo("II. Datos de la Anulación");
+
+  pdf.addTabla(
+    ["Campo", "Información"],
+    [
+      ["Fecha de anulación", fmtFecha(evento.anulado_at || new Date().toISOString())],
+      ["Anulado por", evento.anulado_por || "No especificado"],
+      ["Motivo de anulación", motivoLabel],
+      ["Documento de referencia", numEvento],
+      ["Estado resultante", "ANULADO — Sin efecto legal"],
+    ],
+  );
+
+  pdf.addEspacio(4);
+  pdf.addSeccionTitulo("III. Efecto Legal de la Anulación");
+
+  pdf.addTextoResumen(
+    `En virtud de la presente anulación, los documentos originalmente generados (boleta de descuento ` +
+    `y acta administrativa) quedan SIN EFECTO LEGAL y no podrán ser utilizados como instrumento ` +
+    `administrativo, disciplinario ni de descuento salarial contra el colaborador ${evento.employee_nombre}. ` +
+    `El registro histórico del evento se mantiene en el sistema con fines de trazabilidad y auditoría interna, ` +
+    `pero su estado queda marcado como ANULADO de forma permanente.`,
+  );
+
+  if (evento.motivo_anulacion === "agente_asistio") {
+    pdf.addEspacio(3);
+    pdf.addTextoResumen(
+      "NOTA ESPECÍFICA: La anulación se realizó debido a que el colaborador SÍ asistió a su turno. " +
+      "El registro de falta fue creado por error operativo y no corresponde a una ausencia real. " +
+      "El colaborador no tendrá ningún antecedente negativo derivado de este evento.",
+    );
+  }
+
+  if (evento.motivo_anulacion === "duplicado") {
+    pdf.addEspacio(3);
+    pdf.addTextoResumen(
+      "NOTA ESPECÍFICA: La anulación se realizó porque este evento constituye un DUPLICADO. " +
+      "El evento original se mantiene en el sistema. Solo el presente evento queda sin efecto.",
+    );
+  }
+
+  pdf.addEspacio(6);
+  pdf.addSeccionTitulo("IV. Firmas de Certificación");
+
+  pdf.addTabla(
+    ["Rol", "Nombre Completo", "Firma / Sello", "Fecha"],
+    [
+      ["Autorizó anulación", evento.anulado_por || "________________________", "___________________", fmtFechaCorta(evento.anulado_at || new Date().toISOString())],
+      ["Gerencia RRHH", "________________________", "___________________", "_____ / _____ / _____"],
+      ["Dirección General", "________________________", "___________________", "_____ / _____ / _____"],
+    ],
+    "Autorización de anulación",
+  );
+
+  pdf.addEspacio(5);
+  pdf.addTextoResumen(
+    "Este documento de anulación tiene la misma validez legal que el acta original que deja sin efecto. " +
+    "Debe archivarse junto al expediente del colaborador y a los documentos originales anulados. " +
+    `Referencia de auditoría del sistema: ${numEvento} — Estado: ANULADO.`,
+  );
+
+  const filename = `anulacion-${numEvento}-${evento.employee_nombre.split(" ")[0].toLowerCase()}.pdf`;
   pdf.save(filename);
 }
