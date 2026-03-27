@@ -12,6 +12,11 @@ import {
   iniciarAnticipo,
   continuarAnticipo,
 } from "../services/whatsapp/anticipo-session";
+import {
+  getPhoneRegSession,
+  startPhoneRegSession,
+  procesarPhoneRegStep,
+} from "../services/whatsapp/phone-registration-session";
 import { pool } from "@workspace/db";
 
 const router = Router();
@@ -191,7 +196,19 @@ async function handleIncomingMessage(
   skipValidation = false
 ): Promise<{ tipo: string; id?: string | number; respuesta?: string }> {
 
-  // 0. Validar número
+  // 0a. ¿Hay sesión de registro de teléfono (DPI) activa para este número?
+  //     Se verifica ANTES de la validación para permitir que números desconocidos
+  //     continúen el flujo multi-turno de registro.
+  if (!skipValidation) {
+    const regSession = getPhoneRegSession(telefono);
+    if (regSession) {
+      console.log(`[WA-Webhook] Sesión PhoneReg activa (${telefono}), estado=${regSession.state}`);
+      const resultado = await procesarPhoneRegStep(regSession, texto);
+      return { tipo: resultado.tipo, respuesta: resultado.respuesta };
+    }
+  }
+
+  // 0b. Validar número
   if (!skipValidation) {
     const validacion = await validarNumeroWA(telefono);
 
@@ -207,25 +224,21 @@ async function handleIncomingMessage(
         return { tipo: "inactivo", respuesta: msg };
       }
 
-      // ── NÚMERO DESCONOCIDO: clasificar intención antes de bloquear ───────
+      // ── NÚMERO DESCONOCIDO: clasificar intención ──────────────────────────
       if (validacion.motivo === "no_registrado") {
         const intencion: MessageClassification = classifyMessage(texto);
         console.log(`[WA-Webhook] Número externo (${telefono}), intención detectada: ${intencion}`);
 
-        // Intento de función interna → bloquear con menú de alternativas
+        // Intento de función interna → ofrecer validación por DPI
         if (INTERNAL_INTENTS.includes(intencion)) {
           const msg = await getWaMessage(
-            "no_autorizado_interno",
-            "🔒 Esta función es exclusiva para colaboradores y clientes registrados de ISP, S.A.\n\n" +
-            "Sin embargo, puedo ayudarte con:\n\n" +
-            "1️⃣ Información sobre nuestros servicios\n" +
-            "2️⃣ Solicitar cotización de seguridad\n" +
-            "3️⃣ Postularte a una plaza de trabajo\n" +
-            "4️⃣ Hablar con un asesor\n\n" +
-            "Escribe el número de opción o cuéntanos en qué podemos ayudarte."
+            "wa_dpi_solicitud",
+            "🔐 Para acceder a funciones exclusivas de colaboradores, necesitas verificar tu identidad.\n\n" +
+            "Envía tu número de *DPI* (Documento Personal de Identificación) para continuar."
           );
-          console.log(`[WA-Webhook] Externo intenta función interna (${intencion}): ${telefono}`);
-          return { tipo: "no_autorizado_interno", respuesta: msg };
+          startPhoneRegSession(telefono, nombre, intencion);
+          console.log(`[WA-Webhook] Externo con intención interna (${intencion}) → iniciando flujo DPI: ${telefono}`);
+          return { tipo: "dpi_solicitado", respuesta: msg };
         }
 
         // Saludo genérico → menú de bienvenida externo

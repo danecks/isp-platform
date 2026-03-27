@@ -69,20 +69,37 @@ interface ChatMessage {
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const INTENCION_LABELS: Record<string, string> = {
-  anticipo:              "💸 Anticipo salarial",
-  anticipo_inicio:       "💸 Anticipo (inicio)",
-  anticipo_sesion:       "💸 Anticipo (sesión activa)",
-  incidencia:            "🚨 Incidencia / Emergencia",
-  postulacion:           "👷 Postulación laboral",
-  lead:                  "💼 Lead comercial",
-  info_general:          "ℹ️ Información general",
-  contacto_asesor:       "📞 Contacto con asesor",
-  saludo_externo:        "👋 Saludo / Menú externo",
-  no_autorizado:         "⛔ Número no autorizado",
-  no_autorizado_interno: "🔒 Función interna (externo)",
-  inactivo:              "🚫 Usuario inactivo",
-  bloqueado:             "⛔ Acceso bloqueado",
-  pendiente:             "⏳ Pendiente",
+  anticipo:                   "💸 Anticipo salarial",
+  anticipo_inicio:            "💸 Anticipo (inicio)",
+  anticipo_sesion:            "💸 Anticipo (sesión activa)",
+  incidencia:                 "🚨 Incidencia / Emergencia",
+  postulacion:                "👷 Postulación laboral",
+  lead:                       "💼 Lead comercial",
+  info_general:               "ℹ️ Información general",
+  contacto_asesor:            "📞 Contacto con asesor",
+  saludo_externo:             "👋 Saludo / Menú externo",
+  no_autorizado:              "⛔ Número no autorizado",
+  no_autorizado_interno:      "🔒 Función interna (externo)",
+  inactivo:                   "🚫 Usuario inactivo",
+  bloqueado:                  "⛔ Acceso bloqueado",
+  pendiente:                  "⏳ Pendiente",
+  // ── Flujo DPI ──────────────────────────────────────────────────────────────
+  dpi_solicitado:             "🔐 DPI solicitado",
+  dpi_wait_dpi:               "🔐 Esperando DPI",
+  dpi_formato_invalido:       "❌ DPI: formato inválido",
+  dpi_no_encontrado:          "❌ DPI: no encontrado",
+  dpi_max_intentos:           "🔒 DPI: máx. intentos",
+  dpi_valido_sin_numero_previo: "✅ DPI válido → registrar?",
+  dpi_valido_numero_previo:   "✅ DPI válido → número previo",
+  numero_registrado:          "✅ Número registrado",
+  numero_reemplazado:         "✅ Número reemplazado",
+  numero_secundario:          "📎 Número secundario guardado",
+  numero_no_guardado:         "↩️ Número no guardado (temporal)",
+  registro_cancelado:         "↩️ Registro cancelado",
+  empleado_inactivo:          "🚫 Colaborador inactivo",
+  esperando_si_no:            "⏳ Esperando SI / NO",
+  esperando_opcion_reemplazo: "⏳ Esperando 1/2/3",
+  sesion_dpi_activa:          "🔐 Sesión DPI activa",
 };
 
 const ROL_COLORS: Record<string, string> = {
@@ -101,7 +118,7 @@ const QUICK_SCENARIOS: {
   icon: string;
   msg: string;
   color: string;
-  group: "interno" | "externo";
+  group: "interno" | "externo" | "dpi";
   skipValidacion?: boolean;
 }[] = [
   // ── Internos (usuario registrado) ──────────────────────────────────────────
@@ -115,13 +132,22 @@ const QUICK_SCENARIOS: {
   { group: "externo", label: "Externo empleo",     icon: "👷", msg: "kisiera trabajo como guardia de seguridad",                      color: "bg-blue-500/10 border-blue-500/30 text-blue-300" },
   { group: "externo", label: "Externo info",       icon: "ℹ️", msg: "hola quiero informacion sobre sus servicios de seguridad",       color: "bg-indigo-500/10 border-indigo-500/30 text-indigo-300" },
   { group: "externo", label: "Externo asesor",     icon: "📞", msg: "quiero hablar con un asesor de ventas",                          color: "bg-purple-500/10 border-purple-500/30 text-purple-300" },
+  // Externos que ahora disparan flujo DPI (antes daban "no autorizado")
+  { group: "externo", label: "🔐 Anticipo externo",    icon: "🔐", msg: "quiero mi anticipo salarial",                         color: "bg-amber-500/10 border-amber-500/30 text-amber-300" },
+  { group: "externo", label: "🔐 Emergencia externo",  icon: "🔐", msg: "emergencia hay un intruso en las instalaciones",       color: "bg-amber-500/10 border-amber-500/30 text-amber-300" },
+  { group: "externo", label: "Saludo / menú",      icon: "👋", msg: "hola",                                                         color: "bg-gray-500/10 border-gray-500/30 text-gray-300" },
 
-  // ── Externos bloqueados (función interna desde número desconocido) ─────────
-  { group: "externo", label: "🔒 Anticipo externo",    icon: "🔒", msg: "quiero mi anticipo salarial",                            color: "bg-rose-500/10 border-rose-500/30 text-rose-300" },
-  { group: "externo", label: "🔒 Emergencia externo",  icon: "🔒", msg: "emergencia hay un intruso en las instalaciones",          color: "bg-rose-500/10 border-rose-500/30 text-rose-300" },
-
-  // ── Saludo genérico ────────────────────────────────────────────────────────
-  { group: "externo", label: "Saludo / menú",      icon: "👋", msg: "hola",                                                          color: "bg-gray-500/10 border-gray-500/30 text-gray-300" },
+  // ── Respuestas rápidas para flujo DPI (se usan cuando hay sesión DPI activa)
+  // DPIs sembrados: Carlos (OPS, tiene usuario)=1234567890101, Marco=2345678901202, Lucía=3456789012303
+  { group: "dpi", label: "DPI Carlos (OPS)",  icon: "🪪", msg: "1234567890101",  color: "bg-blue-500/10 border-blue-500/30 text-blue-300" },
+  { group: "dpi", label: "DPI Marco Tzoc",    icon: "🪪", msg: "2345678901202",  color: "bg-cyan-500/10 border-cyan-500/30 text-cyan-300" },
+  { group: "dpi", label: "DPI Lucía Ajú",     icon: "🪪", msg: "3456789012303",  color: "bg-cyan-500/10 border-cyan-500/30 text-cyan-300" },
+  { group: "dpi", label: "DPI inválido",      icon: "❌", msg: "00000000",        color: "bg-red-500/10 border-red-500/30 text-red-300" },
+  { group: "dpi", label: "✅ SI (registrar)", icon: "✅", msg: "SI",             color: "bg-emerald-500/10 border-emerald-500/30 text-emerald-300" },
+  { group: "dpi", label: "❌ NO (temporal)",  icon: "❌", msg: "NO",             color: "bg-gray-500/10 border-gray-500/30 text-gray-300" },
+  { group: "dpi", label: "1 Reemplazar",      icon: "🔄", msg: "1",              color: "bg-orange-500/10 border-orange-500/30 text-orange-300" },
+  { group: "dpi", label: "2 Secundario",      icon: "📎", msg: "2",              color: "bg-blue-500/10 border-blue-500/30 text-blue-300" },
+  { group: "dpi", label: "3 Cancelar",        icon: "↩️", msg: "3",              color: "bg-gray-500/10 border-gray-500/30 text-gray-300" },
 ];
 
 // ─── Sub-componentes ──────────────────────────────────────────────────────────
@@ -629,6 +655,27 @@ export default function SimuladorWhatsApp() {
                     </button>
                   ))}
                 </div>
+              </div>
+              <div className="w-px bg-gray-700/30 self-stretch" />
+              <div>
+                <p className="text-[9px] uppercase tracking-widest text-cyan-700 mb-1.5 font-semibold">
+                  Flujo DPI <span className="text-gray-600">(respuestas rápidas)</span>
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {QUICK_SCENARIOS.filter(s => s.group === "dpi").map(s => (
+                    <button
+                      key={s.label}
+                      onClick={() => enviar(s.msg)}
+                      className={`text-xs px-2.5 py-1 rounded-lg border transition-all hover:opacity-80 ${s.color}`}
+                      title={`Enviar: "${s.msg}"`}
+                    >
+                      {s.icon} {s.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[9px] text-gray-700 mt-1">
+                  Primero activa "🔐 Anticipo/Emergencia externo" con número desconocido, luego usa DPI o SI/NO
+                </p>
               </div>
             </div>
           </div>

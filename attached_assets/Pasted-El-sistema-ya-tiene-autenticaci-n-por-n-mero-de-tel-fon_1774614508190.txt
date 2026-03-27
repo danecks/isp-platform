@@ -1,0 +1,87 @@
+El sistema ya tiene autenticación por número de teléfono y una lógica de validación fallback por DPI para colaboradores desde WhatsApp.
+
+Quiero mejorar ese flujo para que, cuando un colaborador se autentique correctamente con su DPI desde un número no registrado, el sistema pueda ofrecer registrar ese número como número autorizado de WhatsApp.
+
+Objetivo:
+usar la validación por DPI no solo para dar acceso temporal, sino también para actualizar y autorizar el nuevo número del colaborador dentro del sistema.
+
+Haz esto:
+
+## 1. Flujo nuevo
+Cuando un número no registrado intente usar una función interna de colaborador:
+- ofrecer validación por DPI
+- si valida correctamente, crear sesión temporal
+- luego preguntar:
+  “¿Deseas registrar este número como tu número autorizado para WhatsApp? Responde SI o NO.”
+
+## 2. Si responde SI
+- guardar el número en su perfil
+- marcarlo como número autorizado para WhatsApp
+- dejarlo vinculado a su usuario/empleado
+- futuras interacciones ya no deben pedir validación por DPI desde ese mismo número
+
+## 3. Si responde NO
+- mantener solo la sesión temporal
+- no actualizar el perfil
+
+## 4. Manejo de número previo
+Si el empleado ya tiene un número registrado:
+- no sobrescribirlo silenciosamente
+- implementar una regla segura:
+  - guardar como secundario
+  o
+  - pedir confirmación si desea reemplazar el número anterior
+
+Elige la opción más segura y documenta la decisión.
+
+## 5. Base de datos
+Asegura campos útiles para esto, por ejemplo:
+- telefonoPrincipal
+- telefonoSecundario
+- whatsappAuthorized
+- telefonoVerificadoAt
+- lastPhoneUpdateAt
+- updatedByFlow o authSource
+
+## 6. Auditoría
+Registrar en log:
+- employeeId
+- número anterior
+- número nuevo
+- fecha/hora
+- método de validación = dpi
+- acción = autorizado / no autorizado / reemplazo / secundario
+
+## 7. Sesión
+Después de autorizar el número:
+- convertir la sesión temporal en sesión normal para ese número
+- futuras validaciones desde ese número deben reconocer al usuario directamente
+
+## 8. Simulador
+Actualizar el simulador de WhatsApp para probar:
+- número no registrado
+- validación correcta con DPI
+- respuesta SI
+- respuesta NO
+- caso con número previo ya existente
+
+## 9. No romper
+- anticipos
+- emergencias
+- tareas
+- incidencias
+- portal
+- Trello
+- login
+- configuración WhatsApp
+
+## 10. Documentación
+Explica:
+- cómo funciona el flujo de autorización de nuevo número
+- qué pasa si ya había un número anterior
+- cómo queda registrado en el usuario/empleado
+- qué logs se generan
+- cómo esto ayudará a depurar la base de teléfonos de 500+ empleados
+
+Muy importante:
+quiero que el chat de WhatsApp también ayude a actualizar y autorizar números de colaboradores de forma práctica, segura y auditable.

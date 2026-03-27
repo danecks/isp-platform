@@ -886,5 +886,75 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: error en wa_notificaciones_log");
   }
 
+  // ── PHONE AUTH LOG: auditoría de registro de teléfonos vía DPI ────────────
+  try {
+    // Nuevas columnas en users para gestión de WhatsApp
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS telefono_secundario VARCHAR(50)`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS wa_autorizado BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS telefono_verificado_at TIMESTAMPTZ`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_phone_update_at TIMESTAMPTZ`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_source VARCHAR(20)`);
+    logger.info("Auto-migrate: columnas phone-auth en 'users' verificadas");
+
+    // Tabla de auditoría de registro de teléfonos
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS phone_auth_log (
+        id                  SERIAL PRIMARY KEY,
+        user_id             INTEGER,
+        empleado_id         INTEGER NOT NULL DEFAULT 0,
+        dpi                 VARCHAR(20),
+        numero_anterior     VARCHAR(50),
+        numero_nuevo        VARCHAR(50) NOT NULL,
+        accion              VARCHAR(30) NOT NULL,
+        metodo_validacion   VARCHAR(20) NOT NULL DEFAULT 'dpi',
+        notas               TEXT,
+        created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'phone_auth_log' verificada/creada");
+
+    // Mensajes WA para flujo DPI de registro de número
+    await pool.query(`
+      INSERT INTO wa_messages (clave, texto, descripcion) VALUES
+        ('wa_dpi_solicitud',
+         '🔐 Para acceder a funciones exclusivas de colaboradores, necesitas verificar tu identidad.\n\nEnvía tu número de *DPI* (Documento Personal de Identificación) para continuar.',
+         'Solicitar DPI cuando número desconocido intenta función interna'),
+        ('wa_dpi_invalido',
+         '❌ El DPI no tiene el formato correcto (debe ser de 8 a 15 dígitos numéricos).\n\nVerifica e intenta de nuevo. Intentos restantes: {restantes}',
+         'Error de formato de DPI — muestra intentos restantes'),
+        ('wa_dpi_no_encontrado',
+         '❌ No encontramos ese DPI en nuestra base de datos.\n\nVerifica el número e intenta de nuevo. ({restantes} intento{s} restante{s})',
+         'DPI no encontrado en employees — muestra intentos restantes'),
+        ('wa_dpi_max_intentos',
+         '🔒 Máximo de intentos de verificación alcanzado. Por seguridad la sesión fue cancelada.\n\nContacta a tu supervisor o a RRHH para acceder al sistema.',
+         'Sesión cancelada tras 3 intentos fallidos de DPI'),
+        ('wa_dpi_valido_registrar',
+         '✅ Identidad verificada como *{nombre}*.\n\n¿Deseas registrar este número como tu número autorizado de WhatsApp?\n\nResponde *SI* para registrar o *NO* para continuar sin guardar.',
+         'DPI válido, sin número previo — preguntar SI/NO para registrar'),
+        ('wa_dpi_numero_anterior',
+         '✅ Identidad verificada como *{nombre}*.\n\nYa tienes registrado el número {anterior}.\n\n¿Qué deseas hacer con este número nuevo?\n\n1️⃣ Reemplazar el número anterior\n2️⃣ Guardar como número secundario\n3️⃣ Cancelar\n\nResponde 1, 2 o 3.',
+         'DPI válido, con número previo diferente — preguntar reemplazar/secundario/cancelar'),
+        ('wa_numero_registrado_ok',
+         '✅ ¡Número registrado exitosamente como número principal de WhatsApp!\n\nA partir de ahora puedes usar todas las funciones de ISP, S.A. desde este número sin necesidad de volver a validar tu DPI.\n\nPuedes continuar con tu solicitud.',
+         'Confirmación de registro de número como principal'),
+        ('wa_numero_reemplazado_ok',
+         '✅ Número actualizado exitosamente.\n\nEl número anterior ({anterior}) fue guardado como referencia.\n\nPuedes continuar con tu solicitud.',
+         'Confirmación de reemplazo de número — anterior queda como secundario'),
+        ('wa_numero_secundario_ok',
+         '✅ Número guardado como contacto secundario de referencia.\n\nTu número principal registrado no fue modificado. Tienes acceso temporal por esta sesión.',
+         'Confirmación de número guardado como secundario'),
+        ('wa_numero_no_guardado',
+         'Entendido. El número no fue guardado en tu perfil.\n\nTienes acceso temporal por esta sesión. Puedes continuar con tu solicitud.',
+         'Colaborador eligió NO registrar el número'),
+        ('wa_registro_cancelado',
+         'Registro cancelado. Tu número anterior no fue modificado.\n\nTienes acceso temporal por esta sesión. Puedes continuar.',
+         'Flujo de registro cancelado por el colaborador')
+      ON CONFLICT (clave) DO NOTHING
+    `);
+    logger.info("Auto-migrate: mensajes WA para flujo DPI verificados (11 mensajes)");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: error en phone_auth_log o mensajes DPI");
+  }
+
   logger.info("Auto-seed completado");
 }

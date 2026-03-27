@@ -36,6 +36,12 @@ import {
   continuarAnticipo,
   deleteSession,
 } from "../services/whatsapp/anticipo-session";
+import {
+  getPhoneRegSession,
+  startPhoneRegSession,
+  procesarPhoneRegStep,
+  clearPhoneRegSession,
+} from "../services/whatsapp/phone-registration-session";
 import { getWaMessage } from "../services/whatsapp/wa-config.service";
 import { logger } from "../lib/logger";
 
@@ -159,8 +165,27 @@ async function simularMensaje(params: SimularParams): Promise<SimularResult> {
     };
   }
 
-  // 2. Validación de número
+  // 2. Validación de número y flujo DPI
   if (!skipValidacion) {
+
+    // 2a. ¿Hay sesión de registro de teléfono activa? → continuar flujo DPI
+    const regSession = getPhoneRegSession(telefono);
+    if (regSession) {
+      debug.validacion.autorizado = false;
+      debug.validacion.motivo = "sesion_dpi_activa";
+      debug.clasificacion.intencion = `dpi_${regSession.state.toLowerCase()}`;
+      debug.sesion.activa = true;
+      debug.sesion.estado = `REG:${regSession.state}`;
+
+      const resultado = await procesarPhoneRegStep(regSession, mensaje);
+      debug.clasificacion.intencion = resultado.tipo;
+      // Actualizar sesión en debug después del procesamiento (refleja estado post-acción)
+      const sesionPostProceso = getPhoneRegSession(telefono);
+      debug.sesion.activa = !!sesionPostProceso;
+      debug.sesion.estado = sesionPostProceso ? `REG:${sesionPostProceso.state}` : null;
+      debug.duracionMs = Date.now() - t0;
+      return { respuesta: resultado.respuesta, tipo: resultado.tipo, debug };
+    }
 
     // ── USUARIO INACTIVO: bloqueo total ────────────────────────────────────
     if (usuario && usuario.estado !== "activo") {
@@ -183,21 +208,19 @@ async function simularMensaje(params: SimularParams): Promise<SimularResult> {
       const intencionPrevia: MessageClassification = classifyMessage(mensaje);
       debug.clasificacion.intencion = intencionPrevia;
 
-      // Intento de función interna → bloquear con menú de alternativas
+      // Intento de función interna → iniciar flujo DPI de registro
       if (INTERNAL_INTENTS.includes(intencionPrevia)) {
         const msg = await getWaMessage(
-          "no_autorizado_interno",
-          "🔒 Esta función es exclusiva para colaboradores y clientes registrados de ISP, S.A.\n\n" +
-          "Sin embargo, puedo ayudarte con:\n\n" +
-          "1️⃣ Información sobre nuestros servicios\n" +
-          "2️⃣ Solicitar cotización de seguridad\n" +
-          "3️⃣ Postularte a una plaza de trabajo\n" +
-          "4️⃣ Hablar con un asesor\n\n" +
-          "Escribe el número de opción o cuéntanos en qué podemos ayudarte."
+          "wa_dpi_solicitud",
+          "🔐 Para acceder a funciones exclusivas de colaboradores, necesitas verificar tu identidad.\n\n" +
+          "Envía tu número de *DPI* (Documento Personal de Identificación) para continuar."
         );
-        debug.clasificacion.intencion = "no_autorizado_interno";
+        startPhoneRegSession(telefono, nombre, intencionPrevia);
+        debug.clasificacion.intencion = "dpi_solicitado";
+        debug.sesion.activa = true;
+        debug.sesion.estado = "REG:WAIT_DPI";
         debug.duracionMs = Date.now() - t0;
-        return { respuesta: msg, tipo: "no_autorizado_interno", debug };
+        return { respuesta: msg, tipo: "dpi_solicitado", debug };
       }
 
       // Saludo genérico → menú de bienvenida externo
@@ -218,9 +241,7 @@ async function simularMensaje(params: SimularParams): Promise<SimularResult> {
       }
 
       // Intención externa válida (lead, postulacion, info_general, contacto_asesor)
-      // Marcar como número externo pero permitido, continúa el flujo normal
-      debug.validacion.autorizado = false; // sigue sin estar registrado
-      // debug.validacion.motivo mantiene "no_registrado"
+      debug.validacion.autorizado = false;
     }
   } else {
     debug.validacion.motivo = "omitido_skip";
@@ -479,13 +500,15 @@ router.get("/simulador/usuarios", async (_req, res) => {
 });
 
 // ─── DELETE /api/simulador/sesion ─────────────────────────────────────────────
+// Limpia sesiones de anticipo Y de registro de teléfono (DPI)
 router.delete("/simulador/sesion", async (req, res) => {
   try {
     const { telefono } = req.body;
     if (!telefono) return res.status(400).json({ error: "Teléfono requerido" });
     const tel = normalizarTelefono(telefono);
     deleteSession(tel);
-    logger.info({ telefono: tel }, "[Simulador] Sesión anticipo limpiada");
+    clearPhoneRegSession(tel);
+    logger.info({ telefono: tel }, "[Simulador] Sesiones anticipo y DPI limpiadas");
     res.json({ ok: true, telefono: tel });
   } catch (err) {
     logger.error({ err }, "[Simulador] Error limpiando sesión");
