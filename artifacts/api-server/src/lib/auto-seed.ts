@@ -1042,5 +1042,34 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: error en pizarrón operativo");
   }
 
+  // ── EVENTOS RRHH: registro de faltas y suspensiones con documentos ──────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS eventos_rrhh (
+        id                  SERIAL PRIMARY KEY,
+        employee_id         INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        employee_nombre     VARCHAR(255) NOT NULL,
+        employee_dpi        VARCHAR(20),
+        tipo_evento         VARCHAR(50)  NOT NULL DEFAULT 'falta',
+        fecha               TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        cliente_nombre      VARCHAR(255),
+        puesto_nombre       VARCHAR(150),
+        supervisor_nombre   VARCHAR(255),
+        generado_desde      VARCHAR(50)  NOT NULL DEFAULT 'operaciones',
+        movimiento_id       INTEGER REFERENCES movimientos_operativos(id) ON DELETE SET NULL,
+        estado              VARCHAR(30)  NOT NULL DEFAULT 'pendiente',
+        observaciones       TEXT,
+        notas               TEXT,
+        usuario_generador   VARCHAR(100),
+        documentos_generados JSONB       NOT NULL DEFAULT '[]',
+        created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'eventos_rrhh' verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: error en tabla eventos_rrhh");
+  }
+
   logger.info("Auto-seed completado");
 }

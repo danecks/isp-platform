@@ -1,0 +1,154 @@
+El sistema ya tiene:
+
+- Centro de Operaciones (pizarrón operativo)
+- sustituciones con motivo (falta, descanso, rotación, etc.)
+- empleados
+- clientes
+- historial de movimientos
+
+Quiero agregar una integración directa con RRHH y generación automática de documentos cuando ocurren eventos operativos como faltas.
+
+Objetivo:
+que cuando un jefe de operaciones registre una falta en el pizarrón, el sistema genere automáticamente consecuencias laborales, documentos formales y tareas para RRHH.
+
+---
+
+## 1. Detección de eventos
+
+Cuando en operaciones se haga:
+- sustitución con motivo = "falta"
+
+Activar flujo automático.
+
+---
+
+## 2. Crear registro RRHH
+
+Crear nueva entidad tipo:
+- eventos_rrhh
+
+Campos:
+- employeeId
+- tipoEvento (falta, suspensión, etc.)
+- fecha
+- clienteId
+- puesto
+- supervisorId
+- generadoDesde (operaciones)
+- estado (pendiente, en proceso, cerrado)
+
+---
+
+## 3. Generación de documentos
+
+Generar automáticamente:
+
+### A. Boleta de descuento
+Contenido:
+- nombre empleado
+- DPI
+- fecha
+- motivo
+- cliente / puesto
+- observaciones
+
+### B. Acta administrativa
+Contenido:
+- descripción del evento
+- fecha
+- lugar
+- supervisor
+- tipo de falta
+
+Ambos en formato listo para PDF.
+
+---
+
+## 4. PDF membretado
+
+Los documentos deben generarse con:
+
+Encabezado:
+- ISP, S.A.
+- Investigaciones y Seguridad Profesional S.A.
+- logo
+- fecha
+
+Cuerpo:
+- contenido estructurado
+
+Pie:
+- espacio para firma
+- datos de la empresa
+
+---
+
+## 5. Módulo RRHH
+
+Crear módulo:
+- /admin/rrhh/eventos
+
+Mostrar:
+- lista de eventos
+- estado
+- documentos generados
+- opción de descargar PDF
+
+---
+
+## 6. Confirmación en operaciones
+
+Antes de registrar falta:
+mostrar mensaje:
+
+“Esta acción generará documentos de RRHH (boleta y acta). ¿Desea continuar?”
+
+---
+
+## 7. Reglas
+
+Solo aplicar este flujo para:
+- falta
+- suspensión (si se implementa)
+
+No para:
+- rotación
+- descanso
+- voluntario
+
+---
+
+## 8. Auditoría
+
+Registrar:
+- quién generó el evento
+- fecha
+- documentos generados
+
+---
+
+## 9. No romper
+
+- operaciones
+- empleados
+- tareas
+- incidencias
+- anticipos
+- portal
+- WhatsApp
+- Trello
+
+---
+
+## 10. Documentación
+
+Explicar:
+- cómo se genera un evento RRHH desde operaciones
+- cómo se crean los documentos
+- cómo se descargan
+- cómo escalar este módulo a control disciplinario completo
+
+---
+
+Muy importante:
+quiero que el sistema conecte la operación diaria con procesos formales de RRHH y documentación legal automáticamente.

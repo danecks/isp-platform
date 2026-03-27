@@ -192,7 +192,67 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
       ]
     );
 
-    res.json({ ok: true, mensaje: `Sustitución registrada: ${agenteSalienteNombre} → ${entrante.nombre_completo}` });
+    // Obtener ID del movimiento recién insertado
+    const { rows: movRows } = await pool.query(
+      `SELECT id FROM movimientos_operativos
+       WHERE puesto_id=$1 AND tipo='sustitucion'
+       ORDER BY created_at DESC LIMIT 1`,
+      [puestoId],
+    );
+    const movimientoId = movRows[0]?.id || null;
+
+    // ── Auto-crear evento RRHH si el motivo es falta o suspensión ────────────
+    const motivosRrhh = ["falta", "suspension"];
+    if (motivosRrhh.includes((motivo || "").toLowerCase())) {
+      try {
+        // Determinar tipo de evento
+        const tipoEvento = motivo?.toLowerCase() === "suspension" ? "suspension" : "falta";
+
+        // Obtener datos del empleado saliente
+        let employeeId: number | null = agenteSalienteId ? Number(agenteSalienteId) : null;
+        let employeeNombre = agenteSalienteNombre || "Colaborador desconocido";
+        let employeeDpi: string | null = null;
+
+        if (employeeId) {
+          const { rows: empRows } = await pool.query(
+            `SELECT id, nombre_completo, dpi FROM employees WHERE id=$1`,
+            [employeeId],
+          );
+          if (empRows.length) {
+            employeeNombre = empRows[0].nombre_completo;
+            employeeDpi = empRows[0].dpi || null;
+          }
+        }
+
+        await pool.query(
+          `INSERT INTO eventos_rrhh
+             (employee_id, employee_nombre, employee_dpi,
+              tipo_evento, fecha, cliente_nombre, puesto_nombre,
+              generado_desde, movimiento_id,
+              estado, usuario_generador, documentos_generados)
+           VALUES ($1,$2,$3,$4,NOW(),$5,$6,'operaciones',$7,'pendiente',$8,'[]')`,
+          [
+            employeeId,
+            employeeNombre,
+            employeeDpi,
+            tipoEvento,
+            puesto.cliente_nombre || null,
+            puesto.nombre         || null,
+            movimientoId,
+            usuario || "sistema",
+          ],
+        );
+        logger.info({ tipoEvento, empleado: employeeNombre }, "Evento RRHH auto-generado desde sustitución");
+      } catch (errRrhh) {
+        logger.error({ errRrhh }, "Error al auto-generar evento RRHH (no bloqueante)");
+      }
+    }
+
+    res.json({
+      ok: true,
+      mensaje: `Sustitución registrada: ${agenteSalienteNombre} → ${entrante.nombre_completo}`,
+      eventoRrhhGenerado: motivosRrhh.includes((motivo || "").toLowerCase()),
+    });
   } catch (err) {
     logger.error({ err }, "POST /operaciones/sustituir error");
     res.status(500).json({ error: "Error al registrar sustitución" });

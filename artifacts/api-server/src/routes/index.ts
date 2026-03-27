@@ -17,6 +17,7 @@ import reportesRouter from "./reportes";
 import cmsRouter from "./cms";
 import simuladorRouter from "./simulador";
 import operacionesRouter from "./operaciones";
+import { eventosRrhhRouter } from "./eventos-rrhh";
 
 const router: IRouter = Router();
 
@@ -38,5 +39,6 @@ router.use(reportesRouter);
 router.use(cmsRouter);
 router.use(simuladorRouter);
 router.use(operacionesRouter);
+router.use(eventosRrhhRouter);
 
 export default router;

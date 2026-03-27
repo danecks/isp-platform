@@ -20,7 +20,7 @@ import {
   CheckCircle2, Clock, User, Phone, MapPin, ArrowLeftRight,
   History, Trash2, Shield, Activity, Zap, ChevronDown,
   ChevronRight, Info, Building2, Circle, GripVertical,
-  UserMinus, UserPlus, XCircle, RotateCcw,
+  UserMinus, UserPlus, XCircle, RotateCcw, FileText,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -480,6 +480,8 @@ function ModalSustitucion({
   const [loading, setLoading] = useState(false);
   const esSustitucion = !!puesto.agente_id;
 
+  const generaRrhh = esSustitucion && (motivo === "falta" || motivo === "suspension");
+
   async function handleConfirm() {
     setLoading(true);
     try {
@@ -510,6 +512,20 @@ function ModalSustitucion({
             <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3 flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
               <p className="text-xs text-yellow-300/80">{advertencia}</p>
+            </div>
+          )}
+
+          {/* Aviso de generación RRHH */}
+          {generaRrhh && (
+            <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-3 flex items-start gap-2">
+              <FileText className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-semibold text-purple-300 mb-0.5">Se generará un evento RRHH</p>
+                <p className="text-[11px] text-purple-300/70">
+                  Esta acción creará automáticamente una boleta de descuento y un acta administrativa
+                  disponibles en el módulo de Eventos RRHH.
+                </p>
+              </div>
             </div>
           )}
 
@@ -923,7 +939,7 @@ export default function Operaciones() {
 
     try {
       if (puesto.agente_id) {
-        await apiPost(`${API_BASE}/operaciones/sustituir`, {
+        const resp = await apiPost(`${API_BASE}/operaciones/sustituir`, {
           puestoId: puesto.id,
           agenteEntranteId: agente.id,
           motivo,
@@ -931,7 +947,14 @@ export default function Operaciones() {
           forzar,
           usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
         });
-        toast({ title: "Sustitución registrada", description: `${puesto.agente_nombre} → ${agente.nombre_completo}` });
+        if (resp?.eventoRrhhGenerado) {
+          toast({
+            title: "Sustitución registrada + Evento RRHH generado",
+            description: `Boleta y acta disponibles en Eventos RRHH`,
+          });
+        } else {
+          toast({ title: "Sustitución registrada", description: `${puesto.agente_nombre} → ${agente.nombre_completo}` });
+        }
       } else {
         await apiPost(`${API_BASE}/operaciones/asignar`, {
           puestoId: puesto.id,

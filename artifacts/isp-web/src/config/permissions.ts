@@ -15,6 +15,7 @@ import {
   FlaskConical,
   HardHat,
   LayoutGrid,
+  ClipboardList,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -89,6 +90,12 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Colaboradores",
     icon: HardHat,
     roles: ["admin", "operaciones", "rrhh", "supervisor"],
+  },
+  {
+    path: "/admin/rrhh/eventos",
+    label: "Eventos RRHH",
+    icon: ClipboardList,
+    roles: ["admin", "rrhh", "operaciones"],
   },
   {
     path: "/admin/comercial",
