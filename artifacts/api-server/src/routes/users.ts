@@ -14,9 +14,29 @@ const SAFE_FIELDS = {
   estado: usersTable.estado,
   telefono: usersTable.telefono,
   clienteId: usersTable.clienteId,
+  employeeId: usersTable.employeeId,
+  canReportEmergency: usersTable.canReportEmergency,
+  canRequestAdvance: usersTable.canRequestAdvance,
   createdAt: usersTable.createdAt,
   updatedAt: usersTable.updatedAt,
 };
+
+/**
+ * Normaliza número de teléfono al formato internacional sin '+'.
+ * Elimina espacios, guiones y paréntesis.
+ * Si el número comienza con 0, lo elimina.
+ * Ejemplos:
+ *   "+502 2345-6789" → "50223456789"
+ *   "+50223456789"   → "50223456789"
+ *   "50223456789"    → "50223456789"
+ *   "23456789"       → "23456789" (sin código de país, se deja como está)
+ */
+function normalizePhone(raw: string): string {
+  return raw
+    .replace(/\s+/g, "")
+    .replace(/[-()]/g, "")
+    .replace(/^\+/, "");
+}
 
 // POST /api/auth/login
 usersRouter.post("/auth/login", async (req, res) => {
@@ -76,12 +96,34 @@ usersRouter.get("/users/:id", async (req, res) => {
   }
 });
 
+// GET /api/users/by-phone/:phone — lookup by WhatsApp phone number
+usersRouter.get("/users/by-phone/:phone", async (req, res) => {
+  const raw = req.params.phone;
+  const normalized = normalizePhone(raw);
+  try {
+    const [user] = await db
+      .select(SAFE_FIELDS)
+      .from(usersTable)
+      .where(eq(usersTable.telefono, normalized))
+      .limit(1);
+    if (!user) return res.status(404).json({ error: "Número no registrado en el sistema" });
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ error: "Error al buscar usuario por teléfono" });
+  }
+});
+
 // POST /api/users — create user
 usersRouter.post("/users", async (req, res) => {
-  const { nombre, username, correo, password, rol, estado, telefono, clienteId } = req.body ?? {};
+  const {
+    nombre, username, correo, password, rol, estado,
+    telefono, clienteId, employeeId, canReportEmergency, canRequestAdvance,
+  } = req.body ?? {};
   if (!nombre || !username || !password) {
     return res.status(400).json({ error: "Nombre, username y contraseña son requeridos" });
   }
+
+  const telefonoNorm = telefono ? normalizePhone(String(telefono)) : null;
 
   try {
     const passwordHash = await bcrypt.hash(String(password), 10);
@@ -94,14 +136,20 @@ usersRouter.post("/users", async (req, res) => {
         passwordHash,
         rol: rol || "operaciones",
         estado: estado || "activo",
-        telefono: telefono || null,
+        telefono: telefonoNorm,
         clienteId: clienteId || null,
+        employeeId: employeeId ? parseInt(String(employeeId)) : null,
+        canReportEmergency: canReportEmergency === true || canReportEmergency === "true" ? true : null,
+        canRequestAdvance: canRequestAdvance === true || canRequestAdvance === "true" ? true : null,
       })
       .returning(SAFE_FIELDS);
 
     res.status(201).json(user);
   } catch (err: any) {
     if (err?.code === "23505") {
+      if (err?.detail?.includes("telefono") || err?.constraint?.includes("telefono")) {
+        return res.status(409).json({ error: "El número de teléfono ya está registrado en otro usuario" });
+      }
       return res.status(409).json({ error: "El username ya está en uso" });
     }
     res.status(500).json({ error: "Error al crear usuario" });
@@ -113,15 +161,29 @@ usersRouter.patch("/users/:id", async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
 
-  const { nombre, correo, rol, estado, telefono, clienteId, password } = req.body ?? {};
+  const {
+    nombre, correo, rol, estado, telefono, clienteId,
+    employeeId, canReportEmergency, canRequestAdvance, password,
+  } = req.body ?? {};
   const updates: Record<string, unknown> = { updatedAt: new Date() };
 
   if (nombre !== undefined) updates.nombre = String(nombre);
   if (correo !== undefined) updates.correo = correo || null;
   if (rol !== undefined) updates.rol = String(rol);
   if (estado !== undefined) updates.estado = String(estado);
-  if (telefono !== undefined) updates.telefono = telefono || null;
+  if (telefono !== undefined) {
+    updates.telefono = telefono ? normalizePhone(String(telefono)) : null;
+  }
   if (clienteId !== undefined) updates.clienteId = clienteId || null;
+  if (employeeId !== undefined) {
+    updates.employeeId = employeeId ? parseInt(String(employeeId)) : null;
+  }
+  if (canReportEmergency !== undefined) {
+    updates.canReportEmergency = canReportEmergency === true || canReportEmergency === "true" ? true : canReportEmergency === false || canReportEmergency === "false" ? false : null;
+  }
+  if (canRequestAdvance !== undefined) {
+    updates.canRequestAdvance = canRequestAdvance === true || canRequestAdvance === "true" ? true : canRequestAdvance === false || canRequestAdvance === "false" ? false : null;
+  }
   if (password) updates.passwordHash = await bcrypt.hash(String(password), 10);
 
   try {
@@ -133,7 +195,13 @@ usersRouter.patch("/users/:id", async (req, res) => {
 
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
     res.json(user);
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === "23505") {
+      if (err?.detail?.includes("telefono") || err?.constraint?.includes("telefono")) {
+        return res.status(409).json({ error: "El número de teléfono ya está registrado en otro usuario" });
+      }
+      return res.status(409).json({ error: "El username ya está en uso" });
+    }
     res.status(500).json({ error: "Error al actualizar usuario" });
   }
 });

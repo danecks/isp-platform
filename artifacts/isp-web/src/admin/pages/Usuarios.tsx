@@ -4,7 +4,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   UserCog, Plus, Search, Pencil, KeyRound, Power, PowerOff,
   X, Check, AlertCircle, Loader2, ShieldCheck, Mail, Phone,
-  User, Lock, ChevronDown,
+  User, Lock, ChevronDown, MessageSquare, Zap, Wallet, Shield,
+  Info,
 } from "lucide-react";
 import { AdminLayout } from "@/admin/layout/AdminLayout";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,10 @@ import { usersApi, type UserSafe } from "@/lib/api";
 import { ROL_LABELS, ROL_COLORES, type Rol } from "@/config/permissions";
 import { useToast } from "@/hooks/use-toast";
 
-const ROLES: Rol[] = ["admin", "operaciones", "rrhh", "comercial", "supervisor", "cliente"];
+const ROLES: Rol[] = ["admin", "operaciones", "rrhh", "comercial", "supervisor", "guardia", "cliente"];
+
+// Roles que pueden usar el panel admin (no solo WhatsApp)
+const ROLES_ADMIN: Rol[] = ["admin", "operaciones", "rrhh", "comercial", "supervisor"];
 
 // ─── RolBadge ──────────────────────────────────────────────────────────────────
 function RolBadge({ rol }: { rol: string }) {
@@ -41,6 +45,57 @@ function EstadoBadge({ estado }: { estado: string }) {
   );
 }
 
+// ─── PermisoBadge ──────────────────────────────────────────────────────────────
+function PermisoBadge({ activo, label }: { activo: boolean | null; label: string }) {
+  if (!activo) return null;
+  return (
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-primary/15 border border-primary/20 text-primary">
+      <Check className="w-2.5 h-2.5" />{label}
+    </span>
+  );
+}
+
+// ─── PermToggle ─────────────────────────────────────────────────────────────────
+function PermToggle({
+  value, onChange, label, description, icon: Icon,
+}: {
+  value: boolean | null;
+  onChange: (v: boolean) => void;
+  label: string;
+  description: string;
+  icon: React.ElementType;
+}) {
+  const on = value === true;
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!on)}
+      className={`flex items-start gap-3 w-full rounded-xl p-3.5 border transition-all text-left ${
+        on
+          ? "bg-primary/10 border-primary/30"
+          : "bg-[#060e1c] border-white/8 hover:border-white/15"
+      }`}
+    >
+      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+        on ? "bg-primary/20" : "bg-white/5"
+      }`}>
+        <Icon className={`w-4 h-4 ${on ? "text-primary" : "text-white/30"}`} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={`text-xs font-semibold leading-none mb-1 ${on ? "text-white" : "text-white/60"}`}>{label}</p>
+        <p className="text-[10px] text-white/30 leading-relaxed">{description}</p>
+      </div>
+      <div className={`w-9 h-5 rounded-full transition-all shrink-0 mt-1.5 relative ${
+        on ? "bg-primary" : "bg-white/15"
+      }`}>
+        <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${
+          on ? "left-4" : "left-0.5"
+        }`} />
+      </div>
+    </button>
+  );
+}
+
 // ─── NuevoUsuarioModal ─────────────────────────────────────────────────────────
 interface NuevoModalProps {
   onClose: () => void;
@@ -50,12 +105,15 @@ function NuevoUsuarioModal({ onClose, onCreated }: NuevoModalProps) {
   const { toast } = useToast();
   const [form, setForm] = useState({
     nombre: "", username: "", correo: "", password: "", confirmPassword: "",
-    rol: "operaciones" as Rol, telefono: "", clienteId: "",
+    rol: "guardia" as Rol,
+    telefono: "", clienteId: "", employeeId: "",
+    canReportEmergency: false,
+    canRequestAdvance: false,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const set = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }));
+  const set = (key: string, val: string | boolean) => setForm(f => ({ ...f, [key]: val }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,8 +136,11 @@ function NuevoUsuarioModal({ onClose, onCreated }: NuevoModalProps) {
         rol: form.rol,
         telefono: form.telefono || undefined,
         clienteId: form.clienteId || undefined,
+        employeeId: form.employeeId ? parseInt(form.employeeId) : null,
+        canReportEmergency: form.canReportEmergency || null,
+        canRequestAdvance: form.canRequestAdvance || null,
       });
-      toast({ title: "Usuario creado", description: `${form.nombre} ha sido registrado en el sistema.` });
+      toast({ title: "Usuario creado", description: `${form.nombre} registrado en el sistema.` });
       onCreated();
       onClose();
     } catch (err: any) {
@@ -89,9 +150,12 @@ function NuevoUsuarioModal({ onClose, onCreated }: NuevoModalProps) {
     }
   };
 
+  const esGuardiaOCliente = form.rol === "guardia" || form.rol === "cliente";
+  const esCliente = form.rol === "cliente";
+
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b border-white/5 sticky top-0 bg-[#07111f] z-10">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center">
@@ -107,7 +171,7 @@ function NuevoUsuarioModal({ onClose, onCreated }: NuevoModalProps) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {/* Nombre */}
           <div className="space-y-1.5">
             <Label className="text-xs text-white/60 font-medium">Nombre completo *</Label>
@@ -116,7 +180,7 @@ function NuevoUsuarioModal({ onClose, onCreated }: NuevoModalProps) {
               <Input
                 value={form.nombre}
                 onChange={e => set("nombre", e.target.value)}
-                placeholder="Carlos Supervisor González"
+                placeholder="Carlos López Pérez"
                 className="pl-9 bg-[#060e1c] border-white/10 text-white text-sm h-10"
                 required
               />
@@ -130,7 +194,7 @@ function NuevoUsuarioModal({ onClose, onCreated }: NuevoModalProps) {
               <Input
                 value={form.username}
                 onChange={e => set("username", e.target.value.toLowerCase())}
-                placeholder="carlos.sup"
+                placeholder="carlos.lopez"
                 className="bg-[#060e1c] border-white/10 text-white text-sm h-10"
                 required
               />
@@ -152,75 +216,122 @@ function NuevoUsuarioModal({ onClose, onCreated }: NuevoModalProps) {
             </div>
           </div>
 
-          {/* Correo + Teléfono */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-white/60 font-medium">Correo electrónico</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
-                <Input
-                  type="email"
-                  value={form.correo}
-                  onChange={e => set("correo", e.target.value)}
-                  placeholder="correo@isp.gt"
-                  className="pl-9 bg-[#060e1c] border-white/10 text-white text-sm h-10"
-                />
-              </div>
+          {/* WhatsApp Identity */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <MessageSquare className="w-3.5 h-3.5 text-green-400" />
+              <Label className="text-xs text-white/60 font-medium">Teléfono / Identidad WhatsApp</Label>
+              {esGuardiaOCliente && <span className="text-[9px] text-primary bg-primary/10 px-1.5 py-0.5 rounded font-semibold">RECOMENDADO</span>}
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-white/60 font-medium">Teléfono</Label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
-                <Input
-                  value={form.telefono}
-                  onChange={e => set("telefono", e.target.value)}
-                  placeholder="502 XXXX-XXXX"
-                  className="pl-9 bg-[#060e1c] border-white/10 text-white text-sm h-10"
-                />
-              </div>
+            <div className="relative">
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
+              <Input
+                value={form.telefono}
+                onChange={e => set("telefono", e.target.value)}
+                placeholder="50212345678"
+                className="pl-9 bg-[#060e1c] border-white/10 text-white text-sm h-10 font-mono"
+              />
+            </div>
+            <p className="text-[10px] text-white/30 flex items-start gap-1">
+              <Info className="w-3 h-3 shrink-0 mt-0.5" />
+              Formato internacional sin '+': código país + número. Guatemala: 502XXXXXXXX. Este número es la identidad del usuario en WhatsApp. Debe ser único.
+            </p>
+          </div>
+
+          {/* Correo */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-white/60 font-medium">Correo electrónico</Label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
+              <Input
+                type="email"
+                value={form.correo}
+                onChange={e => set("correo", e.target.value)}
+                placeholder="correo@empresa.gt"
+                className="pl-9 bg-[#060e1c] border-white/10 text-white text-sm h-10"
+              />
             </div>
           </div>
 
-          {/* ClienteId (only if rol === cliente) */}
-          {form.rol === "cliente" && (
+          {/* ClienteId (rol cliente) / EmployeeId (rol guardia/supervisor) */}
+          {esCliente && (
             <div className="space-y-1.5">
-              <Label className="text-xs text-white/60 font-medium">ID de Cliente (opcional)</Label>
+              <Label className="text-xs text-white/60 font-medium">ID de Cliente del Portal</Label>
               <Input
                 value={form.clienteId}
                 onChange={e => set("clienteId", e.target.value)}
                 placeholder="CLI-001"
-                className="bg-[#060e1c] border-white/10 text-white text-sm h-10"
+                className="bg-[#060e1c] border-white/10 text-white text-sm h-10 font-mono"
               />
+              <p className="text-[10px] text-white/30">Debe coincidir con el portal_cliente_id del cliente registrado.</p>
             </div>
           )}
 
-          {/* Contraseña */}
-          <div className="space-y-1.5">
-            <Label className="text-xs text-white/60 font-medium">Contraseña *</Label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
+          {(form.rol === "guardia" || form.rol === "supervisor" || form.rol === "operaciones") && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-white/60 font-medium">ID de Empleado (opcional)</Label>
               <Input
-                type="password"
-                value={form.password}
-                onChange={e => set("password", e.target.value)}
-                placeholder="Mínimo 4 caracteres"
-                className="pl-9 bg-[#060e1c] border-white/10 text-white text-sm h-10"
-                required
+                value={form.employeeId}
+                onChange={e => set("employeeId", e.target.value)}
+                placeholder="ID numérico del empleado en el sistema"
+                className="bg-[#060e1c] border-white/10 text-white text-sm h-10 font-mono"
+                type="number"
               />
+              <p className="text-[10px] text-white/30">Vincula este usuario a un registro de empleado para anticipos y asignaciones.</p>
             </div>
+          )}
+
+          {/* Permisos WhatsApp */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Shield className="w-3.5 h-3.5 text-white/40" />
+              <Label className="text-xs text-white/60 font-medium">Permisos especiales vía WhatsApp</Label>
+            </div>
+            <PermToggle
+              value={form.canReportEmergency}
+              onChange={v => set("canReportEmergency", v)}
+              label="Puede reportar emergencias"
+              description="Permite activar el protocolo de emergencia desde WhatsApp. Solo para personal de campo autorizado."
+              icon={Zap}
+            />
+            <PermToggle
+              value={form.canRequestAdvance}
+              onChange={v => set("canRequestAdvance", v)}
+              label="Puede solicitar anticipos"
+              description="Permite iniciar una solicitud de anticipo de nómina vía WhatsApp."
+              icon={Wallet}
+            />
           </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs text-white/60 font-medium">Confirmar contraseña *</Label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
-              <Input
-                type="password"
-                value={form.confirmPassword}
-                onChange={e => set("confirmPassword", e.target.value)}
-                placeholder="Repita la contraseña"
-                className="pl-9 bg-[#060e1c] border-white/10 text-white text-sm h-10"
-                required
-              />
+
+          {/* Contraseña */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-white/60 font-medium">Contraseña *</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
+                <Input
+                  type="password"
+                  value={form.password}
+                  onChange={e => set("password", e.target.value)}
+                  placeholder="Mínimo 4 caracteres"
+                  className="pl-9 bg-[#060e1c] border-white/10 text-white text-sm h-10"
+                  required
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-white/60 font-medium">Confirmar *</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
+                <Input
+                  type="password"
+                  value={form.confirmPassword}
+                  onChange={e => set("confirmPassword", e.target.value)}
+                  placeholder="Repita contraseña"
+                  className="pl-9 bg-[#060e1c] border-white/10 text-white text-sm h-10"
+                  required
+                />
+              </div>
             </div>
           </div>
 
@@ -231,7 +342,7 @@ function NuevoUsuarioModal({ onClose, onCreated }: NuevoModalProps) {
             </div>
           )}
 
-          <div className="flex gap-3 pt-2">
+          <div className="flex gap-3 pt-1">
             <Button type="button" variant="outline" onClick={onClose} className="flex-1 border-white/10 text-white/60 hover:text-white h-10">
               Cancelar
             </Button>
@@ -258,7 +369,7 @@ interface EditarModalProps {
 }
 function EditarUsuarioModal({ user, onClose, onUpdated }: EditarModalProps) {
   const { toast } = useToast();
-  const [tab, setTab] = useState<"datos" | "password">("datos");
+  const [tab, setTab] = useState<"datos" | "permisos" | "password">("datos");
   const [form, setForm] = useState({
     nombre: user.nombre,
     correo: user.correo ?? "",
@@ -266,13 +377,16 @@ function EditarUsuarioModal({ user, onClose, onUpdated }: EditarModalProps) {
     estado: user.estado,
     telefono: user.telefono ?? "",
     clienteId: user.clienteId ?? "",
+    employeeId: user.employeeId ? String(user.employeeId) : "",
+    canReportEmergency: user.canReportEmergency ?? false,
+    canRequestAdvance: user.canRequestAdvance ?? false,
   });
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const set = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }));
+  const set = (key: string, val: string | boolean) => setForm(f => ({ ...f, [key]: val }));
 
   const handleDatos = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -286,12 +400,32 @@ function EditarUsuarioModal({ user, onClose, onUpdated }: EditarModalProps) {
         estado: form.estado,
         telefono: form.telefono || undefined,
         clienteId: form.clienteId || undefined,
+        employeeId: form.employeeId ? parseInt(form.employeeId) : null,
       });
       toast({ title: "Usuario actualizado", description: `${form.nombre} ha sido actualizado.` });
       onUpdated();
       onClose();
     } catch (err: any) {
       setError(err.message ?? "Error al actualizar");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePermisos = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      await usersApi.update(user.id, {
+        canReportEmergency: form.canReportEmergency || null,
+        canRequestAdvance: form.canRequestAdvance || null,
+      });
+      toast({ title: "Permisos actualizados", description: `Los permisos de ${user.nombre} fueron guardados.` });
+      onUpdated();
+      onClose();
+    } catch (err: any) {
+      setError(err.message ?? "Error al actualizar permisos");
     } finally {
       setLoading(false);
     }
@@ -321,9 +455,12 @@ function EditarUsuarioModal({ user, onClose, onUpdated }: EditarModalProps) {
     }
   };
 
+  const esCliente = form.rol === "cliente";
+  const tieneEmpleado = form.rol === "guardia" || form.rol === "supervisor" || form.rol === "operaciones";
+
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b border-white/5 sticky top-0 bg-[#07111f] z-10">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-blue-500/15 border border-blue-500/20 flex items-center justify-center">
@@ -331,7 +468,7 @@ function EditarUsuarioModal({ user, onClose, onUpdated }: EditarModalProps) {
             </div>
             <div>
               <h2 className="text-base font-bold text-white">Editar Usuario</h2>
-              <p className="text-[11px] text-muted-foreground">{user.username}</p>
+              <p className="text-[11px] text-muted-foreground">{user.username} · <RolBadge rol={user.rol} /></p>
             </div>
           </div>
           <button onClick={onClose} className="text-white/40 hover:text-white transition-colors">
@@ -341,7 +478,7 @@ function EditarUsuarioModal({ user, onClose, onUpdated }: EditarModalProps) {
 
         {/* Tabs */}
         <div className="flex border-b border-white/5">
-          {(["datos", "password"] as const).map(t => (
+          {(["datos", "permisos", "password"] as const).map(t => (
             <button
               key={t}
               onClick={() => { setTab(t); setError(""); }}
@@ -351,12 +488,12 @@ function EditarUsuarioModal({ user, onClose, onUpdated }: EditarModalProps) {
                   : "text-white/40 hover:text-white/60"
               }`}
             >
-              {t === "datos" ? "Datos & Rol" : "Contraseña"}
+              {t === "datos" ? "Datos & Rol" : t === "permisos" ? "Permisos WA" : "Contraseña"}
             </button>
           ))}
         </div>
 
-        {tab === "datos" ? (
+        {tab === "datos" && (
           <form onSubmit={handleDatos} className="p-6 space-y-4">
             <div className="space-y-1.5">
               <Label className="text-xs text-white/60 font-medium">Nombre completo *</Label>
@@ -400,6 +537,24 @@ function EditarUsuarioModal({ user, onClose, onUpdated }: EditarModalProps) {
               </div>
             </div>
 
+            {/* WhatsApp Phone */}
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5 text-green-400" />
+                <Label className="text-xs text-white/60 font-medium">Teléfono / Identidad WhatsApp</Label>
+              </div>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
+                <Input
+                  value={form.telefono}
+                  onChange={e => set("telefono", e.target.value)}
+                  placeholder="50212345678"
+                  className="pl-9 bg-[#060e1c] border-white/10 text-white text-sm h-10 font-mono"
+                />
+              </div>
+              <p className="text-[10px] text-white/30">Formato: código país + número sin '+'. Guatemala: 502XXXXXXXX. Debe ser único.</p>
+            </div>
+
             <div className="space-y-1.5">
               <Label className="text-xs text-white/60 font-medium">Correo electrónico</Label>
               <Input
@@ -410,25 +565,30 @@ function EditarUsuarioModal({ user, onClose, onUpdated }: EditarModalProps) {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            {esCliente && (
               <div className="space-y-1.5">
-                <Label className="text-xs text-white/60 font-medium">Teléfono</Label>
-                <Input
-                  value={form.telefono}
-                  onChange={e => set("telefono", e.target.value)}
-                  className="bg-[#060e1c] border-white/10 text-white text-sm h-10"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-white/60 font-medium">ID Cliente</Label>
+                <Label className="text-xs text-white/60 font-medium">ID Cliente del Portal</Label>
                 <Input
                   value={form.clienteId}
                   onChange={e => set("clienteId", e.target.value)}
                   placeholder="CLI-XXX"
-                  className="bg-[#060e1c] border-white/10 text-white text-sm h-10"
+                  className="bg-[#060e1c] border-white/10 text-white text-sm h-10 font-mono"
                 />
               </div>
-            </div>
+            )}
+
+            {tieneEmpleado && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-white/60 font-medium">ID de Empleado</Label>
+                <Input
+                  value={form.employeeId}
+                  onChange={e => set("employeeId", e.target.value)}
+                  placeholder="ID numérico"
+                  className="bg-[#060e1c] border-white/10 text-white text-sm h-10 font-mono"
+                  type="number"
+                />
+              </div>
+            )}
 
             {error && (
               <div className="flex items-center gap-2 bg-red-950/40 border border-red-500/20 rounded-lg px-3 py-2.5">
@@ -437,25 +597,66 @@ function EditarUsuarioModal({ user, onClose, onUpdated }: EditarModalProps) {
               </div>
             )}
 
-            <div className="flex gap-3 pt-2">
+            <div className="flex gap-3 pt-1">
               <Button type="button" variant="outline" onClick={onClose} className="flex-1 border-white/10 text-white/60 hover:text-white h-10">
                 Cancelar
               </Button>
-              <Button
-                type="submit"
-                disabled={loading}
-                className="flex-1 bg-primary text-[#050d1a] font-bold hover:bg-primary/90 h-10"
-              >
+              <Button type="submit" disabled={loading} className="flex-1 bg-primary text-[#050d1a] font-bold hover:bg-primary/90 h-10">
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar Cambios"}
               </Button>
             </div>
           </form>
-        ) : (
+        )}
+
+        {tab === "permisos" && (
+          <form onSubmit={handlePermisos} className="p-6 space-y-4">
+            <div className="bg-[#060e1c] border border-white/8 rounded-xl px-4 py-3 flex items-start gap-2 mb-2">
+              <Info className="w-4 h-4 text-white/30 shrink-0 mt-0.5" />
+              <p className="text-xs text-white/40 leading-relaxed">
+                Estos permisos controlan qué acciones puede realizar <strong className="text-white/60">{user.nombre}</strong> a través de WhatsApp.
+                No afectan el acceso al panel de administración.
+              </p>
+            </div>
+
+            <PermToggle
+              value={form.canReportEmergency}
+              onChange={v => set("canReportEmergency", v)}
+              label="Puede reportar emergencias"
+              description="Permite activar el protocolo de emergencia desde WhatsApp. El sistema crea una alerta con prioridad máxima."
+              icon={Zap}
+            />
+            <PermToggle
+              value={form.canRequestAdvance}
+              onChange={v => set("canRequestAdvance", v)}
+              label="Puede solicitar anticipos"
+              description="Permite al usuario iniciar una solicitud de anticipo de nómina escribiendo al bot de WhatsApp."
+              icon={Wallet}
+            />
+
+            {error && (
+              <div className="flex items-center gap-2 bg-red-950/40 border border-red-500/20 rounded-lg px-3 py-2.5">
+                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                <p className="text-xs text-red-400">{error}</p>
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-1">
+              <Button type="button" variant="outline" onClick={onClose} className="flex-1 border-white/10 text-white/60 hover:text-white h-10">
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={loading} className="flex-1 bg-primary text-[#050d1a] font-bold hover:bg-primary/90 h-10">
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar Permisos"}
+              </Button>
+            </div>
+          </form>
+        )}
+
+        {tab === "password" && (
           <form onSubmit={handlePassword} className="p-6 space-y-4">
             <div className="bg-yellow-950/30 border border-yellow-500/20 rounded-lg px-4 py-3 flex items-start gap-2">
               <KeyRound className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
               <p className="text-xs text-yellow-400/80">
-                Establecer nueva contraseña para <strong>{user.nombre}</strong>. El usuario deberá usar esta contraseña en su próximo inicio de sesión.
+                Establecer nueva contraseña para <strong>{user.nombre}</strong>.
               </p>
             </div>
 
@@ -495,15 +696,11 @@ function EditarUsuarioModal({ user, onClose, onUpdated }: EditarModalProps) {
               </div>
             )}
 
-            <div className="flex gap-3 pt-2">
+            <div className="flex gap-3 pt-1">
               <Button type="button" variant="outline" onClick={onClose} className="flex-1 border-white/10 text-white/60 hover:text-white h-10">
                 Cancelar
               </Button>
-              <Button
-                type="submit"
-                disabled={loading}
-                className="flex-1 bg-yellow-500 text-black font-bold hover:bg-yellow-400 h-10"
-              >
+              <Button type="submit" disabled={loading} className="flex-1 bg-yellow-500 text-black font-bold hover:bg-yellow-400 h-10">
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Cambiar Contraseña"}
               </Button>
             </div>
@@ -546,7 +743,8 @@ export default function AdminUsuarios() {
     const matchSearch =
       u.nombre.toLowerCase().includes(search.toLowerCase()) ||
       u.username.toLowerCase().includes(search.toLowerCase()) ||
-      (u.correo ?? "").toLowerCase().includes(search.toLowerCase());
+      (u.correo ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      (u.telefono ?? "").includes(search);
     const matchRol = rolFiltro === "todos" || u.rol === rolFiltro;
     return matchSearch && matchRol;
   });
@@ -554,7 +752,7 @@ export default function AdminUsuarios() {
   const counts = {
     total: users.length,
     activos: users.filter(u => u.estado === "activo").length,
-    inactivos: users.filter(u => u.estado !== "activo").length,
+    conTelefono: users.filter(u => u.telefono).length,
   };
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["users"] });
@@ -571,7 +769,7 @@ export default function AdminUsuarios() {
               <h1 className="text-xl font-bold text-white">Gestión de Usuarios</h1>
             </div>
             <p className="text-sm text-muted-foreground">
-              Control de acceso y permisos por rol en el sistema operativo
+              Control de acceso, roles y permisos WhatsApp por usuario
             </p>
           </div>
           <Button
@@ -588,13 +786,28 @@ export default function AdminUsuarios() {
           {[
             { label: "Total usuarios", value: counts.total, color: "text-white" },
             { label: "Activos", value: counts.activos, color: "text-green-400" },
-            { label: "Inactivos", value: counts.inactivos, color: "text-red-400" },
+            { label: "Con WhatsApp", value: counts.conTelefono, color: "text-primary", icon: MessageSquare },
           ].map(c => (
             <div key={c.label} className="bg-card border border-white/5 rounded-xl p-4">
-              <p className="text-xs text-muted-foreground mb-1">{c.label}</p>
+              <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                {c.icon && <c.icon className="w-3 h-3" />}
+                {c.label}
+              </p>
               <p className={`text-3xl font-bold ${c.color}`}>{c.value}</p>
             </div>
           ))}
+        </div>
+
+        {/* WhatsApp validation notice */}
+        <div className="bg-primary/5 border border-primary/15 rounded-xl px-4 py-3 flex items-start gap-3">
+          <MessageSquare className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs font-semibold text-primary mb-0.5">Validación de Números WhatsApp activa</p>
+            <p className="text-[11px] text-white/40">
+              Solo los usuarios con teléfono registrado y estado <strong className="text-white/60">Activo</strong> pueden interactuar con el bot de WhatsApp.
+              Números no registrados recibirán un mensaje de "acceso no autorizado". Guardias y supervisores deben tener su número registrado aquí.
+            </p>
+          </div>
         </div>
 
         {/* Filters */}
@@ -604,7 +817,7 @@ export default function AdminUsuarios() {
             <Input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar por nombre, username o correo..."
+              placeholder="Buscar por nombre, username, correo o teléfono..."
               className="pl-9 bg-card border-white/10 text-white text-sm h-10"
             />
           </div>
@@ -631,7 +844,8 @@ export default function AdminUsuarios() {
                 <tr className="border-b border-white/5">
                   <th className="text-left text-[10px] uppercase tracking-widest text-white/30 font-semibold px-5 py-3">Usuario</th>
                   <th className="text-left text-[10px] uppercase tracking-widest text-white/30 font-semibold px-4 py-3">Rol</th>
-                  <th className="text-left text-[10px] uppercase tracking-widest text-white/30 font-semibold px-4 py-3 hidden md:table-cell">Contacto</th>
+                  <th className="text-left text-[10px] uppercase tracking-widest text-white/30 font-semibold px-4 py-3 hidden lg:table-cell">WhatsApp</th>
+                  <th className="text-left text-[10px] uppercase tracking-widest text-white/30 font-semibold px-4 py-3 hidden md:table-cell">Permisos</th>
                   <th className="text-left text-[10px] uppercase tracking-widest text-white/30 font-semibold px-4 py-3">Estado</th>
                   <th className="text-left text-[10px] uppercase tracking-widest text-white/30 font-semibold px-4 py-3">Acciones</th>
                 </tr>
@@ -639,14 +853,14 @@ export default function AdminUsuarios() {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-16 text-white/30">
+                    <td colSpan={6} className="text-center py-16 text-white/30">
                       <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                       Cargando usuarios...
                     </td>
                   </tr>
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-16 text-white/30">
+                    <td colSpan={6} className="text-center py-16 text-white/30">
                       <ShieldCheck className="w-8 h-8 mx-auto mb-2 opacity-30" />
                       No se encontraron usuarios
                     </td>
@@ -675,20 +889,27 @@ export default function AdminUsuarios() {
                       <td className="px-4 py-3.5">
                         <RolBadge rol={u.rol} />
                       </td>
-                      {/* Contacto */}
+                      {/* WhatsApp */}
+                      <td className="px-4 py-3.5 hidden lg:table-cell">
+                        {u.telefono ? (
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-4 h-4 rounded-full bg-green-400/15 flex items-center justify-center">
+                              <MessageSquare className="w-2.5 h-2.5 text-green-400" />
+                            </div>
+                            <span className="text-white/60 text-xs font-mono">+{u.telefono}</span>
+                          </div>
+                        ) : (
+                          <span className="text-white/20 text-xs flex items-center gap-1">
+                            <X className="w-3 h-3" /> Sin número
+                          </span>
+                        )}
+                      </td>
+                      {/* Permisos */}
                       <td className="px-4 py-3.5 hidden md:table-cell">
-                        <div className="space-y-0.5">
-                          {u.correo && (
-                            <p className="text-white/60 text-xs flex items-center gap-1">
-                              <Mail className="w-3 h-3" />{u.correo}
-                            </p>
-                          )}
-                          {u.telefono && (
-                            <p className="text-white/60 text-xs flex items-center gap-1">
-                              <Phone className="w-3 h-3" />{u.telefono}
-                            </p>
-                          )}
-                          {!u.correo && !u.telefono && (
+                        <div className="flex flex-wrap gap-1">
+                          <PermisoBadge activo={u.canReportEmergency} label="Emergencias" />
+                          <PermisoBadge activo={u.canRequestAdvance} label="Anticipos" />
+                          {!u.canReportEmergency && !u.canRequestAdvance && (
                             <span className="text-white/20 text-xs">—</span>
                           )}
                         </div>
@@ -744,32 +965,38 @@ export default function AdminUsuarios() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-white/5">
-                  <th className="text-left text-white/30 font-medium pb-2 pr-4">Módulo</th>
-                  {ROLES.filter(r => r !== "cliente").map(r => (
+                  <th className="text-left text-white/30 font-medium pb-2 pr-4">Módulo / Capacidad</th>
+                  {ROLES_ADMIN.map(r => (
                     <th key={r} className="text-center pb-2 px-2">
                       <RolBadge rol={r} />
                     </th>
                   ))}
+                  <th className="text-center pb-2 px-2"><RolBadge rol="guardia" /></th>
+                  <th className="text-center pb-2 px-2"><RolBadge rol="cliente" /></th>
                 </tr>
               </thead>
               <tbody>
                 {[
-                  { mod: "Dashboard", admin: true, operaciones: true, rrhh: true, comercial: true, supervisor: true },
-                  { mod: "Incidencias", admin: true, operaciones: true, rrhh: false, comercial: false, supervisor: true },
-                  { mod: "Custodias", admin: true, operaciones: true, rrhh: false, comercial: false, supervisor: true },
-                  { mod: "Reclutamiento", admin: true, operaciones: false, rrhh: true, comercial: false, supervisor: false },
-                  { mod: "Comercial", admin: true, operaciones: false, rrhh: false, comercial: true, supervisor: false },
-                  { mod: "Tareas", admin: true, operaciones: true, rrhh: false, comercial: false, supervisor: true },
-                  { mod: "KPI & Métricas", admin: true, operaciones: false, rrhh: false, comercial: false, supervisor: false },
-                  { mod: "Clientes", admin: true, operaciones: true, rrhh: false, comercial: true, supervisor: false },
-                  { mod: "Usuarios", admin: true, operaciones: false, rrhh: false, comercial: false, supervisor: false },
+                  { mod: "Panel admin",        admin: true,  operaciones: true,  rrhh: true,  comercial: true,  supervisor: true,  guardia: false, cliente: false },
+                  { mod: "Incidencias",        admin: true,  operaciones: true,  rrhh: false, comercial: false, supervisor: true,  guardia: false, cliente: false },
+                  { mod: "Tareas",             admin: true,  operaciones: true,  rrhh: false, comercial: false, supervisor: true,  guardia: false, cliente: false },
+                  { mod: "Reclutamiento",      admin: true,  operaciones: false, rrhh: true,  comercial: false, supervisor: false, guardia: false, cliente: false },
+                  { mod: "Anticipos (panel)",  admin: true,  operaciones: false, rrhh: true,  comercial: false, supervisor: false, guardia: false, cliente: false },
+                  { mod: "Comercial / Leads",  admin: true,  operaciones: false, rrhh: false, comercial: true,  supervisor: false, guardia: false, cliente: false },
+                  { mod: "KPI Ejecutivo",      admin: true,  operaciones: false, rrhh: false, comercial: false, supervisor: false, guardia: false, cliente: false },
+                  { mod: "Usuarios",           admin: true,  operaciones: false, rrhh: false, comercial: false, supervisor: false, guardia: false, cliente: false },
+                  { mod: "Portal de cliente",  admin: false, operaciones: false, rrhh: false, comercial: false, supervisor: false, guardia: false, cliente: true  },
+                  { mod: "WhatsApp (reportar)", admin: true, operaciones: true,  rrhh: false, comercial: false, supervisor: true,  guardia: "permiso", cliente: false },
+                  { mod: "WhatsApp (anticipo)", admin: true, operaciones: false, rrhh: false, comercial: false, supervisor: false, guardia: "permiso", cliente: false },
                 ].map(row => (
                   <tr key={row.mod} className="border-b border-white/3 hover:bg-white/1">
                     <td className="py-2 pr-4 text-white/60">{row.mod}</td>
-                    {(["admin", "operaciones", "rrhh", "comercial", "supervisor"] as const).map(r => (
+                    {(["admin", "operaciones", "rrhh", "comercial", "supervisor", "guardia", "cliente"] as const).map(r => (
                       <td key={r} className="text-center py-2 px-2">
-                        {row[r] ? (
+                        {row[r] === true ? (
                           <Check className="w-3.5 h-3.5 text-green-400 mx-auto" />
+                        ) : row[r] === "permiso" ? (
+                          <span className="text-[9px] text-primary font-bold mx-auto block text-center">PERM</span>
                         ) : (
                           <span className="text-white/15 text-base">—</span>
                         )}
@@ -780,6 +1007,10 @@ export default function AdminUsuarios() {
               </tbody>
             </table>
           </div>
+          <p className="text-[10px] text-white/25 mt-3 flex items-center gap-1">
+            <Info className="w-3 h-3" />
+            <strong className="text-white/40">PERM</strong> = Requiere habilitación explícita desde el tab "Permisos WA" de este módulo.
+          </p>
         </div>
 
       </div>

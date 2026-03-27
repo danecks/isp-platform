@@ -121,6 +121,13 @@ export async function runAutoMigrations(): Promise<void> {
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS can_report_emergency BOOLEAN`);
     logger.info("Auto-migrate: columnas de emergencia en 'incidents' y 'users' verificadas");
 
+    // Columnas adicionales en users (WhatsApp identity management)
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS can_request_advance BOOLEAN`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS employee_id INTEGER`);
+    // Índice único en teléfono (excluyendo NULLs para permitir usuarios sin teléfono)
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_telefono_unique ON users(telefono) WHERE telefono IS NOT NULL`);
+    logger.info("Auto-migrate: columnas WhatsApp identity en 'users' verificadas");
+
     // Tablas de configuración WA
     await pool.query(`
       CREATE TABLE IF NOT EXISTS wa_config (
@@ -686,6 +693,15 @@ export async function runAutoSeed(): Promise<void> {
       ON CONFLICT (clave) DO NOTHING
     `);
     logger.info("Auto-migrate: mensajes WA de tareas verificados (6 mensajes)");
+
+    // 2b. Mensajes WA de control de acceso por número de teléfono
+    await pool.query(`
+      INSERT INTO wa_messages (clave, texto, descripcion) VALUES
+        ('acceso_no_autorizado', '⛔ Tu número no está autorizado para usar este sistema. Comunícate con ISP, S.A. al (502) 2220-0000 para solicitar acceso.', 'Número no registrado en el sistema'),
+        ('acceso_inactivo',      '🚫 Tu acceso al sistema ha sido desactivado temporalmente. Contacta a tu supervisor o llama al (502) 2220-0000.', 'Usuario con cuenta inactiva')
+      ON CONFLICT (clave) DO NOTHING
+    `);
+    logger.info("Auto-migrate: mensajes WA de control de acceso verificados");
 
     // 3. Seed de tareas iniciales si la tabla está vacía
     const [{ tareaCount }] = await db.select({ tareaCount: count() }).from(tareasTable);

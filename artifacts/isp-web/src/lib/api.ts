@@ -14,6 +14,9 @@ export interface UserSafe {
   estado: string;
   telefono: string | null;
   clienteId: string | null;
+  employeeId: number | null;
+  canReportEmergency: boolean | null;
+  canRequestAdvance: boolean | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -29,6 +32,9 @@ export const usersApi = {
     estado?: string;
     telefono?: string;
     clienteId?: string;
+    employeeId?: number | null;
+    canReportEmergency?: boolean | null;
+    canRequestAdvance?: boolean | null;
   }) => apiFetch<UserSafe>("/users", { method: "POST", body: JSON.stringify(data) }),
   update: (id: number, data: Partial<{
     nombre: string;
@@ -37,6 +43,9 @@ export const usersApi = {
     estado: string;
     telefono: string;
     clienteId: string;
+    employeeId: number | null;
+    canReportEmergency: boolean | null;
+    canRequestAdvance: boolean | null;
     password: string;
   }>) => apiFetch<UserSafe>(`/users/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
 };

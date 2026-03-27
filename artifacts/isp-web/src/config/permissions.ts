@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-export type Rol = "admin" | "operaciones" | "rrhh" | "comercial" | "supervisor" | "cliente";
+export type Rol = "admin" | "operaciones" | "rrhh" | "comercial" | "supervisor" | "guardia" | "cliente";
 
 export const ROL_LABELS: Record<Rol, string> = {
   admin: "Administrador",
@@ -23,6 +23,7 @@ export const ROL_LABELS: Record<Rol, string> = {
   rrhh: "RRHH",
   comercial: "Comercial",
   supervisor: "Supervisor",
+  guardia: "Guardia",
   cliente: "Cliente",
 };
 
@@ -32,6 +33,7 @@ export const ROL_COLORES: Record<Rol, string> = {
   rrhh: "text-purple-400 bg-purple-400/10 border-purple-400/20",
   comercial: "text-green-400 bg-green-400/10 border-green-400/20",
   supervisor: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20",
+  guardia: "text-orange-400 bg-orange-400/10 border-orange-400/20",
   cliente: "text-cyan-400 bg-cyan-400/10 border-cyan-400/20",
 };
 

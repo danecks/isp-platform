@@ -153,8 +153,10 @@ export const usersTable = pgTable("users", {
   employeeId: integer("employee_id"),
   // Permiso explícito para reportar emergencias (null = derivado del rol)
   // Roles con permiso por defecto: admin, operaciones, supervisor
-  // Roles que requieren habilitación explícita: cliente, rrhh, comercial
+  // Roles que requieren habilitación explícita: cliente, rrhh, comercial, guardia
   canReportEmergency: boolean("can_report_emergency"),
+  // Permiso explícito para solicitar anticipos vía WhatsApp
+  canRequestAdvance: boolean("can_request_advance"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
