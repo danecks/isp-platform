@@ -11,6 +11,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ShieldCheck, UserPlus } from "lucide-react";
 import { applicationsApi } from "@/lib/api";
+import { useCmsPage } from "@/hooks/useCmsPage";
 
 const formSchema = z.object({
   fullName: z.string().min(4, "Ingrese su nombre completo"),
@@ -26,6 +27,7 @@ const formSchema = z.object({
 
 export default function Reclutamiento() {
   const { toast } = useToast();
+  const { c } = useCmsPage("reclutamiento");
   
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -76,9 +78,11 @@ export default function Reclutamiento() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
           <FadeIn>
             <UserPlus className="w-12 h-12 text-primary mx-auto mb-6" />
-            <h1 className="text-4xl md:text-5xl font-bold mb-6">Únete al Equipo ISP, S.A.</h1>
+            <h1 className="text-4xl md:text-5xl font-bold mb-6">
+              {c("hero_title", "Únete al Equipo ISP, S.A.")}
+            </h1>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Buscamos personas íntegras, disciplinadas y con vocación de servicio para formar parte de la élite de seguridad en Guatemala.
+              {c("hero_subtitle", "Buscamos personas íntegras, disciplinadas y con vocación de servicio para formar parte de la élite de seguridad en Guatemala.")}
             </p>
           </FadeIn>
         </div>

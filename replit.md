@@ -12,6 +12,7 @@ Key capabilities include:
 - **WhatsApp Integration:** Transforms WhatsApp messages into database records for leads, applications, incidents, and advance requests.
 - **Client and Position Aliases:** Allows using common names for clients and service locations in incident reporting.
 - **Branding Consistency:** Centralized configuration ensures a consistent corporate identity.
+- **CMS Web Module:** Full-featured admin CMS at `/admin/cms` (admin-only) for editing all 10 public pages. Content is stored in `page_content` PostgreSQL table (JSONB). Supports Save Draft / Publish workflow with status indicators. Public pages use `useCmsPage(key)` hook with graceful fallback to hardcoded defaults when no published content exists.
 
 ## User Preferences
 I prefer simple language. I want iterative development. Ask before making major changes. Do not make changes to the `lib/api-spec` folder. Do not make changes to the `orval.config.ts` file.

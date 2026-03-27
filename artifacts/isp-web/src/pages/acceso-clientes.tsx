@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Link } from "wouter";
+import { useCmsPage } from "@/hooks/useCmsPage";
 
 function LoginPanel() {
   const [, navigate] = useLocation();
@@ -150,6 +151,8 @@ function LoginPanel() {
 }
 
 export default function AccesoClientes() {
+  const { c } = useCmsPage("acceso-clientes");
+
   return (
     <PageLayout>
       {/* HERO — Portal con Login */}
@@ -162,15 +165,15 @@ export default function AccesoClientes() {
             {/* Left: Info */}
             <FadeIn>
               <div className="inline-block px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-semibold text-muted-foreground mb-6 uppercase tracking-widest">
-                Portal Operativo · ISP, S.A.
+                {c("hero_badge", "Portal Operativo · ISP, S.A.")}
               </div>
 
               <h1 className="text-4xl md:text-5xl font-display font-bold mb-6 text-white tracking-tight">
-                Portal de <span className="text-gradient-gold">Clientes ISP</span>
+                Portal de <span className="text-gradient-gold">{c("hero_title", "Clientes ISP")}</span>
               </h1>
 
               <p className="text-lg text-muted-foreground mb-6 leading-relaxed">
-                Acceso exclusivo al sistema de operaciones internas. Visibilidad total del servicio, gestión de incidencias y reportes operativos en tiempo real.
+                {c("hero_subtitle", "Acceso exclusivo al sistema de operaciones internas. Visibilidad total del servicio, gestión de incidencias y reportes operativos en tiempo real.")}
               </p>
 
               <ul className="space-y-3 mb-8">
@@ -457,10 +460,10 @@ export default function AccesoClientes() {
           <FadeIn>
             <Shield className="w-12 h-12 text-primary mx-auto mb-6" />
             <h2 className="text-2xl md:text-3xl font-display font-bold text-white mb-4">
-              ¿Es cliente actual de ISP, S.A.?
+              {c("cta_title", "¿Es cliente actual de ISP, S.A.?")}
             </h2>
             <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
-              Mientras la plataforma está en desarrollo, contamos con atención directa para reportes, incidencias y requerimientos. Su ejecutivo de cuenta está disponible de inmediato.
+              {c("cta_subtitle", "Mientras la plataforma está en desarrollo, contamos con atención directa para reportes, incidencias y requerimientos. Su ejecutivo de cuenta está disponible de inmediato.")}
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-4">
               <Link href="/contacto">

@@ -1,0 +1,106 @@
+Quiero que analices TODO el proyecto actual y me generes una explicación completa, clara y estructurada de lo que hace el sistema.
+
+No quiero un resumen superficial. Quiero una documentación detallada, como si fuera para presentar el sistema a un cliente o a un equipo técnico.
+
+Incluye lo siguiente:
+
+## 1. Visión general del sistema
+- Qué es el sistema
+- Para qué sirve
+- Qué problema resuelve
+- Tipo de empresa al que está dirigido
+- Qué lo hace diferente de otros sistemas
+
+## 2. Módulos principales
+Explica cada módulo existente y qué hace:
+
+- Admin (dashboard)
+- Incidencias
+- Emergencias
+- Tareas (con evidencia)
+- Comercial (leads)
+- Reclutamiento (postulaciones)
+- Anticipos
+- Portal de clientes
+- Configuración de WhatsApp
+- Alias de clientes y puestos
+- Integración con Trello (modo mock y real)
+- Sistema de usuarios y roles
+- Employees / integración futura con RH
+- CMS / contenido web (si ya existe)
+
+Para cada módulo explica:
+- qué hace
+- quién lo usa
+- qué datos maneja
+- cómo se relaciona con otros módulos
+
+## 3. Flujo operativo completo
+Explica cómo fluye la operación real dentro del sistema:
+
+Ejemplo:
+WhatsApp → creación de incidencia → asignación → Trello → ejecución → cierre con evidencia → reporte
+
+Incluye:
+- incidencias
+- emergencias
+- tareas
+- anticipos
+- reclutamiento
+- comercial
+
+## 4. Integraciones
+Explica cómo funciona:
+
+- WhatsApp (actual y futura conexión real)
+- Trello (mock y real)
+- base de datos PostgreSQL
+- futura integración con sistema de RRHH
+
+## 5. Seguridad y control
+- roles y permisos
+- control por clienteId
+- validaciones (anticipos, emergencias, etc.)
+- auditoría
+
+## 6. Experiencia del usuario
+Explica cómo interactúan:
+
+- admin
+- supervisor
+- guardia
+- cliente
+- usuario externo
+
+## 7. Base de datos (visión general)
+- tablas principales
+- cómo se relacionan
+- qué tipo de información guarda el sistema
+
+## 8. Estado actual del sistema
+- qué partes están completas
+- qué partes están en modo mock
+- qué partes están listas para producción
+- qué falta para producción total
+
+## 9. Valor del sistema
+Explica:
+- cómo mejora la operación
+- cómo ayuda a tomar decisiones
+- cómo se puede vender a clientes
+- qué ventaja competitiva ofrece
+
+## 10. Roadmap sugerido
+Basado en el estado actual, sugiere:
+- siguientes mejoras
+- prioridades
+- fases recomendadas
+
+## FORMATO
+- usa títulos claros
+- usa lenguaje profesional pero fácil de entender
+- organiza por secciones
+- no omitas detalles importantes
+
+Muy importante:
+quiero entender el sistema completamente, tanto a nivel técnico como a nivel de negocio.

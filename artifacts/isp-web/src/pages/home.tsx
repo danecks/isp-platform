@@ -8,8 +8,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { FadeIn } from "@/components/animations/FadeIn";
 import { PageLayout } from "@/components/layout/PageLayout";
+import { useCmsPage } from "@/hooks/useCmsPage";
 
 export default function Home() {
+  const { c } = useCmsPage("home");
+
   return (
     <PageLayout>
       {/* SECTION 1 — HERO */}
@@ -33,32 +36,32 @@ export default function Home() {
             <FadeIn delay={0.1}>
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary text-primary font-medium text-sm mb-8">
                 <Shield className="w-4 h-4" />
-                Empresa Certificada · Guatemala
+                {c("hero_badge", "Empresa Certificada · Guatemala")}
               </div>
             </FadeIn>
-            
+
             <FadeIn delay={0.2}>
               <h1 className="text-6xl lg:text-8xl font-display font-bold leading-none mb-6 flex flex-col">
-                <span className="text-white">PROTECCIÓN</span>
-                <span className="text-gradient-gold">PROFESIONAL</span>
+                <span className="text-white">{c("hero_title1", "PROTECCIÓN")}</span>
+                <span className="text-gradient-gold">{c("hero_title2", "PROFESIONAL")}</span>
               </h1>
             </FadeIn>
 
             <FadeIn delay={0.3}>
               <p className="text-xl font-sans text-muted-foreground mb-10 max-w-2xl leading-relaxed">
-                Seguridad física, custodia de transporte y operaciones móviles para empresas de alto requerimiento. Más de 400 agentes activos en todo el territorio guatemalteco.
+                {c("hero_subtitle", "Seguridad física, custodia de transporte y operaciones móviles para empresas de alto requerimiento. Más de 400 agentes activos en todo el territorio guatemalteco.")}
               </p>
             </FadeIn>
 
             <FadeIn delay={0.4} className="flex flex-col sm:flex-row gap-4 mb-6">
               <Link href="/solicitar-servicio">
                 <Button size="lg" className="w-full sm:w-auto h-14 px-8 rounded-full text-base font-semibold bg-primary text-[#050d1a] hover:bg-primary/90 shadow-lg shadow-primary/20">
-                  Solicitar Evaluación <ArrowRight className="ml-2 w-5 h-5" />
+                  {c("hero_btn_primary", "Solicitar Evaluación")} <ArrowRight className="ml-2 w-5 h-5" />
                 </Button>
               </Link>
               <a href="https://wa.me/50250000000" target="_blank" rel="noopener noreferrer">
                 <Button size="lg" variant="outline" className="w-full sm:w-auto h-14 px-8 rounded-full text-base font-semibold border-primary text-primary hover:bg-primary/10">
-                  <MessageSquare className="mr-2 w-5 h-5" /> WhatsApp Directo
+                  <MessageSquare className="mr-2 w-5 h-5" /> {c("hero_btn_secondary", "WhatsApp Directo")}
                 </Button>
               </a>
             </FadeIn>
@@ -66,7 +69,7 @@ export default function Home() {
             <FadeIn delay={0.5}>
               <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                Operaciones activas 24 / 7 · 365 días
+                {c("hero_note", "Operaciones activas 24 / 7 · 365 días")}
               </p>
             </FadeIn>
           </div>
@@ -143,9 +146,9 @@ export default function Home() {
                 <div className="w-12 h-12 rounded-xl bg-primary/15 flex items-center justify-center mb-6">
                   <ShieldCheck className="w-6 h-6 text-primary" />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-3">Seguridad Física</h3>
+                <h3 className="text-xl font-bold text-white mb-3">{c("service1_title", "Seguridad Física")}</h3>
                 <p className="text-muted-foreground leading-relaxed mb-8 flex-grow">
-                  Agentes certificados, armados y desarmados, desplegados en instalaciones corporativas, industriales, comerciales y residenciales bajo protocolos de operación estrictos.
+                  {c("service1_desc", "Agentes certificados, armados y desarmados, desplegados en instalaciones corporativas, industriales, comerciales y residenciales bajo protocolos de operación estrictos.")}
                 </p>
                 <Link href="/servicios/seguridad-fisica" className="text-primary font-medium flex items-center gap-2 group-hover:gap-3 transition-all">
                   Conocer más <ArrowRight className="w-4 h-4" />
@@ -158,9 +161,9 @@ export default function Home() {
                 <div className="w-12 h-12 rounded-xl bg-primary/15 flex items-center justify-center mb-6">
                   <Truck className="w-6 h-6 text-primary" />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-3">Custodia de Transporte</h3>
+                <h3 className="text-xl font-bold text-white mb-3">{c("service2_title", "Custodia de Transporte")}</h3>
                 <p className="text-muted-foreground leading-relaxed mb-8 flex-grow">
-                  Escolta especializada para protección de carga, valores y mercancías de alto riesgo. Planificación de rutas, seguimiento y coordinación con autoridades.
+                  {c("service2_desc", "Escolta especializada para protección de carga, valores y mercancías de alto riesgo. Planificación de rutas, seguimiento y coordinación con autoridades.")}
                 </p>
                 <Link href="/servicios/custodia-transporte" className="text-primary font-medium flex items-center gap-2 group-hover:gap-3 transition-all">
                   Conocer más <ArrowRight className="w-4 h-4" />
@@ -173,9 +176,9 @@ export default function Home() {
                 <div className="w-12 h-12 rounded-xl bg-primary/15 flex items-center justify-center mb-6">
                   <Users className="w-6 h-6 text-primary" />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-3">Operaciones Móviles</h3>
+                <h3 className="text-xl font-bold text-white mb-3">{c("service3_title", "Operaciones Móviles")}</h3>
                 <p className="text-muted-foreground leading-relaxed mb-8 flex-grow">
-                  Unidades de reacción rápida y patrullaje preventivo. Presencia disuasoria que neutraliza amenazas antes de que escalen.
+                  {c("service3_desc", "Unidades de reacción rápida y patrullaje preventivo. Presencia disuasoria que neutraliza amenazas antes de que escalen.")}
                 </p>
                 <Link href="/servicios" className="text-primary font-medium flex items-center gap-2 group-hover:gap-3 transition-all">
                   Conocer más <ArrowRight className="w-4 h-4" />
@@ -188,9 +191,9 @@ export default function Home() {
                 <div className="w-12 h-12 rounded-xl bg-primary/15 flex items-center justify-center mb-6">
                   <Eye className="w-6 h-6 text-primary" />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-3">Supervisión y Control</h3>
+                <h3 className="text-xl font-bold text-white mb-3">{c("service4_title", "Supervisión y Control")}</h3>
                 <p className="text-muted-foreground leading-relaxed mb-8 flex-grow">
-                  Centro de monitoreo que respalda cada puesto con seguimiento en tiempo real, gestión de incidencias y reportes ejecutivos para la toma de decisiones.
+                  {c("service4_desc", "Centro de monitoreo que respalda cada puesto con seguimiento en tiempo real, gestión de incidencias y reportes ejecutivos para la toma de decisiones.")}
                 </p>
                 <Link href="/servicios" className="text-primary font-medium flex items-center gap-2 group-hover:gap-3 transition-all">
                   Conocer más <ArrowRight className="w-4 h-4" />

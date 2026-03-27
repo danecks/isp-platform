@@ -796,5 +796,23 @@ export async function runAutoSeed(): Promise<void> {
     logger.error({ err }, "Auto-seed: error en tablas de tareas/evidencias");
   }
 
+  // ── CMS: tabla page_content ─────────────────────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS page_content (
+        page_key        VARCHAR(80)   PRIMARY KEY,
+        content_json    JSONB         NOT NULL DEFAULT '{}',
+        seo_title       VARCHAR(255),
+        seo_description TEXT,
+        status          VARCHAR(20)   NOT NULL DEFAULT 'draft',
+        updated_by      VARCHAR(100),
+        updated_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'page_content' verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: error en tabla page_content");
+  }
+
   logger.info("Auto-seed completado");
 }

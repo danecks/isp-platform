@@ -5,9 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { useCmsPage } from "@/hooks/useCmsPage";
 
 export default function Contacto() {
   const { toast } = useToast();
+  const { c } = useCmsPage("contacto");
+
+  const whatsappNumber = c("whatsapp_number", "50250000000");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,9 +27,11 @@ export default function Contacto() {
       <section className="pt-32 pb-20 bg-background relative overflow-hidden border-b border-white/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
           <FadeIn>
-            <h1 className="text-4xl md:text-5xl font-bold mb-6">Contacto Institucional</h1>
+            <h1 className="text-4xl md:text-5xl font-bold mb-6">
+              {c("hero_title", "Contacto Institucional")}
+            </h1>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Estamos a su disposición para resolver cualquier duda, requerimiento operativo o emergencia las 24 horas del día.
+              {c("hero_subtitle", "Estamos a su disposición para resolver cualquier duda, requerimiento operativo o emergencia las 24 horas del día.")}
             </p>
           </FadeIn>
         </div>
@@ -44,8 +50,10 @@ export default function Contacto() {
                     <MapPin className="w-6 h-6 text-primary" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-lg mb-1">Oficinas Centrales</h4>
-                    <p className="text-muted-foreground">Centro Corporativo, Zona 10<br/>Ciudad de Guatemala, Guatemala</p>
+                    <h4 className="font-bold text-lg mb-1">{c("address_title", "Oficinas Centrales")}</h4>
+                    <p className="text-muted-foreground whitespace-pre-line">
+                      {c("address_value", "Centro Corporativo, Zona 10\nCiudad de Guatemala, Guatemala")}
+                    </p>
                   </div>
                 </div>
 
@@ -54,8 +62,10 @@ export default function Contacto() {
                     <Phone className="w-6 h-6 text-primary" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-lg mb-1">Central Telefónica</h4>
-                    <p className="text-muted-foreground">+502 2200-0000<br/>+502 2200-0001 (Emergencias)</p>
+                    <h4 className="font-bold text-lg mb-1">{c("phone_title", "Central Telefónica")}</h4>
+                    <p className="text-muted-foreground whitespace-pre-line">
+                      {c("phone_value", "+502 2200-0000\n+502 2200-0001 (Emergencias)")}
+                    </p>
                   </div>
                 </div>
 
@@ -64,8 +74,10 @@ export default function Contacto() {
                     <Mail className="w-6 h-6 text-primary" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-lg mb-1">Correos Electrónicos</h4>
-                    <p className="text-muted-foreground">contacto@isp-guatemala.com<br/>operaciones@isp-guatemala.com</p>
+                    <h4 className="font-bold text-lg mb-1">{c("email_title", "Correos Electrónicos")}</h4>
+                    <p className="text-muted-foreground whitespace-pre-line">
+                      {c("email_value", "contacto@isp-guatemala.com\noperaciones@isp-guatemala.com")}
+                    </p>
                   </div>
                 </div>
 
@@ -74,13 +86,15 @@ export default function Contacto() {
                     <Clock className="w-6 h-6 text-primary" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-lg mb-1">Horarios de Atención</h4>
-                    <p className="text-muted-foreground">Administración: Lunes a Viernes 8:00 a 17:00<br/>Monitoreo y Operaciones: 24/7 los 365 días</p>
+                    <h4 className="font-bold text-lg mb-1">{c("hours_title", "Horarios de Atención")}</h4>
+                    <p className="text-muted-foreground whitespace-pre-line">
+                      {c("hours_value", "Administración: Lunes a Viernes 8:00 a 17:00\nMonitoreo y Operaciones: 24/7 los 365 días")}
+                    </p>
                   </div>
                 </div>
 
                 <div className="pt-6">
-                  <a href="https://wa.me/50250000000" target="_blank" rel="noreferrer">
+                  <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noreferrer">
                     <Button size="lg" className="w-full sm:w-auto bg-[#25D366] hover:bg-[#25D366]/90 text-white font-bold h-14">
                       Contactar por WhatsApp
                     </Button>

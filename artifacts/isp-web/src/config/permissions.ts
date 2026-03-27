@@ -11,6 +11,7 @@ import {
   Wallet,
   MessageSquare,
   FileBarChart2,
+  Globe,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -112,6 +113,12 @@ export const NAV_ITEMS: NavItem[] = [
     path: "/admin/configuracion/whatsapp",
     label: "Config. WhatsApp",
     icon: MessageSquare,
+    roles: ["admin"],
+  },
+  {
+    path: "/admin/cms",
+    label: "CMS Web",
+    icon: Globe,
     roles: ["admin"],
   },
 ];

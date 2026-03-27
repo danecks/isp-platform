@@ -14,6 +14,7 @@ import { waConfigRouter } from "./wa-config";
 import emergenciasRouter from "./emergencias";
 import tareasRouter from "./tareas";
 import reportesRouter from "./reportes";
+import cmsRouter from "./cms";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use(waConfigRouter);
 router.use(emergenciasRouter);
 router.use(tareasRouter);
 router.use(reportesRouter);
+router.use(cmsRouter);
 
 export default router;

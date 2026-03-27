@@ -1,0 +1,123 @@
+El sistema ya tiene admin funcional, portal de clientes, WhatsApp configurable, Trello, incidencias, tareas, anticipos y páginas públicas bien diseñadas.
+
+No quiero romper nada del diseño actual del frontpage ni del sitio público.
+
+Quiero crear una nueva fase: CMS interno / módulo de contenido web, para que un administrador pueda editar el contenido de todas las páginas públicas del sitio sin tocar código.
+
+Objetivo:
+permitir que desde el panel admin se pueda modificar el texto y contenido visible del sitio web público completo, manteniendo el diseño actual.
+
+Haz esto:
+
+## 1. Crear módulo admin
+Crear una nueva sección:
+- /admin/contenido
+o
+- /admin/cms
+
+Solo rol admin debe tener acceso completo.
+
+## 2. Alcance inicial
+Quiero controlar el contenido de estas páginas públicas:
+- Home
+- Nosotros
+- Servicios
+- Seguridad Física
+- Custodia de Transporte
+- Sectores
+- Reclutamiento
+- Solicitar Servicio
+- Contacto
+- Acceso Clientes
+
+## 3. Estructura de contenido
+No quiero un editor libre que rompa el diseño.
+Quiero un CMS estructurado por página y por sección.
+
+Ejemplo:
+Home:
+- heroTitle
+- heroSubtitle
+- heroPrimaryButtonText
+- heroPrimaryButtonLink
+- heroSecondaryButtonText
+- heroSecondaryButtonLink
+- trustBlockTitle
+- servicesSectionTitle
+- sectorsTitle
+- ctaTitle
+- ctaText
+
+Haz una estructura parecida para cada página pública según su diseño actual.
+
+## 4. Base de datos
+Crea una estructura persistente para guardar el contenido editable del sitio.
+Puedes usar una tabla tipo:
+- page_content
+o equivalente
+
+Campos sugeridos:
+- id
+- pageKey
+- contentJson
+- seoTitle nullable
+- seoDescription nullable
+- status (draft / published)
+- updatedBy
+- updatedAt
+
+o una estructura equivalente si consideras otra mejor, pero debe ser limpia y escalable.
+
+## 5. Frontend público
+Haz que las páginas públicas dejen de depender de textos hardcodeados y lean el contenido desde base de datos.
+
+Muy importante:
+- mantener el diseño actual
+- si falta contenido en DB, usar fallback seguro
+- no romper el sitio público
+
+## 6. Admin UI del CMS
+El admin debe poder:
+- ver lista de páginas
+- editar el contenido de cada página por secciones
+- guardar cambios
+- previsualizar si es posible
+- publicar cambios
+
+## 7. Componentes globales
+También quiero poder editar desde admin:
+- texto del navbar si aplica
+- datos del footer
+- datos de contacto
+- CTA globales
+
+## 8. SEO básico
+Agregar campos editables por página para:
+- SEO title
+- meta description
+
+## 9. Auditoría
+Registrar:
+- quién cambió el contenido
+- cuándo
+- página modificada
+
+## 10. No romper
+- diseño actual del sitio
+- branding ISP, S.A.
+- portal
+- admin
+- login
+- roles
+- módulos existentes
+
+## 11. Documentación
+Explica:
+- qué tablas/modelos agregaste
+- cómo se edita una página
+- cómo se publica
+- cómo el front carga el contenido
+- cómo agregar nuevas páginas en el futuro
+
+Muy importante:
+quiero que el frontpage y todas las páginas públicas sean administrables desde el panel sin necesidad de tocar código, pero sin perder el diseño profesional actual.

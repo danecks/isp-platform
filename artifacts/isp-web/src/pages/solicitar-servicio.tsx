@@ -11,6 +11,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Building, ShieldCheck } from "lucide-react";
 import { leadsApi } from "@/lib/api";
+import { useCmsPage } from "@/hooks/useCmsPage";
 
 const formSchema = z.object({
   company: z.string().min(2, "Nombre de la empresa es requerido"),
@@ -26,6 +27,7 @@ const formSchema = z.object({
 
 export default function SolicitarServicio() {
   const { toast } = useToast();
+  const { c } = useCmsPage("solicitar-servicio");
   
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -77,9 +79,11 @@ export default function SolicitarServicio() {
           <FadeIn>
             <div className="max-w-3xl">
               <Building className="w-12 h-12 text-primary mb-6" />
-              <h1 className="text-4xl md:text-5xl font-bold mb-6">Solicitar Evaluación de Seguridad</h1>
+              <h1 className="text-4xl md:text-5xl font-bold mb-6">
+                {c("hero_title", "Solicitar Evaluación de Seguridad")}
+              </h1>
               <p className="text-xl text-muted-foreground">
-                Diseñamos esquemas de seguridad corporativa adaptados a la realidad de su empresa. Por favor, comparta los detalles iniciales de su requerimiento para agendar una consultoría sin costo.
+                {c("hero_subtitle", "Diseñamos esquemas de seguridad corporativa adaptados a la realidad de su empresa. Por favor, comparta los detalles iniciales de su requerimiento para agendar una consultoría sin costo.")}
               </p>
             </div>
           </FadeIn>
