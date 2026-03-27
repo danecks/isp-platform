@@ -69,16 +69,20 @@ interface ChatMessage {
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const INTENCION_LABELS: Record<string, string> = {
-  anticipo:        "💸 Anticipo salarial",
-  anticipo_inicio: "💸 Anticipo (inicio)",
-  anticipo_sesion: "💸 Anticipo (sesión activa)",
-  incidencia:      "🚨 Incidencia / Emergencia",
-  postulacion:     "👷 Postulación laboral",
-  lead:            "💼 Lead comercial",
-  no_autorizado:   "⛔ Número no autorizado",
-  inactivo:        "🚫 Usuario inactivo",
-  bloqueado:       "⛔ Acceso bloqueado",
-  pendiente:       "⏳ Pendiente",
+  anticipo:              "💸 Anticipo salarial",
+  anticipo_inicio:       "💸 Anticipo (inicio)",
+  anticipo_sesion:       "💸 Anticipo (sesión activa)",
+  incidencia:            "🚨 Incidencia / Emergencia",
+  postulacion:           "👷 Postulación laboral",
+  lead:                  "💼 Lead comercial",
+  info_general:          "ℹ️ Información general",
+  contacto_asesor:       "📞 Contacto con asesor",
+  saludo_externo:        "👋 Saludo / Menú externo",
+  no_autorizado:         "⛔ Número no autorizado",
+  no_autorizado_interno: "🔒 Función interna (externo)",
+  inactivo:              "🚫 Usuario inactivo",
+  bloqueado:             "⛔ Acceso bloqueado",
+  pendiente:             "⏳ Pendiente",
 };
 
 const ROL_COLORS: Record<string, string> = {
@@ -97,16 +101,27 @@ const QUICK_SCENARIOS: {
   icon: string;
   msg: string;
   color: string;
+  group: "interno" | "externo";
   skipValidacion?: boolean;
 }[] = [
-  { label: "Anticipo",          icon: "💸", msg: "quiero solicitar anticipo",                          color: "bg-yellow-500/10 border-yellow-500/30 text-yellow-300" },
-  { label: "Emergencia",        icon: "🚨", msg: "emergencia en custodia, persona sospechosa",         color: "bg-red-500/10 border-red-500/30 text-red-300" },
-  { label: "Lead comercial",    icon: "💼", msg: "buenos días, necesito cotización para seguridad",    color: "bg-green-500/10 border-green-500/30 text-green-300" },
-  { label: "Postulación",       icon: "👷", msg: "hola, quiero aplicar como guardia de seguridad",     color: "bg-blue-500/10 border-blue-500/30 text-blue-300" },
-  { label: "Incidencia",        icon: "⚠️", msg: "reporto incidencia en planta norte, intruso",        color: "bg-orange-500/10 border-orange-500/30 text-orange-300" },
-  { label: "No autorizado",     icon: "⛔", msg: "hola, soy cliente nuevo",                            color: "bg-gray-500/10 border-gray-500/30 text-gray-300", skipValidacion: false },
-  { label: "Mensaje ambiguo",   icon: "❓", msg: "hola",                                               color: "bg-indigo-500/10 border-indigo-500/30 text-indigo-300" },
-  { label: "Alias cliente",     icon: "🏢", msg: "custodio gallo necesita apoyo urgente",              color: "bg-teal-500/10 border-teal-500/30 text-teal-300" },
+  // ── Internos (usuario registrado) ──────────────────────────────────────────
+  { group: "interno", label: "Anticipo",          icon: "💸", msg: "quiero solicitar anticipo",                          color: "bg-yellow-500/10 border-yellow-500/30 text-yellow-300" },
+  { group: "interno", label: "Emergencia",        icon: "🚨", msg: "emergencia en custodia, persona sospechosa",         color: "bg-red-500/10 border-red-500/30 text-red-300" },
+  { group: "interno", label: "Incidencia",        icon: "⚠️", msg: "reporto incidencia en planta norte, intruso",        color: "bg-orange-500/10 border-orange-500/30 text-orange-300" },
+  { group: "interno", label: "Alias cliente",     icon: "🏢", msg: "custodio gallo necesita apoyo urgente",              color: "bg-teal-500/10 border-teal-500/30 text-teal-300" },
+
+  // ── Externos permitidos (número desconocido, intención válida) ─────────────
+  { group: "externo", label: "Externo comercial",  icon: "💼", msg: "buenos días, necesito cotización para seguridad de mi empresa",  color: "bg-green-500/10 border-green-500/30 text-green-300" },
+  { group: "externo", label: "Externo empleo",     icon: "👷", msg: "kisiera trabajo como guardia de seguridad",                      color: "bg-blue-500/10 border-blue-500/30 text-blue-300" },
+  { group: "externo", label: "Externo info",       icon: "ℹ️", msg: "hola quiero informacion sobre sus servicios de seguridad",       color: "bg-indigo-500/10 border-indigo-500/30 text-indigo-300" },
+  { group: "externo", label: "Externo asesor",     icon: "📞", msg: "quiero hablar con un asesor de ventas",                          color: "bg-purple-500/10 border-purple-500/30 text-purple-300" },
+
+  // ── Externos bloqueados (función interna desde número desconocido) ─────────
+  { group: "externo", label: "🔒 Anticipo externo",    icon: "🔒", msg: "quiero mi anticipo salarial",                            color: "bg-rose-500/10 border-rose-500/30 text-rose-300" },
+  { group: "externo", label: "🔒 Emergencia externo",  icon: "🔒", msg: "emergencia hay un intruso en las instalaciones",          color: "bg-rose-500/10 border-rose-500/30 text-rose-300" },
+
+  // ── Saludo genérico ────────────────────────────────────────────────────────
+  { group: "externo", label: "Saludo / menú",      icon: "👋", msg: "hola",                                                          color: "bg-gray-500/10 border-gray-500/30 text-gray-300" },
 ];
 
 // ─── Sub-componentes ──────────────────────────────────────────────────────────
@@ -582,18 +597,39 @@ export default function SimuladorWhatsApp() {
           </div>
 
           {/* Quick scenarios */}
-          <div className="bg-[#111b21] border-t border-gray-700/20 px-4 py-2 shrink-0">
-            <p className="text-[9px] uppercase tracking-widest text-gray-600 mb-1.5 font-semibold">Escenarios rápidos</p>
-            <div className="flex flex-wrap gap-1.5">
-              {QUICK_SCENARIOS.map(s => (
-                <button
-                  key={s.label}
-                  onClick={() => enviar(s.msg, { skipVal: s.skipValidacion })}
-                  className={`text-xs px-2.5 py-1 rounded-lg border transition-all hover:opacity-80 ${s.color}`}
-                >
-                  {s.icon} {s.label}
-                </button>
-              ))}
+          <div className="bg-[#111b21] border-t border-gray-700/20 px-4 py-2.5 shrink-0">
+            <div className="flex flex-wrap gap-3">
+              <div>
+                <p className="text-[9px] uppercase tracking-widest text-gray-600 mb-1.5 font-semibold">Internos (registrado)</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {QUICK_SCENARIOS.filter(s => s.group === "interno").map(s => (
+                    <button
+                      key={s.label}
+                      onClick={() => enviar(s.msg, { skipVal: s.skipValidacion })}
+                      className={`text-xs px-2.5 py-1 rounded-lg border transition-all hover:opacity-80 ${s.color}`}
+                      title={s.msg}
+                    >
+                      {s.icon} {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="w-px bg-gray-700/30 self-stretch" />
+              <div>
+                <p className="text-[9px] uppercase tracking-widest text-gray-600 mb-1.5 font-semibold">Externos (número desconocido)</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {QUICK_SCENARIOS.filter(s => s.group === "externo").map(s => (
+                    <button
+                      key={s.label}
+                      onClick={() => enviar(s.msg, { skipVal: s.skipValidacion })}
+                      className={`text-xs px-2.5 py-1 rounded-lg border transition-all hover:opacity-80 ${s.color}`}
+                      title={s.msg}
+                    >
+                      {s.icon} {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 

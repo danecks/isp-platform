@@ -1,7 +1,12 @@
 import { Router } from "express";
 import { db, incidentsTable, applicationsTable, leadsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { classifyMessage, extractPhoneFromWaId } from "../services/whatsapp/classifier";
+import {
+  classifyMessage,
+  extractPhoneFromWaId,
+  INTERNAL_INTENTS,
+  type MessageClassification,
+} from "../services/whatsapp/classifier";
 import {
   getSession,
   iniciarAnticipo,
@@ -66,8 +71,6 @@ async function getWaMessage(clave: string, fallback: string): Promise<string> {
 
 /**
  * Valida si el número de teléfono está registrado y activo en el sistema.
- * Devuelve el usuario o null si no existe / está inactivo.
- * También devuelve el motivo de rechazo si aplica.
  */
 async function validarNumeroWA(
   telefono: string
@@ -88,7 +91,6 @@ async function validarNumeroWA(
     return { autorizado: true, usuario };
   } catch (err) {
     console.error("[WA-Webhook] Error al validar número:", err);
-    // En caso de error de DB, permitir el paso para no bloquear operaciones
     return { autorizado: true };
   }
 }
@@ -141,7 +143,8 @@ async function processPostulacion(
 async function processLead(
   nombre: string,
   telefono: string,
-  mensaje: string
+  mensaje: string,
+  canal = "whatsapp"
 ) {
   const inserted = await db
     .insert(leadsTable)
@@ -152,7 +155,7 @@ async function processLead(
       correo: null,
       servicio: "Por definir",
       ubicacion: "Guatemala",
-      canal: "whatsapp",
+      canal,
       notas: mensaje,
     })
     .returning();
@@ -162,12 +165,23 @@ async function processLead(
 /**
  * Procesa un mensaje entrante de WhatsApp.
  *
- * Prioridad:
- *   0. Validar que el número esté autorizado en el sistema
- *   1. Si hay sesión de anticipo activa → continuar flujo de anticipo
- *   2. Clasificar mensaje → anticipo / incidencia / postulación / lead
+ * ─── LÓGICA DE ACCESO ────────────────────────────────────────────────────────
  *
- * @param skipValidation - Si es true, omite la validación de número (para simulaciones)
+ * Número DESCONOCIDO (no registrado):
+ *   · Clasifica la intención primero
+ *   · Si intenta función INTERNA (anticipo, incidencia) →
+ *       responde "no autorizado para función interna" + menú de alternativas externas
+ *   · Si saluda sin intención clara → menú de bienvenida externo
+ *   · Para cualquier otra intención (lead, postulacion, info, contacto) →
+ *       procesa normalmente (crea lead / postulación)
+ *
+ * Usuario INACTIVO:
+ *   · Bloqueo total con mensaje de cuenta desactivada
+ *
+ * Usuario REGISTRADO y ACTIVO:
+ *   · Flujo normal completo (anticipo, incidencia, etc.)
+ *
+ * @param skipValidation - Si es true, omite la validación de número (simulaciones)
  */
 async function handleIncomingMessage(
   nombre: string,
@@ -177,44 +191,82 @@ async function handleIncomingMessage(
   skipValidation = false
 ): Promise<{ tipo: string; id?: string | number; respuesta?: string }> {
 
-  // 0. Validar número autorizado (solo para mensajes reales, no simulaciones)
+  // 0. Validar número
   if (!skipValidation) {
     const validacion = await validarNumeroWA(telefono);
+
     if (!validacion.autorizado) {
-      if (validacion.motivo === "no_registrado") {
-        const msg = await getWaMessage(
-          "acceso_no_autorizado",
-          "⛔ Tu número no está autorizado para usar este sistema. Comunícate con ISP, S.A. para solicitar acceso."
-        );
-        console.log(`[WA-Webhook] Número NO autorizado bloqueado: ${telefono}`);
-        return { tipo: "no_autorizado", respuesta: msg };
-      }
+
+      // ── USUARIO INACTIVO: bloqueo total ──────────────────────────────────
       if (validacion.motivo === "inactivo") {
         const msg = await getWaMessage(
           "acceso_inactivo",
           "🚫 Tu acceso al sistema ha sido desactivado temporalmente. Contacta a tu supervisor."
         );
-        console.log(`[WA-Webhook] Número INACTIVO bloqueado: ${telefono} (usuario: ${validacion.usuario?.nombre})`);
+        console.log(`[WA-Webhook] Usuario INACTIVO: ${telefono} (${validacion.usuario?.nombre})`);
         return { tipo: "inactivo", respuesta: msg };
       }
+
+      // ── NÚMERO DESCONOCIDO: clasificar intención antes de bloquear ───────
+      if (validacion.motivo === "no_registrado") {
+        const intencion: MessageClassification = classifyMessage(texto);
+        console.log(`[WA-Webhook] Número externo (${telefono}), intención detectada: ${intencion}`);
+
+        // Intento de función interna → bloquear con menú de alternativas
+        if (INTERNAL_INTENTS.includes(intencion)) {
+          const msg = await getWaMessage(
+            "no_autorizado_interno",
+            "🔒 Esta función es exclusiva para colaboradores y clientes registrados de ISP, S.A.\n\n" +
+            "Sin embargo, puedo ayudarte con:\n\n" +
+            "1️⃣ Información sobre nuestros servicios\n" +
+            "2️⃣ Solicitar cotización de seguridad\n" +
+            "3️⃣ Postularte a una plaza de trabajo\n" +
+            "4️⃣ Hablar con un asesor\n\n" +
+            "Escribe el número de opción o cuéntanos en qué podemos ayudarte."
+          );
+          console.log(`[WA-Webhook] Externo intenta función interna (${intencion}): ${telefono}`);
+          return { tipo: "no_autorizado_interno", respuesta: msg };
+        }
+
+        // Saludo genérico → menú de bienvenida externo
+        if (intencion === "saludo_externo") {
+          const msg = await getWaMessage(
+            "bienvenida_externo",
+            "👋 ¡Bienvenido a ISP — Investigaciones y Seguridad Profesional S.A.!\n\n" +
+            "Soy el asistente virtual de ISP. ¿En qué puedo ayudarte hoy?\n\n" +
+            "1️⃣ Información sobre nuestros servicios\n" +
+            "2️⃣ Solicitar cotización\n" +
+            "3️⃣ Postularme a una plaza de trabajo\n" +
+            "4️⃣ Hablar con un asesor\n\n" +
+            "Escribe el número de opción o cuéntanos tu necesidad."
+          );
+          console.log(`[WA-Webhook] Externo saludo genérico: ${telefono}`);
+          return { tipo: "saludo_externo", respuesta: msg };
+        }
+
+        // Intención externa permitida (lead, postulacion, info_general, contacto_asesor)
+        // Continúa al procesamiento normal abajo
+        console.log(`[WA-Webhook] Externo con intención permitida (${intencion}): ${telefono}`);
+      }
+    } else {
+      console.log(`[WA-Webhook] Autorizado: ${telefono} (${validacion.usuario?.nombre ?? "sin nombre"})`);
     }
-    console.log(`[WA-Webhook] Número autorizado: ${telefono} (${validacion.usuario?.nombre ?? "usuario no encontrado pero permitido"})`);
   }
 
   // 1. ¿Hay sesión de anticipo activa para este número?
   const sesionActiva = getSession(telefono);
   if (sesionActiva) {
     const { respuesta, completada } = await continuarAnticipo(sesionActiva, texto);
-    console.log(`[WA-Webhook] Anticipo en curso para ${telefono}: estado=${sesionActiva.state}, completada=${completada}`);
+    console.log(`[WA-Webhook] Anticipo en curso (${telefono}): estado=${sesionActiva.state}, completada=${completada}`);
     return { tipo: "anticipo_sesion", respuesta };
   }
 
-  // 2. Clasificar mensaje nuevo
-  const tipo = classifyMessage(texto);
+  // 2. Clasificar mensaje
+  const tipo: MessageClassification = classifyMessage(texto);
 
   if (tipo === "anticipo") {
     const respuesta = await iniciarAnticipo(nombre, telefono);
-    console.log(`[WA-Webhook] Anticipo iniciado para ${telefono}`);
+    console.log(`[WA-Webhook] Anticipo iniciado: ${telefono}`);
     return { tipo: "anticipo_inicio", respuesta };
   }
 
@@ -226,6 +278,33 @@ async function handleIncomingMessage(
     return { tipo, ...(await processPostulacion(nombre, telefono, texto)) };
   }
 
+  if (tipo === "contacto_asesor") {
+    const msg = await getWaMessage(
+      "contacto_asesor_externo",
+      "📞 Entendido. Uno de nuestros asesores se pondrá en contacto contigo a la brevedad.\n\n" +
+      "También puedes comunicarte directamente al (502) 2220-0000 de lunes a viernes de 8:00 a 17:00 horas."
+    );
+    // Registrar como lead para seguimiento
+    const leadResult = await processLead(nombre, telefono, `[ASESOR] ${texto}`);
+    return { tipo: "contacto_asesor", id: leadResult.id, respuesta: msg };
+  }
+
+  if (tipo === "info_general") {
+    const msg = await getWaMessage(
+      "info_servicios_externo",
+      "ℹ️ ISP — Investigaciones y Seguridad Profesional S.A. ofrece:\n\n" +
+      "🔒 Seguridad física y vigilancia\n" +
+      "🚐 Custodia y transporte de valores\n" +
+      "📹 Monitoreo y respuesta a alarmas\n" +
+      "🏢 Seguridad corporativa e industrial\n\n" +
+      "¿Te gustaría solicitar una cotización o más información?\n" +
+      "Escríbenos o llama al (502) 2220-0000."
+    );
+    const leadResult = await processLead(nombre, telefono, `[INFO] ${texto}`);
+    return { tipo: "info_general", id: leadResult.id, respuesta: msg };
+  }
+
+  // Default: lead / cotización
   return { tipo: "lead", ...(await processLead(nombre, telefono, texto)) };
 }
 
@@ -277,7 +356,6 @@ router.post("/webhooks/whatsapp", async (req, res) => {
           const result = await handleIncomingMessage(nombre, telefono, texto, msg.id);
           console.log(`[WA-Webhook] Procesado → tipo=${result.tipo}, id=${result.id ?? "sesion"}`);
 
-          // Aquí se enviaría la respuesta al usuario vía Meta API (Fase 2)
           if (result.respuesta) {
             console.log(`[WA-Webhook] Respuesta: "${result.respuesta.substring(0, 80)}..."`);
           }
@@ -290,7 +368,6 @@ router.post("/webhooks/whatsapp", async (req, res) => {
 });
 
 // ── POST /webhooks/whatsapp/simulate — Simulación local ────────────────────
-// La simulación omite la validación de número para facilitar el desarrollo
 router.post("/webhooks/whatsapp/simulate", async (req, res) => {
   try {
     const { scenario, nombre: nombreCustom, telefono: telCustom, mensaje: mensajeCustom } = req.body;
@@ -318,7 +395,6 @@ router.post("/webhooks/whatsapp/simulate", async (req, res) => {
       return res.status(400).json({
         error: "Escenario inválido.",
         disponibles: [...Object.keys(SCENARIOS), "(o usa nombre+telefono+mensaje personalizado)"],
-        uso: 'POST /api/webhooks/whatsapp/simulate con body: { "scenario": "postulacion" | "lead" | "incidencia" }',
       });
     }
 
@@ -327,12 +403,7 @@ router.post("/webhooks/whatsapp/simulate", async (req, res) => {
     const mensaje = mensajeCustom ?? base?.mensaje ?? "";
     const waMessageId = `sim-${Date.now()}`;
 
-    console.log(`[WA-Simulate] Escenario: ${scenario ?? "personalizado"}, mensaje: "${mensaje}"`);
-
-    // skipValidation=true en simulaciones para facilitar el desarrollo
     const result = await handleIncomingMessage(nombre, telefono, mensaje, waMessageId, true);
-
-    console.log(`[WA-Simulate] Resultado: tipo=${result.tipo}, id=${result.id ?? "sesion"}`);
 
     res.status(201).json({
       simulacion: true,
@@ -341,9 +412,6 @@ router.post("/webhooks/whatsapp/simulate", async (req, res) => {
       clasificacion: result.tipo,
       resultado: { id: result.id },
       respuesta_wa: result.respuesta ?? null,
-      nota: result.respuesta
-        ? "Flujo de anticipo activo. Continúa enviando mensajes con el mismo teléfono."
-        : "Registro guardado en la base de datos real. Visible en el admin de inmediato.",
     });
   } catch (err) {
     console.error("[WA-Simulate] Error:", err);

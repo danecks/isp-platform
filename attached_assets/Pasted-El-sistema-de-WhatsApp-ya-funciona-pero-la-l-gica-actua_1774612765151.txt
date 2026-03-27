@@ -1,0 +1,106 @@
+El sistema de WhatsApp ya funciona, pero la lógica actual para números desconocidos es demasiado rígida.
+
+Problema actual:
+si un número no registrado escribe algo como “hola estoy interesado con ustedes”, el sistema responde que el número no está autorizado y deja a la persona atrapada en un loop, aunque esa persona podría ser un prospecto comercial o alguien que quiere aplicar a una plaza.
+
+Quiero corregir esto con una lógica más humana y útil.
+
+Objetivo:
+diferenciar correctamente entre:
+1. usuario interno no autorizado para funciones sensibles
+2. usuario externo nuevo que quiere información, cotización o empleo
+
+Haz esto:
+
+## 1. Mejorar la lógica para números desconocidos
+Si el número no está registrado, NO bloquear de inmediato toda la conversación.
+
+Primero intentar clasificar intención del mensaje en categorías como:
+- comercial / información
+- cotización / solicitar servicio
+- reclutamiento / empleo
+- contacto general
+- intento de función interna
+
+## 2. Permitir flujos externos
+Para números desconocidos permitir al menos:
+- solicitar información de servicios
+- solicitar cotización
+- aplicar a una plaza
+- hablar con un asesor
+
+## 3. Bloquear solo funciones internas
+Solo responder como “no autorizado” cuando un número desconocido intente funciones como:
+- anticipo
+- emergencia
+- ver tareas
+- cerrar tarea
+- funciones internas de colaboradores o clientes registrados
+
+## 4. Evitar loops
+Si se detecta intento de función interna por un número desconocido, responder con un mensaje que además ofrezca salida:
+
+Ejemplo esperado:
+“No reconozco tu número como colaborador o cliente registrado para usar esta opción interna. Sin embargo, puedo ayudarte con:
+1. Información de servicios
+2. Solicitar cotización
+3. Aplicar a una plaza
+4. Hablar con un asesor”
+
+No dejar la conversación atrapada en un loop sin salida.
+
+## 5. Mejorar tolerancia a lenguaje natural
+Hacer la clasificación más flexible con:
+- minúsculas
+- sin acentos
+- detección de palabras parciales
+- tolerancia básica a errores ortográficos frecuentes
+
+Ejemplos que deben clasificarse bien:
+- hola estoy interesado con ustedes
+- kisiera trabajo
+- quiero informacion
+- necesito seguridad
+- ocupo guardias
+- busco empleo
+- quiero aplicar
+- me interesa una cotizacion
+
+## 6. Menú para externos
+Si un número desconocido escribe algo general como “hola”, “buenas”, “información”, mostrar un menú amigable de opciones externas.
+
+## 7. Configuración admin
+Si ya existe módulo de configuración de WhatsApp, dejar estos mensajes editables:
+- mensaje_bienvenida_externo
+- mensaje_no_autorizado_interno
+- mensaje_menu_externo
+- mensaje_contacto_asesor
+
+## 8. Simulador
+Actualizar el simulador de WhatsApp para probar este nuevo comportamiento con:
+- número desconocido comercial
+- número desconocido reclutamiento
+- número desconocido intentando anticipo
+- número desconocido intentando emergencia
+
+## 9. No romper
+- anticipos
+- emergencias
+- incidencias
+- leads
+- postulaciones
+- tareas
+- portal
+- Trello
+- login
+
+## 10. Documentación
+Explica:
+- cómo diferencia el sistema entre externo e interno
+- qué funciones quedan abiertas para externos
+- cuáles se bloquean
+- cómo se evita el loop
+- qué textos quedan configurables desde admin
+
+Muy importante:
+quiero una experiencia más humana y comercialmente útil para números desconocidos, sin comprometer la seguridad de las funciones internas.

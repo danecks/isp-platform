@@ -703,6 +703,25 @@ export async function runAutoSeed(): Promise<void> {
     `);
     logger.info("Auto-migrate: mensajes WA de control de acceso verificados");
 
+    // 2c. Mensajes para usuarios externos (números no registrados con intención válida)
+    await pool.query(`
+      INSERT INTO wa_messages (clave, texto, descripcion) VALUES
+        ('bienvenida_externo',
+         '👋 ¡Bienvenido a ISP — Investigaciones y Seguridad Profesional S.A.!\n\nSoy el asistente virtual de ISP. ¿En qué puedo ayudarte hoy?\n\n1️⃣ Información sobre nuestros servicios\n2️⃣ Solicitar cotización\n3️⃣ Postularme a una plaza de trabajo\n4️⃣ Hablar con un asesor\n\nEscribe el número de opción o cuéntanos tu necesidad.',
+         'Menú de bienvenida para números desconocidos'),
+        ('no_autorizado_interno',
+         '🔒 Esta función es exclusiva para colaboradores y clientes registrados de ISP, S.A.\n\nSin embargo, puedo ayudarte con:\n\n1️⃣ Información sobre nuestros servicios\n2️⃣ Solicitar cotización de seguridad\n3️⃣ Postularte a una plaza de trabajo\n4️⃣ Hablar con un asesor\n\nEscribe el número de opción o cuéntanos en qué podemos ayudarte.',
+         'Respuesta cuando externo intenta función interna (anticipo, emergencia, etc.)'),
+        ('info_servicios_externo',
+         'ℹ️ ISP — Investigaciones y Seguridad Profesional S.A. ofrece:\n\n🔒 Seguridad física y vigilancia\n🚐 Custodia y transporte de valores\n📹 Monitoreo y respuesta a alarmas\n🏢 Seguridad corporativa e industrial\n\n¿Te gustaría solicitar una cotización?\nEscríbenos o llama al (502) 2220-0000.',
+         'Información de servicios para visitantes externos'),
+        ('contacto_asesor_externo',
+         '📞 Entendido. Uno de nuestros asesores se pondrá en contacto contigo a la brevedad.\n\nTambién puedes comunicarte directamente al (502) 2220-0000 de lunes a viernes de 8:00 a 17:00 horas.',
+         'Respuesta cuando externo solicita hablar con asesor')
+      ON CONFLICT (clave) DO NOTHING
+    `);
+    logger.info("Auto-migrate: mensajes WA para usuarios externos verificados (4 mensajes)");
+
     // 3. Seed de tareas iniciales si la tabla está vacía
     const [{ tareaCount }] = await db.select({ tareaCount: count() }).from(tareasTable);
     if (tareaCount === 0) {

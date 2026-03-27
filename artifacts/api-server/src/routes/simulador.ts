@@ -2,40 +2,33 @@
  * SIMULADOR DE WHATSAPP — ISP, S.A.
  *
  * Endpoint que permite al administrador probar el comportamiento del bot
- * con diferentes tipos de usuarios, mensajes y perfiles, SIN necesidad
- * de conectar la API real de WhatsApp.
+ * con diferentes tipos de usuarios, mensajes y perfiles.
  *
  * ─── MODOS ────────────────────────────────────────────────────────────────
  *   persistir=false (default) — DRY RUN
  *     · Valida el número (real)
  *     · Clasifica el mensaje (real)
- *     · Detecta la intención y genera la respuesta
+ *     · Genera respuesta usando mensajes configurables
  *     · NO escribe nada en la base de datos
- *     · Ideal para demostraciones y pruebas sin efectos secundarios
  *
  *   persistir=true — EJECUCIÓN REAL
  *     · Todo lo anterior + SÍ crea registros reales en la DB
- *     · Útil para probar el flujo completo end-to-end
  *     · Registros marcados con canal="simulador_admin"
  *
- * ─── LÓGICA REUTILIZADA ───────────────────────────────────────────────────
- *   · validarNumeroWA() — misma lógica que el webhook real
- *   · classifyMessage() — mismo clasificador de intenciones
- *   · getWaMessage()   — mismo sistema de mensajes configurables
- *   · anticipo-session — mismas sesiones en memoria
- *   · Alias resolver   — busca alias de teléfono en la tabla alias
- *
- * ─── ENDPOINTS ────────────────────────────────────────────────────────────
- *   POST /api/simulador          → Procesa un mensaje simulado
- *   GET  /api/simulador/usuarios → Lista usuarios con teléfono
- *   DELETE /api/simulador/sesion → Limpia sesión de anticipo (por teléfono)
+ * ─── LÓGICA DE ACCESO PARA NÚMEROS DESCONOCIDOS ──────────────────────────
+ *   · Clasifica intención ANTES de decidir si bloquear
+ *   · Función interna (anticipo, incidencia) desde externo → menú de alternativas
+ *   · Saludo genérico desde externo → menú de bienvenida
+ *   · Intención externa (lead, postulacion, info, contacto) → procesa normalmente
+ *   · Usuario inactivo → bloqueo total
  */
 
 import { Router } from "express";
 import { pool, db, incidentsTable, applicationsTable, leadsTable } from "@workspace/db";
 import {
   classifyMessage,
-  extractPhoneFromWaId,
+  INTERNAL_INTENTS,
+  type MessageClassification,
 } from "../services/whatsapp/classifier";
 import {
   getSession,
@@ -166,36 +159,74 @@ async function simularMensaje(params: SimularParams): Promise<SimularResult> {
     };
   }
 
-  // 2. Validación de número (misma lógica que el webhook real)
-  let respuestaBloqueo: string | null = null;
-
+  // 2. Validación de número
   if (!skipValidacion) {
+
+    // ── USUARIO INACTIVO: bloqueo total ────────────────────────────────────
+    if (usuario && usuario.estado !== "activo") {
+      debug.validacion.autorizado = false;
+      debug.validacion.motivo = "inactivo";
+      const msg = await getWaMessage(
+        "acceso_inactivo",
+        "🚫 Tu acceso al sistema ha sido desactivado temporalmente. Contacta a tu supervisor o llama al (502) 2220-0000."
+      );
+      debug.clasificacion.intencion = "inactivo";
+      debug.duracionMs = Date.now() - t0;
+      return { respuesta: msg, tipo: "inactivo", debug };
+    }
+
+    // ── NÚMERO DESCONOCIDO: clasificar intención antes de decidir ─────────
     if (!usuario) {
       debug.validacion.autorizado = false;
       debug.validacion.motivo = "no_registrado";
-      respuestaBloqueo = await getWaMessage(
-        "acceso_no_autorizado",
-        "⛔ Tu número no está autorizado para usar este sistema. Comunícate con ISP, S.A. para solicitar acceso."
-      );
-    } else if (usuario.estado !== "activo") {
-      debug.validacion.autorizado = false;
-      debug.validacion.motivo = "inactivo";
-      respuestaBloqueo = await getWaMessage(
-        "acceso_inactivo",
-        "🚫 Tu acceso al sistema ha sido desactivado temporalmente. Contacta a tu supervisor."
-      );
+
+      const intencionPrevia: MessageClassification = classifyMessage(mensaje);
+      debug.clasificacion.intencion = intencionPrevia;
+
+      // Intento de función interna → bloquear con menú de alternativas
+      if (INTERNAL_INTENTS.includes(intencionPrevia)) {
+        const msg = await getWaMessage(
+          "no_autorizado_interno",
+          "🔒 Esta función es exclusiva para colaboradores y clientes registrados de ISP, S.A.\n\n" +
+          "Sin embargo, puedo ayudarte con:\n\n" +
+          "1️⃣ Información sobre nuestros servicios\n" +
+          "2️⃣ Solicitar cotización de seguridad\n" +
+          "3️⃣ Postularte a una plaza de trabajo\n" +
+          "4️⃣ Hablar con un asesor\n\n" +
+          "Escribe el número de opción o cuéntanos en qué podemos ayudarte."
+        );
+        debug.clasificacion.intencion = "no_autorizado_interno";
+        debug.duracionMs = Date.now() - t0;
+        return { respuesta: msg, tipo: "no_autorizado_interno", debug };
+      }
+
+      // Saludo genérico → menú de bienvenida externo
+      if (intencionPrevia === "saludo_externo") {
+        const msg = await getWaMessage(
+          "bienvenida_externo",
+          "👋 ¡Bienvenido a ISP — Investigaciones y Seguridad Profesional S.A.!\n\n" +
+          "Soy el asistente virtual de ISP. ¿En qué puedo ayudarte hoy?\n\n" +
+          "1️⃣ Información sobre nuestros servicios\n" +
+          "2️⃣ Solicitar cotización\n" +
+          "3️⃣ Postularme a una plaza de trabajo\n" +
+          "4️⃣ Hablar con un asesor\n\n" +
+          "Escribe el número de opción o cuéntanos tu necesidad."
+        );
+        debug.clasificacion.intencion = "saludo_externo";
+        debug.duracionMs = Date.now() - t0;
+        return { respuesta: msg, tipo: "saludo_externo", debug };
+      }
+
+      // Intención externa válida (lead, postulacion, info_general, contacto_asesor)
+      // Marcar como número externo pero permitido, continúa el flujo normal
+      debug.validacion.autorizado = false; // sigue sin estar registrado
+      // debug.validacion.motivo mantiene "no_registrado"
     }
   } else {
     debug.validacion.motivo = "omitido_skip";
   }
 
-  if (respuestaBloqueo) {
-    debug.clasificacion.intencion = debug.validacion.motivo ?? "bloqueado";
-    debug.duracionMs = Date.now() - t0;
-    return { respuesta: respuestaBloqueo, tipo: debug.validacion.motivo ?? "bloqueado", debug };
-  }
-
-  // 3. Buscar alias en service_locations / clients
+  // 3. Buscar alias en service_locations
   try {
     const aliasResult = await pool.query<{ alias: string; nombre: string }>(
       `SELECT alias, nombre FROM service_locations WHERE alias ILIKE $1 LIMIT 1`,
@@ -222,7 +253,6 @@ async function simularMensaje(params: SimularParams): Promise<SimularResult> {
     };
 
     if (!persistir && completada) {
-      // En dry-run, limpiar la sesión para que no quede contaminada
       deleteSession(telefono);
     }
 
@@ -230,24 +260,25 @@ async function simularMensaje(params: SimularParams): Promise<SimularResult> {
     return { respuesta, tipo: "anticipo_sesion", debug };
   }
 
-  // 5. Clasificar mensaje
-  const intencion = classifyMessage(mensaje);
+  // 5. Clasificar mensaje (o reusar la ya clasificada)
+  const intencion: MessageClassification =
+    (debug.clasificacion.intencion !== "pendiente" && debug.clasificacion.intencion !== "no_registrado")
+      ? debug.clasificacion.intencion as MessageClassification
+      : classifyMessage(mensaje);
+
   debug.clasificacion.intencion = intencion;
 
   // 6. Procesar según intención
   let respuesta: string | null = null;
-  let tipo = intencion;
+  let tipo: string = intencion;
 
   try {
     if (intencion === "anticipo") {
-      // Anticipo: siempre inicia sesión (la sesión se almacena en memoria)
-      // En dry-run la sesión se crea pero se limpia inmediatamente
       respuesta = await iniciarAnticipo(nombre, telefono);
       debug.clasificacion.intencion = "anticipo_inicio";
       tipo = "anticipo_inicio";
 
       if (!persistir) {
-        // En dry-run: limpiar la sesión recién creada
         deleteSession(telefono);
         debug.entidad = { creada: false, tabla: "anticipos", id: null, dryRun: true };
       } else {
@@ -257,7 +288,7 @@ async function simularMensaje(params: SimularParams): Promise<SimularResult> {
     } else if (intencion === "incidencia") {
       const incidenciaRespuesta = await getWaMessage(
         "incidencia_registrada",
-        "🚨 Incidencia recibida. Nuestro equipo fue notificado y tomará acción inmediata. ID de seguimiento: {id}"
+        "🚨 Incidencia recibida. Nuestro equipo fue notificado y tomará acción inmediata. ID: {id}"
       );
 
       if (persistir) {
@@ -284,7 +315,7 @@ async function simularMensaje(params: SimularParams): Promise<SimularResult> {
     } else if (intencion === "postulacion") {
       const postulacionRespuesta = await getWaMessage(
         "postulacion_registrada",
-        "✅ Tu solicitud fue registrada exitosamente. Te contactaremos en los próximos días para continuar el proceso."
+        "✅ Tu solicitud fue registrada exitosamente. Te contactaremos en los próximos días para continuar el proceso de selección."
       );
 
       if (persistir) {
@@ -304,11 +335,62 @@ async function simularMensaje(params: SimularParams): Promise<SimularResult> {
       }
       respuesta = postulacionRespuesta;
 
+    } else if (intencion === "contacto_asesor") {
+      respuesta = await getWaMessage(
+        "contacto_asesor_externo",
+        "📞 Entendido. Uno de nuestros asesores se pondrá en contacto contigo a la brevedad.\n\n" +
+        "También puedes comunicarte directamente al (502) 2220-0000 de lunes a viernes de 8:00 a 17:00 horas."
+      );
+
+      if (persistir) {
+        const inserted = await db.insert(leadsTable).values({
+          empresa: nombre,
+          contacto: nombre,
+          telefono,
+          correo: null,
+          servicio: "Asesoría",
+          ubicacion: "Guatemala",
+          canal: "simulador_admin",
+          notas: `[ASESOR] ${mensaje}`,
+        }).returning();
+        debug.entidad = { creada: true, tabla: "leads", id: inserted[0].id, dryRun: false };
+      } else {
+        debug.entidad = { creada: false, tabla: "leads", id: null, dryRun: true };
+      }
+
+    } else if (intencion === "info_general") {
+      respuesta = await getWaMessage(
+        "info_servicios_externo",
+        "ℹ️ ISP — Investigaciones y Seguridad Profesional S.A. ofrece:\n\n" +
+        "🔒 Seguridad física y vigilancia\n" +
+        "🚐 Custodia y transporte de valores\n" +
+        "📹 Monitoreo y respuesta a alarmas\n" +
+        "🏢 Seguridad corporativa e industrial\n\n" +
+        "¿Te gustaría solicitar una cotización?\n" +
+        "Escríbenos o llama al (502) 2220-0000."
+      );
+
+      if (persistir) {
+        const inserted = await db.insert(leadsTable).values({
+          empresa: nombre,
+          contacto: nombre,
+          telefono,
+          correo: null,
+          servicio: "Información General",
+          ubicacion: "Guatemala",
+          canal: "simulador_admin",
+          notas: `[INFO] ${mensaje}`,
+        }).returning();
+        debug.entidad = { creada: true, tabla: "leads", id: inserted[0].id, dryRun: false };
+      } else {
+        debug.entidad = { creada: false, tabla: "leads", id: null, dryRun: true };
+      }
+
     } else {
-      // Lead / sin coincidencia
+      // Lead / cotización
       const leadRespuesta = await getWaMessage(
         "lead_registrado",
-        "Gracias por contactarnos. Un ejecutivo de ISP, S.A. se comunicará con usted a la brevedad."
+        "Gracias por contactarnos. Un ejecutivo de ISP, S.A. se comunicará con usted a la brevedad para atender su solicitud."
       );
 
       if (persistir) {
@@ -375,7 +457,6 @@ router.post("/simulador", async (req, res) => {
 });
 
 // ─── GET /api/simulador/usuarios ──────────────────────────────────────────────
-// Lista usuarios del sistema para el selector del simulador
 router.get("/simulador/usuarios", async (_req, res) => {
   try {
     const { rows } = await pool.query<{
@@ -398,7 +479,6 @@ router.get("/simulador/usuarios", async (_req, res) => {
 });
 
 // ─── DELETE /api/simulador/sesion ─────────────────────────────────────────────
-// Limpia la sesión de anticipo activa para un número (útil en el simulador)
 router.delete("/simulador/sesion", async (req, res) => {
   try {
     const { telefono } = req.body;
