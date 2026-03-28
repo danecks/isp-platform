@@ -1,0 +1,118 @@
+El sistema ya tiene cierre operativo diario funcionando, con:
+- cierre_operativo_diario
+- cierre_auditoria
+- cierre del día desde el pizarrón
+- reapertura con auditoría
+- bloqueo del tablero cuando el día está cerrado
+
+No quiero romper nada de lo que ya funciona.
+
+Quiero mejorar esta funcionalidad con dos capacidades nuevas:
+
+1. Historial de cierres pasados
+2. Apertura automática del nuevo día operativo después del cierre
+
+## Objetivo
+Que el sistema no solo cierre el día actual, sino que también permita consultar cierres anteriores y continúe automáticamente con el día siguiente sin dejar el pizarrón bloqueado.
+
+---
+
+## 1. Historial de cierres
+Crear una vista nueva, por ejemplo:
+- /admin/operaciones/cierres
+o una sección equivalente dentro del módulo de operaciones
+
+Debe mostrar una tabla o lista con:
+- fecha operativa
+- estado (cerrado / reabierto / abierto si aplica)
+- cerrado por
+- fecha/hora de cierre
+- reabierto por si aplica
+- motivo de reapertura si aplica
+- resumen del día (puestos cubiertos, relevos, descubiertos, ausencias)
+
+Agregar acción:
+- ver detalle del cierre
+
+---
+
+## 2. Detalle de un cierre pasado
+Al abrir un cierre pasado, mostrar:
+- snapshot del día
+- resumen operativo
+- auditoría de cierre/reapertura
+- quién cerró
+- quién reabrió
+- comentarios
+- estado final
+
+Muy importante:
+los cierres pasados deben abrirse en modo solo lectura.
+
+---
+
+## 3. Nuevo día operativo automático
+Cuando se cierre un día, el sistema debe:
+- dejar ese día como cerrado
+- y automáticamente considerar el siguiente día calendario como el nuevo día operativo abierto
+
+Ejemplo:
+si cierro 28-03-2026, el sistema debe dejar disponible el 29-03-2026 como día abierto para seguir operando.
+
+---
+
+## 4. Manejo por fecha operativa
+Quiero que el pizarrón operativo ya no dependa de un único “estado global”, sino de una fecha operativa.
+
+Agregar soporte para:
+- ver fecha actual
+- consultar otra fecha
+- abrir fechas cerradas en solo lectura
+- operar sobre la fecha abierta actual
+
+Si es posible, agregar selector de fecha en el módulo de operaciones.
+
+---
+
+## 5. Reglas
+- una fecha cerrada no se edita salvo reapertura por admin
+- una fecha pasada cerrada debe verse como snapshot
+- la fecha nueva debe abrirse automáticamente al cerrar la anterior
+- no duplicar cierres para la misma fecha
+
+---
+
+## 6. UI
+En operaciones mostrar claramente:
+- fecha operativa actual
+- estado del día
+- si se está viendo una fecha histórica
+- si está en solo lectura
+
+---
+
+## 7. No romper
+- pizarrón operativo
+- cierre actual
+- reapertura
+- auditoría
+- clientes
+- empleados
+- KPI
+- RRHH
+- anticipos
+- portal
+- WhatsApp
+- Trello
+
+---
+
+## 8. Documentación
+Explica:
+- cómo funciona el historial de cierres
+- cómo se visualizan cierres pasados
+- cómo se abre automáticamente el nuevo día
+- cómo maneja el sistema la fecha operativa
+
+Muy importante:
+quiero que el cierre operativo sea histórico, consultable y que el sistema continúe automáticamente con el siguiente día de operación sin bloquear la continuidad del trabajo.

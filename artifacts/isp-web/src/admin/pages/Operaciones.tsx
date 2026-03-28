@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import {
   DndContext,
   DragOverlay,
@@ -109,23 +110,31 @@ interface CierreResumen {
   horasExtra: number;
 }
 
+interface CierreDiaRecord {
+  id: number;
+  fecha: string;
+  fecha_str?: string;
+  estado: string;
+  cerrado_por: string;
+  cerrado_en: string;
+  comentario: string | null;
+  reabierto_por: string | null;
+  reabierto_en: string | null;
+  motivo_reapertura: string | null;
+}
+
 interface CierreHoyData {
   estado: "abierto" | "cerrado";
-  cierre: {
-    id: number;
-    fecha: string;
-    cerrado_por: string;
-    cerrado_en: string;
-    comentario: string | null;
-    reabierto_por: string | null;
-    reabierto_en: string | null;
-    motivo_reapertura: string | null;
-  } | null;
+  cierre: CierreDiaRecord | null;
+  fechaActiva: string;
+  fechaActivaStr: string;
+  esFechaFutura: boolean;
+  cierreDeHoy: CierreDiaRecord | null;
   resumen: CierreResumen;
   advertencias: string[];
 }
 
-// ─── Helper: fecha de hoy en formato DD-MM-YYYY ────────────────────────────
+// ─── Helper: fecha de hoy en formato DD-MM-YYYY (cliente) ─────────────────
 function fechaHoyStr() {
   const d  = new Date();
   const dd = String(d.getDate()).padStart(2, "0");
@@ -937,15 +946,17 @@ function ModalLiberar({
 function ModalCierre({
   resumen,
   advertencias,
+  fechaActivaStr,
   onConfirm,
   onClose,
 }: {
   resumen: CierreResumen;
   advertencias: string[];
+  fechaActivaStr: string;
   onConfirm: (comentario: string) => Promise<void>;
   onClose: () => void;
 }) {
-  const hoy      = fechaHoyStr();
+  const hoy      = fechaActivaStr;
   const esperado = `CERRAR ${hoy}`;
   const [texto,      setTexto]      = useState("");
   const [comentario, setComentario] = useState("");
@@ -1071,15 +1082,16 @@ function ModalCierre({
 
 function ModalReabrir({
   cierre,
+  fechaParaReabrir,
   onConfirm,
   onClose,
 }: {
-  cierre: CierreHoyData["cierre"];
+  cierre: CierreDiaRecord | null;
+  fechaParaReabrir: string;
   onConfirm: (motivo: string) => Promise<void>;
   onClose: () => void;
 }) {
-  const hoy      = fechaHoyStr();
-  const esperado = `REABRIR ${hoy}`;
+  const esperado = `REABRIR ${fechaParaReabrir}`;
   const [texto,  setTexto]  = useState("");
   const [motivo, setMotivo] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1231,7 +1243,16 @@ export default function Operaciones() {
     refetchInterval: 60_000,
   });
 
+  // isCerrado: la fecha ACTIVA está cerrada (prácticamente nunca true con nuevo modelo de fecha activa)
   const isCerrado = cierreHoy?.estado === "cerrado";
+  // diaHoyCerrado: el día de hoy en el calendario fue cerrado y operamos ya en el siguiente
+  const diaHoyCerrado = !!(cierreHoy?.esFechaFutura && cierreHoy?.cierreDeHoy);
+  // Fecha activa formateada para mostrar en UI (usa la del API si está disponible)
+  const fechaActivaStr = cierreHoy?.fechaActivaStr ?? fechaHoyStr();
+  // Fecha del día cerrado (para reabrir cuando diaHoyCerrado)
+  const fechaCierreParaReabrir = diaHoyCerrado
+    ? (cierreHoy!.cierreDeHoy!.fecha_str ?? fechaHoyStr())
+    : fechaHoyStr();
 
   // ── Invalidar y refrescar ─────────────────────────────────────────────────
   function invalidate() {
@@ -1383,13 +1404,13 @@ export default function Operaciones() {
   async function cerrarDia(comentario: string) {
     try {
       await apiPost(`${API_BASE}/operaciones/cierre`, {
-        confirmacion: `CERRAR ${fechaHoyStr()}`,
+        confirmacion: `CERRAR ${fechaActivaStr}`,
         comentario,
         usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
         usuarioId: currentUser?.id,
         rol: currentUser?.rol,
       });
-      toast({ title: "Día operativo cerrado", description: `Cierre de ${fechaHoyStr()} registrado` });
+      toast({ title: "Día operativo cerrado", description: `Cierre de ${fechaActivaStr} registrado` });
       setModalCierre(false);
       refetchCierre();
     } catch (e: any) {
@@ -1400,15 +1421,19 @@ export default function Operaciones() {
 
   // ── Reabrir día ────────────────────────────────────────────────────────────
   async function reabrirDia(motivo: string) {
+    const fechaISO = diaHoyCerrado
+      ? cierreHoy!.cierreDeHoy!.fecha.substring(0, 10)
+      : (cierreHoy?.cierre?.fecha?.substring(0, 10) ?? undefined);
     try {
       await apiPost(`${API_BASE}/operaciones/reabrir`, {
-        confirmacion: `REABRIR ${fechaHoyStr()}`,
+        confirmacion: `REABRIR ${fechaCierreParaReabrir}`,
         motivo,
+        fecha: fechaISO,
         usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
         usuarioId: currentUser?.id,
         rol: currentUser?.rol,
       });
-      toast({ title: "Día reabierto", description: `El día ${fechaHoyStr()} está activo nuevamente` });
+      toast({ title: "Día reabierto", description: `El día ${fechaCierreParaReabrir} está activo nuevamente` });
       setModalReabrir(false);
       refetchCierre();
     } catch (e: any) {
@@ -1497,6 +1522,15 @@ export default function Operaciones() {
               </div>
             )}
 
+            {/* ── Fecha operativa activa ──────────────────────────────── */}
+            <div className="flex items-center gap-1.5 text-[11px] text-white/30 bg-[#0c1929] border border-white/8 rounded-xl px-3 py-2">
+              <Calendar className="w-3 h-3 text-white/20" />
+              <span className="text-white/50 font-mono">{fechaActivaStr}</span>
+              {diaHoyCerrado && (
+                <span className="text-amber-400/60 font-semibold ml-0.5">↑ siguiente</span>
+              )}
+            </div>
+
             {/* ── Cierre operativo ────────────────────────────────────── */}
             {isCerrado ? (
               <>
@@ -1504,7 +1538,7 @@ export default function Operaciones() {
                   <Lock className="w-3.5 h-3.5 text-amber-400" />
                   <span className="text-xs font-semibold text-amber-300">Día cerrado</span>
                   <span className="text-[10px] text-amber-400/50">•</span>
-                  <span className="text-[10px] text-amber-400/60">{fechaHoyStr()}</span>
+                  <span className="text-[10px] text-amber-400/60">{fechaActivaStr}</span>
                   {cierreHoy?.cierre?.cerrado_por && (
                     <span className="text-[10px] text-amber-400/40 hidden sm:inline">por {cierreHoy.cierre.cerrado_por}</span>
                   )}
@@ -1515,6 +1549,36 @@ export default function Operaciones() {
                     className="flex items-center gap-1.5 text-xs font-semibold text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-xl px-3 py-2 transition-colors"
                   >
                     <Unlock className="w-3.5 h-3.5" /> Reabrir
+                  </button>
+                )}
+              </>
+            ) : diaHoyCerrado ? (
+              <>
+                <div className="flex items-center gap-2 bg-amber-500/8 border border-amber-500/20 rounded-xl px-3 py-2">
+                  <CheckSquare className="w-3.5 h-3.5 text-amber-400/80" />
+                  <span className="text-[11px] font-semibold text-amber-300/80">
+                    {cierreHoy!.cierreDeHoy!.fecha_str ?? "Ayer"} cerrado
+                  </span>
+                  {cierreHoy!.cierreDeHoy!.cerrado_por && (
+                    <span className="text-[10px] text-amber-400/40 hidden sm:inline">
+                      por {cierreHoy!.cierreDeHoy!.cerrado_por}
+                    </span>
+                  )}
+                </div>
+                {esAdmin && (
+                  <button
+                    onClick={() => setModalReabrir(true)}
+                    className="flex items-center gap-1.5 text-[11px] font-semibold text-red-300/70 bg-red-500/8 hover:bg-red-500/15 border border-red-500/15 rounded-xl px-2.5 py-2 transition-colors"
+                  >
+                    <Unlock className="w-3 h-3" /> Reabrir
+                  </button>
+                )}
+                {esSupervisorOAdmin && (
+                  <button
+                    onClick={() => setModalCierre(true)}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-amber-300/80 bg-amber-500/8 hover:bg-amber-500/15 border border-amber-500/20 hover:border-amber-500/40 rounded-xl px-3 py-2 transition-colors"
+                  >
+                    <Lock className="w-3.5 h-3.5" /> Cerrar {fechaActivaStr}
                   </button>
                 )}
               </>
@@ -1550,6 +1614,14 @@ export default function Operaciones() {
               <History className="w-3.5 h-3.5" /> Historial
             </button>
 
+            <a
+              href="/admin/operaciones/cierres"
+              className="flex items-center gap-1.5 text-xs rounded-xl px-3 py-2 border bg-[#0c1929] border-white/8 text-white/40 hover:text-white transition-colors"
+              title="Ver historial de cierres"
+            >
+              <FileText className="w-3.5 h-3.5" /> Cierres
+            </a>
+
             <button
               onClick={() => { refetchTablero(); refetchPool(); refetchCierre(); }}
               className="text-white/30 hover:text-white border border-white/8 rounded-xl px-2.5 py-2 bg-[#0c1929] transition-colors"
@@ -1561,7 +1633,7 @@ export default function Operaciones() {
 
           {/* ── Tablero ──────────────────────────────────────────────────── */}
           <div className="flex-1 overflow-auto relative" style={{ minHeight: 0 }}>
-            {/* Read-only overlay when day is closed */}
+            {/* Read-only overlay when active date is closed */}
             {isCerrado && (
               <div className="absolute inset-0 z-10 pointer-events-none">
                 <div className="absolute inset-0 bg-[#04090f]/60 backdrop-blur-[1px] rounded-xl" />
@@ -1570,7 +1642,7 @@ export default function Operaciones() {
                     <Lock className="w-5 h-5 text-amber-400" />
                     <div>
                       <p className="text-sm font-bold text-amber-300">Día operativo cerrado</p>
-                      <p className="text-xs text-amber-400/60 mt-0.5">Modo solo lectura · {fechaHoyStr()}</p>
+                      <p className="text-xs text-amber-400/60 mt-0.5">Modo solo lectura · {fechaActivaStr}</p>
                     </div>
                     {esAdmin && (
                       <button
@@ -1761,6 +1833,7 @@ export default function Operaciones() {
         <ModalCierre
           resumen={cierreHoy.resumen}
           advertencias={cierreHoy.advertencias}
+          fechaActivaStr={fechaActivaStr}
           onConfirm={cerrarDia}
           onClose={() => setModalCierre(false)}
         />
@@ -1768,7 +1841,8 @@ export default function Operaciones() {
 
       {modalReabrir && (
         <ModalReabrir
-          cierre={cierreHoy?.cierre ?? null}
+          cierre={diaHoyCerrado ? (cierreHoy?.cierreDeHoy ?? null) : (cierreHoy?.cierre ?? null)}
+          fechaParaReabrir={fechaCierreParaReabrir}
           onConfirm={reabrirDia}
           onClose={() => setModalReabrir(false)}
         />
