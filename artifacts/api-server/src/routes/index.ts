@@ -21,6 +21,7 @@ import { eventosRrhhRouter } from "./eventos-rrhh";
 import { rrhhAlertasRouter } from "./rrhh-alertas";
 import sedesRouter from "./sedes";
 import coberturaRouter from "./cobertura";
+import fichaRouter from "./ficha";
 
 const router: IRouter = Router();
 
@@ -46,5 +47,6 @@ router.use(eventosRrhhRouter);
 router.use(rrhhAlertasRouter);
 router.use(sedesRouter);
 router.use(coberturaRouter);
+router.use(fichaRouter);
 
 export default router;

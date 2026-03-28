@@ -1,0 +1,232 @@
+El sistema ya tiene:
+- clientes
+- alias de clientes y puestos
+- sedes operativas
+- puestos y rutas
+- empleados
+- asignaciones base
+- cobertura diaria
+- pizarrón operativo
+- RRHH
+- tareas
+- incidencias
+- anticipos
+- portal de clientes
+- KPI de colaboradores
+
+No quiero romper nada de lo existente.
+
+Quiero avanzar a una nueva fase de arquitectura: Modelo Maestro Operativo Unificado.
+
+## Objetivo
+Unificar la estructura central del sistema para que todos los módulos trabajen sobre la misma información base:
+
+- cliente
+- sede
+- puesto
+- turno / horario
+- cantidad de guardias contratados
+- tarifa / cobro del puesto
+- colaborador titular
+- cobertura diaria
+- tareas según tipo de usuario
+
+Quiero evitar que cada módulo maneje datos parecidos por separado y que existan inconsistencias.
+
+---
+
+## 1. Ficha completa del cliente
+Quiero que el módulo de clientes sea el lugar donde se define la estructura base del servicio contratado.
+
+Cada cliente debe poder tener:
+
+### Datos generales
+- nombre legal
+- nombre comercial
+- alias
+- estado
+
+### Operación contratada
+- sedes
+- puestos por sede
+- horarios / jornadas por puesto
+- cantidad de guardias contratados por puesto o sede
+- tipo de servicio
+
+### Datos comerciales / contractuales
+- tarifa o valor cobrado por puesto
+- observaciones contractuales
+- estado del servicio
+
+### Operación visible
+- titulares asignados
+- cobertura del día
+- ausencias del día
+- relevos del día
+
+---
+
+## 2. Separar claramente contrato vs operación diaria
+Quiero que el sistema deje muy clara la diferencia entre:
+
+### A. Estructura base / contractual
+Lo que el cliente contrató:
+- cuántos puestos
+- qué horarios
+- cuántos guardias
+- cuánto se cobra
+
+### B. Operación diaria
+Lo que realmente pasó hoy:
+- quién cubrió
+- quién faltó
+- quién hizo relevo
+- qué puesto quedó descubierto
+
+Muy importante:
+el pizarrón operativo debe trabajar solo sobre la operación diaria y cobertura, no sobre la configuración contractual del cliente.
+
+---
+
+## 3. Pizarrón operativo
+Quiero que el pizarrón lo usen los jefes de servicio solo para operar:
+
+- cubrir puestos
+- marcar ausencias
+- poner relevos
+- ver pool de descanso
+- ver disponibilidad
+
+No deben poder editar:
+- tarifas
+- cantidad contratada
+- estructura comercial del cliente
+
+El pizarrón debe leer la estructura base ya definida en cliente/sede/puesto.
+
+---
+
+## 4. Titular vs relevo
+Quiero reforzar esta lógica en todo el sistema:
+
+- un colaborador puede ser titular de un puesto
+- otro colaborador puede cubrirlo como relevo
+- el relevo no debe reemplazar ni alterar la asignación titular base
+
+Esto debe reflejarse en:
+- ficha del cliente
+- ficha del colaborador
+- pizarrón
+- reportes diarios
+
+---
+
+## 5. Horarios y jornadas por puesto
+Cada puesto debe poder tener configuración operativa clara, por ejemplo:
+- jornada 12x12
+- horario de entrada y salida
+- ventana de descanso
+- elegibilidad para horas extra
+
+Ejemplo:
+Si en Cervecería sede 1 un guardia trabaja de 12:00 a 00:00, el sistema debe saber que su descanso es de 00:01 a 11:59 y que durante ese descanso puede aparecer en el pool de descanso para posibles relevos.
+
+---
+
+## 6. Integración con colaboradores
+La ficha del colaborador debe quedar amarrada a esta estructura central:
+
+- cliente titular
+- sede titular
+- puesto titular
+- horario titular
+- historial de relevos
+- coberturas realizadas
+- estado actual
+
+Y desde la ficha del cliente debe verse:
+- qué colaboradores titulares tiene
+- quién cubrió hoy
+- quién faltó
+- quién hizo relevo
+
+---
+
+## 7. Integración con tareas
+Quiero que las tareas también se unifiquen mejor con la estructura del sistema.
+
+No quiero tareas genéricas mal asignadas.
+
+Debe quedar claro que:
+- tareas operativas se asignan a supervisores u operaciones
+- tareas administrativas se asignan a RRHH o administración
+- tareas comerciales a comercial
+- y siempre que sea posible se relacione con colaborador, cliente, sede o puesto según el caso
+
+Ejemplo:
+si hay una incidencia, normalmente debe asignarse a personal de oficina (operaciones / administración) o supervisores, no a cualquier usuario arbitrariamente.
+
+---
+
+## 8. Preparación para RRHH derivado de operación
+Quiero dejar mejor preparada la lógica para que eventos operativos puedan generar consecuencias RRHH.
+
+Ejemplo:
+- si un colaborador acumula ausencias o faltas, luego RRHH podrá recibir una tarea o alerta
+- no hace falta construir todo eso ahora, pero sí dejar la arquitectura lista
+
+---
+
+## 9. Preparación para costo operativo
+Dejar la estructura lista para que en la siguiente fase se pueda calcular:
+- costo por puesto
+- costo del colaborador
+- costo de relevo
+- horas extra
+- margen por cliente/sede/puesto
+
+No hace falta terminar toda la lógica financiera ahora, pero sí dejar el modelo central bien preparado.
+
+---
+
+## 10. UI / navegación
+Mantener el diseño actual, pero mejorar coherencia entre:
+- ficha del cliente
+- ficha del colaborador
+- pizarrón operativo
+- tareas
+
+Quiero que todos hablen el mismo idioma visual y de datos.
+
+---
+
+## 11. No romper
+No romper:
+- clientes
+- empleados
+- alias
+- pizarrón operativo
+- RRHH
+- anticipos
+- incidencias
+- emergencias
+- tareas
+- portal de clientes
+- KPI
+- Trello
+- WhatsApp
+
+---
+
+## 12. Documentación
+Explica claramente al final:
+
+- cuál es ahora la entidad maestra del servicio
+- qué datos se configuran en cliente
+- qué datos se operan en el pizarrón
+- cómo se diferencia titular vs relevo
+- cómo se conectan cliente, sede, puesto y colaborador
+- cómo se preparó el sistema para costos y reportería futura
+
+Muy importante:
+quiero que todos los módulos trabajen sobre una estructura única y coherente, para que el sistema refleje la operación real de una empresa de seguridad privada sin inconsistencias entre áreas.

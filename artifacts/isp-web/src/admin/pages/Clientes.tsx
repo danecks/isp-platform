@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useLocation } from "wouter";
 import { AdminLayout } from "../layout/AdminLayout";
 import { StatusBadge } from "../components/StatusBadge";
 import {
   Building2, Tag, MapPin, Search, Plus, Trash2, ChevronDown, ChevronRight,
   X, Loader2, CheckCircle, AlertTriangle, Hash, RefreshCw, Layers,
-  Shield, Users, Clock
+  Shield, Users, Clock, ExternalLink
 } from "lucide-react";
 
 const API = "/api";
@@ -133,6 +134,7 @@ function ModalAgregarAlias({
 function FilaCliente({ client, onRefresh }: { client: Client; onRefresh: () => void }) {
   const [open, setOpen] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [, navigate] = useLocation();
 
   const addAlias = async (alias: string, tipo: string) => {
     const r = await fetch(`${API}/alias/clientes/${client.id}/alias`, {
@@ -163,15 +165,27 @@ function FilaCliente({ client, onRefresh }: { client: Client; onRefresh: () => v
           {open ? <ChevronDown className="w-3 h-3 text-white/30" /> : <ChevronRight className="w-3 h-3 text-white/30" />}
         </td>
         <td className="px-3 py-4">
-          <p className="font-bold text-white text-xs">{client.nombre}</p>
-          {client.nombreComercial && (
-            <p className="text-[10px] text-primary/70 mt-0.5">{client.nombreComercial}</p>
-          )}
-          {client.portalClienteId && (
-            <span className="text-[9px] font-mono text-blue-400/60 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded mt-1 inline-block">
-              Portal: {client.portalClienteId}
-            </span>
-          )}
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="font-bold text-white text-xs">{client.nombre}</p>
+              {client.nombreComercial && (
+                <p className="text-[10px] text-primary/70 mt-0.5">{client.nombreComercial}</p>
+              )}
+              {client.portalClienteId && (
+                <span className="text-[9px] font-mono text-blue-400/60 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded mt-1 inline-block">
+                  Portal: {client.portalClienteId}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); navigate(`/admin/clientes/${client.id}`); }}
+              className="flex items-center gap-1 text-[10px] text-primary/50 hover:text-primary transition-colors shrink-0 px-1.5 py-0.5 rounded hover:bg-primary/8"
+              title="Ver ficha completa"
+            >
+              <ExternalLink className="w-2.5 h-2.5" />
+              Ficha
+            </button>
+          </div>
         </td>
         <td className="px-3 py-4">
           <span className="text-[10px] text-white/40 capitalize bg-white/5 border border-white/8 px-2 py-0.5 rounded-full">

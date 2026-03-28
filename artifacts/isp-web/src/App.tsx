@@ -39,6 +39,7 @@ import AdminEmpleados from "@/admin/pages/Empleados";
 import AdminOperaciones from "@/admin/pages/Operaciones";
 import AdminRrhhEventos from "@/admin/pages/RRHHEventos";
 import AdminRrhhAlertas from "@/admin/pages/RRHHAlertas";
+import AdminFichaCliente from "@/admin/pages/FichaCliente";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
@@ -109,6 +110,9 @@ function Router() {
       </Route>
       <Route path="/admin/custodias">
         {() => <AuthGuard><AdminCustodias /></AuthGuard>}
+      </Route>
+      <Route path="/admin/clientes/:id">
+        {() => <AuthGuard><AdminFichaCliente /></AuthGuard>}
       </Route>
       <Route path="/admin/clientes">
         {() => <AuthGuard><AdminClientes /></AuthGuard>}

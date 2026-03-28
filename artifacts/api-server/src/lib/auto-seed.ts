@@ -1172,5 +1172,31 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: error en sedes/cobertura operativa");
   }
 
+  // ── MODELO MAESTRO OPERATIVO — campos contractuales/operativos ────────────
+  try {
+    // Hacer turno opcional en puestos_operativos (era NOT NULL, ahora es opcional)
+    await pool.query(`ALTER TABLE puestos_operativos ALTER COLUMN turno DROP NOT NULL`);
+
+    // Campos contractuales en clients
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS observaciones_contractuales TEXT`);
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS fecha_inicio_contrato       DATE`);
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS tarifa_base_mensual         NUMERIC(12,2)`);
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS estado_contrato             VARCHAR(30) DEFAULT 'activo'`);
+
+    // Campos operativos + comerciales en puestos_operativos
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS cantidad_contratada  SMALLINT    DEFAULT 1`);
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS tarifa_puesto         NUMERIC(12,2)`);
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS hora_entrada          VARCHAR(5)`);
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS hora_salida           VARCHAR(5)`);
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS descanso_inicio       VARCHAR(5)`);
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS descanso_fin          VARCHAR(5)`);
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS elegible_horas_extra  BOOLEAN     DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS tipo_servicio         VARCHAR(50)`);
+
+    logger.info("Auto-migrate: campos del Modelo Maestro Operativo verificados");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: error en campos Modelo Maestro Operativo");
+  }
+
   logger.info("Auto-seed completado");
 }
