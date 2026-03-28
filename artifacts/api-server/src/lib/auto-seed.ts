@@ -1198,5 +1198,41 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: error en campos Modelo Maestro Operativo");
   }
 
+  // ── CIERRE OPERATIVO DIARIO ──────────────────────────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS cierre_operativo_diario (
+        id                SERIAL PRIMARY KEY,
+        fecha             DATE NOT NULL UNIQUE,
+        estado            VARCHAR(20)  NOT NULL DEFAULT 'abierto',
+        resumen_json      JSONB,
+        cerrado_por_id    INTEGER,
+        cerrado_por       VARCHAR(100),
+        cerrado_en        TIMESTAMPTZ,
+        comentario        TEXT,
+        reabierto_por_id  INTEGER,
+        reabierto_por     VARCHAR(100),
+        reabierto_en      TIMESTAMPTZ,
+        motivo_reapertura TEXT,
+        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS cierre_auditoria (
+        id            SERIAL PRIMARY KEY,
+        cierre_id     INTEGER REFERENCES cierre_operativo_diario(id),
+        fecha_accion  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        accion        VARCHAR(50) NOT NULL,
+        user_id       INTEGER,
+        user_nombre   VARCHAR(100),
+        detalle       TEXT
+      )
+    `);
+    logger.info("Auto-migrate: cierre_operativo_diario y cierre_auditoria OK");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: error en cierre_operativo_diario");
+  }
+
   logger.info("Auto-seed completado");
 }

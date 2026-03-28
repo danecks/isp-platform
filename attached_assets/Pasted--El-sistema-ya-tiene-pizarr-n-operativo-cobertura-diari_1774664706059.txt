@@ -1,0 +1,150 @@
+"}
+El sistema ya tiene:
+- pizarrón operativo
+- cobertura diaria
+- modelo maestro de clientes, sedes y puestos
+- base para reporte diario
+- funcionalidad inicial de cierre diario
+
+No quiero romper nada de lo existente.
+
+Quiero mejorar la funcionalidad de cierre operativo para que sea segura, controlada y se realice directamente desde el pizarrón operativo.
+
+## Objetivo
+Evitar cierres accidentales y asegurar que el cierre del día sea una acción consciente y validada por el jefe de servicio.
+
+---
+
+## 1. Ubicación del cierre
+
+El botón "Cerrar día" debe existir en:
+- Pizarrón Operativo (/admin/operaciones)
+
+No en otros módulos.
+
+---
+
+## 2. Modal de cierre
+
+Al hacer clic en "Cerrar día", mostrar un modal con:
+
+### Resumen del día:
+- puestos totales
+- cubiertos por titular
+- cubiertos por relevo
+- descubiertos
+- ausencias
+- horas extra
+
+### Validaciones:
+Mostrar advertencias si existen:
+- puestos descubiertos
+- relevos sin motivo
+- horas extra sin confirmar
+
+(No bloquear el cierre, solo advertir)
+
+---
+
+## 3. Confirmación obligatoria
+
+Agregar un campo obligatorio:
+
+Texto requerido:
+"CERRAR [fecha]"
+
+Ejemplo:
+"CERRAR 27-03-2026"
+
+El botón de confirmación solo se activa si el texto coincide exactamente.
+
+---
+
+## 4. Confirmación adicional (opcional si es viable)
+
+Si el sistema ya tiene roles:
+- validar que el usuario sea supervisor o admin
+
+Opcional:
+- campo de comentario obligatorio antes de cerrar
+
+---
+
+## 5. Acción de cierre
+
+Al confirmar:
+
+- marcar el día como cerrado
+- guardar snapshot de cobertura diaria
+- consolidar:
+  - titular vs relevo
+  - ausencias
+  - horas extra
+- generar resumen del día
+
+---
+
+## 6. Estado visual
+
+En el pizarrón mostrar:
+
+- badge: "Día cerrado"
+- bloquear interacciones normales
+- mostrar modo solo lectura
+
+---
+
+## 7. Restricciones
+
+Después de cerrar:
+
+- no permitir modificaciones normales
+- permitir override solo para admin
+- registrar cualquier cambio en auditoría
+
+---
+
+## 8. Reapertura (solo admin)
+
+Agregar opción:
+
+"Reabrir día"
+
+Requisitos:
+- confirmación con texto (ej. REABRIR 27-03-2026)
+- motivo obligatorio
+- auditoría completa
+
+---
+
+## 9. No romper
+
+- pizarrón operativo
+- cobertura diaria
+- clientes
+- empleados
+- KPI
+- RRHH
+- anticipos
+- incidencias
+- tareas
+- portal
+- WhatsApp
+- Trello
+
+---
+
+## 10. Documentación
+
+Explicar:
+
+- cómo funciona el cierre del día
+- por qué se usa confirmación por texto
+- qué datos se bloquean
+- cómo funciona la reapertura
+- cómo se mantiene la auditoría
+
+---
+
+Muy importante:
+quiero que el cierre operativo sea seguro, intencional y auditable, evitando errores humanos en un proceso crítico del sistem

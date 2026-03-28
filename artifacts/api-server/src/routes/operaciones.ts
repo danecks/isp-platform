@@ -100,6 +100,9 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
   if (!puestoId || !agenteId) return res.status(400).json({ error: "puestoId y agenteId son requeridos" });
 
   try {
+    if (await verificarDiaCerrado()) {
+      return res.status(423).json({ error: "Día operativo cerrado. Reabre el día para continuar.", diaCerrado: true });
+    }
     const { rows: puestoRows } = await pool.query(`SELECT * FROM puestos_operativos WHERE id=$1`, [puestoId]);
     if (!puestoRows.length) return res.status(404).json({ error: "Puesto no encontrado" });
     const puesto = puestoRows[0];
@@ -165,6 +168,9 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
   const esRelevo = tipoSustitucion === 'relevo';
 
   try {
+    if (await verificarDiaCerrado()) {
+      return res.status(423).json({ error: "Día operativo cerrado. Reabre el día para continuar.", diaCerrado: true });
+    }
     const { rows: puestoRows } = await pool.query(`SELECT * FROM puestos_operativos WHERE id=$1`, [puestoId]);
     if (!puestoRows.length) return res.status(404).json({ error: "Puesto no encontrado" });
     const puesto = puestoRows[0];
@@ -307,6 +313,9 @@ operacionesRouter.post("/operaciones/liberar", async (req, res) => {
   if (!puestoId) return res.status(400).json({ error: "puestoId es requerido" });
 
   try {
+    if (await verificarDiaCerrado()) {
+      return res.status(423).json({ error: "Día operativo cerrado. Reabre el día para continuar.", diaCerrado: true });
+    }
     const { rows: puestoRows } = await pool.query(`SELECT * FROM puestos_operativos WHERE id=$1`, [puestoId]);
     if (!puestoRows.length) return res.status(404).json({ error: "Puesto no encontrado" });
     const puesto = puestoRows[0];
@@ -499,6 +508,206 @@ operacionesRouter.get("/operaciones/agentes/:id/disponibilidad", async (req, res
   } catch (err) {
     logger.error({ err }, "GET /operaciones/agentes/:id/disponibilidad error");
     res.status(500).json({ error: "Error al verificar disponibilidad" });
+  }
+});
+
+// ─── Helper: verificar si el día operativo está cerrado ──────────────────────
+async function verificarDiaCerrado(): Promise<boolean> {
+  const { rows } = await pool.query(
+    `SELECT estado FROM cierre_operativo_diario WHERE fecha = CURRENT_DATE`
+  );
+  return rows[0]?.estado === 'cerrado';
+}
+
+// ─── Helper: fecha hoy en formato DD-MM-YYYY ──────────────────────────────────
+function fechaHoyStr(): string {
+  const hoy = new Date();
+  const dd   = String(hoy.getDate()).padStart(2, '0');
+  const mm   = String(hoy.getMonth() + 1).padStart(2, '0');
+  const yyyy = hoy.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
+}
+
+// ─── GET /api/operaciones/cierre-hoy ─────────────────────────────────────────
+// Estado del cierre + resumen de cobertura del día + advertencias
+operacionesRouter.get("/operaciones/cierre-hoy", async (req, res) => {
+  try {
+    const { rows: cierreRows } = await pool.query(
+      `SELECT * FROM cierre_operativo_diario WHERE fecha = CURRENT_DATE`
+    );
+    const cierre = cierreRows[0] ?? null;
+
+    const { rows: puestos } = await pool.query(`
+      SELECT id, nombre, cliente_nombre, estado, agente_id, titular_employee_id
+      FROM puestos_operativos WHERE activo = TRUE
+    `);
+
+    const totalPuestos        = puestos.length;
+    const cubiertos           = puestos.filter((p: any) => p.estado === 'cubierto').length;
+    const descubiertos        = totalPuestos - cubiertos;
+    const cubiertosPorTitular = puestos.filter((p: any) => p.agente_id && p.agente_id === p.titular_employee_id).length;
+    const cubiertosPorRelevo  = puestos.filter((p: any) => p.agente_id && p.agente_id !== p.titular_employee_id).length;
+
+    const { rows: movHoy } = await pool.query(`
+      SELECT tipo, motivo, COUNT(*) AS cantidad
+      FROM movimientos_operativos
+      WHERE DATE(fecha_hora AT TIME ZONE 'America/Guatemala') = CURRENT_DATE
+      GROUP BY tipo, motivo
+    `);
+
+    const ausencias = movHoy
+      .filter((m: any) => m.motivo === 'falta')
+      .reduce((acc: number, m: any) => acc + parseInt(m.cantidad), 0);
+
+    const { rows: relevosRows } = await pool.query(`
+      SELECT COUNT(*) AS cantidad FROM movimientos_operativos
+      WHERE DATE(fecha_hora AT TIME ZONE 'America/Guatemala') = CURRENT_DATE
+        AND tipo = 'sustitucion' AND (motivo IS NULL OR motivo = '')
+    `);
+    const relevossinMotivo = parseInt(relevosRows[0]?.cantidad ?? '0');
+
+    const advertencias: string[] = [];
+    if (descubiertos > 0)       advertencias.push(`${descubiertos} puesto${descubiertos !== 1 ? 's' : ''} descubierto${descubiertos !== 1 ? 's' : ''}`);
+    if (relevossinMotivo > 0)   advertencias.push(`${relevossinMotivo} relevo${relevossinMotivo !== 1 ? 's' : ''} sin motivo registrado`);
+
+    res.json({
+      estado:       cierre?.estado ?? 'abierto',
+      cierre:       cierre ?? null,
+      resumen: {
+        totalPuestos,
+        cubiertos,
+        descubiertos,
+        cubiertosPorTitular,
+        cubiertosPorRelevo,
+        ausencias,
+        horasExtra: 0,
+      },
+      advertencias,
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /operaciones/cierre-hoy error");
+    res.status(500).json({ error: "Error al consultar estado de cierre" });
+  }
+});
+
+// ─── POST /api/operaciones/cierre ────────────────────────────────────────────
+// Cerrar el día operativo (solo supervisor/admin)
+operacionesRouter.post("/operaciones/cierre", async (req, res) => {
+  const { confirmacion, comentario, usuario, usuarioId, rol } = req.body;
+
+  if (!['admin', 'supervisor'].includes(rol)) {
+    return res.status(403).json({ error: 'Solo supervisores y administradores pueden cerrar el día' });
+  }
+
+  const confirmacionEsperada = `CERRAR ${fechaHoyStr()}`;
+  if (confirmacion !== confirmacionEsperada) {
+    return res.status(400).json({ error: `Texto incorrecto. Escribe exactamente: ${confirmacionEsperada}` });
+  }
+
+  try {
+    const { rows: existente } = await pool.query(
+      `SELECT estado FROM cierre_operativo_diario WHERE fecha = CURRENT_DATE`
+    );
+    if (existente[0]?.estado === 'cerrado') {
+      return res.status(400).json({ error: 'El día operativo ya está cerrado' });
+    }
+
+    // Snapshot de cobertura
+    const { rows: puestos } = await pool.query(`
+      SELECT id, nombre, cliente_nombre, estado, agente_id, agente_nombre,
+             titular_employee_id, titular_nombre
+      FROM puestos_operativos WHERE activo = TRUE
+    `);
+    const totalPuestos        = puestos.length;
+    const cubiertos           = puestos.filter((p: any) => p.estado === 'cubierto').length;
+    const descubiertos        = totalPuestos - cubiertos;
+    const cubiertosPorTitular = puestos.filter((p: any) => p.agente_id && p.agente_id === p.titular_employee_id).length;
+    const cubiertosPorRelevo  = puestos.filter((p: any) => p.agente_id && p.agente_id !== p.titular_employee_id).length;
+
+    const { rows: movHoy } = await pool.query(`
+      SELECT tipo, motivo, agente_saliente_nombre, agente_entrante_nombre, puesto_nombre, cliente_nombre, fecha_hora
+      FROM movimientos_operativos
+      WHERE DATE(fecha_hora AT TIME ZONE 'America/Guatemala') = CURRENT_DATE
+      ORDER BY fecha_hora
+    `);
+    const ausencias = movHoy.filter((m: any) => m.motivo === 'falta').length;
+
+    const resumen = {
+      totalPuestos, cubiertos, descubiertos,
+      cubiertosPorTitular, cubiertosPorRelevo,
+      ausencias, horasExtra: 0,
+      snapshotPuestos: puestos,
+      movimientosHoy: movHoy,
+      fechaCierre: new Date().toISOString(),
+    };
+
+    const { rows: cierreRows } = await pool.query(`
+      INSERT INTO cierre_operativo_diario
+        (fecha, estado, resumen_json, cerrado_por_id, cerrado_por, cerrado_en, comentario)
+      VALUES (CURRENT_DATE, 'cerrado', $1, $2, $3, NOW(), $4)
+      ON CONFLICT (fecha) DO UPDATE
+        SET estado='cerrado', resumen_json=$1, cerrado_por_id=$2,
+            cerrado_por=$3, cerrado_en=NOW(), comentario=$4, updated_at=NOW()
+      RETURNING *
+    `, [JSON.stringify(resumen), usuarioId ?? null, usuario ?? 'sistema', comentario ?? null]);
+
+    await pool.query(`
+      INSERT INTO cierre_auditoria (cierre_id, accion, user_id, user_nombre, detalle)
+      VALUES ($1, 'cerrar', $2, $3, $4)
+    `, [cierreRows[0].id, usuarioId ?? null, usuario ?? 'sistema',
+        `Día ${fechaHoyStr()} cerrado.${comentario ? ` Comentario: ${comentario}` : ''}`]);
+
+    logger.info({ usuario, fecha: fechaHoyStr() }, "Día operativo cerrado");
+    res.json({ ok: true, cierre: cierreRows[0], resumen });
+  } catch (err) {
+    logger.error({ err }, "POST /operaciones/cierre error");
+    res.status(500).json({ error: "Error al cerrar el día" });
+  }
+});
+
+// ─── POST /api/operaciones/reabrir ───────────────────────────────────────────
+// Reabrir el día (solo admin)
+operacionesRouter.post("/operaciones/reabrir", async (req, res) => {
+  const { confirmacion, motivo, usuario, usuarioId, rol } = req.body;
+
+  if (rol !== 'admin') {
+    return res.status(403).json({ error: 'Solo administradores pueden reabrir el día' });
+  }
+  if (!motivo?.trim()) {
+    return res.status(400).json({ error: 'El motivo de reapertura es obligatorio' });
+  }
+
+  const confirmacionEsperada = `REABRIR ${fechaHoyStr()}`;
+  if (confirmacion !== confirmacionEsperada) {
+    return res.status(400).json({ error: `Texto incorrecto. Escribe exactamente: ${confirmacionEsperada}` });
+  }
+
+  try {
+    const { rows: cierreRows } = await pool.query(
+      `SELECT * FROM cierre_operativo_diario WHERE fecha = CURRENT_DATE`
+    );
+    if (!cierreRows[0] || cierreRows[0].estado !== 'cerrado') {
+      return res.status(400).json({ error: 'El día operativo no está cerrado' });
+    }
+
+    const { rows: updated } = await pool.query(`
+      UPDATE cierre_operativo_diario
+      SET estado='abierto', reabierto_por_id=$1, reabierto_por=$2,
+          reabierto_en=NOW(), motivo_reapertura=$3, updated_at=NOW()
+      WHERE fecha = CURRENT_DATE
+      RETURNING *
+    `, [usuarioId ?? null, usuario ?? 'sistema', motivo]);
+
+    await pool.query(`
+      INSERT INTO cierre_auditoria (cierre_id, accion, user_id, user_nombre, detalle)
+      VALUES ($1, 'reabrir', $2, $3, $4)
+    `, [updated[0].id, usuarioId ?? null, usuario ?? 'sistema', `Reapertura: ${motivo}`]);
+
+    logger.info({ usuario, fecha: fechaHoyStr(), motivo }, "Día operativo reabierto");
+    res.json({ ok: true, cierre: updated[0] });
+  } catch (err) {
+    logger.error({ err }, "POST /operaciones/reabrir error");
+    res.status(500).json({ error: "Error al reabrir el día" });
   }
 });
 

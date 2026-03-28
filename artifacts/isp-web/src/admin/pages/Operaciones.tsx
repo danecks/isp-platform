@@ -21,6 +21,7 @@ import {
   History, Trash2, Shield, Activity, Zap, ChevronDown,
   ChevronRight, Info, Building2, Circle, GripVertical,
   UserMinus, UserPlus, XCircle, RotateCcw, FileText,
+  Lock, Unlock, Calendar, AlertCircle, CheckSquare,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -96,6 +97,40 @@ interface ClienteDisponible {
   nombre: string;
   nombre_comercial: string | null;
   portal_cliente_id: string | null;
+}
+
+interface CierreResumen {
+  totalPuestos: number;
+  cubiertos: number;
+  descubiertos: number;
+  cubiertosPorTitular: number;
+  cubiertosPorRelevo: number;
+  ausencias: number;
+  horasExtra: number;
+}
+
+interface CierreHoyData {
+  estado: "abierto" | "cerrado";
+  cierre: {
+    id: number;
+    fecha: string;
+    cerrado_por: string;
+    cerrado_en: string;
+    comentario: string | null;
+    reabierto_por: string | null;
+    reabierto_en: string | null;
+    motivo_reapertura: string | null;
+  } | null;
+  resumen: CierreResumen;
+  advertencias: string[];
+}
+
+// ─── Helper: fecha de hoy en formato DD-MM-YYYY ────────────────────────────
+function fechaHoyStr() {
+  const d  = new Date();
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}-${mm}-${d.getFullYear()}`;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -897,12 +932,255 @@ function ModalLiberar({
   );
 }
 
+// ─── Modal: Cerrar día ────────────────────────────────────────────────────────
+
+function ModalCierre({
+  resumen,
+  advertencias,
+  onConfirm,
+  onClose,
+}: {
+  resumen: CierreResumen;
+  advertencias: string[];
+  onConfirm: (comentario: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const hoy      = fechaHoyStr();
+  const esperado = `CERRAR ${hoy}`;
+  const [texto,      setTexto]      = useState("");
+  const [comentario, setComentario] = useState("");
+  const [loading,    setLoading]    = useState(false);
+  const valido = texto === esperado;
+
+  async function handleConfirm() {
+    if (!valido) return;
+    setLoading(true);
+    try { await onConfirm(comentario); }
+    finally { setLoading(false); }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+      <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/8 bg-amber-500/5">
+          <div className="flex items-center gap-2">
+            <Lock className="w-4 h-4 text-amber-400" />
+            <h3 className="text-sm font-bold text-white">Cerrar día operativo</h3>
+            <span className="text-xs text-amber-400/70 bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded-full">{hoy}</span>
+          </div>
+          <button onClick={onClose} className="text-white/30 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Resumen */}
+          <div>
+            <p className="text-[11px] text-white/40 uppercase tracking-widest mb-2 font-semibold">Resumen del día</p>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: "Puestos totales",    value: resumen.totalPuestos,        color: "text-white" },
+                { label: "Cubiertos titular",  value: resumen.cubiertosPorTitular, color: "text-green-400" },
+                { label: "Cubiertos relevo",   value: resumen.cubiertosPorRelevo,  color: "text-yellow-400" },
+                { label: "Descubiertos",        value: resumen.descubiertos,        color: resumen.descubiertos > 0 ? "text-red-400" : "text-white/30" },
+                { label: "Ausencias",           value: resumen.ausencias,           color: resumen.ausencias > 0 ? "text-orange-400" : "text-white/30" },
+                { label: "Horas extra",         value: resumen.horasExtra,          color: "text-blue-400" },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="bg-[#0c1929] border border-white/6 rounded-xl p-2.5 text-center">
+                  <p className={`text-xl font-bold leading-none ${color}`}>{value}</p>
+                  <p className="text-[9px] text-white/30 mt-1 leading-tight">{label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Advertencias */}
+          {advertencias.length > 0 && (
+            <div className="bg-amber-500/8 border border-amber-500/20 rounded-xl p-3 space-y-1.5">
+              <div className="flex items-center gap-1.5 mb-2">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-[11px] font-semibold text-amber-400">Advertencias (no bloquean el cierre)</span>
+              </div>
+              {advertencias.map((a, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs text-amber-300/80">
+                  <span className="w-1 h-1 rounded-full bg-amber-400 shrink-0" />
+                  {a}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Comentario opcional */}
+          <div className="space-y-1">
+            <label className="text-xs text-white/40">Comentario del cierre (opcional)</label>
+            <textarea
+              value={comentario}
+              onChange={(e) => setComentario(e.target.value)}
+              placeholder="Observaciones del día, novedades…"
+              rows={2}
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50 resize-none"
+            />
+          </div>
+
+          {/* Confirmación por texto */}
+          <div className="space-y-2">
+            <label className="text-xs text-white/40">
+              Para confirmar, escribe exactamente:
+              <span className="text-white font-bold ml-1 font-mono">{esperado}</span>
+            </label>
+            <input
+              type="text"
+              value={texto}
+              onChange={(e) => setTexto(e.target.value)}
+              placeholder={esperado}
+              className={`w-full bg-[#060e1c] border rounded-lg px-3 py-2.5 text-sm font-mono placeholder-white/15 outline-none transition-colors
+                ${valido ? "border-green-500/50 text-green-300" : texto ? "border-red-500/30 text-white" : "border-white/10 text-white"}`}
+            />
+            {valido && (
+              <div className="flex items-center gap-1.5 text-xs text-green-400">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Confirmación válida
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleConfirm}
+              disabled={!valido || loading}
+              className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-sm font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+            >
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Lock className="w-3.5 h-3.5" />}
+              Cerrar día
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── Modal: Reabrir día ───────────────────────────────────────────────────────
+
+function ModalReabrir({
+  cierre,
+  onConfirm,
+  onClose,
+}: {
+  cierre: CierreHoyData["cierre"];
+  onConfirm: (motivo: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const hoy      = fechaHoyStr();
+  const esperado = `REABRIR ${hoy}`;
+  const [texto,  setTexto]  = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [loading, setLoading] = useState(false);
+  const valido = texto === esperado && motivo.trim().length >= 5;
+
+  async function handleConfirm() {
+    if (!valido) return;
+    setLoading(true);
+    try { await onConfirm(motivo.trim()); }
+    finally { setLoading(false); }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+      <div className="bg-[#07111f] border border-red-500/20 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-red-500/15 bg-red-500/5">
+          <div className="flex items-center gap-2">
+            <Unlock className="w-4 h-4 text-red-400" />
+            <h3 className="text-sm font-bold text-white">Reabrir día operativo</h3>
+          </div>
+          <button onClick={onClose} className="text-white/30 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {cierre && (
+            <div className="bg-[#0c1929] border border-white/8 rounded-xl p-3 text-xs text-white/50 space-y-1">
+              <p>Cerrado por: <span className="text-white/80">{cierre.cerrado_por}</span></p>
+              <p>Fecha/hora: <span className="text-white/80">{new Date(cierre.cerrado_en).toLocaleString("es-GT")}</span></p>
+              {cierre.comentario && <p>Comentario: <span className="text-white/80">{cierre.comentario}</span></p>}
+            </div>
+          )}
+
+          <div className="bg-red-500/8 border border-red-500/20 rounded-xl p-3 text-xs text-red-300/80">
+            <AlertCircle className="w-3.5 h-3.5 inline mr-1.5 text-red-400" />
+            Esta acción requiere justificación y queda registrada en auditoría.
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs text-white/40">Motivo de reapertura <span className="text-red-400">*</span></label>
+            <textarea
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              placeholder="Describe el motivo de la reapertura…"
+              rows={2}
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-red-500/40 resize-none"
+            />
+            {motivo.trim().length > 0 && motivo.trim().length < 5 && (
+              <p className="text-[10px] text-red-400">Mínimo 5 caracteres</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs text-white/40">
+              Para confirmar, escribe exactamente:
+              <span className="text-white font-bold ml-1 font-mono">{esperado}</span>
+            </label>
+            <input
+              type="text"
+              value={texto}
+              onChange={(e) => setTexto(e.target.value)}
+              placeholder={esperado}
+              className={`w-full bg-[#060e1c] border rounded-lg px-3 py-2.5 text-sm font-mono placeholder-white/15 outline-none transition-colors
+                ${texto === esperado ? "border-green-500/50 text-green-300" : texto ? "border-red-500/30 text-white" : "border-white/10 text-white"}`}
+            />
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleConfirm}
+              disabled={!valido || loading}
+              className="flex-1 py-2.5 rounded-xl bg-red-700 hover:bg-red-600 text-sm font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+            >
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Unlock className="w-3.5 h-3.5" />}
+              Reabrir día
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function Operaciones() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { currentUser } = useAuth();
+
+  // ── Roles ─────────────────────────────────────────────────────────────────
+  const esAdmin             = currentUser?.rol === "admin";
+  const esSupervisorOAdmin  = esAdmin || currentUser?.rol === "supervisor";
 
   // ── Estado UI ──────────────────────────────────────────────────────────────
   const [agenteSeleccionado, setAgenteSeleccionado] = useState<Agente | null>(null);
@@ -913,6 +1191,8 @@ export default function Operaciones() {
   const [modalLiberar, setModalLiberar]              = useState<Puesto | null>(null);
   const [poolTab, setPoolTab]                        = useState<"disponibles" | "enDescanso" | "suspendidos" | "enPuesto">("disponibles");
   const [busquedaPool, setBusquedaPool]              = useState("");
+  const [modalCierre, setModalCierre]                = useState(false);
+  const [modalReabrir, setModalReabrir]              = useState(false);
 
   // ── Sensores DnD ──────────────────────────────────────────────────────────
   const sensors = useSensors(
@@ -945,6 +1225,14 @@ export default function Operaciones() {
     queryFn: () => fetch(`${API_BASE}/operaciones/clientes-disponibles`).then((r) => r.json()),
   });
 
+  const { data: cierreHoy, refetch: refetchCierre } = useQuery<CierreHoyData>({
+    queryKey: ["operaciones-cierre-hoy"],
+    queryFn: () => fetch(`${API_BASE}/operaciones/cierre-hoy`).then((r) => r.json()),
+    refetchInterval: 60_000,
+  });
+
+  const isCerrado = cierreHoy?.estado === "cerrado";
+
   // ── Invalidar y refrescar ─────────────────────────────────────────────────
   function invalidate() {
     qc.invalidateQueries({ queryKey: ["operaciones-tablero"] });
@@ -954,6 +1242,7 @@ export default function Operaciones() {
 
   // ── DnD: inicio ───────────────────────────────────────────────────────────
   function handleDragStart(event: DragStartEvent) {
+    if (isCerrado) return;
     const agenteId = parseInt(event.active.id.toString().replace("agent-", ""));
     const agente = [
       ...(pool?.disponibles ?? []),
@@ -969,6 +1258,7 @@ export default function Operaciones() {
     const { active, over } = event;
     setDraggingAgente(null);
 
+    if (isCerrado) return;
     if (!over) return;
 
     const agenteId = parseInt(active.id.toString().replace("agent-", ""));
@@ -1015,6 +1305,7 @@ export default function Operaciones() {
 
   // ── Click en puesto: asignar agente seleccionado ──────────────────────────
   async function handlePuestoClick(puesto: Puesto) {
+    if (isCerrado) return;
     if (!agenteSeleccionado) return;
     await iniciarAsignacion(puesto, agenteSeleccionado);
   }
@@ -1086,6 +1377,44 @@ export default function Operaciones() {
     await apiPost(`${API_BASE}/operaciones/puestos`, data);
     toast({ title: "Puesto creado", description: `${data.nombre} — ${data.clienteNombre}` });
     invalidate();
+  }
+
+  // ── Cerrar día ─────────────────────────────────────────────────────────────
+  async function cerrarDia(comentario: string) {
+    try {
+      await apiPost(`${API_BASE}/operaciones/cierre`, {
+        confirmacion: `CERRAR ${fechaHoyStr()}`,
+        comentario,
+        usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+        usuarioId: currentUser?.id,
+        rol: currentUser?.rol,
+      });
+      toast({ title: "Día operativo cerrado", description: `Cierre de ${fechaHoyStr()} registrado` });
+      setModalCierre(false);
+      refetchCierre();
+    } catch (e: any) {
+      toast({ title: "Error al cerrar", description: e.error ?? "Error desconocido", variant: "destructive" });
+      throw e;
+    }
+  }
+
+  // ── Reabrir día ────────────────────────────────────────────────────────────
+  async function reabrirDia(motivo: string) {
+    try {
+      await apiPost(`${API_BASE}/operaciones/reabrir`, {
+        confirmacion: `REABRIR ${fechaHoyStr()}`,
+        motivo,
+        usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+        usuarioId: currentUser?.id,
+        rol: currentUser?.rol,
+      });
+      toast({ title: "Día reabierto", description: `El día ${fechaHoyStr()} está activo nuevamente` });
+      setModalReabrir(false);
+      refetchCierre();
+    } catch (e: any) {
+      toast({ title: "Error al reabrir", description: e.error ?? "Error desconocido", variant: "destructive" });
+      throw e;
+    }
   }
 
   // ── Eliminar puesto ───────────────────────────────────────────────────────
@@ -1168,12 +1497,48 @@ export default function Operaciones() {
               </div>
             )}
 
-            <button
-              onClick={() => setNuevoPuestoData("nuevo")}
-              className="flex items-center gap-1.5 text-xs font-semibold text-white bg-primary hover:bg-primary/90 rounded-xl px-3 py-2 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" /> Nuevo puesto
-            </button>
+            {/* ── Cierre operativo ────────────────────────────────────── */}
+            {isCerrado ? (
+              <>
+                <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/25 rounded-xl px-3 py-2">
+                  <Lock className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-xs font-semibold text-amber-300">Día cerrado</span>
+                  <span className="text-[10px] text-amber-400/50">•</span>
+                  <span className="text-[10px] text-amber-400/60">{fechaHoyStr()}</span>
+                  {cierreHoy?.cierre?.cerrado_por && (
+                    <span className="text-[10px] text-amber-400/40 hidden sm:inline">por {cierreHoy.cierre.cerrado_por}</span>
+                  )}
+                </div>
+                {esAdmin && (
+                  <button
+                    onClick={() => setModalReabrir(true)}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-xl px-3 py-2 transition-colors"
+                  >
+                    <Unlock className="w-3.5 h-3.5" /> Reabrir
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                {esSupervisorOAdmin && (
+                  <button
+                    onClick={() => setModalCierre(true)}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-amber-300/80 bg-amber-500/8 hover:bg-amber-500/15 border border-amber-500/20 hover:border-amber-500/40 rounded-xl px-3 py-2 transition-colors"
+                  >
+                    <Lock className="w-3.5 h-3.5" /> Cerrar día
+                  </button>
+                )}
+              </>
+            )}
+
+            {!isCerrado && (
+              <button
+                onClick={() => setNuevoPuestoData("nuevo")}
+                className="flex items-center gap-1.5 text-xs font-semibold text-white bg-primary hover:bg-primary/90 rounded-xl px-3 py-2 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" /> Nuevo puesto
+              </button>
+            )}
 
             <button
               onClick={() => setHistorialAbierto(!historialAbierto)}
@@ -1186,7 +1551,7 @@ export default function Operaciones() {
             </button>
 
             <button
-              onClick={() => { refetchTablero(); refetchPool(); }}
+              onClick={() => { refetchTablero(); refetchPool(); refetchCierre(); }}
               className="text-white/30 hover:text-white border border-white/8 rounded-xl px-2.5 py-2 bg-[#0c1929] transition-colors"
               title="Refrescar"
             >
@@ -1195,7 +1560,30 @@ export default function Operaciones() {
           </div>
 
           {/* ── Tablero ──────────────────────────────────────────────────── */}
-          <div className="flex-1 overflow-auto" style={{ minHeight: 0 }}>
+          <div className="flex-1 overflow-auto relative" style={{ minHeight: 0 }}>
+            {/* Read-only overlay when day is closed */}
+            {isCerrado && (
+              <div className="absolute inset-0 z-10 pointer-events-none">
+                <div className="absolute inset-0 bg-[#04090f]/60 backdrop-blur-[1px] rounded-xl" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="flex items-center gap-3 bg-[#07111f] border border-amber-500/30 rounded-2xl px-6 py-4 shadow-2xl shadow-amber-500/10">
+                    <Lock className="w-5 h-5 text-amber-400" />
+                    <div>
+                      <p className="text-sm font-bold text-amber-300">Día operativo cerrado</p>
+                      <p className="text-xs text-amber-400/60 mt-0.5">Modo solo lectura · {fechaHoyStr()}</p>
+                    </div>
+                    {esAdmin && (
+                      <button
+                        onClick={() => setModalReabrir(true)}
+                        className="pointer-events-auto flex items-center gap-1.5 text-xs font-semibold text-white bg-red-600/80 hover:bg-red-600 rounded-xl px-3 py-1.5 ml-2 transition-colors"
+                      >
+                        <Unlock className="w-3 h-3" /> Reabrir
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
             {loadingTablero ? (
               <div className="flex items-center justify-center h-full">
                 <Loader2 className="w-6 h-6 animate-spin text-primary mr-2" />
@@ -1294,10 +1682,11 @@ export default function Operaciones() {
                     <DraggableAgente
                       agente={agente}
                       isSelected={agenteSeleccionado?.id === agente.id}
-                      onClick={() => setAgenteSeleccionado(
-                        agenteSeleccionado?.id === agente.id ? null : agente
-                      )}
-                      disabled={poolTab === "enPuesto"}
+                      onClick={() => {
+                        if (isCerrado) return;
+                        setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente);
+                      }}
+                      disabled={poolTab === "enPuesto" || isCerrado}
                     />
                   </div>
                 ))
@@ -1365,6 +1754,23 @@ export default function Operaciones() {
           clientes={clientesDisponibles}
           onSave={crearPuesto}
           onClose={() => setNuevoPuestoData(null)}
+        />
+      )}
+
+      {modalCierre && cierreHoy && (
+        <ModalCierre
+          resumen={cierreHoy.resumen}
+          advertencias={cierreHoy.advertencias}
+          onConfirm={cerrarDia}
+          onClose={() => setModalCierre(false)}
+        />
+      )}
+
+      {modalReabrir && (
+        <ModalReabrir
+          cierre={cierreHoy?.cierre ?? null}
+          onConfirm={reabrirDia}
+          onClose={() => setModalReabrir(false)}
         />
       )}
     </AdminLayout>
