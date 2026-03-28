@@ -342,8 +342,16 @@ function ModalSegmentos({
     return `${d}-${m}-${y}`;
   })();
 
+  const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const horaInicioInvalida = horaInicio.length > 0 && !HHMM.test(horaInicio);
+  const horaFinInvalida    = horaFin.length > 0    && !HHMM.test(horaFin);
+
   async function agregarSegmento() {
     if (!empleadoSel) { toast({ title: "Selecciona un empleado", variant: "destructive" }); return; }
+    if (horaInicioInvalida || horaFinInvalida) {
+      toast({ title: "Formato de hora inválido — usa HH:MM (ej: 06:00)", variant: "destructive" });
+      return;
+    }
     setGuardando(true);
     try {
       const res = await fetch(`${API_BASE}/cobertura/segmentos`, {
@@ -546,8 +554,9 @@ function ModalSegmentos({
                 maxLength={5}
                 value={horaInicio}
                 onChange={(e) => setHoraInicio(e.target.value)}
-                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white placeholder:text-white/15 outline-none focus:border-indigo-400/40"
+                className={`w-full bg-[#060e1c] border rounded-lg px-2 py-1.5 text-xs text-white placeholder:text-white/15 outline-none transition-colors ${horaInicioInvalida ? "border-red-500/60 focus:border-red-400" : "border-white/10 focus:border-indigo-400/40"}`}
               />
+              {horaInicioInvalida && <p className="text-[9px] text-red-400">Formato HH:MM</p>}
             </div>
             <div className="space-y-1">
               <label className="text-[10px] text-white/35">Fin</label>
@@ -557,8 +566,9 @@ function ModalSegmentos({
                 maxLength={5}
                 value={horaFin}
                 onChange={(e) => setHoraFin(e.target.value)}
-                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white placeholder:text-white/15 outline-none focus:border-indigo-400/40"
+                className={`w-full bg-[#060e1c] border rounded-lg px-2 py-1.5 text-xs text-white placeholder:text-white/15 outline-none transition-colors ${horaFinInvalida ? "border-red-500/60 focus:border-red-400" : "border-white/10 focus:border-indigo-400/40"}`}
               />
+              {horaFinInvalida && <p className="text-[9px] text-red-400">Formato HH:MM</p>}
             </div>
           </div>
 

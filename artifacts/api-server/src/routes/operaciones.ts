@@ -639,9 +639,23 @@ operacionesRouter.get("/operaciones/cierre-hoy", async (req, res) => {
     `);
     const relevossinMotivo = parseInt(relevosRows[0]?.cantidad ?? '0');
 
+    // Puestos cubiertos sin tramos registrados en cobertura_segmentos
+    const { rows: sinSegmentos } = await pool.query(`
+      SELECT COUNT(*)::int AS cantidad
+      FROM puestos_operativos po
+      WHERE po.activo = TRUE AND po.estado = 'cubierto'
+        AND NOT EXISTS (
+          SELECT 1 FROM cobertura_segmentos cs
+          WHERE cs.puesto_id = po.id
+            AND cs.fecha = $1
+        )
+    `, [fechaActivaISO]);
+    const puestosSinTramos = sinSegmentos[0]?.cantidad ?? 0;
+
     const advertencias: string[] = [];
     if (descubiertos > 0)     advertencias.push(`${descubiertos} puesto${descubiertos !== 1 ? 's' : ''} descubierto${descubiertos !== 1 ? 's' : ''}`);
     if (relevossinMotivo > 0) advertencias.push(`${relevossinMotivo} relevo${relevossinMotivo !== 1 ? 's' : ''} sin motivo registrado`);
+    if (puestosSinTramos > 0) advertencias.push(`${puestosSinTramos} puesto${puestosSinTramos !== 1 ? 's' : ''} cubierto${puestosSinTramos !== 1 ? 's' : ''} sin tramos de cobertura registrados`);
 
     res.json({
       estado:         cierreActiva?.estado ?? 'abierto',

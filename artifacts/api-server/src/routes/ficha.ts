@@ -159,6 +159,7 @@ fichaRouter.post("/clientes/:id/puestos", async (req, res) => {
     cantidad_contratada, tarifa_puesto, tipo_servicio,
     elegible_horas_extra, costo_hora,
     sede_id, notas, orden,
+    zona_operativa_id, titular_employee_id,
   } = req.body;
 
   if (!nombre) return res.status(400).json({ error: "nombre es requerido" });
@@ -169,13 +170,24 @@ fichaRouter.post("/clientes/:id/puestos", async (req, res) => {
     if (!cRows.length) return res.status(404).json({ error: "Cliente no encontrado" });
     const clienteNombre = cRows[0].nombre_comercial || cRows[0].nombre;
 
+    // Obtener nombre del titular si se proporcionó
+    let titularNombre: string | null = null;
+    if (titular_employee_id) {
+      const { rows: empRows } = await pool.query(
+        `SELECT nombre_completo FROM employees WHERE id = $1`,
+        [titular_employee_id]
+      );
+      if (empRows.length) titularNombre = empRows[0].nombre_completo;
+    }
+
     const { rows } = await pool.query(
       `INSERT INTO puestos_operativos
          (cliente_id, cliente_nombre, nombre, turno, jornada, horario,
           hora_entrada, hora_salida, descanso_inicio, descanso_fin,
           cantidad_contratada, tarifa_puesto, tipo_servicio, elegible_horas_extra,
-          costo_hora, sede_id, notas, orden, estado, activo)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'disponible',TRUE)
+          costo_hora, sede_id, notas, orden, zona_operativa_id,
+          titular_employee_id, titular_nombre, estado, activo)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,'disponible',TRUE)
        RETURNING *`,
       [
         clientId, clienteNombre, nombre,
@@ -190,6 +202,9 @@ fichaRouter.post("/clientes/:id/puestos", async (req, res) => {
         sede_id || null,
         notas || null,
         orden || 99,
+        zona_operativa_id || null,
+        titular_employee_id || null,
+        titularNombre,
       ]
     );
     res.status(201).json(rows[0]);
@@ -208,9 +223,24 @@ fichaRouter.patch("/puestos/:id", async (req, res) => {
     cantidad_contratada, tarifa_puesto, tipo_servicio,
     elegible_horas_extra, costo_hora,
     sede_id, notas, orden, activo,
+    zona_operativa_id, titular_employee_id,
   } = req.body;
 
   try {
+    // Obtener nombre del titular si se proporcionó
+    let titularNombre: string | null | undefined = undefined;
+    if (titular_employee_id !== undefined) {
+      if (titular_employee_id === null) {
+        titularNombre = null;
+      } else {
+        const { rows: empRows } = await pool.query(
+          `SELECT nombre_completo FROM employees WHERE id = $1`,
+          [titular_employee_id]
+        );
+        if (empRows.length) titularNombre = empRows[0].nombre_completo;
+      }
+    }
+
     const { rows } = await pool.query(
       `UPDATE puestos_operativos
        SET nombre               = COALESCE($1,  nombre),
@@ -230,8 +260,11 @@ fichaRouter.patch("/puestos/:id", async (req, res) => {
            notas                = COALESCE($15, notas),
            orden                = COALESCE($16, orden),
            activo               = COALESCE($17, activo),
+           zona_operativa_id    = COALESCE($18, zona_operativa_id),
+           titular_employee_id  = COALESCE($19, titular_employee_id),
+           titular_nombre       = COALESCE($20, titular_nombre),
            updated_at           = NOW()
-       WHERE id = $18
+       WHERE id = $21
        RETURNING *`,
       [
         nombre ?? null, turno ?? null, jornada ?? null, horario ?? null,
@@ -240,6 +273,9 @@ fichaRouter.patch("/puestos/:id", async (req, res) => {
         cantidad_contratada ?? null, tarifa_puesto ?? null, tipo_servicio ?? null,
         elegible_horas_extra ?? null, costo_hora ?? null,
         sede_id ?? null, notas ?? null, orden ?? null, activo ?? null,
+        zona_operativa_id !== undefined ? zona_operativa_id : null,
+        titular_employee_id !== undefined ? titular_employee_id : null,
+        titularNombre !== undefined ? titularNombre : null,
         req.params.id,
       ]
     );

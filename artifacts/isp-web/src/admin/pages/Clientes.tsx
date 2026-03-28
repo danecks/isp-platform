@@ -46,6 +46,126 @@ const tipoBadge = (tipo: string) => {
   return map[tipo] || map.comun;
 };
 
+// ─── Modal: Nuevo Cliente ─────────────────────────────────────────────────────
+function ModalNuevoCliente({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({ nombre: "", nombreComercial: "", nit: "", sector: "", notas: "" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const up = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }));
+
+  const handleSave = async () => {
+    if (!form.nombre.trim()) { setError("El nombre legal es requerido"); return; }
+    setLoading(true); setError("");
+    try {
+      const r = await fetch(`${API}/alias/clientes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
+        body: JSON.stringify({
+          nombre: form.nombre.trim(),
+          nombreComercial: form.nombreComercial.trim() || null,
+          nit: form.nit.trim() || null,
+          sector: form.sector.trim() || null,
+          notas: form.notas.trim() || null,
+        }),
+      });
+      if (!r.ok) { const d = await r.json(); throw new Error(d.error || "Error al crear cliente"); }
+      onSaved();
+      onClose();
+    } catch (e: any) {
+      setError(e.message || "Error al crear cliente");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const sectores = ["Bancario", "Industrial", "Comercio", "Residencial", "Educación", "Salud", "Gobierno", "Transporte", "Tecnología", "Otro"];
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-[#0c1829] border border-white/10 rounded-2xl w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-primary" />
+            <h2 className="text-sm font-bold text-white">Nuevo cliente</h2>
+          </div>
+          <button onClick={onClose} className="text-white/30 hover:text-white transition-colors"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="space-y-1">
+            <label className="text-[10px] text-white/40 uppercase tracking-wide">Nombre legal *</label>
+            <input
+              autoFocus
+              type="text"
+              value={form.nombre}
+              onChange={(e) => up("nombre", e.target.value)}
+              placeholder="Ej: Supermercados El Ahorro S.A."
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] text-white/40 uppercase tracking-wide">Nombre comercial</label>
+            <input
+              type="text"
+              value={form.nombreComercial}
+              onChange={(e) => up("nombreComercial", e.target.value)}
+              placeholder="Ej: El Ahorro"
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-[10px] text-white/40 uppercase tracking-wide">NIT</label>
+              <input
+                type="text"
+                value={form.nit}
+                onChange={(e) => up("nit", e.target.value)}
+                placeholder="1234567-8"
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-white/40 uppercase tracking-wide">Sector</label>
+              <select
+                value={form.sector}
+                onChange={(e) => up("sector", e.target.value)}
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50"
+              >
+                <option value="">Seleccionar...</option>
+                {sectores.map((s) => <option key={s} value={s.toLowerCase()}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] text-white/40 uppercase tracking-wide">Notas internas</label>
+            <textarea
+              value={form.notas}
+              onChange={(e) => up("notas", e.target.value)}
+              rows={2}
+              placeholder="Observaciones generales del cliente..."
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50 resize-none"
+            />
+          </div>
+          {error && <p className="text-xs text-red-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{error}</p>}
+        </div>
+        <div className="flex gap-2 px-5 pb-5">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors">
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={loading || !form.nombre.trim()}
+            className="flex-1 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-sm font-bold text-white disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+          >
+            {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            Crear cliente
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── Modal: Agregar Alias ─────────────────────────────────────────────────────
 function ModalAgregarAlias({
   titulo, onClose, onSave,
@@ -735,6 +855,7 @@ export default function Clientes() {
   const [puestos, setPuestos] = useState<ServiceLocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [showNuevoCliente, setShowNuevoCliente] = useState(false);
 
   const loadClientes = async () => {
     setLoading(true);
@@ -848,6 +969,15 @@ export default function Clientes() {
                   />
                 </div>
               )}
+              {tab === "clientes" && (
+                <button
+                  onClick={() => setShowNuevoCliente(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 border border-primary/30 text-xs font-semibold transition-all"
+                >
+                  <Plus className="w-3 h-3" />
+                  Nuevo cliente
+                </button>
+              )}
               <button
                 onClick={() => { loadClientes(); loadPuestos(); }}
                 className="p-1.5 rounded-lg bg-white/3 hover:bg-white/6 border border-white/8 text-white/40 hover:text-white/70 transition-all"
@@ -945,6 +1075,13 @@ export default function Clientes() {
         </div>
 
       </div>
+
+      {showNuevoCliente && (
+        <ModalNuevoCliente
+          onClose={() => setShowNuevoCliente(false)}
+          onSaved={() => { loadClientes(); }}
+        />
+      )}
     </AdminLayout>
   );
 }
