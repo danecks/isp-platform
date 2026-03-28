@@ -112,12 +112,30 @@ function NuevoUsuarioModal({ onClose, onCreated }: NuevoModalProps) {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [usernameError, setUsernameError] = useState("");
 
   const set = (key: string, val: string | boolean) => setForm(f => ({ ...f, [key]: val }));
+
+  async function checkUsername(username: string) {
+    if (!username.trim()) return;
+    try {
+      const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+      const res = await fetch(`${BASE}/api/users/check?username=${encodeURIComponent(username.trim())}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setUsernameError(data.available ? "" : "Este nombre de usuario ya está registrado");
+    } catch {
+      // ignorar errores de red en la verificación preventiva
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    if (usernameError) {
+      setError(usernameError);
+      return;
+    }
     if (form.password !== form.confirmPassword) {
       setError("Las contraseñas no coinciden");
       return;
@@ -193,11 +211,17 @@ function NuevoUsuarioModal({ onClose, onCreated }: NuevoModalProps) {
               <Label className="text-xs text-white/60 font-medium">Username *</Label>
               <Input
                 value={form.username}
-                onChange={e => set("username", e.target.value.toLowerCase())}
+                onChange={e => { set("username", e.target.value.toLowerCase()); setUsernameError(""); }}
+                onBlur={e => checkUsername(e.target.value)}
                 placeholder="carlos.lopez"
-                className="bg-[#060e1c] border-white/10 text-white text-sm h-10"
+                className={`bg-[#060e1c] border-white/10 text-white text-sm h-10 ${usernameError ? "border-red-500/60" : ""}`}
                 required
               />
+              {usernameError && (
+                <p className="text-[11px] text-red-400 flex items-center gap-1 mt-1">
+                  <span>⚠</span> {usernameError}
+                </p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-white/60 font-medium">Rol *</Label>

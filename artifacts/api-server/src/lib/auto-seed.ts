@@ -1369,5 +1369,14 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: A-01 FK constraint — error (no bloqueante)");
   }
 
+  // ── P-01: columna responsable_id en incidents (FK a employees) ───────────────
+  try {
+    await pool.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS responsable_id INTEGER REFERENCES employees(id) ON DELETE SET NULL`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS incidents_responsable_id ON incidents(responsable_id)`);
+    logger.info("Auto-migrate: P-01 columna responsable_id en incidents verificada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: P-01 responsable_id — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

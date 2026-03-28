@@ -376,33 +376,50 @@ export default function CMS() {
                     </div>
 
                     <div className="space-y-4">
-                      {section.fields.map((field) => (
+                      {section.fields.map((field) => {
+                        const MAX = field.type === "textarea" ? 1000 : 200;
+                        const current = (formValues[field.key] ?? "").length;
+                        const nearLimit = current >= Math.floor(MAX * 0.85);
+                        const overLimit = current > MAX;
+                        return (
                         <div key={field.key}>
-                          <label className="text-xs font-medium text-white/60 block mb-1.5">
-                            {field.label}
-                            <span className="text-white/25 ml-2 font-normal">[{field.key}]</span>
-                          </label>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label className="text-xs font-medium text-white/60">
+                              {field.label}
+                              <span className="text-white/25 ml-2 font-normal">[{field.key}]</span>
+                            </label>
+                            <span className={`text-[10px] font-mono tabular-nums ${overLimit ? "text-red-400" : nearLimit ? "text-yellow-400/80" : "text-white/20"}`}>
+                              {current}/{MAX}
+                            </span>
+                          </div>
                           {field.type === "textarea" ? (
                             <Textarea
                               value={formValues[field.key] ?? ""}
-                              onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                              onChange={(e) => {
+                                if (e.target.value.length <= MAX) handleFieldChange(field.key, e.target.value);
+                              }}
                               placeholder={field.placeholder}
-                              className="min-h-[80px] text-sm bg-[#050d1a] border-white/10 resize-y"
+                              maxLength={MAX}
+                              className={`min-h-[80px] text-sm bg-[#050d1a] border-white/10 resize-y ${overLimit ? "border-red-500/50" : ""}`}
                             />
                           ) : (
                             <Input
                               type={field.type}
                               value={formValues[field.key] ?? ""}
-                              onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                              onChange={(e) => {
+                                if (e.target.value.length <= MAX) handleFieldChange(field.key, e.target.value);
+                              }}
                               placeholder={field.placeholder}
-                              className="h-9 text-sm bg-[#050d1a] border-white/10"
+                              maxLength={MAX}
+                              className={`h-9 text-sm bg-[#050d1a] border-white/10 ${overLimit ? "border-red-500/50" : ""}`}
                             />
                           )}
                           {field.hint && (
                             <p className="text-xs text-muted-foreground mt-1">{field.hint}</p>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 ))}

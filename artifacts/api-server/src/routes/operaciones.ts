@@ -67,28 +67,33 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
 
 // ─── GET /api/operaciones/pool ────────────────────────────────────────────────
 // Pool de agentes: disponibles / en descanso / sin asignación
+// P-02: categorización hecha 100% en SQL (LEFT JOIN en vez de filter en JS)
 operacionesRouter.get("/operaciones/pool", async (req, res) => {
   try {
-    // IDs de agentes ya asignados en el tablero
-    const { rows: asignadosRows } = await pool.query(`
-      SELECT DISTINCT agente_id FROM puestos_operativos
-      WHERE activo = TRUE AND agente_id IS NOT NULL
-    `);
-    const asignadosIds = asignadosRows.map((r: any) => r.agente_id);
-
     const { rows: agentes } = await pool.query(`
       SELECT
-        id, nombre_completo, estado_laboral, puesto, area, sede,
-        telefono, wa_autorizado, supervisor_id
-      FROM employees
-      WHERE estado_laboral IN ('activo', 'suspendido', 'licencia')
-      ORDER BY estado_laboral, nombre_completo
+        e.id, e.nombre_completo, e.estado_laboral, e.puesto, e.area, e.sede,
+        e.telefono, e.wa_autorizado, e.supervisor_id,
+        CASE
+          WHEN po.agente_id IS NOT NULL AND e.estado_laboral = 'activo' THEN 'en_puesto'
+          WHEN e.estado_laboral = 'licencia'                            THEN 'en_descanso'
+          WHEN e.estado_laboral = 'suspendido'                          THEN 'suspendido'
+          ELSE 'disponible'
+        END AS categoria
+      FROM employees e
+      LEFT JOIN (
+        SELECT DISTINCT agente_id
+        FROM puestos_operativos
+        WHERE activo = TRUE AND agente_id IS NOT NULL
+      ) po ON po.agente_id = e.id
+      WHERE e.estado_laboral IN ('activo', 'suspendido', 'licencia')
+      ORDER BY e.estado_laboral, e.nombre_completo
     `);
 
-    const disponibles  = agentes.filter((a: any) => a.estado_laboral === 'activo'    && !asignadosIds.includes(a.id));
-    const enPuesto     = agentes.filter((a: any) => a.estado_laboral === 'activo'    &&  asignadosIds.includes(a.id));
-    const enDescanso   = agentes.filter((a: any) => a.estado_laboral === 'licencia');
-    const suspendidos  = agentes.filter((a: any) => a.estado_laboral === 'suspendido');
+    const disponibles = agentes.filter((a: any) => a.categoria === 'disponible');
+    const enPuesto    = agentes.filter((a: any) => a.categoria === 'en_puesto');
+    const enDescanso  = agentes.filter((a: any) => a.categoria === 'en_descanso');
+    const suspendidos = agentes.filter((a: any) => a.categoria === 'suspendido');
 
     res.json({ disponibles, enPuesto, enDescanso, suspendidos, total: agentes.length });
   } catch (err) {
@@ -453,6 +458,12 @@ operacionesRouter.post("/operaciones/puestos/:id/titular", async (req, res) => {
 // Actualizar campos de configuración de un puesto (horario, jornada, sede, notas)
 operacionesRouter.patch("/operaciones/puestos/:id", async (req, res) => {
   const { horario, jornada, sedeId, notas, turno } = req.body;
+
+  // P-03: rechazar body vacío para evitar UPDATE sin efecto
+  if ([horario, jornada, sedeId, notas, turno].every(v => v === undefined || v === null)) {
+    return res.status(400).json({ error: "Debe proporcionar al menos un campo para actualizar (horario, jornada, sedeId, notas, turno)" });
+  }
+
   try {
     const { rows } = await pool.query(
       `UPDATE puestos_operativos

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, incidentsTable } from "@workspace/db";
+import { db, incidentsTable, pool } from "@workspace/db";
 import { desc, eq, or, count } from "drizzle-orm";
 
 const router = Router();
@@ -75,6 +75,25 @@ router.post("/incidents", async (req, res) => {
       if (!isNaN(parsed)) resolvedClientId = parsed;
     }
 
+    // P-01: validar responsableId contra tabla employees (si se provee)
+    let resolvedResponsableId: number | null = null;
+    let resolvedResponsable = responsable?.trim() || "Sin asignar";
+    const rawResponsableId = req.body.responsableId;
+    if (rawResponsableId !== undefined && rawResponsableId !== null) {
+      const rid = parseInt(String(rawResponsableId), 10);
+      if (!isNaN(rid)) {
+        const { rows: empRows } = await pool.query(
+          `SELECT id, nombre_completo FROM employees WHERE id = $1 AND estado_laboral != 'inactivo'`,
+          [rid]
+        );
+        if (!empRows.length) {
+          return res.status(400).json({ error: "El responsable indicado no existe o está inactivo" });
+        }
+        resolvedResponsableId = rid;
+        resolvedResponsable = empRows[0].nombre_completo;
+      }
+    }
+
     const id = generateId();
     const inserted = await db
       .insert(incidentsTable)
@@ -86,14 +105,22 @@ router.post("/incidents", async (req, res) => {
         ubicacion: ubicacion?.trim() || "Guatemala",
         prioridad: PRIORIDADES_VALIDAS.includes(prioridad) ? prioridad : "media",
         estado: ESTADOS_VALIDOS.includes(req.body.estado) ? req.body.estado : "abierta",
-        responsable: responsable?.trim() || "Sin asignar",
+        responsable: resolvedResponsable,
         descripcion: descripcion?.trim() || null,
         esEmergencia: esEmergencia === true || esEmergencia === "true",
         reportadoPor: reportadoPor?.trim() || null,
         clienteRefId: rawClientId ? String(rawClientId) : null,
         clientId: resolvedClientId,
-      })
+      } as any)
       .returning();
+
+    // Guardar responsable_id en columna separada (agregada por migración P-01)
+    if (resolvedResponsableId && inserted[0]?.id) {
+      await pool.query(
+        `UPDATE incidents SET responsable_id = $1 WHERE id = $2`,
+        [resolvedResponsableId, inserted[0].id]
+      );
+    }
 
     res.status(201).json(inserted[0]);
   } catch (err) {

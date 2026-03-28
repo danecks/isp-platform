@@ -83,6 +83,23 @@ usersRouter.get("/users", async (_req, res) => {
   }
 });
 
+// GET /api/users/check?username=xxx — verificar disponibilidad de username (P-05)
+usersRouter.get("/users/check", async (req, res) => {
+  const { username, excludeId } = req.query as { username?: string; excludeId?: string };
+  if (!username?.trim()) return res.status(400).json({ error: "Parámetro 'username' requerido" });
+  try {
+    const rows = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.username, username.trim().toLowerCase()))
+      .limit(1);
+    const taken = rows.length > 0 && (!excludeId || rows[0].id !== parseInt(excludeId));
+    res.json({ available: !taken });
+  } catch (err) {
+    res.status(500).json({ error: "Error al verificar username" });
+  }
+});
+
 // GET /api/users/:id
 usersRouter.get("/users/:id", async (req, res) => {
   const id = parseInt(req.params.id);

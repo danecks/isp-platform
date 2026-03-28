@@ -30,6 +30,8 @@ function esResponsableCalificado(emp: { puesto?: string; area?: string }) {
 interface Props {
   value: string;
   onChange: (nombre: string) => void;
+  /** Callback adicional que también entrega el ID del empleado seleccionado (null si se limpió). */
+  onChangeWithId?: (nombre: string, id: number | null) => void;
   inputCls?: string;
   placeholder?: string;
   disabled?: boolean;
@@ -42,7 +44,7 @@ interface Empleado {
   area?: string;
 }
 
-export function ResponsableSelector({ value, onChange, inputCls, placeholder, disabled }: Props) {
+export function ResponsableSelector({ value, onChange, onChangeWithId, inputCls, placeholder, disabled }: Props) {
   const [query, setQuery] = useState(value);
   const [results, setResults] = useState<Empleado[]>([]);
   const [loading, setLoading] = useState(false);
@@ -107,6 +109,7 @@ export function ResponsableSelector({ value, onChange, inputCls, placeholder, di
   function seleccionar(emp: Empleado) {
     setQuery(emp.nombreCompleto);
     onChange(emp.nombreCompleto);
+    onChangeWithId?.(emp.nombreCompleto, emp.id);
     setConfirmed(true);
     setOpen(false);
   }
@@ -114,6 +117,7 @@ export function ResponsableSelector({ value, onChange, inputCls, placeholder, di
   function limpiar() {
     setQuery("");
     onChange("");
+    onChangeWithId?.("", null);
     setConfirmed(false);
     setOpen(false);
   }

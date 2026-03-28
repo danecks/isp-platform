@@ -81,6 +81,7 @@ export function NuevaIncidenciaModal({ onClose, defaultEmergencia = false }: Pro
     reportadoPor: "",
   });
 
+  const [responsableId, setResponsableId] = useState<number | null>(null);
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
 
   function set(field: keyof FormState, value: string | boolean) {
@@ -116,6 +117,7 @@ export function NuevaIncidenciaModal({ onClose, defaultEmergencia = false }: Pro
         ubicacion: form.ubicacion.trim() || undefined,
         prioridad: form.prioridad,
         responsable: form.responsable.trim() || "Sin asignar",
+        responsableId: responsableId ?? undefined,
         descripcion: form.descripcion.trim() || undefined,
         esEmergencia: form.esEmergencia,
         reportadoPor: form.esEmergencia ? form.reportadoPor.trim() : undefined,
@@ -305,6 +307,7 @@ export function NuevaIncidenciaModal({ onClose, defaultEmergencia = false }: Pro
               <ResponsableSelector
                 value={form.responsable}
                 onChange={(v) => set("responsable", v)}
+                onChangeWithId={(_nombre, id) => setResponsableId(id)}
                 inputCls={isEmerg ? emergInputCls : inputCls}
                 placeholder="Buscar supervisor, jefe o administrador…"
               />
