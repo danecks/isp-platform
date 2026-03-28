@@ -1,0 +1,117 @@
+El sistema ya tiene:
+
+- KPI disciplinario por empleado
+- KPI de rotación operativa con score y nivel
+- historial de movimientos_operativos
+- eventos RRHH
+- ficha del colaborador con múltiples dimensiones KPI
+
+Quiero crear una nueva capa de inteligencia: Alertas automáticas para RRHH basadas en comportamiento del colaborador.
+
+Objetivo:
+que el sistema detecte automáticamente patrones de riesgo (rotación alta, faltas, tendencias negativas) y los muestre como tarjetas accionables en el módulo de RRHH.
+
+---
+
+## 1. Crear módulo de alertas
+
+Ubicación:
+- /admin/rrhh (nueva sección: Alertas)
+
+---
+
+## 2. Generación automática de alertas
+
+Crear lógica que detecte:
+
+### A. Alta rotación
+- score < 60
+- o ≥ 3 salidas
+- o ≥ 4 clientes distintos
+
+### B. Disciplina
+- ≥ 3 faltas en 30 días
+- suspensiones recientes
+
+### C. Combinadas
+- rotación alta + faltas
+
+### D. Tendencia negativa
+- caída del score
+- aumento de movimientos recientes
+
+---
+
+## 3. Tarjetas de alerta
+
+Mostrar por cada colaborador:
+
+- nombre
+- tipo de alerta
+- score
+- datos clave (faltas, movimientos, clientes)
+- fecha
+
+Botón:
+- “Ver colaborador”
+
+---
+
+## 4. Clasificación
+
+Asignar:
+- prioridad (alta, media, baja)
+- estado (nueva, en revisión, resuelta)
+
+---
+
+## 5. Sugerencias automáticas
+
+Cada alerta debe incluir un texto como:
+
+- “Revisar estabilidad del colaborador”
+- “Evaluar cambio a puesto fijo”
+- “Posible riesgo operativo”
+
+---
+
+## 6. Auditoría
+
+Registrar:
+- cuándo se generó la alerta
+- si fue vista
+- si fue marcada como resuelta
+
+---
+
+## 7. UI
+
+- tarjetas visuales
+- colores por nivel de riesgo
+- fácil de revisar por RRHH
+
+---
+
+## 8. No romper
+
+- KPI existente
+- empleados
+- operaciones
+- eventos RRHH
+- anticipos
+- portal
+- WhatsApp
+
+---
+
+## 9. Documentación
+
+Explicar:
+- cómo se generan las alertas
+- qué condiciones las activan
+- cómo se usan para toma de decisiones
+
+---
+
+Muy importante:
+quiero que el sistema no solo muestre datos, sino que ayude a RRHH a detectar problemas y tomar decisiones antes de que escalen.

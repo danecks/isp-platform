@@ -1081,5 +1081,28 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: error en tabla eventos_rrhh");
   }
 
+  // ── ALERTAS RRHH ─────────────────────────────────────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS rrhh_alertas (
+        id                SERIAL PRIMARY KEY,
+        employee_id       INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+        employee_nombre   VARCHAR(255),
+        tipo              VARCHAR(30)  NOT NULL,
+        prioridad         VARCHAR(10)  NOT NULL DEFAULT 'media',
+        estado            VARCHAR(20)  NOT NULL DEFAULT 'nueva',
+        datos_clave       TEXT,
+        sugerencia        TEXT,
+        generada_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        vista_at          TIMESTAMPTZ,
+        resuelta_at       TIMESTAMPTZ,
+        resuelta_por      VARCHAR(100)
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'rrhh_alertas' verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: error en tabla rrhh_alertas");
+  }
+
   logger.info("Auto-seed completado");
 }

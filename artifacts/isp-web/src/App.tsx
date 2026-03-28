@@ -38,6 +38,7 @@ import AdminSimulador from "@/admin/pages/SimuladorWhatsApp";
 import AdminEmpleados from "@/admin/pages/Empleados";
 import AdminOperaciones from "@/admin/pages/Operaciones";
 import AdminRrhhEventos from "@/admin/pages/RRHHEventos";
+import AdminRrhhAlertas from "@/admin/pages/RRHHAlertas";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
@@ -138,6 +139,9 @@ function Router() {
       </Route>
       <Route path="/admin/rrhh/eventos">
         {() => <AuthGuard requiredRoles={["admin", "rrhh", "operaciones"]}><AdminRrhhEventos /></AuthGuard>}
+      </Route>
+      <Route path="/admin/rrhh/alertas">
+        {() => <AuthGuard requiredRoles={["admin", "rrhh"]}><AdminRrhhAlertas /></AuthGuard>}
       </Route>
 
       <Route component={NotFound} />
