@@ -105,7 +105,7 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
 // ─── POST /api/operaciones/asignar ───────────────────────────────────────────
 // Asignar agente a puesto (sin agente previo)
 operacionesRouter.post("/operaciones/asignar", async (req, res) => {
-  const { puestoId, agenteId, usuario, notas } = req.body;
+  const { puestoId, agenteId, usuario, notas, forzar } = req.body;
   if (!puestoId || !agenteId) return res.status(400).json({ error: "puestoId y agenteId son requeridos" });
 
   try {
@@ -120,17 +120,19 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
     if (!agenteRows.length) return res.status(404).json({ error: "Agente no encontrado" });
     const agente = agenteRows[0];
 
-    // Verificar que no esté ya asignado a otro puesto
-    const { rows: yaAsignadoRows } = await pool.query(
-      `SELECT po.nombre, po.cliente_nombre FROM puestos_operativos po
-       WHERE po.agente_id=$1 AND po.activo=TRUE AND po.id!=$2`,
-      [agenteId, puestoId]
-    );
-    if (yaAsignadoRows.length > 0) {
-      return res.status(409).json({
-        error: `${agente.nombre_completo} ya está asignado en ${yaAsignadoRows[0].cliente_nombre} — ${yaAsignadoRows[0].nombre}`,
-        advertencia: true,
-      });
+    // Verificar que no esté ya asignado a otro puesto (se puede forzar)
+    if (!forzar) {
+      const { rows: yaAsignadoRows } = await pool.query(
+        `SELECT po.nombre, po.cliente_nombre FROM puestos_operativos po
+         WHERE po.agente_id=$1 AND po.activo=TRUE AND po.id!=$2`,
+        [agenteId, puestoId]
+      );
+      if (yaAsignadoRows.length > 0) {
+        return res.status(409).json({
+          error: `${agente.nombre_completo} ya está asignado en ${yaAsignadoRows[0].cliente_nombre} — ${yaAsignadoRows[0].nombre}`,
+          advertencia: true,
+        });
+      }
     }
 
     // Actualizar puesto: asigna como agente_id y como titular (si no había titular previo)

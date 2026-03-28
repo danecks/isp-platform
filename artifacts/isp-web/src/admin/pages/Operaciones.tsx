@@ -1716,6 +1716,7 @@ export default function Operaciones() {
           puestoId: puesto.id,
           agenteId: agente.id,
           notas,
+          forzar,
           usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
         });
         toast({ title: "Agente asignado", description: `${agente.nombre_completo} → ${puesto.nombre}` });
