@@ -66,8 +66,13 @@ function hoy() {
   return new Date().toISOString().split("T")[0];
 }
 
-function fmtFecha(iso: string) {
-  return new Date(iso + "T00:00:00").toLocaleDateString("es-GT", {
+function fmtFecha(iso: string | null | undefined) {
+  if (!iso) return "—";
+  // Normalizar: si ya tiene hora (contiene T o Z) se usa directo; si es solo fecha YYYY-MM-DD se añade mediodía
+  const raw = /[TZ]/.test(iso) ? iso : `${iso}T12:00:00`;
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("es-GT", {
     weekday: "short", day: "2-digit", month: "short", year: "numeric",
   });
 }

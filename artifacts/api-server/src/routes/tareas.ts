@@ -22,7 +22,7 @@
  */
 
 import { Router } from "express";
-import { db, tareasTable, taskEvidenciasTable, waNotificacionesLogTable } from "@workspace/db";
+import { db, tareasTable, taskEvidenciasTable, waNotificacionesLogTable, usersTable } from "@workspace/db";
 import { pool } from "@workspace/db";
 import { eq, desc, count } from "drizzle-orm";
 import { logger } from "../lib/logger";
@@ -67,7 +67,7 @@ router.get("/tareas", async (_req, res) => {
       .from(tareasTable)
       .orderBy(desc(tareasTable.createdAt));
 
-    // Buscar evidencias para todas las completadas
+    // M-05: Filtrar evidencias solo para las tareas completadas, no cargar todas
     const completadasIds = tareas
       .filter((t) => t.estado === "completada")
       .map((t) => t.id);
@@ -75,15 +75,17 @@ router.get("/tareas", async (_req, res) => {
     let evidenciasMap: Record<string, typeof taskEvidenciasTable.$inferSelect> = {};
 
     if (completadasIds.length > 0) {
-      // Query simple: traer todas las evidencias de las tareas completadas
-      const evidencias = await db
-        .select()
-        .from(taskEvidenciasTable)
-        .orderBy(desc(taskEvidenciasTable.fechaCierre));
-
-      for (const ev of evidencias) {
-        if (!evidenciasMap[ev.tareaId]) {
-          evidenciasMap[ev.tareaId] = ev;
+      // Traer solo evidencias de las tareas completadas (filtro en SQL con IN)
+      const { rows: evRows } = await pool.query(
+        `SELECT * FROM task_evidencias
+         WHERE tarea_id = ANY($1::varchar[])
+         ORDER BY fecha_cierre DESC`,
+        [completadasIds]
+      );
+      for (const ev of evRows) {
+        const tid = ev.tarea_id;
+        if (!evidenciasMap[tid]) {
+          evidenciasMap[tid] = ev;
         }
       }
     }
@@ -354,8 +356,24 @@ router.post("/tareas/:id/cerrar", async (req, res) => {
       canal = "admin",
     } = req.body;
 
-    // 1. Validar rol
-    if (!ROLES_CON_PERMISO_CIERRE.includes(rolSupervisor)) {
+    // 1. Validar rol — M-02: verificar desde la DB si se proporciona supervisorId,
+    //    no confiar únicamente en el valor enviado desde el cliente.
+    let rolVerificado: string = rolSupervisor ?? "";
+
+    if (supervisorId && canal !== "whatsapp") {
+      const [usuario] = await db
+        .select({ rol: usersTable.rol })
+        .from(usersTable)
+        .where(eq(usersTable.id, parseInt(supervisorId)));
+
+      if (usuario) {
+        rolVerificado = usuario.rol;
+      } else {
+        return res.status(403).json({ error: "Usuario supervisor no encontrado" });
+      }
+    }
+
+    if (!ROLES_CON_PERMISO_CIERRE.includes(rolVerificado)) {
       return res.status(403).json({
         error: "Solo supervisores y administradores pueden cerrar tareas con evidencia",
         rolRequerido: ROLES_CON_PERMISO_CIERRE,

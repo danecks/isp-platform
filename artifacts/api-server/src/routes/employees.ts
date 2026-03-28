@@ -9,6 +9,7 @@ import { calcularKPIRotacion } from "../services/rotation-kpi";
 const employeesRouter = Router();
 
 // GET /api/employees — list all employees with optional filters
+// M-01: Todos los filtros se aplican en SQL, no en memoria
 employeesRouter.get("/employees", async (req, res) => {
   try {
     const {
@@ -16,30 +17,32 @@ employeesRouter.get("/employees", async (req, res) => {
       clienteId, supervisorId, q,
     } = req.query as Record<string, string>;
 
-    const results = await db
+    // Construir condiciones de filtro directamente en SQL
+    const conditions = [];
+    if (syncStatus)    conditions.push(eq(employeesTable.syncStatus, syncStatus));
+    if (estadoLaboral) conditions.push(eq(employeesTable.estadoLaboral, estadoLaboral));
+    if (area)          conditions.push(eq(employeesTable.area, area));
+    if (sourceSystem)  conditions.push(eq(employeesTable.sourceSystem, sourceSystem));
+    if (clienteId)     conditions.push(eq(employeesTable.clienteId, parseInt(clienteId)));
+    if (supervisorId)  conditions.push(eq(employeesTable.supervisorId, parseInt(supervisorId)));
+    if (q) {
+      // Búsqueda de texto en múltiples columnas a nivel de DB
+      conditions.push(
+        or(
+          ilike(employeesTable.nombreCompleto, `%${q}%`),
+          ilike(employeesTable.dpi,            `%${q}%`),
+          ilike(employeesTable.telefono,        `%${q}%`),
+          ilike(employeesTable.puesto,          `%${q}%`),
+          ilike(employeesTable.area,            `%${q}%`),
+        )
+      );
+    }
+
+    const filtered = await db
       .select()
       .from(employeesTable)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(asc(employeesTable.nombreCompleto));
-
-    const filtered = results.filter((e) => {
-      if (syncStatus && e.syncStatus !== syncStatus) return false;
-      if (estadoLaboral && e.estadoLaboral !== estadoLaboral) return false;
-      if (area && e.area !== area) return false;
-      if (sourceSystem && e.sourceSystem !== sourceSystem) return false;
-      if (clienteId && String(e.clienteId) !== clienteId) return false;
-      if (supervisorId && String(e.supervisorId) !== supervisorId) return false;
-      if (q) {
-        const lq = q.toLowerCase();
-        const matchNombre = e.nombreCompleto.toLowerCase().includes(lq);
-        const matchDpi = e.dpi?.toLowerCase().includes(lq) ?? false;
-        const matchTel = e.telefono?.toLowerCase().includes(lq) ?? false;
-        const matchTelSec = e.telefonoSecundario?.toLowerCase().includes(lq) ?? false;
-        const matchPuesto = e.puesto?.toLowerCase().includes(lq) ?? false;
-        const matchArea = e.area?.toLowerCase().includes(lq) ?? false;
-        if (!matchNombre && !matchDpi && !matchTel && !matchTelSec && !matchPuesto && !matchArea) return false;
-      }
-      return true;
-    });
 
     res.json(filtered);
   } catch (err) {
@@ -48,26 +51,37 @@ employeesRouter.get("/employees", async (req, res) => {
 });
 
 // GET /api/employees/sync/status — summary of sync state (must be before /:id)
+// M-04: Conteos agregados en SQL en lugar de cargar todos los empleados en memoria
 employeesRouter.get("/employees/sync/status", async (_req, res) => {
   try {
-    const all = await db.select().from(employeesTable);
+    const { rows } = await pool.query(`
+      SELECT
+        COUNT(*)                                                        AS total,
+        COUNT(*) FILTER (WHERE source_system = 'manual')               AS source_manual,
+        COUNT(*) FILTER (WHERE source_system = 'hr_sql_external')      AS source_hr,
+        COUNT(*) FILTER (WHERE source_system = 'api')                  AS source_api,
+        COUNT(*) FILTER (WHERE sync_status = 'manual')                 AS sync_manual,
+        COUNT(*) FILTER (WHERE sync_status = 'synced')                 AS sync_synced,
+        COUNT(*) FILTER (WHERE sync_status = 'pending')                AS sync_pending,
+        COUNT(*) FILTER (WHERE sync_status = 'error')                  AS sync_error,
+        MAX(last_sync_at)                                              AS last_sync_at
+      FROM employees
+    `);
+    const r = rows[0];
     const summary = {
-      total: all.length,
+      total:        parseInt(r.total),
       bySource: {
-        manual: all.filter((e) => e.sourceSystem === "manual").length,
-        hr_sql_external: all.filter((e) => e.sourceSystem === "hr_sql_external").length,
-        api: all.filter((e) => e.sourceSystem === "api").length,
+        manual:         parseInt(r.source_manual),
+        hr_sql_external:parseInt(r.source_hr),
+        api:            parseInt(r.source_api),
       },
       bySyncStatus: {
-        manual: all.filter((e) => e.syncStatus === "manual").length,
-        synced: all.filter((e) => e.syncStatus === "synced").length,
-        pending: all.filter((e) => e.syncStatus === "pending").length,
-        error: all.filter((e) => e.syncStatus === "error").length,
+        manual:  parseInt(r.sync_manual),
+        synced:  parseInt(r.sync_synced),
+        pending: parseInt(r.sync_pending),
+        error:   parseInt(r.sync_error),
       },
-      lastSyncAt: all
-        .filter((e) => e.lastSyncAt)
-        .sort((a, b) => b.lastSyncAt!.getTime() - a.lastSyncAt!.getTime())
-        .at(0)?.lastSyncAt ?? null,
+      lastSyncAt: r.last_sync_at ?? null,
     };
     res.json(summary);
   } catch (err) {

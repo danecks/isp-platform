@@ -868,8 +868,29 @@ function TablaDetalle({ titulo, columnas, filas }: { titulo: string; columnas: s
 
 // ─── FILTROS GLOBALES ─────────────────────────────────────────────────────────
 
+/** Carga la lista de clientes una sola vez para el selector del filtro. */
+function useClientesLista() {
+  const [clientes, setClientes] = useState<{ id: number; nombre: string }[]>([]);
+  useEffect(() => {
+    fetch("/api/alias/clientes")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setClientes(
+            data
+              .map((c: any) => ({ id: c.id, nombre: c.nombre ?? c.nombreComercial ?? "" }))
+              .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
+  return clientes;
+}
+
 function FiltrosBar({ filtros, onChange, onReset }: { filtros: Filtros; onChange: (f: Filtros) => void; onReset: () => void }) {
   const [open, setOpen] = useState(false);
+  const clientes = useClientesLista();
   const hasActive = Object.values(filtros).some(Boolean);
 
   return (
@@ -915,9 +936,16 @@ function FiltrosBar({ filtros, onChange, onReset }: { filtros: Filtros; onChange
             </div>
             <div>
               <label className="block text-[10px] text-white/40 mb-1">Cliente</label>
-              <input type="text" placeholder="Buscar cliente..." value={filtros.cliente}
+              <select
+                value={filtros.cliente}
                 onChange={(e) => onChange({ ...filtros, cliente: e.target.value })}
-                className="w-full bg-white/4 border border-white/8 rounded-lg px-2 py-1.5 text-xs text-white placeholder-white/20 focus:outline-none focus:border-primary/40" />
+                className="w-full bg-white/4 border border-white/8 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-primary/40"
+              >
+                <option value="">Todos</option>
+                {clientes.map((c) => (
+                  <option key={c.id} value={c.nombre}>{c.nombre}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-[10px] text-white/40 mb-1">Estado</label>
