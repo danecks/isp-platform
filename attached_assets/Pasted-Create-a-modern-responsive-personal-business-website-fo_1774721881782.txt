@@ -1,0 +1,98 @@
+Create a modern, responsive personal business website for a freelancer offering digital marketing and content creation services.
+
+The website should have a clean, premium, feminine but professional style similar to high-end coaching brands.
+
+### Pages / Sections:
+
+1. **Home (Landing Page)**
+
+   * Hero section with headline: “Grow Your Brand with Strategic Content & Marketing”
+   * Short intro about me (freelancer transitioning into digital marketing expert)
+   * Call-to-action buttons: “Book Free Consultation” and “View Services”
+
+2. **About Me**
+
+   * Personal story (transition into freelancing)
+   * Mission and vision
+   * Professional photo placeholder
+
+3. **Services**
+   Include the following services:
+
+   * Canva Workshops (beginner to advanced)
+   * Social Media Strategy
+   * Content Creation
+   * How to Set Up a Marketing Department
+   * 1:1 Consulting
+
+4. **Portfolio**
+
+   * Grid layout of recent projects
+   * Each project includes image, title, and short description
+
+5. **Pricing Packages**
+
+   * 3 pricing tiers (Basic, Standard, Premium)
+   * Clean card layout
+   * CTA buttons for each package
+
+6. **Workshops**
+
+   * Section dedicated to selling Canva workshops
+   * Include description, benefits, and sign-up button
+
+7. **Free Consultation / Quote**
+
+   * Form with:
+
+     * Name
+     * Email
+     * Service interest
+     * Message
+   * Button: “Request Free Consultation”
+
+8. **Contact**
+
+   * Email contact
+   * Social media links
+   * Simple contact form
+
+---
+
+### Design Requirements:
+
+* Use modern fonts (e.g., Poppins, Inter)
+* Soft color palette (beige, white, pastel tones)
+* Elegant spacing and minimal design
+* Rounded buttons and cards
+* Subtle animations (hover effects, fade-in)
+* Mobile-first responsive design
+
+---
+
+### Tech Requirements:
+
+* Use React (or Next.js if possible)
+* Tailwind CSS for styling
+* Component-based structure
+* Clean and reusable code
+
+---
+
+### Extra Features:
+
+* Sticky navigation bar
+* Smooth scrolling
+* Testimonials section (placeholder)
+* Newsletter signup (optional)
+* SEO-friendly structure
+
+---
+
+### Output:
+
+* Provide full working code
+* Organize into components
+* Include instructions to run locally
+
+Make the design feel premium, trustworthy, and optimized for selling services and workshops.
