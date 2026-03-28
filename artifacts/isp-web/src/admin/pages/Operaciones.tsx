@@ -157,9 +157,10 @@ interface Segmento {
 
 interface EmpleadoBusqueda {
   id: number;
-  nombre_completo: string;
+  nombreCompleto: string;
   puesto: string | null;
   area: string | null;
+  estadoLaboral?: string | null;
 }
 
 // ─── Helper: fecha de hoy en formato DD-MM-YYYY (cliente) ─────────────────
@@ -326,15 +327,30 @@ function ModalSegmentos({
   const [motivo, setMotivo]             = useState("");
   const [guardando, setGuardando]       = useState(false);
 
-  const { data: empleadosBusqueda = [] } = useQuery<EmpleadoBusqueda[]>({
+  // IDs de agentes actualmente en puesto (para filtrar disponibilidad)
+  const { data: poolData } = useQuery<{ enPuesto: { id: number }[] }>({
+    queryKey: ["pool-disponibilidad"],
+    queryFn: () => fetch(`${API_BASE}/operaciones/pool`).then((r) => r.json()),
+    staleTime: 30_000,
+  });
+  const idsEnPuesto = new Set((poolData?.enPuesto ?? []).map((a) => a.id));
+
+  const { data: empleadosBusquedaRaw = [] } = useQuery<EmpleadoBusqueda[]>({
     queryKey: ["emp-busqueda", busqueda],
     queryFn: () =>
-      fetch(`${API_BASE}/employees?q=${encodeURIComponent(busqueda)}&limit=8`)
+      fetch(`${API_BASE}/employees?q=${encodeURIComponent(busqueda)}&limit=20`)
         .then((r) => r.json())
-        .then((d) => Array.isArray(d) ? d : (d.employees ?? [])),
+        .then((d: any) => {
+          const arr = Array.isArray(d) ? d : (d.employees ?? []);
+          return arr.filter((e: any) => e.estadoLaboral === "activo" || e.estado_laboral === "activo");
+        }),
     enabled: busqueda.length >= 2,
     staleTime: 30_000,
   });
+  // Separar disponibles y en puesto
+  const empleadosDisponibles = empleadosBusquedaRaw.filter((e) => !idsEnPuesto.has(e.id));
+  const empleadosEnPuesto    = empleadosBusquedaRaw.filter((e) =>  idsEnPuesto.has(e.id));
+  const empleadosBusqueda    = [...empleadosDisponibles, ...empleadosEnPuesto];
 
   // Parsear fecha "YYYY-MM-DD" → "DD-MM-YYYY"
   const fechaDisplay = (() => {
@@ -363,7 +379,7 @@ function ModalSegmentos({
           clientId:       puesto.cliente_id,
           sedeId:         puesto.sede_id,
           employeeId:     empleadoSel.id,
-          empleadoNombre: empleadoSel.nombre_completo,
+          empleadoNombre: empleadoSel.nombreCompleto,
           tipoCobertura,
           horaInicio: horaInicio || null,
           horaFin:    horaFin    || null,
@@ -499,25 +515,47 @@ function ModalSegmentos({
             <input
               type="text"
               placeholder="Buscar empleado (mín. 2 letras)…"
-              value={empleadoSel ? empleadoSel.nombre_completo : busqueda}
+              value={empleadoSel ? empleadoSel.nombreCompleto : busqueda}
               onChange={(e) => { setBusqueda(e.target.value); setEmpleadoSel(null); }}
               className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/20 outline-none focus:border-indigo-400/30"
             />
             {!empleadoSel && busqueda.length >= 2 && empleadosBusqueda.length > 0 && (
-              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#07111f] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
-                {empleadosBusqueda.map((e) => (
+              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#07111f] border border-white/10 rounded-xl shadow-2xl overflow-hidden max-h-52 overflow-y-auto">
+                {empleadosDisponibles.length > 0 && (
+                  <p className="px-3 pt-2 pb-1 text-[9px] text-emerald-400/60 uppercase tracking-widest font-semibold">Disponibles</p>
+                )}
+                {empleadosDisponibles.map((e) => (
                   <button
                     key={e.id}
                     onClick={() => { setEmpleadoSel(e); setBusqueda(""); }}
                     className="w-full text-left px-3 py-2.5 hover:bg-white/5 transition-colors flex items-center gap-2 border-b border-white/5 last:border-0"
                   >
-                    <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(e.nombre_completo)}`}>
-                      {iniciales(e.nombre_completo)}
+                    <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(e.nombreCompleto)}`}>
+                      {iniciales(e.nombreCompleto)}
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-xs text-white/80 truncate">{e.nombre_completo}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-white/80 truncate">{e.nombreCompleto}</p>
                       <p className="text-[10px] text-white/35 truncate">{e.puesto ?? e.area ?? ""}</p>
                     </div>
+                  </button>
+                ))}
+                {empleadosEnPuesto.length > 0 && (
+                  <p className="px-3 pt-2 pb-1 text-[9px] text-amber-400/60 uppercase tracking-widest font-semibold border-t border-white/5 mt-1">En puesto ahora</p>
+                )}
+                {empleadosEnPuesto.map((e) => (
+                  <button
+                    key={e.id}
+                    onClick={() => { setEmpleadoSel(e); setBusqueda(""); }}
+                    className="w-full text-left px-3 py-2.5 hover:bg-amber-500/5 transition-colors flex items-center gap-2 border-b border-white/5 last:border-0 opacity-60"
+                  >
+                    <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(e.nombreCompleto)}`}>
+                      {iniciales(e.nombreCompleto)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-white/80 truncate">{e.nombreCompleto}</p>
+                      <p className="text-[10px] text-amber-400/50 truncate">Ya cubriendo otro puesto</p>
+                    </div>
+                    <span className="text-[8px] text-amber-400/60 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-full shrink-0">En puesto</span>
                   </button>
                 ))}
               </div>
