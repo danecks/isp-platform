@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
+import { generarNovedades } from "./nomina";
 
 const operacionesRouter = Router();
 
@@ -735,8 +736,11 @@ operacionesRouter.post("/operaciones/cierre", async (req, res) => {
     `, [cierreRows[0].id, usuarioId ?? null, usuario ?? 'sistema',
         `Día ${fechaActivaStr} cerrado.${comentario ? ` Comentario: ${comentario}` : ''}`]);
 
-    logger.info({ usuario, fecha: fechaActivaStr }, "Día operativo cerrado");
-    res.json({ ok: true, cierre: cierreRows[0], resumen });
+    // ── Generar novedades de nómina desde segmentos de cobertura ───────────
+    const novedadesGeneradas = await generarNovedades(fechaActivaISO, cierreRows[0].id);
+
+    logger.info({ usuario, fecha: fechaActivaStr, novedadesGeneradas }, "Día operativo cerrado");
+    res.json({ ok: true, cierre: cierreRows[0], resumen, novedadesGeneradas });
   } catch (err) {
     logger.error({ err }, "POST /operaciones/cierre error");
     res.status(500).json({ error: "Error al cerrar el día" });

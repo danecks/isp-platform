@@ -1254,5 +1254,72 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: error en operational_zones");
   }
 
+  // ── Segmentos de cobertura (multi-persona, tramos horarios por puesto/día) ─
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS cobertura_segmentos (
+        id                   SERIAL PRIMARY KEY,
+        fecha                DATE         NOT NULL,
+        puesto_id            INTEGER      REFERENCES puestos_operativos(id) ON DELETE CASCADE,
+        client_id            INTEGER      REFERENCES clients(id) ON DELETE SET NULL,
+        sede_id              INTEGER      REFERENCES client_sedes(id) ON DELETE SET NULL,
+        employee_id          INTEGER      REFERENCES employees(id) ON DELETE SET NULL,
+        empleado_nombre      VARCHAR(255),
+        tipo_cobertura       VARCHAR(20)  NOT NULL DEFAULT 'relevo',
+        hora_inicio          VARCHAR(5),
+        hora_fin             VARCHAR(5),
+        horas_calculadas     NUMERIC(5,2),
+        motivo               VARCHAR(100),
+        fue_en_dia_descanso  BOOLEAN      NOT NULL DEFAULT FALSE,
+        genera_horas_extra   BOOLEAN      NOT NULL DEFAULT FALSE,
+        observaciones        TEXT,
+        usuario_registro     VARCHAR(100),
+        created_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        updated_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS cobertura_segmentos_fecha_puesto ON cobertura_segmentos(fecha, puesto_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS cobertura_segmentos_employee ON cobertura_segmentos(fecha, employee_id)`);
+    logger.info("Auto-migrate: tabla 'cobertura_segmentos' verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: error en cobertura_segmentos");
+  }
+
+  // ── Novedades de nómina diarias (consolidado por empleado al cierre) ───────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS novedades_nomina_diarias (
+        id                    SERIAL PRIMARY KEY,
+        fecha                 DATE         NOT NULL,
+        employee_id           INTEGER      REFERENCES employees(id) ON DELETE SET NULL,
+        empleado_nombre       VARCHAR(255),
+        trabajo_dia           BOOLEAN      NOT NULL DEFAULT FALSE,
+        horas_trabajadas      NUMERIC(5,2) NOT NULL DEFAULT 0,
+        horas_extra           NUMERIC(5,2) NOT NULL DEFAULT 0,
+        falta                 BOOLEAN      NOT NULL DEFAULT FALSE,
+        suspension            BOOLEAN      NOT NULL DEFAULT FALSE,
+        descanso_trabajado    BOOLEAN      NOT NULL DEFAULT FALSE,
+        afecta_septimo        BOOLEAN      NOT NULL DEFAULT FALSE,
+        descuento_dia         BOOLEAN      NOT NULL DEFAULT FALSE,
+        puesto_titular_id     INTEGER      REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        puesto_titular_nombre VARCHAR(255),
+        puesto_cubierto_id    INTEGER      REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        puesto_cubierto_nombre VARCHAR(255),
+        num_puestos_cubiertos INTEGER      NOT NULL DEFAULT 0,
+        observaciones         TEXT,
+        fuente                VARCHAR(50)  NOT NULL DEFAULT 'cierre_operativo',
+        cierre_id             INTEGER,
+        created_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        UNIQUE(fecha, employee_id)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS novedades_nomina_fecha ON novedades_nomina_diarias(fecha)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS novedades_nomina_employee ON novedades_nomina_diarias(employee_id)`);
+    logger.info("Auto-migrate: tabla 'novedades_nomina_diarias' verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: error en novedades_nomina_diarias");
+  }
+
   logger.info("Auto-seed completado");
 }

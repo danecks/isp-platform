@@ -149,4 +149,152 @@ coberturaRouter.get("/cobertura/reporte", async (req, res) => {
   }
 });
 
+// ─── Helpers de cálculo ───────────────────────────────────────────────────────
+
+/**
+ * Convierte "HH:MM" a minutos desde medianoche.
+ * Si hora_fin < hora_inicio → turno cruzó medianoche (+1440).
+ */
+function horaAMinutos(h: string): number {
+  const [hh, mm] = h.split(":").map(Number);
+  return hh * 60 + mm;
+}
+
+function calcularHoras(horaInicio: string, horaFin: string): number {
+  let inicio = horaAMinutos(horaInicio);
+  let fin    = horaAMinutos(horaFin);
+  if (fin <= inicio) fin += 1440; // turno nocturno cruza medianoche
+  return parseFloat(((fin - inicio) / 60).toFixed(2));
+}
+
+/** Verifica si un tramo [inicio, fin] solapa con la ventana de descanso del puesto */
+function solapaCon(inicioSeg: string, finSeg: string, descInicio: string | null, descFin: string | null): boolean {
+  if (!descInicio || !descFin) return false;
+  const a1 = horaAMinutos(inicioSeg);
+  let a2 = horaAMinutos(finSeg); if (a2 <= a1) a2 += 1440;
+  const b1 = horaAMinutos(descInicio);
+  let b2 = horaAMinutos(descFin); if (b2 <= b1) b2 += 1440;
+  return a1 < b2 && a2 > b1;
+}
+
+// ─── GET /api/cobertura/segmentos ─────────────────────────────────────────────
+// Tramos de cobertura para un puesto en una fecha (o todos los de un empleado en una fecha)
+coberturaRouter.get("/cobertura/segmentos", async (req, res) => {
+  try {
+    const fecha      = (req.query.fecha as string) || new Date().toISOString().split("T")[0];
+    const puestoId   = req.query.puestoId   as string | undefined;
+    const employeeId = req.query.employeeId as string | undefined;
+
+    const clauses: string[] = ["cs.fecha = $1"];
+    const params: unknown[] = [fecha];
+
+    if (puestoId) {
+      params.push(Number(puestoId));
+      clauses.push(`cs.puesto_id = $${params.length}`);
+    }
+    if (employeeId) {
+      params.push(Number(employeeId));
+      clauses.push(`cs.employee_id = $${params.length}`);
+    }
+
+    const { rows } = await pool.query(`
+      SELECT cs.*,
+             e.nombre_completo AS empleado_nombre_join,
+             po.nombre         AS puesto_nombre_join,
+             po.hora_entrada, po.hora_salida,
+             po.descanso_inicio, po.descanso_fin,
+             po.elegible_horas_extra
+      FROM cobertura_segmentos cs
+      LEFT JOIN employees         e  ON e.id  = cs.employee_id
+      LEFT JOIN puestos_operativos po ON po.id = cs.puesto_id
+      WHERE ${clauses.join(" AND ")}
+      ORDER BY cs.hora_inicio NULLS LAST, cs.created_at
+    `, params);
+
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "GET /cobertura/segmentos error");
+    res.status(500).json({ error: "Error al cargar segmentos de cobertura" });
+  }
+});
+
+// ─── POST /api/cobertura/segmentos ────────────────────────────────────────────
+// Registrar un nuevo tramo de cobertura con cálculo automático de horas
+coberturaRouter.post("/cobertura/segmentos", async (req, res) => {
+  const {
+    fecha, puestoId, clientId, sedeId, employeeId, empleadoNombre,
+    tipoCobertura, horaInicio, horaFin, motivo, observaciones, usuarioRegistro,
+  } = req.body;
+
+  if (!fecha || !puestoId || !employeeId) {
+    return res.status(400).json({ error: "fecha, puestoId y employeeId son requeridos" });
+  }
+
+  try {
+    // Obtener datos del puesto para validaciones
+    const { rows: puestos } = await pool.query(
+      `SELECT descanso_inicio, descanso_fin, elegible_horas_extra, hora_entrada, hora_salida
+       FROM puestos_operativos WHERE id = $1`,
+      [puestoId]
+    );
+    const puesto = puestos[0];
+
+    // Calcular horas del tramo
+    let horasCalculadas: number | null = null;
+    let fueEnDiaDescanso = false;
+    let generaHorasExtra = false;
+
+    if (horaInicio && horaFin) {
+      horasCalculadas = calcularHoras(horaInicio, horaFin);
+
+      // Detectar solapamiento con descanso del puesto
+      if (puesto?.descanso_inicio && puesto?.descanso_fin) {
+        fueEnDiaDescanso = solapaCon(horaInicio, horaFin, puesto.descanso_inicio, puesto.descanso_fin);
+      }
+
+      // Detectar horas extra: si el tramo excede la jornada base del puesto (elegible_horas_extra)
+      if (puesto?.elegible_horas_extra && puesto?.hora_entrada && puesto?.hora_salida) {
+        const jornadaBase = calcularHoras(puesto.hora_entrada, puesto.hora_salida);
+        // Se marcan HE si se está cubriendo en día de descanso del titular O si el tramo excede la jornada
+        generaHorasExtra = fueEnDiaDescanso;
+      }
+    }
+
+    const { rows } = await pool.query(`
+      INSERT INTO cobertura_segmentos
+        (fecha, puesto_id, client_id, sede_id, employee_id, empleado_nombre,
+         tipo_cobertura, hora_inicio, hora_fin, horas_calculadas,
+         motivo, fue_en_dia_descanso, genera_horas_extra, observaciones, usuario_registro)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+      RETURNING *
+    `, [
+      fecha, puestoId, clientId ?? null, sedeId ?? null, employeeId,
+      empleadoNombre ?? null,
+      tipoCobertura || 'relevo', horaInicio ?? null, horaFin ?? null,
+      horasCalculadas, motivo ?? null, fueEnDiaDescanso, generaHorasExtra,
+      observaciones ?? null, usuarioRegistro ?? null,
+    ]);
+
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "POST /cobertura/segmentos error");
+    res.status(500).json({ error: "Error al registrar segmento de cobertura" });
+  }
+});
+
+// ─── DELETE /api/cobertura/segmentos/:id ──────────────────────────────────────
+coberturaRouter.delete("/cobertura/segmentos/:id", async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `DELETE FROM cobertura_segmentos WHERE id = $1 RETURNING id`,
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Segmento no encontrado" });
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "DELETE /cobertura/segmentos error");
+    res.status(500).json({ error: "Error al eliminar segmento" });
+  }
+});
+
 export default coberturaRouter;

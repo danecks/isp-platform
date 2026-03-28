@@ -1,0 +1,196 @@
+El sistema ya tiene:
+- clientes, sedes y puestos estructurados
+- pizarrón operativo
+- cobertura diaria
+- relevos
+- cierre operativo diario
+- RRHH con eventos automáticos
+- empleados
+- anticipos
+- base para reportería
+
+No quiero romper nada de lo existente.
+
+Quiero avanzar a una fase crítica: Pizarrón operativo 100% listo para alimentar planilla.
+
+## Objetivo
+Que cada cambio en el pizarrón tenga efecto real sobre la futura planilla, de forma que al cerrar el día el sistema ya sepa con precisión quién trabajó, quién faltó, quién cubrió, cuántas horas hizo cada uno y qué efectos laborales o de nómina genera.
+
+Muy importante:
+todavía no quiero construir la planilla final completa.
+Primero quiero que el pizarrón y el cierre diario queden perfectos como fuente oficial de novedades de nómina.
+
+---
+
+## 1. Segmentos de cobertura por puesto y por día
+Actualmente un puesto puede ser cubierto por un titular o un relevo, pero necesito soportar casos donde un mismo puesto sea cubierto por varias personas en el mismo día.
+
+Crear o reforzar una estructura de segmentos de cobertura, donde cada registro guarde:
+
+- fecha
+- puestoId
+- clientId
+- sedeId
+- employeeId
+- tipoCobertura (titular, relevo)
+- horaInicio
+- horaFin
+- horasCalculadas
+- motivo (falta, enfermedad, descanso, suspensión, apoyo, etc.)
+- fueEnDiaDeDescanso (boolean)
+- generaHorasExtra (boolean)
+- observaciones
+
+Ejemplo:
+- Marco cubrió de 12:00 a 22:00 = 10 horas
+- José cubrió de 22:00 a 00:00 = 2 horas
+
+Quiero que el sistema soporte esto correctamente.
+
+---
+
+## 2. Relación con el puesto y horario
+El sistema ya tiene en puestos:
+- hora_entrada
+- hora_salida
+- descanso_inicio
+- descanso_fin
+- elegible_horas_extra
+
+Quiero que el pizarrón use esa información para saber:
+- cuándo un colaborador está en descanso
+- si un relevo ocurrió en un día/ventana de descanso
+- si corresponde marcar horas extra
+
+---
+
+## 3. Reglas laborales derivadas desde operaciones
+Cuando en el pizarrón ocurra algo como:
+
+### A. Falta
+- registrar ausencia del titular
+- marcar que genera descuento del día
+- marcar que afecta séptimo
+- generar evento RRHH si corresponde
+
+### B. Suspensión
+- registrar ausencia
+- marcar estado laboral del día
+- generar evento RRHH si corresponde
+
+### C. Relevo en día de descanso
+- marcar que el colaborador trabajó en descanso
+- generar horas extra o novedad de pago según regla
+
+### D. Cobertura parcial por varios relevos
+- dividir correctamente horas por persona
+- no sumar mal horas ni duplicarlas
+
+No quiero todavía fórmulas finales de nómina, pero sí quiero dejar registradas correctamente las novedades que luego alimentarán la planilla.
+
+---
+
+## 4. Cierre diario con consolidado por colaborador
+Al cerrar el día, además del snapshot actual, quiero que el sistema consolide por colaborador algo como:
+
+- trabajó hoy: sí / no
+- horas trabajadas
+- horas extra
+- puesto titular
+- puesto cubierto si fue relevo
+- faltó
+- suspensión
+- enfermedad / incapacidad si aplica después
+- descuento sugerido
+- afecta séptimo sí / no
+
+Esto debe quedar guardado como una capa clara de novedades diarias de nómina.
+
+---
+
+## 5. Base para pre-planilla
+No quiero aún una planilla completa final, pero sí quiero que el cierre diario alimente una estructura que luego sirva para construir la pre-planilla por período.
+
+Crear o preparar una entidad tipo:
+- novedades_nomina_diarias
+o equivalente
+
+Campos sugeridos:
+- fecha
+- employeeId
+- trabajoDia
+- horasTrabajadas
+- horasExtra
+- falta
+- suspension
+- descansoTrabajado
+- afectaSeptimo
+- descuentoDia
+- observaciones
+- fuente = cierre_operativo
+
+---
+
+## 6. Casos complejos
+El sistema debe contemplar:
+- un puesto cubierto por varias personas en el mismo día
+- un colaborador que cubre un relevo parcial
+- un titular que falta pero sigue siendo titular base
+- un relevo que cubre sin convertirse en titular
+- una jornada partida por varias coberturas
+
+---
+
+## 7. Pizarrón UI
+No quiero destruir la simplicidad del pizarrón, pero sí agregar herramientas para:
+
+- registrar tramos horarios de cobertura
+- dividir cobertura entre varias personas si hace falta
+- ver claramente si alguien está cubriendo en descanso
+- identificar si una acción genera horas extra o descuento
+
+Mantenerlo intuitivo y rápido para operación.
+
+---
+
+## 8. Integración futura con planilla e IGSS
+Dejar esta fase preparada para que después se pueda construir:
+- pre-planilla por período
+- descuentos
+- séptimo
+- horas extra
+- planilla IGSS
+- exportación a Excel/CSV para el sistema actual
+
+No hace falta hacer eso completo ahora, pero sí dejar la base de datos y la lógica diaria correctas.
+
+---
+
+## 9. No romper
+No romper:
+- clientes
+- sedes
+- puestos
+- ficha maestra
+- empleados
+- RRHH
+- eventos RRHH
+- anticipos
+- portal
+- WhatsApp
+- Trello
+- reportería actual
+- cierre operativo diario
+
+---
+
+## 10. Documentación
+Explica claramente:
+- cómo se registran ahora las coberturas parciales
+- cómo se calculan las horas por persona
+- qué novedades se generan para futura planilla
+- cómo el cierre diario alimenta la pre-planilla
+- qué parte ya queda lista para una futura fase de nómina e IGSS
+
+Muy importante:
+quiero que el pizarrón se convierta en la fuente oficial y confiable de la operación diaria para luego construir la planilla desde aquí, sin depender de memoria, papel o Excel manual.

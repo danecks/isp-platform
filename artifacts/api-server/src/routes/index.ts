@@ -23,6 +23,7 @@ import { rrhhAlertasRouter } from "./rrhh-alertas";
 import sedesRouter from "./sedes";
 import coberturaRouter from "./cobertura";
 import fichaRouter from "./ficha";
+import { nominaRouter } from "./nomina";
 
 const router: IRouter = Router();
 
@@ -50,5 +51,6 @@ router.use(rrhhAlertasRouter);
 router.use(sedesRouter);
 router.use(coberturaRouter);
 router.use(fichaRouter);
+router.use(nominaRouter);
 
 export default router;

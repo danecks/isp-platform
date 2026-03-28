@@ -23,6 +23,7 @@ import {
   ChevronRight, Info, Building2, Circle, GripVertical,
   UserMinus, UserPlus, XCircle, RotateCcw, FileText,
   Lock, Unlock, Calendar, AlertCircle, CheckSquare,
+  Layers, Timer, Moon,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -136,6 +137,31 @@ interface CierreHoyData {
   advertencias: string[];
 }
 
+interface Segmento {
+  id: number;
+  fecha: string;
+  puesto_id: number;
+  employee_id: number | null;
+  empleado_nombre: string | null;
+  empleado_nombre_join: string | null;
+  tipo_cobertura: string;
+  hora_inicio: string | null;
+  hora_fin: string | null;
+  horas_calculadas: string | null;
+  motivo: string | null;
+  fue_en_dia_descanso: boolean;
+  genera_horas_extra: boolean;
+  observaciones: string | null;
+  puesto_nombre_join: string | null;
+}
+
+interface EmpleadoBusqueda {
+  id: number;
+  nombre_completo: string;
+  puesto: string | null;
+  area: string | null;
+}
+
 // ─── Helper: fecha de hoy en formato DD-MM-YYYY (cliente) ─────────────────
 function fechaHoyStr() {
   const d  = new Date();
@@ -146,7 +172,8 @@ function fechaHoyStr() {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function iniciales(n: string) {
+function iniciales(n: string | null | undefined) {
+  if (!n) return "?";
   return n.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
 }
 
@@ -178,7 +205,8 @@ const AVATAR_COLORS = [
   "bg-rose-600", "bg-emerald-600", "bg-indigo-600", "bg-amber-600",
 ];
 
-function avatarColor(nombre: string) {
+function avatarColor(nombre: string | null | undefined) {
+  if (!nombre) return AVATAR_COLORS[0];
   const sum = nombre.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
   return AVATAR_COLORS[sum % AVATAR_COLORS.length];
 }
@@ -269,6 +297,302 @@ function DraggableAgente({
   );
 }
 
+// ─── Modal: Tramos de cobertura (segmentos) ───────────────────────────────────
+
+function ModalSegmentos({
+  puesto,
+  fecha,
+  onClose,
+}: {
+  puesto: Puesto;
+  fecha: string; // "YYYY-MM-DD"
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  // Segmentos existentes
+  const { data: segmentos = [], isLoading, refetch } = useQuery<Segmento[]>({
+    queryKey: ["segmentos", fecha, puesto.id],
+    queryFn: () =>
+      fetch(`${API_BASE}/cobertura/segmentos?fecha=${fecha}&puestoId=${puesto.id}`)
+        .then((r) => r.json()),
+  });
+
+  // Búsqueda de empleados
+  const [busqueda, setBusqueda]         = useState("");
+  const [empleadoSel, setEmpleadoSel]   = useState<EmpleadoBusqueda | null>(null);
+  const [tipoCobertura, setTipo]        = useState("relevo");
+  const [horaInicio, setHoraInicio]     = useState("");
+  const [horaFin, setHoraFin]           = useState("");
+  const [motivo, setMotivo]             = useState("");
+  const [guardando, setGuardando]       = useState(false);
+
+  const { data: empleadosBusqueda = [] } = useQuery<EmpleadoBusqueda[]>({
+    queryKey: ["emp-busqueda", busqueda],
+    queryFn: () =>
+      fetch(`${API_BASE}/employees?q=${encodeURIComponent(busqueda)}&limit=8`)
+        .then((r) => r.json())
+        .then((d) => Array.isArray(d) ? d : (d.employees ?? [])),
+    enabled: busqueda.length >= 2,
+    staleTime: 30_000,
+  });
+
+  // Parsear fecha "YYYY-MM-DD" → "DD-MM-YYYY"
+  const fechaDisplay = (() => {
+    const [y, m, d] = fecha.split("-");
+    return `${d}-${m}-${y}`;
+  })();
+
+  async function agregarSegmento() {
+    if (!empleadoSel) { toast({ title: "Selecciona un empleado", variant: "destructive" }); return; }
+    setGuardando(true);
+    try {
+      const res = await fetch(`${API_BASE}/cobertura/segmentos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fecha,
+          puestoId:       puesto.id,
+          clientId:       puesto.cliente_id,
+          sedeId:         puesto.sede_id,
+          employeeId:     empleadoSel.id,
+          empleadoNombre: empleadoSel.nombre_completo,
+          tipoCobertura,
+          horaInicio: horaInicio || null,
+          horaFin:    horaFin    || null,
+          motivo:     motivo     || null,
+        }),
+      });
+      if (!res.ok) throw await res.json();
+      toast({ title: "Tramo registrado correctamente" });
+      refetch();
+      // Reset form
+      setEmpleadoSel(null); setBusqueda(""); setHoraInicio(""); setHoraFin(""); setMotivo("");
+    } catch (err: any) {
+      toast({ title: err?.error ?? "Error al registrar tramo", variant: "destructive" });
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function eliminarSegmento(id: number) {
+    try {
+      await apiDelete(`${API_BASE}/cobertura/segmentos/${id}`);
+      toast({ title: "Tramo eliminado" });
+      refetch();
+    } catch {
+      toast({ title: "Error al eliminar tramo", variant: "destructive" });
+    }
+  }
+
+  const totalHoras = segmentos.reduce(
+    (s, sg) => s + parseFloat(sg.horas_calculadas ?? "0"), 0
+  );
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+      <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/8 bg-indigo-500/5 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <Layers className="w-4 h-4 text-indigo-400 shrink-0" />
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-white truncate">Tramos de cobertura</h3>
+              <p className="text-[11px] text-white/40 truncate">{puesto.nombre} · {fechaDisplay}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 ml-3">
+            {totalHoras > 0 && (
+              <span className="text-[10px] font-bold text-indigo-300/80 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full">
+                {totalHoras.toFixed(1)}h total
+              </span>
+            )}
+            <button onClick={onClose} className="text-white/30 hover:text-white transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Lista de tramos */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-0">
+          {isLoading && (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+            </div>
+          )}
+          {!isLoading && segmentos.length === 0 && (
+            <div className="text-center py-8 text-white/25">
+              <Layers className="w-8 h-8 mx-auto mb-2 opacity-30" />
+              <p className="text-xs">Sin tramos registrados para este puesto/día</p>
+              <p className="text-[11px] mt-1 text-white/15">Agrega uno abajo</p>
+            </div>
+          )}
+          {segmentos.map((sg) => {
+            const nombre = sg.empleado_nombre_join ?? sg.empleado_nombre ?? "—";
+            return (
+              <div key={sg.id} className="flex items-center gap-3 bg-[#0c1929] border border-white/8 rounded-xl p-3 group">
+                <div className={`w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarColor(nombre)}`}>
+                  {iniciales(nombre)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-xs font-semibold text-white/85 truncate">{nombre}</p>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold ${
+                      sg.tipo_cobertura === "titular"
+                        ? "text-green-300/80 bg-green-500/10 border-green-500/20"
+                        : "text-amber-300/80 bg-amber-500/10 border-amber-500/20"
+                    }`}>
+                      {sg.tipo_cobertura.toUpperCase()}
+                    </span>
+                    {sg.fue_en_dia_descanso && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded border text-blue-300/70 bg-blue-500/10 border-blue-500/20 font-bold flex items-center gap-0.5">
+                        <Moon className="w-2.5 h-2.5" /> DESCANSO
+                      </span>
+                    )}
+                    {sg.genera_horas_extra && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded border text-yellow-300/80 bg-yellow-500/10 border-yellow-500/20 font-bold flex items-center gap-0.5">
+                        <Zap className="w-2.5 h-2.5" /> HE
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {sg.hora_inicio && sg.hora_fin && (
+                      <span className="text-[10px] text-white/40 flex items-center gap-1">
+                        <Timer className="w-2.5 h-2.5" />
+                        {sg.hora_inicio}–{sg.hora_fin}
+                        {sg.horas_calculadas && (
+                          <span className="text-indigo-400/70 font-semibold">({parseFloat(sg.horas_calculadas).toFixed(1)}h)</span>
+                        )}
+                      </span>
+                    )}
+                    {sg.motivo && (
+                      <span className="text-[10px] text-white/30 truncate">{sg.motivo}</span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => eliminarSegmento(sg.id)}
+                  className="opacity-0 group-hover:opacity-100 text-red-400/50 hover:text-red-400 transition-all p-1 shrink-0"
+                  title="Eliminar tramo"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Formulario para agregar tramo */}
+        <div className="shrink-0 border-t border-white/8 p-4 space-y-3 bg-[#060e1c]">
+          <p className="text-[10px] font-bold text-white/25 uppercase tracking-widest">Agregar tramo</p>
+
+          {/* Búsqueda de empleado */}
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Buscar empleado (mín. 2 letras)…"
+              value={empleadoSel ? empleadoSel.nombre_completo : busqueda}
+              onChange={(e) => { setBusqueda(e.target.value); setEmpleadoSel(null); }}
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/20 outline-none focus:border-indigo-400/30"
+            />
+            {!empleadoSel && busqueda.length >= 2 && empleadosBusqueda.length > 0 && (
+              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#07111f] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
+                {empleadosBusqueda.map((e) => (
+                  <button
+                    key={e.id}
+                    onClick={() => { setEmpleadoSel(e); setBusqueda(""); }}
+                    className="w-full text-left px-3 py-2.5 hover:bg-white/5 transition-colors flex items-center gap-2 border-b border-white/5 last:border-0"
+                  >
+                    <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(e.nombre_completo)}`}>
+                      {iniciales(e.nombre_completo)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-white/80 truncate">{e.nombre_completo}</p>
+                      <p className="text-[10px] text-white/35 truncate">{e.puesto ?? e.area ?? ""}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            {empleadoSel && (
+              <button
+                onClick={() => { setEmpleadoSel(null); setBusqueda(""); }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-white/30 hover:text-white"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Tipo, horas, motivo */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="space-y-1">
+              <label className="text-[10px] text-white/35">Tipo</label>
+              <select
+                value={tipoCobertura}
+                onChange={(e) => setTipo(e.target.value)}
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white outline-none appearance-none"
+              >
+                <option value="relevo">Relevo</option>
+                <option value="titular">Titular</option>
+                <option value="apoyo">Apoyo</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-white/35">Inicio</label>
+              <input
+                type="text"
+                placeholder="06:00"
+                maxLength={5}
+                value={horaInicio}
+                onChange={(e) => setHoraInicio(e.target.value)}
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white placeholder:text-white/15 outline-none focus:border-indigo-400/40"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-white/35">Fin</label>
+              <input
+                type="text"
+                placeholder="18:00"
+                maxLength={5}
+                value={horaFin}
+                onChange={(e) => setHoraFin(e.target.value)}
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white placeholder:text-white/15 outline-none focus:border-indigo-400/40"
+              />
+            </div>
+          </div>
+
+          <input
+            type="text"
+            placeholder="Motivo (opcional)…"
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-white/15 outline-none focus:border-indigo-400/30"
+          />
+
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={onClose}
+              className="flex-1 py-2 rounded-xl border border-white/10 text-xs text-white/40 hover:text-white transition-colors"
+            >
+              Cerrar
+            </button>
+            <button
+              onClick={agregarSegmento}
+              disabled={guardando || !empleadoSel}
+              className="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white disabled:opacity-40 transition-colors flex items-center justify-center gap-1.5"
+            >
+              {guardando ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+              Registrar tramo
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── Tarjeta de Puesto (droppable) ────────────────────────────────────────────
 
 function DroppablePuesto({
@@ -276,11 +600,13 @@ function DroppablePuesto({
   isAgenteSeleccionado,
   onClick,
   onLiberar,
+  onAbrirSegmentos,
 }: {
   puesto: Puesto;
   isAgenteSeleccionado: boolean;
   onClick: () => void;
   onLiberar: () => void;
+  onAbrirSegmentos: () => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: `puesto-${puesto.id}` });
   const cubierto  = puesto.estado === "cubierto" && puesto.agente_id;
@@ -392,6 +718,18 @@ function DroppablePuesto({
         </div>
       )}
 
+      {/* Botón tramos */}
+      <div className="mt-2 pt-2 border-t border-white/5">
+        <button
+          onClick={(e) => { e.stopPropagation(); onAbrirSegmentos(); }}
+          className="flex items-center gap-1 text-[9px] text-indigo-400/50 hover:text-indigo-400 transition-colors group/tramos"
+          title="Registrar tramos de cobertura"
+        >
+          <Layers className="w-3 h-3" />
+          <span>Tramos</span>
+        </button>
+      </div>
+
       {/* Overlay drag-over */}
       {isOver && (
         <div className="absolute inset-0 rounded-xl border-2 border-primary border-dashed pointer-events-none" />
@@ -409,6 +747,7 @@ function ClienteColumna({
   onLiberar,
   onNuevoPuesto,
   onEliminarPuesto,
+  onAbrirSegmentos,
 }: {
   cliente: ClienteBoard;
   agenteSeleccionadoId: number | null;
@@ -416,6 +755,7 @@ function ClienteColumna({
   onLiberar: (puesto: Puesto) => void;
   onNuevoPuesto: (cliente: ClienteBoard) => void;
   onEliminarPuesto: (puesto: Puesto) => void;
+  onAbrirSegmentos: (puesto: Puesto) => void;
 }) {
   const cubiertos   = cliente.puestos.filter((p) => p.estado === "cubierto" && p.agente_id).length;
   const total       = cliente.puestos.length;
@@ -454,6 +794,7 @@ function ClienteColumna({
               isAgenteSeleccionado={agenteSeleccionadoId !== null}
               onClick={() => onPuestoClick(p)}
               onLiberar={() => onLiberar(p)}
+              onAbrirSegmentos={() => onAbrirSegmentos(p)}
             />
             {/* Botón eliminar puesto */}
             <button
@@ -1209,6 +1550,7 @@ export default function Operaciones() {
   const [modalReabrir, setModalReabrir]              = useState(false);
   const [filtroZona, setFiltroZona]                  = useState<string>("");
   const [filtroCliente, setFiltroCliente]            = useState<string>("");
+  const [modalSegmentos, setModalSegmentos]          = useState<Puesto | null>(null);
 
   // ── Sensores DnD ──────────────────────────────────────────────────────────
   const sensors = useSensors(
@@ -1782,6 +2124,7 @@ export default function Operaciones() {
                     onLiberar={(p) => setModalLiberar(p)}
                     onNuevoPuesto={(c) => setNuevoPuestoData(c)}
                     onEliminarPuesto={eliminarPuesto}
+                    onAbrirSegmentos={(p) => setModalSegmentos(p)}
                   />
                 ))}
               </div>
@@ -1944,6 +2287,14 @@ export default function Operaciones() {
           fechaParaReabrir={fechaCierreParaReabrir}
           onConfirm={reabrirDia}
           onClose={() => setModalReabrir(false)}
+        />
+      )}
+
+      {modalSegmentos && cierreHoy && (
+        <ModalSegmentos
+          puesto={modalSegmentos}
+          fecha={cierreHoy.fechaActiva}
+          onClose={() => setModalSegmentos(null)}
         />
       )}
     </AdminLayout>
