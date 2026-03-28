@@ -53,7 +53,7 @@ interface ZonaDetalle {
 
 interface Empleado {
   id: number;
-  nombre_completo: string;
+  nombreCompleto: string;
   puesto: string | null;
   area: string | null;
 }
@@ -165,7 +165,7 @@ function ModalZona({
               <option value="">Sin supervisor asignado</option>
               {empleados.map((emp) => (
                 <option key={emp.id} value={emp.id}>
-                  {emp.nombre_completo}{emp.puesto ? ` — ${emp.puesto}` : ""}
+                  {emp.nombreCompleto}{emp.puesto ? ` — ${emp.puesto}` : ""}
                 </option>
               ))}
             </select>
@@ -636,9 +636,10 @@ export default function ZonasOperativas() {
   const { data: empleados = [] } = useQuery<Empleado[]>({
     queryKey: ["empleados-mini"],
     queryFn: () =>
-      fetch(`${API}/employees?limit=200`).then((r) => r.json()).then((d) =>
-        Array.isArray(d) ? d : (d.data ?? [])
-      ),
+      fetch(`${API}/employees?limit=200`).then((r) => r.json()).then((d) => {
+        const arr: Empleado[] = Array.isArray(d) ? d : (d.data ?? []);
+        return arr.filter((e: any) => e.estadoLaboral === "activo" || e.estado_laboral === "activo");
+      }),
   });
 
   const { data: todosPuestos = [], refetch: refetchPuestos } = useQuery<PuestoAll[]>({
