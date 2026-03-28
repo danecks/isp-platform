@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "../layout/AdminLayout";
 import { StatusBadge } from "../components/StatusBadge";
 import { leadsApi } from "@/lib/api";
-import { Briefcase, Filter, Loader2, RefreshCw, ExternalLink, Send, CheckCircle2 } from "lucide-react";
+import { Briefcase, Filter, Loader2, RefreshCw, ExternalLink, Send, CheckCircle2, UserPlus } from "lucide-react";
 
 type EstadoLead = "nuevo" | "contactado" | "cotizado" | "ganado" | "perdido";
 type CanalFilter = "todos" | "whatsapp" | "web" | "otro";
@@ -28,11 +28,25 @@ async function sendLeadToTrello(id: number): Promise<{ ok: boolean; url?: string
   }
 }
 
+async function convertirCliente(id: number): Promise<{ ok: boolean; clienteId?: number; msg?: string }> {
+  try {
+    const r = await fetch(`${API}/leads/${id}/convertir-cliente`, { method: "POST" });
+    const data = await r.json();
+    if (!r.ok) return { ok: false, msg: data.error || "Error al convertir" };
+    return { ok: true, clienteId: data.clienteId };
+  } catch (err) {
+    return { ok: false, msg: (err as Error).message };
+  }
+}
+
 export default function Comercial() {
   const [filtro, setFiltro] = useState<EstadoLead | "todos">("todos");
   const [canalFiltro, setCanalFiltro] = useState<CanalFilter>("todos");
   const [sendingId, setSendingId] = useState<number | null>(null);
+  const [convirtiendo, setConvirtiendo] = useState<number | null>(null);
   const [trelloUrls, setTrelloUrls] = useState<Record<number, string>>({});
+  const [convertidos, setConvertidos] = useState<Record<number, number>>({});
+  const [errores, setErrores] = useState<Record<number, string>>({});
 
   const { data: leads = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["leads"],
@@ -171,11 +185,14 @@ export default function Comercial() {
                     <th className="text-left px-3 py-3">Ejecutivo</th>
                     <th className="text-left px-3 py-3">Fecha</th>
                     <th className="text-left px-3 py-3">Trello</th>
+                    <th className="text-left px-3 py-3">Acción</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtrados.map((l) => {
                     const trelloUrl = trelloUrls[l.id] || (l as any).tareaAsociada;
+                    const clienteIdConv = convertidos[l.id];
+                    const error = errores[l.id];
                     return (
                     <tr
                       key={l.id}
@@ -215,12 +232,49 @@ export default function Comercial() {
                           </button>
                         )}
                       </td>
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        {l.estado === "ganado" && (
+                          clienteIdConv ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-400 text-[10px] font-semibold">
+                              <CheckCircle2 size={11} />
+                              Cliente #{clienteIdConv}
+                            </span>
+                          ) : (
+                            <div className="flex flex-col gap-0.5">
+                              <button
+                                onClick={async () => {
+                                  setConvirtiendo(l.id);
+                                  setErrores(p => { const n = { ...p }; delete n[l.id]; return n; });
+                                  const res = await convertirCliente(l.id);
+                                  if (res.ok && res.clienteId) {
+                                    setConvertidos(p => ({ ...p, [l.id]: res.clienteId! }));
+                                  } else {
+                                    setErrores(p => ({ ...p, [l.id]: res.msg ?? "Error" }));
+                                  }
+                                  setConvirtiendo(null);
+                                }}
+                                disabled={convirtiendo === l.id}
+                                className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 hover:text-emerald-300 text-[11px] rounded-lg border border-emerald-500/20 transition-colors disabled:opacity-50"
+                                title="Convertir a Cliente"
+                              >
+                                {convirtiendo === l.id
+                                  ? <Loader2 size={11} className="animate-spin" />
+                                  : <UserPlus size={11} />}
+                                <span>Convertir</span>
+                              </button>
+                              {error && (
+                                <span className="text-[10px] text-red-400/70 max-w-[120px] truncate" title={error}>{error}</span>
+                              )}
+                            </div>
+                          )
+                        )}
+                      </td>
                     </tr>
                     );
                   })}
                   {filtrados.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="px-5 py-10 text-center text-white/30 text-xs">
+                      <td colSpan={11} className="px-5 py-10 text-center text-white/30 text-xs">
                         No hay leads con los filtros aplicados.
                       </td>
                     </tr>

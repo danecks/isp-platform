@@ -27,6 +27,23 @@ import {
 
 export const waConfigRouter = Router();
 
+// M-10: Extrae el nombre de usuario desde el header x-isp-session (JSON) o body.
+// Nunca confiar sólo en el body para el log de auditoría.
+function extractUsuario(req: any): string {
+  try {
+    const sessionHeader = req.headers["x-isp-session"] as string | undefined;
+    if (sessionHeader && sessionHeader.startsWith("{")) {
+      const parsed = JSON.parse(sessionHeader);
+      if (parsed?.username) return parsed.username;
+      if (parsed?.nombre) return parsed.nombre;
+    }
+  } catch {
+    // session header no es JSON válido
+  }
+  // Fallback: valor del body (compatibilidad hacia atrás)
+  return req.body?.usuario ?? "sistema";
+}
+
 // ─── General ──────────────────────────────────────────────────────────────────
 
 waConfigRouter.get("/wa-config/general", async (_req, res) => {
@@ -41,10 +58,12 @@ waConfigRouter.get("/wa-config/general", async (_req, res) => {
 
 waConfigRouter.put("/wa-config/general/:clave", async (req, res) => {
   const { clave } = req.params;
-  const { valor, usuario } = req.body;
+  const { valor } = req.body;
   if (valor === undefined) {
     return res.status(400).json({ error: "Se requiere campo 'valor'" });
   }
+
+  const usuario = extractUsuario(req);
 
   try {
     await setWaConfig(clave, String(valor), usuario);
@@ -69,10 +88,12 @@ waConfigRouter.get("/wa-config/messages", async (_req, res) => {
 
 waConfigRouter.put("/wa-config/messages/:clave", async (req, res) => {
   const { clave } = req.params;
-  const { texto, usuario } = req.body;
+  const { texto } = req.body;
   if (!texto) {
     return res.status(400).json({ error: "Se requiere campo 'texto'" });
   }
+
+  const usuario = extractUsuario(req);
 
   try {
     await setWaMessage(clave, texto, usuario);
@@ -100,7 +121,7 @@ waConfigRouter.put("/wa-config/menus/:id", async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
 
-  const { activo, texto, orden, usuario } = req.body;
+  const { activo, texto, orden } = req.body;
   const updates: any = {};
   if (activo !== undefined) updates.activo = Boolean(activo);
   if (texto !== undefined) updates.texto = texto;
@@ -109,6 +130,8 @@ waConfigRouter.put("/wa-config/menus/:id", async (req, res) => {
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({ error: "No hay campos para actualizar" });
   }
+
+  const usuario = extractUsuario(req);
 
   try {
     const clave = `menu_option_${id}`;

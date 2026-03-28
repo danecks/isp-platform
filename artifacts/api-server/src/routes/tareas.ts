@@ -206,6 +206,16 @@ router.post("/tareas", async (req, res) => {
     const id = genTareaId();
     const now = new Date();
 
+    // A-07: auto-derivar nombre del asignado desde la tabla de usuarios
+    let resolvedAsignado = asignado?.trim() || null;
+    const parsedAsignadoId = asignadoId ? parseInt(String(asignadoId), 10) : null;
+    if (parsedAsignadoId && !isNaN(parsedAsignadoId)) {
+      const { rows: uRows } = await pool.query<{ nombre: string }>(
+        `SELECT nombre FROM users WHERE id = $1 LIMIT 1`, [parsedAsignadoId]
+      );
+      if (uRows[0]) resolvedAsignado = uRows[0].nombre;
+    }
+
     const [tarea] = await db
       .insert(tareasTable)
       .values({
@@ -215,8 +225,8 @@ router.post("/tareas", async (req, res) => {
         incidenciaId: incidenciaId?.trim() || null,
         prioridad,
         estado,
-        asignado: asignado?.trim() || null,
-        asignadoId: asignadoId ? parseInt(asignadoId) : null,
+        asignado: resolvedAsignado,
+        asignadoId: parsedAsignadoId,
         trelloCardId: trelloCardId?.trim() || null,
         trelloCardUrl: trelloCardUrl?.trim() || null,
         fechaVencimiento: fechaVencimiento ? new Date(fechaVencimiento) : null,
@@ -267,6 +277,14 @@ router.patch("/tareas/:id", async (req, res) => {
           patch[key] = req.body[key];
         }
       }
+    }
+
+    // A-07: auto-derivar asignado (texto) cuando cambia asignadoId
+    if (patch.asignadoId && typeof patch.asignadoId === "number") {
+      const { rows: uRows } = await pool.query<{ nombre: string }>(
+        `SELECT nombre FROM users WHERE id = $1 LIMIT 1`, [patch.asignadoId]
+      );
+      if (uRows[0]) patch.asignado = uRows[0].nombre;
     }
 
     // No permitir cambio a "completada" sin evidencia

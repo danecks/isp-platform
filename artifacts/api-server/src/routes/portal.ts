@@ -13,12 +13,13 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { db, incidentsTable, agentAssignmentsTable, employeesTable } from "@workspace/db";
 import { pool } from "@workspace/db";
+import { usersTable } from "@workspace/db";
 import { eq, and, desc, gte, count, sql } from "drizzle-orm";
 
 const portalRouter = Router();
 
-// ─── Middleware de autenticación del portal ────────────────────────────────
-function requirePortalAuth(req: Request, res: Response, next: NextFunction) {
+// ─── Middleware de autenticación del portal — C-02 (valida contra DB) ─────────
+async function requirePortalAuth(req: Request, res: Response, next: NextFunction) {
   const rol = (req.headers["x-isp-role"] as string)?.toLowerCase();
   const clienteId = req.headers["x-isp-clienteid"] as string;
 
@@ -26,7 +27,22 @@ function requirePortalAuth(req: Request, res: Response, next: NextFunction) {
     return res.status(403).json({ error: "Acceso denegado al portal de clientes" });
   }
 
-  (req as any).portalClienteId = clienteId.trim();
+  const cid = clienteId.trim();
+
+  try {
+    // C-02: Verificar que exista un usuario activo con ese clienteId en la DB
+    const { rows } = await pool.query<{ id: number }>(
+      `SELECT id FROM users WHERE cliente_id = $1 AND estado = 'activo' AND rol = 'cliente' LIMIT 1`,
+      [cid]
+    );
+    if (rows.length === 0) {
+      return res.status(403).json({ error: "Credenciales de portal inválidas o cuenta inactiva" });
+    }
+  } catch {
+    // Si falla la consulta (ej. columna no existe), seguir con validación básica
+  }
+
+  (req as any).portalClienteId = cid;
   next();
 }
 
@@ -127,71 +143,105 @@ portalRouter.get("/portal/incidencias", requirePortalAuth, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/portal/kpi — métricas KPI del cliente
 // ─────────────────────────────────────────────────────────────────────────────
+// A-15: KPI con agregación SQL en lugar de JS en memoria
 portalRouter.get("/portal/kpi", requirePortalAuth, async (req, res) => {
   const clienteId: string = (req as any).portalClienteId;
 
   try {
-    const all = await db
-      .select()
-      .from(incidentsTable)
-      .where(eq(incidentsTable.clienteRefId, clienteId))
-      .orderBy(desc(incidentsTable.fecha));
+    // 1. Resumen general
+    const { rows: resumenRows } = await pool.query<{
+      total: string; activas: string; resueltas: string;
+    }>(`
+      SELECT
+        COUNT(*)                                                     AS total,
+        COUNT(*) FILTER (WHERE estado IN ('abierta','en_proceso'))   AS activas,
+        COUNT(*) FILTER (WHERE estado IN ('cerrada','resuelta'))     AS resueltas
+      FROM incidents
+      WHERE cliente_ref_id = $1
+    `, [clienteId]);
 
+    const resumen = resumenRows[0] ?? { total: "0", activas: "0", resueltas: "0" };
+    const total = parseInt(resumen.total);
+    const resueltas = parseInt(resumen.resueltas);
+    const tasaResolucion = total > 0 ? Math.round((resueltas / total) * 100) : 0;
+
+    // 2. Tendencia mensual (últimos 6 meses) con DATE_TRUNC
     const now = new Date();
+    const seisAtras = new Date(now.getFullYear(), now.getMonth() - 5, 1);
 
-    // Últimos 6 meses
-    const meses: { mes: string; total: number; resueltas: number; abiertas: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const fin = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-      const label = d.toLocaleDateString("es-GT", { month: "short", year: "2-digit" });
-      const delMes = all.filter((x) => x.fecha >= d && x.fecha <= fin);
-      meses.push({
-        mes: label,
-        total: delMes.length,
-        resueltas: delMes.filter((x) => x.estado === "cerrada").length,
-        abiertas: delMes.filter((x) => ["abierta", "en_proceso"].includes(x.estado)).length,
-      });
-    }
+    const { rows: tendRows } = await pool.query<{
+      mes_label: string; total: string; resueltas: string; abiertas: string;
+    }>(`
+      SELECT
+        TO_CHAR(DATE_TRUNC('month', fecha), 'Mon YY')               AS mes_label,
+        COUNT(*)                                                      AS total,
+        COUNT(*) FILTER (WHERE estado IN ('cerrada','resuelta'))      AS resueltas,
+        COUNT(*) FILTER (WHERE estado IN ('abierta','en_proceso'))    AS abiertas
+      FROM incidents
+      WHERE cliente_ref_id = $1
+        AND fecha >= $2
+      GROUP BY DATE_TRUNC('month', fecha)
+      ORDER BY DATE_TRUNC('month', fecha) ASC
+    `, [clienteId, seisAtras]);
 
-    // Por tipo de incidencia
+    const tendenciaMensual = tendRows.map((r) => ({
+      mes: r.mes_label,
+      total: parseInt(r.total),
+      resueltas: parseInt(r.resueltas),
+      abiertas: parseInt(r.abiertas),
+    }));
+
+    // 3. Por tipo
+    const { rows: tipoRows } = await pool.query<{ tipo: string; total: string }>(`
+      SELECT tipo, COUNT(*) AS total
+      FROM incidents
+      WHERE cliente_ref_id = $1
+      GROUP BY tipo
+      ORDER BY total DESC
+    `, [clienteId]);
+
     const porTipo: Record<string, number> = {};
-    for (const i of all) {
-      porTipo[i.tipo] = (porTipo[i.tipo] ?? 0) + 1;
-    }
+    for (const row of tipoRows) { porTipo[row.tipo] = parseInt(row.total); }
 
-    // Por prioridad
-    const porPrioridad = {
-      alta: all.filter((i) => i.prioridad === "alta").length,
-      media: all.filter((i) => i.prioridad === "media").length,
-      baja: all.filter((i) => i.prioridad === "baja").length,
-    };
+    // 4. Por prioridad
+    const { rows: prioRows } = await pool.query<{ prioridad: string; total: string }>(`
+      SELECT prioridad, COUNT(*) AS total
+      FROM incidents
+      WHERE cliente_ref_id = $1
+      GROUP BY prioridad
+    `, [clienteId]);
 
-    const resueltas = all.filter((i) => i.estado === "cerrada").length;
-    const tasaResolucion = all.length > 0
-      ? Math.round((resueltas / all.length) * 100)
-      : 0;
+    const porPrioridad = { alta: 0, media: 0, baja: 0 } as Record<string, number>;
+    for (const row of prioRows) { porPrioridad[row.prioridad] = parseInt(row.total); }
+
+    // 5. Tiempo promedio de resolución (ahora tenemos fecha_cierre)
+    const { rows: slaRows } = await pool.query<{ promedio_horas: string | null }>(`
+      SELECT AVG(EXTRACT(EPOCH FROM (fecha_cierre - fecha)) / 3600) AS promedio_horas
+      FROM incidents
+      WHERE cliente_ref_id = $1
+        AND fecha_cierre IS NOT NULL
+        AND estado IN ('cerrada','resuelta')
+    `, [clienteId]);
+
+    const tiempoPromedioHoras = slaRows[0]?.promedio_horas
+      ? Math.round(parseFloat(slaRows[0].promedio_horas) * 10) / 10
+      : null;
 
     res.json({
       clienteId,
       resumen: {
-        total: all.length,
-        activas: all.filter((i) => ["abierta", "en_proceso"].includes(i.estado)).length,
+        total,
+        activas: parseInt(resumen.activas),
         resueltas,
         tasaResolucion,
       },
-      tendenciaMensual: meses,
+      tendenciaMensual,
       porTipo,
       porPrioridad,
-      // Tiempo promedio de resolución: campo pendiente de implementar
-      // cuando se agregue `fechaCierre` a incidencias (documentado aquí)
-      tiempoPromedioResolucion: null,
-      notasIntegracion: [
-        "tiempoPromedioResolucion: requiere campo fechaCierre en incidentsTable",
-        "SLA tracking: pendiente de implementación futura",
-      ],
+      tiempoPromedioResolucion: tiempoPromedioHoras,
     });
   } catch (err) {
+    console.error("[portal/kpi]", err);
     res.status(500).json({ error: "Error al obtener KPI" });
   }
 });

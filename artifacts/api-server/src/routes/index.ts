@@ -25,6 +25,7 @@ import coberturaRouter from "./cobertura";
 import fichaRouter from "./ficha";
 import { nominaRouter } from "./nomina";
 import storageRouter from "./storage";
+import kpiRouter from "./kpi";
 
 const router: IRouter = Router();
 
@@ -54,5 +55,6 @@ router.use(coberturaRouter);
 router.use(fichaRouter);
 router.use(nominaRouter);
 router.use(storageRouter);
+router.use(kpiRouter);
 
 export default router;

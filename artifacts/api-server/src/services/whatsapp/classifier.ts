@@ -27,13 +27,14 @@ export type MessageClassification =
   | "lead"
   | "info_general"
   | "contacto_asesor"
-  | "saludo_externo";
+  | "saludo_externo"
+  | "tarea";
 
 /**
  * Intenciones que son de uso EXCLUSIVAMENTE interno.
  * Si un número desconocido las intenta, se bloquean con menú de alternativas.
  */
-export const INTERNAL_INTENTS: MessageClassification[] = ["anticipo", "incidencia"];
+export const INTERNAL_INTENTS: MessageClassification[] = ["anticipo", "incidencia", "tarea"];
 
 // ─── Palabras clave por intención ─────────────────────────────────────────────
 
@@ -154,9 +155,20 @@ function esSaludoGenerico(text: string): boolean {
  *   7. saludo_externo  — saludo sin intención clara (externa)
  *   DEFAULT: lead   — para mensajes sin clasificación pero externos
  */
+// M-15: Palabras clave para consulta de tareas asignadas (uso interno)
+const TAREA_KW = [
+  "tarea", "tareas", "mis tareas", "mis actividades",
+  "qué tengo asignado", "que tengo asignado",
+  "actividades pendientes", "pendientes",
+  "qué debo hacer", "que debo hacer",
+  "trabajo pendiente", "trabajos pendientes",
+  "asignaciones", "mis asignaciones",
+];
+
 export function classifyMessage(messageText: string): MessageClassification {
   if (matches(messageText, ANTICIPO_KW))        return "anticipo";
   if (matches(messageText, INCIDENCIA_KW))      return "incidencia";
+  if (matches(messageText, TAREA_KW))           return "tarea";
   if (matches(messageText, POSTULACION_KW))     return "postulacion";
   if (matches(messageText, LEAD_KW))            return "lead";
   if (matches(messageText, INFO_GENERAL_KW))    return "info_general";

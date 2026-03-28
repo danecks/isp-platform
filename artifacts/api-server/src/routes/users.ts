@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { db, usersTable } from "@workspace/db";
+import { pool } from "@workspace/db";
 import { eq, asc } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 
@@ -142,6 +143,18 @@ usersRouter.post("/users", async (req, res) => {
 
   const telefonoNorm = telefono ? normalizePhone(String(telefono)) : null;
 
+  // M-01: Validar que el employeeId existe en la tabla employees
+  if (employeeId) {
+    const empId = parseInt(String(employeeId));
+    if (isNaN(empId)) return res.status(400).json({ error: "employeeId debe ser un número entero" });
+    const { rows: empRows } = await pool.query(
+      `SELECT id FROM employees WHERE id = $1 LIMIT 1`, [empId]
+    );
+    if (empRows.length === 0) {
+      return res.status(400).json({ error: `No existe el empleado con ID ${empId}` });
+    }
+  }
+
   try {
     const passwordHash = await bcrypt.hash(String(password), 10);
     const [user] = await db
@@ -193,7 +206,19 @@ usersRouter.patch("/users/:id", async (req, res) => {
   }
   if (clienteId !== undefined) updates.clienteId = clienteId || null;
   if (employeeId !== undefined) {
-    updates.employeeId = employeeId ? parseInt(String(employeeId)) : null;
+    if (employeeId) {
+      const empId = parseInt(String(employeeId));
+      if (isNaN(empId)) return res.status(400).json({ error: "employeeId debe ser un número entero" });
+      const { rows: empRows } = await pool.query(
+        `SELECT id FROM employees WHERE id = $1 LIMIT 1`, [empId]
+      );
+      if (empRows.length === 0) {
+        return res.status(400).json({ error: `No existe el empleado con ID ${empId}` });
+      }
+      updates.employeeId = empId;
+    } else {
+      updates.employeeId = null;
+    }
   }
   if (canReportEmergency !== undefined) {
     updates.canReportEmergency = canReportEmergency === true || canReportEmergency === "true" ? true : canReportEmergency === false || canReportEmergency === "false" ? false : null;

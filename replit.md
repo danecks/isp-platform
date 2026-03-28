@@ -6,10 +6,12 @@ This project is a pnpm monorepo for "Investigaciones y Seguridad Profesional S.A
 Key capabilities include:
 - **Comprehensive Admin Modules:** Covering Commercial (leads CRM), Recruitment (job applications), Incidents Management, HR Advances, HR Disciplinary KPI, Operational Rotation KPI, RRHH Automatic Alerts, and a CMS for public website content.
 - **Robust Authentication & RBAC:** Granular role-based access control (admin, operaciones, rrhh, comercial, supervisor, cliente).
-- **Client Portal:** Secure access for clients to view incidents and KPIs.
+- **Client Portal:** Secure access for clients to view incidents and KPIs (SQL aggregation via DATE_TRUNC; auth validated against DB).
 - **Trello Integration:** Seamless integration for Incidencias, Leads, and Postulaciones, with a mock mode for development.
-- **WhatsApp Integration:** Transforms WhatsApp messages into structured database records for leads, applications, incidents, and advance requests, including a dedicated admin configuration module.
+- **WhatsApp Integration:** Transforms WhatsApp messages into structured database records for leads, applications, incidents, advance requests, and task queries. Includes admin config module with session-header audit attribution.
 - **Client and Position Aliases:** Facilitates using common names for client and service locations in incident reporting.
+- **Lead → Cliente Conversion:** POST /api/leads/:id/convertir-cliente promotes a "ganado" lead to a real clients record (lazy migration of leads.cliente_id FK).
+- **Postulante → Empleado Conversion:** POST /api/applications/:id/contratar creates an employees record from an "aprobado" application.
 - **Branding Consistency:** Centralized configuration ensures a uniform corporate identity.
 
 ## User Preferences

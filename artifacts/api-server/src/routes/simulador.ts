@@ -247,10 +247,14 @@ async function simularMensaje(params: SimularParams): Promise<SimularResult> {
     debug.validacion.motivo = "omitido_skip";
   }
 
-  // 3. Buscar alias en service_locations
+  // 3. Buscar alias en position_aliases JOIN service_locations (A-16: columna correcta)
   try {
     const aliasResult = await pool.query<{ alias: string; nombre: string }>(
-      `SELECT alias, nombre FROM service_locations WHERE alias ILIKE $1 LIMIT 1`,
+      `SELECT pa.alias, sl.nombre_puesto AS nombre
+       FROM position_aliases pa
+       JOIN service_locations sl ON sl.id = pa.puesto_id
+       WHERE pa.alias ILIKE $1
+       LIMIT 1`,
       [`%${mensaje.substring(0, 30)}%`]
     );
     if (aliasResult.rows[0]) {
@@ -335,6 +339,46 @@ async function simularMensaje(params: SimularParams): Promise<SimularResult> {
         debug.entidad = { creada: false, tabla: "incidentes", id: simId + "(sim)", dryRun: true };
         respuesta = incidenciaRespuesta.replace("{id}", simId + "-SIM");
       }
+
+    } else if (intencion === "tarea") {
+      // M-15: Consulta de tareas asignadas por número de teléfono
+      const tareasMsg = await getWaMessage(
+        "tarea_consulta_bot",
+        "📋 *Tus tareas pendientes:*\n\n{lista}\n\n_Para ver detalles de una tarea, escribe el ID._"
+      );
+
+      let listaTareas = "";
+      if (persistir) {
+        const { rows: tareasRows } = await pool.query<{
+          id: number; titulo: string; estado: string; prioridad: string; fecha_limite: string | null;
+        }>(`
+          SELECT t.id, t.titulo, t.estado, t.prioridad, t.fecha_limite
+          FROM tareas t
+          JOIN users u ON u.id = t.asignado_id
+          WHERE u.telefono = $1
+            AND t.estado NOT IN ('completada', 'cancelada')
+          ORDER BY t.prioridad DESC, t.created_at ASC
+          LIMIT 5
+        `, [telefono.replace("+", "")]);
+
+        if (tareasRows.length > 0) {
+          listaTareas = tareasRows.map((t, i) => {
+            const fecha = t.fecha_limite
+              ? ` | Límite: ${new Date(t.fecha_limite).toLocaleDateString("es-GT")}`
+              : "";
+            return `${i + 1}. *#${t.id}* ${t.titulo}\n   Estado: ${t.estado} | Prioridad: ${t.prioridad}${fecha}`;
+          }).join("\n\n");
+        } else {
+          listaTareas = "✅ No tienes tareas pendientes asignadas.";
+        }
+
+        debug.entidad = { creada: false, tabla: "tareas", id: tareasRows.length, dryRun: false };
+      } else {
+        listaTareas = "#1 Tarea de ejemplo (simulación)\n   Estado: pendiente | Prioridad: media";
+        debug.entidad = { creada: false, tabla: "tareas", id: null, dryRun: true };
+      }
+
+      respuesta = tareasMsg.replace("{lista}", listaTareas);
 
     } else if (intencion === "postulacion") {
       const postulacionRespuesta = await getWaMessage(

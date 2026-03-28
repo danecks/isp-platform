@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "../layout/AdminLayout";
 import { StatusBadge } from "../components/StatusBadge";
 import { applicationsApi } from "@/lib/api";
-import { Users, Filter, Loader2, RefreshCw, ExternalLink, Send, CheckCircle2 } from "lucide-react";
+import { Users, Filter, Loader2, RefreshCw, ExternalLink, Send, CheckCircle2, UserCheck } from "lucide-react";
 
 type EstadoPostulante = "recibido" | "en_revision" | "entrevista" | "aprobado" | "descartado";
 type CanalFilter = "todos" | "whatsapp" | "web" | "otro";
@@ -28,11 +28,25 @@ async function sendApplicationToTrello(id: number): Promise<{ ok: boolean; url?:
   }
 }
 
+async function contratarPostulante(id: number): Promise<{ ok: boolean; empleadoId?: number; numEmpleado?: string; msg?: string }> {
+  try {
+    const r = await fetch(`${API}/applications/${id}/contratar`, { method: "POST" });
+    const data = await r.json();
+    if (!r.ok) return { ok: false, msg: data.error || "Error al contratar" };
+    return { ok: true, empleadoId: data.empleadoId, numEmpleado: data.numEmpleado };
+  } catch (err) {
+    return { ok: false, msg: (err as Error).message };
+  }
+}
+
 export default function Reclutamiento() {
   const [filtro, setFiltro] = useState<EstadoPostulante | "todos">("todos");
   const [canalFiltro, setCanalFiltro] = useState<CanalFilter>("todos");
   const [sendingId, setSendingId] = useState<number | null>(null);
+  const [contratando, setContratando] = useState<number | null>(null);
   const [trelloUrls, setTrelloUrls] = useState<Record<number, string>>({});
+  const [contratados, setContratados] = useState<Record<number, { empleadoId: number; numEmpleado: string }>>({});
+  const [errores, setErrores] = useState<Record<number, string>>({});
 
   const { data: postulantes = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["applications"],
@@ -164,6 +178,7 @@ export default function Reclutamiento() {
                     <th className="text-left px-5 py-3">ID</th>
                     <th className="text-left px-3 py-3">Nombre</th>
                     <th className="text-left px-3 py-3">Teléfono</th>
+                    <th className="text-left px-3 py-3">DPI</th>
                     <th className="text-left px-3 py-3">Correo</th>
                     <th className="text-left px-3 py-3">Puesto</th>
                     <th className="text-left px-3 py-3">Experiencia</th>
@@ -172,11 +187,14 @@ export default function Reclutamiento() {
                     <th className="text-left px-3 py-3">Estado</th>
                     <th className="text-left px-3 py-3">Fecha</th>
                     <th className="text-left px-3 py-3">Trello</th>
+                    <th className="text-left px-3 py-3">Acción</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtrados.map((p) => {
                     const trelloUrl = trelloUrls[p.id] || (p as any).tareaAsociada;
+                    const contratado = contratados[p.id];
+                    const error = errores[p.id];
                     return (
                     <tr
                       key={p.id}
@@ -187,6 +205,12 @@ export default function Reclutamiento() {
                       <td className="px-5 py-3 text-primary font-mono font-semibold">#{p.id}</td>
                       <td className="px-3 py-3 text-white/80 font-medium">{p.nombre}</td>
                       <td className="px-3 py-3 text-white/50">{p.telefono}</td>
+                      <td className="px-3 py-3 text-white/40 font-mono text-[11px]">
+                        {(p as any).dpi
+                          ? <span className="text-emerald-400/70">{(p as any).dpi}</span>
+                          : <span className="text-red-400/50 text-[10px]">Sin DPI</span>
+                        }
+                      </td>
                       <td className="px-3 py-3 text-white/40 max-w-[140px] truncate">{p.correo ?? "—"}</td>
                       <td className="px-3 py-3 text-white/60 max-w-[140px] truncate">{p.puesto}</td>
                       <td className="px-3 py-3 text-white/50">{p.experiencia}</td>
@@ -217,12 +241,52 @@ export default function Reclutamiento() {
                           </button>
                         )}
                       </td>
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        {p.estado === "aprobado" && (
+                          contratado ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-400 text-[10px] font-semibold">
+                              <CheckCircle2 size={11} />
+                              {contratado.numEmpleado}
+                            </span>
+                          ) : (
+                            <div className="flex flex-col gap-0.5">
+                              <button
+                                onClick={async () => {
+                                  setContratando(p.id);
+                                  setErrores(prev => { const n = { ...prev }; delete n[p.id]; return n; });
+                                  const res = await contratarPostulante(p.id);
+                                  if (res.ok && res.empleadoId && res.numEmpleado) {
+                                    setContratados(prev => ({
+                                      ...prev,
+                                      [p.id]: { empleadoId: res.empleadoId!, numEmpleado: res.numEmpleado! },
+                                    }));
+                                  } else {
+                                    setErrores(prev => ({ ...prev, [p.id]: res.msg ?? "Error" }));
+                                  }
+                                  setContratando(null);
+                                }}
+                                disabled={contratando === p.id}
+                                className="inline-flex items-center gap-1 px-2 py-1 bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 hover:text-blue-200 text-[11px] rounded-lg border border-blue-500/20 transition-colors disabled:opacity-50"
+                                title="Contratar — crear empleado"
+                              >
+                                {contratando === p.id
+                                  ? <Loader2 size={11} className="animate-spin" />
+                                  : <UserCheck size={11} />}
+                                <span>Contratar</span>
+                              </button>
+                              {error && (
+                                <span className="text-[10px] text-red-400/70 max-w-[120px] truncate" title={error}>{error}</span>
+                              )}
+                            </div>
+                          )
+                        )}
+                      </td>
                     </tr>
                     );
                   })}
                   {filtrados.length === 0 && (
                     <tr>
-                      <td colSpan={11} className="px-5 py-10 text-center text-white/30 text-xs">
+                      <td colSpan={13} className="px-5 py-10 text-center text-white/30 text-xs">
                         No hay postulantes con los filtros aplicados.
                       </td>
                     </tr>

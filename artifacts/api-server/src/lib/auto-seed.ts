@@ -1378,5 +1378,37 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: P-01 responsable_id — error (no bloqueante)");
   }
 
+  // ── Fase 2 - A-05: puesto_id, sede_id y fecha_cierre en incidents ─────────────
+  try {
+    await pool.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS puesto_id INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS sede_id INTEGER REFERENCES client_sedes(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS fecha_cierre TIMESTAMPTZ`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS incidents_puesto_id ON incidents(puesto_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS incidents_sede_id ON incidents(sede_id)`);
+    logger.info("Auto-migrate: Fase2-A05 columnas puesto_id, sede_id, fecha_cierre en incidents verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: Fase2-A05 incidents — error (no bloqueante)");
+  }
+
+  // ── Fase 2 - A-06: cliente_id y puesto_id en tareas ──────────────────────────
+  try {
+    await pool.query(`ALTER TABLE tareas ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clients(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE tareas ADD COLUMN IF NOT EXISTS puesto_id INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE tareas ADD COLUMN IF NOT EXISTS sede_id INTEGER REFERENCES client_sedes(id) ON DELETE SET NULL`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS tareas_cliente_id ON tareas(cliente_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS tareas_puesto_id ON tareas(puesto_id)`);
+    logger.info("Auto-migrate: Fase2-A06 columnas cliente_id, puesto_id, sede_id en tareas verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: Fase2-A06 tareas — error (no bloqueante)");
+  }
+
+  // ── Fase 2 - A-12: campo dpi en applications ─────────────────────────────────
+  try {
+    await pool.query(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS dpi VARCHAR(15)`);
+    logger.info("Auto-migrate: Fase2-A12 columna dpi en applications verificada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: Fase2-A12 applications.dpi — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

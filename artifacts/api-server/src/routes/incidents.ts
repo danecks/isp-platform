@@ -65,7 +65,7 @@ router.post("/incidents", async (req, res) => {
     const ORIGENES_VALIDOS = ["manual", "web", "whatsapp", "llamada", "portal"];
     const ESTADOS_VALIDOS = ["abierta", "en_proceso", "resuelta", "cerrada"];
 
-    const { esEmergencia, reportadoPor, clienteId, clienteRefId } = req.body;
+    const { esEmergencia, reportadoPor, clienteId, clienteRefId, puestoId, sedeId } = req.body;
 
     // C-05: resolver client_id (FK real) desde clienteId numérico o clienteRefId
     let resolvedClientId: number | null = null;
@@ -114,11 +114,33 @@ router.post("/incidents", async (req, res) => {
       } as any)
       .returning();
 
-    // Guardar responsable_id en columna separada (agregada por migración P-01)
-    if (resolvedResponsableId && inserted[0]?.id) {
+    // Guardar responsable_id, puesto_id y sede_id en columnas extra (A-05)
+    const extraUpdates: string[] = [];
+    const extraParams: (number | string)[] = [];
+    let pIdx = 1;
+
+    if (resolvedResponsableId) {
+      extraUpdates.push(`responsable_id = $${pIdx++}`);
+      extraParams.push(resolvedResponsableId);
+    }
+
+    const resolvedPuestoId = puestoId ? parseInt(String(puestoId), 10) : null;
+    const resolvedSedeId   = sedeId   ? parseInt(String(sedeId),   10) : null;
+
+    if (resolvedPuestoId && !isNaN(resolvedPuestoId)) {
+      extraUpdates.push(`puesto_id = $${pIdx++}`);
+      extraParams.push(resolvedPuestoId);
+    }
+    if (resolvedSedeId && !isNaN(resolvedSedeId)) {
+      extraUpdates.push(`sede_id = $${pIdx++}`);
+      extraParams.push(resolvedSedeId);
+    }
+
+    if (extraUpdates.length > 0 && inserted[0]?.id) {
+      extraParams.push(inserted[0].id);
       await pool.query(
-        `UPDATE incidents SET responsable_id = $1 WHERE id = $2`,
-        [resolvedResponsableId, inserted[0].id]
+        `UPDATE incidents SET ${extraUpdates.join(", ")} WHERE id = $${pIdx}`,
+        extraParams
       );
     }
 
@@ -144,21 +166,48 @@ router.patch("/incidents/:id", async (req, res) => {
       return res.status(400).json({ error: "Prioridad inválida" });
     }
 
-    // Construimos solo los campos que llegan
     const { esEmergencia, reportadoPor } = req.body;
+
+    // A-04: validar responsableId contra employees igual que en POST
+    let resolvedResponsableId: number | undefined;
+    let resolvedResponsable: string | undefined;
+    const rawResponsableId = req.body.responsableId;
+    if (rawResponsableId !== undefined && rawResponsableId !== null) {
+      const rid = parseInt(String(rawResponsableId), 10);
+      if (!isNaN(rid)) {
+        const { rows: empRows } = await pool.query(
+          `SELECT id, nombre_completo FROM employees WHERE id = $1 AND estado_laboral != 'inactivo'`,
+          [rid]
+        );
+        if (!empRows.length) {
+          return res.status(400).json({ error: "El responsable indicado no existe o está inactivo" });
+        }
+        resolvedResponsableId = rid;
+        resolvedResponsable = empRows[0].nombre_completo;
+      }
+    }
 
     const patch: Partial<typeof incidentsTable.$inferInsert> & { updatedAt: Date } = {
       updatedAt: new Date(),
     };
     if (estado !== undefined) patch.estado = estado;
     if (prioridad !== undefined) patch.prioridad = prioridad;
-    if (responsable !== undefined) patch.responsable = responsable?.trim() || "Sin asignar";
-    // notas se mapea al campo descripcion en la BD
+    // Si viene responsableId validado, usamos el nombre derivado de la BD
+    if (resolvedResponsable !== undefined) {
+      patch.responsable = resolvedResponsable;
+    } else if (responsable !== undefined) {
+      patch.responsable = responsable?.trim() || "Sin asignar";
+    }
     if (notas !== undefined) patch.descripcion = notas?.trim() || null;
     if (descripcion !== undefined) patch.descripcion = descripcion?.trim() || null;
     if (tareaAsociada !== undefined) patch.tareaAsociada = tareaAsociada?.trim() || null;
     if (esEmergencia !== undefined) patch.esEmergencia = esEmergencia === true || esEmergencia === "true";
     if (reportadoPor !== undefined) patch.reportadoPor = reportadoPor?.trim() || null;
+
+    // A-05: auto-poblar fecha_cierre cuando estado cambia a cerrada/resuelta
+    if (estado === "cerrada" || estado === "resuelta") {
+      (patch as any).fechaCierre = new Date();
+    }
 
     const updated = await db
       .update(incidentsTable)
@@ -167,6 +216,15 @@ router.patch("/incidents/:id", async (req, res) => {
       .returning();
 
     if (!updated.length) return res.status(404).json({ error: "Incidencia no encontrada" });
+
+    // A-04: persistir responsable_id si fue validado
+    if (resolvedResponsableId && updated[0]?.id) {
+      await pool.query(
+        `UPDATE incidents SET responsable_id = $1 WHERE id = $2`,
+        [resolvedResponsableId, updated[0].id]
+      );
+    }
+
     res.json(updated[0]);
   } catch (err) {
     console.error("[incidents] PATCH error:", err);

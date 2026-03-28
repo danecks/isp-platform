@@ -33,14 +33,31 @@ import { resolverAlias } from "../services/alias/resolver";
 
 export const aliasRouter = Router();
 
-// ─── Middleware de autenticación simple ───────────────────────────────────────
+// ─── Middleware de autenticación — A-13: valida rol desde session header ───────
 function requireAdmin(req: any, res: any, next: any) {
-  const session = req.headers["x-isp-session"];
-  const role = req.headers["x-isp-role"];
-  if (!session && !role) {
-    return res.status(401).json({ error: "No autorizado" });
+  const sessionRaw = req.headers["x-isp-session"] as string | undefined;
+  const roleHeader = req.headers["x-isp-role"] as string | undefined;
+
+  // Intentar parsear el header x-isp-session como JSON (formato de AuthContext)
+  if (sessionRaw) {
+    try {
+      const user = JSON.parse(sessionRaw);
+      const rol = (user?.rol ?? "").toLowerCase();
+      const ROLES_PERMITIDOS = ["admin", "supervisor", "operaciones"];
+      if (ROLES_PERMITIDOS.includes(rol) && user?.username) {
+        return next();
+      }
+    } catch {
+      // No es JSON, continuar con fallbacks
+    }
   }
-  next();
+
+  // Fallback: verificar el header x-isp-role directamente (para compatibilidad)
+  if (roleHeader && ["admin", "supervisor", "operaciones"].includes(roleHeader.toLowerCase())) {
+    return next();
+  }
+
+  return res.status(401).json({ error: "No autorizado — se requiere sesión de administrador" });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -183,33 +200,42 @@ aliasRouter.delete("/alias/clientes/alias/:aliasId", async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // GET /api/alias/puestos
+// M-12: usa JOIN en lugar de cargar todos los aliases en memoria
 aliasRouter.get("/alias/puestos", async (req, res) => {
   try {
-    const puestos = await db
-      .select({
-        id: serviceLocationsTable.id,
-        clientId: serviceLocationsTable.clientId,
-        nombrePuesto: serviceLocationsTable.nombrePuesto,
-        ubicacion: serviceLocationsTable.ubicacion,
-        tipo: serviceLocationsTable.tipo,
-        estado: serviceLocationsTable.estado,
-        notas: serviceLocationsTable.notas,
-        createdAt: serviceLocationsTable.createdAt,
-        clienteNombre: clientsTable.nombre,
-        clienteNombreComercial: clientsTable.nombreComercial,
-      })
-      .from(serviceLocationsTable)
-      .innerJoin(clientsTable, eq(serviceLocationsTable.clientId, clientsTable.id))
-      .orderBy(clientsTable.nombre, serviceLocationsTable.nombrePuesto);
+    const { rows } = await (await import("@workspace/db")).pool.query(`
+      SELECT
+        sl.id,
+        sl.client_id          AS "clientId",
+        sl.nombre_puesto      AS "nombrePuesto",
+        sl.ubicacion,
+        sl.tipo,
+        sl.estado,
+        sl.notas,
+        sl.created_at         AS "createdAt",
+        c.nombre              AS "clienteNombre",
+        c.nombre_comercial    AS "clienteNombreComercial",
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id',        pa.id,
+              'puestoId',  pa.puesto_id,
+              'alias',     pa.alias,
+              'tipoAlias', pa.tipo_alias,
+              'createdAt', pa.created_at
+            )
+          ) FILTER (WHERE pa.id IS NOT NULL),
+          '[]'
+        ) AS aliases
+      FROM service_locations sl
+      INNER JOIN clients c ON c.id = sl.client_id
+      LEFT JOIN position_aliases pa ON pa.puesto_id = sl.id
+      GROUP BY sl.id, sl.client_id, sl.nombre_puesto, sl.ubicacion, sl.tipo,
+               sl.estado, sl.notas, sl.created_at, c.nombre, c.nombre_comercial
+      ORDER BY c.nombre, sl.nombre_puesto
+    `);
 
-    const aliases = await db.select().from(positionAliasesTable);
-
-    const result = puestos.map((p) => ({
-      ...p,
-      aliases: aliases.filter((a) => a.puestoId === p.id),
-    }));
-
-    res.json(result);
+    res.json(rows);
   } catch (err) {
     console.error("[alias/puestos GET]", err);
     res.status(500).json({ error: "Error al obtener puestos" });
