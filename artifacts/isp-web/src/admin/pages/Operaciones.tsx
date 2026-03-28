@@ -54,6 +54,8 @@ interface Puesto {
   sede_nombre: string | null;
   zona_operativa_id: number | null;
   zona_nombre: string | null;
+  hora_entrada: string | null;
+  hora_salida: string | null;
 }
 
 interface ClienteBoard {
@@ -298,6 +300,32 @@ function DraggableAgente({
   );
 }
 
+// ─── Helpers de turno/timeline ────────────────────────────────────────────────
+
+function parseHM(s: string): number {
+  const [h, m] = s.split(":").map(Number);
+  return (h ?? 0) * 60 + (m ?? 0);
+}
+function fmt2(n: number) { return String(Math.floor(n)).padStart(2, "0"); }
+function minToHM(min: number): string {
+  const m = ((min % 1440) + 1440) % 1440;
+  return `${fmt2(m / 60)}:${fmt2(m % 60)}`;
+}
+function turnoBounds(turno: string, horaEntrada?: string | null, horaSalida?: string | null): {
+  inicioMin: number; finMin: number; totalMin: number;
+} {
+  if (horaEntrada && horaSalida) {
+    const i = parseHM(horaEntrada);
+    let f = parseHM(horaSalida);
+    if (f <= i) f += 1440;
+    return { inicioMin: i, finMin: f, totalMin: f - i };
+  }
+  const esNoche = (turno ?? "").toLowerCase() === "noche";
+  return esNoche
+    ? { inicioMin: 18 * 60, finMin: 30 * 60, totalMin: 12 * 60 }
+    : { inicioMin: 6 * 60, finMin: 18 * 60, totalMin: 12 * 60 };
+}
+
 // ─── Modal: Tramos de cobertura (segmentos) ───────────────────────────────────
 
 function ModalSegmentos({
@@ -357,6 +385,69 @@ function ModalSegmentos({
     const [y, m, d] = fecha.split("-");
     return `${d}-${m}-${y}`;
   })();
+
+  // ── Turno / timeline ──────────────────────────────────────────────────────
+  const { inicioMin, finMin, totalMin } = turnoBounds(
+    puesto.turno, puesto.hora_entrada, puesto.hora_salida
+  );
+  const turnoInicioStr = minToHM(inicioMin);
+  const turnoFinStr    = minToHM(finMin);
+
+  // Segmentos con horas → posicionados en el timeline
+  const segsConHora = segmentos
+    .filter((s) => s.hora_inicio && s.hora_fin)
+    .map((s) => {
+      let si = parseHM(s.hora_inicio!);
+      let sf = parseHM(s.hora_fin!);
+      if (sf < inicioMin && sf < si) sf += 1440; // overnight fin
+      if (si < inicioMin) si += 1440;
+      const left  = Math.max(0, ((si - inicioMin) / totalMin) * 100);
+      const width = Math.max(0, Math.min(100 - left, ((sf - si) / totalMin) * 100));
+      return { ...s, posLeft: left, posWidth: width, siMin: si, sfMin: sf };
+    })
+    .sort((a, b) => a.siMin - b.siMin);
+
+  // Huecos en la cobertura
+  const gaps: { left: number; width: number; minutos: number }[] = [];
+  let cursor = inicioMin;
+  for (const seg of segsConHora) {
+    if (seg.siMin > cursor) {
+      const gapMin = seg.siMin - cursor;
+      gaps.push({
+        left:  ((cursor - inicioMin) / totalMin) * 100,
+        width: (gapMin / totalMin) * 100,
+        minutos: gapMin,
+      });
+    }
+    cursor = Math.max(cursor, seg.sfMin);
+  }
+  if (cursor < finMin) {
+    const gapMin = finMin - cursor;
+    gaps.push({
+      left:  ((cursor - inicioMin) / totalMin) * 100,
+      width: (gapMin / totalMin) * 100,
+      minutos: gapMin,
+    });
+  }
+  const totalCubierto  = segsConHora.reduce((s, sg) => s + (sg.sfMin - sg.siMin), 0);
+  const totalDescubMin = gaps.reduce((s, g) => s + g.minutos, 0);
+
+  // Auto-sugerir: horaInicio = donde termina el último tramo / horaFin = fin turno
+  const ultimaFin = segsConHora.length > 0
+    ? minToHM(segsConHora[segsConHora.length - 1].sfMin)
+    : turnoInicioStr;
+  const sugerenciaInicio = horaInicio || ultimaFin;
+  const sugerenciaFin    = horaFin    || turnoFinStr;
+
+  // Resumen de horas por agente
+  const resumenHoras: { nombre: string; horas: number }[] = [];
+  for (const sg of segmentos) {
+    const nombre = sg.empleado_nombre_join ?? sg.empleado_nombre ?? "—";
+    const h = parseFloat(sg.horas_calculadas ?? "0");
+    const idx = resumenHoras.findIndex((r) => r.nombre === nombre);
+    if (idx >= 0) resumenHoras[idx].horas += h;
+    else resumenHoras.push({ nombre, horas: h });
+  }
 
   const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
   const horaInicioInvalida = horaInicio.length > 0 && !HHMM.test(horaInicio);
@@ -437,6 +528,55 @@ function ModalSegmentos({
           </div>
         </div>
 
+        {/* Timeline visual del turno */}
+        <div className="px-4 pt-3 pb-2 shrink-0 border-b border-white/6">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[9px] text-white/25 uppercase tracking-widest font-semibold">
+              Turno {turnoInicioStr}–{turnoFinStr} ({(totalMin / 60).toFixed(0)}h)
+            </span>
+            <div className="flex items-center gap-2 text-[9px]">
+              <span className="text-emerald-400/70">{(totalCubierto / 60).toFixed(1)}h cubiertas</span>
+              {totalDescubMin > 0 && (
+                <span className="text-red-400/70 font-semibold">{(totalDescubMin / 60).toFixed(1)}h sin cubrir</span>
+              )}
+            </div>
+          </div>
+          {/* Barra del turno */}
+          <div className="relative h-6 bg-[#060e1c] rounded-lg overflow-hidden border border-white/8">
+            {/* Huecos (primero para que queden detrás) */}
+            {gaps.map((g, i) => (
+              <div
+                key={`gap-${i}`}
+                className="absolute top-0 h-full bg-red-500/15 border-x border-red-500/20"
+                style={{ left: `${g.left}%`, width: `${g.width}%` }}
+                title={`Sin cubrir: ${(g.minutos / 60).toFixed(1)}h`}
+              />
+            ))}
+            {/* Segmentos */}
+            {segsConHora.map((seg) => {
+              const nombre = seg.empleado_nombre_join ?? seg.empleado_nombre ?? "—";
+              return (
+                <div
+                  key={seg.id}
+                  className={`absolute top-0 h-full flex items-center justify-center overflow-hidden ${avatarColor(nombre)} opacity-80`}
+                  style={{ left: `${seg.posLeft}%`, width: `${Math.max(seg.posWidth, 1)}%` }}
+                  title={`${nombre}: ${seg.hora_inicio}–${seg.hora_fin}`}
+                >
+                  {seg.posWidth > 8 && (
+                    <span className="text-[8px] text-white font-bold truncate px-1 drop-shadow">{iniciales(nombre)}</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {/* Etiquetas de horas */}
+          <div className="flex justify-between mt-0.5">
+            <span className="text-[8px] text-white/20">{turnoInicioStr}</span>
+            <span className="text-[8px] text-white/20">{minToHM(inicioMin + totalMin / 2)}</span>
+            <span className="text-[8px] text-white/20">{turnoFinStr}</span>
+          </div>
+        </div>
+
         {/* Lista de tramos */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-0">
           {isLoading && (
@@ -504,11 +644,48 @@ function ModalSegmentos({
               </div>
             );
           })}
+
+          {/* Resumen de horas por agente */}
+          {resumenHoras.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-white/6">
+              <p className="text-[9px] text-white/25 uppercase tracking-widest font-semibold mb-2">Horas registradas por colaborador</p>
+              <div className="space-y-1">
+                {resumenHoras.map(({ nombre, horas }) => (
+                  <div key={nombre} className="flex items-center gap-2">
+                    <div className={`w-4 h-4 rounded flex items-center justify-center text-[7px] font-bold text-white shrink-0 ${avatarColor(nombre)}`}>
+                      {iniciales(nombre).slice(0, 1)}
+                    </div>
+                    <p className="text-xs text-white/60 flex-1 truncate">{nombre}</p>
+                    <span className="text-xs font-bold text-indigo-300/80">{horas.toFixed(1)}h</span>
+                    <div className="w-16 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-indigo-500/50 rounded-full"
+                        style={{ width: `${Math.min(100, (horas / (totalMin / 60)) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between pt-1 border-t border-white/5 mt-1">
+                  <span className="text-[10px] text-white/25">Total turno ({(totalMin / 60).toFixed(0)}h)</span>
+                  <span className={`text-[10px] font-bold ${totalDescubMin > 0 ? "text-red-400/70" : "text-emerald-400/70"}`}>
+                    {(totalCubierto / 60).toFixed(1)}h / {(totalMin / 60).toFixed(0)}h
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Formulario para agregar tramo */}
         <div className="shrink-0 border-t border-white/8 p-4 space-y-3 bg-[#060e1c]">
-          <p className="text-[10px] font-bold text-white/25 uppercase tracking-widest">Agregar tramo</p>
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-bold text-white/25 uppercase tracking-widest">Agregar tramo</p>
+            {totalDescubMin > 0 && (
+              <span className="text-[9px] text-amber-400/70 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                {(totalDescubMin / 60).toFixed(1)}h sin cubrir
+              </span>
+            )}
+          </div>
 
           {/* Búsqueda de empleado */}
           <div className="relative">
@@ -585,26 +762,48 @@ function ModalSegmentos({
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] text-white/35">Inicio</label>
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] text-white/35">Inicio</label>
+                {sugerenciaInicio && !horaInicio && (
+                  <button
+                    type="button"
+                    onClick={() => setHoraInicio(sugerenciaInicio)}
+                    className="text-[8px] text-indigo-400/60 hover:text-indigo-400 transition-colors"
+                  >
+                    ↙ {sugerenciaInicio}
+                  </button>
+                )}
+              </div>
               <input
                 type="text"
-                placeholder="06:00"
+                placeholder={sugerenciaInicio}
                 maxLength={5}
                 value={horaInicio}
                 onChange={(e) => setHoraInicio(e.target.value)}
-                className={`w-full bg-[#060e1c] border rounded-lg px-2 py-1.5 text-xs text-white placeholder:text-white/15 outline-none transition-colors ${horaInicioInvalida ? "border-red-500/60 focus:border-red-400" : "border-white/10 focus:border-indigo-400/40"}`}
+                className={`w-full bg-[#060e1c] border rounded-lg px-2 py-1.5 text-xs text-white placeholder:text-indigo-300/25 outline-none transition-colors ${horaInicioInvalida ? "border-red-500/60 focus:border-red-400" : "border-white/10 focus:border-indigo-400/40"}`}
               />
               {horaInicioInvalida && <p className="text-[9px] text-red-400">Formato HH:MM</p>}
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] text-white/35">Fin</label>
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] text-white/35">Fin</label>
+                {sugerenciaFin && !horaFin && (
+                  <button
+                    type="button"
+                    onClick={() => setHoraFin(sugerenciaFin)}
+                    className="text-[8px] text-indigo-400/60 hover:text-indigo-400 transition-colors"
+                  >
+                    ↙ {sugerenciaFin}
+                  </button>
+                )}
+              </div>
               <input
                 type="text"
-                placeholder="18:00"
+                placeholder={sugerenciaFin}
                 maxLength={5}
                 value={horaFin}
                 onChange={(e) => setHoraFin(e.target.value)}
-                className={`w-full bg-[#060e1c] border rounded-lg px-2 py-1.5 text-xs text-white placeholder:text-white/15 outline-none transition-colors ${horaFinInvalida ? "border-red-500/60 focus:border-red-400" : "border-white/10 focus:border-indigo-400/40"}`}
+                className={`w-full bg-[#060e1c] border rounded-lg px-2 py-1.5 text-xs text-white placeholder:text-indigo-300/25 outline-none transition-colors ${horaFinInvalida ? "border-red-500/60 focus:border-red-400" : "border-white/10 focus:border-indigo-400/40"}`}
               />
               {horaFinInvalida && <p className="text-[9px] text-red-400">Formato HH:MM</p>}
             </div>

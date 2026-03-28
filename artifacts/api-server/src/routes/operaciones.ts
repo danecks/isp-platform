@@ -28,6 +28,8 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         po.notas,
         po.updated_at,
         po.zona_operativa_id,
+        po.hora_entrada,
+        po.hora_salida,
         e.estado_laboral AS agente_estado_laboral,
         e.puesto         AS agente_puesto,
         e.telefono       AS agente_telefono,
