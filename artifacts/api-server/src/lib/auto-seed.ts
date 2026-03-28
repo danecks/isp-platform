@@ -113,6 +113,16 @@ export async function runAutoMigrations(): Promise<void> {
     // Columna clienteRefId e tarea_asociada en incidents (si no existen)
     await pool.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS cliente_ref_id VARCHAR(100)`);
     await pool.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS tarea_asociada VARCHAR(255)`);
+    // C-05: FK real a clients.id (INTEGER) — corrige el campo varchar sin FK
+    await pool.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL`);
+    // Backfill: si cliente_ref_id contiene un número válido, sincronizar con client_id
+    await pool.query(`
+      UPDATE incidents
+      SET client_id = CAST(cliente_ref_id AS INTEGER)
+      WHERE cliente_ref_id ~ '^[0-9]+$'
+        AND client_id IS NULL
+        AND EXISTS (SELECT 1 FROM clients WHERE id = CAST(cliente_ref_id AS INTEGER))
+    `);
     logger.info("Auto-migrate: columnas extra en 'incidents' verificadas");
 
     // Columnas de emergencia en incidents y users

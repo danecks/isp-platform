@@ -153,6 +153,7 @@ function generarIdIncidencia(): string {
 export interface DatosEmergencia {
   clienteNombre: string;           // Nombre del cliente (ya resuelto)
   clienteRefId?: string | null;    // ID de referencia del portal (si aplica)
+  clientId?: number | null;        // C-05: FK numérico real a clients.id
   ubicacion: string;               // Texto de ubicación o alias ya resuelto
   tipoEmergencia: string;          // Tipo del catálogo (ej. "robo")
   descripcion: string;             // Descripción breve del evento
@@ -170,6 +171,13 @@ export async function crearEmergencia(datos: DatosEmergencia) {
 
   const id = generarIdIncidencia();
 
+  // C-05: derivar client_id si no se proporcionó pero clienteRefId es numérico
+  let clientId: number | null = datos.clientId ?? null;
+  if (!clientId && datos.clienteRefId) {
+    const parsed = parseInt(datos.clienteRefId, 10);
+    if (!isNaN(parsed)) clientId = parsed;
+  }
+
   const [incidencia] = await db
     .insert(incidentsTable)
     .values({
@@ -177,6 +185,7 @@ export async function crearEmergencia(datos: DatosEmergencia) {
       origen: datos.origen ?? "whatsapp",
       cliente: datos.clienteNombre,
       clienteRefId: datos.clienteRefId ?? null,
+      clientId,
       ubicacion: datos.ubicacion,
       tipo: `Emergencia — ${tipoLabel}`,
       prioridad: "urgente",

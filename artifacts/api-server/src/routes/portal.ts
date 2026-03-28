@@ -12,6 +12,7 @@
 
 import { Router, Request, Response, NextFunction } from "express";
 import { db, incidentsTable, agentAssignmentsTable, employeesTable } from "@workspace/db";
+import { pool } from "@workspace/db";
 import { eq, and, desc, gte, count, sql } from "drizzle-orm";
 
 const portalRouter = Router();
@@ -198,52 +199,51 @@ portalRouter.get("/portal/kpi", requirePortalAuth, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/portal/agentes — agentes asignados al cliente
 //
+// C-04 FIX: Ahora lee desde puestos_operativos (fuente oficial) en lugar de
+// agent_assignments (tabla legada). Cada puesto activo del cliente con un
+// empleado titular/agente asignado aparece como un registro.
+//
 // PRIVACIDAD: Solo expone datos operativos seguros.
 // NO se incluye: DPI, teléfono personal, correo, dirección, info disciplinaria.
-//
-// FUTURA INTEGRACIÓN RH:
-//   Los agentes vendrán de agent_assignments JOIN employees.
-//   Cuando employees se sincronice desde RH, las asignaciones
-//   se llenarán automáticamente sin cambiar este endpoint.
 // ─────────────────────────────────────────────────────────────────────────────
 portalRouter.get("/portal/agentes", requirePortalAuth, async (req, res) => {
   const clienteId: string = (req as any).portalClienteId;
+  const clienteIdNum = parseInt(clienteId, 10);
+
+  if (isNaN(clienteIdNum)) {
+    return res.status(400).json({ error: "clienteId inválido" });
+  }
 
   try {
-    const assignments = await db
-      .select({
-        // Datos de la asignación
-        asignacionId: agentAssignmentsTable.id,
-        codigoAsignacion: agentAssignmentsTable.codigoAsignacion,
-        puesto: agentAssignmentsTable.puesto,
-        servicio: agentAssignmentsTable.servicio,
-        ubicacion: agentAssignmentsTable.ubicacion,
-        supervisorNombre: agentAssignmentsTable.supervisorNombre,
-        fechaInicio: agentAssignmentsTable.fechaInicio,
-        fechaFin: agentAssignmentsTable.fechaFin,
-        estadoAsignacion: agentAssignmentsTable.estado,
-        // Datos del empleado — SOLO campos operativos seguros
-        empleadoNombreCompleto: employeesTable.nombreCompleto,
-        empleadoArea: employeesTable.area,
-        empleadoEstadoLaboral: employeesTable.estadoLaboral,
-        empleadoSede: employeesTable.sede,
-        // sourceSystem para referencia de integración
-        empleadoFuente: employeesTable.sourceSystem,
-      })
-      .from(agentAssignmentsTable)
-      .innerJoin(
-        employeesTable,
-        eq(agentAssignmentsTable.employeeId, employeesTable.id)
-      )
-      .where(
-        and(
-          eq(agentAssignmentsTable.clienteId, clienteId),
-          eq(agentAssignmentsTable.estado, "activo")
-        )
-      )
-      .orderBy(agentAssignmentsTable.fechaInicio);
+    const { rows } = await pool.query(
+      `SELECT
+         po.id              AS puesto_id,
+         po.nombre          AS puesto,
+         po.turno,
+         po.estado          AS estado_puesto,
+         po.horario,
+         po.jornada,
+         -- Sede del puesto
+         cs.nombre          AS sede_nombre,
+         cs.direccion       AS sede_direccion,
+         -- Empleado titular (fuente oficial)
+         COALESCE(e_tit.nombre_completo, po.titular_nombre) AS empleado_nombre_completo,
+         e_tit.area         AS empleado_area,
+         e_tit.estado_laboral AS empleado_estado_laboral,
+         e_tit.sede         AS empleado_sede,
+         -- Zona operativa (si aplica)
+         oz.nombre          AS zona_nombre
+       FROM puestos_operativos po
+       LEFT JOIN client_sedes       cs    ON cs.id  = po.sede_id
+       LEFT JOIN employees          e_tit ON e_tit.id = COALESCE(po.titular_employee_id, po.agente_id)
+       LEFT JOIN operational_zones  oz    ON oz.id  = po.zona_operativa_id
+       WHERE po.cliente_id = $1
+         AND po.activo     = TRUE
+       ORDER BY cs.nombre NULLS LAST, po.nombre`,
+      [clienteIdNum]
+    );
 
-    res.json(assignments);
+    res.json(rows);
   } catch (err) {
     console.error("[portal/agentes]", err);
     res.status(500).json({ error: "Error al obtener agentes asignados" });

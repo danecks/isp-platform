@@ -65,7 +65,15 @@ router.post("/incidents", async (req, res) => {
     const ORIGENES_VALIDOS = ["manual", "web", "whatsapp", "llamada", "portal"];
     const ESTADOS_VALIDOS = ["abierta", "en_proceso", "resuelta", "cerrada"];
 
-    const { esEmergencia, reportadoPor } = req.body;
+    const { esEmergencia, reportadoPor, clienteId, clienteRefId } = req.body;
+
+    // C-05: resolver client_id (FK real) desde clienteId numérico o clienteRefId
+    let resolvedClientId: number | null = null;
+    const rawClientId = clienteId ?? clienteRefId;
+    if (rawClientId !== undefined && rawClientId !== null) {
+      const parsed = parseInt(String(rawClientId), 10);
+      if (!isNaN(parsed)) resolvedClientId = parsed;
+    }
 
     const id = generateId();
     const inserted = await db
@@ -82,6 +90,8 @@ router.post("/incidents", async (req, res) => {
         descripcion: descripcion?.trim() || null,
         esEmergencia: esEmergencia === true || esEmergencia === "true",
         reportadoPor: reportadoPor?.trim() || null,
+        clienteRefId: rawClientId ? String(rawClientId) : null,
+        clientId: resolvedClientId,
       })
       .returning();
 

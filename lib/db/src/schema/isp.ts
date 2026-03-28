@@ -55,6 +55,9 @@ export const incidentsTable = pgTable("incidents", {
   cliente: varchar("cliente", { length: 255 }).notNull(),
   // Referencia al clienteId del portal (nullable, no rompe filas existentes)
   clienteRefId: varchar("cliente_ref_id", { length: 100 }),
+  // C-05: FK real al registro en clients (INTEGER). Rellena automáticamente
+  // al crear un incidente cuando se provee clienteId como número.
+  clientId: integer("client_id"),
   ubicacion: varchar("ubicacion", { length: 255 }),
   tipo: varchar("tipo", { length: 100 }).notNull(),
   prioridad: varchar("prioridad", { length: 20 }).notNull().default("media"),
