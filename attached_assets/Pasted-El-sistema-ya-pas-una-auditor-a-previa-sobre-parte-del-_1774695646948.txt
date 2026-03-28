@@ -1,0 +1,215 @@
+El sistema ya pasó una auditoría previa sobre parte del modelo maestro operativo, empleados, clientes, operaciones y cobertura.
+
+Ahora quiero una segunda auditoría completa, enfocada solamente en los módulos que faltan revisar a profundidad.
+
+No quiero que modifiques código todavía.
+
+## Objetivo
+Detectar inconsistencias funcionales, técnicas, de relaciones y de experiencia de usuario en los módulos restantes del sistema, especialmente pensando en que después quiero construir planilla, reportería y lógica financiera encima.
+
+---
+
+## 1. Módulos a auditar en esta segunda fase
+
+Quiero que revises a profundidad estos módulos:
+
+- Usuarios
+- Incidencias
+- Tareas
+- Comercial
+- Reclutamiento
+- KPI & Métricas
+- Configuración WhatsApp
+- Alias de clientes y puestos
+- CMS Web
+- Portal de clientes (si aplica y si conviene revisarlo en esta fase)
+- Simulador WA
+
+---
+
+## 2. Tipo de auditoría
+
+Haz la auditoría desde tres perspectivas:
+
+### A. Arquitectura técnica
+- relaciones entre tablas
+- uso de IDs vs strings
+- consistencia con modelo maestro
+- duplicación de datos
+- integridad de relaciones
+
+### B. Funcionalidad real
+- si se puede usar realmente cada módulo
+- si se puede crear, editar, guardar y relacionar bien los datos
+- si hay flujos rotos o incompletos
+- si hay botones, formularios o vistas que no funcionan como deberían
+
+### C. Experiencia real de usuario
+Analiza cada módulo como si fueras:
+- admin
+- operaciones
+- RRHH
+- supervisor
+- comercial
+- cliente externo o portal
+según corresponda
+
+---
+
+## 3. Qué problemas quiero que detectes
+
+### A. Datos sueltos
+Ejemplos:
+- nombre de empleado escrito manualmente en vez de employeeId
+- cliente escrito manualmente en vez de clientId
+- sede o puesto en texto
+- responsable en string en vez de userId/employeeId
+
+### B. Flujos rotos
+Ejemplos:
+- no puedo crear un cliente
+- no puedo editar incidencia correctamente
+- no puedo asignar tarea de forma coherente
+- lead no se convierte bien en cliente
+- reclutamiento no pasa bien a empleado
+- KPI no usa la fuente correcta
+- alias no resuelve de forma consistente
+- CMS no refleja cambios correctamente
+- el simulador WA no representa la lógica real del sistema
+
+### C. Inconsistencias entre módulos
+Ejemplos:
+- incidencias no usan el modelo maestro
+- tareas no se atan a colaborador/cliente/sede
+- comercial crea registros duplicados
+- reclutamiento no se integra bien con employees
+- usuarios no están bien ligados a employees
+- portal no refleja la misma verdad que el admin
+- el simulador WA muestra un comportamiento distinto al flujo real de WhatsApp
+
+### D. Riesgos para planilla futura
+Detecta todo lo que pueda afectar luego:
+- asistencia
+- faltas
+- relevos
+- horas extra
+- anticipos
+- descuentos
+- trazabilidad por colaborador
+
+---
+
+## 4. Qué revisar módulo por módulo
+
+### Usuarios
+- relación con employees
+- roles
+- permisos
+- teléfono
+- acceso WhatsApp
+- coherencia de identidad
+
+### Incidencias
+- si usa clientId, puestoId, employeeId correctamente
+- si hay campos manuales
+- si se enlaza a tareas, RRHH o KPI
+- si origen y responsables están bien estructurados
+
+### Tareas
+- si se asignan correctamente a usuarios/colaboradores
+- si están ligadas a cliente, sede, zona o incidencia cuando corresponde
+- si hay tareas genéricas sin contexto
+- si la evidencia está bien ligada
+
+### Comercial
+- si los leads usan estructura coherente
+- si puede duplicar clientes
+- si hay lógica suelta
+- si se conecta bien con clientes y tareas
+
+### Reclutamiento
+- si una postulación aprobada puede pasar correctamente a empleado
+- si se duplican datos
+- si usa la estructura RH adecuada
+
+### KPI & Métricas
+- de dónde salen los datos
+- si las métricas están bien calculadas
+- si dependen de lógica duplicada
+- si coinciden con la operación real
+
+### Config WhatsApp
+- si los mensajes y flujos usan datos reales del sistema
+- si hay valores hardcodeados
+- si la lógica es consistente con users/employees/clientes
+
+### Alias
+- si el resolver está bien integrado
+- si devuelve entidades correctas
+- si maneja ambigüedad
+- si se usa realmente en incidencias/emergencias/operación
+
+### CMS Web
+- si el contenido es estructurado
+- si las páginas se guardan/publican bien
+- si existe duplicación entre branding, contenido y front público
+
+### Portal de clientes
+- si realmente filtra por clienteId
+- si muestra datos consistentes con el admin
+- si hay datos que no deberían verse
+- si la información de agentes asignados y KPI está bien ligada
+
+### Simulador WA
+- si reutiliza la lógica real del sistema o si tiene lógica paralela
+- si simula correctamente:
+  - números autorizados
+  - números no autorizados
+  - validación por DPI
+  - anticipos
+  - emergencias
+  - incidencias
+  - leads
+  - postulaciones
+  - tareas
+- si el panel debug refleja el estado real después de procesar
+- si lo que muestra coincide con lo que haría el webhook real
+- si hay diferencias entre modo DRY RUN y persistencia que puedan causar confusión
+- si existen flujos rotos, loops, respuestas poco humanas o inconsistencias de sesión
+
+---
+
+## 5. Clasificación de hallazgos
+
+Clasifica cada hallazgo como:
+- Crítico
+- Alto
+- Medio
+- Bajo
+
+Y explica por qué.
+
+---
+
+## 6. Recomendaciones claras
+Para cada hallazgo, indicar:
+- qué está mal
+- por qué es problema
+- cómo debería corregirse
+- prioridad recomendada
+
+---
+
+## 7. Resultado esperado
+Quiero un reporte estructurado que me diga:
+
+- qué módulos están bien construidos
+- qué módulos tienen datos sueltos o no normalizados
+- qué módulos tienen problemas de UX o flujos rotos
+- qué debo corregir antes de avanzar a pre-planilla y planilla
+- qué puedo dejar para una fase posterior
+
+---
+
+Muy importante:
+quiero que esta auditoría funcione como una revisión profesional del sistema antes de montar encima reportería avanzada, costos y planilla.
