@@ -1104,5 +1104,73 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: error en tabla rrhh_alertas");
   }
 
+  // ── SEDES OPERATIVAS Y COBERTURA DIARIA ──────────────────────────────────────
+  try {
+    // 1) Tabla de sedes por cliente
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS client_sedes (
+        id          SERIAL PRIMARY KEY,
+        client_id   INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+        nombre      VARCHAR(255) NOT NULL,
+        direccion   TEXT,
+        ciudad      VARCHAR(100),
+        contacto    VARCHAR(255),
+        telefono    VARCHAR(30),
+        activo      BOOLEAN      NOT NULL DEFAULT TRUE,
+        notas       TEXT,
+        created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'client_sedes' verificada/creada");
+
+    // 2) Nuevas columnas en puestos_operativos (titular, sede, horario, jornada, costo)
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS sede_id              INTEGER REFERENCES client_sedes(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS titular_employee_id  INTEGER REFERENCES employees(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS titular_nombre       VARCHAR(255)`);
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS horario              VARCHAR(100)`);
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS jornada              VARCHAR(30)`);
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS costo_hora           NUMERIC(10,2)`);
+    logger.info("Auto-migrate: columnas de titular/sede/horario en puestos_operativos verificadas");
+
+    // 3) Migración de datos: los agentes actuales se convierten en titulares si no hay titular definido
+    await pool.query(`
+      UPDATE puestos_operativos
+      SET titular_employee_id = agente_id,
+          titular_nombre      = agente_nombre
+      WHERE agente_id IS NOT NULL
+        AND titular_employee_id IS NULL
+    `);
+    logger.info("Auto-migrate: titulares migrados desde agente_id existentes");
+
+    // 4) Tabla de cobertura diaria
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS cobertura_diaria (
+        id                     SERIAL PRIMARY KEY,
+        fecha                  DATE         NOT NULL,
+        puesto_id              INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        client_id              INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+        sede_id                INTEGER REFERENCES client_sedes(id) ON DELETE SET NULL,
+        cliente_nombre         VARCHAR(255),
+        puesto_nombre          VARCHAR(150),
+        titular_employee_id    INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        titular_nombre         VARCHAR(255),
+        cobertura_employee_id  INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        cobertura_nombre       VARCHAR(255),
+        tipo_cobertura         VARCHAR(20)  NOT NULL DEFAULT 'titular',
+        motivo                 VARCHAR(50),
+        horas_trabajadas       NUMERIC(5,2),
+        horas_extra            NUMERIC(5,2),
+        observaciones          TEXT,
+        usuario_registro       VARCHAR(100),
+        created_at             TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        updated_at             TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'cobertura_diaria' verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: error en sedes/cobertura operativa");
+  }
+
   logger.info("Auto-seed completado");
 }

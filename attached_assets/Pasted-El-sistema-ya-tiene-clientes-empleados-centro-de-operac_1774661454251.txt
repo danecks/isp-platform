@@ -1,0 +1,158 @@
+El sistema ya tiene:
+- clientes
+- empleados
+- centro de operaciones / pizarrón operativo
+- movimientos operativos
+- KPI de rotación
+- portal de clientes
+- RRHH y eventos disciplinarios
+
+No quiero romper nada de lo existente.
+
+Quiero implementar una nueva fase para estructurar correctamente la relación entre clientes, sedes, puestos, titulares, relevos y cobertura diaria.
+
+Objetivo:
+que el sistema diferencie claramente entre la asignación titular de un colaborador y la cobertura real del día, para que el pizarrón operativo no cambie el estatus del titular cuando alguien entra solo como relevo.
+
+## 1. Estructura jerárquica de cliente
+Ampliar el modelo de clientes para soportar:
+
+- Cliente
+- Sede
+- Puesto
+- Turno / horario
+
+Necesito que en la ficha del cliente se pueda ver:
+- sus sedes
+- los puestos por sede
+- la cantidad de guardias por sede
+- los horarios y jornadas por puesto
+- los colaboradores titulares asignados
+
+Ejemplo:
+Cliente: Cervecería Centro Americana
+Sede: Sede 1
+Puesto: Garita principal
+Turno: 12x12
+Horario: 12:00 a 00:00
+
+## 2. Asignación titular
+Crear o ajustar una estructura para asignaciones base/titulares.
+
+Cada asignación debe guardar:
+- employeeId
+- clientId
+- sedeId o equivalente
+- puestoId o equivalente
+- tipoAsignacion = titular
+- horario
+- jornada
+- estado
+
+Quiero que en la ficha del colaborador se vea a qué cliente, sede y puesto está asignado como titular.
+
+## 3. Cobertura diaria
+Crear una nueva estructura para registrar la cobertura real del día, separada de la asignación base.
+
+Cada registro diario debe poder guardar:
+- fecha
+- clientId
+- sedeId
+- puestoId
+- titularEsperadoEmployeeId
+- colaboradorQueCubrioEmployeeId
+- tipoCobertura (titular, relevo, ausencia_sin_cubrir)
+- motivo (falta, enfermedad, descanso, rotación, apoyo, suspensión, voluntario)
+- horasTrabajadas
+- horasExtra
+- observaciones
+
+Muy importante:
+si el titular falta y otro colaborador cubre, el titular debe seguir siendo titular en la asignación base.
+El reemplazo del día debe quedar solo como relevo en la cobertura diaria.
+
+## 4. Pizarrón operativo
+Modificar el pizarrón para que opere sobre la cobertura diaria y no rompa la asignación titular.
+
+Necesito que:
+- si el titular falta o está enfermo, pueda marcarse su ausencia
+- otro colaborador pueda entrar como relevo
+- el sistema siga mostrando quién es el titular del puesto
+- el relevo quede claramente identificado como cobertura temporal
+
+## 5. Pool de descanso / disponibilidad
+El pool debe reflejar disponibilidad real según turno y descanso.
+
+Ejemplo:
+si un guardia trabaja 12x12 y su descanso del día lo deja libre entre 00:01 y 11:59, debe aparecer como disponible para relevo y horas extra en ese rango.
+
+Preparar la lógica para mostrar estados como:
+- titular en puesto
+- relevo del día
+- descanso / disponible para relevo
+- sin asignación
+- suspendido
+- ausente / enfermedad
+
+## 6. Ficha del cliente
+En la ficha del cliente agregar:
+- sedes
+- puestos
+- titulares asignados
+- cobertura del día
+- ausencias del día
+- relevos del día
+
+## 7. Ficha del colaborador
+En la ficha del colaborador agregar:
+- asignación titular actual
+- historial de relevos
+- días cubiertos como relevo
+- cliente/sede/puesto actual
+- jornada/horario
+
+## 8. Reporte diario de cobertura
+Preparar una vista o módulo que muestre por día:
+- cliente
+- sede
+- puesto
+- titular esperado
+- quién cubrió realmente
+- quién faltó
+- si hubo relevo
+- motivo
+- horas extra
+
+Esto servirá luego para reportería y control de costos.
+
+## 9. Costos (preparación)
+Dejar la estructura lista para que después se pueda medir el impacto económico de relevos.
+
+Preparar campos o estructura para:
+- costo del colaborador
+- tarifa del puesto/cliente
+- costo por hora extra
+
+No hace falta cerrar todavía toda la lógica financiera, pero sí dejar la base bien pensada.
+
+## 10. No romper
+- empleados
+- portal de clientes
+- KPI de rotación
+- RRHH
+- anticipos
+- incidencias
+- WhatsApp
+- Trello
+- reportería futura
+
+## 11. Documentación
+Explicar:
+- diferencia entre asignación titular y cobertura diaria
+- cómo se maneja un relevo sin cambiar al titular
+- cómo se verá esto en ficha de cliente
+- cómo se verá esto en ficha de colaborador
+- cómo se alimentará el reporte diario de cobertura
+
+Muy importante:
+quiero que el sistema refleje la operación real de seguridad privada, donde una persona puede ser titular de un puesto pero otro colaborador puede cubrirlo temporalmente como relevo sin alterar la asignación base.

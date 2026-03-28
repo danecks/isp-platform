@@ -84,6 +84,28 @@ interface UserVinculado {
   created_at: string;
 }
 
+interface PuestoTitular {
+  id: number;
+  puesto_nombre: string;
+  cliente_nombre: string;
+  turno: string | null;
+  horario: string | null;
+  jornada: string | null;
+  estado_puesto: string;
+  agente_id: number | null;
+  agente_nombre: string | null;
+  sede_nombre: string | null;
+}
+
+interface HistorialRelevo {
+  fecha_hora: string;
+  cliente_nombre: string;
+  puesto_nombre: string;
+  tipo: string;
+  motivo: string | null;
+  agente_saliente_nombre: string | null;
+}
+
 interface OperacionData {
   tareas: {
     id: string; titulo: string; estado: string; prioridad: string;
@@ -97,6 +119,8 @@ interface OperacionData {
     id: number; cantidad: number; estado: string;
     periodo: string | null; fecha_solicitud: string; origen: string;
   }[];
+  puestoTitular: PuestoTitular | null;
+  historialRelevos: HistorialRelevo[];
 }
 
 interface EventoKPIFront {
@@ -1037,18 +1061,97 @@ function TabOperacion({ empId }: { empId: number }) {
 
   const hayActividad = data.tareas.length > 0 || data.incidencias.length > 0 || data.anticipos.length > 0;
 
-  if (!hayActividad) {
-    return (
-      <div className="text-center py-14">
-        <Activity className="w-8 h-8 text-white/10 mx-auto mb-3" />
-        <p className="text-white/30 text-sm">Sin actividad operativa registrada</p>
-        <p className="text-white/15 text-xs mt-1">Las tareas, incidencias y anticipos aparecerán aquí.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-5">
+
+      {/* ── Asignación Titular ───────────────────────────────────────────── */}
+      <div>
+        <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+          <Shield className="w-3 h-3" /> Asignación operativa base
+        </p>
+        {data.puestoTitular ? (
+          <div className={`border rounded-xl p-4 ${
+            data.puestoTitular.agente_id ? "bg-green-500/5 border-green-500/20" : "bg-amber-500/5 border-amber-500/20"
+          }`}>
+            <div className="flex items-start justify-between gap-2 mb-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-white">{data.puestoTitular.puesto_nombre}</p>
+                <p className="text-xs text-white/40">{data.puestoTitular.cliente_nombre}</p>
+                {data.puestoTitular.sede_nombre && (
+                  <p className="text-[11px] text-white/30 mt-0.5">Sede: {data.puestoTitular.sede_nombre}</p>
+                )}
+              </div>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold shrink-0 ${
+                data.puestoTitular.agente_id
+                  ? "text-green-400 bg-green-400/10 border-green-400/20"
+                  : "text-amber-400 bg-amber-400/10 border-amber-400/20"
+              }`}>
+                {data.puestoTitular.agente_id ? "Cubierto" : "Descubierto hoy"}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-[11px]">
+              {data.puestoTitular.turno && (
+                <div className="bg-white/4 rounded-lg px-2 py-1.5 text-center">
+                  <p className="text-white/30 text-[9px] uppercase">Turno</p>
+                  <p className="text-white/70 font-semibold">{data.puestoTitular.turno}</p>
+                </div>
+              )}
+              {data.puestoTitular.jornada && (
+                <div className="bg-white/4 rounded-lg px-2 py-1.5 text-center">
+                  <p className="text-white/30 text-[9px] uppercase">Jornada</p>
+                  <p className="text-white/70 font-semibold">{data.puestoTitular.jornada}</p>
+                </div>
+              )}
+              {data.puestoTitular.horario && (
+                <div className="bg-white/4 rounded-lg px-2 py-1.5 text-center">
+                  <p className="text-white/30 text-[9px] uppercase">Horario</p>
+                  <p className="text-white/70 font-semibold">{data.puestoTitular.horario}</p>
+                </div>
+              )}
+            </div>
+            {data.puestoTitular.agente_id && data.puestoTitular.agente_id !== empId && (
+              <div className="mt-2 text-[10px] text-amber-300/60 flex items-center gap-1.5">
+                <AlertTriangle className="w-3 h-3" />
+                Cubierto por relevo hoy: {data.puestoTitular.agente_nombre}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="bg-[#0c1929] border border-white/8 rounded-xl p-4 text-center">
+            <Shield className="w-6 h-6 text-white/10 mx-auto mb-2" />
+            <p className="text-xs text-white/30">Sin asignación titular en el pizarrón operativo</p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Historial de Relevos ─────────────────────────────────────────── */}
+      {data.historialRelevos.length > 0 && (
+        <div>
+          <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+            <ArrowLeftRight className="w-3 h-3" /> Relevos realizados (últimos 5)
+          </p>
+          <div className="space-y-1.5">
+            {data.historialRelevos.map((r, i) => (
+              <div key={i} className="bg-[#0c1929] border border-white/6 rounded-lg px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-white/60 truncate">{r.cliente_nombre} · {r.puesto_nombre}</p>
+                  <span className="text-[10px] text-amber-400/60 shrink-0">{new Date(r.fecha_hora).toLocaleDateString("es-GT")}</span>
+                </div>
+                {r.motivo && <p className="text-[10px] text-white/30 mt-0.5">Motivo: {r.motivo}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!hayActividad && !data.puestoTitular && data.historialRelevos.length === 0 && (
+        <div className="text-center py-14">
+          <Activity className="w-8 h-8 text-white/10 mx-auto mb-3" />
+          <p className="text-white/30 text-sm">Sin actividad operativa registrada</p>
+          <p className="text-white/15 text-xs mt-1">Las tareas, incidencias y anticipos aparecerán aquí.</p>
+        </div>
+      )}
+
       {/* Tareas */}
       {data.tareas.length > 0 && (
         <div>

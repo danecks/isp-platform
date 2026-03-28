@@ -394,7 +394,36 @@ employeesRouter.get("/employees/:id/operacion", async (req, res) => {
       LIMIT 10
     `, [empId]);
 
-    res.json({ tareas, incidencias, anticipos });
+    // Puesto operativo titular (asignación base)
+    const { rows: puestoTitularRows } = await pool.query(`
+      SELECT po.id, po.nombre AS puesto_nombre, po.cliente_nombre, po.turno,
+             po.horario, po.jornada, po.estado AS estado_puesto,
+             po.agente_id, po.agente_nombre,
+             cs.nombre AS sede_nombre
+      FROM puestos_operativos po
+      LEFT JOIN client_sedes cs ON cs.id = po.sede_id
+      WHERE po.titular_employee_id = $1 AND po.activo = TRUE
+      LIMIT 1
+    `, [empId]);
+
+    // Historial de relevos (cubrió como relevo)
+    const { rows: historialRelevosRows } = await pool.query(`
+      SELECT mo.fecha_hora, mo.cliente_nombre, mo.puesto_nombre, mo.tipo, mo.motivo,
+             mo.agente_saliente_nombre
+      FROM movimientos_operativos mo
+      WHERE mo.agente_entrante_id = $1
+        AND mo.tipo = 'sustitucion'
+      ORDER BY mo.fecha_hora DESC
+      LIMIT 5
+    `, [empId]);
+
+    res.json({
+      tareas,
+      incidencias,
+      anticipos,
+      puestoTitular: puestoTitularRows[0] ?? null,
+      historialRelevos: historialRelevosRows,
+    });
   } catch (err) {
     console.error("[Employee/operacion] Error:", err);
     res.status(500).json({ error: "Error al obtener actividad operativa" });

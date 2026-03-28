@@ -4,7 +4,8 @@ import { AdminLayout } from "../layout/AdminLayout";
 import { StatusBadge } from "../components/StatusBadge";
 import {
   Building2, Tag, MapPin, Search, Plus, Trash2, ChevronDown, ChevronRight,
-  X, Loader2, CheckCircle, AlertTriangle, Hash, RefreshCw, Layers
+  X, Loader2, CheckCircle, AlertTriangle, Hash, RefreshCw, Layers,
+  Shield, Users, Clock
 } from "lucide-react";
 
 const API = "/api";
@@ -513,8 +514,206 @@ function TabResolver() {
   );
 }
 
+// ─── Tipos: Sedes ─────────────────────────────────────────────────────────────
+interface Sede {
+  id: number;
+  client_id: number;
+  nombre: string;
+  direccion: string | null;
+  ciudad: string | null;
+  contacto: string | null;
+  telefono: string | null;
+  activo: boolean;
+  notas: string | null;
+  total_puestos: number;
+  puestos_cubiertos: number;
+}
+
+// ─── Tab: Sedes Operativas ────────────────────────────────────────────────────
+function TabSedes({ clients }: { clients: Client[] }) {
+  const [sedes, setSedes] = useState<Sede[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [sedeModalClientId, setSedeModalClientId] = useState<number | null>(null);
+  const [nuevaSede, setNuevaSede] = useState({ nombre: "", direccion: "", ciudad: "", contacto: "", telefono: "" });
+  const [saving, setSaving] = useState(false);
+  const [expandedCliente, setExpandedCliente] = useState<number | null>(null);
+
+  async function loadAllSedes() {
+    setLoading(true);
+    const all: Sede[] = [];
+    await Promise.all(
+      clients.filter(c => c.estado === "activo").map(async (c) => {
+        try {
+          const r = await fetch(`${API}/clientes/${c.id}/sedes`, { headers: { "x-isp-session": getSession() } });
+          const data: Sede[] = await r.json();
+          if (Array.isArray(data)) all.push(...data);
+        } catch { /* ignore */ }
+      })
+    );
+    setSedes(all);
+    setLoading(false);
+  }
+
+  useEffect(() => { if (clients.length > 0) loadAllSedes(); }, [clients.length]);
+
+  async function crearSede(clientId: number) {
+    if (!nuevaSede.nombre.trim()) return;
+    setSaving(true);
+    try {
+      await fetch(`${API}/clientes/${clientId}/sedes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
+        body: JSON.stringify(nuevaSede),
+      });
+      setNuevaSede({ nombre: "", direccion: "", ciudad: "", contacto: "", telefono: "" });
+      setSedeModalClientId(null);
+      await loadAllSedes();
+    } catch { /* ignore */ }
+    setSaving(false);
+  }
+
+  async function eliminarSede(sedeId: number) {
+    if (!confirm("¿Desactivar esta sede?")) return;
+    await fetch(`${API}/sedes/${sedeId}`, {
+      method: "DELETE",
+      headers: { "x-isp-session": getSession() },
+    });
+    await loadAllSedes();
+  }
+
+  if (loading) return <div className="flex items-center justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-white/30" /></div>;
+
+  const clientesActivos = clients.filter(c => c.estado === "activo");
+
+  return (
+    <div className="p-5 space-y-4">
+      {clientesActivos.map((cliente) => {
+        const misSedes = sedes.filter(s => s.client_id === cliente.id && s.activo);
+        const isExpanded = expandedCliente === cliente.id;
+
+        return (
+          <div key={cliente.id} className="border border-white/8 rounded-xl overflow-hidden">
+            {/* Header cliente */}
+            <div
+              className="flex items-center justify-between px-4 py-3 bg-white/3 cursor-pointer hover:bg-white/5 transition-colors"
+              onClick={() => setExpandedCliente(isExpanded ? null : cliente.id)}
+            >
+              <div className="flex items-center gap-2">
+                {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-white/30" /> : <ChevronRight className="w-3.5 h-3.5 text-white/30" />}
+                <Building2 className="w-3.5 h-3.5 text-primary/60" />
+                <p className="text-sm font-semibold text-white">{cliente.nombreComercial || cliente.nombre}</p>
+                <span className="text-[10px] text-white/30">{misSedes.length} sede{misSedes.length !== 1 ? "s" : ""}</span>
+              </div>
+              <button
+                onClick={(e) => { e.stopPropagation(); setSedeModalClientId(cliente.id); }}
+                className="flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors border border-primary/20"
+              >
+                <Plus className="w-3 h-3" /> Nueva sede
+              </button>
+            </div>
+
+            {/* Sedes */}
+            {isExpanded && (
+              <div className="p-4 space-y-3">
+                {misSedes.length === 0 ? (
+                  <p className="text-xs text-white/25 text-center py-4 italic">No hay sedes registradas para este cliente</p>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {misSedes.map((sede) => (
+                      <div key={sede.id} className="bg-[#0c1929] border border-white/8 rounded-xl p-3">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-white">{sede.nombre}</p>
+                            {sede.ciudad && <p className="text-[10px] text-white/30">{sede.ciudad}</p>}
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <div className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${
+                              sede.puestos_cubiertos === sede.total_puestos && sede.total_puestos > 0
+                                ? "text-green-400 bg-green-500/10 border border-green-500/20"
+                                : sede.total_puestos > 0
+                                  ? "text-amber-400 bg-amber-500/10 border border-amber-500/20"
+                                  : "text-white/25 bg-white/5 border border-white/8"
+                            }`}>
+                              {sede.puestos_cubiertos}/{sede.total_puestos} puestos
+                            </div>
+                            <button
+                              onClick={() => eliminarSede(sede.id)}
+                              className="text-red-400/40 hover:text-red-400 transition-colors p-0.5"
+                              title="Desactivar sede"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="space-y-0.5 text-[10px] text-white/35">
+                          {sede.direccion && <div className="flex items-center gap-1"><MapPin className="w-2.5 h-2.5" />{sede.direccion}</div>}
+                          {sede.contacto && <div className="flex items-center gap-1"><Users className="w-2.5 h-2.5" />{sede.contacto}</div>}
+                          {sede.telefono && <div className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" />{sede.telefono}</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Modal nueva sede */}
+      {sedeModalClientId !== null && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-sm shadow-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-white">Nueva sede</h3>
+              <button onClick={() => setSedeModalClientId(null)} className="text-white/30 hover:text-white transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-white/40">
+              Cliente: <span className="text-white/70">{clients.find(c => c.id === sedeModalClientId)?.nombreComercial || clients.find(c => c.id === sedeModalClientId)?.nombre}</span>
+            </p>
+            {[
+              { key: "nombre", label: "Nombre de la sede *", placeholder: "Ej: Sede Central, Bodega Norte..." },
+              { key: "direccion", label: "Dirección", placeholder: "Dirección física" },
+              { key: "ciudad", label: "Ciudad / Municipio", placeholder: "Ej: Guatemala, Mixco..." },
+              { key: "contacto", label: "Nombre de contacto", placeholder: "Persona de contacto" },
+              { key: "telefono", label: "Teléfono de contacto", placeholder: "+502..." },
+            ].map(({ key, label, placeholder }) => (
+              <div key={key} className="space-y-1">
+                <label className="text-xs text-white/40">{label}</label>
+                <input
+                  type="text"
+                  value={(nuevaSede as any)[key]}
+                  onChange={(e) => setNuevaSede(prev => ({ ...prev, [key]: e.target.value }))}
+                  placeholder={placeholder}
+                  className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50"
+                />
+              </div>
+            ))}
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setSedeModalClientId(null)} className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors">
+                Cancelar
+              </button>
+              <button
+                onClick={() => crearSede(sedeModalClientId!)}
+                disabled={saving || !nuevaSede.nombre.trim()}
+                className="flex-1 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-sm font-bold text-white disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+              >
+                {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Guardar sede
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
-type Tab = "clientes" | "puestos" | "resolver";
+type Tab = "clientes" | "puestos" | "resolver" | "sedes";
 
 export default function Clientes() {
   const [tab, setTab] = useState<Tab>("clientes");
@@ -607,6 +806,7 @@ export default function Clientes() {
             <div className="flex gap-1">
               {([
                 { id: "clientes", label: "Clientes", icon: Building2 },
+                { id: "sedes", label: "Sedes Operativas", icon: Shield },
                 { id: "puestos", label: "Puestos y Rutas", icon: MapPin },
                 { id: "resolver", label: "Resolver Alias", icon: Search },
               ] as const).map(({ id, label, icon: Icon }) => (
@@ -643,6 +843,9 @@ export default function Clientes() {
               </button>
             </div>
           </div>
+
+          {/* Tab: Sedes Operativas */}
+          {tab === "sedes" && <TabSedes clients={clients} />}
 
           {/* Tab: Resolver */}
           {tab === "resolver" && (

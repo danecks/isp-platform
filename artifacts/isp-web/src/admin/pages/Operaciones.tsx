@@ -43,6 +43,12 @@ interface Puesto {
   agente_area: string | null;
   notas: string | null;
   orden: number;
+  titular_employee_id: number | null;
+  titular_nombre: string | null;
+  horario: string | null;
+  jornada: string | null;
+  sede_id: number | null;
+  sede_nombre: string | null;
 }
 
 interface ClienteBoard {
@@ -231,7 +237,17 @@ function DroppablePuesto({
   onLiberar: () => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: `puesto-${puesto.id}` });
-  const cubierto = puesto.estado === "cubierto" && puesto.agente_id;
+  const cubierto  = puesto.estado === "cubierto" && puesto.agente_id;
+  const esRelevo  = cubierto && puesto.titular_employee_id && puesto.agente_id !== puesto.titular_employee_id;
+  const titularAusente = !puesto.agente_id && !!puesto.titular_employee_id;
+
+  const borderClass = isOver
+    ? "border-primary bg-primary/10 shadow-lg shadow-primary/20 scale-[1.02]"
+    : esRelevo
+      ? "bg-[#0f1208] border-amber-500/30 hover:border-amber-400/40"
+      : cubierto
+        ? "bg-[#081620] border-green-500/20 hover:border-green-400/30"
+        : "bg-[#0c0a16] border-red-500/25 hover:border-red-400/35";
 
   return (
     <div
@@ -239,54 +255,87 @@ function DroppablePuesto({
       onClick={onClick}
       className={`
         relative rounded-xl border p-3 transition-all cursor-pointer group
-        ${isOver
-          ? "border-primary bg-primary/10 shadow-lg shadow-primary/20 scale-[1.02]"
-          : cubierto
-            ? "bg-[#081620] border-green-500/20 hover:border-green-400/30"
-            : "bg-[#0c0a16] border-red-500/25 hover:border-red-400/35"
-        }
+        ${borderClass}
         ${isAgenteSeleccionado && !cubierto ? "ring-1 ring-primary/50 border-primary/30" : ""}
       `}
     >
-      {/* Indicador estado puesto */}
+      {/* Encabezado: nombre + turno + estado */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold text-white/80 truncate">{puesto.nombre}</p>
-          <div className="flex items-center gap-1.5 mt-0.5">
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold ${TURNO_COLORS[puesto.turno] ?? "text-white/30 bg-white/5 border-white/10"}`}>
               {puesto.turno}
             </span>
+            {puesto.jornada && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded border text-blue-300/60 bg-blue-500/5 border-blue-500/15 font-semibold">
+                {puesto.jornada}
+              </span>
+            )}
+            {esRelevo && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded border text-amber-300/80 bg-amber-500/10 border-amber-500/25 font-bold">
+                RELEVO
+              </span>
+            )}
           </div>
         </div>
         <div className="shrink-0 mt-0.5">
           {cubierto
-            ? <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+            ? <CheckCircle2 className={`w-3.5 h-3.5 ${esRelevo ? "text-amber-400" : "text-green-400"}`} />
             : <Circle className="w-3.5 h-3.5 text-red-400 animate-pulse" />
           }
         </div>
       </div>
 
-      {/* Agente asignado */}
+      {/* Cobertura actual */}
       {cubierto && puesto.agente_nombre ? (
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className={`w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarColor(puesto.agente_nombre)}`}>
-              {iniciales(puesto.agente_nombre)}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className={`w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarColor(puesto.agente_nombre)}`}>
+                {iniciales(puesto.agente_nombre)}
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1">
+                  <p className="text-[11px] text-white/80 font-medium truncate">{puesto.agente_nombre}</p>
+                  {!esRelevo && (
+                    <span className="text-[8px] text-green-400/70 font-bold shrink-0">T</span>
+                  )}
+                </div>
+                {puesto.agente_telefono && (
+                  <p className="text-[10px] text-white/25 truncate">{puesto.agente_telefono}</p>
+                )}
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-[11px] text-white/80 font-medium truncate">{puesto.agente_nombre}</p>
-              {puesto.agente_telefono && (
-                <p className="text-[10px] text-white/25 truncate">{puesto.agente_telefono}</p>
-              )}
-            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); onLiberar(); }}
+              className="opacity-0 group-hover:opacity-100 text-red-400/60 hover:text-red-400 transition-all p-0.5"
+              title="Remover del puesto"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+            </button>
           </div>
-          <button
-            onClick={(e) => { e.stopPropagation(); onLiberar(); }}
-            className="opacity-0 group-hover:opacity-100 text-red-400/60 hover:text-red-400 transition-all p-0.5"
-            title="Remover agente"
-          >
-            <XCircle className="w-3.5 h-3.5" />
-          </button>
+          {/* Si es relevo: mostrar titular ausente */}
+          {esRelevo && puesto.titular_nombre && (
+            <div className="flex items-center gap-1.5 px-1.5 py-1 bg-white/4 rounded-lg border border-white/5">
+              <User className="w-2.5 h-2.5 text-white/25 shrink-0" />
+              <p className="text-[9px] text-white/35 truncate">Titular ausente: <span className="text-white/50">{puesto.titular_nombre}</span></p>
+            </div>
+          )}
+        </div>
+      ) : titularAusente ? (
+        /* Titular definido pero ausente hoy (sin cobertura) */
+        <div className="space-y-1.5">
+          <div className={`flex items-center gap-2 transition-colors ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/20"}`}>
+            <User className="w-4 h-4 shrink-0" />
+            <p className="text-[11px]">
+              {isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : "Sin cobertura hoy"}
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 px-1.5 py-1 bg-red-500/5 rounded-lg border border-red-500/10">
+            <User className="w-2.5 h-2.5 text-red-400/40 shrink-0" />
+            <p className="text-[9px] text-red-300/50 truncate">Titular: <span className="text-red-300/70">{puesto.titular_nombre}</span></p>
+          </div>
         </div>
       ) : (
         <div className={`flex items-center gap-2 transition-colors ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/20"}`}>
@@ -471,13 +520,14 @@ function ModalSustitucion({
 }: {
   puesto: Puesto;
   agenteEntrante: Agente;
-  onConfirm: (motivo: string, notas: string, forzar: boolean) => Promise<void>;
+  onConfirm: (motivo: string, notas: string, forzar: boolean, tipoSustitucion: string) => Promise<void>;
   onCancel: () => void;
   advertencia?: string;
 }) {
   const [motivo, setMotivo] = useState("rotacion");
   const [notas, setNotas] = useState("");
   const [loading, setLoading] = useState(false);
+  const [tipoSustitucion, setTipoSustitucion] = useState<"relevo" | "reasignacion">("relevo");
   const esSustitucion = !!puesto.agente_id;
 
   const generaRrhh = esSustitucion && (motivo === "falta" || motivo === "suspension");
@@ -485,7 +535,7 @@ function ModalSustitucion({
   async function handleConfirm() {
     setLoading(true);
     try {
-      await onConfirm(motivo, notas, !!advertencia);
+      await onConfirm(motivo, notas, !!advertencia, tipoSustitucion);
     } finally {
       setLoading(false);
     }
@@ -546,6 +596,43 @@ function ModalSustitucion({
               <span className="text-xs text-white/50">Entra: <span className="text-white/70">{agenteEntrante.nombre_completo}</span></span>
             </div>
           </div>
+
+          {/* Tipo de sustitución: Relevo temporal vs Reasignación permanente */}
+          {esSustitucion && puesto.titular_employee_id && (
+            <div className="space-y-1.5">
+              <label className="text-xs text-white/40">Tipo de movimiento</label>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setTipoSustitucion("relevo")}
+                  className={`py-2 px-2 rounded-lg border text-[11px] font-semibold transition-all ${
+                    tipoSustitucion === "relevo"
+                      ? "bg-amber-500/15 border-amber-500/40 text-amber-300"
+                      : "border-white/10 text-white/35 hover:text-white/60"
+                  }`}
+                >
+                  Relevo temporal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTipoSustitucion("reasignacion")}
+                  className={`py-2 px-2 rounded-lg border text-[11px] font-semibold transition-all ${
+                    tipoSustitucion === "reasignacion"
+                      ? "bg-blue-500/15 border-blue-500/40 text-blue-300"
+                      : "border-white/10 text-white/35 hover:text-white/60"
+                  }`}
+                >
+                  Reasignación
+                </button>
+              </div>
+              <p className="text-[10px] text-white/25">
+                {tipoSustitucion === "relevo"
+                  ? `El titular (${puesto.titular_nombre}) sigue siendo titular. Solo cambia la cobertura de hoy.`
+                  : `${agenteEntrante.nombre_completo} se convierte en el nuevo titular permanente del puesto.`
+                }
+              </p>
+            </div>
+          )}
 
           {/* Motivo */}
           {esSustitucion && (
@@ -933,7 +1020,7 @@ export default function Operaciones() {
   }
 
   // ── Confirmar sustitución / asignación ───────────────────────────────────
-  async function confirmarSustitucion(motivo: string, notas: string, forzar: boolean) {
+  async function confirmarSustitucion(motivo: string, notas: string, forzar: boolean, tipoSustitucion: string = "relevo") {
     if (!modalSustitucion) return;
     const { puesto, agente } = modalSustitucion;
 
@@ -945,6 +1032,7 @@ export default function Operaciones() {
           motivo,
           notas,
           forzar,
+          tipoSustitucion,
           usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
         });
         if (resp?.eventoRrhhGenerado) {

@@ -5,7 +5,7 @@ import { logger } from "../lib/logger";
 const operacionesRouter = Router();
 
 // ─── GET /api/operaciones/tablero ─────────────────────────────────────────────
-// Devuelve: clientes con sus puestos y el agente asignado en cada uno
+// Devuelve: clientes con sus puestos, agente actual, titular y datos de sede/horario
 operacionesRouter.get("/operaciones/tablero", async (req, res) => {
   try {
     const { rows: puestos } = await pool.query(`
@@ -17,6 +17,11 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         po.turno,
         po.agente_id,
         po.agente_nombre,
+        po.titular_employee_id,
+        po.titular_nombre,
+        po.horario,
+        po.jornada,
+        po.sede_id,
         po.estado,
         po.orden,
         po.notas,
@@ -25,9 +30,11 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         e.puesto         AS agente_puesto,
         e.telefono       AS agente_telefono,
         e.area           AS agente_area,
-        e.sede           AS agente_sede
+        e.sede           AS agente_sede,
+        cs.nombre        AS sede_nombre
       FROM puestos_operativos po
-      LEFT JOIN employees e ON e.id = po.agente_id
+      LEFT JOIN employees e  ON e.id  = po.agente_id
+      LEFT JOIN client_sedes cs ON cs.id = po.sede_id
       WHERE po.activo = TRUE
       ORDER BY po.cliente_nombre, po.orden, po.nombre
     `);
@@ -114,10 +121,17 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
       });
     }
 
-    // Actualizar puesto
+    // Actualizar puesto: asigna como agente_id y como titular (si no había titular previo)
+    const sinTitular = !puesto.titular_employee_id;
     await pool.query(
-      `UPDATE puestos_operativos SET agente_id=$1, agente_nombre=$2, estado='cubierto', updated_at=NOW()
-       WHERE id=$3`,
+      `UPDATE puestos_operativos
+       SET agente_id      = $1,
+           agente_nombre  = $2,
+           estado         = 'cubierto',
+           titular_employee_id = COALESCE(titular_employee_id, $1),
+           titular_nombre      = COALESCE(titular_nombre, $2),
+           updated_at     = NOW()
+       WHERE id = $3`,
       [agenteId, agente.nombre_completo, puestoId]
     );
 
@@ -129,7 +143,11 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
       [puestoId, puesto.cliente_nombre, puesto.nombre, agenteId, agente.nombre_completo, usuario || 'sistema', notas || null]
     );
 
-    res.json({ ok: true, mensaje: `${agente.nombre_completo} asignado a ${puesto.nombre}` });
+    res.json({
+      ok: true,
+      mensaje: `${agente.nombre_completo} asignado a ${puesto.nombre}`,
+      asignadoComoTitular: sinTitular,
+    });
   } catch (err) {
     logger.error({ err }, "POST /operaciones/asignar error");
     res.status(500).json({ error: "Error al asignar agente" });
@@ -139,8 +157,12 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
 // ─── POST /api/operaciones/sustituir ─────────────────────────────────────────
 // Sustituir agente en un puesto (hay uno previo)
 operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
-  const { puestoId, agenteEntranteId, motivo, usuario, notas, forzar } = req.body;
+  const { puestoId, agenteEntranteId, motivo, usuario, notas, forzar, tipoSustitucion } = req.body;
   if (!puestoId || !agenteEntranteId) return res.status(400).json({ error: "puestoId y agenteEntranteId son requeridos" });
+
+  // tipoSustitucion: 'relevo' = solo cambia agente_id (titular no cambia)
+  //                 'reasignacion' = cambia agente_id Y titular_employee_id
+  const esRelevo = tipoSustitucion === 'relevo';
 
   try {
     const { rows: puestoRows } = await pool.query(`SELECT * FROM puestos_operativos WHERE id=$1`, [puestoId]);
@@ -166,15 +188,34 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
       }
     }
 
-    const agenteSalienteId    = puesto.agente_id;
+    const agenteSalienteId     = puesto.agente_id;
     const agenteSalienteNombre = puesto.agente_nombre;
 
-    // Actualizar puesto con el nuevo agente
-    await pool.query(
-      `UPDATE puestos_operativos SET agente_id=$1, agente_nombre=$2, estado='cubierto', updated_at=NOW()
-       WHERE id=$3`,
-      [agenteEntranteId, entrante.nombre_completo, puestoId]
-    );
+    // Si es relevo: solo cambia agente_id, el titular_employee_id NO cambia
+    // Si es reasignación: cambia tanto agente_id como titular_employee_id
+    if (esRelevo) {
+      await pool.query(
+        `UPDATE puestos_operativos
+         SET agente_id     = $1,
+             agente_nombre = $2,
+             estado        = 'cubierto',
+             updated_at    = NOW()
+         WHERE id = $3`,
+        [agenteEntranteId, entrante.nombre_completo, puestoId]
+      );
+    } else {
+      await pool.query(
+        `UPDATE puestos_operativos
+         SET agente_id             = $1,
+             agente_nombre         = $2,
+             titular_employee_id   = $1,
+             titular_nombre        = $2,
+             estado                = 'cubierto',
+             updated_at            = NOW()
+         WHERE id = $3`,
+        [agenteEntranteId, entrante.nombre_completo, puestoId]
+      );
+    }
 
     // Registrar movimiento de sustitución
     await pool.query(
@@ -272,6 +313,8 @@ operacionesRouter.post("/operaciones/liberar", async (req, res) => {
 
     if (!puesto.agente_id) return res.status(400).json({ error: "El puesto no tiene agente asignado" });
 
+    // IMPORTANTE: solo se limpia agente_id (cobertura del día).
+    // El titular_employee_id se preserva para mantener la asignación base.
     await pool.query(
       `UPDATE puestos_operativos SET agente_id=NULL, agente_nombre=NULL, estado='descubierto', updated_at=NOW()
        WHERE id=$1`,
@@ -298,10 +341,79 @@ operacionesRouter.post("/operaciones/liberar", async (req, res) => {
   }
 });
 
+// ─── POST /api/operaciones/puestos/:id/titular ───────────────────────────────
+// Establecer o cambiar el titular de un puesto (sin mover la cobertura del día)
+operacionesRouter.post("/operaciones/puestos/:id/titular", async (req, res) => {
+  const { titularEmployeeId, usuario } = req.body;
+  const puestoId = req.params.id;
+
+  try {
+    const { rows: puestoRows } = await pool.query(`SELECT * FROM puestos_operativos WHERE id=$1`, [puestoId]);
+    if (!puestoRows.length) return res.status(404).json({ error: "Puesto no encontrado" });
+
+    if (!titularEmployeeId) {
+      // Quitar titular
+      await pool.query(
+        `UPDATE puestos_operativos SET titular_employee_id=NULL, titular_nombre=NULL, updated_at=NOW() WHERE id=$1`,
+        [puestoId]
+      );
+      return res.json({ ok: true, mensaje: "Titular removido" });
+    }
+
+    const { rows: empRows } = await pool.query(`SELECT * FROM employees WHERE id=$1`, [titularEmployeeId]);
+    if (!empRows.length) return res.status(404).json({ error: "Colaborador no encontrado" });
+    const emp = empRows[0];
+
+    await pool.query(
+      `UPDATE puestos_operativos SET titular_employee_id=$1, titular_nombre=$2, updated_at=NOW() WHERE id=$3`,
+      [titularEmployeeId, emp.nombre_completo, puestoId]
+    );
+
+    // Si no hay agente_id asignado, también asignar como cobertura actual
+    const puesto = puestoRows[0];
+    if (!puesto.agente_id) {
+      await pool.query(
+        `UPDATE puestos_operativos SET agente_id=$1, agente_nombre=$2, estado='cubierto', updated_at=NOW() WHERE id=$3`,
+        [titularEmployeeId, emp.nombre_completo, puestoId]
+      );
+    }
+
+    res.json({ ok: true, mensaje: `${emp.nombre_completo} definido como titular de ${puestoRows[0].nombre}` });
+  } catch (err) {
+    logger.error({ err }, "POST /operaciones/puestos/:id/titular error");
+    res.status(500).json({ error: "Error al definir titular" });
+  }
+});
+
+// ─── PATCH /api/operaciones/puestos/:id ──────────────────────────────────────
+// Actualizar campos de configuración de un puesto (horario, jornada, sede, notas)
+operacionesRouter.patch("/operaciones/puestos/:id", async (req, res) => {
+  const { horario, jornada, sedeId, notas, turno } = req.body;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE puestos_operativos
+       SET horario    = COALESCE($1, horario),
+           jornada    = COALESCE($2, jornada),
+           sede_id    = COALESCE($3, sede_id),
+           notas      = COALESCE($4, notas),
+           turno      = COALESCE($5, turno),
+           updated_at = NOW()
+       WHERE id = $6
+       RETURNING *`,
+      [horario ?? null, jornada ?? null, sedeId ?? null, notas ?? null, turno ?? null, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Puesto no encontrado" });
+    res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "PATCH /operaciones/puestos/:id error");
+    res.status(500).json({ error: "Error al actualizar puesto" });
+  }
+});
+
 // ─── POST /api/operaciones/puestos ───────────────────────────────────────────
 // Crear un nuevo puesto operativo
 operacionesRouter.post("/operaciones/puestos", async (req, res) => {
-  const { clienteId, clienteNombre, nombre, turno, notas } = req.body;
+  const { clienteId, clienteNombre, nombre, turno, notas, sedeId, horario, jornada } = req.body;
   if (!clienteNombre || !nombre) return res.status(400).json({ error: "clienteNombre y nombre son requeridos" });
 
   try {
@@ -312,10 +424,10 @@ operacionesRouter.post("/operaciones/puestos", async (req, res) => {
     const orden = ordenRows[0].siguiente;
 
     const { rows } = await pool.query(
-      `INSERT INTO puestos_operativos (cliente_id, cliente_nombre, nombre, turno, orden, notas)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO puestos_operativos (cliente_id, cliente_nombre, nombre, turno, orden, notas, sede_id, horario, jornada)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
-      [clienteId || null, clienteNombre, nombre, turno || 'día', orden, notas || null]
+      [clienteId || null, clienteNombre, nombre, turno || 'día', orden, notas || null, sedeId || null, horario || null, jornada || null]
     );
     res.json(rows[0]);
   } catch (err) {
