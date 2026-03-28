@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { incidentsApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { X, AlertTriangle, Loader2, Siren } from "lucide-react";
+import { ResponsableSelector } from "./ResponsableSelector";
 
 const TIPOS_INCIDENCIA = [
   "Intrusión detectada",
@@ -301,12 +302,11 @@ export function NuevaIncidenciaModal({ onClose, defaultEmergencia = false }: Pro
             </Field>
 
             <Field label="Responsable Asignado">
-              <input
-                type="text"
-                className={isEmerg ? emergInputCls : inputCls}
-                placeholder="Nombre del supervisor"
+              <ResponsableSelector
                 value={form.responsable}
-                onChange={(e) => set("responsable", e.target.value)}
+                onChange={(v) => set("responsable", v)}
+                inputCls={isEmerg ? emergInputCls : inputCls}
+                placeholder="Buscar supervisor, jefe o administrador…"
               />
             </Field>
           </div>

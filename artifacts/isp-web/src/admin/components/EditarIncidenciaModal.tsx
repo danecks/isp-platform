@@ -8,6 +8,7 @@ import {
   X, Edit3, Loader2, Clock, MapPin, User, FileText,
   Trello, ExternalLink, CheckSquare, CheckCircle2, AlertCircle,
 } from "lucide-react";
+import { ResponsableSelector } from "./ResponsableSelector";
 
 interface Props {
   incidencia: Incident;
@@ -184,12 +185,11 @@ export function EditarIncidenciaModal({ incidencia, onClose }: Props) {
 
               <div>
                 <label className="block text-[11px] text-white/50 uppercase tracking-wide mb-1.5">Responsable</label>
-                <input
-                  type="text"
-                  className={inputCls}
-                  placeholder="Nombre del supervisor"
+                <ResponsableSelector
                   value={responsable}
-                  onChange={(e) => setResponsable(e.target.value)}
+                  onChange={setResponsable}
+                  inputCls={inputCls}
+                  placeholder="Buscar supervisor o jefe…"
                 />
               </div>
             </div>
