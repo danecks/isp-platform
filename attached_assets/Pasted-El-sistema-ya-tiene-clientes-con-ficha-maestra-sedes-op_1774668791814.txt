@@ -1,0 +1,244 @@
+El sistema ya tiene:
+	•	clientes con ficha maestra
+	•	sedes operativas
+	•	puestos operativos
+	•	zonas operativas globales
+	•	supervisores asignados por zona
+	•	pizarrón operativo
+	•	cobertura diaria
+	•	empleados
+	•	KPI de rotación
+	•	RRHH
+	•	cierre operativo diario
+
+No quiero romper nada de lo existente.
+
+Quiero avanzar a la siguiente fase:
+Reporte de cobertura por zona operativa + soporte por períodos + base para costo de supervisión
+
+⸻
+
+🎯 OBJETIVO
+
+Poder analizar la operación real por zona operativa en distintos períodos (día, rango, mes, año), entendiendo:
+	•	qué puestos pertenecen a cada zona
+	•	qué clientes y sedes están involucrados
+	•	quién debía cubrir cada puesto
+	•	quién lo cubrió realmente
+	•	si fue titular o relevo
+	•	quién faltó
+	•	qué puestos quedaron descubiertos
+	•	cuántas horas extra hubo
+
+Y dejar la base lista para:
+	•	KPI de supervisor de zona
+	•	costo de supervisión
+	•	rentabilidad por zona
+
+⸻
+
+1. Crear módulo de reporte por zona
+
+Crear vista en:
+	•	/admin/reportes/cobertura-zonas
+
+o dentro del módulo de reportes existente.
+
+⸻
+
+2. Selector de período (MUY IMPORTANTE)
+
+El reporte NO debe ser solo por día.
+
+Agregar selector de período con opciones:
+	•	Hoy
+	•	Ayer
+	•	Últimos 7 días
+	•	Últimos 15 días
+	•	Este mes
+	•	Mes anterior
+	•	Este año
+	•	Personalizado
+
+Si es personalizado:
+	•	seleccionar fecha inicio
+	•	seleccionar fecha fin
+
+⸻
+
+3. Filtros adicionales
+
+Permitir filtrar por:
+	•	zona operativa
+	•	supervisor
+	•	cliente
+	•	sede
+	•	estado de cobertura
+	•	tipo de cobertura
+
+⸻
+
+4. Resumen superior por zona
+
+Mostrar tarjetas con:
+	•	puestos totales en la zona
+	•	cantidad de clientes en la zona
+	•	cantidad de sedes
+	•	cubiertos por titular
+	•	cubiertos por relevo
+	•	descubiertos
+	•	ausencias
+	•	horas extra acumuladas
+
+Estas métricas deben recalcularse según el período seleccionado.
+
+⸻
+
+5. Tabla detallada
+
+Cada fila debe mostrar:
+	•	zona operativa
+	•	supervisor de zona
+	•	cliente
+	•	sede
+	•	puesto
+	•	tipo de servicio
+	•	turno / jornada
+	•	horario
+	•	titular esperado
+	•	colaborador que cubrió realmente
+	•	tipo de cobertura (titular, relevo, descubierto)
+	•	motivo (falta, enfermedad, descanso, suspensión, apoyo, etc.)
+	•	horas trabajadas
+	•	horas extra
+
+⸻
+
+6. Agrupación visual
+
+Agrupar visualmente por:
+	•	zona operativa
+	•	cliente
+	•	sede
+	•	puestos
+
+Debe quedar claro que una zona contiene múltiples clientes.
+
+⸻
+
+7. KPI del supervisor de zona (base)
+
+Mostrar bloque inicial con:
+	•	cantidad de puestos bajo su supervisión
+	•	cantidad de clientes en su zona
+	•	cobertura promedio del período
+	•	relevos realizados
+	•	ausencias registradas
+	•	incidencias (si ya existe relación)
+
+No hacer aún un módulo complejo, pero dejar base visible.
+
+⸻
+
+8. Base para costo de supervisión
+
+Preparar estructura para poder calcular:
+	•	costo del supervisor
+	•	costo distribuido por cliente
+	•	carga operativa de la zona
+	•	margen estimado
+
+Si no se puede calcular completamente, dejar:
+	•	estructura lista
+	•	documentación clara de lo que falta
+
+⸻
+
+9. Integración con zonas
+
+En la página de zonas operativas:
+
+Agregar acceso o bloque que muestre:
+	•	cobertura del día
+	•	resumen de clientes y puestos
+	•	supervisor
+	•	relevos del día
+	•	ausencias
+
+⸻
+
+10. Integración con fichas
+
+En ficha del cliente:
+	•	mostrar zona operativa de cada puesto
+	•	acceso a cobertura filtrada
+
+En ficha del colaborador:
+	•	si es supervisor → mostrar:
+	•	zona
+	•	cantidad de puestos
+	•	cobertura del período
+
+⸻
+
+11. Exportación
+
+Permitir exportar:
+	•	CSV
+	•	PDF
+
+El PDF debe quedar preparado para:
+	•	hoja membretada ISP, S.A.
+	•	uso formal con clientes o gerencia
+
+⸻
+
+12. Lógica por período
+
+Cuando el período NO sea un solo día:
+	•	mostrar datos agregados correctamente
+	•	no usar solo snapshot
+	•	calcular totales reales del período
+	•	permitir análisis de tendencias
+
+⸻
+
+13. No romper
+
+No romper:
+	•	clientes
+	•	ficha maestra
+	•	sedes
+	•	puestos
+	•	pizarrón operativo
+	•	cierre operativo diario
+	•	empleados
+	•	RRHH
+	•	anticipos
+	•	portal
+	•	WhatsApp
+	•	Trello
+
+⸻
+
+14. Documentación
+
+Explicar:
+	•	cómo funciona el reporte por zona
+	•	diferencia entre zona operativa y cliente
+	•	cómo se calcula la cobertura en distintos períodos
+	•	cómo se preparó la base para costos
+	•	cómo esto evoluciona hacia KPI y rentabilidad
+
+⸻
+
+🔥 IMPORTANTE
+
+Este módulo debe servir tanto para:
+	•	operación diaria
+	•	supervisión
+	•	control de RRHH
+	•	análisis gerencial
+	•	y base de decisiones financieras
+
+Quiero que el sistema refleje la realidad completa de la operación por zona, no solo un snapshot del día

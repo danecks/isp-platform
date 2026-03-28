@@ -42,6 +42,7 @@ import AdminZonasOperativas from "@/admin/pages/ZonasOperativas";
 import AdminRrhhEventos from "@/admin/pages/RRHHEventos";
 import AdminRrhhAlertas from "@/admin/pages/RRHHAlertas";
 import AdminFichaCliente from "@/admin/pages/FichaCliente";
+import AdminReporteCoberturaZonas from "@/admin/pages/ReporteCoberturaZonas";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
@@ -127,6 +128,9 @@ function Router() {
       </Route>
       <Route path="/admin/configuracion/whatsapp">
         {() => <AuthGuard requiredRoles={["admin"]}><AdminWhatsappConfig /></AuthGuard>}
+      </Route>
+      <Route path="/admin/reportes/cobertura-zonas">
+        {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminReporteCoberturaZonas /></AuthGuard>}
       </Route>
       <Route path="/admin/reportes">
         {() => <AuthGuard requiredRoles={["admin", "operaciones", "rrhh", "comercial", "supervisor"]}><AdminReportes /></AuthGuard>}

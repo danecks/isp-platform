@@ -448,4 +448,154 @@ router.get("/reportes/kpi", async (req, res) => {
   }
 });
 
+// ─── GET /reportes/cobertura-zonas ───────────────────────────────────────────
+// Reporte de cobertura operativa por zona, con soporte de períodos
+// Params: desde, hasta, zona_id, cliente_id, sede_id, tipo_cobertura, supervisor_id
+router.get("/reportes/cobertura-zonas", async (req, res) => {
+  try {
+    const { desde, hasta, zona_id, cliente_id, sede_id, tipo_cobertura, supervisor_id } = req.query;
+
+    // Defaults: si no llegan fechas, usar hoy
+    const desdeDate = desde ? String(desde) : new Date().toISOString().split("T")[0];
+    const hastaDate = hasta ? String(hasta) : desdeDate;
+
+    // ── Parámetros dinámicos ────────────────────────────────────────────────
+    const params: unknown[] = [desdeDate, hastaDate];
+    const clauses: string[] = [];
+
+    if (zona_id) {
+      params.push(Number(zona_id));
+      clauses.push(`po.zona_operativa_id = $${params.length}`);
+    }
+    if (cliente_id) {
+      params.push(Number(cliente_id));
+      clauses.push(`cd.client_id = $${params.length}`);
+    }
+    if (sede_id) {
+      params.push(Number(sede_id));
+      clauses.push(`cd.sede_id = $${params.length}`);
+    }
+    if (tipo_cobertura) {
+      params.push(String(tipo_cobertura));
+      clauses.push(`cd.tipo_cobertura = $${params.length}`);
+    }
+    if (supervisor_id) {
+      params.push(Number(supervisor_id));
+      clauses.push(`oz.supervisor_employee_id = $${params.length}`);
+    }
+
+    const whereExtra = clauses.length > 0 ? `AND ${clauses.join(" AND ")}` : "";
+
+    // ── Registros detallados ────────────────────────────────────────────────
+    const detallesQ = await pool.query(`
+      SELECT
+        cd.id,
+        cd.fecha::text,
+        cd.puesto_id,
+        cd.puesto_nombre,
+        cd.client_id      AS cliente_id,
+        cd.cliente_nombre,
+        cd.sede_id,
+        cs.nombre         AS sede_nombre,
+        cd.titular_employee_id,
+        cd.titular_nombre,
+        cd.cobertura_employee_id,
+        cd.cobertura_nombre,
+        cd.tipo_cobertura,
+        cd.motivo,
+        cd.horas_trabajadas,
+        cd.horas_extra,
+        cd.observaciones,
+        po.zona_operativa_id AS zona_id,
+        oz.nombre         AS zona_nombre,
+        oz.supervisor_employee_id,
+        esup.nombre_completo AS supervisor_nombre,
+        po.tipo_servicio,
+        po.turno,
+        po.jornada,
+        po.horario
+      FROM cobertura_diaria cd
+      LEFT JOIN puestos_operativos po     ON po.id = cd.puesto_id
+      LEFT JOIN operational_zones oz      ON oz.id = po.zona_operativa_id
+      LEFT JOIN employees esup            ON esup.id = oz.supervisor_employee_id
+      LEFT JOIN client_sedes cs           ON cs.id = cd.sede_id
+      WHERE cd.fecha BETWEEN $1 AND $2
+      ${whereExtra}
+      ORDER BY oz.nombre NULLS LAST, cd.cliente_nombre, cs.nombre NULLS LAST, cd.puesto_nombre, cd.fecha
+    `, params);
+
+    // ── Resumen global ──────────────────────────────────────────────────────
+    const globalQ = await pool.query(`
+      SELECT
+        COUNT(*)                                                  AS total_registros,
+        COUNT(DISTINCT cd.puesto_id)                              AS total_puestos,
+        COUNT(DISTINCT cd.client_id)                              AS total_clientes,
+        COUNT(DISTINCT cd.sede_id)                                AS total_sedes,
+        COUNT(DISTINCT po.zona_operativa_id)                      AS total_zonas,
+        COUNT(*) FILTER (WHERE cd.tipo_cobertura = 'titular')     AS cubiertos_titular,
+        COUNT(*) FILTER (WHERE cd.tipo_cobertura = 'relevo')      AS cubiertos_relevo,
+        COUNT(*) FILTER (WHERE cd.tipo_cobertura = 'ausencia_sin_cubrir') AS descubiertos,
+        COALESCE(SUM(cd.horas_trabajadas), 0)                     AS horas_trabajadas,
+        COALESCE(SUM(cd.horas_extra), 0)                          AS horas_extra
+      FROM cobertura_diaria cd
+      LEFT JOIN puestos_operativos po ON po.id = cd.puesto_id
+      LEFT JOIN operational_zones oz  ON oz.id = po.zona_operativa_id
+      WHERE cd.fecha BETWEEN $1 AND $2
+      ${whereExtra}
+    `, params);
+
+    // ── Resumen por zona ────────────────────────────────────────────────────
+    const zonaSummQ = await pool.query(`
+      SELECT
+        po.zona_operativa_id                                      AS zona_id,
+        COALESCE(oz.nombre, 'Sin zona')                           AS zona_nombre,
+        oz.supervisor_employee_id,
+        esup.nombre_completo                                      AS supervisor_nombre,
+        COUNT(DISTINCT cd.puesto_id)                              AS total_puestos,
+        COUNT(DISTINCT cd.client_id)                              AS total_clientes,
+        COUNT(DISTINCT cd.sede_id)                                AS total_sedes,
+        COUNT(*) FILTER (WHERE cd.tipo_cobertura = 'titular')     AS cubiertos_titular,
+        COUNT(*) FILTER (WHERE cd.tipo_cobertura = 'relevo')      AS cubiertos_relevo,
+        COUNT(*) FILTER (WHERE cd.tipo_cobertura = 'ausencia_sin_cubrir') AS descubiertos,
+        COALESCE(SUM(cd.horas_trabajadas), 0)                     AS horas_trabajadas,
+        COALESCE(SUM(cd.horas_extra), 0)                          AS horas_extra
+      FROM cobertura_diaria cd
+      LEFT JOIN puestos_operativos po ON po.id = cd.puesto_id
+      LEFT JOIN operational_zones oz  ON oz.id = po.zona_operativa_id
+      LEFT JOIN employees esup        ON esup.id = oz.supervisor_employee_id
+      WHERE cd.fecha BETWEEN $1 AND $2
+      ${whereExtra}
+      GROUP BY po.zona_operativa_id, oz.nombre, oz.supervisor_employee_id, esup.nombre_completo
+      ORDER BY oz.nombre NULLS LAST
+    `, params);
+
+    // ── Lista de zonas activas (para filtro) ────────────────────────────────
+    const zonasQ = await pool.query(
+      `SELECT id, nombre FROM operational_zones WHERE estado = 'activo' ORDER BY nombre`
+    );
+
+    // ── Lista de clientes activos (para filtro) ─────────────────────────────
+    const clientesQ = await pool.query(
+      `SELECT id, nombre FROM clients WHERE estado = 'activo' ORDER BY nombre`
+    );
+
+    // Calcular días del período
+    const d1 = new Date(desdeDate);
+    const d2 = new Date(hastaDate);
+    const dias = Math.round((d2.getTime() - d1.getTime()) / 86_400_000) + 1;
+
+    res.json({
+      periodo: { desde: desdeDate, hasta: hastaDate, dias },
+      globalStats: globalQ.rows[0],
+      zonaSummaries: zonaSummQ.rows,
+      detalles: detallesQ.rows,
+      zonasDisponibles: zonasQ.rows,
+      clientesDisponibles: clientesQ.rows,
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /reportes/cobertura-zonas error");
+    res.status(500).json({ error: "Error al generar reporte de cobertura por zonas" });
+  }
+});
+
 export default router;
