@@ -218,6 +218,93 @@ coberturaRouter.get("/cobertura/segmentos", async (req, res) => {
   }
 });
 
+// ─── Helper: sincroniza cobertura_diaria desde los segmentos registrados ────
+// Llamado cada vez que se agrega o elimina un segmento, mantiene ambas tablas
+// consistentes para que los reportes y la nómina usen la misma fuente de verdad.
+async function syncCoberturaDesdeSegmentos(fecha: string, puestoId: number): Promise<void> {
+  // 1. Traer todos los segmentos activos del puesto para esa fecha
+  const { rows: segs } = await pool.query(
+    `SELECT cs.*,
+            po.cliente_id, po.sede_id,
+            po.nombre AS puesto_nombre_po,
+            po.titular_employee_id,
+            c.nombre AS cliente_nombre_c
+     FROM cobertura_segmentos cs
+     LEFT JOIN puestos_operativos po ON po.id = cs.puesto_id
+     LEFT JOIN clients            c  ON c.id  = po.cliente_id
+     WHERE cs.fecha = $1 AND cs.puesto_id = $2
+     ORDER BY cs.hora_inicio NULLS LAST`,
+    [fecha, puestoId]
+  );
+
+  // 2. Si no quedan segmentos → borrar el registro de cobertura_diaria
+  if (segs.length === 0) {
+    await pool.query(
+      `DELETE FROM cobertura_diaria WHERE fecha = $1 AND puesto_id = $2`,
+      [fecha, puestoId]
+    );
+    return;
+  }
+
+  // 3. Calcular totales agregados
+  const totalHoras = segs.reduce((s: number, r: any) => s + parseFloat(r.horas_calculadas ?? 0), 0);
+  const totalHE    = segs.reduce((s: number, r: any) => s + (r.genera_horas_extra ? parseFloat(r.horas_calculadas ?? 0) : 0), 0);
+
+  // Tipo de cobertura predominante: titular > relevo > otros
+  const tipos = segs.map((s: any) => s.tipo_cobertura);
+  let tipoPred = tipos.includes("titular") ? "titular"
+               : tipos.includes("relevo")  ? "relevo"
+               : tipos[0] ?? "relevo";
+
+  // Empleado representativo: último segmento registrado (o el titular)
+  const last    = segs[segs.length - 1];
+  const first   = segs[0];
+  const clientId     = last.cliente_id;
+  const sedeId       = last.sede_id;
+  const clienteNom   = last.cliente_nombre_c ?? last.empleado_nombre;
+  const puestoNom    = last.puesto_nombre_po ?? last.empleado_nombre;
+  const cobEmpId     = last.employee_id;
+  const cobEmpNom    = last.empleado_nombre ?? null;
+  const titEmpId     = first.titular_employee_id ?? null;
+
+  // 4. Upsert en cobertura_diaria
+  const existing = await pool.query(
+    `SELECT id FROM cobertura_diaria WHERE fecha = $1 AND puesto_id = $2`,
+    [fecha, puestoId]
+  );
+
+  if (existing.rows.length > 0) {
+    await pool.query(
+      `UPDATE cobertura_diaria
+       SET tipo_cobertura        = $1,
+           cobertura_employee_id = $2,
+           cobertura_nombre      = $3,
+           horas_trabajadas      = $4,
+           horas_extra           = $5,
+           updated_at            = NOW()
+       WHERE id = $6`,
+      [tipoPred, cobEmpId, cobEmpNom,
+       parseFloat(totalHoras.toFixed(2)),
+       parseFloat(totalHE.toFixed(2)),
+       existing.rows[0].id]
+    );
+  } else {
+    await pool.query(
+      `INSERT INTO cobertura_diaria
+         (fecha, puesto_id, client_id, sede_id, cliente_nombre, puesto_nombre,
+          titular_employee_id, cobertura_employee_id, cobertura_nombre,
+          tipo_cobertura, horas_trabajadas, horas_extra, usuario_registro)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'sistema_segmentos')`,
+      [fecha, puestoId, clientId ?? null, sedeId ?? null,
+       clienteNom ?? null, puestoNom ?? null,
+       titEmpId ?? null, cobEmpId, cobEmpNom,
+       tipoPred,
+       parseFloat(totalHoras.toFixed(2)),
+       parseFloat(totalHE.toFixed(2))]
+    );
+  }
+}
+
 // ─── POST /api/cobertura/segmentos ────────────────────────────────────────────
 // Registrar un nuevo tramo de cobertura con cálculo automático de horas
 coberturaRouter.post("/cobertura/segmentos", async (req, res) => {
@@ -275,6 +362,13 @@ coberturaRouter.post("/cobertura/segmentos", async (req, res) => {
       observaciones ?? null, usuarioRegistro ?? null,
     ]);
 
+    // C-02: sincronizar cobertura_diaria con el nuevo segmento
+    try {
+      await syncCoberturaDesdeSegmentos(fecha, Number(puestoId));
+    } catch (syncErr) {
+      logger.warn({ syncErr }, "POST /cobertura/segmentos — sync cobertura_diaria falló (no bloqueante)");
+    }
+
     res.status(201).json(rows[0]);
   } catch (err) {
     logger.error({ err }, "POST /cobertura/segmentos error");
@@ -285,11 +379,23 @@ coberturaRouter.post("/cobertura/segmentos", async (req, res) => {
 // ─── DELETE /api/cobertura/segmentos/:id ──────────────────────────────────────
 coberturaRouter.delete("/cobertura/segmentos/:id", async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `DELETE FROM cobertura_segmentos WHERE id = $1 RETURNING id`,
+    // Obtener fecha y puestoId antes de borrar (para re-sync)
+    const { rows: pre } = await pool.query(
+      `SELECT fecha, puesto_id FROM cobertura_segmentos WHERE id = $1`,
       [req.params.id]
     );
-    if (!rows.length) return res.status(404).json({ error: "Segmento no encontrado" });
+    if (!pre.length) return res.status(404).json({ error: "Segmento no encontrado" });
+    const { fecha, puesto_id } = pre[0];
+
+    await pool.query(`DELETE FROM cobertura_segmentos WHERE id = $1`, [req.params.id]);
+
+    // C-02: re-sincronizar cobertura_diaria (puede quedar vacío → borra registro)
+    try {
+      await syncCoberturaDesdeSegmentos(fecha, Number(puesto_id));
+    } catch (syncErr) {
+      logger.warn({ syncErr }, "DELETE /cobertura/segmentos — sync cobertura_diaria falló (no bloqueante)");
+    }
+
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, "DELETE /cobertura/segmentos error");

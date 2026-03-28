@@ -223,6 +223,54 @@ eventosRrhhRouter.post("/rrhh/eventos/:id/anular", async (req, res) => {
       "Evento RRHH anulado",
     );
 
+    // C-03: Revertir novedad de nómina si no hay otro evento activo del mismo tipo para ese empleado/fecha
+    try {
+      const evento = rows[0];
+      if (evento.employee_id && evento.fecha) {
+        const fechaDia = new Date(evento.fecha).toISOString().split("T")[0];
+        const tipoEvento: string = evento.tipo_evento ?? "";
+
+        // Verificar si hay otro evento activo (no anulado) del mismo tipo para el mismo empleado y fecha
+        const { rows: otrosActivos } = await pool.query(
+          `SELECT id FROM eventos_rrhh
+           WHERE employee_id = $1
+             AND DATE(fecha)  = $2
+             AND tipo_evento  = $3
+             AND estado      != 'anulado'
+             AND id          != $4`,
+          [evento.employee_id, fechaDia, tipoEvento, id]
+        );
+
+        if (otrosActivos.length === 0) {
+          // Mapear tipo_evento al campo correspondiente en novedades_nomina_diarias
+          const campoMap: Record<string, string> = {
+            falta:              "falta",
+            suspension:         "suspension",
+            suspension_parcial: "suspension",
+            suspension_con_goce:"suspension",
+          };
+          const campo = campoMap[tipoEvento];
+
+          if (campo) {
+            await pool.query(
+              `UPDATE novedades_nomina_diarias
+               SET ${campo}       = FALSE,
+                   descuento_dia  = FALSE,
+                   observaciones  = COALESCE(observaciones,'') || ' [Evento RRHH #' || $1 || ' anulado por ' || $2 || ']',
+                   updated_at     = NOW()
+               WHERE fecha       = $3
+                 AND employee_id = $4`,
+              [id, usuario, fechaDia, evento.employee_id]
+            );
+            logger.info({ id, campo, empleado: evento.employee_id, fecha: fechaDia },
+              "C-03: novedad de nómina revertida por anulación de evento RRHH");
+          }
+        }
+      }
+    } catch (novedadErr) {
+      logger.warn({ novedadErr, id }, "C-03: error al revertir novedad de nómina (no bloqueante)");
+    }
+
     res.json({ ok: true, evento: rows[0] });
   } catch (err) {
     logger.error({ err }, "POST /rrhh/eventos/:id/anular error");
