@@ -5,7 +5,7 @@ import {
   Map, Plus, Edit3, Trash2, X, Loader2, Users, Building2,
   Shield, ChevronLeft, ChevronDown, ChevronRight,
   User, CheckCircle2, AlertCircle, RefreshCw, MapPin,
-  Save, Layers,
+  Save, Layers, Power,
 } from "lucide-react";
 import { AdminLayout } from "../layout/AdminLayout";
 import { useToast } from "@/hooks/use-toast";
@@ -387,12 +387,14 @@ function ZonaCard({
   onDelete,
   onAsignar,
   onDetalle,
+  onActivar,
 }: {
   zona: Zona;
   onEdit: () => void;
   onDelete: () => void;
   onAsignar: () => void;
   onDetalle: () => void;
+  onActivar?: () => void;
 }) {
   const coberturaP = zona.total_puestos > 0
     ? Math.round((zona.puestos_cubiertos / zona.total_puestos) * 100)
@@ -417,12 +419,22 @@ function ZonaCard({
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          <button onClick={onEdit} className="p-1.5 text-white/25 hover:text-white transition-colors rounded-lg hover:bg-white/5">
+          <button onClick={onEdit} className="p-1.5 text-white/25 hover:text-white transition-colors rounded-lg hover:bg-white/5" title="Editar zona">
             <Edit3 className="w-3.5 h-3.5" />
           </button>
-          <button onClick={onDelete} className="p-1.5 text-red-400/30 hover:text-red-400 transition-colors rounded-lg hover:bg-red-500/8">
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          {onActivar ? (
+            <button
+              onClick={onActivar}
+              className="p-1.5 text-emerald-400/50 hover:text-emerald-400 transition-colors rounded-lg hover:bg-emerald-500/10"
+              title="Reactivar zona"
+            >
+              <Power className="w-3.5 h-3.5" />
+            </button>
+          ) : (
+            <button onClick={onDelete} className="p-1.5 text-red-400/30 hover:text-red-400 transition-colors rounded-lg hover:bg-red-500/8" title="Desactivar zona">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -655,6 +667,21 @@ export default function ZonasOperativas() {
     }
   }
 
+  async function handleActivar(zona: Zona) {
+    try {
+      const r = await fetch(`${API}/operaciones/zonas/${zona.id}`, {
+        method: "PATCH",
+        headers: h(),
+        body: JSON.stringify({ estado: "activo" }),
+      });
+      if (!r.ok) throw new Error();
+      toast({ title: "Zona reactivada", description: zona.nombre });
+      invalidate();
+    } catch {
+      toast({ title: "Error al reactivar zona", variant: "destructive" });
+    }
+  }
+
   const zonasActivas = zonas.filter((z) => z.estado === "activo");
   const zonasInactivas = zonas.filter((z) => z.estado !== "activo");
 
@@ -790,6 +817,7 @@ export default function ZonasOperativas() {
                   onDelete={() => handleDelete(zona)}
                   onAsignar={() => setAsignarZona(zona)}
                   onDetalle={() => setDetalleZonaId(zona.id)}
+                  onActivar={() => handleActivar(zona)}
                 />
               ))}
             </div>
