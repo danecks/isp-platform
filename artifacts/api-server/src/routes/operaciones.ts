@@ -150,6 +150,31 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
       [puestoId, puesto.cliente_nombre, puesto.nombre, agenteId, agente.nombre_completo, usuario || 'sistema', notas || null]
     );
 
+    // A-04: Auto-crear segmento de cobertura para hoy al asignar agente
+    try {
+      const hoy = new Date().toISOString().split("T")[0];
+      const turno = (puesto.turno ?? "día").toLowerCase();
+      const horaInicio = turno === "noche" ? "20:00" : "08:00";
+      const horaFin    = turno === "noche" ? "06:00" : "18:00";
+      const horasCalc  = 10;
+      await pool.query(
+        `INSERT INTO cobertura_segmentos
+           (fecha, puesto_id, client_id, employee_id, empleado_nombre,
+            tipo_cobertura, hora_inicio, hora_fin, horas_calculadas,
+            fue_en_dia_descanso, genera_horas_extra, usuario_registro)
+         SELECT $1,$2,$3,$4,$5,'titular',$6,$7,$8,FALSE,FALSE,'asignacion_pizarron'
+         WHERE NOT EXISTS (
+           SELECT 1 FROM cobertura_segmentos
+           WHERE fecha=$1 AND puesto_id=$2 AND employee_id=$4
+         )`,
+        [hoy, puestoId, puesto.cliente_id ?? null, agenteId,
+         agente.nombre_completo, horaInicio, horaFin, horasCalc]
+      );
+      logger.info({ puestoId, agenteId, hoy }, "A-04: segmento titular auto-creado en asignación");
+    } catch (segErr) {
+      logger.warn({ segErr }, "A-04: no se pudo auto-crear segmento al asignar (no bloqueante)");
+    }
+
     res.json({
       ok: true,
       mensaje: `${agente.nombre_completo} asignado a ${puesto.nombre}`,
@@ -297,6 +322,32 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
       } catch (errRrhh) {
         logger.error({ errRrhh }, "Error al auto-generar evento RRHH (no bloqueante)");
       }
+    }
+
+    // A-04: Auto-crear segmento de cobertura para hoy al sustituir agente
+    try {
+      const hoy = new Date().toISOString().split("T")[0];
+      const turno = (puesto.turno ?? "día").toLowerCase();
+      const horaInicio = turno === "noche" ? "20:00" : "08:00";
+      const horaFin    = turno === "noche" ? "06:00" : "18:00";
+      const horasCalc  = 10;
+      const tipoSeg    = esRelevo ? "relevo" : "titular";
+      await pool.query(
+        `INSERT INTO cobertura_segmentos
+           (fecha, puesto_id, client_id, employee_id, empleado_nombre,
+            tipo_cobertura, hora_inicio, hora_fin, horas_calculadas,
+            fue_en_dia_descanso, genera_horas_extra, usuario_registro)
+         SELECT $1,$2,$3,$4,$5,$6::VARCHAR,$7,$8,$9,FALSE,FALSE,'sustitucion_pizarron'
+         WHERE NOT EXISTS (
+           SELECT 1 FROM cobertura_segmentos
+           WHERE fecha=$1 AND puesto_id=$2 AND employee_id=$4
+         )`,
+        [hoy, puestoId, puesto.cliente_id ?? null, agenteEntranteId,
+         entrante.nombre_completo, tipoSeg, horaInicio, horaFin, horasCalc]
+      );
+      logger.info({ puestoId, agenteEntranteId, tipoSeg, hoy }, "A-04: segmento auto-creado en sustitución");
+    } catch (segErr) {
+      logger.warn({ segErr }, "A-04: no se pudo auto-crear segmento al sustituir (no bloqueante)");
     }
 
     res.json({

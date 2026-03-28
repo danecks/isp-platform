@@ -3,15 +3,14 @@
  *
  * CAMPOS OBLIGATORIOS:
  *   - comentario (texto libre, mínimo 10 caracteres)
- *   - foto (imagen, máx 1.5 MB)
+ *   - foto (imagen, máx 5 MB)
  *
  * PERMISOS:
  *   - Solo supervisor y admin pueden cerrar tareas
  *   - Se valida en cliente y en servidor
  *
- * ESTADO TRAS CIERRE:
- *   - Tarea pasa a estado "completada"
- *   - Evidencia queda asociada con supervisor, fecha, foto y comentario
+ * A-06: La foto se sube a GCS vía URL presignada. Solo se guarda la URL en la DB,
+ * no el contenido base64.
  */
 
 import { useState, useRef, useCallback } from "react";
@@ -42,16 +41,60 @@ const ESTADO_COLOR: Record<string, string> = {
   cancelada: "text-white/30",
 };
 
-const MAX_FOTO_BYTES = 1.5 * 1024 * 1024; // 1.5 MB
+const MAX_FOTO_BYTES = 5 * 1024 * 1024; // 5 MB (GCS no tiene la limitación de la DB)
+
+const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+
+/**
+ * Sube un archivo a GCS vía presigned URL en dos pasos:
+ * 1. Solicita URL presignada al servidor
+ * 2. Sube el archivo directamente a GCS
+ * Devuelve el objectPath para usar como fotoUrl en la API.
+ */
+async function uploadFotoGCS(file: File): Promise<string> {
+  // Paso 1: solicitar URL presignada
+  const urlRes = await fetch(`${BASE}/api/storage/uploads/request-url`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-isp-session": getSession(),
+    },
+    body: JSON.stringify({
+      name: file.name,
+      size: file.size,
+      contentType: file.type,
+    }),
+  });
+  if (!urlRes.ok) {
+    const err = await urlRes.json().catch(() => ({}));
+    throw new Error(err.error ?? "No se pudo obtener la URL de carga");
+  }
+  const { uploadURL, objectPath } = await urlRes.json();
+
+  // Paso 2: subir el archivo directo a GCS
+  const gcsRes = await fetch(uploadURL, {
+    method: "PUT",
+    headers: { "Content-Type": file.type },
+    body: file,
+  });
+  if (!gcsRes.ok) {
+    throw new Error("Error al subir la foto al almacenamiento");
+  }
+
+  // objectPath es la ruta para servir desde la API: /objects/uploads/<uuid>
+  return `${BASE}/api/storage${objectPath}`;
+}
 
 export default function CerrarTareaModal({ tarea, onClose, onCerrada }: Props) {
   const { currentUser: user } = useAuth();
   const [comentario, setComentario] = useState("");
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
-  const [fotoBase64, setFotoBase64] = useState<string | null>(null);
+  const [fotoFile, setFotoFile] = useState<File | null>(null);
   const [fotoNombre, setFotoNombre] = useState<string>("");
   const [errors, setErrors] = useState<{ comentario?: string; foto?: string; general?: string }>({});
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<"idle" | "uploading" | "done">("idle");
   const [exito, setExito] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -63,7 +106,7 @@ export default function CerrarTareaModal({ tarea, onClose, onCerrada }: Props) {
     if (!file) return;
 
     if (file.size > MAX_FOTO_BYTES) {
-      setErrors((prev) => ({ ...prev, foto: `La imagen supera el tamaño máximo (1.5 MB). Tamaño: ${(file.size / 1024 / 1024).toFixed(1)} MB` }));
+      setErrors((prev) => ({ ...prev, foto: `La imagen supera el tamaño máximo (5 MB). Tamaño: ${(file.size / 1024 / 1024).toFixed(1)} MB` }));
       e.target.value = "";
       return;
     }
@@ -76,22 +119,27 @@ export default function CerrarTareaModal({ tarea, onClose, onCerrada }: Props) {
 
     setErrors((prev) => ({ ...prev, foto: undefined }));
     setFotoNombre(file.name);
+    setFotoFile(file);
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result as string;
-      setFotoBase64(result);
-      setFotoPreview(result);
-    };
-    reader.readAsDataURL(file);
+    // Vista previa usando Object URL (no base64 — no carga la RAM)
+    const previewUrl = URL.createObjectURL(file);
+    setFotoPreview(previewUrl);
   }, []);
+
+  const limpiarFoto = useCallback(() => {
+    if (fotoPreview) URL.revokeObjectURL(fotoPreview);
+    setFotoPreview(null);
+    setFotoFile(null);
+    setFotoNombre("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [fotoPreview]);
 
   const validate = () => {
     const errs: typeof errors = {};
     if (!comentario.trim() || comentario.trim().length < 10) {
       errs.comentario = "El comentario debe tener al menos 10 caracteres";
     }
-    if (!fotoBase64) {
+    if (!fotoFile) {
       errs.foto = "La foto de evidencia es obligatoria";
     }
     setErrors(errs);
@@ -107,14 +155,19 @@ export default function CerrarTareaModal({ tarea, onClose, onCerrada }: Props) {
 
     setLoading(true);
     setErrors({});
+    setUploadProgress("uploading");
 
     try {
+      // A-06: Subir foto a GCS primero — no guardar base64 en la DB
+      const fotoUrl = await uploadFotoGCS(fotoFile!);
+      setUploadProgress("done");
+
       const result = await tareasApi.cerrar(tarea.id, {
         supervisorNombre: user?.nombre ?? "Supervisor",
         supervisorId: user?.id,
         rolSupervisor: user?.rol ?? "supervisor",
         comentario: comentario.trim(),
-        fotoUrl: fotoBase64!,
+        fotoUrl,
         canal: "admin",
       });
 
@@ -124,6 +177,7 @@ export default function CerrarTareaModal({ tarea, onClose, onCerrada }: Props) {
         onClose();
       }, 1800);
     } catch (err: any) {
+      setUploadProgress("idle");
       setErrors({ general: err.message ?? "Error al cerrar la tarea" });
     } finally {
       setLoading(false);
@@ -244,12 +298,7 @@ export default function CerrarTareaModal({ tarea, onClose, onCerrada }: Props) {
                     className="w-full max-h-48 object-cover"
                   />
                   <button
-                    onClick={() => {
-                      setFotoPreview(null);
-                      setFotoBase64(null);
-                      setFotoNombre("");
-                      if (fileInputRef.current) fileInputRef.current.value = "";
-                    }}
+                    onClick={limpiarFoto}
                     className="absolute top-2 right-2 bg-black/60 text-white/70 hover:text-white rounded-full p-1 transition-colors"
                   >
                     <X className="w-3 h-3" />
@@ -270,7 +319,7 @@ export default function CerrarTareaModal({ tarea, onClose, onCerrada }: Props) {
                   <Camera className="w-6 h-6 text-white/30" />
                   <div className="text-center">
                     <p className="text-xs text-white/50 font-medium">Cargar foto de evidencia</p>
-                    <p className="text-[10px] text-white/25 mt-0.5">JPG, PNG, WEBP — máx. 1.5 MB</p>
+                    <p className="text-[10px] text-white/25 mt-0.5">JPG, PNG, WEBP — máx. 5 MB</p>
                   </div>
                   <div className="flex items-center gap-1.5 text-[10px] text-primary/70 bg-primary/8 border border-primary/15 px-3 py-1 rounded-full">
                     <Upload className="w-3 h-3" />
@@ -292,6 +341,20 @@ export default function CerrarTareaModal({ tarea, onClose, onCerrada }: Props) {
                   <AlertTriangle className="w-3 h-3" />
                   {errors.foto}
                 </p>
+              )}
+
+              {/* Indicador de subida */}
+              {uploadProgress === "uploading" && (
+                <div className="mt-2 flex items-center gap-2 text-[11px] text-primary/80 bg-primary/8 border border-primary/15 rounded-lg px-3 py-2">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Subiendo foto al almacenamiento seguro…
+                </div>
+              )}
+              {uploadProgress === "done" && (
+                <div className="mt-2 flex items-center gap-2 text-[11px] text-emerald-400/80 bg-emerald-400/8 border border-emerald-400/20 rounded-lg px-3 py-2">
+                  <CheckCircle className="w-3 h-3" />
+                  Foto cargada correctamente
+                </div>
               )}
             </div>
 
@@ -364,7 +427,7 @@ export default function CerrarTareaModal({ tarea, onClose, onCerrada }: Props) {
             {loading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Guardando...
+                {uploadProgress === "uploading" ? "Subiendo foto…" : "Guardando…"}
               </>
             ) : exito ? (
               <>

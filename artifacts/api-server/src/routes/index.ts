@@ -24,6 +24,7 @@ import sedesRouter from "./sedes";
 import coberturaRouter from "./cobertura";
 import fichaRouter from "./ficha";
 import { nominaRouter } from "./nomina";
+import storageRouter from "./storage";
 
 const router: IRouter = Router();
 
@@ -52,5 +53,6 @@ router.use(sedesRouter);
 router.use(coberturaRouter);
 router.use(fichaRouter);
 router.use(nominaRouter);
+router.use(storageRouter);
 
 export default router;

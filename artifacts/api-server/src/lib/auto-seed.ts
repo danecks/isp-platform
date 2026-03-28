@@ -1331,5 +1331,43 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: error en novedades_nomina_diarias");
   }
 
+  // ── A-01: FK entre agent_assignments.cliente_id y clients.portal_cliente_id ─
+  try {
+    // 1. Índice único en clients.portal_cliente_id (requerido para referenciar)
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE constraint_name = 'clients_portal_cliente_id_unique'
+            AND table_name = 'clients'
+        ) THEN
+          ALTER TABLE clients
+            ADD CONSTRAINT clients_portal_cliente_id_unique UNIQUE (portal_cliente_id);
+        END IF;
+      END $$;
+    `);
+    // 2. FK desde agent_assignments.cliente_id → clients.portal_cliente_id
+    //    NOT VALID = no comprueba filas existentes (seguro en producción)
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE constraint_name = 'fk_agent_assignments_cliente'
+            AND table_name = 'agent_assignments'
+        ) THEN
+          ALTER TABLE agent_assignments
+            ADD CONSTRAINT fk_agent_assignments_cliente
+            FOREIGN KEY (cliente_id) REFERENCES clients(portal_cliente_id)
+            NOT VALID;
+        END IF;
+      END $$;
+    `);
+    logger.info("Auto-migrate: A-01 FK agent_assignments.cliente_id → clients.portal_cliente_id aplicado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: A-01 FK constraint — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

@@ -41,6 +41,7 @@ import AdminCierresHistorico from "@/admin/pages/CierresHistorico";
 import AdminZonasOperativas from "@/admin/pages/ZonasOperativas";
 import AdminRrhhEventos from "@/admin/pages/RRHHEventos";
 import AdminRrhhAlertas from "@/admin/pages/RRHHAlertas";
+import AdminNovedadesNomina from "@/admin/pages/NovedadesNomina";
 import AdminFichaCliente from "@/admin/pages/FichaCliente";
 import AdminReporteCoberturaZonas from "@/admin/pages/ReporteCoberturaZonas";
 
@@ -158,6 +159,9 @@ function Router() {
       </Route>
       <Route path="/admin/rrhh/alertas">
         {() => <AuthGuard requiredRoles={["admin", "rrhh"]}><AdminRrhhAlertas /></AuthGuard>}
+      </Route>
+      <Route path="/admin/rrhh/nomina">
+        {() => <AuthGuard requiredRoles={["admin", "rrhh"]}><AdminNovedadesNomina /></AuthGuard>}
       </Route>
 
       <Route component={NotFound} />

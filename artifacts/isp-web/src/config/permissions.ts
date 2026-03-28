@@ -17,6 +17,7 @@ import {
   LayoutGrid,
   ClipboardList,
   BellRing,
+  ScrollText,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -102,6 +103,12 @@ export const NAV_ITEMS: NavItem[] = [
     path: "/admin/rrhh/alertas",
     label: "Alertas RRHH",
     icon: BellRing,
+    roles: ["admin", "rrhh"],
+  },
+  {
+    path: "/admin/rrhh/nomina",
+    label: "Novedades Nómina",
+    icon: ScrollText,
     roles: ["admin", "rrhh"],
   },
   {

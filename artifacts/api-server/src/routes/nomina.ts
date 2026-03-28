@@ -250,6 +250,55 @@ nominaRouter.post("/nomina/novedades/generar", async (req, res) => {
   }
 });
 
+// ─── PUT /api/nomina/novedades/:id ───────────────────────────────────────────
+// Editar manualmente una novedad antes de enviar a planilla
+nominaRouter.put("/nomina/novedades/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id || isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+
+  const {
+    trabajo_dia, horas_trabajadas, horas_extra,
+    falta, suspension, descanso_trabajado,
+    afecta_septimo, descuento_dia, observaciones,
+  } = req.body;
+
+  try {
+    const { rows } = await pool.query(`
+      UPDATE novedades_nomina_diarias
+      SET trabajo_dia        = COALESCE($1, trabajo_dia),
+          horas_trabajadas   = COALESCE($2, horas_trabajadas),
+          horas_extra        = COALESCE($3, horas_extra),
+          falta              = COALESCE($4, falta),
+          suspension         = COALESCE($5, suspension),
+          descanso_trabajado = COALESCE($6, descanso_trabajado),
+          afecta_septimo     = COALESCE($7, afecta_septimo),
+          descuento_dia      = COALESCE($8, descuento_dia),
+          observaciones      = COALESCE($9, observaciones),
+          fuente             = 'correccion_manual',
+          updated_at         = NOW()
+      WHERE id = $10
+      RETURNING *
+    `, [
+      trabajo_dia   ?? null,
+      horas_trabajadas  != null ? Number(horas_trabajadas)  : null,
+      horas_extra       != null ? Number(horas_extra)       : null,
+      falta         ?? null,
+      suspension    ?? null,
+      descanso_trabajado ?? null,
+      afecta_septimo ?? null,
+      descuento_dia  ?? null,
+      observaciones  ?? null,
+      id,
+    ]);
+
+    if (!rows.length) return res.status(404).json({ error: "Novedad no encontrada" });
+    res.json({ ok: true, novedad: rows[0] });
+  } catch (err) {
+    logger.error({ err }, "PUT /nomina/novedades/:id error");
+    res.status(500).json({ error: "Error al actualizar novedad" });
+  }
+});
+
 // ─── GET /api/nomina/novedades/resumen-periodo ────────────────────────────────
 // Resumen consolidado por período para pre-planilla
 nominaRouter.get("/nomina/novedades/resumen-periodo", async (req, res) => {
