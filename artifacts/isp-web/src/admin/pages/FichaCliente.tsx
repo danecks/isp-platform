@@ -70,6 +70,8 @@ interface Puesto {
   agente_nombre: string | null;
   estado: string;
   notas: string | null;
+  zona_operativa_id: number | null;
+  zona_nombre: string | null;
 }
 
 interface CoberturaHoy {
@@ -1065,6 +1067,11 @@ function PuestoRow({ puesto, onEdit, onDelete }: { puesto: Puesto; onEdit: () =>
             )}
             {puesto.cantidad_contratada > 1 && (
               <span className="text-[9px] text-purple-300/60 bg-purple-500/8 px-1.5 py-0.5 rounded-full">{puesto.cantidad_contratada} guardias</span>
+            )}
+            {puesto.zona_nombre && (
+              <span className="text-[9px] text-primary/60 bg-primary/8 border border-primary/15 px-1.5 py-0.5 rounded-full">
+                {puesto.zona_nombre}
+              </span>
             )}
           </div>
           <p className="text-[10px] text-white/30 mt-0.5">

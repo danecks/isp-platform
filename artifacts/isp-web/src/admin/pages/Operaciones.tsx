@@ -51,6 +51,8 @@ interface Puesto {
   jornada: string | null;
   sede_id: number | null;
   sede_nombre: string | null;
+  zona_operativa_id: number | null;
+  zona_nombre: string | null;
 }
 
 interface ClienteBoard {
@@ -1205,6 +1207,8 @@ export default function Operaciones() {
   const [busquedaPool, setBusquedaPool]              = useState("");
   const [modalCierre, setModalCierre]                = useState(false);
   const [modalReabrir, setModalReabrir]              = useState(false);
+  const [filtroZona, setFiltroZona]                  = useState<string>("");
+  const [filtroCliente, setFiltroCliente]            = useState<string>("");
 
   // ── Sensores DnD ──────────────────────────────────────────────────────────
   const sensors = useSensors(
@@ -1469,9 +1473,36 @@ export default function Operaciones() {
     return lista;
   })();
 
+  // ── Derivar zonas y clientes únicos para filtros ──────────────────────────
+  const zonasDisponibles = (() => {
+    const mapa: Record<string, string> = {};
+    tablero.flatMap((c) => c.puestos).forEach((p) => {
+      if (p.zona_operativa_id && p.zona_nombre) {
+        mapa[String(p.zona_operativa_id)] = p.zona_nombre;
+      }
+    });
+    return Object.entries(mapa).map(([id, nombre]) => ({ id, nombre }));
+  })();
+
+  const clientesDisponiblesFiltro = tablero.map((c) => ({ id: String(c.clienteId), nombre: c.clienteNombre }));
+
+  // ── Tablero filtrado ──────────────────────────────────────────────────────
+  const tableroFiltrado: typeof tablero = (() => {
+    if (!filtroZona && !filtroCliente) return tablero;
+    return tablero
+      .filter((c) => !filtroCliente || String(c.clienteId) === filtroCliente)
+      .map((c) => ({
+        ...c,
+        puestos: filtroZona
+          ? c.puestos.filter((p) => String(p.zona_operativa_id) === filtroZona)
+          : c.puestos,
+      }))
+      .filter((c) => c.puestos.length > 0);
+  })();
+
   // ── Stats generales ───────────────────────────────────────────────────────
-  const totalPuestos   = tablero.flatMap((c) => c.puestos).length;
-  const puestosCubiertos = tablero.flatMap((c) => c.puestos).filter((p) => p.estado === "cubierto").length;
+  const totalPuestos   = tableroFiltrado.flatMap((c) => c.puestos).length;
+  const puestosCubiertos = tableroFiltrado.flatMap((c) => c.puestos).filter((p) => p.estado === "cubierto").length;
   const puestosDescubiertos = totalPuestos - puestosCubiertos;
   const coberturaGlobal = totalPuestos > 0 ? Math.round((puestosCubiertos / totalPuestos) * 100) : 0;
 
@@ -1622,6 +1653,14 @@ export default function Operaciones() {
               <FileText className="w-3.5 h-3.5" /> Cierres
             </a>
 
+            <a
+              href="/admin/operaciones/zonas"
+              className="flex items-center gap-1.5 text-xs rounded-xl px-3 py-2 border bg-[#0c1929] border-white/8 text-white/40 hover:text-white transition-colors"
+              title="Administrar zonas operativas"
+            >
+              <MapPin className="w-3.5 h-3.5" /> Zonas
+            </a>
+
             <button
               onClick={() => { refetchTablero(); refetchPool(); refetchCierre(); }}
               className="text-white/30 hover:text-white border border-white/8 rounded-xl px-2.5 py-2 bg-[#0c1929] transition-colors"
@@ -1630,6 +1669,55 @@ export default function Operaciones() {
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
           </div>
+
+          {/* ── Filtros de zona y cliente ─────────────────────────────── */}
+          {(zonasDisponibles.length > 0 || clientesDisponiblesFiltro.length > 1) && (
+            <div className="flex items-center gap-2 flex-wrap">
+              {zonasDisponibles.length > 0 && (
+                <div className="flex items-center gap-1 bg-[#0c1929] border border-white/8 rounded-xl px-1.5 py-1">
+                  <MapPin className="w-3 h-3 text-white/20 ml-1" />
+                  <select
+                    value={filtroZona}
+                    onChange={(e) => setFiltroZona(e.target.value)}
+                    className="bg-transparent text-xs text-white/60 outline-none pr-1"
+                  >
+                    <option value="">Todas las zonas</option>
+                    {zonasDisponibles.map((z) => (
+                      <option key={z.id} value={z.id}>{z.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {clientesDisponiblesFiltro.length > 1 && (
+                <div className="flex items-center gap-1 bg-[#0c1929] border border-white/8 rounded-xl px-1.5 py-1">
+                  <Building2 className="w-3 h-3 text-white/20 ml-1" />
+                  <select
+                    value={filtroCliente}
+                    onChange={(e) => setFiltroCliente(e.target.value)}
+                    className="bg-transparent text-xs text-white/60 outline-none pr-1"
+                  >
+                    <option value="">Todos los clientes</option>
+                    {clientesDisponiblesFiltro.map((c) => (
+                      <option key={c.id} value={c.id}>{c.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {(filtroZona || filtroCliente) && (
+                <button
+                  onClick={() => { setFiltroZona(""); setFiltroCliente(""); }}
+                  className="flex items-center gap-1 text-[10px] text-amber-400/60 hover:text-amber-400 transition-colors px-2 py-1.5 border border-amber-500/20 rounded-xl"
+                >
+                  <X className="w-3 h-3" /> Limpiar filtros
+                </button>
+              )}
+              {(filtroZona || filtroCliente) && (
+                <span className="text-[10px] text-white/20">
+                  Mostrando {tableroFiltrado.flatMap((c) => c.puestos).length} puestos
+                </span>
+              )}
+            </div>
+          )}
 
           {/* ── Tablero ──────────────────────────────────────────────────── */}
           <div className="flex-1 overflow-auto relative" style={{ minHeight: 0 }}>
@@ -1672,9 +1760,20 @@ export default function Operaciones() {
                   <Plus className="w-3.5 h-3.5" /> Crear primer puesto
                 </button>
               </div>
+            ) : tableroFiltrado.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full gap-3">
+                <MapPin className="w-12 h-12 text-white/10" />
+                <p className="text-white/30 text-sm">Ningún puesto coincide con los filtros aplicados</p>
+                <button
+                  onClick={() => { setFiltroZona(""); setFiltroCliente(""); }}
+                  className="text-xs text-amber-400/60 hover:text-amber-400 transition-colors"
+                >
+                  Limpiar filtros
+                </button>
+              </div>
             ) : (
               <div className="flex gap-3 h-full pb-2">
-                {tablero.map((cliente) => (
+                {tableroFiltrado.map((cliente) => (
                   <ClienteColumna
                     key={cliente.clienteNombre}
                     cliente={cliente}

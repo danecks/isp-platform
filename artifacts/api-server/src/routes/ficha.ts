@@ -46,11 +46,13 @@ fichaRouter.get("/clientes/:id/ficha", async (req, res) => {
          po.titular_employee_id, po.titular_nombre,
          po.agente_id, po.agente_nombre,
          po.estado, po.orden, po.notas, po.activo,
+         po.zona_operativa_id, oz.nombre AS zona_nombre,
          e.nombre_completo AS titular_nombre_completo,
          e.telefono AS titular_telefono,
          e.estado_laboral AS titular_estado_laboral
        FROM puestos_operativos po
        LEFT JOIN client_sedes cs ON cs.id = po.sede_id
+       LEFT JOIN operational_zones oz ON oz.id = po.zona_operativa_id
        LEFT JOIN employees e ON e.id = po.titular_employee_id
        WHERE po.cliente_id = $1 AND po.activo = TRUE
        ORDER BY cs.nombre NULLS LAST, po.orden, po.nombre`,

@@ -1,0 +1,120 @@
+Necesito corregir el enfoque de la fase de zonas.
+
+No quiero zonas por cliente.
+
+Quiero implementar Zonas Operativas Globales, porque en la operación real un supervisor de zona puede supervisar puestos de varios clientes distintos dentro de una misma región.
+
+Objetivo
+
+Crear una capa operativa transversal para agrupar puestos de distintos clientes dentro de una misma zona y asignarles un supervisor responsable.
+
+Ejemplo:
+Zona Norte
+	•	Cliente 1 → varios puestos
+	•	Cliente 2 → varios puestos
+	•	Cliente 3 → varios puestos
+
+Y un mismo supervisor responsable de toda esa zona.
+
+⸻
+
+1. Base de datos
+
+Crear una entidad nueva tipo:
+	•	operational_zones
+
+Campos sugeridos:
+	•	id
+	•	nombre
+	•	descripcion
+	•	supervisorEmployeeId nullable
+	•	supervisorUserId nullable
+	•	estado
+	•	createdAt
+	•	updatedAt
+
+2. Relación con puestos
+
+No quiero relacionar la zona con el cliente directamente.
+Quiero relacionarla con los puestos operativos.
+
+Agregar en puestos_operativos o estructura equivalente:
+	•	operationalZoneId nullable
+
+Así cada puesto queda asociado a:
+	•	cliente
+	•	sede
+	•	zona operativa
+
+3. UI de administración
+
+Crear una sección para administrar zonas operativas globales, por ejemplo:
+	•	/admin/operaciones/zonas
+o equivalente
+
+Desde ahí quiero poder:
+	•	crear zona
+	•	editar zona
+	•	asignar supervisor
+	•	ver cuántos clientes cubre
+	•	ver cuántos puestos tiene
+	•	ver cuántas sedes incluye
+
+4. Ficha del cliente
+
+En la ficha del cliente, cada puesto debe mostrar a qué zona operativa pertenece.
+
+No quiero que la zona sea parte del contrato del cliente, sino una capa operativa visible.
+
+5. Pizarrón operativo
+
+Agregar filtro o vista por:
+	•	zona operativa
+	•	cliente
+	•	sede
+
+Muy importante:
+el jefe de servicio o supervisor debe poder operar por zona y ver puestos de varios clientes en una sola vista si pertenecen a la misma zona.
+
+6. Ficha del colaborador
+
+Si un colaborador es supervisor de una zona, en su ficha debe verse:
+	•	nombre de la zona
+	•	cantidad de clientes bajo su supervisión
+	•	cantidad de puestos
+	•	cantidad de sedes
+
+7. Preparación para costos
+
+Dejar esta estructura lista para que luego se pueda calcular:
+	•	costo de supervisión por zona
+	•	distribución de costo entre clientes de esa zona
+	•	carga operativa del supervisor
+
+No hace falta cerrar toda la lógica de costos ahora, pero sí dejar la arquitectura correcta.
+
+8. No romper
+
+No romper:
+	•	clientes
+	•	sedes
+	•	puestos
+	•	ficha maestra de cliente
+	•	pizarrón operativo
+	•	empleados
+	•	RRHH
+	•	KPI
+	•	portal
+	•	WhatsApp
+	•	Trello
+
+9. Documentación
+
+Explica:
+	•	diferencia entre cliente (estructura contractual) y zona operativa (estructura de supervisión)
+	•	cómo se relaciona la zona con los puestos
+	•	cómo se asigna un supervisor
+	•	cómo esto servirá para costos de supervisión y reportes por zona
+
+Muy importante:
+quiero que el sistema refleje la realidad operativa donde una misma zona supervisa puestos de varios clientes distintos.

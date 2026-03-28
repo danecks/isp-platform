@@ -11,7 +11,7 @@ import {
   LayoutGrid, ChevronDown, UserX, UserCheck2, MessageSquare,
   Link2, Unlink, Lock, Save, Banknote, MessageCircle, XCircle,
   TrendingDown, Minus, ShieldAlert, ShieldCheck, ShieldOff,
-  ArrowUpRight, ArrowDownRight, Repeat2, ArrowLeftRight, MapPinned,
+  ArrowUpRight, ArrowDownRight, Repeat2, ArrowLeftRight, MapPinned, Map,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -1032,12 +1032,31 @@ function TabSistema({ emp }: { emp: Empleado }) {
 
 // ─── Tab: Operación ───────────────────────────────────────────────────────────
 
+interface ZonaBasic {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+  total_puestos: number;
+  total_clientes: number;
+  estado: string;
+}
+
 function TabOperacion({ empId }: { empId: number }) {
   const { data, isLoading } = useQuery<OperacionData>({
     queryKey: ["employee-operacion", empId],
     queryFn: () => fetch(`${API_BASE}/employees/${empId}/operacion`).then((r) => r.json()),
     staleTime: 60_000,
   });
+
+  const { data: todasZonas = [] } = useQuery<ZonaBasic[]>({
+    queryKey: ["zonas-all"],
+    queryFn: () => fetch(`${API_BASE}/operaciones/zonas`).then((r) => r.json()),
+    staleTime: 120_000,
+  });
+
+  const zonasSupervisa = (Array.isArray(todasZonas) ? todasZonas : []).filter(
+    (z: any) => z.supervisor_employee_id === empId
+  ) as ZonaBasic[];
 
   const ESTADO_TAREA: Record<string, string> = {
     pendiente: "text-yellow-400", en_proceso: "text-blue-400",
@@ -1123,6 +1142,34 @@ function TabOperacion({ empId }: { empId: number }) {
           </div>
         )}
       </div>
+
+      {/* ── Zonas bajo supervisión ──────────────────────────────────────── */}
+      {zonasSupervisa.length > 0 && (
+        <div>
+          <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+            <Map className="w-3 h-3" /> Zonas operativas supervisadas
+          </p>
+          <div className="space-y-1.5">
+            {zonasSupervisa.map((z) => (
+              <div key={z.id} className="bg-[#0c1929] border border-primary/10 rounded-xl px-3 py-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Map className="w-3 h-3 text-primary/40 shrink-0" />
+                    <p className="text-xs font-semibold text-white/80">{z.nombre}</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] text-white/30">
+                    <span>{z.total_puestos} puestos</span>
+                    {z.total_clientes > 0 && <span>· {z.total_clientes} clientes</span>}
+                  </div>
+                </div>
+                {z.descripcion && (
+                  <p className="text-[10px] text-white/25 mt-1 ml-5">{z.descripcion}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Historial de Relevos ─────────────────────────────────────────── */}
       {data.historialRelevos.length > 0 && (

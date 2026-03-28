@@ -26,15 +26,18 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         po.orden,
         po.notas,
         po.updated_at,
+        po.zona_operativa_id,
         e.estado_laboral AS agente_estado_laboral,
         e.puesto         AS agente_puesto,
         e.telefono       AS agente_telefono,
         e.area           AS agente_area,
         e.sede           AS agente_sede,
-        cs.nombre        AS sede_nombre
+        cs.nombre        AS sede_nombre,
+        oz.nombre        AS zona_nombre
       FROM puestos_operativos po
       LEFT JOIN employees e  ON e.id  = po.agente_id
       LEFT JOIN client_sedes cs ON cs.id = po.sede_id
+      LEFT JOIN operational_zones oz ON oz.id = po.zona_operativa_id
       WHERE po.activo = TRUE
       ORDER BY po.cliente_nombre, po.orden, po.nombre
     `);

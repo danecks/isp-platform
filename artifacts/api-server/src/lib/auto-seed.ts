@@ -1234,5 +1234,25 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: error en cierre_operativo_diario");
   }
 
+  // ── ZONAS OPERATIVAS GLOBALES ─────────────────────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS operational_zones (
+        id                      SERIAL PRIMARY KEY,
+        nombre                  VARCHAR(100) NOT NULL,
+        descripcion             TEXT,
+        supervisor_employee_id  INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        supervisor_user_id      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        estado                  VARCHAR(20)  NOT NULL DEFAULT 'activo',
+        created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS zona_operativa_id INTEGER REFERENCES operational_zones(id) ON DELETE SET NULL`);
+    logger.info("Auto-migrate: tabla 'operational_zones' y columna zona_operativa_id verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: error en operational_zones");
+  }
+
   logger.info("Auto-seed completado");
 }

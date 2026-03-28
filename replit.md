@@ -1,18 +1,16 @@
 # Workspace
 
 ## Overview
-This project is a pnpm workspace monorepo for "Investigaciones y Seguridad Profesional S.A." (Guatemala), encompassing a corporate website and an admin dashboard with a dark navy/gold design, all in corporate Spanish. It provides a comprehensive digital platform to streamline internal operations, enhance client interaction, and establish an online presence.
+This project is a pnpm monorepo for "Investigaciones y Seguridad Profesional S.A." (Guatemala), providing a comprehensive digital platform. It includes a corporate website and an admin dashboard, both designed with a dark navy/gold theme and presented in corporate Spanish. The platform aims to streamline internal operations, enhance client interaction, and establish a robust online presence.
 
 Key capabilities include:
-- **Comprehensive Admin Modules:** Dashboard, Commercial (leads CRM), Recruitment (job applications), Incidents Management, and HR Advances (with per-employee limits and period tracking), HR Disciplinary KPI, Operational Rotation KPI, and RRHH Automatic Alerts module (`/admin/rrhh/alertas`).
-- **Robust Authentication & RBAC:** Granular permissions for user roles (admin, operaciones, rrhh, comercial, supervisor, cliente).
-- **Client Portal:** Secure portal for clients to view incidents and KPIs.
-- **Trello Integration:** Full Trello board integration for Incidencias, Leads (Comercial), and Postulaciones (Reclutamiento) — each module has a send-to-Trello button; mock mode when credentials not set.
-- **WhatsApp Configuration Admin:** New admin module at `/admin/configuracion/whatsapp` with 4 tabs: General (bot settings), Mensajes (12 automatic messages), Opciones de Menú (19 options across 4 roles), and Auditoría (change history).
-- **WhatsApp Integration:** Transforms WhatsApp messages into database records for leads, applications, incidents, and advance requests.
-- **Client and Position Aliases:** Allows using common names for clients and service locations in incident reporting.
-- **Branding Consistency:** Centralized configuration ensures a consistent corporate identity.
-- **CMS Web Module:** Full-featured admin CMS at `/admin/cms` (admin-only) for editing all 10 public pages. Content is stored in `page_content` PostgreSQL table (JSONB). Supports Save Draft / Publish workflow with status indicators. Public pages use `useCmsPage(key)` hook with graceful fallback to hardcoded defaults when no published content exists.
+- **Comprehensive Admin Modules:** Covering Commercial (leads CRM), Recruitment (job applications), Incidents Management, HR Advances, HR Disciplinary KPI, Operational Rotation KPI, RRHH Automatic Alerts, and a CMS for public website content.
+- **Robust Authentication & RBAC:** Granular role-based access control (admin, operaciones, rrhh, comercial, supervisor, cliente).
+- **Client Portal:** Secure access for clients to view incidents and KPIs.
+- **Trello Integration:** Seamless integration for Incidencias, Leads, and Postulaciones, with a mock mode for development.
+- **WhatsApp Integration:** Transforms WhatsApp messages into structured database records for leads, applications, incidents, and advance requests, including a dedicated admin configuration module.
+- **Client and Position Aliases:** Facilitates using common names for client and service locations in incident reporting.
+- **Branding Consistency:** Centralized configuration ensures a uniform corporate identity.
 
 ## User Preferences
 I prefer simple language. I want iterative development. Ask before making major changes. Do not make changes to the `lib/api-spec` folder. Do not make changes to the `orval.config.ts` file.
@@ -20,7 +18,7 @@ I prefer simple language. I want iterative development. Ask before making major 
 ## System Architecture
 
 ### Monorepo Structure
-The project is a pnpm workspace monorepo with `artifacts/` for deployable applications (`api-server`, `isp-web`), `lib/` for shared libraries (`api-spec`, `api-client-react`, `api-zod`, `db`), and `scripts/` for utilities. It uses a base TypeScript configuration for efficient type-checking and build processes.
+The project uses a pnpm workspace monorepo, organizing deployable applications (`api-server`, `isp-web`) in `artifacts/`, shared libraries (`api-spec`, `api-client-react`, `api-zod`, `db`) in `lib/`, and utilities in `scripts/`. It leverages a base TypeScript configuration for efficient development.
 
 ### Technology Stack
 - **Monorepo Tool:** pnpm workspaces
@@ -28,49 +26,42 @@ The project is a pnpm workspace monorepo with `artifacts/` for deployable applic
 - **TypeScript:** v5.9
 - **API Framework:** Express 5
 - **Database:** PostgreSQL with Drizzle ORM
-- **Validation:** Zod (`zod/v4`), `drizzle-zod`
+- **Validation:** Zod, drizzle-zod
 - **API Codegen:** Orval (from OpenAPI spec)
 - **Frontend:** React, Vite, Tailwind CSS, shadcn/ui
 - **Build Tool:** esbuild
 
 ### UI/UX Decisions
 - **Design System:** Premium dark navy/gold theme.
-- **Component Library:** shadcn/ui for consistent and accessible UI.
-- **Language:** All user-facing text is in corporate Spanish.
-- **Branding:** Centralized branding configuration for consistent corporate identity across all layouts.
+- **Component Library:** shadcn/ui for consistent and accessible UI components.
+- **Language:** All user-facing content is in corporate Spanish.
+- **Branding:** Centralized configuration for a consistent corporate identity across all interfaces.
 
 ### Technical Implementations & Feature Specifications
-- **API Server (`@workspace/api-server`):** Express 5 server handling all backend logic, data persistence, and business rules.
-- **Database Layer (`@workspace/db`):** Drizzle ORM with PostgreSQL, supporting schema models and migrations.
-- **API Specification & Codegen (`@workspace/api-spec`):** Defines the OpenAPI 3.1 spec and uses Orval to generate React Query hooks and Zod schemas.
-- **Authentication & Authorization:** PostgreSQL `users` table with bcrypt-hashed passwords. Role-Based Access Control (RBAC) with roles: `admin`, `operaciones`, `rrhh`, `comercial`, `supervisor`, `cliente`. `AuthGuard` protects routes based on user roles, redirecting to `/portal/dashboard` for `cliente` and `/admin/dashboard` for others.
-- **Admin Dashboard Modules:**
-    - **Dashboard:** Live counts from leads, applications, incidents.
-    - **Comercial (`/admin/comercial`):** Leads CRM.
-    - **Reclutamiento (`/admin/reclutamiento`):** Job applications.
-    - **Incidencias (`/admin/incidencias`):** Full operational module with tables, filters, and modals for incident management.
-    - **Anticipos (`/admin/anticipos`):** HR module for managing advance requests with status tracking, filtering, and CSV export.
-- **Client Portal (`/portal/*`):** Dedicated section for `cliente` role users, displaying client-specific incidents, KPIs, and assigned agents. API endpoints enforce headers for data isolation.
-- **Employee Management:** Supports `employees` table with fields for external HR system integration and links users to employees.
-- **WhatsApp Integration:** Webhook (`/api/webhooks/whatsapp`) classifies incoming messages (incidents, applications, leads, advance requests) based on keywords and creates corresponding database entries. Includes a local simulator. WhatsApp-originated entries are visually highlighted in the admin UI.
-- **DPI Phone Registration (WhatsApp):** Unknown phones attempting internal functions (anticipo, emergency) trigger a multi-turn DPI identity verification flow instead of being blocked. State machine: `WAIT_DPI → WAIT_CONFIRM/WAIT_REPLACE → registered/secondary/cancelled`. DB tables: 5 new columns on `users` (telefono_secundario, wa_autorizado, telefono_verificado_at, last_phone_update_at, auth_source) and `phone_auth_log` audit table. 11 configurable WA messages for the DPI flow. Max 3 attempts. Session TTL: 20 min. Service: `phone-registration-session.ts`.
-- **HR Advances (Anticipos):** Manages advance requests via a dedicated API and admin module. Supports multi-turn WhatsApp flow for requests, validates employee status, eligible dates, and prevents duplicates.
-- **Trello Integration:** Creates Trello cards for incidents from the admin panel (`/api/trello/send-incident/:id`). Cards include incident details, a predefined checklist, and auto-assignment to configured members. Supports mock mode.
-- **Client and Position Aliases:** Tables (`clients`, `client_aliases`, `service_locations`, `position_aliases`) resolve free-text to clients/locations. Admin UI at `/admin/clientes` with 4 tabs (added Sedes Operativas).
-- **Ficha de Cliente — Modelo Maestro Operativo (`/admin/clientes/:id`):** Central unified operational view per client. 4 tabs: (1) General + Contrato (client data, fecha_inicio_contrato, tarifa_base_mensual, estado_contrato, observaciones_contractuales), (2) Sedes y Estructura (collapsible sede cards with puestos per sede — create/edit/deactivate puestos and sedes), (3) Cobertura Hoy (live coverage status per puesto with badges: titular/relevo/descubierto + agent names), (4) Titulares (list of titular employees per puesto with schedule/jornada info). New DB fields on `puestos_operativos`: `cantidad_contratada`, `tarifa_puesto`, `hora_entrada`, `hora_salida`, `descanso_inicio`, `descanso_fin`, `elegible_horas_extra`, `tipo_servicio`. New DB fields on `clients`: `observaciones_contractuales`, `fecha_inicio_contrato`, `tarifa_base_mensual`, `estado_contrato`. New API: GET `/api/clientes/:id/ficha`, POST `/api/clientes/:id/puestos`, PATCH `/api/puestos/:id`, DELETE `/api/puestos/:id`, PATCH `/api/clientes/:id/contrato`. Clientes list has "Ficha" link per row. **Architecture rule:** Contractual data (tarifa, cantidad, horario) is configured ONLY from the ficha — the pizarrón operativo handles daily operations only (assign/relevo/liberar). turno column is now nullable.
-- **Emergencias Restringidas:** Emergency reporting system with keyword detection (23 triggers), permission control by role, alias-based location resolution. 7 API endpoints at `/api/emergencias/*`. Visual indicators in Incidencias and Dashboard. Emergency modal from admin panel.
-- **Cierre Operativo Diario — en Pizarrón (`/admin/operaciones`):** Sistema de cierre del día seguro, intencional y auditable. Solo supervisor/admin pueden cerrar el día. Solo admin puede reabrir. Flujo de cierre: botón "Cerrar día" → modal con resumen (puestos totales, cubiertos titular, cubiertos relevo, descubiertos, ausencias, HE) + advertencias no bloqueantes (descubiertos, relevos sin motivo) + campo comentario opcional + confirmación de texto obligatoria exacta ("CERRAR DD-MM-YYYY"). Una vez cerrado: badge "Día cerrado" en el header, tablero con overlay de solo lectura, DnD y click-to-assign bloqueados, endpoints POST asignar/sustituir/liberar retornan 423 si el día está cerrado. Reapertura (solo admin): botón "Reabrir" → modal con info del cierre + motivo obligatorio (≥5 chars) + confirmación "REABRIR DD-MM-YYYY". **Auditoría completa**: tabla `cierre_auditoria` registra cada acción (cerrar/reabrir) con user_nombre, detalle y timestamp. DB: `cierre_operativo_diario` (fecha UNIQUE, estado, resumen_json snapshot, cerrado_por, cerrado_en, reabierto_por, reabierto_en, motivo_reapertura). **Fecha Activa**: `calcFechaActiva()` helper — si hoy está cerrado, la fecha activa es mañana. El API `/api/operaciones/cierre-hoy` retorna `fechaActiva`, `fechaActivaStr`, `esFechaFutura`, `cierreDeHoy`. El pizarrón muestra badge de fecha activa y banner cuando opera en fecha futura. **Historial de Cierres** (`/admin/operaciones/cierres`): Página de solo lectura con tabla auditada de todos los cierres (últimos 90 días). Columnas: Fecha, Estado, Cerrado por, Hora, Puestos, Cubiertos, Descubiertos, Ausencias. Modal de detalle por fecha: snapshot al cierre, bitácora de auditoría, info de reapertura si aplica, lista de puestos colapsable. API: `GET /api/operaciones/cierres` + `GET /api/operaciones/cierres/:fecha`.
-- **Centro de Operaciones — Pizarrón Operativo (`/admin/operaciones`):** Tablero Kanban visual en tiempo real para gestión de cobertura de puestos. Columnas por cliente (auto-agrupadas), cada puesto muestra agente asignado/descubierto con indicadores visuales. Pool de agentes en la parte inferior con 4 pestañas (disponibles, en puesto, descanso, suspendidos). Drag & drop con @dnd-kit/core + @dnd-kit/sortable — arrastrar agente sobre puesto para asignar. También modo click-to-select para dispositivos táctiles. Lógica de sustitución completa: detecta conflictos (agente ya en otro puesto), muestra advertencia y permite forzar. Panel lateral de historial (últimos 80 movimientos). Stats en tiempo real: cobertura %, cubiertos/descubiertos/disponibles. Modales: confirmar sustitución (con motivo seleccionable: rotación, falta, descanso, suspensión, emergencia), liberar agente (con motivo), crear nuevo puesto (selector de cliente + manual). Auto-refresh cada 30 seg. DB: `puestos_operativos` (cliente_id, cliente_nombre, nombre, turno, agente_id, agente_nombre, estado, orden, activo) + `movimientos_operativos` (log completo con agente saliente/entrante, tipo, motivo, usuario que hizo el cambio). 7 endpoints API en `/api/operaciones/`. Seed automático de 8 puestos iniciales al primer arranque. Acceso: admin, operaciones, supervisor.
-- **Gestión de Colaboradores (`/admin/empleados`):** Módulo CORE que convierte `employees` en la entidad central del sistema. Vista de tabla (por defecto) y tarjetas con toggle. Columnas: nombre, DPI enmascarado (****XXXX), teléfono, puesto/área, supervisor, estado. Filtros por estado (activo, suspendido, baja, licencia, inactivo), área y búsqueda por nombre, DPI, teléfono. Stats: total, activos, suspendidos/baja, con DPI registrado. CRUD completo (crear/editar) con validación de DPI único. Cambio rápido de estado desde el botón de la ficha. Ficha del colaborador con 5 pestañas: Perfil (datos + DPI masked + WA status), Asignaciones (historial de despliegues), Sistema (usuario vinculado + IDs + WA info), Operación (tareas, incidencias y anticipos recientes), KPI Individual (métricas 90 días con progress bars). Acceso para roles: admin, operaciones, rrhh, supervisor. Schema DB `employees` extendido con: `telefono_secundario`, `tipo_servicio`, `supervisor_id` (self-ref), `cliente_id` (→ clients), `wa_autorizado`, `telefono_verificado_at`. Nuevos endpoints API: GET `/api/employees/:id/user`, GET `/api/employees/:id/operacion`, PATCH `/api/employees/:id/estado`.
-- **Tareas con Evidencia:** Operational task management fully backed by PostgreSQL. Tables: `tareas` (8 fields) and `task_evidencias` (supervisor, comment, photo URL as base64, channel, close date). Only `supervisor` and `admin` roles can close tasks. Requires: photo (max 1.5 MB base64) + minimum 10-char comment. API: GET/POST/PATCH/DELETE `/api/tareas`, POST `/api/tareas/:id/cerrar`. Evidence history shown in admin UI with photo preview. WhatsApp closure flow fully prepared (6 WA messages seeded): step-by-step supervisor interaction via WA will call the same `/api/tareas/:id/cerrar` endpoint with `canal="whatsapp"`. Trello auto-move hook commented in code at `tareas.ts` line 303 — awaiting Trello list ID for "Resuelto".
-- **Reportería Profesional (`/admin/reportes`):** 6-tab reporting module with real PostgreSQL data, charts (Recharts bar charts), expandable tables, global filter bar (date range, client, status, channel, priority), and dual export (CSV + PDF). PDF uses jsPDF + jspdf-autotable with ISP membrete (logo, company header, gold accent, exec summary cards, data tables, confidentiality footer + page numbers). Tabs: Operaciones (non-emergency incidents), Emergencias (emergency incidents only), Tareas (task completion + supervisor performance), RRHH (anticipos + reclutamiento sub-tabs), Comercial (leads pipeline + executive), KPI Ejecutivo (consolidated metrics + client activity heatmap). Role access: admin, operaciones, rrhh, comercial, supervisor. KPI tab admin-only. API: 6 endpoints at `/api/reportes/{operaciones|emergencias|tareas|rrhh|comercial|kpi}`, all accept filter query params.
+- **API Server (`@workspace/api-server`):** Express 5 backend managing all business logic and data.
+- **Database Layer (`@workspace/db`):** Drizzle ORM with PostgreSQL, including schema management and migrations.
+- **API Specification & Codegen (`@workspace/api-spec`):** OpenAPI 3.1 specification used by Orval to generate React Query hooks and Zod schemas.
+- **Authentication & Authorization:** Secure user management with bcrypt-hashed passwords and comprehensive Role-Based Access Control (RBAC).
+- **Admin Dashboard Modules:** Includes live dashboards, CRM for leads, job application management, incident reporting, and HR advance requests.
+- **Client Portal (`/portal/*`):** Provides a secure, dedicated interface for clients to view their specific data and KPIs.
+- **Employee Management (`/admin/empleados`):** Core module for managing employee data, including their profiles, assignments, system links, operational tasks, and individual KPIs.
+- **WhatsApp Integration:** Processes incoming WhatsApp messages via a webhook, classifying them to create records for incidents, applications, leads, and advance requests. Includes a DPI phone registration flow for unknown numbers.
+- **Trello Integration:** Facilitates creating Trello cards from the admin panel for incidents, complete with detailed information and automated assignments.
+- **Client and Position Aliases:** Manages aliases for clients and service locations, improving data entry and reporting accuracy.
+- **Ficha de Cliente — Modelo Maestro Operativo (`/admin/clientes/:id`):** A unified operational view per client, detailing contract information, site structures, operational coverage, and assigned employees.
+- **Emergencias Restringidas:** An emergency reporting system with keyword detection, role-based access, and location resolution through aliases.
+- **Cierre Operativo Diario — en Pizarrón (`/admin/operaciones`):** A secure, auditable daily operational closing system for supervisors and admins, preventing changes to past data and providing detailed audit logs.
+- **Centro de Operaciones — Pizarrón Operativo (`/admin/operaciones`):** A real-time Kanban-style board for managing personnel assignments to operational posts via drag-and-drop or click-to-select, with comprehensive logging of movements.
+- **Tareas con Evidencia:** A task management system requiring photo and comment evidence for completion, with full API support and a planned WhatsApp closure flow.
+- **Reportería Profesional (`/admin/reportes`):** A multi-tab reporting module featuring charts, filterable tables, and export options (CSV, PDF) for various operational aspects, including incidents, tasks, HR, commercial, and executive KPIs.
+- **Zonas Operativas Globales (`/admin/operaciones/zonas`):** Cross-client operational zone grouping. Zones aggregate `puestos_operativos` from different clients under a single zone supervisor. DB: `operational_zones` table + `zona_operativa_id` FK on `puestos_operativos`. API: full CRUD at `/api/operaciones/zonas`, plus `/zonas/:id/detalle`, `/zonas/:id/puestos` (assign bulk), `/todos-puestos`. Frontend: ZonasOperativas.tsx page with zone cards (stats, coverage bar, supervisor), "Asignar puestos" modal (grouped by client, checkbox per puesto, warns if puesto is in another zone), detail modal. Pizarrón (`Operaciones.tsx`) has zone + client filter dropdowns in the action bar and a "Zonas" navigation link. FichaCliente.tsx shows a zona badge on each puesto row. Empleados.tsx TabOperacion shows the zones supervised by the employee.
 
 ## External Dependencies
 - **PostgreSQL:** Primary database.
-- **Drizzle ORM:** Database interaction.
+- **Drizzle ORM:** Object-relational mapping.
 - **Orval:** API client and Zod schema generation.
 - **Vite:** Frontend build tool.
 - **Tailwind CSS:** Styling framework.
 - **shadcn/ui:** UI component library.
-- **Meta Cloud API:** For WhatsApp integration (implicit, as it handles webhooks).
-- **Trello:** For task management integration.
+- **Meta Cloud API:** For WhatsApp integration.
+- **Trello:** Task management platform.
