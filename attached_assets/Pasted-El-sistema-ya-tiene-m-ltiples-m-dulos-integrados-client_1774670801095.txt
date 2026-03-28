@@ -1,0 +1,213 @@
+El sistema ya tiene múltiples módulos integrados:
+
+- clientes con ficha maestra
+- sedes operativas
+- puestos operativos
+- zonas operativas globales
+- empleados
+- asignaciones titulares
+- cobertura diaria
+- pizarrón operativo
+- cierre operativo diario
+- RRHH (eventos, faltas, suspensiones)
+- anticipos
+- tareas
+- incidencias
+- reportería
+
+No quiero que modifiques código todavía.
+
+Quiero que hagas una auditoría completa del sistema desde tres perspectivas:
+
+1. Arquitectura técnica  
+2. Consistencia de datos  
+3. Experiencia real de usuario (como si fueras varios roles usando el sistema)
+
+---
+
+# 🎯 OBJETIVO
+
+Detectar:
+
+- inconsistencias
+- flujos rotos
+- inputs manuales incorrectos
+- problemas de UX
+- problemas de permisos
+- datos no normalizados
+- funcionalidades que no se pueden usar correctamente
+
+Ejemplo crítico:
+si no puedo crear un cliente correctamente desde la UI, eso debe detectarse como error crítico.
+
+---
+
+# 1. Simulación de usuarios reales
+
+Quiero que analices el sistema como si fueras:
+
+### Admin
+- crear cliente
+- editar cliente
+- crear sede
+- crear puesto
+- asignar zona
+- asignar supervisor
+
+### Operaciones / Jefe de servicio
+- usar pizarrón
+- hacer relevo
+- cubrir puesto
+- cerrar día
+
+### RRHH
+- revisar eventos
+- ver faltas
+- generar documentos
+- revisar anticipos
+
+### Supervisor
+- ver su zona
+- ver cobertura
+- operar parcialmente
+
+### Cliente (portal)
+- ver incidencias
+- ver agentes asignados
+
+---
+
+# 2. Detectar flujos rotos
+
+Identificar cosas como:
+
+- no puedo crear un cliente
+- no puedo guardar una sede
+- no puedo asignar un puesto
+- no puedo seleccionar un colaborador correctamente
+- botones que no hacen nada
+- formularios incompletos
+- errores silenciosos
+- datos que no se reflejan en otros módulos
+
+---
+
+# 3. Detectar inputs manuales incorrectos
+
+Buscar donde se esté:
+
+- escribiendo nombres de empleados en vez de seleccionarlos
+- escribiendo clientes manualmente
+- escribiendo puestos o sedes manualmente
+- guardando texto en lugar de usar relaciones (IDs)
+
+---
+
+# 4. Detectar duplicación de datos
+
+Identificar:
+
+- datos repetidos en múltiples tablas
+- campos redundantes
+- información que debería venir de una sola fuente
+- inconsistencias entre módulos
+
+---
+
+# 5. Validar modelo maestro
+
+Verificar que todos los módulos estén usando correctamente:
+
+- clients
+- sedes
+- puestos_operativos
+- operational_zones
+- employees
+
+Detectar cualquier módulo que no esté alineado con este modelo.
+
+---
+
+# 6. Revisar integridad de relaciones
+
+Detectar:
+
+- uso de strings en lugar de IDs
+- relaciones opcionales que deberían ser obligatorias
+- datos huérfanos
+- inconsistencias entre tablas
+
+---
+
+# 7. Detectar lógica duplicada o inconsistente
+
+Buscar:
+
+- validaciones duplicadas
+- cálculos repetidos en diferentes lugares
+- reglas laborales inconsistentes
+
+---
+
+# 8. Evaluar UX
+
+Identificar problemas como:
+
+- flujos confusos
+- demasiados pasos
+- falta de validación
+- errores sin mensaje claro
+- formularios poco intuitivos
+- acciones críticas sin confirmación
+
+---
+
+# 9. Detectar riesgos para planilla
+
+Señalar problemas que pueden afectar:
+
+- cálculo de días trabajados
+- faltas
+- horas extra
+- relevos
+- anticipos
+- consistencia de datos por empleado
+
+---
+
+# 10. Clasificación de problemas
+
+Clasificar cada hallazgo en:
+
+- Crítico (bloquea operación o planilla)
+- Alto (puede generar errores graves)
+- Medio (mala práctica o inconsistencia)
+- Bajo (mejora futura)
+
+---
+
+# 11. Recomendaciones claras
+
+Para cada problema:
+
+- qué está mal
+- por qué es un problema
+- cómo corregirlo
+- prioridad
+
+---
+
+# 12. Resultado esperado
+
+Quiero un reporte estructurado que incluya:
+
+- problemas funcionales (UX / flujos)
+- problemas técnicos (modelo / datos)
+- problemas de consistencia
+- riesgos para planilla
+- lista priorizada de correcciones
+
+---
+
+Muy importante:
+quiero que este análisis simule el uso real del sistema por diferentes roles, no solo una revisión técnica, para detectar problemas que afectan la operación diaria antes de avanzar a planilla.
