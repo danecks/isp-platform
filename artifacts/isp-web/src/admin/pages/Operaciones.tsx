@@ -1176,18 +1176,25 @@ function ModalEligeCobertura({
 }: {
   puesto: Puesto;
   agente: Agente;
-  onElegir: (soloCobertura: boolean, oldTitularAccion?: OldTitularAccion, fechaEfectiva?: string, motivoCambio?: string) => void;
+  onElegir: (soloCobertura: boolean, oldTitularAccion?: OldTitularAccion, fechaEfectiva?: string, motivoCambio?: string, horaInstalacion?: string) => void;
   onCancel: () => void;
 }) {
   const hayTitularPrevio = !!puesto.titular_employee_id;
   const hoy = toISODate(new Date());
   const manana = toISODate(new Date(Date.now() + 86400000));
 
-  const [paso, setPaso] = useState<"elige" | "detalles" | "titularPrevio">("elige");
+  const ahoraHHMM = () => {
+    const n = new Date();
+    return `${String(n.getHours()).padStart(2, "0")}:${String(n.getMinutes()).padStart(2, "0")}`;
+  };
+
+  const [paso, setPaso] = useState<"elige" | "detalles" | "titularPrevio" | "horaInstalacion">("elige");
   const [oldTitularAccion, setOldTitularAccion] = useState<OldTitularAccion>("disponible");
   const [opcionFecha, setOpcionFecha] = useState<"hoy" | "manana" | "personalizada">("hoy");
   const [fechaPersonalizada, setFechaPersonalizada] = useState(hoy);
   const [motivo, setMotivo] = useState("cobertura_definitiva");
+  const [soloCoberturaPendiente, setSoloCoberturaPendiente] = useState(false);
+  const [horaInstalacion, setHoraInstalacion] = useState(ahoraHHMM());
 
   const fechaEfectiva = opcionFecha === "hoy" ? hoy
     : opcionFecha === "manana" ? manana
@@ -1197,8 +1204,15 @@ function ModalEligeCobertura({
     if (hayTitularPrevio) {
       setPaso("titularPrevio");
     } else {
-      onElegir(false, undefined, fechaEfectiva, motivo);
+      setPaso("horaInstalacion");
     }
+  }
+
+  function confirmarConHora() {
+    onElegir(soloCoberturaPendiente, soloCoberturaPendiente ? undefined : oldTitularAccion,
+             soloCoberturaPendiente ? undefined : fechaEfectiva,
+             soloCoberturaPendiente ? undefined : motivo,
+             horaInstalacion || undefined);
   }
 
   return createPortal(
@@ -1230,7 +1244,7 @@ function ModalEligeCobertura({
             </div>
 
             <button
-              onClick={() => onElegir(true)}
+              onClick={() => { setSoloCoberturaPendiente(true); setHoraInstalacion(ahoraHHMM()); setPaso("horaInstalacion"); }}
               className="w-full text-left bg-amber-500/5 border border-amber-500/20 hover:border-amber-500/50 rounded-xl p-4 transition-all group"
             >
               <div className="flex items-center gap-3">
@@ -1326,7 +1340,7 @@ function ModalEligeCobertura({
                 onClick={avanzarDesdeDetalles}
                 className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 transition-colors"
               >
-                {hayTitularPrevio ? "Siguiente →" : "Confirmar"}
+                Siguiente →
               </button>
             </div>
           </div>
@@ -1374,10 +1388,54 @@ function ModalEligeCobertura({
                 Atrás
               </button>
               <button
-                onClick={() => onElegir(false, oldTitularAccion, fechaEfectiva, motivo)}
+                onClick={() => { setSoloCoberturaPendiente(false); setPaso("horaInstalacion"); }}
                 className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 transition-colors"
               >
-                Confirmar
+                Siguiente →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Paso final: Hora de instalación ──────────────────────────── */}
+        {paso === "horaInstalacion" && (
+          <div className="p-5 space-y-4">
+            <div className="bg-[#0c1929] border border-white/8 rounded-xl p-3 flex items-center gap-2">
+              <Clock className="w-3.5 h-3.5 text-primary/60 shrink-0" />
+              <div>
+                <p className="text-xs text-white/70 font-medium">{agente.nombre_completo}</p>
+                <p className="text-[10px] text-white/35">{puesto.cliente_nombre} · {puesto.nombre}</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-white/80">¿A qué hora se instaló el servicio?</p>
+              <p className="text-[11px] text-white/35 leading-snug">
+                Esta hora se usa para calcular las horas reales trabajadas y detectar horas extra.
+              </p>
+              <input
+                type="time"
+                value={horaInstalacion}
+                onChange={e => setHoraInstalacion(e.target.value)}
+                className="w-full bg-[#060e1c] border border-white/10 rounded-xl px-3 py-3 text-base text-white text-center font-mono outline-none focus:border-primary/50 tracking-widest"
+              />
+              <p className="text-[10px] text-white/25 text-center">
+                Turno {puesto.turno ?? "día"} — fin estimado: {(puesto.turno ?? "día").toLowerCase() === "noche" ? "06:00" : "18:00"}
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setPaso(soloCoberturaPendiente ? "elige" : (hayTitularPrevio ? "titularPrevio" : "detalles"))}
+                className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors"
+              >
+                Atrás
+              </button>
+              <button
+                onClick={confirmarConHora}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-primary hover:bg-primary/90 transition-colors"
+              >
+                Confirmar →
               </button>
             </div>
           </div>
@@ -1721,15 +1779,24 @@ function ModalLiberar({
   onClose,
 }: {
   puesto: Puesto;
-  onConfirm: (motivo: string) => Promise<void>;
+  onConfirm: (motivo: string, horaFin?: string, generarEventoFalta?: boolean) => Promise<void>;
   onClose: () => void;
 }) {
+  const ahoraHHMM = () => {
+    const n = new Date();
+    return `${String(n.getHours()).padStart(2, "0")}:${String(n.getMinutes()).padStart(2, "0")}`;
+  };
   const [motivo, setMotivo] = useState("descanso");
+  const [horaFin, setHoraFin] = useState(ahoraHHMM());
+  const [generarEventoFalta, setGenerarEventoFalta] = useState(true);
   const [loading, setLoading] = useState(false);
+  const esFalta = motivo === "falta" || motivo === "suspension";
 
   async function handleConfirm() {
     setLoading(true);
-    try { await onConfirm(motivo); } finally { setLoading(false); }
+    try {
+      await onConfirm(motivo, horaFin || undefined, esFalta ? generarEventoFalta : false);
+    } finally { setLoading(false); }
   }
 
   return createPortal(
@@ -1743,6 +1810,7 @@ function ModalLiberar({
           <p><span className="text-white/80">{puesto.agente_nombre}</span> será removido de</p>
           <p className="text-white/40 mt-0.5">{puesto.cliente_nombre} · {puesto.nombre}</p>
         </div>
+
         <div className="space-y-1">
           <label className="text-xs text-white/40">Motivo</label>
           <select
@@ -1757,6 +1825,42 @@ function ModalLiberar({
             <option value="otro">Otro</option>
           </select>
         </div>
+
+        <div className="space-y-1">
+          <label className="text-xs text-white/40">Hora de salida</label>
+          <input
+            type="time"
+            value={horaFin}
+            onChange={e => setHoraFin(e.target.value)}
+            className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono text-center outline-none focus:border-red-500/40"
+          />
+          <p className="text-[9px] text-white/20">Cierra el segmento de cobertura del día</p>
+        </div>
+
+        {esFalta && (
+          <button
+            onClick={() => setGenerarEventoFalta(p => !p)}
+            className={`w-full text-left rounded-xl p-3 border transition-all flex items-start gap-2.5 ${
+              generarEventoFalta
+                ? "bg-red-500/10 border-red-500/30"
+                : "bg-white/3 border-white/8 hover:border-white/15"
+            }`}
+          >
+            <div className={`w-4 h-4 rounded shrink-0 mt-0.5 flex items-center justify-center border transition-all ${
+              generarEventoFalta ? "bg-red-500 border-red-500" : "border-white/20"
+            }`}>
+              {generarEventoFalta && <span className="text-white text-[10px] font-bold">✓</span>}
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-white/80">Registrar falta en RRHH</p>
+              <p className="text-[10px] text-white/35 mt-0.5 leading-snug">
+                Genera evento de falta + descuento de día en nómina.
+                No se pagará ese día al colaborador.
+              </p>
+            </div>
+          </button>
+        )}
+
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors">
             Cancelar
@@ -2175,7 +2279,7 @@ export default function Operaciones() {
   }
 
   // ── Confirmar elección de cobertura (pool → puesto vacío) ────────────────
-  async function confirmarEligeCobertura(soloCobertura: boolean, oldTitularAccion?: OldTitularAccion, fechaEfectiva?: string, motivoCambio?: string) {
+  async function confirmarEligeCobertura(soloCobertura: boolean, oldTitularAccion?: OldTitularAccion, fechaEfectiva?: string, motivoCambio?: string, horaInstalacion?: string) {
     if (!modalEligeCobertura) return;
     const { puesto, agente } = modalEligeCobertura;
     setModalEligeCobertura(null);
@@ -2187,10 +2291,12 @@ export default function Operaciones() {
         oldTitularAccion: oldTitularAccion ?? null,
         fechaEfectiva: fechaEfectiva ?? null,
         motivoCambio: motivoCambio ?? null,
+        horaInstalacion: horaInstalacion ?? null,
         usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
       });
       if (soloCobertura) {
-        toast({ title: "Cobertura temporal registrada", description: `${agente.nombre_completo} cubre ${puesto.nombre} hoy` });
+        const horaLabel = horaInstalacion ? ` desde las ${horaInstalacion}` : "";
+        toast({ title: "Cobertura temporal registrada", description: `${agente.nombre_completo} cubre ${puesto.nombre}${horaLabel}` });
       } else {
         const motLabel = motivoCambio ? ` · ${motivoCambio.replace(/_/g, " ")}` : "";
         const fechaLabel = fechaEfectiva ? ` desde ${fechaEfectiva}` : "";
@@ -2274,15 +2380,18 @@ export default function Operaciones() {
   }
 
   // ── Confirmar liberación ──────────────────────────────────────────────────
-  async function confirmarLiberar(motivo: string) {
+  async function confirmarLiberar(motivo: string, horaFin?: string, generarEventoFalta?: boolean) {
     if (!modalLiberar) return;
     try {
       await apiPost(`${API_BASE}/operaciones/liberar`, {
         puestoId: modalLiberar.id,
         motivo,
+        horaFin: horaFin ?? null,
+        generarEventoFalta: generarEventoFalta ?? false,
         usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
       });
-      toast({ title: "Puesto liberado", description: `${modalLiberar.agente_nombre} removido de ${modalLiberar.nombre}` });
+      const extra = generarEventoFalta ? " · Falta registrada en RRHH" : "";
+      toast({ title: "Puesto liberado", description: `${modalLiberar.agente_nombre} removido de ${modalLiberar.nombre}${extra}` });
       setModalLiberar(null);
       invalidate();
     } catch (e: any) {

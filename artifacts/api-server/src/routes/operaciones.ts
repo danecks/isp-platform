@@ -119,7 +119,8 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
           soloCobertura = false,
           oldTitularAccion,
           fechaEfectiva,
-          motivoCambio } = req.body;
+          motivoCambio,
+          horaInstalacion } = req.body;
   if (!puestoId || !agenteId) return res.status(400).json({ error: "puestoId y agenteId son requeridos" });
 
   try {
@@ -247,30 +248,80 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
        soloCobertura ? 'relevo' : 'asignacion', usuario || 'sistema', notas || null]
     );
 
-    // A-04: Auto-crear segmento de cobertura para hoy
+    // A-04: Auto-crear / actualizar segmento de cobertura para hoy
     try {
       const hoy = new Date().toISOString().split("T")[0];
       const turno = (puesto.turno ?? "día").toLowerCase();
-      const horaInicio = turno === "noche" ? "20:00" : "08:00";
-      const horaFin    = turno === "noche" ? "06:00" : "18:00";
-      const horasCalc  = 10;
-      const tipoSegmento = soloCobertura ? 'relevo' : 'titular';
-      await pool.query(
+      const horaFinTurno = turno === "noche" ? "06:00" : "18:00";
+      const horaInicioDefault = turno === "noche" ? "20:00" : "08:00";
+
+      // Usar hora real de instalación si se proporcionó, si no la del turno
+      const horaInicioFinal = horaInstalacion || horaInicioDefault;
+
+      // Calcular horas trabajadas (maneja cruce de medianoche)
+      function calcHoras(inicio: string, fin: string): number {
+        const [h1, m1] = inicio.split(":").map(Number);
+        const [h2, m2] = fin.split(":").map(Number);
+        let mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+        if (mins < 0) mins += 24 * 60;
+        return Math.round(mins / 6) / 10;
+      }
+      const horasCalcFinal  = calcHoras(horaInicioFinal, horaFinTurno);
+      const horasStandard   = 10;
+      const generaExtra     = horasCalcFinal > horasStandard;
+      const horasExtraCalc  = generaExtra ? Math.round((horasCalcFinal - horasStandard) * 10) / 10 : 0;
+      const tipoSegmento    = soloCobertura ? 'relevo' : 'titular';
+      const obsSegmento     = horaInstalacion ? `Instalación real: ${horaInstalacion}` : null;
+
+      // Intentar insertar; si ya existe (mismo empleado+puesto+fecha), actualizar
+      const ins = await pool.query(
         `INSERT INTO cobertura_segmentos
            (fecha, puesto_id, client_id, employee_id, empleado_nombre,
             tipo_cobertura, hora_inicio, hora_fin, horas_calculadas,
-            fue_en_dia_descanso, genera_horas_extra, usuario_registro)
-         SELECT $1,$2,$3,$4,$5,$9,$6,$7,$8,FALSE,FALSE,'asignacion_pizarron'
+            fue_en_dia_descanso, genera_horas_extra, observaciones, usuario_registro)
+         SELECT $1,$2,$3,$4,$5,$9,$6,$7,$8,FALSE,$10,$11,'asignacion_pizarron'
          WHERE NOT EXISTS (
            SELECT 1 FROM cobertura_segmentos
            WHERE fecha=$1 AND puesto_id=$2 AND employee_id=$4
          )`,
         [hoy, puestoId, puesto.cliente_id ?? null, agenteId,
-         agente.nombre_completo, horaInicio, horaFin, horasCalc, tipoSegmento]
+         agente.nombre_completo, horaInicioFinal, horaFinTurno, horasCalcFinal,
+         tipoSegmento, generaExtra, obsSegmento]
       );
-      logger.info({ puestoId, agenteId, hoy, soloCobertura }, "A-04: segmento auto-creado en asignación");
+
+      // Si el registro ya existía y se indicó hora real, actualizar horas
+      if (horaInstalacion && ins.rowCount === 0) {
+        await pool.query(
+          `UPDATE cobertura_segmentos
+           SET hora_inicio = $1, horas_calculadas = $2, genera_horas_extra = $3,
+               observaciones = $4, updated_at = NOW()
+           WHERE fecha = $5 AND puesto_id = $6 AND employee_id = $7`,
+          [horaInstalacion, horasCalcFinal, generaExtra, obsSegmento, hoy, puestoId, agenteId]
+        );
+      }
+
+      // Registrar novedad de nómina para el colaborador que cubre
+      try {
+        await pool.query(
+          `INSERT INTO novedades_nomina_diarias
+             (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
+              puesto_cubierto_id, puesto_cubierto_nombre, num_puestos_cubiertos, fuente)
+           VALUES ($1, $2, $3, TRUE, $4, $5, $6, $7, 1, 'asignacion_pizarron')
+           ON CONFLICT (fecha, employee_id) DO UPDATE SET
+             trabajo_dia          = TRUE,
+             horas_trabajadas     = GREATEST(novedades_nomina_diarias.horas_trabajadas, $4),
+             horas_extra          = GREATEST(novedades_nomina_diarias.horas_extra, $5),
+             num_puestos_cubiertos = novedades_nomina_diarias.num_puestos_cubiertos + 1,
+             updated_at           = NOW()`,
+          [hoy, agenteId, agente.nombre_completo, horasCalcFinal, horasExtraCalc, puestoId, puesto.nombre]
+        );
+      } catch (nomErr) {
+        logger.warn({ nomErr }, "A-04: no se pudo actualizar novedad nómina (no bloqueante)");
+      }
+
+      logger.info({ puestoId, agenteId, hoy, horaInstalacion, horasCalcFinal, generaExtra }, "A-04: segmento registrado en asignación");
     } catch (segErr) {
-      logger.warn({ segErr }, "A-04: no se pudo auto-crear segmento al asignar (no bloqueante)");
+      logger.warn({ segErr }, "A-04: no se pudo crear segmento al asignar (no bloqueante)");
     }
 
     res.json({
@@ -462,8 +513,10 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
 
 // ─── POST /api/operaciones/liberar ───────────────────────────────────────────
 // Quitar agente de un puesto (queda descubierto)
+// horaFin: "HH:MM" real de cuando salió — cierra el segmento de cobertura del día
+// generarEventoFalta: true → crea evento RRHH + novedad de nómina (falta/descuento)
 operacionesRouter.post("/operaciones/liberar", async (req, res) => {
-  const { puestoId, motivo, usuario, notas } = req.body;
+  const { puestoId, motivo, usuario, notas, horaFin, generarEventoFalta } = req.body;
   if (!puestoId) return res.status(400).json({ error: "puestoId es requerido" });
 
   try {
@@ -476,6 +529,10 @@ operacionesRouter.post("/operaciones/liberar", async (req, res) => {
 
     if (!puesto.agente_id) return res.status(400).json({ error: "El puesto no tiene agente asignado" });
 
+    const agenteId = puesto.agente_id as number;
+    const agenteNombre = puesto.agente_nombre as string;
+    const hoy = new Date().toISOString().split("T")[0];
+
     // IMPORTANTE: solo se limpia agente_id (cobertura del día).
     // El titular_employee_id se preserva para mantener la asignación base.
     await pool.query(
@@ -484,20 +541,94 @@ operacionesRouter.post("/operaciones/liberar", async (req, res) => {
       [puestoId]
     );
 
-    await pool.query(
+    const movResult = await pool.query(
       `INSERT INTO movimientos_operativos
          (puesto_id, cliente_nombre, puesto_nombre,
           agente_saliente_id, agente_saliente_nombre,
           tipo, motivo, usuario_cambio, notas)
-       VALUES ($1, $2, $3, $4, $5, 'liberacion', $6, $7, $8)`,
+       VALUES ($1, $2, $3, $4, $5, 'liberacion', $6, $7, $8)
+       RETURNING id`,
       [
         puestoId, puesto.cliente_nombre, puesto.nombre,
-        puesto.agente_id, puesto.agente_nombre,
+        agenteId, agenteNombre,
         motivo || null, usuario || 'sistema', notas || null,
       ]
     );
+    const movId = movResult.rows[0]?.id ?? null;
 
-    res.json({ ok: true, mensaje: `${puesto.agente_nombre} removido de ${puesto.nombre}` });
+    // ── Cerrar segmento de cobertura del día si se indica hora de salida ──────
+    if (horaFin) {
+      try {
+        // Calcular horas: obtenemos hora_inicio del segmento para el cálculo
+        const { rows: segRows } = await pool.query(
+          `SELECT hora_inicio FROM cobertura_segmentos
+           WHERE fecha=$1 AND puesto_id=$2 AND employee_id=$3 AND hora_fin IS NULL
+           ORDER BY created_at DESC LIMIT 1`,
+          [hoy, puestoId, agenteId]
+        );
+        const horaInicio = segRows[0]?.hora_inicio ?? null;
+        let horasReal: number | null = null;
+        if (horaInicio) {
+          const [h1, m1] = horaInicio.split(":").map(Number);
+          const [h2, m2] = horaFin.split(":").map(Number);
+          let mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+          if (mins < 0) mins += 24 * 60;
+          horasReal = Math.round(mins / 6) / 10;
+        }
+        await pool.query(
+          `UPDATE cobertura_segmentos
+           SET hora_fin = $1,
+               horas_calculadas = COALESCE($2, horas_calculadas),
+               updated_at = NOW()
+           WHERE fecha=$3 AND puesto_id=$4 AND employee_id=$5 AND hora_fin IS NULL`,
+          [horaFin, horasReal, hoy, puestoId, agenteId]
+        );
+      } catch (segErr) {
+        logger.warn({ segErr }, "liberar: no se pudo cerrar segmento (no bloqueante)");
+      }
+    }
+
+    // ── Generar evento RRHH + novedad nómina si fue falta ────────────────────
+    const esFalta = motivo === 'falta' || generarEventoFalta === true;
+    if (esFalta) {
+      try {
+        const { rows: empRows } = await pool.query(`SELECT * FROM employees WHERE id=$1`, [agenteId]);
+        const emp = empRows[0];
+        if (emp) {
+          await pool.query(
+            `INSERT INTO eventos_rrhh
+               (employee_id, employee_nombre, employee_dpi, tipo_evento, fecha,
+                cliente_nombre, puesto_nombre, generado_desde, movimiento_id, estado,
+                usuario_generador, observaciones)
+             VALUES ($1, $2, $3, 'falta', NOW(), $4, $5, 'pizarron', $6, 'pendiente', $7, $8)`,
+            [emp.id, emp.nombre_completo, emp.dpi ?? null,
+             puesto.cliente_nombre, puesto.nombre,
+             movId, usuario || 'sistema', notas || null]
+          );
+          // Novedad de nómina: falta = no se paga el día
+          await pool.query(
+            `INSERT INTO novedades_nomina_diarias
+               (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
+                falta, descuento_dia, puesto_titular_id, puesto_titular_nombre, fuente)
+             VALUES ($1, $2, $3, FALSE, 0, 0, TRUE, TRUE, $4, $5, 'liberacion_pizarron')
+             ON CONFLICT (fecha, employee_id) DO UPDATE SET
+               falta = TRUE, descuento_dia = TRUE, trabajo_dia = FALSE, horas_trabajadas = 0,
+               updated_at = NOW()`,
+            [hoy, emp.id, emp.nombre_completo, puesto.id, puesto.nombre]
+          );
+          logger.info({ agenteId, hoy }, "liberar: evento falta + novedad nómina registrados");
+        }
+      } catch (faltaErr) {
+        logger.warn({ faltaErr }, "liberar: no se pudo crear evento falta (no bloqueante)");
+      }
+    }
+
+    res.json({
+      ok: true,
+      mensaje: `${agenteNombre} removido de ${puesto.nombre}`,
+      faltaRegistrada: esFalta,
+      segmentoCerrado: !!horaFin,
+    });
   } catch (err) {
     logger.error({ err }, "POST /operaciones/liberar error");
     res.status(500).json({ error: "Error al liberar puesto" });

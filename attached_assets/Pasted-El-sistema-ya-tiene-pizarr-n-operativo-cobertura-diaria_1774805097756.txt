@@ -1,0 +1,143 @@
+El sistema ya tiene:
+- pizarrón operativo
+- cobertura diaria
+- segmentos de cobertura
+- historial de titularidad
+- RRHH con eventos automáticos
+- pre-planilla
+- solicitudes de cambio estructural
+- lógica de relevo temporal vs cambio a titular
+
+No quiero romper nada de lo existente.
+
+Quiero mejorar el flujo del pizarrón operativo en dos puntos críticos de operación real:
+
+1. Cuando se remueve a una persona de un puesto
+2. Cuando se instala a otra persona para cubrir ese puesto
+
+## Objetivo
+Que el pizarrón refleje mejor la realidad operativa: si una persona es removida del puesto pasa a disponibles, y cuando se asigna alguien a cubrir un puesto, el sistema pregunte la hora real de instalación del servicio para calcular correctamente cobertura y horas extra.
+
+También quiero que cuando una persona falte:
+- se genere su evento RRHH / boleta de amonestación o descuento
+- y al que cubra se le reconozca el tiempo trabajado y horas extra correspondientes
+
+---
+
+## 1. Al remover una persona de un puesto
+Cuando desde el pizarrón se use la acción de remover/liberar a una persona de un puesto:
+
+### Comportamiento esperado
+- remover la cobertura actual del puesto
+- pasar al colaborador a estado operativo disponible
+- dejar trazabilidad del movimiento
+- no perder su información ni dejarlo “huérfano”
+
+Si el colaborador era titular base, respetar la lógica que ya exista de titularidad/historial y documentar bien qué pasa en ese caso.
+
+---
+
+## 2. Al asignar a alguien a un puesto descubierto
+Cuando desde el pizarrón se asigne a alguien a un puesto descubierto, además de la lógica actual (temporal o titular si aplica), quiero que el sistema pregunte:
+
+### Pregunta obligatoria
+¿A qué hora se instaló el servicio?
+
+Esto debe servir para registrar:
+- horaInicio real del segmento
+- desde cuándo empezó a cubrir
+- base para horas trabajadas y horas extra
+
+Al principio puede ser manual.
+Más adelante se automatizará si hace falta.
+
+---
+
+## 3. Registro del segmento con hora real
+Al confirmar la instalación:
+- crear segmento de cobertura con horaInicio real
+- usar esa hora para calcular horas trabajadas del día
+- si luego hay relevo parcial, permitir cerrar o dividir el segmento correctamente
+
+---
+
+## 4. Lógica cuando el titular faltó
+Si el puesto quedó descubierto porque el titular faltó o no llegó:
+
+### A. Para el colaborador ausente
+El sistema debe:
+- registrar la falta
+- generar el evento RRHH que corresponda
+- generar boleta / amonestación / descuento según la lógica ya existente
+- dejar base para que ese día NO se pague al que faltó
+
+### B. Para el colaborador que cubre
+El sistema debe:
+- registrar la hora real de instalación
+- registrar que cubrió el servicio
+- calcular las horas correspondientes
+- marcar horas extra si aplica
+- dejar base para que sí se le pague a quien cubrió
+
+---
+
+## 5. Casos parciales
+El sistema debe soportar que:
+- una persona cubra solo parte del turno (ej. 10 horas)
+- luego entre otra y cubra el resto (ej. 2 horas)
+
+En esos casos:
+- cada uno debe tener su segmento
+- cada uno debe tener sus horas correctas
+- el que faltó no debe pagarse
+- los que cubrieron sí deben quedar reflejados en novedades y pre-planilla
+
+---
+
+## 6. UX del pizarrón
+No quiero volver el pizarrón pesado, pero sí quiero este dato mínimo y crítico.
+
+Entonces:
+- si se asigna alguien a un puesto descubierto, mostrar un modal corto
+- pedir hora de instalación
+- mantener flujo rápido y claro
+
+No formularios largos.
+
+---
+
+## 7. Integración con módulos
+Estos cambios deben reflejarse correctamente en:
+- cobertura diaria
+- segmentos de cobertura
+- novedades_nomina_diarias
+- RRHH
+- pre-planilla
+- reportería futura
+
+---
+
+## 8. No romper
+No romper:
+- lógica de relevo temporal
+- lógica de cambio a titular
+- historial de titularidad
+- cierre diario
+- RRHH
+- pre-planilla
+- ficha del colaborador
+- ficha del cliente
+- solicitudes de cambio estructural
+
+---
+
+## 9. Documentación
+Explica claramente:
+- qué pasa al remover a alguien del puesto
+- qué pasa cuando pasa a disponibles
+- cómo se registra la hora real de instalación
+- cómo esto impacta horas trabajadas y horas extra
+- cómo se diferencia el pago del colaborador ausente vs el que cubrió
+
+Muy importante:
+quiero que el pizarrón operativo sea la fuente real de quién cubrió un servicio, desde qué hora lo hizo y qué consecuencias laborales y de pago genera esa cobertura.
