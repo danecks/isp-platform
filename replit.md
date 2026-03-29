@@ -4,7 +4,7 @@
 This project is a pnpm monorepo for "Investigaciones y Seguridad Profesional S.A." (Guatemala), providing a comprehensive digital platform. It includes a corporate website and an admin dashboard, both designed with a dark navy/gold theme and presented in corporate Spanish. The platform aims to streamline internal operations, enhance client interaction, and establish a robust online presence.
 
 Key capabilities include:
-- **Comprehensive Admin Modules:** Covering Commercial (leads CRM), Recruitment (job applications), Incidents Management, HR Advances, HR Disciplinary KPI, Operational Rotation KPI, RRHH Automatic Alerts, and a CMS for public website content.
+- **Comprehensive Admin Modules:** Covering Commercial (leads CRM), Recruitment (job applications), Incidents Management, HR Advances, HR Disciplinary KPI, Operational Rotation KPI, RRHH Automatic Alerts, a CMS for public website content, Novedades Nómina (payroll novelties), and Pre-Planilla Operativa (period-based payroll review).
 - **Robust Authentication & RBAC:** Granular role-based access control (admin, operaciones, rrhh, comercial, supervisor, cliente).
 - **Client Portal:** Secure access for clients to view incidents and KPIs (SQL aggregation via DATE_TRUNC; auth validated against DB).
 - **Trello Integration:** Seamless integration for Incidencias, Leads, and Postulaciones, with a mock mode for development.

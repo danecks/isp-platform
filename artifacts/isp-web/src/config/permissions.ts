@@ -18,6 +18,7 @@ import {
   ClipboardList,
   BellRing,
   ScrollText,
+  TableProperties,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -109,6 +110,12 @@ export const NAV_ITEMS: NavItem[] = [
     path: "/admin/rrhh/nomina",
     label: "Novedades Nómina",
     icon: ScrollText,
+    roles: ["admin", "rrhh"],
+  },
+  {
+    path: "/admin/rrhh/pre-planilla",
+    label: "Pre-Planilla",
+    icon: TableProperties,
     roles: ["admin", "rrhh"],
   },
   {

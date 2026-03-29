@@ -24,6 +24,7 @@ import sedesRouter from "./sedes";
 import coberturaRouter from "./cobertura";
 import fichaRouter from "./ficha";
 import { nominaRouter } from "./nomina";
+import { prePlanillaRouter } from "./pre-planilla";
 import storageRouter from "./storage";
 import kpiRouter from "./kpi";
 
@@ -54,6 +55,7 @@ router.use(sedesRouter);
 router.use(coberturaRouter);
 router.use(fichaRouter);
 router.use(nominaRouter);
+router.use(prePlanillaRouter);
 router.use(storageRouter);
 router.use(kpiRouter);
 

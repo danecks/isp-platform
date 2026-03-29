@@ -1461,5 +1461,27 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: P-NOM-03 anticipos.planilla_id — error (no bloqueante)");
   }
 
+  // ── P-NOM-07: tabla pre_planilla_revision (estado de revisión por RRHH) ───────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pre_planilla_revision (
+        id            SERIAL PRIMARY KEY,
+        employee_id   INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        periodo_desde DATE    NOT NULL,
+        periodo_hasta DATE    NOT NULL,
+        estado        VARCHAR(20) NOT NULL DEFAULT 'pendiente',
+        -- 'pendiente' | 'revisada' | 'observada'
+        observaciones TEXT,
+        revisado_por  VARCHAR(100),
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(employee_id, periodo_desde, periodo_hasta)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ppr_periodo_idx ON pre_planilla_revision(periodo_desde, periodo_hasta)`);
+    logger.info("Auto-migrate: P-NOM-07 tabla pre_planilla_revision verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: P-NOM-07 pre_planilla_revision — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

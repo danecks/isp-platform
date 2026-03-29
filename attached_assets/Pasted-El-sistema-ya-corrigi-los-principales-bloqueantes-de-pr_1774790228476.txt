@@ -1,0 +1,180 @@
+El sistema ya corrigió los principales bloqueantes de pre-planilla:
+
+- employees con sueldo_base, tipo_jornada, dia_descanso y horas_contrato
+- UNIQUE INDEX en employees.dpi
+- cobertura_segmentos con horas obligatorias
+- detección automática de ausencias al cierre
+- integración de eventos_rrhh en generarNovedades()
+- anticipos endurecidos con planilla_id para futura integración
+
+No quiero construir todavía la planilla final completa.
+Quiero avanzar a la siguiente fase: Pre-planilla operativa por período.
+
+## Objetivo
+Consolidar por colaborador todas las novedades del período para que RRHH y administración puedan revisar la base operativa de nómina antes del cálculo final y antes de exportarla al sistema actual.
+
+---
+
+## 1. Crear módulo de pre-planilla
+Crear una nueva sección:
+- /admin/nomina/pre-planilla
+o equivalente coherente con el sistema
+
+Acceso:
+- admin
+- rrhh
+- administración si aplica
+
+---
+
+## 2. Selector de período
+Permitir seleccionar:
+- rango personalizado
+- quincena actual
+- quincena anterior
+- mes actual
+- mes anterior
+
+Si hace sentido, incluir presets rápidos.
+
+---
+
+## 3. Consolidado por colaborador
+Mostrar una tabla principal donde cada fila represente un colaborador del período.
+
+Cada fila debe incluir al menos:
+- empleadoId
+- nombre
+- DPI
+- cliente principal o asignación base
+- sede / puesto titular si aplica
+- sueldo_base
+- tipo_jornada
+- día de descanso
+
+Y métricas del período:
+- días trabajados
+- faltas
+- suspensiones
+- descansos trabajados
+- horas trabajadas
+- horas extra
+- relevos realizados
+- anticipos del período
+- descuentos sugeridos
+- observaciones / alertas
+
+---
+
+## 4. Fuente de datos
+Construir esta pre-planilla usando como fuentes principales:
+- novedades_nomina_diarias
+- employees
+- anticipos
+- asignaciones base / puestos / cliente cuando aplique
+
+No quiero cálculos inventados ni datos duplicados.
+Quiero que todo salga del modelo ya consolidado.
+
+---
+
+## 5. Vista detalle por colaborador
+Al abrir un colaborador dentro de la pre-planilla, mostrar el detalle del período:
+
+- resumen general
+- lista de novedades diarias
+- días trabajados
+- faltas y suspensiones
+- relevos
+- horas extra
+- anticipos asociados
+- observaciones RRHH si existen
+
+---
+
+## 6. Totales del período
+Agregar tarjetas superiores con:
+- colaboradores en planilla
+- total días trabajados
+- total faltas
+- total suspensiones
+- total horas extra
+- total anticipos
+- colaboradores con alertas
+
+---
+
+## 7. Filtros
+Permitir filtrar por:
+- cliente
+- sede
+- zona operativa
+- supervisor
+- estado del colaborador
+- con/sin faltas
+- con/sin anticipos
+- con/sin horas extra
+
+---
+
+## 8. Estado de revisión
+Si es posible, agregar una lógica simple para marcar filas como:
+- pendiente revisión
+- revisada
+- observada
+
+No hace falta un workflow complejo, pero sí una base para revisión de RRHH.
+
+---
+
+## 9. Exportación
+Permitir exportar:
+- CSV
+- Excel compatible
+
+El archivo debe ser útil para el sistema administrativo actual que ya usa la empresa.
+
+Todavía no hace falta el cálculo final completo de neto ni descuentos legales avanzados, pero sí una exportación limpia y útil.
+
+---
+
+## 10. Preparación para siguiente fase
+Dejar preparada la estructura para que después se pueda agregar:
+- cálculo monetario del período
+- descuento de anticipos
+- séptimo
+- IGSS
+- planilla final
+
+No hace falta construir eso ahora, pero sí documentar qué faltaría.
+
+---
+
+## 11. No romper
+No romper:
+- novedades_nomina_diarias
+- cierre diario
+- pizarrón operativo
+- RRHH
+- anticipos
+- empleados
+- clientes
+- reportería
+- portal
+- WhatsApp
+- Trello
+
+---
+
+## 12. Documentación
+Explica claramente:
+- cómo se construye la pre-planilla
+- qué fuentes usa
+- qué incluye y qué todavía no calcula
+- cómo se puede usar para revisión interna
+- cómo se conecta después con planilla final e IGSS
+
+---
+
+Muy importante:
+quiero una pre-planilla operativa real y revisable, basada en los datos ya consolidados del sistema, que sirva como puente entre la operación diaria y la planilla formal.
