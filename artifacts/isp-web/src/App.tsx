@@ -38,6 +38,7 @@ import AdminSimulador from "@/admin/pages/SimuladorWhatsApp";
 import AdminEmpleados from "@/admin/pages/Empleados";
 import AdminOperaciones from "@/admin/pages/Operaciones";
 import AdminCierresHistorico from "@/admin/pages/CierresHistorico";
+import AdminPizarronHistorico from "@/admin/pages/PizarronHistorico";
 import AdminZonasOperativas from "@/admin/pages/ZonasOperativas";
 import AdminRrhhEventos from "@/admin/pages/RRHHEventos";
 import AdminRrhhAlertas from "@/admin/pages/RRHHAlertas";
@@ -159,6 +160,9 @@ function Router() {
       </Route>
       <Route path="/admin/operaciones/cierres">
         {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminCierresHistorico /></AuthGuard>}
+      </Route>
+      <Route path="/admin/operaciones/pizarron-historico">
+        {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminPizarronHistorico /></AuthGuard>}
       </Route>
       <Route path="/admin/operaciones">
         {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminOperaciones /></AuthGuard>}

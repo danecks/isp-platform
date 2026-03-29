@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Lock, Unlock, Calendar, ChevronLeft, Loader2,
   CheckCircle2, AlertCircle, Clock, User, FileText,
-  RotateCcw, X, Shield,
+  RotateCcw, X, Shield, Layout,
 } from "lucide-react";
 import { AdminLayout } from "../layout/AdminLayout";
 import { useAuth } from "@/contexts/AuthContext";
@@ -313,7 +313,7 @@ export default function CierresHistorico() {
         ) : (
           <div className="bg-[#07111f] border border-white/8 rounded-2xl overflow-hidden">
             {/* Header de tabla */}
-            <div className="grid grid-cols-[130px_90px_1fr_1fr_80px_80px_80px_80px_60px] gap-0 border-b border-white/8 px-4 py-2.5">
+            <div className="grid grid-cols-[130px_90px_1fr_1fr_80px_80px_80px_80px_120px] gap-0 border-b border-white/8 px-4 py-2.5">
               {["Fecha", "Estado", "Cerrado por", "Hora cierre", "Puestos", "Cubiertos", "Descub.", "Ausencias", ""].map((h) => (
                 <span key={h} className="text-[10px] text-white/25 uppercase tracking-widest font-semibold">{h}</span>
               ))}
@@ -323,7 +323,7 @@ export default function CierresHistorico() {
             {cierres.map((c) => (
               <div
                 key={c.id}
-                className="grid grid-cols-[130px_90px_1fr_1fr_80px_80px_80px_80px_60px] gap-0 px-4 py-3 border-b border-white/5 hover:bg-white/[0.02] transition-colors items-center"
+                className="grid grid-cols-[130px_90px_1fr_1fr_80px_80px_80px_80px_120px] gap-0 px-4 py-3 border-b border-white/5 hover:bg-white/[0.02] transition-colors items-center"
               >
                 {/* Fecha */}
                 <div className="flex items-center gap-1.5">
@@ -372,13 +372,23 @@ export default function CierresHistorico() {
                   {c.ausencias ?? "-"}
                 </span>
 
-                {/* Acción */}
-                <button
-                  onClick={() => setDetalleFecha(c.fecha_iso)}
-                  className="text-[11px] text-primary/70 hover:text-primary transition-colors font-medium"
-                >
-                  Ver
-                </button>
+                {/* Acciones */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setDetalleFecha(c.fecha_iso)}
+                    className="text-[11px] text-primary/70 hover:text-primary transition-colors font-medium"
+                  >
+                    Detalle
+                  </button>
+                  <button
+                    onClick={() => setLocation(`/admin/operaciones/pizarron-historico?fecha=${c.fecha_iso}`)}
+                    className="flex items-center gap-1 text-[11px] text-amber-400/60 hover:text-amber-300 transition-colors font-medium"
+                    title="Ver pizarrón completo de este día"
+                  >
+                    <Layout className="w-3 h-3" />
+                    Pizarrón
+                  </button>
+                </div>
               </div>
             ))}
           </div>

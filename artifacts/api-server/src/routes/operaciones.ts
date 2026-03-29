@@ -992,11 +992,18 @@ operacionesRouter.post("/operaciones/cierre", async (req, res) => {
       return res.status(400).json({ error: 'El día operativo ya está cerrado' });
     }
 
-    // Snapshot de cobertura
+    // Snapshot de cobertura — incluye campos visuales para reproducir el pizarrón histórico
     const { rows: puestos } = await pool.query(`
-      SELECT id, nombre, cliente_nombre, estado, agente_id, agente_nombre,
-             titular_employee_id, titular_nombre
-      FROM puestos_operativos WHERE activo = TRUE
+      SELECT po.id, po.nombre, po.cliente_nombre, po.cliente_id, po.estado,
+             po.agente_id, po.agente_nombre, po.titular_employee_id, po.titular_nombre,
+             po.turno, po.horario, po.jornada, po.notas, po.orden,
+             po.zona_operativa_id, oz.nombre AS zona_nombre,
+             po.sede_id, cs.nombre AS sede_nombre
+      FROM puestos_operativos po
+      LEFT JOIN operational_zones oz ON oz.id = po.zona_operativa_id
+      LEFT JOIN client_sedes cs ON cs.id = po.sede_id
+      WHERE po.activo = TRUE
+      ORDER BY po.cliente_nombre, po.orden, po.nombre
     `);
     const totalPuestos        = puestos.length;
     const cubiertos           = puestos.filter((p: any) => p.estado === 'cubierto').length;
@@ -1177,6 +1184,99 @@ operacionesRouter.get("/operaciones/cierres/:fecha", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "GET /operaciones/cierres/:fecha error");
     res.status(500).json({ error: "Error al cargar detalle del cierre" });
+  }
+});
+
+// ─── GET /api/operaciones/pizarron-historico/:fecha ──────────────────────────
+// Devuelve el pizarrón completo congelado de un día cerrado:
+//   - snapshotPuestos del cierre (agrupados por cliente, tal como quedaron)
+//   - movimientosHoy del cierre
+//   - cobertura_segmentos de esa fecha (tramos de cobertura granulares)
+//   - metadata del cierre (cerrado_por, cerrado_en, comentario)
+operacionesRouter.get("/operaciones/pizarron-historico/:fecha", async (req, res) => {
+  try {
+    const { fecha } = req.params;
+
+    const { rows: cierreRows } = await pool.query(`
+      SELECT
+        *,
+        TO_CHAR(fecha, 'DD-MM-YYYY')                                                  AS fecha_str,
+        TO_CHAR(cerrado_en AT TIME ZONE 'America/Guatemala', 'DD/MM/YYYY HH24:MI')    AS cerrado_en_str,
+        TO_CHAR(reabierto_en AT TIME ZONE 'America/Guatemala', 'DD/MM/YYYY HH24:MI')  AS reabierto_en_str
+      FROM cierre_operativo_diario
+      WHERE fecha = $1
+    `, [fecha]);
+
+    if (!cierreRows.length) {
+      return res.status(404).json({ error: "No existe cierre para esta fecha" });
+    }
+
+    const cierre = cierreRows[0];
+    const resumen = cierre.resumen_json ?? {};
+    const snapshotPuestos: any[] = resumen.snapshotPuestos ?? [];
+    const movimientosHoy: any[] = resumen.movimientosHoy ?? [];
+
+    // Agrupar puestos por cliente (igual que el tablero vivo)
+    const clienteMap: Record<string, { clienteId: number | null; clienteNombre: string; puestos: any[] }> = {};
+    for (const p of snapshotPuestos) {
+      const key = String(p.cliente_id ?? p.cliente_nombre ?? "Sin cliente");
+      if (!clienteMap[key]) {
+        clienteMap[key] = {
+          clienteId: p.cliente_id ?? null,
+          clienteNombre: p.cliente_nombre ?? "Sin cliente",
+          puestos: [],
+        };
+      }
+      clienteMap[key].puestos.push(p);
+    }
+    const tableroHistorico = Object.values(clienteMap);
+
+    // Segmentos de cobertura del día (desde cobertura_segmentos, si existen)
+    const { rows: segmentos } = await pool.query(`
+      SELECT
+        cs.id, cs.puesto_id, cs.employee_id, cs.hora_inicio, cs.hora_fin,
+        cs.horas_calculadas, cs.tipo_cobertura, cs.genera_horas_extra,
+        e.nombre_completo AS empleado_nombre,
+        po.nombre AS puesto_nombre
+      FROM cobertura_segmentos cs
+      LEFT JOIN employees e ON e.id = cs.employee_id
+      LEFT JOIN puestos_operativos po ON po.id = cs.puesto_id
+      WHERE cs.fecha = $1
+      ORDER BY cs.puesto_id, cs.hora_inicio
+    `, [fecha]);
+
+    // Stat summary del resumen
+    const stats = {
+      totalPuestos:        resumen.totalPuestos ?? snapshotPuestos.length,
+      cubiertos:           resumen.cubiertos ?? snapshotPuestos.filter((p: any) => p.estado === 'cubierto').length,
+      descubiertos:        resumen.descubiertos ?? 0,
+      cubiertosPorTitular: resumen.cubiertosPorTitular ?? 0,
+      cubiertosPorRelevo:  resumen.cubiertosPorRelevo ?? 0,
+      ausencias:           resumen.ausencias ?? 0,
+      horasExtra:          resumen.horasExtra ?? 0,
+    };
+
+    res.json({
+      cierre: {
+        id:              cierre.id,
+        fecha_iso:       fecha,
+        fecha_str:       cierre.fecha_str,
+        estado:          cierre.estado,
+        cerrado_por:     cierre.cerrado_por,
+        cerrado_en_str:  cierre.cerrado_en_str,
+        reabierto_por:   cierre.reabierto_por ?? null,
+        reabierto_en_str: cierre.reabierto_en_str ?? null,
+        motivo_reapertura: cierre.motivo_reapertura ?? null,
+        comentario:      cierre.comentario ?? null,
+      },
+      stats,
+      tableroHistorico,
+      movimientosHoy,
+      segmentos,
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /operaciones/pizarron-historico/:fecha error");
+    res.status(500).json({ error: "Error al cargar el pizarrón histórico" });
   }
 });
 

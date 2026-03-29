@@ -1,0 +1,136 @@
+Quiero mejorar la visualización de los Pizarrones pasados.
+
+## Problema actual
+Hoy, cuando reviso pizarrones anteriores, solo veo una especie de snapshot simple de los guardias, pero eso no me sirve del todo.
+
+Lo que necesito es poder ver el Pizarrón histórico completo, con una apariencia lo más parecida posible al Pizarrón Operativo normal, como si todavía se pudiera trabajar sobre él, pero en realidad en modo bloqueado / solo lectura porque ese día ya está cerrado.
+
+## Objetivo
+Quiero que al seleccionar una fecha pasada, el sistema me muestre el Pizarrón tal como quedó cerrado en esa fecha, conservando la estructura visual del pizarrón operativo:
+
+- puestos
+- guardias asignados
+- coberturas
+- vacantes
+- relevos
+- descansos
+- incidencias visibles si aplican
+- estados finales del día
+- distribución completa del pizarrón
+
+Pero sin permitir modificaciones.
+
+## Comportamiento esperado
+### 1. Selector de fecha
+Quiero poder escoger una fecha anterior y cargar el pizarrón de ese día.
+
+### 2. Vista histórica real del pizarrón
+No quiero solo una lista o snapshot resumido.
+Quiero ver una réplica visual del pizarrón, lo más parecida posible al pizarrón operativo normal.
+
+### 3. Modo solo lectura
+Ese pizarrón histórico debe verse como operativo, pero:
+- no se puede editar
+- no se puede reasignar guardia
+- no se puede mover personal
+- no se puede cambiar cobertura
+- no se puede cerrar otra vez
+- no se puede alterar nada del día ya cerrado
+
+Debe quedar claro visualmente que está:
+- cerrado
+- histórico
+- solo lectura
+
+### 4. Mostrar cómo cerró realmente
+Quiero ver el pizarrón como se cerró ese día, no recalculado con datos actuales.
+
+Eso significa:
+- respetar asignaciones finales de ese día
+- respetar vacantes de ese día
+- respetar coberturas de ese día
+- respetar estados y observaciones finales de ese cierre
+- no reemplazar nombres o datos con información actual si cambió después
+
+## Requisito clave
+La vista histórica debe basarse en una foto persistida del cierre o en una estructura equivalente que reconstruya exactamente cómo quedó el pizarrón al momento de cerrar.
+
+No quiero que el sistema arme el pizarrón pasado usando solo datos vivos actuales, porque eso puede alterar el resultado histórico.
+
+## Lo que debes revisar
+Quiero que revises el código real y determines:
+
+1. cómo se está guardando hoy el cierre del pizarrón
+2. si existe snapshot, JSON, versión o tablas de respaldo del cierre
+3. si la vista histórica actual solo está leyendo guardias sin reconstruir el pizarrón completo
+4. qué hace falta para mostrar el pizarrón pasado igual al operativo, pero bloqueado
+
+## Solución esperada
+### A. Vista histórica del pizarrón
+Crear una pantalla o modo dentro del tablero/pizarrón donde:
+- seleccione fecha
+- cargue el pizarrón cerrado de esa fecha
+- lo muestre con la misma UI o una UI casi idéntica al pizarrón normal
+- pero en modo solo lectura
+
+### B. Bloqueo total de edición
+Si la fecha está cerrada:
+- deshabilitar drag & drop
+- deshabilitar botones de asignación
+- deshabilitar cambios de cobertura
+- deshabilitar guardar
+- deshabilitar cierre
+- deshabilitar edición de observaciones si aplica
+
+### C. Indicador visual claro
+Agregar badge o encabezado visible como:
+- “Pizarrón histórico”
+- “Cerrado”
+- “Solo lectura”
+- fecha exacta del cierre
+- usuario que cerró, si existe ese dato
+- hora de cierre, si existe ese dato
+
+### D. Fidelidad histórica
+Si existe un snapshot persistido, usarlo como fuente principal.
+Si no existe, propón e implementa una forma correcta de persistir el estado final del pizarrón al cerrar para futuras consultas.
+
+## Casos que quiero cubrir
+1. Ver un día pasado cerrado y que se vea como el pizarrón real de ese día
+2. Ver vacantes tal como quedaron
+3. Ver coberturas tal como quedaron
+4. Ver guardias asignados tal como quedaron
+5. Confirmar que no se puede editar nada
+6. Poder cambiar entre fechas cerradas fácilmente
+
+## Resultado que quiero
+Entrégame la respuesta en este formato:
+
+### A. Diagnóstico actual
+Explica por qué hoy solo se ve un snapshot de guardias y no el pizarrón completo.
+
+### B. Diseño propuesto
+Explica cómo quedará la vista histórica tipo “pizarrón congelado”.
+
+### C. Cambios realizados
+Lista de archivos modificados.
+
+### D. Código implementado
+Muestra diffs o fragmentos relevantes.
+
+### E. Fuente de datos histórica
+Explica si se usa:
+- snapshot persistido
+- reconstrucción por tablas
+- combinación de ambas
+
+### F. Validaciones
+Confirma:
+- selección de fecha
+- carga correcta del día cerrado
+- solo lectura real
+- no se altera información histórica
+- UI similar al pizarrón normal
+
+## Criterio obligatorio
+La tarea solo está bien hecha si al escoger una fecha pasada puedo ver el Pizarrón completo como quedó cerrado, con apariencia casi igual al pizarrón operativo, pero sin posibilidad de editar nada.
