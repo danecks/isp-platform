@@ -118,6 +118,13 @@ interface CierreResumen {
   horasExtra: number;
 }
 
+interface AgenteDeclino {
+  id: number;
+  nombre: string;
+  motivo: string;
+  fecha: string;
+}
+
 interface TarjetaSSAPendiente {
   id: string;
   tipo_solicitud: string;
@@ -140,6 +147,8 @@ interface TarjetaSSAPendiente {
   sede_nombre: string | null;
   puesto_nombre: string | null;
   monto_estimado: string | null;
+  motivo_ultima_remocion: string | null;
+  agentes_rechazados: AgenteDeclino[];
 }
 
 interface CierreDiaRecord {
@@ -2249,7 +2258,7 @@ export default function Operaciones() {
   }
 
   // ── Remover agente de un SSA ─────────────────────────────────────────────
-  async function removerAgenteSSA(t: TarjetaSSAPendiente) {
+  async function removerAgenteSSA(t: TarjetaSSAPendiente, motivo?: string, notas?: string) {
     try {
       const r = await fetch(`${API_BASE}/solicitudes-servicio/${t.id}/remover-agente`, {
         method: "PATCH",
@@ -2257,13 +2266,17 @@ export default function Operaciones() {
           "Content-Type": "application/json",
           "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "",
         },
+        body: JSON.stringify({ motivo: motivo ?? null, notas: notas ?? null }),
       });
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
         toast({ title: "Error al remover agente", description: err.error ?? "Error desconocido", variant: "destructive" });
         return;
       }
-      toast({ title: "Agente removido", description: "El agente fue desvinculado del servicio y volvió al pool." });
+      const descripcionToast = motivo === "agente_declino"
+        ? "El agente declinó. Queda registrado y el SSA volvió a Pendiente Operaciones."
+        : "El agente fue desvinculado del servicio y volvió al pool.";
+      toast({ title: "Agente removido", description: descripcionToast });
       invalidate();
     } catch {
       toast({ title: "Error de red", description: "No se pudo conectar con el servidor.", variant: "destructive" });
@@ -2867,7 +2880,7 @@ export default function Operaciones() {
                         key={t.id}
                         t={t}
                         onAsignar={() => setModalAsignarSSA(t)}
-                        onRemover={isCerrado ? undefined : () => removerAgenteSSA(t)}
+                        onRemover={isCerrado ? undefined : (motivo, notas) => removerAgenteSSA(t, motivo, notas)}
                       />
                     ))
                   )
@@ -3158,6 +3171,16 @@ const TIPO_SSA_LABELS: Record<string, string> = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Motivos de remoción de agente SSA
+// ─────────────────────────────────────────────────────────────────────────────
+const MOTIVOS_REMOCION = [
+  { value: "error_asignacion", label: "Error de asignación", color: "text-orange-400 bg-orange-500/12 border-orange-500/25" },
+  { value: "agente_declino",   label: "Agente declinó",      color: "text-red-400 bg-red-500/12 border-red-500/25" },
+  { value: "cambio_operativo", label: "Cambio operativo",    color: "text-blue-400 bg-blue-500/12 border-blue-500/25" },
+  { value: "no_disponible",    label: "No disponible",       color: "text-yellow-400 bg-yellow-500/12 border-yellow-500/25" },
+  { value: "otro",             label: "Otro",                color: "text-white/40 bg-white/5 border-white/15" },
+] as const;
+
 // TarjetaSSACard — tarjeta visual para el panel SSA del Pizarrón
 // ─────────────────────────────────────────────────────────────────────────────
 function TarjetaSSACard({
@@ -3167,15 +3190,20 @@ function TarjetaSSACard({
 }: {
   t: TarjetaSSAPendiente;
   onAsignar: () => void;
-  onRemover?: () => void;
+  onRemover?: (motivo: string, notas?: string) => void;
 }) {
-  const [confirmando, setConfirmando] = useState(false);
+  const [paso, setPaso] = useState<"idle" | "motivo" | "confirmar">("idle");
+  const [motivoSel, setMotivoSel] = useState<string>("");
+  const [notas, setNotas] = useState("");
+
+  function resetear() { setPaso("idle"); setMotivoSel(""); setNotas(""); }
 
   const estaHoy = t.fecha
     ? new Date(t.fecha + "T12:00:00").toDateString() === new Date().toDateString()
     : false;
 
   const sinAgente = !t.agente_id;
+  const tieneRechazados = (t.agentes_rechazados?.length ?? 0) > 0;
 
   const prioColor = sinAgente
     ? t.prioridad === "urgente" ? "border-red-500/40 bg-red-500/6"
@@ -3188,24 +3216,66 @@ function TarjetaSSACard({
     :                                          "text-amber-400 bg-amber-500/15";
 
   return (
-    <div className={`relative shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 min-w-[210px] max-w-[240px] text-left transition-all ${prioColor}`}>
+    <div className={`relative shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 min-w-[220px] max-w-[250px] text-left transition-all ${prioColor}`}>
 
-      {/* Confirmación inline de remoción */}
-      {confirmando && onRemover && (
-        <div className="absolute inset-0 z-10 rounded-xl bg-[#0a1628]/95 border border-red-500/30 flex flex-col items-center justify-center gap-2 p-3">
-          <p className="text-[11px] text-white/80 text-center font-medium">¿Remover agente del servicio?</p>
-          <div className="flex gap-2">
+      {/* ── Paso 1: selector de motivo ─────────────────────────────────────── */}
+      {paso === "motivo" && onRemover && (
+        <div className="absolute inset-0 z-10 rounded-xl bg-[#080f1e]/97 border border-white/10 flex flex-col p-3 gap-2 overflow-hidden">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-bold text-white/70 uppercase tracking-wide">Motivo de remoción</p>
+            <button onClick={(e) => { e.stopPropagation(); resetear(); }} className="text-white/25 hover:text-white/60 transition-colors">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+          <div className="flex flex-col gap-1">
+            {MOTIVOS_REMOCION.map((m) => (
+              <button
+                key={m.value}
+                onClick={(e) => { e.stopPropagation(); setMotivoSel(m.value); setPaso("confirmar"); }}
+                className={`text-left text-[10px] font-medium px-2.5 py-1.5 rounded-lg border transition-colors hover:brightness-125 ${m.color}`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Paso 2: confirmar remoción ─────────────────────────────────────── */}
+      {paso === "confirmar" && onRemover && (
+        <div className="absolute inset-0 z-10 rounded-xl bg-[#080f1e]/97 border border-red-500/20 flex flex-col items-center justify-center gap-3 p-3">
+          <div className="text-center">
+            <p className="text-[10px] font-bold text-white/70 uppercase tracking-wide mb-1">Confirmar remoción</p>
+            <p className="text-[10px] text-white/50">
+              Motivo: <span className="text-white/80 font-medium">
+                {MOTIVOS_REMOCION.find(m => m.value === motivoSel)?.label ?? motivoSel}
+              </span>
+            </p>
+            {motivoSel === "agente_declino" && (
+              <p className="text-[9px] text-red-400/70 mt-1">El agente quedará registrado como "declinó"</p>
+            )}
+          </div>
+          {motivoSel === "otro" && (
+            <input
+              placeholder="Notas (opcional)"
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full text-[10px] bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white/70 placeholder:text-white/25 outline-none"
+            />
+          )}
+          <div className="flex gap-2 w-full">
             <button
-              onClick={(e) => { e.stopPropagation(); onRemover(); setConfirmando(false); }}
-              className="text-[10px] font-bold px-3 py-1 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/35 transition-colors"
+              onClick={(e) => { e.stopPropagation(); setPaso("motivo"); }}
+              className="flex-1 text-[10px] px-2 py-1.5 rounded-lg bg-white/5 text-white/40 hover:bg-white/10 transition-colors"
             >
-              Confirmar
+              ← Atrás
             </button>
             <button
-              onClick={(e) => { e.stopPropagation(); setConfirmando(false); }}
-              className="text-[10px] px-3 py-1 rounded-lg bg-white/8 text-white/50 hover:bg-white/15 transition-colors"
+              onClick={(e) => { e.stopPropagation(); onRemover(motivoSel, notas || undefined); resetear(); }}
+              className="flex-1 text-[10px] font-bold px-2 py-1.5 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/35 transition-colors"
             >
-              Cancelar
+              Confirmar
             </button>
           </div>
         </div>
@@ -3217,13 +3287,17 @@ function TarjetaSSACard({
           {t.prioridad}
         </span>
         {estaHoy && <span className="text-[9px] text-amber-300/70 font-semibold">HOY</span>}
+        {tieneRechazados && (
+          <span title={`${t.agentes_rechazados.length} declinaron`} className="text-[9px] text-red-400/70 font-semibold">
+            ↩{t.agentes_rechazados.length}
+          </span>
+        )}
         <span className="text-[9px] text-white/25 font-mono">{t.id.slice(0, 8)}</span>
         <div className="ml-auto flex items-center gap-1">
-          {/* Botón × remover — solo aparece si hay agente y se permite */}
           {!sinAgente && onRemover && (
             <button
-              onClick={(e) => { e.stopPropagation(); setConfirmando(true); }}
-              title="Remover agente"
+              onClick={(e) => { e.stopPropagation(); setPaso("motivo"); }}
+              title="Remover agente (seleccionar motivo)"
               className="w-4 h-4 rounded-full flex items-center justify-center text-white/20 hover:text-red-400 hover:bg-red-500/15 transition-colors"
             >
               <X className="w-2.5 h-2.5" />
@@ -3258,7 +3332,14 @@ function TarjetaSSACard({
 
         {/* Estado según etapa */}
         {sinAgente ? (
-          <p className="text-[9px] text-amber-400/70 mt-1 font-medium">Toca para asignar guardia →</p>
+          <div>
+            {tieneRechazados && (
+              <p className="text-[9px] text-red-400/60 mt-0.5">
+                {t.agentes_rechazados.map(a => a.nombre.split(" ")[0]).join(", ")} declinaron
+              </p>
+            )}
+            <p className="text-[9px] text-amber-400/70 mt-1 font-medium">Toca para asignar guardia →</p>
+          </div>
         ) : (
           <div className="mt-1 space-y-0.5">
             <div className="flex items-center gap-1">
@@ -3416,6 +3497,19 @@ function ModalAsignarSSA({
           </div>
         </div>
 
+        {/* Banner: agentes que declinaron */}
+        {(tarjeta.agentes_rechazados?.length ?? 0) > 0 && (
+          <div className="mx-5 mt-2 flex items-start gap-2 bg-red-500/8 border border-red-500/20 rounded-xl px-3 py-2 shrink-0">
+            <Info className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-[10px] font-semibold text-red-400">Agentes que declinaron este servicio</p>
+              <p className="text-[10px] text-red-300/60 mt-0.5 leading-snug">
+                {tarjeta.agentes_rechazados.map(a => a.nombre).join(", ")}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Selector de agente */}
         <div className="px-5 pt-3 pb-1 shrink-0">
           <div className="flex items-center justify-between mb-2">
@@ -3441,28 +3535,40 @@ function ModalAsignarSSA({
               </p>
             </div>
           ) : (
-            agentesDisponibles.map((a) => (
-              <button
-                key={a.id}
-                onClick={() => setAgenteSeleccionado(a)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
-                  agenteSeleccionado?.id === a.id
-                    ? "bg-primary/15 border-primary/40 shadow-sm shadow-primary/10"
-                    : "bg-[#0c1929] border-white/6 hover:border-white/15"
-                }`}
-              >
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0 ${avatarColor(a.nombre_completo)}`}>
-                  {iniciales(a.nombre_completo)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-white/90 truncate">{a.nombre_completo}</p>
-                  <p className="text-[10px] text-white/35 truncate">{a.puesto ?? "Agente"}{a.sede ? ` · ${a.sede}` : ""}</p>
-                </div>
-                {agenteSeleccionado?.id === a.id && (
-                  <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
-                )}
-              </button>
-            ))
+            agentesDisponibles.map((a) => {
+              const declino = tarjeta.agentes_rechazados?.find(r => r.id === a.id);
+              return (
+                <button
+                  key={a.id}
+                  onClick={() => setAgenteSeleccionado(a)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
+                    agenteSeleccionado?.id === a.id
+                      ? "bg-primary/15 border-primary/40 shadow-sm shadow-primary/10"
+                      : declino
+                      ? "bg-red-500/5 border-red-500/15 hover:border-red-500/25"
+                      : "bg-[#0c1929] border-white/6 hover:border-white/15"
+                  }`}
+                >
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0 ${avatarColor(a.nombre_completo)}`}>
+                    {iniciales(a.nombre_completo)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className={`text-xs font-semibold truncate ${declino ? "text-white/50" : "text-white/90"}`}>{a.nombre_completo}</p>
+                      {declino && (
+                        <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/20 shrink-0">
+                          Declinó
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-white/35 truncate">{a.puesto ?? "Agente"}{a.sede ? ` · ${a.sede}` : ""}</p>
+                  </div>
+                  {agenteSeleccionado?.id === a.id && (
+                    <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                  )}
+                </button>
+              );
+            })
           )}
         </div>
 

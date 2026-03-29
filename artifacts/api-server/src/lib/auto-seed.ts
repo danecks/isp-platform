@@ -1769,5 +1769,32 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SSA-04 elegible_pool — error (no bloqueante)");
   }
 
+  // ── SSA-05: Historial de cambios + trazabilidad de remoción ────────────────
+  // Nuevas columnas en solicitudes_servicio_adicional + tabla ssa_historial_cambios
+  try {
+    await pool.query(`
+      ALTER TABLE solicitudes_servicio_adicional
+        ADD COLUMN IF NOT EXISTS motivo_ultima_remocion VARCHAR(50),
+        ADD COLUMN IF NOT EXISTS agentes_rechazados     JSONB NOT NULL DEFAULT '[]'
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ssa_historial_cambios (
+        id               SERIAL PRIMARY KEY,
+        ssa_id           VARCHAR NOT NULL,
+        tipo_evento      VARCHAR(30) NOT NULL,
+        agente_id        INTEGER,
+        agente_nombre    VARCHAR(255),
+        motivo           VARCHAR(50),
+        notas            TEXT,
+        usuario_sesion   VARCHAR(100),
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ssa_hist_ssa_id ON ssa_historial_cambios(ssa_id)`);
+    logger.info("Auto-migrate: SSA-05 historial/trazabilidad verificado/creado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SSA-05 historial — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

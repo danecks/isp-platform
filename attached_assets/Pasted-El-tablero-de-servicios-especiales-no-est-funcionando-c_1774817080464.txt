@@ -1,0 +1,185 @@
+El tablero de servicios especiales no está funcionando como debería y no quiero depender de un tablero separado para operar estos casos.
+
+## Problema actual
+Hoy Replit me indica que lo que existe es:
+
+- Tarjetas sin agente → tocar tarjeta → abre modal para asignar guardia
+- Tarjetas con agente (cubierta) → botón × → confirmación inline → remueve al agente y regresa el SSA a "Pendiente Operaciones"
+
+Pero esto no es suficiente para mi flujo real.
+
+Además, el tablero de servicios especiales no me está funcionando bien / no aparece como debería, y no quiero seguir duplicando la operación entre dos tableros.
+
+---
+
+## Objetivo
+Quiero que los servicios especiales se operen directamente desde el Pizarrón Operativo, no desde un tablero aparte.
+
+Quiero que el Pizarrón Operativo sea el actor principal y que desde ahí se puedan hacer todos los cambios reales del servicio especial:
+
+- asignar agente
+- cambiar agente
+- remover agente
+- registrar si el agente declinó
+- devolver el agente al pool si corresponde
+- actualizar el estado del SSA
+- mantener trazabilidad
+
+---
+
+## 1. Eliminar dependencia del tablero de servicios especiales
+No quiero que la operación dependa de un tablero separado de SSA.
+
+Quiero que los servicios especiales aparezcan dentro del Pizarrón Operativo como tarjetas diferenciadas visualmente (tenues o especiales), pero operables desde ahí mismo.
+
+Debe poder verse:
+- cliente
+- tipo de servicio especial
+- fecha / rango
+- horario
+- prioridad
+- estado
+- agente asignado si existe
+- si está pendiente o cubierta
+
+---
+
+## 2. Operación completa desde el Pizarrón Operativo
+Desde el Pizarrón Operativo, al interactuar con una tarjeta de servicio especial, quiero poder:
+
+### A. Asignar un agente
+- desde pool disponible
+- desde relevo temporal
+- horas extra al titular
+- cambio de titular si aplica
+- contratación nueva si aplica
+
+### B. Remover un agente asignado
+- si me equivoqué
+- si el agente declinó
+- si hubo cambio de decisión
+- si necesito reasignar
+
+### C. Reasignar otro agente
+- remover uno y asignar otro sin romper el flujo
+
+---
+
+## 3. Motivo de remoción (nuevo)
+Cuando se quite un agente de un servicio especial, no quiero solo un botón × sin contexto.
+
+Quiero que al remover aparezca una pregunta breve de motivo, con opciones como:
+- error de asignación
+- agente declinó
+- cambio operativo
+- no disponible
+- otro
+
+---
+
+## 4. Caso especial: agente declinó
+Si el motivo es agente declinó, quiero una lógica clara:
+
+### A. Registro
+- guardar el motivo explícitamente en el SSA o en historial
+- dejar trazabilidad de que ese agente fue intentado y no aceptó
+
+### B. Estado del agente
+- el agente debe volver al pool si corresponde
+- pero si conviene, marcarlo temporalmente como “no disponible para este SSA” para que no lo vuelvan a seleccionar en ese mismo servicio especial inmediatamente
+
+### C. Estado del servicio especial
+- debe volver a "Pendiente Operaciones"
+- o quedar parcialmente cubierto si aún hay otros agentes asignados
+
+---
+
+## 5. Reversión operativa correcta
+Cuando se remueva un agente de un servicio especial desde el Pizarrón Operativo:
+
+### Si no ha iniciado cobertura
+- deshacer asignación
+- devolverlo al pool correcto
+- no generar horas
+
+### Si ya inició cobertura
+- cerrar segmento con hora_fin real
+- calcular horas trabajadas parciales
+- devolverlo al pool o al estado que corresponda
+- dejar el SSA listo para nueva cobertura
+
+---
+
+## 6. Pool de agentes
+Corregir que, al remover un agente de un servicio especial:
+- vuelva correctamente al pool
+- no quede “perdido”
+- no desaparezca del sistema
+- no siga apareciendo como cubriendo si ya fue removido
+
+Y a la vez:
+- no mostrar en el pool agentes que no sean elegibles operativamente para cubrir
+
+---
+
+## 7. Estado del SSA
+El SSA debe recalcularse correctamente según la operación real:
+
+### Ejemplos
+- sin agentes asignados → Pendiente Operaciones
+- parcialmente cubierto → Parcial
+- totalmente cubierto → Cubierta
+- terminado → Finalizado
+- cancelado → Cancelado
+
+No quiero estados visuales inconsistentes.
+
+---
+
+## 8. Historial de cambios del SSA
+Quiero dejar trazabilidad clara de:
+- quién asignó
+- quién removió
+- qué motivo puso
+- si el agente declinó
+- cuándo pasó
+- quién cubrió después
+
+Esto debe servir para reportería y seguimiento operativo.
+
+---
+
+## 9. Mantener un solo centro operativo
+Muy importante:
+no quiero que la operación de servicios especiales viva en otro tablero separado.
+
+Quiero que el Pizarrón Operativo sea el centro real de trabajo, y que los SSA aparezcan ahí como una capa especial pero totalmente operable.
+
+---
+
+## 10. No romper
+No romper:
+- pipeline del servicio especial
+- RRHH
+- comercial
+- tareas vinculadas
+- pre-planilla
+- cobertura diaria
+- segmentos
+- pool de agentes
+- historial de titularidad
+- reportería
+
+---
+
+## 11. Documentación
+Explica claramente:
+- cómo se operan ahora los servicios especiales desde el Pizarrón Operativo
+- cómo funciona la remoción
+- qué pasa si el agente declina
+- cómo vuelve al pool
+- cómo se recalcula el estado del SSA
+- cómo queda el historial
+
+Muy importante:
+quiero que la operación de servicios especiales sea rápida, centralizada y completamente manejable desde el Pizarrón Operativo, sin depender de otro tablero aparte y sin dejar agentes mal asignados o estados inconsistentes.

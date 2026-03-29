@@ -168,6 +168,8 @@ solicitudesServicioRouter.get("/solicitudes-servicio/tablero", async (_req, res)
         s.observaciones_operaciones, s.observaciones_comercial,
         s.tarjeta_activa, s.resumen_final, s.resumen_generado_at,
         s.fecha_inicio_real, s.fecha_fin_real,
+        s.motivo_ultima_remocion,
+        COALESCE(s.agentes_rechazados, '[]'::jsonb) AS agentes_rechazados,
         c.nombre AS cliente_nombre, c.portal_cliente_id AS cliente_portal_id,
         cs.nombre AS sede_nombre, cs.direccion AS sede_direccion,
         po.nombre AS puesto_nombre,
@@ -618,6 +620,14 @@ solicitudesServicioRouter.patch("/solicitudes-servicio/:id/asignar-agente", asyn
       }
     }
 
+    // ── Historial de cambios ──────────────────────────────────────────────────
+    const sesion = (req.headers["x-isp-session"] as string | undefined) ?? null;
+    await pool.query(
+      `INSERT INTO ssa_historial_cambios (ssa_id, tipo_evento, agente_id, agente_nombre, usuario_sesion)
+       VALUES ($1, 'asignado', $2, $3, $4)`,
+      [id, agenteId ?? null, agenteNombre, sesion],
+    ).catch(() => {});
+
     const { rows } = await pool.query(
       `SELECT s.*, c.nombre AS cliente_nombre, e.nombre_completo AS agente_nombre_completo, cs.nombre AS sede_nombre
        FROM solicitudes_servicio_adicional s
@@ -636,22 +646,35 @@ solicitudesServicioRouter.patch("/solicitudes-servicio/:id/asignar-agente", asyn
 // ─────────────────────────────────────────────────────────────────────────────
 // PATCH /api/solicitudes-servicio/:id/remover-agente — revertir asignación
 // ─────────────────────────────────────────────────────────────────────────────
+// Body: { motivo?, notas? }
+//   motivo: 'error_asignacion' | 'agente_declino' | 'cambio_operativo' | 'no_disponible' | 'otro'
 // Reglas:
 //   • Solo si el servicio NO está cerrado ni cancelado
 //   • Solo si hay agente asignado
 //   • Si el servicio aún no inició → elimina/revierte novedad de nómina
 //   • Si ya inició → mantiene horas reales trabajadas
+//   • Si motivo = 'agente_declino' → agente queda en agentes_rechazados del SSA
+//   • Registra evento en ssa_historial_cambios
 //   • Agente vuelve al pool de disponibles automáticamente (pool consulta DB en tiempo real)
+const MOTIVOS_REMOCION_VALIDOS = ["error_asignacion", "agente_declino", "cambio_operativo", "no_disponible", "otro"];
 solicitudesServicioRouter.patch("/solicitudes-servicio/:id/remover-agente", async (req, res) => {
   try {
     const { id } = req.params;
+    const { motivo, notas } = req.body as { motivo?: string; notas?: string };
+    if (motivo && !MOTIVOS_REMOCION_VALIDOS.includes(motivo)) {
+      return res.status(400).json({ error: "Motivo de remoción inválido" });
+    }
 
-    // 1. Cargar SSA
+    // 1. Cargar SSA (incluyendo agentes_rechazados y nombre actual del agente)
     const { rows: curr } = await pool.query(
-      `SELECT id, estado_general, estado_operaciones, estado_rrhh, estado_comercial,
-              agente_id, hora_inicio, hora_fin, fecha, fecha_inicio_real,
-              puesto_id, tarea_operaciones_id, tarea_rrhh_id
-       FROM solicitudes_servicio_adicional WHERE id = $1`,
+      `SELECT s.id, s.estado_general, s.estado_operaciones, s.estado_rrhh, s.estado_comercial,
+              s.agente_id, s.agente_nombre, s.hora_inicio, s.hora_fin, s.fecha, s.fecha_inicio_real,
+              s.puesto_id, s.tarea_operaciones_id, s.tarea_rrhh_id,
+              COALESCE(s.agentes_rechazados, '[]'::jsonb) AS agentes_rechazados,
+              e.nombre_completo AS agente_nombre_completo
+       FROM solicitudes_servicio_adicional s
+       LEFT JOIN employees e ON e.id = s.agente_id
+       WHERE s.id = $1`,
       [id],
     );
     if (curr.length === 0) return res.status(404).json({ error: "Solicitud no encontrada" });
@@ -750,23 +773,42 @@ solicitudesServicioRouter.patch("/solicitudes-servicio/:id/remover-agente", asyn
     }
 
     // 7. Resetear el SSA: vuelve a estado sin cobertura
+    // Si motivo = 'agente_declino', añadir al array de agentes rechazados para trazabilidad
+    const agenteNombreCompleto: string = s.agente_nombre_completo ?? s.agente_nombre ?? "";
+    const rechazadoEntry = { id: agenteId, nombre: agenteNombreCompleto, motivo: motivo ?? "sin_motivo", fecha: new Date().toISOString() };
+    const agentesRechazadosActuales: any[] = Array.isArray(s.agentes_rechazados) ? s.agentes_rechazados : [];
+    const nuevoRechazados = motivo === "agente_declino"
+      ? [...agentesRechazadosActuales.filter((a: any) => a.id !== agenteId), rechazadoEntry]
+      : agentesRechazadosActuales;
+
     await pool.query(
       `UPDATE solicitudes_servicio_adicional
-       SET agente_id            = NULL,
-           agente_nombre        = NULL,
-           tipo_cobertura       = NULL,
-           cubierta_con         = NULL,
-           estado_operaciones   = 'en_proceso',
-           estado_rrhh          = CASE WHEN estado_rrhh IN ('completado', 'viable') THEN 'pendiente' ELSE estado_rrhh END,
-           estado_general       = 'pendiente_operaciones',
-           estado_preplanilla   = 'pendiente',
-           enviado_preplanilla_at = NULL,
-           fecha_inicio_real    = NULL,
-           fecha_fin_real       = NULL,
-           updated_at           = NOW()
+       SET agente_id               = NULL,
+           agente_nombre           = NULL,
+           tipo_cobertura          = NULL,
+           cubierta_con            = NULL,
+           estado_operaciones      = 'en_proceso',
+           estado_rrhh             = CASE WHEN estado_rrhh IN ('completado', 'viable') THEN 'pendiente' ELSE estado_rrhh END,
+           estado_general          = 'pendiente_operaciones',
+           estado_preplanilla      = 'pendiente',
+           enviado_preplanilla_at  = NULL,
+           fecha_inicio_real       = NULL,
+           fecha_fin_real          = NULL,
+           motivo_ultima_remocion  = $2,
+           agentes_rechazados      = $3::jsonb,
+           updated_at              = NOW()
        WHERE id = $1`,
-      [id],
+      [id, motivo ?? null, JSON.stringify(nuevoRechazados)],
     );
+
+    // 8. Registrar en historial de cambios
+    const tipoEvento = motivo === "agente_declino" ? "declinado" : "removido";
+    const sesion = (req.headers["x-isp-session"] as string | undefined) ?? null;
+    await pool.query(
+      `INSERT INTO ssa_historial_cambios (ssa_id, tipo_evento, agente_id, agente_nombre, motivo, notas, usuario_sesion)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [id, tipoEvento, agenteId, agenteNombreCompleto, motivo ?? null, notas ?? null, sesion],
+    ).catch(() => {});
 
     const { rows } = await pool.query(
       `SELECT s.*, c.nombre AS cliente_nombre, e.nombre_completo AS agente_nombre_completo, cs.nombre AS sede_nombre
@@ -778,11 +820,31 @@ solicitudesServicioRouter.patch("/solicitudes-servicio/:id/remover-agente", asyn
       [id],
     );
 
-    logger.info({ id, agenteId, yaInicio }, "SSA: agente removido correctamente");
+    logger.info({ id, agenteId, yaInicio, motivo, tipoEvento }, "SSA: agente removido correctamente");
     return res.json(rows[0]);
   } catch (err) {
     logger.error({ err }, "solicitudes-servicio: PATCH remover-agente error");
     return res.status(500).json({ error: "Error al remover agente" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/solicitudes-servicio/:id/historial — trazabilidad de cambios
+// ─────────────────────────────────────────────────────────────────────────────
+solicitudesServicioRouter.get("/solicitudes-servicio/:id/historial", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rows } = await pool.query(
+      `SELECT id, tipo_evento, agente_id, agente_nombre, motivo, notas, usuario_sesion, created_at
+       FROM ssa_historial_cambios
+       WHERE ssa_id = $1
+       ORDER BY created_at DESC`,
+      [id],
+    );
+    return res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "solicitudes-servicio: GET historial error");
+    return res.status(500).json({ error: "Error al obtener historial" });
   }
 });
 
