@@ -1,13 +1,15 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useRoute, useLocation } from "wouter";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "../layout/AdminLayout";
 import {
   Building2, MapPin, Shield, Users, ChevronRight, ChevronDown,
   Plus, Trash2, X, Loader2, CheckCircle, AlertTriangle,
   Edit3, Save, ArrowLeft, Clock, Banknote, RefreshCw,
   UserCheck, Zap, Calendar, FileText, LayoutGrid, Activity,
-  ChevronLeft, History
+  ChevronLeft, History, UserCog, Mail, Phone, Power, PowerOff,
+  KeyRound, Lock, AlertCircle, Check
 } from "lucide-react";
 
 const API = "/api";
@@ -708,8 +710,338 @@ function ModalNuevaSede({ clientId, onClose, onSaved }: { clientId: number; onCl
   );
 }
 
+// ─── Tipos para usuarios de cliente ──────────────────────────────────────────
+interface UsuarioCliente {
+  id: number;
+  nombre: string;
+  username: string;
+  correo: string | null;
+  telefono: string | null;
+  rol: string;
+  estado: string;
+  cliente_id: string | null;
+  created_at: string;
+}
+
+// ─── Modal: Nuevo usuario para el cliente ─────────────────────────────────────
+function ModalNuevoUsuarioCliente({ clienteDbId, onClose, onCreated }: {
+  clienteDbId: number;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [form, setForm] = useState({ nombre: "", username: "", correo: "", password: "", confirmPassword: "", telefono: "", estado: "activo" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [usernameError, setUsernameError] = useState("");
+
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  async function checkUsername(u: string) {
+    if (!u.trim()) return;
+    try {
+      const r = await fetch(`${API}/users/check?username=${encodeURIComponent(u.trim())}`, { headers: h() });
+      const data = await r.json();
+      setUsernameError(data.available ? "" : "Este username ya está en uso");
+    } catch { /* ignorar */ }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (usernameError) { setError(usernameError); return; }
+    if (form.password !== form.confirmPassword) { setError("Las contraseñas no coinciden"); return; }
+    if (form.password.length < 4) { setError("Contraseña mínimo 4 caracteres"); return; }
+    setLoading(true);
+    setError("");
+    try {
+      const r = await fetch(`${API}/clientes/${clienteDbId}/usuarios`, {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ nombre: form.nombre, username: form.username.toLowerCase(), correo: form.correo || undefined, password: form.password, telefono: form.telefono || undefined, estado: form.estado }),
+      });
+      if (!r.ok) { const d = await r.json(); throw new Error(d.error ?? "Error al crear usuario"); }
+      onCreated();
+      onClose();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
+      <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-5 border-b border-white/5 sticky top-0 bg-[#07111f] z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center">
+              <Plus className="w-3.5 h-3.5 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-white">Nuevo Usuario del Cliente</h2>
+              <p className="text-[10px] text-white/40">Acceso al Portal de Clientes</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-white/40 hover:text-white">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-[11px] text-white/50 font-medium">Nombre completo *</label>
+            <input value={form.nombre} onChange={e => set("nombre", e.target.value)} required
+              className="w-full h-9 bg-[#060e1c] border border-white/10 text-white text-sm rounded-md px-3 outline-none focus:border-primary/50"
+              placeholder="Ej: Ana García" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-white/50 font-medium">Username *</label>
+              <input value={form.username} onChange={e => { set("username", e.target.value.toLowerCase()); setUsernameError(""); }}
+                onBlur={e => checkUsername(e.target.value)} required
+                className={`w-full h-9 bg-[#060e1c] border text-white text-sm rounded-md px-3 outline-none ${usernameError ? "border-red-500/60" : "border-white/10 focus:border-primary/50"}`}
+                placeholder="ana.garcia" />
+              {usernameError && <p className="text-[10px] text-red-400">{usernameError}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-white/50 font-medium">Estado</label>
+              <select value={form.estado} onChange={e => set("estado", e.target.value)}
+                className="w-full h-9 bg-[#060e1c] border border-white/10 text-white text-sm rounded-md px-3 outline-none focus:border-primary/50">
+                <option value="activo">Activo</option>
+                <option value="inactivo">Inactivo</option>
+              </select>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[11px] text-white/50 font-medium flex items-center gap-1"><Mail className="w-3 h-3" />Correo</label>
+            <input type="email" value={form.correo} onChange={e => set("correo", e.target.value)}
+              className="w-full h-9 bg-[#060e1c] border border-white/10 text-white text-sm rounded-md px-3 outline-none focus:border-primary/50"
+              placeholder="correo@empresa.gt" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[11px] text-white/50 font-medium flex items-center gap-1"><Phone className="w-3 h-3" />Teléfono</label>
+            <input value={form.telefono} onChange={e => set("telefono", e.target.value)}
+              className="w-full h-9 bg-[#060e1c] border border-white/10 text-white text-sm rounded-md px-3 font-mono outline-none focus:border-primary/50"
+              placeholder="50212345678" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-white/50 font-medium flex items-center gap-1"><Lock className="w-3 h-3" />Contraseña *</label>
+              <input type="password" value={form.password} onChange={e => set("password", e.target.value)} required
+                className="w-full h-9 bg-[#060e1c] border border-white/10 text-white text-sm rounded-md px-3 outline-none focus:border-primary/50"
+                placeholder="Mínimo 4 car." />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-white/50 font-medium">Confirmar *</label>
+              <input type="password" value={form.confirmPassword} onChange={e => set("confirmPassword", e.target.value)} required
+                className="w-full h-9 bg-[#060e1c] border border-white/10 text-white text-sm rounded-md px-3 outline-none focus:border-primary/50"
+                placeholder="Repita" />
+            </div>
+          </div>
+          {error && (
+            <div className="flex items-center gap-2 bg-red-950/40 border border-red-500/20 rounded-lg px-3 py-2">
+              <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+              <p className="text-xs text-red-400">{error}</p>
+            </div>
+          )}
+          <div className="flex gap-3 pt-1">
+            <button type="button" onClick={onClose}
+              className="flex-1 h-9 border border-white/10 text-white/60 rounded-md text-xs hover:text-white hover:border-white/20 transition-colors">
+              Cancelar
+            </button>
+            <button type="submit" disabled={loading}
+              className="flex-1 h-9 bg-primary text-[#050d1a] font-bold rounded-md text-xs hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5" />Crear Usuario</>}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── Tab: Usuarios del Cliente ────────────────────────────────────────────────
+function TabUsuariosCliente({ clienteDbId }: { clienteDbId: number }) {
+  const qc = useQueryClient();
+  const [showModal, setShowModal] = useState(false);
+  const [resettingPw, setResettingPw] = useState<UsuarioCliente | null>(null);
+  const [newPw, setNewPw] = useState("");
+  const [pwLoading, setPwLoading] = useState(false);
+
+  const { data: usuarios = [], isLoading } = useQuery<UsuarioCliente[]>({
+    queryKey: ["clientes-usuarios", clienteDbId],
+    queryFn: async () => {
+      const r = await fetch(`${API}/clientes/${clienteDbId}/usuarios`, { headers: h() });
+      if (!r.ok) throw new Error();
+      return r.json();
+    },
+    staleTime: 30_000,
+  });
+
+  async function toggleEstado(u: UsuarioCliente) {
+    const nuevoEstado = u.estado === "activo" ? "inactivo" : "activo";
+    await fetch(`${API}/users/${u.id}`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ estado: nuevoEstado }),
+    });
+    qc.invalidateQueries({ queryKey: ["clientes-usuarios", clienteDbId] });
+  }
+
+  async function resetPassword() {
+    if (!resettingPw || newPw.length < 4) return;
+    setPwLoading(true);
+    try {
+      await fetch(`${API}/users/${resettingPw.id}`, {
+        method: "PATCH",
+        headers: h(),
+        body: JSON.stringify({ password: newPw }),
+      });
+      setResettingPw(null);
+      setNewPw("");
+    } finally {
+      setPwLoading(false);
+    }
+  }
+
+  if (isLoading) return (
+    <div className="flex items-center justify-center py-12">
+      <Loader2 className="w-5 h-5 animate-spin text-white/30" />
+    </div>
+  );
+
+  return (
+    <div className="p-5 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold text-white/70">Usuarios del Portal</p>
+          <p className="text-[10px] text-white/30 mt-0.5">Cuentas con acceso al portal de clientes vinculadas a este cliente</p>
+        </div>
+        <button onClick={() => setShowModal(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 border border-primary/20 text-primary rounded-lg text-xs font-semibold hover:bg-primary/20 transition-colors">
+          <Plus className="w-3 h-3" />Nuevo Usuario
+        </button>
+      </div>
+
+      {/* Lista */}
+      {usuarios.length === 0 ? (
+        <div className="text-center py-12 border border-dashed border-white/10 rounded-xl">
+          <UserCog className="w-7 h-7 text-white/10 mx-auto mb-3" />
+          <p className="text-white/40 text-sm font-medium">Sin usuarios registrados</p>
+          <p className="text-white/20 text-xs mt-1">Crea un usuario para que este cliente acceda al portal.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {usuarios.map(u => (
+            <div key={u.id} className="bg-[#070f1c] border border-white/8 rounded-xl p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-sm font-semibold text-white truncate">{u.nombre}</p>
+                    <span className={`shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold border ${
+                      u.estado === "activo"
+                        ? "text-green-400 bg-green-400/10 border-green-400/20"
+                        : "text-red-400 bg-red-400/10 border-red-400/20"
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${u.estado === "activo" ? "bg-green-400" : "bg-red-400"}`} />
+                      {u.estado === "activo" ? "Activo" : "Inactivo"}
+                    </span>
+                  </div>
+                  <code className="text-[11px] text-primary bg-primary/10 px-1.5 py-0.5 rounded">@{u.username}</code>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+                    {u.correo && (
+                      <span className="flex items-center gap-1 text-[10px] text-white/40">
+                        <Mail className="w-3 h-3" />{u.correo}
+                      </span>
+                    )}
+                    {u.telefono && (
+                      <span className="flex items-center gap-1 text-[10px] text-white/40">
+                        <Phone className="w-3 h-3" />{u.telefono}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => { setResettingPw(u); setNewPw(""); }}
+                    title="Cambiar contraseña"
+                    className="p-1.5 rounded-lg text-white/30 hover:text-yellow-400 hover:bg-yellow-400/10 transition-colors border border-white/8 hover:border-yellow-400/20"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => toggleEstado(u)}
+                    title={u.estado === "activo" ? "Desactivar" : "Activar"}
+                    className={`p-1.5 rounded-lg border transition-colors ${
+                      u.estado === "activo"
+                        ? "text-white/30 hover:text-red-400 border-white/8 hover:bg-red-400/10 hover:border-red-400/20"
+                        : "text-white/30 hover:text-green-400 border-white/8 hover:bg-green-400/10 hover:border-green-400/20"
+                    }`}
+                  >
+                    {u.estado === "activo" ? <PowerOff className="w-3.5 h-3.5" /> : <Power className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Regla de negocio */}
+      <div className="bg-blue-950/20 border border-blue-500/15 rounded-xl px-4 py-3 flex items-start gap-2">
+        <Shield className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+        <p className="text-[10px] text-blue-300/70 leading-relaxed">
+          Los usuarios creados aquí tienen rol <strong>cliente</strong> y acceso únicamente al portal de clientes.
+          Quedan ligados automáticamente al ID de portal de este cliente.
+        </p>
+      </div>
+
+      {/* Modal nueva contraseña */}
+      {resettingPw && createPortal(
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
+          <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-xs p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-bold text-white">Cambiar contraseña</p>
+              <button onClick={() => setResettingPw(null)} className="text-white/40 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            <p className="text-[11px] text-white/40">Nueva contraseña para <strong className="text-white/70">{resettingPw.nombre}</strong></p>
+            <div className="flex items-center gap-2">
+              <input
+                type="password"
+                value={newPw}
+                onChange={e => setNewPw(e.target.value)}
+                placeholder="Mínimo 4 caracteres"
+                className="flex-1 h-9 bg-[#060e1c] border border-white/10 text-white text-sm rounded-md px-3 outline-none focus:border-primary/50"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setResettingPw(null)} className="flex-1 h-9 border border-white/10 text-white/60 rounded-md text-xs hover:text-white">Cancelar</button>
+              <button onClick={resetPassword} disabled={pwLoading || newPw.length < 4}
+                className="flex-1 h-9 bg-yellow-500 text-black font-bold rounded-md text-xs hover:bg-yellow-400 disabled:opacity-40 flex items-center justify-center gap-1">
+                {pwLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><KeyRound className="w-3.5 h-3.5" />Cambiar</>}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Modal crear usuario */}
+      {showModal && (
+        <ModalNuevoUsuarioCliente
+          clienteDbId={clienteDbId}
+          onClose={() => setShowModal(false)}
+          onCreated={() => {
+            qc.invalidateQueries({ queryKey: ["clientes-usuarios", clienteDbId] });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
-type Tab = "general" | "estructura" | "cobertura" | "titulares";
+type Tab = "general" | "estructura" | "cobertura" | "titulares" | "usuarios";
 
 export default function FichaCliente() {
   const [, params] = useRoute("/admin/clientes/:id");
@@ -847,6 +1179,7 @@ export default function FichaCliente() {
               { id: "estructura", label: "Sedes y Estructura", icon: LayoutGrid },
               { id: "cobertura", label: "Cobertura Hoy", icon: Activity },
               { id: "titulares", label: "Titulares", icon: UserCheck },
+              { id: "usuarios", label: "Usuarios del Cliente", icon: UserCog },
             ] as const).map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
@@ -1105,6 +1438,11 @@ export default function FichaCliente() {
                 )}
               </div>
             </div>
+          )}
+
+          {/* ── Tab Usuarios del Cliente ──────────────────────────────────── */}
+          {tab === "usuarios" && (
+            <TabUsuariosCliente clienteDbId={clientId} />
           )}
 
           {/* ── Tab Titulares ─────────────────────────────────────────────── */}

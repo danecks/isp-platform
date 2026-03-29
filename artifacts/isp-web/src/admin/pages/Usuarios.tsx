@@ -5,7 +5,7 @@ import {
   UserCog, Plus, Search, Pencil, KeyRound, Power, PowerOff,
   X, Check, AlertCircle, Loader2, ShieldCheck, Mail, Phone,
   User, Lock, ChevronDown, MessageSquare, Zap, Wallet, Shield,
-  Info,
+  Info, Building, UserCheck,
 } from "lucide-react";
 import { AdminLayout } from "@/admin/layout/AdminLayout";
 import { Button } from "@/components/ui/button";
@@ -737,18 +737,36 @@ function EditarUsuarioModal({ user, onClose, onUpdated }: EditarModalProps) {
 }
 
 // ─── Main page ─────────────────────────────────────────────────────────────────
+interface Inconsistencia {
+  empleadosSinUsuario: Array<{ id: number; nombre_completo: string; area: string; puesto: string; estado_laboral: string }>;
+  clientesSinUsuario: Array<{ id: number; nombre: string; nombre_comercial: string | null; portal_cliente_id: string }>;
+  totalInconsistencias: number;
+}
+
 export default function AdminUsuarios() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [rolFiltro, setRolFiltro] = useState<string>("todos");
+  const [estadoFiltro, setEstadoFiltro] = useState<string>("todos");
   const [showNuevo, setShowNuevo] = useState(false);
   const [editUser, setEditUser] = useState<UserSafe | null>(null);
+  const [showInconsistencias, setShowInconsistencias] = useState(false);
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["users"],
     queryFn: usersApi.getAll,
     refetchInterval: 30_000,
+  });
+
+  const { data: inconsistencias } = useQuery<Inconsistencia>({
+    queryKey: ["users-inconsistencias"],
+    queryFn: async () => {
+      const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+      const r = await fetch(`${BASE}/api/users/inconsistencias`);
+      return r.json();
+    },
+    refetchInterval: 60_000,
   });
 
   const toggleEstado = useMutation({
@@ -770,13 +788,16 @@ export default function AdminUsuarios() {
       (u.correo ?? "").toLowerCase().includes(search.toLowerCase()) ||
       (u.telefono ?? "").includes(search);
     const matchRol = rolFiltro === "todos" || u.rol === rolFiltro;
-    return matchSearch && matchRol;
+    const matchEstado = estadoFiltro === "todos" || u.estado === estadoFiltro;
+    return matchSearch && matchRol && matchEstado;
   });
 
   const counts = {
     total: users.length,
     activos: users.filter(u => u.estado === "activo").length,
-    conTelefono: users.filter(u => u.telefono).length,
+    inactivos: users.filter(u => u.estado === "inactivo").length,
+    clientes: users.filter(u => u.rol === "cliente").length,
+    internos: users.filter(u => ["admin","operaciones","rrhh","comercial","supervisor"].includes(u.rol)).length,
   };
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["users"] });
@@ -806,33 +827,80 @@ export default function AdminUsuarios() {
         </div>
 
         {/* Stat cards */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { label: "Total usuarios", value: counts.total, color: "text-white" },
+            { label: "Total", value: counts.total, color: "text-white" },
             { label: "Activos", value: counts.activos, color: "text-green-400" },
-            { label: "Con WhatsApp", value: counts.conTelefono, color: "text-primary", icon: MessageSquare },
+            { label: "Internos", value: counts.internos, color: "text-blue-400" },
+            { label: "Portal cliente", value: counts.clientes, color: "text-primary" },
           ].map(c => (
             <div key={c.label} className="bg-card border border-white/5 rounded-xl p-4">
-              <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                {c.icon && <c.icon className="w-3 h-3" />}
-                {c.label}
-              </p>
+              <p className="text-xs text-muted-foreground mb-1">{c.label}</p>
               <p className={`text-3xl font-bold ${c.color}`}>{c.value}</p>
             </div>
           ))}
         </div>
 
-        {/* WhatsApp validation notice */}
-        <div className="bg-primary/5 border border-primary/15 rounded-xl px-4 py-3 flex items-start gap-3">
-          <MessageSquare className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-          <div>
-            <p className="text-xs font-semibold text-primary mb-0.5">Validación de Números WhatsApp activa</p>
-            <p className="text-[11px] text-white/40">
-              Solo los usuarios con teléfono registrado y estado <strong className="text-white/60">Activo</strong> pueden interactuar con el bot de WhatsApp.
-              Números no registrados recibirán un mensaje de "acceso no autorizado". Guardias y supervisores deben tener su número registrado aquí.
-            </p>
+        {/* Inconsistencias card */}
+        {inconsistencias && inconsistencias.totalInconsistencias > 0 && (
+          <div className="bg-amber-950/20 border border-amber-500/25 rounded-xl overflow-hidden">
+            <button
+              onClick={() => setShowInconsistencias(v => !v)}
+              className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-amber-500/5 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                <div className="text-left">
+                  <p className="text-sm font-semibold text-amber-400">
+                    {inconsistencias.totalInconsistencias} inconsistencia{inconsistencias.totalInconsistencias !== 1 ? "s" : ""} detectada{inconsistencias.totalInconsistencias !== 1 ? "s" : ""}
+                  </p>
+                  <p className="text-[10px] text-amber-400/60 mt-0.5">
+                    {inconsistencias.empleadosSinUsuario.length > 0 && `${inconsistencias.empleadosSinUsuario.length} colaborador(es) interno(s) sin usuario`}
+                    {inconsistencias.empleadosSinUsuario.length > 0 && inconsistencias.clientesSinUsuario.length > 0 && " · "}
+                    {inconsistencias.clientesSinUsuario.length > 0 && `${inconsistencias.clientesSinUsuario.length} cliente(s) sin acceso al portal`}
+                  </p>
+                </div>
+              </div>
+              <ChevronDown className={`w-4 h-4 text-amber-400/60 transition-transform ${showInconsistencias ? "rotate-180" : ""}`} />
+            </button>
+            {showInconsistencias && (
+              <div className="px-5 pb-4 space-y-3">
+                {inconsistencias.empleadosSinUsuario.length > 0 && (
+                  <div>
+                    <p className="text-[10px] text-amber-400/70 uppercase tracking-widest mb-2 font-semibold">Colaboradores internos sin usuario</p>
+                    <div className="space-y-1.5">
+                      {inconsistencias.empleadosSinUsuario.map(e => (
+                        <div key={e.id} className="flex items-center justify-between bg-amber-950/30 rounded-lg px-3 py-2">
+                          <div>
+                            <p className="text-xs text-white/80 font-medium">{e.nombre_completo}</p>
+                            <p className="text-[10px] text-white/40">{e.area} · {e.puesto || "—"}</p>
+                          </div>
+                          <span className="text-[9px] text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded">Sin usuario</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {inconsistencias.clientesSinUsuario.length > 0 && (
+                  <div>
+                    <p className="text-[10px] text-amber-400/70 uppercase tracking-widest mb-2 font-semibold">Clientes sin acceso al portal</p>
+                    <div className="space-y-1.5">
+                      {inconsistencias.clientesSinUsuario.map(c => (
+                        <div key={c.id} className="flex items-center justify-between bg-amber-950/30 rounded-lg px-3 py-2">
+                          <div>
+                            <p className="text-xs text-white/80 font-medium">{c.nombre_comercial || c.nombre}</p>
+                            <p className="text-[10px] text-white/40">Portal ID: {c.portal_cliente_id}</p>
+                          </div>
+                          <span className="text-[9px] text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded">Sin usuarios</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        </div>
+        )}
 
         {/* Filters */}
         <div className="flex flex-col sm:flex-row gap-3">
@@ -849,12 +917,24 @@ export default function AdminUsuarios() {
             <select
               value={rolFiltro}
               onChange={e => setRolFiltro(e.target.value)}
-              className="h-10 bg-card border border-white/10 text-white text-sm rounded-md px-3 pr-8 appearance-none focus:outline-none focus:border-primary/50 min-w-[160px]"
+              className="h-10 bg-card border border-white/10 text-white text-sm rounded-md px-3 pr-8 appearance-none focus:outline-none focus:border-primary/50 min-w-[140px]"
             >
               <option value="todos">Todos los roles</option>
               {ROLES.map(r => (
                 <option key={r} value={r}>{ROL_LABELS[r]}</option>
               ))}
+            </select>
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30 pointer-events-none" />
+          </div>
+          <div className="relative">
+            <select
+              value={estadoFiltro}
+              onChange={e => setEstadoFiltro(e.target.value)}
+              className="h-10 bg-card border border-white/10 text-white text-sm rounded-md px-3 pr-8 appearance-none focus:outline-none focus:border-primary/50 min-w-[130px]"
+            >
+              <option value="todos">Todos los estados</option>
+              <option value="activo">Activo</option>
+              <option value="inactivo">Inactivo</option>
             </select>
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30 pointer-events-none" />
           </div>
@@ -868,8 +948,8 @@ export default function AdminUsuarios() {
                 <tr className="border-b border-white/5">
                   <th className="text-left text-[10px] uppercase tracking-widest text-white/30 font-semibold px-5 py-3">Usuario</th>
                   <th className="text-left text-[10px] uppercase tracking-widest text-white/30 font-semibold px-4 py-3">Rol</th>
+                  <th className="text-left text-[10px] uppercase tracking-widest text-white/30 font-semibold px-4 py-3 hidden xl:table-cell">Vinculación</th>
                   <th className="text-left text-[10px] uppercase tracking-widest text-white/30 font-semibold px-4 py-3 hidden lg:table-cell">WhatsApp</th>
-                  <th className="text-left text-[10px] uppercase tracking-widest text-white/30 font-semibold px-4 py-3 hidden md:table-cell">Permisos</th>
                   <th className="text-left text-[10px] uppercase tracking-widest text-white/30 font-semibold px-4 py-3">Estado</th>
                   <th className="text-left text-[10px] uppercase tracking-widest text-white/30 font-semibold px-4 py-3">Acciones</th>
                 </tr>
@@ -913,6 +993,22 @@ export default function AdminUsuarios() {
                       <td className="px-4 py-3.5">
                         <RolBadge rol={u.rol} />
                       </td>
+                      {/* Vinculación */}
+                      <td className="px-4 py-3.5 hidden xl:table-cell">
+                        {u.employeeId ? (
+                          <div className="flex items-center gap-1.5">
+                            <UserCheck className="w-3 h-3 text-blue-400" />
+                            <span className="text-blue-400/80 text-xs">Empleado #{u.employeeId}</span>
+                          </div>
+                        ) : u.clienteId ? (
+                          <div className="flex items-center gap-1.5">
+                            <Building className="w-3 h-3 text-primary" />
+                            <span className="text-primary/80 text-xs font-mono">{u.clienteId}</span>
+                          </div>
+                        ) : (
+                          <span className="text-white/20 text-xs">—</span>
+                        )}
+                      </td>
                       {/* WhatsApp */}
                       <td className="px-4 py-3.5 hidden lg:table-cell">
                         {u.telefono ? (
@@ -927,16 +1023,6 @@ export default function AdminUsuarios() {
                             <X className="w-3 h-3" /> Sin número
                           </span>
                         )}
-                      </td>
-                      {/* Permisos */}
-                      <td className="px-4 py-3.5 hidden md:table-cell">
-                        <div className="flex flex-wrap gap-1">
-                          <PermisoBadge activo={u.canReportEmergency} label="Emergencias" />
-                          <PermisoBadge activo={u.canRequestAdvance} label="Anticipos" />
-                          {!u.canReportEmergency && !u.canRequestAdvance && (
-                            <span className="text-white/20 text-xs">—</span>
-                          )}
-                        </div>
                       </td>
                       {/* Estado */}
                       <td className="px-4 py-3.5">

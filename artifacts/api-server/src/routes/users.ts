@@ -101,20 +101,46 @@ usersRouter.get("/users/check", async (req, res) => {
   }
 });
 
-// GET /api/users/:id
-usersRouter.get("/users/:id", async (req, res) => {
-  const id = parseInt(req.params.id);
-  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+// GET /api/users/inconsistencias — MUST be before /users/:id
+usersRouter.get("/users/inconsistencias", async (_req, res) => {
+  const AREAS_OBL = [
+    "administración", "administracion", "rrhh", "recursos humanos",
+    "operaciones", "gerencia", "bodega", "comercial",
+    "supervisión", "supervision", "facturación", "facturacion",
+    "contabilidad", "compras", "sistemas", "legal",
+  ];
   try {
-    const [user] = await db.select(SAFE_FIELDS).from(usersTable).where(eq(usersTable.id, id)).limit(1);
-    if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
-    res.json(user);
+    const { rows: empleadosSinUsuario } = await pool.query(`
+      SELECT e.id, e.nombre_completo, e.area, e.puesto, e.estado_laboral
+      FROM employees e
+      WHERE e.estado_laboral = 'activo'
+        AND LOWER(e.area) = ANY($1::text[])
+        AND NOT EXISTS (
+          SELECT 1 FROM users u WHERE u.employee_id = e.id
+        )
+      ORDER BY e.area, e.nombre_completo
+    `, [AREAS_OBL]);
+    const { rows: clientesSinUsuario } = await pool.query(`
+      SELECT c.id, c.nombre, c.nombre_comercial, c.portal_cliente_id
+      FROM clients c
+      WHERE c.estado = 'activo'
+        AND c.portal_cliente_id IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM users u WHERE u.cliente_id = c.portal_cliente_id
+        )
+      ORDER BY c.nombre
+    `);
+    res.json({
+      empleadosSinUsuario,
+      clientesSinUsuario,
+      totalInconsistencias: empleadosSinUsuario.length + clientesSinUsuario.length,
+    });
   } catch (err) {
-    res.status(500).json({ error: "Error al obtener usuario" });
+    res.status(500).json({ error: "Error al calcular inconsistencias" });
   }
 });
 
-// GET /api/users/by-phone/:phone — lookup by WhatsApp phone number
+// GET /api/users/by-phone/:phone — MUST be before /users/:id
 usersRouter.get("/users/by-phone/:phone", async (req, res) => {
   const raw = req.params.phone;
   const normalized = normalizePhone(raw);
@@ -247,5 +273,73 @@ usersRouter.patch("/users/:id", async (req, res) => {
     res.status(500).json({ error: "Error al actualizar usuario" });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/clientes/:clienteDbId/usuarios
+// Devuelve los usuarios del sistema vinculados a este cliente
+// Usa portal_cliente_id del cliente para cruzar con users.cliente_id
+// ─────────────────────────────────────────────────────────────────────────────
+usersRouter.get("/clientes/:clienteDbId/usuarios", async (req, res) => {
+  const clienteDbId = parseInt(req.params.clienteDbId);
+  if (isNaN(clienteDbId)) return res.status(400).json({ error: "ID inválido" });
+  try {
+    const { rows: clientRows } = await pool.query(
+      `SELECT portal_cliente_id FROM clients WHERE id = $1 LIMIT 1`, [clienteDbId]
+    );
+    if (clientRows.length === 0) return res.status(404).json({ error: "Cliente no encontrado" });
+    const portalId: string | null = clientRows[0].portal_cliente_id;
+    if (!portalId) return res.json([]);
+    const { rows } = await pool.query(
+      `SELECT id, nombre, username, correo, telefono, rol, estado, cliente_id, employee_id,
+              can_report_emergency, can_request_advance, created_at, updated_at
+       FROM users WHERE cliente_id = $1 ORDER BY created_at ASC`,
+      [portalId]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Error al obtener usuarios del cliente" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/clientes/:clienteDbId/usuarios
+// Crea un usuario para este cliente, pre-vinculado con su portal_cliente_id
+// ─────────────────────────────────────────────────────────────────────────────
+usersRouter.post("/clientes/:clienteDbId/usuarios", async (req, res) => {
+  const clienteDbId = parseInt(req.params.clienteDbId);
+  if (isNaN(clienteDbId)) return res.status(400).json({ error: "ID inválido" });
+  try {
+    const { rows: clientRows } = await pool.query(
+      `SELECT portal_cliente_id, nombre FROM clients WHERE id = $1 LIMIT 1`, [clienteDbId]
+    );
+    if (clientRows.length === 0) return res.status(404).json({ error: "Cliente no encontrado" });
+    const portalId: string = clientRows[0].portal_cliente_id;
+    if (!portalId) return res.status(400).json({ error: "Este cliente no tiene portal_cliente_id configurado" });
+
+    const { nombre, username, correo, password, telefono, estado } = req.body ?? {};
+    if (!nombre || !username || !password) {
+      return res.status(400).json({ error: "Nombre, username y contraseña son requeridos" });
+    }
+    const telefonoNorm = telefono ? normalizePhone(String(telefono)) : null;
+    const passwordHash = await bcrypt.hash(String(password), 10);
+    const { rows } = await pool.query(
+      `INSERT INTO users (nombre, username, correo, password_hash, rol, estado, telefono, cliente_id)
+       VALUES ($1, $2, $3, $4, 'cliente', $5, $6, $7)
+       RETURNING id, nombre, username, correo, telefono, rol, estado, cliente_id, created_at`,
+      [String(nombre), String(username).trim().toLowerCase(), correo || null,
+       passwordHash, estado || "activo", telefonoNorm, portalId]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err: any) {
+    if (err?.code === "23505") {
+      if (err?.constraint?.includes("telefono") || err?.detail?.includes("telefono")) {
+        return res.status(409).json({ error: "El número de teléfono ya está registrado" });
+      }
+      return res.status(409).json({ error: "El username ya está en uso" });
+    }
+    res.status(500).json({ error: "Error al crear usuario del cliente" });
+  }
+});
+
 
 export default usersRouter;

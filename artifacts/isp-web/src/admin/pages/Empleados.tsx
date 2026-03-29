@@ -12,6 +12,7 @@ import {
   Link2, Unlink, Lock, Save, Banknote, MessageCircle, XCircle,
   TrendingDown, Minus, ShieldAlert, ShieldCheck, ShieldOff,
   ArrowUpRight, ArrowDownRight, Repeat2, ArrowLeftRight, MapPinned, Map, History,
+  UserCog,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -987,9 +988,126 @@ function TabPerfil({ emp }: { emp: Empleado }) {
   );
 }
 
+// ─── Áreas internas que requieren usuario obligatorio ────────────────────────
+const AREAS_INTERNAS = new Set([
+  "administración", "administracion", "rrhh", "recursos humanos",
+  "operaciones", "gerencia", "bodega", "comercial",
+  "supervisión", "supervision", "facturación", "facturacion",
+  "contabilidad", "compras", "sistemas", "legal",
+]);
+
+// ─── Modal rápido: Crear usuario para un colaborador ─────────────────────────
+function ModalCrearUsuarioColaborador({ emp, onClose, onCreated }: {
+  emp: Empleado;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [form, setForm] = useState({
+    nombre: emp.nombreCompleto,
+    username: emp.nombreCompleto.toLowerCase().replace(/\s+/g, ".").replace(/[^a-z0-9.]/g, "").slice(0, 30),
+    password: "", confirmPassword: "",
+    rol: emp.area?.toLowerCase().includes("supervisor") ? "supervisor" as const
+       : emp.area?.toLowerCase().includes("rrhh") || emp.area?.toLowerCase().includes("recursos") ? "rrhh" as const
+       : emp.area?.toLowerCase().includes("comercial") ? "comercial" as const
+       : "operaciones" as const,
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (form.password !== form.confirmPassword) { setError("Las contraseñas no coinciden"); return; }
+    if (form.password.length < 4) { setError("Contraseña mínimo 4 caracteres"); return; }
+    setLoading(true); setError("");
+    try {
+      const r = await fetch(`${API_BASE}/users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" },
+        body: JSON.stringify({ nombre: form.nombre, username: form.username, password: form.password, rol: form.rol, employeeId: emp.id, estado: "activo" }),
+      });
+      if (!r.ok) { const d = await r.json(); throw new Error(d.error ?? "Error al crear usuario"); }
+      toast({ title: "Usuario creado", description: `${form.nombre} ya tiene acceso al sistema.` });
+      qc.invalidateQueries({ queryKey: ["employee-user", emp.id] });
+      onCreated();
+      onClose();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4">
+      <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-sm shadow-2xl">
+        <div className="flex items-center justify-between p-5 border-b border-white/5">
+          <div>
+            <h3 className="text-sm font-bold text-white">Crear usuario del sistema</h3>
+            <p className="text-[10px] text-white/40 mt-0.5">{emp.nombreCompleto}</p>
+          </div>
+          <button onClick={onClose} className="text-white/30 hover:text-white"><X className="w-4 h-4" /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-[11px] text-white/50">Nombre completo</label>
+            <input value={form.nombre} onChange={e => set("nombre", e.target.value)} required
+              className="w-full h-9 bg-[#060e1c] border border-white/10 text-white text-sm rounded-md px-3 outline-none focus:border-primary/50" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-white/50">Username *</label>
+              <input value={form.username} onChange={e => set("username", e.target.value.toLowerCase())} required
+                className="w-full h-9 bg-[#060e1c] border border-white/10 text-white text-sm rounded-md px-3 outline-none focus:border-primary/50 font-mono" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-white/50">Rol</label>
+              <select value={form.rol} onChange={e => set("rol", e.target.value)}
+                className="w-full h-9 bg-[#060e1c] border border-white/10 text-white text-sm rounded-md px-3 outline-none">
+                <option value="operaciones">Operaciones</option>
+                <option value="rrhh">RRHH</option>
+                <option value="comercial">Comercial</option>
+                <option value="supervisor">Supervisor</option>
+                <option value="admin">Admin</option>
+                <option value="guardia">Guardia</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-white/50">Contraseña *</label>
+              <input type="password" value={form.password} onChange={e => set("password", e.target.value)} required
+                className="w-full h-9 bg-[#060e1c] border border-white/10 text-white text-sm rounded-md px-3 outline-none focus:border-primary/50" placeholder="Mínimo 4 car." />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-white/50">Confirmar *</label>
+              <input type="password" value={form.confirmPassword} onChange={e => set("confirmPassword", e.target.value)} required
+                className="w-full h-9 bg-[#060e1c] border border-white/10 text-white text-sm rounded-md px-3 outline-none focus:border-primary/50" placeholder="Repita" />
+            </div>
+          </div>
+          {error && <p className="text-xs text-red-400 flex items-center gap-1"><span>⚠</span>{error}</p>}
+          <div className="flex gap-3">
+            <button type="button" onClick={onClose}
+              className="flex-1 h-9 border border-white/10 text-white/60 rounded-md text-xs hover:text-white">Cancelar</button>
+            <button type="submit" disabled={loading}
+              className="flex-1 h-9 bg-primary text-[#050d1a] font-bold rounded-md text-xs hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-1.5">
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Crear usuario"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── Tab: Sistema ─────────────────────────────────────────────────────────────
 
 function TabSistema({ emp }: { emp: Empleado }) {
+  const qc = useQueryClient();
+  const [showCrearModal, setShowCrearModal] = useState(false);
   const { data: user, isLoading } = useQuery<UserVinculado | null>({
     queryKey: ["employee-user", emp.id],
     queryFn: () => fetch(`${API_BASE}/employees/${emp.id}/user`).then((r) => r.json()),
@@ -1000,6 +1118,9 @@ function TabSistema({ emp }: { emp: Empleado }) {
     admin: "Administrador", operaciones: "Operaciones", rrhh: "RRHH",
     comercial: "Comercial", supervisor: "Supervisor", guardia: "Guardia", cliente: "Cliente",
   };
+
+  const esAreaInterna = emp.area ? AREAS_INTERNAS.has(emp.area.toLowerCase()) : false;
+  const requiereUsuario = esAreaInterna && emp.estadoLaboral === "activo";
 
   if (isLoading) {
     return <div className="flex items-center justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>;
@@ -1035,11 +1156,39 @@ function TabSistema({ emp }: { emp: Empleado }) {
       </div>
 
       {/* Usuario vinculado */}
+      {/* Alerta: área interna sin usuario */}
+      {requiereUsuario && !user && (
+        <div className="bg-amber-950/30 border border-amber-500/30 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-amber-400">Inconsistencia: requiere usuario</p>
+            <p className="text-[10px] text-amber-400/70 mt-1">
+              Este colaborador está en el área <strong>{emp.area}</strong> — catalogada como interna obligatoria.
+              Debe tener una cuenta de sistema activa.
+            </p>
+            <button
+              onClick={() => setShowCrearModal(true)}
+              className="mt-2 flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/15 border border-amber-500/30 text-amber-400 rounded-lg text-[11px] font-semibold hover:bg-amber-500/25 transition-colors"
+            >
+              <UserCog className="w-3.5 h-3.5" />
+              Crear usuario ahora
+            </button>
+          </div>
+        </div>
+      )}
+
       {user ? (
         <div className="bg-[#0c1929] border border-green-500/15 rounded-xl p-4 space-y-2">
-          <div className="flex items-center gap-2 mb-3">
-            <Link2 className="w-4 h-4 text-green-400" />
-            <p className="text-xs text-green-400 font-semibold uppercase tracking-widest">Usuario vinculado</p>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Link2 className="w-4 h-4 text-green-400" />
+              <p className="text-xs text-green-400 font-semibold uppercase tracking-widest">Usuario vinculado</p>
+            </div>
+            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
+              user.estado === "activo"
+                ? "text-green-400 bg-green-400/10 border-green-400/20"
+                : "text-red-400 bg-red-400/10 border-red-400/20"
+            }`}>{user.estado.toUpperCase()}</span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-xs text-white/40">Nombre</span>
@@ -1052,12 +1201,6 @@ function TabSistema({ emp }: { emp: Empleado }) {
           <div className="flex justify-between items-center">
             <span className="text-xs text-white/40">Rol</span>
             <span className="text-xs text-white/70">{ROL_LABELS[user.rol] ?? user.rol}</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-xs text-white/40">Estado cuenta</span>
-            <span className={`text-xs font-semibold ${user.estado === "activo" ? "text-green-400" : "text-red-400"}`}>
-              {user.estado}
-            </span>
           </div>
           {user.correo && (
             <div className="flex justify-between items-center">
@@ -1074,10 +1217,29 @@ function TabSistema({ emp }: { emp: Empleado }) {
         <div className="bg-[#0c1929] border border-white/8 rounded-xl p-5 text-center">
           <Unlink className="w-8 h-8 text-white/10 mx-auto mb-3" />
           <p className="text-white/40 text-sm font-medium">Sin cuenta de sistema</p>
-          <p className="text-white/20 text-xs mt-1">
-            Este colaborador no tiene usuario vinculado. Para crear uno, ve a la sección Usuarios y asigna el Employee ID.
-          </p>
+          {!requiereUsuario && (
+            <p className="text-white/20 text-xs mt-1">
+              Este colaborador no requiere usuario obligatorio según su área.
+            </p>
+          )}
+          {!requiereUsuario && (
+            <button
+              onClick={() => setShowCrearModal(true)}
+              className="mt-3 mx-auto flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 text-white/50 rounded-lg text-xs hover:text-white hover:bg-white/8 transition-colors"
+            >
+              <UserCog className="w-3.5 h-3.5" />Crear usuario
+            </button>
+          )}
         </div>
+      )}
+
+      {/* Modal crear usuario */}
+      {showCrearModal && (
+        <ModalCrearUsuarioColaborador
+          emp={emp}
+          onClose={() => setShowCrearModal(false)}
+          onCreated={() => qc.invalidateQueries({ queryKey: ["employee-user", emp.id] })}
+        />
       )}
 
       {/* Permisos WA */}
