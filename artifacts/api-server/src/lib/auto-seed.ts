@@ -1665,5 +1665,51 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SCO-01 solicitudes_cambio_operativo — error (no bloqueante)");
   }
 
+  // ── SSA-01: Pipeline de solicitudes de servicio adicional ─────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS solicitudes_servicio_adicional (
+        id                        VARCHAR(30) PRIMARY KEY,
+        cliente_id                INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+        sede_id                   INTEGER REFERENCES client_sedes(id) ON DELETE SET NULL,
+        puesto_id                 INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        tipo_solicitud            VARCHAR(50)  NOT NULL,
+        fecha                     DATE         NOT NULL,
+        hora_inicio               VARCHAR(5),
+        hora_fin                  VARCHAR(5),
+        cantidad_guardias         INTEGER      NOT NULL DEFAULT 1,
+        descripcion               TEXT,
+        prioridad                 VARCHAR(20)  NOT NULL DEFAULT 'normal',
+        contacto_solicitante      VARCHAR(255),
+        acepta_cobro_adicional    BOOLEAN      NOT NULL DEFAULT FALSE,
+        origen                    VARCHAR(30)  NOT NULL DEFAULT 'portal_cliente',
+        estado_general            VARCHAR(30)  NOT NULL DEFAULT 'nueva',
+        estado_operaciones        VARCHAR(30)  NOT NULL DEFAULT 'pendiente',
+        estado_rrhh               VARCHAR(30)  NOT NULL DEFAULT 'pendiente',
+        estado_comercial          VARCHAR(30)  NOT NULL DEFAULT 'pendiente',
+        observaciones_operaciones TEXT,
+        observaciones_rrhh        TEXT,
+        observaciones_comercial   TEXT,
+        monto_estimado            NUMERIC(10,2),
+        tarifa_aplicada           VARCHAR(100),
+        estado_facturacion        VARCHAR(30)  NOT NULL DEFAULT 'pendiente',
+        cubierta_con              VARCHAR(100),
+        tarea_operaciones_id      VARCHAR(20),
+        tarea_rrhh_id             VARCHAR(20),
+        tarea_comercial_id        VARCHAR(20),
+        solicitado_por_user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        solicitado_por_nombre     VARCHAR(255),
+        created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ssa_cliente  ON solicitudes_servicio_adicional(cliente_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ssa_estado   ON solicitudes_servicio_adicional(estado_general)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ssa_fecha    ON solicitudes_servicio_adicional(fecha)`);
+    logger.info("Auto-migrate: SSA-01 tabla solicitudes_servicio_adicional verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SSA-01 solicitudes_servicio_adicional — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

@@ -1,0 +1,300 @@
+l sistema ya tiene:
+	•	portal de clientes
+	•	clientes con ficha maestra
+	•	operaciones / pizarrón operativo
+	•	empleados
+	•	RRHH
+	•	comercial
+	•	tareas
+	•	pre-planilla
+	•	reportería
+	•	solicitudes y cambios estructurales
+	•	zonas, puestos y sedes operativas
+
+No quiero romper nada de lo existente.
+
+Quiero implementar una nueva fase: Pipeline completo de solicitud de servicio adicional desde el portal del cliente, conectado con Comercial/Facturación, RRHH y Operaciones.
+
+Objetivo
+
+Que cuando un cliente solicite un servicio adicional desde su portal, el sistema genere un flujo coordinado entre áreas, donde cada una tenga su propia tarea y responsabilidad:
+	•	Cliente solicita
+	•	Operaciones evalúa y cubre el servicio
+	•	RRHH valida si hay personal disponible o si hace falta contratar / reasignar
+	•	Comercial / Facturación registra el cobro y seguimiento económico
+
+No quiero que estas solicitudes queden “en el aire”. Quiero un pipeline real y auditable.
+
+⸻
+
+1. Solicitud desde portal del cliente
+
+Agregar en el portal del cliente una opción como:
+	•	Solicitar servicio adicional
+	•	Solicitar cobertura extraordinaria
+	•	Solicitar horas adicionales
+	•	Solicitar apoyo temporal
+
+Formulario mínimo
+
+Campos sugeridos:
+	•	clienteId (automático por sesión)
+	•	sedeId
+	•	puestoId o tipo de puesto
+	•	fecha
+	•	hora inicio
+	•	hora fin
+	•	cantidad de guardias solicitados
+	•	tipo de solicitud (guardia_extra, ampliacion_horario, cobertura_evento, custodia_extra, apoyo_temporal, etc.)
+	•	motivo / descripción
+	•	contacto solicitante
+	•	prioridad
+	•	acepta_cobro_adicional (checkbox o confirmación)
+
+⸻
+
+2. Crear entidad central del pipeline
+
+Crear una entidad nueva tipo:
+
+solicitudes_servicio_adicional
+
+Campos sugeridos:
+	•	id
+	•	clienteId
+	•	sedeId nullable
+	•	puestoId nullable
+	•	tipoSolicitud
+	•	fecha
+	•	horaInicio
+	•	horaFin
+	•	cantidadGuardias
+	•	descripcion
+	•	prioridad
+	•	solicitadaPorUserId o contacto
+	•	origen (portal_cliente, operaciones, comercial)
+	•	estadoGeneral (nueva, en_revision, en_operacion, pendiente_rrhh, pendiente_facturacion, cubierta, cerrada, cancelada)
+	•	createdAt
+	•	updatedAt
+
+⸻
+
+3. Pipeline automático por áreas
+
+Cuando se cree una solicitud desde el portal del cliente, el sistema debe generar tareas separadas por área.
+
+A. Tarea para Operaciones
+
+Objetivo:
+	•	revisar la solicitud
+	•	validar si el servicio puede cubrirse
+	•	decidir si se cubre con disponibles/relevos o si necesita apoyo de RRHH
+
+Tarea sugerida:
+	•	tipo: cobertura_servicio_extra
+	•	asignada a: Operaciones / supervisor / jefe de servicio
+
+B. Tarea para RRHH
+
+Objetivo:
+	•	validar si hay personal disponible
+	•	decidir si se puede cubrir con pool/disponibles
+	•	o si hace falta reclutar / contratar / reasignar
+
+Tarea sugerida:
+	•	tipo: validacion_personal_servicio_extra
+	•	asignada a: RRHH
+
+C. Tarea para Comercial / Facturación
+
+Objetivo:
+	•	validar que el servicio adicional sea cobrado
+	•	registrar tarifa / monto / facturación pendiente
+	•	darle seguimiento hasta cobro
+
+Tarea sugerida:
+	•	tipo: facturacion_servicio_extra
+	•	asignada a: Comercial o Facturación
+
+⸻
+
+4. Lógica de estados
+
+Quiero que la solicitud general tenga un estado visible, pero que además cada área tenga su propio estado interno.
+
+Estado general del pipeline
+
+Ejemplo:
+	•	nueva
+	•	en_revision
+	•	pendiente_rrhh
+	•	pendiente_operaciones
+	•	pendiente_facturacion
+	•	cubierta
+	•	cerrada
+	•	cancelada
+
+Estado por tarea/área
+
+Cada tarea debe tener su propio estado:
+	•	pendiente
+	•	en proceso
+	•	completada
+	•	observada
+
+⸻
+
+5. Relación entre áreas
+
+El sistema debe reflejar algo así:
+
+Cliente solicita
+
+↓
+
+Operaciones evalúa
+	•	¿se puede cubrir con personal disponible?
+	•	sí → sigue
+	•	no → RRHH debe intervenir
+
+RRHH evalúa
+	•	¿hay personal disponible?
+	•	sí → marcar viable
+	•	no → marcar “requiere contratación” o “requiere reasignación”
+
+Comercial / Facturación
+	•	registra el servicio extra
+	•	deja pendiente de cobro o cotización
+	•	relaciona la solicitud con cobro/facturación
+
+⸻
+
+6. Operaciones y cobertura real
+
+Si la solicitud se aprueba y se cubre:
+	•	debe poder verse en el pizarrón operativo
+	•	debe generar cobertura real
+	•	debe impactar horas trabajadas
+	•	debe impactar horas extra si aplica
+	•	debe quedar ligada a la solicitud original
+
+Muy importante:
+si operaciones cubre el servicio con personal disponible o relevos, eso debe quedar relacionado con la solicitud del cliente.
+
+⸻
+
+7. RRHH y personal
+
+RRHH debe poder marcar resultados como:
+	•	cubierto con personal disponible
+	•	cubierto con relevo
+	•	requiere contratación
+	•	requiere reasignación
+	•	no viable
+
+Esto debe quedar visible en la solicitud.
+
+⸻
+
+8. Comercial / Facturación
+
+Comercial o facturación debe poder registrar:
+	•	monto estimado
+	•	tarifa aplicada
+	•	pendiente de facturación
+	•	facturado
+	•	cobrado
+
+Esto no tiene que ser contabilidad completa todavía, pero sí una base fuerte de seguimiento.
+
+⸻
+
+9. Vista de pipeline
+
+Crear una vista administrativa donde se vea cada solicitud con:
+	•	cliente
+	•	tipo
+	•	fecha
+	•	sede / puesto
+	•	estado general
+	•	estado Operaciones
+	•	estado RRHH
+	•	estado Comercial/Facturación
+
+Y poder abrir el detalle para ver:
+	•	tareas relacionadas
+	•	trazabilidad
+	•	observaciones de cada área
+	•	cobertura si ya se ejecutó
+
+⸻
+
+10. Portal del cliente
+
+El cliente debe poder ver:
+	•	su solicitud
+	•	estado general
+	•	historial de solicitudes
+	•	si fue atendida o no
+
+Pero NO debe ver:
+	•	tareas internas
+	•	discusiones internas entre áreas
+	•	detalles sensibles de RRHH
+
+⸻
+
+11. Integración con tareas
+
+Cada solicitud debe crear tareas reales del sistema, no solo registros visuales.
+Las tareas deben estar ligadas a:
+	•	solicitudId
+	•	clienteId
+	•	sedeId
+	•	puestoId
+	•	área responsable
+
+⸻
+
+12. Casos que debe soportar
+
+Ejemplos reales:
+	•	cliente solicita 1 guardia extra para una noche
+	•	cliente pide ampliar 4 horas un puesto existente
+	•	cliente pide cobertura de evento
+	•	cliente pide apoyo urgente de custodios
+	•	operaciones recibe la solicitud y cubre con disponibles
+	•	RRHH detecta que no hay disponibles y propone contratación
+	•	comercial registra cobro adicional
+
+⸻
+
+13. No romper
+
+No romper:
+	•	portal de clientes
+	•	pizarrón operativo
+	•	tareas existentes
+	•	RRHH
+	•	empleados
+	•	comercial
+	•	reportería
+	•	pre-planilla
+	•	WhatsApp
+	•	Trello
+
+⸻
+
+14. Documentación
+
+Explica claramente:
+	•	cómo nace una solicitud desde el cliente
+	•	qué tarea recibe cada área
+	•	cómo se mueve el pipeline
+	•	cómo se relaciona con operación real
+	•	cómo se prepara para facturación y cobro
+
+⸻
+
+Muy importante:
+quiero un pipeline real de varias áreas, donde una solicitud del cliente dispare trabajo coordinado entre Operaciones, RRHH y Comercial/Facturación, con tareas separadas pero relacionadas, para que ningún servicio extra quede sin cubrir ni sin cobrar

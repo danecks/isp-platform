@@ -34,3 +34,16 @@ export async function portalGet<T>(path: string): Promise<T> {
   }
   return res.json() as Promise<T>;
 }
+
+export async function portalPost<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method: "POST",
+    headers: getPortalHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const b = await res.json().catch(() => ({}));
+    throw new Error(b.error ?? `Error ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}

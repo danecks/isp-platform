@@ -47,12 +47,14 @@ import AdminTurnos from "@/admin/pages/Turnos";
 import AdminFichaCliente from "@/admin/pages/FichaCliente";
 import AdminReporteCoberturaZonas from "@/admin/pages/ReporteCoberturaZonas";
 import AdminCambiosEstructurales from "@/admin/pages/CambiosEstructurales";
+import AdminPipelineServicios from "@/admin/pages/PipelineServicios";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
 import PortalIncidencias from "@/portal/pages/PortalIncidencias";
 import PortalKPI from "@/portal/pages/PortalKPI";
 import PortalAgentes from "@/portal/pages/PortalAgentes";
+import PortalSolicitudes from "@/portal/pages/PortalSolicitudes";
 
 const queryClient = new QueryClient();
 
@@ -94,6 +96,9 @@ function Router() {
       </Route>
       <Route path="/portal/agentes">
         {() => <PortalGuard><PortalAgentes /></PortalGuard>}
+      </Route>
+      <Route path="/portal/solicitudes">
+        {() => <PortalGuard><PortalSolicitudes /></PortalGuard>}
       </Route>
 
       {/* ── Panel administrativo (rol admin, operaciones, rrhh, etc.) ───── */}
@@ -174,6 +179,9 @@ function Router() {
       </Route>
       <Route path="/admin/cambios-estructurales">
         {() => <AuthGuard requiredRoles={["admin", "operaciones", "rrhh"]}><AdminCambiosEstructurales /></AuthGuard>}
+      </Route>
+      <Route path="/admin/pipeline-servicios">
+        {() => <AuthGuard requiredRoles={["admin", "operaciones", "rrhh", "comercial", "supervisor"]}><AdminPipelineServicios /></AuthGuard>}
       </Route>
 
       <Route component={NotFound} />

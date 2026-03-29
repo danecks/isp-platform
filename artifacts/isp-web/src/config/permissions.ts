@@ -21,6 +21,7 @@ import {
   TableProperties,
   Timer,
   GitMerge,
+  Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -131,6 +132,12 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Cambios Estructurales",
     icon: GitMerge,
     roles: ["admin", "operaciones", "rrhh"],
+  },
+  {
+    path: "/admin/pipeline-servicios",
+    label: "Servicios Adicionales",
+    icon: Zap,
+    roles: ["admin", "operaciones", "rrhh", "comercial", "supervisor"],
   },
   {
     path: "/admin/comercial",

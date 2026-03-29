@@ -1,0 +1,213 @@
+El sistema ya tiene:
+	•	módulo de usuarios
+	•	empleados / colaboradores
+	•	clientes
+	•	portal de clientes
+	•	roles
+	•	login real
+	•	fichas de colaborador
+	•	ficha maestra de cliente
+
+No quiero romper nada de lo existente.
+
+Quiero mejorar y normalizar el módulo de usuarios, porque necesito controlar mejor quién debe tener usuario, cómo se crea y cómo se relaciona con clientes y colaboradores.
+
+Objetivo
+
+Que el sistema permita:
+	1.	Crear usuarios manualmente
+	2.	Que los clientes tengan su propio apartado de usuario(s) dentro de la ficha del cliente
+	3.	Que esos usuarios queden amarrados al cliente correcto
+	4.	Que todos los colaboradores internos que no sean guardias tengan usuario obligatorio según su área o tipo de trabajo
+
+⸻
+
+1. Creación manual de usuarios
+
+Mantener o mejorar la capacidad de crear usuarios manualmente desde el módulo de usuarios.
+
+Quiero que el admin pueda crear un usuario con campos como:
+	•	nombre
+	•	username
+	•	correo
+	•	teléfono
+	•	contraseña
+	•	rol
+	•	estado
+	•	employeeId nullable
+	•	clientId nullable
+
+Validaciones:
+	•	username único
+	•	correo único si aplica
+	•	teléfono normalizado si aplica
+	•	no duplicar usuarios para la misma persona si ya existe uno
+
+⸻
+
+2. Usuarios de clientes dentro de la ficha del cliente
+
+Quiero que en la ficha del cliente exista una sección nueva tipo:
+
+Usuarios del cliente
+
+Desde ahí se debe poder:
+	•	ver todos los usuarios ligados a ese cliente
+	•	crear usuario nuevo para ese cliente
+	•	editar usuario existente
+	•	activar / desactivar usuario
+	•	resetear contraseña si ya existe esa lógica
+	•	ver cuál usuario es principal o secundario si luego hace falta
+
+Muy importante:
+estos usuarios deben quedar ligados con clientId al cliente correcto.
+
+No quiero que los usuarios de cliente queden sueltos en el sistema sin relación clara.
+
+⸻
+
+3. Regla para usuarios de cliente
+
+Solo los usuarios de cliente deben estar amarrados a clientId directamente.
+
+Ejemplo:
+	•	Cliente Agua Pura Salvavidas
+	•	usuario portal 1
+	•	usuario portal 2
+
+Quiero que desde la ficha del cliente se vea claramente:
+	•	nombre del usuario
+	•	username
+	•	correo
+	•	teléfono
+	•	estado
+	•	acceso al portal
+
+⸻
+
+4. Usuarios obligatorios para colaboradores internos
+
+Quiero establecer una regla de negocio:
+
+Todos los colaboradores que NO sean guardias deben tener usuario obligatorio.
+
+Ejemplos de áreas o tipos que deben tener usuario:
+	•	administración
+	•	rrhh
+	•	operaciones
+	•	gerencia
+	•	bodega
+	•	comercial
+	•	supervisión
+	•	facturación
+	•	contabilidad
+	•	compras
+	•	otros internos administrativos
+
+En cambio:
+	•	guardias / agentes de campo no necesariamente deben tener usuario web obligatorio
+
+⸻
+
+5. Integración en ficha del colaborador
+
+En la ficha del colaborador quiero que se vea claramente:
+
+Usuario del sistema
+	•	si tiene usuario
+	•	username
+	•	rol
+	•	estado
+	•	último acceso si existe
+	•	botón para crear usuario si no tiene
+
+Si el colaborador pertenece a un área interna obligatoria y no tiene usuario:
+	•	mostrar alerta visible
+	•	marcarlo como inconsistencia pendiente
+
+⸻
+
+6. Regla automática / validación
+
+Quiero que el sistema pueda detectar:
+	•	colaboradores internos sin usuario
+	•	usuarios sin employeeId cuando deberían estar ligados
+	•	clientes sin usuarios cuando deberían tener acceso al portal
+	•	usuarios duplicados o inconsistentes
+
+No hace falta bloquear todo si complica, pero sí:
+	•	advertir
+	•	dejarlo visible
+	•	y documentar la regla
+
+⸻
+
+7. Áreas internas y obligatoriedad
+
+Si el colaborador está clasificado en áreas como:
+	•	administración
+	•	rrhh
+	•	operaciones
+	•	gerencia
+	•	bodega
+	•	comercial
+
+entonces el sistema debe considerarlo como:
+
+“requiere usuario obligatorio”
+
+Esto puede basarse en:
+	•	área
+	•	departamento
+	•	tipo de colaborador
+	•	o la estructura que ya exista
+
+Documentar claramente qué criterio usas.
+
+⸻
+
+8. UI / organización
+
+Quiero que el módulo de usuarios y las fichas queden organizadas así:
+
+En módulo Usuarios
+	•	lista general de usuarios
+	•	filtros por rol, estado, cliente, empleado
+	•	creación manual
+
+En ficha del cliente
+	•	sección “Usuarios del cliente”
+
+En ficha del colaborador
+	•	sección “Usuario del sistema”
+
+⸻
+
+9. No romper
+
+No romper:
+	•	login actual
+	•	portal de clientes
+	•	roles
+	•	empleados
+	•	clientes
+	•	RRHH
+	•	operaciones
+	•	WhatsApp
+	•	reportería
+	•	tareas
+	•	pre-planilla
+
+⸻
+
+10. Documentación
+
+Explica claramente:
+	•	cómo se crean usuarios manualmente
+	•	cómo se ligan usuarios a clientes
+	•	cómo se ligan usuarios a colaboradores
+	•	qué colaboradores requieren usuario obligatorio
+	•	cómo se visualiza esto en ficha de cliente y ficha de colaborador
+
+Muy importante:
+quiero que el sistema tenga una relación clara entre usuarios, clientes y colaboradores, evitando usuarios sueltos y asegurando que todo el personal interno administrativo tenga su acceso correctamente creado.

@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { X, LayoutDashboard, AlertTriangle, BarChart3, Users, LogOut, ExternalLink, ShieldCheck } from "lucide-react";
+import { X, LayoutDashboard, AlertTriangle, BarChart3, Users, LogOut, ExternalLink, ShieldCheck, Zap } from "lucide-react";
 import { brand } from "@/config/branding";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -7,6 +7,7 @@ const logoImg = "/images/logo-isp.jpg";
 
 const portalNav = [
   { path: "/portal/dashboard", label: "Panel General", icon: LayoutDashboard },
+  { path: "/portal/solicitudes", label: "Servicios Adicionales", icon: Zap },
   { path: "/portal/incidencias", label: "Incidencias", icon: AlertTriangle },
   { path: "/portal/kpi", label: "KPI & Métricas", icon: BarChart3 },
   { path: "/portal/agentes", label: "Mis Agentes", icon: Users },
