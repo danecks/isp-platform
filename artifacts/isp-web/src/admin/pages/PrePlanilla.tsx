@@ -270,12 +270,12 @@ function DetalleModal({
             <p className="text-[10px] text-white/30 uppercase tracking-widest mb-3">Resumen del período</p>
             <div className="grid grid-cols-3 gap-2 mb-3">
               {[
-                { label: "Días trabajados", val: col.dias_trabajados, cls: "text-green-400" },
-                { label: "Faltas", val: col.faltas, cls: col.faltas > 0 ? "text-red-400" : "text-white/50" },
-                { label: "Suspensiones", val: col.suspensiones, cls: col.suspensiones > 0 ? "text-amber-400" : "text-white/50" },
-                { label: "Descansos trab.", val: col.descansos_trabajados, cls: "text-blue-400" },
-                { label: "Relevos", val: col.relevos, cls: "text-purple-400" },
-                { label: "Días sin horas", val: col.dias_sin_horas, cls: col.dias_sin_horas > 0 ? "text-amber-400" : "text-white/30" },
+                { label: "Días trabajados", val: Number(col.dias_trabajados), cls: "text-green-400" },
+                { label: "Faltas", val: Number(col.faltas), cls: Number(col.faltas) > 0 ? "text-red-400" : "text-white/50" },
+                { label: "Suspensiones", val: Number(col.suspensiones), cls: Number(col.suspensiones) > 0 ? "text-amber-400" : "text-white/50" },
+                { label: "Descansos trab.", val: Number(col.descansos_trabajados), cls: "text-blue-400" },
+                { label: "Relevos", val: Number(col.relevos), cls: "text-purple-400" },
+                { label: "Días sin horas", val: Number(col.dias_sin_horas), cls: Number(col.dias_sin_horas) > 0 ? "text-amber-400" : "text-white/30" },
               ].map(({ label, val, cls }) => (
                 <div key={label} className="bg-[#0c1929] border border-white/6 rounded-lg p-2.5">
                   <p className={`text-xl font-bold ${cls}`}>{val}</p>
@@ -537,7 +537,7 @@ export default function PrePlanilla() {
     if (filtroSede !== "todos") data = data.filter((r) => r.sede === filtroSede);
     if (filtroEstado !== "todos") data = data.filter((r) => r.estado_laboral === filtroEstado);
     if (filtroRevision !== "todos") data = data.filter((r) => r.revision_estado === filtroRevision);
-    if (soloConFaltas) data = data.filter((r) => r.faltas > 0 || r.suspensiones > 0);
+    if (soloConFaltas) data = data.filter((r) => Number(r.faltas) > 0 || Number(r.suspensiones) > 0);
     if (soloConAnticipos) data = data.filter((r) => r.anticipos_count > 0);
     if (soloConHE) data = data.filter((r) => parseFloat(r.horas_extra || "0") > 0);
 
@@ -554,13 +554,18 @@ export default function PrePlanilla() {
   }, [rows, busqueda, filtroCliente, filtroSede, filtroEstado, filtroRevision,
       soloConFaltas, soloConAnticipos, soloConHE, sortField, sortAsc]);
 
-  // KPIs
+  // Días totales del período seleccionado
+  const periodoTotalDias = desde && hasta
+    ? Math.round((new Date(hasta).getTime() - new Date(desde).getTime()) / 86400000) + 1
+    : null;
+
+  // KPIs — se usa Number() para evitar concatenación de strings (pg devuelve bigint como string)
   const totalColabs = filtrados.length;
-  const totalDias = filtrados.reduce((s, r) => s + r.dias_trabajados, 0);
-  const totalFaltas = filtrados.reduce((s, r) => s + r.faltas + r.suspensiones, 0);
+  const totalDias = filtrados.reduce((s, r) => s + Number(r.dias_trabajados), 0);
+  const totalFaltas = filtrados.reduce((s, r) => s + Number(r.faltas) + Number(r.suspensiones), 0);
   const totalHE = filtrados.reduce((s, r) => s + parseFloat(r.horas_extra || "0"), 0);
   const totalAnt = filtrados.reduce((s, r) => s + Number(r.anticipos_monto), 0);
-  const conAlertas = filtrados.filter((r) => r.faltas > 0 || r.suspensiones > 0 || r.dias_sin_horas > 0).length;
+  const conAlertas = filtrados.filter((r) => Number(r.faltas) > 0 || Number(r.suspensiones) > 0 || Number(r.dias_sin_horas) > 0).length;
 
   function toggleSort(field: keyof ColaboradorPre) {
     if (sortField === field) setSortAsc((a) => !a);
@@ -842,15 +847,18 @@ export default function PrePlanilla() {
                             <td className="px-3 py-2.5 text-white/60 text-right">{fmtQ(r.sueldo_base)}</td>
                             {/* Días trabajados */}
                             <td className="px-3 py-2.5 text-center">
-                              <span className="text-green-400 font-semibold">{r.dias_trabajados}</span>
+                              <span className="text-green-400 font-semibold">{Number(r.dias_trabajados)}</span>
+                              {periodoTotalDias != null && (
+                                <span className="text-white/30 ml-1">/ {periodoTotalDias}d</span>
+                              )}
                             </td>
                             {/* Faltas */}
                             <td className="px-3 py-2.5 text-center">
-                              <span className={r.faltas > 0 ? "text-red-400 font-semibold" : "text-white/25"}>{r.faltas}</span>
+                              <span className={Number(r.faltas) > 0 ? "text-red-400 font-semibold" : "text-white/25"}>{Number(r.faltas)}</span>
                             </td>
                             {/* Suspensiones */}
                             <td className="px-3 py-2.5 text-center">
-                              <span className={r.suspensiones > 0 ? "text-amber-400 font-semibold" : "text-white/25"}>{r.suspensiones}</span>
+                              <span className={Number(r.suspensiones) > 0 ? "text-amber-400 font-semibold" : "text-white/25"}>{Number(r.suspensiones)}</span>
                             </td>
                             {/* Horas trabajadas */}
                             <td className="px-3 py-2.5 text-right text-white/60">{htNum2.toFixed(1)} h</td>
