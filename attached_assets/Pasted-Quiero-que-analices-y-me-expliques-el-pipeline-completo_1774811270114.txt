@@ -1,0 +1,102 @@
+Quiero que analices y me expliques el pipeline completo del sistema SSA desde el momento en que se registra o genera una solicitud del cliente, hasta que esa solicitud termina reflejada en el Pizarrón Operativo y permite la asignación de un guardia.
+
+## Objetivo principal
+Necesito identificar cuál es el flujo correcto y en qué punto se está rompiendo, porque actualmente la solicitud del cliente no aparece en el Pizarrón Operativo.
+
+## Lo que necesito que revises
+Haz una auditoría completa del flujo, paso por paso, incluyendo:
+
+1. Entrada de la solicitud del cliente
+   - ¿Desde qué módulo, formulario, tabla o endpoint se crea?
+   - ¿Qué campos son obligatorios?
+   - ¿Qué estado inicial recibe la solicitud?
+   - ¿Qué validaciones se ejecutan al guardarla?
+
+2. Persistencia en base de datos
+   - ¿En qué tabla o tablas se guarda?
+   - ¿Qué relaciones tiene con cliente, puesto, servicio, turno, fecha, horario y guardia?
+   - ¿Qué campos o flags determinan si esa solicitud debe aparecer en el pizarrón?
+
+3. Reglas de negocio intermedias
+   - ¿Hay procesos que transforman la solicitud antes de mostrarla?
+   - ¿Se necesita aprobación, confirmación o cambio de estado?
+   - ¿Existe algún filtro por fecha, sede, estado, cliente, tipo de servicio o tipo de turno?
+
+4. Lógica del Pizarrón Operativo
+   - Revisa exactamente cómo se cargan las solicitudes en el pizarrón.
+   - Identifica qué query, endpoint, función o servicio arma esa lista.
+   - Explica qué condiciones deben cumplirse para que una solicitud sí aparezca.
+   - Explica qué condiciones hacen que una solicitud no aparezca.
+
+5. Asignación de guardia
+   - ¿En qué momento del flujo se habilita la asignación?
+   - ¿La asignación depende de que antes salga en el pizarrón?
+   - ¿Qué estado cambia cuando ya se asigna un guardia?
+   - ¿Qué tablas se actualizan en ese momento?
+
+## Lo que quiero como resultado
+Entrégame un diagnóstico en este formato:
+
+### A. Flujo correcto esperado
+Explícame paso a paso cómo debería funcionar:
+Cliente → solicitud → validaciones → base de datos → estado → pizarrón operativo → asignación de guardia
+
+### B. Flujo real actual en el código
+Dime cómo está funcionando hoy realmente según el código actual.
+
+### C. Punto exacto donde falla
+Identifica exactamente dónde se rompe el proceso y por qué la solicitud no aparece en el pizarrón operativo.
+
+### D. Posibles causas
+Por ejemplo:
+- estado incorrecto
+- fecha fuera de rango
+- cliente o puesto sin relación válida
+- turno mal configurado
+- filtro demasiado restrictivo
+- endpoint equivocado
+- error de mapeo entre tablas
+- solicitud sí se guarda pero no entra al query del pizarrón
+- falta de normalización de datos
+- problema de zona horaria
+- error frontend al consumir datos
+- error backend al construir respuesta
+
+### E. Solución recomendada
+Dime exactamente qué hay que corregir y en qué archivos, funciones, endpoints, queries o componentes.
+
+### F. Evidencia técnica
+Muéstrame:
+- archivos involucrados
+- funciones involucradas
+- endpoints involucrados
+- tablas involucradas
+- estados del registro
+- condiciones del filtro del pizarrón
+
+## Instrucción importante
+No me des una respuesta general. Quiero que revises el código real del proyecto y me digas:
+- cómo entra la solicitud
+- dónde se guarda
+- cómo se transforma
+- cómo debería llegar al pizarrón
+- por qué no está llegando
+
+## Extra
+Si encuentras inconsistencia entre nombres como:
+- cliente
+- puesto
+- servicio
+- turno
+- cobertura
+- asignación
+- pizarrón
+- guardia
+
+también indícamelo y propón una estandarización para evitar errores futuros.
+
+Al final, dame un resumen ejecutivo de máximo 10 puntos con:
+1. flujo correcto
+2. falla encontrada
+3. causa raíz
+4. solución concreta
