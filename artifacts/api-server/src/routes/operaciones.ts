@@ -288,16 +288,12 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
 // ─── POST /api/operaciones/sustituir ─────────────────────────────────────────
 // Sustituir agente en un puesto (hay uno previo)
 operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
-  const { puestoId, agenteEntranteId, motivo, usuario, notas, forzar,
-          tipoSustitucion,
-          fechaEfectiva,   // "YYYY-MM-DD" para historial de titularidad
-          motivoCambio     // motivo de cambio de titular para historial
-        } = req.body;
+  const { puestoId, agenteEntranteId, motivo, usuario, notas, forzar, tipoSustitucion } = req.body;
   if (!puestoId || !agenteEntranteId) return res.status(400).json({ error: "puestoId y agenteEntranteId son requeridos" });
 
-  // tipoSustitucion: 'relevo'      = solo cambia agente_id (titular no cambia)
-  //                 'reasignacion' = cambia agente_id Y titular_employee_id + escribe al histórico
-  const esRelevo = tipoSustitucion !== 'reasignacion';
+  // tipoSustitucion: 'relevo' = solo cambia agente_id (titular no cambia)
+  //                 'reasignacion' = cambia agente_id Y titular_employee_id
+  const esRelevo = tipoSustitucion === 'relevo';
 
   try {
     if (await verificarDiaCerrado()) {
