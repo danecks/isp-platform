@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, type ElementType } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "../layout/AdminLayout";
@@ -48,6 +48,8 @@ interface Empleado {
   tipoJornada: string | null;
   diaDescanso: string | null;
   horasContrato: number | null;
+  limiteAnticipo: number | null;
+  tipoLimitePeriodo: string | null;
 }
 
 interface KpiData {
@@ -186,12 +188,8 @@ interface FormState {
   telefono: string;
   telefonoSecundario: string;
   correo: string;
-  puesto: string;
-  tipoServicio: string;
   area: string;
   estadoLaboral: string;
-  sede: string;
-  supervisorNombre: string;
   fechaIngreso: string;
   notas: string;
   // Datos laborales / nómina
@@ -199,6 +197,33 @@ interface FormState {
   tipoJornada: string;
   diaDescanso: string;
   horasContrato: string;
+  limiteAnticipo: string;
+  tipoLimitePeriodo: string;
+}
+
+interface AsignacionOperativa {
+  id?: number;
+  sin_asignacion?: boolean;
+  tipo_asignacion: string;
+  puesto_id: number | null;
+  sede_id: number | null;
+  cliente_id: number | null;
+  zona_operativa_id: number | null;
+  tipo_turno_id: number | null;
+  fecha_inicio: string | null;
+  notas: string | null;
+  // Derivados (solo lectura)
+  puesto_nombre?: string | null;
+  sede_nombre?: string | null;
+  cliente_nombre?: string | null;
+  zona_nombre?: string | null;
+  turno_nombre?: string | null;
+  turno_horas_trabajo?: number | null;
+  turno_horas_descanso?: number | null;
+  supervisor_id?: number | null;
+  supervisor_nombre?: string | null;
+  supervisor_telefono?: string | null;
+  supervisor_puesto?: string | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -255,9 +280,10 @@ function avatarColor(nombre: string) {
 
 const FORM_EMPTY: FormState = {
   nombreCompleto: "", dpi: "", telefono: "", telefonoSecundario: "",
-  correo: "", puesto: "", tipoServicio: "", area: "", estadoLaboral: "activo",
-  sede: "", supervisorNombre: "", fechaIngreso: "", notas: "",
+  correo: "", area: "", estadoLaboral: "activo",
+  fechaIngreso: "", notas: "",
   sueldoBase: "", tipoJornada: "", diaDescanso: "", horasContrato: "",
+  limiteAnticipo: "", tipoLimitePeriodo: "quincenal",
 };
 
 // ─── Badges ───────────────────────────────────────────────────────────────────
@@ -884,37 +910,76 @@ function TabAsignaciones({ empId }: { empId: number }) {
 // ─── Tab: Perfil ──────────────────────────────────────────────────────────────
 
 function TabPerfil({ emp }: { emp: Empleado }) {
-  const rows = [
-    { icon: Hash, label: "DPI", value: emp.dpi ? maskDpi(emp.dpi) : null },
-    { icon: Phone, label: "Teléfono principal", value: emp.telefono },
-    { icon: Phone, label: "Teléfono secundario", value: emp.telefonoSecundario },
-    { icon: MessageSquare, label: "WhatsApp autorizado", value: emp.waAutorizado ? "Sí" : null },
-    { icon: Clock, label: "Verificado WA", value: emp.telefonoVerificadoAt ? fmtFecha(emp.telefonoVerificadoAt) : null },
-    { icon: Mail, label: "Correo", value: emp.correo },
-    { icon: Briefcase, label: "Puesto", value: emp.puesto },
-    { icon: Shield, label: "Tipo de servicio", value: emp.tipoServicio },
-    { icon: Building2, label: "Área", value: emp.area },
-    { icon: MapPin, label: "Sede", value: emp.sede },
-    { icon: UserCheck, label: "Supervisor", value: emp.supervisorNombre },
-    { icon: Calendar, label: "Fecha de ingreso", value: fmtFecha(emp.fechaIngreso) },
-    { icon: BadgeCheck, label: "Fuente", value: emp.sourceSystem },
-    { icon: Activity, label: "Estado sync", value: emp.syncStatus },
-  ];
+  function Row({ icon: Icon, label, value }: { icon: ElementType; label: string; value: string | null | undefined }) {
+    if (!value || value === "—") return null;
+    return (
+      <div className="flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0">
+        <Icon className="w-3.5 h-3.5 text-white/25 shrink-0" />
+        <span className="text-xs text-white/40 w-36 shrink-0">{label}</span>
+        <span className="text-sm text-white/80 flex-1 text-right">{value}</span>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-1">
-      {rows.map(({ icon: Icon, label, value }) =>
-        value && value !== "—" ? (
-          <div key={label} className="flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0">
-            <Icon className="w-3.5 h-3.5 text-white/25 shrink-0" />
-            <span className="text-xs text-white/40 w-36 shrink-0">{label}</span>
-            <span className="text-sm text-white/80 flex-1 text-right">{value}</span>
-          </div>
-        ) : null
-      )}
+    <div className="space-y-4">
+      {/* A — Datos personales */}
+      <div>
+        <p className="text-[10px] text-white/25 uppercase tracking-widest mb-2">Datos personales</p>
+        <div className="space-y-0">
+          <Row icon={Hash}      label="DPI"                value={emp.dpi ? maskDpi(emp.dpi) : null} />
+          <Row icon={Phone}     label="Teléfono principal" value={emp.telefono} />
+          <Row icon={Phone}     label="Teléfono secundario" value={emp.telefonoSecundario} />
+          <Row icon={Mail}      label="Correo"             value={emp.correo} />
+          <Row icon={MessageSquare} label="WhatsApp"       value={emp.waAutorizado ? "Autorizado" : null} />
+          <Row icon={Building2} label="Área / Depto."      value={emp.area} />
+          <Row icon={Calendar}  label="Fecha de ingreso"   value={fmtFecha(emp.fechaIngreso)} />
+        </div>
+      </div>
+
+      {/* B — Datos laborales */}
+      <div>
+        <p className="text-[10px] text-white/25 uppercase tracking-widest mb-2">Datos laborales</p>
+        <div className="grid grid-cols-2 gap-2">
+          {emp.sueldoBase && (
+            <div className="bg-[#0c1929] border border-white/6 rounded-lg p-3">
+              <p className="text-[10px] text-white/30 mb-0.5">Sueldo base</p>
+              <p className="text-sm font-semibold text-white">Q{Number(emp.sueldoBase).toLocaleString("es-GT")}</p>
+            </div>
+          )}
+          {emp.horasContrato && (
+            <div className="bg-[#0c1929] border border-white/6 rounded-lg p-3">
+              <p className="text-[10px] text-white/30 mb-0.5">Horas / semana</p>
+              <p className="text-sm font-semibold text-white">{emp.horasContrato} h</p>
+            </div>
+          )}
+          {emp.tipoJornada && (
+            <div className="bg-[#0c1929] border border-white/6 rounded-lg p-3">
+              <p className="text-[10px] text-white/30 mb-0.5">Tipo de jornada</p>
+              <p className="text-sm text-white/80 capitalize">{emp.tipoJornada}</p>
+            </div>
+          )}
+          {emp.diaDescanso && (
+            <div className="bg-[#0c1929] border border-white/6 rounded-lg p-3">
+              <p className="text-[10px] text-white/30 mb-0.5">Día de descanso</p>
+              <p className="text-sm text-white/80 capitalize">{emp.diaDescanso}</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* C — Indicación a tab Asignación */}
+      <div className="bg-[#0c1929] border border-primary/10 rounded-xl p-3 flex items-center gap-3">
+        <MapPinned className="w-4 h-4 text-primary/50 shrink-0" />
+        <p className="text-xs text-white/40">
+          Cliente, puesto, sede, zona y supervisor — ver tab <span className="text-primary font-medium">Asignación</span>
+        </p>
+      </div>
+
+      {/* D — Notas */}
       {emp.notas && (
-        <div className="bg-[#0c1929] border border-white/8 rounded-lg p-3 mt-3">
-          <p className="text-[10px] text-white/30 uppercase tracking-widest mb-1">Notas</p>
+        <div className="bg-[#0c1929] border border-white/8 rounded-lg p-3">
+          <p className="text-[10px] text-white/30 uppercase tracking-widest mb-1">Notas internas</p>
           <p className="text-xs text-white/60 leading-relaxed">{emp.notas}</p>
         </div>
       )}
@@ -1515,6 +1580,281 @@ function TabAnticipo({ emp }: { emp: Empleado }) {
   );
 }
 
+// ─── Tab: Asignación Operativa ────────────────────────────────────────────────
+
+const TIPO_ASIG_CFG: Record<string, { label: string; color: string; bg: string }> = {
+  titular:       { label: "Titular",         color: "text-green-400",  bg: "bg-green-400/10 border-green-400/20" },
+  disponible:    { label: "Disponible",       color: "text-blue-400",   bg: "bg-blue-400/10 border-blue-400/20" },
+  pool_relevo:   { label: "Pool de relevos",  color: "text-purple-400", bg: "bg-purple-400/10 border-purple-400/20" },
+  sin_asignacion:{ label: "Sin asignación",   color: "text-white/40",   bg: "bg-white/5 border-white/10" },
+};
+
+interface PuestoBasic { id: number; nombre: string; cliente_nombre: string; sede_id: number | null; sede_nombre: string | null; zona_operativa_id: number | null; }
+interface ZonaBasicEOA { id: number; nombre: string; supervisor_nombre: string | null; }
+interface TurnoBasicEOA { id: number; nombre: string; horas_trabajo: number; horas_descanso: number; }
+
+function TabAsignacionOperativa({ empId }: { empId: number }) {
+  const getSession = () => sessionStorage.getItem("isp_admin_session_v2") ?? "";
+  const h = () => ({ "Content-Type": "application/json", "x-isp-session": getSession() });
+
+  const [asig, setAsig] = useState<AsignacionOperativa | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [editOpen, setEditOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState("");
+
+  // Catálogos para el formulario
+  const [puestos, setPuestos] = useState<PuestoBasic[]>([]);
+  const [zonas, setZonas] = useState<ZonaBasicEOA[]>([]);
+  const [turnos, setTurnos] = useState<TurnoBasicEOA[]>([]);
+  const [formAsig, setFormAsig] = useState<{
+    tipo_asignacion: string; puesto_id: string; sede_id: string;
+    zona_operativa_id: string; tipo_turno_id: string; notas: string;
+  }>({ tipo_asignacion: "sin_asignacion", puesto_id: "", sede_id: "", zona_operativa_id: "", tipo_turno_id: "", notas: "" });
+
+  function loadAsig() {
+    setLoading(true);
+    fetch(`${API_BASE}/employees/${empId}/asignacion-operativa`, { headers: h() })
+      .then((r) => r.json())
+      .then((d) => { setAsig(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    loadAsig();
+    // Catálogos
+    fetch(`${API_BASE}/operaciones/todos-puestos`, { headers: h() }).then((r) => r.ok ? r.json() : []).then(setPuestos).catch(() => {});
+    fetch(`${API_BASE}/operaciones/zonas`, { headers: h() }).then((r) => r.ok ? r.json() : []).then(setZonas).catch(() => {});
+    fetch(`${API_BASE}/turnos`, { headers: h() }).then((r) => r.ok ? r.json() : []).then((d) => setTurnos((d ?? []).filter((t: any) => t.activo))).catch(() => {});
+  }, [empId]);
+
+  function openEdit() {
+    setFormAsig({
+      tipo_asignacion: asig?.tipo_asignacion ?? "sin_asignacion",
+      puesto_id: asig?.puesto_id ? String(asig.puesto_id) : "",
+      sede_id: asig?.sede_id ? String(asig.sede_id) : "",
+      zona_operativa_id: asig?.zona_operativa_id ? String(asig.zona_operativa_id) : "",
+      tipo_turno_id: asig?.tipo_turno_id ? String(asig.tipo_turno_id) : "",
+      notas: asig?.notas ?? "",
+    });
+    setSaveErr(""); setEditOpen(true);
+  }
+
+  async function saveAsig() {
+    setSaving(true); setSaveErr("");
+    try {
+      const r = await fetch(`${API_BASE}/employees/${empId}/asignacion-operativa`, {
+        method: "PUT",
+        headers: h(),
+        body: JSON.stringify({
+          tipo_asignacion: formAsig.tipo_asignacion,
+          puesto_id: formAsig.puesto_id ? Number(formAsig.puesto_id) : null,
+          sede_id: formAsig.sede_id ? Number(formAsig.sede_id) : null,
+          zona_operativa_id: formAsig.zona_operativa_id ? Number(formAsig.zona_operativa_id) : null,
+          tipo_turno_id: formAsig.tipo_turno_id ? Number(formAsig.tipo_turno_id) : null,
+          notas: formAsig.notas || null,
+        }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      setEditOpen(false); loadAsig();
+    } catch (e: unknown) {
+      setSaveErr(e instanceof Error ? e.message : "Error al guardar");
+    } finally { setSaving(false); }
+  }
+
+  const sel = (key: string, v: string) => setFormAsig((p) => ({ ...p, [key]: v }));
+  const selCls = "w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50";
+
+  if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>;
+
+  const cfg = TIPO_ASIG_CFG[asig?.tipo_asignacion ?? "sin_asignacion"] ?? TIPO_ASIG_CFG.sin_asignacion;
+  const sinAsig = !asig || asig.sin_asignacion || asig.tipo_asignacion === "sin_asignacion";
+
+  return (
+    <div className="space-y-4">
+      {/* Badge de tipo + botón editar */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className={`px-2.5 py-1 rounded-lg border text-xs font-semibold ${cfg.color} ${cfg.bg}`}>{cfg.label}</span>
+          {asig?.fecha_inicio && (
+            <span className="text-[10px] text-white/30">desde {fmtFecha(asig.fecha_inicio)}</span>
+          )}
+        </div>
+        <button
+          onClick={openEdit}
+          className="flex items-center gap-1.5 text-xs text-white/50 hover:text-primary bg-white/5 hover:bg-primary/10 border border-white/10 rounded-lg px-3 py-1.5 transition-colors"
+        >
+          <Pencil className="w-3 h-3" />
+          Editar asignación
+        </button>
+      </div>
+
+      {sinAsig ? (
+        <div className="bg-[#0c1929] border border-white/6 rounded-xl p-5 text-center">
+          <MapPinned className="w-8 h-8 text-white/15 mx-auto mb-2" />
+          <p className="text-sm text-white/40">Sin asignación operativa registrada</p>
+          <p className="text-xs text-white/25 mt-1">Use el botón "Editar asignación" para asignar un puesto, zona o turno a este colaborador.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {/* Puesto */}
+          {asig?.puesto_nombre && (
+            <div className="bg-[#0c1929] border border-white/6 rounded-xl p-4">
+              <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Puesto titular</p>
+              <p className="text-sm font-semibold text-white">{asig.puesto_nombre}</p>
+              {asig.cliente_nombre && <p className="text-xs text-white/50 mt-0.5">{asig.cliente_nombre}</p>}
+              {asig.sede_nombre && (
+                <p className="flex items-center gap-1 text-xs text-white/35 mt-1">
+                  <MapPin className="w-3 h-3" />{asig.sede_nombre}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Zona y Supervisor */}
+          <div className="grid grid-cols-2 gap-3">
+            {asig?.zona_nombre && (
+              <div className="bg-[#0c1929] border border-white/6 rounded-xl p-4">
+                <p className="text-[10px] text-white/30 uppercase tracking-widest mb-1">Zona operativa</p>
+                <p className="text-sm text-white/80">{asig.zona_nombre}</p>
+              </div>
+            )}
+            {asig?.supervisor_nombre && (
+              <div className="bg-[#0c1929] border border-white/6 rounded-xl p-4">
+                <p className="text-[10px] text-white/30 uppercase tracking-widest mb-1">Supervisor (derivado)</p>
+                <p className="text-sm text-white/80">{asig.supervisor_nombre}</p>
+                {asig.supervisor_telefono && (
+                  <p className="flex items-center gap-1 text-xs text-white/35 mt-1">
+                    <Phone className="w-3 h-3" />{asig.supervisor_telefono}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Turno de nómina */}
+          {asig?.turno_nombre && (
+            <div className="bg-[#0c1929] border border-primary/10 rounded-xl p-4">
+              <p className="text-[10px] text-white/30 uppercase tracking-widest mb-1">Turno de nómina</p>
+              <div className="flex items-center gap-3">
+                <span className="px-2 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary text-xs font-semibold">{asig.turno_nombre}</span>
+                {asig.turno_horas_trabajo && (
+                  <span className="text-xs text-white/40">{asig.turno_horas_trabajo}h trabajo + {asig.turno_horas_descanso}h descanso</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Notas */}
+          {asig?.notas && (
+            <div className="bg-[#0c1929] border border-white/6 rounded-xl p-4">
+              <p className="text-[10px] text-white/30 uppercase tracking-widest mb-1">Notas</p>
+              <p className="text-xs text-white/60">{asig.notas}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modal de edición */}
+      {editOpen && createPortal(
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-md shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
+              <h3 className="text-sm font-bold text-white">Editar asignación operativa</h3>
+              <button onClick={() => setEditOpen(false)} className="text-white/30 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+              {saveErr && <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-xs text-red-400">{saveErr}</div>}
+
+              {/* Tipo de asignación */}
+              <div className="space-y-1">
+                <label className="text-xs text-white/50 font-medium">Tipo de asignación</label>
+                <select value={formAsig.tipo_asignacion} onChange={(e) => sel("tipo_asignacion", e.target.value)} className={selCls}>
+                  <option value="titular">Titular — puesto fijo asignado</option>
+                  <option value="disponible">Disponible — sin puesto fijo actualmente</option>
+                  <option value="pool_relevo">Pool de relevos — disponible para cobertura</option>
+                  <option value="sin_asignacion">Sin asignación</option>
+                </select>
+              </div>
+
+              {/* Puesto */}
+              <div className="space-y-1">
+                <label className="text-xs text-white/50 font-medium">Puesto titular</label>
+                <select
+                  value={formAsig.puesto_id}
+                  onChange={(e) => {
+                    const pId = e.target.value;
+                    const p = puestos.find((x) => String(x.id) === pId);
+                    setFormAsig((prev) => ({
+                      ...prev,
+                      puesto_id: pId,
+                      sede_id: p?.sede_id ? String(p.sede_id) : prev.sede_id,
+                      zona_operativa_id: p?.zona_operativa_id ? String(p.zona_operativa_id) : prev.zona_operativa_id,
+                    }));
+                  }}
+                  className={selCls}
+                >
+                  <option value="">Sin puesto asignado</option>
+                  {puestos.map((p) => (
+                    <option key={p.id} value={p.id}>{p.nombre} — {p.cliente_nombre}{p.sede_nombre ? ` (${p.sede_nombre})` : ""}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Zona operativa */}
+              <div className="space-y-1">
+                <label className="text-xs text-white/50 font-medium">Zona operativa</label>
+                <select value={formAsig.zona_operativa_id} onChange={(e) => sel("zona_operativa_id", e.target.value)} className={selCls}>
+                  <option value="">Sin zona asignada</option>
+                  {zonas.map((z) => (
+                    <option key={z.id} value={z.id}>{z.nombre}{z.supervisor_nombre ? ` — Sup: ${z.supervisor_nombre}` : ""}</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-white/25">El supervisor se deriva automáticamente de la zona</p>
+              </div>
+
+              {/* Turno de nómina */}
+              <div className="space-y-1">
+                <label className="text-xs text-white/50 font-medium">Turno de nómina</label>
+                <select value={formAsig.tipo_turno_id} onChange={(e) => sel("tipo_turno_id", e.target.value)} className={selCls}>
+                  <option value="">Sin turno asignado</option>
+                  {turnos.map((t) => (
+                    <option key={t.id} value={t.id}>{t.nombre} ({t.horas_trabajo}h + {t.horas_descanso}h)</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Notas */}
+              <div className="space-y-1">
+                <label className="text-xs text-white/50 font-medium">Notas</label>
+                <textarea
+                  rows={3}
+                  value={formAsig.notas}
+                  onChange={(e) => sel("notas", e.target.value)}
+                  className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50 resize-none"
+                  placeholder="Observaciones sobre la asignación..."
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-white/8">
+              <button onClick={() => setEditOpen(false)} className="text-xs text-white/50 hover:text-white px-4 py-2 border border-white/10 rounded-lg transition-colors">Cancelar</button>
+              <button
+                onClick={saveAsig}
+                disabled={saving}
+                className="flex items-center gap-2 text-xs bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
 // ─── Modal: Ficha de Empleado (5 pestañas) ────────────────────────────────────
 
 function FichaModal({
@@ -1528,17 +1868,18 @@ function FichaModal({
   onEdit: (e: Empleado) => void;
   onEstado: (e: Empleado, estado: string) => void;
 }) {
-  const [tab, setTab] = useState<"perfil" | "asignaciones" | "sistema" | "operacion" | "kpi" | "anticipos">("perfil");
+  const [tab, setTab] = useState<"perfil" | "asignacion-op" | "asignaciones" | "sistema" | "operacion" | "kpi" | "anticipos">("perfil");
   const [showEstado, setShowEstado] = useState(false);
   const est = ESTADO_LAB[emp.estadoLaboral] ?? { label: emp.estadoLaboral, color: "text-white/40 bg-white/5 border-white/10", dot: "bg-white/40" };
 
   const tabs = [
-    { key: "perfil",       label: "Perfil",        icon: UserCheck },
-    { key: "asignaciones", label: "Asignaciones",   icon: Briefcase },
-    { key: "sistema",      label: "Sistema",        icon: Lock },
-    { key: "operacion",    label: "Operación",      icon: Activity },
-    { key: "kpi",          label: "KPI",            icon: BarChart2 },
-    { key: "anticipos",    label: "Anticipos",      icon: Wallet },
+    { key: "perfil",        label: "Perfil",         icon: UserCheck },
+    { key: "asignacion-op", label: "Asignación",     icon: MapPinned },
+    { key: "asignaciones",  label: "Portal",         icon: Briefcase },
+    { key: "sistema",       label: "Sistema",        icon: Lock },
+    { key: "operacion",     label: "Operación",      icon: Activity },
+    { key: "kpi",           label: "KPI",            icon: BarChart2 },
+    { key: "anticipos",     label: "Anticipos",      icon: Wallet },
   ] as const;
 
   const ESTADOS_CAMBIO = ["activo", "suspendido", "baja", "licencia"].filter((e) => e !== emp.estadoLaboral);
@@ -1628,6 +1969,7 @@ function FichaModal({
         {/* Contenido */}
         <div className="p-5 max-h-[65vh] overflow-y-auto">
           {tab === "perfil" && <TabPerfil emp={emp} />}
+          {tab === "asignacion-op" && <TabAsignacionOperativa empId={emp.id} />}
           {tab === "asignaciones" && <TabAsignaciones empId={emp.id} />}
           {tab === "sistema" && <TabSistema emp={emp} />}
           {tab === "operacion" && <TabOperacion empId={emp.id} />}
@@ -1659,18 +2001,16 @@ function FormModal({
     telefono: emp?.telefono ?? "",
     telefonoSecundario: emp?.telefonoSecundario ?? "",
     correo: emp?.correo ?? "",
-    puesto: emp?.puesto ?? "",
-    tipoServicio: emp?.tipoServicio ?? "",
     area: emp?.area ?? "",
     estadoLaboral: emp?.estadoLaboral ?? "activo",
-    sede: emp?.sede ?? "",
-    supervisorNombre: emp?.supervisorNombre ?? "",
     fechaIngreso: emp?.fechaIngreso ? emp.fechaIngreso.split("T")[0] : "",
     notas: emp?.notas ?? "",
     sueldoBase: emp?.sueldoBase ?? "",
     tipoJornada: emp?.tipoJornada ?? "",
     diaDescanso: emp?.diaDescanso ?? "",
     horasContrato: emp?.horasContrato != null ? String(emp.horasContrato) : "",
+    limiteAnticipo: emp?.limiteAnticipo != null ? String(emp.limiteAnticipo) : "",
+    tipoLimitePeriodo: emp?.tipoLimitePeriodo ?? "quincenal",
   }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1740,18 +2080,7 @@ function FormModal({
             {field("Teléfono secundario", "telefonoSecundario", "tel", { placeholder: "+502 XXXX XXXX" })}
           </div>
           {field("Correo electrónico", "correo", "email", { placeholder: "correo@ejemplo.com" })}
-
-          {/* Asignación */}
-          <p className="text-[10px] text-white/30 uppercase tracking-widest pt-2">Asignación</p>
-          <div className="grid grid-cols-2 gap-3">
-            {field("Puesto", "puesto", "text", { placeholder: "Agente de seguridad" })}
-            {field("Tipo de servicio", "tipoServicio", "text", { placeholder: "Custodia, vigilancia…" })}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {field("Área / Departamento", "area", "text")}
-            {field("Sede", "sede", "text")}
-          </div>
-          {field("Supervisor", "supervisorNombre", "text")}
+          {field("Área / Departamento", "area", "text", { placeholder: "Ops, Administración…" })}
 
           {/* Estado */}
           <div className="space-y-1">

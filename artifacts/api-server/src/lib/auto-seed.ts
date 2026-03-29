@@ -1531,5 +1531,64 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: P-NOM-07 pre_planilla_revision — error (no bloqueante)");
   }
 
+  // ── EOA-01: tabla employee_operational_assignments ───────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS employee_operational_assignments (
+        id                SERIAL PRIMARY KEY,
+        employee_id       INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        puesto_id         INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        sede_id           INTEGER REFERENCES client_sedes(id) ON DELETE SET NULL,
+        cliente_id        INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+        zona_operativa_id INTEGER REFERENCES operational_zones(id) ON DELETE SET NULL,
+        tipo_turno_id     INTEGER REFERENCES turnos(id) ON DELETE SET NULL,
+        tipo_asignacion   VARCHAR(30) NOT NULL DEFAULT 'sin_asignacion',
+        activa            BOOLEAN NOT NULL DEFAULT TRUE,
+        fecha_inicio      TIMESTAMPTZ DEFAULT NOW(),
+        notas             TEXT,
+        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS eoa_employee_idx ON employee_operational_assignments(employee_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS eoa_activa_idx ON employee_operational_assignments(employee_id, activa)`);
+    logger.info("Auto-migrate: EOA-01 tabla employee_operational_assignments verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: EOA-01 employee_operational_assignments — error (no bloqueante)");
+  }
+
+  // ── EOA-02: seed desde puestos_operativos existentes ────────────────────────
+  try {
+    const { rows: sinAsignacion } = await pool.query(`
+      SELECT COUNT(*) FROM employee_operational_assignments
+    `);
+    if (parseInt(sinAsignacion[0].count) === 0) {
+      // Migrar titulares desde puestos_operativos
+      await pool.query(`
+        INSERT INTO employee_operational_assignments
+          (employee_id, puesto_id, sede_id, cliente_id, zona_operativa_id, tipo_turno_id, tipo_asignacion, activa, fecha_inicio)
+        SELECT
+          po.titular_employee_id,
+          po.id,
+          po.sede_id,
+          po.cliente_id,
+          po.zona_operativa_id,
+          po.tipo_turno_id,
+          'titular',
+          TRUE,
+          NOW()
+        FROM puestos_operativos po
+        WHERE po.titular_employee_id IS NOT NULL
+          AND po.activo = TRUE
+        ON CONFLICT DO NOTHING
+      `);
+      logger.info("Auto-migrate: EOA-02 seed titulares desde puestos_operativos completado");
+    } else {
+      logger.info("Auto-migrate: EOA-02 ya existen asignaciones operativas, seed omitido");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: EOA-02 seed asignaciones — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

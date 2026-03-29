@@ -5,6 +5,7 @@ import { calcularLimiteAnticipo } from "../services/anticipo-limite";
 import { getPeriodoActivo } from "../services/whatsapp/anticipo-session";
 import { calcularKPIDisciplinario } from "../services/disciplinary-kpi";
 import { calcularKPIRotacion } from "../services/rotation-kpi";
+import { logger } from "../lib/logger";
 
 const employeesRouter = Router();
 
@@ -708,6 +709,119 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
     res.json(emp);
   } catch (err) {
     res.status(500).json({ error: "Error al actualizar empleado" });
+  }
+});
+
+// ─── GET /api/employees/:id/asignacion-operativa ─────────────────────────────
+employeesRouter.get("/employees/:id/asignacion-operativa", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        eoa.id,
+        eoa.employee_id,
+        eoa.puesto_id,
+        eoa.sede_id,
+        eoa.cliente_id,
+        eoa.zona_operativa_id,
+        eoa.tipo_turno_id,
+        eoa.tipo_asignacion,
+        eoa.activa,
+        eoa.fecha_inicio,
+        eoa.notas,
+        eoa.created_at,
+        eoa.updated_at,
+        -- Datos derivados del puesto
+        po.nombre          AS puesto_nombre,
+        po.turno           AS puesto_turno_texto,
+        po.horario         AS puesto_horario,
+        po.jornada         AS puesto_jornada,
+        po.estado          AS puesto_estado,
+        -- Datos derivados de la sede
+        cs.nombre          AS sede_nombre,
+        -- Datos derivados del cliente
+        c.nombre           AS cliente_nombre,
+        c.portal_cliente_id AS cliente_portal_id,
+        -- Datos derivados de la zona
+        oz.nombre          AS zona_nombre,
+        -- Turno de nómina
+        t.nombre           AS turno_nombre,
+        t.horas_trabajo    AS turno_horas_trabajo,
+        t.horas_descanso   AS turno_horas_descanso,
+        -- Supervisor derivado de la zona operativa
+        e_sup.id           AS supervisor_id,
+        e_sup.nombre_completo AS supervisor_nombre,
+        e_sup.telefono     AS supervisor_telefono,
+        e_sup.puesto       AS supervisor_puesto
+      FROM employee_operational_assignments eoa
+      LEFT JOIN puestos_operativos po    ON po.id = eoa.puesto_id
+      LEFT JOIN client_sedes cs          ON cs.id = eoa.sede_id
+      LEFT JOIN clients c                ON c.id  = eoa.cliente_id
+      LEFT JOIN operational_zones oz     ON oz.id = eoa.zona_operativa_id
+      LEFT JOIN turnos t                 ON t.id  = eoa.tipo_turno_id
+      LEFT JOIN employees e_sup          ON e_sup.id = oz.supervisor_employee_id
+      WHERE eoa.employee_id = $1 AND eoa.activa = TRUE
+      ORDER BY eoa.created_at DESC
+      LIMIT 1
+    `, [id]);
+
+    if (rows.length === 0) {
+      return res.json({ sin_asignacion: true, tipo_asignacion: "sin_asignacion" });
+    }
+    return res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "GET /employees/:id/asignacion-operativa error");
+    return res.status(500).json({ error: "Error al obtener asignación operativa" });
+  }
+});
+
+// ─── PUT /api/employees/:id/asignacion-operativa ──────────────────────────────
+employeesRouter.put("/employees/:id/asignacion-operativa", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+
+  const {
+    puesto_id, sede_id, cliente_id, zona_operativa_id, tipo_turno_id,
+    tipo_asignacion = "sin_asignacion", notas, fecha_inicio,
+  } = req.body;
+
+  try {
+    // Verificar que el empleado existe
+    const { rows: emp } = await pool.query(`SELECT id FROM employees WHERE id = $1`, [id]);
+    if (emp.length === 0) return res.status(404).json({ error: "Empleado no encontrado" });
+
+    // Desactivar asignación activa anterior
+    await pool.query(`
+      UPDATE employee_operational_assignments
+      SET activa = FALSE, updated_at = NOW()
+      WHERE employee_id = $1 AND activa = TRUE
+    `, [id]);
+
+    // Crear nueva asignación
+    const { rows } = await pool.query(`
+      INSERT INTO employee_operational_assignments
+        (employee_id, puesto_id, sede_id, cliente_id, zona_operativa_id, tipo_turno_id,
+         tipo_asignacion, activa, fecha_inicio, notas, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE,$8,$9,NOW(),NOW())
+      RETURNING *
+    `, [
+      id,
+      puesto_id || null,
+      sede_id || null,
+      cliente_id || null,
+      zona_operativa_id || null,
+      tipo_turno_id || null,
+      tipo_asignacion,
+      fecha_inicio ? new Date(fecha_inicio) : new Date(),
+      notas || null,
+    ]);
+
+    return res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "PUT /employees/:id/asignacion-operativa error");
+    return res.status(500).json({ error: "Error al guardar asignación operativa" });
   }
 });
 

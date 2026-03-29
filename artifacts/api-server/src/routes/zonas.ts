@@ -251,7 +251,7 @@ zonasRouter.get("/operaciones/todos-puestos", async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT po.id, po.nombre, po.cliente_nombre, po.cliente_id,
-             cs.nombre AS sede_nombre, po.estado,
+             po.sede_id, cs.nombre AS sede_nombre, po.estado,
              po.zona_operativa_id, oz.nombre AS zona_nombre
       FROM puestos_operativos po
       LEFT JOIN client_sedes cs ON cs.id = po.sede_id
