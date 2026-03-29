@@ -792,12 +792,45 @@ employeesRouter.put("/employees/:id/asignacion-operativa", async (req, res) => {
     const { rows: emp } = await pool.query(`SELECT id FROM employees WHERE id = $1`, [id]);
     if (emp.length === 0) return res.status(404).json({ error: "Empleado no encontrado" });
 
+    // Obtener asignación activa anterior (para saber qué puesto limpiar en el pizarrón)
+    const { rows: prevAsig } = await pool.query(`
+      SELECT puesto_id FROM employee_operational_assignments
+      WHERE employee_id = $1 AND activa = TRUE
+      LIMIT 1
+    `, [id]);
+    const prevPuestoId: number | null = prevAsig[0]?.puesto_id ?? null;
+
     // Desactivar asignación activa anterior
     await pool.query(`
       UPDATE employee_operational_assignments
       SET activa = FALSE, updated_at = NOW()
       WHERE employee_id = $1 AND activa = TRUE
     `, [id]);
+
+    // ── Sincronizar pizarrón operativo (puestos_operativos) ──────────────────
+    // 1. Si el empleado tenía titular en otro puesto, limpiar ese puesto
+    if (prevPuestoId && prevPuestoId !== (puesto_id || null)) {
+      await pool.query(`
+        UPDATE puestos_operativos
+        SET titular_employee_id = NULL, estado = 'descubierto', updated_at = NOW()
+        WHERE id = $1 AND titular_employee_id = $2
+      `, [prevPuestoId, id]);
+    }
+    // 2. Si este empleado ya era titular en algún otro puesto distinto, limpiarlo también
+    await pool.query(`
+      UPDATE puestos_operativos
+      SET titular_employee_id = NULL, estado = 'descubierto', updated_at = NOW()
+      WHERE titular_employee_id = $1 AND id != $2
+    `, [id, puesto_id || 0]);
+    // 3. Asignar como titular en el nuevo puesto (solo si tipo_asignacion = 'titular' y hay puesto)
+    if (tipo_asignacion === "titular" && puesto_id) {
+      await pool.query(`
+        UPDATE puestos_operativos
+        SET titular_employee_id = $1, estado = 'cubierto', updated_at = NOW()
+        WHERE id = $2
+      `, [id, puesto_id]);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Crear nueva asignación
     const { rows } = await pool.query(`
