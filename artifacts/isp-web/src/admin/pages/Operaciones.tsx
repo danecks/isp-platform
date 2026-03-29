@@ -1155,6 +1155,19 @@ function PanelHistorial({
 
 type OldTitularAccion = "disponible" | "pool_relevo" | "sin_asignacion";
 
+const MOTIVOS_TITULAR = [
+  { value: "cobertura_definitiva",    label: "Cobertura definitiva" },
+  { value: "reemplazo_permanente",    label: "Reemplazo permanente" },
+  { value: "baja_titular_anterior",   label: "Baja del titular anterior" },
+  { value: "reestructuracion",        label: "Reestructuración" },
+  { value: "ascenso",                 label: "Ascenso / promoción" },
+  { value: "otro",                    label: "Otro" },
+];
+
+function toISODate(d: Date) {
+  return d.toISOString().split("T")[0];
+}
+
 function ModalEligeCobertura({
   puesto,
   agente,
@@ -1163,18 +1176,28 @@ function ModalEligeCobertura({
 }: {
   puesto: Puesto;
   agente: Agente;
-  onElegir: (soloCobertura: boolean, oldTitularAccion?: OldTitularAccion) => void;
+  onElegir: (soloCobertura: boolean, oldTitularAccion?: OldTitularAccion, fechaEfectiva?: string, motivoCambio?: string) => void;
   onCancel: () => void;
 }) {
   const hayTitularPrevio = !!puesto.titular_employee_id;
-  const [paso, setPaso] = useState<"elige" | "titularPrevio">("elige");
-  const [oldTitularAccion, setOldTitularAccion] = useState<OldTitularAccion>("disponible");
+  const hoy = toISODate(new Date());
+  const manana = toISODate(new Date(Date.now() + 86400000));
 
-  function confirmarTitular() {
+  const [paso, setPaso] = useState<"elige" | "detalles" | "titularPrevio">("elige");
+  const [oldTitularAccion, setOldTitularAccion] = useState<OldTitularAccion>("disponible");
+  const [opcionFecha, setOpcionFecha] = useState<"hoy" | "manana" | "personalizada">("hoy");
+  const [fechaPersonalizada, setFechaPersonalizada] = useState(hoy);
+  const [motivo, setMotivo] = useState("cobertura_definitiva");
+
+  const fechaEfectiva = opcionFecha === "hoy" ? hoy
+    : opcionFecha === "manana" ? manana
+    : fechaPersonalizada;
+
+  function avanzarDesdeDetalles() {
     if (hayTitularPrevio) {
       setPaso("titularPrevio");
     } else {
-      onElegir(false);
+      onElegir(false, undefined, fechaEfectiva, motivo);
     }
   }
 
@@ -1195,9 +1218,9 @@ function ModalEligeCobertura({
           </p>
         </div>
 
-        {paso === "elige" ? (
+        {/* ── Paso 1: Elige tipo ────────────────────────────────────────── */}
+        {paso === "elige" && (
           <div className="p-5 space-y-3">
-            {/* Info del puesto */}
             <div className="bg-[#0c1929] border border-white/8 rounded-xl p-3 flex items-center gap-2">
               <Building2 className="w-3 h-3 text-white/25 shrink-0" />
               <span className="text-xs text-white/50">{puesto.cliente_nombre} · {puesto.nombre}</span>
@@ -1206,7 +1229,6 @@ function ModalEligeCobertura({
               )}
             </div>
 
-            {/* Opción A: Solo cobertura temporal */}
             <button
               onClick={() => onElegir(true)}
               className="w-full text-left bg-amber-500/5 border border-amber-500/20 hover:border-amber-500/50 rounded-xl p-4 transition-all group"
@@ -1224,9 +1246,8 @@ function ModalEligeCobertura({
               </div>
             </button>
 
-            {/* Opción B: Convertir en titular */}
             <button
-              onClick={confirmarTitular}
+              onClick={() => setPaso("detalles")}
               className="w-full text-left bg-blue-500/5 border border-blue-500/20 hover:border-blue-500/50 rounded-xl p-4 transition-all group"
             >
               <div className="flex items-center gap-3">
@@ -1236,7 +1257,7 @@ function ModalEligeCobertura({
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-white group-hover:text-blue-200 transition-colors">Convertir en titular del puesto</p>
                   <p className="text-[11px] text-white/35 mt-0.5 leading-snug">
-                    Asignación permanente. Cambia la asignación base del colaborador y del puesto.
+                    Asignación permanente. Queda registrado con fecha efectiva y motivo.
                   </p>
                 </div>
               </div>
@@ -1246,8 +1267,73 @@ function ModalEligeCobertura({
               Cancelar
             </button>
           </div>
-        ) : (
-          /* Paso 2: ¿Qué hacemos con el titular actual? */
+        )}
+
+        {/* ── Paso 2: Fecha efectiva + motivo ──────────────────────────── */}
+        {paso === "detalles" && (
+          <div className="p-5 space-y-4">
+            {/* Fecha efectiva */}
+            <div>
+              <p className="text-xs font-semibold text-white/70 mb-2">¿Desde cuándo aplica esta titularidad?</p>
+              <div className="space-y-1.5">
+                {([
+                  { val: "hoy",          label: "Desde hoy",             sub: hoy },
+                  { val: "manana",       label: "Desde mañana",          sub: manana },
+                  { val: "personalizada", label: "Fecha personalizada",   sub: null },
+                ] as { val: "hoy"|"manana"|"personalizada"; label: string; sub: string|null }[]).map(({ val, label, sub }) => (
+                  <button
+                    key={val}
+                    onClick={() => setOpcionFecha(val)}
+                    className={`w-full text-left rounded-xl px-3 py-2.5 border transition-all flex items-center justify-between ${
+                      opcionFecha === val ? "bg-blue-500/15 border-blue-500/40" : "border-white/8 hover:border-white/20"
+                    }`}
+                  >
+                    <p className="text-xs font-medium text-white">{label}</p>
+                    {sub && <p className="text-[10px] text-white/35">{sub}</p>}
+                  </button>
+                ))}
+                {opcionFecha === "personalizada" && (
+                  <input
+                    type="date"
+                    value={fechaPersonalizada}
+                    min={hoy}
+                    onChange={e => setFechaPersonalizada(e.target.value)}
+                    className="w-full mt-1 rounded-xl px-3 py-2 border border-white/15 bg-[#0c1929] text-xs text-white focus:outline-none focus:border-blue-500/50"
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Motivo */}
+            <div>
+              <p className="text-xs font-semibold text-white/70 mb-2">Motivo del cambio</p>
+              <select
+                value={motivo}
+                onChange={e => setMotivo(e.target.value)}
+                className="w-full rounded-xl px-3 py-2.5 border border-white/15 bg-[#0c1929] text-xs text-white focus:outline-none focus:border-blue-500/50"
+              >
+                {MOTIVOS_TITULAR.map(m => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setPaso("elige")} className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors">
+                Atrás
+              </button>
+              <button
+                onClick={avanzarDesdeDetalles}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 transition-colors"
+              >
+                {hayTitularPrevio ? "Siguiente →" : "Confirmar"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Paso 3: ¿Qué hacemos con el titular previo? ──────────────── */}
+        {paso === "titularPrevio" && (
           <div className="p-5 space-y-3">
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
@@ -1262,9 +1348,9 @@ function ModalEligeCobertura({
 
             <div className="space-y-2">
               {([
-                { val: "disponible",  label: "Mover a Disponibles",    desc: "Queda en el pool sin puesto fijo",     color: "green" },
-                { val: "pool_relevo", label: "Mover a Pool de relevos", desc: "Queda disponible para cubrir otros",   color: "purple" },
-                { val: "sin_asignacion", label: "Dejar sin asignación", desc: "Sin categoría activa por el momento",  color: "gray" },
+                { val: "disponible",     label: "Mover a Disponibles",    desc: "Queda en el pool sin puesto fijo",    color: "green" },
+                { val: "pool_relevo",    label: "Mover a Pool de relevos", desc: "Queda disponible para cubrir otros",  color: "purple" },
+                { val: "sin_asignacion", label: "Dejar sin asignación",   desc: "Sin categoría activa por el momento", color: "gray" },
               ] as { val: OldTitularAccion; label: string; desc: string; color: string }[]).map(({ val, label, desc, color }) => (
                 <button
                   key={val}
@@ -1284,11 +1370,11 @@ function ModalEligeCobertura({
             </div>
 
             <div className="flex gap-2 pt-1">
-              <button onClick={() => setPaso("elige")} className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors">
+              <button onClick={() => setPaso("detalles")} className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors">
                 Atrás
               </button>
               <button
-                onClick={() => onElegir(false, oldTitularAccion)}
+                onClick={() => onElegir(false, oldTitularAccion, fechaEfectiva, motivo)}
                 className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 transition-colors"
               >
                 Confirmar
@@ -2089,7 +2175,7 @@ export default function Operaciones() {
   }
 
   // ── Confirmar elección de cobertura (pool → puesto vacío) ────────────────
-  async function confirmarEligeCobertura(soloCobertura: boolean, oldTitularAccion?: OldTitularAccion) {
+  async function confirmarEligeCobertura(soloCobertura: boolean, oldTitularAccion?: OldTitularAccion, fechaEfectiva?: string, motivoCambio?: string) {
     if (!modalEligeCobertura) return;
     const { puesto, agente } = modalEligeCobertura;
     setModalEligeCobertura(null);
@@ -2099,12 +2185,16 @@ export default function Operaciones() {
         agenteId: agente.id,
         soloCobertura,
         oldTitularAccion: oldTitularAccion ?? null,
+        fechaEfectiva: fechaEfectiva ?? null,
+        motivoCambio: motivoCambio ?? null,
         usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
       });
       if (soloCobertura) {
         toast({ title: "Cobertura temporal registrada", description: `${agente.nombre_completo} cubre ${puesto.nombre} hoy` });
       } else {
-        toast({ title: "Nuevo titular asignado", description: `${agente.nombre_completo} → ${puesto.nombre}` });
+        const motLabel = motivoCambio ? ` · ${motivoCambio.replace(/_/g, " ")}` : "";
+        const fechaLabel = fechaEfectiva ? ` desde ${fechaEfectiva}` : "";
+        toast({ title: "Nuevo titular asignado", description: `${agente.nombre_completo} → ${puesto.nombre}${fechaLabel}${motLabel}` });
       }
       setAgenteSeleccionado(null);
       invalidate();

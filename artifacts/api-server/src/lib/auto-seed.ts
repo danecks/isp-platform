@@ -1590,5 +1590,46 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: EOA-02 seed asignaciones — error (no bloqueante)");
   }
 
+  // ── TH-01: tabla puesto_titular_historico ───────────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS puesto_titular_historico (
+        id            SERIAL PRIMARY KEY,
+        puesto_id     INTEGER NOT NULL REFERENCES puestos_operativos(id) ON DELETE CASCADE,
+        employee_id   INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        fecha_inicio  DATE    NOT NULL,
+        fecha_fin     DATE,
+        motivo        VARCHAR(120),
+        creado_por    VARCHAR(100),
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_pth_puesto ON puesto_titular_historico(puesto_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_pth_employee ON puesto_titular_historico(employee_id)`);
+    logger.info("Auto-migrate: TH-01 tabla puesto_titular_historico verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: TH-01 puesto_titular_historico — error (no bloqueante)");
+  }
+
+  // ── TH-02: seed historial desde titulares actuales ──────────────────────────
+  try {
+    const { rows: yaTiene } = await pool.query(`SELECT COUNT(*) FROM puesto_titular_historico`);
+    if (parseInt(yaTiene[0].count) === 0) {
+      await pool.query(`
+        INSERT INTO puesto_titular_historico (puesto_id, employee_id, fecha_inicio, motivo, creado_por)
+        SELECT po.id, po.titular_employee_id, CURRENT_DATE, 'titular_inicial', 'sistema'
+        FROM puestos_operativos po
+        WHERE po.titular_employee_id IS NOT NULL AND po.activo = TRUE
+        ON CONFLICT DO NOTHING
+      `);
+      logger.info("Auto-migrate: TH-02 seed historial titulares iniciales completado");
+    } else {
+      logger.info("Auto-migrate: TH-02 historial ya existe, seed omitido");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: TH-02 seed historial titulares — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

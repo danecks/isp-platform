@@ -858,4 +858,36 @@ employeesRouter.put("/employees/:id/asignacion-operativa", async (req, res) => {
   }
 });
 
+// ─── GET /api/employees/:id/titular-historico ────────────────────────────────
+// Historial de puestos donde el colaborador fue o es titular
+employeesRouter.get("/employees/:id/titular-historico", async (req, res) => {
+  const empId = parseInt(req.params.id);
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         pth.id,
+         pth.puesto_id,
+         pth.employee_id,
+         TO_CHAR(pth.fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio,
+         TO_CHAR(pth.fecha_fin,   'YYYY-MM-DD') AS fecha_fin,
+         pth.motivo,
+         pth.creado_por,
+         po.nombre           AS puesto_nombre,
+         c.nombre            AS cliente_nombre,
+         cs.nombre           AS sede_nombre
+       FROM puesto_titular_historico pth
+       JOIN puestos_operativos po ON po.id = pth.puesto_id
+       LEFT JOIN clients        c  ON c.id  = po.cliente_id
+       LEFT JOIN client_sedes   cs ON cs.id = po.sede_id
+       WHERE pth.employee_id = $1
+       ORDER BY pth.fecha_inicio DESC`,
+      [empId]
+    );
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "GET /employees/:id/titular-historico error");
+    res.status(500).json({ error: "Error al cargar historial de titularidad" });
+  }
+});
+
 export default employeesRouter;

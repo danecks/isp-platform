@@ -7,7 +7,7 @@ import {
   Plus, Trash2, X, Loader2, CheckCircle, AlertTriangle,
   Edit3, Save, ArrowLeft, Clock, Banknote, RefreshCw,
   UserCheck, Zap, Calendar, FileText, LayoutGrid, Activity,
-  ChevronLeft
+  ChevronLeft, History
 } from "lucide-react";
 
 const API = "/api";
@@ -1190,6 +1190,77 @@ export default function FichaCliente() {
 }
 
 // ─── PuestoRow: fila de puesto en la tab de estructura ───────────────────────
+interface PuestoTitularHistorico {
+  id: number;
+  employee_id: number;
+  empleado_nombre: string;
+  numero_empleado?: string;
+  fecha_inicio: string;
+  fecha_fin: string | null;
+  motivo?: string;
+  creado_por?: string;
+}
+
+function fmtFechaCorta(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+function HistorialTitularPuesto({ puestoId }: { puestoId: number }) {
+  const [rows, setRows] = useState<PuestoTitularHistorico[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+
+  useEffect(() => {
+    if (loaded) return;
+    setLoaded(true);
+    fetch(`${API}/operaciones/puestos/${puestoId}/titular-historico`, { headers: h() })
+      .then(r => r.ok ? r.json() : [])
+      .then(setRows)
+      .catch(() => {});
+  }, [puestoId, loaded]);
+
+  const activo = rows.find(r => !r.fecha_fin);
+  const anteriores = rows.filter(r => r.fecha_fin);
+  const visibles = showAll ? anteriores : anteriores.slice(0, 3);
+
+  return (
+    <div className="col-span-2 sm:col-span-4 border-t border-white/6 pt-2 mt-1">
+      <div className="flex items-center gap-1.5 mb-2">
+        <History className="w-3 h-3 text-white/20" />
+        <p className="text-[9px] text-white/25 uppercase tracking-wide">Historial de titularidad</p>
+      </div>
+      {rows.length === 0 && (
+        <p className="text-[10px] text-white/25">Sin historial registrado</p>
+      )}
+      {activo && (
+        <div className="flex items-start gap-2 mb-1">
+          <div className="w-1.5 h-1.5 rounded-full bg-green-400 mt-1 shrink-0" />
+          <div>
+            <p className="text-[11px] text-green-300/80 font-medium">{activo.empleado_nombre}</p>
+            <p className="text-[10px] text-white/30">Titular desde {fmtFechaCorta(activo.fecha_inicio)}{activo.motivo ? ` · ${activo.motivo.replace(/_/g, " ")}` : ""}</p>
+          </div>
+        </div>
+      )}
+      {visibles.map(r => (
+        <div key={r.id} className="flex items-start gap-2 mb-1 opacity-60">
+          <div className="w-1.5 h-1.5 rounded-full bg-white/20 mt-1 shrink-0" />
+          <div>
+            <p className="text-[10px] text-white/50">{r.empleado_nombre}</p>
+            <p className="text-[9px] text-white/25">{fmtFechaCorta(r.fecha_inicio)} → {fmtFechaCorta(r.fecha_fin)}{r.motivo ? ` · ${r.motivo.replace(/_/g, " ")}` : ""}</p>
+          </div>
+        </div>
+      ))}
+      {anteriores.length > 3 && !showAll && (
+        <button onClick={() => setShowAll(true)} className="text-[9px] text-white/25 hover:text-white/50 transition-colors">
+          +{anteriores.length - 3} anteriores…
+        </button>
+      )}
+    </div>
+  );
+}
+
 function PuestoRow({ puesto, onEdit, onDelete }: { puesto: Puesto; onEdit: () => void; onDelete: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const tieneCobertura = puesto.agente_id !== null;
@@ -1236,7 +1307,6 @@ function PuestoRow({ puesto, onEdit, onDelete }: { puesto: Puesto; onEdit: () =>
       {expanded && (
         <div className="px-4 pb-3 grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white/1.5 border-t border-white/4">
           {[
-            { label: "Titular", value: puesto.titular_nombre_completo || puesto.titular_nombre },
             { label: "Cubre hoy", value: puesto.agente_nombre },
             { label: "Jornada", value: puesto.jornada },
             { label: "Horario", value: puesto.hora_entrada && puesto.hora_salida ? `${puesto.hora_entrada}–${puesto.hora_salida}` : puesto.horario },
@@ -1256,6 +1326,8 @@ function PuestoRow({ puesto, onEdit, onDelete }: { puesto: Puesto; onEdit: () =>
               <p className="text-[11px] text-white/50 mt-0.5">{puesto.notas}</p>
             </div>
           )}
+          {/* Historial de titularidad por puesto */}
+          <HistorialTitularPuesto puestoId={puesto.id} />
         </div>
       )}
     </div>

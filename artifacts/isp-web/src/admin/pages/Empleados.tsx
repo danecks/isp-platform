@@ -11,7 +11,7 @@ import {
   LayoutGrid, ChevronDown, UserX, UserCheck2, MessageSquare,
   Link2, Unlink, Lock, Save, Banknote, MessageCircle, XCircle,
   TrendingDown, Minus, ShieldAlert, ShieldCheck, ShieldOff,
-  ArrowUpRight, ArrowDownRight, Repeat2, ArrowLeftRight, MapPinned, Map,
+  ArrowUpRight, ArrowDownRight, Repeat2, ArrowLeftRight, MapPinned, Map, History,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -1593,6 +1593,93 @@ interface PuestoBasic { id: number; nombre: string; cliente_nombre: string; sede
 interface ZonaBasicEOA { id: number; nombre: string; supervisor_nombre: string | null; }
 interface TurnoBasicEOA { id: number; nombre: string; horas_trabajo: number; horas_descanso: number; }
 
+interface TitularHistorialRow {
+  id: number;
+  puesto_id: number;
+  puesto_nombre: string;
+  puesto_codigo?: string;
+  cliente_nombre?: string;
+  sede_nombre?: string;
+  fecha_inicio: string;
+  fecha_fin: string | null;
+  motivo?: string;
+  creado_por?: string;
+}
+
+function fmtFechaCorta(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+function HistorialTitularEmp({ empId }: { empId: number }) {
+  const getSession = () => sessionStorage.getItem("isp_admin_session_v2") ?? "";
+  const [rows, setRows] = useState<TitularHistorialRow[]>([]);
+  const [expanded, setExpanded] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  function load() {
+    if (loaded) return;
+    setLoaded(true);
+    fetch(`${API_BASE}/employees/${empId}/titular-historico`, {
+      headers: { "x-isp-session": getSession() },
+    }).then(r => r.ok ? r.json() : []).then(setRows).catch(() => {});
+  }
+
+  const activo = rows.find(r => !r.fecha_fin);
+  const anteriores = rows.filter(r => r.fecha_fin);
+
+  return (
+    <div className="bg-[#0c1929] border border-white/6 rounded-xl overflow-hidden">
+      <button
+        className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/2 transition-colors"
+        onClick={() => { setExpanded(e => !e); load(); }}
+      >
+        <div className="flex items-center gap-2">
+          <History className="w-3.5 h-3.5 text-white/30" />
+          <span className="text-xs font-semibold text-white/60">Historial de titularidad</span>
+          {activo && <span className="text-[10px] text-green-400/70 bg-green-500/10 border border-green-500/20 px-1.5 py-0.5 rounded-full">titular activo</span>}
+        </div>
+        <ChevronDown className={`w-3.5 h-3.5 text-white/25 transition-transform ${expanded ? "rotate-180" : ""}`} />
+      </button>
+
+      {expanded && (
+        <div className="border-t border-white/6 divide-y divide-white/4">
+          {rows.length === 0 && (
+            <p className="px-4 py-3 text-xs text-white/30 text-center">Sin historial de titularidad registrado</p>
+          )}
+          {activo && (
+            <div className="px-4 py-3 bg-green-500/5">
+              <div className="flex items-start gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-400 mt-1.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-white truncate">{activo.puesto_nombre}</p>
+                  {activo.cliente_nombre && <p className="text-[10px] text-white/40 truncate">{activo.cliente_nombre}{activo.sede_nombre ? ` · ${activo.sede_nombre}` : ""}</p>}
+                  <p className="text-[10px] text-green-400/60 mt-0.5">Titular desde {fmtFechaCorta(activo.fecha_inicio)}</p>
+                  {activo.motivo && <p className="text-[10px] text-white/25 mt-0.5 capitalize">{activo.motivo.replace(/_/g, " ")}</p>}
+                </div>
+              </div>
+            </div>
+          )}
+          {anteriores.map(r => (
+            <div key={r.id} className="px-4 py-2.5">
+              <div className="flex items-start gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-white/15 mt-1.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-white/60 truncate">{r.puesto_nombre}</p>
+                  {r.cliente_nombre && <p className="text-[10px] text-white/30 truncate">{r.cliente_nombre}{r.sede_nombre ? ` · ${r.sede_nombre}` : ""}</p>}
+                  <p className="text-[10px] text-white/25 mt-0.5">{fmtFechaCorta(r.fecha_inicio)} → {fmtFechaCorta(r.fecha_fin)}</p>
+                  {r.motivo && <p className="text-[10px] text-white/20 mt-0.5 capitalize">{r.motivo.replace(/_/g, " ")}</p>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TabAsignacionOperativa({ empId }: { empId: number }) {
   const getSession = () => sessionStorage.getItem("isp_admin_session_v2") ?? "";
   const h = () => ({ "Content-Type": "application/json", "x-isp-session": getSession() });
@@ -1754,6 +1841,9 @@ function TabAsignacionOperativa({ empId }: { empId: number }) {
           )}
         </div>
       )}
+
+      {/* Historial de titularidad */}
+      <HistorialTitularEmp empId={empId} />
 
       {/* Modal de edición */}
       {editOpen && createPortal(

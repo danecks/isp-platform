@@ -1,0 +1,151 @@
+El sistema ya tiene:
+	•	asignación operativa base
+	•	pizarrón operativo
+	•	pool de disponibles
+	•	cobertura diaria
+	•	segmentos de cobertura
+	•	lógica para decidir entre cobertura temporal o convertir a titular
+	•	fichas de cliente y colaborador
+	•	pre-planilla y cierre diario
+
+No quiero romper nada de lo existente.
+
+Quiero mejorar la lógica de titularidad agregando fecha efectiva de cambio e historial de titularidad por puesto.
+
+Objetivo
+
+Que cuando un colaborador sea convertido en titular de un puesto, el sistema no solo cambie el titular actual, sino que también registre desde cuándo aplica ese cambio, deje historial completo del puesto y permita trazabilidad futura para operación, RRHH y planilla.
+
+⸻
+
+1. Historial de titularidad por puesto
+
+Crear una estructura nueva o equivalente para guardar cada cambio de titular, por ejemplo:
+
+puesto_titular_historico
+
+Campos sugeridos:
+	•	id
+	•	puestoId
+	•	employeeId
+	•	fechaInicio
+	•	fechaFin nullable
+	•	motivoCambio nullable
+	•	creadoPor
+	•	createdAt
+	•	updatedAt
+
+Muy importante:
+	•	un puesto puede tener muchos titulares a lo largo del tiempo
+	•	solo uno puede estar activo sin fechaFin al mismo tiempo
+
+⸻
+
+2. Fecha efectiva al convertir en titular
+
+Cuando desde el pizarrón un colaborador del pool sea convertido en titular, no quiero que el cambio sea siempre implícitamente “desde ya”.
+
+Agregar en el modal de confirmación una pregunta adicional:
+
+¿Desde cuándo aplica esta titularidad?
+
+Opciones:
+	•	Desde hoy
+	•	Desde mañana
+	•	Fecha personalizada
+
+Si se elige fecha personalizada, permitir seleccionar la fecha.
+
+⸻
+
+3. Motivo del cambio de titular
+
+En ese mismo flujo, agregar un campo breve de motivo o razón, por ejemplo:
+	•	cobertura definitiva
+	•	reemplazo permanente
+	•	baja del titular anterior
+	•	reestructuración
+	•	otro
+
+No hace falta hacerlo demasiado complejo, pero sí dejar trazabilidad.
+
+⸻
+
+4. Comportamiento del sistema al cambiar titular
+
+Cuando se confirme el cambio:
+	•	cerrar el historial del titular anterior (fechaFin)
+	•	abrir un nuevo registro para el nuevo titular (fechaInicio)
+	•	actualizar la asignación operativa base del colaborador nuevo
+	•	aplicar la decisión tomada sobre el titular anterior (disponible / pool / sin asignación)
+	•	mantener la coherencia con ficha de cliente, colaborador y operación
+
+⸻
+
+5. Ficha del puesto / cliente
+
+En la ficha del cliente o del puesto, quiero poder ver:
+	•	titular actual
+	•	fecha desde la que es titular
+	•	historial de titulares anteriores
+	•	motivo del cambio si existe
+
+⸻
+
+6. Ficha del colaborador
+
+En la ficha del colaborador, quiero ver:
+	•	si es titular actual de un puesto
+	•	desde cuándo lo es
+	•	historial de puestos titulares anteriores si aplica
+
+⸻
+
+7. Integración con operación y planilla
+
+No quiero romper:
+	•	cobertura diaria
+	•	segmentos
+	•	cierre diario
+	•	pre-planilla
+
+Pero sí quiero que el sistema quede mejor preparado para entender:
+	•	cuándo una persona empezó a ser titular
+	•	desde qué fecha un cambio afecta operación y nómina
+
+⸻
+
+8. Restricciones
+	•	no debe haber dos titulares activos simultáneos para el mismo puesto
+	•	toda conversión a titular debe quedar auditada
+	•	toda fecha efectiva debe quedar registrada
+
+⸻
+
+9. No romper
+
+No romper:
+	•	pizarrón operativo
+	•	cobertura diaria
+	•	pool de disponibles
+	•	fichas de cliente
+	•	fichas de colaborador
+	•	RRHH
+	•	pre-planilla
+	•	reportería
+	•	WhatsApp
+	•	Trello
+
+⸻
+
+10. Documentación
+
+Explica claramente al final:
+	•	cómo funciona el historial de titularidad
+	•	cómo se registra la fecha efectiva
+	•	cómo se ve en la ficha del cliente
+	•	cómo se ve en la ficha del colaborador
+	•	cómo esto prepara mejor al sistema para trazabilidad y planilla futura
+
+Muy importante:
+quiero que los cambios de titularidad de puestos queden completamente trazables, con fecha efectiva y sin perder historial.

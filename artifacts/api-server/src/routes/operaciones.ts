@@ -112,10 +112,14 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
 operacionesRouter.post("/operaciones/asignar", async (req, res) => {
   // soloCobertura=true → solo cubre hoy, NO cambia titular ni EOA
   // soloCobertura=false (default) → asigna como titular si el puesto no tiene uno
-  // oldTitularAccion → qué hacer con el EOA del titular previo si hay uno
+  // oldTitularAccion → qué hacer con el EOA del titular previo
+  // fechaEfectiva   → "YYYY-MM-DD" o null (usa hoy si null)
+  // motivoCambio    → texto libre del motivo del cambio de titular
   const { puestoId, agenteId, usuario, notas, forzar,
           soloCobertura = false,
-          oldTitularAccion } = req.body;
+          oldTitularAccion,
+          fechaEfectiva,
+          motivoCambio } = req.body;
   if (!puestoId || !agenteId) return res.status(400).json({ error: "puestoId y agenteId son requeridos" });
 
   try {
@@ -173,26 +177,46 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
         [agenteId, agente.nombre_completo, puestoId]
       );
 
-      // ── Actualizar EOA del agente entrante si no había titular previo ──────
-      if (sinTitular) {
+      // ── Registro en historial de titularidad (TH) ────────────────────────
+      const fechaEfectivaDate = fechaEfectiva
+        ? fechaEfectiva  // "YYYY-MM-DD" string → PostgreSQL lo parsea como DATE
+        : new Date().toISOString().split("T")[0];
+
+      // Cerrar registro activo del titular anterior (si lo había)
+      if (titularPrevioId) {
         await pool.query(
-          `UPDATE employee_operational_assignments
-           SET activa = FALSE, updated_at = NOW()
-           WHERE employee_id = $1 AND activa = TRUE`,
-          [agenteId]
-        );
-        await pool.query(
-          `INSERT INTO employee_operational_assignments
-             (employee_id, puesto_id, sede_id, cliente_id, zona_operativa_id, tipo_turno_id,
-              tipo_asignacion, activa, fecha_inicio, notas, created_at, updated_at)
-           SELECT $1, $2, po.sede_id, po.cliente_id, po.zona_operativa_id, po.tipo_turno_id,
-                  'titular', TRUE, NOW(), 'Asignado desde pizarrón operativo', NOW(), NOW()
-           FROM puestos_operativos po WHERE po.id = $2`,
-          [agenteId, puestoId]
+          `UPDATE puesto_titular_historico
+           SET fecha_fin = $1, updated_at = NOW()
+           WHERE puesto_id = $2 AND fecha_fin IS NULL`,
+          [fechaEfectivaDate, puestoId]
         );
       }
+      // Abrir registro para el nuevo titular
+      await pool.query(
+        `INSERT INTO puesto_titular_historico
+           (puesto_id, employee_id, fecha_inicio, motivo, creado_por)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [puestoId, agenteId, fechaEfectivaDate, motivoCambio || null, usuario || 'sistema']
+      );
 
-      // ── Mover titular previo (si había uno y se indica acción) ─────────────
+      // ── Actualizar EOA del agente entrante ────────────────────────────────
+      await pool.query(
+        `UPDATE employee_operational_assignments
+         SET activa = FALSE, updated_at = NOW()
+         WHERE employee_id = $1 AND activa = TRUE`,
+        [agenteId]
+      );
+      await pool.query(
+        `INSERT INTO employee_operational_assignments
+           (employee_id, puesto_id, sede_id, cliente_id, zona_operativa_id, tipo_turno_id,
+            tipo_asignacion, activa, fecha_inicio, notas, created_at, updated_at)
+         SELECT $1, $2, po.sede_id, po.cliente_id, po.zona_operativa_id, po.tipo_turno_id,
+                'titular', TRUE, NOW(), 'Asignado desde pizarrón operativo', NOW(), NOW()
+         FROM puestos_operativos po WHERE po.id = $2`,
+        [agenteId, puestoId]
+      );
+
+      // ── Mover titular previo a nueva categoría EOA (si se indicó acción) ─
       if (titularPrevioId && titularPrevioId !== agenteId && oldTitularAccion) {
         const nuevoTipo = oldTitularAccion === 'disponible'   ? 'disponible'
                         : oldTitularAccion === 'pool_relevo'  ? 'pool_relevo'
@@ -1022,6 +1046,34 @@ operacionesRouter.get("/operaciones/cierres/:fecha", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "GET /operaciones/cierres/:fecha error");
     res.status(500).json({ error: "Error al cargar detalle del cierre" });
+  }
+});
+
+// ─── GET /api/operaciones/puestos/:id/titular-historico ──────────────────────
+// Historial de titulares de un puesto específico
+operacionesRouter.get("/operaciones/puestos/:id/titular-historico", async (req, res) => {
+  const puestoId = parseInt(req.params.id);
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         pth.id,
+         pth.puesto_id,
+         pth.employee_id,
+         TO_CHAR(pth.fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio,
+         TO_CHAR(pth.fecha_fin,   'YYYY-MM-DD') AS fecha_fin,
+         pth.motivo,
+         pth.creado_por,
+         e.nombre_completo AS empleado_nombre
+       FROM puesto_titular_historico pth
+       JOIN employees e ON e.id = pth.employee_id
+       WHERE pth.puesto_id = $1
+       ORDER BY pth.fecha_inicio DESC`,
+      [puestoId]
+    );
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "GET /operaciones/puestos/:id/titular-historico error");
+    res.status(500).json({ error: "Error al cargar historial de titularidad" });
   }
 });
 
