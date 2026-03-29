@@ -1,0 +1,231 @@
+El sistema ya tiene múltiples módulos operativos construidos, incluyendo:
+	•	empleados
+	•	users
+	•	clientes
+	•	sedes operativas
+	•	puestos operativos
+	•	zonas operativas globales
+	•	pizarrón operativo
+	•	cobertura diaria
+	•	cierre operativo diario
+	•	RRHH (faltas, suspensiones, eventos, alertas)
+	•	anticipos
+	•	tareas
+	•	incidencias
+	•	reportería
+	•	WhatsApp y simulador WA
+
+No quiero que modifiques código todavía.
+
+Quiero que hagas una auditoría especializada enfocada únicamente en detectar los bloqueantes para construir la planilla.
+
+Objetivo
+
+Identificar todos los problemas críticos que impedirían construir una pre-planilla y luego una planilla confiable a partir del sistema actual.
+
+Quiero saber qué cosas están listas, qué cosas están incompletas y qué cosas están mal estructuradas antes de avanzar a nómina.
+
+⸻
+
+1. Enfoque de la auditoría
+
+Quiero que revises el sistema desde la perspectiva de planilla / nómina.
+
+Debes analizar si el sistema hoy puede responder correctamente, por colaborador y por período:
+	•	si trabajó o no
+	•	cuántas horas trabajó
+	•	si hizo horas extra
+	•	si trabajó en descanso
+	•	si faltó
+	•	si fue suspendido
+	•	si hizo relevo
+	•	si tiene anticipos
+	•	si corresponde descuento del día
+	•	si afecta séptimo
+
+⸻
+
+2. Auditar estos bloqueantes críticos
+
+A. Identidad única del colaborador
+
+Verificar:
+	•	que todo esté ligado correctamente a employeeId
+	•	que no existan empleados duplicados
+	•	que el DPI sea único
+	•	que users y employees estén correctamente relacionados
+	•	que WhatsApp y otros módulos identifiquen al colaborador real
+
+Detectar cualquier lugar donde todavía se use:
+	•	nombre manual
+	•	DPI manual
+	•	teléfono manual
+en vez de una relación sólida con employeeId
+
+⸻
+
+B. Cobertura real por día
+
+Verificar si el sistema realmente puede saber:
+	•	quién trabajó hoy
+	•	en qué puesto
+	•	en qué cliente/sede/zona
+	•	si fue titular o relevo
+	•	si faltó
+	•	si estuvo suspendido
+	•	si el puesto quedó descubierto
+
+Detectar si la cobertura diaria está incompleta o si falta granularidad.
+
+⸻
+
+C. Segmentación de horas
+
+Verificar si el sistema soporta correctamente casos donde un puesto es cubierto por varias personas en el mismo día.
+
+Ejemplo:
+	•	una persona cubre 10 horas
+	•	otra cubre 2 horas
+
+Detectar si hoy eso se puede registrar bien o si aún queda ambiguo.
+
+⸻
+
+D. Horas extra y descanso trabajado
+
+Verificar si el sistema puede determinar correctamente:
+	•	horas trabajadas
+	•	horas extra
+	•	trabajo en día de descanso
+	•	elegibilidad de horas extra según el puesto y horario
+
+Detectar si esa lógica está completa o todavía incompleta.
+
+⸻
+
+E. Faltas, suspensiones y afectación laboral
+
+Verificar si una falta o suspensión impacta correctamente en la operación y deja base suficiente para nómina:
+	•	descuento del día
+	•	afecta séptimo
+	•	evento RRHH
+	•	registro por empleado y fecha
+
+Detectar cualquier inconsistencia o dato faltante.
+
+⸻
+
+F. Relevos
+
+Verificar si el sistema separa correctamente:
+	•	titular base
+	•	relevo del día
+
+Y si el relevo queda bien registrado para nómina sin alterar la asignación titular.
+
+⸻
+
+G. Cierre diario
+
+Verificar si el cierre operativo diario:
+	•	congela correctamente el día
+	•	impide cambios posteriores
+	•	consolida información útil por colaborador
+	•	deja un snapshot confiable
+
+Detectar si el cierre todavía no produce una capa lista para nómina.
+
+⸻
+
+H. Novedades diarias de nómina
+
+Revisar si ya existe o si falta una estructura clara que consolide por colaborador y por día:
+	•	trabajó/no trabajó
+	•	horas trabajadas
+	•	horas extra
+	•	falta
+	•	suspensión
+	•	relevo
+	•	descanso trabajado
+	•	descuento sugerido
+	•	afecta séptimo
+
+Si no existe, señalarlo como bloqueante.
+
+⸻
+
+I. Anticipos
+
+Verificar si:
+	•	los anticipos están correctamente ligados a employeeId
+	•	se calculan por período
+	•	no hay duplicados
+	•	están listos para descontarse luego en planilla
+
+⸻
+
+J. Simulador WA
+
+Verificar si el simulador y la lógica real generan datos consistentes con lo que luego necesitará planilla.
+
+Detectar si hay diferencias entre simulador y lógica real que podrían causar errores.
+
+⸻
+
+3. Hallazgos que quiero
+
+Quiero que detectes específicamente:
+	•	datos manuales donde deberían existir relaciones
+	•	campos faltantes para nómina
+	•	reglas laborales incompletas
+	•	problemas de cálculo
+	•	flujos que no dejan trazabilidad suficiente
+	•	módulos que todavía no alimentan correctamente una futura planilla
+
+⸻
+
+4. Clasificación
+
+Clasifica cada hallazgo como:
+	•	Bloqueante crítico para planilla
+	•	Alto
+	•	Medio
+	•	Bajo
+
+Quiero especial énfasis en los bloqueantes críticos.
+
+⸻
+
+5. Recomendaciones
+
+Para cada hallazgo, explica:
+	•	qué está mal
+	•	por qué bloquea o afecta la planilla
+	•	cómo debería corregirse
+	•	prioridad
+
+⸻
+
+6. Resultado esperado
+
+Quiero un reporte estructurado con:
+
+A. Qué ya está listo para planilla
+
+B. Qué está incompleto pero no bloquea
+
+C. Qué bloquea completamente avanzar a pre-planilla
+
+D. Orden recomendado de corrección antes de construir planilla
+
+⸻
+
+7. Muy importante
+
+No quiero una auditoría general del sistema.
+
+Quiero una auditoría especializada, estricta y práctica, enfocada en responder esta pregunta:
+
+“¿Qué me falta corregir exactamente para que este sistema pueda generar una pre-planilla confiable?”
+
+No modifiques nada todavía. Solo analiza y entrega hallazgos y recomendaciones.
