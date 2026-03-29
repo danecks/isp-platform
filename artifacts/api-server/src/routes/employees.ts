@@ -495,6 +495,7 @@ employeesRouter.post("/employees", async (req, res) => {
     puesto, tipoServicio, area, estadoLaboral, sede,
     supervisorNombre, supervisorId, clienteId, fechaIngreso, notas,
     externalId, sourceSystem, syncStatus,
+    sueldoBase, tipoJornada, diaDescanso, horasContrato,
   } = req.body ?? {};
 
   if (!nombreCompleto) {
@@ -535,6 +536,10 @@ employeesRouter.post("/employees", async (req, res) => {
         externalId: externalId || null,
         sourceSystem: sourceSystem || "manual",
         syncStatus: syncStatus || "manual",
+        sueldoBase: sueldoBase != null && sueldoBase !== "" ? String(sueldoBase) : null,
+        tipoJornada: tipoJornada || null,
+        diaDescanso: diaDescanso || null,
+        horasContrato: horasContrato ? parseInt(horasContrato) : null,
       })
       .returning();
 
@@ -646,6 +651,7 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
     supervisorNombre, supervisorId, clienteId, fechaIngreso, notas,
     externalId, sourceSystem, syncStatus, lastSyncAt,
     limiteAnticipo, tipoLimitePeriodo,
+    sueldoBase, tipoJornada, diaDescanso, horasContrato,
   } = req.body ?? {};
 
   // Validar unicidad de DPI (excluir el propio empleado)
@@ -686,6 +692,10 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
     updates.ultimaActualizacionLimiteAt = new Date();
   }
   if (tipoLimitePeriodo !== undefined) updates.tipoLimitePeriodo = tipoLimitePeriodo || "quincenal";
+  if (sueldoBase !== undefined) updates.sueldoBase = sueldoBase === null || sueldoBase === "" ? null : String(sueldoBase);
+  if (tipoJornada !== undefined) updates.tipoJornada = tipoJornada || null;
+  if (diaDescanso !== undefined) updates.diaDescanso = diaDescanso || null;
+  if (horasContrato !== undefined) updates.horasContrato = horasContrato === null || horasContrato === "" ? null : parseInt(horasContrato);
 
   try {
     const [emp] = await db

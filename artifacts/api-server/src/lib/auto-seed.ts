@@ -1410,5 +1410,56 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: Fase2-A12 applications.dpi — error (no bloqueante)");
   }
 
+  // ── P-NOM-01: Campos laborales/nómina en employees ────────────────────────────
+  try {
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS sueldo_base    NUMERIC(12,2)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS tipo_jornada   VARCHAR(20)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS dia_descanso   VARCHAR(20)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS horas_contrato SMALLINT`);
+    logger.info("Auto-migrate: P-NOM-01 campos laborales en employees verificados");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: P-NOM-01 employees laborales — error (no bloqueante)");
+  }
+
+  // ── P-NOM-02: UNIQUE INDEX en employees.dpi (con dedup seguro) ────────────────
+  try {
+    // Antes de crear el índice, neutralizar DPIs duplicados: conservar el más reciente
+    // y poner NULL en los anteriores para no perder el registro.
+    await pool.query(`
+      UPDATE employees e
+      SET dpi = NULL
+      WHERE dpi IS NOT NULL
+        AND id NOT IN (
+          SELECT MAX(id)
+          FROM employees
+          WHERE dpi IS NOT NULL
+          GROUP BY dpi
+          HAVING COUNT(*) > 1
+        )
+        AND dpi IN (
+          SELECT dpi FROM employees
+          WHERE dpi IS NOT NULL
+          GROUP BY dpi
+          HAVING COUNT(*) > 1
+        )
+    `);
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS employees_dpi_unique
+      ON employees(dpi)
+      WHERE dpi IS NOT NULL
+    `);
+    logger.info("Auto-migrate: P-NOM-02 UNIQUE INDEX en employees.dpi aplicado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: P-NOM-02 employees.dpi unique — error (no bloqueante)");
+  }
+
+  // ── P-NOM-03: campo planilla_id en anticipos ──────────────────────────────────
+  try {
+    await pool.query(`ALTER TABLE anticipos ADD COLUMN IF NOT EXISTS planilla_id INTEGER`);
+    logger.info("Auto-migrate: P-NOM-03 anticipos.planilla_id verificado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: P-NOM-03 anticipos.planilla_id — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

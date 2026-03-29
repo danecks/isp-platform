@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, varchar, text, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, smallint, numeric, varchar, text, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -105,6 +105,11 @@ export const employeesTable = pgTable("employees", {
   limiteAnticipo: integer("limite_anticipo"),                 // null = sin límite configurado
   tipoLimitePeriodo: varchar("tipo_limite_periodo", { length: 30 }).default("quincenal"),
   ultimaActualizacionLimiteAt: timestamp("ultima_actualizacion_limite_at", { withTimezone: true }),
+  // ── Datos laborales / nómina ─────────────────────────────────────────────
+  sueldoBase: numeric("sueldo_base", { precision: 12, scale: 2 }),  // salario mensual en GTQ
+  tipoJornada: varchar("tipo_jornada", { length: 20 }),             // "completa" | "parcial" | "mixta"
+  diaDescanso: varchar("dia_descanso", { length: 20 }),             // "domingo" | "sabado" | "lunes" etc.
+  horasContrato: smallint("horas_contrato"),                        // horas semanales contratadas
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -331,6 +336,8 @@ export const anticiposTable = pgTable("anticipos", {
   periodo: varchar("periodo", { length: 30 }),           // "2026-03-dia10"
   fechaSolicitud: timestamp("fecha_solicitud", { withTimezone: true }).notNull().defaultNow(),
   observaciones: text("observaciones"),
+  // ── Futura planilla ────────────────────────────────────────────────────────
+  planillaId: integer("planilla_id"),                    // FK a tabla planilla cuando exista
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

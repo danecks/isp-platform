@@ -135,7 +135,47 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
       count++;
     }
 
-    // 3. Suspensiones desde movimientos_operativos
+    // Fix P-NOM-04: Titulares con puesto activo pero SIN ningún segmento ese día
+    // (complementa la detección de ausencia_sin_cubrir en cobertura_diaria)
+    const { rows: titularesSinPresencia } = await pool.query(`
+      SELECT po.titular_employee_id AS employee_id,
+             e.nombre_completo      AS empleado_nombre,
+             po.id                  AS puesto_titular_id,
+             po.nombre              AS puesto_titular_nombre
+      FROM puestos_operativos po
+      JOIN employees e ON e.id = po.titular_employee_id
+      WHERE po.activo = TRUE
+        AND po.titular_employee_id IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM cobertura_segmentos cs
+          WHERE cs.fecha = $1
+            AND cs.employee_id = po.titular_employee_id
+        )
+    `, [fecha]);
+
+    for (const t of titularesSinPresencia) {
+      await pool.query(`
+        INSERT INTO novedades_nomina_diarias
+          (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
+           falta, suspension, descanso_trabajado, afecta_septimo, descuento_dia,
+           puesto_titular_id, puesto_titular_nombre, fuente, cierre_id, updated_at)
+        VALUES ($1,$2,$3,FALSE,0,0, TRUE,FALSE,FALSE,TRUE,TRUE, $4,$5,'auto_auditoria',$6,NOW())
+        ON CONFLICT (fecha, employee_id)
+        DO UPDATE SET
+          falta                 = TRUE,
+          afecta_septimo        = TRUE,
+          descuento_dia         = TRUE,
+          puesto_titular_id     = EXCLUDED.puesto_titular_id,
+          puesto_titular_nombre = EXCLUDED.puesto_titular_nombre,
+          cierre_id             = COALESCE(novedades_nomina_diarias.cierre_id, EXCLUDED.cierre_id),
+          updated_at            = NOW()
+        WHERE novedades_nomina_diarias.trabajo_dia = FALSE
+      `, [fecha, t.employee_id, t.empleado_nombre ?? "Desconocido",
+          t.puesto_titular_id ?? null, t.puesto_titular_nombre ?? null, cierreId]);
+      count++;
+    }
+
+    // 3. Suspensiones desde movimientos_operativos (texto) + eventos_rrhh (Fix P-NOM-05)
     const { rows: suspensiones } = await pool.query(`
       SELECT mo.agente_saliente_id    AS employee_id,
              mo.agente_saliente_nombre AS empleado_nombre
@@ -162,6 +202,47 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
           updated_at     = NOW()
         WHERE novedades_nomina_diarias.trabajo_dia = FALSE
       `, [fecha, s.employee_id, s.empleado_nombre ?? "Desconocido", cierreId]);
+    }
+
+    // Fix P-NOM-05: Suspensiones desde eventos_rrhh (fuente oficial de RRHH)
+    const { rows: eventosSupension } = await pool.query(`
+      SELECT er.employee_id,
+             er.employee_nombre AS empleado_nombre,
+             er.id              AS evento_id
+      FROM eventos_rrhh er
+      WHERE DATE(er.fecha AT TIME ZONE 'America/Guatemala') = $1::date
+        AND er.tipo_evento ILIKE '%suspens%'
+        AND er.employee_id IS NOT NULL
+        AND er.estado NOT IN ('anulado')
+    `, [fecha]);
+
+    for (const ev of eventosSupension) {
+      await pool.query(`
+        INSERT INTO novedades_nomina_diarias
+          (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
+           falta, suspension, descanso_trabajado, afecta_septimo, descuento_dia,
+           fuente, cierre_id, updated_at)
+        VALUES ($1,$2,$3,FALSE,0,0, FALSE,TRUE,FALSE,TRUE,TRUE, 'eventos_rrhh',$4,NOW())
+        ON CONFLICT (fecha, employee_id)
+        DO UPDATE SET
+          suspension     = TRUE,
+          afecta_septimo = TRUE,
+          descuento_dia  = TRUE,
+          fuente         = CASE
+                             WHEN novedades_nomina_diarias.fuente = 'cierre_operativo'
+                             THEN 'cierre_operativo'
+                             ELSE 'eventos_rrhh'
+                           END,
+          cierre_id      = EXCLUDED.cierre_id,
+          updated_at     = NOW()
+        WHERE novedades_nomina_diarias.trabajo_dia = FALSE
+      `, [fecha, ev.employee_id, ev.empleado_nombre ?? "Desconocido", cierreId]);
+
+      // Marcar el evento como procesado en nómina
+      await pool.query(`
+        UPDATE eventos_rrhh SET estado = 'procesado', updated_at = NOW()
+        WHERE id = $1 AND estado NOT IN ('anulado', 'procesado')
+      `, [ev.evento_id]);
     }
 
     logger.info({ fecha, count }, "Novedades de nómina generadas");

@@ -1,0 +1,126 @@
+El sistema ya pasó una auditoría especializada de pre-planilla y se identificaron varios bloqueantes críticos.
+
+No quiero construir todavía la planilla final.
+Quiero primero corregir los bloqueantes más importantes para dejar el sistema listo para una pre-planilla confiable.
+
+Objetivo
+
+Resolver los bloqueantes críticos detectados en la auditoría para que el cierre diario, las novedades de nómina y los anticipos queden suficientemente sólidos antes de avanzar a pre-planilla.
+
+⸻
+
+1. Agregar datos laborales base a employees
+
+Agregar a employees campos indispensables para nómina:
+	•	sueldo_base NUMERIC(12,2)
+	•	tipo_jornada VARCHAR(20)  // completa, parcial, mixta
+	•	dia_descanso VARCHAR(20)  // domingo, sabado, etc.
+	•	horas_contrato SMALLINT   // horas semanales o base contractual
+
+Quiero que estos campos también sean visibles y editables desde la ficha del colaborador.
+
+⸻
+
+2. Asegurar identidad única por DPI
+
+Agregar restricción real en base de datos para evitar DPIs duplicados:
+	•	UNIQUE INDEX en employees.dpi
+	•	aplicar solo cuando dpi no sea null
+
+También revisar y documentar si hay registros actuales que puedan romper esta migración.
+
+⸻
+
+3. Obligar horas en cobertura_segmentos
+
+Actualmente hora_inicio y hora_fin pueden quedar nulos.
+Eso no puede seguir así.
+
+Quiero que:
+	•	el frontend no permita guardar segmentos sin hora_inicio y hora_fin
+	•	el backend rechace cualquier tramo sin horas válidas
+	•	horas_calculadas siempre tenga base real
+
+⸻
+
+4. Auto-detectar ausencias al cerrar el día
+
+Hoy el sistema depende demasiado de que alguien registre manualmente la ausencia.
+
+Quiero que al cerrar el día:
+	•	recorra todos los empleados activos con asignación titular vigente
+	•	compare si tuvieron o no cobertura/segmentos ese día
+	•	si no tuvieron ningún tramo y no existe cobertura válida, generar automáticamente novedad de ausencia/falta
+
+Muy importante:
+esto debe distinguir entre:
+	•	sin registro por error
+	•	puesto efectivamente no cubierto
+	•	titular ausente
+
+Documentar bien la lógica elegida.
+
+⸻
+
+5. Integrar eventos_rrhh con generarNovedades()
+
+No quiero depender de texto libre como:
+	•	motivo ILIKE ‘%suspens%’
+
+Quiero que generarNovedades() use directamente eventos_rrhh para detectar:
+	•	suspensión
+	•	falta
+	•	otros eventos relevantes si aplica
+
+Si existe un evento RRHH válido para un empleado y fecha, debe reflejarse correctamente en la novedad diaria.
+
+⸻
+
+6. Endurecer anticipos para futura planilla
+
+Quiero dejar los anticipos listos para descontarse después en nómina.
+
+A. Nuevos anticipos
+	•	employee_id debe ser obligatorio para nuevos registros
+	•	no permitir anticipos huérfanos nuevos
+
+B. Unicidad por período
+
+Agregar una regla o restricción que evite duplicar anticipos para el mismo empleado en el mismo período, según la lógica de negocio actual.
+
+C. Relación futura con planilla
+
+Agregar campo:
+	•	planilla_id nullable
+o equivalente
+
+Para que más adelante se pueda marcar qué planilla absorbió ese anticipo y evitar descuentos dobles.
+
+⸻
+
+7. No romper
+
+No romper:
+	•	pizarrón operativo
+	•	cobertura diaria
+	•	cierre operativo
+	•	RRHH
+	•	anticipos manuales
+	•	anticipos por WhatsApp
+	•	empleados
+	•	clientes
+	•	reportería
+	•	portal
+	•	WhatsApp
+	•	Trello
+
+⸻
+
+8. Documentación
+
+Explica claramente:
+	•	qué bloqueantes se corrigieron
+	•	qué migraciones se hicieron
+	•	cómo funciona ahora la detección automática de ausencias
+	•	cómo quedó integrada la lógica RRHH → novedades
+	•	cómo quedaron listos los anticipos para futura planilla

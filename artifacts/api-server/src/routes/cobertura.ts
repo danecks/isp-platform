@@ -317,6 +317,11 @@ coberturaRouter.post("/cobertura/segmentos", async (req, res) => {
     return res.status(400).json({ error: "fecha, puestoId y employeeId son requeridos" });
   }
 
+  // Fix P-NOM-03: hora_inicio y hora_fin son obligatorias para calcular horas
+  if (!horaInicio || !horaFin) {
+    return res.status(400).json({ error: "hora_inicio y hora_fin son requeridos para registrar un tramo de cobertura" });
+  }
+
   try {
     // Obtener datos del puesto para validaciones
     const { rows: puestos } = await pool.query(

@@ -46,7 +46,14 @@ The project uses a pnpm workspace monorepo, organizing deployable applications (
 - **Authentication & Authorization:** Secure user management with bcrypt-hashed passwords and comprehensive Role-Based Access Control (RBAC).
 - **Admin Dashboard Modules:** Includes live dashboards, CRM for leads, job application management, incident reporting, and HR advance requests.
 - **Client Portal (`/portal/*`):** Provides a secure, dedicated interface for clients to view their specific data and KPIs.
-- **Employee Management (`/admin/empleados`):** Core module for managing employee data, including their profiles, assignments, system links, operational tasks, and individual KPIs.
+- **Employee Management (`/admin/empleados`):** Core module for managing employee data, including their profiles, assignments, system links, operational tasks, and individual KPIs. Now includes payroll-critical fields: `sueldo_base`, `tipo_jornada`, `dia_descanso`, `horas_contrato` (added to DB schema, API, and UI).
+- **Pre-Payroll Audit Fixes (P-NOM series):**
+  - P-NOM-01: Labor/payroll fields added to `employees` table and FormModal in Empleados.tsx.
+  - P-NOM-02: UNIQUE INDEX on `employees.dpi` (with safe dedup: older duplicates get DPI nulled, most recent preserved).
+  - P-NOM-03: `hora_inicio` and `hora_fin` are now required for all cobertura segment registrations (validated in both backend API and frontend).
+  - P-NOM-04: Auto-absence detection at close — titulares with active puestos but zero segments for the day are automatically added as `falta=TRUE` in `novedades_nomina_diarias` (fuente: `auto_auditoria`).
+  - P-NOM-05: `eventos_rrhh` suspension-type records are now integrated into `generarNovedades()` as official RRHH source for suspensions, and marked `procesado` after import.
+  - P-NOM-06: `planilla_id` column added to `anticipos` table for future payroll absorption tracking.
 - **WhatsApp Integration:** Processes incoming WhatsApp messages via a webhook, classifying them to create records for incidents, applications, leads, and advance requests. Includes a DPI phone registration flow for unknown numbers.
 - **Trello Integration:** Facilitates creating Trello cards from the admin panel for incidents, complete with detailed information and automated assignments.
 - **Client and Position Aliases:** Manages aliases for clients and service locations, improving data entry and reporting accuracy.

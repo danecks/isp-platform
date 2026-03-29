@@ -455,6 +455,10 @@ function ModalSegmentos({
 
   async function agregarSegmento() {
     if (!empleadoSel) { toast({ title: "Selecciona un empleado", variant: "destructive" }); return; }
+    if (!horaInicio || !horaFin) {
+      toast({ title: "Hora de inicio y fin son obligatorias", variant: "destructive" });
+      return;
+    }
     if (horaInicioInvalida || horaFinInvalida) {
       toast({ title: "Formato de hora inválido — usa HH:MM (ej: 06:00)", variant: "destructive" });
       return;

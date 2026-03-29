@@ -43,6 +43,11 @@ interface Empleado {
   externalId: string | null;
   updatedAt: string | null;
   createdAt: string | null;
+  // Datos laborales / nómina
+  sueldoBase: string | null;
+  tipoJornada: string | null;
+  diaDescanso: string | null;
+  horasContrato: number | null;
 }
 
 interface KpiData {
@@ -189,6 +194,11 @@ interface FormState {
   supervisorNombre: string;
   fechaIngreso: string;
   notas: string;
+  // Datos laborales / nómina
+  sueldoBase: string;
+  tipoJornada: string;
+  diaDescanso: string;
+  horasContrato: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -247,6 +257,7 @@ const FORM_EMPTY: FormState = {
   nombreCompleto: "", dpi: "", telefono: "", telefonoSecundario: "",
   correo: "", puesto: "", tipoServicio: "", area: "", estadoLaboral: "activo",
   sede: "", supervisorNombre: "", fechaIngreso: "", notas: "",
+  sueldoBase: "", tipoJornada: "", diaDescanso: "", horasContrato: "",
 };
 
 // ─── Badges ───────────────────────────────────────────────────────────────────
@@ -1656,6 +1667,10 @@ function FormModal({
     supervisorNombre: emp?.supervisorNombre ?? "",
     fechaIngreso: emp?.fechaIngreso ? emp.fechaIngreso.split("T")[0] : "",
     notas: emp?.notas ?? "",
+    sueldoBase: emp?.sueldoBase ?? "",
+    tipoJornada: emp?.tipoJornada ?? "",
+    diaDescanso: emp?.diaDescanso ?? "",
+    horasContrato: emp?.horasContrato != null ? String(emp.horasContrato) : "",
   }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1751,6 +1766,68 @@ function FormModal({
               <option value="licencia">Licencia</option>
               <option value="baja">Baja</option>
             </select>
+          </div>
+
+          {/* Datos laborales / nómina */}
+          <p className="text-[10px] text-white/30 uppercase tracking-widest pt-2">Datos laborales</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs text-white/50 font-medium">Sueldo base (Q)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.sueldoBase}
+                onChange={(e) => set("sueldoBase", e.target.value)}
+                placeholder="0.00"
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50 transition-colors"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-white/50 font-medium">Horas contrato / semana</label>
+              <input
+                type="number"
+                min="1"
+                max="84"
+                step="1"
+                value={form.horasContrato}
+                onChange={(e) => set("horasContrato", e.target.value)}
+                placeholder="48"
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50 transition-colors"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs text-white/50 font-medium">Tipo de jornada</label>
+              <select
+                value={form.tipoJornada}
+                onChange={(e) => set("tipoJornada", e.target.value)}
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50 appearance-none"
+              >
+                <option value="">— Sin especificar —</option>
+                <option value="completa">Completa</option>
+                <option value="parcial">Parcial</option>
+                <option value="mixta">Mixta</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-white/50 font-medium">Día de descanso</label>
+              <select
+                value={form.diaDescanso}
+                onChange={(e) => set("diaDescanso", e.target.value)}
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50 appearance-none"
+              >
+                <option value="">— Sin especificar —</option>
+                <option value="domingo">Domingo</option>
+                <option value="lunes">Lunes</option>
+                <option value="martes">Martes</option>
+                <option value="miercoles">Miércoles</option>
+                <option value="jueves">Jueves</option>
+                <option value="viernes">Viernes</option>
+                <option value="sabado">Sábado</option>
+              </select>
+            </div>
           </div>
 
           {/* Notas */}
