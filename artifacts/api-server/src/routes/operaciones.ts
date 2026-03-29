@@ -76,6 +76,7 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       SELECT
         e.id, e.nombre_completo, e.estado_laboral, e.puesto, e.area, e.sede,
         e.telefono, e.wa_autorizado, e.supervisor_id,
+        COALESCE(eoa.tipo_asignacion, 'sin_asignacion') AS tipo_asignacion_eoa,
         CASE
           WHEN po.agente_id IS NOT NULL AND e.estado_laboral = 'activo' THEN 'en_puesto'
           WHEN e.estado_laboral = 'licencia'                            THEN 'en_descanso'
@@ -88,6 +89,8 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         FROM puestos_operativos
         WHERE activo = TRUE AND agente_id IS NOT NULL
       ) po ON po.agente_id = e.id
+      LEFT JOIN employee_operational_assignments eoa
+        ON eoa.employee_id = e.id AND eoa.activa = TRUE
       WHERE e.estado_laboral IN ('activo', 'suspendido', 'licencia')
       ORDER BY e.estado_laboral, e.nombre_completo
     `);
@@ -107,7 +110,12 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
 // ─── POST /api/operaciones/asignar ───────────────────────────────────────────
 // Asignar agente a puesto (sin agente previo)
 operacionesRouter.post("/operaciones/asignar", async (req, res) => {
-  const { puestoId, agenteId, usuario, notas, forzar } = req.body;
+  // soloCobertura=true → solo cubre hoy, NO cambia titular ni EOA
+  // soloCobertura=false (default) → asigna como titular si el puesto no tiene uno
+  // oldTitularAccion → qué hacer con el EOA del titular previo si hay uno
+  const { puestoId, agenteId, usuario, notas, forzar,
+          soloCobertura = false,
+          oldTitularAccion } = req.body;
   if (!puestoId || !agenteId) return res.status(400).json({ error: "puestoId y agenteId son requeridos" });
 
   try {
@@ -137,49 +145,106 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
       }
     }
 
-    // Actualizar puesto: asigna como agente_id y como titular (si no había titular previo)
     const sinTitular = !puesto.titular_employee_id;
-    await pool.query(
-      `UPDATE puestos_operativos
-       SET agente_id      = $1,
-           agente_nombre  = $2,
-           estado         = 'cubierto',
-           titular_employee_id = COALESCE(titular_employee_id, $1),
-           titular_nombre      = COALESCE(titular_nombre, $2),
-           updated_at     = NOW()
-       WHERE id = $3`,
-      [agenteId, agente.nombre_completo, puestoId]
-    );
+    const titularPrevioId: number | null = puesto.titular_employee_id ?? null;
+
+    if (soloCobertura) {
+      // ── Solo cobertura temporal: solo pone agente_id, NO toca titular ────────
+      await pool.query(
+        `UPDATE puestos_operativos
+         SET agente_id     = $1,
+             agente_nombre = $2,
+             estado        = 'cubierto',
+             updated_at    = NOW()
+         WHERE id = $3`,
+        [agenteId, agente.nombre_completo, puestoId]
+      );
+    } else {
+      // ── Asignación normal (puede convertir en titular) ─────────────────────
+      await pool.query(
+        `UPDATE puestos_operativos
+         SET agente_id      = $1,
+             agente_nombre  = $2,
+             estado         = 'cubierto',
+             titular_employee_id = COALESCE(titular_employee_id, $1),
+             titular_nombre      = COALESCE(titular_nombre, $2),
+             updated_at     = NOW()
+         WHERE id = $3`,
+        [agenteId, agente.nombre_completo, puestoId]
+      );
+
+      // ── Actualizar EOA del agente entrante si no había titular previo ──────
+      if (sinTitular) {
+        await pool.query(
+          `UPDATE employee_operational_assignments
+           SET activa = FALSE, updated_at = NOW()
+           WHERE employee_id = $1 AND activa = TRUE`,
+          [agenteId]
+        );
+        await pool.query(
+          `INSERT INTO employee_operational_assignments
+             (employee_id, puesto_id, sede_id, cliente_id, zona_operativa_id, tipo_turno_id,
+              tipo_asignacion, activa, fecha_inicio, notas, created_at, updated_at)
+           SELECT $1, $2, po.sede_id, po.cliente_id, po.zona_operativa_id, po.tipo_turno_id,
+                  'titular', TRUE, NOW(), 'Asignado desde pizarrón operativo', NOW(), NOW()
+           FROM puestos_operativos po WHERE po.id = $2`,
+          [agenteId, puestoId]
+        );
+      }
+
+      // ── Mover titular previo (si había uno y se indica acción) ─────────────
+      if (titularPrevioId && titularPrevioId !== agenteId && oldTitularAccion) {
+        const nuevoTipo = oldTitularAccion === 'disponible'   ? 'disponible'
+                        : oldTitularAccion === 'pool_relevo'  ? 'pool_relevo'
+                        : 'sin_asignacion';
+        await pool.query(
+          `UPDATE employee_operational_assignments
+           SET activa = FALSE, updated_at = NOW()
+           WHERE employee_id = $1 AND activa = TRUE`,
+          [titularPrevioId]
+        );
+        await pool.query(
+          `INSERT INTO employee_operational_assignments
+             (employee_id, puesto_id, sede_id, cliente_id, zona_operativa_id, tipo_turno_id,
+              tipo_asignacion, activa, fecha_inicio, notas, created_at, updated_at)
+           VALUES ($1, NULL, NULL, NULL, NULL, NULL, $2, TRUE, NOW(),
+                   'Movido al cambiar titular en pizarrón', NOW(), NOW())`,
+          [titularPrevioId, nuevoTipo]
+        );
+      }
+    }
 
     // Registrar movimiento
     await pool.query(
       `INSERT INTO movimientos_operativos
          (puesto_id, cliente_nombre, puesto_nombre, agente_entrante_id, agente_entrante_nombre, tipo, usuario_cambio, notas)
-       VALUES ($1, $2, $3, $4, $5, 'asignacion', $6, $7)`,
-      [puestoId, puesto.cliente_nombre, puesto.nombre, agenteId, agente.nombre_completo, usuario || 'sistema', notas || null]
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [puestoId, puesto.cliente_nombre, puesto.nombre, agenteId, agente.nombre_completo,
+       soloCobertura ? 'relevo' : 'asignacion', usuario || 'sistema', notas || null]
     );
 
-    // A-04: Auto-crear segmento de cobertura para hoy al asignar agente
+    // A-04: Auto-crear segmento de cobertura para hoy
     try {
       const hoy = new Date().toISOString().split("T")[0];
       const turno = (puesto.turno ?? "día").toLowerCase();
       const horaInicio = turno === "noche" ? "20:00" : "08:00";
       const horaFin    = turno === "noche" ? "06:00" : "18:00";
       const horasCalc  = 10;
+      const tipoSegmento = soloCobertura ? 'relevo' : 'titular';
       await pool.query(
         `INSERT INTO cobertura_segmentos
            (fecha, puesto_id, client_id, employee_id, empleado_nombre,
             tipo_cobertura, hora_inicio, hora_fin, horas_calculadas,
             fue_en_dia_descanso, genera_horas_extra, usuario_registro)
-         SELECT $1,$2,$3,$4,$5,'titular',$6,$7,$8,FALSE,FALSE,'asignacion_pizarron'
+         SELECT $1,$2,$3,$4,$5,$9,$6,$7,$8,FALSE,FALSE,'asignacion_pizarron'
          WHERE NOT EXISTS (
            SELECT 1 FROM cobertura_segmentos
            WHERE fecha=$1 AND puesto_id=$2 AND employee_id=$4
          )`,
         [hoy, puestoId, puesto.cliente_id ?? null, agenteId,
-         agente.nombre_completo, horaInicio, horaFin, horasCalc]
+         agente.nombre_completo, horaInicio, horaFin, horasCalc, tipoSegmento]
       );
-      logger.info({ puestoId, agenteId, hoy }, "A-04: segmento titular auto-creado en asignación");
+      logger.info({ puestoId, agenteId, hoy, soloCobertura }, "A-04: segmento auto-creado en asignación");
     } catch (segErr) {
       logger.warn({ segErr }, "A-04: no se pudo auto-crear segmento al asignar (no bloqueante)");
     }
@@ -187,7 +252,8 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
     res.json({
       ok: true,
       mensaje: `${agente.nombre_completo} asignado a ${puesto.nombre}`,
-      asignadoComoTitular: sinTitular,
+      asignadoComoTitular: !soloCobertura && sinTitular,
+      soloCobertura,
     });
   } catch (err) {
     logger.error({ err }, "POST /operaciones/asignar error");

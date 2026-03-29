@@ -74,6 +74,8 @@ interface Agente {
   telefono: string | null;
   wa_autorizado: boolean;
   supervisor_id: number | null;
+  /** EOA: titular | disponible | pool_relevo | sin_asignacion */
+  tipo_asignacion_eoa: string;
 }
 
 interface Pool {
@@ -1147,6 +1149,159 @@ function PanelHistorial({
   );
 }
 
+// ─── Modal: Elige tipo de cobertura (pool → puesto vacío) ────────────────────
+// Aparece cuando un agente NO-titular va a un puesto sin agente actual.
+// Pregunta: ¿Solo cobertura temporal o convertir en titular?
+
+type OldTitularAccion = "disponible" | "pool_relevo" | "sin_asignacion";
+
+function ModalEligeCobertura({
+  puesto,
+  agente,
+  onElegir,
+  onCancel,
+}: {
+  puesto: Puesto;
+  agente: Agente;
+  onElegir: (soloCobertura: boolean, oldTitularAccion?: OldTitularAccion) => void;
+  onCancel: () => void;
+}) {
+  const hayTitularPrevio = !!puesto.titular_employee_id;
+  const [paso, setPaso] = useState<"elige" | "titularPrevio">("elige");
+  const [oldTitularAccion, setOldTitularAccion] = useState<OldTitularAccion>("disponible");
+
+  function confirmarTitular() {
+    if (hayTitularPrevio) {
+      setPaso("titularPrevio");
+    } else {
+      onElegir(false);
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+      <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-sm shadow-2xl">
+
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-white/8">
+          <div className="flex items-center gap-2">
+            <Layers className="w-4 h-4 text-primary" />
+            <h3 className="text-sm font-bold text-white">¿Cómo registrar esta asignación?</h3>
+          </div>
+          <p className="text-[11px] text-white/35 mt-1.5">
+            <span className="text-white/60 font-medium">{agente.nombre_completo}</span>
+            {" · "}
+            <span className="capitalize text-white/35">{agente.tipo_asignacion_eoa?.replace("_", " ") ?? "pool"}</span>
+          </p>
+        </div>
+
+        {paso === "elige" ? (
+          <div className="p-5 space-y-3">
+            {/* Info del puesto */}
+            <div className="bg-[#0c1929] border border-white/8 rounded-xl p-3 flex items-center gap-2">
+              <Building2 className="w-3 h-3 text-white/25 shrink-0" />
+              <span className="text-xs text-white/50">{puesto.cliente_nombre} · {puesto.nombre}</span>
+              {hayTitularPrevio && puesto.titular_nombre && (
+                <span className="ml-auto text-[10px] text-amber-400/70 shrink-0">Titular: {puesto.titular_nombre}</span>
+              )}
+            </div>
+
+            {/* Opción A: Solo cobertura temporal */}
+            <button
+              onClick={() => onElegir(true)}
+              className="w-full text-left bg-amber-500/5 border border-amber-500/20 hover:border-amber-500/50 rounded-xl p-4 transition-all group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center shrink-0">
+                  <Timer className="w-4 h-4 text-amber-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-white group-hover:text-amber-200 transition-colors">Solo cobertura temporal</p>
+                  <p className="text-[11px] text-white/35 mt-0.5 leading-snug">
+                    Cubre el puesto hoy. Su asignación base y el titular del puesto no cambian.
+                  </p>
+                </div>
+              </div>
+            </button>
+
+            {/* Opción B: Convertir en titular */}
+            <button
+              onClick={confirmarTitular}
+              className="w-full text-left bg-blue-500/5 border border-blue-500/20 hover:border-blue-500/50 rounded-xl p-4 transition-all group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-blue-500/15 flex items-center justify-center shrink-0">
+                  <Shield className="w-4 h-4 text-blue-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-white group-hover:text-blue-200 transition-colors">Convertir en titular del puesto</p>
+                  <p className="text-[11px] text-white/35 mt-0.5 leading-snug">
+                    Asignación permanente. Cambia la asignación base del colaborador y del puesto.
+                  </p>
+                </div>
+              </div>
+            </button>
+
+            <button onClick={onCancel} className="w-full py-2 text-xs text-white/35 hover:text-white/60 transition-colors">
+              Cancelar
+            </button>
+          </div>
+        ) : (
+          /* Paso 2: ¿Qué hacemos con el titular actual? */
+          <div className="p-5 space-y-3">
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-semibold text-amber-300">El puesto ya tiene un titular</p>
+                <p className="text-[11px] text-amber-300/70 mt-0.5">
+                  <span className="font-medium">{puesto.titular_nombre}</span> dejará de ser titular.
+                  ¿A qué estado lo movemos?
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {([
+                { val: "disponible",  label: "Mover a Disponibles",    desc: "Queda en el pool sin puesto fijo",     color: "green" },
+                { val: "pool_relevo", label: "Mover a Pool de relevos", desc: "Queda disponible para cubrir otros",   color: "purple" },
+                { val: "sin_asignacion", label: "Dejar sin asignación", desc: "Sin categoría activa por el momento",  color: "gray" },
+              ] as { val: OldTitularAccion; label: string; desc: string; color: string }[]).map(({ val, label, desc, color }) => (
+                <button
+                  key={val}
+                  onClick={() => setOldTitularAccion(val)}
+                  className={`w-full text-left rounded-xl p-3 border transition-all ${
+                    oldTitularAccion === val
+                      ? color === "green"   ? "bg-green-500/15 border-green-500/40"
+                        : color === "purple" ? "bg-purple-500/15 border-purple-500/40"
+                        : "bg-white/10 border-white/30"
+                      : "border-white/8 hover:border-white/20"
+                  }`}
+                >
+                  <p className="text-xs font-semibold text-white">{label}</p>
+                  <p className="text-[10px] text-white/35 mt-0.5">{desc}</p>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setPaso("elige")} className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors">
+                Atrás
+              </button>
+              <button
+                onClick={() => onElegir(false, oldTitularAccion)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 transition-colors"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── Modal: Confirmar Sustitución / Asignación ────────────────────────────────
 
 function ModalSustitucion({
@@ -1794,6 +1949,7 @@ export default function Operaciones() {
   const [historialAbierto, setHistorialAbierto]     = useState(false);
   const [nuevoPuestoData, setNuevoPuestoData]        = useState<ClienteBoard | null | "nuevo">(null);
   const [modalSustitucion, setModalSustitucion]      = useState<{ puesto: Puesto; agente: Agente; advertencia?: string } | null>(null);
+  const [modalEligeCobertura, setModalEligeCobertura] = useState<{ puesto: Puesto; agente: Agente } | null>(null);
   const [modalLiberar, setModalLiberar]              = useState<Puesto | null>(null);
   const [poolTab, setPoolTab]                        = useState<"disponibles" | "enDescanso" | "suspendidos" | "enPuesto">("disponibles");
   const [busquedaPool, setBusquedaPool]              = useState("");
@@ -1896,14 +2052,25 @@ export default function Operaciones() {
     await iniciarAsignacion(puesto, agente);
   }
 
+  // ── Helper: es agente del pool (no titular en EOA) ───────────────────────
+  function esAgentePool(agente: Agente) {
+    const eoa = agente.tipo_asignacion_eoa ?? "sin_asignacion";
+    return eoa !== "titular";
+  }
+
   // ── Lógica de asignación/sustitución ─────────────────────────────────────
   async function iniciarAsignacion(puesto: Puesto, agente: Agente) {
     // Si ya tiene el mismo agente, no hacer nada
     if (puesto.agente_id === agente.id) return;
 
-    // Si el puesto tiene agente → sustitución
-    // Si no tiene agente → asignación directa
-    // Primero verificar disponibilidad
+    // ── NUEVO: Agente de pool → puesto SIN agente activo ─────────────────────
+    // Preguntamos si es cobertura temporal o cambio de titular
+    if (!puesto.agente_id && esAgentePool(agente)) {
+      setModalEligeCobertura({ puesto, agente });
+      return;
+    }
+
+    // Flujo normal: verificar disponibilidad y mostrar modal de confirmación
     try {
       const disp = await fetch(`${API_BASE}/operaciones/agentes/${agente.id}/disponibilidad`).then((r) => r.json());
       if (disp.puestosActivos.length > 0) {
@@ -1918,6 +2085,31 @@ export default function Operaciones() {
       }
     } catch {
       setModalSustitucion({ puesto, agente });
+    }
+  }
+
+  // ── Confirmar elección de cobertura (pool → puesto vacío) ────────────────
+  async function confirmarEligeCobertura(soloCobertura: boolean, oldTitularAccion?: OldTitularAccion) {
+    if (!modalEligeCobertura) return;
+    const { puesto, agente } = modalEligeCobertura;
+    setModalEligeCobertura(null);
+    try {
+      await apiPost(`${API_BASE}/operaciones/asignar`, {
+        puestoId: puesto.id,
+        agenteId: agente.id,
+        soloCobertura,
+        oldTitularAccion: oldTitularAccion ?? null,
+        usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+      });
+      if (soloCobertura) {
+        toast({ title: "Cobertura temporal registrada", description: `${agente.nombre_completo} cubre ${puesto.nombre} hoy` });
+      } else {
+        toast({ title: "Nuevo titular asignado", description: `${agente.nombre_completo} → ${puesto.nombre}` });
+      }
+      setAgenteSeleccionado(null);
+      invalidate();
+    } catch (e: any) {
+      toast({ title: "Error", description: e.error ?? "Error al procesar", variant: "destructive" });
     }
   }
 
@@ -2493,6 +2685,15 @@ export default function Operaciones() {
           movimientos={historial}
           isLoading={loadingHistorial}
           onClose={() => setHistorialAbierto(false)}
+        />
+      )}
+
+      {modalEligeCobertura && (
+        <ModalEligeCobertura
+          puesto={modalEligeCobertura.puesto}
+          agente={modalEligeCobertura.agente}
+          onElegir={confirmarEligeCobertura}
+          onCancel={() => setModalEligeCobertura(null)}
         />
       )}
 

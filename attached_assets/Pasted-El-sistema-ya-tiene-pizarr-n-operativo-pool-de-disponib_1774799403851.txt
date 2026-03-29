@@ -1,0 +1,77 @@
+El sistema ya tiene:
+- pizarrón operativo
+- pool de disponibles
+- asignación operativa base
+- cobertura diaria
+- colaboradores con estados como titular, disponible, pool_relevo y sin_asignacion
+
+No quiero romper nada de lo existente.
+
+Quiero mejorar el pizarrón operativo para que, cuando un colaborador del pool de disponibles sea asignado a un puesto, el sistema pregunte si la asignación será temporal o si debe convertirse en titular del puesto.
+
+## Objetivo
+Evitar que una cobertura desde el pool de disponibles cambie accidentalmente la asignación base del colaborador o del puesto.
+
+## 1. Detectar origen desde pool de disponibles
+Cuando un colaborador que venga desde:
+- disponible
+- pool_relevo
+- sin_asignacion
+
+sea arrastrado o asignado a un puesto desde el pizarrón, antes de confirmar la acción mostrar una pregunta.
+
+## 2. Modal de confirmación
+Mostrar un modal con una pregunta clara:
+
+“¿Cómo deseas registrar esta asignación?”
+
+Opciones:
+1. Solo cobertura temporal / relevo
+2. Convertir en titular del puesto
+
+## 3. Si se elige cobertura temporal
+- registrar solo cobertura diaria
+- no modificar la asignación operativa base
+- el colaborador sigue siendo disponible o pool_relevo fuera de esa cobertura
+
+## 4. Si se elige convertir en titular
+- actualizar la asignación operativa base del colaborador
+- asignarlo como titular del puesto
+- sacarlo del pool de disponibles
+- reflejar el cambio en ficha del colaborador, ficha del cliente y operación
+
+## 5. Si el puesto ya tiene titular
+Antes de completar el cambio a titular, preguntar:
+
+“Este puesto ya tiene un titular. ¿Qué deseas hacer con el titular actual?”
+
+Opciones sugeridas:
+- mover a disponibles
+- mover a pool de relevo
+- dejar sin asignación
+- cancelar
+
+## 6. UI / UX
+Mantener el flujo simple y rápido.
+No quiero formularios largos, solo una confirmación clara y segura.
+
+## 7. No romper
+No romper:
+- cobertura diaria
+- asignaciones base
+- ficha del colaborador
+- ficha del cliente
+- pizarrón operativo
+- cierre diario
+- pre-planilla
+- RRHH
+
+## 8. Documentación
+Explicar:
+- cuándo aparece esta pregunta
+- diferencia entre cobertura temporal y titular
+- qué pasa si ya había titular
+- cómo impacta en los demás módulos
+
+Muy importante:
+quiero evitar cambios accidentales en la asignación titular cuando alguien del pool de disponibles solo entra a cubrir temporalmente un puesto.
