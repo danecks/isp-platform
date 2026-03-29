@@ -1461,6 +1461,54 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: P-NOM-03 anticipos.planilla_id — error (no bloqueante)");
   }
 
+  // ── T-01: tabla turnos (catálogo de tipos de turno) ───────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS turnos (
+        id              SERIAL PRIMARY KEY,
+        nombre          VARCHAR(60) NOT NULL UNIQUE,
+        descripcion     TEXT,
+        horas_trabajo   NUMERIC(5,2) NOT NULL,
+        horas_descanso  NUMERIC(5,2) NOT NULL DEFAULT 0,
+        activo          BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    // Seed turnos estándar
+    await pool.query(`
+      INSERT INTO turnos (nombre, descripcion, horas_trabajo, horas_descanso) VALUES
+        ('12x12', 'Turno de 12 horas diarias (diurno o nocturno). El colaborador trabaja todos los días, 12 horas por jornada.', 12, 12),
+        ('24x24', 'Turno de 24 horas continuas seguido de 24 horas de descanso. Alterna: trabaja / descansa.', 24, 24),
+        ('24x48', 'Turno de 24 horas continuas seguido de 48 horas de descanso. Trabaja 1 día, descansa 2 días.', 24, 48),
+        ('8 horas', 'Jornada ordinaria de 8 horas diarias. El día de descanso semanal se define en el puesto o empleado.', 8, 0),
+        ('12x36', 'Turno de 12 horas continuas seguido de 36 horas de descanso. Trabaja 1 turno, descansa 1.5 días.', 12, 36)
+      ON CONFLICT (nombre) DO NOTHING
+    `);
+    logger.info("Auto-migrate: T-01 tabla turnos verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: T-01 turnos — error (no bloqueante)");
+  }
+
+  // ── T-02: campos de turno en puestos_operativos ────────────────────────────
+  try {
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS tipo_turno_id     INTEGER REFERENCES turnos(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS fecha_inicio_ciclo DATE`);
+    logger.info("Auto-migrate: T-02 tipo_turno_id y fecha_inicio_ciclo en puestos_operativos verificados");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: T-02 puestos_operativos turno — error (no bloqueante)");
+  }
+
+  // ── T-03: campos de turno en novedades_nomina_diarias ──────────────────────
+  try {
+    await pool.query(`ALTER TABLE novedades_nomina_diarias ADD COLUMN IF NOT EXISTS tipo_turno_id    INTEGER REFERENCES turnos(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE novedades_nomina_diarias ADD COLUMN IF NOT EXISTS horas_esperadas  NUMERIC(6,2)`);
+    await pool.query(`ALTER TABLE novedades_nomina_diarias ADD COLUMN IF NOT EXISTS trabajo_esperado BOOLEAN`);
+    logger.info("Auto-migrate: T-03 campos turno en novedades_nomina_diarias verificados");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: T-03 novedades turno — error (no bloqueante)");
+  }
+
   // ── P-NOM-07: tabla pre_planilla_revision (estado de revisión por RRHH) ───────
   try {
     await pool.query(`

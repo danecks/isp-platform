@@ -15,6 +15,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
+import { calcularJornadaEsperada } from "../lib/turno-calc";
 
 export const nominaRouter = Router();
 
@@ -243,6 +244,57 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
         UPDATE eventos_rrhh SET estado = 'procesado', updated_at = NOW()
         WHERE id = $1 AND estado NOT IN ('anulado', 'procesado')
       `, [ev.evento_id]);
+    }
+
+    // ── Paso 5: Enriquecer novedades con datos de turno (tipo_turno_id) ────────
+    // Para cada novedad del día, si el puesto_titular tiene tipo_turno_id configurado,
+    // calcula trabajo_esperado y horas_esperadas y los guarda en la novedad.
+    try {
+      const { rows: novedadesHoy } = await pool.query(`
+        SELECT n.id, n.employee_id, n.puesto_titular_id,
+               po.tipo_turno_id, po.fecha_inicio_ciclo,
+               e.dia_descanso,
+               t.horas_trabajo, t.horas_descanso,
+               (t.horas_trabajo + t.horas_descanso) AS ciclo_horas,
+               t.nombre AS turno_nombre
+        FROM novedades_nomina_diarias n
+        LEFT JOIN puestos_operativos po ON po.id = n.puesto_titular_id
+        LEFT JOIN employees e ON e.id = n.employee_id
+        LEFT JOIN turnos t ON t.id = po.tipo_turno_id
+        WHERE n.fecha = $1
+          AND po.tipo_turno_id IS NOT NULL
+      `, [fecha]);
+
+      for (const nv of novedadesHoy) {
+        const turno = {
+          id: nv.tipo_turno_id,
+          nombre: nv.turno_nombre,
+          horas_trabajo: parseFloat(nv.horas_trabajo ?? 0),
+          horas_descanso: parseFloat(nv.horas_descanso ?? 0),
+          ciclo_horas: parseFloat(nv.ciclo_horas ?? nv.horas_trabajo ?? 0),
+        };
+        const { trabajaEseDia, horasEsperadas } = calcularJornadaEsperada(
+          turno,
+          nv.fecha_inicio_ciclo ? String(nv.fecha_inicio_ciclo).slice(0, 10) : null,
+          fecha,
+          nv.dia_descanso ?? null,
+        );
+        await pool.query(`
+          UPDATE novedades_nomina_diarias SET
+            tipo_turno_id    = $1,
+            trabajo_esperado = $2,
+            horas_esperadas  = $3,
+            updated_at       = NOW()
+          WHERE id = $4
+        `, [nv.tipo_turno_id, trabajaEseDia, horasEsperadas.toFixed(2), nv.id]);
+      }
+
+      if (novedadesHoy.length > 0) {
+        logger.info({ fecha, n: novedadesHoy.length }, "Turno calculado para novedades del día");
+      }
+    } catch (turnoErr) {
+      // No bloquear si falla el enriquecimiento de turno
+      logger.warn({ turnoErr, fecha }, "Turno enrichment falló (no bloqueante)");
     }
 
     logger.info({ fecha, count }, "Novedades de nómina generadas");

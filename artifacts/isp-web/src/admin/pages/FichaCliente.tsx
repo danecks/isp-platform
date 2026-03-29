@@ -72,6 +72,9 @@ interface Puesto {
   notas: string | null;
   zona_operativa_id: number | null;
   zona_nombre: string | null;
+  tipo_turno_id: number | null;
+  tipo_turno_nombre: string | null;
+  fecha_inicio_ciclo: string | null;
 }
 
 interface CoberturaHoy {
@@ -173,9 +176,20 @@ function ModalPuesto({
     sede_id: puesto?.sede_id ? String(puesto.sede_id) : "",
     zona_operativa_id: puesto?.zona_operativa_id ? String(puesto.zona_operativa_id) : "",
     notas: puesto?.notas ?? "",
+    tipo_turno_id: puesto?.tipo_turno_id ? String(puesto.tipo_turno_id) : "",
+    fecha_inicio_ciclo: puesto?.fecha_inicio_ciclo ?? "",
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [turnosDisponibles, setTurnosDisponibles] = useState<Array<{ id: number; nombre: string; horas_trabajo: number; horas_descanso: number }>>([]);
+
+  // Cargar catálogo de turnos
+  useEffect(() => {
+    fetch(`${API}/turnos`, { headers: { "x-isp-session": getSession() } })
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => setTurnosDisponibles((data ?? []).filter((t: any) => t.activo)))
+      .catch(() => {});
+  }, []);
 
   // Zonas operativas disponibles
   const [zonas, setZonas] = useState<ZonaDisponible[]>([]);
@@ -232,6 +246,8 @@ function ModalPuesto({
         descanso_fin: form.descanso_fin || null,
         tipo_servicio: form.tipo_servicio || null,
         notas: form.notas || null,
+        tipo_turno_id: form.tipo_turno_id ? Number(form.tipo_turno_id) : null,
+        fecha_inicio_ciclo: form.fecha_inicio_ciclo || null,
       };
       const url = isEdit ? `${API}/puestos/${puesto!.id}` : `${API}/clientes/${clientId}/puestos`;
       const method = isEdit ? "PATCH" : "POST";
@@ -370,6 +386,38 @@ function ModalPuesto({
                 Titular seleccionado — ID #{titularId}
               </p>
             )}
+          </div>
+
+          {/* Tipo de Turno (nómina) */}
+          <div>
+            <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Tipo de turno (nómina)</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[10px] text-white/40 uppercase tracking-wide">Turno de nómina</label>
+                <select
+                  value={form.tipo_turno_id}
+                  onChange={(e) => up("tipo_turno_id", e.target.value)}
+                  className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50"
+                >
+                  <option value="">Sin turno asignado</option>
+                  {turnosDisponibles.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.nombre} ({t.horas_trabajo}h + {t.horas_descanso}h)
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] text-white/40 uppercase tracking-wide">Fecha inicio de ciclo</label>
+                <input
+                  type="date"
+                  value={form.fecha_inicio_ciclo}
+                  onChange={(e) => up("fecha_inicio_ciclo", e.target.value)}
+                  className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50"
+                />
+                <p className="text-[10px] text-white/25">Solo para turnos &gt; 24h (24x24, 24x48…)</p>
+              </div>
+            </div>
           </div>
 
           {/* Horario / Jornada */}

@@ -224,6 +224,7 @@ fichaRouter.patch("/puestos/:id", async (req, res) => {
     elegible_horas_extra, costo_hora,
     sede_id, notas, orden, activo,
     zona_operativa_id, titular_employee_id,
+    tipo_turno_id, fecha_inicio_ciclo,
   } = req.body;
 
   try {
@@ -263,8 +264,10 @@ fichaRouter.patch("/puestos/:id", async (req, res) => {
            zona_operativa_id    = COALESCE($18, zona_operativa_id),
            titular_employee_id  = COALESCE($19, titular_employee_id),
            titular_nombre       = COALESCE($20, titular_nombre),
+           tipo_turno_id        = COALESCE($21, tipo_turno_id),
+           fecha_inicio_ciclo   = COALESCE($22, fecha_inicio_ciclo),
            updated_at           = NOW()
-       WHERE id = $21
+       WHERE id = $23
        RETURNING *`,
       [
         nombre ?? null, turno ?? null, jornada ?? null, horario ?? null,
@@ -276,6 +279,8 @@ fichaRouter.patch("/puestos/:id", async (req, res) => {
         zona_operativa_id !== undefined ? zona_operativa_id : null,
         titular_employee_id !== undefined ? titular_employee_id : null,
         titularNombre !== undefined ? titularNombre : null,
+        tipo_turno_id !== undefined ? (tipo_turno_id || null) : null,
+        fecha_inicio_ciclo !== undefined ? (fecha_inicio_ciclo || null) : null,
         req.params.id,
       ]
     );

@@ -74,6 +74,17 @@ const QUERY_CONSOLIDADO = `
     -- Puesto titular base del período
     MAX(n.puesto_titular_nombre)                                                AS puesto_titular_nombre,
 
+    -- Turno (del puesto titular)
+    MAX(t.id)                                                                   AS tipo_turno_id,
+    MAX(t.nombre)                                                               AS tipo_turno_nombre,
+    MAX(t.horas_trabajo::numeric)                                               AS turno_horas_trabajo,
+    MAX(po.fecha_inicio_ciclo::text)                                            AS turno_fecha_inicio_ciclo,
+
+    -- Horas esperadas (si el turno está configurado, viene de novedades; sino es NULL)
+    NULLIF(SUM(n.horas_esperadas::numeric), 0)                                  AS horas_esperadas_total,
+    COUNT(DISTINCT n.fecha) FILTER (WHERE n.trabajo_esperado = TRUE)            AS dias_esperados_trabajo,
+    COUNT(DISTINCT n.fecha) FILTER (WHERE n.trabajo_esperado = FALSE)           AS dias_esperados_descanso,
+
     -- Anticipos aprobados o pagados del período
     COALESCE((
       SELECT SUM(a.cantidad)
@@ -109,6 +120,10 @@ const QUERY_CONSOLIDADO = `
   INNER JOIN novedades_nomina_diarias n
     ON n.employee_id = e.id
     AND n.fecha BETWEEN $1 AND $2
+  LEFT JOIN puestos_operativos po
+    ON po.titular_employee_id = e.id AND po.activo = TRUE
+  LEFT JOIN turnos t
+    ON t.id = po.tipo_turno_id
   LEFT JOIN pre_planilla_revision pr
     ON pr.employee_id = e.id
     AND pr.periodo_desde = $1::date

@@ -80,6 +80,14 @@ interface ColaboradorPre {
   revision_observaciones: string | null;
   revision_por: string | null;
   revision_at: string | null;
+  // Turno
+  tipo_turno_id: number | null;
+  tipo_turno_nombre: string | null;
+  turno_horas_trabajo: string | null;
+  turno_fecha_inicio_ciclo: string | null;
+  horas_esperadas_total: string | null;
+  dias_esperados_trabajo: number;
+  dias_esperados_descanso: number;
 }
 
 interface DetalleNovedad {
@@ -778,14 +786,15 @@ export default function PrePlanilla() {
                         {th("Colaborador", "nombre_completo", "min-w-[180px]")}
                         {th("Puesto / Sede", "puesto_empleado")}
                         {th("Cliente", "cliente_principal")}
+                        {th("Turno", "tipo_turno_nombre")}
                         {th("Sueldo Base", "sueldo_base")}
                         {th("Días Trab.", "dias_trabajados")}
                         {th("Faltas", "faltas")}
                         {th("Susp.", "suspensiones")}
-                        {th("Dsco. Trab.", "descansos_trabajados")}
-                        {th("Horas", "horas_trabajadas")}
+                        {th("H. Trab.", "horas_trabajadas")}
+                        {th("H. Esp.", "horas_esperadas_total")}
+                        {th("Cumpl.", "horas_trabajadas")}
                         {th("H. Extra", "horas_extra")}
-                        {th("Relevos", "relevos")}
                         {th("Anticipos", "anticipos_monto")}
                         {th("Revisión", "revision_estado")}
                         <th className="px-3 py-2" />
@@ -795,6 +804,8 @@ export default function PrePlanilla() {
                       {filtrados.map((r) => {
                         const htNum2 = parseFloat(r.horas_trabajadas || "0");
                         const heNum2 = parseFloat(r.horas_extra || "0");
+                        const hesp = r.horas_esperadas_total ? parseFloat(r.horas_esperadas_total) : null;
+                        const cumplPct = hesp && hesp > 0 ? Math.round((htNum2 / hesp) * 100) : null;
                         const tieneAlerta = r.faltas > 0 || r.suspensiones > 0 || r.dias_sin_horas > 0;
 
                         return (
@@ -820,6 +831,13 @@ export default function PrePlanilla() {
                             </td>
                             {/* Cliente */}
                             <td className="px-3 py-2.5 text-white/50">{r.cliente_principal ?? "—"}</td>
+                            {/* Turno */}
+                            <td className="px-3 py-2.5">
+                              {r.tipo_turno_nombre
+                                ? <span className="px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary text-[10px] font-semibold">{r.tipo_turno_nombre}</span>
+                                : <span className="text-white/20">—</span>
+                              }
+                            </td>
                             {/* Sueldo */}
                             <td className="px-3 py-2.5 text-white/60 text-right">{fmtQ(r.sueldo_base)}</td>
                             {/* Días trabajados */}
@@ -834,19 +852,29 @@ export default function PrePlanilla() {
                             <td className="px-3 py-2.5 text-center">
                               <span className={r.suspensiones > 0 ? "text-amber-400 font-semibold" : "text-white/25"}>{r.suspensiones}</span>
                             </td>
-                            {/* Descansos trabajados */}
-                            <td className="px-3 py-2.5 text-center">
-                              <span className={r.descansos_trabajados > 0 ? "text-blue-400" : "text-white/25"}>{r.descansos_trabajados}</span>
-                            </td>
                             {/* Horas trabajadas */}
                             <td className="px-3 py-2.5 text-right text-white/60">{htNum2.toFixed(1)} h</td>
+                            {/* Horas esperadas */}
+                            <td className="px-3 py-2.5 text-right">
+                              {hesp != null
+                                ? <span className="text-white/50">{hesp.toFixed(1)} h</span>
+                                : <span className="text-white/20">—</span>
+                              }
+                            </td>
+                            {/* Cumplimiento */}
+                            <td className="px-3 py-2.5 text-right">
+                              {cumplPct != null ? (
+                                <span className={`font-semibold ${
+                                  cumplPct >= 95 ? "text-green-400" :
+                                  cumplPct >= 75 ? "text-amber-400" : "text-red-400"
+                                }`}>{cumplPct}%</span>
+                              ) : (
+                                <span className="text-white/20">—</span>
+                              )}
+                            </td>
                             {/* Horas extra */}
                             <td className="px-3 py-2.5 text-right">
                               <span className={heNum2 > 0 ? "text-orange-400 font-semibold" : "text-white/25"}>{heNum2.toFixed(1)} h</span>
-                            </td>
-                            {/* Relevos */}
-                            <td className="px-3 py-2.5 text-center">
-                              <span className={r.relevos > 0 ? "text-purple-400" : "text-white/25"}>{r.relevos}</span>
                             </td>
                             {/* Anticipos */}
                             <td className="px-3 py-2.5 text-right">

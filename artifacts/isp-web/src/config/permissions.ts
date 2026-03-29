@@ -19,6 +19,7 @@ import {
   BellRing,
   ScrollText,
   TableProperties,
+  Timer,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -116,6 +117,12 @@ export const NAV_ITEMS: NavItem[] = [
     path: "/admin/rrhh/pre-planilla",
     label: "Pre-Planilla",
     icon: TableProperties,
+    roles: ["admin", "rrhh"],
+  },
+  {
+    path: "/admin/rrhh/turnos",
+    label: "Tipos de Turno",
+    icon: Timer,
     roles: ["admin", "rrhh"],
   },
   {

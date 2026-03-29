@@ -43,6 +43,7 @@ import AdminRrhhEventos from "@/admin/pages/RRHHEventos";
 import AdminRrhhAlertas from "@/admin/pages/RRHHAlertas";
 import AdminNovedadesNomina from "@/admin/pages/NovedadesNomina";
 import AdminPrePlanilla from "@/admin/pages/PrePlanilla";
+import AdminTurnos from "@/admin/pages/Turnos";
 import AdminFichaCliente from "@/admin/pages/FichaCliente";
 import AdminReporteCoberturaZonas from "@/admin/pages/ReporteCoberturaZonas";
 
@@ -166,6 +167,9 @@ function Router() {
       </Route>
       <Route path="/admin/rrhh/pre-planilla">
         {() => <AuthGuard requiredRoles={["admin", "rrhh"]}><AdminPrePlanilla /></AuthGuard>}
+      </Route>
+      <Route path="/admin/rrhh/turnos">
+        {() => <AuthGuard requiredRoles={["admin", "rrhh"]}><AdminTurnos /></AuthGuard>}
       </Route>
 
       <Route component={NotFound} />

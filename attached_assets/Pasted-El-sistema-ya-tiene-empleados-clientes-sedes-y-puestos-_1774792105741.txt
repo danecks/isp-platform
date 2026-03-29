@@ -1,0 +1,189 @@
+El sistema ya tiene:
+
+- empleados
+- clientes, sedes y puestos operativos
+- pizarrón operativo con segmentos de cobertura
+- cierre diario
+- novedades_nomina_diarias
+- pre-planilla por período
+
+Ya se pueden medir horas reales trabajadas.
+
+Ahora quiero agregar una capa fundamental:
+
+## Modelo de Tipos de Turno (12x12, 24x24, etc.)
+
+---
+
+# 🎯 OBJETIVO
+
+Permitir que el sistema entienda:
+
+- cuándo un colaborador debía trabajar
+- cuándo estaba en descanso programado
+- cuántas horas se esperaban ese día
+- y comparar eso contra lo que realmente trabajó
+
+Esto es necesario para calcular correctamente:
+
+- faltas
+- cumplimiento de jornada
+- descansos
+- descansos trabajados
+- horas extra reales
+
+---
+
+# 1. Crear catálogo de tipos de turno
+
+Crear una tabla nueva:
+
+### turnos
+
+Campos sugeridos:
+
+- id
+- nombre (ej: "12x12", "24x24", "8 horas", etc.)
+- descripcion
+- horas_trabajo (ej: 12, 24, 8)
+- horas_descanso (ej: 12, 24, 48)
+- ciclo_horas (opcional, ej: 24, 48, 72)
+- activo
+- createdAt
+- updatedAt
+
+---
+
+# 2. Asignar turno a puestos o empleados
+
+Permitir asignar un turno desde:
+
+### A. puestos_operativos (recomendado)
+o
+### B. asignación del empleado
+
+Campo:
+- turnoId
+
+Esto define la lógica esperada de trabajo.
+
+---
+
+# 3. Calcular jornada esperada por fecha
+
+Crear lógica que, dado:
+
+- turno (ej: 24x24)
+- fecha base (inicio del ciclo)
+- fecha actual
+
+permita determinar:
+
+- si ese día le tocaba trabajar o descansar
+- cuántas horas debía trabajar ese día
+
+Ejemplo:
+
+Turno 24x24:
+- Día 1 → trabaja
+- Día 2 → descansa
+- Día 3 → trabaja
+- Día 4 → descansa
+
+---
+
+# 4. Integración con novedades_nomina_diarias
+
+Actualizar la generación de novedades para incluir:
+
+- turnoId
+- horas_esperadas
+- trabajo_esperado (boolean)
+- trabajo_real (boolean)
+- diferencia_horas
+
+Esto permitirá:
+
+- detectar falta automáticamente (debía trabajar pero no trabajó)
+- detectar descanso trabajado
+- detectar jornada incompleta
+
+---
+
+# 5. Lógica de comparación
+
+Para cada colaborador y día:
+
+Comparar:
+
+- horas esperadas vs horas trabajadas
+
+Clasificar:
+
+- jornada completa
+- jornada parcial
+- falta
+- descanso
+- descanso trabajado
+- horas extra
+
+---
+
+# 6. Ajustes en pre-planilla
+
+Agregar columnas o lógica en pre-planilla:
+
+- horas esperadas del período
+- cumplimiento de jornada (%)
+- descansos reales vs esperados
+- diferencias
+
+---
+
+# 7. UI
+
+### En empleados o puestos:
+- selector de turno
+
+### En pre-planilla:
+- mostrar tipo de turno
+- mostrar cumplimiento
+
+---
+
+# 8. No romper
+
+No romper:
+
+- cobertura_segmentos
+- novedades_nomina_diarias
+- cierre diario
+- pizarrón operativo
+- RRHH
+- anticipos
+- reportes
+- portal
+- WhatsApp
+
+---
+
+# 9. Documentación
+
+Explicar:
+
+- cómo funcionan los tipos de turno
+- cómo se calcula el ciclo
+- cómo se determina si un día es laboral o descanso
+- cómo esto afecta las novedades y la pre-planilla
+
+---
+
+# 🔥 IMPORTANTE
+
+El sistema ya mide lo que realmente pasó (horas trabajadas).
+
+Con esta fase quiero que también entienda:
+
+👉 lo que debía pasar
+
+para poder comparar y calcular correctamente nómina.
