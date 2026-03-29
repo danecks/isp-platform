@@ -2244,6 +2244,30 @@ export default function Operaciones() {
     qc.invalidateQueries({ queryKey: ["operaciones-tablero"] });
     qc.invalidateQueries({ queryKey: ["operaciones-pool"] });
     qc.invalidateQueries({ queryKey: ["operaciones-historial"] });
+    qc.invalidateQueries({ queryKey: ["ssa-tablero-pizarron"] });
+    qc.invalidateQueries({ queryKey: ["pool-disponibilidad"] });
+  }
+
+  // ── Remover agente de un SSA ─────────────────────────────────────────────
+  async function removerAgenteSSA(t: TarjetaSSAPendiente) {
+    try {
+      const r = await fetch(`${API_BASE}/solicitudes-servicio/${t.id}/remover-agente`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "",
+        },
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        toast({ title: "Error al remover agente", description: err.error ?? "Error desconocido", variant: "destructive" });
+        return;
+      }
+      toast({ title: "Agente removido", description: "El agente fue desvinculado del servicio y volvió al pool." });
+      invalidate();
+    } catch {
+      toast({ title: "Error de red", description: "No se pudo conectar con el servidor.", variant: "destructive" });
+    }
   }
 
   // ── DnD: inicio ───────────────────────────────────────────────────────────
@@ -2838,7 +2862,14 @@ export default function Operaciones() {
                       No hay servicios cubiertos activos
                     </div>
                   ) : (
-                    ssaCubierta.map((t) => <TarjetaSSACard key={t.id} t={t} onAsignar={() => setModalAsignarSSA(t)} />)
+                    ssaCubierta.map((t) => (
+                      <TarjetaSSACard
+                        key={t.id}
+                        t={t}
+                        onAsignar={() => setModalAsignarSSA(t)}
+                        onRemover={isCerrado ? undefined : () => removerAgenteSSA(t)}
+                      />
+                    ))
                   )
                 )}
               </div>
@@ -3129,7 +3160,17 @@ const TIPO_SSA_LABELS: Record<string, string> = {
 // ─────────────────────────────────────────────────────────────────────────────
 // TarjetaSSACard — tarjeta visual para el panel SSA del Pizarrón
 // ─────────────────────────────────────────────────────────────────────────────
-function TarjetaSSACard({ t, onAsignar }: { t: TarjetaSSAPendiente; onAsignar: () => void }) {
+function TarjetaSSACard({
+  t,
+  onAsignar,
+  onRemover,
+}: {
+  t: TarjetaSSAPendiente;
+  onAsignar: () => void;
+  onRemover?: () => void;
+}) {
+  const [confirmando, setConfirmando] = useState(false);
+
   const estaHoy = t.fecha
     ? new Date(t.fecha + "T12:00:00").toDateString() === new Date().toDateString()
     : false;
@@ -3147,62 +3188,99 @@ function TarjetaSSACard({ t, onAsignar }: { t: TarjetaSSAPendiente; onAsignar: (
     :                                          "text-amber-400 bg-amber-500/15";
 
   return (
-    <button
-      onClick={onAsignar}
-      className={`shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 min-w-[210px] max-w-[240px] text-left cursor-pointer hover:brightness-125 hover:scale-[1.02] transition-all ${prioColor}`}
-    >
-      {/* Fila: prioridad + HOY */}
+    <div className={`relative shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 min-w-[210px] max-w-[240px] text-left transition-all ${prioColor}`}>
+
+      {/* Confirmación inline de remoción */}
+      {confirmando && onRemover && (
+        <div className="absolute inset-0 z-10 rounded-xl bg-[#0a1628]/95 border border-red-500/30 flex flex-col items-center justify-center gap-2 p-3">
+          <p className="text-[11px] text-white/80 text-center font-medium">¿Remover agente del servicio?</p>
+          <div className="flex gap-2">
+            <button
+              onClick={(e) => { e.stopPropagation(); onRemover(); setConfirmando(false); }}
+              className="text-[10px] font-bold px-3 py-1 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/35 transition-colors"
+            >
+              Confirmar
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); setConfirmando(false); }}
+              className="text-[10px] px-3 py-1 rounded-lg bg-white/8 text-white/50 hover:bg-white/15 transition-colors"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Fila: prioridad + HOY + botón remover */}
       <div className="flex items-center gap-1.5 flex-wrap">
         <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md ${prioTag}`}>
           {t.prioridad}
         </span>
         {estaHoy && <span className="text-[9px] text-amber-300/70 font-semibold">HOY</span>}
-        <span className="text-[9px] text-white/25 ml-auto font-mono">{t.id.slice(0, 8)}</span>
+        <span className="text-[9px] text-white/25 font-mono">{t.id.slice(0, 8)}</span>
+        <div className="ml-auto flex items-center gap-1">
+          {/* Botón × remover — solo aparece si hay agente y se permite */}
+          {!sinAgente && onRemover && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setConfirmando(true); }}
+              title="Remover agente"
+              className="w-4 h-4 rounded-full flex items-center justify-center text-white/20 hover:text-red-400 hover:bg-red-500/15 transition-colors"
+            >
+              <X className="w-2.5 h-2.5" />
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Cliente */}
-      <p className="text-[11px] font-semibold text-white/90 truncate leading-tight">
-        {t.cliente_nombre ?? "—"}
-      </p>
-
-      {/* Tipo + cantidad guardias */}
-      <p className="text-[10px] text-white/45 truncate">
-        {TIPO_SSA_LABELS[t.tipo_solicitud] ?? t.tipo_solicitud}
-        {t.cantidad_guardias > 1 ? ` · ${t.cantidad_guardias} guardias` : ""}
-      </p>
-
-      {/* Sede + horario */}
-      {(t.hora_inicio || t.sede_nombre) && (
-        <p className="text-[9px] text-white/30 truncate">
-          {t.sede_nombre ?? ""}
-          {t.hora_inicio ? ` · ${t.hora_inicio}${t.hora_fin ? `–${t.hora_fin}` : ""}` : ""}
+      {/* Área clickeable principal → asignar */}
+      <button
+        onClick={onAsignar}
+        className="text-left hover:brightness-110 transition-all"
+      >
+        {/* Cliente */}
+        <p className="text-[11px] font-semibold text-white/90 truncate leading-tight">
+          {t.cliente_nombre ?? "—"}
         </p>
-      )}
 
-      {/* Estado según etapa */}
-      {sinAgente ? (
-        <p className="text-[9px] text-amber-400/70 mt-0.5 font-medium">Toca para asignar guardia →</p>
-      ) : (
-        <div className="mt-0.5 space-y-0.5">
-          <div className="flex items-center gap-1">
-            <User className="w-2.5 h-2.5 text-green-400 shrink-0" />
-            <span className="text-[9px] text-green-300/80 truncate font-medium">
-              {t.agente_nombre_completo ?? t.agente_nombre ?? "Agente asignado"}
-            </span>
-          </div>
-          {t.estado_preplanilla === "incluido" && (
+        {/* Tipo + cantidad guardias */}
+        <p className="text-[10px] text-white/45 truncate mt-0.5">
+          {TIPO_SSA_LABELS[t.tipo_solicitud] ?? t.tipo_solicitud}
+          {t.cantidad_guardias > 1 ? ` · ${t.cantidad_guardias} guardias` : ""}
+        </p>
+
+        {/* Sede + horario */}
+        {(t.hora_inicio || t.sede_nombre) && (
+          <p className="text-[9px] text-white/30 truncate mt-0.5">
+            {t.sede_nombre ?? ""}
+            {t.hora_inicio ? ` · ${t.hora_inicio}${t.hora_fin ? `–${t.hora_fin}` : ""}` : ""}
+          </p>
+        )}
+
+        {/* Estado según etapa */}
+        {sinAgente ? (
+          <p className="text-[9px] text-amber-400/70 mt-1 font-medium">Toca para asignar guardia →</p>
+        ) : (
+          <div className="mt-1 space-y-0.5">
             <div className="flex items-center gap-1">
-              <CheckCircle2 className="w-2.5 h-2.5 text-primary shrink-0" />
-              <span className="text-[9px] text-primary/70">En Pre-Planilla</span>
+              <User className="w-2.5 h-2.5 text-green-400 shrink-0" />
+              <span className="text-[9px] text-green-300/80 truncate font-medium">
+                {t.agente_nombre_completo ?? t.agente_nombre ?? "Agente asignado"}
+              </span>
             </div>
-          )}
-          <div className="flex items-center gap-1">
-            <Clock className="w-2.5 h-2.5 text-orange-400/60 shrink-0" />
-            <span className="text-[9px] text-orange-300/50">Pend. facturación</span>
+            {t.estado_preplanilla === "incluido" && (
+              <div className="flex items-center gap-1">
+                <CheckCircle2 className="w-2.5 h-2.5 text-primary shrink-0" />
+                <span className="text-[9px] text-primary/70">En Pre-Planilla</span>
+              </div>
+            )}
+            <div className="flex items-center gap-1">
+              <Clock className="w-2.5 h-2.5 text-orange-400/60 shrink-0" />
+              <span className="text-[9px] text-orange-300/50">Pend. facturación</span>
+            </div>
           </div>
-        </div>
-      )}
-    </button>
+        )}
+      </button>
+    </div>
   );
 }
 

@@ -1,0 +1,126 @@
+"}
+El sistema ya permite asignar agentes a servicios especiales desde el pizarrón operativo.
+
+Sin embargo, actualmente no existe una forma de revertir una asignación en caso de error, lo cual genera un problema crítico en operación.
+
+## Problema actual
+- Si asigno un agente a un servicio especial por error
+- No puedo removerlo correctamente
+- El agente desaparece del pool de disponibles
+- El servicio queda mal cubierto
+- No hay forma de corregir rápidamente
+
+## Objetivo
+Permitir la reversión controlada de asignaciones en servicios especiales, sin romper la lógica de cobertura, RRHH ni pre-planilla.
+
+---
+
+## 1. Acción: remover agente de servicio especial
+Agregar opción en la tarjeta o modal:
+
+- "Remover agente"
+- "Revertir asignación"
+- "Deshacer cobertura"
+
+Disponible mientras el servicio NO esté cerrado/finalizado.
+
+---
+
+## 2. Comportamiento al remover agente
+
+### A. Operación
+- eliminar la asignación del agente al servicio especial
+
+### B. Pool de agentes
+- el agente debe volver inmediatamente al pool correcto:
+  - disponibles
+  - descanso (si aplica)
+  - estado previo
+
+No debe desaparecer ni quedar bloqueado.
+
+---
+
+## 3. Manejo de segmentos de cobertura
+
+### Caso 1: el servicio aún no inició
+- eliminar el segmento de cobertura
+- no registrar horas trabajadas
+
+### Caso 2: el agente ya inició cobertura
+- cerrar el segmento con hora_fin = hora actual
+- calcular horas trabajadas reales
+- mantener registro en novedades
+
+---
+
+## 4. Impacto en nómina
+- si no trabajó → no generar horas
+- si trabajó parcialmente → mantener horas reales
+- no duplicar registros
+
+---
+
+## 5. Estado del servicio especial
+Si se remueve el único agente:
+- el servicio vuelve a estado:
+  - pendiente de cobertura
+  - no cubierto
+
+Si hay más agentes:
+- actualizar solo la cobertura parcial
+
+---
+
+## 6. Sincronización del sistema
+Al remover:
+- actualizar tarjeta de servicio especial
+- actualizar estado en operaciones
+- actualizar pool de agentes
+- actualizar segmentos
+- actualizar novedades de nómina
+
+Todo en tiempo real.
+
+---
+
+## 7. Validaciones
+No permitir remover si:
+- el servicio ya está cerrado
+- el estado es finalizado
+
+---
+
+## 8. UI / UX
+Debe ser:
+- rápido
+- visible
+- sin formularios largos
+
+Ejemplo:
+hover en agente → botón ❌ remover
+
+---
+
+## 9. No romper
+No romper:
+- lógica de cobertura
+- RRHH
+- pre-planilla
+- pipeline de servicio especial
+- tareas
+- historial
+
+---
+
+## 10. Documentación
+Explicar:
+- cuándo se puede revertir una asignación
+- qué pasa con el agente
+- qué pasa con las horas
+- cómo se actualiza el pool
+
+---
+
+Muy importante:
+el pizarrón operativo debe permitir corregir errores en tiempo real sin bloquear la operación ni dejar agentes “perdidos” fuera del poo

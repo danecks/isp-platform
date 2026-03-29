@@ -634,6 +634,159 @@ solicitudesServicioRouter.patch("/solicitudes-servicio/:id/asignar-agente", asyn
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/solicitudes-servicio/:id/remover-agente — revertir asignación
+// ─────────────────────────────────────────────────────────────────────────────
+// Reglas:
+//   • Solo si el servicio NO está cerrado ni cancelado
+//   • Solo si hay agente asignado
+//   • Si el servicio aún no inició → elimina/revierte novedad de nómina
+//   • Si ya inició → mantiene horas reales trabajadas
+//   • Agente vuelve al pool de disponibles automáticamente (pool consulta DB en tiempo real)
+solicitudesServicioRouter.patch("/solicitudes-servicio/:id/remover-agente", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 1. Cargar SSA
+    const { rows: curr } = await pool.query(
+      `SELECT id, estado_general, estado_operaciones, estado_rrhh, estado_comercial,
+              agente_id, hora_inicio, hora_fin, fecha, fecha_inicio_real,
+              puesto_id, tarea_operaciones_id, tarea_rrhh_id
+       FROM solicitudes_servicio_adicional WHERE id = $1`,
+      [id],
+    );
+    if (curr.length === 0) return res.status(404).json({ error: "Solicitud no encontrada" });
+
+    const s = curr[0];
+
+    // 2. Validaciones
+    if (["cerrada", "cancelada"].includes(s.estado_general)) {
+      return res.status(409).json({ error: "No se puede revertir un servicio cerrado o cancelado" });
+    }
+    if (!s.agente_id) {
+      return res.status(409).json({ error: "No hay agente asignado que remover" });
+    }
+
+    const agenteId: number = s.agente_id;
+    const fechaSsa: string = s.fecha instanceof Date
+      ? s.fecha.toISOString().split("T")[0]
+      : String(s.fecha).split("T")[0];
+
+    // 3. Determinar si el servicio ya inició
+    let yaInicio = false;
+    if (s.fecha_inicio_real) {
+      yaInicio = true;
+    } else {
+      const hoy = new Date().toISOString().split("T")[0];
+      if (fechaSsa < hoy) {
+        yaInicio = true;
+      } else if (fechaSsa === hoy && s.hora_inicio) {
+        const [h, m] = (s.hora_inicio as string).split(":").map(Number);
+        const now = new Date();
+        if (now.getHours() * 60 + now.getMinutes() >= h * 60 + m) yaInicio = true;
+      }
+    }
+
+    // 4. Gestión de novedades de nómina
+    // Si NO inició: revertir horas y decrementar contador.
+    // Si ya inició: no tocar (las horas son trabajo real ya realizado).
+    if (!yaInicio) {
+      try {
+        function calcHorasLocal(inicio: string | null, fin: string | null): number {
+          if (!inicio || !fin) return 8;
+          const [h1, m1] = inicio.split(":").map(Number);
+          const [h2, m2] = fin.split(":").map(Number);
+          let mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+          if (mins < 0) mins += 24 * 60;
+          return Math.round(mins / 6) / 10;
+        }
+        const horasCalc = calcHorasLocal(s.hora_inicio, s.hora_fin);
+        const horasExtra = horasCalc > 8 ? Math.round((horasCalc - 8) * 10) / 10 : 0;
+
+        // Decrementar; si el registro queda vacío, eliminarlo
+        await pool.query(
+          `UPDATE novedades_nomina_diarias
+           SET horas_trabajadas      = GREATEST(0, horas_trabajadas - $1),
+               horas_extra           = GREATEST(0, horas_extra - $2),
+               num_puestos_cubiertos = GREATEST(0, num_puestos_cubiertos - 1),
+               updated_at            = NOW()
+           WHERE fecha = $3 AND employee_id = $4`,
+          [horasCalc, horasExtra, fechaSsa, agenteId],
+        );
+        await pool.query(
+          `DELETE FROM novedades_nomina_diarias
+           WHERE fecha = $1 AND employee_id = $2
+             AND COALESCE(num_puestos_cubiertos, 0) <= 0
+             AND COALESCE(horas_trabajadas, 0) <= 0`,
+          [fechaSsa, agenteId],
+        );
+        logger.info({ id, agenteId, fechaSsa, yaInicio }, "SSA remover-agente: novedad de nómina revertida");
+      } catch (nomErr) {
+        logger.warn({ nomErr }, "SSA remover-agente: error al revertir novedad (no bloqueante)");
+      }
+    }
+
+    // 5. Revertir tarea de operaciones si fue auto-completada sin evidencia
+    if (s.tarea_operaciones_id) {
+      await pool.query(
+        `UPDATE tareas
+         SET estado = 'pendiente', updated_at = NOW()
+         WHERE id = $1
+           AND estado = 'completada'
+           AND NOT EXISTS (SELECT 1 FROM task_evidencias te WHERE te.tarea_id = tareas.id)`,
+        [s.tarea_operaciones_id],
+      ).catch(() => {});
+    }
+
+    // 6. Revertir tarea de RRHH si fue auto-completada sin evidencia
+    if (s.tarea_rrhh_id) {
+      await pool.query(
+        `UPDATE tareas
+         SET estado = 'pendiente', updated_at = NOW()
+         WHERE id = $1
+           AND estado = 'completada'
+           AND NOT EXISTS (SELECT 1 FROM task_evidencias te WHERE te.tarea_id = tareas.id)`,
+        [s.tarea_rrhh_id],
+      ).catch(() => {});
+    }
+
+    // 7. Resetear el SSA: vuelve a estado sin cobertura
+    await pool.query(
+      `UPDATE solicitudes_servicio_adicional
+       SET agente_id            = NULL,
+           agente_nombre        = NULL,
+           tipo_cobertura       = NULL,
+           cubierta_con         = NULL,
+           estado_operaciones   = 'en_proceso',
+           estado_rrhh          = CASE WHEN estado_rrhh IN ('completado', 'viable') THEN 'pendiente' ELSE estado_rrhh END,
+           estado_general       = 'pendiente_operaciones',
+           estado_preplanilla   = 'pendiente',
+           enviado_preplanilla_at = NULL,
+           fecha_inicio_real    = NULL,
+           fecha_fin_real       = NULL,
+           updated_at           = NOW()
+       WHERE id = $1`,
+      [id],
+    );
+
+    const { rows } = await pool.query(
+      `SELECT s.*, c.nombre AS cliente_nombre, e.nombre_completo AS agente_nombre_completo, cs.nombre AS sede_nombre
+       FROM solicitudes_servicio_adicional s
+       LEFT JOIN clients c ON c.id = s.cliente_id
+       LEFT JOIN employees e ON e.id = s.agente_id
+       LEFT JOIN client_sedes cs ON cs.id = s.sede_id
+       WHERE s.id = $1`,
+      [id],
+    );
+
+    logger.info({ id, agenteId, yaInicio }, "SSA: agente removido correctamente");
+    return res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "solicitudes-servicio: PATCH remover-agente error");
+    return res.status(500).json({ error: "Error al remover agente" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/solicitudes-servicio/:id/resumen — generar resumen final
 // ─────────────────────────────────────────────────────────────────────────────
 solicitudesServicioRouter.post("/solicitudes-servicio/:id/resumen", async (req, res) => {
