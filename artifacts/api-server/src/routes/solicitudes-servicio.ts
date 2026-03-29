@@ -524,14 +524,16 @@ solicitudesServicioRouter.patch("/solicitudes-servicio/:id/asignar-agente", asyn
       if (emp.length > 0) agenteNombre = emp[0].nombre_completo;
     }
 
-    // Cuando se asigna agente → operaciones pasa a cubierta y se recalcula estado general
+    // Cuando se asigna agente:
+    //   estado_operaciones → 'cubierta'
+    //   estado_general     → 'pendiente_facturacion' (queda pendiente la etapa administrativa)
     await pool.query(
       `UPDATE solicitudes_servicio_adicional
        SET agente_id = COALESCE($1, agente_id),
            agente_nombre = COALESCE($2, agente_nombre),
            tipo_cobertura = COALESCE($3, tipo_cobertura),
            estado_operaciones = 'cubierta',
-           estado_general = 'cubierta',
+           estado_general = 'pendiente_facturacion',
            cubierta_con = COALESCE($3, tipo_cobertura),
            fecha_inicio_real = COALESCE($4, fecha_inicio_real),
            fecha_fin_real = COALESCE($5, fecha_fin_real),
