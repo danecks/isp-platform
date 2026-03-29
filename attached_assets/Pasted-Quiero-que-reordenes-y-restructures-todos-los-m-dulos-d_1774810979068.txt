@@ -1,0 +1,85 @@
+Quiero que reordenes y restructures todos los módulos del panel de usuario administrador para que tengan una organización lógica, clara y fácil de encontrar.
+
+### Problema actual
+Ahora mismo los módulos están desordenados: unos aparecen arriba, otros abajo, otros en medio, y conforme el sistema ya está más completo, cada vez es más difícil encontrar lo que necesito.
+
+### Objetivo
+Necesito que organices el panel administrativo con una estructura lógica por categorías, de forma que cualquier administrador pueda ubicar rápidamente cada módulo sin confundirse.
+
+### Instrucciones
+1. Agrupa todos los módulos por secciones funcionales, no los dejes mezclados al azar.
+2. Usa una lógica de navegación parecida a un sistema empresarial profesional.
+3. Ordena los módulos de lo más importante y frecuente a lo más secundario.
+4. Mantén una estructura consistente en sidebar, menús y submenús.
+5. Evita duplicados visuales o módulos que parezcan fuera de lugar.
+6. Si algún módulo pertenece mejor a otra categoría, muévelo.
+7. Si es posible, agrega íconos adecuados y nombres claros.
+8. Asegúrate de que todo tenga sentido para un administrador operativo y también para un supervisor.
+
+### Ejemplos de módulos que deben quedar ordenados correctamente
+- Pizarrón
+- Custodias
+- EHARS / HR App
+- Tipos de turno
+- Usuarios
+- Clientes
+- Puestos
+- Agentes
+- Reportes
+- Incidentes
+- Solicitudes de empleo
+- Configuraciones
+- Catálogos
+- Alias o sinónimos
+- RRHH
+- Dashboard
+
+### Propuesta de organización esperada
+Quiero que propongas una estructura parecida a esta, si aplica:
+
+#### 1. Operaciones
+- Dashboard
+- Pizarrón
+- Custodias
+- Incidentes
+- Reportes operativos
+- Monitoreo / alertas
+
+#### 2. Personal / RRHH
+- Agentes
+- Solicitudes de empleo
+- HR App / EHARS
+- Asignaciones
+- Expedientes
+- Control de personal
+
+#### 3. Clientes y servicios
+- Clientes
+- Puestos
+- Servicios
+- Ubicaciones
+- Alias / sinónimos de clientes y puestos
+
+#### 4. Configuración operativa
+- Tipos de turno
+- Horarios
+- Roles
+- Catálogos
+- Parámetros del sistema
+
+#### 5. Administración del sistema
+- Usuarios
+- Permisos
+- Roles de acceso
+- Auditoría
+- Configuración general
+
+### Lo que necesito que hagas
+- Reorganiza visualmente los módulos.
+- Define cuáles deben ir como menú principal y cuáles como submenú.
+- Mejora los nombres si alguno no es suficientemente claro.
+- Mantén una navegación limpia, escalable y profesional.
+- Piensa en que el sistema seguirá creciendo, así que la estructura debe quedar lista para futuros módulos.
+
+### Resultado esperado
+Quiero una propuesta de menú administrativo ordenada, lógica, escalable y fácil de usar, donde ya no estén los módulos dispersos sin sentido.

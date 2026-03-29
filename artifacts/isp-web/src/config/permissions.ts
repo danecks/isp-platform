@@ -22,6 +22,10 @@ import {
   Timer,
   GitMerge,
   Zap,
+  Shield,
+  UserSearch,
+  Calendar,
+  Kanban,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -54,152 +58,201 @@ export interface NavItem {
   roles: Rol[];
 }
 
-export const NAV_ITEMS: NavItem[] = [
+export interface NavSection {
+  id: string;
+  label: string;
+  items: NavItem[];
+}
+
+// ── Secciones de navegación del panel administrativo ─────────────────────────
+export const NAV_SECTIONS: NavSection[] = [
+  // ── 1. GENERAL ─────────────────────────────────────────────────────────────
   {
-    path: "/admin/dashboard",
-    label: "Dashboard",
-    icon: LayoutDashboard,
-    roles: ["admin", "operaciones", "rrhh", "comercial", "supervisor"],
+    id: "general",
+    label: "General",
+    items: [
+      {
+        path: "/admin/dashboard",
+        label: "Dashboard",
+        icon: LayoutDashboard,
+        roles: ["admin", "operaciones", "rrhh", "comercial", "supervisor"],
+      },
+    ],
   },
+
+  // ── 2. OPERACIONES ─────────────────────────────────────────────────────────
   {
-    path: "/admin/operaciones",
-    label: "Pizarrón Operativo",
-    icon: LayoutGrid,
-    roles: ["admin", "operaciones", "supervisor"],
+    id: "operaciones",
+    label: "Operaciones",
+    items: [
+      {
+        path: "/admin/operaciones",
+        label: "Pizarrón Operativo",
+        icon: LayoutGrid,
+        roles: ["admin", "operaciones", "supervisor"],
+      },
+      {
+        path: "/admin/tablero-servicios",
+        label: "Tablero de Servicios",
+        icon: Kanban,
+        roles: ["admin", "operaciones", "rrhh", "comercial", "supervisor"],
+      },
+      {
+        path: "/admin/pipeline-servicios",
+        label: "Pipeline SSA",
+        icon: Zap,
+        roles: ["admin", "operaciones", "rrhh", "comercial", "supervisor"],
+      },
+      {
+        path: "/admin/tareas",
+        label: "Tareas",
+        icon: CheckSquare,
+        roles: ["admin", "operaciones", "supervisor"],
+      },
+      {
+        path: "/admin/incidencias",
+        label: "Incidencias",
+        icon: AlertTriangle,
+        roles: ["admin", "operaciones", "supervisor"],
+      },
+      {
+        path: "/admin/custodias",
+        label: "Custodias",
+        icon: Truck,
+        roles: ["admin", "operaciones", "supervisor"],
+      },
+      {
+        path: "/admin/cambios-estructurales",
+        label: "Cambios Estructurales",
+        icon: GitMerge,
+        roles: ["admin", "operaciones", "rrhh"],
+      },
+    ],
   },
+
+  // ── 3. CLIENTES & COMERCIAL ────────────────────────────────────────────────
   {
-    path: "/admin/incidencias",
-    label: "Incidencias",
-    icon: AlertTriangle,
-    roles: ["admin", "operaciones", "supervisor"],
+    id: "comercial",
+    label: "Clientes & Comercial",
+    items: [
+      {
+        path: "/admin/clientes",
+        label: "Clientes",
+        icon: Building2,
+        roles: ["admin", "operaciones", "comercial"],
+      },
+      {
+        path: "/admin/comercial",
+        label: "Comercial",
+        icon: Briefcase,
+        roles: ["admin", "comercial"],
+      },
+      {
+        path: "/admin/reportes",
+        label: "Reportería",
+        icon: FileBarChart2,
+        roles: ["admin", "operaciones", "rrhh", "comercial", "supervisor"],
+      },
+      {
+        path: "/admin/kpi",
+        label: "KPI & Métricas",
+        icon: BarChart3,
+        roles: ["admin"],
+      },
+    ],
   },
+
+  // ── 4. PERSONAL / RRHH ─────────────────────────────────────────────────────
   {
-    path: "/admin/custodias",
-    label: "Custodias",
-    icon: Truck,
-    roles: ["admin", "operaciones", "supervisor"],
+    id: "rrhh",
+    label: "Personal & RRHH",
+    items: [
+      {
+        path: "/admin/empleados",
+        label: "Colaboradores",
+        icon: HardHat,
+        roles: ["admin", "operaciones", "rrhh", "supervisor"],
+      },
+      {
+        path: "/admin/reclutamiento",
+        label: "Reclutamiento",
+        icon: UserSearch,
+        roles: ["admin", "rrhh"],
+      },
+      {
+        path: "/admin/anticipos",
+        label: "Anticipos",
+        icon: Wallet,
+        roles: ["admin", "rrhh"],
+      },
+      {
+        path: "/admin/rrhh/eventos",
+        label: "Eventos RRHH",
+        icon: Calendar,
+        roles: ["admin", "rrhh", "operaciones"],
+      },
+      {
+        path: "/admin/rrhh/alertas",
+        label: "Alertas RRHH",
+        icon: BellRing,
+        roles: ["admin", "rrhh"],
+      },
+      {
+        path: "/admin/rrhh/nomina",
+        label: "Novedades de Nómina",
+        icon: ScrollText,
+        roles: ["admin", "rrhh"],
+      },
+      {
+        path: "/admin/rrhh/pre-planilla",
+        label: "Pre-Planilla",
+        icon: TableProperties,
+        roles: ["admin", "rrhh"],
+      },
+      {
+        path: "/admin/rrhh/turnos",
+        label: "Tipos de Turno",
+        icon: Timer,
+        roles: ["admin", "rrhh"],
+      },
+    ],
   },
+
+  // ── 5. SISTEMA ─────────────────────────────────────────────────────────────
   {
-    path: "/admin/reclutamiento",
-    label: "Reclutamiento",
-    icon: Users,
-    roles: ["admin", "rrhh"],
-  },
-  {
-    path: "/admin/anticipos",
-    label: "Anticipos",
-    icon: Wallet,
-    roles: ["admin", "rrhh"],
-  },
-  {
-    path: "/admin/empleados",
-    label: "Colaboradores",
-    icon: HardHat,
-    roles: ["admin", "operaciones", "rrhh", "supervisor"],
-  },
-  {
-    path: "/admin/rrhh/eventos",
-    label: "Eventos RRHH",
-    icon: ClipboardList,
-    roles: ["admin", "rrhh", "operaciones"],
-  },
-  {
-    path: "/admin/rrhh/alertas",
-    label: "Alertas RRHH",
-    icon: BellRing,
-    roles: ["admin", "rrhh"],
-  },
-  {
-    path: "/admin/rrhh/nomina",
-    label: "Novedades Nómina",
-    icon: ScrollText,
-    roles: ["admin", "rrhh"],
-  },
-  {
-    path: "/admin/rrhh/pre-planilla",
-    label: "Pre-Planilla",
-    icon: TableProperties,
-    roles: ["admin", "rrhh"],
-  },
-  {
-    path: "/admin/rrhh/turnos",
-    label: "Tipos de Turno",
-    icon: Timer,
-    roles: ["admin", "rrhh"],
-  },
-  {
-    path: "/admin/cambios-estructurales",
-    label: "Cambios Estructurales",
-    icon: GitMerge,
-    roles: ["admin", "operaciones", "rrhh"],
-  },
-  {
-    path: "/admin/pipeline-servicios",
-    label: "Servicios Adicionales",
-    icon: Zap,
-    roles: ["admin", "operaciones", "rrhh", "comercial", "supervisor"],
-  },
-  {
-    path: "/admin/tablero-servicios",
-    label: "Tablero Operativo",
-    icon: LayoutGrid,
-    roles: ["admin", "operaciones", "rrhh", "comercial", "supervisor"],
-  },
-  {
-    path: "/admin/comercial",
-    label: "Comercial",
-    icon: Briefcase,
-    roles: ["admin", "comercial"],
-  },
-  {
-    path: "/admin/tareas",
-    label: "Tareas",
-    icon: CheckSquare,
-    roles: ["admin", "operaciones", "supervisor"],
-  },
-  {
-    path: "/admin/reportes",
-    label: "Reportería",
-    icon: FileBarChart2,
-    roles: ["admin", "operaciones", "rrhh", "comercial", "supervisor"],
-  },
-  {
-    path: "/admin/kpi",
-    label: "KPI & Métricas",
-    icon: BarChart3,
-    roles: ["admin"],
-  },
-  {
-    path: "/admin/clientes",
-    label: "Clientes",
-    icon: Building2,
-    roles: ["admin", "operaciones", "comercial"],
-  },
-  {
-    path: "/admin/usuarios",
-    label: "Usuarios",
-    icon: UserCog,
-    roles: ["admin"],
-  },
-  {
-    path: "/admin/configuracion/whatsapp",
-    label: "Config. WhatsApp",
-    icon: MessageSquare,
-    roles: ["admin"],
-  },
-  {
-    path: "/admin/cms",
-    label: "CMS Web",
-    icon: Globe,
-    roles: ["admin"],
-  },
-  {
-    path: "/admin/simulador-whatsapp",
-    label: "Simulador WA",
-    icon: FlaskConical,
-    roles: ["admin"],
+    id: "sistema",
+    label: "Sistema",
+    items: [
+      {
+        path: "/admin/usuarios",
+        label: "Usuarios del Sistema",
+        icon: UserCog,
+        roles: ["admin"],
+      },
+      {
+        path: "/admin/configuracion/whatsapp",
+        label: "Configuración WhatsApp",
+        icon: MessageSquare,
+        roles: ["admin"],
+      },
+      {
+        path: "/admin/cms",
+        label: "CMS Web",
+        icon: Globe,
+        roles: ["admin"],
+      },
+      {
+        path: "/admin/simulador-whatsapp",
+        label: "Simulador WhatsApp",
+        icon: FlaskConical,
+        roles: ["admin"],
+      },
+    ],
   },
 ];
+
+// ── Lista plana (para compatibilidad con puedeAcceder) ────────────────────────
+export const NAV_ITEMS: NavItem[] = NAV_SECTIONS.flatMap((s) => s.items);
 
 export function puedeAcceder(rol: Rol | null | undefined, path: string): boolean {
   if (!rol) return false;
@@ -211,4 +264,12 @@ export function puedeAcceder(rol: Rol | null | undefined, path: string): boolean
 export function navParaRol(rol: Rol | null | undefined): NavItem[] {
   if (!rol) return [];
   return NAV_ITEMS.filter((n) => (n.roles as string[]).includes(rol));
+}
+
+export function seccionesParaRol(rol: Rol | null | undefined): NavSection[] {
+  if (!rol) return [];
+  return NAV_SECTIONS.map((s) => ({
+    ...s,
+    items: s.items.filter((n) => (n.roles as string[]).includes(rol)),
+  })).filter((s) => s.items.length > 0);
 }
