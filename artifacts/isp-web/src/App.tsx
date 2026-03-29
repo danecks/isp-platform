@@ -46,6 +46,7 @@ import AdminPrePlanilla from "@/admin/pages/PrePlanilla";
 import AdminTurnos from "@/admin/pages/Turnos";
 import AdminFichaCliente from "@/admin/pages/FichaCliente";
 import AdminReporteCoberturaZonas from "@/admin/pages/ReporteCoberturaZonas";
+import AdminCambiosEstructurales from "@/admin/pages/CambiosEstructurales";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
@@ -170,6 +171,9 @@ function Router() {
       </Route>
       <Route path="/admin/rrhh/turnos">
         {() => <AuthGuard requiredRoles={["admin", "rrhh"]}><AdminTurnos /></AuthGuard>}
+      </Route>
+      <Route path="/admin/cambios-estructurales">
+        {() => <AuthGuard requiredRoles={["admin", "operaciones", "rrhh"]}><AdminCambiosEstructurales /></AuthGuard>}
       </Route>
 
       <Route component={NotFound} />

@@ -1,0 +1,229 @@
+El sistema ya tiene:
+	•	pizarrón operativo
+	•	empleados
+	•	ficha del colaborador
+	•	ficha del cliente
+	•	asignación operativa base
+	•	historial de titularidad
+	•	cobertura diaria
+	•	RRHH
+	•	pre-planilla
+	•	eventos RRHH
+	•	clientes, sedes, puestos y zonas
+
+No quiero romper nada de lo existente.
+
+Quiero implementar una nueva fase crítica: Workflow central de cambios estructurales con validación cruzada entre Operaciones, RRHH y Admin.
+
+Objetivo
+
+Que los cambios importantes hechos desde el pizarrón, desde RRHH o desde la ficha del colaborador no sean solo visuales, sino que actualicen correctamente todo el sistema donde ese colaborador está amarrado:
+	•	ficha del colaborador
+	•	ficha del cliente
+	•	agentes asignados
+	•	asignación operativa base
+	•	historial de titularidad
+	•	RRHH
+	•	pre-planilla
+	•	operación diaria
+
+Y que estos cambios puedan requerir validación cruzada entre áreas.
+
+⸻
+
+1. Principio de funcionamiento
+
+Quiero que el sistema trate ciertos cambios como cambios estructurales, no como simples cambios visuales.
+
+Un cambio estructural puede nacer desde:
+	•	pizarrón operativo
+	•	módulo de colaboradores
+	•	módulo RRHH
+
+Pero su aplicación debe ser centralizada y auditable.
+
+⸻
+
+2. Crear entidad de solicitudes de cambio estructural
+
+Crear una estructura tipo:
+
+solicitudes_cambio_operativo
+
+Campos sugeridos:
+	•	id
+	•	employeeId
+	•	origenModulo (operaciones, rrhh, empleados)
+	•	tipoCambio (cambio_titular, cambio_cliente, cambio_puesto, sick_note, suspension, baja, reasignacion, etc.)
+	•	estado (pendiente_rrhh, pendiente_operaciones, aprobado, rechazado, escalado_admin)
+	•	datosAntes JSON
+	•	datosDespues JSON
+	•	creadoPor
+	•	validadoPorRRHH nullable
+	•	validadoPorOperaciones nullable
+	•	decididoPorAdmin nullable
+	•	motivo
+	•	createdAt
+	•	updatedAt
+
+⸻
+
+3. Cambios estructurales que deben usar este flujo
+
+Quiero que este workflow aplique al menos a:
+	•	cambio definitivo de titular
+	•	cambio de cliente base
+	•	cambio de sede base
+	•	cambio de puesto base
+	•	cambio por sick note / IGSS
+	•	suspensión prolongada
+	•	baja
+	•	reasignación permanente
+
+No aplicar a:
+	•	relevo temporal
+	•	cobertura parcial del día
+	•	segmentación de horas
+	•	cambios operativos menores sin impacto estructural
+
+⸻
+
+4. Regla de validación cruzada
+
+Si el cambio nace en Operaciones
+
+Debe poder requerir validación de RRHH si impacta:
+	•	estatus laboral
+	•	sick note
+	•	suspensión
+	•	baja
+	•	pre-planilla
+	•	novedades de nómina
+
+Si el cambio nace en RRHH
+
+Debe poder requerir validación de Operaciones si impacta:
+	•	cliente asignado
+	•	puesto
+	•	sede
+	•	titularidad
+	•	cobertura
+	•	pizarrón operativo
+
+Si hay conflicto
+	•	el cambio pasa a estado escalado_admin
+	•	Admin toma la decisión final
+
+⸻
+
+5. Aplicación centralizada del cambio
+
+Cuando un cambio sea aprobado, el sistema debe actualizar automáticamente todo lo relacionado:
+
+A. Ficha del colaborador
+	•	cliente base
+	•	sede base
+	•	puesto base
+	•	zona
+	•	supervisor derivado
+	•	estado laboral/operativo si aplica
+
+B. Ficha del cliente
+	•	agentes asignados
+	•	titular del puesto
+	•	cobertura visible
+	•	historial si corresponde
+
+C. Operación
+	•	asignación operativa base
+	•	historial de titularidad
+	•	pizarrón operativo si aplica
+
+D. RRHH / Nómina
+	•	eventos RRHH
+	•	novedades_nomina_diarias
+	•	pre-planilla
+	•	sick note / suspensión / baja si aplica
+
+⸻
+
+6. Caso concreto que debe soportar
+
+Ejemplo:
+Daniel está titular en Gallo.
+RRHH lo pone en sick note IGSS.
+Eso debe:
+	•	reflejarse en su ficha
+	•	afectar pre-planilla
+	•	marcar impacto en operación
+	•	permitir que operaciones cubra el puesto
+	•	si luego Daniel es reasignado como titular en Agua Pura Salvavidas:
+	•	debe cambiar ficha del colaborador
+	•	debe cambiar ficha del cliente
+	•	debe cambiar agentes asignados
+	•	debe registrar historial
+	•	debe respetar el workflow de validación si aplica
+
+⸻
+
+7. Pizarrón operativo
+
+Cuando desde el pizarrón se haga un cambio estructural:
+	•	mantener el flujo rápido
+	•	pero si el cambio afecta estructura base, generar la solicitud correspondiente
+	•	si el cambio es solo temporal, no usar este flujo
+
+⸻
+
+8. Módulo de seguimiento
+
+Crear una vista o sección donde se puedan revisar estas solicitudes:
+	•	pendientes RRHH
+	•	pendientes Operaciones
+	•	escaladas a Admin
+	•	aprobadas
+	•	rechazadas
+
+⸻
+
+9. Auditoría
+
+Todo cambio estructural debe dejar:
+	•	quién lo propuso
+	•	desde qué módulo
+	•	qué se cambió
+	•	quién lo validó
+	•	quién lo rechazó
+	•	quién decidió si hubo conflicto
+
+⸻
+
+10. No romper
+
+No romper:
+	•	pizarrón operativo
+	•	cobertura diaria
+	•	historial de titularidad
+	•	ficha del cliente
+	•	ficha del colaborador
+	•	RRHH
+	•	pre-planilla
+	•	anticipos
+	•	reportería
+	•	portal
+	•	WhatsApp
+	•	Trello
+
+⸻
+
+11. Documentación
+
+Explica claramente:
+	•	qué es un cambio estructural
+	•	qué cambios siguen siendo temporales
+	•	cómo funciona la validación cruzada
+	•	qué módulos se actualizan cuando se aprueba un cambio
+	•	cómo esto ayuda a mantener coherencia entre operaciones, RRHH y nómina
+
+Muy importante:
+quiero que el sistema tenga una sola verdad operativa y laboral, y que cualquier cambio importante hecho desde operaciones, RRHH o colaboradores se refleje correctamente en todo el sistema con validación entre áreas.

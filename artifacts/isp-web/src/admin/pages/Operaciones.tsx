@@ -2195,6 +2195,23 @@ export default function Operaciones() {
         const motLabel = motivoCambio ? ` · ${motivoCambio.replace(/_/g, " ")}` : "";
         const fechaLabel = fechaEfectiva ? ` desde ${fechaEfectiva}` : "";
         toast({ title: "Nuevo titular asignado", description: `${agente.nombre_completo} → ${puesto.nombre}${fechaLabel}${motLabel}` });
+        fetch(`${API_BASE}/solicitudes-cambio`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
+          body: JSON.stringify({
+            employee_id: agente.id,
+            puesto_id: puesto.id,
+            origen_modulo: "operaciones",
+            tipo_cambio: "cambio_titular",
+            estado: "pendiente_rrhh",
+            motivo: motivoCambio
+              ? `${motivoCambio.replace(/_/g, " ")}${fechaEfectiva ? " (efectivo " + fechaEfectiva + ")" : ""}`
+              : `Nuevo titular desde pizarrón${fechaEfectiva ? " efectivo " + fechaEfectiva : ""}`,
+            datos_antes: puesto.agente_id ? { agente_id: puesto.agente_id, agente: puesto.nombre ?? "" } : null,
+            datos_despues: { agente_id: agente.id, agente: agente.nombre_completo, fecha_efectiva: fechaEfectiva ?? "inmediata" },
+            creado_por: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+          }),
+        }).catch(() => {});
       }
       setAgenteSeleccionado(null);
       invalidate();

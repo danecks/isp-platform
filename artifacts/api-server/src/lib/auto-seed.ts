@@ -1631,5 +1631,39 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: TH-02 seed historial titulares — error (no bloqueante)");
   }
 
+  // ── SCO-01: tabla solicitudes_cambio_operativo ──────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS solicitudes_cambio_operativo (
+        id                          SERIAL PRIMARY KEY,
+        employee_id                 INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        origen_modulo               VARCHAR(50)  NOT NULL,
+        tipo_cambio                 VARCHAR(80)  NOT NULL,
+        estado                      VARCHAR(50)  NOT NULL DEFAULT 'pendiente_rrhh',
+        datos_antes                 JSONB,
+        datos_despues               JSONB,
+        creado_por                  VARCHAR(100),
+        motivo                      TEXT,
+        validado_por_rrhh           VARCHAR(100),
+        validado_por_operaciones    VARCHAR(100),
+        decidido_por_admin          VARCHAR(100),
+        notas_rrhh                  TEXT,
+        notas_operaciones           TEXT,
+        notas_admin                 TEXT,
+        fecha_validacion_rrhh       TIMESTAMPTZ,
+        fecha_validacion_operaciones TIMESTAMPTZ,
+        fecha_decision_admin        TIMESTAMPTZ,
+        puesto_id                   INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_sco_employee ON solicitudes_cambio_operativo(employee_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_sco_estado  ON solicitudes_cambio_operativo(estado)`);
+    logger.info("Auto-migrate: SCO-01 tabla solicitudes_cambio_operativo verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SCO-01 solicitudes_cambio_operativo — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

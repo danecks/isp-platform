@@ -20,6 +20,7 @@ import {
   ScrollText,
   TableProperties,
   Timer,
+  GitMerge,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -124,6 +125,12 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Tipos de Turno",
     icon: Timer,
     roles: ["admin", "rrhh"],
+  },
+  {
+    path: "/admin/cambios-estructurales",
+    label: "Cambios Estructurales",
+    icon: GitMerge,
+    roles: ["admin", "operaciones", "rrhh"],
   },
   {
     path: "/admin/comercial",

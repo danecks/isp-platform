@@ -28,6 +28,7 @@ import { prePlanillaRouter } from "./pre-planilla";
 import { turnosRouter } from "./turnos";
 import storageRouter from "./storage";
 import kpiRouter from "./kpi";
+import { solicitudesCambioRouter } from "./solicitudes-cambio";
 
 const router: IRouter = Router();
 
@@ -60,5 +61,6 @@ router.use(prePlanillaRouter);
 router.use(turnosRouter);
 router.use(storageRouter);
 router.use(kpiRouter);
+router.use(solicitudesCambioRouter);
 
 export default router;
