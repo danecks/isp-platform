@@ -3497,14 +3497,14 @@ function ModalAsignarSSA({
           </div>
         </div>
 
-        {/* Banner: agentes que declinaron */}
+        {/* Banner: agentes que declinaron (informativo, no bloquea reasignación) */}
         {(tarjeta.agentes_rechazados?.length ?? 0) > 0 && (
-          <div className="mx-5 mt-2 flex items-start gap-2 bg-red-500/8 border border-red-500/20 rounded-xl px-3 py-2 shrink-0">
-            <Info className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+          <div className="mx-5 mt-2 flex items-start gap-2 bg-white/4 border border-white/10 rounded-xl px-3 py-2 shrink-0">
+            <Info className="w-3.5 h-3.5 text-white/30 shrink-0 mt-0.5" />
             <div>
-              <p className="text-[10px] font-semibold text-red-400">Agentes que declinaron este servicio</p>
-              <p className="text-[10px] text-red-300/60 mt-0.5 leading-snug">
-                {tarjeta.agentes_rechazados.map(a => a.nombre).join(", ")}
+              <p className="text-[10px] font-semibold text-white/50">Intentos anteriores sin éxito</p>
+              <p className="text-[10px] text-white/30 mt-0.5 leading-snug">
+                {tarjeta.agentes_rechazados.map(a => a.nombre).join(", ")} — puedes reasignarlos si es necesario
               </p>
             </div>
           </div>
@@ -3537,15 +3537,14 @@ function ModalAsignarSSA({
           ) : (
             agentesDisponibles.map((a) => {
               const declino = tarjeta.agentes_rechazados?.find(r => r.id === a.id);
+              const seleccionado = agenteSeleccionado?.id === a.id;
               return (
                 <button
                   key={a.id}
                   onClick={() => setAgenteSeleccionado(a)}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
-                    agenteSeleccionado?.id === a.id
+                    seleccionado
                       ? "bg-primary/15 border-primary/40 shadow-sm shadow-primary/10"
-                      : declino
-                      ? "bg-red-500/5 border-red-500/15 hover:border-red-500/25"
                       : "bg-[#0c1929] border-white/6 hover:border-white/15"
                   }`}
                 >
@@ -3553,17 +3552,13 @@ function ModalAsignarSSA({
                     {iniciales(a.nombre_completo)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className={`text-xs font-semibold truncate ${declino ? "text-white/50" : "text-white/90"}`}>{a.nombre_completo}</p>
-                      {declino && (
-                        <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/20 shrink-0">
-                          Declinó
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[10px] text-white/35 truncate">{a.puesto ?? "Agente"}{a.sede ? ` · ${a.sede}` : ""}</p>
+                    <p className="text-xs font-semibold text-white/90 truncate">{a.nombre_completo}</p>
+                    <p className="text-[10px] text-white/35 truncate">
+                      {a.puesto ?? "Agente"}{a.sede ? ` · ${a.sede}` : ""}
+                      {declino && !seleccionado ? <span className="text-white/25"> · declinó antes</span> : null}
+                    </p>
                   </div>
-                  {agenteSeleccionado?.id === a.id && (
+                  {seleccionado && (
                     <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
                   )}
                 </button>
