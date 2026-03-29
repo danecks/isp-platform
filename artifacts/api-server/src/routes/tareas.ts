@@ -32,6 +32,24 @@ const router = Router();
 
 const ROLES_CON_PERMISO_CIERRE = ["supervisor", "admin"];
 
+// ── Helper: recalcular estado_general SSA según las 3 áreas ──────────────────
+// Misma lógica que en solicitudes-servicio.ts para mantener consistencia.
+function calcEstadoGeneralSSA(
+  ops: string,
+  rrhh: string,
+  comercial: string,
+  estadoActual: string,
+): string {
+  if (ops === "no_viable") return "cancelada";
+  if (comercial === "cobrado") return "cerrada";
+  if (comercial === "facturado" || comercial === "pendiente_cobro") return "pendiente_facturacion";
+  if (ops === "cubierta" && rrhh !== "pendiente" && comercial !== "pendiente") return "cubierta";
+  if (ops === "en_proceso") return "pendiente_operaciones";
+  if (["en_proceso", "requiere_contratacion", "requiere_reasignacion"].includes(rrhh)) return "pendiente_rrhh";
+  if (rrhh === "viable") return "en_revision";
+  return estadoActual;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function genTareaId(): string {
@@ -449,6 +467,70 @@ router.post("/tareas/:id/cerrar", async (req, res) => {
       canal,
       evidenciaId: evidencia.id,
     }, "Tarea cerrada con evidencia");
+
+    // 6. Sincronizar estado de área en SSA vinculada (si aplica)
+    // Cuando una tarea de Operaciones, RRHH o Comercial se cierra,
+    // el área correspondiente en el SSA debe reflejar el nuevo estado.
+    try {
+      const { rows: ssaLink } = await pool.query<{
+        id: number;
+        tarea_operaciones_id: string | null;
+        tarea_rrhh_id: string | null;
+        tarea_comercial_id: string | null;
+        estado_general: string;
+        estado_operaciones: string;
+        estado_rrhh: string;
+        estado_comercial: string;
+      }>(
+        `SELECT id, tarea_operaciones_id, tarea_rrhh_id, tarea_comercial_id,
+                estado_general, estado_operaciones, estado_rrhh, estado_comercial
+         FROM solicitudes_servicio_adicional
+         WHERE tarea_operaciones_id = $1
+            OR tarea_rrhh_id       = $1
+            OR tarea_comercial_id  = $1
+         LIMIT 1`,
+        [id],
+      );
+
+      if (ssaLink.length > 0) {
+        const s = ssaLink[0];
+        let newOps       = s.estado_operaciones;
+        let newRrhh      = s.estado_rrhh;
+        let newComercial = s.estado_comercial;
+        let newFacturacion: string | null = null;
+
+        if (s.tarea_operaciones_id === id) {
+          newOps = "cubierta";
+        } else if (s.tarea_rrhh_id === id) {
+          newRrhh = "viable";
+        } else if (s.tarea_comercial_id === id) {
+          newComercial   = "facturado";
+          newFacturacion = "facturado";
+        }
+
+        const nuevoEstadoGeneral = calcEstadoGeneralSSA(newOps, newRrhh, newComercial, s.estado_general);
+
+        await pool.query(
+          `UPDATE solicitudes_servicio_adicional
+           SET estado_operaciones = $1,
+               estado_rrhh        = $2,
+               estado_comercial   = $3,
+               estado_facturacion = CASE WHEN $5::TEXT IS NOT NULL THEN $5 ELSE estado_facturacion END,
+               estado_general     = $4,
+               updated_at         = NOW()
+           WHERE id = $6`,
+          [newOps, newRrhh, newComercial, nuevoEstadoGeneral, newFacturacion, s.id],
+        );
+
+        logger.info(
+          { tareaId: id, ssaId: s.id, nuevoEstadoGeneral },
+          "SSA: estado de área sincronizado tras cierre de tarea",
+        );
+      }
+    } catch (syncErr) {
+      // No bloqueante — la tarea ya quedó completada
+      logger.error({ syncErr, tareaId: id }, "SSA sync tras cierre de tarea — error (no bloqueante)");
+    }
 
     // TODO (Trello):
     // if (tarea.trelloCardId && process.env.TRELLO_API_KEY) {

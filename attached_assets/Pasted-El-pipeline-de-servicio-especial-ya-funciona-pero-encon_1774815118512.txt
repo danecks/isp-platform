@@ -1,0 +1,183 @@
+El pipeline de servicio especial ya funciona, pero encontré inconsistencias importantes que quiero corregir juntas en esta misma fase:
+	1.	En la vista del servicio especial, el bloque del área Comercial puede aparecer como “facturado”, pero en la sección de tareas vinculadas la tarea de Comercial sigue apareciendo como “pendiente”.
+	2.	En el pizarrón operativo, el pool de agentes sigue mostrando personas que ya no deberían aparecer como disponibles, o muestra perfiles que no deberían estar en ese pool (por ejemplo supervisores u otros colaboradores no elegibles para cubrir puestos normales).
+
+Quiero corregir la sincronización entre:
+	•	estado del área
+	•	estado real de la tarea
+	•	estado general del servicio especial
+	•	estado operativo real del colaborador dentro del pizarrón y su visibilidad en el pool
+
+Objetivo
+
+Que cuando Comercial/Facturación cierre su tarea porque ya facturó o presentó la factura, el sistema actualice correctamente todo el pipeline, y que además el pool del pizarrón refleje solo a los colaboradores realmente elegibles y disponibles para cobertura.
+
+⸻
+
+1. Sincronización de tarea y área
+
+Cuando una tarea del área Comercial se marque como cerrada/completada, el sistema debe automáticamente:
+	•	actualizar el estado del área Comercial dentro del servicio especial
+	•	reflejar el estado correcto en tareas vinculadas
+	•	evitar que el área diga “facturado” mientras la tarea sigue “pendiente”
+
+Lo mismo debe aplicar a Operaciones y RRHH.
+
+⸻
+
+2. Regla para Comercial
+
+Si Comercial completa su tarea porque:
+	•	ya facturó
+	•	ya presentó factura
+	•	ya dejó el cobro listo
+
+Entonces:
+	•	la tarea debe quedar en estado completada
+	•	el área Comercial debe quedar en estado facturado o completada según tu modelo
+	•	el pipeline general debe reevaluarse
+
+⸻
+
+3. Recalcular estado general del servicio
+
+Cuando las tres áreas estén listas:
+	•	Operaciones = cubierta/completada
+	•	RRHH = viable/completada
+	•	Comercial = facturado/completada
+
+entonces el servicio especial debe pasar automáticamente a un estado final como:
+	•	finalizado
+	•	cerrado
+	•	listo para resumen final
+	•	o pendiente de autorización contable si decides dejar esa fase
+
+Documentar claramente qué estado final usarás.
+
+⸻
+
+4. Generación de resumen final
+
+Cuando el servicio llegue a su estado final:
+	•	generar o dejar listo el resumen del servicio especial
+	•	incluir agentes usados, horas cubiertas, cobertura, estado por área y base para cobro
+	•	dejarlo visible para futura integración con contabilidad
+	•	dejarlo visible para el portal del cliente en modo resumen
+
+⸻
+
+5. Pool de agentes del pizarrón — corregir elegibilidad y sincronización
+
+Quiero corregir el pool de agentes para que no siga mostrando personas que ya no deberían aparecer disponibles.
+
+Problemas a revisar:
+	•	colaboradores ya asignados que siguen apareciendo en “Disponibles”
+	•	perfiles que no deberían cubrir puestos normales (ej. supervisor de zona) apareciendo en el pool general
+	•	estados visuales no sincronizados con el estado operativo real
+	•	falta de filtro por elegibilidad operativa
+
+Reglas esperadas:
+
+El pool de agentes debe mostrar solo colaboradores que sean:
+	•	operativamente elegibles para cubrir puestos
+	•	no asignados activamente a otro puesto en ese momento
+	•	no suspendidos
+	•	no bloqueados por otro flujo
+	•	realmente disponibles o en descanso elegible si esa lógica aplica
+
+Perfiles especiales
+
+Si un supervisor u otro perfil especial puede cubrir, eso no debe aparecer mezclado en el pool general salvo que esté explícitamente permitido.
+Si conviene, separarlo en otra categoría o excluirlo del pool normal.
+
+⸻
+
+6. Sincronización del estado operativo del colaborador
+
+Cuando un colaborador:
+	•	es asignado a un puesto
+	•	cubre un servicio especial
+	•	sale de un puesto
+	•	cambia de estado operativo
+	•	entra o sale de cobertura
+
+el sistema debe actualizar correctamente su estado operativo y refresjar su presencia en:
+	•	pool de agentes
+	•	lista de en puesto
+	•	descanso
+	•	suspendidos
+	•	cualquier otra categoría del pizarrón
+
+No quiero que el pool muestre información vieja o inconsistente.
+
+⸻
+
+7. Vista del pipeline
+
+Corregir la UI para que:
+	•	el bloque de cada área
+	•	la lista de tareas vinculadas
+	•	el estado general
+	•	y el estado operativo de agentes usados
+
+siempre reflejen la misma verdad.
+
+No quiero badges que digan una cosa y tareas o pools que digan otra.
+
+⸻
+
+8. Refresco / sincronización
+
+Asegurar que al cambiar:
+	•	una tarea
+	•	un estado de área
+	•	una cobertura
+	•	un agente asignado o removido
+
+se refresquen correctamente:
+	•	detalle del servicio especial
+	•	tareas vinculadas
+	•	estado general
+	•	pool del pizarrón
+	•	tarjetas visibles
+
+No dejar información vieja en caché.
+
+⸻
+
+9. No romper
+
+No romper:
+	•	pipeline de servicio especial
+	•	tareas existentes
+	•	operaciones
+	•	RRHH
+	•	comercial
+	•	portal del cliente
+	•	reportería
+	•	futuras integraciones con contabilidad
+	•	lógica actual del pizarrón operativo
+
+⸻
+
+10. Documentación
+
+Explica claramente:
+	•	qué pasa cuando Comercial cierra su tarea
+	•	cómo se sincronizan tareas y estados de área
+	•	cuándo cambia el estado general del servicio especial
+	•	cuándo se genera el resumen final
+	•	cómo se decide quién aparece en el pool de agentes
+	•	qué perfiles quedan excluidos o separados del pool normal
+
+Muy importante:
+quiero que el pipeline del servicio especial y el pizarrón operativo queden completamente coherentes, sin estados cruzados ni agentes mal ubicados en el pool.
+:::
+
+Mi recomendación adicional
+
+Yo revisaría especialmente estas dos reglas en el pool:
+	•	solo personal operativo elegible
+	•	solo personas realmente libres
+
+Porque si no, el pizarrón se vuelve confuso muy rápido.

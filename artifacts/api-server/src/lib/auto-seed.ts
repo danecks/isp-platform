@@ -1740,5 +1740,34 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SSA-03 pre-planilla — error (no bloqueante)");
   }
 
+  // ── SSA-04: Elegibilidad del pool de agentes ────────────────────────────────
+  // elegible_pool: TRUE = aparece en pool operativo del pizarrón
+  //                FALSE = supervisor/jefe/admin — excluido del pool general
+  try {
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS elegible_pool BOOLEAN NOT NULL DEFAULT TRUE`);
+    // Marcar como NO elegibles a perfiles de supervisión y dirección
+    await pool.query(`
+      UPDATE employees
+      SET elegible_pool = FALSE
+      WHERE (
+        puesto ILIKE '%supervisor%'
+        OR puesto ILIKE '%jefe%'
+        OR puesto ILIKE '%director%'
+        OR puesto ILIKE '%gerente%'
+        OR area  ILIKE 'supervisión'
+        OR area  ILIKE 'supervision'
+        OR area  ILIKE 'administración'
+        OR area  ILIKE 'administracion'
+        OR area  ILIKE 'rrhh'
+        OR area  ILIKE 'comercial'
+        OR area  ILIKE 'contabilidad'
+      )
+      AND elegible_pool = TRUE
+    `);
+    logger.info("Auto-migrate: SSA-04 elegible_pool verificado/creado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SSA-04 elegible_pool — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

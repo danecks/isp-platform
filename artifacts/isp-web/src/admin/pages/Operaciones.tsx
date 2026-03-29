@@ -81,6 +81,7 @@ interface Agente {
 interface Pool {
   disponibles: Agente[];
   enPuesto: Agente[];
+  enSSA: Agente[];
   enDescanso: Agente[];
   suspendidos: Agente[];
   total: number;
@@ -381,13 +382,16 @@ function ModalSegmentos({
   const [motivo, setMotivo]             = useState("");
   const [guardando, setGuardando]       = useState(false);
 
-  // IDs de agentes actualmente en puesto (para filtrar disponibilidad)
-  const { data: poolData } = useQuery<{ enPuesto: { id: number }[] }>({
+  // IDs de agentes actualmente en puesto o cubriendo un SSA (para filtrar disponibilidad)
+  const { data: poolData } = useQuery<{ enPuesto: { id: number }[]; enSSA: { id: number }[] }>({
     queryKey: ["pool-disponibilidad"],
     queryFn: () => fetch(`${API_BASE}/operaciones/pool`).then((r) => r.json()),
     staleTime: 30_000,
   });
-  const idsEnPuesto = new Set((poolData?.enPuesto ?? []).map((a) => a.id));
+  const idsEnPuesto = new Set([
+    ...(poolData?.enPuesto ?? []).map((a) => a.id),
+    ...(poolData?.enSSA    ?? []).map((a) => a.id),
+  ]);
 
   const { data: empleadosBusquedaRaw = [] } = useQuery<EmpleadoBusqueda[]>({
     queryKey: ["emp-busqueda", busqueda],
@@ -2165,7 +2169,7 @@ export default function Operaciones() {
   const [modalSustitucion, setModalSustitucion]      = useState<{ puesto: Puesto; agente: Agente; advertencia?: string } | null>(null);
   const [modalEligeCobertura, setModalEligeCobertura] = useState<{ puesto: Puesto; agente: Agente } | null>(null);
   const [modalLiberar, setModalLiberar]              = useState<Puesto | null>(null);
-  const [poolTab, setPoolTab]                        = useState<"disponibles" | "enDescanso" | "suspendidos" | "enPuesto">("disponibles");
+  const [poolTab, setPoolTab]                        = useState<"disponibles" | "enDescanso" | "suspendidos" | "enPuesto" | "enSSA">("disponibles");
   const [busquedaPool, setBusquedaPool]              = useState("");
   const [modalCierre, setModalCierre]                = useState(false);
   const [modalReabrir, setModalReabrir]              = useState(false);
@@ -2251,6 +2255,7 @@ export default function Operaciones() {
       ...(pool?.enDescanso ?? []),
       ...(pool?.suspendidos ?? []),
       ...(pool?.enPuesto ?? []),
+      ...(pool?.enSSA ?? []),
     ].find((a) => a.id === agenteId);
     if (agente) setDraggingAgente(agente);
   }
@@ -2271,6 +2276,7 @@ export default function Operaciones() {
       ...(pool?.enDescanso ?? []),
       ...(pool?.suspendidos ?? []),
       ...(pool?.enPuesto ?? []),
+      ...(pool?.enSSA ?? []),
     ].find((a) => a.id === agenteId);
 
     const puesto = tablero.flatMap((c) => c.puestos).find((p) => p.id === puestoId);
@@ -2922,6 +2928,7 @@ export default function Operaciones() {
                 { key: "disponibles" as const, label: "Disponibles", count: pool?.disponibles?.length ?? 0, color: "text-green-400" },
                 { key: "enDescanso"  as const, label: "Descanso",    count: pool?.enDescanso?.length ?? 0,  color: "text-blue-400" },
                 { key: "enPuesto"   as const, label: "En puesto",   count: pool?.enPuesto?.length ?? 0,   color: "text-teal-400" },
+                { key: "enSSA"      as const, label: "En SSA",      count: pool?.enSSA?.length ?? 0,      color: "text-amber-400" },
                 { key: "suspendidos" as const, label: "Suspendidos", count: pool?.suspendidos?.length ?? 0, color: "text-red-400" },
               ].map(({ key, label, count, color }) => (
                 <button
@@ -2966,6 +2973,7 @@ export default function Operaciones() {
                   {poolTab === "disponibles" ? "No hay agentes disponibles" :
                    poolTab === "enDescanso"  ? "No hay agentes en descanso" :
                    poolTab === "enPuesto"    ? "Ningún agente está en puesto activo" :
+                   poolTab === "enSSA"       ? "Ningún agente cubre un SSA activo" :
                    "No hay agentes suspendidos"}
                 </div>
               ) : (
@@ -2978,7 +2986,7 @@ export default function Operaciones() {
                         if (isCerrado) return;
                         setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente);
                       }}
-                      disabled={poolTab === "enPuesto" || isCerrado}
+                      disabled={poolTab === "enPuesto" || poolTab === "enSSA" || isCerrado}
                     />
                   </div>
                 ))
