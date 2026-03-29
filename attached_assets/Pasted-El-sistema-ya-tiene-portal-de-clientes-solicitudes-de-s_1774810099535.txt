@@ -1,0 +1,236 @@
+El sistema ya tiene:
+- portal de clientes
+- solicitudes de servicio adicional
+- operaciones / pizarrón operativo
+- RRHH
+- comercial
+- tareas
+- empleados
+- cobertura diaria
+- pre-planilla
+- pipeline entre áreas en construcción
+
+No quiero romper nada de lo existente.
+
+Quiero implementar una nueva fase: Pipeline completo de Servicio Especial con tarjeta operativa, tareas automáticas y resumen final.
+
+## Objetivo
+Que cuando un cliente solicite un servicio especial y este sea registrado/aprobado internamente, el sistema cree una tarjeta especial visible y un pipeline coordinado entre Comercial/Facturación, RRHH y Operaciones, hasta terminar el servicio y generar un resumen final.
+
+---
+
+## 1. Tipos de servicio especial
+Quiero manejar servicios como:
+- cobertura de evento
+- ampliación de horario
+- custodia extra
+- apoyo temporal
+- servicio especial
+- guardia extra
+- cobertura extraordinaria
+
+---
+
+## 2. Tarjeta de servicio especial
+Cuando la solicitud llegue a cierto estado interno (por ejemplo: registrada/aprobada comercialmente), crear una tarjeta especial con estilo similar al pizarrón, pero con color tenue para diferenciarla de los puestos normales.
+
+La tarjeta debe mostrar al menos:
+- cliente
+- sede
+- puesto o tipo de servicio
+- tipo de servicio especial
+- fecha inicio
+- fecha final
+- horario solicitado
+- estado general
+- si ya está cubierta o no
+- espacio para mostrar agente asignado cuando exista
+
+---
+
+## 3. Condición para crear la tarjeta
+La tarjeta debe aparecer cuando Comercial / Facturación marque la solicitud como:
+- registrada
+o equivalente al estado que definas como listo para ejecución interna
+
+No debe aparecer solo por la solicitud inicial del cliente.
+Debe aparecer cuando ya entró al pipeline interno real.
+
+---
+
+## 4. Pipeline interno por áreas
+Al llegar a ese estado, crear automáticamente tareas separadas para:
+
+### A. Operaciones
+Objetivo:
+- evaluar si se puede cubrir
+- cubrir con disponible / relevo / horas extra / titular si aplica
+
+### B. RRHH
+Objetivo:
+- validar si hay personal disponible
+- intervenir si hace falta contratación o reasignación
+
+### C. Comercial / Facturación / Contabilidad
+Objetivo:
+- dejar trazabilidad de cobro
+- registrar que el servicio adicional debe cobrarse
+- preparar facturación / control económico
+
+---
+
+## 5. Estados por área
+Cada área debe tener su propio estado, por ejemplo:
+
+### Operaciones
+- pendiente
+- en proceso
+- cubierta
+- no viable
+
+### RRHH
+- pendiente
+- en proceso
+- completado
+- requiere contratación
+
+### Comercial / Facturación
+- pendiente
+- registrado
+- listo para facturar
+- facturado
+
+Además, la solicitud/tarjeta debe tener un estado general.
+
+---
+
+## 6. Cobertura del servicio especial
+Cuando Operaciones cubra el servicio:
+- si usa un agente disponible
+- si usa relevo
+- si usa horas extra
+- si cambia a titular
+
+el sistema debe:
+- actualizar automáticamente la tarjeta
+- mostrar el agente usado
+- mostrar si se cubrió con horas extra o con disponible
+- completar automáticamente la tarea de Operaciones
+- actualizar la tarea de RRHH si ya no necesita más acción
+- dejar el servicio en estado cubierto si corresponde
+
+Muy importante:
+esto debe reutilizar la lógica que ya existe de:
+- horas extra
+- relevo temporal
+- cambio a titular
+- cobertura diaria
+- segmentos
+- pre-planilla
+
+---
+
+## 7. Actualización visual de la tarjeta
+La tarjeta de servicio especial debe reflejar en tiempo real:
+- cliente
+- tipo de servicio
+- fechas
+- horas
+- agente asignado
+- cobertura actual
+- estado de RRHH
+- estado de Operaciones
+- estado de Comercial/Facturación
+
+Quiero que sea visible y útil para seguimiento.
+
+---
+
+## 8. Resumen final del servicio
+Cuando el servicio termine, quiero que el sistema genere un Resumen de Servicio Especial listo para revisión.
+
+Debe incluir:
+- cliente
+- sede
+- servicio solicitado
+- fecha/hora inicio real
+- fecha/hora fin real
+- agente(s) que cubrieron
+- si hubo horas extra
+- si se usó disponible / relevo / cambio de titular
+- observaciones
+- estado final del pipeline
+- base para cobro/facturación
+
+---
+
+## 9. Preparación para contabilidad
+No hace falta construir todavía el módulo completo de contabilidad, pero sí dejar este resumen listo para que después Contabilidad pueda:
+
+- revisar
+- autorizar
+- facturar
+- cobrar
+
+Agregar estado o estructura para:
+- pendiente_autorizacion_conta
+- autorizado_conta
+- facturado
+
+si conviene
+
+---
+
+## 10. Portal del cliente
+Quiero que en el portal del cliente se pueda ver:
+- la solicitud original
+- su estado general
+- y cuando termine, el resumen del servicio especial
+
+Pero el cliente NO debe ver:
+- tareas internas
+- comentarios internos de RRHH / Operaciones
+- decisiones internas de facturación
+
+---
+
+## 11. Integración con otros módulos
+No romper y sí conectar con:
+- operaciones / pizarrón
+- cobertura diaria
+- segmentos
+- RRHH
+- tareas
+- comercial
+- pre-planilla
+- historial del colaborador
+- ficha del cliente
+
+---
+
+## 12. No romper
+No romper:
+- solicitudes del cliente
+- tareas existentes
+- cobertura diaria
+- historial de titularidad
+- pre-planilla
+- RRHH
+- portal de clientes
+- reportería
+- WhatsApp
+- Trello
+
+---
+
+## 13. Documentación
+Explica claramente:
+- cuándo nace la tarjeta de servicio especial
+- qué tarea recibe cada área
+- cómo cambia el estado cuando operaciones cubre
+- cómo se actualiza RRHH automáticamente
+- cómo se construye el resumen final
+- cómo queda preparado para contabilidad y portal de cliente
+
+Muy importante:
+quiero que los servicios especiales solicitados por clientes no queden sueltos, sino que generen una tarjeta operativa visible, un pipeline coordinado entre áreas y un resumen final listo para cobro y seguimiento.

@@ -152,6 +152,48 @@ solicitudesServicioRouter.get("/solicitudes-servicio", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/solicitudes-servicio/tablero — tarjetas activas (must be before /:id)
+// ─────────────────────────────────────────────────────────────────────────────
+solicitudesServicioRouter.get("/solicitudes-servicio/tablero", async (_req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        s.id, s.tipo_solicitud, s.fecha, s.fecha_fin, s.hora_inicio, s.hora_fin,
+        s.cantidad_guardias, s.prioridad, s.descripcion,
+        s.estado_general, s.estado_operaciones, s.estado_rrhh, s.estado_comercial, s.estado_facturacion,
+        s.agente_id, s.agente_nombre, s.tipo_cobertura, s.cubierta_con,
+        s.monto_estimado, s.tarifa_aplicada,
+        s.observaciones_operaciones, s.observaciones_comercial,
+        s.tarjeta_activa, s.resumen_final, s.resumen_generado_at,
+        s.fecha_inicio_real, s.fecha_fin_real,
+        c.nombre AS cliente_nombre, c.portal_cliente_id AS cliente_portal_id,
+        cs.nombre AS sede_nombre, cs.direccion AS sede_direccion,
+        po.nombre AS puesto_nombre,
+        e.nombre_completo AS agente_nombre_completo,
+        e.telefono AS agente_telefono,
+        t1.estado AS tarea_ops_estado,
+        t2.estado AS tarea_rrhh_estado,
+        t3.estado AS tarea_comercial_estado
+      FROM solicitudes_servicio_adicional s
+      LEFT JOIN clients c ON c.id = s.cliente_id
+      LEFT JOIN client_sedes cs ON cs.id = s.sede_id
+      LEFT JOIN puestos_operativos po ON po.id = s.puesto_id
+      LEFT JOIN employees e ON e.id = s.agente_id
+      LEFT JOIN tareas t1 ON t1.id = s.tarea_operaciones_id
+      LEFT JOIN tareas t2 ON t2.id = s.tarea_rrhh_id
+      LEFT JOIN tareas t3 ON t3.id = s.tarea_comercial_id
+      WHERE s.tarjeta_activa = TRUE
+        AND s.estado_general NOT IN ('cancelada', 'cerrada')
+      ORDER BY s.prioridad DESC, s.fecha ASC
+    `);
+    return res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "solicitudes-servicio: GET tablero error");
+    return res.status(500).json({ error: "Error al obtener tablero" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/solicitudes-servicio/stats — estadísticas para dashboard
 // ─────────────────────────────────────────────────────────────────────────────
 solicitudesServicioRouter.get("/solicitudes-servicio/stats", async (_req, res) => {
@@ -406,6 +448,8 @@ solicitudesServicioRouter.patch("/solicitudes-servicio/:id/comercial", async (re
     if (curr.length === 0) return res.status(404).json({ error: "Solicitud no encontrada" });
 
     let nuevoEstadoGeneral = curr[0].estado_general;
+    // Activar tarjeta operativa cuando comercial registra la solicitud
+    const activarTarjeta = estadoComercial === "registrado";
     if (estadoComercial === "registrado" || estadoComercial === "pendiente_cobro") {
       nuevoEstadoGeneral = "pendiente_facturacion";
     } else if (estadoComercial === "cobrado") {
@@ -420,10 +464,11 @@ solicitudesServicioRouter.patch("/solicitudes-servicio/:id/comercial", async (re
            tarifa_aplicada = COALESCE($4, tarifa_aplicada),
            observaciones_comercial = COALESCE($5, observaciones_comercial),
            estado_general = $6,
+           tarjeta_activa = CASE WHEN $7 THEN TRUE ELSE tarjeta_activa END,
            updated_at = NOW()
-       WHERE id = $7`,
+       WHERE id = $8`,
       [estadoComercial ?? null, estadoFacturacion ?? null, montoEstimado ?? null,
-       tarifaAplicada ?? null, observaciones ?? null, nuevoEstadoGeneral, id],
+       tarifaAplicada ?? null, observaciones ?? null, nuevoEstadoGeneral, activarTarjeta, id],
     );
 
     const { rows } = await pool.query(
@@ -456,6 +501,204 @@ solicitudesServicioRouter.patch("/solicitudes-servicio/:id/cancelar", async (req
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/solicitudes-servicio/:id/asignar-agente — asignar cobertura
+// ─────────────────────────────────────────────────────────────────────────────
+solicitudesServicioRouter.patch("/solicitudes-servicio/:id/asignar-agente", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { agenteId, tipoCobertura, fechaInicioReal, fechaFinReal, observaciones } = req.body;
+
+    const TIPOS_VALIDOS = ["disponible", "relevo", "horas_extra", "cambio_titular", "contratacion_nueva"];
+    if (tipoCobertura && !TIPOS_VALIDOS.includes(tipoCobertura)) {
+      return res.status(400).json({ error: "Tipo de cobertura inválido" });
+    }
+
+    const { rows: curr } = await pool.query(
+      `SELECT id, tarea_operaciones_id, tarea_rrhh_id FROM solicitudes_servicio_adicional WHERE id = $1`, [id],
+    );
+    if (curr.length === 0) return res.status(404).json({ error: "Solicitud no encontrada" });
+
+    let agenteNombre: string | null = null;
+    if (agenteId) {
+      const { rows: emp } = await pool.query(`SELECT nombre_completo FROM employees WHERE id = $1`, [agenteId]);
+      if (emp.length > 0) agenteNombre = emp[0].nombre_completo;
+    }
+
+    // Cuando se asigna agente → operaciones pasa a cubierta y se recalcula estado general
+    await pool.query(
+      `UPDATE solicitudes_servicio_adicional
+       SET agente_id = COALESCE($1, agente_id),
+           agente_nombre = COALESCE($2, agente_nombre),
+           tipo_cobertura = COALESCE($3, tipo_cobertura),
+           estado_operaciones = 'cubierta',
+           estado_general = 'cubierta',
+           cubierta_con = COALESCE($3, tipo_cobertura),
+           fecha_inicio_real = COALESCE($4, fecha_inicio_real),
+           fecha_fin_real = COALESCE($5, fecha_fin_real),
+           observaciones_operaciones = COALESCE($6, observaciones_operaciones),
+           updated_at = NOW()
+       WHERE id = $7`,
+      [agenteId ?? null, agenteNombre, tipoCobertura ?? null,
+       fechaInicioReal ?? null, fechaFinReal ?? null,
+       observaciones ?? null, id],
+    );
+
+    // Auto-completar tarea de operaciones
+    if (curr[0].tarea_operaciones_id) {
+      await pool.query(
+        `UPDATE tareas SET estado = 'completada', updated_at = NOW() WHERE id = $1 AND estado != 'completada'`,
+        [curr[0].tarea_operaciones_id],
+      ).catch(() => {}); // no bloqueante
+    }
+
+    // Si RRHH ya no necesita acción (tipo de cobertura con disponible o relevo), actualizar RRHH
+    if (tipoCobertura === "disponible" || tipoCobertura === "relevo" || tipoCobertura === "cambio_titular") {
+      await pool.query(
+        `UPDATE solicitudes_servicio_adicional SET estado_rrhh = 'completado', updated_at = NOW() WHERE id = $1 AND estado_rrhh = 'pendiente'`,
+        [id],
+      ).catch(() => {});
+      if (curr[0].tarea_rrhh_id) {
+        await pool.query(
+          `UPDATE tareas SET estado = 'completada', updated_at = NOW() WHERE id = $1 AND estado = 'pendiente'`,
+          [curr[0].tarea_rrhh_id],
+        ).catch(() => {});
+      }
+    }
+
+    const { rows } = await pool.query(
+      `SELECT s.*, c.nombre AS cliente_nombre, e.nombre_completo AS agente_nombre_completo, cs.nombre AS sede_nombre
+       FROM solicitudes_servicio_adicional s
+       LEFT JOIN clients c ON c.id = s.cliente_id
+       LEFT JOIN employees e ON e.id = s.agente_id
+       LEFT JOIN client_sedes cs ON cs.id = s.sede_id
+       WHERE s.id = $1`, [id],
+    );
+    return res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "solicitudes-servicio: PATCH asignar-agente error");
+    return res.status(500).json({ error: "Error al asignar agente" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/solicitudes-servicio/:id/resumen — generar resumen final
+// ─────────────────────────────────────────────────────────────────────────────
+solicitudesServicioRouter.post("/solicitudes-servicio/:id/resumen", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { observacionesFinales } = req.body ?? {};
+
+    const { rows } = await pool.query(
+      `SELECT s.*, c.nombre AS cliente_nombre, c.portal_cliente_id AS cliente_portal_id,
+              cs.nombre AS sede_nombre, cs.direccion AS sede_direccion,
+              po.nombre AS puesto_nombre,
+              e.nombre_completo AS agente_nombre_completo, e.dpi AS agente_dpi
+       FROM solicitudes_servicio_adicional s
+       LEFT JOIN clients c ON c.id = s.cliente_id
+       LEFT JOIN client_sedes cs ON cs.id = s.sede_id
+       LEFT JOIN puestos_operativos po ON po.id = s.puesto_id
+       LEFT JOIN employees e ON e.id = s.agente_id
+       WHERE s.id = $1`, [id],
+    );
+    if (rows.length === 0) return res.status(404).json({ error: "Solicitud no encontrada" });
+
+    const s = rows[0];
+    const tipoLabel: Record<string, string> = {
+      guardia_extra: "Guardia Extra", ampliacion_horario: "Ampliación de Horario",
+      cobertura_evento: "Cobertura de Evento", custodia_extra: "Custodia Extra",
+      apoyo_temporal: "Apoyo Temporal", servicio_especial: "Servicio Especial",
+      guardia_extraordinario: "Cobertura Extraordinaria",
+    };
+    const coberturaLabel: Record<string, string> = {
+      disponible: "Agente disponible del pool", relevo: "Relevo temporal",
+      horas_extra: "Horas extra al titular", cambio_titular: "Cambio de titular",
+      contratacion_nueva: "Contratación nueva",
+    };
+
+    const resumen = {
+      id,
+      generado_en: new Date().toISOString(),
+      cliente: s.cliente_nombre,
+      sede: s.sede_nombre,
+      puesto: s.puesto_nombre,
+      tipo_servicio: tipoLabel[s.tipo_solicitud] ?? s.tipo_solicitud,
+      fecha_inicio: s.fecha,
+      fecha_fin: s.fecha_fin ?? s.fecha,
+      hora_inicio: s.hora_inicio,
+      hora_fin: s.hora_fin,
+      fecha_inicio_real: s.fecha_inicio_real,
+      fecha_fin_real: s.fecha_fin_real,
+      cantidad_guardias: s.cantidad_guardias,
+      agente: s.agente_nombre_completo ?? s.agente_nombre ?? "No asignado",
+      tipo_cobertura: coberturaLabel[s.tipo_cobertura] ?? s.tipo_cobertura ?? "No especificado",
+      hubo_horas_extra: s.tipo_cobertura === "horas_extra",
+      monto_estimado: s.monto_estimado,
+      tarifa_aplicada: s.tarifa_aplicada,
+      estado_final: s.estado_general,
+      estado_facturacion: s.estado_facturacion,
+      acepta_cobro_adicional: s.acepta_cobro_adicional,
+      descripcion_original: s.descripcion,
+      observaciones_operaciones: s.observaciones_operaciones,
+      observaciones_finales: observacionesFinales ?? null,
+      // Estado inicial para contabilidad
+      estado_contabilidad: "pendiente_autorizacion",
+    };
+
+    await pool.query(
+      `UPDATE solicitudes_servicio_adicional
+       SET resumen_final = $1,
+           resumen_generado_at = NOW(),
+           estado_contabilidad = 'pendiente_autorizacion',
+           estado_general = CASE WHEN estado_general = 'cubierta' THEN 'cerrada' ELSE estado_general END,
+           updated_at = NOW()
+       WHERE id = $2`,
+      [JSON.stringify(resumen), id],
+    );
+
+    return res.status(201).json(resumen);
+  } catch (err) {
+    logger.error({ err }, "solicitudes-servicio: POST resumen error");
+    return res.status(500).json({ error: "Error al generar resumen" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/solicitudes-servicio/:id/contabilidad — estado contable
+// ─────────────────────────────────────────────────────────────────────────────
+solicitudesServicioRouter.patch("/solicitudes-servicio/:id/contabilidad", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { estadoContabilidad } = req.body;
+    const ALLOWED = ["pendiente_autorizacion", "autorizado", "facturado", "cobrado"];
+    if (!estadoContabilidad || !ALLOWED.includes(estadoContabilidad)) {
+      return res.status(400).json({ error: "Estado de contabilidad inválido. Opciones: " + ALLOWED.join(", ") });
+    }
+
+    let nuevoEstadoGeneral: string | null = null;
+    if (estadoContabilidad === "cobrado") nuevoEstadoGeneral = "cerrada";
+
+    await pool.query(
+      `UPDATE solicitudes_servicio_adicional
+       SET estado_contabilidad = $1,
+           estado_facturacion = CASE WHEN $1 = 'facturado' THEN 'facturado' WHEN $1 = 'cobrado' THEN 'cobrado' ELSE estado_facturacion END,
+           estado_general = COALESCE($2, estado_general),
+           updated_at = NOW()
+       WHERE id = $3`,
+      [estadoContabilidad, nuevoEstadoGeneral, id],
+    );
+
+    const { rows } = await pool.query(
+      `SELECT s.*, c.nombre AS cliente_nombre FROM solicitudes_servicio_adicional s LEFT JOIN clients c ON c.id = s.cliente_id WHERE s.id = $1`, [id],
+    );
+    if (rows.length === 0) return res.status(404).json({ error: "Solicitud no encontrada" });
+    return res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "solicitudes-servicio: PATCH contabilidad error");
+    return res.status(500).json({ error: "Error al actualizar contabilidad" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Portal endpoints — GET/POST para cliente autenticado
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -469,16 +712,19 @@ function requirePortalAuth(req: any, res: any, next: any) {
   next();
 }
 
-// GET /api/portal/solicitudes-servicio — historial del cliente
+// GET /api/portal/solicitudes-servicio — historial del cliente (incluye resumen público)
 solicitudesServicioRouter.get("/portal/solicitudes-servicio", requirePortalAuth, async (req: any, res) => {
   try {
     const portalClienteId = req.portalClienteId;
     const { rows } = await pool.query(
       `SELECT
-         s.id, s.tipo_solicitud, s.fecha, s.hora_inicio, s.hora_fin,
+         s.id, s.tipo_solicitud, s.fecha, s.fecha_fin, s.hora_inicio, s.hora_fin,
          s.cantidad_guardias, s.descripcion, s.prioridad, s.estado_general,
          s.contacto_solicitante, s.acepta_cobro_adicional,
+         s.agente_nombre, s.tipo_cobertura,
          s.created_at,
+         s.resumen_generado_at,
+         s.resumen_final,
          cs.nombre AS sede_nombre,
          po.nombre AS puesto_nombre
        FROM solicitudes_servicio_adicional s
@@ -490,7 +736,33 @@ solicitudesServicioRouter.get("/portal/solicitudes-servicio", requirePortalAuth,
        LIMIT 50`,
       [portalClienteId],
     );
-    return res.json(rows);
+
+    // Filtrar campos internos del resumen para el portal del cliente
+    const sanitized = rows.map(r => {
+      if (r.resumen_final) {
+        try {
+          const rf = JSON.parse(r.resumen_final);
+          // Solo exponer campos públicos
+          r.resumen_final = JSON.stringify({
+            id: rf.id,
+            tipo_servicio: rf.tipo_servicio,
+            fecha_inicio: rf.fecha_inicio,
+            fecha_fin: rf.fecha_fin,
+            hora_inicio: rf.hora_inicio,
+            hora_fin: rf.hora_fin,
+            agente: rf.agente,
+            tipo_cobertura: rf.tipo_cobertura,
+            hubo_horas_extra: rf.hubo_horas_extra,
+            estado_final: rf.estado_final,
+            acepta_cobro_adicional: rf.acepta_cobro_adicional,
+            generado_en: rf.generado_en,
+          });
+        } catch { r.resumen_final = null; }
+      }
+      return r;
+    });
+
+    return res.json(sanitized);
   } catch (err) {
     logger.error({ err }, "portal solicitudes-servicio: GET error");
     return res.status(500).json({ error: "Error al obtener solicitudes" });

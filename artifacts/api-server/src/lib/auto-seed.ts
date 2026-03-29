@@ -1711,5 +1711,23 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SSA-01 solicitudes_servicio_adicional — error (no bloqueante)");
   }
 
+  // ── SSA-02: Columnas de tarjeta operativa, agente, resumen final ───────────
+  try {
+    await pool.query(`ALTER TABLE solicitudes_servicio_adicional ADD COLUMN IF NOT EXISTS agente_id INTEGER REFERENCES employees(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE solicitudes_servicio_adicional ADD COLUMN IF NOT EXISTS agente_nombre VARCHAR(255)`);
+    await pool.query(`ALTER TABLE solicitudes_servicio_adicional ADD COLUMN IF NOT EXISTS tipo_cobertura VARCHAR(50)`);
+    await pool.query(`ALTER TABLE solicitudes_servicio_adicional ADD COLUMN IF NOT EXISTS fecha_fin DATE`);
+    await pool.query(`ALTER TABLE solicitudes_servicio_adicional ADD COLUMN IF NOT EXISTS tarjeta_activa BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE solicitudes_servicio_adicional ADD COLUMN IF NOT EXISTS estado_contabilidad VARCHAR(30) NOT NULL DEFAULT 'pendiente_autorizacion'`);
+    await pool.query(`ALTER TABLE solicitudes_servicio_adicional ADD COLUMN IF NOT EXISTS fecha_inicio_real TIMESTAMPTZ`);
+    await pool.query(`ALTER TABLE solicitudes_servicio_adicional ADD COLUMN IF NOT EXISTS fecha_fin_real TIMESTAMPTZ`);
+    await pool.query(`ALTER TABLE solicitudes_servicio_adicional ADD COLUMN IF NOT EXISTS resumen_final TEXT`);
+    await pool.query(`ALTER TABLE solicitudes_servicio_adicional ADD COLUMN IF NOT EXISTS resumen_generado_at TIMESTAMPTZ`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ssa_tarjeta  ON solicitudes_servicio_adicional(tarjeta_activa) WHERE tarjeta_activa = TRUE`);
+    logger.info("Auto-migrate: SSA-02 columnas tarjeta operativa verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SSA-02 columnas tarjeta — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

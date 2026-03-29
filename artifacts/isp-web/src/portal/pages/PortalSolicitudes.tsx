@@ -5,7 +5,7 @@ import { portalGet, portalPost } from "@/lib/portalApi";
 import { useToast } from "@/hooks/use-toast";
 import {
   Zap, Plus, X, Clock, CheckCircle, AlertTriangle, Loader2,
-  CalendarDays, Users, FileText, ChevronRight, Info,
+  CalendarDays, Users, FileText, ChevronRight, Info, UserCheck, Shield,
 } from "lucide-react";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -14,6 +14,7 @@ interface SolicitudPortal {
   id: string;
   tipo_solicitud: string;
   fecha: string;
+  fecha_fin: string | null;
   hora_inicio: string | null;
   hora_fin: string | null;
   cantidad_guardias: number;
@@ -25,6 +26,10 @@ interface SolicitudPortal {
   created_at: string;
   sede_nombre: string | null;
   puesto_nombre: string | null;
+  agente_nombre: string | null;
+  tipo_cobertura: string | null;
+  resumen_final: string | null;
+  resumen_generado_at: string | null;
 }
 
 // ─── Config visual ────────────────────────────────────────────────────────────
@@ -132,6 +137,15 @@ export default function PortalSolicitudes() {
   );
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const COBERTURA_LABELS: Record<string, string> = {
+  disponible: "Agente Disponible",
+  relevo: "Relevo Temporal",
+  horas_extra: "Horas Extra",
+  cambio_titular: "Cambio de Titular",
+  contratacion_nueva: "Contratación Nueva",
+};
+
 // ─── Tarjeta de solicitud ─────────────────────────────────────────────────────
 
 function SolicitudCard({ solicitud: s }: { solicitud: SolicitudPortal }) {
@@ -141,6 +155,11 @@ function SolicitudCard({ solicitud: s }: { solicitud: SolicitudPortal }) {
   const fechaFormateada = new Date(s.fecha + "T12:00:00").toLocaleDateString("es-GT", {
     weekday: "long", day: "numeric", month: "long", year: "numeric",
   });
+
+  const resumenParsed = (() => {
+    if (!s.resumen_final) return null;
+    try { return JSON.parse(s.resumen_final); } catch { return null; }
+  })();
 
   return (
     <div className="rounded-xl border border-white/7 bg-white/2 overflow-hidden">
@@ -158,6 +177,12 @@ function SolicitudCard({ solicitud: s }: { solicitud: SolicitudPortal }) {
             <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${PRIORIDAD_COLOR[s.prioridad] ?? "text-gray-400 bg-gray-400/10"}`}>
               {s.prioridad === "urgente" ? "URGENTE" : s.prioridad.charAt(0).toUpperCase() + s.prioridad.slice(1)}
             </span>
+            {resumenParsed && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                <Shield className="w-2.5 h-2.5" />
+                Resumen Disponible
+              </span>
+            )}
           </div>
           <p className="text-sm font-semibold text-white">
             {TIPO_LABELS[s.tipo_solicitud] ?? s.tipo_solicitud}
@@ -211,6 +236,39 @@ function SolicitudCard({ solicitud: s }: { solicitud: SolicitudPortal }) {
               <p className="text-white/70 text-xs leading-relaxed">{s.descripcion}</p>
             </div>
           )}
+
+          {/* Resumen final — visible al cliente cuando está disponible */}
+          {resumenParsed && (
+            <div className="mt-3 rounded-xl border border-purple-500/20 bg-purple-500/5 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Shield className="w-4 h-4 text-purple-400" />
+                <p className="text-xs font-bold text-purple-300">Resumen de Servicio — ISP</p>
+                <span className="ml-auto text-[10px] text-white/30">
+                  {s.resumen_generado_at ? new Date(s.resumen_generado_at).toLocaleDateString("es-GT") : ""}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {[
+                  ["Tipo de Servicio", resumenParsed.tipo_servicio],
+                  ["Agente Asignado", resumenParsed.agente ?? "—"],
+                  ["Tipo de Cobertura", COBERTURA_LABELS[resumenParsed.tipo_cobertura] ?? resumenParsed.tipo_cobertura ?? "—"],
+                  ["Estado Final", resumenParsed.estado_final === "cerrada" ? "Completado ✓" : resumenParsed.estado_final ?? "—"],
+                ].map(([k, v]) => (
+                  <div key={k} className="bg-white/5 rounded-lg p-2">
+                    <p className="text-white/35 text-[10px] uppercase tracking-wider mb-0.5">{k}</p>
+                    <p className="text-white font-medium">{v}</p>
+                  </div>
+                ))}
+              </div>
+              {resumenParsed.hubo_horas_extra && (
+                <div className="flex items-center gap-2 text-xs text-amber-300 bg-amber-500/10 rounded-lg px-3 py-2">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  Se registraron horas extra — pendiente confirmación de cobro
+                </div>
+              )}
+            </div>
+          )}
+
           <p className="text-white/20 text-[10px]">
             Enviada el {new Date(s.created_at).toLocaleDateString("es-GT", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
           </p>

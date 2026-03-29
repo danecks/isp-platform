@@ -140,6 +140,12 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["admin", "operaciones", "rrhh", "comercial", "supervisor"],
   },
   {
+    path: "/admin/tablero-servicios",
+    label: "Tablero Operativo",
+    icon: LayoutGrid,
+    roles: ["admin", "operaciones", "rrhh", "comercial", "supervisor"],
+  },
+  {
     path: "/admin/comercial",
     label: "Comercial",
     icon: Briefcase,
