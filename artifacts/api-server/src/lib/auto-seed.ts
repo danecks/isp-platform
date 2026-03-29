@@ -1729,5 +1729,16 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SSA-02 columnas tarjeta — error (no bloqueante)");
   }
 
+  // ── SSA-03: Campos de integración Pre-Planilla ──────────────────────────────
+  // estado_preplanilla: pendiente | incluido | validado
+  // enviado_preplanilla_at: fecha en que se generó novedad en novedades_nomina_diarias
+  try {
+    await pool.query(`ALTER TABLE solicitudes_servicio_adicional ADD COLUMN IF NOT EXISTS estado_preplanilla     VARCHAR(30) NOT NULL DEFAULT 'pendiente'`);
+    await pool.query(`ALTER TABLE solicitudes_servicio_adicional ADD COLUMN IF NOT EXISTS enviado_preplanilla_at TIMESTAMPTZ`);
+    logger.info("Auto-migrate: SSA-03 campos pre-planilla verificados/creados");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SSA-03 pre-planilla — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

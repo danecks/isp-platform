@@ -160,7 +160,9 @@ solicitudesServicioRouter.get("/solicitudes-servicio/tablero", async (_req, res)
       SELECT
         s.id, s.tipo_solicitud, s.fecha, s.fecha_fin, s.hora_inicio, s.hora_fin,
         s.cantidad_guardias, s.prioridad, s.descripcion,
-        s.estado_general, s.estado_operaciones, s.estado_rrhh, s.estado_comercial, s.estado_facturacion,
+        s.estado_general, s.estado_operaciones, s.estado_rrhh, s.estado_comercial,
+        s.estado_facturacion, s.estado_contabilidad,
+        s.estado_preplanilla, s.enviado_preplanilla_at,
         s.agente_id, s.agente_nombre, s.tipo_cobertura, s.cubierta_con,
         s.monto_estimado, s.tarifa_aplicada,
         s.observaciones_operaciones, s.observaciones_comercial,
@@ -514,7 +516,10 @@ solicitudesServicioRouter.patch("/solicitudes-servicio/:id/asignar-agente", asyn
     }
 
     const { rows: curr } = await pool.query(
-      `SELECT id, tarea_operaciones_id, tarea_rrhh_id FROM solicitudes_servicio_adicional WHERE id = $1`, [id],
+      `SELECT id, tarea_operaciones_id, tarea_rrhh_id,
+              fecha, hora_inicio, hora_fin, cantidad_guardias,
+              puesto_id, cliente_id
+       FROM solicitudes_servicio_adicional WHERE id = $1`, [id],
     );
     if (curr.length === 0) return res.status(404).json({ error: "Solicitud no encontrada" });
 
@@ -525,8 +530,10 @@ solicitudesServicioRouter.patch("/solicitudes-servicio/:id/asignar-agente", asyn
     }
 
     // Cuando se asigna agente:
-    //   estado_operaciones → 'cubierta'
-    //   estado_general     → 'pendiente_facturacion' (queda pendiente la etapa administrativa)
+    //   estado_operaciones  → 'cubierta'
+    //   estado_general      → 'pendiente_facturacion' (etapa administrativa pendiente)
+    //   estado_preplanilla  → 'incluido' (la novedad de nómina se genera automáticamente)
+    //   enviado_preplanilla_at → NOW()
     await pool.query(
       `UPDATE solicitudes_servicio_adicional
        SET agente_id = COALESCE($1, agente_id),
@@ -534,6 +541,8 @@ solicitudesServicioRouter.patch("/solicitudes-servicio/:id/asignar-agente", asyn
            tipo_cobertura = COALESCE($3, tipo_cobertura),
            estado_operaciones = 'cubierta',
            estado_general = 'pendiente_facturacion',
+           estado_preplanilla = 'incluido',
+           enviado_preplanilla_at = NOW(),
            cubierta_con = COALESCE($3, tipo_cobertura),
            fecha_inicio_real = COALESCE($4, fecha_inicio_real),
            fecha_fin_real = COALESCE($5, fecha_fin_real),
@@ -564,6 +573,48 @@ solicitudesServicioRouter.patch("/solicitudes-servicio/:id/asignar-agente", asyn
           `UPDATE tareas SET estado = 'completada', updated_at = NOW() WHERE id = $1 AND estado = 'pendiente'`,
           [curr[0].tarea_rrhh_id],
         ).catch(() => {});
+      }
+    }
+
+    // ── Integración Pre-Planilla: escribir novedad de nómina ──────────────────
+    // Genera un registro en novedades_nomina_diarias para que el agente asignado
+    // aparezca automáticamente en la Pre-Planilla del período.
+    // Fuente: 'ssa_pizarron' para distinguirlo de asignaciones regulares del Pizarrón.
+    if (agenteId) {
+      try {
+        const ssa = curr[0];
+        const fechaNomina = ssa.fecha
+          ? (ssa.fecha instanceof Date ? ssa.fecha.toISOString().split("T")[0] : String(ssa.fecha).split("T")[0])
+          : new Date().toISOString().split("T")[0];
+
+        // Calcular horas trabajadas desde hora_inicio / hora_fin del SSA
+        function calcHorasSSA(inicio: string | null, fin: string | null): number {
+          if (!inicio || !fin) return 8; // default si no hay horario definido
+          const [h1, m1] = inicio.split(":").map(Number);
+          const [h2, m2] = fin.split(":").map(Number);
+          let mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+          if (mins < 0) mins += 24 * 60;
+          return Math.round(mins / 6) / 10;
+        }
+        const horasCalc = calcHorasSSA(ssa.hora_inicio, ssa.hora_fin);
+        const horasExtra = horasCalc > 8 ? Math.round((horasCalc - 8) * 10) / 10 : 0;
+
+        await pool.query(
+          `INSERT INTO novedades_nomina_diarias
+             (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
+              puesto_cubierto_id, num_puestos_cubiertos, fuente)
+           VALUES ($1, $2, $3, TRUE, $4, $5, $6, 1, 'ssa_pizarron')
+           ON CONFLICT (fecha, employee_id) DO UPDATE SET
+             trabajo_dia           = TRUE,
+             horas_trabajadas      = GREATEST(novedades_nomina_diarias.horas_trabajadas, $4),
+             horas_extra           = GREATEST(novedades_nomina_diarias.horas_extra, $5),
+             num_puestos_cubiertos = novedades_nomina_diarias.num_puestos_cubiertos + 1,
+             updated_at            = NOW()`,
+          [fechaNomina, agenteId, agenteNombre, horasCalc, horasExtra, ssa.puesto_id ?? null],
+        );
+        logger.info({ id, agenteId, fechaNomina, horasCalc }, "SSA: novedad de nómina registrada");
+      } catch (nomErr) {
+        logger.warn({ nomErr }, "SSA asignar-agente: no se pudo registrar novedad nómina (no bloqueante)");
       }
     }
 

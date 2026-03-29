@@ -127,11 +127,18 @@ interface TarjetaSSAPendiente {
   prioridad: string;
   descripcion: string | null;
   estado_general: string;
+  estado_operaciones: string;
+  estado_facturacion: string;
+  estado_preplanilla: string | null;
+  enviado_preplanilla_at: string | null;
   agente_id: number | null;
   agente_nombre: string | null;
+  agente_nombre_completo: string | null;
+  tipo_cobertura: string | null;
   cliente_nombre: string | null;
   sede_nombre: string | null;
   puesto_nombre: string | null;
+  monto_estimado: string | null;
 }
 
 interface CierreDiaRecord {
@@ -2166,6 +2173,7 @@ export default function Operaciones() {
   const [filtroCliente, setFiltroCliente]            = useState<string>("");
   const [modalSegmentos, setModalSegmentos]          = useState<Puesto | null>(null);
   const [modalAsignarSSA, setModalAsignarSSA]        = useState<TarjetaSSAPendiente | null>(null);
+  const [ssaTabActivo, setSsaTabActivo]              = useState<"sin_asignar" | "cubierta">("sin_asignar");
 
   // ── Sensores DnD ──────────────────────────────────────────────────────────
   const sensors = useSensors(
@@ -2212,7 +2220,9 @@ export default function Operaciones() {
     refetchInterval: 30_000,
   });
 
-  const ssaSinAgente = tarjetasSSA.filter((t) => !t.agente_id);
+  // Etapas SSA para el panel del Pizarrón
+  const ssaSinAgente   = tarjetasSSA.filter((t) => !t.agente_id);
+  const ssaCubierta    = tarjetasSSA.filter((t) => !!t.agente_id);
 
   // isCerrado: la fecha ACTIVA está cerrada (prácticamente nunca true con nuevo modelo de fecha activa)
   const isCerrado = cierreHoy?.estado === "cerrado";
@@ -2749,75 +2759,82 @@ export default function Operaciones() {
             </div>
           )}
 
-          {/* ── Panel SSA: tarjetas activas sin guardia asignado ────────── */}
-          {ssaSinAgente.length > 0 && (
-            <div className="shrink-0">
-              <div className="flex items-center justify-between mb-1.5">
+          {/* ── Panel SSA: Servicios Especiales — todas las etapas activas ─ */}
+          {tarjetasSSA.length > 0 && (
+            <div className="shrink-0 bg-[#06101c] border border-white/8 rounded-2xl overflow-hidden">
+              {/* Cabecera del panel */}
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/6">
                 <div className="flex items-center gap-2">
-                  <Zap className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                  <span className="text-xs font-semibold text-amber-300">
-                    {ssaSinAgente.length} {ssaSinAgente.length === 1 ? "servicio especial pendiente de cobertura" : "servicios especiales pendientes de cobertura"}
-                  </span>
+                  <Zap className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-xs font-semibold text-white/70">Servicios Especiales Activos</span>
+                  <span className="text-[10px] text-white/25 bg-white/6 px-2 py-0.5 rounded-full">{tarjetasSSA.length}</span>
                 </div>
                 <a
                   href="/admin/tablero-servicios"
-                  className="text-[10px] text-primary/70 hover:text-primary transition-colors flex items-center gap-1"
+                  className="text-[10px] text-primary/60 hover:text-primary transition-colors flex items-center gap-1"
                 >
-                  Ver Tablero de Servicios <ChevronRight className="w-3 h-3" />
+                  Tablero completo <ChevronRight className="w-3 h-3" />
                 </a>
               </div>
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {ssaSinAgente.map((t) => {
-                  const estaHoy = t.fecha
-                    ? new Date(t.fecha + "T12:00:00").toDateString() === new Date().toDateString()
-                    : false;
-                  const prioColor =
-                    t.prioridad === "urgente" ? "border-red-500/40 bg-red-500/5" :
-                    t.prioridad === "alta"    ? "border-orange-500/30 bg-orange-500/5" :
-                                               "border-amber-500/20 bg-amber-500/4";
-                  const prioTag =
-                    t.prioridad === "urgente" ? "text-red-400 bg-red-500/15" :
-                    t.prioridad === "alta"    ? "text-orange-400 bg-orange-500/15" :
-                                               "text-amber-400 bg-amber-500/15";
-                  const tipoLabels: Record<string, string> = {
-                    guardia_extra: "Guardia Extra",
-                    ampliacion_horario: "Ampliación Horario",
-                    cobertura_evento: "Evento",
-                    custodia_extra: "Custodia Extra",
-                    apoyo_temporal: "Apoyo Temporal",
-                  };
-                  return (
-                    <button
-                      key={t.id}
-                      onClick={() => setModalAsignarSSA(t)}
-                      className={`shrink-0 flex flex-col gap-1 border rounded-xl px-3 py-2 min-w-[210px] max-w-[240px] text-left cursor-pointer hover:brightness-125 hover:scale-[1.02] transition-all ${prioColor}`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md ${prioTag}`}>
-                          {t.prioridad}
-                        </span>
-                        {estaHoy && (
-                          <span className="text-[9px] text-amber-300/70 font-semibold">HOY</span>
-                        )}
-                        <span className="text-[9px] text-white/30 ml-auto font-mono">{t.id}</span>
-                      </div>
-                      <p className="text-[11px] font-semibold text-white/90 truncate leading-tight">
-                        {t.cliente_nombre ?? "—"}
-                      </p>
-                      <p className="text-[10px] text-white/45 truncate">
-                        {tipoLabels[t.tipo_solicitud] ?? t.tipo_solicitud}
-                        {t.cantidad_guardias > 1 ? ` · ${t.cantidad_guardias} guardias` : ""}
-                      </p>
-                      {(t.hora_inicio || t.sede_nombre) && (
-                        <p className="text-[9px] text-white/30 truncate">
-                          {t.sede_nombre ?? ""}
-                          {t.hora_inicio ? ` · ${t.hora_inicio}${t.hora_fin ? `–${t.hora_fin}` : ""}` : ""}
-                        </p>
-                      )}
-                      <p className="text-[9px] text-primary/60 mt-0.5 font-medium">Toca para asignar guardia →</p>
-                    </button>
-                  );
-                })}
+
+              {/* Tabs de etapas */}
+              <div className="flex border-b border-white/6">
+                <button
+                  onClick={() => setSsaTabActivo("sin_asignar")}
+                  className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-semibold transition-colors border-b-2 ${
+                    ssaTabActivo === "sin_asignar"
+                      ? "border-amber-400 text-amber-300 bg-amber-500/5"
+                      : "border-transparent text-white/30 hover:text-white/60"
+                  }`}
+                >
+                  <AlertCircle className="w-3 h-3" />
+                  Sin asignar
+                  {ssaSinAgente.length > 0 && (
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+                      ssaTabActivo === "sin_asignar" ? "bg-amber-400/20 text-amber-300" : "bg-white/8 text-white/30"
+                    }`}>{ssaSinAgente.length}</span>
+                  )}
+                </button>
+                <button
+                  onClick={() => setSsaTabActivo("cubierta")}
+                  className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-semibold transition-colors border-b-2 ${
+                    ssaTabActivo === "cubierta"
+                      ? "border-green-400 text-green-300 bg-green-500/5"
+                      : "border-transparent text-white/30 hover:text-white/60"
+                  }`}
+                >
+                  <CheckCircle2 className="w-3 h-3" />
+                  Cubierta / Pre-Planilla
+                  {ssaCubierta.length > 0 && (
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+                      ssaTabActivo === "cubierta" ? "bg-green-400/20 text-green-300" : "bg-white/8 text-white/30"
+                    }`}>{ssaCubierta.length}</span>
+                  )}
+                </button>
+              </div>
+
+              {/* Contenido del tab activo */}
+              <div className="flex gap-2 overflow-x-auto px-3 py-3">
+                {ssaTabActivo === "sin_asignar" && (
+                  ssaSinAgente.length === 0 ? (
+                    <div className="flex items-center gap-2 text-xs text-white/25 py-1">
+                      <CheckCircle2 className="w-4 h-4 text-green-400/50" />
+                      Todos los servicios tienen guardia asignado
+                    </div>
+                  ) : (
+                    ssaSinAgente.map((t) => <TarjetaSSACard key={t.id} t={t} onAsignar={() => setModalAsignarSSA(t)} />)
+                  )
+                )}
+                {ssaTabActivo === "cubierta" && (
+                  ssaCubierta.length === 0 ? (
+                    <div className="flex items-center gap-2 text-xs text-white/25 py-1">
+                      <Info className="w-4 h-4 text-white/20" />
+                      No hay servicios cubiertos activos
+                    </div>
+                  ) : (
+                    ssaCubierta.map((t) => <TarjetaSSACard key={t.id} t={t} onAsignar={() => setModalAsignarSSA(t)} />)
+                  )
+                )}
               </div>
             </div>
           )}
@@ -3100,6 +3117,86 @@ const TIPO_SSA_LABELS: Record<string, string> = {
   custodia_extra: "Custodia Extra",
   apoyo_temporal: "Apoyo Temporal",
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TarjetaSSACard — tarjeta visual para el panel SSA del Pizarrón
+// ─────────────────────────────────────────────────────────────────────────────
+function TarjetaSSACard({ t, onAsignar }: { t: TarjetaSSAPendiente; onAsignar: () => void }) {
+  const estaHoy = t.fecha
+    ? new Date(t.fecha + "T12:00:00").toDateString() === new Date().toDateString()
+    : false;
+
+  const sinAgente = !t.agente_id;
+
+  const prioColor = sinAgente
+    ? t.prioridad === "urgente" ? "border-red-500/40 bg-red-500/6"
+    : t.prioridad === "alta"    ? "border-orange-500/30 bg-orange-500/5"
+    :                             "border-amber-500/20 bg-amber-500/4"
+    : "border-green-500/20 bg-green-500/4";
+
+  const prioTag = t.prioridad === "urgente" ? "text-red-400 bg-red-500/15"
+    : t.prioridad === "alta"                 ? "text-orange-400 bg-orange-500/15"
+    :                                          "text-amber-400 bg-amber-500/15";
+
+  return (
+    <button
+      onClick={onAsignar}
+      className={`shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 min-w-[210px] max-w-[240px] text-left cursor-pointer hover:brightness-125 hover:scale-[1.02] transition-all ${prioColor}`}
+    >
+      {/* Fila: prioridad + HOY */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md ${prioTag}`}>
+          {t.prioridad}
+        </span>
+        {estaHoy && <span className="text-[9px] text-amber-300/70 font-semibold">HOY</span>}
+        <span className="text-[9px] text-white/25 ml-auto font-mono">{t.id.slice(0, 8)}</span>
+      </div>
+
+      {/* Cliente */}
+      <p className="text-[11px] font-semibold text-white/90 truncate leading-tight">
+        {t.cliente_nombre ?? "—"}
+      </p>
+
+      {/* Tipo + cantidad guardias */}
+      <p className="text-[10px] text-white/45 truncate">
+        {TIPO_SSA_LABELS[t.tipo_solicitud] ?? t.tipo_solicitud}
+        {t.cantidad_guardias > 1 ? ` · ${t.cantidad_guardias} guardias` : ""}
+      </p>
+
+      {/* Sede + horario */}
+      {(t.hora_inicio || t.sede_nombre) && (
+        <p className="text-[9px] text-white/30 truncate">
+          {t.sede_nombre ?? ""}
+          {t.hora_inicio ? ` · ${t.hora_inicio}${t.hora_fin ? `–${t.hora_fin}` : ""}` : ""}
+        </p>
+      )}
+
+      {/* Estado según etapa */}
+      {sinAgente ? (
+        <p className="text-[9px] text-amber-400/70 mt-0.5 font-medium">Toca para asignar guardia →</p>
+      ) : (
+        <div className="mt-0.5 space-y-0.5">
+          <div className="flex items-center gap-1">
+            <User className="w-2.5 h-2.5 text-green-400 shrink-0" />
+            <span className="text-[9px] text-green-300/80 truncate font-medium">
+              {t.agente_nombre_completo ?? t.agente_nombre ?? "Agente asignado"}
+            </span>
+          </div>
+          {t.estado_preplanilla === "incluido" && (
+            <div className="flex items-center gap-1">
+              <CheckCircle2 className="w-2.5 h-2.5 text-primary shrink-0" />
+              <span className="text-[9px] text-primary/70">En Pre-Planilla</span>
+            </div>
+          )}
+          <div className="flex items-center gap-1">
+            <Clock className="w-2.5 h-2.5 text-orange-400/60 shrink-0" />
+            <span className="text-[9px] text-orange-300/50">Pend. facturación</span>
+          </div>
+        </div>
+      )}
+    </button>
+  );
+}
 
 function ModalAsignarSSA({
   tarjeta,

@@ -1,0 +1,139 @@
+Recuerda que el Pizarrón Operativo está conectado a Pre Planilla, así que la integración de SSA no debe pensarse solo como cobertura operativa visual, sino como parte de un flujo que sigue vivo hasta que el servicio quede listo para pre planilla y cierre administrativo.
+
+Corrección importante al diseño actual
+
+Hoy la tarjeta SSA desaparece del Pizarrón cuando se asigna un agente, porque el panel solo contempla solicitudes pendientes de cobertura.
+
+Eso ya no es suficiente.
+
+Quiero que rediseñes la lógica del Pizarrón para que las tarjetas SSA sigan un flujo compatible con:
+	•	Operaciones
+	•	Pool de agentes
+	•	Pre Planilla
+	•	Facturación
+	•	Cierre administrativo
+
+Regla principal
+
+Una solicitud SSA no debe desaparecer del Pizarrón solo porque ya fue asignada.
+
+Debe seguir visible mientras todavía tenga relevancia para:
+	•	control operativo
+	•	validación de ejecución
+	•	pre planilla
+	•	facturación
+	•	cierre
+
+Propuesta funcional esperada
+
+Quiero que en el Pizarrón las tarjetas SSA tengan al menos estas etapas visibles:
+
+1. Pendiente de cobertura
+
+Condición sugerida:
+	•	tarjeta_activa = TRUE
+	•	agente_id IS NULL
+	•	no cancelada
+	•	no cerrada
+
+2. Cubierta / asignada
+
+Condición sugerida:
+	•	agente_id IS NOT NULL
+	•	estado_operaciones = 'cubierta'
+	•	todavía no enviada o consolidada en pre planilla
+	•	no cerrada
+
+3. Lista para Pre Planilla o ya vinculada a Pre Planilla
+
+Condición sugerida:
+	•	servicio ya cubierto
+	•	con datos suficientes para control laboral
+	•	con marca o estado de integración a pre planilla
+
+4. Pendiente de facturación / cierre
+
+Condición sugerida:
+	•	operación completada
+	•	pre planilla completada o validada
+	•	falta facturación o cierre administrativo
+
+Lo que debes analizar e implementar
+
+Quiero que revises cómo está conectado el Pizarrón con Pre Planilla y me digas:
+	1.	qué campos o eventos usa Pre Planilla provenientes del Pizarrón
+	2.	si una SSA cubierta debe generar o no registro consumible por Pre Planilla
+	3.	en qué momento exacto debe dejar de verse en el Pizarrón
+	4.	qué estados adicionales hacen falta para no romper la trazabilidad
+
+Requisito de diseño
+
+No mezclar SSA con puestos_operativos, pero sí permitir que el Pizarrón trate las SSA como servicios operativos temporales con impacto en pre planilla.
+
+Lo que quiero que cambies
+
+Backend
+	•	revisar endpoint del Pizarrón
+	•	revisar integración con Pre Planilla
+	•	revisar si hace falta agregar campos como:
+	•	estado_preplanilla
+	•	enviado_preplanilla
+	•	fecha_envio_preplanilla
+	•	ejecutado
+	•	fecha_ejecucion
+	•	proponer e implementar la estructura más limpia
+
+Frontend
+
+Quiero que el Pizarrón muestre las SSA por etapas, no solo pendientes:
+	•	pendientes de cobertura
+	•	cubiertas
+	•	listas para pre planilla
+	•	pendientes de facturación/cierre si aplica
+
+Preguntas que debes resolver
+	1.	¿Qué parte del flujo SSA debe impactar Pre Planilla?
+	2.	¿La sola asignación del agente basta para Pre Planilla o hace falta confirmar ejecución?
+	3.	¿Cuándo debe desaparecer una SSA del Pizarrón sin afectar control operativo ni pre planilla?
+	4.	¿Qué estados deben agregarse o separarse mejor entre operación, pre planilla y facturación?
+
+Resultado que quiero
+
+A. Diagnóstico
+
+Cómo está hoy conectado el Pizarrón con Pre Planilla y qué faltaba considerar para SSA.
+
+B. Diseño final
+
+Cómo queda el flujo unido:
+SSA → cobertura en Pizarrón → control operativo → Pre Planilla → Facturación → Cierre
+
+C. Cambios realizados
+
+Archivos modificados.
+
+D. Código implementado
+
+Diffs o fragmentos relevantes.
+
+E. Estados recomendados
+
+Define claramente:
+	•	estado_operaciones
+	•	estado_preplanilla
+	•	estado_facturacion
+	•	estado_general
+
+F. Validaciones
+
+Casos:
+	•	SSA pendiente
+	•	SSA cubierta
+	•	SSA ejecutada
+	•	SSA enviada a pre planilla
+	•	SSA pendiente de facturación
+	•	SSA cerrada
+
+Criterio obligatorio
+
+La implementación solo es correcta si respeta que el Pizarrón está conectado a Pre Planilla, y por lo tanto una SSA no desaparece del flujo operativo antes de tiempo
