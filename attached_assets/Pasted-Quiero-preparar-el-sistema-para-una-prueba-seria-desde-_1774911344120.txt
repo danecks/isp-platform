@@ -1,0 +1,138 @@
+Quiero preparar el sistema para una prueba seria desde cero, porque los datos actuales fueron creados en distintas pruebas y ya no sirven para validar bien la operación real.
+
+Objetivo
+
+Limpiar los datos operativos y de prueba existentes, conservar únicamente lo necesario para no romper el sistema, y dejar un escenario nuevo, coherente y útil para pruebas reales.
+
+Muy importante:
+NO borrar mi usuario dan2336 ni romper su acceso al sistema.
+
+⸻
+
+1. Preservar acceso mínimo indispensable
+
+Conservar:
+	•	usuario dan2336
+	•	credenciales / acceso necesario para entrar al sistema
+	•	lo mínimo técnico que necesite el sistema para no romper login, roles o navegación
+
+Si existe alguna relación crítica de ese usuario con tablas de users/employees, conservarla correctamente.
+
+⸻
+
+2. Limpiar datos de prueba viejos
+
+Quiero borrar o resetear los datos que hoy existen solo como pruebas sueltas y que ya no sirven.
+
+Limpiar especialmente:
+	•	clientes de prueba
+	•	sedes de prueba
+	•	puestos de prueba
+	•	zonas operativas de prueba
+	•	coberturas diarias de prueba
+	•	segmentos de cobertura de prueba
+	•	SSA / servicios especiales de prueba
+	•	eventos RRHH de prueba
+	•	novedades de nómina de prueba
+	•	pre-planilla de prueba
+	•	tareas de prueba
+	•	leads / reclutamiento / datos basura de prueba si ya no son relevantes
+	•	cualquier historial inconsistente generado solo para testing
+
+Hazlo de forma segura, sin romper tablas, relaciones ni migraciones.
+
+⸻
+
+3. No dejar datos huérfanos
+
+Muy importante:
+si borras datos, no quiero:
+	•	foreign keys rotas
+	•	referencias huérfanas
+	•	estados inconsistentes
+	•	pool con agentes fantasma
+	•	historiales que apunten a cosas que ya no existen
+
+Haz la limpieza de forma ordenada.
+
+⸻
+
+4. Crear un escenario nuevo de prueba coherente
+
+Después de limpiar, crear un escenario nuevo y útil para pruebas reales.
+
+Cliente principal de prueba
+	•	Cervecería Centro Americana
+
+Crear al menos:
+	•	cliente
+	•	sedes operativas coherentes
+	•	varios puestos reales
+	•	zonas operativas
+	•	supervisor de zona
+	•	agentes titulares
+	•	agentes disponibles
+	•	pool de relevo
+	•	uno o dos perfiles internos (RRHH / Operaciones / Comercial) si hace falta para la prueba
+
+⸻
+
+5. Crear varios puestos para probar distintos casos
+
+Quiero que el escenario incluya varios puestos pensados para pruebas serias, por ejemplo:
+	•	puesto de 12 horas
+	•	puesto nocturno
+	•	puesto de 24 horas / cobertura continua
+	•	puesto sin cubrir inicialmente
+	•	puesto con titular ya asignado
+	•	puesto listo para relevo
+
+La idea es que el entorno quede listo para probar:
+	•	faltas
+	•	relevos
+	•	cambios de titular
+	•	horas extra
+	•	servicios especiales
+	•	cierres diarios
+	•	pre-planilla
+
+⸻
+
+6. Crear datos de prueba útiles, no basura
+
+No quiero datos inventados sin sentido.
+Quiero datos consistentes entre sí:
+	•	clientes reales/coherentes
+	•	puestos con horarios válidos
+	•	agentes con estados válidos
+	•	relaciones correctas entre cliente, sede, puesto, zona y colaborador
+
+⸻
+
+7. Conservar solo lo necesario
+
+Si hay otros usuarios o datos que no sean importantes para esta nueva prueba, se pueden borrar o resetear, siempre que no rompan el sistema.
+
+Pero repito:
+	•	conservar dan2336
+	•	no romper login
+	•	no romper permisos base
+
+⸻
+
+8. Entregable esperado
+
+Al final quiero un resumen claro de:
+	•	qué se borró
+	•	qué se conservó
+	•	qué se creó nuevo
+	•	qué usuario(s) quedaron activos
+	•	qué escenario quedó listo para pruebas
+	•	qué módulos ya se pueden probar con ese escenario limpio
+
+⸻
+
+9. Muy importante
+
+No quiero seguir probando con datos viejos mezclados.
+Quiero un entorno limpio y ordenado para hacer pruebas reales del sistema, sin ruido, sin basura y sin registros incoherentes de pruebas anteriores.
