@@ -19,7 +19,7 @@
  *   - Neto a pagar
  */
 
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { AdminLayout } from "@/admin/layout/AdminLayout";
 import { useToast } from "@/hooks/use-toast";
@@ -465,6 +465,12 @@ export default function PrePlanilla() {
       setLoading(false);
     }
   }, [toast]);
+
+  // Auto-cargar el período actual al entrar a la página
+  useEffect(() => {
+    cargar(desde, hasta);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function aplicarPreset(d: string, h: string) {
     setDesde(d); setHasta(h);

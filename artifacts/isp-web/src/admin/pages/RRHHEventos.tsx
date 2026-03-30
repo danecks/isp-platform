@@ -20,9 +20,10 @@ import {
 } from "@/lib/pdfRrhh";
 
 const API = "/api";
+const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
 
 async function apiFetch<T>(url: string): Promise<T> {
-  const r = await fetch(url);
+  const r = await fetch(url, { headers: { "x-isp-session": getSession() } });
   if (!r.ok) throw new Error(`Error ${r.status}`);
   return r.json();
 }
@@ -30,7 +31,7 @@ async function apiFetch<T>(url: string): Promise<T> {
 async function apiPatch(url: string, body: object): Promise<any> {
   const r = await fetch(url, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
     body: JSON.stringify(body),
   });
   const data = await r.json();
@@ -41,7 +42,7 @@ async function apiPatch(url: string, body: object): Promise<any> {
 async function apiPost(url: string, body: object): Promise<any> {
   const r = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
     body: JSON.stringify(body),
   });
   const data = await r.json();

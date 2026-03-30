@@ -419,6 +419,22 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
           advertencia: true,
         });
       }
+
+      // Bloquear si el entrante cubre un SSA activo — no se puede forzar
+      const { rows: yaSSA } = await pool.query(
+        `SELECT s.id, c.nombre AS cliente_nombre
+         FROM solicitudes_servicio_adicional s
+         LEFT JOIN clients c ON c.id = s.cliente_id
+         WHERE s.agente_id = $1 AND s.estado_general NOT IN ('cancelada', 'cerrada')`,
+        [agenteEntranteId]
+      );
+      if (yaSSA.length > 0) {
+        return res.status(409).json({
+          error: `${entrante.nombre_completo} ya cubre un Servicio Especial (${yaSSA[0].cliente_nombre ?? "—"} · ${yaSSA[0].id})`,
+          advertencia: true,
+          ssaId: yaSSA[0].id,
+        });
+      }
     }
 
     const agenteSalienteId     = puesto.agente_id;

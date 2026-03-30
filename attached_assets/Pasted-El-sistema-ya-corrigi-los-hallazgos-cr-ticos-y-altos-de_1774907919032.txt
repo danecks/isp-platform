@@ -1,0 +1,201 @@
+El sistema ya corrigió los hallazgos críticos y altos de la prueba E2E:
+
+- liberar ahora es atómico
+- exclusividad de titularidad ya validada
+- doble asignación SSA ↔ puesto bloqueada
+- eventos RRHH ahora generan novedades de nómina automáticamente
+
+No quiero romper nada de lo que ya sí funciona.
+
+Quiero avanzar a una Fase 2 de consistencia, UX operativa y estabilidad final, enfocada en corregir los hallazgos medios y bajos, limpiar incoherencias y dejar el sistema listo para una prueba operativa real más seria.
+
+## Objetivo
+Cerrar la segunda ronda de hardening del sistema para mejorar:
+- consistencia entre endpoints y frontend
+- claridad de uso del pizarrón
+- coherencia del pipeline de SSA
+- confiabilidad del pool de agentes
+- consistencia de pre-planilla
+- validaciones de formularios
+
+No quiero agregar módulos nuevos grandes en esta fase. Quiero estabilizar y pulir lo que ya existe.
+
+---
+
+## 1. Estandarizar convención de parámetros y payloads
+Actualmente hay mezcla de:
+- camelCase
+- snake_case
+
+Quiero que definas una sola convención y la apliques de manera consistente en los endpoints corregidos y más usados.
+
+### Prioridad
+Especialmente en:
+- operaciones
+- SSA / solicitudes de servicio
+- RRHH
+- pre-planilla
+- asignaciones
+- cambios estructurales
+
+### Resultado esperado
+- convención uniforme
+- documentación clara de la convención elegida
+- frontend alineado con backend
+- menos errores silenciosos por nombres distintos
+
+---
+
+## 2. Consistencia de pre-planilla
+Hay inconsistencia entre:
+- lista general
+- detalle del colaborador
+
+Quiero que la estructura de respuesta sea coherente entre ambos.
+
+### Revisar:
+- campos del resumen general
+- campos del detalle
+- nombres
+- formatos
+- manejo de períodos
+
+### También:
+si no se manda período, quiero un comportamiento claro:
+- preset por defecto
+o
+- mensaje de error bien explicado
+
+No quiero errores ambiguos.
+
+---
+
+## 3. Validaciones de frontend
+Quiero reforzar validaciones en formularios y flujos que hoy pueden permitir errores evitables.
+
+### Revisar especialmente:
+- SSA pipeline
+- pre-planilla
+- formularios RRHH
+- asignaciones desde pizarrón
+- fechas / horas obligatorias
+- filtros con estados vacíos o inconsistentes
+
+No quiero que el usuario mande datos incompletos y el backend sea el único que se queje.
+
+---
+
+## 4. Pool de agentes — estabilidad y limpieza visual
+Quiero revisar a fondo la lógica y la UI del pool para asegurar que:
+- no aparezcan agentes asignados donde no deberían
+- no aparezcan perfiles no elegibles en el pool general
+- no queden agentes “perdidos”
+- el pool refleje exactamente la realidad operativa
+
+### Revisar categorías
+- disponibles
+- en puesto
+- descanso
+- suspendidos
+- SSA activos
+- pool_relevo
+- sin_asignacion
+
+### Resultado esperado
+El pool debe ser confiable para operación diaria.
+
+---
+
+## 5. Servicios Especiales (SSA) — UX y sincronización
+Quiero estabilizar el flujo SSA dentro del sistema, especialmente si ya se está operando desde el pizarrón o vinculado a él.
+
+### Revisar:
+- sincronización entre tarea y estado del área
+- sincronización entre área y estado general
+- refresco de tareas vinculadas
+- actualización de la tarjeta SSA
+- cambio correcto a pendiente/cubierta/finalizada
+- comportamiento al remover un agente
+- consistencia del historial del SSA
+
+### Importante
+No quiero estados cruzados como:
+- Comercial = facturado
+- tarea = pendiente
+
+O:
+- agente removido
+- pero sigue apareciendo cubriendo
+
+---
+
+## 6. Mejorar trazabilidad operativa
+Quiero revisar y mejorar cualquier punto donde falte trazabilidad o claridad operativa en:
+- asignaciones
+- remociones
+- cambios de titular
+- reasignaciones
+- remociones por declinación
+- historial del SSA
+- historial del pool
+
+No hace falta construir otro módulo, pero sí dejar trazabilidad coherente y visible.
+
+---
+
+## 7. UI / mensajes / errores
+Quiero revisar UX básica para que:
+- los errores sean claros
+- los mensajes expliquen qué pasó
+- el usuario entienda por qué no puede hacer algo
+- los estados del sistema se vean consistentes
+
+Especial atención a:
+- mensajes de conflicto
+- errores 409 / 423 / 400
+- vacíos sin contexto
+- badges inconsistentes
+
+---
+
+## 8. Verificación cruzada final
+Después de estos cambios, quiero una revisión rápida para comprobar que:
+- operaciones
+- RRHH
+- SSA
+- pool
+- pre-planilla
+
+quedaron más consistentes entre sí.
+
+No quiero una nueva prueba gigante todavía, pero sí una validación de que esta ronda de fixes dejó el sistema más sólido.
+
+---
+
+## 9. No romper
+No romper:
+- flujo comercial
+- creación de cliente
+- sedes y puestos
+- pizarrón operativo
+- historial de titularidad
+- RRHH
+- pre-planilla
+- anticipos
+- cambios estructurales
+- portal del cliente
+- reportería
+- WhatsApp
+- Trello
+
+---
+
+## 10. Documentación final de la fase
+Al terminar, explica claramente:
+- qué inconsistencias se corrigieron
+- qué endpoints o pantallas quedaron alineados
+- qué parte del sistema quedó más estable
+- qué seguiría después antes de un piloto real más grande
+
+Muy importante:
+quiero que esta fase sea una fase de hardening y estabilización, no de expansión del sistema.

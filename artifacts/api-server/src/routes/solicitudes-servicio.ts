@@ -567,6 +567,8 @@ solicitudesServicioRouter.patch("/solicitudes-servicio/:id/asignar-agente", asyn
     //   estado_general      → 'pendiente_facturacion' (etapa administrativa pendiente)
     //   estado_preplanilla  → 'incluido' (la novedad de nómina se genera automáticamente)
     //   enviado_preplanilla_at → NOW()
+    // Fix E2E-05: Al asignar agente, activar la tarjeta en el tablero (tarjeta_activa=TRUE).
+    // Esto asegura que el SSA sea visible en el pizarrón operativo una vez que tiene cobertura.
     await pool.query(
       `UPDATE solicitudes_servicio_adicional
        SET agente_id = COALESCE($1, agente_id),
@@ -580,6 +582,7 @@ solicitudesServicioRouter.patch("/solicitudes-servicio/:id/asignar-agente", asyn
            fecha_inicio_real = COALESCE($4, fecha_inicio_real),
            fecha_fin_real = COALESCE($5, fecha_fin_real),
            observaciones_operaciones = COALESCE($6, observaciones_operaciones),
+           tarjeta_activa = TRUE,
            updated_at = NOW()
        WHERE id = $7`,
       [agenteId ?? null, agenteNombre, tipoCobertura ?? null,

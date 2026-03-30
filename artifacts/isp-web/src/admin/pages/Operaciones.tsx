@@ -222,10 +222,12 @@ function fmtHora(iso: string) {
   });
 }
 
+const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+
 async function apiPost(url: string, body: object) {
   const r = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
     body: JSON.stringify(body),
   });
   const data = await r.json();
@@ -2403,7 +2405,11 @@ export default function Operaciones() {
       setAgenteSeleccionado(null);
       invalidate();
     } catch (e: any) {
-      toast({ title: "Error", description: e.error ?? "Error al procesar", variant: "destructive" });
+      if (e.ssaId) {
+        toast({ title: "Conflicto — Servicio Especial activo", description: e.error ?? "El agente cubre un SSA activo. Libéralo primero.", variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: e.error ?? "Error al procesar", variant: "destructive" });
+      }
     }
   }
 
@@ -2452,6 +2458,12 @@ export default function Operaciones() {
       setAgenteSeleccionado(null);
       invalidate();
     } catch (e: any) {
+      if (e.ssaId) {
+        // Conflicto SSA: no se puede forzar — mostrar aviso claro
+        toast({ title: "Conflicto — Servicio Especial activo", description: e.error ?? "El agente cubre un SSA activo. Libéralo primero.", variant: "destructive" });
+        setModalSustitucion(null);
+        return;
+      }
       if (e.advertencia) {
         setModalSustitucion((prev) => prev ? { ...prev, advertencia: e.error } : null);
         return;
@@ -3382,6 +3394,7 @@ function ModalAsignarSSA({
   const [observaciones, setObservaciones] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const [conflicto, setConflicto] = useState<string | null>(null);
 
   const agentesDisponibles = disponibles.filter((a) =>
     !busqueda.trim() ||
@@ -3389,26 +3402,36 @@ function ModalAsignarSSA({
     (a.puesto ?? "").toLowerCase().includes(busqueda.toLowerCase())
   );
 
+  function seleccionarAgente(a: Agente) {
+    setAgenteSeleccionado(a);
+    setConflicto(null);
+  }
+
   async function handleConfirmar() {
     if (!agenteSeleccionado) {
       toast({ title: "Selecciona un agente", variant: "destructive" });
       return;
     }
+    setConflicto(null);
     setGuardando(true);
     try {
-      const session = sessionStorage.getItem("isp_admin_session_v2") || "";
       const res = await fetch(`/api/solicitudes-servicio/${tarjeta.id}/asignar-agente`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", "x-isp-session": session },
+        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
         body: JSON.stringify({
           agenteId: agenteSeleccionado.id,
           tipoCobertura,
           observaciones: observaciones.trim() || undefined,
         }),
       });
+      const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error ?? "Error al asignar");
+        if (body.advertencia) {
+          setConflicto(body.error ?? "Conflicto de asignación");
+        } else {
+          toast({ title: "Error al asignar", description: body.error ?? "Error desconocido", variant: "destructive" });
+        }
+        return;
       }
       toast({
         title: "Guardia asignado",
@@ -3416,7 +3439,7 @@ function ModalAsignarSSA({
       });
       onSuccess();
     } catch (e: any) {
-      toast({ title: "Error al asignar", description: e.message, variant: "destructive" });
+      toast({ title: "Error de red", description: "No se pudo conectar con el servidor", variant: "destructive" });
     } finally {
       setGuardando(false);
     }
@@ -3510,6 +3533,18 @@ function ModalAsignarSSA({
           </div>
         )}
 
+        {/* Banner de conflicto de asignación (inline) */}
+        {conflicto && (
+          <div className="mx-5 mt-2 flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2.5 shrink-0">
+            <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold text-red-300 mb-0.5">Conflicto de asignación</p>
+              <p className="text-[10px] text-red-200/70 leading-snug">{conflicto}</p>
+              <p className="text-[10px] text-white/30 mt-1">Elige otro agente o libera al actual antes de continuar.</p>
+            </div>
+          </div>
+        )}
+
         {/* Selector de agente */}
         <div className="px-5 pt-3 pb-1 shrink-0">
           <div className="flex items-center justify-between mb-2">
@@ -3541,7 +3576,7 @@ function ModalAsignarSSA({
               return (
                 <button
                   key={a.id}
-                  onClick={() => setAgenteSeleccionado(a)}
+                  onClick={() => seleccionarAgente(a)}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
                     seleccionado
                       ? "bg-primary/15 border-primary/40 shadow-sm shadow-primary/10"

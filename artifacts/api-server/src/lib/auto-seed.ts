@@ -1796,5 +1796,22 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SSA-05 historial — error (no bloqueante)");
   }
 
+  // ── SSA-06: Activar tarjeta para SSAs que ya tienen agente asignado ─────────
+  // Fix retroactivo: cualquier SSA con agente_id pero tarjeta_activa=FALSE pasa a TRUE
+  try {
+    const { rowCount } = await pool.query(
+      `UPDATE solicitudes_servicio_adicional
+       SET tarjeta_activa = TRUE, updated_at = NOW()
+       WHERE agente_id IS NOT NULL
+         AND tarjeta_activa = FALSE
+         AND estado_general NOT IN ('cancelada', 'cerrada')`
+    );
+    if (rowCount && rowCount > 0) {
+      logger.info({ rowCount }, "Auto-migrate: SSA-06 tarjeta_activa activada para SSAs con agente asignado");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SSA-06 tarjeta_activa fix — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }
