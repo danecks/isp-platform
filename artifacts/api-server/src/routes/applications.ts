@@ -95,6 +95,9 @@ router.post("/applications/:id/contratar", async (req, res) => {
     if (app.estado !== "aprobado") {
       return res.status(400).json({ error: "Solo se pueden contratar postulantes con estado 'aprobado'" });
     }
+    if (!app.nombre || !String(app.nombre).trim()) {
+      return res.status(400).json({ error: "La postulación no tiene nombre válido — no se puede crear el empleado" });
+    }
 
     // Asegurar que la columna employee_id existe (migración lazy)
     await pool.query(
@@ -126,7 +129,7 @@ router.post("/applications/:id/contratar", async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7, 'activo', NOW(), NOW(), NOW())
       RETURNING id
     `, [
-      app.nombre,
+      String(app.nombre).trim(),
       dpi,
       app.telefono,
       app.correo ?? null,

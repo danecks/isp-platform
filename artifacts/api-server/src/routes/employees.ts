@@ -497,9 +497,10 @@ employeesRouter.post("/employees", async (req, res) => {
     sueldoBase, tipoJornada, diaDescanso, horasContrato,
   } = req.body ?? {};
 
-  if (!nombreCompleto) {
-    return res.status(400).json({ error: "nombreCompleto es requerido" });
+  if (!nombreCompleto || !String(nombreCompleto).trim()) {
+    return res.status(400).json({ error: "El nombre completo del empleado es requerido" });
   }
+  const nombreCompletoLimpio = String(nombreCompleto).trim();
 
   // Validar unicidad de DPI
   if (dpi) {
@@ -517,7 +518,7 @@ employeesRouter.post("/employees", async (req, res) => {
     const [emp] = await db
       .insert(employeesTable)
       .values({
-        nombreCompleto,
+        nombreCompleto: nombreCompletoLimpio,
         dpi: dpi || null,
         telefono: telefono || null,
         telefonoSecundario: telefonoSecundario || null,
@@ -653,6 +654,11 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
     sueldoBase, tipoJornada, diaDescanso, horasContrato,
   } = req.body ?? {};
 
+  // Validar que nombreCompleto no se borre si se envía
+  if (nombreCompleto !== undefined && !String(nombreCompleto).trim()) {
+    return res.status(400).json({ error: "El nombre completo no puede quedar vacío" });
+  }
+
   // Validar unicidad de DPI (excluir el propio empleado)
   if (dpi) {
     const [existing] = await db
@@ -667,7 +673,7 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
 
   const updates: Record<string, unknown> = { updatedAt: new Date() };
 
-  if (nombreCompleto !== undefined) updates.nombreCompleto = nombreCompleto;
+  if (nombreCompleto !== undefined) updates.nombreCompleto = String(nombreCompleto).trim();
   if (dpi !== undefined) updates.dpi = dpi || null;
   if (telefono !== undefined) updates.telefono = telefono || null;
   if (telefonoSecundario !== undefined) updates.telefonoSecundario = telefonoSecundario || null;
