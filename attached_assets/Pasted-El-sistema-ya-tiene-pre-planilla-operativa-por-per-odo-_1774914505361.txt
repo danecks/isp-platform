@@ -1,0 +1,198 @@
+El sistema ya tiene:
+- pre-planilla operativa por período
+- novedades_nomina_diarias
+- RRHH
+- anticipos
+- cobertura diaria y segmentos
+- operación y servicios especiales
+- datos de sueldo base, jornada y descanso en empleados
+
+No quiero romper nada de lo existente.
+
+Quiero avanzar a la siguiente fase: hacer la pre-planilla mucho más intuitiva, clara y útil para revisión real, tomando como referencia la forma en que hoy revisamos la planilla en Excel.
+
+## Objetivo
+Que la pre-planilla no sea solo una tabla técnica, sino una herramienta real de revisión de pago, donde sea fácil entender:
+- qué se le va a pagar a cada colaborador
+- qué se le va a descontar
+- por qué
+- quién cubrió a quién
+- qué horas extra tiene
+- qué anticipos tiene
+- y qué cosas necesitan revisión
+
+---
+
+## 1. Mantener la base actual
+No quiero romper lo que ya existe de:
+- consolidado por colaborador
+- detalle diario
+- revisión RRHH
+- exportación CSV
+
+Eso está bien como base.
+
+---
+
+## 2. Crear una vista principal más intuitiva
+La tabla principal de pre-planilla debe mostrar por colaborador, de forma clara:
+
+- código o ID
+- nombre completo
+- DPI
+- cliente / puesto base
+- turno
+- sueldo base
+- días trabajados
+- faltas
+- suspensiones
+- horas normales trabajadas
+- horas extra
+- anticipos del período
+- descuentos sugeridos
+- total estimado preliminar
+- estado de revisión
+
+Quiero que esta vista sea fácil de revisar visualmente.
+
+---
+
+## 3. Crear sub-vistas / tabs tipo anexos
+Quiero que la pre-planilla tenga secciones separadas, similares a cómo hoy revisamos en Excel.
+
+### A. Resumen general
+La vista principal por colaborador.
+
+### B. Horas extra
+Mostrar un anexo/lista con:
+- fecha
+- colaborador
+- cliente
+- sede
+- puesto
+- horas extra
+- motivo o contexto
+- si fue relevo / cierre tarde / servicio especial / cobertura
+
+### C. Faltas / Amonestaciones
+Mostrar un anexo con:
+- colaborador ausente
+- fecha
+- tipo de falta o evento RRHH
+- descuento sugerido
+- quién cubrió el puesto si aplica
+- referencia de boleta o evento RRHH
+
+### D. Anticipos
+Mostrar un anexo con:
+- colaborador
+- período
+- monto
+- estado
+- si ya está reservado para planilla o no
+
+### E. Coberturas / Relevos / Turnos
+Mostrar un anexo con:
+- colaborador que cubrió
+- a quién cubrió si aplica
+- cliente / puesto / sede
+- fecha
+- horas
+- tipo de cobertura (titular, relevo, SSA, etc.)
+
+---
+
+## 4. Panel de detalle por colaborador
+Al abrir un colaborador en la pre-planilla, quiero ver:
+
+### Resumen del período
+- sueldo base
+- días trabajados
+- faltas
+- horas normales
+- horas extra
+- anticipos
+- descuentos sugeridos
+- total estimado
+
+### Detalle diario
+- día por día
+- qué pasó
+- si trabajó
+- si faltó
+- si cubrió
+- si tuvo horas extra
+- si hubo observación RRHH
+
+### Historial relacionado del período
+- anticipos
+- faltas
+- relevos
+- SSA si aplica
+
+---
+
+## 5. Total estimado preliminar
+Sin construir todavía la planilla legal final completa, quiero una estimación de revisión que combine al menos:
+
+- sueldo base del período
+- descuentos por faltas/suspensiones si aplica
+- horas extra estimadas
+- anticipos
+- otros conceptos que ya existan claramente modelados
+
+No hace falta que sea la planilla final legal cerrada, pero sí una base útil para revisión.
+
+---
+
+## 6. Alertas visuales
+Quiero que la interfaz sea intuitiva y resalte:
+- faltas
+- anticipos
+- horas extra
+- datos en conflicto
+- casos que requieren revisión
+
+Ejemplo:
+- badge “REVISAR”
+- colores por tipo de novedad
+- alertas en rojo/ámbar
+
+---
+
+## 7. Inspiración en la planilla actual de Excel
+Toma como referencia la lógica de revisión actual:
+- planilla general
+- horas extra
+- amonestaciones
+- anticipos
+- turnos / coberturas
+
+No quiero copiar el Excel literal, pero sí quiero que la nueva pre-planilla refleje esa lógica de trabajo y sea más fácil de entender que la versión actual.
+
+---
+
+## 8. No romper
+No romper:
+- consolidado actual
+- detalle actual
+- revisión RRHH
+- exportación existente
+- RRHH
+- anticipos
+- cobertura diaria
+- servicios especiales
+- novedades de nómina
+
+---
+
+## 9. Documentación
+Explica claramente:
+- cómo quedó organizada la nueva pre-planilla
+- qué muestra la vista principal
+- qué muestra cada anexo o tab
+- cómo se calcula el total estimado preliminar
+- qué cosas siguen siendo revisión previa y qué cosas faltan para una planilla monetaria final completa
+
+Muy importante:
+quiero que la pre-planilla se vuelva una herramienta real de revisión de pago, mucho más intuitiva y cercana a la lógica que hoy usamos manualmente en Excel.
