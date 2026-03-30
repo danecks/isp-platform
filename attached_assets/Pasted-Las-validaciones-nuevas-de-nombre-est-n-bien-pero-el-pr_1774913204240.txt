@@ -1,0 +1,98 @@
+Las validaciones nuevas de nombre están bien, pero el problema visible sigue existiendo en la UI.
+
+Las capturas muestran claramente que:
+
+- en la lista de colaboradores siguen apareciendo avatares con "?"
+- al abrir "Editar Colaborador", el campo "Nombre completo" aparece vacío
+- el dashboard de colaboradores muestra "12 total" pero "0 activos", lo cual también sugiere un problema de mapeo de campos
+
+## Objetivo
+Corregir el problema real de lectura/mapeo de datos entre API, frontend y formulario de empleados.
+
+No quiero parches visuales. Quiero que la UI lea y muestre correctamente los datos reales que ya existen en la base.
+
+---
+
+## 1. Revisar respuesta real del endpoint de empleados
+Revisar qué devuelve exactamente:
+- GET /api/employees
+- GET /api/employees/:id si existe
+- cualquier endpoint usado por la tabla o el modal de edición
+
+Confirmar qué nombres de campos salen realmente, por ejemplo:
+- nombre_completo
+- nombreCompleto
+- nombre
+- estado_laboral
+- estadoLaboral
+etc.
+
+---
+
+## 2. Corregir mapeo en frontend
+Revisar el módulo de Colaboradores / Empleados para asegurar que:
+
+### En la tabla/listado:
+- lea correctamente el nombre completo
+- lea correctamente el estado laboral
+- no use un campo incorrecto o vacío
+- el avatar use el nombre real y no termine en "?"
+
+### En el modal Editar Colaborador:
+- el input de "Nombre completo" se cargue con el valor real del registro
+- no llegue vacío si la base sí tiene nombre
+
+---
+
+## 3. Corregir KPI / contadores
+El dashboard de colaboradores muestra:
+- 12 total
+- 0 activos
+
+Eso parece incorrecto.
+
+Revisar el cálculo de:
+- activos
+- suspendidos / baja
+- otros estados
+
+Verificar si el problema es que el frontend espera un nombre de campo distinto al que devuelve el backend.
+
+---
+
+## 4. Unificar nombres de campos
+Si hoy hay mezcla entre:
+- snake_case
+- camelCase
+
+en la respuesta del API y el frontend, corregirlo al menos en el módulo de empleados para que quede coherente y estable.
+
+No quiero que la base tenga datos correctos pero la UI los lea mal.
+
+---
+
+## 5. Mantener validaciones ya hechas
+No romper lo ya corregido:
+- POST /employees validando nombre
+- PATCH /employees/:id validando nombre
+- POST /applications/:id/contratar validando nombre
+
+Eso está bien.
+Solo corregir ahora la lectura y visualización.
+
+---
+
+## 6. Verificación final
+Quiero que al final verifiques y me confirmes que:
+- la tabla ya muestra nombres reales
+- el avatar ya no muestra "?" para registros válidos
+- el modal de edición carga el nombre real
+- el contador de activos refleja el estado laboral real
+
+---
+
+## 7. Muy importante
+No quiero una explicación teórica de que "la base está bien".
+Quiero que la UI quede correcta y consistente con la base de datos.
+
+Esto parece un problema de mapping y lectura, no de validación de integridad.

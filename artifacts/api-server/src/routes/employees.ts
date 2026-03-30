@@ -9,6 +9,16 @@ import { logger } from "../lib/logger";
 
 const employeesRouter = Router();
 
+// Convierte un objeto con keys snake_case a camelCase (un nivel)
+function snakeToCamel(obj: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(obj).map(([k, v]) => [
+      k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase()),
+      v,
+    ]),
+  );
+}
+
 // GET /api/employees — list all employees with optional filters
 // M-01: SQL directo para incluir elegible_pool (campo fuera del schema Drizzle)
 employeesRouter.get("/employees", async (req, res) => {
@@ -43,7 +53,7 @@ employeesRouter.get("/employees", async (req, res) => {
       ORDER BY e.nombre_completo
     `, params);
 
-    res.json(rows);
+    res.json(rows.map(snakeToCamel));
   } catch (err) {
     res.status(500).json({ error: "Error al obtener empleados" });
   }
