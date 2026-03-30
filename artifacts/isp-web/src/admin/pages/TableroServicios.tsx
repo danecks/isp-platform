@@ -1,7 +1,7 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "@/admin/layout/AdminLayout";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -18,12 +18,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import {
   LayoutGrid,
-  User,
   MapPin,
   Clock,
   Calendar,
@@ -36,6 +34,7 @@ import {
   Building2,
   UserCheck,
   Loader2,
+  ExternalLink,
 } from "lucide-react";
 
 const API = "http://localhost:8080/api";
@@ -153,66 +152,9 @@ function ModalDetalle({
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<"info" | "agente" | "resumen" | "contabilidad">("info");
-
-  // Estado form asignar agente
-  const [empleadoSearch, setEmpleadoSearch] = useState(tarjeta.agente_nombre_completo ?? "");
-  const [tipoCobertura, setTipoCobertura] = useState(tarjeta.tipo_cobertura ?? "");
-  const [fechaInicioReal, setFechaInicioReal] = useState(
-    tarjeta.fecha_inicio_real ? tarjeta.fecha_inicio_real.slice(0, 16) : ""
-  );
-  const [fechaFinReal, setFechaFinReal] = useState(
-    tarjeta.fecha_fin_real ? tarjeta.fecha_fin_real.slice(0, 16) : ""
-  );
-  const [obsAgente, setObsAgente] = useState(tarjeta.observaciones_operaciones ?? "");
+  const [tab, setTab] = useState<"info" | "resumen" | "contabilidad">("info");
   const [obsResumen, setObsResumen] = useState("");
   const [estadoContab, setEstadoContab] = useState(tarjeta.estado_contabilidad ?? "pendiente_autorizacion");
-
-  // Buscar empleado
-  const { data: empleados = [] } = useQuery<{ id: number; nombre_completo: string; cargo: string }[]>({
-    queryKey: ["empleados-lista"],
-    queryFn: async () => {
-      const r = await fetch(`${API}/employees`, { headers: h() });
-      if (!r.ok) return [];
-      const data = await r.json();
-      return (Array.isArray(data) ? data : data.employees ?? []).filter((e: any) => e.estado === "activo");
-    },
-    staleTime: 60_000,
-  });
-
-  const empleadosFiltrados = empleadoSearch.length >= 2
-    ? empleados.filter(e =>
-        e.nombre_completo.toLowerCase().includes(empleadoSearch.toLowerCase())
-      ).slice(0, 8)
-    : [];
-
-  const [agenteSelId, setAgenteSelId] = useState<number | null>(tarjeta.agente_id ?? null);
-  const [agenteSelNombre, setAgenteSelNombre] = useState(tarjeta.agente_nombre_completo ?? "");
-
-  const asignarMut = useMutation({
-    mutationFn: async () => {
-      const r = await fetch(`${API}/solicitudes-servicio/${tarjeta.id}/asignar-agente`, {
-        method: "PATCH",
-        headers: h(),
-        body: JSON.stringify({
-          agenteId: agenteSelId ?? undefined,
-          tipoCobertura: tipoCobertura || undefined,
-          fechaInicioReal: fechaInicioReal || undefined,
-          fechaFinReal: fechaFinReal || undefined,
-          observaciones: obsAgente || undefined,
-        }),
-      });
-      if (!r.ok) throw new Error(await r.text());
-      return r.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Agente asignado", description: "Cobertura registrada correctamente." });
-      qc.invalidateQueries({ queryKey: ["tablero-servicios"] });
-      onRefresh();
-      onClose();
-    },
-    onError: (e: any) => toast({ variant: "destructive", title: "Error", description: String(e.message) }),
-  });
 
   const resumenMut = useMutation({
     mutationFn: async () => {
@@ -268,9 +210,9 @@ function ModalDetalle({
           </DialogTitle>
         </DialogHeader>
 
-        {/* Tabs */}
+        {/* Tabs: sin "Asignar Agente" — la cobertura se gestiona desde el Pizarrón */}
         <div className="flex gap-1 border-b border-white/10 mb-4">
-          {(["info", "agente", "resumen", "contabilidad"] as const).map(t => (
+          {(["info", "resumen", "contabilidad"] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -278,7 +220,7 @@ function ModalDetalle({
                 tab === t ? "bg-primary/20 text-primary border-b-2 border-primary" : "text-white/50 hover:text-white"
               }`}
             >
-              {t === "info" ? "Información" : t === "agente" ? "Asignar Agente" : t === "resumen" ? "Resumen Final" : "Contabilidad"}
+              {t === "info" ? "Información" : t === "resumen" ? "Resumen Final" : "Contabilidad"}
             </button>
           ))}
         </div>
@@ -286,6 +228,18 @@ function ModalDetalle({
         {/* Tab: Información */}
         {tab === "info" && (
           <div className="space-y-3 text-sm">
+            {/* Banner: cobertura se gestiona desde el Pizarrón */}
+            <Link href="/admin/operaciones" onClick={onClose}>
+              <div className="flex items-center gap-2.5 bg-primary/8 border border-primary/20 rounded-xl px-3 py-2.5 hover:bg-primary/12 transition-colors cursor-pointer group">
+                <LayoutGrid className="w-4 h-4 text-primary shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-primary/90">Cobertura operativa → Pizarrón Operativo</p>
+                  <p className="text-[10px] text-white/40 mt-0.5">La asignación de agentes y gestión diaria se hacen desde el Pizarrón.</p>
+                </div>
+                <ExternalLink className="w-3.5 h-3.5 text-primary/40 group-hover:text-primary/70 shrink-0" />
+              </div>
+            </Link>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-white/5 rounded-lg p-3 space-y-1">
                 <p className="text-[10px] text-white/40 uppercase tracking-wider">Cliente</p>
@@ -332,7 +286,7 @@ function ModalDetalle({
               </div>
             )}
 
-            {tarjeta.agente_nombre_completo && (
+            {tarjeta.agente_nombre_completo ? (
               <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 flex items-center gap-3">
                 <UserCheck className="w-5 h-5 text-emerald-400 shrink-0" />
                 <div>
@@ -342,78 +296,29 @@ function ModalDetalle({
                   )}
                 </div>
               </div>
+            ) : (
+              <div className="bg-white/4 border border-white/8 rounded-lg p-3 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-400/60 shrink-0" />
+                <p className="text-[11px] text-white/40">Sin agente asignado — ir al Pizarrón Operativo para cubrir</p>
+              </div>
             )}
-          </div>
-        )}
 
-        {/* Tab: Asignar Agente */}
-        {tab === "agente" && (
-          <div className="space-y-4 text-sm">
-            <div className="relative">
-              <Label className="text-white/60 text-xs mb-1 block">Buscar empleado</Label>
-              <Input
-                className="bg-white/5 border-white/10 text-white"
-                placeholder="Nombre del agente..."
-                value={empleadoSearch}
-                onChange={e => { setEmpleadoSearch(e.target.value); setAgenteSelId(null); setAgenteSelNombre(""); }}
-              />
-              {empleadosFiltrados.length > 0 && !agenteSelId && (
-                <div className="absolute top-full left-0 right-0 z-50 bg-[#0d1b2e] border border-white/10 rounded-b-lg max-h-40 overflow-y-auto">
-                  {empleadosFiltrados.map(e => (
-                    <button
-                      key={e.id}
-                      className="w-full text-left px-3 py-2 hover:bg-white/10 text-xs text-white/80"
-                      onClick={() => { setAgenteSelId(e.id); setAgenteSelNombre(e.nombre_completo); setEmpleadoSearch(e.nombre_completo); }}
-                    >
-                      <span className="font-medium">{e.nombre_completo}</span>
-                      {e.cargo && <span className="text-white/40 ml-2">— {e.cargo}</span>}
-                    </button>
-                  ))}
+            {/* Estado por área */}
+            <div className="grid grid-cols-3 gap-2 pt-1">
+              {[
+                { label: "Operaciones", val: tarjeta.estado_operaciones },
+                { label: "RRHH", val: tarjeta.estado_rrhh },
+                { label: "Comercial", val: tarjeta.estado_comercial },
+              ].map(({ label, val }) => (
+                <div key={label} className="bg-white/4 border border-white/8 rounded-lg p-2 text-center">
+                  <p className="text-[9px] text-white/30 uppercase tracking-wider mb-1">{label}</p>
+                  <span className={`text-[10px] font-medium ${
+                    val === "completado" || val === "cubierta" ? "text-emerald-400" :
+                    val === "pendiente" ? "text-amber-400" : "text-white/50"
+                  }`}>{val ?? "—"}</span>
                 </div>
-              )}
-              {agenteSelNombre && <p className="text-xs text-emerald-400 mt-1">✓ Seleccionado: {agenteSelNombre}</p>}
+              ))}
             </div>
-
-            <div>
-              <Label className="text-white/60 text-xs mb-1 block">Tipo de cobertura</Label>
-              <Select value={tipoCobertura} onValueChange={setTipoCobertura}>
-                <SelectTrigger className="bg-white/5 border-white/10 text-white">
-                  <SelectValue placeholder="Seleccionar tipo..." />
-                </SelectTrigger>
-                <SelectContent className="bg-[#0d1b2e] border-white/10 text-white">
-                  <SelectItem value="disponible">Agente Disponible del Pool</SelectItem>
-                  <SelectItem value="relevo">Relevo Temporal</SelectItem>
-                  <SelectItem value="horas_extra">Horas Extra al Titular</SelectItem>
-                  <SelectItem value="cambio_titular">Cambio de Titular</SelectItem>
-                  <SelectItem value="contratacion_nueva">Contratación Nueva</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-white/60 text-xs mb-1 block">Inicio real</Label>
-                <Input type="datetime-local" className="bg-white/5 border-white/10 text-white" value={fechaInicioReal} onChange={e => setFechaInicioReal(e.target.value)} />
-              </div>
-              <div>
-                <Label className="text-white/60 text-xs mb-1 block">Fin real</Label>
-                <Input type="datetime-local" className="bg-white/5 border-white/10 text-white" value={fechaFinReal} onChange={e => setFechaFinReal(e.target.value)} />
-              </div>
-            </div>
-
-            <div>
-              <Label className="text-white/60 text-xs mb-1 block">Observaciones de operaciones</Label>
-              <Textarea className="bg-white/5 border-white/10 text-white text-xs min-h-[70px]" value={obsAgente} onChange={e => setObsAgente(e.target.value)} />
-            </div>
-
-            <Button
-              className="w-full bg-primary hover:bg-primary/90 text-white"
-              onClick={() => asignarMut.mutate()}
-              disabled={asignarMut.isPending || (!agenteSelId && !tipoCobertura)}
-            >
-              {asignarMut.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <UserCheck className="w-4 h-4 mr-2" />}
-              Confirmar Asignación
-            </Button>
           </div>
         )}
 
@@ -647,16 +552,16 @@ export default function TableroServicios() {
   const urgentes = tarjetas.filter(t => t.prioridad === "urgente").length;
 
   return (
-    <AdminLayout title="Tablero Operativo — Servicios Especiales">
+    <AdminLayout title="Seguimiento de Servicios Especiales">
       <div className="p-6 space-y-6 max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-              <LayoutGrid className="w-6 h-6 text-primary" />
-              Tablero Operativo
+              <Shield className="w-6 h-6 text-primary" />
+              Seguimiento SSA
             </h1>
-            <p className="text-sm text-white/40 mt-0.5">Tarjetas activas de servicios especiales en curso</p>
+            <p className="text-sm text-white/40 mt-0.5">Seguimiento administrativo · resúmenes · contabilidad</p>
           </div>
           <Button
             variant="outline"
@@ -668,6 +573,22 @@ export default function TableroServicios() {
             Actualizar
           </Button>
         </div>
+
+        {/* Banner: contexto de uso */}
+        <Link href="/admin/operaciones">
+          <div className="flex items-center gap-3 bg-white/3 border border-white/8 rounded-xl px-4 py-3 hover:border-primary/25 transition-colors cursor-pointer group">
+            <LayoutGrid className="w-4 h-4 text-primary/60 group-hover:text-primary shrink-0" />
+            <div className="flex-1">
+              <p className="text-xs text-white/50 leading-relaxed">
+                <span className="text-white/70 font-medium">Seguimiento administrativo:</span>{" "}
+                Para cubrir, asignar o remover agentes ve al{" "}
+                <span className="text-primary/80 font-medium">Pizarrón Operativo</span>.
+                Esta vista es para resúmenes, contabilidad y estado por área.
+              </p>
+            </div>
+            <ExternalLink className="w-3.5 h-3.5 text-white/20 group-hover:text-primary/60 shrink-0" />
+          </div>
+        </Link>
 
         {/* Stat cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

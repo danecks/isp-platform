@@ -93,7 +93,7 @@ export const NAV_SECTIONS: NavSection[] = [
       },
       {
         path: "/admin/tablero-servicios",
-        label: "Tablero de Servicios",
+        label: "Seguimiento SSA",
         icon: Kanban,
         roles: ["admin", "operaciones", "rrhh", "comercial", "supervisor"],
       },
