@@ -229,7 +229,8 @@ interface AsignacionOperativa {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function iniciales(nombre: string) {
+function iniciales(nombre: string | null | undefined) {
+  if (!nombre) return "?";
   return nombre.split(" ").filter(Boolean).slice(0, 2).map((n) => n[0]?.toUpperCase() ?? "").join("");
 }
 
