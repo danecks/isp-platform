@@ -1,0 +1,104 @@
+Sí, continuar con las correcciones, pero con un ajuste importante de prioridad:
+
+## Objetivo
+Corregir primero los errores que afectan directamente la pre-planilla y el cálculo de pagos, antes de cualquier mejora visual u operativa.
+
+---
+
+## FASE 1 — CRÍTICA (NÓMINA)
+
+### 1. Auto-auditoría
+Problema:
+Está marcando faltas a agentes activos en el día en curso.
+
+Corrección:
+- La auto-auditoría SOLO debe ejecutarse al cierre del día
+- O ejecutarse en modo "borrador" sin afectar novedades activas
+- Nunca debe marcar falta a un agente que tenga:
+  - segmentos activos
+  - asignación en puesto
+  - asignación en SSA
+
+---
+
+### 2. Regla lógica obligatoria
+Problema:
+Existe inconsistencia:
+falta=true AND trabajo_dia=true
+
+Corrección:
+- Si horas_trabajadas > 0 → falta = false
+- Si falta = true → trabajo_dia = false y horas_trabajadas = 0
+- Implementar validación en generación de novedades
+
+---
+
+### 3. SSA → Novedades de nómina
+Problema:
+Agentes asignados a SSA no generan registro de trabajo.
+
+Corrección:
+- Al asignar un agente a un SSA:
+  - crear o actualizar novedad de nómina
+  - registrar horas trabajadas
+  - marcar trabajo_dia = true
+- Debe comportarse igual que cobertura de puesto normal
+
+---
+
+## FASE 2 — OPERATIVA
+
+### 4. Pool sin disponibles
+- Si pool.disponibles = 0 AND hay puestos descubiertos:
+  - generar alerta visible en pizarrón
+  - mensaje claro al operador
+
+---
+
+### 5. elegible_pool
+- incluir campo en endpoint /api/employees
+- excluir automáticamente personal no operativo
+
+---
+
+### 6. tipo y puesto_id en novedades
+- corregir SELECT para que estos campos no sean undefined
+- necesarios para trazabilidad y pre-planilla
+
+---
+
+## FASE 3 — CONSISTENCIA
+
+### 7. Segmentos
+- incluir JOIN con empleados para devolver nombre
+
+---
+
+## IMPORTANTE
+No romper:
+- asignaciones
+- SSA
+- historial de titularidad
+- cierre diario
+- pre-planilla existente
+
+---
+
+## Resultado esperado
+Quiero que después de estos cambios:
+
+- la pre-planilla sea coherente
+- no existan faltas falsas
+- no existan pagos omitidos
+- los SSA cuenten como trabajo real
+- el sistema pueda reflejar correctamente lo que se debe pagar
+
+---
+
+## Validación final
+Ejecutar una prueba corta (2–3 días) después de los fixes y verificar:
+
+- horas correctas
+- faltas correctas
+- SSA incluidos
+- sin inconsistencias lógicas
