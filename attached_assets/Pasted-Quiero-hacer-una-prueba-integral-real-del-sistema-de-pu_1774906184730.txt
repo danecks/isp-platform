@@ -1,0 +1,224 @@
+Quiero hacer una prueba integral real del sistema, de punta a punta, usando un escenario nuevo y limpio, para validar si todo lo que ya construimos realmente funciona conectado entre sí.
+
+No quiero seguir agregando módulos sin antes validar bien la base actual.
+
+## Objetivo
+Simular una operación real desde cero, con un cliente nuevo, su servicio contratado, la operación diaria y el impacto en RRHH y pre-planilla, para detectar:
+- flujos rotos
+- módulos que no sincronizan
+- inconsistencias
+- cosas que faltan
+- y qué debería corregirse primero antes de seguir escalando
+
+Muy importante:
+quiero que esto sea una prueba integral tipo sandbox / E2E, no solo revisión teórica.
+
+---
+
+## 1. Crear un escenario de prueba nuevo y limpio
+No quiero mezclar esta prueba con los datos sucios o parciales que ya existen.
+
+Haz una de estas opciones, la que sea más segura:
+- usar una base limpia de prueba
+- o crear un seed / dataset nuevo claramente aislado para esta prueba integral
+
+No quiero dañar información importante existente.
+
+---
+
+## 2. Escenario principal de prueba
+Usar como caso de prueba principal:
+
+### Cliente:
+Cervecería Centro Americana
+
+Simular el flujo desde cero:
+
+### Comercial / Ventas
+- cliente nuevo pide cotización
+- ventas lo atiende
+- se crea el cliente correctamente
+- se define:
+  - nombre del cliente
+  - tipo de servicio
+  - precio / tarifa
+  - sedes
+  - puestos
+  - horarios
+  - cantidad contratada
+- se deja lista la estructura contractual del servicio
+
+---
+
+## 3. Estructura operativa del servicio
+Después de crear el cliente, validar que se pueda configurar y quede bien conectado:
+
+- sedes operativas
+- puestos operativos
+- turnos / horarios
+- zona operativa
+- supervisor de zona
+- titulares base si aplica
+- agentes asignados al cliente
+
+Muy importante:
+al quedar creado el servicio, los puestos que requieren cobertura deben aparecer correctamente en el Pizarrón Operativo.
+
+---
+
+## 4. Simular operación de varios días
+Quiero una prueba de varios días consecutivos, idealmente una quincena completa o una simulación representativa suficiente para validar pre-planilla.
+
+No tiene que ser 15 días si eso complica demasiado, pero sí suficientes días y casos para probar de verdad el sistema.
+
+### Casos que quiero que se prueben
+Incluir al menos:
+
+#### Día normal
+- titular cubre normalmente
+
+#### Falta
+- un agente falta
+- otro cubre
+- se genera evento RRHH
+- el ausente no debe pagarse ese día
+
+#### Relevo parcial
+- un agente cubre parte del turno
+- otro cubre el resto
+- segmentos correctos
+- horas correctas
+
+#### Horas extra
+- un agente cubre más horas de las normales del puesto
+- validar cálculo según el puesto/turno, no con regla fija de 10 horas
+
+#### Cambio a titular
+- un disponible entra como titular
+- validar ficha del colaborador
+- validar ficha del cliente
+- validar agentes asignados
+- validar historial de titularidad
+
+#### Enfermedad / sick note / suspensión
+- un titular queda fuera por incapacidad o suspensión
+- validar impacto en operación, RRHH y pre-planilla
+
+#### Servicio especial
+- crear al menos un servicio especial
+- validar pipeline entre cliente / operaciones / RRHH / comercial
+- cubrirlo
+- revisar su efecto en operación y tareas
+
+#### Remoción y reversión
+- asignar por error
+- remover
+- devolver al pool
+- verificar que no quede inconsistente
+
+---
+
+## 5. Verificación por módulos
+Durante y al final de la prueba, revisar que todo esté sincronizado correctamente entre:
+
+### Comercial
+- cliente creado
+- servicio correcto
+- tarifa / tipo de servicio
+- pipeline comercial si aplica
+
+### Clientes
+- ficha correcta
+- sedes, puestos, zona
+- agentes asignados
+- historial si corresponde
+
+### Colaboradores
+- ficha correcta
+- asignación base correcta
+- estado operativo correcto
+- historial de titularidad correcto
+
+### Pizarrón Operativo
+- puestos visibles
+- coberturas correctas
+- pool correcto
+- removidos / asignados bien reflejados
+- cierres diarios correctos
+
+### RRHH
+- faltas
+- suspensiones
+- alertas
+- eventos RRHH
+
+### Pre-planilla
+- días trabajados
+- faltas
+- suspensiones
+- horas trabajadas
+- horas extra
+- relevos
+- anticipos si aplica
+
+### Servicios especiales
+- pipeline correcto
+- tareas correctas
+- estados correctos
+- sincronización correcta
+
+---
+
+## 6. Validar que todo “cace”
+Quiero que esta prueba detecte específicamente si hay cosas como:
+
+- algo cambia en el pizarrón pero no en cliente
+- cambia en RRHH pero no en pre-planilla
+- cambia en colaborador pero no en operación
+- cliente nuevo no aparece correctamente en operación
+- pool muestra agentes incorrectos
+- tareas no cambian cuando debería
+- badges dicen una cosa y datos otra
+- cambios son solo visuales pero no estructurales
+
+---
+
+## 7. Resultado esperado
+Al final de la prueba quiero un reporte estructurado con:
+
+### A. Qué sí funcionó correctamente
+### B. Qué falló o quedó inconsistente
+### C. Qué módulos no están bien amarrados
+### D. Qué errores son críticos antes de usar el sistema con personal real
+### E. Qué correcciones recomiendas hacer primero
+### F. Qué partes ya están suficientemente sólidas
+
+---
+
+## 8. Clasificación de hallazgos
+Clasificar los hallazgos en:
+- Crítico
+- Alto
+- Medio
+- Bajo
+
+Y priorizar especialmente:
+- bloqueantes operativos
+- bloqueantes RRHH
+- bloqueantes de pre-planilla
+
+---
+
+## 9. Muy importante
+No quiero que esta prueba sea superficial.
+
+Quiero que la hagas como si el sistema fuera a entrar a operación real:
+- con un cliente nuevo
+- con varios días
+- con situaciones reales
+- y verificando que todos los módulos conectados reaccionen bien
+
+Esto debe ayudarme a decidir:
+- qué corregir primero
+- qué ya está listo
+- y si el sistema ya aguanta una prueba más seria con personal real.
