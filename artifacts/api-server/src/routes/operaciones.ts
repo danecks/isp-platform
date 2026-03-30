@@ -158,6 +158,24 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
           advertencia: true,
         });
       }
+
+      // Verificar que no esté cubriendo un SSA activo
+      const { rows: yaEnSSA } = await pool.query(
+        `SELECT s.id, c.nombre AS cliente_nombre, s.tipo_solicitud, s.fecha
+         FROM solicitudes_servicio_adicional s
+         LEFT JOIN clients c ON c.id = s.cliente_id
+         WHERE s.agente_id = $1
+           AND s.estado_general NOT IN ('cancelada', 'cerrada')`,
+        [agenteId]
+      );
+      if (yaEnSSA.length > 0) {
+        const ssa = yaEnSSA[0];
+        return res.status(409).json({
+          error: `${agente.nombre_completo} ya cubre un Servicio Especial (${ssa.cliente_nombre ?? "—"} · ${ssa.id})`,
+          advertencia: true,
+          ssaId: ssa.id,
+        });
+      }
     }
 
     const sinTitular = !puesto.titular_employee_id;
@@ -176,6 +194,26 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
       );
     } else {
       // ── Asignación normal (puede convertir en titular) ─────────────────────
+
+      // Fix E2E-02: Exclusividad de titular.
+      // Si el puesto no tiene titular, este agente se convertirá en titular.
+      // Antes de hacerlo, verificar que no sea ya titular en otro puesto activo.
+      if (!forzar && !puesto.titular_employee_id) {
+        const { rows: yaTitularRows } = await pool.query(
+          `SELECT po.nombre, po.cliente_nombre FROM puestos_operativos po
+           WHERE po.titular_employee_id = $1 AND po.activo = TRUE AND po.id != $2`,
+          [agenteId, puestoId]
+        );
+        if (yaTitularRows.length > 0) {
+          return res.status(409).json({
+            error: `${agente.nombre_completo} ya es titular en "${yaTitularRows[0].nombre}" (${yaTitularRows[0].cliente_nombre}). Resuelva esa titularidad antes de asignar una nueva.`,
+            advertencia: true,
+            titularEnPuesto: yaTitularRows[0].nombre,
+            titularEnCliente: yaTitularRows[0].cliente_nombre,
+          });
+        }
+      }
+
       await pool.query(
         `UPDATE puestos_operativos
          SET agente_id      = $1,
@@ -543,28 +581,45 @@ operacionesRouter.post("/operaciones/liberar", async (req, res) => {
     const agenteNombre = puesto.agente_nombre as string;
     const hoy = new Date().toISOString().split("T")[0];
 
-    // IMPORTANTE: solo se limpia agente_id (cobertura del día).
-    // El titular_employee_id se preserva para mantener la asignación base.
-    await pool.query(
-      `UPDATE puestos_operativos SET agente_id=NULL, agente_nombre=NULL, estado='descubierto', updated_at=NOW()
-       WHERE id=$1`,
-      [puestoId]
-    );
+    // ── Operación atómica: limpiar agente + registrar movimiento ─────────────
+    // Si cualquiera de los dos pasos falla, se hace ROLLBACK completo.
+    // Segmento de cobertura y eventos RRHH son "best effort" (fuera de la tx).
+    const client = await pool.connect();
+    let movId: number | null = null;
+    try {
+      await client.query("BEGIN");
 
-    const movResult = await pool.query(
-      `INSERT INTO movimientos_operativos
-         (puesto_id, cliente_nombre, puesto_nombre,
-          agente_saliente_id, agente_saliente_nombre,
-          tipo, motivo, usuario_cambio, notas)
-       VALUES ($1, $2, $3, $4, $5, 'liberacion', $6, $7, $8)
-       RETURNING id`,
-      [
-        puestoId, puesto.cliente_nombre, puesto.nombre,
-        agenteId, agenteNombre,
-        motivo || null, usuario || 'sistema', notas || null,
-      ]
-    );
-    const movId = movResult.rows[0]?.id ?? null;
+      // IMPORTANTE: solo se limpia agente_id (cobertura del día).
+      // El titular_employee_id se preserva para mantener la asignación base.
+      await client.query(
+        `UPDATE puestos_operativos SET agente_id=NULL, agente_nombre=NULL, estado='descubierto', updated_at=NOW()
+         WHERE id=$1`,
+        [puestoId]
+      );
+
+      const movResult = await client.query(
+        `INSERT INTO movimientos_operativos
+           (puesto_id, cliente_nombre, puesto_nombre,
+            agente_saliente_id, agente_saliente_nombre,
+            tipo, motivo, usuario_cambio, notas)
+         VALUES ($1, $2, $3, $4, $5, 'liberacion', $6, $7, $8)
+         RETURNING id`,
+        [
+          puestoId, puesto.cliente_nombre, puesto.nombre,
+          agenteId, agenteNombre,
+          motivo || null, usuario || 'sistema', notas || null,
+        ]
+      );
+      movId = movResult.rows[0]?.id ?? null;
+
+      await client.query("COMMIT");
+    } catch (txErr) {
+      await client.query("ROLLBACK");
+      client.release();
+      logger.error({ txErr, puestoId }, "liberar: transacción revertida");
+      return res.status(500).json({ error: "Error al liberar puesto. La operación fue revertida." });
+    }
+    client.release();
 
     // ── Cerrar segmento de cobertura del día si se indica hora de salida ──────
     if (horaFin) {

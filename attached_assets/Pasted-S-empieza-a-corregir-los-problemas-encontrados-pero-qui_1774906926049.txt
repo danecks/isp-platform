@@ -1,0 +1,90 @@
+Sí, empieza a corregir los problemas encontrados, pero quiero hacerlo por prioridad y sin romper lo que ya sí funciona.
+
+Objetivo
+
+Corregir primero los problemas críticos y altos detectados en la prueba E2E del escenario Cervecería Centro Americana, para dejar el sistema listo para una prueba operativa más seria.
+
+Orden de corrección requerido
+
+Fase 1 — Críticos
+
+1. POST /operaciones/liberar debe ser atómico
+Problema:
+	•	hoy limpia agente_id y luego intenta registrar movimiento
+	•	si falla el segundo paso, el puesto queda inconsistente
+
+Corrección:
+	•	envolver toda la operación en transacción
+	•	si falla el registro del movimiento, revertir todo
+	•	no dejar estados a medias
+
+2. Validar exclusividad de titular
+Problema:
+	•	un colaborador puede quedar como titular en 2 puestos simultáneamente
+
+Corrección:
+	•	antes de asignar como titular, verificar si ya tiene otro puesto titular activo
+	•	bloquear o exigir resolver el puesto anterior antes de continuar
+	•	documentar claramente la decisión implementada
+
+⸻
+
+Fase 2 — Altos
+
+3. SSA ↔ Pool
+Problema:
+	•	un agente asignado a un SSA sigue apareciendo como disponible en el pool
+
+Corrección:
+	•	el pool debe considerar SSA activos
+	•	un agente en SSA no debe aparecer como disponible normal
+	•	evitar doble asignación
+
+4. RRHH ↔ Pre-planilla
+Problema:
+	•	faltas, incapacidad o suspensión creadas en RRHH no llegan automáticamente a pre-planilla
+
+Corrección:
+	•	al crear eventos RRHH relevantes, generar o actualizar la novedad correspondiente en novedades_nomina_diarias
+	•	asegurar que pre-planilla las recoja sin trabajo manual duplicado
+
+⸻
+
+Fase 3 — Consistencia API
+
+5. Estandarizar nombres de parámetros
+Problema:
+	•	mezcla de camelCase y snake_case
+
+Corrección:
+	•	definir una sola convención
+	•	aplicarla en endpoints nuevos y corregidos
+	•	documentar claramente la convención elegida
+
+⸻
+
+Requisitos importantes
+	•	No romper lo que ya sí funciona:
+	•	flujo comercial
+	•	creación de cliente
+	•	sedes y puestos
+	•	asignaciones básicas
+	•	historial de titularidad
+	•	pipeline SSA
+	•	pre-planilla actual
+	•	Quiero que al final me entregues:
+	1.	qué corregiste
+	2.	qué archivos cambiaste
+	3.	cómo validaste cada corrección
+	4.	qué falta después de estas fases
+
+Muy importante
+
+No avances todavía a corregir todo el resto del reporte.
+Quiero primero estabilizar:
+	•	operación
+	•	titularidad
+	•	pool
+	•	pre-planilla
+
+Y después hacemos una segunda ronda con los hallazgos medios y bajos.

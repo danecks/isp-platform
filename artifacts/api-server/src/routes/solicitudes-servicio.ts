@@ -529,6 +529,37 @@ solicitudesServicioRouter.patch("/solicitudes-servicio/:id/asignar-agente", asyn
     if (agenteId) {
       const { rows: emp } = await pool.query(`SELECT nombre_completo FROM employees WHERE id = $1`, [agenteId]);
       if (emp.length > 0) agenteNombre = emp[0].nombre_completo;
+
+      // Fix E2E-03: Evitar doble asignación SSA ↔ Puesto/SSA.
+      // Verificar que el agente no esté actualmente cubriendo otro puesto o SSA.
+      const { rows: yaPuesto } = await pool.query(
+        `SELECT po.nombre, po.cliente_nombre FROM puestos_operativos po
+         WHERE po.agente_id = $1 AND po.activo = TRUE`,
+        [agenteId]
+      );
+      if (yaPuesto.length > 0) {
+        return res.status(409).json({
+          error: `${agenteNombre} ya está cubriendo "${yaPuesto[0].nombre}" en ${yaPuesto[0].cliente_nombre}. Libérelo del puesto antes de asignarlo al servicio especial.`,
+          advertencia: true,
+        });
+      }
+
+      const { rows: yaSSA } = await pool.query(
+        `SELECT s.id, c.nombre AS cliente_nombre
+         FROM solicitudes_servicio_adicional s
+         LEFT JOIN clients c ON c.id = s.cliente_id
+         WHERE s.agente_id = $1
+           AND s.id != $2
+           AND s.estado_general NOT IN ('cancelada', 'cerrada')`,
+        [agenteId, id]
+      );
+      if (yaSSA.length > 0) {
+        return res.status(409).json({
+          error: `${agenteNombre} ya cubre otro Servicio Especial (${yaSSA[0].cliente_nombre ?? "—"} · ${yaSSA[0].id}).`,
+          advertencia: true,
+          ssaId: yaSSA[0].id,
+        });
+      }
     }
 
     // Cuando se asigna agente:

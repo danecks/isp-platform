@@ -134,8 +134,68 @@ eventosRrhhRouter.post("/rrhh/eventos", async (req, res) => {
       ],
     );
 
-    logger.info({ id: rows[0].id, tipo: tipoEvento }, "Evento RRHH creado");
-    res.status(201).json({ ok: true, evento: rows[0] });
+    const eventoCreado = rows[0];
+    logger.info({ id: eventoCreado.id, tipo: tipoEvento }, "Evento RRHH creado");
+
+    // Fix E2E-04: Auto-generar novedad en nómina para eventos que afectan el pago.
+    // Tipos relevantes: falta, falta_injustificada, incapacidad, suspension.
+    // Se hace fuera de la inserción principal (best effort) para no bloquear.
+    const TIPOS_CON_NOVEDAD = ["falta", "falta_injustificada", "incapacidad", "suspension"];
+    if (TIPOS_CON_NOVEDAD.includes(tipoEvento)) {
+      try {
+        const hoy = new Date().toISOString().split("T")[0];
+
+        // Determinar campos según tipo de evento:
+        //   falta / falta_injustificada → falta=TRUE, descuento_dia=TRUE, trabajo_dia=FALSE
+        //   incapacidad                 → incapacidad=TRUE, trabajo_dia=FALSE (sin descuento)
+        //   suspension                  → suspension=TRUE, descuento_dia=TRUE, trabajo_dia=FALSE
+        const esFalta      = tipoEvento === "falta" || tipoEvento === "falta_injustificada";
+        const esIncapacidad = tipoEvento === "incapacidad";
+        const esSuspension  = tipoEvento === "suspension";
+
+        // Buscar puesto titular del empleado para vincular la novedad
+        const { rows: puestoRows } = await pool.query(
+          `SELECT id, nombre FROM puestos_operativos
+           WHERE titular_employee_id = $1 AND activo = TRUE
+           LIMIT 1`,
+          [emp.id]
+        );
+        const puestoTitularId   = puestoRows[0]?.id ?? null;
+        const puestoTitularNombre = puestoRows[0]?.nombre ?? puestoNombre ?? null;
+
+        // incapacidad: no descuenta el día (el empleado sigue percibiendo salario según ley)
+        // suspension / falta: descuenta el día
+        const descuentoDia = esFalta || esSuspension;
+
+        await pool.query(
+          `INSERT INTO novedades_nomina_diarias
+             (fecha, employee_id, empleado_nombre,
+              trabajo_dia, horas_trabajadas, horas_extra,
+              falta, suspension, descuento_dia,
+              puesto_titular_id, puesto_titular_nombre, fuente)
+           VALUES ($1, $2, $3,
+                   FALSE, 0, 0,
+                   $4, $5, $6,
+                   $7, $8, 'rrhh_manual')
+           ON CONFLICT (fecha, employee_id) DO UPDATE SET
+             falta       = EXCLUDED.falta       OR novedades_nomina_diarias.falta,
+             suspension  = EXCLUDED.suspension  OR novedades_nomina_diarias.suspension,
+             descuento_dia = EXCLUDED.descuento_dia OR novedades_nomina_diarias.descuento_dia,
+             trabajo_dia = FALSE,
+             updated_at  = NOW()`,
+          [
+            hoy, emp.id, emp.nombre_completo,
+            esFalta, esSuspension, descuentoDia,
+            puestoTitularId, puestoTitularNombre,
+          ]
+        );
+        logger.info({ employeeId: emp.id, tipoEvento, hoy }, "RRHH: novedad nómina auto-generada");
+      } catch (novedadErr) {
+        logger.warn({ novedadErr, employeeId: emp.id, tipoEvento }, "RRHH: no se pudo generar novedad nómina (no bloqueante)");
+      }
+    }
+
+    res.status(201).json({ ok: true, evento: eventoCreado });
   } catch (err) {
     logger.error({ err }, "POST /rrhh/eventos error");
     res.status(500).json({ error: "Error al crear evento RRHH" });
