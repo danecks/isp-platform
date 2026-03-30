@@ -274,7 +274,8 @@ const AVATAR_COLORS = [
   "bg-rose-600", "bg-emerald-600", "bg-indigo-600", "bg-amber-600",
 ];
 
-function avatarColor(nombre: string) {
+function avatarColor(nombre: string | null | undefined) {
+  if (!nombre) return AVATAR_COLORS[0];
   const sum = nombre.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
   return AVATAR_COLORS[sum % AVATAR_COLORS.length];
 }

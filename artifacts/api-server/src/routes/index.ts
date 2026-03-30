@@ -30,6 +30,7 @@ import storageRouter from "./storage";
 import kpiRouter from "./kpi";
 import { solicitudesCambioRouter } from "./solicitudes-cambio";
 import { solicitudesServicioRouter } from "./solicitudes-servicio";
+import { incentivosRouter } from "./incentivos";
 
 const router: IRouter = Router();
 
@@ -64,5 +65,6 @@ router.use(storageRouter);
 router.use(kpiRouter);
 router.use(solicitudesCambioRouter);
 router.use(solicitudesServicioRouter);
+router.use(incentivosRouter);
 
 export default router;

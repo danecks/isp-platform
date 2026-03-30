@@ -344,11 +344,21 @@ coberturaRouter.post("/cobertura/segmentos", async (req, res) => {
         fueEnDiaDescanso = solapaCon(horaInicio, horaFin, puesto.descanso_inicio, puesto.descanso_fin);
       }
 
-      // Detectar horas extra: si el tramo excede la jornada base del puesto (elegible_horas_extra)
+      // Detectar horas extra: se genera HE si fue en día de descanso del titular
+      // O si las horas reales trabajadas SUPERAN las horas esperadas del puesto (comparación real vs esperado).
+      let horasExtraCalculadas: number | null = null;
       if (puesto?.elegible_horas_extra && puesto?.hora_entrada && puesto?.hora_salida) {
         const jornadaBase = calcularHoras(puesto.hora_entrada, puesto.hora_salida);
-        // Se marcan HE si se está cubriendo en día de descanso del titular O si el tramo excede la jornada
-        generaHorasExtra = fueEnDiaDescanso;
+        const exceso = horasCalculadas !== null && jornadaBase > 0
+          ? Math.max(0, horasCalculadas - jornadaBase)
+          : 0;
+        generaHorasExtra = fueEnDiaDescanso || exceso > 0;
+        if (generaHorasExtra) {
+          // Si fue en día de descanso: todas las horas son extra; si solo exceso, solo el exceso
+          horasExtraCalculadas = fueEnDiaDescanso
+            ? horasCalculadas ?? 0
+            : exceso;
+        }
       }
     }
 
@@ -356,14 +366,16 @@ coberturaRouter.post("/cobertura/segmentos", async (req, res) => {
       INSERT INTO cobertura_segmentos
         (fecha, puesto_id, client_id, sede_id, employee_id, empleado_nombre,
          tipo_cobertura, hora_inicio, hora_fin, horas_calculadas,
-         motivo, fue_en_dia_descanso, genera_horas_extra, observaciones, usuario_registro)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+         motivo, fue_en_dia_descanso, genera_horas_extra, horas_extra_calculadas,
+         observaciones, usuario_registro)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
       RETURNING *
     `, [
       fecha, puestoId, clientId ?? null, sedeId ?? null, employeeId,
       empleadoNombre ?? null,
       tipoCobertura || 'relevo', horaInicio ?? null, horaFin ?? null,
       horasCalculadas, motivo ?? null, fueEnDiaDescanso, generaHorasExtra,
+      horasExtraCalculadas ?? null,
       observaciones ?? null, usuarioRegistro ?? null,
     ]);
 

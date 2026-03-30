@@ -72,7 +72,11 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
         cs.employee_id,
         cs.empleado_nombre,
         SUM(cs.horas_calculadas)                        AS horas_trabajadas,
-        SUM(CASE WHEN cs.genera_horas_extra THEN cs.horas_calculadas ELSE 0 END) AS horas_extra,
+        -- Usar horas_extra_calculadas cuando disponible (monto de exceso real);
+        -- fallback a horas_calculadas completas para segmentos anteriores sin ese campo.
+        SUM(CASE WHEN cs.genera_horas_extra
+                 THEN COALESCE(cs.horas_extra_calculadas, cs.horas_calculadas)
+                 ELSE 0 END)                            AS horas_extra,
         BOOL_OR(cs.fue_en_dia_descanso)                 AS descanso_trabajado,
         COUNT(DISTINCT cs.puesto_id)                    AS num_puestos_cubiertos,
         e.nombre_completo                               AS nombre_emp,

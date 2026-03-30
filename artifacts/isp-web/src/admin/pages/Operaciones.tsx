@@ -2179,6 +2179,12 @@ export default function Operaciones() {
   const [nuevoPuestoData, setNuevoPuestoData]        = useState<ClienteBoard | null | "nuevo">(null);
   const [modalSustitucion, setModalSustitucion]      = useState<{ puesto: Puesto; agente: Agente; advertencia?: string } | null>(null);
   const [modalEligeCobertura, setModalEligeCobertura] = useState<{ puesto: Puesto; agente: Agente } | null>(null);
+  const [modalIncentivo, setModalIncentivo]           = useState<{
+    agenteId: number; agenteName: string;
+    puestoId: number; puestoName: string;
+    clienteId: number | null; clienteNombre: string | null;
+    sedeId: number | null; fecha: string;
+  } | null>(null);
   const [modalLiberar, setModalLiberar]              = useState<Puesto | null>(null);
   const [poolTab, setPoolTab]                        = useState<"disponibles" | "enDescanso" | "suspendidos" | "enPuesto" | "enSSA">("disponibles");
   const [busquedaPool, setBusquedaPool]              = useState("");
@@ -2380,6 +2386,16 @@ export default function Operaciones() {
       if (soloCobertura) {
         const horaLabel = horaInstalacion ? ` desde las ${horaInstalacion}` : "";
         toast({ title: "Cobertura temporal registrada", description: `${agente.nombre_completo} cubre ${puesto.nombre}${horaLabel}` });
+        setModalIncentivo({
+          agenteId: agente.id,
+          agenteName: agente.nombre_completo,
+          puestoId: puesto.id,
+          puestoName: puesto.nombre,
+          clienteId: puesto.cliente_id,
+          clienteNombre: puesto.cliente_nombre ?? null,
+          sedeId: puesto.sede_id,
+          fecha: fechaActivaStr,
+        });
       } else {
         const motLabel = motivoCambio ? ` · ${motivoCambio.replace(/_/g, " ")}` : "";
         const fechaLabel = fechaEfectiva ? ` desde ${fechaEfectiva}` : "";
@@ -2443,6 +2459,18 @@ export default function Operaciones() {
           });
         } else {
           toast({ title: "Sustitución registrada", description: `${puesto.agente_nombre} → ${agente.nombre_completo}` });
+        }
+        if (tipoSustitucion === "relevo") {
+          setModalIncentivo({
+            agenteId: agente.id,
+            agenteName: agente.nombre_completo,
+            puestoId: puesto.id,
+            puestoName: puesto.nombre,
+            clienteId: puesto.cliente_id,
+            clienteNombre: puesto.cliente_nombre ?? null,
+            sedeId: puesto.sede_id,
+            fecha: fechaActivaStr,
+          });
         }
       } else {
         await apiPost(`${API_BASE}/operaciones/asignar`, {
@@ -3174,7 +3202,173 @@ export default function Operaciones() {
           }}
         />
       )}
+
+      {modalIncentivo && (
+        <ModalIncentivoCash
+          data={modalIncentivo}
+          autorizadoPor={currentUser?.nombre ?? currentUser?.username ?? ""}
+          apiBase={API_BASE}
+          onClose={() => setModalIncentivo(null)}
+        />
+      )}
     </AdminLayout>
+  );
+}
+
+// ─── Modal: Incentivo Cash por Cobertura ─────────────────────────────────────
+
+function ModalIncentivoCash({
+  data, autorizadoPor, apiBase, onClose,
+}: {
+  data: { agenteId: number; agenteName: string; puestoId: number; puestoName: string; clienteId: number | null; clienteNombre: string | null; sedeId: number | null; fecha: string };
+  autorizadoPor: string;
+  apiBase: string;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const [tipo, setTipo] = useState<"relevo_cash" | "bono_cobertura" | "motivacion_cobertura">("relevo_cash");
+  const [monto, setMonto] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [pagadoPor, setPagadoPor] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function guardar() {
+    if (!monto || isNaN(Number(monto)) || Number(monto) <= 0) {
+      toast({ title: "Monto inválido", description: "Ingresa un monto mayor a 0", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      await fetch(`${apiBase}/incentivos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
+        body: JSON.stringify({
+          employeeId: data.agenteId,
+          employeeNombre: data.agenteName,
+          fecha: data.fecha,
+          clienteId: data.clienteId,
+          clienteNombre: data.clienteNombre,
+          sedeId: data.sedeId,
+          puestoId: data.puestoId,
+          puestoNombre: data.puestoName,
+          tipo,
+          monto: Number(monto),
+          motivo: motivo || undefined,
+          autorizadoPor,
+          pagadoPor: pagadoPor || undefined,
+          metodoPago: "efectivo",
+          estado: pagadoPor ? "pagado" : "pendiente",
+        }),
+      }).then((r) => { if (!r.ok) throw new Error("Error al guardar"); return r.json(); });
+      toast({ title: "Incentivo cash registrado", description: `Q${Number(monto).toFixed(2)} → ${data.agenteName}` });
+      onClose();
+    } catch {
+      toast({ title: "Error", description: "No se pudo registrar el incentivo", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const TIPO_LABELS: Record<string, string> = {
+    relevo_cash: "Relevo Cash",
+    bono_cobertura: "Bono Cobertura",
+    motivacion_cobertura: "Motivación / Incentivo",
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 backdrop-blur-sm">
+      <div className="bg-[#07111f] border border-emerald-700/30 rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 bg-emerald-900/20 border-b border-emerald-700/20">
+          <div>
+            <h3 className="text-sm font-bold text-emerald-300">Incentivo Cash por Cobertura</h3>
+            <p className="text-[11px] text-white/40 mt-0.5">{data.agenteName} · {data.puestoName}</p>
+          </div>
+          <button onClick={onClose} className="text-white/30 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Tipo */}
+          <div>
+            <label className="block text-[10px] text-white/40 uppercase tracking-widest mb-1.5">Tipo de Incentivo</label>
+            <div className="flex gap-1.5 flex-wrap">
+              {(["relevo_cash", "bono_cobertura", "motivacion_cobertura"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTipo(t)}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${
+                    tipo === t
+                      ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-300"
+                      : "bg-white/4 border-white/10 text-white/40 hover:text-white/70"
+                  }`}
+                >
+                  {TIPO_LABELS[t]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Monto */}
+          <div>
+            <label className="block text-[10px] text-white/40 uppercase tracking-widest mb-1.5">Monto (Q)</label>
+            <input
+              type="number"
+              min="1"
+              step="0.50"
+              placeholder="0.00"
+              value={monto}
+              onChange={(e) => setMonto(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-emerald-500/50"
+            />
+          </div>
+
+          {/* Motivo */}
+          <div>
+            <label className="block text-[10px] text-white/40 uppercase tracking-widest mb-1.5">Motivo (opcional)</label>
+            <input
+              type="text"
+              placeholder="Descripción breve del motivo…"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-emerald-500/50"
+            />
+          </div>
+
+          {/* Pagado por */}
+          <div>
+            <label className="block text-[10px] text-white/40 uppercase tracking-widest mb-1.5">Pagado por (dejar vacío si aún no se paga)</label>
+            <input
+              type="text"
+              placeholder="Nombre de quien entrega el efectivo…"
+              value={pagadoPor}
+              onChange={(e) => setPagadoPor(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-emerald-500/50"
+            />
+            <p className="text-[10px] text-white/25 mt-1">Si se ingresa, el estado se marca como "pagado" directamente.</p>
+          </div>
+
+          {/* Acciones */}
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={onClose}
+              className="flex-1 py-2 rounded-lg text-xs font-medium text-white/40 bg-white/5 border border-white/10 hover:bg-white/8 transition-all"
+            >
+              No por ahora
+            </button>
+            <button
+              onClick={guardar}
+              disabled={saving || !monto}
+              className="flex-1 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-40 transition-all"
+            >
+              {saving ? "Guardando…" : "Registrar Incentivo"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 

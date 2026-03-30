@@ -76,6 +76,8 @@ interface ColaboradorPre {
   dias_sin_horas: number;
   anticipos_monto: number;
   anticipos_count: number;
+  incentivos_cash_monto: number;
+  incentivos_cash_count: number;
   revision_estado: "pendiente" | "revisada" | "observada";
   revision_observaciones: string | null;
   revision_por: string | null;
@@ -117,6 +119,18 @@ interface DetalleAnticipo {
   origen: string;
   observaciones: string | null;
   fecha_solicitud: string;
+}
+
+interface DetalleIncentivo {
+  id: number;
+  fecha: string;
+  tipo: string;
+  monto: string;
+  motivo: string | null;
+  estado: string;
+  autorizado_por: string | null;
+  pagado_por: string | null;
+  metodo_pago: string | null;
 }
 
 // ─── Presets de período ───────────────────────────────────────────────────────
@@ -215,7 +229,7 @@ function DetalleModal({
   onRevisionChange: (id: number, estado: string, obs: string) => void;
 }) {
   const { toast } = useToast();
-  const [data, setData] = useState<{ novedades: DetalleNovedad[]; anticipos: DetalleAnticipo[] } | null>(null);
+  const [data, setData] = useState<{ novedades: DetalleNovedad[]; anticipos: DetalleAnticipo[]; incentivos: DetalleIncentivo[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [revEstado, setRevEstado] = useState(col.revision_estado);
   const [revObs, setRevObs] = useState(col.revision_observaciones ?? "");
@@ -293,6 +307,12 @@ function DetalleModal({
                 <p className="text-[10px] text-white/35">Horas extra</p>
               </div>
             </div>
+            {Number(col.incentivos_cash_count) > 0 && (
+              <div className="mt-2 bg-emerald-400/5 border border-emerald-400/20 rounded-lg px-3 py-2 flex items-center justify-between">
+                <span className="text-xs text-emerald-300">Incentivos cash del período</span>
+                <span className="text-sm font-bold text-emerald-400">{fmtQ(col.incentivos_cash_monto)} ({col.incentivos_cash_count})</span>
+              </div>
+            )}
             {col.anticipos_count > 0 && (
               <div className="mt-2 bg-amber-400/5 border border-amber-400/20 rounded-lg px-3 py-2 flex items-center justify-between">
                 <span className="text-xs text-amber-300">Anticipos del período</span>
@@ -343,6 +363,40 @@ function DetalleModal({
               </div>
             )}
           </div>
+
+          {/* Incentivos Cash */}
+          {!loading && (data?.incentivos?.length ?? 0) > 0 && (
+            <div className="p-5 border-b border-white/5">
+              <p className="text-[10px] text-white/30 uppercase tracking-widest mb-3">Incentivos Cash del período</p>
+              <div className="space-y-1.5">
+                {data!.incentivos.map((inc) => {
+                  const tipoLabel: Record<string, string> = {
+                    relevo_cash: "Relevo Cash",
+                    bono_cobertura: "Bono Cobertura",
+                    motivacion_cobertura: "Motivación",
+                  };
+                  const estadoColor: Record<string, string> = {
+                    pendiente: "text-amber-400 bg-amber-400/10 border-amber-400/20",
+                    pagado:    "text-green-400 bg-green-400/10 border-green-400/20",
+                    auditado:  "text-cyan-400 bg-cyan-400/10 border-cyan-400/20",
+                    cancelado: "text-white/30 bg-white/5 border-white/10",
+                  };
+                  return (
+                    <div key={inc.id} className="flex items-center justify-between px-3 py-2 bg-[#071a0d] border border-emerald-900/40 rounded-lg">
+                      <div>
+                        <p className="text-xs font-semibold text-emerald-300">{tipoLabel[inc.tipo] ?? inc.tipo} — {fmtQ(inc.monto)}</p>
+                        <p className="text-[10px] text-white/35">{fmtFecha(inc.fecha)}{inc.motivo ? ` · ${inc.motivo}` : ""}</p>
+                        {(inc.pagado_por || inc.metodo_pago) && (
+                          <p className="text-[10px] text-white/25">{inc.pagado_por}{inc.metodo_pago ? ` · ${inc.metodo_pago}` : ""}</p>
+                        )}
+                      </div>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${estadoColor[inc.estado] ?? "text-white/30 bg-white/5 border-white/10"}`}>{inc.estado}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Anticipos */}
           {!loading && (data?.anticipos.length ?? 0) > 0 && (
@@ -446,6 +500,7 @@ export default function PrePlanilla() {
   const [filtroRevision, setFiltroRevision] = useState("todos");
   const [soloConFaltas, setSoloConFaltas] = useState(false);
   const [soloConAnticipos, setSoloConAnticipos] = useState(false);
+  const [soloConIncentivos, setSoloConIncentivos] = useState(false);
   const [soloConHE, setSoloConHE] = useState(false);
 
   // Ordenamiento
@@ -545,6 +600,7 @@ export default function PrePlanilla() {
     if (filtroRevision !== "todos") data = data.filter((r) => r.revision_estado === filtroRevision);
     if (soloConFaltas) data = data.filter((r) => Number(r.faltas) > 0 || Number(r.suspensiones) > 0);
     if (soloConAnticipos) data = data.filter((r) => r.anticipos_count > 0);
+    if (soloConIncentivos) data = data.filter((r) => Number(r.incentivos_cash_count) > 0);
     if (soloConHE) data = data.filter((r) => parseFloat(r.horas_extra || "0") > 0);
 
     data.sort((a, b) => {
@@ -558,7 +614,7 @@ export default function PrePlanilla() {
 
     return data;
   }, [rows, busqueda, filtroCliente, filtroSede, filtroEstado, filtroRevision,
-      soloConFaltas, soloConAnticipos, soloConHE, sortField, sortAsc]);
+      soloConFaltas, soloConAnticipos, soloConIncentivos, soloConHE, sortField, sortAsc]);
 
   // Días totales del período seleccionado
   const periodoTotalDias = desde && hasta
@@ -571,6 +627,7 @@ export default function PrePlanilla() {
   const totalFaltas = filtrados.reduce((s, r) => s + Number(r.faltas) + Number(r.suspensiones), 0);
   const totalHE = filtrados.reduce((s, r) => s + parseFloat(r.horas_extra || "0"), 0);
   const totalAnt = filtrados.reduce((s, r) => s + Number(r.anticipos_monto), 0);
+  const totalIncentivos = filtrados.reduce((s, r) => s + Number(r.incentivos_cash_monto), 0);
   const conAlertas = filtrados.filter((r) => Number(r.faltas) > 0 || Number(r.suspensiones) > 0 || Number(r.dias_sin_horas) > 0).length;
 
   function toggleSort(field: keyof ColaboradorPre) {
@@ -697,12 +754,13 @@ export default function PrePlanilla() {
         {loaded && !loading && (
           <>
             {/* ── KPI Cards ────────────────────────────────────────────────────── */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
               {[
                 { icon: Users, label: "Colaboradores", val: totalColabs, cls: "text-white" },
                 { icon: CheckCircle2, label: "Días trabajados", val: totalDias, cls: "text-green-400" },
                 { icon: AlertTriangle, label: "Faltas / Susp.", val: totalFaltas, cls: totalFaltas > 0 ? "text-red-400" : "text-white/30" },
                 { icon: TrendingUp, label: "Horas extra", val: `${totalHE.toFixed(1)} h`, cls: totalHE > 0 ? "text-orange-400" : "text-white/30" },
+                { icon: Wallet, label: "Incentivos Cash", val: fmtQ(totalIncentivos), cls: totalIncentivos > 0 ? "text-emerald-400" : "text-white/30" },
                 { icon: Wallet, label: "Total anticipos", val: fmtQ(totalAnt), cls: totalAnt > 0 ? "text-amber-400" : "text-white/30" },
                 { icon: AlertCircle, label: "Con alertas", val: conAlertas, cls: conAlertas > 0 ? "text-rose-400" : "text-white/30" },
               ].map(({ icon: Icon, label, val, cls }) => (
@@ -764,6 +822,7 @@ export default function PrePlanilla() {
                   {[
                     { label: "Con faltas", val: soloConFaltas, set: setSoloConFaltas },
                     { label: "Con anticipos", val: soloConAnticipos, set: setSoloConAnticipos },
+                    { label: "Con incentivo", val: soloConIncentivos, set: setSoloConIncentivos },
                     { label: "Con HE", val: soloConHE, set: setSoloConHE },
                   ].map(({ label, val, set }) => (
                     <button
@@ -806,6 +865,7 @@ export default function PrePlanilla() {
                         {th("H. Esp.", "horas_esperadas_total")}
                         {th("Cumpl.", "horas_trabajadas")}
                         {th("H. Extra", "horas_extra")}
+                        {th("Incentivo Cash", "incentivos_cash_monto")}
                         {th("Anticipos", "anticipos_monto")}
                         {th("Revisión", "revision_estado")}
                         <th className="px-3 py-2" />
@@ -889,6 +949,17 @@ export default function PrePlanilla() {
                             {/* Horas extra */}
                             <td className="px-3 py-2.5 text-right">
                               <span className={heNum2 > 0 ? "text-orange-400 font-semibold" : "text-white/25"}>{heNum2.toFixed(1)} h</span>
+                            </td>
+                            {/* Incentivo Cash (efectivo, NO va a planilla) */}
+                            <td className="px-3 py-2.5 text-right">
+                              {Number(r.incentivos_cash_count) > 0 ? (
+                                <div title="Incentivo en efectivo — no entra a planilla">
+                                  <span className="text-emerald-400 font-semibold">{fmtQ(r.incentivos_cash_monto)}</span>
+                                  <span className="block text-[9px] text-emerald-600 leading-none mt-0.5">efectivo</span>
+                                </div>
+                              ) : (
+                                <span className="text-white/25">—</span>
+                              )}
                             </td>
                             {/* Anticipos */}
                             <td className="px-3 py-2.5 text-right">

@@ -107,6 +107,22 @@ const QUERY_CONSOLIDADO = `
     pr.revisado_por                                                             AS revision_por,
     pr.updated_at                                                               AS revision_at,
 
+    -- Incentivos cash del período (NO van a planilla — solo referencia)
+    COALESCE((
+      SELECT SUM(ic.monto)
+      FROM incentivos_cash_cobertura ic
+      WHERE ic.employee_id = e.id
+        AND ic.fecha BETWEEN $1 AND $2
+        AND ic.estado != 'cancelado'
+    ), 0)                                                                       AS incentivos_cash_monto,
+    COALESCE((
+      SELECT COUNT(ic.id)
+      FROM incentivos_cash_cobertura ic
+      WHERE ic.employee_id = e.id
+        AND ic.fecha BETWEEN $1 AND $2
+        AND ic.estado != 'cancelado'
+    ), 0)                                                                       AS incentivos_cash_count,
+
     -- Cliente principal (primera asignación activa)
     (
       SELECT c.nombre
@@ -162,7 +178,7 @@ prePlanillaRouter.get("/nomina/pre-planilla/detalle/:employeeId", async (req, re
   }
 
   try {
-    const [{ rows: novedades }, { rows: anticipos }, { rows: emps }] = await Promise.all([
+    const [{ rows: novedades }, { rows: anticipos }, { rows: emps }, { rows: incentivos }] = await Promise.all([
       pool.query(`
         SELECT
           n.*,
@@ -190,12 +206,23 @@ prePlanillaRouter.get("/nomina/pre-planilla/detalle/:employeeId", async (req, re
                supervisor_nombre, fecha_ingreso
         FROM employees WHERE id = $1
       `, [employeeId]),
+
+      pool.query(`
+        SELECT ic.*, po.nombre AS puesto_nombre_join
+        FROM incentivos_cash_cobertura ic
+        LEFT JOIN puestos_operativos po ON po.id = ic.puesto_id
+        WHERE ic.employee_id = $1
+          AND ic.fecha BETWEEN $2 AND $3
+          AND ic.estado != 'cancelado'
+        ORDER BY ic.fecha ASC
+      `, [employeeId, desde, hasta]),
     ]);
 
     res.json({
       empleado: emps[0] ?? null,
       novedades,
       anticipos,
+      incentivos,
     });
   } catch (err) {
     logger.error({ err }, "GET /nomina/pre-planilla/detalle error");

@@ -1,0 +1,178 @@
+El sistema ya tiene:
+	•	pizarrón operativo
+	•	cobertura por segmentos
+	•	pre-planilla
+	•	horas trabajadas
+	•	horas extra en construcción
+	•	RRHH
+	•	clientes
+	•	servicios especiales
+
+No quiero romper nada de lo existente.
+
+Quiero ajustar la lógica de pagos operativos porque en la operación real existen dos casos distintos que hoy no deben mezclarse:
+
+Caso 1
+
+Relevo incentivado pagado en efectivo
+Muchas veces nadie quiere cubrir un puesto y operaciones motiva al agente pagándole cash en el momento.
+
+Caso 2
+
+Horas extra reales
+Suceden cuando el servicio se extiende (por ejemplo el cliente cierra tarde), esas horas se cobran al cliente y se pagan por planilla.
+
+Objetivo
+
+Separar correctamente estos dos conceptos en el sistema para que:
+	•	no se dupliquen pagos
+	•	no se contamine la planilla
+	•	se pueda controlar el costo real
+	•	se pueda saber qué se paga en efectivo y qué se paga por planilla
+
+⸻
+
+1. Crear concepto de incentivo cash / relevo incentivado
+
+Agregar una estructura nueva para registrar pagos operativos en efectivo, por ejemplo:
+	•	incentivo_cobertura_cash
+o nombre similar
+
+Campos sugeridos:
+	•	id
+	•	employeeId
+	•	fecha
+	•	clienteId
+	•	sedeId
+	•	puestoId
+	•	segmentoId nullable
+	•	tipo (relevo_cash, bono_cobertura, motivacion_cobertura)
+	•	monto
+	•	motivo
+	•	autorizadoPor
+	•	pagadoPor
+	•	metodo_pago = efectivo
+	•	estado (pendiente, pagado, auditado)
+	•	observaciones
+	•	createdAt
+
+⸻
+
+2. Registro desde el pizarrón operativo
+
+Cuando operaciones asigna a alguien a cubrir un puesto o relevo, quiero que exista una opción simple para marcar si esa cobertura llevará incentivo.
+
+Ejemplo:
+	•	¿Esta cobertura lleva incentivo?
+	•	no
+	•	sí, pago en efectivo
+
+Si se elige sí:
+	•	pedir monto
+	•	motivo
+	•	quién autoriza
+
+No hacerlo obligatorio en todos los casos.
+Solo cuando aplique.
+
+⸻
+
+3. Horas extra reales
+
+No quiero usar una regla fija como “más de 10 horas”.
+
+Quiero que las horas extra se calculen comparando:
+	•	horas esperadas del puesto
+vs
+	•	horas reales trabajadas
+
+Si hay exceso:
+	•	marcar horas extra
+	•	dejar base para pre-planilla / planilla
+	•	dejar base para cobro al cliente si corresponde
+
+⸻
+
+4. Separación clara entre conceptos
+
+Quiero que el sistema distinga claramente:
+
+A. Horas normales
+
+B. Horas extra pagables por planilla
+
+C. Incentivos cash por cobertura
+
+No mezclar los tres.
+
+Muy importante:
+un incentivo cash no debe entrar automáticamente a planilla como si fueran horas extra.
+
+⸻
+
+5. Integración con pre-planilla
+
+En pre-planilla:
+	•	seguir mostrando horas extra reales de planilla
+	•	NO mezclar incentivos cash dentro del total normal de horas extra
+	•	si conviene, mostrar un campo separado informativo:
+	•	incentivo cash del período
+
+Pero dejar claro que ese concepto no forma parte del pago estándar por planilla.
+
+⸻
+
+6. Integración con costos / cliente
+
+Aunque el incentivo cash no vaya por planilla, quiero que sí quede listo para:
+	•	costo del servicio
+	•	reportería por cliente
+	•	servicios difíciles de cubrir
+	•	análisis de rentabilidad futura
+
+⸻
+
+7. Casos que debe soportar
+
+Caso A
+
+El agente cubre un puesto porque nadie más quiso → se paga incentivo cash
+
+Caso B
+
+El agente trabajó más horas porque el cliente cerró tarde → se paga por planilla como hora extra
+
+Caso C
+
+Puede existir ambos al mismo tiempo:
+	•	incentivo cash por aceptar cubrir
+	•	y además horas extra reales por exceso de jornada
+
+El sistema debe soportar ambos, pero separados.
+
+⸻
+
+8. No romper
+
+No romper:
+	•	pizarrón operativo
+	•	segmentos
+	•	pre-planilla
+	•	RRHH
+	•	clientes
+	•	reportería
+	•	servicios especiales
+	•	historial del colaborador
+
+⸻
+
+9. Documentación
+
+Explica claramente:
+	•	diferencia entre incentivo cash y hora extra
+	•	cómo se registra cada uno
+	•	cómo impacta o no en pre-planilla
+	•	cómo queda listo para costos futuros
+
+Muy importante:
+quiero que el sistema refleje la realidad operativa donde a veces se paga un incentivo en efectivo para cubrir un servicio, pero eso no debe confundirse con las horas extra que sí van por planilla y sí se cobran al cliente.
