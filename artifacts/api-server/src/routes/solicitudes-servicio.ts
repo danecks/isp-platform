@@ -642,6 +642,8 @@ solicitudesServicioRouter.patch("/solicitudes-servicio/:id/asignar-agente", asyn
            VALUES ($1, $2, $3, TRUE, $4, $5, $6, 1, 'ssa_pizarron')
            ON CONFLICT (fecha, employee_id) DO UPDATE SET
              trabajo_dia           = TRUE,
+             falta                 = FALSE,
+             descuento_dia         = FALSE,
              horas_trabajadas      = GREATEST(novedades_nomina_diarias.horas_trabajadas, $4),
              horas_extra           = GREATEST(novedades_nomina_diarias.horas_extra, $5),
              num_puestos_cubiertos = novedades_nomina_diarias.num_puestos_cubiertos + 1,

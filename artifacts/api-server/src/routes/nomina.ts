@@ -34,6 +34,38 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
   let count = 0;
 
   try {
+    // ── Paso 0: Limpiar faltas de agentes activamente asignados ─────────────
+    // Si un agente está actualmente en un puesto activo O en un SSA con tarjeta_activa,
+    // no puede tener falta=true aunque no tenga segmento para esta fecha.
+    // Esto corrige registros stale de cierres anteriores.
+    try {
+      await pool.query(`
+        UPDATE novedades_nomina_diarias n
+        SET falta         = FALSE,
+            descuento_dia = FALSE,
+            updated_at    = NOW()
+        WHERE n.fecha = $1
+          AND n.falta = TRUE
+          AND n.fuente != 'correccion_manual'
+          AND (
+            EXISTS (
+              SELECT 1 FROM puestos_operativos po
+              WHERE po.agente_id = n.employee_id
+                AND po.activo = TRUE
+            )
+            OR
+            EXISTS (
+              SELECT 1 FROM solicitudes_servicio_adicional ssa
+              WHERE ssa.agente_id = n.employee_id
+                AND ssa.estado_general NOT IN ('cancelada', 'cerrada')
+                AND ssa.tarjeta_activa = TRUE
+            )
+          )
+      `, [fecha]);
+    } catch (paso0Err) {
+      logger.warn({ paso0Err, fecha }, "Paso 0 limpiar faltas activos: falló (no bloqueante)");
+    }
+
     // 1. Empleados que cubrieron en segmentos
     const { rows: segmentos } = await pool.query(`
       SELECT
@@ -138,6 +170,8 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
 
     // Fix P-NOM-04: Titulares con puesto activo pero SIN ningún segmento ese día
     // (complementa la detección de ausencia_sin_cubrir en cobertura_diaria)
+    // GUARD: no marcar falta si el titular tiene asignación activa en puesto o SSA
+    // (evita faltas prematuras cuando la auto-auditoría corre antes de que se registren segmentos)
     const { rows: titularesSinPresencia } = await pool.query(`
       SELECT po.titular_employee_id AS employee_id,
              e.nombre_completo      AS empleado_nombre,
@@ -147,10 +181,24 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
       JOIN employees e ON e.id = po.titular_employee_id
       WHERE po.activo = TRUE
         AND po.titular_employee_id IS NOT NULL
+        -- Sin segmento registrado para ese día
         AND NOT EXISTS (
           SELECT 1 FROM cobertura_segmentos cs
           WHERE cs.fecha = $1
             AND cs.employee_id = po.titular_employee_id
+        )
+        -- GUARD: no marcar si el agente está activamente cubriendo algún puesto ahora
+        AND NOT EXISTS (
+          SELECT 1 FROM puestos_operativos po2
+          WHERE po2.agente_id = po.titular_employee_id
+            AND po2.activo = TRUE
+        )
+        -- GUARD: no marcar si el agente está en un SSA activo con tarjeta activa
+        AND NOT EXISTS (
+          SELECT 1 FROM solicitudes_servicio_adicional ssa
+          WHERE ssa.agente_id = po.titular_employee_id
+            AND ssa.estado_general NOT IN ('cancelada', 'cerrada')
+            AND ssa.tarjeta_activa = TRUE
         )
     `, [fecha]);
 
@@ -295,6 +343,36 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
     } catch (turnoErr) {
       // No bloquear si falla el enriquecimiento de turno
       logger.warn({ turnoErr, fecha }, "Turno enrichment falló (no bloqueante)");
+    }
+
+    // ── Paso 6: Regla de consistencia lógica obligatoria ────────────────────
+    // Si trabajo_dia=TRUE → falta debe ser FALSE (no puede trabajar y estar ausente)
+    // Si horas_trabajadas>0 → falta=FALSE, descuento_dia=FALSE
+    // Esto corrige cualquier inconsistencia que pudiera quedar de pasos anteriores.
+    try {
+      await pool.query(`
+        UPDATE novedades_nomina_diarias
+        SET falta        = FALSE,
+            descuento_dia = FALSE,
+            updated_at    = NOW()
+        WHERE fecha = $1
+          AND trabajo_dia = TRUE
+          AND falta = TRUE
+      `, [fecha]);
+
+      await pool.query(`
+        UPDATE novedades_nomina_diarias
+        SET trabajo_dia       = FALSE,
+            horas_trabajadas  = 0,
+            horas_extra       = 0,
+            updated_at        = NOW()
+        WHERE fecha = $1
+          AND falta = TRUE
+          AND horas_trabajadas > 0
+          AND fuente != 'correccion_manual'
+      `, [fecha]);
+    } catch (consistErr) {
+      logger.warn({ consistErr, fecha }, "Paso 6 consistencia lógica: falló (no bloqueante)");
     }
 
     logger.info({ fecha, count }, "Novedades de nómina generadas");

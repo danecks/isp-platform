@@ -10,7 +10,7 @@ import { logger } from "../lib/logger";
 const employeesRouter = Router();
 
 // GET /api/employees — list all employees with optional filters
-// M-01: Todos los filtros se aplican en SQL, no en memoria
+// M-01: SQL directo para incluir elegible_pool (campo fuera del schema Drizzle)
 employeesRouter.get("/employees", async (req, res) => {
   try {
     const {
@@ -18,34 +18,32 @@ employeesRouter.get("/employees", async (req, res) => {
       clienteId, supervisorId, q,
     } = req.query as Record<string, string>;
 
-    // Construir condiciones de filtro directamente en SQL
-    const conditions = [];
-    if (syncStatus)    conditions.push(eq(employeesTable.syncStatus, syncStatus));
-    if (estadoLaboral) conditions.push(eq(employeesTable.estadoLaboral, estadoLaboral));
-    if (area)          conditions.push(eq(employeesTable.area, area));
-    if (sourceSystem)  conditions.push(eq(employeesTable.sourceSystem, sourceSystem));
-    if (clienteId)     conditions.push(eq(employeesTable.clienteId, parseInt(clienteId)));
-    if (supervisorId)  conditions.push(eq(employeesTable.supervisorId, parseInt(supervisorId)));
+    const clauses: string[] = [];
+    const params: unknown[]  = [];
+
+    if (syncStatus)    { params.push(syncStatus);           clauses.push(`e.sync_status = $${params.length}`); }
+    if (estadoLaboral) { params.push(estadoLaboral);        clauses.push(`e.estado_laboral = $${params.length}`); }
+    if (area)          { params.push(area);                 clauses.push(`e.area = $${params.length}`); }
+    if (sourceSystem)  { params.push(sourceSystem);         clauses.push(`e.source_system = $${params.length}`); }
+    if (clienteId)     { params.push(parseInt(clienteId));  clauses.push(`e.cliente_id = $${params.length}`); }
+    if (supervisorId)  { params.push(parseInt(supervisorId)); clauses.push(`e.supervisor_id = $${params.length}`); }
     if (q) {
-      // Búsqueda de texto en múltiples columnas a nivel de DB
-      conditions.push(
-        or(
-          ilike(employeesTable.nombreCompleto, `%${q}%`),
-          ilike(employeesTable.dpi,            `%${q}%`),
-          ilike(employeesTable.telefono,        `%${q}%`),
-          ilike(employeesTable.puesto,          `%${q}%`),
-          ilike(employeesTable.area,            `%${q}%`),
-        )
-      );
+      params.push(`%${q}%`);
+      const i = params.length;
+      clauses.push(`(e.nombre_completo ILIKE $${i} OR e.dpi ILIKE $${i} OR e.telefono ILIKE $${i} OR e.puesto ILIKE $${i} OR e.area ILIKE $${i})`);
     }
 
-    const filtered = await db
-      .select()
-      .from(employeesTable)
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(asc(employeesTable.nombreCompleto));
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
 
-    res.json(filtered);
+    const { rows } = await pool.query(`
+      SELECT e.*,
+             COALESCE(e.elegible_pool, TRUE) AS elegible_pool
+      FROM employees e
+      ${where}
+      ORDER BY e.nombre_completo
+    `, params);
+
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ error: "Error al obtener empleados" });
   }

@@ -356,11 +356,13 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
               puesto_cubierto_id, puesto_cubierto_nombre, num_puestos_cubiertos, fuente)
            VALUES ($1, $2, $3, TRUE, $4, $5, $6, $7, 1, 'asignacion_pizarron')
            ON CONFLICT (fecha, employee_id) DO UPDATE SET
-             trabajo_dia          = TRUE,
-             horas_trabajadas     = GREATEST(novedades_nomina_diarias.horas_trabajadas, $4),
-             horas_extra          = GREATEST(novedades_nomina_diarias.horas_extra, $5),
+             trabajo_dia           = TRUE,
+             falta                 = FALSE,
+             descuento_dia         = FALSE,
+             horas_trabajadas      = GREATEST(novedades_nomina_diarias.horas_trabajadas, $4),
+             horas_extra           = GREATEST(novedades_nomina_diarias.horas_extra, $5),
              num_puestos_cubiertos = novedades_nomina_diarias.num_puestos_cubiertos + 1,
-             updated_at           = NOW()`,
+             updated_at            = NOW()`,
           [hoy, agenteId, agente.nombre_completo, horasCalcFinal, horasExtraCalc, puestoId, puesto.nombre]
         );
       } catch (nomErr) {
@@ -560,6 +562,26 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
          entrante.nombre_completo, tipoSeg, horaInicio, horaFin, horasCalc]
       );
       logger.info({ puestoId, agenteEntranteId, tipoSeg, hoy }, "A-04: segmento auto-creado en sustitución");
+
+      // Registrar novedad de nómina para el agente entrante (limpia cualquier falta previa)
+      try {
+        await pool.query(
+          `INSERT INTO novedades_nomina_diarias
+             (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
+              puesto_cubierto_id, puesto_cubierto_nombre, num_puestos_cubiertos, fuente)
+           VALUES ($1, $2, $3, TRUE, $4, 0, $5, $6, 1, 'sustitucion_pizarron')
+           ON CONFLICT (fecha, employee_id) DO UPDATE SET
+             trabajo_dia           = TRUE,
+             falta                 = FALSE,
+             descuento_dia         = FALSE,
+             horas_trabajadas      = GREATEST(novedades_nomina_diarias.horas_trabajadas, $4),
+             num_puestos_cubiertos = novedades_nomina_diarias.num_puestos_cubiertos + 1,
+             updated_at            = NOW()`,
+          [hoy, agenteEntranteId, entrante.nombre_completo, horasCalc, puestoId, puesto.nombre]
+        );
+      } catch (nomEntranteErr) {
+        logger.warn({ nomEntranteErr }, "A-04: no se pudo actualizar novedad nómina del entrante (no bloqueante)");
+      }
     } catch (segErr) {
       logger.warn({ segErr }, "A-04: no se pudo auto-crear segmento al sustituir (no bloqueante)");
     }
