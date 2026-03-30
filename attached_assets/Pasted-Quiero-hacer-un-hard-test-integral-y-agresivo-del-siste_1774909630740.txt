@@ -1,0 +1,221 @@
+Quiero hacer un hard test integral y agresivo del sistema, no una prueba superficial.
+
+## Objetivo
+Probar el sistema con múltiples escenarios reales y difíciles del rubro de seguridad privada, incluyendo casos extremos, errores humanos, urgencias, enfermedades, cambios de último momento y cruces entre áreas.
+
+No quiero solo validar el escenario ideal.
+Quiero saber cómo responde el sistema cuando pasan cosas difíciles, que en la operación real sí ocurren.
+
+Muy importante:
+además de detectar errores, quiero que en cada caso evalúes qué debería hacer el sistema y me digas si lo hizo bien o no.
+
+---
+
+## 1. Tipo de prueba
+Quiero una prueba:
+- end-to-end
+- de múltiples días
+- con varios escenarios
+- cruzando Comercial, Clientes, Operaciones, RRHH, Pizarrón Operativo, Servicios Especiales, Cambios Estructurales y Pre-planilla
+
+Usa una base limpia de prueba o un sandbox seguro.
+No mezclar con datos importantes existentes.
+
+---
+
+## 2. Caso base
+Usar un caso principal realista como:
+Cervecería Centro Americana
+pero no limitarse a un solo flujo simple.
+
+Crear:
+- cliente
+- contrato
+- sedes
+- puestos
+- zonas
+- supervisor
+- titulares base
+- agentes disponibles
+- agentes sin asignación
+- personal RRHH / operaciones / comercial
+
+---
+
+## 3. Escenarios obligatorios a probar
+
+### A. Flujo normal
+- lead → cliente → servicio contratado
+- puestos aparecen en pizarrón
+- se asignan titulares
+- cierre diario correcto
+- pre-planilla refleja datos básicos
+
+### B. Enfermedad / sick note
+- un agente titular se enferma
+- el puesto queda descubierto
+- operaciones cubre con otro
+- validar qué hace el sistema
+- validar RRHH
+- validar pre-planilla
+
+### C. Falta injustificada
+- el agente no llega
+- se asigna relevo
+- se genera evento RRHH
+- no se paga al ausente
+- sí se paga al que cubrió
+
+### D. Relevo parcial
+- un agente cubre parte del turno
+- otro cubre el resto
+- validar segmentos, horas y novedades
+
+### E. Cambio a titular
+- un agente del pool entra como nuevo titular
+- validar historial de titularidad
+- validar ficha del colaborador
+- validar ficha del cliente
+- validar que no queden dos titulares
+
+### F. Agente declina
+- asignas a un agente
+- luego dice que no puede
+- removerlo
+- devolverlo al pool
+- reasignar a otro
+- validar que no quede “perdido”
+
+### G. Servicio especial solicitado por cliente
+- cliente pide cobertura extraordinaria
+- se crea pipeline
+- comercial / RRHH / operaciones reciben tareas
+- aparece tarjeta especial en pizarrón
+- operaciones lo cubre
+- comercial factura
+- validar estado general, tareas y resumen final
+
+### H. Horas extra reales
+- un puesto de 12 horas se cubre más tiempo
+- validar que el sistema compare contra horas esperadas del puesto, no una regla fija genérica
+
+### I. Servicio 24 horas
+- validar que el sistema no lo trate como “un agente 24h”
+- validar necesidad de múltiples agentes o cobertura continua
+- revisar si responde correctamente
+
+### J. Cambio estructural con validación cruzada
+- RRHH mueve o cambia estado laboral de un colaborador
+- operaciones valida o rechaza
+- admin decide si hay conflicto
+- validar que la aplicación final actualice todo lo relacionado
+
+### K. Cierre diario con inconsistencias
+- intentar cerrar con puesto descubierto
+- con relevo incompleto
+- con faltas
+- con servicios especiales abiertos
+- validar advertencias y resultado
+
+### L. Reapertura y corrección
+- reabrir día
+- corregir cobertura
+- volver a cerrar
+- validar auditoría
+
+---
+
+## 4. Casos especialmente difíciles
+Además de los anteriores, quiero que inventes y pruebes varios casos duros que sí pueden pasar en este rubro, por ejemplo:
+- doble conflicto de asignación
+- un supervisor en el pool por error
+- un agente asignado a SSA y a puesto al mismo tiempo
+- cambio de titular con fecha futura
+- cliente con varios puestos en distintas sedes y una sola zona
+- servicio especial aprobado comercialmente pero aún no cubierto
+- evento RRHH que no coincide con operación
+- operador comete error y necesita revertirlo
+- cliente solicita ampliación urgente del servicio
+
+Quiero que el sistema sea llevado a situaciones complejas y reales, no solo al happy path.
+
+---
+
+## 5. Qué debes evaluar en cada escenario
+Para cada caso, quiero que revises:
+
+### Operación
+- pizarrón
+- pool
+- cobertura
+- segmentos
+- estados
+
+### Cliente
+- ficha del cliente
+- agentes asignados
+- puestos
+- cobertura visible
+
+### Colaborador
+- ficha
+- asignación base
+- historial
+- estado operativo
+
+### RRHH
+- eventos
+- alertas
+- seguimiento
+
+### Comercial / Facturación
+- pipeline
+- tareas
+- estado de cobro / facturación
+
+### Pre-planilla
+- días
+- faltas
+- suspensiones
+- horas
+- horas extra
+- relevos
+- coherencia del período
+
+---
+
+## 6. Comportamiento esperado
+No quiero solo que me digas si pasó o falló.
+
+Quiero que por cada escenario me digas:
+- qué hizo el sistema
+- qué debería haber hecho
+- si fue correcto o incorrecto
+- si hay inconsistencia
+- si el hallazgo es crítico, alto, medio o bajo
+
+---
+
+## 7. Resultado final esperado
+Al final quiero un reporte estructurado con:
+
+### A. Escenarios probados
+### B. Qué funcionó bien
+### C. Qué falló
+### D. Qué debería hacer el sistema en esos casos
+### E. Módulos que no están bien amarrados
+### F. Hallazgos críticos antes de operación real
+### G. Orden recomendado de corrección
+
+---
+
+## 8. Muy importante
+Esta prueba debe tratar al sistema como si fuera a entrar a operación real de una empresa de seguridad privada.
+
+Quiero un hard test serio, amplio y realista, no una prueba superficial.
+Quiero saber si el sistema aguanta:
+- caos operativo
+- cambios de último momento
+- errores humanos
+- cruces entre áreas
+- y efectos reales en pre-planilla.
