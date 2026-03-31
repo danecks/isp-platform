@@ -20,7 +20,7 @@ import {
   Users, Loader2, RefreshCw, Plus, X, AlertTriangle,
   CheckCircle2, Clock, User, Phone, MapPin, ArrowLeftRight,
   History, Trash2, Shield, Activity, Zap, ChevronDown,
-  ChevronRight, Info, Building2, Circle, GripVertical,
+  ChevronRight, ChevronLeft, Info, Building2, Circle, GripVertical,
   UserMinus, UserPlus, XCircle, RotateCcw, FileText,
   Lock, Unlock, Calendar, AlertCircle, CheckSquare,
   Layers, Timer, Moon,
@@ -91,6 +91,24 @@ interface Pool {
   suspendidos: Agente[];
   faltando: Agente[];
   total: number;
+}
+
+interface PlanFuturo {
+  id: number;
+  fecha: string;
+  puesto_id: number;
+  puesto_nombre: string;
+  cliente_nombre: string;
+  tipo_evento: string;
+  tipo_ausencia: string | null;
+  titular_ausente_id: number | null;
+  titular_ausente_nombre: string | null;
+  relevo_id: number | null;
+  relevo_nombre: string | null;
+  motivo: string | null;
+  notas: string | null;
+  estado: string;
+  fuente: string;
 }
 
 interface Movimiento {
@@ -913,6 +931,422 @@ function ModalSegmentos({
   );
 }
 
+// ─── Planificación Futura: catálogo de tipos de ausencia ──────────────────────
+
+const TIPOS_AUSENCIA_FUTURO = [
+  { value: "permiso_con_goce",  label: "Permiso con goce" },
+  { value: "permiso_sin_goce",  label: "Permiso sin goce" },
+  { value: "vacaciones",        label: "Vacaciones" },
+  { value: "incapacidad",       label: "Incapacidad" },
+  { value: "suspension",        label: "Suspensión programada" },
+  { value: "otro",              label: "Otro" },
+];
+
+// ─── Modal: Planificación Futura ──────────────────────────────────────────────
+
+function ModalPlanFuturo({
+  puesto,
+  fecha,
+  planExistente,
+  onClose,
+  onGuardar,
+  onEliminar,
+}: {
+  puesto: Puesto;
+  fecha: string;
+  planExistente: PlanFuturo | null;
+  onClose: () => void;
+  onGuardar: (data: {
+    tipoAusencia: string;
+    titularAusenteId: number | null;
+    relevId: number | null;
+    motivo: string;
+    notas: string;
+  }) => Promise<void>;
+  onEliminar?: () => void;
+}) {
+  const { toast } = useToast();
+  const [tipoAusencia, setTipoAusencia] = useState(planExistente?.tipo_ausencia ?? "permiso_con_goce");
+  const [motivo, setMotivo]             = useState(planExistente?.motivo ?? "");
+  const [notas, setNotas]               = useState(planExistente?.notas ?? "");
+  const [guardando, setGuardando]       = useState(false);
+  const [busqueda, setBusqueda]         = useState("");
+  const [relevoSel, setRelevoSel]       = useState<EmpleadoBusqueda | null>(
+    planExistente?.relevo_id
+      ? { id: planExistente.relevo_id, nombreCompleto: planExistente.relevo_nombre ?? "", puesto: null, area: null }
+      : null
+  );
+
+  const { data: empleadosBusqueda = [] } = useQuery<EmpleadoBusqueda[]>({
+    queryKey: ["emp-busqueda-futuro", busqueda],
+    queryFn: () =>
+      fetch(`${API_BASE}/employees?q=${encodeURIComponent(busqueda)}&limit=20`)
+        .then((r) => r.json())
+        .then((d: any) => {
+          const arr = Array.isArray(d) ? d : (d.employees ?? []);
+          return arr.filter((e: any) => (e.estadoLaboral ?? e.estado_laboral) === "activo");
+        }),
+    enabled: busqueda.length >= 2 && !relevoSel,
+    staleTime: 30_000,
+  });
+
+  const [y, m, d] = fecha.split("-");
+  const fechaDisplay = `${d}-${m}-${y}`;
+
+  async function handleGuardar() {
+    setGuardando(true);
+    try {
+      await onGuardar({
+        tipoAusencia,
+        titularAusenteId: puesto.titular_employee_id,
+        relevId: relevoSel?.id ?? null,
+        motivo,
+        notas,
+      });
+    } catch {
+      toast({ title: "Error al guardar el plan", variant: "destructive" });
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div className="w-full max-w-md bg-[#060e1c] border border-indigo-500/20 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+        {/* Header */}
+        <div className="flex items-start justify-between px-5 py-4 border-b border-white/8 shrink-0">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="text-[10px] text-indigo-300/70 font-semibold uppercase tracking-widest">
+                {planExistente ? "Editar plan" : "Planificar"} · {fechaDisplay}
+              </span>
+            </div>
+            <h2 className="text-sm font-bold text-white truncate">{puesto.nombre}</h2>
+            <p className="text-[11px] text-white/35">{puesto.cliente_nombre}</p>
+          </div>
+          <button onClick={onClose} className="text-white/30 hover:text-white transition-colors mt-1">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {/* Tipo de ausencia */}
+          <div>
+            <label className="text-[10px] font-semibold text-white/40 uppercase tracking-widest block mb-1.5">
+              Tipo de ausencia
+            </label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {TIPOS_AUSENCIA_FUTURO.map(({ value, label }) => (
+                <button
+                  key={value}
+                  onClick={() => setTipoAusencia(value)}
+                  className={`px-3 py-2 rounded-xl border text-[11px] font-medium text-left transition-all ${
+                    tipoAusencia === value
+                      ? "bg-indigo-600/25 border-indigo-500/50 text-indigo-200"
+                      : "bg-white/4 border-white/8 text-white/50 hover:border-white/20"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Titular */}
+          <div className="flex items-center gap-2.5 bg-white/4 border border-white/8 rounded-xl px-3 py-2.5">
+            <User className="w-3.5 h-3.5 text-white/25 shrink-0" />
+            <div>
+              <p className="text-[10px] text-white/30 font-semibold">Titular del puesto</p>
+              <p className="text-xs text-white/70">{puesto.titular_nombre ?? "Sin titular definido"}</p>
+            </div>
+          </div>
+
+          {/* Relevo programado */}
+          <div>
+            <label className="text-[10px] font-semibold text-white/40 uppercase tracking-widest block mb-1.5">
+              Relevo programado <span className="text-white/20 normal-case font-normal">(opcional)</span>
+            </label>
+            {relevoSel ? (
+              <div className="flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/25 rounded-xl px-3 py-2.5">
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarColor(relevoSel.nombreCompleto)}`}>
+                  {iniciales(relevoSel.nombreCompleto)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-indigo-200 truncate">{relevoSel.nombreCompleto}</p>
+                  <p className="text-[10px] text-indigo-300/50">{relevoSel.puesto ?? "Agente"}</p>
+                </div>
+                <button onClick={() => { setRelevoSel(null); setBusqueda(""); }} className="text-white/25 hover:text-red-400 transition-colors">
+                  <XCircle className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Buscar relevo (mín. 2 letras)…"
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  className="w-full bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-white/20 outline-none focus:border-indigo-400/40"
+                />
+                {busqueda.length >= 2 && empleadosBusqueda.length > 0 && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#07111f] border border-white/10 rounded-xl shadow-2xl overflow-hidden max-h-44 overflow-y-auto">
+                    {empleadosBusqueda.map((e) => (
+                      <button
+                        key={e.id}
+                        onClick={() => { setRelevoSel(e); setBusqueda(""); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/4 transition-colors"
+                      >
+                        <div className={`w-6 h-6 rounded flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(e.nombreCompleto)}`}>
+                          {iniciales(e.nombreCompleto)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs text-white/80 truncate">{e.nombreCompleto}</p>
+                          <p className="text-[10px] text-white/30">{e.puesto ?? e.area ?? "Agente"}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Motivo */}
+          <div>
+            <label className="text-[10px] font-semibold text-white/40 uppercase tracking-widest block mb-1.5">
+              Motivo <span className="text-white/20 normal-case font-normal">(opcional)</span>
+            </label>
+            <input
+              type="text"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              placeholder="Ej. permiso autorizado por RRHH"
+              className="w-full bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-white/20 outline-none focus:border-indigo-400/40"
+            />
+          </div>
+
+          {/* Notas */}
+          <div>
+            <label className="text-[10px] font-semibold text-white/40 uppercase tracking-widest block mb-1.5">
+              Notas internas <span className="text-white/20 normal-case font-normal">(opcional)</span>
+            </label>
+            <textarea
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+              rows={2}
+              placeholder="Información adicional para el equipo de operaciones…"
+              className="w-full bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-white/20 outline-none focus:border-indigo-400/40 resize-none"
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-2 px-5 py-4 border-t border-white/8 shrink-0">
+          <div>
+            {planExistente && (
+              <button
+                onClick={() => onEliminar?.()}
+                className="flex items-center gap-1.5 text-xs text-red-400/70 hover:text-red-400 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Cancelar plan
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-xs text-white/50 hover:text-white border border-white/8 rounded-xl transition-colors"
+            >
+              Cerrar
+            </button>
+            <button
+              onClick={handleGuardar}
+              disabled={guardando}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-xl transition-colors"
+            >
+              {guardando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Calendar className="w-3.5 h-3.5" />}
+              {planExistente ? "Actualizar" : "Programar"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── Tarjeta de Puesto Futuro ──────────────────────────────────────────────────
+
+const LABELS_AUSENCIA_FUTURO: Record<string, string> = {
+  permiso_con_goce: "Permiso c/goce",
+  permiso_sin_goce: "Permiso s/goce",
+  vacaciones:       "Vacaciones",
+  incapacidad:      "Incapacidad",
+  suspension:       "Suspensión",
+  otro:             "Ausencia",
+};
+
+function TarjetaPuestoFuturo({
+  puesto,
+  plan,
+  onClick,
+}: {
+  puesto: Puesto;
+  plan: PlanFuturo | null;
+  onClick: () => void;
+}) {
+  const tieneRelevo = !!(plan?.relevo_id);
+
+  return (
+    <div
+      onClick={onClick}
+      className={`
+        relative rounded-xl border p-3 transition-all cursor-pointer
+        ${plan
+          ? tieneRelevo
+            ? "bg-[#080f1c] border-indigo-500/30 hover:border-indigo-400/50"
+            : "bg-[#120d08] border-amber-500/30 hover:border-amber-400/50"
+          : "bg-[#07111f] border-white/6 hover:border-indigo-500/20"
+        }
+      `}
+    >
+      {/* Header */}
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-white/80 truncate">{puesto.nombre}</p>
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+            <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold ${TURNO_COLORS[puesto.turno] ?? "text-white/30 bg-white/5 border-white/10"}`}>
+              {puesto.turno}
+            </span>
+            {plan && (
+              <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold ${
+                tieneRelevo
+                  ? "text-indigo-300/90 bg-indigo-500/10 border-indigo-500/25"
+                  : "text-amber-300/90 bg-amber-500/10 border-amber-500/25"
+              }`}>
+                {tieneRelevo ? "CUBIERTO" : "SIN RELEVO"}
+              </span>
+            )}
+            {!plan && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded border font-semibold text-white/20 bg-white/3 border-white/8">
+                Sin cambios
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="shrink-0 mt-0.5">
+          <Calendar className={`w-3.5 h-3.5 ${plan ? (tieneRelevo ? "text-indigo-400" : "text-amber-400") : "text-white/10"}`} />
+        </div>
+      </div>
+
+      {plan ? (
+        <div className="space-y-1.5">
+          {/* Tipo de ausencia */}
+          <div className="flex items-center gap-1.5 px-1.5 py-1 bg-amber-500/6 rounded-lg border border-amber-500/15">
+            <AlertCircle className="w-2.5 h-2.5 text-amber-400/60 shrink-0" />
+            <p className="text-[9px] text-amber-300/60 truncate">
+              <span className="text-amber-300/80 font-semibold">
+                {LABELS_AUSENCIA_FUTURO[plan.tipo_ausencia ?? ""] ?? "Ausencia"}:
+              </span>{" "}
+              {plan.titular_ausente_nombre ?? puesto.titular_nombre ?? "Titular"}
+            </p>
+          </div>
+
+          {/* Relevo */}
+          {plan.relevo_nombre ? (
+            <div className="flex items-center gap-2">
+              <div className={`w-6 h-6 rounded flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(plan.relevo_nombre)}`}>
+                {iniciales(plan.relevo_nombre)}
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] text-indigo-200/80 font-medium truncate">{plan.relevo_nombre}</p>
+                <p className="text-[9px] text-indigo-300/40">Relevo programado</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-amber-400/50">
+              <UserPlus className="w-3.5 h-3.5 shrink-0" />
+              <p className="text-[10px]">Toca para asignar relevo →</p>
+            </div>
+          )}
+
+          {plan.motivo && (
+            <p className="text-[9px] text-white/25 truncate pt-0.5">· {plan.motivo}</p>
+          )}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-white/15">
+          <User className="w-4 h-4 shrink-0" />
+          <p className="text-[11px]">Sin planificación</p>
+        </div>
+      )}
+
+      <div className="mt-2 pt-2 border-t border-white/5">
+        <p className="text-[9px] text-indigo-400/40 group-hover:text-indigo-400 transition-colors">
+          {plan ? "Editar planificación →" : "+ Planificar ausencia o cobertura"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Columna de Cliente — Vista Futura ────────────────────────────────────────
+
+function ClienteColumnaFutura({
+  cliente,
+  planPorPuesto,
+  onAbrirPlan,
+}: {
+  cliente: ClienteBoard;
+  fecha?: string;
+  planPorPuesto: Record<number, PlanFuturo>;
+  onAbrirPlan: (puesto: Puesto) => void;
+}) {
+  const total     = cliente.puestos.length;
+  const conPlan   = cliente.puestos.filter((p) => planPorPuesto[p.id]).length;
+  const conRelevo = cliente.puestos.filter((p) => planPorPuesto[p.id]?.relevo_id).length;
+
+  return (
+    <div className="flex-shrink-0 w-64 bg-[#060f1a] border border-indigo-500/10 rounded-2xl overflow-hidden flex flex-col max-h-full">
+      <div className="px-3 py-3 border-b border-white/8">
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="min-w-0">
+            <h3 className="text-xs font-bold text-white truncate">{cliente.clienteNombre}</h3>
+            <p className="text-[10px] text-indigo-300/50 mt-0.5">
+              {conPlan > 0
+                ? `${conPlan}/${total} con cambios · ${conRelevo} con relevo`
+                : `${total} puestos — sin cambios planificados`}
+            </p>
+          </div>
+        </div>
+        <div className="h-1 bg-white/8 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-indigo-500/50 rounded-full transition-all"
+            style={{ width: `${total > 0 ? Math.round((conRelevo / total) * 100) : 0}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-2 space-y-2">
+        {cliente.puestos.map((p) => (
+          <TarjetaPuestoFuturo
+            key={p.id}
+            puesto={p}
+            plan={planPorPuesto[p.id] ?? null}
+            onClick={() => onAbrirPlan(p)}
+          />
+        ))}
+        {cliente.puestos.length === 0 && (
+          <div className="text-center py-4">
+            <p className="text-[11px] text-white/20">Sin puestos</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Tarjeta de Puesto (droppable) ────────────────────────────────────────────
 
 function DroppablePuesto({
@@ -921,12 +1355,14 @@ function DroppablePuesto({
   onClick,
   onLiberar,
   onAbrirSegmentos,
+  cambiosProximos,
 }: {
   puesto: Puesto;
   isAgenteSeleccionado: boolean;
   onClick: () => void;
   onLiberar: () => void;
   onAbrirSegmentos: () => void;
+  cambiosProximos?: PlanFuturo[];
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: `puesto-${puesto.id}` });
   const cubierto  = puesto.estado === "cubierto" && puesto.agente_id;
@@ -951,6 +1387,13 @@ function DroppablePuesto({
         ${isAgenteSeleccionado && !cubierto ? "ring-1 ring-primary/50 border-primary/30" : ""}
       `}
     >
+      {/* Badge: cambios futuros programados */}
+      {cambiosProximos && cambiosProximos.length > 0 && (
+        <div className="absolute -top-1.5 -right-1.5 z-10 flex items-center gap-0.5 bg-indigo-700/90 border border-indigo-400/40 rounded-full px-1.5 py-0.5" title={`${cambiosProximos.length} cambio(s) futuro(s) programado(s)`}>
+          <Calendar className="w-2.5 h-2.5 text-indigo-200" />
+          <span className="text-[8px] text-indigo-100 font-bold leading-none">{cambiosProximos.length}</span>
+        </div>
+      )}
       {/* Encabezado: nombre + turno + estado */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex-1 min-w-0">
@@ -1082,6 +1525,7 @@ function ClienteColumna({
   onNuevoPuesto,
   onEliminarPuesto,
   onAbrirSegmentos,
+  cambiosFuturosProximos,
 }: {
   cliente: ClienteBoard;
   agenteSeleccionadoId: number | null;
@@ -1090,6 +1534,7 @@ function ClienteColumna({
   onNuevoPuesto: (cliente: ClienteBoard) => void;
   onEliminarPuesto: (puesto: Puesto) => void;
   onAbrirSegmentos: (puesto: Puesto) => void;
+  cambiosFuturosProximos?: Record<number, PlanFuturo[]>;
 }) {
   const cubiertos   = cliente.puestos.filter((p) => p.estado === "cubierto" && p.agente_id).length;
   const total       = cliente.puestos.length;
@@ -1129,6 +1574,7 @@ function ClienteColumna({
               onClick={() => onPuestoClick(p)}
               onLiberar={() => onLiberar(p)}
               onAbrirSegmentos={() => onAbrirSegmentos(p)}
+              cambiosProximos={cambiosFuturosProximos?.[p.id]}
             />
             {/* Botón eliminar puesto */}
             <button
@@ -2321,6 +2767,25 @@ export default function Operaciones() {
   const [modalAsignarSSA, setModalAsignarSSA]        = useState<TarjetaSSAPendiente | null>(null);
   const [ssaTabActivo, setSsaTabActivo]              = useState<"sin_asignar" | "cubierta">("sin_asignar");
 
+  // ── Planificación futura ───────────────────────────────────────────────────
+  const hoyISO = toISODate(new Date());
+  const [fechaVista, setFechaVista]           = useState<string>(hoyISO);
+  const esFuturo = fechaVista > hoyISO;
+  const [modalPlanFuturo, setModalPlanFuturo] = useState<{ puesto: Puesto; plan: PlanFuturo | null } | null>(null);
+
+  function navFecha(delta: number) {
+    const d = new Date(fechaVista + "T00:00:00");
+    d.setDate(d.getDate() + delta);
+    const nuevo = toISODate(d);
+    if (nuevo < hoyISO) return;
+    setFechaVista(nuevo);
+  }
+  function volverHoy() { setFechaVista(hoyISO); }
+  function formatFechaVista(iso: string) {
+    const [y, m, d] = iso.split("-");
+    return `${d}-${m}-${y}`;
+  }
+
   // ── Sensores DnD ──────────────────────────────────────────────────────────
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -2366,6 +2831,30 @@ export default function Operaciones() {
     refetchInterval: 30_000,
   });
 
+  // ── Queries: planificación futura ────────────────────────────────────────
+  const { data: planFuturoDia = [], refetch: refetchPlanFuturo } = useQuery<PlanFuturo[]>({
+    queryKey: ["planificacion-futura", fechaVista],
+    queryFn: () =>
+      fetch(`${API_BASE}/operaciones/planificacion-futura?fecha=${fechaVista}`)
+        .then((r) => r.json()),
+    enabled: esFuturo,
+    refetchInterval: esFuturo ? 30_000 : false,
+  });
+
+  const { data: cambiosFuturosProximos = {} } = useQuery<Record<number, PlanFuturo[]>>({
+    queryKey: ["planificacion-futura-proximos"],
+    queryFn: () =>
+      fetch(`${API_BASE}/operaciones/planificacion-futura/proximos`)
+        .then((r) => r.json()),
+    refetchInterval: 60_000,
+  });
+
+  // Lookup para la vista futura: puestoId → plan del día
+  const planFuturoPorPuesto: Record<number, PlanFuturo> = {};
+  for (const p of planFuturoDia) {
+    planFuturoPorPuesto[p.puesto_id] = p;
+  }
+
   // Etapas SSA para el panel del Pizarrón
   const ssaSinAgente   = tarjetasSSA.filter((t) => !t.agente_id);
   const ssaCubierta    = tarjetasSSA.filter((t) => !!t.agente_id);
@@ -2388,6 +2877,53 @@ export default function Operaciones() {
     qc.invalidateQueries({ queryKey: ["operaciones-historial"] });
     qc.invalidateQueries({ queryKey: ["ssa-tablero-pizarron"] });
     qc.invalidateQueries({ queryKey: ["pool-disponibilidad"] });
+  }
+
+  function invalidateFuture() {
+    qc.invalidateQueries({ queryKey: ["planificacion-futura"] });
+    qc.invalidateQueries({ queryKey: ["planificacion-futura-proximos"] });
+  }
+
+  // ── Handlers: planificación futura ───────────────────────────────────────
+  async function guardarPlanFuturo(data: {
+    tipoAusencia: string;
+    titularAusenteId: number | null;
+    relevId: number | null;
+    motivo: string;
+    notas: string;
+  }) {
+    if (!modalPlanFuturo) return;
+    const { puesto, plan } = modalPlanFuturo;
+    if (plan) {
+      await fetch(`${API_BASE}/operaciones/planificacion-futura/${plan.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...data }),
+      });
+      toast({ title: "Plan actualizado", description: `${puesto.nombre} · ${formatFechaVista(fechaVista)}` });
+    } else {
+      await fetch(`${API_BASE}/operaciones/planificacion-futura`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fecha: fechaVista,
+          puestoId: puesto.id,
+          tipoEvento: "ausencia",
+          ...data,
+          creadoPor: currentUser?.username ?? "sistema",
+        }),
+      });
+      toast({ title: "Planificación guardada", description: `${puesto.nombre} · ${formatFechaVista(fechaVista)}` });
+    }
+    setModalPlanFuturo(null);
+    invalidateFuture();
+  }
+
+  async function eliminarPlanFuturo(planId: number) {
+    await fetch(`${API_BASE}/operaciones/planificacion-futura/${planId}`, { method: "DELETE" });
+    toast({ title: "Plan cancelado" });
+    setModalPlanFuturo(null);
+    invalidateFuture();
   }
 
   // ── Remover agente de un SSA ─────────────────────────────────────────────
@@ -2921,6 +3457,49 @@ export default function Operaciones() {
             </button>
           </div>
 
+          {/* ── Barra de planificación futura ───────────────────────── */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => navFecha(-1)}
+              disabled={fechaVista <= hoyISO}
+              className="text-white/30 hover:text-white disabled:opacity-20 border border-white/8 rounded-xl px-2 py-1.5 bg-[#0c1929] transition-colors"
+              title="Día anterior"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+
+            <div className={`flex items-center gap-2 rounded-xl px-3 py-1.5 border text-xs font-medium transition-colors ${esFuturo ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-300" : "bg-[#0c1929] border-white/8 text-white/60"}`}>
+              <Calendar className="w-3 h-3" />
+              <input
+                type="date"
+                value={fechaVista}
+                min={hoyISO}
+                onChange={(e) => { if (e.target.value >= hoyISO) setFechaVista(e.target.value); }}
+                className="bg-transparent outline-none cursor-pointer text-inherit font-mono"
+              />
+              {esFuturo && (
+                <span className="text-indigo-400/70 text-[10px] font-semibold ml-1">PLANIFICACIÓN</span>
+              )}
+            </div>
+
+            <button
+              onClick={() => navFecha(1)}
+              className="text-white/30 hover:text-white border border-white/8 rounded-xl px-2 py-1.5 bg-[#0c1929] transition-colors"
+              title="Día siguiente"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+
+            {esFuturo && (
+              <button
+                onClick={volverHoy}
+                className="flex items-center gap-1.5 text-xs font-semibold text-white/50 hover:text-white bg-[#0c1929] border border-white/8 hover:border-white/20 rounded-xl px-3 py-1.5 transition-colors"
+              >
+                Hoy
+              </button>
+            )}
+          </div>
+
           {/* ── Filtros de zona y cliente ─────────────────────────────── */}
           {(zonasDisponibles.length > 0 || clientesDisponiblesFiltro.length > 1) && (
             <div className="flex items-center gap-2 flex-wrap">
@@ -3123,6 +3702,20 @@ export default function Operaciones() {
                   Limpiar filtros
                 </button>
               </div>
+            ) : esFuturo ? (
+              <div className="flex gap-3 h-full pb-2">
+                {tableroFiltrado.map((cliente) => (
+                  <ClienteColumnaFutura
+                    key={cliente.clienteNombre}
+                    cliente={cliente}
+                    fecha={fechaVista}
+                    planPorPuesto={planFuturoPorPuesto}
+                    onAbrirPlan={(puesto) =>
+                      setModalPlanFuturo({ puesto, plan: planFuturoPorPuesto[puesto.id] ?? null })
+                    }
+                  />
+                ))}
+              </div>
             ) : (
               <div className="flex gap-3 h-full pb-2">
                 {tableroFiltrado.map((cliente) => (
@@ -3135,6 +3728,7 @@ export default function Operaciones() {
                     onNuevoPuesto={(c) => setNuevoPuestoData(c)}
                     onEliminarPuesto={eliminarPuesto}
                     onAbrirSegmentos={(p) => setModalSegmentos(p)}
+                    cambiosFuturosProximos={cambiosFuturosProximos}
                   />
                 ))}
               </div>
@@ -3330,6 +3924,17 @@ export default function Operaciones() {
             setModalAsignarSSA(null);
             qc.invalidateQueries({ queryKey: ["ssa-tablero-pizarron"] });
           }}
+        />
+      )}
+
+      {modalPlanFuturo && (
+        <ModalPlanFuturo
+          puesto={modalPlanFuturo.puesto}
+          fecha={fechaVista}
+          planExistente={modalPlanFuturo.plan}
+          onGuardar={guardarPlanFuturo}
+          onEliminar={modalPlanFuturo.plan ? () => eliminarPlanFuturo(modalPlanFuturo.plan!.id) : undefined}
+          onClose={() => setModalPlanFuturo(null)}
         />
       )}
 

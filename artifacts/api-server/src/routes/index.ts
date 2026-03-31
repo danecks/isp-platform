@@ -33,6 +33,7 @@ import { solicitudesServicioRouter } from "./solicitudes-servicio";
 import { incentivosRouter } from "./incentivos";
 import { planillaRouter } from "./planilla";
 import adminResetRouter from "./admin-reset";
+import { planificacionFuturaRouter } from "./planificacion-futura";
 
 const router: IRouter = Router();
 
@@ -70,5 +71,6 @@ router.use(solicitudesServicioRouter);
 router.use(incentivosRouter);
 router.use(planillaRouter);
 router.use(adminResetRouter);
+router.use(planificacionFuturaRouter);
 
 export default router;

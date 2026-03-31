@@ -2111,5 +2111,35 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: MOV-03 — error (no bloqueante)");
   }
 
+  // ── PF-01: tabla planificacion_futura ────────────────────────────────────────
+  // Planificación futura de ausencias y coberturas desde el Pizarrón Operativo
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS planificacion_futura (
+        id                  SERIAL PRIMARY KEY,
+        fecha               DATE        NOT NULL,
+        puesto_id           INTEGER     NOT NULL REFERENCES puestos_operativos(id) ON DELETE CASCADE,
+        tipo_evento         TEXT        NOT NULL DEFAULT 'ausencia',
+        tipo_ausencia       TEXT,
+        titular_ausente_id  INTEGER     REFERENCES employees(id) ON DELETE SET NULL,
+        relevo_id           INTEGER     REFERENCES employees(id) ON DELETE SET NULL,
+        motivo              TEXT,
+        notas               TEXT,
+        estado              TEXT        NOT NULL DEFAULT 'programado',
+        fuente              TEXT        NOT NULL DEFAULT 'operaciones',
+        creado_por          TEXT,
+        created_at          TIMESTAMPTZ DEFAULT NOW(),
+        updated_at          TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_planificacion_futura_fecha
+        ON planificacion_futura(fecha)
+    `);
+    logger.info("Auto-migrate: PF-01 tabla planificacion_futura verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PF-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

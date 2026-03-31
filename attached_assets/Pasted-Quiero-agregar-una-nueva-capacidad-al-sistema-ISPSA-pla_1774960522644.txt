@@ -1,0 +1,168 @@
+Quiero agregar una nueva capacidad al sistema ISPSA: planificación futura desde el Pizarrón Operativo.
+
+No quiero romper nada existente.
+
+## Contexto real
+Muchas veces un agente avisa con anticipación:
+- necesito permiso para el día X
+- vacaciones en fecha X
+- ausencia programada
+- incapacidad futura
+- suspensión futura
+
+RRHH puede autorizar esa ausencia antes de que llegue la fecha.
+
+Entonces Operaciones debería poder:
+- ir a una fecha futura en el Pizarrón Operativo
+- ver quién va a faltar
+- ver quién estaría disponible ese día
+- planificar desde antes quién cubrirá ese puesto
+- y que cuando llegue el día, esa planificación ya aparezca reflejada
+
+Muy importante:
+quiero que las tarjetas o puestos con cambios futuros se vean con un color o estilo específico, para que sea evidente que tienen una modificación programada.
+
+---
+
+## 1. Pizarrón Operativo por fecha futura
+Quiero que el Pizarrón permita navegar o consultar no solo el día actual, sino también fechas futuras.
+
+En una fecha futura, el sistema debe poder mostrar:
+- puestos esperados
+- titulares esperados
+- ausencias futuras aprobadas
+- relevos ya programados
+- cobertura futura planificada
+
+---
+
+## 2. Ausencias futuras aprobadas
+Si RRHH autoriza algo futuro, por ejemplo:
+- permiso
+- vacaciones
+- incapacidad
+- suspensión programada
+
+Entonces el Pizarrón de esa fecha debe reflejarlo automáticamente.
+
+Ejemplo:
+si Daniel tiene permiso aprobado para el 18 de abril, en el Pizarrón del 18 de abril debe aparecer que ese puesto/titular tendrá ausencia programada.
+
+---
+
+## 3. Planificación futura de cobertura
+Desde el Pizarrón de una fecha futura, Operaciones debe poder asignar desde antes quién cubrirá ese puesto.
+
+Ejemplo:
+- Daniel faltará el 18
+- Operaciones entra al 18
+- asigna desde ya a Pedro para cubrir ese turno
+
+Esto no debe romper el presente, pero sí dejar la cobertura futura programada.
+
+---
+
+## 4. Estilo visual especial para cambios futuros
+Quiero que cualquier puesto o tarjeta que tenga una modificación futura programada se vea de forma distinta.
+
+Ejemplos:
+- color tenue especial
+- borde distinto
+- badge “Programado”
+- badge “Cambio futuro”
+- icono de calendario
+
+Esto aplica especialmente cuando:
+- hay ausencia aprobada futura
+- hay relevo futuro asignado
+- hay cambio de cobertura ya planificado
+
+---
+
+## 5. Visibilidad desde el presente
+Incluso cuando el usuario esté viendo el Pizarrón del día actual, quiero que el sistema pueda indicar si un puesto tiene cambios futuros programados.
+
+Ejemplo:
+- badge pequeño
+- aviso en hover
+- icono de calendario
+- texto tipo “modificación futura”
+
+La idea es que el jefe de servicio sepa que ese puesto ya tiene algo agendado en días posteriores.
+
+---
+
+## 6. Qué debe poder ver Operaciones
+En la vista futura del Pizarrón, Operaciones debe poder entender:
+- quién va a faltar
+- por qué va a faltar (si aplica mostrarlo internamente)
+- quién estaría libre o disponible ese día
+- quién ya fue asignado como cobertura futura
+- qué puestos siguen descubiertos a futuro
+
+---
+
+## 7. Compatibilidad con turnos y lógica actual
+No romper:
+- turnos 12h y 24h
+- relevos
+- cambios a titular
+- historial de titularidad
+- RRHH
+- pre-planilla
+- planilla
+- pool
+- SSA
+
+Esto debe ser una capa de planificación futura, no una reescritura del flujo actual.
+
+---
+
+## 8. Impacto al llegar la fecha real
+Cuando llegue el día planificado:
+- la cobertura futura programada debe aparecer de forma natural en el Pizarrón del día
+- debe mantener su color/estado especial o algún indicador de que fue una programación previa
+- y luego permitir ajustes si algo cambió a último momento
+
+Porque en la realidad puede variar.
+
+---
+
+## 9. Estados o estructura recomendada
+Si hace falta, crear una estructura para guardar:
+- ausencias futuras aprobadas
+- coberturas futuras programadas
+- fecha objetivo
+- puesto
+- titular afectado
+- colaborador de relevo programado
+- motivo
+- estado
+
+Pero sin romper la lógica actual.
+
+---
+
+## 10. UX
+Quiero que esto sea claro para el jefe de servicio:
+
+- ver hoy
+- ver futuro
+- identificar cambios programados
+- planificar desde antes
+- detectar puestos que todavía no tienen cobertura futura
+
+No quiero algo confuso.
+
+---
+
+## 11. Documentación
+Explica claramente:
+- cómo se ve una ausencia futura aprobada en el Pizarrón
+- cómo se programa una cobertura futura
+- cómo se ve una tarjeta con modificación futura
+- cómo se refleja en el día presente y en la fecha futura
+- qué pasa cuando llega el día real
+
+Muy importante:
+quiero que el Pizarrón Operativo sirva también como herramienta de planeación futura, no solo de operación del día, y que los cambios programados sean visualmente evidentes para que no se olviden.
