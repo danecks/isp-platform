@@ -1,0 +1,323 @@
+Quiero que hagas una prueba dura, integral y realista del sistema ISPSA, usando diferentes escenarios operativos, laborales y de planilla.
+
+No quiero una prueba superficial.
+No quiero solo tests técnicos o unitarios.
+Quiero una simulación real de uso, como si el sistema ya estuviera siendo usado por la empresa.
+
+## Objetivo
+Encontrar inconsistencias, flujos rotos, errores de lógica, errores de cálculo y puntos débiles del sistema en escenarios reales del rubro de seguridad privada.
+
+Quiero que esta prueba:
+- use la aplicación real
+- se vea reflejada en el preview de Replit
+- pruebe múltiples módulos conectados entre sí
+- y me entregue un reporte serio con prioridades de corrección
+
+---
+
+## 1. Alcance de la prueba
+Quiero que se prueben de forma integrada estos módulos:
+
+- Comercial / leads / cotización / cliente ganado
+- Clientes
+- Ficha maestra de cliente
+- Sedes operativas
+- Puestos operativos
+- Zonas operativas
+- Supervisores
+- Empleados / colaboradores
+- Usuarios
+- Pizarrón Operativo
+- Cobertura diaria
+- Segmentos de cobertura
+- Historial de titularidad
+- RRHH
+- Eventos RRHH
+- Anticipos
+- Servicios especiales (SSA)
+- Pre-planilla
+- Cierre de pre-planilla
+- Planilla final
+- IGSS
+- Cambios estructurales
+- Portal del cliente
+- Contratos del colaborador
+
+---
+
+## 2. Forma de prueba
+Quiero una prueba funcional real, operando el sistema como usuario, no solo pegando queries o endpoints.
+
+Usa el preview de Replit para:
+- entrar a pantallas
+- usar formularios
+- abrir modales
+- cambiar estados
+- asignar y remover
+- revisar tabs
+- validar badges, colores, contadores y listas
+- comprobar que lo que pasa en un módulo se refleje en otro
+
+Puedes usar API o BD para validar por detrás, pero la prueba debe centrarse en el uso real del sistema.
+
+---
+
+## 3. Escenario base
+Usar un escenario coherente con ISPSA.
+
+Cliente principal sugerido:
+Cervecería Centro Americana
+
+Preparar y usar:
+- cliente
+- sedes
+- puestos
+- zonas
+- supervisor
+- titulares
+- agentes disponibles
+- agentes en descanso
+- agentes en relevo
+- uno o más servicios especiales
+- personal de RRHH, Operaciones y Comercial
+
+---
+
+## 4. Diferentes escenarios obligatorios a probar
+
+### A. Flujo normal
+- cliente nuevo
+- cotización
+- cliente ganado
+- creación de sedes
+- creación de puestos
+- asignación de zona y supervisor
+- puestos visibles en el Pizarrón
+- cobertura normal
+- cierre diario
+- pre-planilla correcta
+
+### B. Falta total
+- titular no llega
+- otro cubre
+- se genera evento RRHH
+- descuento al ausente
+- pago correcto al relevo
+
+### C. Abandono parcial
+- titular trabaja una parte del turno y se va
+- otro cubre el resto
+- validar segmentos
+- validar descuento y pago parcial
+- validar impacto en pre-planilla y planilla
+
+### D. Vacaciones
+- titular sale de vacaciones
+- relevo cubre todo el puesto
+- relevo hereda el horario del puesto
+- validar que no se trate igual que una falta
+
+### E. Incapacidad / sick note / suspensión
+- crear evento RRHH
+- validar operación
+- validar exclusión o descuento correcto
+- validar impacto en pre-planilla y planilla
+
+### F. Cambio a titular
+- un relevo/disponible pasa a titular
+- validar ficha del colaborador
+- validar ficha del cliente
+- validar historial de titularidad
+- validar que no queden dos titulares activos
+
+### G. Relevo parcial y completo
+- un caso de relevo parcial
+- un caso de relevo completo
+- un caso de relevo por vacaciones
+- validar que el sistema distinga bien los tres
+
+### H. Servicio especial (SSA)
+- cliente solicita SSA
+- pipeline entre áreas
+- comercial, RRHH y operaciones reciben tareas
+- se asigna agente
+- se refleja en operación, pre-planilla y planilla
+- validar estado del SSA y trazabilidad
+
+### I. Agente declina
+- asignar a un agente
+- luego removerlo porque declina
+- devolverlo al pool o al estado correcto
+- asignar a otro
+- validar que no quede “pegado” al SSA o puesto
+
+### J. Pool sin disponibles
+- simular puestos descubiertos con 0 disponibles
+- validar si el sistema alerta o no
+- detectar qué debería hacer el sistema
+- revisar si hay flujo de contingencia o si falta implementarlo
+
+### K. Horas extra reales
+- cierre tardío del cliente
+- cobertura extendida
+- validar cálculo según horas esperadas del puesto
+- validar efecto en pre-planilla y planilla
+
+### L. Turnos de 12h y 24h
+- probar ambos
+- validar que la lógica operativa y de descuento no sea la misma
+- validar faltas y cobertura en ambos tipos
+
+### M. Anticipos
+- crear anticipos
+- reflejarlos en pre-planilla
+- reflejarlos en planilla final
+- validar que no se descuenten dos veces
+- validar bloqueo si ya están ligados a planilla
+
+### N. Frecuencia de pago
+- colaborador quincenal
+- colaborador mensual
+- validar inclusión/exclusión según la quincena
+
+### O. IGSS
+- colaborador con IGSS activo
+- colaborador sin IGSS por puesto/servicio
+- validar clasificación en pre-planilla y planilla
+- validar si el cálculo real existe o sigue pendiente
+
+### P. Contratación
+- contratar un colaborador nuevo
+- generar dos contratos automáticamente
+- validar que se vean en la ficha
+- validar fechas correctas
+
+### Q. Cambios estructurales
+- cambio iniciado desde Operaciones
+- cambio iniciado desde RRHH
+- validación cruzada
+- decisión final de admin si hay conflicto
+
+### R. Planeación futura
+- ausencia futura aprobada
+- ver pizarrón a fecha futura
+- programar cobertura futura
+- validar colores o badges especiales
+- validar cálculo de quién estaría trabajando o descansando ese día según turno
+
+---
+
+## 5. Qué revisar en cada escenario
+Quiero que revises por cada caso:
+
+### Operación
+- Pizarrón Operativo
+- pool
+- tarjetas
+- estados del puesto
+- segmentos
+- coberturas
+- relevos
+- titularidad
+
+### RRHH
+- eventos
+- actas
+- boletas
+- alertas
+- seguimiento
+- clasificación del colaborador
+
+### Clientes
+- ficha del cliente
+- puestos
+- agentes asignados
+- historial de titularidad
+- servicios especiales
+
+### Colaboradores
+- ficha
+- usuario
+- frecuencia de pago
+- contratos
+- asignación
+- estado operativo
+- historial
+
+### Pre-planilla
+- resumen
+- anexos
+- validaciones
+- cierre
+- snapshot
+- alertas
+
+### Planilla final
+- cálculo
+- líneas
+- anticipos
+- IGSS
+- trazabilidad
+- reversión
+- estado
+
+### Comercial
+- lead
+- cotización
+- cliente ganado
+- SSA
+- tareas
+- facturación si aplica
+
+---
+
+## 6. Qué debe decir el reporte final
+No quiero solo “pasó” o “falló”.
+
+Quiero un reporte estructurado con:
+
+### A. Escenarios probados
+### B. Funciones probadas
+### C. Qué funcionó correctamente
+### D. Qué falló
+### E. Qué quedó inconsistente entre módulos
+### F. Qué debería hacer el sistema en cada caso donde falló
+### G. Hallazgos críticos
+### H. Hallazgos altos
+### I. Hallazgos medios
+### J. Hallazgos bajos
+### K. Qué bloquea operación real
+### L. Qué bloquea una planilla confiable
+### M. Qué recomiendo corregir primero
+### N. Qué ya está suficientemente sólido
+
+---
+
+## 7. Clasificación de hallazgos
+Clasifica cada hallazgo como:
+- Crítico
+- Alto
+- Medio
+- Bajo
+
+Y explica por qué.
+
+---
+
+## 8. Muy importante
+Quiero una prueba dura de verdad, con escenarios variados y realistas del negocio, no solo el happy path.
+
+Quiero que te comportes como si fueras:
+- jefe de servicio
+- RRHH
+- comercial
+- cliente
+- administrador
+
+y verifiques si ISPSA realmente aguanta la operación real.
+
+Quiero descubrir:
+- qué se rompe
+- qué sigue flojo
+- qué ya está listo
+- y qué debo corregir antes de usarlo con más seriedad.
