@@ -1,0 +1,118 @@
+La pre-planilla ya fue rediseñada y ahora es completamente funcional para revisión.
+
+Tiene:
+- vista resumen por colaborador
+- anexos (horas extra, faltas, anticipos, coberturas)
+- total estimado preliminar
+- panel de detalle
+- alertas visuales
+
+No quiero romper nada de lo existente.
+
+## Objetivo
+Convertir la pre-planilla en un sistema controlado de revisión y pre-cierre antes de generar la planilla final.
+
+---
+
+## 1. Estado de validación por colaborador
+Agregar un estado más claro por colaborador:
+
+- pendiente
+- revisado
+- observado
+- aprobado_rrhh
+
+Esto debe ser independiente del estado actual de revisión.
+
+---
+
+## 2. Validaciones automáticas antes de cierre
+El sistema debe detectar automáticamente:
+
+- falta = TRUE y trabajo_dia = TRUE → error crítico
+- horas en 0 con segmento existente → error
+- anticipos sin employee_id → error
+- colaborador activo sin registros en el período → alerta
+
+Mostrar estos errores claramente.
+
+---
+
+## 3. Bloqueo de cierre de pre-planilla
+Agregar botón:
+“Cerrar pre-planilla del período”
+
+Reglas:
+- si hay errores críticos → bloquear
+- si hay alertas → permitir con advertencia
+- si todo está correcto → permitir cierre
+
+---
+
+## 4. Snapshot de pre-planilla
+Al cerrar:
+
+- guardar snapshot del período
+- congelar datos (solo lectura)
+- marcar todos los registros como cerrados
+
+Esto servirá para:
+- trazabilidad
+- auditoría
+- evitar cambios posteriores
+
+---
+
+## 5. Registro de decisiones
+Cada acción importante debe registrar:
+
+- quién revisó
+- quién aprobó
+- cuándo
+- qué observaciones dejó
+
+---
+
+## 6. Separación visual de ingresos
+En el panel de detalle y resumen:
+
+Separar claramente:
+- sueldo base
+- horas extra
+- (preparar campo para incentivo cash)
+- anticipos
+- descuentos
+
+No mostrar solo un total, sino desglose claro.
+
+---
+
+## 7. Preparación para planilla final
+No construir aún la planilla completa, pero dejar listo:
+
+- endpoint o estructura para generar planilla desde pre-planilla cerrada
+- referencia a período
+- datos congelados
+
+---
+
+## 8. No romper
+No romper:
+- UI actual
+- tabs
+- total estimado
+- filtros
+- exportación
+- lógica de novedades
+
+---
+
+## 9. Documentación
+Explicar:
+- cómo funciona el flujo de revisión
+- cuándo se considera lista una pre-planilla
+- qué bloquea el cierre
+- qué queda preparado para planilla final
+
+Muy importante:
+quiero que la pre-planilla pase de ser solo una herramienta de revisión a un punto de control formal antes de generar la planilla final.

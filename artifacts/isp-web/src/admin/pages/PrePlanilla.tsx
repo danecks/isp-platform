@@ -27,7 +27,8 @@ import {
   CheckCircle2, AlertCircle, Clock, Eye, X, Loader2,
   Users, Briefcase, TrendingUp, Wallet, Info,
   Check, AlertTriangle, FileText, CreditCard, Repeat2,
-  MinusCircle,
+  MinusCircle, Lock, ShieldCheck, AlertOctagon, CheckCheck,
+  XCircle, ChevronRight,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
@@ -78,10 +79,13 @@ interface ColaboradorPre {
   anticipos_count: number;
   incentivos_cash_monto: number;
   incentivos_cash_count: number;
-  revision_estado: "pendiente" | "revisada" | "observada";
+  revision_estado: "pendiente" | "revisada" | "observada" | "aprobado_rrhh";
   revision_observaciones: string | null;
   revision_por: string | null;
   revision_at: string | null;
+  revision_aprobado_por: string | null;
+  revision_aprobado_at: string | null;
+  cierre_id: number | null;
   tipo_turno_id: number | null;
   tipo_turno_nombre: string | null;
   turno_horas_trabajo: string | null;
@@ -262,9 +266,10 @@ function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: number | n
 // ─── Badge revisión ───────────────────────────────────────────────────────────
 
 const REVISION_CFG = {
-  pendiente: { label: "Pendiente", cls: "text-amber-400 bg-amber-400/10 border-amber-400/25", icon: Clock },
-  revisada:  { label: "Revisada",  cls: "text-green-400 bg-green-400/10 border-green-400/25", icon: CheckCircle2 },
-  observada: { label: "Observada", cls: "text-rose-400 bg-rose-400/10 border-rose-400/25",    icon: AlertCircle },
+  pendiente:     { label: "Pendiente",    cls: "text-amber-400 bg-amber-400/10 border-amber-400/25",  icon: Clock },
+  revisada:      { label: "Revisada",     cls: "text-green-400 bg-green-400/10 border-green-400/25",  icon: CheckCircle2 },
+  observada:     { label: "Observada",    cls: "text-rose-400 bg-rose-400/10 border-rose-400/25",     icon: AlertCircle },
+  aprobado_rrhh: { label: "Aprobado",    cls: "text-primary bg-primary/10 border-primary/30",        icon: ShieldCheck },
 };
 
 function RevisionBadge({ estado }: { estado: string }) {
@@ -503,15 +508,15 @@ function DetalleModal({
               <div>
                 <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Revisión RRHH</p>
                 <div className="space-y-2">
-                  <div className="flex gap-2">
-                    {(["pendiente", "revisada", "observada"] as const).map((e) => {
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["pendiente", "revisada", "observada", "aprobado_rrhh"] as const).map((e) => {
                       const cfg = REVISION_CFG[e];
                       return (
                         <button key={e} onClick={() => setRevEstado(e)}
-                          className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-all ${
+                          className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold border transition-all ${
                             revEstado === e ? cfg.cls + " border-opacity-60" : "text-white/30 bg-white/4 border-white/10 hover:border-white/20"
                           }`}>
-                          {cfg.label}
+                          <cfg.icon className="w-3 h-3" />{cfg.label}
                         </button>
                       );
                     })}
@@ -951,6 +956,188 @@ function AnexoCoberturas({ desde, hasta }: { desde: string; hasta: string }) {
   );
 }
 
+// ─── Modal de Cierre de Período ───────────────────────────────────────────────
+
+function CierreModal({
+  desde, hasta,
+  validacion,
+  validacionLoading,
+  onClose,
+  onCerrado,
+}: {
+  desde: string;
+  hasta: string;
+  validacion: {
+    periodo_cerrado: boolean;
+    errores_criticos: { tipo: string; mensaje: string }[];
+    alertas: { tipo: string; mensaje: string }[];
+    resumen: { total_colaboradores: number; errores: number; alertas: number; puede_cerrar: boolean };
+  } | null;
+  validacionLoading: boolean;
+  onClose: () => void;
+  onCerrado: () => void;
+}) {
+  const { toast } = useToast();
+  const [obs, setObs] = useState("");
+  const [cerrando, setCerrando] = useState(false);
+  const [forzar, setForzar] = useState(false);
+
+  const puedeEnviar = !cerrando && !validacionLoading && validacion != null &&
+    (validacion.resumen.puede_cerrar || forzar);
+
+  async function ejecutarCierre() {
+    setCerrando(true);
+    try {
+      const cerradoPor = sessionStorage.getItem("isp_admin_usuario") ?? "admin";
+      await apiFetch("/api/nomina/pre-planilla/cierre", {
+        method: "POST",
+        body: JSON.stringify({ desde, hasta, cerradoPor, observaciones: obs || null, forzar }),
+      });
+      toast({ title: "Pre-planilla cerrada", description: `Período ${desde} — ${hasta} congelado correctamente.` });
+      onCerrado();
+      onClose();
+    } catch (e: unknown) {
+      toast({ title: "Error al cerrar", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setCerrando(false);
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <div className="w-full max-w-lg bg-[#07111f] border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/8 bg-[#060e1c]">
+          <div className="flex items-center gap-2">
+            <Lock className="w-4 h-4 text-primary" />
+            <h3 className="text-sm font-bold text-white">Cerrar pre-planilla del período</h3>
+          </div>
+          <button onClick={onClose} className="text-white/30 hover:text-white transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+
+          {/* Período */}
+          <div className="bg-white/4 border border-white/8 rounded-lg px-4 py-3">
+            <p className="text-[10px] text-white/40 mb-1">Período a cerrar</p>
+            <p className="text-sm font-semibold text-white">{desde} — {hasta}</p>
+          </div>
+
+          {/* Resultados de validación */}
+          {validacionLoading && (
+            <div className="flex items-center gap-2 text-sm text-white/40 py-2">
+              <Loader2 className="w-4 h-4 animate-spin" />Ejecutando validaciones automáticas…
+            </div>
+          )}
+          {validacion && !validacionLoading && (
+            <div className="space-y-3">
+              {/* Resumen */}
+              <div className={`rounded-lg px-4 py-3 border ${
+                validacion.resumen.errores > 0 ? "bg-red-500/8 border-red-500/30" :
+                validacion.resumen.alertas > 0 ? "bg-amber-500/8 border-amber-500/25" :
+                "bg-green-500/8 border-green-500/25"
+              }`}>
+                <div className="flex items-center gap-2">
+                  {validacion.resumen.errores > 0
+                    ? <AlertOctagon className="w-4 h-4 text-red-400" />
+                    : validacion.resumen.alertas > 0
+                    ? <AlertTriangle className="w-4 h-4 text-amber-400" />
+                    : <CheckCheck className="w-4 h-4 text-green-400" />}
+                  <span className="text-xs font-semibold text-white/80">
+                    {validacion.resumen.total_colaboradores} colaboradores · {validacion.resumen.errores} error{validacion.resumen.errores !== 1 ? "es" : ""} crítico{validacion.resumen.errores !== 1 ? "s" : ""} · {validacion.resumen.alertas} alerta{validacion.resumen.alertas !== 1 ? "s" : ""}
+                  </span>
+                </div>
+              </div>
+
+              {/* Errores críticos */}
+              {validacion.errores_criticos.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] text-red-400 font-semibold uppercase tracking-wider">Errores críticos — deben resolverse</p>
+                  {validacion.errores_criticos.slice(0, 4).map((e, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs text-red-300/80">
+                      <XCircle className="w-3 h-3 text-red-400 mt-0.5 shrink-0" />{e.mensaje}
+                    </div>
+                  ))}
+                  {validacion.errores_criticos.length > 4 && (
+                    <p className="text-[10px] text-red-400/60">…y {validacion.errores_criticos.length - 4} más</p>
+                  )}
+                  {/* Opción forzar */}
+                  <label className="flex items-center gap-2 cursor-pointer mt-2 text-xs text-amber-400/80">
+                    <input type="checkbox" checked={forzar} onChange={(e) => setForzar(e.target.checked)}
+                      className="accent-amber-400" />
+                    Cerrar de todas formas (requiere supervisión)
+                  </label>
+                </div>
+              )}
+
+              {/* Alertas */}
+              {validacion.alertas.length > 0 && validacion.errores_criticos.length === 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] text-amber-400 font-semibold uppercase tracking-wider">Alertas — el cierre procederá con advertencias</p>
+                  {validacion.alertas.slice(0, 3).map((a, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs text-amber-300/70">
+                      <AlertTriangle className="w-3 h-3 text-amber-400 mt-0.5 shrink-0" />{a.mensaje}
+                    </div>
+                  ))}
+                  {validacion.alertas.length > 3 && (
+                    <p className="text-[10px] text-amber-400/60">…y {validacion.alertas.length - 3} más</p>
+                  )}
+                </div>
+              )}
+
+              {/* Sin problemas */}
+              {validacion.errores_criticos.length === 0 && validacion.alertas.length === 0 && (
+                <div className="flex items-center gap-2 text-xs text-green-400">
+                  <CheckCheck className="w-4 h-4" />
+                  Sin errores ni alertas. La pre-planilla está lista para cerrar.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Consecuencias */}
+          <div className="bg-white/3 border border-white/8 rounded-lg p-3 space-y-1">
+            <p className="text-[10px] text-white/40 font-semibold uppercase tracking-wider mb-2">Qué ocurre al cerrar</p>
+            {[
+              "Los datos quedan congelados en un snapshot de solo lectura",
+              "No se podrán modificar revisiones de RRHH del período",
+              "El snapshot queda disponible para generar la planilla final",
+              "Se registra en auditoría quién cerró y cuándo",
+            ].map((t, i) => (
+              <div key={i} className="flex items-start gap-1.5 text-xs text-white/50">
+                <ChevronRight className="w-3 h-3 text-primary/60 mt-0.5 shrink-0" />{t}
+              </div>
+            ))}
+          </div>
+
+          {/* Observaciones */}
+          <textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2}
+            placeholder="Observaciones del cierre (opcional)…"
+            className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50 resize-none" />
+
+          {/* Botones */}
+          <div className="flex gap-2">
+            <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white/50 text-xs font-semibold hover:bg-white/10 transition-colors">
+              Cancelar
+            </button>
+            <button onClick={ejecutarCierre} disabled={!puedeEnviar}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors ${
+                puedeEnviar ? "bg-primary text-white hover:bg-primary/90" : "bg-white/5 text-white/25 cursor-not-allowed"
+              }`}>
+              {cerrando && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              <Lock className="w-3.5 h-3.5" />Confirmar cierre
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function PrePlanilla() {
@@ -991,9 +1178,30 @@ export default function PrePlanilla() {
   const [sortField, setSortField] = useState<keyof ColaboradorPre>("nombre_completo");
   const [sortAsc, setSortAsc] = useState(true);
 
+  // Validación automática
+  const [validacion, setValidacion] = useState<{
+    periodo_cerrado: boolean;
+    cierre_id?: number;
+    cerrado_por?: string;
+    cerrado_at?: string;
+    errores_criticos: { tipo: string; mensaje: string; employee_id?: number }[];
+    alertas: { tipo: string; mensaje: string; employee_id?: number }[];
+    resumen: { total_colaboradores: number; errores: number; alertas: number; puede_cerrar: boolean };
+  } | null>(null);
+  const [validacionLoading, setValidacionLoading] = useState(false);
+  const [showValidacion, setShowValidacion] = useState(false);
+
+  // Modal cierre
+  const [showCierreModal, setShowCierreModal] = useState(false);
+
+  // ¿Período cerrado? (del primer row)
+  const periodoCerrado = rows.length > 0 && rows[0].cierre_id != null;
+
   // Cargar datos
   const cargar = useCallback(async (d: string, h: string) => {
     setLoading(true);
+    setValidacion(null);
+    setShowValidacion(false);
     try {
       const data = await apiFetch(`/api/nomina/pre-planilla?desde=${d}&hasta=${h}`);
       setRows(data);
@@ -1004,6 +1212,19 @@ export default function PrePlanilla() {
       setLoading(false);
     }
   }, [toast]);
+
+  const cargarValidacion = useCallback(async () => {
+    setValidacionLoading(true);
+    setShowValidacion(true);
+    try {
+      const data = await apiFetch(`/api/nomina/pre-planilla/validacion?desde=${desde}&hasta=${hasta}`);
+      setValidacion(data);
+    } catch (e: unknown) {
+      toast({ title: "Error al validar", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setValidacionLoading(false);
+    }
+  }, [desde, hasta, toast]);
 
   useEffect(() => { cargar(desde, hasta); }, []);
 
@@ -1141,7 +1362,25 @@ export default function PrePlanilla() {
             <Calendar className="w-4 h-4 text-primary" />
             <span className="text-xs font-semibold text-white/70">Período</span>
             <div className="flex-1" />
-            {loaded && (
+            {loaded && rows.length > 0 && (
+              <div className="flex items-center gap-2">
+                {periodoCerrado ? (
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/30 text-primary text-xs font-semibold">
+                    <Lock className="w-3.5 h-3.5" />Período cerrado
+                  </span>
+                ) : (
+                  <button onClick={() => { cargarValidacion(); setShowCierreModal(true); }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/15 border border-primary/40 text-primary text-xs font-semibold hover:bg-primary/25 transition-colors">
+                    <Lock className="w-3.5 h-3.5" />Cerrar período
+                  </button>
+                )}
+                <button onClick={exportarCSV}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 text-xs font-semibold hover:bg-emerald-600/30 transition-colors">
+                  <Download className="w-3.5 h-3.5" />Exportar CSV
+                </button>
+              </div>
+            )}
+            {loaded && rows.length === 0 && (
               <button onClick={exportarCSV}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 text-xs font-semibold hover:bg-emerald-600/30 transition-colors">
                 <Download className="w-3.5 h-3.5" />Exportar CSV
@@ -1234,6 +1473,77 @@ export default function PrePlanilla() {
               ))}
             </div>
 
+            {/* ── Panel de validación ─────────────────────────────────────── */}
+            {showValidacion && (
+              <div className={`border rounded-xl overflow-hidden ${
+                validacion?.periodo_cerrado ? "bg-primary/5 border-primary/30" :
+                validacion?.resumen?.errores > 0 ? "bg-red-500/5 border-red-500/30" :
+                validacion?.resumen?.alertas > 0 ? "bg-amber-500/5 border-amber-500/25" :
+                "bg-green-500/5 border-green-500/25"
+              }`}>
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-white/6">
+                  {validacionLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-white/40" />
+                  ) : validacion?.periodo_cerrado ? (
+                    <Lock className="w-4 h-4 text-primary" />
+                  ) : validacion?.resumen?.errores > 0 ? (
+                    <AlertOctagon className="w-4 h-4 text-red-400" />
+                  ) : validacion?.resumen?.alertas > 0 ? (
+                    <AlertTriangle className="w-4 h-4 text-amber-400" />
+                  ) : (
+                    <CheckCheck className="w-4 h-4 text-green-400" />
+                  )}
+                  <span className="text-xs font-semibold text-white/70">
+                    {validacionLoading ? "Ejecutando validaciones…" :
+                     validacion?.periodo_cerrado ? `Período cerrado · ${validacion.cerrado_por} · ${validacion.cerrado_at ? new Date(validacion.cerrado_at).toLocaleString("es-GT") : ""}` :
+                     `Validación: ${validacion?.resumen?.errores ?? 0} error${(validacion?.resumen?.errores ?? 0) !== 1 ? "es" : ""} crítico${(validacion?.resumen?.errores ?? 0) !== 1 ? "s" : ""} · ${validacion?.resumen?.alertas ?? 0} alerta${(validacion?.resumen?.alertas ?? 0) !== 1 ? "s" : ""}`}
+                  </span>
+                  <div className="flex-1" />
+                  <button onClick={() => setShowValidacion(false)} className="text-white/30 hover:text-white transition-colors">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {!validacionLoading && validacion && !validacion.periodo_cerrado && (
+                  <div className="p-3 space-y-2">
+                    {validacion.errores_criticos.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-red-400 font-semibold uppercase tracking-wider">Errores críticos — bloquean el cierre</p>
+                        {validacion.errores_criticos.slice(0, 5).map((e, i) => (
+                          <div key={i} className="flex items-start gap-2 text-xs text-red-300/80">
+                            <XCircle className="w-3 h-3 text-red-400 mt-0.5 shrink-0" />
+                            <span>{e.mensaje}</span>
+                          </div>
+                        ))}
+                        {validacion.errores_criticos.length > 5 && (
+                          <p className="text-[10px] text-red-400/60">…y {validacion.errores_criticos.length - 5} más</p>
+                        )}
+                      </div>
+                    )}
+                    {validacion.alertas.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-amber-400 font-semibold uppercase tracking-wider">Alertas — no bloquean el cierre</p>
+                        {validacion.alertas.slice(0, 4).map((a, i) => (
+                          <div key={i} className="flex items-start gap-2 text-xs text-amber-300/70">
+                            <AlertTriangle className="w-3 h-3 text-amber-400 mt-0.5 shrink-0" />
+                            <span>{a.mensaje}</span>
+                          </div>
+                        ))}
+                        {validacion.alertas.length > 4 && (
+                          <p className="text-[10px] text-amber-400/60">…y {validacion.alertas.length - 4} más</p>
+                        )}
+                      </div>
+                    )}
+                    {validacion.errores_criticos.length === 0 && validacion.alertas.length === 0 && (
+                      <div className="flex items-center gap-2 text-xs text-green-400">
+                        <CheckCheck className="w-4 h-4" />
+                        <span>Sin errores ni alertas. La pre-planilla está lista para cerrar.</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ── Navegación de tabs ──────────────────────────────────────── */}
             <div className="bg-[#0c1929] border border-white/8 rounded-xl overflow-hidden">
               <div className="flex border-b border-white/6 overflow-x-auto">
@@ -1293,6 +1603,7 @@ export default function PrePlanilla() {
                         <option value="pendiente">Pendiente</option>
                         <option value="revisada">Revisada</option>
                         <option value="observada">Observada</option>
+                        <option value="aprobado_rrhh">Aprobado RRHH</option>
                       </select>
                       <div className="flex gap-1.5 flex-wrap">
                         {[
@@ -1486,6 +1797,18 @@ export default function PrePlanilla() {
           </>
         )}
       </div>
+
+      {/* ── Modal de cierre ──────────────────────────────────────────────── */}
+      {showCierreModal && (
+        <CierreModal
+          desde={desde}
+          hasta={hasta}
+          validacion={validacion}
+          validacionLoading={validacionLoading}
+          onClose={() => setShowCierreModal(false)}
+          onCerrado={() => cargar(desde, hasta)}
+        />
+      )}
 
       {/* ── Modal de detalle ─────────────────────────────────────────────── */}
       {detalle && (

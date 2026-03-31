@@ -2,10 +2,21 @@
  * pre-planilla.ts — Pre-planilla operativa por período
  *
  * ENDPOINTS:
- *   GET  /api/nomina/pre-planilla            → Consolidado por colaborador (período)
- *   GET  /api/nomina/pre-planilla/detalle/:id → Novedades diarias + anticipos del colaborador
- *   PATCH /api/nomina/pre-planilla/revision/:id → Marcar estado de revisión RRHH
- *   GET  /api/nomina/pre-planilla/export      → Exportar CSV con BOM para Excel
+ *   GET  /api/nomina/pre-planilla                         → Consolidado por colaborador (período)
+ *   GET  /api/nomina/pre-planilla/detalle/:id             → Novedades diarias + anticipos del colaborador
+ *   PATCH /api/nomina/pre-planilla/revision/:id           → Marcar estado de revisión RRHH
+ *   GET  /api/nomina/pre-planilla/validacion              → Errores/alertas automáticas del período
+ *   GET  /api/nomina/pre-planilla/cierres                 → Lista de períodos cerrados
+ *   GET  /api/nomina/pre-planilla/cierre/:id              → Snapshot de un cierre específico
+ *   POST /api/nomina/pre-planilla/cierre                  → Cerrar y congelar período
+ *   GET  /api/nomina/pre-planilla/export                  → Exportar CSV con BOM para Excel
+ *
+ * FLUJO DE CIERRE:
+ *   1. RRHH revisa cada colaborador (estado: pendiente → revisada → aprobado_rrhh | observada)
+ *   2. Se corre validación automática (GET /validacion)
+ *   3. Si no hay errores críticos → se puede cerrar el período (POST /cierre)
+ *   4. El cierre congela los datos en un snapshot JSONB e impide edición posterior
+ *   5. El snapshot sirve de base para generar la planilla final
  *
  * FUENTES:
  *   - novedades_nomina_diarias  (operativo diario consolidado)
@@ -106,6 +117,13 @@ const QUERY_CONSOLIDADO = `
     pr.observaciones                                                            AS revision_observaciones,
     pr.revisado_por                                                             AS revision_por,
     pr.updated_at                                                               AS revision_at,
+    pr.aprobado_por                                                             AS revision_aprobado_por,
+    pr.aprobado_at                                                              AS revision_aprobado_at,
+
+    -- Cierre del período
+    (SELECT ppc.id FROM pre_planilla_cierres ppc
+     WHERE ppc.periodo_desde = $1::date AND ppc.periodo_hasta = $2::date
+     LIMIT 1)                                                                   AS cierre_id,
 
     -- Incentivos cash del período (NO van a planilla — solo referencia)
     COALESCE((
@@ -148,7 +166,8 @@ const QUERY_CONSOLIDADO = `
     e.id, e.nombre_completo, e.dpi, e.sueldo_base, e.tipo_jornada,
     e.dia_descanso, e.horas_contrato, e.estado_laboral, e.puesto,
     e.area, e.sede, e.supervisor_nombre,
-    pr.estado, pr.observaciones, pr.revisado_por, pr.updated_at
+    pr.estado, pr.observaciones, pr.revisado_por, pr.updated_at,
+    pr.aprobado_por, pr.aprobado_at
   ORDER BY e.nombre_completo
 `;
 
@@ -233,35 +252,322 @@ prePlanillaRouter.get("/nomina/pre-planilla/detalle/:employeeId", async (req, re
 // ─── PATCH /api/nomina/pre-planilla/revision/:employeeId ─────────────────────
 prePlanillaRouter.patch("/nomina/pre-planilla/revision/:employeeId", async (req, res) => {
   const employeeId = parseInt(req.params.employeeId);
-  const { desde, hasta, estado, observaciones, revisadoPor } = req.body ?? {};
+  const { desde, hasta, estado, observaciones, revisadoPor, aprobadoPor } = req.body ?? {};
 
   if (isNaN(employeeId) || !desde || !hasta || !estado) {
     return res.status(400).json({ error: "employeeId, desde, hasta y estado son requeridos" });
   }
 
-  const estadosValidos = ["pendiente", "revisada", "observada"];
+  const estadosValidos = ["pendiente", "revisada", "observada", "aprobado_rrhh"];
   if (!estadosValidos.includes(estado)) {
     return res.status(400).json({ error: `estado debe ser: ${estadosValidos.join(", ")}` });
   }
 
   try {
+    // Verificar que el período no esté cerrado
+    const { rows: cierre } = await pool.query(
+      `SELECT id FROM pre_planilla_cierres WHERE periodo_desde = $1::date AND periodo_hasta = $2::date`,
+      [desde, hasta]
+    );
+    if (cierre.length > 0) {
+      return res.status(409).json({ error: "El período está cerrado. No se pueden modificar revisiones." });
+    }
+
+    const isAprobacion = estado === "aprobado_rrhh";
     const { rows } = await pool.query(`
       INSERT INTO pre_planilla_revision
-        (employee_id, periodo_desde, periodo_hasta, estado, observaciones, revisado_por, updated_at)
-      VALUES ($1, $2::date, $3::date, $4, $5, $6, NOW())
+        (employee_id, periodo_desde, periodo_hasta, estado, observaciones, revisado_por, aprobado_por, aprobado_at, updated_at)
+      VALUES ($1, $2::date, $3::date, $4, $5, $6, $7, $8, NOW())
       ON CONFLICT (employee_id, periodo_desde, periodo_hasta)
       DO UPDATE SET
         estado        = EXCLUDED.estado,
         observaciones = EXCLUDED.observaciones,
         revisado_por  = EXCLUDED.revisado_por,
+        aprobado_por  = CASE WHEN EXCLUDED.estado = 'aprobado_rrhh' THEN EXCLUDED.aprobado_por ELSE pre_planilla_revision.aprobado_por END,
+        aprobado_at   = CASE WHEN EXCLUDED.estado = 'aprobado_rrhh' THEN NOW() ELSE pre_planilla_revision.aprobado_at END,
         updated_at    = NOW()
       RETURNING *
-    `, [employeeId, desde, hasta, estado, observaciones ?? null, revisadoPor ?? null]);
+    `, [
+      employeeId, desde, hasta, estado,
+      observaciones ?? null,
+      revisadoPor ?? null,
+      isAprobacion ? (aprobadoPor ?? revisadoPor ?? null) : null,
+      isAprobacion ? new Date() : null,
+    ]);
+
+    // Registrar en auditoría
+    const accion = estado === "aprobado_rrhh" ? "aprobacion" : estado === "observada" ? "observacion" : "revision";
+    await pool.query(`
+      INSERT INTO pre_planilla_auditoria (periodo_desde, periodo_hasta, employee_id, accion, usuario, observaciones, metadata)
+      VALUES ($1::date, $2::date, $3, $4, $5, $6, $7)
+    `, [desde, hasta, employeeId, accion, revisadoPor ?? aprobadoPor ?? "sistema", observaciones ?? null, JSON.stringify({ estado })]);
 
     res.json(rows[0]);
   } catch (err) {
     logger.error({ err }, "PATCH /nomina/pre-planilla/revision error");
     res.status(500).json({ error: "Error al guardar revisión" });
+  }
+});
+
+// ─── GET /api/nomina/pre-planilla/validacion ──────────────────────────────────
+// Detecta errores críticos y alertas automáticas antes de permitir el cierre
+prePlanillaRouter.get("/nomina/pre-planilla/validacion", async (req, res) => {
+  const { desde, hasta } = req.query as Record<string, string>;
+  if (!desde || !hasta) return res.status(400).json({ error: "desde y hasta son requeridos" });
+
+  try {
+    // Verificar si ya está cerrado
+    const { rows: cierreExistente } = await pool.query(
+      `SELECT id, cerrado_por, cerrado_at FROM pre_planilla_cierres WHERE periodo_desde = $1::date AND periodo_hasta = $2::date`,
+      [desde, hasta]
+    );
+    if (cierreExistente.length > 0) {
+      const c = cierreExistente[0];
+      return res.json({
+        periodo_cerrado: true,
+        cierre_id: c.id,
+        cerrado_por: c.cerrado_por,
+        cerrado_at: c.cerrado_at,
+        errores_criticos: [],
+        alertas: [],
+        resumen: { total_colaboradores: 0, errores: 0, alertas: 0 },
+      });
+    }
+
+    // Error crítico 1: falta=TRUE y trabajo_dia=TRUE el mismo día
+    const { rows: errFaltaTrabajo } = await pool.query(`
+      SELECT n.fecha, e.nombre_completo, e.id AS employee_id
+      FROM novedades_nomina_diarias n
+      JOIN employees e ON e.id = n.employee_id
+      WHERE n.fecha BETWEEN $1 AND $2
+        AND n.falta = TRUE AND n.trabajo_dia = TRUE
+      ORDER BY n.fecha, e.nombre_completo
+    `, [desde, hasta]);
+
+    // Error crítico 2: trabajo_dia=TRUE y horas_trabajadas=0 o NULL
+    const { rows: errSinHoras } = await pool.query(`
+      SELECT n.fecha, e.nombre_completo, e.id AS employee_id
+      FROM novedades_nomina_diarias n
+      JOIN employees e ON e.id = n.employee_id
+      WHERE n.fecha BETWEEN $1 AND $2
+        AND n.trabajo_dia = TRUE
+        AND (n.horas_trabajadas IS NULL OR n.horas_trabajadas::numeric = 0)
+      ORDER BY n.fecha, e.nombre_completo
+    `, [desde, hasta]);
+
+    // Alerta 1: colaborador activo sin ningún registro en el período
+    const { rows: alertaSinRegistros } = await pool.query(`
+      SELECT e.id AS employee_id, e.nombre_completo, e.puesto, e.sede
+      FROM employees e
+      WHERE e.estado_laboral = 'activo'
+        AND e.id NOT IN (
+          SELECT DISTINCT n.employee_id FROM novedades_nomina_diarias n
+          WHERE n.fecha BETWEEN $1 AND $2
+        )
+      ORDER BY e.nombre_completo
+    `, [desde, hasta]);
+
+    // Alerta 2: colaboradores pendientes de revisión RRHH (no aprobados)
+    const { rows: alertasPendientes } = await pool.query(`
+      SELECT e.id AS employee_id, e.nombre_completo,
+             COALESCE(pr.estado, 'pendiente') AS estado
+      FROM employees e
+      INNER JOIN novedades_nomina_diarias n ON n.employee_id = e.id AND n.fecha BETWEEN $1 AND $2
+      LEFT JOIN pre_planilla_revision pr ON pr.employee_id = e.id AND pr.periodo_desde = $1::date AND pr.periodo_hasta = $2::date
+      WHERE COALESCE(pr.estado, 'pendiente') NOT IN ('revisada', 'aprobado_rrhh')
+      GROUP BY e.id, e.nombre_completo, pr.estado
+      ORDER BY e.nombre_completo
+    `, [desde, hasta]);
+
+    const erroresCriticos = [
+      ...errFaltaTrabajo.map(r => ({
+        tipo: "falta_y_trabajo",
+        severidad: "critico",
+        mensaje: `${r.nombre_completo} — falta registrada el mismo día que trabajo (${r.fecha?.toISOString?.().slice(0,10) ?? r.fecha})`,
+        employee_id: r.employee_id,
+        fecha: r.fecha,
+      })),
+      ...errSinHoras.map(r => ({
+        tipo: "trabajo_sin_horas",
+        severidad: "critico",
+        mensaje: `${r.nombre_completo} — día trabajado sin horas registradas (${r.fecha?.toISOString?.().slice(0,10) ?? r.fecha})`,
+        employee_id: r.employee_id,
+        fecha: r.fecha,
+      })),
+    ];
+
+    const alertas = [
+      ...alertaSinRegistros.map(r => ({
+        tipo: "sin_registros",
+        severidad: "alerta",
+        mensaje: `${r.nombre_completo} — colaborador activo sin registros en el período`,
+        employee_id: r.employee_id,
+      })),
+      ...alertasPendientes.map(r => ({
+        tipo: "pendiente_revision",
+        severidad: "alerta",
+        mensaje: `${r.nombre_completo} — revisión pendiente (estado: ${r.estado})`,
+        employee_id: r.employee_id,
+        estado: r.estado,
+      })),
+    ];
+
+    // Total colaboradores con registros
+    const { rows: totalRows } = await pool.query(
+      `SELECT COUNT(DISTINCT employee_id) AS total FROM novedades_nomina_diarias WHERE fecha BETWEEN $1 AND $2`,
+      [desde, hasta]
+    );
+
+    res.json({
+      periodo_cerrado: false,
+      errores_criticos: erroresCriticos,
+      alertas,
+      resumen: {
+        total_colaboradores: parseInt(totalRows[0]?.total ?? "0"),
+        errores: erroresCriticos.length,
+        alertas: alertas.length,
+        puede_cerrar: erroresCriticos.length === 0,
+      },
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /nomina/pre-planilla/validacion error");
+    res.status(500).json({ error: "Error al validar pre-planilla" });
+  }
+});
+
+// ─── GET /api/nomina/pre-planilla/cierres ─────────────────────────────────────
+prePlanillaRouter.get("/nomina/pre-planilla/cierres", async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT id, periodo_desde, periodo_hasta, cerrado_por, cerrado_at,
+             observaciones, total_colaboradores, total_estimado
+      FROM pre_planilla_cierres
+      ORDER BY cerrado_at DESC
+    `);
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "GET /nomina/pre-planilla/cierres error");
+    res.status(500).json({ error: "Error al obtener cierres" });
+  }
+});
+
+// ─── GET /api/nomina/pre-planilla/cierre/:id ──────────────────────────────────
+prePlanillaRouter.get("/nomina/pre-planilla/cierre/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "id inválido" });
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM pre_planilla_cierres WHERE id = $1`,
+      [id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Cierre no encontrado" });
+
+    const cierre = rows[0];
+    // Obtener auditoría del período
+    const { rows: auditoria } = await pool.query(`
+      SELECT ppa.*, e.nombre_completo
+      FROM pre_planilla_auditoria ppa
+      LEFT JOIN employees e ON e.id = ppa.employee_id
+      WHERE ppa.periodo_desde = $1 AND ppa.periodo_hasta = $2
+      ORDER BY ppa.created_at DESC
+    `, [cierre.periodo_desde, cierre.periodo_hasta]);
+
+    res.json({ ...cierre, auditoria });
+  } catch (err) {
+    logger.error({ err }, "GET /nomina/pre-planilla/cierre/:id error");
+    res.status(500).json({ error: "Error al obtener cierre" });
+  }
+});
+
+// ─── POST /api/nomina/pre-planilla/cierre ─────────────────────────────────────
+// Cierra el período: valida, crea snapshot, congela datos
+prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
+  const { desde, hasta, cerradoPor, observaciones, forzar } = req.body ?? {};
+  if (!desde || !hasta || !cerradoPor) {
+    return res.status(400).json({ error: "desde, hasta y cerradoPor son requeridos" });
+  }
+
+  try {
+    // Verificar que no esté ya cerrado
+    const { rows: existente } = await pool.query(
+      `SELECT id FROM pre_planilla_cierres WHERE periodo_desde = $1::date AND periodo_hasta = $2::date`,
+      [desde, hasta]
+    );
+    if (existente.length > 0) {
+      return res.status(409).json({ error: "El período ya está cerrado.", cierre_id: existente[0].id });
+    }
+
+    // Ejecutar validaciones
+    const { rows: errFaltaTrabajo } = await pool.query(`
+      SELECT COUNT(*) AS cnt FROM novedades_nomina_diarias
+      WHERE fecha BETWEEN $1 AND $2 AND falta = TRUE AND trabajo_dia = TRUE
+    `, [desde, hasta]);
+    const { rows: errSinHoras } = await pool.query(`
+      SELECT COUNT(*) AS cnt FROM novedades_nomina_diarias
+      WHERE fecha BETWEEN $1 AND $2 AND trabajo_dia = TRUE
+        AND (horas_trabajadas IS NULL OR horas_trabajadas::numeric = 0)
+    `, [desde, hasta]);
+
+    const totalErrores = parseInt(errFaltaTrabajo[0]?.cnt ?? "0") + parseInt(errSinHoras[0]?.cnt ?? "0");
+
+    if (totalErrores > 0 && !forzar) {
+      return res.status(422).json({
+        error: "Hay errores críticos que deben resolverse antes de cerrar.",
+        errores_criticos: totalErrores,
+        detalle: "Usa GET /api/nomina/pre-planilla/validacion para ver el detalle.",
+      });
+    }
+
+    // Generar snapshot completo
+    const { rows: snapshotRows } = await pool.query(QUERY_CONSOLIDADO, [desde, hasta]);
+
+    // Calcular total estimado
+    let totalEstimado = 0;
+    for (const row of snapshotRows) {
+      const sb = parseFloat(row.sueldo_base || 0);
+      const he = parseFloat(row.horas_extra || 0);
+      const anticipo = parseFloat(row.anticipos_monto || 0);
+      const hDia = parseFloat(row.turno_horas_trabajo || row.horas_contrato || 48) / 6;
+      const sueldoDia = sb / 30;
+      const faltas = parseInt(row.faltas || 0) + parseInt(row.suspensiones || 0);
+
+      // Período en días
+      const d1 = new Date(desde);
+      const d2 = new Date(hasta);
+      const periodoDias = Math.round((d2.getTime() - d1.getTime()) / 86400000) + 1;
+
+      const sueldoPeriodo = sueldoDia * periodoDias;
+      const descFaltas = sueldoDia * faltas;
+      const valorHE = (sueldoDia / hDia) * 1.5 * he;
+      totalEstimado += Math.max(0, sueldoPeriodo - descFaltas + valorHE - anticipo);
+    }
+
+    // Guardar cierre
+    const { rows: cierreRows } = await pool.query(`
+      INSERT INTO pre_planilla_cierres (periodo_desde, periodo_hasta, cerrado_por, observaciones, snapshot, total_colaboradores, total_estimado)
+      VALUES ($1::date, $2::date, $3, $4, $5::jsonb, $6, $7)
+      RETURNING id, periodo_desde, periodo_hasta, cerrado_por, cerrado_at, total_colaboradores, total_estimado
+    `, [desde, hasta, cerradoPor, observaciones ?? null, JSON.stringify(snapshotRows), snapshotRows.length, totalEstimado.toFixed(2)]);
+
+    // Marcar revisiones como cerradas
+    await pool.query(`
+      UPDATE pre_planilla_revision SET periodo_cerrado = TRUE
+      WHERE periodo_desde = $1::date AND periodo_hasta = $2::date
+    `, [desde, hasta]);
+
+    // Registrar en auditoría
+    await pool.query(`
+      INSERT INTO pre_planilla_auditoria (periodo_desde, periodo_hasta, employee_id, accion, usuario, observaciones, metadata)
+      VALUES ($1::date, $2::date, NULL, 'cierre', $3, $4, $5)
+    `, [desde, hasta, cerradoPor, observaciones ?? null, JSON.stringify({ total_colaboradores: snapshotRows.length, total_estimado: totalEstimado.toFixed(2), forzar: !!forzar })]);
+
+    res.status(201).json({
+      ...cierreRows[0],
+      mensaje: `Pre-planilla del período ${desde} — ${hasta} cerrada correctamente.`,
+    });
+  } catch (err) {
+    logger.error({ err }, "POST /nomina/pre-planilla/cierre error");
+    res.status(500).json({ error: "Error al cerrar pre-planilla" });
   }
 });
 

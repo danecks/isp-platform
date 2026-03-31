@@ -1531,6 +1531,59 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: P-NOM-07 pre_planilla_revision — error (no bloqueante)");
   }
 
+  // ── P-NOM-08: columnas de aprobación y cierre en pre_planilla_revision ────────
+  try {
+    await pool.query(`ALTER TABLE pre_planilla_revision ADD COLUMN IF NOT EXISTS aprobado_por VARCHAR(100)`);
+    await pool.query(`ALTER TABLE pre_planilla_revision ADD COLUMN IF NOT EXISTS aprobado_at TIMESTAMPTZ`);
+    await pool.query(`ALTER TABLE pre_planilla_revision ADD COLUMN IF NOT EXISTS periodo_cerrado BOOLEAN NOT NULL DEFAULT FALSE`);
+    logger.info("Auto-migrate: P-NOM-08 columnas aprobación/cierre en pre_planilla_revision verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: P-NOM-08 pre_planilla_revision extra cols — error (no bloqueante)");
+  }
+
+  // ── P-NOM-09: tabla pre_planilla_cierres (snapshot de período cerrado) ────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pre_planilla_cierres (
+        id               SERIAL PRIMARY KEY,
+        periodo_desde    DATE          NOT NULL,
+        periodo_hasta    DATE          NOT NULL,
+        cerrado_por      VARCHAR(100)  NOT NULL,
+        cerrado_at       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        observaciones    TEXT,
+        snapshot         JSONB         NOT NULL DEFAULT '[]',
+        total_colaboradores INTEGER    NOT NULL DEFAULT 0,
+        total_estimado   NUMERIC(12,2) NOT NULL DEFAULT 0,
+        UNIQUE(periodo_desde, periodo_hasta)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ppc_periodo_idx ON pre_planilla_cierres(periodo_desde, periodo_hasta)`);
+    logger.info("Auto-migrate: P-NOM-09 tabla pre_planilla_cierres verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: P-NOM-09 pre_planilla_cierres — error (no bloqueante)");
+  }
+
+  // ── P-NOM-10: tabla pre_planilla_auditoria (registro de decisiones) ────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pre_planilla_auditoria (
+        id            SERIAL PRIMARY KEY,
+        periodo_desde DATE          NOT NULL,
+        periodo_hasta DATE          NOT NULL,
+        employee_id   INTEGER       REFERENCES employees(id) ON DELETE SET NULL,
+        accion        VARCHAR(50)   NOT NULL,
+        usuario       VARCHAR(100)  NOT NULL,
+        observaciones TEXT,
+        metadata      JSONB,
+        created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ppa_periodo_idx ON pre_planilla_auditoria(periodo_desde, periodo_hasta)`);
+    logger.info("Auto-migrate: P-NOM-10 tabla pre_planilla_auditoria verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: P-NOM-10 pre_planilla_auditoria — error (no bloqueante)");
+  }
+
   // ── EOA-01: tabla employee_operational_assignments ───────────────────────────
   try {
     await pool.query(`
