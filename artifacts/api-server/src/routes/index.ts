@@ -32,6 +32,7 @@ import { solicitudesCambioRouter } from "./solicitudes-cambio";
 import { solicitudesServicioRouter } from "./solicitudes-servicio";
 import { incentivosRouter } from "./incentivos";
 import { planillaRouter } from "./planilla";
+import adminResetRouter from "./admin-reset";
 
 const router: IRouter = Router();
 
@@ -68,5 +69,6 @@ router.use(solicitudesCambioRouter);
 router.use(solicitudesServicioRouter);
 router.use(incentivosRouter);
 router.use(planillaRouter);
+router.use(adminResetRouter);
 
 export default router;
