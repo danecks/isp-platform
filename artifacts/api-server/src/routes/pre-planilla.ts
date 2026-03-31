@@ -60,6 +60,7 @@ const QUERY_CONSOLIDADO = `
     e.area,
     e.sede,
     e.supervisor_nombre,
+    COALESCE(e.frecuencia_pago, 'quincenal')                                    AS frecuencia_pago,
 
     -- Métricas del período desde novedades_nomina_diarias
     COUNT(DISTINCT n.fecha) FILTER (WHERE n.trabajo_dia = TRUE)                 AS dias_trabajados,
@@ -197,11 +198,19 @@ const QUERY_CONSOLIDADO = `
   GROUP BY
     e.id, e.nombre_completo, e.dpi, e.sueldo_base, e.tipo_jornada,
     e.dia_descanso, e.horas_contrato, e.estado_laboral, e.puesto,
-    e.area, e.sede, e.supervisor_nombre,
+    e.area, e.sede, e.supervisor_nombre, e.frecuencia_pago,
     pr.estado, pr.observaciones, pr.revisado_por, pr.updated_at,
     pr.aprobado_por, pr.aprobado_at
   ORDER BY e.nombre_completo
 `;
+
+// ─── Detecta si un período es primera o segunda quincena ─────────────────────
+// Primera quincena: periodo_hasta día <= 15
+// Segunda quincena: periodo_hasta día > 15
+function detectarQuincena(hasta: string): "primera" | "segunda" {
+  const d = new Date(hasta);
+  return d.getUTCDate() <= 15 ? "primera" : "segunda";
+}
 
 // ─── GET /api/nomina/pre-planilla ─────────────────────────────────────────────
 prePlanillaRouter.get("/nomina/pre-planilla", async (req, res) => {
@@ -212,7 +221,22 @@ prePlanillaRouter.get("/nomina/pre-planilla", async (req, res) => {
 
   try {
     const { rows } = await pool.query(QUERY_CONSOLIDADO, [desde, hasta]);
-    res.json(rows);
+    const quincena = detectarQuincena(hasta);
+
+    // Anotar colaboradores excluidos por frecuencia de pago
+    const annotated = rows.map((row) => {
+      const freq = row.frecuencia_pago ?? "quincenal";
+      const excluido = quincena === "primera" && freq === "mensual";
+      return {
+        ...row,
+        quincena_tipo: quincena,
+        excluido_frecuencia_pago: excluido,
+        motivo_exclusion_frecuencia_pago: excluido
+          ? "Colaborador mensual — solo aparece en la segunda quincena"
+          : null,
+      };
+    });
+    res.json(annotated);
   } catch (err) {
     logger.error({ err }, "GET /nomina/pre-planilla error");
     res.status(500).json({ error: "Error al generar pre-planilla" });
@@ -550,10 +574,21 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
       });
     }
 
-    // Generar snapshot completo
-    const { rows: snapshotRows } = await pool.query(QUERY_CONSOLIDADO, [desde, hasta]);
+    // Generar snapshot completo y filtrar por frecuencia de pago
+    const { rows: allRows } = await pool.query(QUERY_CONSOLIDADO, [desde, hasta]);
+    const quincenaTipo = detectarQuincena(hasta);
 
-    // Calcular total estimado
+    // Primera quincena: excluir colaboradores mensuales
+    const snapshotRows = quincenaTipo === "primera"
+      ? allRows.filter(r => (r.frecuencia_pago ?? "quincenal") === "quincenal")
+      : allRows;
+
+    // Período en días del rango
+    const d1 = new Date(desde);
+    const d2 = new Date(hasta);
+    const periodoDias = Math.round((d2.getTime() - d1.getTime()) / 86400000) + 1;
+
+    // Calcular total estimado (mensual en segunda quincena = sueldo_base completo)
     let totalEstimado = 0;
     for (const row of snapshotRows) {
       const sb = parseFloat(row.sueldo_base || 0);
@@ -562,15 +597,11 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
       const hDia = parseFloat(row.turno_horas_trabajo || row.horas_contrato || 48) / 6;
       const sueldoDia = sb / 30;
       const faltas = parseInt(row.faltas || 0) + parseInt(row.suspensiones || 0);
+      const esMensual = (row.frecuencia_pago ?? "quincenal") === "mensual";
 
-      // Período en días
-      const d1 = new Date(desde);
-      const d2 = new Date(hasta);
-      const periodoDias = Math.round((d2.getTime() - d1.getTime()) / 86400000) + 1;
-
-      const sueldoPeriodo = sueldoDia * periodoDias;
+      const sueldoPeriodo = esMensual && quincenaTipo === "segunda" ? sb : sueldoDia * periodoDias;
       const descFaltas = sueldoDia * faltas;
-      const valorHE = (sueldoDia / hDia) * 1.5 * he;
+      const valorHE = he > 0 ? (sueldoDia / hDia) * 1.5 * he : 0;
       totalEstimado += Math.max(0, sueldoPeriodo - descFaltas + valorHE - anticipo);
     }
 

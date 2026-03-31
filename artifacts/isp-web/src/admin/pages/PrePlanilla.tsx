@@ -101,6 +101,11 @@ interface ColaboradorPre {
   puesto_regimen_igss: string;
   aplica_igss: boolean;
   motivo_exclusion_igss: string | null;
+  // Frecuencia de pago
+  frecuencia_pago: string | null;
+  excluido_frecuencia_pago: boolean;
+  motivo_exclusion_frecuencia_pago: string | null;
+  quincena_tipo: string | null;
 }
 
 interface DetalleNovedad {
@@ -546,6 +551,39 @@ function DetalleModal({
                     <span className="text-white/70">{v}</span>
                   </div>
                 ))}
+              </div>
+
+              {/* Frecuencia de pago */}
+              <div className="bg-[#0c1929] border border-white/6 rounded-xl p-3 space-y-1.5">
+                <p className="text-[10px] text-white/25 uppercase tracking-widest mb-1">Frecuencia de pago</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-white/40">Configuración</span>
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${
+                    col.frecuencia_pago === "mensual"
+                      ? "bg-violet-500/10 text-violet-400 border-violet-500/20"
+                      : "bg-white/5 text-white/50 border-white/10"
+                  }`}>
+                    {col.frecuencia_pago === "mensual" ? "Mensual" : "Quincenal"}
+                  </span>
+                </div>
+                {col.quincena_tipo && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-white/40">Período actual</span>
+                    <span className="text-white/70">{col.quincena_tipo === "primera" ? "1ª Quincena" : "2ª Quincena"}</span>
+                  </div>
+                )}
+                {col.excluido_frecuencia_pago && (
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-xs text-white/40 shrink-0">Estado</span>
+                    <span className="text-xs text-slate-300/80 text-right">Excluido de esta quincena</span>
+                  </div>
+                )}
+                {col.motivo_exclusion_frecuencia_pago && (
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-xs text-white/40 shrink-0">Motivo</span>
+                    <span className="text-xs text-amber-300/80 text-right">{col.motivo_exclusion_frecuencia_pago}</span>
+                  </div>
+                )}
               </div>
 
               {/* Revisión RRHH */}
@@ -1693,6 +1731,7 @@ export default function PrePlanilla() {
                             {th("Anticipo", "anticipos_monto")}
                             {th("Total Est.", "sueldo_base")}
                             {th("IGSS", "aplica_igss")}
+                            {th("Freq.", "frecuencia_pago")}
                             {th("Revisión", "revision_estado")}
                             <th className="px-3 py-2" />
                           </tr>
@@ -1795,6 +1834,20 @@ export default function PrePlanilla() {
                                     </span>
                                   ) : (
                                     <span className="text-white/20 text-[10px]">—</span>
+                                  )}
+                                </td>
+                                {/* Frecuencia */}
+                                <td className="px-3 py-2.5 text-center">
+                                  {r.excluido_frecuencia_pago ? (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-500/10 text-slate-400 border border-slate-500/20">
+                                      Excluido
+                                    </span>
+                                  ) : r.frecuencia_pago === "mensual" ? (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                                      Mensual
+                                    </span>
+                                  ) : (
+                                    <span className="text-white/20 text-[10px]">Q</span>
                                   )}
                                 </td>
                                 {/* Revisión */}

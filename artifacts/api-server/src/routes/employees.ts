@@ -51,7 +51,8 @@ employeesRouter.get("/employees", async (req, res) => {
              COALESCE(e.aplica_igss_general, FALSE) AS aplica_igss_general,
              COALESCE(e.estado_igss, 'no_activo') AS estado_igss,
              e.fecha_inicio_igss,
-             e.observaciones_igss
+             e.observaciones_igss,
+             COALESCE(e.frecuencia_pago, 'quincenal') AS frecuencia_pago
       FROM employees e
       ${where}
       ORDER BY e.nombre_completo
@@ -495,7 +496,11 @@ employeesRouter.get("/employees/:id", async (req, res) => {
       .where(eq(employeesTable.id, id))
       .limit(1);
     if (!emp) return res.status(404).json({ error: "Empleado no encontrado" });
-    res.json(emp);
+    // enriquecer con campo frecuencia_pago (fuera del schema Drizzle)
+    const { rows: [extra] } = await pool.query(
+      `SELECT COALESCE(frecuencia_pago, 'quincenal') AS "frecuenciaPago" FROM employees WHERE id = $1`, [id]
+    );
+    res.json({ ...emp, frecuenciaPago: extra?.frecuenciaPago ?? "quincenal" });
   } catch (err) {
     res.status(500).json({ error: "Error al obtener empleado" });
   }
@@ -509,6 +514,7 @@ employeesRouter.post("/employees", async (req, res) => {
     supervisorNombre, supervisorId, clienteId, fechaIngreso, notas,
     externalId, sourceSystem, syncStatus,
     sueldoBase, tipoJornada, diaDescanso, horasContrato,
+    frecuenciaPago,
   } = req.body ?? {};
 
   if (!nombreCompleto || !String(nombreCompleto).trim()) {
@@ -557,8 +563,31 @@ employeesRouter.post("/employees", async (req, res) => {
       })
       .returning();
 
-    res.status(201).json(emp);
+    // FREQ: persist frecuencia_pago (fuera del schema Drizzle)
+    const freqVal = ["quincenal", "mensual"].includes(frecuenciaPago) ? frecuenciaPago : "quincenal";
+    await pool.query(`UPDATE employees SET frecuencia_pago = $1 WHERE id = $2`, [freqVal, emp.id]);
+
+    // CONT: auto-generar 2 contratos al contratar
+    const fechaBase: Date = fechaIngreso ? new Date(fechaIngreso) : new Date();
+    const fechaPostPrueba = new Date(fechaBase);
+    fechaPostPrueba.setMonth(fechaPostPrueba.getMonth() + 2);
+    const puestoContrato = puesto || null;
+    const sueldoContrato = sueldoBase != null && sueldoBase !== "" ? parseFloat(String(sueldoBase)) : null;
+
+    await pool.query(`
+      INSERT INTO contratos_empleados
+        (employee_id, tipo_contrato, etiqueta, fecha_contrato, fecha_inicio, puesto, sueldo_base, observaciones, generado_automatico)
+      VALUES
+        ($1, 'inicial',    'Contrato inicial',                   $2, $2, $3, $4, 'Generado automáticamente al ingresar colaborador.', TRUE),
+        ($1, 'post_prueba','Contrato post período de prueba',     $5, $5, $3, $4, 'Generado automáticamente. Fecha tentativa de confirmación (+2 meses).', TRUE)
+    `, [emp.id, fechaBase, puestoContrato, sueldoContrato, fechaPostPrueba]);
+
+    const { rows: empCompleto } = await pool.query(
+      `SELECT *, COALESCE(frecuencia_pago, 'quincenal') AS frecuencia_pago FROM employees WHERE id = $1`, [emp.id]
+    );
+    res.status(201).json(snakeToCamel(empCompleto[0] ?? emp as unknown as Record<string, unknown>));
   } catch (err) {
+    logger.error({ err }, "POST /employees error");
     res.status(500).json({ error: "Error al crear empleado" });
   }
 });
@@ -666,6 +695,7 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
     externalId, sourceSystem, syncStatus, lastSyncAt,
     limiteAnticipo, tipoLimitePeriodo,
     sueldoBase, tipoJornada, diaDescanso, horasContrato,
+    frecuenciaPago,
     // IGSS — elegibilidad por colaborador
     aplicaIgssGeneral, estadoIgss, fechaInicioIgss, observacionesIgss,
   } = req.body ?? {};
@@ -755,11 +785,18 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
       );
     }
 
-    // Devolver el registro completo incluyendo campos IGSS
+    // FREQ: persistir frecuencia_pago si se envió
+    if (frecuenciaPago !== undefined) {
+      const freqVal = ["quincenal", "mensual"].includes(frecuenciaPago) ? frecuenciaPago : "quincenal";
+      await pool.query(`UPDATE employees SET frecuencia_pago = $1 WHERE id = $2`, [freqVal, id]);
+    }
+
+    // Devolver el registro completo incluyendo campos IGSS y frecuencia_pago
     const { rows: full } = await pool.query(
       `SELECT *, COALESCE(aplica_igss_general, FALSE) AS aplica_igss_general,
                COALESCE(estado_igss, 'no_activo') AS estado_igss,
-               fecha_inicio_igss, observaciones_igss
+               fecha_inicio_igss, observaciones_igss,
+               COALESCE(frecuencia_pago, 'quincenal') AS frecuencia_pago
        FROM employees WHERE id = $1`,
       [id]
     );
@@ -945,6 +982,51 @@ employeesRouter.get("/employees/:id/titular-historico", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "GET /employees/:id/titular-historico error");
     res.status(500).json({ error: "Error al cargar historial de titularidad" });
+  }
+});
+
+// ─── GET /api/employees/:id/contratos ────────────────────────────────────────
+employeesRouter.get("/employees/:id/contratos", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+  try {
+    const { rows } = await pool.query(`
+      SELECT id, employee_id, tipo_contrato, etiqueta,
+             TO_CHAR(fecha_contrato, 'YYYY-MM-DD') AS fecha_contrato,
+             TO_CHAR(fecha_inicio,   'YYYY-MM-DD') AS fecha_inicio,
+             TO_CHAR(fecha_fin,      'YYYY-MM-DD') AS fecha_fin,
+             puesto, sueldo_base, observaciones,
+             generado_automatico, metadata, created_at
+      FROM contratos_empleados
+      WHERE employee_id = $1
+      ORDER BY fecha_contrato ASC, id ASC
+    `, [id]);
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "GET /employees/:id/contratos error");
+    res.status(500).json({ error: "Error al obtener contratos" });
+  }
+});
+
+// ─── POST /api/employees/:id/contratos ───────────────────────────────────────
+employeesRouter.post("/employees/:id/contratos", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+  const { tipoContrato, etiqueta, fechaContrato, fechaInicio, fechaFin, puesto, sueldoBase, observaciones } = req.body ?? {};
+  if (!etiqueta || !fechaContrato || !fechaInicio) {
+    return res.status(400).json({ error: "etiqueta, fechaContrato y fechaInicio son requeridos" });
+  }
+  try {
+    const { rows } = await pool.query(`
+      INSERT INTO contratos_empleados
+        (employee_id, tipo_contrato, etiqueta, fecha_contrato, fecha_inicio, fecha_fin, puesto, sueldo_base, observaciones, generado_automatico)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, FALSE)
+      RETURNING *
+    `, [id, tipoContrato ?? "inicial", etiqueta, fechaContrato, fechaInicio, fechaFin ?? null, puesto ?? null, sueldoBase ?? null, observaciones ?? null]);
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "POST /employees/:id/contratos error");
+    res.status(500).json({ error: "Error al crear contrato" });
   }
 });
 

@@ -105,6 +105,7 @@ interface PlanillaLinea {
   segmento_ids: number[] | null;
   aplica_igss: boolean;
   motivo_exclusion_igss: string | null;
+  frecuencia_pago: string | null;
   revision_estado: string | null;
   observaciones_rrhh: string | null;
 }
@@ -475,7 +476,12 @@ function TabPlanillaGeneral({ lineas }: { lineas: PlanillaLinea[] }) {
                 {l.employee_id ? `EMP-${String(l.employee_id).padStart(4, "0")}` : "—"}
               </TableCell>
               <TableCell>
-                <div className="text-sm font-medium text-white">{l.nombre_completo}</div>
+                <div className="flex items-center gap-1.5">
+                  <div className="text-sm font-medium text-white">{l.nombre_completo}</div>
+                  {l.frecuencia_pago === "mensual" && (
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20 shrink-0">M</span>
+                  )}
+                </div>
                 <div className="text-xs text-[#8bacc8]">{l.dpi ?? "—"}</div>
               </TableCell>
               <TableCell className="text-xs text-[#8bacc8]">{l.puesto ?? "—"}</TableCell>

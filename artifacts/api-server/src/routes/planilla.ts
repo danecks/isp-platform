@@ -53,10 +53,17 @@ export const planillaRouter = Router();
 
 // ─── Cálculo por colaborador ──────────────────────────────────────────────────
 
+// ─── Detecta si un período es primera o segunda quincena ─────────────────────
+function detectarQuincena(hasta: string): "primera" | "segunda" {
+  const d = new Date(hasta);
+  return d.getUTCDate() <= 15 ? "primera" : "segunda";
+}
+
 function calcularLinea(
   row: Record<string, unknown>,
   periodoTotalDias: number,
-  igssData: { aplica_igss: boolean; motivo_exclusion_igss: string | null }
+  igssData: { aplica_igss: boolean; motivo_exclusion_igss: string | null },
+  quincenaTipo: "primera" | "segunda"
 ) {
   const sb       = parseFloat(String(row.sueldo_base  ?? 0));
   const hc       = parseFloat(String(row.horas_contrato ?? 48));
@@ -64,18 +71,24 @@ function calcularLinea(
   const susp     = parseInt(String(row.suspensiones ?? 0));
   const he       = parseFloat(String(row.horas_extra ?? 0));
   const anticipo = parseFloat(String(row.anticipos_monto ?? 0));
+  const frecuencia = String(row.frecuencia_pago ?? "quincenal");
 
-  const horasDia    = hc > 0 ? hc / 6 : 8;
-  const sueldoDia   = sb / 30;
-  const sueldoPeriodo = sueldoDia * periodoTotalDias;
-  const descFaltas   = sueldoDia * (faltas + susp);
-  const valorHE      = he > 0 ? (sueldoDia / horasDia) * 1.5 * he : 0;
-  const totalBruto   = Math.max(0, sueldoPeriodo - descFaltas + valorHE);
-  const totalNeto    = Math.max(0, totalBruto - anticipo);
+  const horasDia  = hc > 0 ? hc / 6 : 8;
+  const sueldoDia = sb / 30;
+
+  // Mensual en segunda quincena recibe el sueldo mensual completo (sb); cualquier otro caso usa la fórmula estándar
+  const esMensualSegunda = frecuencia === "mensual" && quincenaTipo === "segunda";
+  const sueldoPeriodo = esMensualSegunda ? sb : sueldoDia * periodoTotalDias;
+
+  const descFaltas  = sueldoDia * (faltas + susp);
+  const valorHE     = he > 0 ? (sueldoDia / horasDia) * 1.5 * he : 0;
+  const totalBruto  = Math.max(0, sueldoPeriodo - descFaltas + valorHE);
+  const totalNeto   = Math.max(0, totalBruto - anticipo);
 
   return {
     sueldo_base:      sb,
     horas_contrato:   hc,
+    frecuencia_pago:  frecuencia,
     periodo_dias:     periodoTotalDias,
     dias_trabajados:  parseInt(String(row.dias_trabajados ?? 0)),
     faltas:           faltas,
@@ -198,12 +211,13 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
       });
     }
 
-    // Calcular días del período
+    // Calcular días del período y detectar quincena
     const d1 = new Date(desde);
     const d2 = new Date(hasta);
     const periodoTotalDias = Math.round((d2.getTime() - d1.getTime()) / 86400000) + 1;
+    const quincenaTipo = detectarQuincena(hasta);
 
-    // Leer snapshot del cierre
+    // Leer snapshot del cierre (ya filtrado por quincena desde el cierre)
     const snapshot: Record<string, unknown>[] = cierre.snapshot ?? [];
     if (!snapshot.length) {
       return res.status(422).json({ error: "El snapshot del cierre está vacío." });
@@ -263,7 +277,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         tipo_jornada:       row.tipo_jornada as string | null,
         revision_estado:    row.revision_estado as string | null,
         observaciones_rrhh: row.revision_observaciones as string | null,
-        ...calcularLinea(row, periodoTotalDias, igssData),
+        ...calcularLinea(row, periodoTotalDias, igssData, quincenaTipo),
       };
     });
 
@@ -331,17 +345,17 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
       await pool.query(`
         INSERT INTO planilla_lineas
           (planilla_id, employee_id, nombre_completo, dpi, puesto, sede, cliente,
-           tipo_jornada, horas_contrato, sueldo_base, periodo_dias,
+           tipo_jornada, horas_contrato, frecuencia_pago, sueldo_base, periodo_dias,
            dias_trabajados, faltas, suspensiones, horas_trabajadas, horas_extra,
            sueldo_periodo, desc_faltas, valor_he, total_bruto, anticipos, total_neto,
            aplica_igss, motivo_exclusion_igss,
            igss_trabajador, igss_patronal, otros_descuentos,
            anticipo_ids, novedad_ids, segmento_ids,
            revision_estado, observaciones_rrhh)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
       `, [
         planillaId, l.employee_id, l.nombre_completo, l.dpi, l.puesto, l.sede, l.cliente,
-        l.tipo_jornada, l.horas_contrato, l.sueldo_base, l.periodo_dias,
+        l.tipo_jornada, l.horas_contrato, l.frecuencia_pago, l.sueldo_base, l.periodo_dias,
         l.dias_trabajados, l.faltas, l.suspensiones,
         l.horas_trabajadas, l.horas_extra,
         l.sueldo_periodo, l.desc_faltas, l.valor_he, l.total_bruto, l.anticipos, l.total_neto,

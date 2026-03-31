@@ -1,0 +1,148 @@
+Quiero implementar dos mejoras importantes en el sistema ISPSA, y al mismo tiempo corregir parte de los problemas detectados en el hard test.
+
+No quiero romper nada existente.
+
+⸻
+
+CONTEXTO
+
+En ISPSA:
+	•	todos los colaboradores trabajan bajo un modelo operativo similar
+	•	pero no todos se pagan en el mismo ciclo
+
+Existen dos tipos de frecuencia de pago:
+	•	quincenal
+	•	mensual
+
+Además:
+	•	al contratar a alguien, se generan dos contratos (por período de prueba)
+
+Y en el hard test se detectó un problema crítico:
+	•	algunos colaboradores aparecen en planilla cuando no deberían
+	•	y todos se están calculando como si fueran del período completo
+
+⸻
+
+OBJETIVO
+	1.	Implementar correctamente la frecuencia de pago
+	2.	Ajustar la planilla para que solo incluya a quienes corresponden en el período
+	3.	Generar automáticamente los dos contratos al contratar
+	4.	Dejar base preparada para corregir el cálculo del pool en la siguiente fase
+
+⸻
+
+1. FRECUENCIA DE PAGO EN EMPLEADOS
+
+Agregar en empleados:
+	•	frecuencia_pago (quincenal, mensual)
+
+Debe:
+	•	guardarse en BD
+	•	mostrarse en ficha del colaborador
+	•	ser editable
+
+⸻
+
+2. LÓGICA DE INCLUSIÓN EN PLANILLA
+
+Modificar pre-planilla y planilla:
+
+Primera quincena
+	•	incluir solo colaboradores con frecuencia_pago = quincenal
+
+Segunda quincena
+	•	incluir:
+	•	quincenales
+	•	mensuales
+
+Para mensuales:
+	•	solo aparecen en la segunda quincena
+	•	deben calcularse como pago del período completo mensual
+
+⸻
+
+3. VISUALIZACIÓN CLARA
+
+En pre-planilla y planilla:
+	•	mostrar columna: frecuencia_pago
+	•	si un colaborador no aparece:
+	•	indicar motivo (ej: “mensual - no corresponde a esta quincena”)
+
+No quiero confusión para RRHH.
+
+⸻
+
+4. PREPARACIÓN PARA CORRECCIÓN DE POOL
+
+Sin implementar todavía el cálculo por turno, pero:
+	•	identificar claramente en planilla:
+	•	cuántos días trabajó el colaborador
+	•	cuántas horas trabajó
+
+Esto servirá para la siguiente fase:
+“pago proporcional por días/turnos”
+
+⸻
+
+5. GENERACIÓN AUTOMÁTICA DE CONTRATOS
+
+Al contratar un colaborador:
+
+Generar automáticamente 2 contratos:
+
+Contrato 1
+	•	fecha real de contratación
+
+Contrato 2
+	•	misma información
+	•	fecha = +2 meses
+
+⸻
+
+6. MANEJO DE CONTRATOS
+
+Guardar ambos contratos:
+	•	ligados al colaborador
+	•	visibles en su ficha
+	•	con etiquetas claras:
+	•	“Contrato inicial”
+	•	“Contrato post período de prueba”
+
+⸻
+
+7. PREPARACIÓN DOCUMENTAL
+
+Si no existe sistema de documentos:
+	•	dejar estructura lista
+	•	guardar metadata
+	•	preparar integración futura con PDF
+
+⸻
+
+8. NO ROMPER
+
+No romper:
+	•	planilla actual
+	•	pre-planilla
+	•	IGSS
+	•	RRHH
+	•	operación
+	•	pizarrón
+	•	SSA
+	•	anticipos
+	•	historial
+
+⸻
+
+9. DOCUMENTACIÓN
+
+Explicar:
+	•	cómo funciona la frecuencia de pago
+	•	cuándo aparece un colaborador en cada quincena
+	•	cómo se generan los contratos
+	•	cómo esto ayuda a evitar errores del hard test
+
+⸻
+
+Muy importante:
+esto es una fase intermedia para corregir el problema del hard test donde colaboradores están siendo pagados en períodos donde no deberían aparecer.

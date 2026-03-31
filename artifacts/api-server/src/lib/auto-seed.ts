@@ -2012,5 +2012,53 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: PLAN-02 planilla_lineas — error (no bloqueante)");
   }
 
+  // ── FREQ-01: frecuencia_pago en employees ────────────────────────────────────
+  try {
+    await pool.query(`
+      ALTER TABLE employees
+        ADD COLUMN IF NOT EXISTS frecuencia_pago VARCHAR(20) NOT NULL DEFAULT 'quincenal'
+    `);
+    logger.info("Auto-migrate: FREQ-01 frecuencia_pago en employees verificado/creado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: FREQ-01 — error (no bloqueante)");
+  }
+
+  // ── FREQ-02: frecuencia_pago en planilla_lineas ───────────────────────────────
+  try {
+    await pool.query(`
+      ALTER TABLE planilla_lineas
+        ADD COLUMN IF NOT EXISTS frecuencia_pago VARCHAR(20) NOT NULL DEFAULT 'quincenal'
+    `);
+    logger.info("Auto-migrate: FREQ-02 frecuencia_pago en planilla_lineas verificado/creado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: FREQ-02 — error (no bloqueante)");
+  }
+
+  // ── CONT-01: tabla contratos_empleados ────────────────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS contratos_empleados (
+        id                   SERIAL PRIMARY KEY,
+        employee_id          INTEGER       NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        tipo_contrato        VARCHAR(50)   NOT NULL DEFAULT 'inicial',
+        etiqueta             VARCHAR(100)  NOT NULL,
+        fecha_contrato       DATE          NOT NULL,
+        fecha_inicio         DATE          NOT NULL,
+        fecha_fin            DATE,
+        puesto               VARCHAR(200),
+        sueldo_base          NUMERIC(10,2),
+        observaciones        TEXT,
+        generado_automatico  BOOLEAN       NOT NULL DEFAULT FALSE,
+        metadata             JSONB,
+        created_at           TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        updated_at           TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS contratos_emp_idx ON contratos_empleados(employee_id)`);
+    logger.info("Auto-migrate: CONT-01 tabla contratos_empleados verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: CONT-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

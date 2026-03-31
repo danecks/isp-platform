@@ -51,6 +51,8 @@ interface Empleado {
   horasContrato: number | null;
   limiteAnticipo: number | null;
   tipoLimitePeriodo: string | null;
+  // Nómina — frecuencia de pago
+  frecuenciaPago: string;
   // Seguridad social — IGSS
   aplicaIgssGeneral: boolean;
   estadoIgss: string;
@@ -203,6 +205,7 @@ interface FormState {
   tipoJornada: string;
   diaDescanso: string;
   horasContrato: string;
+  frecuenciaPago: string;
   limiteAnticipo: string;
   tipoLimitePeriodo: string;
 }
@@ -291,6 +294,7 @@ const FORM_EMPTY: FormState = {
   correo: "", area: "", estadoLaboral: "activo",
   fechaIngreso: "", notas: "",
   sueldoBase: "", tipoJornada: "", diaDescanso: "", horasContrato: "",
+  frecuenciaPago: "quincenal",
   limiteAnticipo: "", tipoLimitePeriodo: "quincenal",
 };
 
@@ -925,6 +929,75 @@ const IGSS_ESTADO_CFG: Record<string, { label: string; color: string; dot: strin
   pendiente_regularizacion: { label: "En regularización",   color: "text-amber-400 bg-amber-500/10 border-amber-500/20",         dot: "bg-amber-400" },
 };
 
+// ─── Sección Contratos (solo lectura) ────────────────────────────────────────
+interface Contrato {
+  id: number;
+  tipo_contrato: string;
+  etiqueta: string;
+  fecha_contrato: string;
+  fecha_inicio: string;
+  fecha_fin: string | null;
+  puesto: string | null;
+  sueldo_base: string | null;
+  observaciones: string | null;
+  generado_automatico: boolean;
+}
+
+function ContratosSection({ empId }: { empId: number }) {
+  const API_BASE = (import.meta as Record<string, unknown>).env?.VITE_API_BASE as string ?? "/api";
+  const { data: contratos = [], isLoading } = useQuery<Contrato[]>({
+    queryKey: ["contratos", empId],
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/employees/${empId}/contratos`, {
+        headers: { "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" },
+      });
+      if (!r.ok) throw new Error("Error al cargar contratos");
+      return r.json();
+    },
+    staleTime: 60_000,
+  });
+
+  if (isLoading) return null;
+  if (!contratos.length) return null;
+
+  const tipoColor: Record<string, string> = {
+    inicial:    "bg-primary/15 text-primary border border-primary/30",
+    post_prueba:"bg-emerald-900/30 text-emerald-400 border border-emerald-700/30",
+  };
+
+  return (
+    <div>
+      <p className="text-[10px] text-white/25 uppercase tracking-widest mb-2">Contratos</p>
+      <div className="space-y-2">
+        {contratos.map((c) => (
+          <div key={c.id} className="bg-[#0c1929] border border-white/6 rounded-lg p-3">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-xs font-semibold text-white">{c.etiqueta}</p>
+              <div className="flex items-center gap-1.5">
+                {c.generado_automatico && (
+                  <span className="text-[9px] text-white/20 bg-white/5 border border-white/8 px-1.5 py-0.5 rounded">Auto</span>
+                )}
+                <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${tipoColor[c.tipo_contrato] ?? "bg-white/5 text-white/40 border border-white/10"}`}>
+                  {c.tipo_contrato === "post_prueba" ? "Post-prueba" : "Inicial"}
+                </span>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+              <p className="text-[10px] text-white/30">Fecha: <span className="text-white/60">{c.fecha_contrato}</span></p>
+              <p className="text-[10px] text-white/30">Inicio: <span className="text-white/60">{c.fecha_inicio}</span></p>
+              {c.puesto && <p className="text-[10px] text-white/30 col-span-2">Puesto: <span className="text-white/60">{c.puesto}</span></p>}
+              {c.sueldo_base && <p className="text-[10px] text-white/30">Sueldo: <span className="text-white/60">Q{Number(c.sueldo_base).toLocaleString("es-GT")}</span></p>}
+            </div>
+            {c.observaciones && (
+              <p className="text-[10px] text-white/25 mt-1 italic">{c.observaciones}</p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Sección IGSS inline (con edición) ───────────────────────────────────────
 function IgssSection({ emp }: { emp: Empleado }) {
   const qc = useQueryClient();
@@ -1130,11 +1203,29 @@ function TabPerfil({ emp }: { emp: Empleado }) {
               <p className="text-sm text-white/80 capitalize">{emp.diaDescanso}</p>
             </div>
           )}
+          <div className="bg-[#0c1929] border border-white/6 rounded-lg p-3">
+            <p className="text-[10px] text-white/30 mb-1">Frecuencia de pago</p>
+            <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${
+              (emp.frecuenciaPago ?? "quincenal") === "mensual"
+                ? "bg-violet-900/40 text-violet-300 border border-violet-700/40"
+                : "bg-primary/15 text-primary border border-primary/30"
+            }`}>
+              {(emp.frecuenciaPago ?? "quincenal") === "mensual" ? "Mensual" : "Quincenal"}
+            </span>
+            <p className="text-[10px] text-white/25 mt-1">
+              {(emp.frecuenciaPago ?? "quincenal") === "mensual"
+                ? "Se paga una vez al mes (segunda quincena)"
+                : "Se paga dos veces al mes (Q1 y Q2)"}
+            </p>
+          </div>
         </div>
       </div>
 
       {/* C — IGSS */}
       <IgssSection emp={emp} />
+
+      {/* C2 — Contratos */}
+      <ContratosSection empId={emp.id} />
 
       {/* D — Indicación a tab Asignación */}
       <div className="bg-[#0c1929] border border-primary/10 rounded-xl p-3 flex items-center gap-3">
@@ -2428,6 +2519,7 @@ function FormModal({
     tipoJornada: emp?.tipoJornada ?? "",
     diaDescanso: emp?.diaDescanso ?? "",
     horasContrato: emp?.horasContrato != null ? String(emp.horasContrato) : "",
+    frecuenciaPago: emp?.frecuenciaPago ?? "quincenal",
     limiteAnticipo: emp?.limiteAnticipo != null ? String(emp.limiteAnticipo) : "",
     tipoLimitePeriodo: emp?.tipoLimitePeriodo ?? "quincenal",
   }));
@@ -2544,6 +2636,18 @@ function FormModal({
                 className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50 transition-colors"
               />
             </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-white/50 font-medium">Frecuencia de pago</label>
+            <select
+              value={form.frecuenciaPago ?? "quincenal"}
+              onChange={(e) => set("frecuenciaPago", e.target.value)}
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50 appearance-none"
+            >
+              <option value="quincenal">Quincenal — pago dos veces al mes (Q1 y Q2)</option>
+              <option value="mensual">Mensual — pago una vez al mes (solo Q2)</option>
+            </select>
+            <p className="text-[10px] text-white/30 pt-0.5">Mensual: el colaborador solo aparece en la segunda quincena del mes.</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
