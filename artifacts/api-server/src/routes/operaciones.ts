@@ -7,7 +7,12 @@ const operacionesRouter = Router();
 
 // ─── GET /api/operaciones/tablero ─────────────────────────────────────────────
 // Devuelve: clientes con sus puestos, agente actual, titular y datos de sede/horario
+// ?fecha=YYYY-MM-DD — opcional; si se omite usa CURRENT_DATE.
+//   Permite al tablero futuro mostrar clientes que arrancan en esa fecha.
 operacionesRouter.get("/operaciones/tablero", async (req, res) => {
+  const { fecha } = req.query as { fecha?: string };
+  const fechaFiltro = (fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) ? fecha : null;
+
   try {
     const { rows: puestos } = await pool.query(`
       SELECT
@@ -50,7 +55,7 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         cs.nombre        AS sede_nombre,
         oz.nombre        AS zona_nombre,
         cl.fecha_inicio_contrato,
-        (cl.fecha_inicio_contrato = CURRENT_DATE) AS es_inicio_hoy
+        (cl.fecha_inicio_contrato = COALESCE($1::date, CURRENT_DATE)) AS es_inicio_hoy
       FROM puestos_operativos po
       LEFT JOIN employees e  ON e.id  = po.agente_id
       LEFT JOIN client_sedes cs ON cs.id = po.sede_id
@@ -58,9 +63,10 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       LEFT JOIN turnos t ON t.id = po.tipo_turno_id
       LEFT JOIN clients cl ON cl.id = po.cliente_id
       WHERE po.activo = TRUE
-        AND (cl.fecha_inicio_contrato IS NULL OR cl.fecha_inicio_contrato <= CURRENT_DATE)
+        AND (cl.fecha_inicio_contrato IS NULL
+             OR cl.fecha_inicio_contrato <= COALESCE($1::date, CURRENT_DATE))
       ORDER BY po.cliente_nombre, po.orden, po.nombre
-    `);
+    `, [fechaFiltro]);
 
     // Agrupar por cliente
     const mapaClientes: Record<string, {

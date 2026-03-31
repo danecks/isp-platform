@@ -3517,9 +3517,14 @@ export default function Operaciones() {
 
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: tablero = [], isLoading: loadingTablero, refetch: refetchTablero } = useQuery<ClienteBoard[]>({
-    queryKey: ["operaciones-tablero"],
-    queryFn: () => fetch(`${API_BASE}/operaciones/tablero`).then((r) => r.json()),
-    refetchInterval: 30_000,
+    queryKey: ["operaciones-tablero", esFuturo ? fechaVista : "hoy"],
+    queryFn: () => {
+      const url = esFuturo
+        ? `${API_BASE}/operaciones/tablero?fecha=${fechaVista}`
+        : `${API_BASE}/operaciones/tablero`;
+      return fetch(url).then((r) => r.json());
+    },
+    refetchInterval: esFuturo ? false : 30_000,
   });
 
   const { data: pool, isLoading: loadingPool, refetch: refetchPool } = useQuery<Pool>({
