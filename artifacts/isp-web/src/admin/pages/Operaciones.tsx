@@ -526,42 +526,12 @@ function ModalSegmentos({
         .then((r) => r.json()),
   });
 
-  // Búsqueda de empleados
-  const [busqueda, setBusqueda]         = useState("");
   const [empleadoSel, setEmpleadoSel]   = useState<EmpleadoBusqueda | null>(null);
   const [tipoCobertura, setTipo]        = useState("relevo");
   const [horaInicio, setHoraInicio]     = useState("");
   const [horaFin, setHoraFin]           = useState("");
   const [motivo, setMotivo]             = useState("");
   const [guardando, setGuardando]       = useState(false);
-
-  // IDs de agentes actualmente en puesto o cubriendo un SSA (para filtrar disponibilidad)
-  const { data: poolData } = useQuery<{ enPuesto: { id: number }[]; enSSA: { id: number }[] }>({
-    queryKey: ["pool-disponibilidad"],
-    queryFn: () => fetch(`${API_BASE}/operaciones/pool`).then((r) => r.json()),
-    staleTime: 30_000,
-  });
-  const idsEnPuesto = new Set([
-    ...(poolData?.enPuesto ?? []).map((a) => a.id),
-    ...(poolData?.enSSA    ?? []).map((a) => a.id),
-  ]);
-
-  const { data: empleadosBusquedaRaw = [] } = useQuery<EmpleadoBusqueda[]>({
-    queryKey: ["emp-busqueda", busqueda],
-    queryFn: () =>
-      fetch(`${API_BASE}/employees?q=${encodeURIComponent(busqueda)}&limit=20`)
-        .then((r) => r.json())
-        .then((d: any) => {
-          const arr = Array.isArray(d) ? d : (d.employees ?? []);
-          return arr.filter((e: any) => e.estadoLaboral === "activo" || e.estado_laboral === "activo");
-        }),
-    enabled: busqueda.length >= 2,
-    staleTime: 30_000,
-  });
-  // Separar disponibles y en puesto
-  const empleadosDisponibles = empleadosBusquedaRaw.filter((e) => !idsEnPuesto.has(e.id));
-  const empleadosEnPuesto    = empleadosBusquedaRaw.filter((e) =>  idsEnPuesto.has(e.id));
-  const empleadosBusqueda    = [...empleadosDisponibles, ...empleadosEnPuesto];
 
   // Parsear fecha "YYYY-MM-DD" → "DD-MM-YYYY"
   const fechaDisplay = (() => {
@@ -668,7 +638,7 @@ function ModalSegmentos({
       toast({ title: "Tramo registrado correctamente" });
       refetch();
       // Reset form
-      setEmpleadoSel(null); setBusqueda(""); setHoraInicio(""); setHoraFin(""); setMotivo("");
+      setEmpleadoSel(null); setHoraInicio(""); setHoraFin(""); setMotivo("");
     } catch (err: any) {
       toast({ title: err?.error ?? "Error al registrar tramo", variant: "destructive" });
     } finally {
@@ -874,65 +844,29 @@ function ModalSegmentos({
             )}
           </div>
 
-          {/* Búsqueda de empleado */}
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Buscar empleado (mín. 2 letras)…"
-              value={empleadoSel ? empleadoSel.nombreCompleto : busqueda}
-              onChange={(e) => { setBusqueda(e.target.value); setEmpleadoSel(null); }}
-              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/20 outline-none focus:border-indigo-400/30"
-            />
-            {!empleadoSel && busqueda.length >= 2 && empleadosBusqueda.length > 0 && (
-              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#07111f] border border-white/10 rounded-xl shadow-2xl overflow-hidden max-h-52 overflow-y-auto">
-                {empleadosDisponibles.length > 0 && (
-                  <p className="px-3 pt-2 pb-1 text-[9px] text-emerald-400/60 uppercase tracking-widest font-semibold">Disponibles</p>
-                )}
-                {empleadosDisponibles.map((e) => (
-                  <button
-                    key={e.id}
-                    onClick={() => { setEmpleadoSel(e); setBusqueda(""); }}
-                    className="w-full text-left px-3 py-2.5 hover:bg-white/5 transition-colors flex items-center gap-2 border-b border-white/5 last:border-0"
-                  >
-                    <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(e.nombreCompleto)}`}>
-                      {iniciales(e.nombreCompleto)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-white/80 truncate">{e.nombreCompleto}</p>
-                      <p className="text-[10px] text-white/35 truncate">{e.puesto ?? e.area ?? ""}</p>
-                    </div>
-                  </button>
-                ))}
-                {empleadosEnPuesto.length > 0 && (
-                  <p className="px-3 pt-2 pb-1 text-[9px] text-amber-400/60 uppercase tracking-widest font-semibold border-t border-white/5 mt-1">En puesto ahora</p>
-                )}
-                {empleadosEnPuesto.map((e) => (
-                  <button
-                    key={e.id}
-                    onClick={() => { setEmpleadoSel(e); setBusqueda(""); }}
-                    className="w-full text-left px-3 py-2.5 hover:bg-amber-500/5 transition-colors flex items-center gap-2 border-b border-white/5 last:border-0 opacity-60"
-                  >
-                    <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(e.nombreCompleto)}`}>
-                      {iniciales(e.nombreCompleto)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-white/80 truncate">{e.nombreCompleto}</p>
-                      <p className="text-[10px] text-amber-400/50 truncate">Ya cubriendo otro puesto</p>
-                    </div>
-                    <span className="text-[8px] text-amber-400/60 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-full shrink-0">En puesto</span>
-                  </button>
-                ))}
+          {/* Selector de empleado agrupado por estado */}
+          {empleadoSel ? (
+            <div className="flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/25 rounded-xl px-3 py-2.5">
+              <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(empleadoSel.nombreCompleto)}`}>
+                {iniciales(empleadoSel.nombreCompleto)}
               </div>
-            )}
-            {empleadoSel && (
-              <button
-                onClick={() => { setEmpleadoSel(null); setBusqueda(""); }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-white/30 hover:text-white"
-              >
-                <X className="w-3.5 h-3.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-indigo-200 truncate">{empleadoSel.nombreCompleto}</p>
+                <p className="text-[10px] text-indigo-300/50">{empleadoSel.puesto ?? "Agente"}</p>
+              </div>
+              <button onClick={() => setEmpleadoSel(null)} className="text-white/25 hover:text-red-400 transition-colors">
+                <XCircle className="w-3.5 h-3.5" />
               </button>
-            )}
-          </div>
+            </div>
+          ) : (
+            <SelectorAgenteAgrupado
+              fecha={fecha}
+              seleccionado={null}
+              onSelect={(a) =>
+                setEmpleadoSel({ id: a.id, nombreCompleto: a.nombre, puesto: a.detalle ?? null, area: null })
+              }
+            />
+          )}
 
           {/* Tipo, horas, motivo */}
           <div className="grid grid-cols-3 gap-2">
@@ -1487,25 +1421,11 @@ function ModalPlanFuturo({
   const [motivo, setMotivo]             = useState(planExistente?.motivo ?? "");
   const [notas, setNotas]               = useState(planExistente?.notas ?? "");
   const [guardando, setGuardando]       = useState(false);
-  const [busqueda, setBusqueda]         = useState("");
   const [relevoSel, setRelevoSel]       = useState<EmpleadoBusqueda | null>(
     planExistente?.relevo_id
       ? { id: planExistente.relevo_id, nombreCompleto: planExistente.relevo_nombre ?? "", puesto: null, area: null }
       : null
   );
-
-  const { data: empleadosBusqueda = [] } = useQuery<EmpleadoBusqueda[]>({
-    queryKey: ["emp-busqueda-futuro", busqueda],
-    queryFn: () =>
-      fetch(`${API_BASE}/employees?q=${encodeURIComponent(busqueda)}&limit=20`)
-        .then((r) => r.json())
-        .then((d: any) => {
-          const arr = Array.isArray(d) ? d : (d.employees ?? []);
-          return arr.filter((e: any) => (e.estadoLaboral ?? e.estado_laboral) === "activo");
-        }),
-    enabled: busqueda.length >= 2 && !relevoSel,
-    staleTime: 30_000,
-  });
 
   const [y, m, d] = fecha.split("-");
   const fechaDisplay = `${d}-${m}-${y}`;
@@ -1593,39 +1513,18 @@ function ModalPlanFuturo({
                   <p className="text-xs font-semibold text-indigo-200 truncate">{relevoSel.nombreCompleto}</p>
                   <p className="text-[10px] text-indigo-300/50">{relevoSel.puesto ?? "Agente"}</p>
                 </div>
-                <button onClick={() => { setRelevoSel(null); setBusqueda(""); }} className="text-white/25 hover:text-red-400 transition-colors">
+                <button onClick={() => setRelevoSel(null)} className="text-white/25 hover:text-red-400 transition-colors">
                   <XCircle className="w-3.5 h-3.5" />
                 </button>
               </div>
             ) : (
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Buscar relevo (mín. 2 letras)…"
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  className="w-full bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-white/20 outline-none focus:border-indigo-400/40"
-                />
-                {busqueda.length >= 2 && empleadosBusqueda.length > 0 && (
-                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#07111f] border border-white/10 rounded-xl shadow-2xl overflow-hidden max-h-44 overflow-y-auto">
-                    {empleadosBusqueda.map((e) => (
-                      <button
-                        key={e.id}
-                        onClick={() => { setRelevoSel(e); setBusqueda(""); }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/4 transition-colors"
-                      >
-                        <div className={`w-6 h-6 rounded flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(e.nombreCompleto)}`}>
-                          {iniciales(e.nombreCompleto)}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs text-white/80 truncate">{e.nombreCompleto}</p>
-                          <p className="text-[10px] text-white/30">{e.puesto ?? e.area ?? "Agente"}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <SelectorAgenteAgrupado
+                fecha={fecha}
+                seleccionado={null}
+                onSelect={(a) =>
+                  setRelevoSel({ id: a.id, nombreCompleto: a.nombre, puesto: a.detalle ?? null, area: null })
+                }
+              />
             )}
           </div>
 
