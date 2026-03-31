@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -1440,19 +1440,28 @@ const LABELS_AUSENCIA_FUTURO: Record<string, string> = {
 function TarjetaPuestoFuturo({
   puesto,
   plan,
+  estadoTitular,
   onClick,
 }: {
   puesto: Puesto;
   plan: PlanFuturo | null;
+  estadoTitular?: "trabajando" | "descansando" | "sin_turno" | null;
   onClick: () => void;
 }) {
   const tieneRelevo = !!(plan?.relevo_id);
+
+  // Badge de estado del titular según ciclo de turno
+  const estadoBadge = estadoTitular === "trabajando"
+    ? { label: "Trabaja", cls: "text-teal-300/80 bg-teal-500/10 border-teal-500/25" }
+    : estadoTitular === "descansando"
+    ? { label: "Descansa", cls: "text-blue-300/80 bg-blue-500/10 border-blue-500/25" }
+    : null;
 
   return (
     <div
       onClick={onClick}
       className={`
-        relative rounded-xl border p-3 transition-all cursor-pointer
+        relative rounded-xl border p-3 transition-all cursor-pointer group
         ${plan
           ? tieneRelevo
             ? "bg-[#080f1c] border-indigo-500/30 hover:border-indigo-400/50"
@@ -1466,9 +1475,27 @@ function TarjetaPuestoFuturo({
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold text-white/80 truncate">{puesto.nombre}</p>
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-            <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold ${TURNO_COLORS[puesto.turno] ?? "text-white/30 bg-white/5 border-white/10"}`}>
-              {puesto.turno}
-            </span>
+            {/* Turno real del puesto */}
+            {puesto.turno_nombre ? (
+              <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold ${
+                puesto.tipo_ciclo === "alternado"
+                  ? "text-indigo-300/80 bg-indigo-500/8 border-indigo-500/20"
+                  : "text-emerald-300/70 bg-emerald-500/6 border-emerald-500/15"
+              }`}>
+                {puesto.tipo_ciclo === "alternado" && <Repeat className="w-2 h-2 inline mr-0.5 opacity-70" />}
+                {puesto.turno_nombre}
+              </span>
+            ) : (
+              <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold ${TURNO_COLORS[puesto.turno] ?? "text-white/30 bg-white/5 border-white/10"}`}>
+                {puesto.turno}
+              </span>
+            )}
+            {/* Estado titular: trabaja / descansa ese día */}
+            {estadoBadge && (
+              <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold ${estadoBadge.cls}`}>
+                {estadoBadge.label}
+              </span>
+            )}
             {plan && (
               <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold ${
                 tieneRelevo
@@ -1478,7 +1505,7 @@ function TarjetaPuestoFuturo({
                 {tieneRelevo ? "CUBIERTO" : "SIN RELEVO"}
               </span>
             )}
-            {!plan && (
+            {!plan && !estadoBadge && (
               <span className="text-[9px] px-1.5 py-0.5 rounded border font-semibold text-white/20 bg-white/3 border-white/8">
                 Sin cambios
               </span>
@@ -1489,6 +1516,21 @@ function TarjetaPuestoFuturo({
           <Calendar className={`w-3.5 h-3.5 ${plan ? (tieneRelevo ? "text-indigo-400" : "text-amber-400") : "text-white/10"}`} />
         </div>
       </div>
+
+      {/* Titular esperado */}
+      {puesto.titular_nombre && !plan && (
+        <div className="flex items-center gap-1.5 mb-2">
+          <div className={`w-5 h-5 rounded flex items-center justify-center text-[8px] font-bold text-white shrink-0 ${avatarColor(puesto.titular_nombre)}`}>
+            {iniciales(puesto.titular_nombre)}
+          </div>
+          <p className="text-[10px] text-white/50 truncate">{puesto.titular_nombre.split(" ").slice(0,3).join(" ")}</p>
+          {estadoBadge && (
+            <span className={`text-[8px] font-semibold ml-auto ${estadoTitular === "trabajando" ? "text-teal-400/70" : "text-blue-400/70"}`}>
+              {estadoTitular === "trabajando" ? "↑ Turno" : "↓ Descanso"}
+            </span>
+          )}
+        </div>
+      )}
 
       {plan ? (
         <div className="space-y-1.5">
@@ -1528,7 +1570,7 @@ function TarjetaPuestoFuturo({
       ) : (
         <div className="flex items-center gap-2 text-white/15">
           <User className="w-4 h-4 shrink-0" />
-          <p className="text-[11px]">Sin planificación</p>
+          <p className="text-[11px]">Sin ausencias planificadas</p>
         </div>
       )}
 
@@ -1698,15 +1740,27 @@ function ClienteColumnaFutura({
   cliente,
   planPorPuesto,
   onAbrirPlan,
+  poolFuturo,
 }: {
   cliente: ClienteBoard;
   fecha?: string;
   planPorPuesto: Record<number, PlanFuturo>;
   onAbrirPlan: (puesto: Puesto) => void;
+  poolFuturo?: PoolFuturoData | null;
 }) {
   const total     = cliente.puestos.length;
   const conPlan   = cliente.puestos.filter((p) => planPorPuesto[p.id]).length;
   const conRelevo = cliente.puestos.filter((p) => planPorPuesto[p.id]?.relevo_id).length;
+
+  // Lookup: empleado_id → estado en pool-futuro
+  const estadoPorEmpleado = useMemo<Map<number, "trabajando" | "descansando" | "ausenteProgramado">>(() => {
+    const m = new Map<number, "trabajando" | "descansando" | "ausenteProgramado">();
+    if (!poolFuturo) return m;
+    for (const a of poolFuturo.trabajando)        m.set(a.id, "trabajando");
+    for (const a of poolFuturo.descansando)       m.set(a.id, "descansando");
+    for (const a of poolFuturo.ausenteProgramado) m.set(a.id, "ausenteProgramado");
+    return m;
+  }, [poolFuturo]);
 
   return (
     <div className="flex-shrink-0 w-64 bg-[#060f1a] border border-indigo-500/10 rounded-2xl overflow-hidden flex flex-col max-h-full">
@@ -1730,14 +1784,21 @@ function ClienteColumnaFutura({
       </div>
 
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
-        {cliente.puestos.map((p) => (
-          <TarjetaPuestoFuturo
-            key={p.id}
-            puesto={p}
-            plan={planPorPuesto[p.id] ?? null}
-            onClick={() => onAbrirPlan(p)}
-          />
-        ))}
+        {cliente.puestos.map((p) => {
+          // Estado del titular para ese puesto en esa fecha futura
+          const estadoTitular = p.titular_employee_id
+            ? (estadoPorEmpleado.get(p.titular_employee_id) ?? null)
+            : null;
+          return (
+            <TarjetaPuestoFuturo
+              key={p.id}
+              puesto={p}
+              plan={planPorPuesto[p.id] ?? null}
+              estadoTitular={estadoTitular === "ausenteProgramado" ? null : estadoTitular}
+              onClick={() => onAbrirPlan(p)}
+            />
+          );
+        })}
         {cliente.puestos.length === 0 && (
           <div className="text-center py-4">
             <p className="text-[11px] text-white/20">Sin puestos</p>
@@ -2686,16 +2747,36 @@ function ModalNuevoPuesto({
 }: {
   clientePreseleccionado?: ClienteBoard;
   clientes: ClienteDisponible[];
-  onSave: (data: { clienteId: number | null; clienteNombre: string; nombre: string; turno: string; notas: string }) => Promise<void>;
+  onSave: (data: {
+    clienteId: number | null;
+    clienteNombre: string;
+    nombre: string;
+    turno: string;
+    notas: string;
+    tipoTurnoId: number;
+    fechaInicioCiclo: string;
+  }) => Promise<void>;
   onClose: () => void;
 }) {
   const [clienteId, setClienteId]     = useState<string>(clientePreseleccionado?.clienteId?.toString() ?? "");
   const [clienteNombreCustom, setClienteNombreCustom] = useState(clientePreseleccionado?.clienteNombre ?? "");
   const [nombre, setNombre]           = useState("");
-  const [turno, setTurno]             = useState("día");
   const [notas, setNotas]             = useState("");
+  const [tipoTurnoId, setTipoTurnoId] = useState<string>("");
+  const hoy = new Date().toISOString().split("T")[0];
+  const [fechaInicioCiclo, setFechaInicioCiclo] = useState<string>(hoy);
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState("");
+
+  // Cargar catálogo de turnos
+  const { data: turnosCatalogo = [], isLoading: cargandoTurnos } = useQuery<TurnoApiItem[]>({
+    queryKey: ["turnos-catalogo"],
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/turnos`, { credentials: "include" });
+      if (!r.ok) throw new Error("Error al cargar turnos");
+      return r.json();
+    },
+  });
 
   // Resolver nombre del cliente seleccionado
   const clienteSeleccionado = clientes.find((c) => c.id.toString() === clienteId);
@@ -2703,9 +2784,13 @@ function ModalNuevoPuesto({
     ? (clienteSeleccionado.nombre_comercial || clienteSeleccionado.nombre)
     : clienteNombreCustom;
 
+  const turnoSeleccionado = turnosCatalogo.find(t => String(t.id) === tipoTurnoId) ?? null;
+
   async function handleSave() {
     if (!nombre.trim()) { setError("El nombre del puesto es requerido."); return; }
     if (!clienteNombreFinal.trim()) { setError("Selecciona o escribe un cliente."); return; }
+    if (!tipoTurnoId) { setError("Debes seleccionar un tipo de turno."); return; }
+    if (!fechaInicioCiclo) { setError("La fecha de inicio del ciclo es requerida."); return; }
     setLoading(true);
     setError("");
     try {
@@ -2713,12 +2798,14 @@ function ModalNuevoPuesto({
         clienteId: clienteId ? parseInt(clienteId) : null,
         clienteNombre: clienteNombreFinal,
         nombre: nombre.trim(),
-        turno,
+        turno: turnoSeleccionado?.nombre ?? "día",
         notas,
+        tipoTurnoId: parseInt(tipoTurnoId),
+        fechaInicioCiclo,
       });
       onClose();
     } catch (e: any) {
-      setError(e.error ?? "Error al crear puesto");
+      setError(e.error ?? e.message ?? "Error al crear puesto");
     } finally {
       setLoading(false);
     }
@@ -2775,19 +2862,54 @@ function ModalNuevoPuesto({
               className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50"
             />
           </div>
+
+          {/* Tipo de turno — requerido */}
           <div className="space-y-1">
-            <label className="text-xs text-white/40">Turno</label>
-            <select
-              value={turno}
-              onChange={(e) => setTurno(e.target.value)}
-              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50 appearance-none"
-            >
-              <option value="día">Día</option>
-              <option value="noche">Noche</option>
-              <option value="24h">24 horas</option>
-              <option value="mixto">Mixto</option>
-            </select>
+            <label className="text-xs text-white/40">
+              Tipo de turno <span className="text-rose-400">*</span>
+            </label>
+            {cargandoTurnos ? (
+              <div className="flex items-center gap-2 text-xs text-white/30 py-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Cargando turnos…
+              </div>
+            ) : (
+              <select
+                value={tipoTurnoId}
+                onChange={(e) => setTipoTurnoId(e.target.value)}
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50 appearance-none"
+              >
+                <option value="">— Selecciona un turno —</option>
+                {turnosCatalogo.filter(t => t.id).map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.nombre} · {t.ciclo_horas}h ({t.tipo_ciclo})
+                  </option>
+                ))}
+              </select>
+            )}
+            {turnoSeleccionado && (
+              <p className="text-[10px] text-indigo-300/50 mt-1">
+                {turnoSeleccionado.horas_trabajo}h trabajo / {turnoSeleccionado.horas_descanso}h descanso
+                {turnoSeleccionado.tipo_ciclo === "alternado" ? " · ciclo alternado" : " · ciclo diario"}
+              </p>
+            )}
           </div>
+
+          {/* Fecha de inicio del ciclo */}
+          <div className="space-y-1">
+            <label className="text-xs text-white/40">
+              Fecha inicio del ciclo <span className="text-rose-400">*</span>
+            </label>
+            <input
+              type="date"
+              value={fechaInicioCiclo}
+              onChange={(e) => setFechaInicioCiclo(e.target.value)}
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50"
+            />
+            <p className="text-[10px] text-white/25">
+              Fecha desde la que el ciclo de turno empieza a contar.
+            </p>
+          </div>
+
           <div className="space-y-1">
             <label className="text-xs text-white/40">Notas (opcional)</label>
             <input
@@ -2804,7 +2926,7 @@ function ModalNuevoPuesto({
             </button>
             <button
               onClick={handleSave}
-              disabled={loading}
+              disabled={loading || !tipoTurnoId}
               className="flex-1 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-sm font-bold text-white disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
             >
               {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -3633,7 +3755,15 @@ export default function Operaciones() {
   }
 
   // ── Crear puesto ──────────────────────────────────────────────────────────
-  async function crearPuesto(data: { clienteId: number | null; clienteNombre: string; nombre: string; turno: string; notas: string }) {
+  async function crearPuesto(data: {
+    clienteId: number | null;
+    clienteNombre: string;
+    nombre: string;
+    turno: string;
+    notas: string;
+    tipoTurnoId: number;
+    fechaInicioCiclo: string;
+  }) {
     await apiPost(`${API_BASE}/operaciones/puestos`, data);
     toast({ title: "Puesto creado", description: `${data.nombre} — ${data.clienteNombre}` });
     invalidate();
@@ -4158,6 +4288,7 @@ export default function Operaciones() {
                     cliente={cliente}
                     fecha={fechaVista}
                     planPorPuesto={planFuturoPorPuesto}
+                    poolFuturo={poolFuturo ?? null}
                     onAbrirPlan={(puesto) =>
                       setModalPlanFuturo({ puesto, plan: planFuturoPorPuesto[puesto.id] ?? null })
                     }

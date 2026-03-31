@@ -255,17 +255,23 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
       ORDER BY e.nombre_completo
     `, [fecha]);
 
-    // 2. Eventos RRHH aprobados/pendientes para esa fecha (ausencias de RRHH)
+    // 2. Eventos RRHH aprobados/pendientes para esa fecha
+    // Soporta rangos: si fecha_fin está definido, verifica que la fecha consultada esté dentro del rango
     const { rows: eventosRrhh } = await pool.query(`
       SELECT
         employee_id,
         employee_nombre,
         tipo_evento,
-        estado
+        estado,
+        fecha_fin
       FROM eventos_rrhh
-      WHERE DATE(fecha) = $1
-        AND estado IN ('aprobado', 'pendiente')
-        AND tipo_evento IN ('permiso', 'vacaciones', 'incapacidad', 'suspension', 'falta', 'permiso_sin_goce')
+      WHERE $1::date BETWEEN DATE(fecha) AND COALESCE(fecha_fin, DATE(fecha))
+        AND estado IN ('aprobado', 'pendiente', 'activo')
+        AND tipo_evento IN (
+          'permiso', 'vacaciones', 'incapacidad', 'suspension',
+          'falta', 'falta_injustificada', 'permiso_sin_goce',
+          'permiso_goce_sueldo', 'amonestacion'
+        )
     `, [fecha]);
 
     const eventosMap = new Map<number, { tipo: string; estado: string }>();

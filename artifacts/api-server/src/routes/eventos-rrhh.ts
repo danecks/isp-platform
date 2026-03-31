@@ -86,6 +86,8 @@ eventosRrhhRouter.post("/rrhh/eventos", async (req, res) => {
   const {
     employeeId,
     tipoEvento,
+    fechaInicio,
+    fechaFin,
     clienteNombre,
     puestoNombre,
     supervisorNombre,
@@ -100,6 +102,14 @@ eventosRrhhRouter.post("/rrhh/eventos", async (req, res) => {
     return res.status(400).json({ error: "employeeId y tipoEvento son requeridos" });
   }
 
+  // Validar formatos de fecha si se proveen
+  if (fechaInicio && !/^\d{4}-\d{2}-\d{2}$/.test(fechaInicio)) {
+    return res.status(400).json({ error: "fechaInicio debe tener formato YYYY-MM-DD" });
+  }
+  if (fechaFin && !/^\d{4}-\d{2}-\d{2}$/.test(fechaFin)) {
+    return res.status(400).json({ error: "fechaFin debe tener formato YYYY-MM-DD" });
+  }
+
   try {
     // Obtener datos del empleado
     const { rows: empRows } = await pool.query(
@@ -109,14 +119,17 @@ eventosRrhhRouter.post("/rrhh/eventos", async (req, res) => {
     if (!empRows.length) return res.status(404).json({ error: "Empleado no encontrado" });
     const emp = empRows[0];
 
+    // fecha: usar fechaInicio si se provee, de lo contrario NOW()
+    const fechaValor = fechaInicio ? `'${fechaInicio}'::date` : "NOW()";
+
     const { rows } = await pool.query(
       `INSERT INTO eventos_rrhh
          (employee_id, employee_nombre, employee_dpi,
           tipo_evento, cliente_nombre, puesto_nombre,
           supervisor_nombre, generado_desde, movimiento_id,
           estado, observaciones, notas, usuario_generador,
-          documentos_generados, fecha)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pendiente',$10,$11,$12,'[]',NOW())
+          documentos_generados, fecha, fecha_fin)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pendiente',$10,$11,$12,'[]',${fechaValor},$13)
        RETURNING *`,
       [
         emp.id,
@@ -131,6 +144,7 @@ eventosRrhhRouter.post("/rrhh/eventos", async (req, res) => {
         observaciones || null,
         notas         || null,
         usuarioGenerador || "sistema",
+        fechaFin || null,
       ],
     );
 

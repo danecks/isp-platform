@@ -2243,5 +2243,13 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: CLI-001-SEED — error (no bloqueante)");
   }
 
+  // ── EV-FIN-01: fecha_fin en eventos_rrhh para rangos (vacaciones, incapacidades) ──────────────────
+  try {
+    await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS fecha_fin DATE`);
+    logger.info("Auto-migrate: EV-FIN-01 fecha_fin en eventos_rrhh verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: EV-FIN-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

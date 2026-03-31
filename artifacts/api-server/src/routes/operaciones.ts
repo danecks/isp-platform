@@ -918,11 +918,32 @@ operacionesRouter.patch("/operaciones/puestos/:id/igss", async (req, res) => {
 
 // ─── POST /api/operaciones/puestos ───────────────────────────────────────────
 // Crear un nuevo puesto operativo
+// Requiere: clienteNombre, nombre, tipoTurnoId, fechaInicioCiclo
 operacionesRouter.post("/operaciones/puestos", async (req, res) => {
-  const { clienteId, clienteNombre, nombre, turno, notas, sedeId, horario, jornada } = req.body;
-  if (!clienteNombre || !nombre) return res.status(400).json({ error: "clienteNombre y nombre son requeridos" });
+  const {
+    clienteId, clienteNombre, nombre, turno, notas, sedeId, horario, jornada,
+    tipoTurnoId, fechaInicioCiclo,
+  } = req.body;
+
+  if (!clienteNombre || !nombre) {
+    return res.status(400).json({ error: "clienteNombre y nombre son requeridos" });
+  }
+  if (!tipoTurnoId) {
+    return res.status(400).json({ error: "tipoTurnoId es requerido para crear un puesto" });
+  }
+  if (!fechaInicioCiclo || !/^\d{4}-\d{2}-\d{2}$/.test(fechaInicioCiclo)) {
+    return res.status(400).json({ error: "fechaInicioCiclo (YYYY-MM-DD) es requerida para crear un puesto" });
+  }
 
   try {
+    // Verificar que el turno exista
+    const { rows: turnoRows } = await pool.query(
+      `SELECT id FROM turnos WHERE id = $1 AND activo = TRUE`, [tipoTurnoId]
+    );
+    if (!turnoRows.length) {
+      return res.status(400).json({ error: `El turno con id=${tipoTurnoId} no existe o está inactivo` });
+    }
+
     const { rows: ordenRows } = await pool.query(
       `SELECT COALESCE(MAX(orden), -1) + 1 AS siguiente FROM puestos_operativos WHERE cliente_nombre=$1`,
       [clienteNombre]
@@ -930,10 +951,16 @@ operacionesRouter.post("/operaciones/puestos", async (req, res) => {
     const orden = ordenRows[0].siguiente;
 
     const { rows } = await pool.query(
-      `INSERT INTO puestos_operativos (cliente_id, cliente_nombre, nombre, turno, orden, notas, sede_id, horario, jornada)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO puestos_operativos
+         (cliente_id, cliente_nombre, nombre, turno, orden, notas, sede_id, horario, jornada,
+          tipo_turno_id, fecha_inicio_ciclo)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
-      [clienteId || null, clienteNombre, nombre, turno || 'día', orden, notas || null, sedeId || null, horario || null, jornada || null]
+      [
+        clienteId || null, clienteNombre, nombre, turno || 'día', orden,
+        notas || null, sedeId || null, horario || null, jornada || null,
+        tipoTurnoId, fechaInicioCiclo,
+      ]
     );
     res.json(rows[0]);
   } catch (err) {

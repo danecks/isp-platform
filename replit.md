@@ -67,6 +67,9 @@ The project uses a pnpm workspace monorepo, organizing deployable applications (
 - **SSA Pipeline Sync (Phase 2):** Automated syncing of SSA-linked task closure to update area states and recalculate general status.
 - **Pool de Agentes — Elegibilidad y Sincronización (SSA-04):** Employee eligibility for the agent pool based on `elegible_pool` column, with supervisors/non-operational staff marked as ineligible, and integration with active SSA assignments.
 - **Audit Fixes (Comprehensive):** Numerous system enhancements and bug fixes across various modules, including client creation, warnings for uncovered posts, validation, synchronization, and query optimizations.
+- **Vista Futura con Estado de Turno (T001/T002):** Future-date board view shows real turno name (from catalog, `turno_nombre`), and each puesto card shows whether the titular is expected to be "Trabaja" (teal) or "Descansa" (blue) on that date, based on the agent's pool-futuro cycle calculation. ClienteColumnaFutura now receives poolFuturo data and builds a per-employee lookup. TarjetaPuestoFuturo shows turno badge and work/rest status.
+- **EV-FIN-01 migration:** Added `fecha_fin DATE` column to `eventos_rrhh` for multi-day event ranges (vacaciones, incapacidades). POST /rrhh/eventos now accepts `fechaInicio`/`fechaFin`. Pool-futuro RRHH events query uses `BETWEEN fecha AND COALESCE(fecha_fin, fecha)`.
+- **POST /puestos con turno requerido:** Creating a new puesto now requires `tipoTurnoId` (validated against `turnos` catalog) and `fechaInicioCiclo` (YYYY-MM-DD). ModalNuevoPuesto updated with turno selector and fechaInicioCiclo date input.
 
 ## External Dependencies
 - **PostgreSQL:** Primary database.

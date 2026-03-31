@@ -1,0 +1,175 @@
+Quiero atacar ahora el siguiente bloque crítico de ISPSA:
+
+Turnos reales por puesto + fecha de inicio de ciclo + cálculo de trabajo/descanso futuro
+
+No quiero romper nada de lo existente.
+
+Problema actual
+
+Hoy el sistema ya tiene Pizarrón Operativo, Pool Futuro y planificación futura, pero todavía no están completamente confiables porque los puestos no tienen una lógica de turno/ciclo bien amarrada.
+
+Sin eso, el sistema no puede saber correctamente:
+	•	quién trabaja un día futuro
+	•	quién descansa un día futuro
+	•	quién estaría disponible para cubrir
+	•	cómo interpretar turnos de 12h y 24h
+	•	cómo planificar relevos y permisos futuros
+
+Objetivo
+
+Hacer que cada puesto tenga un turno real asignado y que el sistema pueda calcular, para cualquier fecha:
+	•	si el colaborador trabaja
+	•	si descansa
+	•	si puede aparecer como candidato futuro para cobertura
+
+⸻
+
+1. Turno obligatorio por puesto
+
+Quiero que cada puesto operativo tenga configurado:
+	•	tipo_turno_id
+	•	fecha_inicio_ciclo
+
+Si hoy hay puestos sin turno:
+	•	detectarlos
+	•	permitir asignarles turno
+	•	no dejarlos sueltos
+
+Validación
+
+No permitir:
+	•	crear puesto sin turno
+	•	dejar puesto activo sin fecha de inicio de ciclo
+
+⸻
+
+2. API de turnos completa
+
+Revisar y completar /api/turnos para que devuelva claramente lo necesario para cálculo operativo.
+
+Debe incluir al menos:
+	•	id
+	•	nombre
+	•	horas_trabajo
+	•	horas_descanso
+	•	ciclo_horas
+	•	cualquier patrón que ya exista o haga falta para interpretar alternancia
+
+No quiero respuestas incompletas.
+
+⸻
+
+3. Cálculo de ciclo por fecha
+
+Implementar una lógica clara que, dado:
+	•	turno del puesto
+	•	fecha_inicio_ciclo
+	•	fecha consultada
+
+permita determinar:
+	•	si ese puesto / titular está en día de trabajo
+	•	si está en día de descanso
+
+Ejemplo
+
+Si Daniel tiene turno 24 y comenzó ciclo el 30:
+	•	30 trabaja
+	•	31 descansa
+	•	1 trabaja
+	•	2 descansa
+
+Y que algo equivalente funcione con turnos de 12h u otros esquemas soportados.
+
+⸻
+
+4. Integración con Pizarrón Futuro
+
+Quiero que la vista futura del Pizarrón use esta lógica para mostrar correctamente:
+	•	quién debería trabajar en esa fecha
+	•	quién debería descansar
+	•	quién podría estar disponible para cobertura futura
+	•	quién no debería aparecer como elegible
+
+No quiero que el Pool Futuro siga mostrando 0 o valores incorrectos por falta de turnos.
+
+⸻
+
+5. Integración con planificación futura
+
+Esto debe alimentar directamente la función de planificación futura que ya queremos usar.
+
+Cuando Operaciones entre a una fecha futura, debe poder ver:
+	•	ausencias aprobadas
+	•	coberturas futuras programadas
+	•	y además la disponibilidad calculada según turnos reales
+
+⸻
+
+6. Visibilidad en ficha y UI
+
+Quiero que en la ficha del colaborador y/o puesto se pueda ver claramente:
+	•	turno asignado
+	•	fecha de inicio de ciclo
+	•	próxima secuencia esperada si aplica
+
+Y en el Pizarrón:
+	•	poder distinguir trabajo esperado vs descanso esperado en futuro
+
+⸻
+
+7. Compatibilidad con lógica existente
+
+No romper:
+	•	Pizarrón Operativo actual
+	•	pool actual
+	•	coberturas
+	•	segmentos
+	•	historial de titularidad
+	•	RRHH
+	•	pre-planilla
+	•	planilla
+	•	SSA
+	•	permisos/ausencias futuras
+
+Esto debe fortalecer el sistema, no reescribirlo desde cero.
+
+⸻
+
+8. Manejo de datos existentes
+
+Si ya existen puestos activos sin turno o sin fecha de inicio de ciclo:
+	•	reportarlos
+	•	corregirlos
+	•	o sembrarles una configuración coherente para prueba
+
+Pero no quiero que queden invisiblemente mal.
+
+⸻
+
+9. Verificación final
+
+Al terminar, quiero que verifiques con casos reales:
+	•	un puesto de 12h
+	•	un puesto de 24h
+	•	una fecha futura
+	•	una ausencia futura aprobada
+	•	una cobertura futura programada
+
+Y confirmar que el sistema ya distingue correctamente:
+	•	quién trabaja
+	•	quién descansa
+	•	quién podría cubrir
+
+⸻
+
+10. Documentación
+
+Explica claramente:
+	•	cómo se calcula el ciclo
+	•	qué datos necesita cada puesto
+	•	cómo se usa la fecha de inicio de ciclo
+	•	cómo esto habilita el pool futuro y la planificación futura real
+	•	qué puestos quedaron corregidos o qué faltaría ajustar
+
+Muy importante:
+quiero que esta fase convierta la planificación futura de ISPSA en algo real y útil, basado en turnos y ciclos verdaderos, no en supuestos.
