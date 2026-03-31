@@ -2251,5 +2251,37 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: EV-FIN-01 — error (no bloqueante)");
   }
 
+  // ── INC-01: tabla incentivos_cash_cobertura ───────────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS incentivos_cash_cobertura (
+        id                SERIAL PRIMARY KEY,
+        employee_id       INTEGER       NOT NULL,
+        employee_nombre   VARCHAR(200)  NOT NULL,
+        fecha             DATE          NOT NULL,
+        cliente_id        INTEGER,
+        cliente_nombre    VARCHAR(200),
+        sede_id           INTEGER,
+        puesto_id         INTEGER,
+        puesto_nombre     VARCHAR(200),
+        segmento_id       INTEGER,
+        tipo              VARCHAR(50)   NOT NULL,
+        monto             NUMERIC(10,2) NOT NULL,
+        motivo            TEXT,
+        autorizado_por    VARCHAR(100),
+        pagado_por        VARCHAR(100),
+        metodo_pago       VARCHAR(50),
+        estado            VARCHAR(20)   NOT NULL DEFAULT 'pendiente',
+        observaciones     TEXT,
+        created_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS inc_cash_employee_idx ON incentivos_cash_cobertura(employee_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS inc_cash_fecha_idx     ON incentivos_cash_cobertura(fecha)`);
+    logger.info("Auto-migrate: INC-01 tabla incentivos_cash_cobertura verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: INC-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

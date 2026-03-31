@@ -1,0 +1,215 @@
+Quiero hacer un hard test integral enfocado en el inicio de proyecto (arranque de contrato) y su impacto en Operaciones, Planeación Futura y Nómina en ISPSA.
+
+No quiero pruebas técnicas aisladas.
+Quiero una simulación real como si estuviéramos arrancando un cliente nuevo en la operación.
+
+---
+
+## 🎯 OBJETIVO
+
+Validar que cuando Comercial cierra un cliente con una fecha de inicio futura:
+
+1. El proyecto aparece correctamente en el Pizarrón Futuro
+2. Operaciones puede prepararlo antes de la fecha
+3. El día del arranque entra correctamente a operación real
+4. El cierre del día funciona sin errores
+5. La información fluye correctamente hacia pre-planilla y planilla
+
+---
+
+## 🧪 ESCENARIO BASE
+
+Simular:
+
+- Fecha actual: 01/04/2026
+- Cliente: Cervecería Centro Americana
+- Fecha inicio proyecto: 18/04/2026
+
+Configurar:
+- 2 sedes
+- 3–5 puestos
+- turnos (12h y 24h)
+- zona
+- supervisor
+- algunos titulares asignados
+- otros puestos sin cubrir
+
+---
+
+## 🔁 FASE 1 — CREACIÓN DESDE COMERCIAL
+
+Probar:
+
+- crear cliente
+- definir contrato
+- ingresar fecha_inicio_proyecto (obligatoria)
+- crear puestos y configuración operativa
+
+### Validar:
+- que el cliente NO aparece en el pizarrón del día actual
+- que la información queda completa (cliente, puestos, turnos)
+
+---
+
+## 📅 FASE 2 — VISIBILIDAD EN PIZARRÓN FUTURO
+
+Ir al 18/04/2026 en el Pizarrón
+
+### Validar:
+- aparece una tarjeta de:
+  - Inicio de proyecto
+  - cliente correcto
+  - número de puestos
+- tiene estilo visual distinto
+- NO se ve como una cobertura normal
+
+---
+
+## 👁️ FASE 3 — VISIBILIDAD DESDE EL PRESENTE
+
+Volver al día actual (01/04)
+
+### Validar:
+- si existe indicador de:
+  - proyecto próximo a iniciar
+  - fecha visible
+- si Operaciones puede anticipar el arranque
+
+---
+
+## 🧠 FASE 4 — PLANIFICACIÓN PREVIA
+
+Antes del 18:
+
+Simular que Operaciones:
+- entra al 18/04
+- revisa puestos
+- asigna cobertura futura en algunos
+- deja otros sin cubrir
+
+### Validar:
+- que se puedan hacer asignaciones futuras
+- que tengan color/badge de planificación
+- que NO afecten el día actual
+- que no generen novedades de nómina hoy
+
+---
+
+## 🚨 FASE 5 — ESCENARIOS REALES ANTES DEL ARRANQUE
+
+Simular:
+
+- un agente pide permiso para el 18
+- un puesto queda sin titular
+- falta de personal (pool limitado)
+
+### Validar:
+- que el sistema muestre:
+  - ausencias
+  - descansos
+  - posibles disponibles
+- que el jefe de servicio pueda tomar decisiones
+
+---
+
+## 🚀 FASE 6 — DÍA DEL ARRANQUE (18/04)
+
+Entrar al 18/04 como día actual
+
+### Validar:
+- el proyecto aparece como operación normal
+- los puestos están visibles
+- las coberturas futuras ya aplicadas aparecen
+- los puestos sin cubrir son visibles
+
+---
+
+## ⚙️ FASE 7 — OPERACIÓN REAL DEL DÍA
+
+Simular:
+
+- un puesto cubierto correctamente
+- un relevo
+- un abandono parcial
+- un SSA adicional
+
+### Validar:
+- creación de segmentos
+- lógica correcta de cobertura
+- sin inconsistencias
+
+---
+
+## 🧾 FASE 8 — CIERRE DEL DÍA
+
+Cerrar el día 18/04
+
+### Validar:
+- que no haya errores críticos
+- que las alertas sean correctas
+- que las novedades se generen correctamente
+
+---
+
+## 💰 FASE 9 — PRE-PLANILLA
+
+Revisar pre-planilla del período
+
+### Validar:
+- que los colaboradores del nuevo cliente aparecen
+- que:
+  - faltas
+  - coberturas
+  - horas trabajadas
+  - horas extra
+  sean correctas
+
+---
+
+## 🧮 FASE 10 — PLANILLA FINAL
+
+Generar planilla
+
+### Validar:
+- que:
+  - pagos
+  - descuentos
+  - anticipos
+  sean correctos
+
+---
+
+## 🔍 REPORTE FINAL
+
+Quiero un reporte con:
+
+### A. Qué funcionó correctamente
+### B. Qué falló
+### C. Qué quedó inconsistente
+### D. Problemas entre módulos
+### E. Problemas en el arranque del proyecto
+### F. Problemas en planificación futura
+### G. Problemas en operación real
+### H. Problemas en pre-planilla
+### I. Problemas en planilla
+
+---
+
+## 🚨 CLASIFICACIÓN
+
+Clasificar:
+- Crítico (rompe operación o pagos)
+- Alto (riesgo real)
+- Medio
+- Bajo
+
+---
+
+## 🧠 PREGUNTA FINAL CLAVE
+
+Quiero que respondas claramente:
+
+👉 “¿El sistema ISPSA ya puede manejar correctamente el arranque de un cliente nuevo desde la venta hasta la planilla sin romper operación ni generar errores de pago?”
+
+No quiero teoría.
+Quiero una respuesta basada en la prueba real.

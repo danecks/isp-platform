@@ -335,6 +335,7 @@ coberturaRouter.post("/cobertura/segmentos", async (req, res) => {
     let horasCalculadas: number | null = null;
     let fueEnDiaDescanso = false;
     let generaHorasExtra = false;
+    let horasExtraCalculadas: number | null = null;
 
     if (horaInicio && horaFin) {
       horasCalculadas = calcularHoras(horaInicio, horaFin);
@@ -346,7 +347,6 @@ coberturaRouter.post("/cobertura/segmentos", async (req, res) => {
 
       // Detectar horas extra: se genera HE si fue en día de descanso del titular
       // O si las horas reales trabajadas SUPERAN las horas esperadas del puesto (comparación real vs esperado).
-      let horasExtraCalculadas: number | null = null;
       if (puesto?.elegible_horas_extra && puesto?.hora_entrada && puesto?.hora_salida) {
         const jornadaBase = calcularHoras(puesto.hora_entrada, puesto.hora_salida);
         const exceso = horasCalculadas !== null && jornadaBase > 0
