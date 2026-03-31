@@ -1866,6 +1866,54 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SSA-06 tarjeta_activa fix — error (no bloqueante)");
   }
 
+  // ── PLAN-03: columnas de trazabilidad y deducciones futuras en planilla_lineas ─
+  try {
+    await pool.query(`ALTER TABLE planilla_lineas ADD COLUMN IF NOT EXISTS anticipo_ids JSONB DEFAULT '[]'::jsonb`);
+    await pool.query(`ALTER TABLE planilla_lineas ADD COLUMN IF NOT EXISTS novedad_ids JSONB DEFAULT '[]'::jsonb`);
+    await pool.query(`ALTER TABLE planilla_lineas ADD COLUMN IF NOT EXISTS segmento_ids JSONB DEFAULT '[]'::jsonb`);
+    await pool.query(`ALTER TABLE planilla_lineas ADD COLUMN IF NOT EXISTS igss_trabajador NUMERIC(10,2) NOT NULL DEFAULT 0`);
+    await pool.query(`ALTER TABLE planilla_lineas ADD COLUMN IF NOT EXISTS igss_patronal NUMERIC(10,2) NOT NULL DEFAULT 0`);
+    await pool.query(`ALTER TABLE planilla_lineas ADD COLUMN IF NOT EXISTS otros_descuentos NUMERIC(10,2) NOT NULL DEFAULT 0`);
+    await pool.query(`ALTER TABLE planilla_lineas ADD COLUMN IF NOT EXISTS otros_descuentos_detalle TEXT`);
+    logger.info("Auto-migrate: PLAN-03 columnas trazabilidad/deducciones en planilla_lineas verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PLAN-03 — error (no bloqueante)");
+  }
+
+  // ── PLAN-04: campo anulado en pre_planilla_cierres (permite reversión) ─────────
+  try {
+    await pool.query(`ALTER TABLE pre_planilla_cierres ADD COLUMN IF NOT EXISTS anulado BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE pre_planilla_cierres ADD COLUMN IF NOT EXISTS anulado_por VARCHAR(100)`);
+    await pool.query(`ALTER TABLE pre_planilla_cierres ADD COLUMN IF NOT EXISTS anulado_at TIMESTAMPTZ`);
+    logger.info("Auto-migrate: PLAN-04 columnas anulado en pre_planilla_cierres verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PLAN-04 — error (no bloqueante)");
+  }
+
+  // ── PLAN-05: campo anulado en planillas (permite auditoría de reversiones) ────
+  try {
+    await pool.query(`ALTER TABLE planillas ADD COLUMN IF NOT EXISTS anulada BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE planillas ADD COLUMN IF NOT EXISTS anulada_por VARCHAR(100)`);
+    await pool.query(`ALTER TABLE planillas ADD COLUMN IF NOT EXISTS anulada_at TIMESTAMPTZ`);
+    logger.info("Auto-migrate: PLAN-05 columnas anulada en planillas verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PLAN-05 — error (no bloqueante)");
+  }
+
+  // ── PLAN-06: índice único parcial en planillas (permite re-generar tras reversión) ─
+  // DEBE ir después de PLAN-05 (que agrega la columna anulada) y después de PLAN-01 (que crea la tabla)
+  try {
+    await pool.query(`ALTER TABLE planillas DROP CONSTRAINT IF EXISTS planillas_periodo_desde_periodo_hasta_key`);
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS planillas_periodo_activa_idx
+      ON planillas(periodo_desde, periodo_hasta)
+      WHERE anulada = FALSE
+    `);
+    logger.info("Auto-migrate: PLAN-06 índice único parcial en planillas verificado/creado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PLAN-06 — error (no bloqueante)");
+  }
+
   // ── PLAN-01: tabla planillas (encabezado de planilla final) ──────────────────
   try {
     await pool.query(`

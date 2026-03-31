@@ -193,6 +193,17 @@ anticiposRouter.patch("/anticipos/:id", async (req, res) => {
   }
 
   try {
+    // Bloqueo de seguridad: anticipos vinculados a una planilla no se pueden editar
+    const existing = await db.select().from(anticiposTable).where(eq(anticiposTable.id, id)).limit(1);
+    if (!existing.length) return res.status(404).json({ error: "Anticipo no encontrado" });
+
+    if (existing[0].planilla_id !== null) {
+      return res.status(409).json({
+        error: "Este anticipo está vinculado a una planilla y no puede modificarse. Para corregirlo, revierte la planilla primero.",
+        planilla_id: existing[0].planilla_id,
+      });
+    }
+
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (estado) updates.estado = estado;
     if (observaciones !== undefined) updates.observaciones = observaciones;

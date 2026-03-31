@@ -1,30 +1,48 @@
 /**
  * planilla.ts — Planilla Final de Nómina
  *
- * FLUJO COMPLETO:
+ * ─── FLUJO COMPLETO ─────────────────────────────────────────────────────────
  *   Operación diaria → Novedades → Pre-Planilla → [CIERRE] → Planilla Final
  *
+ * ─── CONTROL DE DOBLE DESCUENTO ─────────────────────────────────────────────
+ *   Al generar la planilla, todos los anticipos del empleado con estado
+ *   'pendiente' o 'aprobada' y planilla_id IS NULL se vinculan:
+ *     • anticipos.planilla_id = planilla.id
+ *     • anticipos.estado = 'descontado'
+ *   Si un anticipo ya está vinculado, el PATCH lo rechaza con 409.
+ *   Esto garantiza que ningún anticipo se descuente dos veces.
+ *
+ * ─── CORRECCIÓN DE PLANILLA ──────────────────────────────────────────────────
+ *   DELETE /api/nomina/planilla/:id (solo si estado != 'pagada'):
+ *     1. Desvincula anticipos (planilla_id = NULL, estado = 'aprobada')
+ *     2. Marca el cierre como anulado (pre_planilla_cierres.anulado = TRUE)
+ *     3. Reabre las revisiones (pre_planilla_revision.periodo_cerrado = FALSE)
+ *     4. Elimina la planilla (CASCADE borra planilla_lineas)
+ *   Luego RRHH puede corregir en pre-planilla, re-cerrar y regenerar.
+ *
+ * ─── TRAZABILIDAD ────────────────────────────────────────────────────────────
+ *   planilla_lineas.anticipo_ids  → JSONB: IDs de anticipos vinculados a este empleado
+ *   planilla_lineas.novedad_ids   → JSONB: IDs de novedades que originaron datos (reservado)
+ *   planilla_lineas.segmento_ids  → JSONB: IDs de segmentos de cobertura (reservado)
+ *
+ * ─── PREPARACIÓN PARA DEDUCCIONES FUTURAS ────────────────────────────────────
+ *   planilla_lineas contiene (en 0 por ahora, sin cálculo):
+ *     • igss_trabajador   → 4.83% del total bruto (Guatemala)
+ *     • igss_patronal     → 12.67% del total bruto
+ *     • otros_descuentos  → campo libre
+ *
+ * ─── LIMITACIONES ACTUALES ───────────────────────────────────────────────────
+ *   ❌ IGSS no calculado (campos presentes como 0)
+ *   ❌ Bonificación incentivo no incluida
+ *   ❌ Séptimo no incluido
+ *
  * ENDPOINTS:
- *   GET  /api/nomina/planillas                  → Lista todas las planillas generadas
- *   POST /api/nomina/planilla                   → Genera planilla desde snapshot cerrado
- *   GET  /api/nomina/planilla/:id               → Detalle de planilla + líneas
- *   PATCH /api/nomina/planilla/:id/estado       → Cambia estado (borrador→revisada→aprobada→pagada)
- *   GET  /api/nomina/planilla/:id/export        → Exporta CSV con BOM
- *
- * REGLAS:
- *   - La planilla SOLO se genera desde un período cerrado (pre_planilla_cierres)
- *   - Solo puede existir UNA planilla por período (unicidad forzada en BD)
- *   - La planilla no se edita directamente: si hay error, se corrige en pre-planilla y se re-cierra
- *   - El cálculo usa los datos del snapshot JSONB, nunca datos en vivo
- *
- * CÁLCULO (sin IGSS ni séptimo todavía):
- *   sueldoDia    = sueldo_base / 30
- *   sueldoPeriodo = sueldoDia * periodoTotalDias
- *   descFaltas   = sueldoDia * (faltas + suspensiones)
- *   horasDia     = horas_contrato / 6  (jornada 6 días) o 8 (default)
- *   valorHE      = (sueldoDia / horasDia) * 1.5 * horasExtra
- *   totalBruto   = sueldoPeriodo - descFaltas + valorHE
- *   totalNeto    = totalBruto - anticipos
+ *   GET    /api/nomina/planillas            → Lista todas las planillas activas
+ *   POST   /api/nomina/planilla             → Genera planilla desde snapshot cerrado
+ *   GET    /api/nomina/planilla/:id         → Detalle de planilla + líneas
+ *   PATCH  /api/nomina/planilla/:id/estado  → Avanza estado (borrador→revisada→aprobada→pagada)
+ *   DELETE /api/nomina/planilla/:id         → Revierte planilla (no pagada)
+ *   GET    /api/nomina/planilla/:id/export  → Exporta CSV con BOM
  */
 
 import { Router } from "express";
@@ -33,7 +51,7 @@ import { logger } from "../lib/logger";
 
 export const planillaRouter = Router();
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Cálculo por colaborador ──────────────────────────────────────────────────
 
 function calcularLinea(row: Record<string, unknown>, periodoTotalDias: number) {
   const sb       = parseFloat(String(row.sueldo_base  ?? 0));
@@ -66,16 +84,22 @@ function calcularLinea(row: Record<string, unknown>, periodoTotalDias: number) {
     total_bruto:      parseFloat(totalBruto.toFixed(2)),
     anticipos:        parseFloat(anticipo.toFixed(2)),
     total_neto:       parseFloat(totalNeto.toFixed(2)),
+    // Deducciones legales — preparadas para implementación futura
+    igss_trabajador:  0,
+    igss_patronal:    0,
+    otros_descuentos: 0,
   };
 }
 
 // ─── GET /api/nomina/planillas ────────────────────────────────────────────────
+
 planillaRouter.get("/nomina/planillas", async (_req, res) => {
   try {
     const { rows } = await pool.query(`
-      SELECT p.*, ppc.cerrado_por, ppc.cerrado_at
+      SELECT p.*, ppc.cerrado_por, ppc.cerrado_at, ppc.anulado AS cierre_anulado
       FROM planillas p
       JOIN pre_planilla_cierres ppc ON ppc.id = p.cierre_id
+      WHERE p.anulada = FALSE
       ORDER BY p.fecha_generacion DESC
     `);
     res.json(rows);
@@ -86,6 +110,7 @@ planillaRouter.get("/nomina/planillas", async (_req, res) => {
 });
 
 // ─── POST /api/nomina/planilla ────────────────────────────────────────────────
+
 planillaRouter.post("/nomina/planilla", async (req, res) => {
   const { desde, hasta, generadoPor, observaciones } = req.body ?? {};
 
@@ -94,9 +119,10 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
   }
 
   try {
-    // Verificar que el período esté cerrado
+    // Verificar que el período esté cerrado y no anulado
     const { rows: cierres } = await pool.query(
-      `SELECT * FROM pre_planilla_cierres WHERE periodo_desde = $1::date AND periodo_hasta = $2::date`,
+      `SELECT * FROM pre_planilla_cierres
+       WHERE periodo_desde = $1::date AND periodo_hasta = $2::date AND anulado = FALSE`,
       [desde, hasta]
     );
     if (!cierres.length) {
@@ -106,9 +132,9 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
     }
     const cierre = cierres[0];
 
-    // Verificar que no exista ya una planilla para este período
+    // Verificar que no exista ya una planilla activa para este período
     const { rows: existing } = await pool.query(
-      `SELECT id FROM planillas WHERE periodo_desde = $1::date AND periodo_hasta = $2::date`,
+      `SELECT id FROM planillas WHERE periodo_desde = $1::date AND periodo_hasta = $2::date AND anulada = FALSE`,
       [desde, hasta]
     );
     if (existing.length) {
@@ -125,21 +151,20 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
 
     // Leer snapshot del cierre
     const snapshot: Record<string, unknown>[] = cierre.snapshot ?? [];
-
     if (!snapshot.length) {
       return res.status(422).json({ error: "El snapshot del cierre está vacío." });
     }
 
     // Calcular líneas por colaborador
     const lineas = snapshot.map((row) => ({
-      employee_id:      row.employee_id as number | null,
-      nombre_completo:  String(row.nombre_completo ?? ""),
-      dpi:              row.dpi as string | null,
-      puesto:           (row.puesto_titular_nombre ?? row.puesto_empleado) as string | null,
-      sede:             row.sede as string | null,
-      cliente:          row.cliente_principal as string | null,
-      tipo_jornada:     row.tipo_jornada as string | null,
-      revision_estado:  row.revision_estado as string | null,
+      employee_id:        row.employee_id as number | null,
+      nombre_completo:    String(row.nombre_completo ?? ""),
+      dpi:                row.dpi as string | null,
+      puesto:             (row.puesto_titular_nombre ?? row.puesto_empleado) as string | null,
+      sede:               row.sede as string | null,
+      cliente:            row.cliente_principal as string | null,
+      tipo_jornada:       row.tipo_jornada as string | null,
+      revision_estado:    row.revision_estado as string | null,
       observaciones_rrhh: row.revision_observaciones as string | null,
       ...calcularLinea(row, periodoTotalDias),
     }));
@@ -178,31 +203,69 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
 
     const planillaId = planRows[0].id;
 
-    // Insertar líneas
+    // Insertar líneas con trazabilidad de anticipos
+    let totalAnticiposVinculados = 0;
+
     for (const l of lineas) {
+      // Buscar anticipos del empleado que aún no estén vinculados a una planilla
+      let anticipoIds: number[] = [];
+      if (l.employee_id) {
+        const { rows: antRows } = await pool.query(`
+          SELECT id, cantidad FROM anticipos
+          WHERE employee_id = $1
+            AND planilla_id IS NULL
+            AND estado IN ('pendiente', 'aprobada')
+          ORDER BY fecha_solicitud ASC
+        `, [l.employee_id]);
+        anticipoIds = antRows.map((r: Record<string, unknown>) => r.id as number);
+        totalAnticiposVinculados += anticipoIds.length;
+
+        // Vincular anticipos: marcar como descontados en esta planilla
+        if (anticipoIds.length > 0) {
+          await pool.query(`
+            UPDATE anticipos
+            SET planilla_id = $1, estado = 'descontado', updated_at = NOW()
+            WHERE id = ANY($2::int[])
+          `, [planillaId, anticipoIds]);
+        }
+      }
+
       await pool.query(`
         INSERT INTO planilla_lineas
           (planilla_id, employee_id, nombre_completo, dpi, puesto, sede, cliente,
            tipo_jornada, horas_contrato, sueldo_base, periodo_dias,
            dias_trabajados, faltas, suspensiones, horas_trabajadas, horas_extra,
            sueldo_periodo, desc_faltas, valor_he, total_bruto, anticipos, total_neto,
+           igss_trabajador, igss_patronal, otros_descuentos,
+           anticipo_ids, novedad_ids, segmento_ids,
            revision_estado, observaciones_rrhh)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
       `, [
         planillaId, l.employee_id, l.nombre_completo, l.dpi, l.puesto, l.sede, l.cliente,
         l.tipo_jornada, l.horas_contrato, l.sueldo_base, l.periodo_dias,
         l.dias_trabajados, l.faltas, l.suspensiones,
         l.horas_trabajadas, l.horas_extra,
         l.sueldo_periodo, l.desc_faltas, l.valor_he, l.total_bruto, l.anticipos, l.total_neto,
+        l.igss_trabajador, l.igss_patronal, l.otros_descuentos,
+        JSON.stringify(anticipoIds), JSON.stringify([]), JSON.stringify([]),
         l.revision_estado, l.observaciones_rrhh,
       ]);
     }
 
     // Registrar en auditoría
     await pool.query(`
-      INSERT INTO pre_planilla_auditoria (periodo_desde, periodo_hasta, employee_id, accion, usuario, observaciones, metadata)
+      INSERT INTO pre_planilla_auditoria
+        (periodo_desde, periodo_hasta, employee_id, accion, usuario, observaciones, metadata)
       VALUES ($1::date, $2::date, NULL, 'planilla_generada', $3, $4, $5)
-    `, [desde, hasta, generadoPor, observaciones ?? null, JSON.stringify({ planilla_id: planillaId, total_colaboradores: lineas.length, total_neto: totales.total_neto.toFixed(2) })]);
+    `, [
+      desde, hasta, generadoPor, observaciones ?? null,
+      JSON.stringify({
+        planilla_id: planillaId,
+        total_colaboradores: lineas.length,
+        total_neto: totales.total_neto.toFixed(2),
+        anticipos_vinculados: totalAnticiposVinculados,
+      }),
+    ]);
 
     res.status(201).json({
       id: planillaId,
@@ -210,7 +273,8 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
       periodo_hasta: hasta,
       total_colaboradores: lineas.length,
       total_neto: totales.total_neto.toFixed(2),
-      mensaje: `Planilla generada para el período ${desde} — ${hasta}`,
+      anticipos_vinculados: totalAnticiposVinculados,
+      mensaje: `Planilla generada para el período ${desde} — ${hasta}. ${totalAnticiposVinculados} anticipo(s) vinculado(s) y marcado(s) como descontados.`,
     });
   } catch (err) {
     logger.error({ err }, "POST /nomina/planilla error");
@@ -219,21 +283,23 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
 });
 
 // ─── GET /api/nomina/planilla/:id ─────────────────────────────────────────────
+
 planillaRouter.get("/nomina/planilla/:id", async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "id inválido" });
 
   try {
-    const { rows: plan } = await pool.query(
-      `SELECT p.*, ppc.cerrado_por, ppc.cerrado_at FROM planillas p
-       JOIN pre_planilla_cierres ppc ON ppc.id = p.cierre_id
-       WHERE p.id = $1`, [id]
-    );
+    const { rows: plan } = await pool.query(`
+      SELECT p.*, ppc.cerrado_por, ppc.cerrado_at, ppc.anulado AS cierre_anulado
+      FROM planillas p
+      JOIN pre_planilla_cierres ppc ON ppc.id = p.cierre_id
+      WHERE p.id = $1
+    `, [id]);
     if (!plan.length) return res.status(404).json({ error: "Planilla no encontrada" });
 
-    const { rows: lineas } = await pool.query(
-      `SELECT * FROM planilla_lineas WHERE planilla_id = $1 ORDER BY nombre_completo`, [id]
-    );
+    const { rows: lineas } = await pool.query(`
+      SELECT * FROM planilla_lineas WHERE planilla_id = $1 ORDER BY nombre_completo
+    `, [id]);
 
     res.json({ ...plan[0], lineas });
   } catch (err) {
@@ -243,6 +309,7 @@ planillaRouter.get("/nomina/planilla/:id", async (req, res) => {
 });
 
 // ─── PATCH /api/nomina/planilla/:id/estado ────────────────────────────────────
+
 planillaRouter.patch("/nomina/planilla/:id/estado", async (req, res) => {
   const id = parseInt(req.params.id);
   const { estado, aprobadoPor, observaciones } = req.body ?? {};
@@ -255,18 +322,28 @@ planillaRouter.patch("/nomina/planilla/:id/estado", async (req, res) => {
   }
 
   try {
+    const { rows: current } = await pool.query(
+      `SELECT estado, anulada FROM planillas WHERE id = $1`, [id]
+    );
+    if (!current.length) return res.status(404).json({ error: "Planilla no encontrada" });
+    if (current[0].anulada) return res.status(409).json({ error: "La planilla está anulada y no puede modificarse." });
+
     const { rows } = await pool.query(
       `UPDATE planillas SET estado = $1, observaciones = COALESCE($2, observaciones) WHERE id = $3 RETURNING *`,
       [estado, observaciones ?? null, id]
     );
-    if (!rows.length) return res.status(404).json({ error: "Planilla no encontrada" });
 
     // Auditoría
     const p = rows[0];
     await pool.query(`
-      INSERT INTO pre_planilla_auditoria (periodo_desde, periodo_hasta, employee_id, accion, usuario, observaciones, metadata)
+      INSERT INTO pre_planilla_auditoria
+        (periodo_desde, periodo_hasta, employee_id, accion, usuario, observaciones, metadata)
       VALUES ($1::date, $2::date, NULL, 'planilla_estado', $3, $4, $5)
-    `, [p.periodo_desde, p.periodo_hasta, aprobadoPor ?? "sistema", observaciones ?? null, JSON.stringify({ planilla_id: id, estado })]);
+    `, [
+      p.periodo_desde, p.periodo_hasta,
+      aprobadoPor ?? "sistema", observaciones ?? null,
+      JSON.stringify({ planilla_id: id, estado }),
+    ]);
 
     res.json(rows[0]);
   } catch (err) {
@@ -275,7 +352,96 @@ planillaRouter.patch("/nomina/planilla/:id/estado", async (req, res) => {
   }
 });
 
+// ─── DELETE /api/nomina/planilla/:id ─────────────────────────────────────────
+// Revierte la planilla:
+//   1. Solo si estado != 'pagada'
+//   2. Desvincula anticipos → planilla_id = NULL, estado = 'aprobada'
+//   3. Marca el cierre como anulado → permite re-cerrar pre-planilla
+//   4. Reabre revisiones RRHH del período → periodo_cerrado = FALSE
+//   5. Anula la planilla (soft delete) + borra líneas via CASCADE
+
+planillaRouter.delete("/nomina/planilla/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+  const { anuladoPor, motivo } = req.body ?? {};
+
+  if (isNaN(id)) return res.status(400).json({ error: "id inválido" });
+  if (!anuladoPor) return res.status(400).json({ error: "anuladoPor es requerido" });
+
+  try {
+    const { rows: plan } = await pool.query(`SELECT * FROM planillas WHERE id = $1`, [id]);
+    if (!plan.length) return res.status(404).json({ error: "Planilla no encontrada" });
+
+    const p = plan[0];
+
+    if (p.anulada) {
+      return res.status(409).json({ error: "La planilla ya fue anulada anteriormente." });
+    }
+
+    if (p.estado === "pagada") {
+      return res.status(409).json({
+        error: "No se puede revertir una planilla que ya fue pagada. Contacta al administrador.",
+      });
+    }
+
+    // 1. Desvincular anticipos: volver a 'aprobada' y limpiar planilla_id
+    await pool.query(`
+      UPDATE anticipos
+      SET planilla_id = NULL, estado = 'aprobada', updated_at = NOW()
+      WHERE planilla_id = $1
+    `, [id]);
+
+    // 2. Marcar cierre como anulado → reabre la pre-planilla
+    await pool.query(`
+      UPDATE pre_planilla_cierres
+      SET anulado = TRUE, anulado_por = $1, anulado_at = NOW()
+      WHERE id = $2
+    `, [anuladoPor, p.cierre_id]);
+
+    // 3. Reabrir revisiones RRHH del período
+    await pool.query(`
+      UPDATE pre_planilla_revision
+      SET periodo_cerrado = FALSE, updated_at = NOW()
+      WHERE periodo_desde = $1::date AND periodo_hasta = $2::date
+    `, [p.periodo_desde, p.periodo_hasta]);
+
+    // 4. Anular planilla (soft delete) — planilla_lineas se borran via CASCADE en DELETE
+    //    Usamos soft delete para conservar el registro de auditoría
+    await pool.query(`
+      UPDATE planillas
+      SET anulada = TRUE, anulada_por = $1, anulada_at = NOW(),
+          estado = 'borrador', observaciones = COALESCE($2, observaciones)
+      WHERE id = $3
+    `, [anuladoPor, motivo ?? null, id]);
+
+    // Borrar líneas de esta planilla (por claridad, aunque podría hacerse por CASCADE)
+    await pool.query(`DELETE FROM planilla_lineas WHERE planilla_id = $1`, [id]);
+
+    // 5. Auditoría
+    await pool.query(`
+      INSERT INTO pre_planilla_auditoria
+        (periodo_desde, periodo_hasta, employee_id, accion, usuario, observaciones, metadata)
+      VALUES ($1::date, $2::date, NULL, 'planilla_revertida', $3, $4, $5)
+    `, [
+      p.periodo_desde, p.periodo_hasta, anuladoPor, motivo ?? null,
+      JSON.stringify({ planilla_id: id, estado_previo: p.estado, cierre_id: p.cierre_id }),
+    ]);
+
+    res.json({
+      mensaje: `Planilla del período ${p.periodo_desde}—${p.periodo_hasta} revertida correctamente.
+La pre-planilla está abierta nuevamente. Los anticipos quedan disponibles.
+Corrige en pre-planilla, re-cierra el período y genera una nueva planilla.`,
+      planilla_id: id,
+      periodo_desde: p.periodo_desde,
+      periodo_hasta: p.periodo_hasta,
+    });
+  } catch (err) {
+    logger.error({ err }, "DELETE /nomina/planilla/:id error");
+    res.status(500).json({ error: "Error al revertir planilla" });
+  }
+});
+
 // ─── GET /api/nomina/planilla/:id/export ──────────────────────────────────────
+
 planillaRouter.get("/nomina/planilla/:id/export", async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "id inválido" });
@@ -284,9 +450,9 @@ planillaRouter.get("/nomina/planilla/:id/export", async (req, res) => {
     const { rows: plan } = await pool.query(`SELECT * FROM planillas WHERE id = $1`, [id]);
     if (!plan.length) return res.status(404).json({ error: "Planilla no encontrada" });
 
-    const { rows: lineas } = await pool.query(
-      `SELECT * FROM planilla_lineas WHERE planilla_id = $1 ORDER BY nombre_completo`, [id]
-    );
+    const { rows: lineas } = await pool.query(`
+      SELECT * FROM planilla_lineas WHERE planilla_id = $1 ORDER BY nombre_completo
+    `, [id]);
 
     const p = plan[0];
     const BOM = "\uFEFF";
@@ -296,19 +462,25 @@ planillaRouter.get("/nomina/planilla/:id/export", async (req, res) => {
     };
     const fmtQ = (v: unknown) => `Q ${parseFloat(String(v ?? 0)).toFixed(2)}`;
 
+    // Calcular anticipo count por línea
+    const anticCountMap = new Map<number, number>();
+    for (const l of lineas) {
+      const ids: number[] = Array.isArray(l.anticipo_ids) ? l.anticipo_ids : [];
+      anticCountMap.set(l.id, ids.length);
+    }
+
     const headers = [
       "ID", "Nombre", "DPI",
-      "Puesto", "Sede", "Cliente",
-      "Jornada", "Hrs/Sem",
+      "Puesto", "Sede", "Cliente", "Jornada", "Hrs/Sem",
       "Sueldo Base (Q)", "Días Período", "Días Trabajados",
-      "Faltas", "Suspensiones",
-      "H. Trabajadas", "H. Extra",
+      "Faltas", "Suspensiones", "H. Trabajadas", "H. Extra",
       "Sueldo Período (Q)", "Desc. Faltas (Q)", "Valor HE (Q)",
-      "Total Bruto (Q)", "Anticipos (Q)", "Total Neto (Q)",
-      "Revisión RRHH",
+      "IGSS Trab. (Q)", "IGSS Pat. (Q)", "Otros Desc. (Q)",
+      "Total Bruto (Q)", "Anticipos (Q)", "# Anticipos",
+      "Total Neto (Q)", "Revisión RRHH",
     ];
 
-    const lines = [
+    const csvLines = [
       [`PLANILLA FINAL — ${p.periodo_desde} — ${p.periodo_hasta} — Estado: ${p.estado.toUpperCase()} — Generado por: ${p.generado_por}`].map(esc).join(","),
       "",
       headers.map(esc).join(","),
@@ -322,20 +494,23 @@ planillaRouter.get("/nomina/planilla/:id/export", async (req, res) => {
         parseFloat(l.horas_trabajadas || 0).toFixed(2),
         parseFloat(l.horas_extra || 0).toFixed(2),
         fmtQ(l.sueldo_periodo), fmtQ(l.desc_faltas), fmtQ(l.valor_he),
-        fmtQ(l.total_bruto), fmtQ(l.anticipos), fmtQ(l.total_neto),
-        l.revision_estado ?? "",
+        fmtQ(l.igss_trabajador ?? 0), fmtQ(l.igss_patronal ?? 0), fmtQ(l.otros_descuentos ?? 0),
+        fmtQ(l.total_bruto), fmtQ(l.anticipos),
+        anticCountMap.get(l.id) ?? 0,
+        fmtQ(l.total_neto), l.revision_estado ?? "",
       ].map(esc).join(",")),
       "",
       ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
        fmtQ(p.total_sueldo_periodo), fmtQ(p.total_desc_faltas), fmtQ(p.total_valor_he),
-       fmtQ(p.total_bruto), fmtQ(p.total_anticipos), fmtQ(p.total_neto),
-       "TOTALES"].map(esc).join(","),
+       "—", "—", "—",
+       fmtQ(p.total_bruto), fmtQ(p.total_anticipos), "",
+       fmtQ(p.total_neto), "TOTALES"].map(esc).join(","),
     ];
 
     const filename = `planilla_${p.periodo_desde}_${p.periodo_hasta}.csv`;
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    res.send(BOM + lines.join("\r\n"));
+    res.send(BOM + csvLines.join("\r\n"));
   } catch (err) {
     logger.error({ err }, "GET /nomina/planilla/:id/export error");
     res.status(500).json({ error: "Error al exportar planilla" });

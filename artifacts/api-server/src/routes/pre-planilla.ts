@@ -264,9 +264,9 @@ prePlanillaRouter.patch("/nomina/pre-planilla/revision/:employeeId", async (req,
   }
 
   try {
-    // Verificar que el período no esté cerrado
+    // Verificar que el período no esté cerrado (ignorar cierres anulados)
     const { rows: cierre } = await pool.query(
-      `SELECT id FROM pre_planilla_cierres WHERE periodo_desde = $1::date AND periodo_hasta = $2::date`,
+      `SELECT id FROM pre_planilla_cierres WHERE periodo_desde = $1::date AND periodo_hasta = $2::date AND anulado = FALSE`,
       [desde, hasta]
     );
     if (cierre.length > 0) {
@@ -316,9 +316,9 @@ prePlanillaRouter.get("/nomina/pre-planilla/validacion", async (req, res) => {
   if (!desde || !hasta) return res.status(400).json({ error: "desde y hasta son requeridos" });
 
   try {
-    // Verificar si ya está cerrado
+    // Verificar si ya está cerrado (ignorar cierres anulados — período reabierto)
     const { rows: cierreExistente } = await pool.query(
-      `SELECT id, cerrado_por, cerrado_at FROM pre_planilla_cierres WHERE periodo_desde = $1::date AND periodo_hasta = $2::date`,
+      `SELECT id, cerrado_por, cerrado_at FROM pre_planilla_cierres WHERE periodo_desde = $1::date AND periodo_hasta = $2::date AND anulado = FALSE`,
       [desde, hasta]
     );
     if (cierreExistente.length > 0) {
@@ -488,9 +488,9 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
   }
 
   try {
-    // Verificar que no esté ya cerrado
+    // Verificar que no esté ya cerrado (ignorar cierres anulados — permite re-cerrar tras reversión)
     const { rows: existente } = await pool.query(
-      `SELECT id FROM pre_planilla_cierres WHERE periodo_desde = $1::date AND periodo_hasta = $2::date`,
+      `SELECT id FROM pre_planilla_cierres WHERE periodo_desde = $1::date AND periodo_hasta = $2::date AND anulado = FALSE`,
       [desde, hasta]
     );
     if (existente.length > 0) {

@@ -30,7 +30,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   FileSpreadsheet, Download, Plus, ChevronLeft, AlertCircle,
   CheckCircle2, Clock, ArrowRight, Wallet, Users,
-  CalendarDays, TrendingUp, Info, Lock,
+  CalendarDays, TrendingUp, Info, Lock, Undo2, Link,
 } from "lucide-react";
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
@@ -96,6 +96,13 @@ interface PlanillaLinea {
   total_bruto: string;
   anticipos: string;
   total_neto: string;
+  igss_trabajador: string | null;
+  igss_patronal: string | null;
+  otros_descuentos: string | null;
+  otros_descuentos_detalle: string | null;
+  anticipo_ids: number[] | null;
+  novedad_ids: number[] | null;
+  segmento_ids: number[] | null;
   revision_estado: string | null;
   observaciones_rrhh: string | null;
 }
@@ -299,6 +306,120 @@ function CambiarEstadoModal({
           <Button onClick={handleCambiar} disabled={loading}
             className="bg-amber-600 hover:bg-amber-500 text-white">
             {loading ? "Procesando…" : ACCION_LABEL[siguienteEstado]}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Modal: Revertir Planilla ─────────────────────────────────────────────────
+
+function RevertirPlanillaModal({
+  open, planilla, onClose, onSuccess, sesionUsuario,
+}: {
+  open: boolean;
+  planilla: PlanillaDetalle | null;
+  onClose: () => void;
+  onSuccess: () => void;
+  sesionUsuario: string;
+}) {
+  const [motivo, setMotivo] = useState("");
+  const [confirmar, setConfirmar] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const PALABRA = "REVERTIR";
+
+  async function handleRevertir() {
+    if (!planilla) return;
+    if (confirmar !== PALABRA) { setError(`Escribe ${PALABRA} para confirmar.`); return; }
+    if (!motivo.trim()) { setError("El motivo es obligatorio."); return; }
+    setError(null);
+    setLoading(true);
+    try {
+      await apiFetch(`/nomina/planilla/${planilla.id}`, {
+        method: "DELETE",
+        body: JSON.stringify({ anuladoPor: sesionUsuario, motivo }),
+      });
+      onSuccess();
+      onClose();
+    } catch (e: unknown) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!planilla) return null;
+
+  // Contar anticipos vinculados en todas las líneas
+  const totalAnticiposVinculados = planilla.lineas.reduce((acc, l) => {
+    const ids = Array.isArray(l.anticipo_ids) ? l.anticipo_ids : [];
+    return acc + ids.length;
+  }, 0);
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="bg-[#0d1b2a] border-red-800 text-white max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="text-red-400 flex items-center gap-2">
+            <Undo2 className="h-5 w-5" />
+            Revertir Planilla
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <div className="bg-red-950/50 border border-red-800 rounded p-4 space-y-2 text-sm">
+            <p className="text-red-200 font-medium">Esta acción realizará lo siguiente:</p>
+            <ul className="text-red-300 space-y-1 list-disc list-inside">
+              <li>La planilla quedará marcada como anulada</li>
+              <li>Se eliminarán las {planilla.total_colaboradores} líneas calculadas</li>
+              {totalAnticiposVinculados > 0 && (
+                <li>
+                  Se desvinculan <strong>{totalAnticiposVinculados} anticipo(s)</strong> — vuelven a estado <em>aprobada</em>
+                </li>
+              )}
+              <li>La pre-planilla del período queda abierta para corrección</li>
+              <li>Después podrás volver a cerrar y generar una nueva planilla</li>
+            </ul>
+          </div>
+
+          {planilla.estado === "aprobada" && (
+            <div className="bg-amber-950/40 border border-amber-700 rounded p-3 text-amber-300 text-sm flex gap-2">
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              Esta planilla ya fue aprobada. Asegúrate de que ningún pago haya sido procesado.
+            </div>
+          )}
+
+          <div>
+            <Label className="text-xs text-[#8bacc8] mb-1 block">Motivo de la reversión *</Label>
+            <Textarea value={motivo} onChange={e => setMotivo(e.target.value)} rows={3}
+              placeholder="Ej. Error en el sueldo base del agente X, se corrige y se re-genera."
+              className="bg-[#0a1628] border-[#1e3a5f] text-white resize-none" />
+          </div>
+
+          <div>
+            <Label className="text-xs text-[#8bacc8] mb-1 block">
+              Escribe <strong className="text-red-400">{PALABRA}</strong> para confirmar
+            </Label>
+            <Input value={confirmar} onChange={e => setConfirmar(e.target.value.toUpperCase())}
+              placeholder={PALABRA}
+              className="bg-[#0a1628] border-[#1e3a5f] text-white font-mono" />
+          </div>
+
+          {error && (
+            <div className="bg-red-900/40 border border-red-700 rounded p-3 text-sm text-red-200 flex gap-2">
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              {error}
+            </div>
+          )}
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="ghost" onClick={onClose} className="text-[#8bacc8]">Cancelar</Button>
+          <Button onClick={handleRevertir} disabled={loading || confirmar !== PALABRA}
+            className="bg-red-700 hover:bg-red-600 text-white gap-2">
+            <Undo2 className="h-4 w-4" />
+            {loading ? "Revirtiendo…" : "Revertir planilla"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -525,33 +646,61 @@ function TabAnticipos({ lineas }: { lineas: PlanillaLinea[] }) {
       </div>
     );
   }
+
+  const totalVinculados = conAnticipo.reduce((acc, l) => acc + (l.anticipo_ids?.length ?? 0), 0);
+
   return (
-    <div className="overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow className="border-[#1e3a5f] hover:bg-transparent">
-            <TableHead className="text-[#8bacc8] text-xs">Colaborador</TableHead>
-            <TableHead className="text-[#8bacc8] text-xs">Puesto</TableHead>
-            <TableHead className="text-[#8bacc8] text-xs text-right">Total Bruto</TableHead>
-            <TableHead className="text-[#8bacc8] text-xs text-right font-bold">Anticipo</TableHead>
-            <TableHead className="text-[#8bacc8] text-xs text-right">Total Neto</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {conAnticipo.map((l) => (
-            <TableRow key={l.id} className="border-[#1e3a5f] hover:bg-[#1e3a5f]/20">
-              <TableCell>
-                <div className="text-sm font-medium text-white">{l.nombre_completo}</div>
-                <div className="text-xs text-[#8bacc8]">{l.dpi ?? "—"}</div>
-              </TableCell>
-              <TableCell className="text-xs text-[#8bacc8]">{l.puesto ?? "—"}</TableCell>
-              <TableCell className="text-right text-sm text-white">{fmtQ(l.total_bruto)}</TableCell>
-              <TableCell className="text-right text-sm font-bold text-orange-400">{fmtQ(l.anticipos)}</TableCell>
-              <TableCell className="text-right text-sm font-bold text-green-400">{fmtQ(l.total_neto)}</TableCell>
+    <div className="space-y-0">
+      {totalVinculados > 0 && (
+        <div className="bg-green-950/30 border-b border-green-800/40 p-3 flex gap-2 text-xs text-green-300">
+          <Link className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <span>
+            <strong>{totalVinculados} anticipo(s)</strong> vinculados a esta planilla y marcados como <em>descontados</em>.
+            No pueden editarse mientras la planilla esté activa. Si necesitas corregir, revierte la planilla.
+          </span>
+        </div>
+      )}
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow className="border-[#1e3a5f] hover:bg-transparent">
+              <TableHead className="text-[#8bacc8] text-xs">Colaborador</TableHead>
+              <TableHead className="text-[#8bacc8] text-xs">Puesto</TableHead>
+              <TableHead className="text-[#8bacc8] text-xs text-right">Total Bruto</TableHead>
+              <TableHead className="text-[#8bacc8] text-xs text-right font-bold">Anticipo</TableHead>
+              <TableHead className="text-[#8bacc8] text-xs text-right">Total Neto</TableHead>
+              <TableHead className="text-[#8bacc8] text-xs text-center">Anticipos Vinculados</TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {conAnticipo.map((l) => {
+              const ids = l.anticipo_ids ?? [];
+              return (
+                <TableRow key={l.id} className="border-[#1e3a5f] hover:bg-[#1e3a5f]/20">
+                  <TableCell>
+                    <div className="text-sm font-medium text-white">{l.nombre_completo}</div>
+                    <div className="text-xs text-[#8bacc8]">{l.dpi ?? "—"}</div>
+                  </TableCell>
+                  <TableCell className="text-xs text-[#8bacc8]">{l.puesto ?? "—"}</TableCell>
+                  <TableCell className="text-right text-sm text-white">{fmtQ(l.total_bruto)}</TableCell>
+                  <TableCell className="text-right text-sm font-bold text-orange-400">{fmtQ(l.anticipos)}</TableCell>
+                  <TableCell className="text-right text-sm font-bold text-green-400">{fmtQ(l.total_neto)}</TableCell>
+                  <TableCell className="text-center">
+                    {ids.length > 0 ? (
+                      <span className="inline-flex items-center gap-1 text-xs bg-green-900/40 text-green-300 border border-green-800 px-2 py-0.5 rounded">
+                        <Link className="h-3 w-3" />
+                        {ids.length} vinculado{ids.length !== 1 ? "s" : ""}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-[#8bacc8]">Sin vínculo</span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }
@@ -657,11 +806,12 @@ function ListaPlanillas({
 // ─── Vista: Detalle de planilla ───────────────────────────────────────────────
 
 function DetallePlanilla({
-  planilla, onBack, onCambiarEstado, onRefresh,
+  planilla, onBack, onCambiarEstado, onRevertir, onRefresh,
 }: {
   planilla: PlanillaDetalle;
   onBack: () => void;
   onCambiarEstado: () => void;
+  onRevertir: () => void;
   onRefresh: () => void;
 }) {
   function handleExportCSV() {
@@ -669,6 +819,7 @@ function DetallePlanilla({
   }
 
   const siguienteEstado = SIGUIENTE_ESTADO[planilla.estado];
+  const puedeRevertir = planilla.estado !== "pagada";
 
   return (
     <div className="space-y-5">
@@ -698,6 +849,13 @@ function DetallePlanilla({
             <Download className="h-4 w-4" />
             Exportar CSV
           </Button>
+          {puedeRevertir && (
+            <Button onClick={onRevertir} variant="outline"
+              className="border-red-800 text-red-400 hover:text-red-300 hover:border-red-700 gap-2">
+              <Undo2 className="h-4 w-4" />
+              Revertir
+            </Button>
+          )}
           {siguienteEstado && (
             <Button onClick={onCambiarEstado} className="bg-amber-600 hover:bg-amber-500 text-white gap-2">
               <ArrowRight className="h-4 w-4" />
@@ -805,6 +963,7 @@ export default function AdminPlanilla() {
   const [selected, setSelected] = useState<PlanillaDetalle | null>(null);
   const [showGenerar, setShowGenerar] = useState(false);
   const [showEstado, setShowEstado] = useState(false);
+  const [showRevertir, setShowRevertir] = useState(false);
   const [sesionUsuario, setSesionUsuario] = useState("admin");
 
   // Leer usuario de la sesión
@@ -869,6 +1028,7 @@ export default function AdminPlanilla() {
             planilla={selected}
             onBack={handleBack}
             onCambiarEstado={() => setShowEstado(true)}
+            onRevertir={() => setShowRevertir(true)}
             onRefresh={handleRefreshDetalle}
           />
         ) : (
@@ -893,6 +1053,14 @@ export default function AdminPlanilla() {
         planilla={selected}
         onClose={() => setShowEstado(false)}
         onSuccess={handleRefreshDetalle}
+        sesionUsuario={sesionUsuario}
+      />
+
+      <RevertirPlanillaModal
+        open={showRevertir}
+        planilla={selected}
+        onClose={() => setShowRevertir(false)}
+        onSuccess={handleBack}
         sesionUsuario={sesionUsuario}
       />
     </div>
