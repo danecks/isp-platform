@@ -1,0 +1,105 @@
+Quiero mejorar el banner de próximos arranques / inicios de proyecto / servicios especiales para que sea completamente accionable dentro de ISPSA.
+
+Actualmente el banner muestra información, pero no permite navegar directamente a la fecha correspondiente en el Pizarrón Operativo.
+
+⸻
+
+🎯 OBJETIVO
+
+Que cada elemento del banner permita:
+
+👉 hacer clic
+👉 navegar automáticamente al Pizarrón Operativo en la fecha exacta del evento
+
+⸻
+
+1. Elementos que deben ser clickeables
+
+En el banner de:
+	•	próximos arranques
+	•	inicios de proyecto
+	•	servicios especiales
+
+cada item debe ser interactivo.
+
+Ejemplo:
+	•	Cliente: Cervecería Centro Americana
+	•	Tipo: Inicio de proyecto
+	•	Fecha: 18/04/2026
+	•	Días restantes: 18
+
+⸻
+
+2. Navegación automática
+
+Al hacer clic en un item:
+	•	navegar al pizarrón operativo con la fecha correcta
+
+Ejemplo:
+	•	click en evento 18/04/2026
+→ redirige a:
+/operaciones?pizarronFecha=2026-04-18
+
+⸻
+
+3. Comportamiento al cargar la fecha
+
+Cuando el usuario llega a esa fecha:
+	•	el pizarrón debe cargar en esa fecha automáticamente
+	•	no debe quedarse en “hoy”
+
+⸻
+
+4. Mejora visual (importante)
+
+Al llegar al pizarrón:
+	•	resaltar el cliente o tarjeta relacionada
+	•	puede ser:
+	•	borde brillante
+	•	animación leve
+	•	color especial temporal
+
+Objetivo:
+que el usuario identifique rápidamente el evento que seleccionó.
+
+⸻
+
+5. Compatibilidad
+
+No romper:
+	•	navegación actual de fechas
+	•	botones “hoy”
+	•	flechas de navegación
+	•	planificación futura
+	•	estado del tablero
+
+⸻
+
+6. Casos que debe soportar
+
+Debe funcionar para:
+	•	inicio de cliente nuevo
+	•	servicio especial (SSA)
+	•	nuevos puestos
+	•	cualquier evento listado en el banner
+
+⸻
+
+7. Validación
+
+Confirmar que:
+	•	hacer clic siempre lleva a la fecha correcta
+	•	el pizarrón carga correctamente esa fecha
+	•	el usuario puede operar normalmente desde ahí
+	•	el evento seleccionado es fácil de ubicar
+
+⸻
+
+8. Resultado esperado
+
+Quiero que el banner deje de ser solo informativo y se convierta en una herramienta de acción directa para Operaciones.
+
+⸻
+
+Muy importante:
+el objetivo es que un supervisor pueda ver un arranque o servicio próximo y con un solo clic ir directamente a planificar ese día sin perder tiempo buscando la fecha manualmente.

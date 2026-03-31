@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo } from "react";
+import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -23,7 +23,7 @@ import {
   ChevronRight, ChevronLeft, Info, Building2, Circle, GripVertical,
   UserMinus, UserPlus, XCircle, RotateCcw, FileText,
   Lock, Unlock, Calendar, CalendarDays, AlertCircle, CheckSquare,
-  Layers, Timer, Moon, Settings2, Repeat, Sun,
+  Layers, Timer, Moon, Settings2, Repeat, Sun, ExternalLink,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -2120,6 +2120,7 @@ function ClienteColumna({
   onAbrirSegmentos,
   onConfigTurno,
   cambiosFuturosProximos,
+  resaltado,
 }: {
   cliente: ClienteBoard;
   agenteSeleccionadoId: number | null;
@@ -2130,16 +2131,29 @@ function ClienteColumna({
   onAbrirSegmentos: (puesto: Puesto) => void;
   onConfigTurno?: (puesto: Puesto) => void;
   cambiosFuturosProximos?: Record<number, PlanFuturo[]>;
+  resaltado?: boolean;
 }) {
   const cubiertos   = cliente.puestos.filter((p) => p.estado === "cubierto" && p.agente_id).length;
   const total       = cliente.puestos.length;
   const pct         = total > 0 ? Math.round((cubiertos / total) * 100) : 0;
   const colorBarra  = pct === 100 ? "bg-green-500" : pct >= 60 ? "bg-yellow-500" : "bg-red-500";
 
+  const borderClass = resaltado
+    ? "border-2 border-amber-400/70 ring-2 ring-amber-400/30 shadow-[0_0_24px_4px_rgba(251,191,36,0.18)]"
+    : cliente.iniciaHoy
+    ? "border border-emerald-500/40 ring-1 ring-emerald-500/20"
+    : "border border-white/8";
+
   return (
-    <div className={`flex-shrink-0 w-64 bg-[#060f1a] rounded-2xl overflow-hidden flex flex-col max-h-full ${cliente.iniciaHoy ? "border border-emerald-500/40 ring-1 ring-emerald-500/20" : "border border-white/8"}`}>
+    <div className={`flex-shrink-0 w-64 bg-[#060f1a] rounded-2xl overflow-hidden flex flex-col max-h-full transition-all duration-700 ${borderClass}`}>
       {/* Badge de inicio de proyecto */}
-      {cliente.iniciaHoy && (
+      {resaltado && (
+        <div className="px-3 py-1.5 bg-amber-500/15 border-b border-amber-500/25 flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+          <span className="text-[10px] font-semibold text-amber-300 uppercase tracking-wider">Próximo arranque</span>
+        </div>
+      )}
+      {!resaltado && cliente.iniciaHoy && (
         <div className="px-3 py-1.5 bg-emerald-500/15 border-b border-emerald-500/25 flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           <span className="text-[10px] font-semibold text-emerald-300 uppercase tracking-wider">Nuevo servicio · Inicia hoy</span>
@@ -3433,10 +3447,48 @@ export default function Operaciones() {
 
   // ── Planificación futura ───────────────────────────────────────────────────
   const hoyISO = toISODate(new Date());
-  const [fechaVista, setFechaVista]           = useState<string>(hoyISO);
+
+  // Leer ?pizarronFecha=YYYY-MM-DD de la URL para navegación directa desde el banner
+  const fechaDesdeURL = (() => {
+    const params = new URLSearchParams(window.location.search);
+    const f = params.get("pizarronFecha");
+    return f && /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= hoyISO ? f : null;
+  })();
+
+  const [fechaVista, setFechaVista]           = useState<string>(fechaDesdeURL ?? hoyISO);
   const esFuturo = fechaVista > hoyISO;
   const [modalPlanFuturo, setModalPlanFuturo] = useState<{ puesto: Puesto; plan: PlanFuturo | null } | null>(null);
   const [puestoParaTurno, setPuestoParaTurno] = useState<Puesto | null>(null);
+
+  // Cliente a resaltar cuando el usuario navega desde el banner de arranques
+  const [clienteResaltado, setClienteResaltado] = useState<number | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("clienteId");
+    return id ? Number(id) : null;
+  });
+  const resaltadoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Auto-limpiar el resaltado después de 4 segundos
+  useEffect(() => {
+    if (clienteResaltado !== null) {
+      if (resaltadoTimerRef.current) clearTimeout(resaltadoTimerRef.current);
+      resaltadoTimerRef.current = setTimeout(() => setClienteResaltado(null), 4000);
+    }
+    return () => { if (resaltadoTimerRef.current) clearTimeout(resaltadoTimerRef.current); };
+  }, [clienteResaltado]);
+
+  // Función para navegar al pizarrón en una fecha específica y resaltar un cliente
+  function irAFecha(fecha: string, clienteId?: number) {
+    if (fecha >= hoyISO) {
+      setFechaVista(fecha);
+      if (clienteId) setClienteResaltado(clienteId);
+      // Actualizar URL sin recargar para que sea compartible
+      const params = new URLSearchParams(window.location.search);
+      params.set("pizarronFecha", fecha);
+      if (clienteId) params.set("clienteId", String(clienteId));
+      window.history.replaceState({}, "", `${window.location.pathname}?${params}`);
+    }
+  }
 
   function navFecha(delta: number) {
     const d = new Date(fechaVista + "T00:00:00");
@@ -3444,8 +3496,14 @@ export default function Operaciones() {
     const nuevo = toISODate(d);
     if (nuevo < hoyISO) return;
     setFechaVista(nuevo);
+    // Limpiar params de URL al navegar manualmente
+    window.history.replaceState({}, "", window.location.pathname);
   }
-  function volverHoy() { setFechaVista(hoyISO); }
+  function volverHoy() {
+    setFechaVista(hoyISO);
+    setClienteResaltado(null);
+    window.history.replaceState({}, "", window.location.pathname);
+  }
   function formatFechaVista(iso: string) {
     const [y, m, d] = iso.split("-");
     return `${d}-${m}-${y}`;
@@ -4166,7 +4224,12 @@ export default function Operaciones() {
                 type="date"
                 value={fechaVista}
                 min={hoyISO}
-                onChange={(e) => { if (e.target.value >= hoyISO) setFechaVista(e.target.value); }}
+                onChange={(e) => {
+                  if (e.target.value >= hoyISO) {
+                    setFechaVista(e.target.value);
+                    window.history.replaceState({}, "", window.location.pathname);
+                  }
+                }}
                 className="bg-transparent outline-none cursor-pointer text-inherit font-mono"
               />
               {esFuturo && (
@@ -4423,6 +4486,7 @@ export default function Operaciones() {
                     onAbrirSegmentos={(p) => setModalSegmentos(p)}
                     onConfigTurno={(p) => setPuestoParaTurno(p)}
                     cambiosFuturosProximos={cambiosFuturosProximos}
+                    resaltado={clienteResaltado !== null && cliente.clienteId === clienteResaltado}
                   />
                 ))}
               </div>
@@ -4440,30 +4504,47 @@ export default function Operaciones() {
                 </span>
               </div>
               <div className="p-3 flex flex-col gap-1.5">
-                {proximosArranques!.arranques.map((ip) => (
-                  <div key={ip.cliente_id} className="flex items-center gap-2 text-[11px]">
-                    <div className="w-6 h-6 rounded-md bg-amber-500/15 border border-amber-500/25 flex items-center justify-center shrink-0">
-                      <Building2 className="w-3 h-3 text-amber-400" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <span className="text-amber-200 font-medium truncate block">
-                        {ip.cliente_nombre_comercial || ip.cliente_nombre}
-                      </span>
-                    </div>
-                    <div className="shrink-0 flex items-center gap-1.5">
-                      <span className="text-white/30 text-[10px]">{ip.total_puestos} puestos</span>
-                      <span className={`font-semibold px-1.5 py-0.5 rounded text-[9px] ${
-                        (ip.dias_para_inicio ?? 99) <= 7
-                          ? "bg-red-500/15 text-red-300 border border-red-500/20"
-                          : (ip.dias_para_inicio ?? 99) <= 14
-                          ? "bg-amber-500/15 text-amber-300 border border-amber-500/20"
-                          : "bg-white/5 text-white/40 border border-white/10"
-                      }`}>
-                        {ip.dias_para_inicio === 0 ? "Hoy" : `${ip.dias_para_inicio}d`}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                {proximosArranques!.arranques.map((ip) => {
+                  const diasRestantes = ip.dias_para_inicio ?? 99;
+                  const fechaInicio   = ip.fecha_inicio_contrato?.slice(0, 10) ?? "";
+                  const colorChip     = diasRestantes <= 7
+                    ? "bg-red-500/15 text-red-300 border border-red-500/20"
+                    : diasRestantes <= 14
+                    ? "bg-amber-500/15 text-amber-300 border border-amber-500/20"
+                    : "bg-white/5 text-white/40 border border-white/10";
+                  return (
+                    <button
+                      key={ip.cliente_id}
+                      onClick={() => irAFecha(fechaInicio, ip.cliente_id)}
+                      title={`Ver pizarrón del ${fechaInicio}`}
+                      className="group flex items-center gap-2 text-[11px] w-full text-left rounded-lg px-1.5 py-1 -mx-1.5 hover:bg-amber-500/10 transition-colors cursor-pointer"
+                    >
+                      <div className="w-6 h-6 rounded-md bg-amber-500/15 border border-amber-500/25 group-hover:border-amber-400/50 group-hover:bg-amber-500/25 flex items-center justify-center shrink-0 transition-colors">
+                        <Building2 className="w-3 h-3 text-amber-400" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-amber-200 font-medium truncate block group-hover:text-amber-100 transition-colors">
+                          {ip.cliente_nombre_comercial || ip.cliente_nombre}
+                        </span>
+                        {fechaInicio && (
+                          <span className="text-white/25 text-[9px] group-hover:text-white/40 transition-colors">
+                            {fechaInicio.split("-").reverse().join("/")}
+                          </span>
+                        )}
+                      </div>
+                      <div className="shrink-0 flex items-center gap-1.5">
+                        <span className="text-white/30 text-[10px]">{ip.total_puestos} puestos</span>
+                        <span className={`font-semibold px-1.5 py-0.5 rounded text-[9px] ${colorChip}`}>
+                          {diasRestantes === 0 ? "Hoy" : `${diasRestantes}d`}
+                        </span>
+                        <ExternalLink className="w-3 h-3 text-amber-400/0 group-hover:text-amber-400/60 transition-colors" />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="px-4 pb-3 text-[9px] text-white/20 flex items-center gap-1">
+                <span>Clic en un arranque para ir al pizarrón de ese día</span>
               </div>
             </div>
           )}
