@@ -2060,6 +2060,18 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: CONT-01 — error (no bloqueante)");
   }
 
+  // ── HEX-01: horas_extra_calculadas en cobertura_segmentos ────────────────────
+  // Almacena las horas extra netas (sobre el turno regular) calculadas al cerrar
+  try {
+    await pool.query(`
+      ALTER TABLE cobertura_segmentos
+        ADD COLUMN IF NOT EXISTS horas_extra_calculadas NUMERIC(5,2)
+    `);
+    logger.info("Auto-migrate: HEX-01 horas_extra_calculadas en cobertura_segmentos");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: HEX-01 — error (no bloqueante)");
+  }
+
   // ── MOV-01: tipo_novedad y cobertura_alcance en cobertura_segmentos ──────────
   // Clasifica el motivo operativo de cada segmento (falta_total, vacaciones, etc.)
   try {
