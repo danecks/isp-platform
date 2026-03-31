@@ -5,7 +5,7 @@ import { logger } from "../lib/logger";
 const adminResetRouter = Router();
 
 // POST /api/admin/reset-produccion
-// Limpia todos los datos operativos de prueba. Solo admin.
+// Limpia TODOS los datos dejando solo los usuarios del sistema.
 adminResetRouter.post("/admin/reset-produccion", async (req, res) => {
   const { password } = req.body as { password?: string };
 
@@ -14,59 +14,51 @@ adminResetRouter.post("/admin/reset-produccion", async (req, res) => {
   }
 
   try {
-    // Limpiar datos operativos/transaccionales en orden seguro (FK)
-    await pool.query(`TRUNCATE TABLE
-      planilla_lineas,
-      planillas,
-      pre_planilla_auditoria,
-      pre_planilla_cierres,
-      pre_planilla_revision,
-      novedades_nomina_diarias,
-      cobertura_segmentos,
-      cobertura_diaria,
-      cierre_operativo_diario,
-      cierre_auditoria,
-      movimientos_operativos,
-      anticipos,
-      eventos_rrhh,
-      rrhh_alertas,
-      solicitudes_cambio_operativo,
-      solicitudes_servicio_adicional,
-      puesto_titular_historico,
-      employee_operational_assignments,
-      incidents,
-      tareas,
-      task_evidencias,
-      leads,
-      applications
+    // Un solo TRUNCATE con CASCADE elimina todo en orden seguro
+    await pool.query(`
+      TRUNCATE TABLE
+        planilla_lineas,
+        planillas,
+        pre_planilla_auditoria,
+        pre_planilla_cierres,
+        pre_planilla_revision,
+        novedades_nomina_diarias,
+        cobertura_segmentos,
+        cobertura_diaria,
+        cierre_operativo_diario,
+        cierre_auditoria,
+        movimientos_operativos,
+        anticipos,
+        eventos_rrhh,
+        rrhh_alertas,
+        solicitudes_cambio_operativo,
+        solicitudes_servicio_adicional,
+        puesto_titular_historico,
+        employee_operational_assignments,
+        puestos_operativos,
+        contratos_empleados,
+        employees,
+        incidents,
+        tareas,
+        task_evidencias,
+        leads,
+        applications,
+        client_aliases,
+        position_aliases,
+        service_locations,
+        agent_assignments,
+        clients
       RESTART IDENTITY CASCADE
     `);
 
-    // Resetear estado operativo de puestos a descubierto
-    await pool.query(`
-      UPDATE puestos_operativos SET
-        agente_id = NULL,
-        estado = 'descubierto',
-        estado_operativo_puesto = 'normal',
-        updated_at = NOW()
-    `);
-
-    // Resetear estado laboral de empleados a activo
-    await pool.query(`
-      UPDATE employees SET
-        estado_laboral = 'activo',
-        updated_at = NOW()
-      WHERE estado_laboral IN ('suspendido', 'licencia')
-    `);
-
-    logger.info("Admin reset: datos operativos de producción limpiados");
+    logger.info("Admin reset: base de datos de producción limpiada completamente");
     res.json({
       ok: true,
-      mensaje: "Base de datos de producción limpiada correctamente. Los empleados, usuarios, puestos y clientes se conservaron.",
+      mensaje: "Base de datos limpiada. Solo quedan los usuarios del sistema. El servidor NO volverá a crear datos de prueba automáticamente.",
     });
   } catch (err) {
-    logger.error({ err }, "Admin reset: error al limpiar producción");
-    res.status(500).json({ error: "Error al limpiar la base de datos" });
+    logger.error({ err }, "Admin reset: error");
+    res.status(500).json({ error: String(err) });
   }
 });
 

@@ -308,6 +308,8 @@ const SEED_ASSIGNMENTS_CLI001 = [
 // FUNCIÓN PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════
 export async function runAutoSeed(): Promise<void> {
+  // En producción no se crean datos de muestra (empleados, clientes, puestos)
+  const isProduction = process.env.NODE_ENV === "production";
 
   // ── 1. Usuarios ──────────────────────────────────────────────────────
   try {
@@ -333,7 +335,7 @@ export async function runAutoSeed(): Promise<void> {
   // ── 2. Empleados ─────────────────────────────────────────────────────
   try {
     const [{ total: empCount }] = await db.select({ total: count() }).from(employeesTable);
-    if (Number(empCount) === 0) {
+    if (Number(empCount) === 0 && !isProduction) {
       logger.info("Auto-seed: creando empleados de muestra...");
       for (const e of SEED_EMPLOYEES) {
         await db.insert(employeesTable).values({
@@ -362,7 +364,7 @@ export async function runAutoSeed(): Promise<void> {
   // ── 3. Asignaciones de agentes para CLI-001 ──────────────────────────
   try {
     const [{ total: assignCount }] = await db.select({ total: count() }).from(agentAssignmentsTable);
-    if (Number(assignCount) === 0) {
+    if (Number(assignCount) === 0 && !isProduction) {
       // Obtener IDs reales de los empleados recién sembrados
       const empleados = await db.select().from(employeesTable);
       if (empleados.length > 0) {
@@ -395,7 +397,7 @@ export async function runAutoSeed(): Promise<void> {
   // ── 4. Alias de clientes y puestos ───────────────────────────────────
   try {
     const [{ total: clientCount }] = await db.select({ total: count() }).from(clientsTable);
-    if (Number(clientCount) === 0) {
+    if (Number(clientCount) === 0 && !isProduction) {
       logger.info("Auto-seed: creando clientes y alias de muestra...");
 
       // ── Cervecería Centro Americana ──────────────────────────────────
