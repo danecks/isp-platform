@@ -1,0 +1,173 @@
+" id="94822"}
+Quiero implementar y validar la tipificación operativa completa de eventos y coberturas en ISPSA, asegurando que cada tipo de situación tenga un comportamiento correcto tanto en operación como en nómina.
+
+Ya tenemos:
+- turnos funcionando
+- planificación futura funcionando
+- eventos RRHH por rango funcionando
+- separación correcta entre presente y futuro
+
+Ahora necesitamos que el sistema entienda correctamente los distintos tipos de situaciones operativas.
+
+---
+
+## OBJETIVO
+Diferenciar correctamente los tipos de operación y que cada uno tenga impacto correcto en:
+
+- Pizarrón Operativo
+- cobertura diaria
+- segmentos
+- novedades de nómina
+- pre-planilla
+- planilla final
+
+---
+
+## 1. TIPOS DE ESCENARIOS A IMPLEMENTAR
+
+### A. Falta total
+- el agente no trabaja el día completo
+- se descuenta el día
+- afecta séptimo
+- se genera evento RRHH
+
+---
+
+### B. Abandono parcial
+- el agente trabaja una parte del turno
+- otro cubre el resto
+- el titular no recibe pago completo
+- el relevo recibe pago parcial
+- se deben generar segmentos
+
+---
+
+### C. Vacaciones
+- el titular sale varios días
+- el relevo hereda el turno completo
+- se comporta como titular temporal
+- no debe tratarse como falta
+
+---
+
+### D. Relevo parcial
+- cobertura por horas
+- se paga proporcional
+- no es titularidad
+
+---
+
+### E. Relevo completo
+- cubre todo el turno
+- pero no cambia titularidad
+- pago completo del turno
+
+---
+
+### F. Servicio especial (SSA)
+- no es parte del puesto base
+- debe quedar diferenciado en nómina
+- debe tener trazabilidad
+
+---
+
+### G. Descanso normal
+- no genera pago extra
+- no genera falta
+- no genera evento
+
+---
+
+## 2. SEGMENTOS DE COBERTURA
+Asegurar que:
+- cada cambio en el día genere segmentos correctos
+- cada segmento tenga:
+  - inicio
+  - fin
+  - agente
+  - tipo (titular, relevo, SSA, etc.)
+
+---
+
+## 3. IMPACTO EN NÓMINA
+Cada tipo debe generar correctamente:
+
+- trabajo_dia
+- horas_trabajadas
+- descuento_dia
+- horas_extra
+- afecta_septimo
+- tipo de cobertura
+
+No puede haber inconsistencias como:
+- falta=true y trabajo_dia=true
+- horas>0 con falta=true
+- pago completo en abandono parcial
+
+---
+
+## 4. PRE-PLANILLA
+Validar que:
+- cada tipo se refleje correctamente en:
+  - resumen
+  - anexos
+  - alertas
+- que RRHH pueda entender qué pasó sin adivinar
+
+---
+
+## 5. VALIDACIONES CRÍTICAS
+No permitir:
+
+- pago completo si no trabajó completo
+- mezcla de tipos sin clasificación
+- segmentos inconsistentes
+- datos contradictorios
+
+---
+
+## 6. COMPATIBILIDAD
+No romper:
+
+- planificación futura
+- turnos
+- RRHH
+- anticipos
+- IGSS
+- planilla final
+- pizarrón operativo
+
+---
+
+## 7. TEST FINAL
+Probar con casos reales:
+
+- falta total
+- abandono parcial
+- vacaciones
+- relevo parcial
+- relevo completo
+- SSA
+
+Y validar que:
+
+- el pizarrón se comporta correctamente
+- los segmentos son correctos
+- la pre-planilla refleja la realidad
+- la planilla calcula correctamente
+
+---
+
+## 8. DOCUMENTACIÓN
+Explicar claramente:
+
+- cómo se clasifica cada tipo
+- cómo impacta en nómina
+- cómo se representa en el sistema
+- cómo lo ve RRHH
+- cómo lo ve Operaciones
+
+---
+
+Muy importante:
+quiero que el sistema entienda la realidad operativa y que cada tipo de evento tenga un comportamiento claro y correcto, especialmente en términos de pago

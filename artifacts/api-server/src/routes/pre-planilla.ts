@@ -413,6 +413,17 @@ prePlanillaRouter.get("/nomina/pre-planilla/validacion", async (req, res) => {
       ORDER BY n.fecha, e.nombre_completo
     `, [desde, hasta]);
 
+    // Error crítico 3: permiso_con_goce con falta=TRUE (mal clasificado)
+    const { rows: errPermisoConFalta } = await pool.query(`
+      SELECT n.fecha, e.nombre_completo, e.id AS employee_id, n.tipo_novedad
+      FROM novedades_nomina_diarias n
+      JOIN employees e ON e.id = n.employee_id
+      WHERE n.fecha BETWEEN $1 AND $2
+        AND n.tipo_novedad IN ('permiso_con_goce', 'vacaciones', 'incapacidad', 'relevo_vacaciones')
+        AND (n.falta = TRUE OR n.descuento_dia = TRUE)
+      ORDER BY n.fecha, e.nombre_completo
+    `, [desde, hasta]);
+
     // Alerta 1: colaborador activo sin ningún registro en el período
     const { rows: alertaSinRegistros } = await pool.query(`
       SELECT e.id AS employee_id, e.nombre_completo, e.puesto, e.sede
@@ -422,6 +433,30 @@ prePlanillaRouter.get("/nomina/pre-planilla/validacion", async (req, res) => {
           SELECT DISTINCT n.employee_id FROM novedades_nomina_diarias n
           WHERE n.fecha BETWEEN $1 AND $2
         )
+      ORDER BY e.nombre_completo
+    `, [desde, hasta]);
+
+    // Alerta 2a: abandonos parciales en el período (requieren revisión)
+    const { rows: alertasAbandono } = await pool.query(`
+      SELECT DISTINCT e.id AS employee_id, e.nombre_completo,
+             COUNT(*) AS veces
+      FROM novedades_nomina_diarias n
+      JOIN employees e ON e.id = n.employee_id
+      WHERE n.fecha BETWEEN $1 AND $2
+        AND n.tipo_novedad = 'abandono_parcial'
+      GROUP BY e.id, e.nombre_completo
+      ORDER BY e.nombre_completo
+    `, [desde, hasta]);
+
+    // Alerta 2b: permisos sin goce en el período
+    const { rows: alertasPermisoSinGoce } = await pool.query(`
+      SELECT DISTINCT e.id AS employee_id, e.nombre_completo,
+             COUNT(*) AS veces
+      FROM novedades_nomina_diarias n
+      JOIN employees e ON e.id = n.employee_id
+      WHERE n.fecha BETWEEN $1 AND $2
+        AND n.tipo_novedad = 'permiso_sin_goce'
+      GROUP BY e.id, e.nombre_completo
       ORDER BY e.nombre_completo
     `, [desde, hasta]);
 
@@ -452,6 +487,14 @@ prePlanillaRouter.get("/nomina/pre-planilla/validacion", async (req, res) => {
         employee_id: r.employee_id,
         fecha: r.fecha,
       })),
+      ...errPermisoConFalta.map(r => ({
+        tipo: "exento_con_descuento",
+        severidad: "critico",
+        mensaje: `${r.nombre_completo} — ${r.tipo_novedad} no debe generar descuento (${r.fecha?.toISOString?.().slice(0,10) ?? r.fecha})`,
+        employee_id: r.employee_id,
+        fecha: r.fecha,
+        tipo_novedad: r.tipo_novedad,
+      })),
     ];
 
     const alertas = [
@@ -467,6 +510,20 @@ prePlanillaRouter.get("/nomina/pre-planilla/validacion", async (req, res) => {
         mensaje: `${r.nombre_completo} — revisión pendiente (estado: ${r.estado})`,
         employee_id: r.employee_id,
         estado: r.estado,
+      })),
+      ...alertasAbandono.map(r => ({
+        tipo: "abandono_parcial",
+        severidad: "alerta",
+        mensaje: `${r.nombre_completo} — ${r.veces} abandono(s) parcial(es) en el período. Verificar horas descontadas.`,
+        employee_id: r.employee_id,
+        veces: Number(r.veces),
+      })),
+      ...alertasPermisoSinGoce.map(r => ({
+        tipo: "permiso_sin_goce",
+        severidad: "alerta",
+        mensaje: `${r.nombre_completo} — ${r.veces} permiso(s) sin goce de sueldo. Verificar autorización documentada.`,
+        employee_id: r.employee_id,
+        veces: Number(r.veces),
       })),
     ];
 
@@ -565,8 +622,16 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
       WHERE fecha BETWEEN $1 AND $2 AND trabajo_dia = TRUE
         AND (horas_trabajadas IS NULL OR horas_trabajadas::numeric = 0)
     `, [desde, hasta]);
+    const { rows: errExentos } = await pool.query(`
+      SELECT COUNT(*) AS cnt FROM novedades_nomina_diarias
+      WHERE fecha BETWEEN $1 AND $2
+        AND tipo_novedad IN ('permiso_con_goce', 'vacaciones', 'incapacidad', 'relevo_vacaciones')
+        AND (falta = TRUE OR descuento_dia = TRUE)
+    `, [desde, hasta]);
 
-    const totalErrores = parseInt(errFaltaTrabajo[0]?.cnt ?? "0") + parseInt(errSinHoras[0]?.cnt ?? "0");
+    const totalErrores = parseInt(errFaltaTrabajo[0]?.cnt ?? "0")
+      + parseInt(errSinHoras[0]?.cnt ?? "0")
+      + parseInt(errExentos[0]?.cnt ?? "0");
 
     if (totalErrores > 0 && !forzar) {
       return res.status(422).json({

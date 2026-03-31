@@ -528,10 +528,12 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
     // ── Auto-crear evento RRHH (expandido: tipoNovedad + motivo legacy) ────────
     const tiposRrhhSaliente: Record<string, string> = {
       falta_total:      "falta",
-      abandono_parcial: "falta",
+      abandono_parcial: "abandono_parcial", // Fix: genera evento tipo abandono, no falta
       suspension:       "suspension",
       incapacidad:      "incapacidad",
       vacaciones:       "vacaciones",
+      permiso_sin_goce: "permiso_sin_goce",
+      permiso_con_goce: "permiso_con_goce",
     };
     const tipoEventoRrhh = tipoNovedad
       ? tiposRrhhSaliente[tipoNovedad] ?? null

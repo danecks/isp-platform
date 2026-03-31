@@ -272,7 +272,8 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
         AND tipo_evento IN (
           'permiso', 'vacaciones', 'incapacidad', 'suspension',
           'falta', 'falta_injustificada', 'permiso_sin_goce',
-          'permiso_goce_sueldo', 'amonestacion'
+          'permiso_con_goce', 'permiso_goce_sueldo', 'amonestacion',
+          'relevo_vacaciones', 'cambio_titular'
         )
     `, [fecha]);
 

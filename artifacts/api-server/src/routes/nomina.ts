@@ -163,7 +163,9 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
       const tipoNovA = tnRowsA[0]?.tipo_novedad ?? null;
 
       // Tipos que NO generan falta ni descuento al titular
-      const sinFalta = ["vacaciones", "relevo_vacaciones", "incapacidad"].includes(tipoNovA ?? "");
+      // NOTA: permiso_con_goce → no descuenta. permiso_sin_goce → sí descuenta (default).
+      const TIPOS_SIN_FALTA = ["vacaciones", "relevo_vacaciones", "incapacidad", "permiso_con_goce"];
+      const sinFalta = TIPOS_SIN_FALTA.includes(tipoNovA ?? "");
       const esSuspension = tipoNovA === "suspension";
 
       await pool.query(`
@@ -203,9 +205,18 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
       SELECT po.titular_employee_id AS employee_id,
              e.nombre_completo      AS empleado_nombre,
              po.id                  AS puesto_titular_id,
-             po.nombre              AS puesto_titular_nombre
+             po.nombre              AS puesto_titular_nombre,
+             -- Turno del puesto para determinar si es día de descanso del ciclo
+             t.id                   AS turno_id,
+             t.nombre               AS turno_nombre,
+             t.horas_trabajo::float AS horas_trabajo,
+             t.horas_descanso::float AS horas_descanso,
+             (t.horas_trabajo + t.horas_descanso)::float AS ciclo_horas,
+             po.fecha_inicio_ciclo::text AS fecha_inicio_ciclo,
+             e.dia_descanso
       FROM puestos_operativos po
       JOIN employees e ON e.id = po.titular_employee_id
+      LEFT JOIN turnos t ON t.id = po.tipo_turno_id
       WHERE po.activo = TRUE
         AND po.titular_employee_id IS NOT NULL
         -- Sin segmento registrado para ese día
@@ -230,6 +241,39 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
     `, [fecha]);
 
     for (const t of titularesSinPresencia) {
+      // GUARD DEL CICLO: Si el agente tiene turno configurado y HOY es su día de descanso
+      // del ciclo (ej. 24x24 en día impar), no es una falta — es descanso programado.
+      if (t.turno_id) {
+        const turnoObj = {
+          id: t.turno_id,
+          nombre: t.turno_nombre,
+          horas_trabajo: Number(t.horas_trabajo),
+          horas_descanso: Number(t.horas_descanso),
+          ciclo_horas: Number(t.ciclo_horas),
+        };
+        const { trabajaEseDia } = calcularJornadaEsperada(
+          turnoObj,
+          t.fecha_inicio_ciclo ?? null,
+          fecha,
+          t.dia_descanso ?? null,
+        );
+        if (!trabajaEseDia) {
+          // No es una falta: hoy le toca descanso según su ciclo de turno.
+          // Registrar como novedad de descanso (sin falta, sin descuento).
+          await pool.query(`
+            INSERT INTO novedades_nomina_diarias
+              (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
+               falta, suspension, descanso_trabajado, afecta_septimo, descuento_dia,
+               puesto_titular_id, puesto_titular_nombre, tipo_novedad, fuente, updated_at)
+            VALUES ($1,$2,$3,FALSE,0,0, FALSE,FALSE,FALSE,FALSE,FALSE, $4,$5,'descanso_ciclo','auto_auditoria',NOW())
+            ON CONFLICT (fecha, employee_id) DO NOTHING
+          `, [fecha, t.employee_id, t.empleado_nombre ?? "Desconocido",
+              t.puesto_titular_id ?? null, t.puesto_titular_nombre ?? null]);
+          count++;
+          continue;
+        }
+      }
+
       // Buscar tipo_novedad del relevo para este puesto ese día (si existe)
       const { rows: tnRowsT } = await pool.query(`
         SELECT tipo_novedad FROM cobertura_segmentos
@@ -238,7 +282,8 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
       `, [fecha, t.puesto_titular_id]);
       const tipoNovT = tnRowsT[0]?.tipo_novedad ?? null;
 
-      const sinFaltaT = ["vacaciones", "relevo_vacaciones", "incapacidad"].includes(tipoNovT ?? "");
+      // Tipos que NO generan falta ni descuento al titular
+      const sinFaltaT = ["vacaciones", "relevo_vacaciones", "incapacidad", "permiso_con_goce"].includes(tipoNovT ?? "");
       const esSuspensionT = tipoNovT === "suspension";
 
       await pool.query(`
