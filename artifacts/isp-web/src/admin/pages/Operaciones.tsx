@@ -77,6 +77,10 @@ interface Agente {
   supervisor_id: number | null;
   /** EOA: titular | disponible | pool_relevo | sin_asignacion */
   tipo_asignacion_eoa: string;
+  /** Solo para agentes en categoría faltando */
+  estado_puesto_titular?: string | null;
+  nombre_puesto_titular?: string | null;
+  cliente_puesto_titular?: string | null;
 }
 
 interface Pool {
@@ -85,6 +89,7 @@ interface Pool {
   enSSA: Agente[];
   enDescanso: Agente[];
   suspendidos: Agente[];
+  faltando: Agente[];
   total: number;
 }
 
@@ -331,7 +336,29 @@ function DraggableAgente({
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-white/90 truncate">{agente.nombre_completo}</p>
         <p className="text-[10px] text-white/35 truncate">{agente.puesto ?? "Agente"}</p>
+        {agente.estado_puesto_titular && agente.nombre_puesto_titular && (
+          <p className="text-[10px] text-orange-400/80 truncate mt-0.5">
+            {agente.nombre_puesto_titular}
+            {agente.cliente_puesto_titular ? ` · ${agente.cliente_puesto_titular}` : ""}
+          </p>
+        )}
       </div>
+      {agente.estado_puesto_titular && agente.estado_puesto_titular !== "normal" && (
+        <span className={`shrink-0 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
+          agente.estado_puesto_titular === "abandono_parcial" ? "bg-red-500/20 text-red-300" :
+          agente.estado_puesto_titular === "suspension"       ? "bg-orange-500/20 text-orange-300" :
+          agente.estado_puesto_titular === "vacaciones"       ? "bg-blue-500/20 text-blue-300" :
+          agente.estado_puesto_titular === "incapacidad"      ? "bg-purple-500/20 text-purple-300" :
+          "bg-red-500/20 text-red-300"
+        }`}>
+          {agente.estado_puesto_titular === "relevo_completo"  ? "FALTA" :
+           agente.estado_puesto_titular === "abandono_parcial" ? "ABANDONO" :
+           agente.estado_puesto_titular === "suspension"       ? "SUSPENDIDO" :
+           agente.estado_puesto_titular === "vacaciones"       ? "VACACIONES" :
+           agente.estado_puesto_titular === "incapacidad"      ? "INCAPACIDAD" :
+           agente.estado_puesto_titular.toUpperCase()}
+        </span>
+      )}
       {isSelected && (
         <div className="w-2 h-2 rounded-full bg-primary shrink-0 animate-pulse" />
       )}
@@ -2284,7 +2311,7 @@ export default function Operaciones() {
     sedeId: number | null; fecha: string;
   } | null>(null);
   const [modalLiberar, setModalLiberar]              = useState<Puesto | null>(null);
-  const [poolTab, setPoolTab]                        = useState<"disponibles" | "enDescanso" | "suspendidos" | "enPuesto" | "enSSA">("disponibles");
+  const [poolTab, setPoolTab]                        = useState<"disponibles" | "enDescanso" | "suspendidos" | "enPuesto" | "enSSA" | "faltando">("disponibles");
   const [busquedaPool, setBusquedaPool]              = useState("");
   const [modalCierre, setModalCierre]                = useState(false);
   const [modalReabrir, setModalReabrir]              = useState(false);
@@ -3125,6 +3152,7 @@ export default function Operaciones() {
               {/* Tabs del pool */}
               {[
                 { key: "disponibles" as const, label: "Disponibles", count: pool?.disponibles?.length ?? 0, color: "text-green-400" },
+                { key: "faltando"    as const, label: "Faltando",    count: pool?.faltando?.length ?? 0,    color: "text-orange-400" },
                 { key: "enDescanso"  as const, label: "Descanso",    count: pool?.enDescanso?.length ?? 0,  color: "text-blue-400" },
                 { key: "enPuesto"   as const, label: "En puesto",   count: pool?.enPuesto?.length ?? 0,   color: "text-teal-400" },
                 { key: "enSSA"      as const, label: "En SSA",      count: pool?.enSSA?.length ?? 0,      color: "text-amber-400" },
@@ -3170,6 +3198,7 @@ export default function Operaciones() {
               ) : poolActual.length === 0 ? (
                 <div className="flex items-center justify-center w-full text-white/20 text-xs">
                   {poolTab === "disponibles" ? "No hay agentes disponibles" :
+                   poolTab === "faltando"    ? "No hay ausencias registradas hoy" :
                    poolTab === "enDescanso"  ? "No hay agentes en descanso" :
                    poolTab === "enPuesto"    ? "Ningún agente está en puesto activo" :
                    poolTab === "enSSA"       ? "Ningún agente cubre un SSA activo" :
@@ -3185,7 +3214,7 @@ export default function Operaciones() {
                         if (isCerrado) return;
                         setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente);
                       }}
-                      disabled={poolTab === "enPuesto" || poolTab === "enSSA" || isCerrado}
+                      disabled={poolTab === "enPuesto" || poolTab === "enSSA" || poolTab === "faltando" || isCerrado}
                     />
                   </div>
                 ))

@@ -79,11 +79,18 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         e.telefono, e.wa_autorizado, e.supervisor_id,
         COALESCE(e.elegible_pool, TRUE) AS elegible_pool,
         COALESCE(eoa.tipo_asignacion, 'sin_asignacion') AS tipo_asignacion_eoa,
+        titular_po.estado_operativo_puesto AS estado_puesto_titular,
+        titular_po.nombre                  AS nombre_puesto_titular,
+        titular_po.cliente_nombre          AS cliente_puesto_titular,
         CASE
           WHEN po.agente_id  IS NOT NULL AND e.estado_laboral = 'activo' THEN 'en_puesto'
           WHEN ssa.agente_id IS NOT NULL AND e.estado_laboral = 'activo' THEN 'en_ssa'
           WHEN e.estado_laboral = 'licencia'                             THEN 'en_descanso'
           WHEN e.estado_laboral = 'suspendido'                           THEN 'suspendido'
+          WHEN titular_po.id IS NOT NULL
+               AND (titular_po.agente_id IS NULL OR titular_po.agente_id != e.id)
+               AND COALESCE(titular_po.estado_operativo_puesto, 'normal') != 'normal'
+               AND e.estado_laboral = 'activo'                           THEN 'faltando'
           ELSE 'disponible'
         END AS categoria
       FROM employees e
@@ -100,6 +107,8 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       ) ssa ON ssa.agente_id = e.id
       LEFT JOIN employee_operational_assignments eoa
         ON eoa.employee_id = e.id AND eoa.activa = TRUE
+      LEFT JOIN puestos_operativos titular_po
+        ON titular_po.titular_employee_id = e.id AND titular_po.activo = TRUE
       WHERE e.estado_laboral IN ('activo', 'suspendido', 'licencia')
         AND COALESCE(e.elegible_pool, TRUE) = TRUE
       ORDER BY e.estado_laboral, e.nombre_completo
@@ -110,8 +119,9 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
     const enSSA       = agentes.filter((a: any) => a.categoria === 'en_ssa');
     const enDescanso  = agentes.filter((a: any) => a.categoria === 'en_descanso');
     const suspendidos = agentes.filter((a: any) => a.categoria === 'suspendido');
+    const faltando    = agentes.filter((a: any) => a.categoria === 'faltando');
 
-    res.json({ disponibles, enPuesto, enSSA, enDescanso, suspendidos, total: agentes.length });
+    res.json({ disponibles, enPuesto, enSSA, enDescanso, suspendidos, faltando, total: agentes.length });
   } catch (err) {
     logger.error({ err }, "GET /operaciones/pool error");
     res.status(500).json({ error: "Error al cargar pool" });
