@@ -1,0 +1,81 @@
+Quiero hacer una prueba específica del tablero futuro / arranque programado, porque me estoy dando cuenta de que actualmente puedo ver el arranque de un cliente nuevo en la fecha futura, pero aparentemente no puedo asignar agentes desde esa vista.
+
+No quiero una revisión teórica.
+Quiero una prueba funcional real en el preview de Replit.
+
+## Objetivo
+Confirmar si el tablero futuro permite o no planificar cobertura real para un arranque programado, y si no lo permite, identificar exactamente qué falta.
+
+---
+
+## 1. Escenario de prueba
+Usar un cliente/proyecto con:
+- fecha de inicio futura
+- varios puestos creados
+- algunos con titular
+- otros sin cubrir
+
+Ejemplo:
+- cliente nuevo con fecha de inicio 18/04/2026
+- ver ese cliente en el Pizarrón Futuro del 18/04/2026
+
+---
+
+## 2. Qué quiero probar exactamente
+### A. Visualización
+Verificar que:
+- la tarjeta de arranque programado aparece
+- el cliente correcto aparece en la fecha correcta
+- los puestos del nuevo proyecto son visibles en esa fecha
+
+### B. Capacidad de asignación futura
+Intentar desde esa vista:
+- asignar un agente a un puesto del arranque programado
+- usar un agente disponible / relevo si aplica
+- guardar la asignación
+
+### C. Persistencia
+Verificar que la asignación futura:
+- queda guardada
+- no desaparece al recargar
+- no afecta el pizarrón del día actual
+
+### D. Activación al llegar la fecha
+Validar que al llegar la fecha real:
+- el proyecto aparece operativo
+- la cobertura futura asignada ya está reflejada
+- el jefe de servicio puede ajustarla si algo cambió
+
+---
+
+## 3. Si NO funciona
+Si hoy no se puede asignar desde el tablero futuro, quiero que identifiques exactamente cuál es el bloqueo:
+
+- ¿la tarjeta es solo visual?
+- ¿faltan acciones o botones?
+- ¿faltan registros intermedios?
+- ¿no existe endpoint para asignación futura?
+- ¿la UI no está conectada?
+- ¿se necesita convertir el arranque programado en puestos operativos planificables?
+
+No quiero una respuesta vaga.
+Quiero saber exactamente por qué no se puede.
+
+---
+
+## 4. Qué debe hacer el reporte final
+Quiero que me digas claramente:
+
+### A. ¿Se puede o no se puede asignar agentes desde el tablero futuro?
+### B. Si no se puede, ¿qué pieza exacta falta?
+### C. ¿Es un problema de UI, backend o modelo de datos?
+### D. ¿Qué habría que construir para que sí se pueda?
+### E. ¿Afecta o no afecta el pizarrón del día actual?
+### F. ¿Qué debería pasar cuando llegue la fecha real?
+
+---
+
+## 5. Muy importante
+Quiero que esta prueba me diga si el tablero futuro ya es una herramienta real de planeación o si todavía solo es una vista informativa.
+
+Lo que necesito es que Operaciones pueda ver un arranque futuro y desde ahí dejar planificada la cobertura antes de que llegue el día.
