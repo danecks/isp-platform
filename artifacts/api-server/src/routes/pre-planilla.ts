@@ -265,6 +265,163 @@ prePlanillaRouter.patch("/nomina/pre-planilla/revision/:employeeId", async (req,
   }
 });
 
+// ─── GET /api/nomina/pre-planilla/anexo/horas-extra ──────────────────────────
+prePlanillaRouter.get("/nomina/pre-planilla/anexo/horas-extra", async (req, res) => {
+  const { desde, hasta } = req.query as Record<string, string>;
+  if (!desde || !hasta) return res.status(400).json({ error: "desde y hasta son requeridos" });
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        n.id,
+        n.fecha,
+        n.horas_extra::numeric                                            AS horas_extra,
+        n.horas_trabajadas::numeric                                       AS horas_trabajadas,
+        n.puesto_titular_nombre,
+        n.puesto_cubierto_nombre,
+        n.descanso_trabajado,
+        n.observaciones,
+        n.fuente,
+        CASE
+          WHEN n.puesto_cubierto_id IS NOT NULL
+            AND n.puesto_cubierto_id IS DISTINCT FROM n.puesto_titular_id THEN 'relevo'
+          WHEN n.descanso_trabajado THEN 'descanso_trabajado'
+          ELSE 'normal'
+        END                                                               AS tipo,
+        e.id                                                              AS employee_id,
+        e.nombre_completo,
+        e.sede,
+        (SELECT c.nombre
+         FROM agent_assignments aa
+         JOIN clients c ON c.portal_cliente_id = aa.cliente_id
+         WHERE aa.employee_id = e.id AND aa.estado = 'activo'
+         LIMIT 1)                                                         AS cliente_nombre
+      FROM novedades_nomina_diarias n
+      JOIN employees e ON e.id = n.employee_id
+      WHERE n.fecha BETWEEN $1 AND $2
+        AND n.horas_extra IS NOT NULL
+        AND n.horas_extra::numeric > 0
+      ORDER BY n.fecha ASC, e.nombre_completo
+    `, [desde, hasta]);
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "GET /nomina/pre-planilla/anexo/horas-extra error");
+    res.status(500).json({ error: "Error al obtener horas extra" });
+  }
+});
+
+// ─── GET /api/nomina/pre-planilla/anexo/faltas ────────────────────────────────
+prePlanillaRouter.get("/nomina/pre-planilla/anexo/faltas", async (req, res) => {
+  const { desde, hasta } = req.query as Record<string, string>;
+  if (!desde || !hasta) return res.status(400).json({ error: "desde y hasta son requeridos" });
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        n.id,
+        n.fecha,
+        n.falta,
+        n.suspension,
+        n.descuento_dia,
+        n.puesto_titular_nombre,
+        n.puesto_cubierto_nombre,
+        n.observaciones,
+        n.fuente,
+        e.id    AS employee_id,
+        e.nombre_completo,
+        e.dpi,
+        e.sede
+      FROM novedades_nomina_diarias n
+      JOIN employees e ON e.id = n.employee_id
+      WHERE n.fecha BETWEEN $1 AND $2
+        AND (n.falta = TRUE OR n.suspension = TRUE)
+      ORDER BY n.fecha ASC, e.nombre_completo
+    `, [desde, hasta]);
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "GET /nomina/pre-planilla/anexo/faltas error");
+    res.status(500).json({ error: "Error al obtener faltas" });
+  }
+});
+
+// ─── GET /api/nomina/pre-planilla/anexo/anticipos ────────────────────────────
+prePlanillaRouter.get("/nomina/pre-planilla/anexo/anticipos", async (req, res) => {
+  const { desde, hasta } = req.query as Record<string, string>;
+  if (!desde || !hasta) return res.status(400).json({ error: "desde y hasta son requeridos" });
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        a.id,
+        a.cantidad,
+        a.estado,
+        a.periodo,
+        a.origen,
+        a.observaciones,
+        a.fecha_solicitud,
+        a.nombre,
+        a.planilla_id,
+        e.id    AS employee_id,
+        e.nombre_completo,
+        e.dpi,
+        e.sede
+      FROM anticipos a
+      JOIN employees e ON e.id = a.employee_id
+      WHERE DATE(a.fecha_solicitud) BETWEEN $1 AND $2
+        AND a.estado IN ('aprobada', 'pagada')
+      ORDER BY a.fecha_solicitud DESC, e.nombre_completo
+    `, [desde, hasta]);
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "GET /nomina/pre-planilla/anexo/anticipos error");
+    res.status(500).json({ error: "Error al obtener anticipos" });
+  }
+});
+
+// ─── GET /api/nomina/pre-planilla/anexo/coberturas ───────────────────────────
+prePlanillaRouter.get("/nomina/pre-planilla/anexo/coberturas", async (req, res) => {
+  const { desde, hasta } = req.query as Record<string, string>;
+  if (!desde || !hasta) return res.status(400).json({ error: "desde y hasta son requeridos" });
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        n.id,
+        n.fecha,
+        n.horas_trabajadas::numeric                                       AS horas,
+        n.horas_extra::numeric                                            AS horas_extra,
+        n.puesto_titular_nombre,
+        n.puesto_cubierto_nombre,
+        n.descanso_trabajado,
+        n.observaciones,
+        n.num_puestos_cubiertos,
+        CASE
+          WHEN n.puesto_cubierto_id IS NOT NULL
+            AND n.puesto_cubierto_id IS DISTINCT FROM n.puesto_titular_id THEN 'relevo'
+          WHEN n.descanso_trabajado THEN 'descanso_trabajado'
+          ELSE 'cobertura'
+        END                                                               AS tipo_cobertura,
+        e.id    AS employee_id,
+        e.nombre_completo,
+        e.sede,
+        (SELECT c.nombre
+         FROM agent_assignments aa
+         JOIN clients c ON c.portal_cliente_id = aa.cliente_id
+         WHERE aa.employee_id = e.id AND aa.estado = 'activo'
+         LIMIT 1)                                                         AS cliente_nombre
+      FROM novedades_nomina_diarias n
+      JOIN employees e ON e.id = n.employee_id
+      WHERE n.fecha BETWEEN $1 AND $2
+        AND n.trabajo_dia = TRUE
+        AND (
+          (n.puesto_cubierto_id IS NOT NULL AND n.puesto_cubierto_id IS DISTINCT FROM n.puesto_titular_id)
+          OR n.descanso_trabajado = TRUE
+        )
+      ORDER BY n.fecha ASC, e.nombre_completo
+    `, [desde, hasta]);
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "GET /nomina/pre-planilla/anexo/coberturas error");
+    res.status(500).json({ error: "Error al obtener coberturas" });
+  }
+});
+
 // ─── GET /api/nomina/pre-planilla/export ─────────────────────────────────────
 // CSV con UTF-8 BOM para apertura directa en Excel
 prePlanillaRouter.get("/nomina/pre-planilla/export", async (req, res) => {

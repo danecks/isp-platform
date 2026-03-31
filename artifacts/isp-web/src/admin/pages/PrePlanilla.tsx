@@ -1,22 +1,21 @@
 /**
- * PrePlanilla.tsx — Pre-Planilla Operativa por Período
+ * PrePlanilla.tsx — Pre-Planilla Operativa por Período (v2)
  *
- * Consolida novedades_nomina_diarias + employees + anticipos para revisión
- * de RRHH antes del cálculo de planilla formal.
+ * Vista de revisión real de pago con:
+ *   - Tab Resumen General: tabla consolidada + total estimado preliminar
+ *   - Tab Horas Extra: anexo detallado por día / colaborador
+ *   - Tab Faltas / Suspensiones: anexo con eventos RRHH
+ *   - Tab Anticipos: anexo de anticipos aprobados/pagados
+ *   - Tab Coberturas / Relevos: anexo de días de cobertura
  *
- * FUENTES DE DATOS:
- *   - novedades_nomina_diarias  (asistencia, horas, faltas, suspensiones)
- *   - employees                 (sueldo_base, tipo_jornada, horas_contrato)
- *   - anticipos                 (aprobados/pagados en el período)
- *   - pre_planilla_revision     (estado de revisión RRHH: pendiente/revisada/observada)
+ * TOTAL ESTIMADO PRELIMINAR (indicativo, no legal):
+ *   sueldo_periodo = sueldo_base / 30 * días_período
+ *   desc_faltas    = (sueldo_base / 30) * (faltas + suspensiones)
+ *   valor_he       = (sueldo_base / 30 / horas_dia) * 1.5 * horas_extra
+ *   total_est      = sueldo_periodo - desc_faltas + valor_he - anticipos
  *
- * LO QUE NO CALCULA TODAVÍA:
- *   - Descuento proporcional por faltas/suspensiones
- *   - IGSS (cuota patronal 12.67% + laboral 4.83%)
- *   - Séptimo día / descanso remunerado
- *   - Bonificación incentivo (Decreto 78-89)
- *   - Indemnización / liquidación
- *   - Neto a pagar
+ * NO INCLUYE AÚN: IGSS, bonificación incentivo (Dto. 78-89), séptimo día,
+ *   cuotas patronales, ni deducciones legales finales.
  */
 
 import React, { useState, useMemo, useCallback, useEffect } from "react";
@@ -27,7 +26,8 @@ import {
   Calendar, Download, RefreshCw, ChevronDown, ChevronUp,
   CheckCircle2, AlertCircle, Clock, Eye, X, Loader2,
   Users, Briefcase, TrendingUp, Wallet, Info,
-  Check, MessageSquare, AlertTriangle,
+  Check, AlertTriangle, FileText, CreditCard, Repeat2,
+  MinusCircle,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
@@ -82,7 +82,6 @@ interface ColaboradorPre {
   revision_observaciones: string | null;
   revision_por: string | null;
   revision_at: string | null;
-  // Turno
   tipo_turno_id: number | null;
   tipo_turno_nombre: string | null;
   turno_horas_trabajo: string | null;
@@ -133,53 +132,102 @@ interface DetalleIncentivo {
   metodo_pago: string | null;
 }
 
+interface AnexoHE {
+  id: number;
+  fecha: string;
+  horas_extra: number;
+  horas_trabajadas: number;
+  tipo: string;
+  puesto_titular_nombre: string | null;
+  puesto_cubierto_nombre: string | null;
+  observaciones: string | null;
+  fuente: string | null;
+  employee_id: number;
+  nombre_completo: string;
+  sede: string | null;
+  cliente_nombre: string | null;
+}
+
+interface AnexoFalta {
+  id: number;
+  fecha: string;
+  falta: boolean;
+  suspension: boolean;
+  descuento_dia: boolean;
+  puesto_titular_nombre: string | null;
+  puesto_cubierto_nombre: string | null;
+  observaciones: string | null;
+  fuente: string | null;
+  employee_id: number;
+  nombre_completo: string;
+  dpi: string | null;
+  sede: string | null;
+}
+
+interface AnexoAnticipo {
+  id: number;
+  cantidad: number;
+  estado: string;
+  periodo: string | null;
+  origen: string;
+  observaciones: string | null;
+  fecha_solicitud: string;
+  nombre: string | null;
+  planilla_id: number | null;
+  employee_id: number;
+  nombre_completo: string;
+  dpi: string | null;
+  sede: string | null;
+}
+
+interface AnexoCobertura {
+  id: number;
+  fecha: string;
+  horas: number;
+  horas_extra: number;
+  tipo_cobertura: string;
+  puesto_titular_nombre: string | null;
+  puesto_cubierto_nombre: string | null;
+  descanso_trabajado: boolean;
+  observaciones: string | null;
+  num_puestos_cubiertos: number;
+  employee_id: number;
+  nombre_completo: string;
+  sede: string | null;
+  cliente_nombre: string | null;
+}
+
+type Tab = "resumen" | "horas_extra" | "faltas" | "anticipos" | "coberturas";
+
 // ─── Presets de período ───────────────────────────────────────────────────────
 
 function getPeriodPresets() {
   const hoy = new Date();
   const y = hoy.getFullYear();
-  const m = hoy.getMonth(); // 0-based
+  const m = hoy.getMonth();
   const d = hoy.getDate();
   const fin = (y2: number, m2: number) => new Date(y2, m2 + 1, 0).getDate();
   const fmt = (y2: number, m2: number, d2: number) =>
     `${y2}-${String(m2 + 1).padStart(2, "0")}-${String(d2).padStart(2, "0")}`;
 
-  // Quincena actual
   let qDesde: string, qHasta: string;
-  if (d <= 15) {
-    qDesde = fmt(y, m, 1);
-    qHasta = fmt(y, m, 15);
-  } else {
-    qDesde = fmt(y, m, 16);
-    qHasta = fmt(y, m, fin(y, m));
-  }
+  if (d <= 15) { qDesde = fmt(y, m, 1); qHasta = fmt(y, m, 15); }
+  else { qDesde = fmt(y, m, 16); qHasta = fmt(y, m, fin(y, m)); }
 
-  // Quincena anterior
   let qpDesde: string, qpHasta: string;
   if (d <= 15) {
-    const pm = m === 0 ? 11 : m - 1;
-    const py = m === 0 ? y - 1 : y;
-    qpDesde = fmt(py, pm, 16);
-    qpHasta = fmt(py, pm, fin(py, pm));
-  } else {
-    qpDesde = fmt(y, m, 1);
-    qpHasta = fmt(y, m, 15);
-  }
+    const pm = m === 0 ? 11 : m - 1; const py = m === 0 ? y - 1 : y;
+    qpDesde = fmt(py, pm, 16); qpHasta = fmt(py, pm, fin(py, pm));
+  } else { qpDesde = fmt(y, m, 1); qpHasta = fmt(y, m, 15); }
 
-  // Mes actual
-  const maDesde = fmt(y, m, 1);
-  const maHasta = fmt(y, m, fin(y, m));
-
-  // Mes anterior
-  const pm = m === 0 ? 11 : m - 1;
-  const py = m === 0 ? y - 1 : y;
-  const mpDesde = fmt(py, pm, 1);
-  const mpHasta = fmt(py, pm, fin(py, pm));
+  const maDesde = fmt(y, m, 1); const maHasta = fmt(y, m, fin(y, m));
+  const pm = m === 0 ? 11 : m - 1; const py = m === 0 ? y - 1 : y;
+  const mpDesde = fmt(py, pm, 1); const mpHasta = fmt(py, pm, fin(py, pm));
 
   return { qDesde, qHasta, qpDesde, qpHasta, maDesde, maHasta, mpDesde, mpHasta };
 }
 
-// ─── Helper format ────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtFecha(iso: string) {
   return new Date(iso + "T12:00:00").toLocaleDateString("es-GT", {
@@ -194,16 +242,29 @@ function fmtQ(n: number | string | null) {
   return `Q${num.toLocaleString("es-GT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function clamp(n: number, min: number, max: number) {
-  return Math.min(Math.max(n, min), max);
+function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: number | null) {
+  const sb = parseFloat(String(col.sueldo_base ?? "0"));
+  if (!sb || !periodoTotalDias) return null;
+  const sueldoDia = sb / 30;
+  const sueldoPeriodo = sueldoDia * periodoTotalDias;
+  const totalFaltas = Number(col.faltas) + Number(col.suspensiones);
+  const descFaltas = sueldoDia * totalFaltas;
+  // Horas día = horas_contrato / 6 días (semana 6 días) — o 8 por defecto
+  const horasDia = col.horas_contrato ? col.horas_contrato / 6 : 8;
+  const valorHora = sueldoDia / horasDia;
+  const he = parseFloat(String(col.horas_extra ?? "0"));
+  const valorHE = valorHora * 1.5 * he;
+  const anticipo = Number(col.anticipos_monto);
+  const total = sueldoPeriodo - descFaltas + valorHE - anticipo;
+  return { sueldoPeriodo, descFaltas, valorHE, anticipo, total };
 }
 
-// ─── Badge de revisión ────────────────────────────────────────────────────────
+// ─── Badge revisión ───────────────────────────────────────────────────────────
 
 const REVISION_CFG = {
-  pendiente: { label: "Pendiente",  cls: "text-amber-400 bg-amber-400/10 border-amber-400/25",  icon: Clock },
-  revisada:  { label: "Revisada",   cls: "text-green-400 bg-green-400/10 border-green-400/25",  icon: CheckCircle2 },
-  observada: { label: "Observada",  cls: "text-rose-400 bg-rose-400/10 border-rose-400/25",     icon: AlertCircle },
+  pendiente: { label: "Pendiente", cls: "text-amber-400 bg-amber-400/10 border-amber-400/25", icon: Clock },
+  revisada:  { label: "Revisada",  cls: "text-green-400 bg-green-400/10 border-green-400/25", icon: CheckCircle2 },
+  observada: { label: "Observada", cls: "text-rose-400 bg-rose-400/10 border-rose-400/25",    icon: AlertCircle },
 };
 
 function RevisionBadge({ estado }: { estado: string }) {
@@ -211,10 +272,34 @@ function RevisionBadge({ estado }: { estado: string }) {
     { label: estado, cls: "text-white/40 bg-white/5 border-white/10", icon: Clock };
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold ${cfg.cls}`}>
-      <cfg.icon className="w-2.5 h-2.5" />
-      {cfg.label}
+      <cfg.icon className="w-2.5 h-2.5" />{cfg.label}
     </span>
   );
+}
+
+// ─── Badge tipo cobertura ─────────────────────────────────────────────────────
+
+function TipoCobBadge({ tipo }: { tipo: string }) {
+  const cfgs: Record<string, string> = {
+    relevo:             "text-purple-300 bg-purple-400/10 border-purple-400/20",
+    descanso_trabajado: "text-blue-300 bg-blue-400/10 border-blue-400/20",
+    cobertura:          "text-cyan-300 bg-cyan-400/10 border-cyan-400/20",
+    normal:             "text-white/40 bg-white/5 border-white/10",
+  };
+  const labels: Record<string, string> = {
+    relevo: "Relevo", descanso_trabajado: "Dsco. Trabajado", cobertura: "Cobertura", normal: "Normal",
+  };
+  return (
+    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${cfgs[tipo] ?? "text-white/30 bg-white/5 border-white/10"}`}>
+      {labels[tipo] ?? tipo}
+    </span>
+  );
+}
+
+// ─── Componente de estado vacío de tabla ──────────────────────────────────────
+
+function TablaVacia({ msg }: { msg: string }) {
+  return <div className="p-10 text-center text-white/30 text-sm">{msg}</div>;
 }
 
 // ─── Modal de Detalle ─────────────────────────────────────────────────────────
@@ -229,11 +314,22 @@ function DetalleModal({
   onRevisionChange: (id: number, estado: string, obs: string) => void;
 }) {
   const { toast } = useToast();
-  const [data, setData] = useState<{ novedades: DetalleNovedad[]; anticipos: DetalleAnticipo[]; incentivos: DetalleIncentivo[] } | null>(null);
+  const [data, setData] = useState<{
+    novedades: DetalleNovedad[];
+    anticipos: DetalleAnticipo[];
+    incentivos: DetalleIncentivo[];
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [revEstado, setRevEstado] = useState(col.revision_estado);
   const [revObs, setRevObs] = useState(col.revision_observaciones ?? "");
   const [savingRev, setSavingRev] = useState(false);
+  const [activeInner, setActiveInner] = useState<"resumen" | "detalle" | "historial">("resumen");
+
+  const periodoTotalDias = desde && hasta
+    ? Math.round((new Date(hasta).getTime() - new Date(desde).getTime()) / 86400000) + 1
+    : null;
+
+  const est = calcularTotalEstimado(col, periodoTotalDias);
 
   React.useEffect(() => {
     setLoading(true);
@@ -261,213 +357,597 @@ function DetalleModal({
 
   const htNum = parseFloat(col.horas_trabajadas || "0");
   const heNum = parseFloat(col.horas_extra || "0");
+  const tieneAlertas = Number(col.faltas) > 0 || Number(col.suspensiones) > 0 || Number(col.dias_sin_horas) > 0;
 
   return createPortal(
     <div className="fixed inset-0 z-[70] flex items-start justify-end bg-black/70 backdrop-blur-sm">
       <div className="h-full w-full max-w-2xl bg-[#07111f] border-l border-white/10 flex flex-col shadow-2xl overflow-hidden">
+
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/8 bg-[#060e1c] shrink-0">
-          <div>
-            <h3 className="text-sm font-bold text-white">{col.nombre_completo}</h3>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              {tieneAlertas && <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+              <h3 className="text-sm font-bold text-white truncate">{col.nombre_completo}</h3>
+            </div>
             <p className="text-[11px] text-white/40 mt-0.5">
-              {col.puesto_empleado ?? "—"} · {col.sede ?? "—"} · {fmtFecha(desde)} – {fmtFecha(hasta)}
+              EMP-{String(col.employee_id).padStart(4, "0")} · {col.puesto_empleado ?? "—"} · {col.sede ?? "—"}
             </p>
+            <p className="text-[10px] text-white/25 mt-0.5">{fmtFecha(desde)} – {fmtFecha(hasta)}</p>
           </div>
-          <button onClick={onClose} className="text-white/30 hover:text-white transition-colors">
+          <button onClick={onClose} className="ml-3 text-white/30 hover:text-white transition-colors shrink-0">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {/* Resumen del período */}
-          <div className="p-5 border-b border-white/5">
-            <p className="text-[10px] text-white/30 uppercase tracking-widest mb-3">Resumen del período</p>
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              {[
-                { label: "Días trabajados", val: Number(col.dias_trabajados), cls: "text-green-400" },
-                { label: "Faltas", val: Number(col.faltas), cls: Number(col.faltas) > 0 ? "text-red-400" : "text-white/50" },
-                { label: "Suspensiones", val: Number(col.suspensiones), cls: Number(col.suspensiones) > 0 ? "text-amber-400" : "text-white/50" },
-                { label: "Descansos trab.", val: Number(col.descansos_trabajados), cls: "text-blue-400" },
-                { label: "Relevos", val: Number(col.relevos), cls: "text-purple-400" },
-                { label: "Días sin horas", val: Number(col.dias_sin_horas), cls: Number(col.dias_sin_horas) > 0 ? "text-amber-400" : "text-white/30" },
-              ].map(({ label, val, cls }) => (
-                <div key={label} className="bg-[#0c1929] border border-white/6 rounded-lg p-2.5">
-                  <p className={`text-xl font-bold ${cls}`}>{val}</p>
-                  <p className="text-[10px] text-white/35 mt-0.5">{label}</p>
-                </div>
-              ))}
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="bg-[#0c1929] border border-white/6 rounded-lg p-2.5">
-                <p className="text-lg font-bold text-cyan-400">{htNum.toFixed(1)} h</p>
-                <p className="text-[10px] text-white/35">Horas trabajadas</p>
-              </div>
-              <div className="bg-[#0c1929] border border-white/6 rounded-lg p-2.5">
-                <p className={`text-lg font-bold ${heNum > 0 ? "text-orange-400" : "text-white/30"}`}>{heNum.toFixed(1)} h</p>
-                <p className="text-[10px] text-white/35">Horas extra</p>
-              </div>
-            </div>
-            {Number(col.incentivos_cash_count) > 0 && (
-              <div className="mt-2 bg-emerald-400/5 border border-emerald-400/20 rounded-lg px-3 py-2 flex items-center justify-between">
-                <span className="text-xs text-emerald-300">Incentivos cash del período</span>
-                <span className="text-sm font-bold text-emerald-400">{fmtQ(col.incentivos_cash_monto)} ({col.incentivos_cash_count})</span>
-              </div>
-            )}
-            {col.anticipos_count > 0 && (
-              <div className="mt-2 bg-amber-400/5 border border-amber-400/20 rounded-lg px-3 py-2 flex items-center justify-between">
-                <span className="text-xs text-amber-300">Anticipos del período</span>
-                <span className="text-sm font-bold text-amber-400">{fmtQ(col.anticipos_monto)} ({col.anticipos_count})</span>
-              </div>
-            )}
-            {col.sueldo_base && (
-              <div className="mt-2 bg-white/3 border border-white/6 rounded-lg px-3 py-2 flex items-center justify-between">
-                <span className="text-xs text-white/40">Sueldo base</span>
-                <span className="text-sm font-semibold text-white">{fmtQ(col.sueldo_base)}</span>
-              </div>
-            )}
-          </div>
+        {/* Inner tabs */}
+        <div className="flex border-b border-white/6 bg-[#060e1c] shrink-0">
+          {([
+            ["resumen", "Resumen"],
+            ["detalle", "Día a día"],
+            ["historial", "Historial"],
+          ] as const).map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => setActiveInner(k)}
+              className={`px-4 py-2.5 text-[11px] font-semibold transition-colors border-b-2 ${
+                activeInner === k
+                  ? "border-primary text-primary"
+                  : "border-transparent text-white/40 hover:text-white/70"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
-          {/* Novedades diarias */}
-          <div className="p-5 border-b border-white/5">
-            <p className="text-[10px] text-white/30 uppercase tracking-widest mb-3">Novedades diarias</p>
-            {loading ? (
-              <div className="flex items-center gap-2 text-white/30 text-sm py-4">
-                <Loader2 className="w-4 h-4 animate-spin" /> Cargando…
-              </div>
-            ) : data?.novedades.length === 0 ? (
-              <p className="text-white/30 text-sm py-2">Sin novedades registradas en el período.</p>
-            ) : (
-              <div className="space-y-1">
-                {data?.novedades.map((n) => (
-                  <div key={n.id} className="flex items-center gap-3 py-1.5 px-2 rounded-lg hover:bg-white/3 text-xs">
-                    <span className="text-white/40 w-24 shrink-0">{fmtFecha(n.fecha)}</span>
-                    <div className="flex items-center gap-1 flex-1 flex-wrap">
-                      {n.trabajo_dia && <span className="px-1.5 py-0.5 rounded bg-green-400/10 text-green-400 border border-green-400/20">Trabajó</span>}
-                      {n.falta && <span className="px-1.5 py-0.5 rounded bg-red-400/10 text-red-400 border border-red-400/20">Falta</span>}
-                      {n.suspension && <span className="px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-400 border border-amber-400/20">Suspensión</span>}
-                      {n.descanso_trabajado && <span className="px-1.5 py-0.5 rounded bg-blue-400/10 text-blue-400 border border-blue-400/20">Dsco. trab.</span>}
-                      {n.puesto_cubierto_nombre && n.puesto_cubierto_nombre !== n.puesto_titular_nombre && (
-                        <span className="px-1.5 py-0.5 rounded bg-purple-400/10 text-purple-400 border border-purple-400/20">Relevo</span>
-                      )}
+        <div className="flex-1 overflow-y-auto">
+
+          {/* ── Tab: Resumen ──────────────────────────────────────────── */}
+          {activeInner === "resumen" && (
+            <div className="p-5 space-y-4">
+
+              {/* Total estimado destacado */}
+              {est ? (
+                <div className="bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/30 rounded-xl p-4">
+                  <p className="text-[10px] text-white/40 uppercase tracking-widest mb-3">Total Estimado Preliminar</p>
+                  <div className="space-y-1.5 mb-3">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-white/50">Sueldo período ({periodoTotalDias}d)</span>
+                      <span className="text-white font-medium">{fmtQ(est.sueldoPeriodo)}</span>
                     </div>
-                    <span className="text-white/40 w-14 text-right shrink-0">
-                      {n.horas_trabajadas ? `${parseFloat(n.horas_trabajadas).toFixed(1)} h` : "—"}
-                    </span>
-                    {n.fuente === "auto_auditoria" && (
-                      <span title="Detectado automáticamente" className="text-amber-400/60">
-                        <Info className="w-3 h-3" />
-                      </span>
+                    {est.descFaltas > 0 && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-red-400/70">— Desc. faltas / susp. ({Number(col.faltas) + Number(col.suspensiones)}d)</span>
+                        <span className="text-red-400">–{fmtQ(est.descFaltas)}</span>
+                      </div>
+                    )}
+                    {est.valorHE > 0 && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-orange-400/70">+ H. Extra ({heNum.toFixed(1)} h × 1.5x)</span>
+                        <span className="text-orange-400">+{fmtQ(est.valorHE)}</span>
+                      </div>
+                    )}
+                    {est.anticipo > 0 && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-amber-400/70">— Anticipo del período</span>
+                        <span className="text-amber-400">–{fmtQ(est.anticipo)}</span>
+                      </div>
                     )}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  <div className="flex justify-between items-center pt-2 border-t border-primary/20">
+                    <span className="text-xs font-semibold text-white/60">Total estimado</span>
+                    <span className={`text-lg font-bold ${est.total >= 0 ? "text-primary" : "text-red-400"}`}>
+                      {fmtQ(est.total)}
+                    </span>
+                  </div>
+                  <p className="text-[9px] text-white/25 mt-2 leading-relaxed">
+                    Estimación indicativa. No incluye IGSS, bonificación incentivo (Dto. 78-89), séptimo día, ni deducciones finales.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-white/3 border border-white/8 rounded-xl p-3 text-center">
+                  <p className="text-[11px] text-white/30">Sin sueldo base registrado — no se puede calcular estimado</p>
+                </div>
+              )}
 
-          {/* Incentivos Cash */}
-          {!loading && (data?.incentivos?.length ?? 0) > 0 && (
-            <div className="p-5 border-b border-white/5">
-              <p className="text-[10px] text-white/30 uppercase tracking-widest mb-3">Incentivos Cash del período</p>
-              <div className="space-y-1.5">
-                {data!.incentivos.map((inc) => {
-                  const tipoLabel: Record<string, string> = {
-                    relevo_cash: "Relevo Cash",
-                    bono_cobertura: "Bono Cobertura",
-                    motivacion_cobertura: "Motivación",
-                  };
-                  const estadoColor: Record<string, string> = {
-                    pendiente: "text-amber-400 bg-amber-400/10 border-amber-400/20",
-                    pagado:    "text-green-400 bg-green-400/10 border-green-400/20",
-                    auditado:  "text-cyan-400 bg-cyan-400/10 border-cyan-400/20",
-                    cancelado: "text-white/30 bg-white/5 border-white/10",
-                  };
-                  return (
-                    <div key={inc.id} className="flex items-center justify-between px-3 py-2 bg-[#071a0d] border border-emerald-900/40 rounded-lg">
-                      <div>
-                        <p className="text-xs font-semibold text-emerald-300">{tipoLabel[inc.tipo] ?? inc.tipo} — {fmtQ(inc.monto)}</p>
-                        <p className="text-[10px] text-white/35">{fmtFecha(inc.fecha)}{inc.motivo ? ` · ${inc.motivo}` : ""}</p>
-                        {(inc.pagado_por || inc.metodo_pago) && (
-                          <p className="text-[10px] text-white/25">{inc.pagado_por}{inc.metodo_pago ? ` · ${inc.metodo_pago}` : ""}</p>
-                        )}
-                      </div>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${estadoColor[inc.estado] ?? "text-white/30 bg-white/5 border-white/10"}`}>{inc.estado}</span>
+              {/* Grid métricas */}
+              <div>
+                <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Métricas del período</p>
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  {[
+                    { label: "Días trab.", val: Number(col.dias_trabajados), cls: "text-green-400" },
+                    { label: "Faltas", val: Number(col.faltas), cls: Number(col.faltas) > 0 ? "text-red-400" : "text-white/30" },
+                    { label: "Suspensiones", val: Number(col.suspensiones), cls: Number(col.suspensiones) > 0 ? "text-amber-400" : "text-white/30" },
+                    { label: "Dsco. trab.", val: Number(col.descansos_trabajados), cls: "text-blue-400" },
+                    { label: "Relevos", val: Number(col.relevos), cls: Number(col.relevos) > 0 ? "text-purple-400" : "text-white/30" },
+                    { label: "Días sin hrs", val: Number(col.dias_sin_horas), cls: Number(col.dias_sin_horas) > 0 ? "text-rose-400" : "text-white/20" },
+                  ].map(({ label, val, cls }) => (
+                    <div key={label} className="bg-[#0c1929] border border-white/6 rounded-lg p-2.5">
+                      <p className={`text-xl font-bold ${cls}`}>{val}</p>
+                      <p className="text-[10px] text-white/35 mt-0.5">{label}</p>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-[#0c1929] border border-white/6 rounded-lg p-2.5">
+                    <p className="text-lg font-bold text-cyan-400">{htNum.toFixed(1)} h</p>
+                    <p className="text-[10px] text-white/35">Horas trabajadas</p>
+                  </div>
+                  <div className="bg-[#0c1929] border border-white/6 rounded-lg p-2.5">
+                    <p className={`text-lg font-bold ${heNum > 0 ? "text-orange-400" : "text-white/30"}`}>{heNum.toFixed(1)} h</p>
+                    <p className="text-[10px] text-white/35">Horas extra</p>
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
 
-          {/* Anticipos */}
-          {!loading && (data?.anticipos.length ?? 0) > 0 && (
-            <div className="p-5 border-b border-white/5">
-              <p className="text-[10px] text-white/30 uppercase tracking-widest mb-3">Anticipos del período</p>
-              <div className="space-y-1.5">
-                {data!.anticipos.map((a) => (
-                  <div key={a.id} className="flex items-center justify-between px-3 py-2 bg-[#0c1929] rounded-lg">
-                    <div>
-                      <p className="text-xs font-semibold text-amber-300">{fmtQ(a.cantidad)}</p>
-                      <p className="text-[10px] text-white/35">{a.periodo ?? "—"} · {a.origen}</p>
-                    </div>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${
-                      a.estado === "pagada" ? "text-green-400 bg-green-400/10 border-green-400/20" :
-                      a.estado === "aprobada" ? "text-blue-400 bg-blue-400/10 border-blue-400/20" :
-                      "text-white/30 bg-white/5 border-white/10"
-                    }`}>{a.estado}</span>
+              {/* Datos de empleado */}
+              <div className="bg-[#0c1929] border border-white/6 rounded-xl p-3 space-y-1.5">
+                <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Datos laborales</p>
+                {[
+                  ["Sueldo base", fmtQ(col.sueldo_base)],
+                  ["Turno", col.tipo_turno_nombre ?? "—"],
+                  ["Jornada", col.tipo_jornada ?? "—"],
+                  ["Hrs contrato", col.horas_contrato != null ? `${col.horas_contrato} h/sem` : "—"],
+                  ["Descanso", col.dia_descanso ?? "—"],
+                  ["Cliente", col.cliente_principal ?? "—"],
+                ].map(([k, v]) => (
+                  <div key={k} className="flex justify-between text-xs">
+                    <span className="text-white/40">{k}</span>
+                    <span className="text-white/80 font-medium">{v}</span>
                   </div>
                 ))}
               </div>
+
+              {/* Revisión RRHH */}
+              <div>
+                <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Revisión RRHH</p>
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    {(["pendiente", "revisada", "observada"] as const).map((e) => {
+                      const cfg = REVISION_CFG[e];
+                      return (
+                        <button key={e} onClick={() => setRevEstado(e)}
+                          className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-all ${
+                            revEstado === e ? cfg.cls + " border-opacity-60" : "text-white/30 bg-white/4 border-white/10 hover:border-white/20"
+                          }`}>
+                          {cfg.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <textarea value={revObs} onChange={(e) => setRevObs(e.target.value)} rows={2}
+                    placeholder="Observaciones RRHH (opcional)…"
+                    className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50 resize-none" />
+                  <button onClick={guardarRevision} disabled={savingRev}
+                    className="w-full py-2.5 rounded-xl bg-primary text-xs font-bold text-white hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors">
+                    {savingRev && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    <Check className="w-3.5 h-3.5" />Guardar revisión
+                  </button>
+                  {col.revision_at && (
+                    <p className="text-[10px] text-white/25 text-center">
+                      Última revisión: {new Date(col.revision_at).toLocaleString("es-GT")}
+                      {col.revision_por ? ` — por ${col.revision_por}` : ""}
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
-          {/* Panel de revisión RRHH */}
-          <div className="p-5">
-            <p className="text-[10px] text-white/30 uppercase tracking-widest mb-3">Revisión RRHH</p>
-            <div className="space-y-3">
-              <div className="flex gap-2">
-                {(["pendiente", "revisada", "observada"] as const).map((e) => {
-                  const cfg = REVISION_CFG[e];
-                  return (
-                    <button
-                      key={e}
-                      onClick={() => setRevEstado(e)}
-                      className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-all ${
-                        revEstado === e ? cfg.cls + " border-opacity-60" : "text-white/30 bg-white/4 border-white/10 hover:border-white/20"
-                      }`}
-                    >
-                      {cfg.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <textarea
-                value={revObs}
-                onChange={(e) => setRevObs(e.target.value)}
-                rows={3}
-                placeholder="Observaciones de RRHH (opcional)…"
-                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50 resize-none"
-              />
-              <button
-                onClick={guardarRevision}
-                disabled={savingRev}
-                className="w-full py-2.5 rounded-xl bg-primary text-xs font-bold text-white hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
-              >
-                {savingRev && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <Check className="w-3.5 h-3.5" />
-                Guardar revisión
-              </button>
-              {col.revision_at && (
-                <p className="text-[10px] text-white/25 text-center">
-                  Última revisión: {new Date(col.revision_at).toLocaleString("es-GT")}
-                  {col.revision_por ? ` — por ${col.revision_por}` : ""}
-                </p>
+          {/* ── Tab: Día a día ────────────────────────────────────────── */}
+          {activeInner === "detalle" && (
+            <div className="p-5">
+              <p className="text-[10px] text-white/30 uppercase tracking-widest mb-3">Novedades día a día</p>
+              {loading ? (
+                <div className="flex items-center gap-2 text-white/30 text-sm py-4">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Cargando…
+                </div>
+              ) : data?.novedades.length === 0 ? (
+                <p className="text-white/30 text-sm py-2">Sin novedades registradas en el período.</p>
+              ) : (
+                <div className="space-y-1">
+                  {data?.novedades.map((n) => (
+                    <div key={n.id} className={`flex items-center gap-3 py-2 px-2.5 rounded-lg text-xs transition-colors ${
+                      n.falta ? "bg-red-500/5 border border-red-500/10" :
+                      n.suspension ? "bg-amber-500/5 border border-amber-500/10" :
+                      "hover:bg-white/3 border border-transparent"
+                    }`}>
+                      <span className="text-white/40 w-24 shrink-0">{fmtFecha(n.fecha)}</span>
+                      <div className="flex items-center gap-1 flex-1 flex-wrap">
+                        {n.trabajo_dia && <span className="px-1.5 py-0.5 rounded bg-green-400/10 text-green-400 border border-green-400/20">Trabajó</span>}
+                        {n.falta && <span className="px-1.5 py-0.5 rounded bg-red-400/10 text-red-400 border border-red-400/20">Falta</span>}
+                        {n.suspension && <span className="px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-400 border border-amber-400/20">Suspensión</span>}
+                        {n.descanso_trabajado && <span className="px-1.5 py-0.5 rounded bg-blue-400/10 text-blue-400 border border-blue-400/20">Dsco. Trab.</span>}
+                        {n.puesto_cubierto_nombre && n.puesto_cubierto_nombre !== n.puesto_titular_nombre && (
+                          <span className="px-1.5 py-0.5 rounded bg-purple-400/10 text-purple-400 border border-purple-400/20" title={`Cubrió: ${n.puesto_cubierto_nombre}`}>Relevo</span>
+                        )}
+                        {n.observaciones && <span className="text-white/30 text-[10px]">· {n.observaciones}</span>}
+                      </div>
+                      <span className="text-white/40 w-14 text-right shrink-0">
+                        {n.horas_trabajadas ? `${parseFloat(n.horas_trabajadas).toFixed(1)} h` : "—"}
+                      </span>
+                      {parseFloat(n.horas_extra ?? "0") > 0 && (
+                        <span className="text-orange-400 text-[10px] shrink-0">+{parseFloat(n.horas_extra!).toFixed(1)} HE</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
-          </div>
+          )}
+
+          {/* ── Tab: Historial ────────────────────────────────────────── */}
+          {activeInner === "historial" && (
+            <div className="p-5 space-y-5">
+              {loading ? (
+                <div className="flex items-center gap-2 text-white/30 text-sm py-4">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Cargando…
+                </div>
+              ) : (
+                <>
+                  {/* Incentivos cash */}
+                  {(data?.incentivos?.length ?? 0) > 0 && (
+                    <div>
+                      <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Incentivos Cash del período</p>
+                      <div className="space-y-1.5">
+                        {data!.incentivos.map((inc) => {
+                          const tipoLabel: Record<string, string> = {
+                            relevo_cash: "Relevo Cash", bono_cobertura: "Bono Cobertura", motivacion_cobertura: "Motivación",
+                          };
+                          const estadoColor: Record<string, string> = {
+                            pendiente: "text-amber-400 bg-amber-400/10 border-amber-400/20",
+                            pagado:    "text-green-400 bg-green-400/10 border-green-400/20",
+                            auditado:  "text-cyan-400 bg-cyan-400/10 border-cyan-400/20",
+                            cancelado: "text-white/30 bg-white/5 border-white/10",
+                          };
+                          return (
+                            <div key={inc.id} className="flex items-center justify-between px-3 py-2 bg-[#071a0d] border border-emerald-900/40 rounded-lg">
+                              <div>
+                                <p className="text-xs font-semibold text-emerald-300">{tipoLabel[inc.tipo] ?? inc.tipo} — {fmtQ(inc.monto)}</p>
+                                <p className="text-[10px] text-white/35">{fmtFecha(inc.fecha)}{inc.motivo ? ` · ${inc.motivo}` : ""}</p>
+                                {(inc.pagado_por || inc.metodo_pago) && (
+                                  <p className="text-[10px] text-white/25">{inc.pagado_por}{inc.metodo_pago ? ` · ${inc.metodo_pago}` : ""}</p>
+                                )}
+                              </div>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${estadoColor[inc.estado] ?? "text-white/30 bg-white/5 border-white/10"}`}>{inc.estado}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Anticipos */}
+                  {(data?.anticipos.length ?? 0) > 0 ? (
+                    <div>
+                      <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Anticipos del período</p>
+                      <div className="space-y-1.5">
+                        {data!.anticipos.map((a) => (
+                          <div key={a.id} className="flex items-center justify-between px-3 py-2 bg-[#0c1929] border border-white/6 rounded-lg">
+                            <div>
+                              <p className="text-xs font-semibold text-amber-300">{fmtQ(a.cantidad)}</p>
+                              <p className="text-[10px] text-white/35">{a.periodo ?? "—"} · {a.origen}</p>
+                              {a.observaciones && <p className="text-[10px] text-white/25">{a.observaciones}</p>}
+                            </div>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${
+                              a.estado === "pagada" ? "text-green-400 bg-green-400/10 border-green-400/20" :
+                              a.estado === "aprobada" ? "text-blue-400 bg-blue-400/10 border-blue-400/20" :
+                              "text-white/30 bg-white/5 border-white/10"
+                            }`}>{a.estado}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Anticipos del período</p>
+                      <p className="text-white/25 text-sm">Sin anticipos en este período.</p>
+                    </div>
+                  )}
+
+                  {(data?.incentivos?.length ?? 0) === 0 && (
+                    <div>
+                      <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Incentivos Cash</p>
+                      <p className="text-white/25 text-sm">Sin incentivos cash en este período.</p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>,
     document.body
+  );
+}
+
+// ─── Anexo: Horas Extra ───────────────────────────────────────────────────────
+
+function AnexoHorasExtra({ desde, hasta }: { desde: string; hasta: string }) {
+  const { toast } = useToast();
+  const [rows, setRows] = useState<AnexoHE[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    apiFetch(`/api/nomina/pre-planilla/anexo/horas-extra?desde=${desde}&hasta=${hasta}`)
+      .then(setRows)
+      .catch((e) => toast({ title: "Error", description: e.message, variant: "destructive" }))
+      .finally(() => setLoading(false));
+  }, [desde, hasta]);
+
+  if (loading) return (
+    <div className="flex items-center justify-center gap-2 p-10 text-white/30 text-sm">
+      <Loader2 className="w-5 h-5 animate-spin" /> Cargando horas extra…
+    </div>
+  );
+
+  if (!rows?.length) return <TablaVacia msg="No hay horas extra registradas en el período." />;
+
+  const totalHE = rows.reduce((s, r) => s + Number(r.horas_extra), 0);
+
+  return (
+    <div>
+      <div className="px-4 py-3 border-b border-white/6 flex items-center gap-3">
+        <TrendingUp className="w-4 h-4 text-orange-400" />
+        <span className="text-xs text-white/60">{rows.length} registros</span>
+        <span className="text-xs font-bold text-orange-400">{totalHE.toFixed(1)} h extra total</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead className="bg-[#060e1c] border-b border-white/6">
+            <tr>
+              {["Fecha", "Colaborador", "Cliente / Sede", "Puesto cubierto", "H. Extra", "H. Trab.", "Tipo", "Contexto"].map((h) => (
+                <th key={h} className="text-left text-[10px] text-white/40 font-semibold uppercase tracking-wider px-3 py-2 whitespace-nowrap">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/4">
+            {rows.map((r) => (
+              <tr key={r.id} className="hover:bg-white/3 transition-colors">
+                <td className="px-3 py-2.5 text-white/50 whitespace-nowrap">{fmtFecha(r.fecha)}</td>
+                <td className="px-3 py-2.5">
+                  <p className="font-semibold text-white">{r.nombre_completo}</p>
+                  <p className="text-white/30">{r.sede ?? "—"}</p>
+                </td>
+                <td className="px-3 py-2.5 text-white/50">{r.cliente_nombre ?? "—"}</td>
+                <td className="px-3 py-2.5">
+                  <p className="text-white/60">{r.puesto_cubierto_nombre ?? r.puesto_titular_nombre ?? "—"}</p>
+                  {r.puesto_cubierto_nombre && r.puesto_cubierto_nombre !== r.puesto_titular_nombre && (
+                    <p className="text-[10px] text-white/30">Titular: {r.puesto_titular_nombre}</p>
+                  )}
+                </td>
+                <td className="px-3 py-2.5 text-right">
+                  <span className="text-orange-400 font-bold">{Number(r.horas_extra).toFixed(1)} h</span>
+                </td>
+                <td className="px-3 py-2.5 text-right text-white/50">{Number(r.horas_trabajadas).toFixed(1)} h</td>
+                <td className="px-3 py-2.5"><TipoCobBadge tipo={r.tipo} /></td>
+                <td className="px-3 py-2.5 text-white/30 max-w-[150px] truncate">{r.observaciones ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Anexo: Faltas / Suspensiones ────────────────────────────────────────────
+
+function AnexoFaltas({ desde, hasta }: { desde: string; hasta: string }) {
+  const { toast } = useToast();
+  const [rows, setRows] = useState<AnexoFalta[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    apiFetch(`/api/nomina/pre-planilla/anexo/faltas?desde=${desde}&hasta=${hasta}`)
+      .then(setRows)
+      .catch((e) => toast({ title: "Error", description: e.message, variant: "destructive" }))
+      .finally(() => setLoading(false));
+  }, [desde, hasta]);
+
+  if (loading) return (
+    <div className="flex items-center justify-center gap-2 p-10 text-white/30 text-sm">
+      <Loader2 className="w-5 h-5 animate-spin" /> Cargando faltas…
+    </div>
+  );
+
+  if (!rows?.length) return <TablaVacia msg="No hay faltas ni suspensiones registradas en el período." />;
+
+  const totalFaltas = rows.filter((r) => r.falta).length;
+  const totalSusp = rows.filter((r) => r.suspension).length;
+
+  return (
+    <div>
+      <div className="px-4 py-3 border-b border-white/6 flex items-center gap-4">
+        <AlertTriangle className="w-4 h-4 text-red-400" />
+        <span className="text-xs"><span className="text-red-400 font-bold">{totalFaltas}</span><span className="text-white/40"> faltas</span></span>
+        <span className="text-xs"><span className="text-amber-400 font-bold">{totalSusp}</span><span className="text-white/40"> suspensiones</span></span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead className="bg-[#060e1c] border-b border-white/6">
+            <tr>
+              {["Fecha", "Colaborador", "Sede", "Tipo", "Descuento día", "Puesto cubierto", "Ref. / Contexto"].map((h) => (
+                <th key={h} className="text-left text-[10px] text-white/40 font-semibold uppercase tracking-wider px-3 py-2 whitespace-nowrap">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/4">
+            {rows.map((r) => (
+              <tr key={r.id} className={`hover:bg-white/3 transition-colors ${r.falta ? "bg-red-500/3" : "bg-amber-500/3"}`}>
+                <td className="px-3 py-2.5 whitespace-nowrap text-white/50">{fmtFecha(r.fecha)}</td>
+                <td className="px-3 py-2.5">
+                  <p className="font-semibold text-white">{r.nombre_completo}</p>
+                  <p className="text-white/30 text-[10px]">{r.dpi ? `****${r.dpi.slice(-4)}` : "—"}</p>
+                </td>
+                <td className="px-3 py-2.5 text-white/40">{r.sede ?? "—"}</td>
+                <td className="px-3 py-2.5">
+                  {r.falta && <span className="px-2 py-0.5 rounded bg-red-400/10 text-red-400 border border-red-400/20 font-semibold">Falta</span>}
+                  {r.suspension && <span className="px-2 py-0.5 rounded bg-amber-400/10 text-amber-400 border border-amber-400/20 font-semibold">Suspensión</span>}
+                </td>
+                <td className="px-3 py-2.5 text-center">
+                  {r.descuento_dia
+                    ? <MinusCircle className="w-3.5 h-3.5 text-red-400 mx-auto" />
+                    : <span className="text-white/20">—</span>}
+                </td>
+                <td className="px-3 py-2.5 text-white/50">{r.puesto_cubierto_nombre ?? <span className="text-white/20">No cubierto</span>}</td>
+                <td className="px-3 py-2.5 text-white/30 max-w-[160px] truncate">{r.observaciones ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Anexo: Anticipos ─────────────────────────────────────────────────────────
+
+function AnexoAnticipos({ desde, hasta }: { desde: string; hasta: string }) {
+  const { toast } = useToast();
+  const [rows, setRows] = useState<AnexoAnticipo[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    apiFetch(`/api/nomina/pre-planilla/anexo/anticipos?desde=${desde}&hasta=${hasta}`)
+      .then(setRows)
+      .catch((e) => toast({ title: "Error", description: e.message, variant: "destructive" }))
+      .finally(() => setLoading(false));
+  }, [desde, hasta]);
+
+  if (loading) return (
+    <div className="flex items-center justify-center gap-2 p-10 text-white/30 text-sm">
+      <Loader2 className="w-5 h-5 animate-spin" /> Cargando anticipos…
+    </div>
+  );
+
+  if (!rows?.length) return <TablaVacia msg="No hay anticipos aprobados/pagados en el período." />;
+
+  const totalMonto = rows.reduce((s, r) => s + Number(r.cantidad), 0);
+
+  return (
+    <div>
+      <div className="px-4 py-3 border-b border-white/6 flex items-center gap-3">
+        <CreditCard className="w-4 h-4 text-amber-400" />
+        <span className="text-xs text-white/60">{rows.length} anticipos</span>
+        <span className="text-xs font-bold text-amber-400">{fmtQ(totalMonto)} total</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead className="bg-[#060e1c] border-b border-white/6">
+            <tr>
+              {["Fecha", "Colaborador", "Sede", "Monto", "Estado", "Período", "Origen", "¿En planilla?"].map((h) => (
+                <th key={h} className="text-left text-[10px] text-white/40 font-semibold uppercase tracking-wider px-3 py-2 whitespace-nowrap">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/4">
+            {rows.map((r) => (
+              <tr key={r.id} className="hover:bg-white/3 transition-colors">
+                <td className="px-3 py-2.5 whitespace-nowrap text-white/50">{fmtFecha(r.fecha_solicitud)}</td>
+                <td className="px-3 py-2.5">
+                  <p className="font-semibold text-white">{r.nombre_completo}</p>
+                  <p className="text-white/30 text-[10px]">{r.dpi ? `****${r.dpi.slice(-4)}` : "—"}</p>
+                </td>
+                <td className="px-3 py-2.5 text-white/40">{r.sede ?? "—"}</td>
+                <td className="px-3 py-2.5 text-right">
+                  <span className="text-amber-400 font-bold">{fmtQ(r.cantidad)}</span>
+                </td>
+                <td className="px-3 py-2.5">
+                  <span className={`px-1.5 py-0.5 rounded border text-[10px] font-medium ${
+                    r.estado === "pagada" ? "text-green-400 bg-green-400/10 border-green-400/20" :
+                    r.estado === "aprobada" ? "text-blue-400 bg-blue-400/10 border-blue-400/20" :
+                    "text-white/30 bg-white/5 border-white/10"
+                  }`}>{r.estado}</span>
+                </td>
+                <td className="px-3 py-2.5 text-white/40">{r.periodo ?? "—"}</td>
+                <td className="px-3 py-2.5 text-white/40">{r.origen}</td>
+                <td className="px-3 py-2.5 text-center">
+                  {r.planilla_id != null
+                    ? <span className="text-green-400 text-[10px] font-semibold">Sí #{r.planilla_id}</span>
+                    : <span className="text-white/25 text-[10px]">Pendiente</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Anexo: Coberturas / Relevos ─────────────────────────────────────────────
+
+function AnexoCoberturas({ desde, hasta }: { desde: string; hasta: string }) {
+  const { toast } = useToast();
+  const [rows, setRows] = useState<AnexoCobertura[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    apiFetch(`/api/nomina/pre-planilla/anexo/coberturas?desde=${desde}&hasta=${hasta}`)
+      .then(setRows)
+      .catch((e) => toast({ title: "Error", description: e.message, variant: "destructive" }))
+      .finally(() => setLoading(false));
+  }, [desde, hasta]);
+
+  if (loading) return (
+    <div className="flex items-center justify-center gap-2 p-10 text-white/30 text-sm">
+      <Loader2 className="w-5 h-5 animate-spin" /> Cargando coberturas…
+    </div>
+  );
+
+  if (!rows?.length) return <TablaVacia msg="No hay relevos ni coberturas registrados en el período." />;
+
+  const totalHoras = rows.reduce((s, r) => s + Number(r.horas), 0);
+  const totalRel = rows.filter((r) => r.tipo_cobertura === "relevo").length;
+
+  return (
+    <div>
+      <div className="px-4 py-3 border-b border-white/6 flex items-center gap-4">
+        <Repeat2 className="w-4 h-4 text-purple-400" />
+        <span className="text-xs"><span className="text-purple-400 font-bold">{totalRel}</span><span className="text-white/40"> relevos</span></span>
+        <span className="text-xs"><span className="text-white font-bold">{rows.length}</span><span className="text-white/40"> coberturas total</span></span>
+        <span className="text-xs text-white/40">{totalHoras.toFixed(1)} h cubiertas</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead className="bg-[#060e1c] border-b border-white/6">
+            <tr>
+              {["Fecha", "Colaborador que cubrió", "Cliente / Sede", "Puesto cubierto", "Puesto titular", "Horas", "H. Extra", "Tipo"].map((h) => (
+                <th key={h} className="text-left text-[10px] text-white/40 font-semibold uppercase tracking-wider px-3 py-2 whitespace-nowrap">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/4">
+            {rows.map((r) => (
+              <tr key={r.id} className="hover:bg-white/3 transition-colors">
+                <td className="px-3 py-2.5 whitespace-nowrap text-white/50">{fmtFecha(r.fecha)}</td>
+                <td className="px-3 py-2.5">
+                  <p className="font-semibold text-white">{r.nombre_completo}</p>
+                  <p className="text-white/30">{r.sede ?? "—"}</p>
+                </td>
+                <td className="px-3 py-2.5 text-white/50">{r.cliente_nombre ?? "—"}</td>
+                <td className="px-3 py-2.5 text-white/60">{r.puesto_cubierto_nombre ?? "—"}</td>
+                <td className="px-3 py-2.5 text-white/30">{r.puesto_titular_nombre ?? "—"}</td>
+                <td className="px-3 py-2.5 text-right text-white/60">{Number(r.horas).toFixed(1)} h</td>
+                <td className="px-3 py-2.5 text-right">
+                  {Number(r.horas_extra) > 0
+                    ? <span className="text-orange-400 font-semibold">{Number(r.horas_extra).toFixed(1)} h</span>
+                    : <span className="text-white/20">—</span>}
+                </td>
+                <td className="px-3 py-2.5"><TipoCobBadge tipo={r.tipo_cobertura} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
@@ -477,22 +957,25 @@ export default function PrePlanilla() {
   const { toast } = useToast();
   const presets = getPeriodPresets();
 
-  // Estado del período
+  // Período
   const [desde, setDesde] = useState(presets.qDesde);
   const [hasta, setHasta] = useState(presets.qHasta);
   const [customDesde, setCustomDesde] = useState(presets.qDesde);
   const [customHasta, setCustomHasta] = useState(presets.qHasta);
   const [modoCustom, setModoCustom] = useState(false);
 
-  // Datos
+  // Datos consolidado
   const [rows, setRows] = useState<ColaboradorPre[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
-  // Detalle modal
+  // Tab activo
+  const [activeTab, setActiveTab] = useState<Tab>("resumen");
+
+  // Modal detalle
   const [detalle, setDetalle] = useState<ColaboradorPre | null>(null);
 
-  // Filtros
+  // Filtros (Resumen)
   const [busqueda, setBusqueda] = useState("");
   const [filtroCliente, setFiltroCliente] = useState("todos");
   const [filtroSede, setFiltroSede] = useState("todos");
@@ -502,6 +985,7 @@ export default function PrePlanilla() {
   const [soloConAnticipos, setSoloConAnticipos] = useState(false);
   const [soloConIncentivos, setSoloConIncentivos] = useState(false);
   const [soloConHE, setSoloConHE] = useState(false);
+  const [soloRevisar, setSoloRevisar] = useState(false);
 
   // Ordenamiento
   const [sortField, setSortField] = useState<keyof ColaboradorPre>("nombre_completo");
@@ -521,11 +1005,7 @@ export default function PrePlanilla() {
     }
   }, [toast]);
 
-  // Auto-cargar el período actual al entrar a la página
-  useEffect(() => {
-    cargar(desde, hasta);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => { cargar(desde, hasta); }, []);
 
   function aplicarPreset(d: string, h: string) {
     setDesde(d); setHasta(h);
@@ -543,7 +1023,6 @@ export default function PrePlanilla() {
     cargar(customDesde, customHasta);
   }
 
-  // Actualizar revisión en memoria
   function onRevisionChange(id: number, estado: string, obs: string) {
     setRows((prev) => prev.map((r) =>
       r.employee_id === id
@@ -552,19 +1031,16 @@ export default function PrePlanilla() {
     ));
   }
 
-  // Exportar CSV
   async function exportarCSV() {
     const url = `${BASE}/api/nomina/pre-planilla/export?desde=${desde}&hasta=${hasta}`;
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `pre-planilla_${desde}_${hasta}.csv`;
-    // Agregar header de sesión vía fetch + blob
     try {
       const res = await fetch(url, { headers: { "x-isp-session": getSession() } });
       if (!res.ok) throw new Error("Error al exportar");
       const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
       a.href = blobUrl;
+      a.download = `pre-planilla_${desde}_${hasta}.csv`;
       a.click();
       URL.revokeObjectURL(blobUrl);
     } catch (e: unknown) {
@@ -572,18 +1048,18 @@ export default function PrePlanilla() {
     }
   }
 
-  // Opciones de filtro (desde los datos)
-  const clientes = useMemo(() =>
-    Array.from(new Set(rows.map((r) => r.cliente_principal).filter(Boolean))) as string[],
-    [rows]);
-  const sedes = useMemo(() =>
-    Array.from(new Set(rows.map((r) => r.sede).filter(Boolean))) as string[],
-    [rows]);
+  // Opciones de filtro
+  const clientes = useMemo(() => Array.from(new Set(rows.map((r) => r.cliente_principal).filter(Boolean))) as string[], [rows]);
+  const sedes = useMemo(() => Array.from(new Set(rows.map((r) => r.sede).filter(Boolean))) as string[], [rows]);
+
+  // Días del período
+  const periodoTotalDias = desde && hasta
+    ? Math.round((new Date(hasta).getTime() - new Date(desde).getTime()) / 86400000) + 1
+    : null;
 
   // Filtrado + ordenamiento
   const filtrados = useMemo(() => {
     let data = [...rows];
-
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase();
       data = data.filter((r) =>
@@ -602,33 +1078,33 @@ export default function PrePlanilla() {
     if (soloConAnticipos) data = data.filter((r) => r.anticipos_count > 0);
     if (soloConIncentivos) data = data.filter((r) => Number(r.incentivos_cash_count) > 0);
     if (soloConHE) data = data.filter((r) => parseFloat(r.horas_extra || "0") > 0);
+    if (soloRevisar) data = data.filter((r) =>
+      r.revision_estado === "pendiente" && (Number(r.faltas) > 0 || Number(r.suspensiones) > 0 || Number(r.dias_sin_horas) > 0 || r.anticipos_count > 0)
+    );
 
     data.sort((a, b) => {
-      const va = a[sortField] ?? "";
-      const vb = b[sortField] ?? "";
+      const va = a[sortField] ?? ""; const vb = b[sortField] ?? "";
       if (typeof va === "number" && typeof vb === "number") return sortAsc ? va - vb : vb - va;
-      return sortAsc
-        ? String(va).localeCompare(String(vb), "es")
-        : String(vb).localeCompare(String(va), "es");
+      return sortAsc ? String(va).localeCompare(String(vb), "es") : String(vb).localeCompare(String(va), "es");
     });
-
     return data;
   }, [rows, busqueda, filtroCliente, filtroSede, filtroEstado, filtroRevision,
-      soloConFaltas, soloConAnticipos, soloConIncentivos, soloConHE, sortField, sortAsc]);
+      soloConFaltas, soloConAnticipos, soloConIncentivos, soloConHE, soloRevisar, sortField, sortAsc]);
 
-  // Días totales del período seleccionado
-  const periodoTotalDias = desde && hasta
-    ? Math.round((new Date(hasta).getTime() - new Date(desde).getTime()) / 86400000) + 1
-    : null;
-
-  // KPIs — se usa Number() para evitar concatenación de strings (pg devuelve bigint como string)
+  // KPIs globales (siempre del consolidado completo)
   const totalColabs = filtrados.length;
-  const totalDias = filtrados.reduce((s, r) => s + Number(r.dias_trabajados), 0);
   const totalFaltas = filtrados.reduce((s, r) => s + Number(r.faltas) + Number(r.suspensiones), 0);
   const totalHE = filtrados.reduce((s, r) => s + parseFloat(r.horas_extra || "0"), 0);
   const totalAnt = filtrados.reduce((s, r) => s + Number(r.anticipos_monto), 0);
   const totalIncentivos = filtrados.reduce((s, r) => s + Number(r.incentivos_cash_monto), 0);
   const conAlertas = filtrados.filter((r) => Number(r.faltas) > 0 || Number(r.suspensiones) > 0 || Number(r.dias_sin_horas) > 0).length;
+  const totalRelevos = filtrados.reduce((s, r) => s + Number(r.relevos), 0);
+
+  // Badges de tab
+  const badgeHE = rows.filter((r) => parseFloat(r.horas_extra || "0") > 0).length;
+  const badgeFaltas = rows.filter((r) => Number(r.faltas) > 0 || Number(r.suspensiones) > 0).length;
+  const badgeAnt = rows.filter((r) => r.anticipos_count > 0).length;
+  const badgeCob = rows.filter((r) => Number(r.relevos) > 0 || Number(r.descansos_trabajados) > 0).length;
 
   function toggleSort(field: keyof ColaboradorPre) {
     if (sortField === field) setSortAsc((a) => !a);
@@ -641,36 +1117,37 @@ export default function PrePlanilla() {
   }
 
   const th = (label: string, field: keyof ColaboradorPre, cls = "") => (
-    <th
-      onClick={() => toggleSort(field)}
-      className={`text-left text-[10px] text-white/40 font-semibold uppercase tracking-wider px-3 py-2 cursor-pointer hover:text-white/70 select-none whitespace-nowrap ${cls}`}
-    >
+    <th onClick={() => toggleSort(field)}
+      className={`text-left text-[10px] text-white/40 font-semibold uppercase tracking-wider px-3 py-2 cursor-pointer hover:text-white/70 select-none whitespace-nowrap ${cls}`}>
       <span className="flex items-center gap-1">{label} <SortIcon field={field} /></span>
     </th>
   );
+
+  const TABS: { id: Tab; label: string; icon: React.ElementType; badge?: number }[] = [
+    { id: "resumen",     label: "Resumen",           icon: FileText },
+    { id: "horas_extra", label: "Horas Extra",       icon: TrendingUp, badge: badgeHE },
+    { id: "faltas",      label: "Faltas / Susp.",    icon: AlertTriangle, badge: badgeFaltas },
+    { id: "anticipos",   label: "Anticipos",         icon: CreditCard, badge: badgeAnt },
+    { id: "coberturas",  label: "Coberturas",        icon: Repeat2, badge: badgeCob },
+  ];
 
   return (
     <AdminLayout title="Pre-Planilla">
       <div className="space-y-4">
 
-        {/* ── Selector de período ─────────────────────────────────────────────── */}
+        {/* ── Selector de período ──────────────────────────────────────────── */}
         <div className="bg-[#0c1929] border border-white/8 rounded-xl p-4">
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <Calendar className="w-4 h-4 text-primary" />
             <span className="text-xs font-semibold text-white/70">Período</span>
             <div className="flex-1" />
             {loaded && (
-              <button
-                onClick={exportarCSV}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 text-xs font-semibold hover:bg-emerald-600/30 transition-colors"
-              >
-                <Download className="w-3.5 h-3.5" />
-                Exportar CSV
+              <button onClick={exportarCSV}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 text-xs font-semibold hover:bg-emerald-600/30 transition-colors">
+                <Download className="w-3.5 h-3.5" />Exportar CSV
               </button>
             )}
           </div>
-
-          {/* Presets */}
           <div className="flex flex-wrap gap-1.5 mb-3">
             {[
               { label: "Q. Actual", d: presets.qDesde, h: presets.qHasta },
@@ -680,32 +1157,21 @@ export default function PrePlanilla() {
             ].map(({ label, d, h }) => {
               const active = desde === d && hasta === h && !modoCustom;
               return (
-                <button
-                  key={label}
-                  onClick={() => aplicarPreset(d, h)}
+                <button key={label} onClick={() => aplicarPreset(d, h)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
-                    active
-                      ? "bg-primary/20 border-primary/50 text-primary"
-                      : "bg-white/4 border-white/10 text-white/50 hover:text-white hover:border-white/20"
-                  }`}
-                >
+                    active ? "bg-primary/20 border-primary/50 text-primary" : "bg-white/4 border-white/10 text-white/50 hover:text-white hover:border-white/20"
+                  }`}>
                   {label}
                 </button>
               );
             })}
-            <button
-              onClick={() => setModoCustom((m) => !m)}
+            <button onClick={() => setModoCustom((m) => !m)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
-                modoCustom
-                  ? "bg-primary/20 border-primary/50 text-primary"
-                  : "bg-white/4 border-white/10 text-white/50 hover:text-white hover:border-white/20"
-              }`}
-            >
+                modoCustom ? "bg-primary/20 border-primary/50 text-primary" : "bg-white/4 border-white/10 text-white/50 hover:text-white hover:border-white/20"
+              }`}>
               Rango personalizado
             </button>
           </div>
-
-          {/* Rango personalizado */}
           {modoCustom && (
             <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/6">
               <input type="date" value={customDesde} onChange={(e) => setCustomDesde(e.target.value)}
@@ -713,32 +1179,26 @@ export default function PrePlanilla() {
               <span className="text-white/30 text-sm">al</span>
               <input type="date" value={customHasta} onChange={(e) => setCustomHasta(e.target.value)}
                 className="bg-[#060e1c] border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white outline-none focus:border-primary/50" />
-              <button
-                onClick={aplicarCustom}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/20 border border-primary/50 text-primary text-xs font-semibold hover:bg-primary/30 transition-colors"
-              >
+              <button onClick={aplicarCustom}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/20 border border-primary/50 text-primary text-xs font-semibold hover:bg-primary/30 transition-colors">
                 <RefreshCw className="w-3 h-3" /> Aplicar
               </button>
             </div>
           )}
-
-          {/* Período activo */}
           {loaded && (
             <p className="text-[10px] text-white/30 mt-2">
-              Período: {fmtFecha(desde)} — {fmtFecha(hasta)} · {rows.length} colaboradores con novedades
+              {fmtFecha(desde)} — {fmtFecha(hasta)} · {periodoTotalDias}d · {rows.length} colaboradores con novedades
             </p>
           )}
         </div>
 
-        {/* ── Estado vacío / carga inicial ───────────────────────────────────── */}
+        {/* ── Estado vacío / carga ─────────────────────────────────────────── */}
         {!loaded && !loading && (
           <div className="bg-[#0c1929] border border-white/8 rounded-xl p-12 text-center">
             <Briefcase className="w-10 h-10 text-white/15 mx-auto mb-3" />
             <p className="text-white/40 text-sm mb-4">Selecciona un período para cargar la pre-planilla</p>
-            <button
-              onClick={() => cargar(desde, hasta)}
-              className="px-4 py-2 rounded-xl bg-primary text-xs font-bold text-white hover:bg-primary/90 transition-colors"
-            >
+            <button onClick={() => cargar(desde, hasta)}
+              className="px-4 py-2 rounded-xl bg-primary text-xs font-bold text-white hover:bg-primary/90 transition-colors">
               Cargar período actual
             </button>
           </div>
@@ -753,16 +1213,16 @@ export default function PrePlanilla() {
 
         {loaded && !loading && (
           <>
-            {/* ── KPI Cards ────────────────────────────────────────────────────── */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
+            {/* ── KPI Cards ───────────────────────────────────────────────── */}
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
               {[
-                { icon: Users, label: "Colaboradores", val: totalColabs, cls: "text-white" },
-                { icon: CheckCircle2, label: "Días trabajados", val: totalDias, cls: "text-green-400" },
-                { icon: AlertTriangle, label: "Faltas / Susp.", val: totalFaltas, cls: totalFaltas > 0 ? "text-red-400" : "text-white/30" },
-                { icon: TrendingUp, label: "Horas extra", val: `${totalHE.toFixed(1)} h`, cls: totalHE > 0 ? "text-orange-400" : "text-white/30" },
-                { icon: Wallet, label: "Incentivos Cash", val: fmtQ(totalIncentivos), cls: totalIncentivos > 0 ? "text-emerald-400" : "text-white/30" },
-                { icon: Wallet, label: "Total anticipos", val: fmtQ(totalAnt), cls: totalAnt > 0 ? "text-amber-400" : "text-white/30" },
-                { icon: AlertCircle, label: "Con alertas", val: conAlertas, cls: conAlertas > 0 ? "text-rose-400" : "text-white/30" },
+                { icon: Users,         label: "Colaboradores",  val: totalColabs,               cls: "text-white" },
+                { icon: AlertTriangle, label: "Faltas / Susp.", val: totalFaltas,               cls: totalFaltas > 0 ? "text-red-400" : "text-white/30" },
+                { icon: TrendingUp,    label: "Horas extra",    val: `${totalHE.toFixed(1)} h`, cls: totalHE > 0 ? "text-orange-400" : "text-white/30" },
+                { icon: Repeat2,       label: "Relevos",        val: totalRelevos,              cls: totalRelevos > 0 ? "text-purple-400" : "text-white/30" },
+                { icon: Wallet,        label: "Incentivos Cash",val: fmtQ(totalIncentivos),     cls: totalIncentivos > 0 ? "text-emerald-400" : "text-white/30" },
+                { icon: CreditCard,    label: "Total anticipos",val: fmtQ(totalAnt),            cls: totalAnt > 0 ? "text-amber-400" : "text-white/30" },
+                { icon: AlertCircle,   label: "Con alertas",    val: conAlertas,                cls: conAlertas > 0 ? "text-rose-400" : "text-white/30" },
               ].map(({ icon: Icon, label, val, cls }) => (
                 <div key={label} className="bg-[#0c1929] border border-white/8 rounded-xl p-3">
                   <div className="flex items-center gap-1.5 text-white/35 mb-1.5">
@@ -774,235 +1234,251 @@ export default function PrePlanilla() {
               ))}
             </div>
 
-            {/* ── Filtros ──────────────────────────────────────────────────────── */}
-            <div className="bg-[#0c1929] border border-white/8 rounded-xl p-4">
-              <div className="flex flex-wrap gap-2 items-center">
-                {/* Búsqueda */}
-                <input
-                  type="text"
-                  placeholder="Buscar nombre, DPI, puesto…"
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  className="flex-1 min-w-[180px] bg-[#060e1c] border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50"
-                />
-                {/* Cliente */}
-                {clientes.length > 0 && (
-                  <select value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)}
-                    className="bg-[#060e1c] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-primary/50 appearance-none">
-                    <option value="todos">Todos los clientes</option>
-                    {clientes.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                )}
-                {/* Sede */}
-                {sedes.length > 0 && (
-                  <select value={filtroSede} onChange={(e) => setFiltroSede(e.target.value)}
-                    className="bg-[#060e1c] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-primary/50 appearance-none">
-                    <option value="todos">Todas las sedes</option>
-                    {sedes.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                )}
-                {/* Estado laboral */}
-                <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}
-                  className="bg-[#060e1c] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-primary/50 appearance-none">
-                  <option value="todos">Todos los estados</option>
-                  <option value="activo">Activo</option>
-                  <option value="suspendido">Suspendido</option>
-                  <option value="licencia">Licencia</option>
-                </select>
-                {/* Revisión */}
-                <select value={filtroRevision} onChange={(e) => setFiltroRevision(e.target.value)}
-                  className="bg-[#060e1c] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-primary/50 appearance-none">
-                  <option value="todos">Toda revisión</option>
-                  <option value="pendiente">Pendiente</option>
-                  <option value="revisada">Revisada</option>
-                  <option value="observada">Observada</option>
-                </select>
-                {/* Flags rápidos */}
-                <div className="flex gap-1.5 flex-wrap">
-                  {[
-                    { label: "Con faltas", val: soloConFaltas, set: setSoloConFaltas },
-                    { label: "Con anticipos", val: soloConAnticipos, set: setSoloConAnticipos },
-                    { label: "Con incentivo", val: soloConIncentivos, set: setSoloConIncentivos },
-                    { label: "Con HE", val: soloConHE, set: setSoloConHE },
-                  ].map(({ label, val, set }) => (
-                    <button
-                      key={label}
-                      onClick={() => set((v) => !v)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all ${
-                        val ? "bg-primary/20 border-primary/50 text-primary" : "bg-white/4 border-white/10 text-white/40 hover:text-white/70"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {filtrados.length !== rows.length && (
-                <p className="text-[10px] text-white/30 mt-2">{filtrados.length} de {rows.length} colaboradores</p>
-              )}
-            </div>
-
-            {/* ── Tabla principal ───────────────────────────────────────────────── */}
+            {/* ── Navegación de tabs ──────────────────────────────────────── */}
             <div className="bg-[#0c1929] border border-white/8 rounded-xl overflow-hidden">
-              {filtrados.length === 0 ? (
-                <div className="p-10 text-center text-white/30 text-sm">
-                  No hay colaboradores que coincidan con los filtros.
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs border-collapse">
-                    <thead className="bg-[#060e1c] border-b border-white/6 sticky top-0">
-                      <tr>
-                        {th("Colaborador", "nombre_completo", "min-w-[180px]")}
-                        {th("Puesto / Sede", "puesto_empleado")}
-                        {th("Cliente", "cliente_principal")}
-                        {th("Turno", "tipo_turno_nombre")}
-                        {th("Sueldo Base", "sueldo_base")}
-                        {th("Días Trab.", "dias_trabajados")}
-                        {th("Faltas", "faltas")}
-                        {th("Susp.", "suspensiones")}
-                        {th("H. Trab.", "horas_trabajadas")}
-                        {th("H. Esp.", "horas_esperadas_total")}
-                        {th("Cumpl.", "horas_trabajadas")}
-                        {th("H. Extra", "horas_extra")}
-                        {th("Incentivo Cash", "incentivos_cash_monto")}
-                        {th("Anticipos", "anticipos_monto")}
-                        {th("Revisión", "revision_estado")}
-                        <th className="px-3 py-2" />
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/4">
-                      {filtrados.map((r) => {
-                        const htNum2 = parseFloat(r.horas_trabajadas || "0");
-                        const heNum2 = parseFloat(r.horas_extra || "0");
-                        const hesp = r.horas_esperadas_total ? parseFloat(r.horas_esperadas_total) : null;
-                        const cumplPct = hesp && hesp > 0 ? Math.round((htNum2 / hesp) * 100) : null;
-                        const tieneAlerta = r.faltas > 0 || r.suspensiones > 0 || r.dias_sin_horas > 0;
+              <div className="flex border-b border-white/6 overflow-x-auto">
+                {TABS.map(({ id, label, icon: Icon, badge }) => (
+                  <button
+                    key={id}
+                    onClick={() => setActiveTab(id)}
+                    className={`flex items-center gap-1.5 px-4 py-3 text-xs font-semibold transition-colors border-b-2 whitespace-nowrap ${
+                      activeTab === id
+                        ? "border-primary text-primary bg-primary/5"
+                        : "border-transparent text-white/40 hover:text-white/70 hover:bg-white/3"
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {label}
+                    {!!badge && badge > 0 && (
+                      <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                        activeTab === id ? "bg-primary/30 text-primary" : "bg-white/10 text-white/50"
+                      }`}>{badge}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
 
-                        return (
-                          <tr
-                            key={r.employee_id}
-                            className="hover:bg-white/3 transition-colors cursor-pointer"
-                            onClick={() => setDetalle(r)}
-                          >
-                            {/* Colaborador */}
-                            <td className="px-3 py-2.5">
-                              <div className="flex items-center gap-2">
-                                {tieneAlerta && <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />}
-                                <div>
-                                  <p className="font-semibold text-white">{r.nombre_completo}</p>
-                                  <p className="text-white/30">{r.dpi ? `****${r.dpi.slice(-4)}` : "—"}</p>
-                                </div>
-                              </div>
-                            </td>
-                            {/* Puesto / Sede */}
-                            <td className="px-3 py-2.5">
-                              <p className="text-white/70">{r.puesto_titular_nombre ?? r.puesto_empleado ?? "—"}</p>
-                              <p className="text-white/30">{r.sede ?? "—"}</p>
-                            </td>
-                            {/* Cliente */}
-                            <td className="px-3 py-2.5 text-white/50">{r.cliente_principal ?? "—"}</td>
-                            {/* Turno */}
-                            <td className="px-3 py-2.5">
-                              {r.tipo_turno_nombre
-                                ? <span className="px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary text-[10px] font-semibold">{r.tipo_turno_nombre}</span>
-                                : <span className="text-white/20">—</span>
-                              }
-                            </td>
-                            {/* Sueldo */}
-                            <td className="px-3 py-2.5 text-white/60 text-right">{fmtQ(r.sueldo_base)}</td>
-                            {/* Días trabajados */}
-                            <td className="px-3 py-2.5 text-center">
-                              <span className="text-green-400 font-semibold">{Number(r.dias_trabajados)}</span>
-                              {periodoTotalDias != null && (
-                                <span className="text-white/30 ml-1">/ {periodoTotalDias}d</span>
-                              )}
-                            </td>
-                            {/* Faltas */}
-                            <td className="px-3 py-2.5 text-center">
-                              <span className={Number(r.faltas) > 0 ? "text-red-400 font-semibold" : "text-white/25"}>{Number(r.faltas)}</span>
-                            </td>
-                            {/* Suspensiones */}
-                            <td className="px-3 py-2.5 text-center">
-                              <span className={Number(r.suspensiones) > 0 ? "text-amber-400 font-semibold" : "text-white/25"}>{Number(r.suspensiones)}</span>
-                            </td>
-                            {/* Horas trabajadas */}
-                            <td className="px-3 py-2.5 text-right text-white/60">{htNum2.toFixed(1)} h</td>
-                            {/* Horas esperadas */}
-                            <td className="px-3 py-2.5 text-right">
-                              {hesp != null
-                                ? <span className="text-white/50">{hesp.toFixed(1)} h</span>
-                                : <span className="text-white/20">—</span>
-                              }
-                            </td>
-                            {/* Cumplimiento */}
-                            <td className="px-3 py-2.5 text-right">
-                              {cumplPct != null ? (
-                                <span className={`font-semibold ${
-                                  cumplPct >= 95 ? "text-green-400" :
-                                  cumplPct >= 75 ? "text-amber-400" : "text-red-400"
-                                }`}>{cumplPct}%</span>
-                              ) : (
-                                <span className="text-white/20">—</span>
-                              )}
-                            </td>
-                            {/* Horas extra */}
-                            <td className="px-3 py-2.5 text-right">
-                              <span className={heNum2 > 0 ? "text-orange-400 font-semibold" : "text-white/25"}>{heNum2.toFixed(1)} h</span>
-                            </td>
-                            {/* Incentivo Cash (efectivo, NO va a planilla) */}
-                            <td className="px-3 py-2.5 text-right">
-                              {Number(r.incentivos_cash_count) > 0 ? (
-                                <div title="Incentivo en efectivo — no entra a planilla">
-                                  <span className="text-emerald-400 font-semibold">{fmtQ(r.incentivos_cash_monto)}</span>
-                                  <span className="block text-[9px] text-emerald-600 leading-none mt-0.5">efectivo</span>
-                                </div>
-                              ) : (
-                                <span className="text-white/25">—</span>
-                              )}
-                            </td>
-                            {/* Anticipos */}
-                            <td className="px-3 py-2.5 text-right">
-                              {r.anticipos_count > 0 ? (
-                                <span className="text-amber-400 font-semibold">{fmtQ(r.anticipos_monto)}</span>
-                              ) : (
-                                <span className="text-white/25">—</span>
-                              )}
-                            </td>
-                            {/* Revisión */}
-                            <td className="px-3 py-2.5">
-                              <RevisionBadge estado={r.revision_estado} />
-                            </td>
-                            {/* Ver detalle */}
-                            <td className="px-3 py-2.5">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); setDetalle(r); }}
-                                className="p-1.5 rounded-lg text-white/30 hover:text-primary hover:bg-primary/10 transition-colors"
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
+              {/* ── Tab: Resumen ─────────────────────────────────────────── */}
+              {activeTab === "resumen" && (
+                <>
+                  {/* Filtros */}
+                  <div className="p-4 border-b border-white/5">
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <input type="text" placeholder="Buscar nombre, DPI, puesto…" value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
+                        className="flex-1 min-w-[180px] bg-[#060e1c] border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50" />
+                      {clientes.length > 0 && (
+                        <select value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)}
+                          className="bg-[#060e1c] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white outline-none appearance-none">
+                          <option value="todos">Todos los clientes</option>
+                          {clientes.map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      )}
+                      {sedes.length > 0 && (
+                        <select value={filtroSede} onChange={(e) => setFiltroSede(e.target.value)}
+                          className="bg-[#060e1c] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white outline-none appearance-none">
+                          <option value="todos">Todas las sedes</option>
+                          {sedes.map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      )}
+                      <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}
+                        className="bg-[#060e1c] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white outline-none appearance-none">
+                        <option value="todos">Todos los estados</option>
+                        <option value="activo">Activo</option>
+                        <option value="suspendido">Suspendido</option>
+                        <option value="licencia">Licencia</option>
+                      </select>
+                      <select value={filtroRevision} onChange={(e) => setFiltroRevision(e.target.value)}
+                        className="bg-[#060e1c] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white outline-none appearance-none">
+                        <option value="todos">Toda revisión</option>
+                        <option value="pendiente">Pendiente</option>
+                        <option value="revisada">Revisada</option>
+                        <option value="observada">Observada</option>
+                      </select>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {[
+                          { label: "⚠ Revisar", val: soloRevisar, set: setSoloRevisar, cls: "text-rose-400 border-rose-400/30 bg-rose-400/10" },
+                          { label: "Con faltas", val: soloConFaltas, set: setSoloConFaltas, cls: "" },
+                          { label: "Con HE", val: soloConHE, set: setSoloConHE, cls: "" },
+                          { label: "Con anticipos", val: soloConAnticipos, set: setSoloConAnticipos, cls: "" },
+                          { label: "Con incentivo", val: soloConIncentivos, set: setSoloConIncentivos, cls: "" },
+                        ].map(({ label, val, set, cls }) => (
+                          <button key={label} onClick={() => set((v) => !v)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all ${
+                              val ? (cls || "bg-primary/20 border-primary/50 text-primary") : "bg-white/4 border-white/10 text-white/40 hover:text-white/70"
+                            }`}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {filtrados.length !== rows.length && (
+                      <p className="text-[10px] text-white/30 mt-2">{filtrados.length} de {rows.length} colaboradores</p>
+                    )}
+                  </div>
+
+                  {/* Tabla principal */}
+                  {filtrados.length === 0 ? (
+                    <TablaVacia msg="No hay colaboradores que coincidan con los filtros." />
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs border-collapse">
+                        <thead className="bg-[#060e1c] border-b border-white/6 sticky top-0">
+                          <tr>
+                            {th("ID", "employee_id")}
+                            {th("Colaborador", "nombre_completo", "min-w-[160px]")}
+                            {th("Puesto / Sede", "puesto_empleado")}
+                            {th("Cliente", "cliente_principal")}
+                            {th("Turno", "tipo_turno_nombre")}
+                            {th("Sueldo Base", "sueldo_base")}
+                            {th("Días", "dias_trabajados")}
+                            {th("Faltas", "faltas")}
+                            {th("Susp.", "suspensiones")}
+                            {th("H. Trab.", "horas_trabajadas")}
+                            {th("H. Extra", "horas_extra")}
+                            {th("Anticipo", "anticipos_monto")}
+                            {th("Total Est.", "sueldo_base")}
+                            {th("Revisión", "revision_estado")}
+                            <th className="px-3 py-2" />
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                        </thead>
+                        <tbody className="divide-y divide-white/4">
+                          {filtrados.map((r) => {
+                            const heNum2 = parseFloat(r.horas_extra || "0");
+                            const tieneAlerta = Number(r.faltas) > 0 || Number(r.suspensiones) > 0 || Number(r.dias_sin_horas) > 0;
+                            const needsReview = tieneAlerta && r.revision_estado === "pendiente";
+                            const est2 = calcularTotalEstimado(r, periodoTotalDias);
+
+                            return (
+                              <tr key={r.employee_id}
+                                onClick={() => setDetalle(r)}
+                                className={`cursor-pointer transition-colors ${
+                                  needsReview ? "hover:bg-rose-500/5 bg-rose-500/3" :
+                                  r.revision_estado === "observada" ? "hover:bg-amber-500/5 bg-amber-500/3" :
+                                  "hover:bg-white/3"
+                                }`}>
+                                {/* ID */}
+                                <td className="px-3 py-2.5 text-white/30 text-[10px] whitespace-nowrap">
+                                  EMP-{String(r.employee_id).padStart(4, "0")}
+                                </td>
+                                {/* Colaborador */}
+                                <td className="px-3 py-2.5">
+                                  <div className="flex items-center gap-1.5">
+                                    {needsReview && <AlertCircle className="w-3 h-3 text-rose-400 shrink-0" />}
+                                    {!needsReview && tieneAlerta && <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />}
+                                    <div>
+                                      <p className="font-semibold text-white">{r.nombre_completo}</p>
+                                      <p className="text-white/30 text-[10px]">{r.dpi ? `****${r.dpi.slice(-4)}` : "—"}</p>
+                                    </div>
+                                  </div>
+                                </td>
+                                {/* Puesto / Sede */}
+                                <td className="px-3 py-2.5">
+                                  <p className="text-white/70">{r.puesto_titular_nombre ?? r.puesto_empleado ?? "—"}</p>
+                                  <p className="text-white/30 text-[10px]">{r.sede ?? "—"}</p>
+                                </td>
+                                {/* Cliente */}
+                                <td className="px-3 py-2.5 text-white/50">{r.cliente_principal ?? "—"}</td>
+                                {/* Turno */}
+                                <td className="px-3 py-2.5">
+                                  {r.tipo_turno_nombre
+                                    ? <span className="px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary text-[10px] font-semibold">{r.tipo_turno_nombre}</span>
+                                    : <span className="text-white/20">—</span>}
+                                </td>
+                                {/* Sueldo */}
+                                <td className="px-3 py-2.5 text-white/60 text-right">{fmtQ(r.sueldo_base)}</td>
+                                {/* Días trabajados */}
+                                <td className="px-3 py-2.5 text-center">
+                                  <span className="text-green-400 font-semibold">{Number(r.dias_trabajados)}</span>
+                                  {periodoTotalDias != null && <span className="text-white/25 ml-1">/{periodoTotalDias}d</span>}
+                                </td>
+                                {/* Faltas */}
+                                <td className="px-3 py-2.5 text-center">
+                                  <span className={Number(r.faltas) > 0 ? "text-red-400 font-bold" : "text-white/20"}>{Number(r.faltas)}</span>
+                                </td>
+                                {/* Suspensiones */}
+                                <td className="px-3 py-2.5 text-center">
+                                  <span className={Number(r.suspensiones) > 0 ? "text-amber-400 font-bold" : "text-white/20"}>{Number(r.suspensiones)}</span>
+                                </td>
+                                {/* Horas trabajadas */}
+                                <td className="px-3 py-2.5 text-right text-white/60">
+                                  {parseFloat(r.horas_trabajadas || "0").toFixed(1)} h
+                                </td>
+                                {/* Horas extra */}
+                                <td className="px-3 py-2.5 text-right">
+                                  <span className={heNum2 > 0 ? "text-orange-400 font-semibold" : "text-white/20"}>
+                                    {heNum2.toFixed(1)} h
+                                  </span>
+                                </td>
+                                {/* Anticipo */}
+                                <td className="px-3 py-2.5 text-right">
+                                  {r.anticipos_count > 0
+                                    ? <span className="text-amber-400 font-semibold">{fmtQ(r.anticipos_monto)}</span>
+                                    : <span className="text-white/20">—</span>}
+                                </td>
+                                {/* Total estimado */}
+                                <td className="px-3 py-2.5 text-right">
+                                  {est2 != null ? (
+                                    <div>
+                                      <span className={`font-bold ${est2.total >= 0 ? "text-primary" : "text-red-400"}`}>
+                                        {fmtQ(est2.total)}
+                                      </span>
+                                      {(est2.descFaltas > 0 || est2.valorHE > 0) && (
+                                        <p className="text-[9px] text-white/25 mt-0.5">
+                                          {est2.descFaltas > 0 ? `-${fmtQ(est2.descFaltas)} ` : ""}
+                                          {est2.valorHE > 0 ? `+${fmtQ(est2.valorHE)} HE` : ""}
+                                        </p>
+                                      )}
+                                    </div>
+                                  ) : <span className="text-white/20">—</span>}
+                                </td>
+                                {/* Revisión */}
+                                <td className="px-3 py-2.5">
+                                  {needsReview
+                                    ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold text-rose-400 bg-rose-400/10 border-rose-400/25 animate-pulse">
+                                        <AlertCircle className="w-2.5 h-2.5" />REVISAR
+                                      </span>
+                                    : <RevisionBadge estado={r.revision_estado} />}
+                                </td>
+                                {/* Ver detalle */}
+                                <td className="px-3 py-2.5">
+                                  <button onClick={(e) => { e.stopPropagation(); setDetalle(r); }}
+                                    className="p-1.5 rounded-lg text-white/30 hover:text-primary hover:bg-primary/10 transition-colors">
+                                    <Eye className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
               )}
+
+              {/* ── Tab: Horas Extra ─────────────────────────────────────── */}
+              {activeTab === "horas_extra" && <AnexoHorasExtra desde={desde} hasta={hasta} />}
+
+              {/* ── Tab: Faltas ──────────────────────────────────────────── */}
+              {activeTab === "faltas" && <AnexoFaltas desde={desde} hasta={hasta} />}
+
+              {/* ── Tab: Anticipos ───────────────────────────────────────── */}
+              {activeTab === "anticipos" && <AnexoAnticipos desde={desde} hasta={hasta} />}
+
+              {/* ── Tab: Coberturas ──────────────────────────────────────── */}
+              {activeTab === "coberturas" && <AnexoCoberturas desde={desde} hasta={hasta} />}
             </div>
 
-            {/* ── Nota informativa sobre próxima fase ───────────────────────────── */}
+            {/* ── Nota informativa ──────────────────────────────────────── */}
             <div className="bg-blue-500/5 border border-blue-500/15 rounded-xl p-4">
               <div className="flex items-start gap-3">
                 <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-xs font-semibold text-blue-300 mb-1">Esta es una pre-planilla operativa</p>
+                  <p className="text-xs font-semibold text-blue-300 mb-1">Pre-planilla operativa — estimación indicativa</p>
                   <p className="text-[11px] text-blue-300/60 leading-relaxed">
-                    Incluye: asistencia, horas, faltas, suspensiones, descansos trabajados, horas extra, relevos y anticipos.
+                    <strong className="text-blue-300/80">Total Estimado Preliminar</strong> = sueldo proporcional al período – descuento por faltas/suspensiones + valor horas extra (1.5x) – anticipos.
                     <br />
-                    <strong className="text-blue-300/80">Pendiente para planilla final:</strong> descuento proporcional por ausencias, IGSS (12.67% patronal + 4.83% laboral),
-                    bonificación incentivo (Dto. 78-89), séptimo día, y cálculo de neto a pagar.
-                    Los datos actuales permiten conectar esta base directamente con el sistema de planilla formal.
+                    <strong className="text-blue-300/80">Pendiente para planilla final:</strong> IGSS (12.67% patronal + 4.83% laboral), bonificación incentivo (Dto. 78-89), séptimo día remunerado, y deducciones legales finales.
                   </p>
                 </div>
               </div>
@@ -1011,12 +1487,9 @@ export default function PrePlanilla() {
         )}
       </div>
 
-      {/* ── Modal de detalle ────────────────────────────────────────────────── */}
+      {/* ── Modal de detalle ─────────────────────────────────────────────── */}
       {detalle && (
-        <DetalleModal
-          col={detalle}
-          desde={desde}
-          hasta={hasta}
+        <DetalleModal col={detalle} desde={desde} hasta={hasta}
           onClose={() => setDetalle(null)}
           onRevisionChange={(id, est, obs) => {
             onRevisionChange(id, est, obs);
