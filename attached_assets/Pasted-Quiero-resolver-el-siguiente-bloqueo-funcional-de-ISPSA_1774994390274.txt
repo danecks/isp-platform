@@ -1,0 +1,159 @@
+Quiero resolver el siguiente bloqueo funcional de ISPSA:
+
+## Problema actual
+Ya tenemos:
+- Servicios Programados unificados
+- banner de próximos arranques
+- navegación al pizarrón en fecha futura
+- clientes nuevos y SSA visibles en la fecha correcta
+
+Pero hoy el pizarrón futuro solo sirve para ver, no para asignar cobertura futura real.
+
+No puedo dejar programado desde hoy quién cubrirá un puesto o un arranque futuro.
+
+---
+
+## Objetivo
+Implementar una capa real de asignación futura de cobertura desde el Pizarrón Futuro, sin romper la operación actual.
+
+Quiero que Operaciones pueda:
+
+- entrar a una fecha futura
+- ver puestos / arranques / SSA programados
+- asignar desde ahí quién cubrirá
+- guardar esa planificación
+- y que cuando llegue la fecha, esa cobertura ya aparezca reflejada
+
+---
+
+## 1. Asignación futura desde el pizarrón
+Desde una fecha futura, quiero poder:
+
+- asignar un agente a un puesto futuro
+- asignar un agente a un arranque de cliente
+- asignar un agente a un SSA futuro
+
+Esto debe funcionar desde la UI del pizarrón futuro, no solo por API.
+
+---
+
+## 2. La asignación futura no debe contaminar el presente
+Si hoy programo una cobertura para el 18/04:
+- no debe mover el pizarrón de hoy
+- no debe cambiar estados operativos de hoy
+- no debe generar novedades de nómina de hoy
+- no debe afectar pre-planilla actual
+
+La planificación futura debe quedar guardada, pero aislada del presente.
+
+---
+
+## 3. Estructura de planificación futura
+Si hace falta, crear o usar una estructura clara para guardar:
+
+- fecha_objetivo
+- puesto_id o servicio_programado_id
+- cliente_id
+- titular_afectado nullable
+- agente_programado_id
+- tipo_cobertura_futura
+- motivo
+- creado_por
+- created_at
+- estado
+
+Ejemplos de tipo_cobertura_futura:
+- relevo_vacaciones
+- relevo_permiso
+- arranque_cliente
+- ssa_programado
+- apoyo_temporal
+
+---
+
+## 4. Activación al llegar la fecha
+Cuando llegue la fecha programada:
+- la cobertura futura debe aparecer en el pizarrón del día
+- ya no como simple “plan”
+- sino como cobertura preconfigurada del día
+- pero permitiendo al jefe de servicio cambiarla si algo varió
+
+---
+
+## 5. Integración con servicios programados
+Quiero que esto funcione tanto para:
+- inicio_cliente
+- ssa
+
+No quiero dos lógicas separadas.
+
+Si el servicio programado aparece en el banner y en el pizarrón futuro, también debe poder recibir cobertura futura desde ahí.
+
+---
+
+## 6. Visualización clara
+Quiero que una cobertura futura asignada se vea distinta, por ejemplo:
+- badge “Programado”
+- color especial
+- icono de calendario
+- nombre del agente asignado
+
+La idea es que al entrar a la fecha futura, Operaciones vea de inmediato:
+- qué ya está cubierto
+- qué sigue pendiente
+
+---
+
+## 7. Compatibilidad con turnos y disponibilidad futura
+Antes de asignar, el sistema debe seguir mostrando o validando:
+- si el agente trabaja o descansa ese día
+- si tiene ausencia aprobada
+- si está ya comprometido en otra cobertura futura
+- si es elegible para cubrir
+
+No quiero que la asignación futura permita choques evidentes.
+
+---
+
+## 8. Casos que debe soportar
+Quiero al menos estos casos:
+1. Cliente nuevo que inicia en fecha futura y se le asigna cobertura desde antes
+2. SSA autorizado para fecha futura y se le asigna agente desde antes
+3. Titular con vacaciones futuras y relevo ya programado
+4. Relevo futuro que luego se cambia antes de que llegue la fecha
+5. Fecha futura con parte cubierta y parte pendiente
+
+---
+
+## 9. No romper
+No romper:
+- pizarrón actual
+- RRHH
+- servicios programados
+- banner de próximos arranques
+- pre-planilla
+- planilla
+- SSA pipeline actual
+- turnos y pool futuro
+
+---
+
+## 10. Verificación final
+Quiero que al final pruebes y confirmes:
+- que sí se puede asignar cobertura futura desde el pizarrón
+- que no afecta el día actual
+- que al llegar la fecha aparece correctamente
+- que se puede ajustar si cambió la realidad
+
+---
+
+## 11. Documentación
+Explica claramente:
+- cómo funciona la asignación futura
+- dónde se guarda
+- cómo se ve en el pizarrón futuro
+- qué pasa cuando llega la fecha real
+- cómo evita contaminar el presente
+
+Muy importante:
+quiero que el Pizarrón Futuro deje de ser solo una vista informativa y se convierta en una herramienta real de planeación operativa.

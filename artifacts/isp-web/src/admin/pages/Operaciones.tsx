@@ -21,7 +21,7 @@ import {
   CheckCircle2, Clock, User, Phone, MapPin, ArrowLeftRight,
   History, Trash2, Shield, Activity, Zap, ChevronDown,
   ChevronRight, ChevronLeft, Info, Building2, Circle, GripVertical,
-  UserMinus, UserPlus, XCircle, RotateCcw, FileText,
+  UserMinus, UserPlus, UserCheck, XCircle, RotateCcw, FileText,
   Lock, Unlock, Calendar, CalendarDays, AlertCircle, CheckSquare,
   Layers, Timer, Moon, Settings2, Repeat, Sun, ExternalLink,
 } from "lucide-react";
@@ -105,11 +105,14 @@ interface Pool {
 interface PlanFuturo {
   id: number;
   fecha: string;
-  puesto_id: number;
-  puesto_nombre: string;
-  cliente_nombre: string;
+  puesto_id: number | null;
+  puesto_nombre: string | null;
+  cliente_nombre: string | null;
   tipo_evento: string;
   tipo_ausencia: string | null;
+  tipo_cobertura_futura: string | null;
+  ssa_id: string | null;
+  ssa_tipo_solicitud: string | null;
   titular_ausente_id: number | null;
   titular_ausente_nombre: string | null;
   relevo_id: number | null;
@@ -158,6 +161,10 @@ interface InicioProyecto {
   hora_inicio: string | null;
   hora_fin: string | null;
   estado_ssa: string | null;
+  plan_id: number | null;
+  plan_relevo_id: number | null;
+  plan_relevo_nombre: string | null;
+  plan_tipo_cobertura: string | null;
   puestos: Array<{
     id: number;
     nombre: string;
@@ -235,6 +242,8 @@ interface TarjetaSSAPendiente {
   prioridad: string;
   descripcion: string | null;
   estado_general: string;
+  plan_agente_id: number | null;
+  plan_agente_nombre: string | null;
   estado_operaciones: string;
   estado_facturacion: string;
   estado_preplanilla: string | null;
@@ -1020,6 +1029,215 @@ const TIPOS_AUSENCIA_FUTURO = [
 
 // ─── Modal: Planificación Futura ──────────────────────────────────────────────
 
+// ─── Modal: Planificar cobertura para SSA futuro ──────────────────────────────
+function ModalPlanSSA({
+  ssa,
+  fecha,
+  planExistente,
+  onClose,
+  onGuardar,
+  onEliminar,
+}: {
+  ssa: InicioProyecto;
+  fecha: string;
+  planExistente: { plan_id: number; plan_relevo_id: number | null; plan_relevo_nombre: string | null } | null;
+  onClose: () => void;
+  onGuardar: (data: { relevId: number | null; motivo: string; notas: string }) => Promise<void>;
+  onEliminar?: () => void;
+}) {
+  const { toast } = useToast();
+  const [motivo, setMotivo]       = useState("");
+  const [notas, setNotas]         = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [busqueda, setBusqueda]   = useState("");
+  const [relevoSel, setRelevoSel] = useState<EmpleadoBusqueda | null>(
+    planExistente?.plan_relevo_id
+      ? { id: planExistente.plan_relevo_id, nombreCompleto: planExistente.plan_relevo_nombre ?? "", puesto: null, area: null }
+      : null
+  );
+
+  const { data: empleadosBusqueda = [] } = useQuery<EmpleadoBusqueda[]>({
+    queryKey: ["emp-busqueda-ssa", busqueda],
+    queryFn: () =>
+      fetch(`${API_BASE}/employees?q=${encodeURIComponent(busqueda)}&limit=20`)
+        .then((r) => r.json())
+        .then((d: any) => {
+          const arr = Array.isArray(d) ? d : (d.employees ?? []);
+          return arr.filter((e: any) => (e.estadoLaboral ?? e.estado_laboral) === "activo");
+        }),
+    enabled: busqueda.length >= 2 && !relevoSel,
+    staleTime: 30_000,
+  });
+
+  const [y, m, d] = fecha.split("-");
+  const fechaDisplay = `${d}-${m}-${y}`;
+
+  const tipoLabel = TIPO_SSA_LABELS[ssa.tipo_solicitud ?? ""] ?? ssa.tipo_solicitud ?? "SSA";
+
+  async function handleGuardar() {
+    setGuardando(true);
+    try {
+      await onGuardar({ relevId: relevoSel?.id ?? null, motivo, notas });
+    } catch {
+      toast({ title: "Error al guardar el plan SSA", variant: "destructive" });
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div className="w-full max-w-md bg-[#060e1c] border border-blue-500/20 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+        {/* Header */}
+        <div className="flex items-start justify-between px-5 py-4 border-b border-white/8 shrink-0">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Shield className="w-3.5 h-3.5 text-blue-400" />
+              <span className="text-[10px] text-blue-300/70 font-semibold uppercase tracking-widest">
+                {planExistente ? "Editar plan SSA" : "Planificar SSA"} · {fechaDisplay}
+              </span>
+            </div>
+            <h2 className="text-sm font-bold text-white truncate">{tipoLabel}</h2>
+            <p className="text-[11px] text-white/35">
+              {ssa.cliente_nombre_comercial || ssa.cliente_nombre}
+              {ssa.hora_inicio ? ` · ${ssa.hora_inicio}–${ssa.hora_fin ?? ""}` : ""}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-white/30 hover:text-white transition-colors mt-1">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {/* Info del SSA */}
+          {ssa.descripcion && (
+            <div className="flex items-start gap-2.5 bg-blue-500/6 border border-blue-500/15 rounded-xl px-3 py-2.5">
+              <Info className="w-3.5 h-3.5 text-blue-400/60 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-blue-200/60 leading-relaxed">{ssa.descripcion}</p>
+            </div>
+          )}
+          {(ssa.total_puestos ?? 1) > 0 && (
+            <div className="flex items-center gap-2 text-[11px] text-white/40 bg-white/3 border border-white/6 rounded-xl px-3 py-2">
+              <UserCheck className="w-3.5 h-3.5 shrink-0" />
+              <span>{ssa.total_puestos} {ssa.total_puestos === 1 ? "guardia requerido" : "guardias requeridos"}</span>
+            </div>
+          )}
+
+          {/* Agente a cubrir el SSA */}
+          <div>
+            <label className="text-[10px] font-semibold text-white/40 uppercase tracking-widest block mb-1.5">
+              Agente asignado <span className="text-white/20 normal-case font-normal">(opcional)</span>
+            </label>
+            {relevoSel ? (
+              <div className="flex items-center gap-2 bg-blue-500/10 border border-blue-500/25 rounded-xl px-3 py-2.5">
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarColor(relevoSel.nombreCompleto)}`}>
+                  {iniciales(relevoSel.nombreCompleto)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-blue-200 truncate">{relevoSel.nombreCompleto}</p>
+                  <p className="text-[10px] text-blue-300/50">{relevoSel.puesto ?? "Agente"}</p>
+                </div>
+                <button onClick={() => { setRelevoSel(null); setBusqueda(""); }} className="text-white/25 hover:text-red-400 transition-colors">
+                  <XCircle className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Buscar agente (mín. 2 letras)…"
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  className="w-full bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-white/20 outline-none focus:border-blue-400/40"
+                />
+                {busqueda.length >= 2 && empleadosBusqueda.length > 0 && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#07111f] border border-white/10 rounded-xl shadow-2xl overflow-hidden max-h-44 overflow-y-auto">
+                    {empleadosBusqueda.map((e) => (
+                      <button
+                        key={e.id}
+                        onClick={() => { setRelevoSel(e); setBusqueda(""); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/4 transition-colors"
+                      >
+                        <div className={`w-6 h-6 rounded flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(e.nombreCompleto)}`}>
+                          {iniciales(e.nombreCompleto)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs text-white/80 truncate">{e.nombreCompleto}</p>
+                          <p className="text-[10px] text-white/30">{e.puesto ?? e.area ?? "Agente"}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Motivo */}
+          <div>
+            <label className="text-[10px] font-semibold text-white/40 uppercase tracking-widest block mb-1.5">
+              Motivo <span className="text-white/20 normal-case font-normal">(opcional)</span>
+            </label>
+            <input
+              type="text"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              placeholder="Ej. guardia extra para evento especial"
+              className="w-full bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-white/20 outline-none focus:border-blue-400/40"
+            />
+          </div>
+
+          {/* Notas */}
+          <div>
+            <label className="text-[10px] font-semibold text-white/40 uppercase tracking-widest block mb-1.5">
+              Notas internas <span className="text-white/20 normal-case font-normal">(opcional)</span>
+            </label>
+            <textarea
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+              rows={2}
+              placeholder="Información adicional para el equipo de operaciones…"
+              className="w-full bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-white/20 outline-none focus:border-blue-400/40 resize-none"
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-2 px-5 py-4 border-t border-white/8 shrink-0">
+          <div>
+            {planExistente && onEliminar && (
+              <button
+                onClick={onEliminar}
+                className="flex items-center gap-1.5 text-[11px] text-red-400/70 hover:text-red-400 transition-colors"
+              >
+                <Trash2 className="w-3 h-3" />
+                Cancelar plan
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl border border-white/10 text-[11px] text-white/40 hover:text-white/70 hover:border-white/20 transition-all"
+            >
+              Cerrar
+            </button>
+            <button
+              onClick={handleGuardar}
+              disabled={guardando}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600/25 border border-blue-500/40 text-[11px] font-semibold text-blue-200 hover:bg-blue-600/35 transition-all disabled:opacity-50"
+            >
+              {guardando ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserCheck className="w-3 h-3" />}
+              {planExistente ? "Actualizar" : "Guardar plan"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function ModalPlanFuturo({
   puesto,
   fecha,
@@ -1634,9 +1852,11 @@ const LABELS_AUSENCIA_RRHH: Record<string, string> = {
 function PoolFuturoPanel({
   data,
   onAbrirPlan,
+  onPlanSSA,
 }: {
   data: PoolFuturoData;
   onAbrirPlan?: () => void;
+  onPlanSSA?: (ip: InicioProyecto) => void;
 }) {
   const [tabActivo, setTabActivo] = useState<"descansando" | "disponible" | "ausenteProgramado" | "trabajando">("descansando");
 
@@ -1791,6 +2011,7 @@ function PoolFuturoPanel({
               const badgeLabel = esSSA
                 ? (TIPO_SSA_LABELS[ip.tipo_solicitud ?? ""] ?? "SSA")
                 : "Inicio";
+              const planYaAsignado = esSSA && ip.plan_id != null;
               return (
               <div
                 key={itemKey}
@@ -1820,28 +2041,65 @@ function PoolFuturoPanel({
                   </span>
                 </div>
 
-                {/* Puestos */}
-                <div className="flex items-center gap-3 text-[10px]">
-                  <div className="flex items-center gap-1 text-white/50">
-                    <Layers className="w-3 h-3" />
-                    <span>{ip.total_puestos} {ip.total_puestos === 1 ? "puesto" : "puestos"}</span>
+                {/* Puestos (solo para inicio_cliente) */}
+                {!esSSA && (
+                  <div className="flex items-center gap-3 text-[10px]">
+                    <div className="flex items-center gap-1 text-white/50">
+                      <Layers className="w-3 h-3" />
+                      <span>{ip.total_puestos} {ip.total_puestos === 1 ? "puesto" : "puestos"}</span>
+                    </div>
+                    {ip.puestos_con_titular > 0 && (
+                      <div className="flex items-center gap-1 text-green-400/70">
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>{ip.puestos_con_titular} con titular</span>
+                      </div>
+                    )}
+                    {ip.puestos_sin_titular > 0 && (
+                      <div className="flex items-center gap-1 text-amber-400/70">
+                        <AlertCircle className="w-3 h-3" />
+                        <span>{ip.puestos_sin_titular} sin asignar</span>
+                      </div>
+                    )}
                   </div>
-                  {ip.puestos_con_titular > 0 && (
-                    <div className="flex items-center gap-1 text-green-400/70">
-                      <CheckCircle2 className="w-3 h-3" />
-                      <span>{ip.puestos_con_titular} con titular</span>
-                    </div>
-                  )}
-                  {ip.puestos_sin_titular > 0 && (
-                    <div className="flex items-center gap-1 text-amber-400/70">
-                      <AlertCircle className="w-3 h-3" />
-                      <span>{ip.puestos_sin_titular} sin asignar</span>
-                    </div>
-                  )}
-                </div>
+                )}
 
-                {/* Lista de puestos si hay pocos */}
-                {ip.puestos && ip.puestos.length > 0 && ip.puestos.length <= 4 && (
+                {/* Estado del plan SSA */}
+                {esSSA && (
+                  <div className="flex items-center justify-between gap-2">
+                    {planYaAsignado ? (
+                      <div className="flex items-center gap-1.5 text-[10px]">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                        <span className="text-green-300/80 font-medium">
+                          {ip.plan_relevo_nombre
+                            ? ip.plan_relevo_nombre.split(" ").slice(0, 2).join(" ")
+                            : "Agente asignado"}
+                        </span>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-500/15 border border-green-500/25 text-green-400 font-bold uppercase">Planificado</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 text-[10px] text-orange-300/60">
+                        <AlertCircle className="w-3 h-3 shrink-0" />
+                        <span>Sin agente asignado</span>
+                      </div>
+                    )}
+                    {onPlanSSA && (
+                      <button
+                        onClick={() => onPlanSSA(ip)}
+                        className={`shrink-0 flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-lg border transition-all ${
+                          planYaAsignado
+                            ? "bg-blue-500/10 border-blue-500/25 text-blue-300 hover:bg-blue-500/20"
+                            : "bg-amber-500/10 border-amber-500/25 text-amber-300 hover:bg-amber-500/20"
+                        }`}
+                      >
+                        <UserCheck className="w-3 h-3" />
+                        {planYaAsignado ? "Editar" : "Asignar"}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Lista de puestos si hay pocos (inicio_cliente) */}
+                {!esSSA && ip.puestos && ip.puestos.length > 0 && ip.puestos.length <= 4 && (
                   <div className="flex flex-col gap-1">
                     {ip.puestos.map((p) => (
                       <div key={p.id} className="flex items-center gap-1.5 text-[10px] text-white/40">
@@ -3489,6 +3747,7 @@ export default function Operaciones() {
   const [fechaVista, setFechaVista]           = useState<string>(fechaDesdeURL ?? hoyISO);
   const esFuturo = fechaVista > hoyISO;
   const [modalPlanFuturo, setModalPlanFuturo] = useState<{ puesto: Puesto; plan: PlanFuturo | null } | null>(null);
+  const [modalPlanSSA, setModalPlanSSA]       = useState<InicioProyecto | null>(null);
   const [puestoParaTurno, setPuestoParaTurno] = useState<Puesto | null>(null);
 
   // Cliente a resaltar cuando el usuario navega desde el banner de arranques
@@ -3660,6 +3919,7 @@ export default function Operaciones() {
   function invalidateFuture() {
     qc.invalidateQueries({ queryKey: ["planificacion-futura"] });
     qc.invalidateQueries({ queryKey: ["planificacion-futura-proximos"] });
+    qc.invalidateQueries({ queryKey: ["pool-futuro"] });
   }
 
   // ── Handlers: planificación futura ───────────────────────────────────────
@@ -3701,6 +3961,45 @@ export default function Operaciones() {
     await fetch(`${API_BASE}/operaciones/planificacion-futura/${planId}`, { method: "DELETE" });
     toast({ title: "Plan cancelado" });
     setModalPlanFuturo(null);
+    invalidateFuture();
+  }
+
+  async function guardarPlanSSA(data: { relevId: number | null; motivo: string; notas: string }) {
+    if (!modalPlanSSA) return;
+    const ip = modalPlanSSA;
+    const planId = ip.plan_id;
+    if (planId) {
+      await fetch(`${API_BASE}/operaciones/planificacion-futura/${planId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ relevId: data.relevId, motivo: data.motivo, notas: data.notas }),
+      });
+      toast({ title: "Plan SSA actualizado", description: `${ip.cliente_nombre} · ${formatFechaVista(fechaVista)}` });
+    } else {
+      await fetch(`${API_BASE}/operaciones/planificacion-futura`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fecha: fechaVista,
+          ssaId: ip.ssa_id,
+          relevId: data.relevId,
+          motivo: data.motivo,
+          notas: data.notas,
+          tipoCobertura: "ssa_programado",
+          fuente: "operaciones",
+          creadoPor: currentUser?.username ?? "sistema",
+        }),
+      });
+      toast({ title: "Plan SSA guardado", description: `${ip.cliente_nombre} · ${formatFechaVista(fechaVista)}` });
+    }
+    setModalPlanSSA(null);
+    invalidateFuture();
+  }
+
+  async function eliminarPlanSSA(planId: number) {
+    await fetch(`${API_BASE}/operaciones/planificacion-futura/${planId}`, { method: "DELETE" });
+    toast({ title: "Plan SSA cancelado" });
+    setModalPlanSSA(null);
     invalidateFuture();
   }
 
@@ -4604,7 +4903,10 @@ export default function Operaciones() {
 
           {/* ── Pool de agentes ───────────────────────────────────────────── */}
           {esFuturo && poolFuturo ? (
-            <PoolFuturoPanel data={poolFuturo} />
+            <PoolFuturoPanel
+              data={poolFuturo}
+              onPlanSSA={(ip) => setModalPlanSSA(ip)}
+            />
           ) : esFuturo && loadingPoolFuturo ? (
             <div className="shrink-0 bg-[#060f1a] border border-indigo-500/15 rounded-2xl flex items-center justify-center px-6 py-4 gap-2 text-xs text-indigo-300/50">
               <Loader2 className="w-3.5 h-3.5 animate-spin" /> Calculando disponibilidad futura…
@@ -4811,6 +5113,20 @@ export default function Operaciones() {
           onGuardar={guardarPlanFuturo}
           onEliminar={modalPlanFuturo.plan ? () => eliminarPlanFuturo(modalPlanFuturo.plan!.id) : undefined}
           onClose={() => setModalPlanFuturo(null)}
+        />
+      )}
+
+      {modalPlanSSA && (
+        <ModalPlanSSA
+          ssa={modalPlanSSA}
+          fecha={fechaVista}
+          planExistente={modalPlanSSA.plan_id != null
+            ? { plan_id: modalPlanSSA.plan_id, plan_relevo_id: modalPlanSSA.plan_relevo_id, plan_relevo_nombre: modalPlanSSA.plan_relevo_nombre }
+            : null
+          }
+          onGuardar={guardarPlanSSA}
+          onEliminar={modalPlanSSA.plan_id != null ? () => eliminarPlanSSA(modalPlanSSA.plan_id!) : undefined}
+          onClose={() => setModalPlanSSA(null)}
         />
       )}
 
@@ -5180,7 +5496,16 @@ function TarjetaSSACard({
                 {t.agentes_rechazados.map(a => a.nombre.split(" ")[0]).join(", ")} declinaron
               </p>
             )}
-            <p className="text-[9px] text-amber-400/70 mt-1 font-medium">Toca para asignar guardia →</p>
+            {t.plan_agente_nombre ? (
+              <div className="flex items-center gap-1 mt-1">
+                <UserCheck className="w-2.5 h-2.5 text-indigo-400 shrink-0" />
+                <span className="text-[9px] text-indigo-300/80 font-medium truncate">
+                  Plan: {t.plan_agente_nombre.split(" ").slice(0, 2).join(" ")}
+                </span>
+              </div>
+            ) : (
+              <p className="text-[9px] text-amber-400/70 mt-1 font-medium">Toca para asignar guardia →</p>
+            )}
           </div>
         ) : (
           <div className="mt-1 space-y-0.5">

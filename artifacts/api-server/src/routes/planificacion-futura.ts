@@ -5,7 +5,7 @@ import { logger } from "../lib/logger";
 export const planificacionFuturaRouter = Router();
 
 // ─── GET /api/operaciones/planificacion-futura?fecha=YYYY-MM-DD ───────────────
-// Devuelve todos los planes para una fecha específica, con nombres de empleados
+// Devuelve todos los planes para una fecha: puestos operativos + SSA
 planificacionFuturaRouter.get("/operaciones/planificacion-futura", async (req, res) => {
   const { fecha } = req.query as { fecha?: string };
   if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
@@ -17,15 +17,18 @@ planificacionFuturaRouter.get("/operaciones/planificacion-futura", async (req, r
         pf.id,
         pf.fecha,
         pf.puesto_id,
-        po.nombre             AS puesto_nombre,
-        po.cliente_nombre,
+        po.nombre                             AS puesto_nombre,
+        COALESCE(po.cliente_nombre, sac.nombre) AS cliente_nombre,
         po.titular_employee_id,
         pf.tipo_evento,
         pf.tipo_ausencia,
+        pf.tipo_cobertura_futura,
+        pf.ssa_id,
+        s.tipo_solicitud                      AS ssa_tipo_solicitud,
         pf.titular_ausente_id,
-        ea.nombre_completo    AS titular_ausente_nombre,
+        ea.nombre_completo                    AS titular_ausente_nombre,
         pf.relevo_id,
-        er.nombre_completo    AS relevo_nombre,
+        er.nombre_completo                    AS relevo_nombre,
         pf.motivo,
         pf.notas,
         pf.estado,
@@ -33,12 +36,14 @@ planificacionFuturaRouter.get("/operaciones/planificacion-futura", async (req, r
         pf.creado_por,
         pf.created_at
       FROM planificacion_futura pf
-      JOIN puestos_operativos po ON po.id = pf.puesto_id
-      LEFT JOIN employees ea ON ea.id = pf.titular_ausente_id
-      LEFT JOIN employees er ON er.id  = pf.relevo_id
+      LEFT JOIN puestos_operativos po       ON po.id = pf.puesto_id
+      LEFT JOIN solicitudes_servicio_adicional s ON s.id = pf.ssa_id
+      LEFT JOIN clients sac                 ON sac.id = s.cliente_id
+      LEFT JOIN employees ea                ON ea.id  = pf.titular_ausente_id
+      LEFT JOIN employees er                ON er.id  = pf.relevo_id
       WHERE pf.fecha = $1
         AND pf.estado != 'cancelado'
-      ORDER BY po.cliente_nombre, po.nombre
+      ORDER BY cliente_nombre, puesto_nombre
     `, [fecha]);
     res.json(rows);
   } catch (err) {
@@ -91,13 +96,15 @@ planificacionFuturaRouter.get("/operaciones/planificacion-futura/proximos", asyn
 });
 
 // ─── POST /api/operaciones/planificacion-futura ───────────────────────────────
-// Crea un nuevo plan futuro
+// Crea un plan futuro para un puesto operativo O para un SSA
 planificacionFuturaRouter.post("/operaciones/planificacion-futura", async (req, res) => {
   const {
     fecha,
     puestoId,
+    ssaId,
     tipoEvento = "ausencia",
     tipoAusencia,
+    tipoCobertura,
     titularAusenteId,
     relevId,
     motivo,
@@ -107,9 +114,11 @@ planificacionFuturaRouter.post("/operaciones/planificacion-futura", async (req, 
     creadoPor,
   } = req.body as {
     fecha: string;
-    puestoId: number;
+    puestoId?: number | null;
+    ssaId?: string | null;
     tipoEvento?: string;
     tipoAusencia?: string;
+    tipoCobertura?: string;
     titularAusenteId?: number | null;
     relevId?: number | null;
     motivo?: string;
@@ -119,24 +128,41 @@ planificacionFuturaRouter.post("/operaciones/planificacion-futura", async (req, 
     creadoPor?: string;
   };
 
-  if (!fecha || !puestoId) {
-    return res.status(400).json({ error: "fecha y puestoId son requeridos" });
+  if (!fecha || (!puestoId && !ssaId)) {
+    return res.status(400).json({ error: "fecha y (puestoId o ssaId) son requeridos" });
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
     return res.status(400).json({ error: "Formato de fecha inválido. Use YYYY-MM-DD" });
   }
 
+  // Determinar tipo_cobertura_futura según contexto
+  const tipoCoberturaNorm = tipoCobertura ?? (ssaId ? "ssa_programado" : "relevo_ausencia");
+  const tipoEventoNorm    = ssaId ? "cobertura_ssa" : tipoEvento;
+
   try {
     const { rows } = await pool.query(`
       INSERT INTO planificacion_futura
-        (fecha, puesto_id, tipo_evento, tipo_ausencia, titular_ausente_id, relevo_id,
-         motivo, notas, estado, fuente, creado_por)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        (fecha, puesto_id, ssa_id, tipo_evento, tipo_ausencia, tipo_cobertura_futura,
+         titular_ausente_id, relevo_id, motivo, notas, estado, fuente, creado_por)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING *
-    `, [fecha, puestoId, tipoEvento, tipoAusencia ?? null, titularAusenteId ?? null,
-        relevId ?? null, motivo ?? null, notas ?? null, estado, fuente, creadoPor ?? null]);
+    `, [
+      fecha,
+      puestoId ?? null,
+      ssaId ?? null,
+      tipoEventoNorm,
+      tipoAusencia ?? null,
+      tipoCoberturaNorm,
+      titularAusenteId ?? null,
+      relevId ?? null,
+      motivo ?? null,
+      notas ?? null,
+      estado,
+      fuente,
+      creadoPor ?? null,
+    ]);
 
-    logger.info({ id: rows[0].id, fecha, puestoId }, "Planificación futura creada");
+    logger.info({ id: rows[0].id, fecha, puestoId, ssaId }, "Planificación futura creada");
     res.status(201).json(rows[0]);
   } catch (err) {
     logger.error({ err }, "POST /operaciones/planificacion-futura error");
@@ -510,6 +536,39 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
       ORDER BY tipo, cliente_nombre
     `, [fecha]);
 
+    // ── Planes existentes para SSA en esta fecha ──────────────────────────
+    const ssaIds = iniciosProyecto
+      .filter((r: any) => r.tipo === "ssa" && r.ssa_id)
+      .map((r: any) => r.ssa_id);
+
+    const planPorSSA: Record<string, { plan_id: number; plan_relevo_id: number | null; plan_relevo_nombre: string | null; plan_tipo_cobertura: string }> = {};
+    if (ssaIds.length > 0) {
+      const { rows: planesSSA } = await pool.query(`
+        SELECT pf.id, pf.ssa_id, pf.relevo_id, e.nombre_completo AS relevo_nombre, pf.tipo_cobertura_futura
+        FROM planificacion_futura pf
+        LEFT JOIN employees e ON e.id = pf.relevo_id
+        WHERE pf.fecha = $1::date
+          AND pf.ssa_id = ANY($2::varchar[])
+          AND pf.estado != 'cancelado'
+      `, [fecha, ssaIds]);
+      for (const p of planesSSA) {
+        planPorSSA[p.ssa_id] = {
+          plan_id:            p.id,
+          plan_relevo_id:     p.relevo_id,
+          plan_relevo_nombre: p.relevo_nombre,
+          plan_tipo_cobertura: p.tipo_cobertura_futura,
+        };
+      }
+    }
+
+    // Enriquecer iniciosProyecto con plan data
+    const iniciosProyectoEnriquecido = iniciosProyecto.map((ip: any) => {
+      if (ip.tipo === "ssa" && ip.ssa_id && planPorSSA[ip.ssa_id]) {
+        return { ...ip, ...planPorSSA[ip.ssa_id] };
+      }
+      return { ...ip, plan_id: null, plan_relevo_id: null, plan_relevo_nombre: null, plan_tipo_cobertura: null };
+    });
+
     res.json({
       fecha,
       trabajando,
@@ -518,7 +577,7 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
       relevoProgramado,
       ausenteProgramado,
       noElegible,
-      iniciosProyecto,
+      iniciosProyecto: iniciosProyectoEnriquecido,
       totales: {
         trabajando:        trabajando.length,
         descansando:       descansando.length,
@@ -526,7 +585,7 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
         relevoProgramado:  relevoProgramado.length,
         ausenteProgramado: ausenteProgramado.length,
         noElegible:        noElegible.length,
-        iniciosProyecto:   iniciosProyecto.length,
+        iniciosProyecto:   iniciosProyectoEnriquecido.length,
       },
     });
   } catch (err) {

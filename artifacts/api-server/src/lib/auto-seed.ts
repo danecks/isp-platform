@@ -2283,6 +2283,18 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: INC-01 — error (no bloqueante)");
   }
 
+  // ── PF-02: Ampliar planificacion_futura para soportar SSA ─────────────────
+  try {
+    // Hacer puesto_id nullable para permitir planes SSA (sin puesto fijo)
+    await pool.query(`ALTER TABLE planificacion_futura ALTER COLUMN puesto_id DROP NOT NULL`);
+    await pool.query(`ALTER TABLE planificacion_futura ADD COLUMN IF NOT EXISTS ssa_id VARCHAR(30) REFERENCES solicitudes_servicio_adicional(id) ON DELETE CASCADE`);
+    await pool.query(`ALTER TABLE planificacion_futura ADD COLUMN IF NOT EXISTS tipo_cobertura_futura TEXT NOT NULL DEFAULT 'relevo_ausencia'`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_pf_ssa_id ON planificacion_futura(ssa_id) WHERE ssa_id IS NOT NULL`);
+    logger.info("Auto-migrate: PF-02 planificacion_futura ampliada para SSA (ssa_id + tipo_cobertura_futura)");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PF-02 — error (no bloqueante)");
+  }
+
   // ── SP-01: Vista unificada servicios_programados_v ────────────────────────
   // Une clientes nuevos (inicio_cliente) y SSA pendientes/activos (ssa)
   // para dar una visión común de lo que está programado a futuro.

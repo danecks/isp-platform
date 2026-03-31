@@ -177,7 +177,9 @@ solicitudesServicioRouter.get("/solicitudes-servicio/tablero", async (_req, res)
         e.telefono AS agente_telefono,
         t1.estado AS tarea_ops_estado,
         t2.estado AS tarea_rrhh_estado,
-        t3.estado AS tarea_comercial_estado
+        t3.estado AS tarea_comercial_estado,
+        plan.plan_agente_id,
+        plan.plan_agente_nombre
       FROM solicitudes_servicio_adicional s
       LEFT JOIN clients c ON c.id = s.cliente_id
       LEFT JOIN client_sedes cs ON cs.id = s.sede_id
@@ -186,6 +188,15 @@ solicitudesServicioRouter.get("/solicitudes-servicio/tablero", async (_req, res)
       LEFT JOIN tareas t1 ON t1.id = s.tarea_operaciones_id
       LEFT JOIN tareas t2 ON t2.id = s.tarea_rrhh_id
       LEFT JOIN tareas t3 ON t3.id = s.tarea_comercial_id
+      -- Plan futuro pre-asignado para HOY (si existe y aún no hay agente asignado)
+      LEFT JOIN (
+        SELECT pf.ssa_id, pf.relevo_id AS plan_agente_id, ep.nombre_completo AS plan_agente_nombre
+        FROM planificacion_futura pf
+        LEFT JOIN employees ep ON ep.id = pf.relevo_id
+        WHERE pf.fecha = CURRENT_DATE
+          AND pf.ssa_id IS NOT NULL
+          AND pf.estado != 'cancelado'
+      ) plan ON plan.ssa_id = s.id
       WHERE s.tarjeta_activa = TRUE
         AND s.estado_general NOT IN ('cancelada', 'cerrada')
       ORDER BY s.prioridad DESC, s.fecha ASC
