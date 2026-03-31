@@ -1,0 +1,127 @@
+El sistema ya tiene una pre-planilla completamente funcional con:
+
+- consolidado por colaborador
+- anexos (horas extra, faltas, anticipos, coberturas)
+- total estimado preliminar
+- estados de revisión (pendiente, revisada, observada, aprobado RRHH)
+- validaciones automáticas
+- cierre de período con bloqueo por errores críticos
+- snapshot completo del período (JSON)
+- auditoría de acciones
+
+No quiero romper nada de esto.
+
+## Objetivo
+Construir el siguiente nivel: generación de planilla final basada en el snapshot cerrado de la pre-planilla.
+
+---
+
+## 1. Base obligatoria
+La planilla final SOLO debe generarse a partir de un período cerrado.
+
+No usar datos en vivo.
+
+Debe leer:
+- snapshot del período
+- datos congelados
+
+---
+
+## 2. Nueva entidad: planilla
+Crear una estructura para planilla:
+
+- id
+- periodo_desde
+- periodo_hasta
+- fecha_generacion
+- generado_por
+- estado (borrador, revisada, aprobada, pagada)
+- referencia al snapshot
+
+---
+
+## 3. Cálculo por colaborador
+Para cada colaborador:
+
+- sueldo_base proporcional al período
+- días trabajados
+- faltas → descuento
+- suspensiones → según reglas actuales
+- horas extra
+- anticipos
+- total final
+
+Mantenerlo simple inicialmente (no IGSS todavía).
+
+---
+
+## 4. Vista de planilla
+Crear una vista similar a Excel:
+
+### Hoja 1 — Planilla general
+- lista de colaboradores
+- columnas completas
+- total final por persona
+
+### Hoja 2 — Horas extra
+### Hoja 3 — Faltas / descuentos
+### Hoja 4 — Anticipos
+
+---
+
+## 5. Regla importante
+No permitir editar la planilla directamente.
+
+Si algo está mal:
+- volver a pre-planilla
+- corregir
+- cerrar nuevamente
+
+---
+
+## 6. Exportación
+Permitir:
+- exportar CSV
+- preparar base para PDF futura
+
+---
+
+## 7. Estados de planilla
+Agregar flujo simple:
+
+- borrador
+- revisada
+- aprobada
+- pagada
+
+---
+
+## 8. Auditoría
+Registrar:
+- quién generó la planilla
+- cuándo
+- desde qué snapshot
+
+---
+
+## 9. No romper
+No romper:
+- pre-planilla
+- snapshot
+- RRHH
+- operación
+- pizarrón
+- SSA
+- anticipos
+
+---
+
+## 10. Documentación
+Explicar:
+- diferencia entre pre-planilla y planilla final
+- flujo completo desde operación → pre-planilla → planilla
+- qué datos se usan
+- qué limitaciones existen (por ejemplo IGSS aún no implementado)
+
+Muy importante:
+quiero cerrar el ciclo completo: desde la operación diaria hasta la generación de una planilla lista para revisión y pago.

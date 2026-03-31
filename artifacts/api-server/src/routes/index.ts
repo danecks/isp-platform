@@ -31,6 +31,7 @@ import kpiRouter from "./kpi";
 import { solicitudesCambioRouter } from "./solicitudes-cambio";
 import { solicitudesServicioRouter } from "./solicitudes-servicio";
 import { incentivosRouter } from "./incentivos";
+import { planillaRouter } from "./planilla";
 
 const router: IRouter = Router();
 
@@ -66,5 +67,6 @@ router.use(kpiRouter);
 router.use(solicitudesCambioRouter);
 router.use(solicitudesServicioRouter);
 router.use(incentivosRouter);
+router.use(planillaRouter);
 
 export default router;

@@ -19,6 +19,7 @@ import {
   BellRing,
   ScrollText,
   TableProperties,
+  FileSpreadsheet,
   Timer,
   GitMerge,
   Zap,
@@ -207,6 +208,12 @@ export const NAV_SECTIONS: NavSection[] = [
         path: "/admin/rrhh/pre-planilla",
         label: "Pre-Planilla",
         icon: TableProperties,
+        roles: ["admin", "rrhh"],
+      },
+      {
+        path: "/admin/rrhh/planilla",
+        label: "Planilla Final",
+        icon: FileSpreadsheet,
         roles: ["admin", "rrhh"],
       },
       {

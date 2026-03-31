@@ -1866,5 +1866,71 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SSA-06 tarjeta_activa fix — error (no bloqueante)");
   }
 
+  // ── PLAN-01: tabla planillas (encabezado de planilla final) ──────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS planillas (
+        id               SERIAL PRIMARY KEY,
+        periodo_desde    DATE          NOT NULL,
+        periodo_hasta    DATE          NOT NULL,
+        cierre_id        INTEGER       NOT NULL REFERENCES pre_planilla_cierres(id) ON DELETE RESTRICT,
+        fecha_generacion TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        generado_por     VARCHAR(100)  NOT NULL,
+        estado           VARCHAR(20)   NOT NULL DEFAULT 'borrador',
+        -- 'borrador' | 'revisada' | 'aprobada' | 'pagada'
+        observaciones    TEXT,
+        total_colaboradores INTEGER    NOT NULL DEFAULT 0,
+        total_sueldo_periodo NUMERIC(12,2) NOT NULL DEFAULT 0,
+        total_desc_faltas    NUMERIC(12,2) NOT NULL DEFAULT 0,
+        total_valor_he       NUMERIC(12,2) NOT NULL DEFAULT 0,
+        total_bruto          NUMERIC(12,2) NOT NULL DEFAULT 0,
+        total_anticipos      NUMERIC(12,2) NOT NULL DEFAULT 0,
+        total_neto           NUMERIC(12,2) NOT NULL DEFAULT 0,
+        UNIQUE(periodo_desde, periodo_hasta)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS plan_estado_idx ON planillas(estado)`);
+    logger.info("Auto-migrate: PLAN-01 tabla planillas verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PLAN-01 planillas — error (no bloqueante)");
+  }
+
+  // ── PLAN-02: tabla planilla_lineas (línea por colaborador) ───────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS planilla_lineas (
+        id               SERIAL PRIMARY KEY,
+        planilla_id      INTEGER       NOT NULL REFERENCES planillas(id) ON DELETE CASCADE,
+        employee_id      INTEGER,
+        nombre_completo  VARCHAR(200)  NOT NULL,
+        dpi              VARCHAR(20),
+        puesto           VARCHAR(200),
+        sede             VARCHAR(200),
+        cliente          VARCHAR(200),
+        tipo_jornada     VARCHAR(50),
+        horas_contrato   NUMERIC(5,1),
+        sueldo_base      NUMERIC(10,2) NOT NULL DEFAULT 0,
+        periodo_dias     INTEGER       NOT NULL DEFAULT 0,
+        dias_trabajados  INTEGER       NOT NULL DEFAULT 0,
+        faltas           INTEGER       NOT NULL DEFAULT 0,
+        suspensiones     INTEGER       NOT NULL DEFAULT 0,
+        horas_trabajadas NUMERIC(8,2)  NOT NULL DEFAULT 0,
+        horas_extra      NUMERIC(8,2)  NOT NULL DEFAULT 0,
+        sueldo_periodo   NUMERIC(10,2) NOT NULL DEFAULT 0,
+        desc_faltas      NUMERIC(10,2) NOT NULL DEFAULT 0,
+        valor_he         NUMERIC(10,2) NOT NULL DEFAULT 0,
+        total_bruto      NUMERIC(10,2) NOT NULL DEFAULT 0,
+        anticipos        NUMERIC(10,2) NOT NULL DEFAULT 0,
+        total_neto       NUMERIC(10,2) NOT NULL DEFAULT 0,
+        revision_estado  VARCHAR(30),
+        observaciones_rrhh TEXT
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS planl_planilla_idx ON planilla_lineas(planilla_id)`);
+    logger.info("Auto-migrate: PLAN-02 tabla planilla_lineas verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PLAN-02 planilla_lineas — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }
