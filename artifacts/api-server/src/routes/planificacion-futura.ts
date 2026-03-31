@@ -208,27 +208,63 @@ planificacionFuturaRouter.delete("/operaciones/planificacion-futura/:id", async 
 });
 
 // ─── GET /api/operaciones/proximos-arranques?dias=30 ─────────────────────────
-// Clientes con fecha_inicio_contrato futura (próximos N días)
+// Servicios programados: clientes nuevos + SSA autorizados/pendientes
+// Devuelve tipo: 'inicio_cliente' | 'ssa'
 planificacionFuturaRouter.get("/operaciones/proximos-arranques", async (req, res) => {
   const dias = Math.min(parseInt((req.query.dias as string) ?? "30", 10), 180);
   try {
     const { rows } = await pool.query(`
+      -- Clientes nuevos (inicio_cliente)
       SELECT
-        c.id                       AS cliente_id,
-        c.nombre                   AS cliente_nombre,
-        c.nombre_comercial         AS cliente_nombre_comercial,
+        'inicio_cliente'                                                        AS tipo,
+        NULL                                                                    AS ssa_id,
+        NULL                                                                    AS tipo_solicitud,
+        c.id                                                                    AS cliente_id,
+        c.nombre                                                                AS cliente_nombre,
+        c.nombre_comercial                                                      AS cliente_nombre_comercial,
         c.sector,
-        c.fecha_inicio_contrato,
-        COUNT(po.id)::int          AS total_puestos,
-        COUNT(po.id) FILTER (WHERE po.titular_employee_id IS NOT NULL)::int AS puestos_con_titular,
-        COUNT(po.id) FILTER (WHERE po.titular_employee_id IS NULL)::int     AS puestos_sin_titular,
-        (c.fecha_inicio_contrato - CURRENT_DATE)::int                       AS dias_para_inicio
+        c.fecha_inicio_contrato                                                 AS fecha_inicio_contrato,
+        COUNT(po.id)::int                                                       AS total_puestos,
+        COUNT(po.id) FILTER (WHERE po.titular_employee_id IS NOT NULL)::int     AS puestos_con_titular,
+        COUNT(po.id) FILTER (WHERE po.titular_employee_id IS NULL)::int         AS puestos_sin_titular,
+        (c.fecha_inicio_contrato - CURRENT_DATE)::int                           AS dias_para_inicio,
+        NULL                                                                    AS descripcion,
+        NULL                                                                    AS hora_inicio,
+        NULL                                                                    AS hora_fin,
+        NULL                                                                    AS estado_ssa
       FROM clients c
       LEFT JOIN puestos_operativos po ON po.cliente_id = c.id AND po.activo = true
       WHERE c.fecha_inicio_contrato >= CURRENT_DATE
         AND c.fecha_inicio_contrato <= CURRENT_DATE + ($1 || ' days')::interval
       GROUP BY c.id, c.nombre, c.nombre_comercial, c.sector, c.fecha_inicio_contrato
-      ORDER BY c.fecha_inicio_contrato
+
+      UNION ALL
+
+      -- SSA autorizados o pendientes (ssa)
+      SELECT
+        'ssa'                                                                   AS tipo,
+        s.id                                                                    AS ssa_id,
+        s.tipo_solicitud,
+        s.cliente_id,
+        c.nombre                                                                AS cliente_nombre,
+        c.nombre_comercial                                                      AS cliente_nombre_comercial,
+        c.sector,
+        s.fecha                                                                 AS fecha_inicio_contrato,
+        s.cantidad_guardias                                                     AS total_puestos,
+        0                                                                       AS puestos_con_titular,
+        s.cantidad_guardias                                                     AS puestos_sin_titular,
+        (s.fecha - CURRENT_DATE)::int                                           AS dias_para_inicio,
+        s.descripcion,
+        s.hora_inicio,
+        s.hora_fin,
+        s.estado_general                                                        AS estado_ssa
+      FROM solicitudes_servicio_adicional s
+      JOIN clients c ON c.id = s.cliente_id
+      WHERE s.fecha >= CURRENT_DATE
+        AND s.fecha <= CURRENT_DATE + ($1 || ' days')::interval
+        AND s.estado_general NOT IN ('cancelada', 'cubierta')
+
+      ORDER BY dias_para_inicio, tipo
     `, [dias]);
     res.json({ arranques: rows, total: rows.length, dias });
   } catch (err) {
@@ -411,15 +447,19 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
       disponible.push({ ...emp });
     }
 
-    // ── Inicios de proyecto: clientes cuya fecha_inicio_contrato = fecha consultada ──
+    // ── Servicios programados para esta fecha: clientes nuevos + SSA ──
     const { rows: iniciosProyecto } = await pool.query(`
+      -- Clientes cuya fecha_inicio_contrato = fecha consultada
       SELECT
+        'inicio_cliente'        AS tipo,
+        NULL                    AS ssa_id,
+        NULL                    AS tipo_solicitud,
         c.id                    AS cliente_id,
         c.nombre                AS cliente_nombre,
         c.nombre_comercial      AS cliente_nombre_comercial,
         c.sector,
         c.notas,
-        c.fecha_inicio_contrato,
+        c.fecha_inicio_contrato AS fecha_inicio_contrato,
         COUNT(po.id)::int       AS total_puestos,
         COUNT(po.id) FILTER (WHERE po.titular_employee_id IS NOT NULL)::int AS puestos_con_titular,
         COUNT(po.id) FILTER (WHERE po.titular_employee_id IS NULL)::int     AS puestos_sin_titular,
@@ -429,14 +469,45 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
           'turno_nombre', t.nombre,
           'titular_nombre', ea.nombre_completo,
           'activo', po.activo
-        ) ORDER BY po.nombre) FILTER (WHERE po.id IS NOT NULL) AS puestos
+        ) ORDER BY po.nombre) FILTER (WHERE po.id IS NOT NULL) AS puestos,
+        NULL                    AS descripcion,
+        NULL                    AS hora_inicio,
+        NULL                    AS hora_fin,
+        NULL                    AS estado_ssa
       FROM clients c
       LEFT JOIN puestos_operativos po ON po.cliente_id = c.id AND po.activo = true
       LEFT JOIN turnos t ON t.id = po.tipo_turno_id
       LEFT JOIN employees ea ON ea.id = po.titular_employee_id
       WHERE c.fecha_inicio_contrato = $1::date
       GROUP BY c.id, c.nombre, c.nombre_comercial, c.sector, c.notas, c.fecha_inicio_contrato
-      ORDER BY c.nombre
+
+      UNION ALL
+
+      -- SSA pendientes/pendientes-operaciones para esta fecha
+      SELECT
+        'ssa'                   AS tipo,
+        s.id                    AS ssa_id,
+        s.tipo_solicitud,
+        s.cliente_id,
+        c.nombre                AS cliente_nombre,
+        c.nombre_comercial      AS cliente_nombre_comercial,
+        c.sector,
+        NULL                    AS notas,
+        s.fecha                 AS fecha_inicio_contrato,
+        s.cantidad_guardias     AS total_puestos,
+        0                       AS puestos_con_titular,
+        s.cantidad_guardias     AS puestos_sin_titular,
+        NULL::json              AS puestos,
+        s.descripcion,
+        s.hora_inicio,
+        s.hora_fin,
+        s.estado_general        AS estado_ssa
+      FROM solicitudes_servicio_adicional s
+      JOIN clients c ON c.id = s.cliente_id
+      WHERE s.fecha = $1::date
+        AND s.estado_general NOT IN ('cancelada', 'cubierta')
+
+      ORDER BY tipo, cliente_nombre
     `, [fecha]);
 
     res.json({

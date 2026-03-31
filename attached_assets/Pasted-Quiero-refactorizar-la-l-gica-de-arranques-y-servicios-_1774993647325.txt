@@ -1,0 +1,135 @@
+Quiero refactorizar la lógica de arranques y servicios programados en ISPSA para evitar tener dos motores separados entre:
+	•	clientes/proyectos nuevos
+	•	SSA autorizados
+
+Idea principal
+
+Quiero que los clientes nuevos también vivan dentro de una lógica común de servicios programados, para que hereden las mismas validaciones, planeación futura y activación operativa que hoy queremos para los SSA autorizados.
+
+No quiero duplicar flujos.
+
+⸻
+
+Objetivo
+
+Unificar la lógica operativa de:
+	•	inicio de cliente / inicio de proyecto
+	•	SSA autorizado
+	•	y en el futuro posiblemente nuevos puestos o ampliaciones
+
+bajo una misma estructura o motor común.
+
+⸻
+
+1. Crear o refactorizar a una entidad común
+
+Quiero una lógica tipo:
+	•	servicios_programados
+o nombre similar
+
+Que pueda manejar distintos tipos como:
+	•	inicio_cliente
+	•	ssa
+	•	nuevo_puesto
+	•	ampliacion_servicio
+	•	cobertura_especial
+
+⸻
+
+2. Los clientes nuevos deben entrar en esta lógica
+
+Cuando Comercial cierre un cliente/proyecto nuevo con fecha de inicio futura:
+	•	además de crear el cliente y su estructura
+	•	debe generarse un servicio_programado de tipo inicio_cliente
+
+Así hereda:
+	•	validaciones
+	•	visibilidad en próximos arranques
+	•	planeación futura
+	•	activación al llegar la fecha
+
+⸻
+
+3. Los SSA autorizados deben usar la misma infraestructura
+
+Cuando un SSA quede autorizado por Comercial:
+	•	debe generar o convertirse en un servicio_programado de tipo ssa
+
+No quiero un pipeline operativo completamente aparte si la lógica final es la misma:
+	•	fecha futura
+	•	cobertura
+	•	preparación
+	•	activación
+
+⸻
+
+4. Validaciones comunes
+
+Quiero que tanto clientes nuevos como SSA autorizados compartan validaciones como:
+	•	fecha de inicio obligatoria
+	•	cliente ligado
+	•	puestos o cobertura definida
+	•	supervisor si aplica
+	•	turnos si aplica
+	•	estado comercial autorizado
+	•	visibilidad para operaciones
+
+⸻
+
+5. Integración con Próximos Arranques
+
+Quiero que el banner/lista de próximos arranques salga de esta lógica común.
+
+Pero debe diferenciar visualmente los tipos:
+	•	inicio de cliente
+	•	SSA autorizado
+	•	otros tipos futuros
+
+⸻
+
+6. Integración con Pizarrón Futuro
+
+Quiero que cualquier servicio_programado:
+	•	aparezca en la fecha correcta
+	•	pueda planificarse desde el pizarrón futuro
+	•	permita asignaciones futuras
+	•	se active al llegar la fecha
+
+⸻
+
+7. Activación al llegar la fecha
+
+Cuando llegue la fecha:
+	•	el servicio_programado debe integrarse al pizarrón real
+	•	el cliente o SSA debe aparecer como operativo
+	•	si ya tiene cobertura programada, debe reflejarse
+	•	si no la tiene, debe mostrarse como pendiente o descubierto
+
+⸻
+
+8. No romper
+
+No romper:
+	•	comercial
+	•	clientes
+	•	SSA
+	•	RRHH
+	•	pizarrón operativo
+	•	próximos arranques
+	•	pre-planilla
+	•	planilla
+	•	historial y trazabilidad
+
+⸻
+
+9. Documentación
+
+Explica claramente:
+	•	por qué se unificó la lógica
+	•	qué tipos de servicios programados existen
+	•	cómo un cliente nuevo entra en esta capa
+	•	cómo un SSA autorizado entra en esta capa
+	•	cómo esto evita duplicidad y mejora la planeación futura
+
+Muy importante:
+quiero que ISPSA tenga una sola lógica fuerte para arranques y servicios programados, en lugar de tener clientes nuevos y SSA autorizados viviendo en motores operativos distintos.

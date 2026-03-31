@@ -2283,5 +2283,55 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: INC-01 — error (no bloqueante)");
   }
 
+  // ── SP-01: Vista unificada servicios_programados_v ────────────────────────
+  // Une clientes nuevos (inicio_cliente) y SSA pendientes/activos (ssa)
+  // para dar una visión común de lo que está programado a futuro.
+  try {
+    await pool.query(`
+      CREATE OR REPLACE VIEW servicios_programados_v AS
+      -- Clientes nuevos con fecha de inicio futura o hoy
+      SELECT
+        'inicio_cliente'                  AS tipo,
+        NULL                              AS ssa_id,
+        NULL                              AS tipo_solicitud,
+        c.id                              AS cliente_id,
+        c.nombre                          AS cliente_nombre,
+        c.nombre_comercial                AS cliente_nombre_comercial,
+        c.sector,
+        c.fecha_inicio_contrato           AS fecha_servicio,
+        NULL                              AS descripcion,
+        NULL                              AS hora_inicio,
+        NULL                              AS hora_fin,
+        NULL                              AS estado_ssa,
+        c.created_at                      AS created_at
+      FROM clients c
+      WHERE c.fecha_inicio_contrato IS NOT NULL
+
+      UNION ALL
+
+      -- SSA no canceladas y no cubiertas
+      SELECT
+        'ssa'                             AS tipo,
+        s.id                              AS ssa_id,
+        s.tipo_solicitud,
+        s.cliente_id,
+        c.nombre                          AS cliente_nombre,
+        c.nombre_comercial                AS cliente_nombre_comercial,
+        c.sector,
+        s.fecha                           AS fecha_servicio,
+        s.descripcion,
+        s.hora_inicio,
+        s.hora_fin,
+        s.estado_general                  AS estado_ssa,
+        s.created_at
+      FROM solicitudes_servicio_adicional s
+      JOIN clients c ON c.id = s.cliente_id
+      WHERE s.estado_general NOT IN ('cancelada', 'cubierta')
+    `);
+    logger.info("Auto-migrate: SP-01 vista servicios_programados_v verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SP-01 servicios_programados_v — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

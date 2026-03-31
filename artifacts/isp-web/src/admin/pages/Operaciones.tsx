@@ -140,16 +140,24 @@ interface AgentePoolFuturo {
 }
 
 interface InicioProyecto {
+  tipo: "inicio_cliente" | "ssa";
+  ssa_id: string | null;
+  tipo_solicitud: string | null;
   cliente_id: number;
   cliente_nombre: string;
   cliente_nombre_comercial: string | null;
   sector: string | null;
   notas: string | null;
   fecha_inicio_contrato: string;
+  fecha_inicio?: string;
   total_puestos: number;
   puestos_con_titular: number;
   puestos_sin_titular: number;
   dias_para_inicio?: number;
+  descripcion: string | null;
+  hora_inicio: string | null;
+  hora_fin: string | null;
+  estado_ssa: string | null;
   puestos: Array<{
     id: number;
     nombre: string;
@@ -1755,38 +1763,60 @@ function PoolFuturoPanel({
         ))}
       </div>
 
-      {/* ── Inicios de Proyecto ── */}
+      {/* ── Servicios Programados (inicios de proyecto + SSA) ── */}
       {(data.iniciosProyecto ?? []).length > 0 && (
         <div className="border-t border-amber-500/20 bg-amber-500/3">
           <div className="flex items-center gap-2 px-4 py-2 border-b border-amber-500/15">
             <Zap className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-xs font-bold text-amber-300/80 uppercase tracking-widest">Arranque programado</span>
+            <span className="text-xs font-bold text-amber-300/80 uppercase tracking-widest">Servicios programados</span>
             <span className="ml-1 px-2 py-0.5 rounded-full text-[10px] bg-amber-500/15 border border-amber-500/25 text-amber-300">
-              {data.iniciosProyecto.length} {data.iniciosProyecto.length === 1 ? "proyecto" : "proyectos"}
+              {data.iniciosProyecto.length} {data.iniciosProyecto.length === 1 ? "servicio" : "servicios"}
             </span>
           </div>
           <div className="p-3 flex flex-col gap-2">
-            {data.iniciosProyecto.map((ip) => (
+            {data.iniciosProyecto.map((ip) => {
+              const esSSA    = ip.tipo === "ssa";
+              const itemKey  = esSSA ? `ssa_${ip.ssa_id}` : `cli_${ip.cliente_id}`;
+              const cardBg   = esSSA
+                ? "bg-blue-500/5 border-blue-500/20"
+                : "bg-amber-500/5 border-amber-500/20";
+              const iconBg   = esSSA
+                ? "bg-blue-500/15 border-blue-500/25"
+                : "bg-amber-500/15 border-amber-500/25";
+              const nameCl   = esSSA ? "text-blue-200" : "text-amber-200";
+              const sectorCl = esSSA ? "text-blue-300/50" : "text-amber-300/50";
+              const badgeCl  = esSSA
+                ? "bg-blue-400/15 border-blue-400/30 text-blue-300"
+                : "bg-amber-400/15 border-amber-400/30 text-amber-300";
+              const badgeLabel = esSSA
+                ? (TIPO_SSA_LABELS[ip.tipo_solicitud ?? ""] ?? "SSA")
+                : "Inicio";
+              return (
               <div
-                key={ip.cliente_id}
-                className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3 flex flex-col gap-2"
+                key={itemKey}
+                className={`border rounded-xl p-3 flex flex-col gap-2 ${cardBg}`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-7 h-7 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center shrink-0">
-                      <Building2 className="w-3.5 h-3.5 text-amber-400" />
+                    <div className={`w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 ${iconBg}`}>
+                      {esSSA
+                        ? <Shield className="w-3.5 h-3.5 text-blue-400" />
+                        : <Building2 className="w-3.5 h-3.5 text-amber-400" />
+                      }
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-semibold text-amber-200 truncate">
+                      <p className={`text-xs font-semibold truncate ${nameCl}`}>
                         {ip.cliente_nombre_comercial || ip.cliente_nombre}
                       </p>
-                      {ip.sector && (
-                        <p className="text-[10px] text-amber-300/50 capitalize">{ip.sector}</p>
-                      )}
+                      {esSSA && ip.hora_inicio ? (
+                        <p className={`text-[10px] capitalize ${sectorCl}`}>{ip.hora_inicio}–{ip.hora_fin ?? ""}</p>
+                      ) : ip.sector ? (
+                        <p className={`text-[10px] capitalize ${sectorCl}`}>{ip.sector}</p>
+                      ) : null}
                     </div>
                   </div>
-                  <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-400/15 border border-amber-400/30 text-amber-300 uppercase tracking-wider">
-                    Inicio
+                  <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full border uppercase tracking-wider ${badgeCl}`}>
+                    {badgeLabel}
                   </span>
                 </div>
 
@@ -1824,7 +1854,8 @@ function PoolFuturoPanel({
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -4512,44 +4543,61 @@ export default function Operaciones() {
                 {proximosArranques!.arranques.map((ip) => {
                   const diasRestantes = ip.dias_para_inicio ?? 99;
                   const fechaInicio   = ip.fecha_inicio_contrato?.slice(0, 10) ?? "";
+                  const esSSA         = ip.tipo === "ssa";
+                  const itemKey       = esSSA ? `ssa_${ip.ssa_id}` : `cli_${ip.cliente_id}`;
                   const colorChip     = diasRestantes <= 7
                     ? "bg-red-500/15 text-red-300 border border-red-500/20"
                     : diasRestantes <= 14
                     ? "bg-amber-500/15 text-amber-300 border border-amber-500/20"
                     : "bg-white/5 text-white/40 border border-white/10";
+                  const iconBg        = esSSA
+                    ? "bg-blue-500/15 border-blue-500/25 group-hover:border-blue-400/50 group-hover:bg-blue-500/25"
+                    : "bg-amber-500/15 border-amber-500/25 group-hover:border-amber-400/50 group-hover:bg-amber-500/25";
+                  const hoverBg       = esSSA ? "hover:bg-blue-500/10" : "hover:bg-amber-500/10";
+                  const nombreColor   = esSSA ? "text-blue-200 group-hover:text-blue-100" : "text-amber-200 group-hover:text-amber-100";
+                  const puestosLabel  = esSSA ? "guardias" : "puestos";
                   return (
                     <button
-                      key={ip.cliente_id}
-                      onClick={() => irAFecha(fechaInicio, ip.cliente_id)}
-                      title={`Ver pizarrón del ${fechaInicio}`}
-                      className="group flex items-center gap-2 text-[11px] w-full text-left rounded-lg px-1.5 py-1 -mx-1.5 hover:bg-amber-500/10 transition-colors cursor-pointer"
+                      key={itemKey}
+                      onClick={() => irAFecha(fechaInicio, esSSA ? undefined : ip.cliente_id)}
+                      title={esSSA ? `SSA — ${TIPO_SSA_LABELS[ip.tipo_solicitud ?? ""] ?? ip.tipo_solicitud} — ${fechaInicio}` : `Arranque nuevo — ${fechaInicio}`}
+                      className={`group flex items-center gap-2 text-[11px] w-full text-left rounded-lg px-1.5 py-1 -mx-1.5 ${hoverBg} transition-colors cursor-pointer`}
                     >
-                      <div className="w-6 h-6 rounded-md bg-amber-500/15 border border-amber-500/25 group-hover:border-amber-400/50 group-hover:bg-amber-500/25 flex items-center justify-center shrink-0 transition-colors">
-                        <Building2 className="w-3 h-3 text-amber-400" />
+                      <div className={`w-6 h-6 rounded-md border flex items-center justify-center shrink-0 transition-colors ${iconBg}`}>
+                        {esSSA
+                          ? <Shield className="w-3 h-3 text-blue-400" />
+                          : <Building2 className="w-3 h-3 text-amber-400" />
+                        }
                       </div>
                       <div className="min-w-0 flex-1">
-                        <span className="text-amber-200 font-medium truncate block group-hover:text-amber-100 transition-colors">
+                        <span className={`font-medium truncate block transition-colors ${nombreColor}`}>
                           {ip.cliente_nombre_comercial || ip.cliente_nombre}
                         </span>
-                        {fechaInicio && (
-                          <span className="text-white/25 text-[9px] group-hover:text-white/40 transition-colors">
-                            {fechaInicio.split("-").reverse().join("/")}
-                          </span>
-                        )}
+                        <span className="text-white/25 text-[9px] group-hover:text-white/40 transition-colors">
+                          {esSSA
+                            ? (TIPO_SSA_LABELS[ip.tipo_solicitud ?? ""] ?? ip.tipo_solicitud ?? "SSA")
+                            : (fechaInicio ? fechaInicio.split("-").reverse().join("/") : "")
+                          }
+                          {esSSA && ip.hora_inicio ? ` · ${ip.hora_inicio}–${ip.hora_fin ?? ""}` : ""}
+                        </span>
                       </div>
                       <div className="shrink-0 flex items-center gap-1.5">
-                        <span className="text-white/30 text-[10px]">{ip.total_puestos} puestos</span>
+                        <span className="text-white/30 text-[10px]">{ip.total_puestos} {puestosLabel}</span>
                         <span className={`font-semibold px-1.5 py-0.5 rounded text-[9px] ${colorChip}`}>
                           {diasRestantes === 0 ? "Hoy" : `${diasRestantes}d`}
                         </span>
-                        <ExternalLink className="w-3 h-3 text-amber-400/0 group-hover:text-amber-400/60 transition-colors" />
+                        <ExternalLink className={`w-3 h-3 ${esSSA ? "text-blue-400/0 group-hover:text-blue-400/60" : "text-amber-400/0 group-hover:text-amber-400/60"} transition-colors`} />
                       </div>
                     </button>
                   );
                 })}
               </div>
               <div className="px-4 pb-3 text-[9px] text-white/20 flex items-center gap-1">
-                <span>Clic en un arranque para ir al pizarrón de ese día</span>
+                <Building2 className="w-2.5 h-2.5 text-amber-400/50" />
+                <span>Arranque nuevo</span>
+                <span className="mx-1">·</span>
+                <Shield className="w-2.5 h-2.5 text-blue-400/50" />
+                <span>Servicio adicional (SSA)</span>
               </div>
             </div>
           )}
