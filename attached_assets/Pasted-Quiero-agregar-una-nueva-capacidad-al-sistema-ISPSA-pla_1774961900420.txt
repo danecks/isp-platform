@@ -1,0 +1,235 @@
+Quiero agregar una nueva capacidad al sistema ISPSA: planificación futura inteligente desde el Pizarrón Operativo, incluyendo no solo ausencias aprobadas y coberturas programadas, sino también la disponibilidad futura calculada según el turno real de cada colaborador.
+
+No quiero romper nada existente.
+
+## Contexto real
+Muchas veces un agente avisa con anticipación:
+- necesito permiso para el día X
+- vacaciones en fecha X
+- ausencia programada
+- incapacidad futura
+- suspensión futura
+
+RRHH puede autorizar esa ausencia antes de que llegue la fecha.
+
+Entonces Operaciones debería poder:
+- ir a una fecha futura en el Pizarrón Operativo
+- ver quién va a faltar
+- ver quién va a trabajar
+- ver quién va a estar descansando
+- saber quién realmente estaría disponible para cubrir ese día
+- planificar desde antes quién cubrirá ese puesto
+
+Muy importante:
+quiero que las tarjetas o puestos con cambios futuros se vean con un color o estilo específico, para que sea evidente que tienen una modificación programada.
+
+---
+
+## 1. Pizarrón Operativo por fecha futura
+Quiero que el Pizarrón permita navegar o consultar no solo el día actual, sino también fechas futuras.
+
+En una fecha futura, el sistema debe poder mostrar:
+- puestos esperados
+- titulares esperados
+- ausencias futuras aprobadas
+- relevos ya programados
+- cobertura futura planificada
+- disponibilidad futura del personal según sus turnos
+
+---
+
+## 2. Ausencias futuras aprobadas
+Si RRHH autoriza algo futuro, por ejemplo:
+- permiso
+- vacaciones
+- incapacidad
+- suspensión programada
+
+Entonces el Pizarrón de esa fecha debe reflejarlo automáticamente.
+
+Ejemplo:
+si Daniel tiene permiso aprobado para el 18 de abril, en el Pizarrón del 18 de abril debe aparecer que ese puesto/titular tendrá ausencia programada.
+
+---
+
+## 3. Planificación futura de cobertura
+Desde el Pizarrón de una fecha futura, Operaciones debe poder asignar desde antes quién cubrirá ese puesto.
+
+Ejemplo:
+- Daniel faltará el 18
+- Operaciones entra al 18
+- asigna desde ya a Pedro para cubrir ese turno
+
+Esto no debe romper el presente, pero sí dejar la cobertura futura programada.
+
+---
+
+## 4. Disponibilidad futura calculada según turno
+Esto es clave.
+
+Quiero que el sistema pueda calcular automáticamente, para una fecha futura, quién:
+- trabajará ese día
+- descansará ese día
+- estará libre para cobertura
+- estará ocupado en su propio puesto
+- estará suspendido, incapacitado o ausente
+
+### Ejemplo real
+Si en la ficha del colaborador se sabe que:
+- Daniel empezó a trabajar el día 30
+- tiene un turno de 24 horas con descanso alterno
+
+Entonces el sistema debe poder calcular algo como:
+- 30 trabaja
+- 31 descansa
+- 1 trabaja
+- 2 descansa
+
+Y así sucesivamente.
+
+Lo mismo debe aplicar según el patrón real de otros turnos:
+- 12h
+- 24h
+- cualquier otro esquema soportado
+
+---
+
+## 5. Vista futura de disponibles
+Cuando Operaciones vea una fecha futura, no quiero solo ver “pool actual”.
+
+Quiero ver algo como:
+- quién estará en descanso ese día
+- quién estará libre ese día
+- quién podría hacer cobertura extraordinaria
+- quién ya tendrá asignación
+- quién no es elegible
+
+Esto debe servir para planificar relevos antes de que llegue la fecha.
+
+---
+
+## 6. Elegibilidad futura
+La disponibilidad futura no debe ser solo matemática.
+También debe considerar:
+- estado laboral
+- suspensión
+- incapacidad
+- SSA activos
+- elegible_pool
+- cualquier regla operativa actual
+
+No quiero que alguien aparezca como disponible futuro si en realidad no es elegible.
+
+---
+
+## 7. Estilo visual especial para cambios futuros
+Quiero que cualquier puesto o tarjeta que tenga una modificación futura programada se vea de forma distinta.
+
+Ejemplos:
+- color tenue especial
+- borde distinto
+- badge “Programado”
+- badge “Cambio futuro”
+- icono de calendario
+
+Esto aplica especialmente cuando:
+- hay ausencia aprobada futura
+- hay relevo futuro asignado
+- hay cambio de cobertura ya planificado
+
+---
+
+## 8. Visibilidad desde el presente
+Incluso cuando el usuario esté viendo el Pizarrón del día actual, quiero que el sistema pueda indicar si un puesto tiene cambios futuros programados.
+
+Ejemplo:
+- badge pequeño
+- aviso en hover
+- icono de calendario
+- texto tipo “modificación futura”
+
+La idea es que el jefe de servicio sepa que ese puesto ya tiene algo agendado en días posteriores.
+
+---
+
+## 9. Qué debe poder ver Operaciones
+En la vista futura del Pizarrón, Operaciones debe poder entender:
+- quién va a faltar
+- por qué va a faltar (si aplica internamente)
+- quién va a trabajar normalmente
+- quién va a descansar
+- quién estaría libre para cubrir
+- quién ya fue asignado como cobertura futura
+- qué puestos siguen descubiertos a futuro
+
+---
+
+## 10. Impacto al llegar la fecha real
+Cuando llegue el día planificado:
+- la cobertura futura programada debe aparecer de forma natural en el Pizarrón del día
+- debe mantener su color/estado especial o algún indicador de que fue una programación previa
+- y luego permitir ajustes si algo cambió a último momento
+
+Porque en la realidad puede variar.
+
+---
+
+## 11. Estados o estructura recomendada
+Si hace falta, crear una estructura para guardar:
+- ausencias futuras aprobadas
+- coberturas futuras programadas
+- fecha objetivo
+- puesto
+- titular afectado
+- colaborador de relevo programado
+- motivo
+- estado
+
+Y además usar la lógica de turnos ya existente o en construcción para calcular:
+- disponibilidad futura
+- descanso futuro
+- cobertura esperada
+
+---
+
+## 12. UX
+Quiero que esto sea claro para el jefe de servicio:
+
+- ver hoy
+- ver futuro
+- identificar cambios programados
+- ver quién trabaja y quién descansa en una fecha futura
+- planificar desde antes
+- detectar puestos que todavía no tienen cobertura futura
+
+No quiero algo confuso.
+
+---
+
+## 13. No romper
+No romper:
+- Pizarrón Operativo actual
+- cobertura diaria
+- segmentos
+- historial de titularidad
+- RRHH
+- pre-planilla
+- planilla
+- pool
+- SSA
+- turnos
+- elegible_pool
+
+---
+
+## 14. Documentación
+Explica claramente:
+- cómo se calcula la disponibilidad futura según el turno
+- cómo se ve una ausencia futura aprobada en el Pizarrón
+- cómo se programa una cobertura futura
+- cómo se ve una tarjeta con modificación futura
+- cómo se refleja en el día presente y en la fecha futura
+- qué pasa cuando llega el día real
+
+Muy importante:
+quiero que el Pizarrón Operativo sirva también como herramienta de planeación futura, incluyendo el cálculo automático de quién estará trabajando y quién estará descansando según su turno, para que Operaciones pueda planificar con anticipación de forma realista.

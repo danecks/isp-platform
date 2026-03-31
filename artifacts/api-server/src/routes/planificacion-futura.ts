@@ -206,3 +206,177 @@ planificacionFuturaRouter.delete("/operaciones/planificacion-futura/:id", async 
     res.status(500).json({ error: "Error al eliminar plan" });
   }
 });
+
+// ─── GET /api/operaciones/pool-futuro?fecha=YYYY-MM-DD ────────────────────────
+// Calcula disponibilidad futura por turno + ausencias planificadas + eventos RRHH
+planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
+  const { fecha } = req.query as { fecha?: string };
+  if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+    return res.status(400).json({ error: "Parámetro 'fecha' requerido en formato YYYY-MM-DD" });
+  }
+
+  try {
+    // 1. Obtener todos los empleados activos con su asignación y turno
+    const { rows: empleados } = await pool.query(`
+      SELECT
+        e.id,
+        e.nombre_completo,
+        e.elegible_pool,
+        e.estado_laboral,
+        -- Asignación operativa activa
+        eoa.puesto_id,
+        po.nombre        AS puesto_nombre,
+        po.cliente_nombre,
+        po.cliente_id,
+        -- Turno del puesto
+        t.id             AS turno_id,
+        t.nombre         AS turno_nombre,
+        t.horas_trabajo,
+        t.horas_descanso,
+        po.fecha_inicio_ciclo,
+        -- Ausencia en planificacion_futura como titular ausente
+        pf.id            AS plan_id,
+        pf.tipo_ausencia AS plan_tipo_ausencia,
+        pf.relevo_id     AS plan_relevo_id,
+        pf.estado        AS plan_estado,
+        pf.puesto_id     AS plan_puesto_id
+      FROM employees e
+      LEFT JOIN employee_operational_assignments eoa
+             ON eoa.employee_id = e.id AND eoa.activa = TRUE
+      LEFT JOIN puestos_operativos po
+             ON po.id = eoa.puesto_id AND po.activo = TRUE
+      LEFT JOIN turnos t
+             ON t.id = po.tipo_turno_id
+      LEFT JOIN planificacion_futura pf
+             ON pf.titular_ausente_id = e.id
+            AND pf.fecha = $1
+            AND pf.estado != 'cancelado'
+      WHERE e.estado_laboral IN ('activo', 'suspendido', 'incapacitado')
+      ORDER BY e.nombre_completo
+    `, [fecha]);
+
+    // 2. Eventos RRHH aprobados/pendientes para esa fecha (ausencias de RRHH)
+    const { rows: eventosRrhh } = await pool.query(`
+      SELECT
+        employee_id,
+        employee_nombre,
+        tipo_evento,
+        estado
+      FROM eventos_rrhh
+      WHERE DATE(fecha) = $1
+        AND estado IN ('aprobado', 'pendiente')
+        AND tipo_evento IN ('permiso', 'vacaciones', 'incapacidad', 'suspension', 'falta', 'permiso_sin_goce')
+    `, [fecha]);
+
+    const eventosMap = new Map<number, { tipo: string; estado: string }>();
+    for (const ev of eventosRrhh) {
+      if (!eventosMap.has(ev.employee_id)) {
+        eventosMap.set(ev.employee_id, { tipo: ev.tipo_evento, estado: ev.estado });
+      }
+    }
+
+    // 3. Quiénes son relevos programados para esa fecha (ya asignados como cobertura)
+    const { rows: relevos } = await pool.query(`
+      SELECT DISTINCT relevo_id
+      FROM planificacion_futura
+      WHERE fecha = $1 AND estado != 'cancelado' AND relevo_id IS NOT NULL
+    `, [fecha]);
+    const relevosSet = new Set(relevos.map((r: any) => r.relevo_id as number));
+
+    // 4. Función de cálculo de turno para una fecha
+    function calcularEstadoTurno(
+      horasTrabajo: number | null,
+      horasDescanso: number | null,
+      fechaInicioCiclo: string | null,
+    ): "trabajando" | "descansando" | "sin_turno" {
+      if (!horasTrabajo || !fechaInicioCiclo) return "sin_turno";
+      const ciclo = horasTrabajo + (horasDescanso ?? 0);
+      if (ciclo <= 24) return "trabajando"; // turno intra-día: trabaja todos los días
+
+      // Turno de ciclo largo (ej: 24h trabajo + 24h descanso = ciclo 48h)
+      const diasTrabajo   = Math.ceil(horasTrabajo / 24);
+      const diasDescanso  = Math.ceil((horasDescanso ?? 0) / 24);
+      const cicloDias     = diasTrabajo + diasDescanso;
+
+      const inicio   = new Date(fechaInicioCiclo + "T00:00:00Z");
+      const objetivo = new Date(fecha + "T00:00:00Z");
+      const diff     = Math.round((objetivo.getTime() - inicio.getTime()) / 86_400_000);
+      const posicion = ((diff % cicloDias) + cicloDias) % cicloDias;
+
+      return posicion < diasTrabajo ? "trabajando" : "descansando";
+    }
+
+    // 5. Categorizar cada empleado
+    const trabajando:         typeof empleados = [];
+    const descansando:        typeof empleados = [];
+    const disponible:         typeof empleados = [];
+    const relevoProgramado:   typeof empleados = [];
+    const ausenteProgramado:  typeof empleados = [];
+    const noElegible:         typeof empleados = [];
+
+    for (const emp of empleados) {
+      // No elegibles / suspendidos sin turno
+      if (!emp.elegible_pool || emp.estado_laboral === "suspendido" || emp.estado_laboral === "incapacitado") {
+        noElegible.push({ ...emp, razon_no_elegible: emp.estado_laboral !== "activo" ? emp.estado_laboral : "no_elegible_pool" });
+        continue;
+      }
+
+      // ¿Tiene evento RRHH aprobado ese día?
+      const eventoRrhh = eventosMap.get(emp.id);
+      if (eventoRrhh) {
+        ausenteProgramado.push({ ...emp, fuente_ausencia: "rrhh", tipo_ausencia_rrhh: eventoRrhh.tipo });
+        continue;
+      }
+
+      // ¿Tiene planificacion_futura como titular ausente?
+      if (emp.plan_id && emp.plan_estado !== "cancelado") {
+        ausenteProgramado.push({ ...emp, fuente_ausencia: "planificacion_futura" });
+        continue;
+      }
+
+      // ¿Es relevo programado en algún puesto?
+      if (relevosSet.has(emp.id)) {
+        relevoProgramado.push({ ...emp });
+        continue;
+      }
+
+      // ¿Tiene puesto asignado? → calcular turno
+      if (emp.puesto_id) {
+        const estado = calcularEstadoTurno(emp.horas_trabajo, emp.horas_descanso, emp.fecha_inicio_ciclo);
+        if (estado === "trabajando") {
+          trabajando.push({ ...emp, estado_turno: "trabajando" });
+        } else if (estado === "descansando") {
+          descansando.push({ ...emp, estado_turno: "descansando" });
+        } else {
+          // Puesto asignado pero sin turno definido → asumir trabajando
+          trabajando.push({ ...emp, estado_turno: "sin_turno_asume_trabajo" });
+        }
+        continue;
+      }
+
+      // Sin puesto asignado → disponible en el pool
+      disponible.push({ ...emp });
+    }
+
+    res.json({
+      fecha,
+      trabajando,
+      descansando,
+      disponible,
+      relevoProgramado,
+      ausenteProgramado,
+      noElegible,
+      totales: {
+        trabajando:        trabajando.length,
+        descansando:       descansando.length,
+        disponible:        disponible.length,
+        relevoProgramado:  relevoProgramado.length,
+        ausenteProgramado: ausenteProgramado.length,
+        noElegible:        noElegible.length,
+      },
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /operaciones/pool-futuro error");
+    res.status(500).json({ error: "Error al calcular disponibilidad futura" });
+  }
+});

@@ -22,7 +22,7 @@ import {
   History, Trash2, Shield, Activity, Zap, ChevronDown,
   ChevronRight, ChevronLeft, Info, Building2, Circle, GripVertical,
   UserMinus, UserPlus, XCircle, RotateCcw, FileText,
-  Lock, Unlock, Calendar, AlertCircle, CheckSquare,
+  Lock, Unlock, Calendar, CalendarDays, AlertCircle, CheckSquare,
   Layers, Timer, Moon,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -109,6 +109,43 @@ interface PlanFuturo {
   notas: string | null;
   estado: string;
   fuente: string;
+}
+
+interface AgentePoolFuturo {
+  id: number;
+  nombre_completo: string;
+  elegible_pool: boolean;
+  estado_laboral: string;
+  puesto_id: number | null;
+  puesto_nombre: string | null;
+  cliente_nombre: string | null;
+  turno_nombre: string | null;
+  horas_trabajo: number | null;
+  horas_descanso: number | null;
+  fecha_inicio_ciclo: string | null;
+  estado_turno?: string;
+  fuente_ausencia?: string;
+  tipo_ausencia_rrhh?: string;
+  razon_no_elegible?: string;
+  plan_tipo_ausencia?: string | null;
+}
+
+interface PoolFuturoData {
+  fecha: string;
+  trabajando: AgentePoolFuturo[];
+  descansando: AgentePoolFuturo[];
+  disponible: AgentePoolFuturo[];
+  relevoProgramado: AgentePoolFuturo[];
+  ausenteProgramado: AgentePoolFuturo[];
+  noElegible: AgentePoolFuturo[];
+  totales: {
+    trabajando: number;
+    descansando: number;
+    disponible: number;
+    relevoProgramado: number;
+    ausenteProgramado: number;
+    noElegible: number;
+  };
 }
 
 interface Movimiento {
@@ -1286,6 +1323,157 @@ function TarjetaPuestoFuturo({
         <p className="text-[9px] text-indigo-400/40 group-hover:text-indigo-400 transition-colors">
           {plan ? "Editar planificación →" : "+ Planificar ausencia o cobertura"}
         </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Panel: Disponibilidad Futura (reemplaza el pool en vista futura) ─────────
+
+const LABELS_FUENTE_AUSENCIA: Record<string, string> = {
+  rrhh:                "RRHH",
+  planificacion_futura: "Planificado",
+};
+
+const LABELS_AUSENCIA_RRHH: Record<string, string> = {
+  permiso:          "Permiso",
+  vacaciones:       "Vacaciones",
+  incapacidad:      "Incapacidad",
+  suspension:       "Suspensión",
+  falta:            "Falta",
+  permiso_sin_goce: "Permiso s/goce",
+};
+
+function PoolFuturoPanel({
+  data,
+  onAbrirPlan,
+}: {
+  data: PoolFuturoData;
+  onAbrirPlan?: () => void;
+}) {
+  const [tabActivo, setTabActivo] = useState<"descansando" | "disponible" | "ausenteProgramado" | "trabajando">("descansando");
+
+  const tabs = [
+    {
+      key: "descansando" as const,
+      label: "De descanso",
+      count: data.totales.descansando,
+      color: "text-blue-400",
+      activeBg: "border-blue-400 text-blue-300 bg-blue-500/5",
+      desc: "Trabajarán otro día según su turno",
+    },
+    {
+      key: "disponible" as const,
+      label: "Disponibles",
+      count: data.totales.disponible,
+      color: "text-green-400",
+      activeBg: "border-green-400 text-green-300 bg-green-500/5",
+      desc: "Sin puesto asignado, elegibles para cobertura",
+    },
+    {
+      key: "ausenteProgramado" as const,
+      label: "Ausentes",
+      count: data.totales.ausenteProgramado,
+      color: "text-red-400",
+      activeBg: "border-red-400 text-red-300 bg-red-500/5",
+      desc: "Ausencias aprobadas o planificadas",
+    },
+    {
+      key: "trabajando" as const,
+      label: "En turno",
+      count: data.totales.trabajando,
+      color: "text-teal-400",
+      activeBg: "border-teal-400 text-teal-300 bg-teal-500/5",
+      desc: "Estarán cubriendo sus puestos ese día",
+    },
+  ];
+
+  const agentesActivos = data[tabActivo] ?? [];
+
+  return (
+    <div className="shrink-0 bg-[#060f1a] border border-indigo-500/15 rounded-2xl overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/8">
+        <CalendarDays className="w-3.5 h-3.5 text-indigo-400" />
+        <span className="text-xs font-bold text-indigo-300/80 uppercase tracking-widest">Disponibilidad futura</span>
+        <span className="text-[10px] text-white/25 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full ml-1">
+          {data.totales.descansando + data.totales.disponible} posibles relevos
+        </span>
+        <div className="flex-1" />
+        {data.totales.relevoProgramado > 0 && (
+          <div className="flex items-center gap-1 text-[10px] text-indigo-300/60">
+            <CheckCircle2 className="w-3 h-3 text-indigo-400" />
+            {data.totales.relevoProgramado} relevos ya asignados
+          </div>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div className="flex border-b border-white/6 overflow-x-auto">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTabActivo(t.key)}
+            className={`flex items-center gap-1.5 px-3 py-2 text-[11px] font-semibold transition-colors border-b-2 whitespace-nowrap ${
+              tabActivo === t.key
+                ? t.activeBg
+                : "border-transparent text-white/30 hover:text-white/60"
+            }`}
+          >
+            {t.label}
+            {t.count > 0 && (
+              <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+                tabActivo === t.key ? "bg-white/10" : "bg-white/6 text-white/30"
+              }`}>{t.count}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Descripción del tab */}
+      <div className="px-4 py-1.5 bg-white/2 border-b border-white/4">
+        <p className="text-[10px] text-white/25 italic">
+          {tabs.find(t => t.key === tabActivo)?.desc}
+        </p>
+      </div>
+
+      {/* Lista de agentes */}
+      <div className="flex gap-2 flex-wrap p-3 max-h-40 overflow-y-auto">
+        {agentesActivos.length === 0 ? (
+          <p className="text-[11px] text-white/20 py-2 px-2">Sin agentes en esta categoría</p>
+        ) : agentesActivos.map((ag) => (
+          <div
+            key={ag.id}
+            title={
+              tabActivo === "ausenteProgramado"
+                ? `${ag.fuente_ausencia === "rrhh" ? LABELS_AUSENCIA_RRHH[ag.tipo_ausencia_rrhh ?? ""] ?? ag.tipo_ausencia_rrhh : LABELS_AUSENCIA_FUTURO[ag.plan_tipo_ausencia ?? ""] ?? ag.plan_tipo_ausencia ?? "Ausencia"} · ${ag.fuente_ausencia === "rrhh" ? "Aprobado por RRHH" : "Planificado en Operaciones"}`
+                : tabActivo === "descansando"
+                ? `Turno: ${ag.turno_nombre ?? "—"} · ${ag.puesto_nombre ?? ""}`
+                : tabActivo === "trabajando"
+                ? `Puesto: ${ag.puesto_nombre ?? "—"} · ${ag.cliente_nombre ?? ""}`
+                : ""
+            }
+            className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-medium border transition-all cursor-default ${
+              tabActivo === "descansando"
+                ? "bg-blue-500/8 border-blue-500/20 text-blue-300/80"
+                : tabActivo === "disponible"
+                ? "bg-green-500/8 border-green-500/20 text-green-300/80"
+                : tabActivo === "ausenteProgramado"
+                ? "bg-red-500/8 border-red-500/20 text-red-300/80"
+                : "bg-teal-500/8 border-teal-500/20 text-teal-300/80"
+            }`}
+          >
+            <div className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(ag.nombre_completo)}`}>
+              {iniciales(ag.nombre_completo)}
+            </div>
+            <span className="truncate max-w-[100px]">{ag.nombre_completo.split(" ").slice(0, 2).join(" ")}</span>
+            {tabActivo === "ausenteProgramado" && (
+              <span className={`text-[9px] px-1 py-0.5 rounded font-bold ${ag.fuente_ausencia === "rrhh" ? "bg-orange-500/20 text-orange-300" : "bg-indigo-500/20 text-indigo-300"}`}>
+                {ag.fuente_ausencia === "rrhh" ? "RRHH" : "OP"}
+              </span>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -2855,6 +3043,16 @@ export default function Operaciones() {
     planFuturoPorPuesto[p.puesto_id] = p;
   }
 
+  const { data: poolFuturo, isLoading: loadingPoolFuturo } = useQuery<PoolFuturoData>({
+    queryKey: ["pool-futuro", fechaVista],
+    queryFn: () =>
+      fetch(`${API_BASE}/operaciones/pool-futuro?fecha=${fechaVista}`)
+        .then((r) => { if (!r.ok) throw new Error("pool-futuro error"); return r.json(); }),
+    enabled: esFuturo,
+    refetchInterval: esFuturo ? 60_000 : false,
+    retry: 1,
+  });
+
   // Etapas SSA para el panel del Pizarrón
   const ssaSinAgente   = tarjetasSSA.filter((t) => !t.agente_id);
   const ssaCubierta    = tarjetasSSA.filter((t) => !!t.agente_id);
@@ -3736,6 +3934,13 @@ export default function Operaciones() {
           </div>
 
           {/* ── Pool de agentes ───────────────────────────────────────────── */}
+          {esFuturo && poolFuturo ? (
+            <PoolFuturoPanel data={poolFuturo} />
+          ) : esFuturo && loadingPoolFuturo ? (
+            <div className="shrink-0 bg-[#060f1a] border border-indigo-500/15 rounded-2xl flex items-center justify-center px-6 py-4 gap-2 text-xs text-indigo-300/50">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Calculando disponibilidad futura…
+            </div>
+          ) : (
           <div className="shrink-0 bg-[#060f1a] border border-white/8 rounded-2xl overflow-hidden">
             {/* Header pool */}
             <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/8">
@@ -3825,6 +4030,8 @@ export default function Operaciones() {
               <span>Se refresca cada 30 seg automáticamente</span>
             </div>
           </div>
+          )}
+
         </div>
 
         {/* DragOverlay — miniatura flotante del agente arrastrado */}
