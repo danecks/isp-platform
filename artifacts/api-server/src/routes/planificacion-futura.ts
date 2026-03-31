@@ -233,6 +233,60 @@ planificacionFuturaRouter.delete("/operaciones/planificacion-futura/:id", async 
   }
 });
 
+// ─── PUT /api/operaciones/planificacion-futura/ssa-batch ─────────────────────
+// Reemplaza TODOS los planes de una SSA para una fecha específica.
+// Body: { fecha, ssaId, agentes: [{id, motivo?, notas?}], creadoPor? }
+// Devuelve el arreglo actualizado de planes creados.
+planificacionFuturaRouter.put("/operaciones/planificacion-futura/ssa-batch", async (req, res) => {
+  const { fecha, ssaId, agentes = [], creadoPor = "sistema" } = req.body as {
+    fecha: string;
+    ssaId: string;
+    agentes: Array<{ id: number | null; motivo?: string; notas?: string }>;
+    creadoPor?: string;
+  };
+  if (!fecha || !ssaId) return res.status(400).json({ error: "fecha y ssaId son requeridos" });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return res.status(400).json({ error: "Formato de fecha inválido" });
+
+  try {
+    // Verificar que el SSA existe
+    const { rows: ssaRows } = await pool.query(
+      `SELECT id, cantidad_guardias FROM solicitudes_servicio_adicional WHERE id = $1`, [ssaId],
+    );
+    if (ssaRows.length === 0) return res.status(404).json({ error: "SSA no encontrada" });
+
+    // Eliminar planes existentes para esta SSA+fecha
+    await pool.query(
+      `DELETE FROM planificacion_futura WHERE ssa_id = $1 AND fecha = $2::date`,
+      [ssaId, fecha],
+    );
+
+    // Crear nuevos planes (uno por agente seleccionado)
+    const creados: any[] = [];
+    for (const ag of agentes) {
+      if (!ag.id) continue; // omitir slots vacíos
+      const { rows: empRows } = await pool.query(
+        `SELECT id, nombre_completo FROM employees WHERE id = $1`, [ag.id],
+      );
+      if (empRows.length === 0) continue;
+
+      const { rows: inserted } = await pool.query(
+        `INSERT INTO planificacion_futura
+           (fecha, ssa_id, puesto_id, tipo_evento, tipo_cobertura_futura, relevo_id, motivo, notas, estado, creado_por)
+         VALUES ($1::date, $2, NULL, 'cobertura_ssa', 'ssa_programado', $3, $4, $5, 'activo', $6)
+         RETURNING *`,
+        [fecha, ssaId, ag.id, ag.motivo ?? null, ag.notas ?? null, creadoPor],
+      );
+      creados.push({ ...inserted[0], relevo_nombre: empRows[0].nombre_completo });
+    }
+
+    logger.info({ ssaId, fecha, count: creados.length }, "SSA batch plan actualizado");
+    return res.json({ ok: true, planes: creados });
+  } catch (err) {
+    logger.error({ err }, "PUT /operaciones/planificacion-futura/ssa-batch error");
+    return res.status(500).json({ error: "Error al guardar planes SSA" });
+  }
+});
+
 // ─── GET /api/operaciones/proximos-arranques?dias=30 ─────────────────────────
 // Servicios programados: clientes nuevos + SSA autorizados/pendientes
 // Devuelve tipo: 'inicio_cliente' | 'ssa'
@@ -536,12 +590,12 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
       ORDER BY tipo, cliente_nombre
     `, [fecha]);
 
-    // ── Planes existentes para SSA en esta fecha ──────────────────────────
+    // ── Planes existentes para SSA en esta fecha (multi-agente) ───────────
     const ssaIds = iniciosProyecto
       .filter((r: any) => r.tipo === "ssa" && r.ssa_id)
       .map((r: any) => r.ssa_id);
 
-    const planPorSSA: Record<string, { plan_id: number; plan_relevo_id: number | null; plan_relevo_nombre: string | null; plan_tipo_cobertura: string }> = {};
+    const planPorSSA: Record<string, Array<{ plan_id: number; relevo_id: number | null; relevo_nombre: string | null }>> = {};
     if (ssaIds.length > 0) {
       const { rows: planesSSA } = await pool.query(`
         SELECT pf.id, pf.ssa_id, pf.relevo_id, e.nombre_completo AS relevo_nombre, pf.tipo_cobertura_futura
@@ -550,23 +604,24 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
         WHERE pf.fecha = $1::date
           AND pf.ssa_id = ANY($2::varchar[])
           AND pf.estado != 'cancelado'
+        ORDER BY pf.id ASC
       `, [fecha, ssaIds]);
       for (const p of planesSSA) {
-        planPorSSA[p.ssa_id] = {
-          plan_id:            p.id,
-          plan_relevo_id:     p.relevo_id,
-          plan_relevo_nombre: p.relevo_nombre,
-          plan_tipo_cobertura: p.tipo_cobertura_futura,
-        };
+        if (!planPorSSA[p.ssa_id]) planPorSSA[p.ssa_id] = [];
+        planPorSSA[p.ssa_id].push({
+          plan_id:       p.id,
+          relevo_id:     p.relevo_id,
+          relevo_nombre: p.relevo_nombre,
+        });
       }
     }
 
-    // Enriquecer iniciosProyecto con plan data
+    // Enriquecer iniciosProyecto con plan_agentes array
     const iniciosProyectoEnriquecido = iniciosProyecto.map((ip: any) => {
-      if (ip.tipo === "ssa" && ip.ssa_id && planPorSSA[ip.ssa_id]) {
-        return { ...ip, ...planPorSSA[ip.ssa_id] };
+      if (ip.tipo === "ssa" && ip.ssa_id) {
+        return { ...ip, plan_agentes: planPorSSA[ip.ssa_id] ?? [] };
       }
-      return { ...ip, plan_id: null, plan_relevo_id: null, plan_relevo_nombre: null, plan_tipo_cobertura: null };
+      return { ...ip, plan_agentes: [] };
     });
 
     res.json({

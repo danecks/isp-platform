@@ -2283,6 +2283,29 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: INC-01 — error (no bloqueante)");
   }
 
+  // ── SSA-MA-01: Tabla ssa_agentes para multi-agente SSA ────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ssa_agentes (
+        id           SERIAL PRIMARY KEY,
+        ssa_id       VARCHAR(30) NOT NULL REFERENCES solicitudes_servicio_adicional(id) ON DELETE CASCADE,
+        employee_id  INTEGER NOT NULL REFERENCES employees(id),
+        estado       VARCHAR(20) NOT NULL DEFAULT 'asignado',
+        notas        TEXT,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ssa_agentes_ssa_id ON ssa_agentes(ssa_id)`);
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_ssa_agentes_ssa_emp_activo
+      ON ssa_agentes(ssa_id, employee_id)
+      WHERE estado = 'asignado'
+    `);
+    logger.info("Auto-migrate: SSA-MA-01 tabla ssa_agentes creada/verificada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SSA-MA-01 — error (no bloqueante)");
+  }
+
   // ── PF-02: Ampliar planificacion_futura para soportar SSA ─────────────────
   try {
     // Hacer puesto_id nullable para permitir planes SSA (sin puesto fijo)

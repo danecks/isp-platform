@@ -179,7 +179,8 @@ solicitudesServicioRouter.get("/solicitudes-servicio/tablero", async (_req, res)
         t2.estado AS tarea_rrhh_estado,
         t3.estado AS tarea_comercial_estado,
         plan.plan_agente_id,
-        plan.plan_agente_nombre
+        plan.plan_agente_nombre,
+        COALESCE(ag.agentes, '[]'::json) AS agentes
       FROM solicitudes_servicio_adicional s
       LEFT JOIN clients c ON c.id = s.cliente_id
       LEFT JOIN client_sedes cs ON cs.id = s.sede_id
@@ -196,7 +197,22 @@ solicitudesServicioRouter.get("/solicitudes-servicio/tablero", async (_req, res)
         WHERE pf.fecha = CURRENT_DATE
           AND pf.ssa_id IS NOT NULL
           AND pf.estado != 'cancelado'
+        LIMIT 1
       ) plan ON plan.ssa_id = s.id
+      -- Multi-agentes asignados (ssa_agentes table)
+      LEFT JOIN (
+        SELECT sa.ssa_id,
+               json_agg(json_build_object(
+                 'id', emp.id,
+                 'nombre', emp.nombre_completo,
+                 'telefono', emp.telefono,
+                 'estado', sa.estado
+               ) ORDER BY sa.created_at) AS agentes
+        FROM ssa_agentes sa
+        JOIN employees emp ON emp.id = sa.employee_id
+        WHERE sa.estado = 'asignado'
+        GROUP BY sa.ssa_id
+      ) ag ON ag.ssa_id = s.id
       WHERE s.tarjeta_activa = TRUE
         AND s.estado_general NOT IN ('cancelada', 'cerrada')
       ORDER BY s.prioridad DESC, s.fecha ASC
@@ -512,6 +528,192 @@ solicitudesServicioRouter.patch("/solicitudes-servicio/:id/cancelar", async (req
   } catch (err) {
     logger.error({ err }, "solicitudes-servicio: PATCH cancelar error");
     return res.status(500).json({ error: "Error al cancelar solicitud" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/solicitudes-servicio/:id/agentes — agregar agente a ssa_agentes
+// ─────────────────────────────────────────────────────────────────────────────
+solicitudesServicioRouter.post("/solicitudes-servicio/:id/agentes", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { agenteId, tipoCobertura, observaciones } = req.body as {
+      agenteId: number;
+      tipoCobertura?: string;
+      observaciones?: string;
+    };
+    if (!agenteId) return res.status(400).json({ error: "agenteId es requerido" });
+
+    const { rows: ssaRows } = await pool.query(
+      `SELECT id, fecha, hora_inicio, hora_fin, cantidad_guardias, puesto_id, estado_general
+       FROM solicitudes_servicio_adicional WHERE id = $1`, [id],
+    );
+    if (ssaRows.length === 0) return res.status(404).json({ error: "SSA no encontrada" });
+    const ssa = ssaRows[0];
+
+    if (["cerrada", "cancelada"].includes(ssa.estado_general)) {
+      return res.status(409).json({ error: "No se puede asignar agentes a una SSA cerrada o cancelada" });
+    }
+
+    const { rows: empRows } = await pool.query(
+      `SELECT id, nombre_completo, telefono FROM employees WHERE id = $1`, [agenteId],
+    );
+    if (empRows.length === 0) return res.status(404).json({ error: "Agente no encontrado" });
+    const emp = empRows[0];
+
+    // Validar capacidad
+    const { rows: activos } = await pool.query(
+      `SELECT count(*)::int AS n FROM ssa_agentes WHERE ssa_id = $1 AND estado = 'asignado'`, [id],
+    );
+    if (activos[0].n >= ssa.cantidad_guardias) {
+      return res.status(409).json({
+        error: `El SSA ya tiene ${ssa.cantidad_guardias} agente(s) asignado(s). No hay cupos disponibles.`,
+      });
+    }
+
+    // Validar duplicado
+    const { rows: dup } = await pool.query(
+      `SELECT id FROM ssa_agentes WHERE ssa_id = $1 AND employee_id = $2 AND estado = 'asignado'`, [id, agenteId],
+    );
+    if (dup.length > 0) {
+      return res.status(409).json({ error: `${emp.nombre_completo} ya está asignado a este servicio.`, advertencia: true });
+    }
+
+    // Insertar en ssa_agentes
+    await pool.query(
+      `INSERT INTO ssa_agentes (ssa_id, employee_id, estado, notas)
+       VALUES ($1, $2, 'asignado', $3)
+       ON CONFLICT DO NOTHING`,
+      [id, agenteId, observaciones ?? null],
+    );
+
+    // Actualizar SSA (estado + agente_id legacy = primer agente asignado)
+    await pool.query(
+      `UPDATE solicitudes_servicio_adicional
+       SET agente_id              = COALESCE(agente_id, $1),
+           agente_nombre          = COALESCE(agente_nombre, $2),
+           tipo_cobertura         = COALESCE(tipo_cobertura, $3),
+           estado_operaciones     = 'cubierta',
+           estado_general         = 'pendiente_facturacion',
+           estado_preplanilla     = 'incluido',
+           enviado_preplanilla_at = COALESCE(enviado_preplanilla_at, NOW()),
+           tarjeta_activa         = TRUE,
+           updated_at             = NOW()
+       WHERE id = $4`,
+      [agenteId, emp.nombre_completo, tipoCobertura ?? "disponible", id],
+    );
+
+    // Nómina novedad
+    try {
+      const fechaNomina = ssa.fecha
+        ? String(ssa.fecha).split("T")[0]
+        : new Date().toISOString().split("T")[0];
+      function calcHoras(ini: string | null, fin: string | null): number {
+        if (!ini || !fin) return 8;
+        const [h1, m1] = ini.split(":").map(Number);
+        const [h2, m2] = fin.split(":").map(Number);
+        let mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+        if (mins < 0) mins += 24 * 60;
+        return Math.round(mins / 6) / 10;
+      }
+      const horas = calcHoras(ssa.hora_inicio, ssa.hora_fin);
+      const horasExtra = horas > 8 ? Math.round((horas - 8) * 10) / 10 : 0;
+      await pool.query(
+        `INSERT INTO novedades_nomina_diarias
+           (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra, puesto_cubierto_id, num_puestos_cubiertos, fuente)
+         VALUES ($1, $2, $3, TRUE, $4, $5, $6, 1, 'ssa_pizarron')
+         ON CONFLICT (fecha, employee_id) DO UPDATE SET
+           trabajo_dia = TRUE, falta = FALSE, descuento_dia = FALSE,
+           horas_trabajadas = GREATEST(novedades_nomina_diarias.horas_trabajadas, $4),
+           horas_extra = GREATEST(novedades_nomina_diarias.horas_extra, $5),
+           num_puestos_cubiertos = novedades_nomina_diarias.num_puestos_cubiertos + 1,
+           updated_at = NOW()`,
+        [fechaNomina, agenteId, emp.nombre_completo, horas, horasExtra, ssa.puesto_id ?? null],
+      );
+    } catch (nomErr) {
+      logger.warn({ nomErr }, "SSA POST agentes: no se pudo registrar novedad nómina (no bloqueante)");
+    }
+
+    // Historial
+    const sesion = (req.headers["x-isp-session"] as string | undefined) ?? null;
+    await pool.query(
+      `INSERT INTO ssa_historial_cambios (ssa_id, tipo_evento, agente_id, agente_nombre, usuario_sesion)
+       VALUES ($1, 'asignado', $2, $3, $4)`,
+      [id, agenteId, emp.nombre_completo, sesion],
+    ).catch(() => {});
+
+    return res.json({ ok: true, agente: emp });
+  } catch (err) {
+    logger.error({ err }, "solicitudes-servicio: POST agentes error");
+    return res.status(500).json({ error: "Error al agregar agente" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /api/solicitudes-servicio/:id/agentes/:empId — remover agente individual
+// ─────────────────────────────────────────────────────────────────────────────
+solicitudesServicioRouter.delete("/solicitudes-servicio/:id/agentes/:empId", async (req, res) => {
+  try {
+    const { id, empId } = req.params;
+    const { motivo } = req.body as { motivo?: string };
+
+    const { rows: saRows } = await pool.query(
+      `SELECT sa.id, e.nombre_completo, sa.estado
+       FROM ssa_agentes sa
+       JOIN employees e ON e.id = sa.employee_id
+       WHERE sa.ssa_id = $1 AND sa.employee_id = $2 AND sa.estado = 'asignado'`,
+      [id, empId],
+    );
+    if (saRows.length === 0) return res.status(404).json({ error: "Agente no encontrado en este SSA" });
+
+    await pool.query(
+      `UPDATE ssa_agentes SET estado = 'removido', notas = COALESCE($1, notas) WHERE id = $2`,
+      [motivo ?? null, saRows[0].id],
+    );
+
+    // Verificar si quedan agentes activos
+    const { rows: activos } = await pool.query(
+      `SELECT count(*)::int AS n FROM ssa_agentes WHERE ssa_id = $1 AND estado = 'asignado'`, [id],
+    );
+
+    // Si ya no quedan agentes activos → volver a estado pendiente
+    if (activos[0].n === 0) {
+      await pool.query(
+        `UPDATE solicitudes_servicio_adicional
+         SET agente_id = NULL, agente_nombre = NULL,
+             estado_operaciones = 'pendiente',
+             estado_general = 'pendiente_operaciones',
+             tarjeta_activa = TRUE, updated_at = NOW()
+         WHERE id = $1`,
+        [id],
+      );
+    } else {
+      // Actualizar agente_id legacy al primero que queda
+      await pool.query(
+        `UPDATE solicitudes_servicio_adicional SET
+           agente_id = (
+             SELECT sa2.employee_id FROM ssa_agentes sa2
+             WHERE sa2.ssa_id = $1 AND sa2.estado = 'asignado'
+             ORDER BY sa2.created_at LIMIT 1
+           ),
+           updated_at = NOW()
+         WHERE id = $1`,
+        [id],
+      );
+    }
+
+    // Historial
+    const sesion = (req.headers["x-isp-session"] as string | undefined) ?? null;
+    await pool.query(
+      `INSERT INTO ssa_historial_cambios (ssa_id, tipo_evento, agente_id, agente_nombre, motivo, usuario_sesion)
+       VALUES ($1, 'removido', $2, $3, $4, $5)`,
+      [id, Number(empId), saRows[0].nombre_completo, motivo ?? null, sesion],
+    ).catch(() => {});
+
+    return res.json({ ok: true, agentesRestantes: activos[0].n });
+  } catch (err) {
+    logger.error({ err }, "solicitudes-servicio: DELETE agentes/:empId error");
+    return res.status(500).json({ error: "Error al remover agente" });
   }
 });
 

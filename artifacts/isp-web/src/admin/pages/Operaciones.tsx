@@ -142,6 +142,19 @@ interface AgentePoolFuturo {
   plan_tipo_ausencia?: string | null;
 }
 
+interface PlanAgenteSSA {
+  plan_id: number;
+  relevo_id: number | null;
+  relevo_nombre: string | null;
+}
+
+interface SsaAgente {
+  id: number;
+  nombre: string;
+  telefono: string | null;
+  estado: string;
+}
+
 interface InicioProyecto {
   tipo: "inicio_cliente" | "ssa";
   ssa_id: string | null;
@@ -161,10 +174,7 @@ interface InicioProyecto {
   hora_inicio: string | null;
   hora_fin: string | null;
   estado_ssa: string | null;
-  plan_id: number | null;
-  plan_relevo_id: number | null;
-  plan_relevo_nombre: string | null;
-  plan_tipo_cobertura: string | null;
+  plan_agentes: PlanAgenteSSA[];
   puestos: Array<{
     id: number;
     nombre: string;
@@ -258,6 +268,7 @@ interface TarjetaSSAPendiente {
   monto_estimado: string | null;
   motivo_ultima_remocion: string | null;
   agentes_rechazados: AgenteDeclino[];
+  agentes: SsaAgente[];
 }
 
 interface CierreDiaRecord {
@@ -1030,56 +1041,132 @@ const TIPOS_AUSENCIA_FUTURO = [
 // ─── Modal: Planificación Futura ──────────────────────────────────────────────
 
 // ─── Modal: Planificar cobertura para SSA futuro ──────────────────────────────
+function SlotAgentePlan({
+  slotIdx,
+  totalSlots,
+  agenteSel,
+  idsOcupados,
+  onSelect,
+  onClear,
+}: {
+  slotIdx: number;
+  totalSlots: number;
+  agenteSel: EmpleadoBusqueda | null;
+  idsOcupados: number[];
+  onSelect: (emp: EmpleadoBusqueda) => void;
+  onClear: () => void;
+}) {
+  const [busqueda, setBusqueda] = useState("");
+
+  const { data: resultado = [] } = useQuery<EmpleadoBusqueda[]>({
+    queryKey: ["emp-busqueda-ssa-slot", slotIdx, busqueda],
+    queryFn: () =>
+      fetch(`${API_BASE}/employees?q=${encodeURIComponent(busqueda)}&limit=20`)
+        .then((r) => r.json())
+        .then((d: any) => {
+          const arr = Array.isArray(d) ? d : (d.employees ?? []);
+          return arr.filter(
+            (e: any) =>
+              (e.estadoLaboral ?? e.estado_laboral) === "activo" &&
+              !idsOcupados.includes(e.id),
+          );
+        }),
+    enabled: busqueda.length >= 2 && !agenteSel,
+    staleTime: 30_000,
+  });
+
+  return (
+    <div>
+      <label className="text-[10px] font-semibold text-white/35 uppercase tracking-widest block mb-1">
+        Guardia {totalSlots > 1 ? slotIdx + 1 : ""} <span className="text-white/20 normal-case font-normal">(opcional)</span>
+      </label>
+      {agenteSel ? (
+        <div className="flex items-center gap-2 bg-blue-500/10 border border-blue-500/25 rounded-xl px-3 py-2.5">
+          <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarColor(agenteSel.nombreCompleto)}`}>
+            {iniciales(agenteSel.nombreCompleto)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-blue-200 truncate">{agenteSel.nombreCompleto}</p>
+            <p className="text-[10px] text-blue-300/50">{agenteSel.puesto ?? "Agente"}</p>
+          </div>
+          <button onClick={() => { onClear(); setBusqueda(""); }} className="text-white/25 hover:text-red-400 transition-colors">
+            <XCircle className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ) : (
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Buscar agente (mín. 2 letras)…"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            className="w-full bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-white/20 outline-none focus:border-blue-400/40"
+          />
+          {busqueda.length >= 2 && resultado.length > 0 && (
+            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#07111f] border border-white/10 rounded-xl shadow-2xl overflow-hidden max-h-44 overflow-y-auto">
+              {resultado.map((e) => (
+                <button
+                  key={e.id}
+                  onClick={() => { onSelect(e); setBusqueda(""); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/4 transition-colors"
+                >
+                  <div className={`w-6 h-6 rounded flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(e.nombreCompleto)}`}>
+                    {iniciales(e.nombreCompleto)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs text-white/80 truncate">{e.nombreCompleto}</p>
+                    <p className="text-[10px] text-white/30">{e.puesto ?? e.area ?? "Agente"}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ModalPlanSSA({
   ssa,
   fecha,
-  planExistente,
+  planAgentes,
   onClose,
   onGuardar,
   onEliminar,
 }: {
   ssa: InicioProyecto;
   fecha: string;
-  planExistente: { plan_id: number; plan_relevo_id: number | null; plan_relevo_nombre: string | null } | null;
+  planAgentes: PlanAgenteSSA[];
   onClose: () => void;
-  onGuardar: (data: { relevId: number | null; motivo: string; notas: string }) => Promise<void>;
+  onGuardar: (agentes: Array<{ id: number | null }>) => Promise<void>;
   onEliminar?: () => void;
 }) {
-  const { toast } = useToast();
-  const [motivo, setMotivo]       = useState("");
-  const [notas, setNotas]         = useState("");
+  const totalSlots = Math.max(ssa.total_puestos ?? 1, 1);
   const [guardando, setGuardando] = useState(false);
-  const [busqueda, setBusqueda]   = useState("");
-  const [relevoSel, setRelevoSel] = useState<EmpleadoBusqueda | null>(
-    planExistente?.plan_relevo_id
-      ? { id: planExistente.plan_relevo_id, nombreCompleto: planExistente.plan_relevo_nombre ?? "", puesto: null, area: null }
-      : null
-  );
 
-  const { data: empleadosBusqueda = [] } = useQuery<EmpleadoBusqueda[]>({
-    queryKey: ["emp-busqueda-ssa", busqueda],
-    queryFn: () =>
-      fetch(`${API_BASE}/employees?q=${encodeURIComponent(busqueda)}&limit=20`)
-        .then((r) => r.json())
-        .then((d: any) => {
-          const arr = Array.isArray(d) ? d : (d.employees ?? []);
-          return arr.filter((e: any) => (e.estadoLaboral ?? e.estado_laboral) === "activo");
-        }),
-    enabled: busqueda.length >= 2 && !relevoSel,
-    staleTime: 30_000,
+  // Inicializar slots con planes existentes
+  const [slots, setSlots] = useState<Array<EmpleadoBusqueda | null>>(() => {
+    const init: Array<EmpleadoBusqueda | null> = Array(totalSlots).fill(null);
+    planAgentes.slice(0, totalSlots).forEach((pa, i) => {
+      if (pa.relevo_id && pa.relevo_nombre) {
+        init[i] = { id: pa.relevo_id, nombreCompleto: pa.relevo_nombre, puesto: null, area: null };
+      }
+    });
+    return init;
   });
 
+  const idsOcupados = slots.filter(Boolean).map((s) => s!.id);
   const [y, m, d] = fecha.split("-");
   const fechaDisplay = `${d}-${m}-${y}`;
-
   const tipoLabel = TIPO_SSA_LABELS[ssa.tipo_solicitud ?? ""] ?? ssa.tipo_solicitud ?? "SSA";
+  const hayPlanesExistentes = planAgentes.length > 0;
+  const agentesSeleccionados = slots.filter(Boolean).length;
 
   async function handleGuardar() {
     setGuardando(true);
     try {
-      await onGuardar({ relevId: relevoSel?.id ?? null, motivo, notas });
-    } catch {
-      toast({ title: "Error al guardar el plan SSA", variant: "destructive" });
+      await onGuardar(slots.map((s) => ({ id: s?.id ?? null })));
     } finally {
       setGuardando(false);
     }
@@ -1094,7 +1181,7 @@ function ModalPlanSSA({
             <div className="flex items-center gap-2 mb-1">
               <Shield className="w-3.5 h-3.5 text-blue-400" />
               <span className="text-[10px] text-blue-300/70 font-semibold uppercase tracking-widest">
-                {planExistente ? "Editar plan SSA" : "Planificar SSA"} · {fechaDisplay}
+                {hayPlanesExistentes ? "Editar planificación" : "Planificar SSA"} · {fechaDisplay}
               </span>
             </div>
             <h2 className="text-sm font-bold text-white truncate">{tipoLabel}</h2>
@@ -1116,102 +1203,68 @@ function ModalPlanSSA({
               <p className="text-[11px] text-blue-200/60 leading-relaxed">{ssa.descripcion}</p>
             </div>
           )}
-          {(ssa.total_puestos ?? 1) > 0 && (
-            <div className="flex items-center gap-2 text-[11px] text-white/40 bg-white/3 border border-white/6 rounded-xl px-3 py-2">
-              <UserCheck className="w-3.5 h-3.5 shrink-0" />
-              <span>{ssa.total_puestos} {ssa.total_puestos === 1 ? "guardia requerido" : "guardias requeridos"}</span>
-            </div>
-          )}
 
-          {/* Agente a cubrir el SSA */}
-          <div>
-            <label className="text-[10px] font-semibold text-white/40 uppercase tracking-widest block mb-1.5">
-              Agente asignado <span className="text-white/20 normal-case font-normal">(opcional)</span>
-            </label>
-            {relevoSel ? (
-              <div className="flex items-center gap-2 bg-blue-500/10 border border-blue-500/25 rounded-xl px-3 py-2.5">
-                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarColor(relevoSel.nombreCompleto)}`}>
-                  {iniciales(relevoSel.nombreCompleto)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-blue-200 truncate">{relevoSel.nombreCompleto}</p>
-                  <p className="text-[10px] text-blue-300/50">{relevoSel.puesto ?? "Agente"}</p>
-                </div>
-                <button onClick={() => { setRelevoSel(null); setBusqueda(""); }} className="text-white/25 hover:text-red-400 transition-colors">
-                  <XCircle className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ) : (
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Buscar agente (mín. 2 letras)…"
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  className="w-full bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-white/20 outline-none focus:border-blue-400/40"
-                />
-                {busqueda.length >= 2 && empleadosBusqueda.length > 0 && (
-                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#07111f] border border-white/10 rounded-xl shadow-2xl overflow-hidden max-h-44 overflow-y-auto">
-                    {empleadosBusqueda.map((e) => (
-                      <button
-                        key={e.id}
-                        onClick={() => { setRelevoSel(e); setBusqueda(""); }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/4 transition-colors"
-                      >
-                        <div className={`w-6 h-6 rounded flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(e.nombreCompleto)}`}>
-                          {iniciales(e.nombreCompleto)}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs text-white/80 truncate">{e.nombreCompleto}</p>
-                          <p className="text-[10px] text-white/30">{e.puesto ?? e.area ?? "Agente"}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+          {/* Resumen de cobertura */}
+          <div className="flex items-center justify-between bg-white/3 border border-white/6 rounded-xl px-3 py-2">
+            <div className="flex items-center gap-2 text-[11px] text-white/40">
+              <UserCheck className="w-3.5 h-3.5 shrink-0" />
+              <span>{totalSlots} {totalSlots === 1 ? "guardia requerido" : "guardias requeridos"}</span>
+            </div>
+            {agentesSeleccionados > 0 && (
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase ${
+                agentesSeleccionados >= totalSlots
+                  ? "bg-green-500/15 border border-green-500/25 text-green-400"
+                  : "bg-amber-500/12 border border-amber-500/20 text-amber-400"
+              }`}>
+                {agentesSeleccionados}/{totalSlots}
+              </span>
             )}
           </div>
 
-          {/* Motivo */}
-          <div>
-            <label className="text-[10px] font-semibold text-white/40 uppercase tracking-widest block mb-1.5">
-              Motivo <span className="text-white/20 normal-case font-normal">(opcional)</span>
-            </label>
-            <input
-              type="text"
-              value={motivo}
-              onChange={(e) => setMotivo(e.target.value)}
-              placeholder="Ej. guardia extra para evento especial"
-              className="w-full bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-white/20 outline-none focus:border-blue-400/40"
-            />
+          {/* Slots de agentes */}
+          <div className="space-y-3">
+            {slots.map((slot, i) => (
+              <SlotAgentePlan
+                key={i}
+                slotIdx={i}
+                totalSlots={totalSlots}
+                agenteSel={slot}
+                idsOcupados={idsOcupados.filter((_, j) => j !== i ? true : false)}
+                onSelect={(emp) => {
+                  const next = [...slots];
+                  next[i] = emp;
+                  setSlots(next);
+                }}
+                onClear={() => {
+                  const next = [...slots];
+                  next[i] = null;
+                  setSlots(next);
+                }}
+              />
+            ))}
           </div>
 
-          {/* Notas */}
-          <div>
-            <label className="text-[10px] font-semibold text-white/40 uppercase tracking-widest block mb-1.5">
-              Notas internas <span className="text-white/20 normal-case font-normal">(opcional)</span>
-            </label>
-            <textarea
-              value={notas}
-              onChange={(e) => setNotas(e.target.value)}
-              rows={2}
-              placeholder="Información adicional para el equipo de operaciones…"
-              className="w-full bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-white/20 outline-none focus:border-blue-400/40 resize-none"
-            />
-          </div>
+          {/* Advertencia cobertura incompleta */}
+          {agentesSeleccionados > 0 && agentesSeleccionados < totalSlots && (
+            <div className="flex items-start gap-2 bg-amber-500/6 border border-amber-500/15 rounded-xl px-3 py-2.5">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-400/70 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-amber-300/60">
+                Cobertura parcial: {agentesSeleccionados} de {totalSlots} guardias planificados. Puedes guardar de todas formas.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
         <div className="flex items-center justify-between gap-2 px-5 py-4 border-t border-white/8 shrink-0">
           <div>
-            {planExistente && onEliminar && (
+            {hayPlanesExistentes && onEliminar && (
               <button
                 onClick={onEliminar}
                 className="flex items-center gap-1.5 text-[11px] text-red-400/70 hover:text-red-400 transition-colors"
               >
                 <Trash2 className="w-3 h-3" />
-                Cancelar plan
+                Cancelar todo
               </button>
             )}
           </div>
@@ -1228,7 +1281,7 @@ function ModalPlanSSA({
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600/25 border border-blue-500/40 text-[11px] font-semibold text-blue-200 hover:bg-blue-600/35 transition-all disabled:opacity-50"
             >
               {guardando ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserCheck className="w-3 h-3" />}
-              {planExistente ? "Actualizar" : "Guardar plan"}
+              {hayPlanesExistentes ? "Actualizar" : "Guardar plan"}
             </button>
           </div>
         </div>
@@ -2011,7 +2064,10 @@ function PoolFuturoPanel({
               const badgeLabel = esSSA
                 ? (TIPO_SSA_LABELS[ip.tipo_solicitud ?? ""] ?? "SSA")
                 : "Inicio";
-              const planYaAsignado = esSSA && ip.plan_id != null;
+              const planAgentes = ip.plan_agentes ?? [];
+              const planYaAsignado = esSSA && planAgentes.length > 0;
+              const totalGuardias = ip.total_puestos ?? 1;
+              const planCompleto = planAgentes.length >= totalGuardias;
               return (
               <div
                 key={itemKey}
@@ -2063,37 +2119,53 @@ function PoolFuturoPanel({
                   </div>
                 )}
 
-                {/* Estado del plan SSA */}
+                {/* Estado del plan SSA — multi-agente */}
                 {esSSA && (
-                  <div className="flex items-center justify-between gap-2">
-                    {planYaAsignado ? (
-                      <div className="flex items-center gap-1.5 text-[10px]">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />
-                        <span className="text-green-300/80 font-medium">
-                          {ip.plan_relevo_nombre
-                            ? ip.plan_relevo_nombre.split(" ").slice(0, 2).join(" ")
-                            : "Agente asignado"}
-                        </span>
-                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-500/15 border border-green-500/25 text-green-400 font-bold uppercase">Planificado</span>
+                  <div className="flex flex-col gap-1.5">
+                    {/* Progreso / badge */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        {planCompleto ? (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-500/15 border border-green-500/25 text-green-400 font-bold uppercase">
+                            {planAgentes.length}/{totalGuardias} Planificado{planAgentes.length !== 1 ? "s" : ""}
+                          </span>
+                        ) : planYaAsignado ? (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/12 border border-amber-500/25 text-amber-400 font-bold uppercase">
+                            {planAgentes.length}/{totalGuardias} Parcial
+                          </span>
+                        ) : (
+                          <div className="flex items-center gap-1 text-[10px] text-orange-300/60">
+                            <AlertCircle className="w-3 h-3 shrink-0" />
+                            <span>Sin agentes planificados</span>
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <div className="flex items-center gap-1 text-[10px] text-orange-300/60">
-                        <AlertCircle className="w-3 h-3 shrink-0" />
-                        <span>Sin agente asignado</span>
+                      {onPlanSSA && (
+                        <button
+                          onClick={() => onPlanSSA(ip)}
+                          className={`shrink-0 flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-lg border transition-all ${
+                            planYaAsignado
+                              ? "bg-blue-500/10 border-blue-500/25 text-blue-300 hover:bg-blue-500/20"
+                              : "bg-amber-500/10 border-amber-500/25 text-amber-300 hover:bg-amber-500/20"
+                          }`}
+                        >
+                          <UserCheck className="w-3 h-3" />
+                          {planYaAsignado ? "Editar" : "Planificar"}
+                        </button>
+                      )}
+                    </div>
+                    {/* Lista de agentes planificados */}
+                    {planAgentes.length > 0 && (
+                      <div className="flex flex-col gap-0.5">
+                        {planAgentes.map((pa) => (
+                          <div key={pa.plan_id} className="flex items-center gap-1 text-[10px]">
+                            <CheckCircle2 className="w-2.5 h-2.5 text-green-400 shrink-0" />
+                            <span className="text-green-300/80 font-medium truncate">
+                              {pa.relevo_nombre?.split(" ").slice(0, 2).join(" ") ?? "Agente planificado"}
+                            </span>
+                          </div>
+                        ))}
                       </div>
-                    )}
-                    {onPlanSSA && (
-                      <button
-                        onClick={() => onPlanSSA(ip)}
-                        className={`shrink-0 flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-lg border transition-all ${
-                          planYaAsignado
-                            ? "bg-blue-500/10 border-blue-500/25 text-blue-300 hover:bg-blue-500/20"
-                            : "bg-amber-500/10 border-amber-500/25 text-amber-300 hover:bg-amber-500/20"
-                        }`}
-                      >
-                        <UserCheck className="w-3 h-3" />
-                        {planYaAsignado ? "Editar" : "Asignar"}
-                      </button>
                     )}
                   </div>
                 )}
@@ -3892,9 +3964,15 @@ export default function Operaciones() {
     retry: 1,
   });
 
-  // Etapas SSA para el panel del Pizarrón
-  const ssaSinAgente   = tarjetasSSA.filter((t) => !t.agente_id);
-  const ssaCubierta    = tarjetasSSA.filter((t) => !!t.agente_id);
+  // Etapas SSA para el panel del Pizarrón (multi-agente)
+  const ssaSinAgente = tarjetasSSA.filter((t) => {
+    const asignados = (t.agentes ?? []).filter((a) => a.estado === "asignado").length;
+    return asignados < (t.cantidad_guardias ?? 1);
+  });
+  const ssaCubierta = tarjetasSSA.filter((t) => {
+    const asignados = (t.agentes ?? []).filter((a) => a.estado === "asignado").length;
+    return asignados >= (t.cantidad_guardias ?? 1);
+  });
 
   // isCerrado: la fecha ACTIVA está cerrada (prácticamente nunca true con nuevo modelo de fecha activa)
   const isCerrado = cierreHoy?.estado === "cerrado";
@@ -3964,43 +4042,36 @@ export default function Operaciones() {
     invalidateFuture();
   }
 
-  async function guardarPlanSSA(data: { relevId: number | null; motivo: string; notas: string }) {
+  async function guardarPlanSSA(agentesSeleccionados: Array<{ id: number | null }>) {
     if (!modalPlanSSA) return;
     const ip = modalPlanSSA;
-    const planId = ip.plan_id;
-    if (planId) {
-      await fetch(`${API_BASE}/operaciones/planificacion-futura/${planId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ relevId: data.relevId, motivo: data.motivo, notas: data.notas }),
-      });
-      toast({ title: "Plan SSA actualizado", description: `${ip.cliente_nombre} · ${formatFechaVista(fechaVista)}` });
-    } else {
-      await fetch(`${API_BASE}/operaciones/planificacion-futura`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fecha: fechaVista,
-          ssaId: ip.ssa_id,
-          relevId: data.relevId,
-          motivo: data.motivo,
-          notas: data.notas,
-          tipoCobertura: "ssa_programado",
-          fuente: "operaciones",
-          creadoPor: currentUser?.username ?? "sistema",
-        }),
-      });
-      toast({ title: "Plan SSA guardado", description: `${ip.cliente_nombre} · ${formatFechaVista(fechaVista)}` });
+    const res = await fetch(`${API_BASE}/operaciones/planificacion-futura/ssa-batch`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fecha: fechaVista,
+        ssaId: ip.ssa_id,
+        agentes: agentesSeleccionados.filter((a) => a.id),
+        creadoPor: currentUser?.username ?? "sistema",
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast({ title: "Error al guardar", description: body.error ?? "Error desconocido", variant: "destructive" });
+      return;
     }
+    const n = agentesSeleccionados.filter((a) => a.id).length;
+    toast({
+      title: n > 0 ? "Planificación SSA guardada" : "Planes SSA cancelados",
+      description: n > 0 ? `${ip.cliente_nombre} · ${n} agente(s) planificado(s)` : `${ip.cliente_nombre} · sin agentes planificados`,
+    });
     setModalPlanSSA(null);
     invalidateFuture();
   }
 
-  async function eliminarPlanSSA(planId: number) {
-    await fetch(`${API_BASE}/operaciones/planificacion-futura/${planId}`, { method: "DELETE" });
-    toast({ title: "Plan SSA cancelado" });
-    setModalPlanSSA(null);
-    invalidateFuture();
+  async function eliminarPlanSSA() {
+    if (!modalPlanSSA) return;
+    await guardarPlanSSA([]);
   }
 
   // ── Remover agente de un SSA ─────────────────────────────────────────────
@@ -5120,12 +5191,9 @@ export default function Operaciones() {
         <ModalPlanSSA
           ssa={modalPlanSSA}
           fecha={fechaVista}
-          planExistente={modalPlanSSA.plan_id != null
-            ? { plan_id: modalPlanSSA.plan_id, plan_relevo_id: modalPlanSSA.plan_relevo_id, plan_relevo_nombre: modalPlanSSA.plan_relevo_nombre }
-            : null
-          }
+          planAgentes={modalPlanSSA.plan_agentes ?? []}
           onGuardar={guardarPlanSSA}
-          onEliminar={modalPlanSSA.plan_id != null ? () => eliminarPlanSSA(modalPlanSSA.plan_id!) : undefined}
+          onEliminar={eliminarPlanSSA}
           onClose={() => setModalPlanSSA(null)}
         />
       )}
@@ -5360,14 +5428,20 @@ function TarjetaSSACard({
     ? new Date(t.fecha + "T12:00:00").toDateString() === new Date().toDateString()
     : false;
 
-  const sinAgente = !t.agente_id;
+  const agentesActivos = (t.agentes ?? []).filter((a) => a.estado === "asignado");
+  const cantidadRequerida = t.cantidad_guardias ?? 1;
+  const cubierto = agentesActivos.length >= cantidadRequerida;
+  const parcial  = agentesActivos.length > 0 && !cubierto;
+  const sinAgente = agentesActivos.length === 0;
   const tieneRechazados = (t.agentes_rechazados?.length ?? 0) > 0;
 
   const prioColor = sinAgente
     ? t.prioridad === "urgente" ? "border-red-500/40 bg-red-500/6"
     : t.prioridad === "alta"    ? "border-orange-500/30 bg-orange-500/5"
     :                             "border-amber-500/20 bg-amber-500/4"
-    : "border-green-500/20 bg-green-500/4";
+    : cubierto
+      ? "border-green-500/20 bg-green-500/4"
+      : "border-amber-500/25 bg-amber-500/5";
 
   const prioTag = t.prioridad === "urgente" ? "text-red-400 bg-red-500/15"
     : t.prioridad === "alta"                 ? "text-orange-400 bg-orange-500/15"
@@ -5488,45 +5562,70 @@ function TarjetaSSACard({
           </p>
         )}
 
-        {/* Estado según etapa */}
-        {sinAgente ? (
-          <div>
-            {tieneRechazados && (
-              <p className="text-[9px] text-red-400/60 mt-0.5">
-                {t.agentes_rechazados.map(a => a.nombre.split(" ")[0]).join(", ")} declinaron
-              </p>
-            )}
-            {t.plan_agente_nombre ? (
-              <div className="flex items-center gap-1 mt-1">
-                <UserCheck className="w-2.5 h-2.5 text-indigo-400 shrink-0" />
-                <span className="text-[9px] text-indigo-300/80 font-medium truncate">
-                  Plan: {t.plan_agente_nombre.split(" ").slice(0, 2).join(" ")}
+        {/* Estado según etapa — multi-agente */}
+        <div className="mt-1 space-y-0.5">
+          {/* Badge cobertura */}
+          {(cubierto || parcial) && (
+            <div className="flex items-center gap-1 mb-0.5">
+              <span className={`text-[8px] font-bold px-1 py-0.5 rounded uppercase ${
+                cubierto ? "bg-green-500/15 text-green-400" : "bg-amber-500/15 text-amber-400"
+              }`}>
+                {agentesActivos.length}/{cantidadRequerida} {cubierto ? "cubierto" : "parcial"}
+              </span>
+              {t.estado_preplanilla === "incluido" && (
+                <span className="text-[8px] text-primary/60 flex items-center gap-0.5">
+                  <CheckCircle2 className="w-2 h-2" />Pre-Planilla
                 </span>
-              </div>
-            ) : (
-              <p className="text-[9px] text-amber-400/70 mt-1 font-medium">Toca para asignar guardia →</p>
-            )}
-          </div>
-        ) : (
-          <div className="mt-1 space-y-0.5">
-            <div className="flex items-center gap-1">
+              )}
+            </div>
+          )}
+
+          {/* Lista de agentes activos */}
+          {agentesActivos.map((ag) => (
+            <div key={ag.id} className="flex items-center gap-1">
               <User className="w-2.5 h-2.5 text-green-400 shrink-0" />
               <span className="text-[9px] text-green-300/80 truncate font-medium">
-                {t.agente_nombre_completo ?? t.agente_nombre ?? "Agente asignado"}
+                {ag.nombre.split(" ").slice(0, 2).join(" ")}
               </span>
             </div>
-            {t.estado_preplanilla === "incluido" && (
-              <div className="flex items-center gap-1">
-                <CheckCircle2 className="w-2.5 h-2.5 text-primary shrink-0" />
-                <span className="text-[9px] text-primary/70">En Pre-Planilla</span>
-              </div>
-            )}
+          ))}
+
+          {/* Sin agente */}
+          {sinAgente && (
+            <div>
+              {tieneRechazados && (
+                <p className="text-[9px] text-red-400/60">
+                  {t.agentes_rechazados.map(a => a.nombre.split(" ")[0]).join(", ")} declinaron
+                </p>
+              )}
+              {t.plan_agente_nombre ? (
+                <div className="flex items-center gap-1">
+                  <UserCheck className="w-2.5 h-2.5 text-indigo-400 shrink-0" />
+                  <span className="text-[9px] text-indigo-300/80 font-medium truncate">
+                    Plan: {t.plan_agente_nombre.split(" ").slice(0, 2).join(" ")}
+                  </span>
+                </div>
+              ) : (
+                <p className="text-[9px] text-amber-400/70 font-medium">Toca para asignar →</p>
+              )}
+            </div>
+          )}
+
+          {/* Cobertura parcial — mostrar cuántos faltan */}
+          {parcial && (
+            <p className="text-[9px] text-amber-400/60">
+              Faltan {cantidadRequerida - agentesActivos.length} guardia{cantidadRequerida - agentesActivos.length !== 1 ? "s" : ""}
+            </p>
+          )}
+
+          {/* Pendiente facturación (si hay agentes) */}
+          {!sinAgente && (
             <div className="flex items-center gap-1">
               <Clock className="w-2.5 h-2.5 text-orange-400/60 shrink-0" />
               <span className="text-[9px] text-orange-300/50">Pend. facturación</span>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </button>
     </div>
   );
@@ -5545,24 +5644,30 @@ function ModalAsignarSSA({
 }) {
   const { toast } = useToast();
   const [agenteSeleccionado, setAgenteSeleccionado] = useState<Agente | null>(null);
-  const [tipoCobertura, setTipoCobertura] = useState("disponible");
-  const [observaciones, setObservaciones] = useState("");
-  const [busqueda, setBusqueda] = useState("");
-  const [guardando, setGuardando] = useState(false);
-  const [conflicto, setConflicto] = useState<string | null>(null);
+  const [tipoCobertura, setTipoCobertura]           = useState("disponible");
+  const [busqueda, setBusqueda]                     = useState("");
+  const [guardando, setGuardando]                   = useState(false);
+  const [conflicto, setConflicto]                   = useState<string | null>(null);
+  const [removiendo, setRemoviendo]                 = useState<Record<number, boolean>>({});
 
-  const agentesDisponibles = disponibles.filter((a) =>
-    !busqueda.trim() ||
-    a.nombre_completo.toLowerCase().includes(busqueda.toLowerCase()) ||
-    (a.puesto ?? "").toLowerCase().includes(busqueda.toLowerCase())
+  // Local state that updates on each add/remove without closing the modal
+  const [agentesLocales, setAgentesLocales] = useState<SsaAgente[]>(
+    (tarjeta.agentes ?? []).filter((a) => a.estado === "asignado"),
   );
 
-  function seleccionarAgente(a: Agente) {
-    setAgenteSeleccionado(a);
-    setConflicto(null);
-  }
+  const cantidadRequerida = tarjeta.cantidad_guardias ?? 1;
+  const cubierto          = agentesLocales.length >= cantidadRequerida;
+  const hayCapacidad      = agentesLocales.length < cantidadRequerida;
+  const idsYaAsignados    = agentesLocales.map((a) => a.id);
 
-  async function handleConfirmar() {
+  const agentesDisponibles = disponibles.filter((a) =>
+    !idsYaAsignados.includes(a.id) &&
+    (!busqueda.trim() ||
+      a.nombre_completo.toLowerCase().includes(busqueda.toLowerCase()) ||
+      (a.puesto ?? "").toLowerCase().includes(busqueda.toLowerCase())),
+  );
+
+  async function handleAgregar() {
     if (!agenteSeleccionado) {
       toast({ title: "Selecciona un agente", variant: "destructive" });
       return;
@@ -5570,14 +5675,10 @@ function ModalAsignarSSA({
     setConflicto(null);
     setGuardando(true);
     try {
-      const res = await fetch(`/api/solicitudes-servicio/${tarjeta.id}/asignar-agente`, {
-        method: "PATCH",
+      const res = await fetch(`/api/solicitudes-servicio/${tarjeta.id}/agentes`, {
+        method: "POST",
         headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
-        body: JSON.stringify({
-          agenteId: agenteSeleccionado.id,
-          tipoCobertura,
-          observaciones: observaciones.trim() || undefined,
-        }),
+        body: JSON.stringify({ agenteId: agenteSeleccionado.id, tipoCobertura }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -5588,15 +5689,42 @@ function ModalAsignarSSA({
         }
         return;
       }
-      toast({
-        title: "Guardia asignado",
-        description: `${agenteSeleccionado.nombre_completo} asignado a ${tarjeta.id} — pendiente facturación`,
-      });
+      toast({ title: "Guardia asignado", description: `${agenteSeleccionado.nombre_completo} agregado al servicio` });
+      // Actualizar local state
+      setAgentesLocales((prev) => [
+        ...prev,
+        { id: agenteSeleccionado.id, nombre: agenteSeleccionado.nombre_completo, telefono: null, estado: "asignado" },
+      ]);
+      setAgenteSeleccionado(null);
+      setBusqueda("");
       onSuccess();
-    } catch (e: any) {
-      toast({ title: "Error de red", description: "No se pudo conectar con el servidor", variant: "destructive" });
+    } catch {
+      toast({ title: "Error de red", variant: "destructive" });
     } finally {
       setGuardando(false);
+    }
+  }
+
+  async function handleRemover(ag: SsaAgente) {
+    setRemoviendo((prev) => ({ ...prev, [ag.id]: true }));
+    try {
+      const res = await fetch(`/api/solicitudes-servicio/${tarjeta.id}/agentes/${ag.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
+        body: JSON.stringify({ motivo: "cambio_operativo" }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast({ title: "Error al remover", description: body.error ?? "Error", variant: "destructive" });
+        return;
+      }
+      toast({ title: "Agente removido", description: `${ag.nombre} fue desvinculado del servicio` });
+      setAgentesLocales((prev) => prev.filter((a) => a.id !== ag.id));
+      onSuccess();
+    } catch {
+      toast({ title: "Error de red", variant: "destructive" });
+    } finally {
+      setRemoviendo((prev) => ({ ...prev, [ag.id]: false }));
     }
   }
 
@@ -5616,7 +5744,7 @@ function ModalAsignarSSA({
               <Zap className="w-4 h-4 text-amber-400" />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-bold text-white">Asignar Guardia — Servicio Especial</p>
+              <p className="text-sm font-bold text-white">Asignar Guardias — Servicio Especial</p>
               <p className="text-[10px] text-white/35 font-mono">{tarjeta.id}</p>
             </div>
           </div>
@@ -5632,7 +5760,6 @@ function ModalAsignarSSA({
               <p className="text-sm font-semibold text-white/90">{tarjeta.cliente_nombre ?? "—"}</p>
               <p className="text-xs text-white/45 mt-0.5">
                 {TIPO_SSA_LABELS[tarjeta.tipo_solicitud] ?? tarjeta.tipo_solicitud}
-                {tarjeta.cantidad_guardias > 1 ? ` · ${tarjeta.cantidad_guardias} guardias` : ""}
                 {tarjeta.sede_nombre ? ` · ${tarjeta.sede_nombre}` : ""}
               </p>
               {(tarjeta.hora_inicio || tarjeta.fecha) && (
@@ -5642,159 +5769,166 @@ function ModalAsignarSSA({
                 </p>
               )}
             </div>
-            <span className={`text-[10px] font-bold uppercase tracking-wide shrink-0 ${prioColor}`}>
-              {tarjeta.prioridad}
-            </span>
-          </div>
-          {tarjeta.descripcion && (
-            <p className="text-[10px] text-white/30 mt-2 leading-relaxed line-clamp-2">
-              {tarjeta.descripcion}
-            </p>
-          )}
-        </div>
-
-        {/* Tipo de cobertura */}
-        <div className="px-5 pt-3 pb-2 border-b border-white/6 shrink-0">
-          <label className="text-[10px] font-semibold text-white/40 uppercase tracking-wide block mb-1.5">
-            Tipo de cobertura
-          </label>
-          <div className="flex flex-wrap gap-1.5">
-            {TIPOS_COBERTURA.map((tc) => (
-              <button
-                key={tc.value}
-                onClick={() => setTipoCobertura(tc.value)}
-                className={`text-[10px] px-2.5 py-1 rounded-lg border font-medium transition-colors ${
-                  tipoCobertura === tc.value
-                    ? "bg-primary/20 border-primary/50 text-primary"
-                    : "bg-white/4 border-white/8 text-white/40 hover:border-white/20"
-                }`}
-              >
-                {tc.label}
-              </button>
-            ))}
+            <div className="flex flex-col items-end gap-1 shrink-0">
+              <span className={`text-[10px] font-bold uppercase tracking-wide ${prioColor}`}>{tarjeta.prioridad}</span>
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase ${
+                cubierto ? "bg-green-500/15 text-green-400" : "bg-amber-500/15 text-amber-400"
+              }`}>
+                {agentesLocales.length}/{cantidadRequerida} cubierto{cantidadRequerida !== 1 ? "s" : ""}
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Banner: agentes que declinaron (informativo, no bloquea reasignación) */}
-        {(tarjeta.agentes_rechazados?.length ?? 0) > 0 && (
-          <div className="mx-5 mt-2 flex items-start gap-2 bg-white/4 border border-white/10 rounded-xl px-3 py-2 shrink-0">
-            <Info className="w-3.5 h-3.5 text-white/30 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-[10px] font-semibold text-white/50">Intentos anteriores sin éxito</p>
-              <p className="text-[10px] text-white/30 mt-0.5 leading-snug">
-                {tarjeta.agentes_rechazados.map(a => a.nombre).join(", ")} — puedes reasignarlos si es necesario
+        <div className="flex-1 overflow-y-auto min-h-0">
+          {/* Agentes actuales */}
+          {agentesLocales.length > 0 && (
+            <div className="px-5 pt-4 pb-2">
+              <p className="text-[10px] font-semibold text-white/40 uppercase tracking-wide mb-2">
+                Asignados ({agentesLocales.length})
               </p>
-            </div>
-          </div>
-        )}
-
-        {/* Banner de conflicto de asignación (inline) */}
-        {conflicto && (
-          <div className="mx-5 mt-2 flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2.5 shrink-0">
-            <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-bold text-red-300 mb-0.5">Conflicto de asignación</p>
-              <p className="text-[10px] text-red-200/70 leading-snug">{conflicto}</p>
-              <p className="text-[10px] text-white/30 mt-1">Elige otro agente o libera al actual antes de continuar.</p>
-            </div>
-          </div>
-        )}
-
-        {/* Selector de agente */}
-        <div className="px-5 pt-3 pb-1 shrink-0">
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-[10px] font-semibold text-white/40 uppercase tracking-wide">
-              Agente disponible
-            </label>
-            <span className="text-[10px] text-white/20">{disponibles.length} en pool</span>
-          </div>
-          <input
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            placeholder="Buscar agente…"
-            className="w-full bg-[#0c1929] border border-white/8 rounded-xl px-3 py-2 text-xs text-white/80 outline-none placeholder:text-white/20 focus:border-primary/40 mb-2"
-          />
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 pb-3 space-y-1 min-h-0">
-          {agentesDisponibles.length === 0 ? (
-            <div className="text-center py-6">
-              <UserMinus className="w-6 h-6 text-white/10 mx-auto mb-2" />
-              <p className="text-xs text-white/25">
-                {disponibles.length === 0 ? "No hay agentes disponibles en el pool" : "Sin resultados para la búsqueda"}
-              </p>
-            </div>
-          ) : (
-            agentesDisponibles.map((a) => {
-              const declino = tarjeta.agentes_rechazados?.find(r => r.id === a.id);
-              const seleccionado = agenteSeleccionado?.id === a.id;
-              return (
-                <button
-                  key={a.id}
-                  onClick={() => seleccionarAgente(a)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
-                    seleccionado
-                      ? "bg-primary/15 border-primary/40 shadow-sm shadow-primary/10"
-                      : "bg-[#0c1929] border-white/6 hover:border-white/15"
-                  }`}
-                >
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0 ${avatarColor(a.nombre_completo)}`}>
-                    {iniciales(a.nombre_completo)}
+              <div className="space-y-1.5">
+                {agentesLocales.map((ag) => (
+                  <div key={ag.id} className="flex items-center gap-3 bg-green-500/6 border border-green-500/20 rounded-xl px-3 py-2">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarColor(ag.nombre)}`}>
+                      {iniciales(ag.nombre)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-white/90 truncate">{ag.nombre}</p>
+                      <p className="text-[10px] text-green-400/60">Asignado</p>
+                    </div>
+                    <button
+                      onClick={() => handleRemover(ag)}
+                      disabled={removiendo[ag.id]}
+                      title="Remover agente"
+                      className="text-white/20 hover:text-red-400 transition-colors disabled:opacity-50"
+                    >
+                      {removiendo[ag.id] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+                    </button>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-white/90 truncate">{a.nombre_completo}</p>
-                    <p className="text-[10px] text-white/35 truncate">
-                      {a.puesto ?? "Agente"}{a.sede ? ` · ${a.sede}` : ""}
-                      {declino && !seleccionado ? <span className="text-white/25"> · declinó antes</span> : null}
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Separador si hay capacidad para más */}
+          {hayCapacidad && (
+            <>
+              <div className="px-5 pt-3">
+                <p className="text-[10px] font-semibold text-white/40 uppercase tracking-wide mb-2">
+                  Agregar guardia {agentesLocales.length > 0 ? `(faltan ${cantidadRequerida - agentesLocales.length})` : ""}
+                </p>
+
+                {/* Tipo de cobertura */}
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {TIPOS_COBERTURA.map((tc) => (
+                    <button
+                      key={tc.value}
+                      onClick={() => setTipoCobertura(tc.value)}
+                      className={`text-[10px] px-2.5 py-1 rounded-lg border font-medium transition-colors ${
+                        tipoCobertura === tc.value
+                          ? "bg-primary/20 border-primary/50 text-primary"
+                          : "bg-white/4 border-white/8 text-white/40 hover:border-white/20"
+                      }`}
+                    >
+                      {tc.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Conflicto */}
+                {conflicto && (
+                  <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2.5 mb-2">
+                    <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+                    <p className="text-[10px] text-red-200/70">{conflicto}</p>
+                  </div>
+                )}
+
+                {/* Búsqueda */}
+                <input
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  placeholder="Buscar agente en pool…"
+                  className="w-full bg-[#0c1929] border border-white/8 rounded-xl px-3 py-2 text-xs text-white/80 outline-none placeholder:text-white/20 focus:border-primary/40"
+                />
+              </div>
+
+              <div className="px-5 pb-3 pt-2 space-y-1 max-h-52 overflow-y-auto">
+                {agentesDisponibles.length === 0 ? (
+                  <div className="text-center py-4">
+                    <UserMinus className="w-5 h-5 text-white/10 mx-auto mb-1" />
+                    <p className="text-xs text-white/25">
+                      {disponibles.length === 0 ? "No hay agentes disponibles" : "Sin resultados"}
                     </p>
                   </div>
-                  {seleccionado && (
-                    <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
-                  )}
-                </button>
-              );
-            })
+                ) : (
+                  agentesDisponibles.map((a) => {
+                    const seleccionado = agenteSeleccionado?.id === a.id;
+                    return (
+                      <button
+                        key={a.id}
+                        onClick={() => { setAgenteSeleccionado(a); setConflicto(null); }}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
+                          seleccionado
+                            ? "bg-primary/15 border-primary/40"
+                            : "bg-[#0c1929] border-white/6 hover:border-white/15"
+                        }`}
+                      >
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarColor(a.nombre_completo)}`}>
+                          {iniciales(a.nombre_completo)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-white/90 truncate">{a.nombre_completo}</p>
+                          <p className="text-[10px] text-white/35 truncate">{a.puesto ?? "Agente"}{a.sede ? ` · ${a.sede}` : ""}</p>
+                        </div>
+                        {seleccionado && <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </>
           )}
-        </div>
 
-        {/* Observaciones */}
-        <div className="px-5 py-3 border-t border-white/6 shrink-0">
-          <textarea
-            value={observaciones}
-            onChange={(e) => setObservaciones(e.target.value)}
-            placeholder="Observaciones (opcional)…"
-            rows={2}
-            className="w-full bg-[#0c1929] border border-white/8 rounded-xl px-3 py-2 text-xs text-white/80 outline-none placeholder:text-white/20 focus:border-primary/40 resize-none"
-          />
-        </div>
+          {/* Cubierto completamente */}
+          {cubierto && (
+            <div className="mx-5 my-3 flex items-center gap-2 bg-green-500/8 border border-green-500/20 rounded-xl px-3 py-2.5">
+              <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+              <p className="text-[11px] text-green-300/80 font-medium">
+                Cobertura completa — {cantidadRequerida} de {cantidadRequerida} guardias asignados
+              </p>
+            </div>
+          )}
 
-        {/* Estado post-asignación (informativo) */}
-        <div className="px-5 pb-3 shrink-0">
-          <div className="flex items-center gap-2 bg-orange-500/8 border border-orange-500/20 rounded-xl px-3 py-2">
-            <Info className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-            <p className="text-[10px] text-orange-300/70">
-              Al confirmar: operativo <span className="text-green-400 font-semibold">Cubierto</span> · etapa <span className="text-orange-400 font-semibold">Pendiente Facturación</span>
-            </p>
-          </div>
+          {/* Declinaron */}
+          {(tarjeta.agentes_rechazados?.length ?? 0) > 0 && (
+            <div className="mx-5 mb-3 flex items-start gap-2 bg-white/4 border border-white/10 rounded-xl px-3 py-2">
+              <Info className="w-3.5 h-3.5 text-white/30 shrink-0 mt-0.5" />
+              <p className="text-[10px] text-white/30">
+                Anteriores declinaron: {tarjeta.agentes_rechazados.map(a => a.nombre).join(", ")}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Botones */}
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-white/8 shrink-0">
           <button
             onClick={onClose}
-            disabled={guardando}
             className="px-4 py-2 text-xs text-white/50 hover:text-white border border-white/8 rounded-xl transition-colors"
           >
-            Cancelar
+            {cubierto ? "Listo" : "Cerrar"}
           </button>
-          <button
-            onClick={handleConfirmar}
-            disabled={!agenteSeleccionado || guardando}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-[#04090f] rounded-xl transition-colors"
-          >
-            {guardando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-            Confirmar asignación
-          </button>
+          {hayCapacidad && (
+            <button
+              onClick={handleAgregar}
+              disabled={!agenteSeleccionado || guardando}
+              className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-[#04090f] rounded-xl transition-colors"
+            >
+              {guardando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+              Agregar guardia
+            </button>
+          )}
         </div>
       </div>
     </div>,
