@@ -90,10 +90,13 @@ router.post("/leads/:id/convertir-cliente", async (req, res) => {
       return res.status(409).json({ error: "Este lead ya fue convertido a cliente", clienteId: existCheck[0].cliente_id });
     }
 
+    // Extraer fecha_inicio_contrato del body (opcional pero recomendado)
+    const { fecha_inicio_contrato } = req.body ?? {};
+
     // Crear cliente en la tabla clients
     const { rows: nuevoCliente } = await pool.query<{ id: number }>(`
-      INSERT INTO clients (nombre, nombre_comercial, sector, notas, portal_cliente_id, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+      INSERT INTO clients (nombre, nombre_comercial, sector, notas, portal_cliente_id, fecha_inicio_contrato, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
       RETURNING id
     `, [
       lead.empresa,
@@ -101,6 +104,7 @@ router.post("/leads/:id/convertir-cliente", async (req, res) => {
       lead.servicio ?? "seguridad",
       `Cliente convertido desde lead #${lead.id}. Contacto: ${lead.contacto}. Notas: ${lead.notas ?? ""}`.trim(),
       `CLI-LEAD-${lead.id}`,
+      fecha_inicio_contrato || null,
     ]);
 
     const clienteId = nuevoCliente[0].id;

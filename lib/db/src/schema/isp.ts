@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, smallint, numeric, varchar, text, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, smallint, numeric, varchar, text, timestamp, boolean, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -195,6 +195,9 @@ export const clientsTable = pgTable("clients", {
   estado: varchar("estado", { length: 20 }).notNull().default("activo"),
   portalClienteId: varchar("portal_cliente_id", { length: 100 }), // → users.clienteId (ej: "CLI-001")
   notas: text("notas"),
+  // Fecha en que inicia operaciones el contrato/proyecto del cliente.
+  // Permite mostrar un "Arranque Programado" en el Pizarrón Futuro de Operaciones.
+  fechaInicioContrato: date("fecha_inicio_contrato"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

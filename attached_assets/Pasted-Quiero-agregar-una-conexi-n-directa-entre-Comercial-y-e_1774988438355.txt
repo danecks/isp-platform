@@ -1,0 +1,139 @@
+Quiero agregar una conexión directa entre Comercial y el Pizarrón Operativo / Planificación Futura de ISPSA.
+
+No quiero romper nada de lo existente.
+
+## Contexto real
+Cuando Comercial cierra una venta y se crea un cliente/proyecto nuevo, debe existir una fecha de inicio del contrato/proyecto obligatoria.
+
+Esa fecha no es solo administrativa.
+Quiero que sirva para que Operaciones vea en el Pizarrón Futuro cuándo arranca un nuevo servicio y pueda prepararse con anticipación.
+
+## Objetivo
+Que al cerrar una venta / crear un cliente con proyecto activo, el sistema use la fecha de inicio del contrato/proyecto para mostrar automáticamente una tarjeta de arranque en el Pizarrón Futuro.
+
+Ejemplo:
+- hoy es 01/04/2026
+- Comercial cierra contrato con cliente nuevo
+- fecha de inicio del proyecto = 18/04/2026
+
+Entonces:
+- ese proyecto NO debe aparecer como operativo hoy
+- pero SÍ debe aparecer en la planificación del 18/04/2026 como un arranque programado
+
+---
+
+## 1. Fecha de inicio obligatoria
+En el flujo de:
+- cliente ganado
+- creación de contrato
+- activación del servicio
+
+quiero que exista una fecha obligatoria tipo:
+- fecha_inicio_contrato
+o
+- fecha_inicio_proyecto
+
+No quiero proyectos activos sin esta fecha.
+
+---
+
+## 2. Tarjeta de inicio de proyecto en Pizarrón Futuro
+Cuando exista un cliente/proyecto con fecha futura de inicio, quiero que en el Pizarrón Futuro de esa fecha aparezca una tarjeta especial.
+
+Esta tarjeta debe representar:
+- nuevo proyecto / nuevo servicio
+- cliente
+- fecha de inicio
+- cantidad de puestos o cobertura esperada
+- estado de preparación si aplica
+
+No quiero que se vea igual a una cobertura diaria normal.
+Debe tener estilo visual especial.
+
+---
+
+## 3. Estilo visual diferenciado
+La tarjeta de inicio de proyecto debe verse distinta, por ejemplo:
+- color tenue especial
+- borde destacado
+- badge “Inicio de proyecto”
+- badge “Arranque programado”
+- icono de calendario o contrato
+
+La idea es que Operaciones entienda rápidamente que:
+- ese cliente/proyecto arranca ese día
+- y debe prepararse
+
+---
+
+## 4. Visibilidad antes de la fecha
+Quiero que incluso antes de la fecha de arranque, el sistema pueda mostrar desde el presente o desde planificación que:
+- hay un proyecto nuevo próximo a iniciar
+- cuándo inicia
+- cuántos puestos requiere
+- si ya tiene zona, supervisor y cobertura definidos o no
+
+Esto ayudará a que Operaciones no llegue tarde a preparar el servicio.
+
+---
+
+## 5. Al llegar la fecha
+Cuando llegue la fecha de inicio:
+- el proyecto debe integrarse naturalmente al Pizarrón Operativo
+- sus puestos deben aparecer como parte de la operación normal
+- si no están cubiertos, debe verse claramente
+- si ya estaban planificados, debe respetar esa planificación
+
+---
+
+## 6. Integración con estructura del cliente
+La tarjeta de inicio de proyecto debe tomar la información ya configurada del cliente, por ejemplo:
+- cliente
+- sedes
+- puestos
+- zona
+- supervisor
+- turnos
+- fecha de inicio
+
+No quiero datos duplicados ni sueltos.
+
+---
+
+## 7. Casos a soportar
+Quiero que funcione al menos en estos escenarios:
+1. Cliente nuevo con inicio futuro
+2. Cliente nuevo con varios puestos
+3. Proyecto que inicia en una sola fecha
+4. Proyecto que aún no tiene toda la cobertura asignada
+5. Proyecto visible en planificación, pero no activo todavía
+
+---
+
+## 8. No romper
+No romper:
+- Comercial
+- clientes
+- ficha maestra del cliente
+- sedes
+- puestos
+- zonas
+- supervisor
+- Pizarrón Operativo actual
+- planificación futura
+- RRHH
+- pre-planilla
+- planilla
+
+---
+
+## 9. Documentación
+Explica claramente:
+- dónde se define la fecha de inicio del proyecto
+- cómo se refleja en el Pizarrón Futuro
+- cómo se ve la tarjeta de inicio de proyecto
+- qué pasa al llegar la fecha real
+- cómo esto ayuda a Operaciones a preparar el servicio antes de arrancar
+
+Muy importante:
+quiero que cuando Comercial cierre una venta y defina la fecha de inicio del contrato/proyecto, Operaciones pueda verlo en la planificación futura del Pizarrón y prepararse correctamente antes del arranque real del servicio.

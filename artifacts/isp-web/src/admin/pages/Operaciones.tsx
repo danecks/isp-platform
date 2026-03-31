@@ -137,6 +137,26 @@ interface AgentePoolFuturo {
   plan_tipo_ausencia?: string | null;
 }
 
+interface InicioProyecto {
+  cliente_id: number;
+  cliente_nombre: string;
+  cliente_nombre_comercial: string | null;
+  sector: string | null;
+  notas: string | null;
+  fecha_inicio_contrato: string;
+  total_puestos: number;
+  puestos_con_titular: number;
+  puestos_sin_titular: number;
+  dias_para_inicio?: number;
+  puestos: Array<{
+    id: number;
+    nombre: string;
+    turno_nombre: string | null;
+    titular_nombre: string | null;
+    activo: boolean;
+  }> | null;
+}
+
 interface PoolFuturoData {
   fecha: string;
   trabajando: AgentePoolFuturo[];
@@ -145,6 +165,7 @@ interface PoolFuturoData {
   relevoProgramado: AgentePoolFuturo[];
   ausenteProgramado: AgentePoolFuturo[];
   noElegible: AgentePoolFuturo[];
+  iniciosProyecto: InicioProyecto[];
   totales: {
     trabajando: number;
     descansando: number;
@@ -152,6 +173,7 @@ interface PoolFuturoData {
     relevoProgramado: number;
     ausenteProgramado: number;
     noElegible: number;
+    iniciosProyecto: number;
   };
 }
 
@@ -1730,6 +1752,80 @@ function PoolFuturoPanel({
           </div>
         ))}
       </div>
+
+      {/* ── Inicios de Proyecto ── */}
+      {(data.iniciosProyecto ?? []).length > 0 && (
+        <div className="border-t border-amber-500/20 bg-amber-500/3">
+          <div className="flex items-center gap-2 px-4 py-2 border-b border-amber-500/15">
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-xs font-bold text-amber-300/80 uppercase tracking-widest">Arranque programado</span>
+            <span className="ml-1 px-2 py-0.5 rounded-full text-[10px] bg-amber-500/15 border border-amber-500/25 text-amber-300">
+              {data.iniciosProyecto.length} {data.iniciosProyecto.length === 1 ? "proyecto" : "proyectos"}
+            </span>
+          </div>
+          <div className="p-3 flex flex-col gap-2">
+            {data.iniciosProyecto.map((ip) => (
+              <div
+                key={ip.cliente_id}
+                className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3 flex flex-col gap-2"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center shrink-0">
+                      <Building2 className="w-3.5 h-3.5 text-amber-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-amber-200 truncate">
+                        {ip.cliente_nombre_comercial || ip.cliente_nombre}
+                      </p>
+                      {ip.sector && (
+                        <p className="text-[10px] text-amber-300/50 capitalize">{ip.sector}</p>
+                      )}
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-400/15 border border-amber-400/30 text-amber-300 uppercase tracking-wider">
+                    Inicio
+                  </span>
+                </div>
+
+                {/* Puestos */}
+                <div className="flex items-center gap-3 text-[10px]">
+                  <div className="flex items-center gap-1 text-white/50">
+                    <Layers className="w-3 h-3" />
+                    <span>{ip.total_puestos} {ip.total_puestos === 1 ? "puesto" : "puestos"}</span>
+                  </div>
+                  {ip.puestos_con_titular > 0 && (
+                    <div className="flex items-center gap-1 text-green-400/70">
+                      <CheckCircle2 className="w-3 h-3" />
+                      <span>{ip.puestos_con_titular} con titular</span>
+                    </div>
+                  )}
+                  {ip.puestos_sin_titular > 0 && (
+                    <div className="flex items-center gap-1 text-amber-400/70">
+                      <AlertCircle className="w-3 h-3" />
+                      <span>{ip.puestos_sin_titular} sin asignar</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Lista de puestos si hay pocos */}
+                {ip.puestos && ip.puestos.length > 0 && ip.puestos.length <= 4 && (
+                  <div className="flex flex-col gap-1">
+                    {ip.puestos.map((p) => (
+                      <div key={p.id} className="flex items-center gap-1.5 text-[10px] text-white/40">
+                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${p.titular_nombre ? "bg-green-400/60" : "bg-amber-400/50"}`} />
+                        <span className="truncate">{p.nombre}</span>
+                        {p.turno_nombre && <span className="text-white/25 shrink-0">· {p.turno_nombre}</span>}
+                        {!p.titular_nombre && <span className="text-amber-400/50 shrink-0">sin titular</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3425,6 +3521,15 @@ export default function Operaciones() {
     retry: 1,
   });
 
+  const { data: proximosArranques } = useQuery<{ arranques: InicioProyecto[]; total: number }>({
+    queryKey: ["proximos-arranques"],
+    queryFn: () =>
+      fetch(`${API_BASE}/operaciones/proximos-arranques?dias=60`)
+        .then((r) => r.json()),
+    refetchInterval: 300_000,
+    retry: 1,
+  });
+
   // Etapas SSA para el panel del Pizarrón
   const ssaSinAgente   = tarjetasSSA.filter((t) => !t.agente_id);
   const ssaCubierta    = tarjetasSSA.filter((t) => !!t.agente_id);
@@ -4314,6 +4419,45 @@ export default function Operaciones() {
               </div>
             )}
           </div>
+
+          {/* ── Próximos Arranques de Proyecto ────────────────────────────── */}
+          {(proximosArranques?.total ?? 0) > 0 && !esFuturo && (
+            <div className="shrink-0 bg-amber-500/4 border border-amber-500/20 rounded-2xl overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-amber-500/15">
+                <Zap className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-xs font-bold text-amber-300/80 uppercase tracking-widest">Próximos arranques</span>
+                <span className="ml-1 px-2 py-0.5 rounded-full text-[10px] bg-amber-500/15 border border-amber-500/25 text-amber-300">
+                  {proximosArranques!.total} en 60 días
+                </span>
+              </div>
+              <div className="p-3 flex flex-col gap-1.5">
+                {proximosArranques!.arranques.map((ip) => (
+                  <div key={ip.cliente_id} className="flex items-center gap-2 text-[11px]">
+                    <div className="w-6 h-6 rounded-md bg-amber-500/15 border border-amber-500/25 flex items-center justify-center shrink-0">
+                      <Building2 className="w-3 h-3 text-amber-400" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="text-amber-200 font-medium truncate block">
+                        {ip.cliente_nombre_comercial || ip.cliente_nombre}
+                      </span>
+                    </div>
+                    <div className="shrink-0 flex items-center gap-1.5">
+                      <span className="text-white/30 text-[10px]">{ip.total_puestos} puestos</span>
+                      <span className={`font-semibold px-1.5 py-0.5 rounded text-[9px] ${
+                        (ip.dias_para_inicio ?? 99) <= 7
+                          ? "bg-red-500/15 text-red-300 border border-red-500/20"
+                          : (ip.dias_para_inicio ?? 99) <= 14
+                          ? "bg-amber-500/15 text-amber-300 border border-amber-500/20"
+                          : "bg-white/5 text-white/40 border border-white/10"
+                      }`}>
+                        {ip.dias_para_inicio === 0 ? "Hoy" : `${ip.dias_para_inicio}d`}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* ── Pool de agentes ───────────────────────────────────────────── */}
           {esFuturo && poolFuturo ? (

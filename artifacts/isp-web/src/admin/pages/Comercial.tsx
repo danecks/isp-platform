@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "../layout/AdminLayout";
 import { StatusBadge } from "../components/StatusBadge";
 import { leadsApi } from "@/lib/api";
-import { Briefcase, Filter, Loader2, RefreshCw, ExternalLink, Send, CheckCircle2, UserPlus } from "lucide-react";
+import { Briefcase, Filter, Loader2, RefreshCw, ExternalLink, Send, CheckCircle2, UserPlus, X, Calendar } from "lucide-react";
 
 type EstadoLead = "nuevo" | "contactado" | "cotizado" | "ganado" | "perdido";
 type CanalFilter = "todos" | "whatsapp" | "web" | "otro";
@@ -28,15 +28,27 @@ async function sendLeadToTrello(id: number): Promise<{ ok: boolean; url?: string
   }
 }
 
-async function convertirCliente(id: number): Promise<{ ok: boolean; clienteId?: number; msg?: string }> {
+async function convertirCliente(id: number, fechaInicioContrato?: string): Promise<{ ok: boolean; clienteId?: number; msg?: string }> {
   try {
-    const r = await fetch(`${API}/leads/${id}/convertir-cliente`, { method: "POST" });
+    const r = await fetch(`${API}/leads/${id}/convertir-cliente`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fecha_inicio_contrato: fechaInicioContrato || null }),
+    });
     const data = await r.json();
     if (!r.ok) return { ok: false, msg: data.error || "Error al convertir" };
     return { ok: true, clienteId: data.clienteId };
   } catch (err) {
     return { ok: false, msg: (err as Error).message };
   }
+}
+
+interface ModalConvertirState {
+  leadId: number;
+  empresa: string;
+  fecha: string;
+  submitting: boolean;
+  error: string | null;
 }
 
 export default function Comercial() {
@@ -47,6 +59,7 @@ export default function Comercial() {
   const [trelloUrls, setTrelloUrls] = useState<Record<number, string>>({});
   const [convertidos, setConvertidos] = useState<Record<number, number>>({});
   const [errores, setErrores] = useState<Record<number, string>>({});
+  const [modalConvertir, setModalConvertir] = useState<ModalConvertirState | null>(null);
 
   const { data: leads = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["leads"],
@@ -242,24 +255,12 @@ export default function Comercial() {
                           ) : (
                             <div className="flex flex-col gap-0.5">
                               <button
-                                onClick={async () => {
-                                  setConvirtiendo(l.id);
-                                  setErrores(p => { const n = { ...p }; delete n[l.id]; return n; });
-                                  const res = await convertirCliente(l.id);
-                                  if (res.ok && res.clienteId) {
-                                    setConvertidos(p => ({ ...p, [l.id]: res.clienteId! }));
-                                  } else {
-                                    setErrores(p => ({ ...p, [l.id]: res.msg ?? "Error" }));
-                                  }
-                                  setConvirtiendo(null);
-                                }}
+                                onClick={() => setModalConvertir({ leadId: l.id, empresa: l.empresa, fecha: "", submitting: false, error: null })}
                                 disabled={convirtiendo === l.id}
                                 className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 hover:text-emerald-300 text-[11px] rounded-lg border border-emerald-500/20 transition-colors disabled:opacity-50"
                                 title="Convertir a Cliente"
                               >
-                                {convirtiendo === l.id
-                                  ? <Loader2 size={11} className="animate-spin" />
-                                  : <UserPlus size={11} />}
+                                <UserPlus size={11} />
                                 <span>Convertir</span>
                               </button>
                               {error && (
@@ -286,6 +287,89 @@ export default function Comercial() {
         </div>
 
       </div>
+      {/* ── Modal: Convertir Lead a Cliente ── */}
+      {modalConvertir && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm bg-[#0a1628] border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
+              <div className="flex items-center gap-2">
+                <UserPlus size={15} className="text-emerald-400" />
+                <span className="text-sm font-semibold text-white">Convertir a Cliente</span>
+              </div>
+              <button
+                onClick={() => setModalConvertir(null)}
+                className="text-white/30 hover:text-white/60 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="px-5 py-4 flex flex-col gap-4">
+              <div className="bg-white/4 rounded-xl px-3 py-2.5 text-sm text-white/70">
+                <span className="text-white/40 text-xs block mb-0.5">Empresa</span>
+                <span className="font-medium text-white">{modalConvertir.empresa}</span>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="flex items-center gap-1.5 text-xs text-white/60 font-medium">
+                  <Calendar size={12} className="text-amber-400" />
+                  Fecha de inicio del contrato / proyecto
+                  <span className="text-amber-400/70 ml-0.5">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={modalConvertir.fecha}
+                  onChange={(e) => setModalConvertir(p => p ? { ...p, fecha: e.target.value, error: null } : p)}
+                  min={new Date().toISOString().slice(0, 10)}
+                  className="bg-[#060f1a] border border-white/12 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400/50 focus:ring-1 focus:ring-amber-400/20 transition-all"
+                />
+                <p className="text-[10px] text-white/30">
+                  Esta fecha aparecerá como "Arranque Programado" en el Pizarrón Futuro de Operaciones.
+                </p>
+              </div>
+
+              {modalConvertir.error && (
+                <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                  {modalConvertir.error}
+                </p>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex gap-2 px-5 pb-5">
+              <button
+                onClick={() => setModalConvertir(null)}
+                className="flex-1 px-3 py-2 text-sm text-white/50 border border-white/10 rounded-lg hover:bg-white/5 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                disabled={!modalConvertir.fecha || modalConvertir.submitting}
+                onClick={async () => {
+                  if (!modalConvertir.fecha) {
+                    setModalConvertir(p => p ? { ...p, error: "La fecha de inicio es obligatoria." } : p);
+                    return;
+                  }
+                  setModalConvertir(p => p ? { ...p, submitting: true, error: null } : p);
+                  const res = await convertirCliente(modalConvertir.leadId, modalConvertir.fecha);
+                  if (res.ok && res.clienteId) {
+                    setConvertidos(p => ({ ...p, [modalConvertir.leadId]: res.clienteId! }));
+                    setModalConvertir(null);
+                  } else {
+                    setModalConvertir(p => p ? { ...p, submitting: false, error: res.msg ?? "Error al convertir" } : p);
+                  }
+                }}
+                className="flex-1 px-3 py-2 text-sm font-semibold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/25 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {modalConvertir.submitting ? <Loader2 size={13} className="animate-spin" /> : <UserPlus size={13} />}
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminLayout>
   );
 }

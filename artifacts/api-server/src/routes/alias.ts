@@ -84,13 +84,16 @@ aliasRouter.get("/alias/clientes", async (req, res) => {
 
 // POST /api/alias/clientes
 aliasRouter.post("/alias/clientes", async (req, res) => {
-  const { nombre, nombreComercial, nit, sector, notas, portalClienteId } = req.body;
+  const { nombre, nombreComercial, nit, sector, notas, portalClienteId, fecha_inicio_contrato } = req.body;
   if (!nombre) return res.status(400).json({ error: "nombre es requerido" });
 
   try {
     const [nuevo] = await db
       .insert(clientsTable)
-      .values({ nombre, nombreComercial, nit, sector, notas, portalClienteId })
+      .values({
+        nombre, nombreComercial, nit, sector, notas, portalClienteId,
+        ...(fecha_inicio_contrato ? { fechaInicioContrato: fecha_inicio_contrato } : {}),
+      })
       .returning();
     res.status(201).json(nuevo);
   } catch (err) {
@@ -135,7 +138,7 @@ aliasRouter.patch("/alias/clientes/:id", async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
 
-  const { nombre, nombreComercial, nit, sector, notas, portalClienteId, estado } = req.body;
+  const { nombre, nombreComercial, nit, sector, notas, portalClienteId, estado, fecha_inicio_contrato } = req.body;
 
   try {
     const [updated] = await db
@@ -148,6 +151,7 @@ aliasRouter.patch("/alias/clientes/:id", async (req, res) => {
         ...(notas !== undefined && { notas }),
         ...(portalClienteId !== undefined && { portalClienteId }),
         ...(estado && { estado }),
+        ...(fecha_inicio_contrato !== undefined && { fechaInicioContrato: fecha_inicio_contrato || null }),
         updatedAt: new Date(),
       })
       .where(eq(clientsTable.id, id))

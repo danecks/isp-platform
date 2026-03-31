@@ -207,6 +207,36 @@ planificacionFuturaRouter.delete("/operaciones/planificacion-futura/:id", async 
   }
 });
 
+// ─── GET /api/operaciones/proximos-arranques?dias=30 ─────────────────────────
+// Clientes con fecha_inicio_contrato futura (próximos N días)
+planificacionFuturaRouter.get("/operaciones/proximos-arranques", async (req, res) => {
+  const dias = Math.min(parseInt((req.query.dias as string) ?? "30", 10), 180);
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        c.id                       AS cliente_id,
+        c.nombre                   AS cliente_nombre,
+        c.nombre_comercial         AS cliente_nombre_comercial,
+        c.sector,
+        c.fecha_inicio_contrato,
+        COUNT(po.id)::int          AS total_puestos,
+        COUNT(po.id) FILTER (WHERE po.titular_employee_id IS NOT NULL)::int AS puestos_con_titular,
+        COUNT(po.id) FILTER (WHERE po.titular_employee_id IS NULL)::int     AS puestos_sin_titular,
+        (c.fecha_inicio_contrato - CURRENT_DATE)::int                       AS dias_para_inicio
+      FROM clients c
+      LEFT JOIN puestos_operativos po ON po.cliente_id = c.id AND po.activo = true
+      WHERE c.fecha_inicio_contrato >= CURRENT_DATE
+        AND c.fecha_inicio_contrato <= CURRENT_DATE + ($1 || ' days')::interval
+      GROUP BY c.id, c.nombre, c.nombre_comercial, c.sector, c.fecha_inicio_contrato
+      ORDER BY c.fecha_inicio_contrato
+    `, [dias]);
+    res.json({ arranques: rows, total: rows.length, dias });
+  } catch (err) {
+    logger.error({ err }, "GET /operaciones/proximos-arranques error");
+    res.status(500).json({ error: "Error al obtener próximos arranques" });
+  }
+});
+
 // ─── GET /api/operaciones/pool-futuro?fecha=YYYY-MM-DD ────────────────────────
 // Calcula disponibilidad futura por turno + ausencias planificadas + eventos RRHH
 planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
@@ -381,6 +411,34 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
       disponible.push({ ...emp });
     }
 
+    // ── Inicios de proyecto: clientes cuya fecha_inicio_contrato = fecha consultada ──
+    const { rows: iniciosProyecto } = await pool.query(`
+      SELECT
+        c.id                    AS cliente_id,
+        c.nombre                AS cliente_nombre,
+        c.nombre_comercial      AS cliente_nombre_comercial,
+        c.sector,
+        c.notas,
+        c.fecha_inicio_contrato,
+        COUNT(po.id)::int       AS total_puestos,
+        COUNT(po.id) FILTER (WHERE po.titular_employee_id IS NOT NULL)::int AS puestos_con_titular,
+        COUNT(po.id) FILTER (WHERE po.titular_employee_id IS NULL)::int     AS puestos_sin_titular,
+        json_agg(json_build_object(
+          'id', po.id,
+          'nombre', po.nombre,
+          'turno_nombre', t.nombre,
+          'titular_nombre', ea.nombre_completo,
+          'activo', po.activo
+        ) ORDER BY po.nombre) FILTER (WHERE po.id IS NOT NULL) AS puestos
+      FROM clients c
+      LEFT JOIN puestos_operativos po ON po.cliente_id = c.id AND po.activo = true
+      LEFT JOIN turnos t ON t.id = po.tipo_turno_id
+      LEFT JOIN employees ea ON ea.id = po.titular_employee_id
+      WHERE c.fecha_inicio_contrato = $1::date
+      GROUP BY c.id, c.nombre, c.nombre_comercial, c.sector, c.notas, c.fecha_inicio_contrato
+      ORDER BY c.nombre
+    `, [fecha]);
+
     res.json({
       fecha,
       trabajando,
@@ -389,6 +447,7 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
       relevoProgramado,
       ausenteProgramado,
       noElegible,
+      iniciosProyecto,
       totales: {
         trabajando:        trabajando.length,
         descansando:       descansando.length,
@@ -396,6 +455,7 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
         relevoProgramado:  relevoProgramado.length,
         ausenteProgramado: ausenteProgramado.length,
         noElegible:        noElegible.length,
+        iniciosProyecto:   iniciosProyecto.length,
       },
     });
   } catch (err) {
