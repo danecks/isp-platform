@@ -284,21 +284,28 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
     const relevosSet = new Set(relevos.map((r: any) => r.relevo_id as number));
 
     // 4. Función de cálculo de turno para una fecha
+    // NOTA: pg devuelve NUMERIC como string; usamos parseFloat para evitar concatenación errónea
     function calcularEstadoTurno(
-      horasTrabajo: number | null,
-      horasDescanso: number | null,
-      fechaInicioCiclo: string | null,
+      horasTrabajo: number | string | null,
+      horasDescanso: number | string | null,
+      fechaInicioCiclo: string | Date | null,
     ): "trabajando" | "descansando" | "sin_turno" {
-      if (!horasTrabajo || !fechaInicioCiclo) return "sin_turno";
-      const ciclo = horasTrabajo + (horasDescanso ?? 0);
+      const ht = horasTrabajo != null ? parseFloat(String(horasTrabajo)) : null;
+      const hd = horasDescanso != null ? parseFloat(String(horasDescanso)) : 0;
+      if (!ht || !fechaInicioCiclo) return "sin_turno";
+      const ciclo = ht + hd;
       if (ciclo <= 24) return "trabajando"; // turno intra-día: trabaja todos los días
 
       // Turno de ciclo largo (ej: 24h trabajo + 24h descanso = ciclo 48h)
-      const diasTrabajo   = Math.ceil(horasTrabajo / 24);
-      const diasDescanso  = Math.ceil((horasDescanso ?? 0) / 24);
+      const diasTrabajo   = Math.ceil(ht / 24);
+      const diasDescanso  = Math.ceil(hd / 24);
       const cicloDias     = diasTrabajo + diasDescanso;
 
-      const inicio   = new Date(fechaInicioCiclo + "T00:00:00Z");
+      // Normalizar: puede llegar como Date object, ISO string, o "YYYY-MM-DD"
+      const inicioISO = fechaInicioCiclo instanceof Date
+        ? fechaInicioCiclo.toISOString().slice(0, 10)
+        : String(fechaInicioCiclo).slice(0, 10);
+      const inicio   = new Date(inicioISO + "T00:00:00Z");
       const objetivo = new Date(fecha + "T00:00:00Z");
       const diff     = Math.round((objetivo.getTime() - inicio.getTime()) / 86_400_000);
       const posicion = ((diff % cicloDias) + cicloDias) % cicloDias;
@@ -315,13 +322,13 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
     const noElegible:         typeof empleados = [];
 
     for (const emp of empleados) {
-      // No elegibles / suspendidos sin turno
-      if (!emp.elegible_pool || emp.estado_laboral === "suspendido" || emp.estado_laboral === "incapacitado") {
-        noElegible.push({ ...emp, razon_no_elegible: emp.estado_laboral !== "activo" ? emp.estado_laboral : "no_elegible_pool" });
+      // Empleados suspendidos o incapacitados → siempre no elegibles (independiente de puesto)
+      if (emp.estado_laboral === "suspendido" || emp.estado_laboral === "incapacitado") {
+        noElegible.push({ ...emp, razon_no_elegible: emp.estado_laboral });
         continue;
       }
 
-      // ¿Tiene evento RRHH aprobado ese día?
+      // ¿Tiene evento RRHH aprobado ese día? → ausente programado (incluso si tiene puesto)
       const eventoRrhh = eventosMap.get(emp.id);
       if (eventoRrhh) {
         ausenteProgramado.push({ ...emp, fuente_ausencia: "rrhh", tipo_ausencia_rrhh: eventoRrhh.tipo });
@@ -340,7 +347,8 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
         continue;
       }
 
-      // ¿Tiene puesto asignado? → calcular turno
+      // ¿Tiene puesto asignado? → calcular turno (independiente de elegible_pool)
+      // Los empleados en puesto fijo tienen elegible_pool=false pero igual trabajan/descansan
       if (emp.puesto_id) {
         const estado = calcularEstadoTurno(emp.horas_trabajo, emp.horas_descanso, emp.fecha_inicio_ciclo);
         if (estado === "trabajando") {
@@ -354,7 +362,13 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
         continue;
       }
 
-      // Sin puesto asignado → disponible en el pool
+      // Sin puesto asignado: elegible_pool determina si está disponible o excluido
+      if (!emp.elegible_pool) {
+        noElegible.push({ ...emp, razon_no_elegible: "no_elegible_pool" });
+        continue;
+      }
+
+      // Sin puesto y elegible → disponible en el pool
       disponible.push({ ...emp });
     }
 

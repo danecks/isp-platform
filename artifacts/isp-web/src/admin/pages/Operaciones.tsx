@@ -23,7 +23,7 @@ import {
   ChevronRight, ChevronLeft, Info, Building2, Circle, GripVertical,
   UserMinus, UserPlus, XCircle, RotateCcw, FileText,
   Lock, Unlock, Calendar, CalendarDays, AlertCircle, CheckSquare,
-  Layers, Timer, Moon,
+  Layers, Timer, Moon, Settings2, Repeat, Sun,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -57,6 +57,13 @@ interface Puesto {
   hora_entrada: string | null;
   hora_salida: string | null;
   estado_operativo_puesto: string | null;
+  tipo_turno_id: number | null;
+  turno_nombre: string | null;
+  fecha_inicio_ciclo: string | null;
+  ciclo_horas: number | null;
+  tipo_ciclo: "diario" | "alternado" | null;
+  horas_trabajo: number | null;
+  horas_descanso: number | null;
 }
 
 interface ClienteBoard {
@@ -1213,6 +1220,212 @@ function ModalPlanFuturo({
   );
 }
 
+// ─── Modal Configurar Turno de Puesto ─────────────────────────────────────────
+
+interface TurnoApiItem {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+  horas_trabajo: number;
+  horas_descanso: number;
+  ciclo_horas: number;
+  tipo_ciclo: "diario" | "alternado";
+  dias_trabajo: number;
+  dias_descanso: number;
+  puestos_count: number;
+}
+
+function ModalConfigTurno({
+  puesto,
+  onClose,
+  onSaved,
+}: {
+  puesto: Puesto;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [turnoId, setTurnoId]               = useState<string>(String(puesto.tipo_turno_id ?? ""));
+  const [fechaInicio, setFechaInicio]       = useState<string>(puesto.fecha_inicio_ciclo ?? new Date().toISOString().slice(0, 10));
+  const [guardando, setGuardando]           = useState(false);
+
+  const { data: turnos = [], isLoading: cargandoTurnos } = useQuery<TurnoApiItem[]>({
+    queryKey: ["turnos-catalogo"],
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/turnos`, { credentials: "include" });
+      if (!r.ok) throw new Error("Error al cargar turnos");
+      return r.json();
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const turnoSeleccionado = turnos.find(t => String(t.id) === turnoId) ?? null;
+
+  async function guardar() {
+    if (!turnoId) {
+      toast({ title: "Selecciona un turno", variant: "destructive" });
+      return;
+    }
+    if (!fechaInicio) {
+      toast({ title: "Indica la fecha de inicio de ciclo", variant: "destructive" });
+      return;
+    }
+    setGuardando(true);
+    try {
+      const r = await fetch(`${API_BASE}/operaciones/puestos/${puesto.id}/turno`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tipo_turno_id: parseInt(turnoId), fecha_inicio_ciclo: fechaInicio }),
+      });
+      if (!r.ok) {
+        const e = await r.json();
+        throw new Error(e.error ?? "Error al guardar turno");
+      }
+      toast({ title: "✅ Turno asignado correctamente" });
+      onSaved();
+      onClose();
+    } catch (err: unknown) {
+      toast({ title: (err as Error).message, variant: "destructive" });
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="relative w-full max-w-md bg-[#0a1628] border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/8 bg-[#0d1e38]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-indigo-500/15 border border-indigo-500/25 flex items-center justify-center">
+              <Settings2 className="w-3.5 h-3.5 text-indigo-400" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-white/90">Configurar Turno</p>
+              <p className="text-[10px] text-white/40 truncate max-w-[220px]">{puesto.nombre}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/8 transition-colors">
+            <X className="w-4 h-4 text-white/40" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Turno actual */}
+          {puesto.tipo_turno_id && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-white/4 border border-white/8 rounded-lg">
+              <Repeat className="w-3.5 h-3.5 text-white/30 shrink-0" />
+              <p className="text-[11px] text-white/50">
+                Turno actual: <span className="text-white/70 font-semibold">{puesto.turno_nombre ?? "—"}</span>
+                {puesto.tipo_ciclo === "alternado" && puesto.horas_trabajo && puesto.horas_descanso && (
+                  <> · {Math.ceil(puesto.horas_trabajo / 24)}d trabaja / {Math.ceil(puesto.horas_descanso / 24)}d descansa</>
+                )}
+              </p>
+            </div>
+          )}
+
+          {/* Selector de turno */}
+          <div>
+            <label className="block text-[11px] font-semibold text-white/60 mb-1.5">Tipo de turno</label>
+            {cargandoTurnos ? (
+              <div className="flex items-center gap-2 px-3 py-2 text-white/30 text-xs">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Cargando turnos…
+              </div>
+            ) : (
+              <select
+                value={turnoId}
+                onChange={e => setTurnoId(e.target.value)}
+                className="w-full bg-[#0d1e38] border border-white/12 text-white/80 text-xs rounded-lg px-3 py-2.5 focus:outline-none focus:border-indigo-500/50"
+              >
+                <option value="">— Seleccionar turno —</option>
+                {turnos.filter(t => t.id).map(t => (
+                  <option key={t.id} value={String(t.id)}>
+                    {t.nombre} — {t.tipo_ciclo === "diario"
+                      ? `${t.horas_trabajo}h/día`
+                      : `${Math.ceil(t.horas_trabajo / 24)}d trabajo / ${Math.ceil(t.horas_descanso / 24)}d descanso`
+                    }
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Info del turno seleccionado */}
+          {turnoSeleccionado && (
+            <div className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg border ${
+              turnoSeleccionado.tipo_ciclo === "diario"
+                ? "bg-emerald-500/6 border-emerald-500/15"
+                : "bg-indigo-500/6 border-indigo-500/15"
+            }`}>
+              {turnoSeleccionado.tipo_ciclo === "diario"
+                ? <Sun className="w-3.5 h-3.5 text-emerald-400 mt-0.5 shrink-0" />
+                : <Repeat className="w-3.5 h-3.5 text-indigo-400 mt-0.5 shrink-0" />
+              }
+              <div>
+                <p className={`text-[10px] font-semibold ${turnoSeleccionado.tipo_ciclo === "diario" ? "text-emerald-300/80" : "text-indigo-300/80"}`}>
+                  Ciclo {turnoSeleccionado.tipo_ciclo === "diario" ? "diario" : "alternado"}
+                </p>
+                {turnoSeleccionado.tipo_ciclo === "diario" ? (
+                  <p className="text-[10px] text-white/40 mt-0.5">
+                    El colaborador trabaja {turnoSeleccionado.horas_trabajo}h todos los días del ciclo.
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-white/40 mt-0.5">
+                    Trabaja {turnoSeleccionado.dias_trabajo} día(s) y descansa {turnoSeleccionado.dias_descanso} día(s) de forma alternada. La fecha de inicio marca el primer día de trabajo.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Fecha de inicio de ciclo */}
+          <div>
+            <label className="block text-[11px] font-semibold text-white/60 mb-1.5">
+              Fecha de inicio del ciclo
+              <span className="ml-1 text-white/30 font-normal">— primer día de trabajo</span>
+            </label>
+            <input
+              type="date"
+              value={fechaInicio}
+              onChange={e => setFechaInicio(e.target.value)}
+              className="w-full bg-[#0d1e38] border border-white/12 text-white/80 text-xs rounded-lg px-3 py-2.5 focus:outline-none focus:border-indigo-500/50"
+            />
+            <p className="text-[10px] text-white/30 mt-1.5">
+              {turnoSeleccionado?.tipo_ciclo === "alternado"
+                ? "El sistema calculará si cada colaborador trabaja o descansa en cualquier fecha futura a partir de esta referencia."
+                : "Para turnos diarios esta fecha es referencial."
+              }
+            </p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2.5 px-5 py-4 border-t border-white/8 bg-[#080f1e]">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-xs text-white/50 hover:text-white/80 rounded-lg hover:bg-white/5 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={guardar}
+            disabled={guardando || !turnoId || !fechaInicio}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors"
+          >
+            {guardando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Settings2 className="w-3.5 h-3.5" />}
+            {guardando ? "Guardando…" : "Guardar turno"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── Tarjeta de Puesto Futuro ──────────────────────────────────────────────────
 
 const LABELS_AUSENCIA_FUTURO: Record<string, string> = {
@@ -1543,6 +1756,7 @@ function DroppablePuesto({
   onClick,
   onLiberar,
   onAbrirSegmentos,
+  onConfigTurno,
   cambiosProximos,
 }: {
   puesto: Puesto;
@@ -1550,6 +1764,7 @@ function DroppablePuesto({
   onClick: () => void;
   onLiberar: () => void;
   onAbrirSegmentos: () => void;
+  onConfigTurno?: () => void;
   cambiosProximos?: PlanFuturo[];
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: `puesto-${puesto.id}` });
@@ -1585,11 +1800,42 @@ function DroppablePuesto({
       {/* Encabezado: nombre + turno + estado */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-white/80 truncate">{puesto.nombre}</p>
+          <div className="flex items-center gap-1">
+            <p className="text-xs font-semibold text-white/80 truncate">{puesto.nombre}</p>
+            {onConfigTurno && (
+              <button
+                onClick={e => { e.stopPropagation(); onConfigTurno(); }}
+                className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-white/10"
+                title="Configurar turno"
+              >
+                <Settings2 className="w-2.5 h-2.5 text-white/30 hover:text-indigo-400" />
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-            <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold ${TURNO_COLORS[puesto.turno] ?? "text-white/30 bg-white/5 border-white/10"}`}>
-              {puesto.turno}
-            </span>
+            {/* Turno real (tipo_turno_id) o turno texto legacy */}
+            {puesto.tipo_turno_id ? (
+              <span
+                className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold cursor-pointer ${
+                  puesto.tipo_ciclo === "alternado"
+                    ? "text-indigo-300/80 bg-indigo-500/8 border-indigo-500/20"
+                    : "text-emerald-300/70 bg-emerald-500/6 border-emerald-500/15"
+                }`}
+                onClick={e => { e.stopPropagation(); onConfigTurno?.(); }}
+                title="Clic para cambiar turno"
+              >
+                {puesto.tipo_ciclo === "alternado" ? <Repeat className="w-2 h-2 inline mr-0.5 opacity-70" /> : null}
+                {puesto.turno_nombre}
+              </span>
+            ) : (
+              <span
+                className="text-[9px] px-1.5 py-0.5 rounded border font-semibold text-amber-300/60 bg-amber-500/6 border-amber-500/15 cursor-pointer"
+                onClick={e => { e.stopPropagation(); onConfigTurno?.(); }}
+                title="Sin turno asignado — clic para configurar"
+              >
+                {puesto.turno ?? "Sin turno"}
+              </span>
+            )}
             {puesto.jornada && (
               <span className="text-[9px] px-1.5 py-0.5 rounded border text-blue-300/60 bg-blue-500/5 border-blue-500/15 font-semibold">
                 {puesto.jornada}
@@ -1713,6 +1959,7 @@ function ClienteColumna({
   onNuevoPuesto,
   onEliminarPuesto,
   onAbrirSegmentos,
+  onConfigTurno,
   cambiosFuturosProximos,
 }: {
   cliente: ClienteBoard;
@@ -1722,6 +1969,7 @@ function ClienteColumna({
   onNuevoPuesto: (cliente: ClienteBoard) => void;
   onEliminarPuesto: (puesto: Puesto) => void;
   onAbrirSegmentos: (puesto: Puesto) => void;
+  onConfigTurno?: (puesto: Puesto) => void;
   cambiosFuturosProximos?: Record<number, PlanFuturo[]>;
 }) {
   const cubiertos   = cliente.puestos.filter((p) => p.estado === "cubierto" && p.agente_id).length;
@@ -1762,6 +2010,7 @@ function ClienteColumna({
               onClick={() => onPuestoClick(p)}
               onLiberar={() => onLiberar(p)}
               onAbrirSegmentos={() => onAbrirSegmentos(p)}
+              onConfigTurno={onConfigTurno ? () => onConfigTurno(p) : undefined}
               cambiosProximos={cambiosFuturosProximos?.[p.id]}
             />
             {/* Botón eliminar puesto */}
@@ -2960,6 +3209,7 @@ export default function Operaciones() {
   const [fechaVista, setFechaVista]           = useState<string>(hoyISO);
   const esFuturo = fechaVista > hoyISO;
   const [modalPlanFuturo, setModalPlanFuturo] = useState<{ puesto: Puesto; plan: PlanFuturo | null } | null>(null);
+  const [puestoParaTurno, setPuestoParaTurno] = useState<Puesto | null>(null);
 
   function navFecha(delta: number) {
     const d = new Date(fechaVista + "T00:00:00");
@@ -3926,6 +4176,7 @@ export default function Operaciones() {
                     onNuevoPuesto={(c) => setNuevoPuestoData(c)}
                     onEliminarPuesto={eliminarPuesto}
                     onAbrirSegmentos={(p) => setModalSegmentos(p)}
+                    onConfigTurno={(p) => setPuestoParaTurno(p)}
                     cambiosFuturosProximos={cambiosFuturosProximos}
                   />
                 ))}
@@ -4142,6 +4393,17 @@ export default function Operaciones() {
           onGuardar={guardarPlanFuturo}
           onEliminar={modalPlanFuturo.plan ? () => eliminarPlanFuturo(modalPlanFuturo.plan!.id) : undefined}
           onClose={() => setModalPlanFuturo(null)}
+        />
+      )}
+
+      {puestoParaTurno && (
+        <ModalConfigTurno
+          puesto={puestoParaTurno}
+          onClose={() => setPuestoParaTurno(null)}
+          onSaved={() => {
+            queryClient.invalidateQueries({ queryKey: ["tablero"] });
+            queryClient.invalidateQueries({ queryKey: ["pool-futuro"] });
+          }}
         />
       )}
 

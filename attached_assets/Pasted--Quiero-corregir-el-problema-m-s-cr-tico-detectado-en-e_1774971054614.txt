@@ -1,0 +1,112 @@
+}
+Quiero corregir el problema más crítico detectado en el hard test del sistema ISPSA:
+
+Actualmente todos los puestos tienen:
+tipo_turno_id = NULL
+
+Esto hace que:
+- el pool futuro no funcione
+- la planificación futura sea incorrecta
+- no se pueda calcular quién trabaja o descansa
+- no se pueda diferenciar turnos de 12h y 24h
+- no se pueda aplicar correctamente la lógica de faltas ni horas extra
+
+---
+
+## OBJETIVO
+Hacer que cada puesto tenga un turno real asignado y que el sistema pueda usarlo para:
+
+- calcular disponibilidad futura
+- identificar quién trabaja y quién descansa en cualquier fecha
+- alimentar correctamente el pizarrón operativo
+- soportar la planificación futura
+
+---
+
+## 1. ASIGNACIÓN DE TURNOS A PUESTOS
+
+Crear o completar:
+
+- UI en puestos operativos para seleccionar:
+  - tipo de turno (12h, 24h, etc.)
+  - fecha_inicio_ciclo
+
+No puede quedar ningún puesto sin turno.
+
+---
+
+## 2. API TURNOS COMPLETA
+
+Asegurar que /api/turnos devuelva:
+
+- id
+- nombre
+- horas_por_turno
+- ciclo_horas (ej: 24x24, 12x12, etc.)
+- patrón de trabajo/descanso
+
+---
+
+## 3. CÁLCULO DE CICLO
+
+Implementar función que permita:
+
+Dado:
+- fecha_inicio_ciclo
+- tipo_turno
+- fecha consultada
+
+Calcular:
+- si el colaborador trabaja ese día
+- o si está en descanso
+
+Esto es clave para el pool futuro.
+
+---
+
+## 4. INTEGRACIÓN CON PIZARRÓN
+
+Actualizar:
+
+- pool futuro
+- vista por fecha
+- disponibilidad
+
+Para que:
+- ya no muestre 0 en todos
+- calcule correctamente trabajando vs descansando
+
+---
+
+## 5. VALIDACIÓN
+
+No permitir:
+- crear puesto sin turno
+- asignar colaborador a puesto sin turno
+
+---
+
+## 6. NO ROMPER
+
+No romper:
+- pizarrón operativo
+- cobertura diaria
+- RRHH
+- pre-planilla
+- planilla
+- SSA
+- pool actual
+
+---
+
+## 7. DOCUMENTACIÓN
+
+Explicar:
+- cómo funciona el cálculo del ciclo
+- cómo se determina trabajo vs descanso
+- cómo esto habilita la planificación futura real
+
+---
+
+Muy importante:
+este cambio debe hacer que el sistema pueda entender la realidad operativa de turnos y desbloquear completamente el pool futuro y la planificación

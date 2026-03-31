@@ -31,6 +31,17 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         po.hora_entrada,
         po.hora_salida,
         po.estado_operativo_puesto,
+        po.tipo_turno_id,
+        po.fecha_inicio_ciclo,
+        t.nombre                                                       AS turno_nombre,
+        t.horas_trabajo,
+        t.horas_descanso,
+        (t.horas_trabajo + COALESCE(t.horas_descanso, 0))             AS ciclo_horas,
+        CASE
+          WHEN (t.horas_trabajo + COALESCE(t.horas_descanso, 0)) <= 24
+            THEN 'diario'
+          ELSE 'alternado'
+        END                                                            AS tipo_ciclo,
         e.estado_laboral AS agente_estado_laboral,
         e.puesto         AS agente_puesto,
         e.telefono       AS agente_telefono,
@@ -42,6 +53,7 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       LEFT JOIN employees e  ON e.id  = po.agente_id
       LEFT JOIN client_sedes cs ON cs.id = po.sede_id
       LEFT JOIN operational_zones oz ON oz.id = po.zona_operativa_id
+      LEFT JOIN turnos t ON t.id = po.tipo_turno_id
       WHERE po.activo = TRUE
       ORDER BY po.cliente_nombre, po.orden, po.nombre
     `);
@@ -1513,6 +1525,161 @@ operacionesRouter.get("/operaciones/clientes-disponibles", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "GET /operaciones/clientes-disponibles error");
     res.status(500).json({ error: "Error al cargar clientes" });
+  }
+});
+
+// ─── PATCH /api/operaciones/puestos/:id/turno ─────────────────────────────────
+// Asigna o actualiza el turno y fecha_inicio_ciclo de un puesto operativo.
+// Permite dejar tipo_turno_id en null para remover turno (enviar null explícito).
+operacionesRouter.patch("/operaciones/puestos/:id/turno", async (req, res) => {
+  const puestoId = parseInt(req.params.id);
+  if (isNaN(puestoId)) return res.status(400).json({ error: "ID de puesto inválido" });
+
+  const { tipo_turno_id, fecha_inicio_ciclo } = req.body ?? {};
+
+  // Validación: si se provee un turno, la fecha_inicio_ciclo es obligatoria
+  if (tipo_turno_id != null && !fecha_inicio_ciclo) {
+    return res.status(400).json({ error: "fecha_inicio_ciclo es requerida al asignar un turno" });
+  }
+
+  // Validar formato de fecha
+  if (fecha_inicio_ciclo && !/^\d{4}-\d{2}-\d{2}$/.test(fecha_inicio_ciclo)) {
+    return res.status(400).json({ error: "fecha_inicio_ciclo debe tener formato YYYY-MM-DD" });
+  }
+
+  try {
+    // Verificar que el puesto existe
+    const { rows: puestos } = await pool.query(
+      `SELECT id, nombre FROM puestos_operativos WHERE id = $1 AND activo = TRUE`,
+      [puestoId]
+    );
+    if (puestos.length === 0) {
+      return res.status(404).json({ error: "Puesto no encontrado" });
+    }
+
+    // Verificar que el turno existe (si se asigna uno)
+    if (tipo_turno_id != null) {
+      const { rows: turnos } = await pool.query(
+        `SELECT id, nombre FROM turnos WHERE id = $1 AND activo = TRUE`,
+        [tipo_turno_id]
+      );
+      if (turnos.length === 0) {
+        return res.status(404).json({ error: "Turno no encontrado o inactivo" });
+      }
+    }
+
+    const { rows: updated } = await pool.query(`
+      UPDATE puestos_operativos
+      SET
+        tipo_turno_id     = $1,
+        fecha_inicio_ciclo = $2,
+        updated_at        = NOW()
+      WHERE id = $3
+      RETURNING
+        id,
+        nombre,
+        tipo_turno_id,
+        fecha_inicio_ciclo
+    `, [
+      tipo_turno_id ?? null,
+      tipo_turno_id != null ? fecha_inicio_ciclo : null,
+      puestoId,
+    ]);
+
+    // Si hay asignaciones operativas activas para este puesto, actualizarlas también
+    if (tipo_turno_id != null) {
+      await pool.query(`
+        UPDATE employee_operational_assignments
+        SET tipo_turno_id = $1
+        WHERE puesto_id = $2 AND activa = TRUE
+      `, [tipo_turno_id, puestoId]);
+    }
+
+    // Obtener datos completos del puesto actualizado con turno
+    const { rows: resultado } = await pool.query(`
+      SELECT
+        po.id,
+        po.nombre,
+        po.tipo_turno_id,
+        po.fecha_inicio_ciclo,
+        t.nombre         AS turno_nombre,
+        t.horas_trabajo,
+        t.horas_descanso,
+        (t.horas_trabajo + COALESCE(t.horas_descanso, 0)) AS ciclo_horas,
+        CASE
+          WHEN (t.horas_trabajo + COALESCE(t.horas_descanso, 0)) <= 24
+            THEN 'diario'
+          ELSE 'alternado'
+        END AS tipo_ciclo
+      FROM puestos_operativos po
+      LEFT JOIN turnos t ON t.id = po.tipo_turno_id
+      WHERE po.id = $1
+    `, [puestoId]);
+
+    logger.info(
+      { puestoId, tipo_turno_id, fecha_inicio_ciclo },
+      "PATCH /operaciones/puestos/:id/turno: turno actualizado"
+    );
+    res.json({ ok: true, puesto: resultado[0] });
+  } catch (err) {
+    logger.error({ err }, "PATCH /operaciones/puestos/:id/turno error");
+    res.status(500).json({ error: "Error al actualizar turno del puesto" });
+  }
+});
+
+// ─── GET /api/operaciones/puestos/:id/turno ───────────────────────────────────
+// Devuelve el turno actual y el estado calculado para una fecha dada
+operacionesRouter.get("/operaciones/puestos/:id/turno", async (req, res) => {
+  const puestoId = parseInt(req.params.id);
+  if (isNaN(puestoId)) return res.status(400).json({ error: "ID de puesto inválido" });
+
+  const fecha = (req.query.fecha as string) || new Date().toISOString().slice(0, 10);
+
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        po.id,
+        po.nombre,
+        po.tipo_turno_id,
+        TO_CHAR(po.fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
+        t.nombre         AS turno_nombre,
+        t.descripcion    AS turno_descripcion,
+        t.horas_trabajo,
+        t.horas_descanso,
+        (t.horas_trabajo + COALESCE(t.horas_descanso, 0))  AS ciclo_horas,
+        CASE
+          WHEN (t.horas_trabajo + COALESCE(t.horas_descanso, 0)) <= 24 THEN 'diario'
+          ELSE 'alternado'
+        END AS tipo_ciclo,
+        CEIL(t.horas_trabajo / 24.0)                        AS dias_trabajo,
+        CEIL(COALESCE(t.horas_descanso, 0) / 24.0)          AS dias_descanso
+      FROM puestos_operativos po
+      LEFT JOIN turnos t ON t.id = po.tipo_turno_id
+      WHERE po.id = $1 AND po.activo = TRUE
+    `, [puestoId]);
+
+    if (rows.length === 0) return res.status(404).json({ error: "Puesto no encontrado" });
+
+    const p = rows[0];
+    let estado_turno: string | null = null;
+
+    if (p.tipo_turno_id && p.fecha_inicio_ciclo && p.ciclo_horas > 24) {
+      const diasTrabajo  = Math.ceil(p.horas_trabajo / 24);
+      const diasDescanso = Math.ceil((p.horas_descanso ?? 0) / 24);
+      const cicloDias    = diasTrabajo + diasDescanso;
+      const inicio       = new Date(p.fecha_inicio_ciclo + "T00:00:00Z");
+      const objetivo     = new Date(fecha + "T00:00:00Z");
+      const diff         = Math.round((objetivo.getTime() - inicio.getTime()) / 86_400_000);
+      const posicion     = ((diff % cicloDias) + cicloDias) % cicloDias;
+      estado_turno       = posicion < diasTrabajo ? "trabajando" : "descansando";
+    } else if (p.tipo_turno_id) {
+      estado_turno = "trabajando"; // turno diario: siempre trabaja
+    }
+
+    res.json({ ...p, estado_turno, fecha_consultada: fecha });
+  } catch (err) {
+    logger.error({ err }, "GET /operaciones/puestos/:id/turno error");
+    res.status(500).json({ error: "Error al obtener turno del puesto" });
   }
 });
 

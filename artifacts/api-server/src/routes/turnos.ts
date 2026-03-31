@@ -25,7 +25,15 @@ turnosRouter.get("/turnos", async (_req, res) => {
     const { rows } = await pool.query(`
       SELECT
         t.*,
-        COUNT(po.id) FILTER (WHERE po.activo = TRUE) AS puestos_count
+        (t.horas_trabajo + COALESCE(t.horas_descanso, 0))                    AS ciclo_horas,
+        CASE
+          WHEN (t.horas_trabajo + COALESCE(t.horas_descanso, 0)) <= 24
+            THEN 'diario'
+          ELSE 'alternado'
+        END                                                                    AS tipo_ciclo,
+        CEIL(t.horas_trabajo / 24.0)                                          AS dias_trabajo,
+        CEIL(COALESCE(t.horas_descanso, 0) / 24.0)                            AS dias_descanso,
+        COUNT(po.id) FILTER (WHERE po.activo = TRUE)                          AS puestos_count
       FROM turnos t
       LEFT JOIN puestos_operativos po ON po.tipo_turno_id = t.id
       GROUP BY t.id

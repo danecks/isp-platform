@@ -2141,5 +2141,107 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: PF-01 — error (no bloqueante)");
   }
 
+  // ── TRN-SEED-01: asignar turnos a puestos operativos existentes ──────────────
+  // Ejecuta SOLO si hay puestos sin tipo_turno_id asignado
+  try {
+    const { rows: sinTurno } = await pool.query(`
+      SELECT COUNT(*) AS cnt FROM puestos_operativos WHERE activo = TRUE AND tipo_turno_id IS NULL
+    `);
+    if (parseInt(sinTurno[0].cnt) > 0) {
+      // Fecha de inicio de ciclo: 2026-01-01 como referencia estable
+      await pool.query(`
+        UPDATE puestos_operativos
+        SET
+          tipo_turno_id     = t.id,
+          fecha_inicio_ciclo = '2026-01-01'
+        FROM (
+          SELECT id, nombre FROM turnos WHERE activo = TRUE
+        ) t
+        WHERE puestos_operativos.activo = TRUE
+          AND puestos_operativos.tipo_turno_id IS NULL
+          AND (
+            (puestos_operativos.nombre ILIKE '%garita principal%'   AND t.nombre = '12x12') OR
+            (puestos_operativos.nombre ILIKE '%garita norte%'        AND t.nombre = '12x12') OR
+            (puestos_operativos.nombre ILIKE '%garita secundaria%'   AND t.nombre = '12x12') OR
+            (puestos_operativos.nombre ILIKE '%control de acceso%'   AND t.nombre = '24x24') OR
+            (puestos_operativos.nombre ILIKE '%ronda%'               AND t.nombre = '12x36') OR
+            (puestos_operativos.nombre ILIKE '%bodega%'              AND t.nombre = '8 horas') OR
+            (puestos_operativos.nombre ILIKE '%acceso vehicular%'    AND t.nombre = '12x12') OR
+            (puestos_operativos.nombre ILIKE '%torre%'               AND t.nombre = '24x48') OR
+            (puestos_operativos.nombre ILIKE '%recepci%'             AND t.nombre = '8 horas')
+          )
+      `);
+      // Asignar turno genérico 12x12 a cualquier puesto que aún quede sin turno
+      await pool.query(`
+        UPDATE puestos_operativos
+        SET tipo_turno_id     = (SELECT id FROM turnos WHERE nombre = '12x12' LIMIT 1),
+            fecha_inicio_ciclo = '2026-01-01'
+        WHERE activo = TRUE AND tipo_turno_id IS NULL
+      `);
+      logger.info("Auto-migrate: TRN-SEED-01 turnos asignados a puestos operativos");
+    } else {
+      logger.info("Auto-migrate: TRN-SEED-01 puestos ya tienen turno asignado");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: TRN-SEED-01 — error (no bloqueante)");
+  }
+
+  // ── CLI-001-SEED: garantizar cliente y usuario portal CLI-001 ────────────────────
+  try {
+    // a) Usuario portal cliente01
+    const { rows: userCheck } = await pool.query(
+      `SELECT id FROM users WHERE username = 'cliente01' LIMIT 1`,
+    );
+    if (userCheck.length === 0) {
+      const portalHash = await bcrypt.hash("Cliente2024!", 10);
+      await pool.query(
+        `INSERT INTO users (username, password_hash, rol, cliente_id, nombre, correo, telefono)
+         VALUES ('cliente01', $1, 'cliente', 'CLI-001', 'Cliente Distribuidora', 'contacto@distnac.gt', '50230001111')
+         ON CONFLICT (username) DO NOTHING`,
+        [portalHash],
+      );
+      logger.info("Auto-migrate: CLI-001-SEED usuario cliente01 creado");
+    } else {
+      logger.info("Auto-migrate: CLI-001-SEED usuario cliente01 ya existe");
+    }
+
+    // b) Cliente con portal_cliente_id='CLI-001'
+    const { rows: cli001 } = await pool.query(
+      `SELECT id FROM clients WHERE portal_cliente_id = 'CLI-001' LIMIT 1`,
+    );
+    if (cli001.length === 0) {
+      // Verificar si existe "Distribuidora Nacional" sin portal_cliente_id
+      const { rows: existing } = await pool.query(
+        `SELECT id FROM clients WHERE LOWER(nombre) LIKE '%distribuidora%' LIMIT 1`,
+      );
+      if (existing.length > 0) {
+        await pool.query(
+          `UPDATE clients SET portal_cliente_id = 'CLI-001' WHERE id = $1`,
+          [existing[0].id],
+        );
+        logger.info("Auto-migrate: CLI-001-SEED portal_cliente_id actualizado en cliente existente");
+      } else {
+        await pool.query(`
+          INSERT INTO clients (nombre, nombre_comercial, nit, sector, estado, portal_cliente_id, notas)
+          VALUES (
+            'Distribuidora Nacional S.A.',
+            'DistNac',
+            'CF-004',
+            'comercio',
+            'activo',
+            'CLI-001',
+            'Vinculado al portal. Múltiples bodegas y rutas de distribución.'
+          )
+          ON CONFLICT (portal_cliente_id) DO NOTHING
+        `);
+        logger.info("Auto-migrate: CLI-001-SEED cliente Distribuidora Nacional creado con portal_cliente_id=CLI-001");
+      }
+    } else {
+      logger.info("Auto-migrate: CLI-001-SEED portal_cliente_id CLI-001 ya existe");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: CLI-001-SEED — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

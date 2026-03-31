@@ -7,7 +7,7 @@ import {
   Download, CheckCircle2, Clock, Loader2,
   User, Building2, Briefcase, Search,
   Shield, Calendar, BookOpen, Ban, XCircle,
-  AlertCircle, ChevronDown,
+  AlertCircle, ChevronDown, Plus,
   ShieldAlert, ShieldCheck, ShieldOff, BarChart2,
   TrendingUp, ArrowUpRight, Minus, Users2,
 } from "lucide-react";
@@ -57,10 +57,20 @@ const ESTADO_CONFIG: Record<string, { label: string; className: string; icon: Re
     className: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20",
     icon: <Clock className="w-3 h-3" />,
   },
+  activo: {
+    label: "Activo",
+    className: "text-blue-400 bg-blue-400/10 border-blue-400/20",
+    icon: <RefreshCw className="w-3 h-3" />,
+  },
   en_proceso: {
     label: "En proceso",
     className: "text-blue-400 bg-blue-400/10 border-blue-400/20",
     icon: <RefreshCw className="w-3 h-3" />,
+  },
+  aprobado: {
+    label: "Aprobado",
+    className: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
+    icon: <CheckCircle2 className="w-3 h-3" />,
   },
   cerrado: {
     label: "Cerrado",
@@ -75,14 +85,13 @@ const ESTADO_CONFIG: Record<string, { label: string; className: string; icon: Re
 };
 
 const TIPO_CONFIG: Record<string, { label: string; className: string }> = {
-  falta: {
-    label: "Falta injustificada",
-    className: "text-red-400 bg-red-400/10 border-red-400/20",
-  },
-  suspension: {
-    label: "Suspensión",
-    className: "text-orange-400 bg-orange-400/10 border-orange-400/20",
-  },
+  falta:                { label: "Falta injustificada",          className: "text-red-400 bg-red-400/10 border-red-400/20" },
+  falta_injustificada:  { label: "Falta injustificada",          className: "text-red-400 bg-red-400/10 border-red-400/20" },
+  suspension:           { label: "Suspensión",                   className: "text-orange-400 bg-orange-400/10 border-orange-400/20" },
+  incapacidad:          { label: "Incapacidad",                  className: "text-blue-400 bg-blue-400/10 border-blue-400/20" },
+  permiso_goce_sueldo:  { label: "Permiso con goce de sueldo",  className: "text-green-400 bg-green-400/10 border-green-400/20" },
+  amonestacion:         { label: "Amonestación",                 className: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20" },
+  vacaciones:           { label: "Vacaciones",                   className: "text-teal-400 bg-teal-400/10 border-teal-400/20" },
 };
 
 function fmtFecha(iso: string): string {
@@ -101,6 +110,217 @@ function fmtHora(iso: string): string {
 
 function fmtDateTime(iso: string): string {
   return `${fmtFecha(iso)} ${fmtHora(iso)}`;
+}
+
+// ─── Tipos de evento RRHH ─────────────────────────────────────────────────────
+const TIPOS_EVENTO = [
+  { value: "falta",              label: "Falta injustificada" },
+  { value: "suspension",         label: "Suspensión" },
+  { value: "incapacidad",        label: "Incapacidad" },
+  { value: "permiso_goce_sueldo",label: "Permiso con goce de sueldo" },
+  { value: "amonestacion",       label: "Amonestación verbal/escrita" },
+  { value: "vacaciones",         label: "Vacaciones" },
+];
+
+// ─── Modal Nuevo Evento ───────────────────────────────────────────────────────
+function ModalNuevoEvento({
+  onClose,
+  onCreate,
+}: {
+  onClose: () => void;
+  onCreate: (data: {
+    employeeId: number;
+    tipoEvento: string;
+    fechaInicio: string;
+    fechaFin?: string;
+    notas?: string;
+  }) => Promise<void>;
+}) {
+  const [employeeId, setEmployeeId]     = useState<string>("");
+  const [tipoEvento, setTipoEvento]     = useState<string>("falta");
+  const [fechaInicio, setFechaInicio]   = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [fechaFin, setFechaFin]         = useState<string>("");
+  const [notas, setNotas]               = useState<string>("");
+  const [loading, setLoading]           = useState(false);
+  const [busEmpleado, setBusEmpleado]   = useState("");
+
+  const { data: empleados = [] } = useQuery<Array<{ id: number; nombreCompleto: string; dpi?: string }>>({
+    queryKey: ["empleados-activos"],
+    queryFn: async () => {
+      const r = await fetch(`${API}/employees?estado=activo&limit=300`, {
+        headers: { "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" },
+      });
+      if (!r.ok) throw new Error("Error cargando empleados");
+      return r.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const empFiltrados = empleados.filter((e) =>
+    !busEmpleado ||
+    (e.nombreCompleto ?? "").toLowerCase().includes(busEmpleado.toLowerCase()) ||
+    String(e.dpi ?? "").includes(busEmpleado)
+  );
+
+  const empleadoSeleccionado = empleados.find((e) => String(e.id) === employeeId);
+
+  async function handleSubmit(ev: React.FormEvent) {
+    ev.preventDefault();
+    if (!employeeId) return;
+    setLoading(true);
+    try {
+      await onCreate({
+        employeeId: Number(employeeId),
+        tipoEvento,
+        fechaInicio,
+        fechaFin: fechaFin || undefined,
+        notas: notas.trim() || undefined,
+      });
+      onClose();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const inputCls = "w-full bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-purple-500/40 transition-colors";
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-[#07111f] border border-purple-500/20 rounded-2xl w-full max-w-md shadow-2xl">
+
+        {/* Encabezado */}
+        <div className="px-5 py-4 border-b border-purple-500/10 bg-purple-500/5 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Plus className="w-4 h-4 text-purple-400" />
+            <h3 className="text-sm font-bold text-white">Nuevo evento RRHH</h3>
+          </div>
+          <button onClick={onClose} className="text-white/30 hover:text-white transition-colors">
+            <XCircle className="w-4 h-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+
+          {/* Búsqueda de empleado */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-white/50">
+              Empleado <span className="text-red-400">*</span>
+            </label>
+            <input
+              type="text"
+              placeholder="Filtrar por nombre o DPI..."
+              value={busEmpleado}
+              onChange={(e) => { setBusEmpleado(e.target.value); setEmployeeId(""); }}
+              className={inputCls}
+            />
+            {/* Select nativo con empleados filtrados */}
+            <select
+              value={employeeId}
+              onChange={(e) => {
+                const val = e.target.value;
+                setEmployeeId(val);
+                const emp = empleados.find((em) => String(em.id) === val);
+                if (emp) setBusEmpleado(emp.nombreCompleto);
+              }}
+              className={inputCls + " appearance-none mt-1.5" + (employeeId ? " border-purple-500/40" : "")}
+              required
+              size={empFiltrados.length > 0 ? Math.min(empFiltrados.length + 1, 5) : 2}
+            >
+              <option value="">-- Seleccionar empleado --</option>
+              {empFiltrados.slice(0, 20).map((emp) => (
+                <option key={emp.id} value={String(emp.id)}>
+                  {emp.nombreCompleto}{emp.dpi ? ` · ${emp.dpi}` : ""}
+                </option>
+              ))}
+            </select>
+            {empleadoSeleccionado && (
+              <p className="text-[11px] text-purple-400 mt-1 flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" />
+                {empleadoSeleccionado.nombreCompleto}
+              </p>
+            )}
+          </div>
+
+          {/* Tipo evento */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-white/50">
+              Tipo de evento <span className="text-red-400">*</span>
+            </label>
+            <select
+              value={tipoEvento}
+              onChange={(e) => setTipoEvento(e.target.value)}
+              className={inputCls + " appearance-none"}
+              required
+            >
+              {TIPOS_EVENTO.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Fechas */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-white/50">
+                Fecha inicio <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="date"
+                value={fechaInicio}
+                onChange={(e) => setFechaInicio(e.target.value)}
+                className={inputCls + " [color-scheme:dark]"}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-white/50">Fecha fin</label>
+              <input
+                type="date"
+                value={fechaFin}
+                onChange={(e) => setFechaFin(e.target.value)}
+                min={fechaInicio}
+                className={inputCls + " [color-scheme:dark]"}
+              />
+            </div>
+          </div>
+
+          {/* Notas */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-white/50">Notas / observaciones</label>
+            <textarea
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+              placeholder="Descripción del evento, testigos, contexto..."
+              rows={3}
+              className={inputCls + " resize-none"}
+            />
+          </div>
+
+          {/* Botones */}
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={loading || !employeeId || !tipoEvento || !fechaInicio}
+              className="flex-1 py-2.5 rounded-xl bg-purple-700 hover:bg-purple-600 text-sm font-bold text-white transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+            >
+              {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              <Plus className="w-3.5 h-3.5" />
+              Registrar evento
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body,
+  );
 }
 
 // ─── Modal de Anulación ───────────────────────────────────────────────────────
@@ -495,6 +715,7 @@ export default function RRHHEventos() {
   const [filtroEstado, setFiltroEstado] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [modalAnulacion, setModalAnulacion] = useState<EventoRrhh | null>(null);
+  const [modalNuevo, setModalNuevo] = useState(false);
 
   const buildUrl = () => {
     const params = new URLSearchParams();
@@ -547,6 +768,27 @@ export default function RRHHEventos() {
   function invalidar() {
     qc.invalidateQueries({ queryKey: ["rrhh-eventos"] });
     qc.invalidateQueries({ queryKey: ["rrhh-stats"] });
+  }
+
+  async function handleCrearEvento(data: {
+    employeeId: number; tipoEvento: string;
+    fechaInicio: string; fechaFin?: string; notas?: string;
+  }) {
+    try {
+      await apiPost(`${API}/rrhh/eventos`, {
+        employeeId: data.employeeId,
+        tipoEvento: data.tipoEvento,
+        fechaInicio: data.fechaInicio,
+        fechaFin: data.fechaFin,
+        notas: data.notas,
+      });
+      invalidar();
+      qc.invalidateQueries({ queryKey: ["rrhh-disciplinario"] });
+      toast({ title: "Evento registrado", description: `Tipo: ${data.tipoEvento}` });
+    } catch (e: any) {
+      toast({ title: "Error al crear evento", description: e?.error || "Intenta de nuevo", variant: "destructive" });
+      throw e;
+    }
   }
 
   async function handleEstadoChange(id: number, estado: string) {
@@ -634,13 +876,22 @@ export default function RRHHEventos() {
               Faltas y suspensiones · boleta de descuento · acta administrativa · reversión con auditoría
             </p>
           </div>
-          <button
-            onClick={() => { refetch(); qc.invalidateQueries({ queryKey: ["rrhh-stats"] }); }}
-            className="flex items-center gap-1.5 px-3 py-2 bg-white/5 hover:bg-white/8 border border-white/10 rounded-xl text-xs text-white/50 hover:text-white transition-all"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Actualizar
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { refetch(); qc.invalidateQueries({ queryKey: ["rrhh-stats"] }); }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-white/5 hover:bg-white/8 border border-white/10 rounded-xl text-xs text-white/50 hover:text-white transition-all"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Actualizar
+            </button>
+            <button
+              onClick={() => setModalNuevo(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-purple-600 hover:bg-purple-500 rounded-xl text-xs font-semibold text-white transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Nuevo evento
+            </button>
+          </div>
         </div>
 
         {/* ── Stats ──────────────────────────────────────────────────────── */}
@@ -850,8 +1101,15 @@ export default function RRHHEventos() {
             <ClipboardList className="w-10 h-10 text-white/15" />
             <p className="text-sm text-white/30">No hay eventos RRHH registrados</p>
             <p className="text-xs text-white/20 text-center max-w-xs">
-              Los eventos se crean automáticamente al registrar una falta o suspensión en el Pizarrón Operativo
+              Usa el botón "Nuevo evento" para registrar una falta, suspensión u otro evento. También se crean automáticamente desde el Pizarrón Operativo.
             </p>
+            <button
+              onClick={() => setModalNuevo(true)}
+              className="mt-2 flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-xl text-xs font-semibold text-white transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Nuevo evento
+            </button>
           </div>
         ) : (
           <>
@@ -882,6 +1140,14 @@ export default function RRHHEventos() {
           evento={modalAnulacion}
           onConfirm={handleAnular}
           onClose={() => setModalAnulacion(null)}
+        />
+      )}
+
+      {/* ── Modal nuevo evento ──────────────────────────────────────────── */}
+      {modalNuevo && (
+        <ModalNuevoEvento
+          onClose={() => setModalNuevo(false)}
+          onCreate={handleCrearEvento}
         />
       )}
     </AdminLayout>
