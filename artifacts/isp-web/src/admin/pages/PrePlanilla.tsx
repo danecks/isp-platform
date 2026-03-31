@@ -93,6 +93,14 @@ interface ColaboradorPre {
   horas_esperadas_total: string | null;
   dias_esperados_trabajo: number;
   dias_esperados_descanso: number;
+  // IGSS — clasificación por período
+  aplica_igss_general: boolean;
+  estado_igss: string;
+  fecha_inicio_igss: string | null;
+  puesto_aplica_igss: boolean;
+  puesto_regimen_igss: string;
+  aplica_igss: boolean;
+  motivo_exclusion_igss: string | null;
 }
 
 interface DetalleNovedad {
@@ -500,6 +508,42 @@ function DetalleModal({
                   <div key={k} className="flex justify-between text-xs">
                     <span className="text-white/40">{k}</span>
                     <span className="text-white/80 font-medium">{v}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* IGSS */}
+              <div className="bg-[#0c1929] border border-white/6 rounded-xl p-3 space-y-1.5">
+                <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Clasificación IGSS</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-white/40">Estado colaborador</span>
+                  {col.aplica_igss ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      Aplica IGSS
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-white/5 text-white/40 border border-white/10">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white/30" />
+                      No aplica
+                    </span>
+                  )}
+                </div>
+                {col.motivo_exclusion_igss && (
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-xs text-white/40 shrink-0">Motivo</span>
+                    <span className="text-xs text-amber-300/80 text-right">{col.motivo_exclusion_igss}</span>
+                  </div>
+                )}
+                {[
+                  ["Aplica general", col.aplica_igss_general ? "Sí" : "No"],
+                  ["Estado IGSS", col.estado_igss],
+                  ["Puesto cubre IGSS", col.puesto_aplica_igss ? "Sí" : "No"],
+                  ["Régimen puesto", col.puesto_regimen_igss || "—"],
+                ].map(([k, v]) => (
+                  <div key={k as string} className="flex justify-between text-xs">
+                    <span className="text-white/40">{k}</span>
+                    <span className="text-white/70">{v}</span>
                   </div>
                 ))}
               </div>
@@ -1648,6 +1692,7 @@ export default function PrePlanilla() {
                             {th("H. Extra", "horas_extra")}
                             {th("Anticipo", "anticipos_monto")}
                             {th("Total Est.", "sueldo_base")}
+                            {th("IGSS", "aplica_igss")}
                             {th("Revisión", "revision_estado")}
                             <th className="px-3 py-2" />
                           </tr>
@@ -1741,6 +1786,16 @@ export default function PrePlanilla() {
                                       )}
                                     </div>
                                   ) : <span className="text-white/20">—</span>}
+                                </td>
+                                {/* IGSS */}
+                                <td className="px-3 py-2.5 text-center">
+                                  {r.aplica_igss ? (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Sí
+                                    </span>
+                                  ) : (
+                                    <span className="text-white/20 text-[10px]">—</span>
+                                  )}
                                 </td>
                                 {/* Revisión */}
                                 <td className="px-3 py-2.5">

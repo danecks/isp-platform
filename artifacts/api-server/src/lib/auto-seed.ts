@@ -1866,6 +1866,38 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SSA-06 tarjeta_activa fix — error (no bloqueante)");
   }
 
+  // ── IGSS-01: campos de elegibilidad IGSS en employees ────────────────────────
+  try {
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS aplica_igss_general BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS estado_igss VARCHAR(30) NOT NULL DEFAULT 'no_activo'`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS fecha_inicio_igss DATE`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS observaciones_igss TEXT`);
+    logger.info("Auto-migrate: IGSS-01 campos IGSS en employees verificados/creados");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: IGSS-01 — error (no bloqueante)");
+  }
+
+  // ── IGSS-02: campos de elegibilidad IGSS en puestos_operativos ───────────────
+  // A nivel de servicio: ¿este puesto/servicio soporta IGSS dado el costo de tarifa?
+  try {
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS aplica_igss BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS regimen_igss VARCHAR(30) NOT NULL DEFAULT 'no_aplica'`);
+    // 'aplica' | 'no_aplica' | 'en_transicion'
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS notas_igss TEXT`);
+    logger.info("Auto-migrate: IGSS-02 campos IGSS en puestos_operativos verificados/creados");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: IGSS-02 — error (no bloqueante)");
+  }
+
+  // ── IGSS-03: clasificación IGSS por línea de planilla ────────────────────────
+  try {
+    await pool.query(`ALTER TABLE planilla_lineas ADD COLUMN IF NOT EXISTS aplica_igss BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE planilla_lineas ADD COLUMN IF NOT EXISTS motivo_exclusion_igss TEXT`);
+    logger.info("Auto-migrate: IGSS-03 clasificación IGSS en planilla_lineas verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: IGSS-03 — error (no bloqueante)");
+  }
+
   // ── PLAN-03: columnas de trazabilidad y deducciones futuras en planilla_lineas ─
   try {
     await pool.query(`ALTER TABLE planilla_lineas ADD COLUMN IF NOT EXISTS anticipo_ids JSONB DEFAULT '[]'::jsonb`);

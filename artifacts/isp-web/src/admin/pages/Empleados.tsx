@@ -51,6 +51,11 @@ interface Empleado {
   horasContrato: number | null;
   limiteAnticipo: number | null;
   tipoLimitePeriodo: string | null;
+  // Seguridad social — IGSS
+  aplicaIgssGeneral: boolean;
+  estadoIgss: string;
+  fechaInicioIgss: string | null;
+  observacionesIgss: string | null;
 }
 
 interface KpiData {
@@ -912,6 +917,163 @@ function TabAsignaciones({ empId }: { empId: number }) {
 
 // ─── Tab: Perfil ──────────────────────────────────────────────────────────────
 
+// ─── IGSS helpers ─────────────────────────────────────────────────────────────
+
+const IGSS_ESTADO_CFG: Record<string, { label: string; color: string; dot: string }> = {
+  activo:                   { label: "Activo",               color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20", dot: "bg-emerald-400" },
+  no_activo:                { label: "Sin IGSS",             color: "text-white/40 bg-white/5 border-white/10",                  dot: "bg-white/30" },
+  pendiente_regularizacion: { label: "En regularización",   color: "text-amber-400 bg-amber-500/10 border-amber-500/20",         dot: "bg-amber-400" },
+};
+
+// ─── Sección IGSS inline (con edición) ───────────────────────────────────────
+function IgssSection({ emp }: { emp: Empleado }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [editando, setEditando] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    aplicaIgssGeneral: emp.aplicaIgssGeneral ?? false,
+    estadoIgss:        emp.estadoIgss ?? "no_activo",
+    fechaInicioIgss:   emp.fechaInicioIgss ?? "",
+    observacionesIgss: emp.observacionesIgss ?? "",
+  });
+
+  const cfg = IGSS_ESTADO_CFG[emp.estadoIgss] ?? IGSS_ESTADO_CFG.no_activo;
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await fetch(`${API_BASE}/employees/${emp.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          aplicaIgssGeneral: form.aplicaIgssGeneral,
+          estadoIgss:        form.estadoIgss,
+          fechaInicioIgss:   form.fechaInicioIgss || null,
+          observacionesIgss: form.observacionesIgss || null,
+        }),
+      }).then((r) => {
+        if (!r.ok) throw new Error("Error al guardar");
+        return r.json();
+      });
+      toast({ title: "IGSS actualizado", description: emp.nombreCompleto });
+      qc.invalidateQueries({ queryKey: ["empleados"] });
+      setEditando(false);
+    } catch {
+      toast({ title: "Error", description: "No se pudo actualizar el IGSS", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] text-white/25 uppercase tracking-widest">Seguridad Social — IGSS</p>
+        {!editando && (
+          <button
+            onClick={() => { setForm({ aplicaIgssGeneral: emp.aplicaIgssGeneral ?? false, estadoIgss: emp.estadoIgss ?? "no_activo", fechaInicioIgss: emp.fechaInicioIgss ?? "", observacionesIgss: emp.observacionesIgss ?? "" }); setEditando(true); }}
+            className="flex items-center gap-1 text-[10px] text-white/30 hover:text-primary transition-colors"
+          >
+            <Pencil className="w-3 h-3" /> Editar
+          </button>
+        )}
+      </div>
+
+      {!editando ? (
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-[#0c1929] border border-white/6 rounded-lg p-3">
+            <p className="text-[10px] text-white/30 mb-1">Estado IGSS</p>
+            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-medium ${cfg.color}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+              {cfg.label}
+            </span>
+          </div>
+          <div className="bg-[#0c1929] border border-white/6 rounded-lg p-3">
+            <p className="text-[10px] text-white/30 mb-1">Aplica IGSS general</p>
+            <p className={`text-sm font-semibold ${emp.aplicaIgssGeneral ? "text-emerald-400" : "text-white/40"}`}>
+              {emp.aplicaIgssGeneral ? "Sí" : "No"}
+            </p>
+          </div>
+          {emp.fechaInicioIgss && (
+            <div className="bg-[#0c1929] border border-white/6 rounded-lg p-3">
+              <p className="text-[10px] text-white/30 mb-0.5">Inicio IGSS</p>
+              <p className="text-sm text-white/80">{emp.fechaInicioIgss}</p>
+            </div>
+          )}
+          {emp.observacionesIgss && (
+            <div className="col-span-2 bg-[#0c1929] border border-white/6 rounded-lg p-3">
+              <p className="text-[10px] text-white/30 mb-0.5">Observaciones</p>
+              <p className="text-xs text-white/60 leading-relaxed">{emp.observacionesIgss}</p>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="bg-[#0c1929] border border-primary/15 rounded-xl p-4 space-y-3">
+          {/* Aplica IGSS */}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.aplicaIgssGeneral}
+              onChange={(e) => setForm((p) => ({ ...p, aplicaIgssGeneral: e.target.checked }))}
+              className="w-4 h-4 accent-primary"
+            />
+            <span className="text-xs text-white/70">Aplica IGSS general (colaborador inscrito)</span>
+          </label>
+          {/* Estado IGSS */}
+          <div className="space-y-1">
+            <label className="text-[10px] text-white/40 uppercase tracking-widest">Estado IGSS</label>
+            <select
+              value={form.estadoIgss}
+              onChange={(e) => setForm((p) => ({ ...p, estadoIgss: e.target.value }))}
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white outline-none focus:border-primary/40 appearance-none"
+            >
+              <option value="no_activo">Sin IGSS</option>
+              <option value="activo">Activo</option>
+              <option value="pendiente_regularizacion">En proceso de regularización</option>
+            </select>
+          </div>
+          {/* Fecha inicio */}
+          <div className="space-y-1">
+            <label className="text-[10px] text-white/40 uppercase tracking-widest">Fecha inicio IGSS</label>
+            <input
+              type="date"
+              value={form.fechaInicioIgss}
+              onChange={(e) => setForm((p) => ({ ...p, fechaInicioIgss: e.target.value }))}
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white outline-none focus:border-primary/40"
+            />
+          </div>
+          {/* Observaciones */}
+          <div className="space-y-1">
+            <label className="text-[10px] text-white/40 uppercase tracking-widest">Observaciones</label>
+            <textarea
+              rows={2}
+              value={form.observacionesIgss}
+              onChange={(e) => setForm((p) => ({ ...p, observacionesIgss: e.target.value }))}
+              placeholder="Motivo, pendiente, acuerdo con cliente…"
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white placeholder-white/20 outline-none focus:border-primary/40 resize-none"
+            />
+          </div>
+          {/* Botones */}
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setEditando(false)} className="text-xs text-white/40 hover:text-white transition-colors px-3 py-1.5">
+              Cancelar
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-1.5 text-xs bg-primary text-black font-medium px-4 py-1.5 rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              Guardar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TabPerfil({ emp }: { emp: Empleado }) {
   function Row({ icon: Icon, label, value }: { icon: ElementType; label: string; value: string | null | undefined }) {
     if (!value || value === "—") return null;
@@ -971,7 +1133,10 @@ function TabPerfil({ emp }: { emp: Empleado }) {
         </div>
       </div>
 
-      {/* C — Indicación a tab Asignación */}
+      {/* C — IGSS */}
+      <IgssSection emp={emp} />
+
+      {/* D — Indicación a tab Asignación */}
       <div className="bg-[#0c1929] border border-primary/10 rounded-xl p-3 flex items-center gap-3">
         <MapPinned className="w-4 h-4 text-primary/50 shrink-0" />
         <p className="text-xs text-white/40">

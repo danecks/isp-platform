@@ -47,7 +47,11 @@ employeesRouter.get("/employees", async (req, res) => {
 
     const { rows } = await pool.query(`
       SELECT e.*,
-             COALESCE(e.elegible_pool, TRUE) AS elegible_pool
+             COALESCE(e.elegible_pool, TRUE) AS elegible_pool,
+             COALESCE(e.aplica_igss_general, FALSE) AS aplica_igss_general,
+             COALESCE(e.estado_igss, 'no_activo') AS estado_igss,
+             e.fecha_inicio_igss,
+             e.observaciones_igss
       FROM employees e
       ${where}
       ORDER BY e.nombre_completo
@@ -662,6 +666,8 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
     externalId, sourceSystem, syncStatus, lastSyncAt,
     limiteAnticipo, tipoLimitePeriodo,
     sueldoBase, tipoJornada, diaDescanso, horasContrato,
+    // IGSS — elegibilidad por colaborador
+    aplicaIgssGeneral, estadoIgss, fechaInicioIgss, observacionesIgss,
   } = req.body ?? {};
 
   // Validar que nombreCompleto no se borre si se envía
@@ -720,8 +726,46 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
       .returning();
 
     if (!emp) return res.status(404).json({ error: "Empleado no encontrado" });
-    res.json(emp);
+
+    // IGSS fields están fuera del schema Drizzle — actualizar con SQL directo si se envían
+    const igssUpdates: string[] = [];
+    const igssParams: unknown[] = [id];
+    if (aplicaIgssGeneral !== undefined) {
+      igssParams.push(!!aplicaIgssGeneral);
+      igssUpdates.push(`aplica_igss_general = $${igssParams.length}`);
+    }
+    if (estadoIgss !== undefined) {
+      const validEstados = ["activo", "no_activo", "pendiente_regularizacion"];
+      if (!validEstados.includes(estadoIgss)) return res.status(400).json({ error: "estado_igss inválido" });
+      igssParams.push(estadoIgss);
+      igssUpdates.push(`estado_igss = $${igssParams.length}`);
+    }
+    if (fechaInicioIgss !== undefined) {
+      igssParams.push(fechaInicioIgss || null);
+      igssUpdates.push(`fecha_inicio_igss = $${igssParams.length}`);
+    }
+    if (observacionesIgss !== undefined) {
+      igssParams.push(observacionesIgss || null);
+      igssUpdates.push(`observaciones_igss = $${igssParams.length}`);
+    }
+    if (igssUpdates.length > 0) {
+      await pool.query(
+        `UPDATE employees SET ${igssUpdates.join(", ")} WHERE id = $1`,
+        igssParams
+      );
+    }
+
+    // Devolver el registro completo incluyendo campos IGSS
+    const { rows: full } = await pool.query(
+      `SELECT *, COALESCE(aplica_igss_general, FALSE) AS aplica_igss_general,
+               COALESCE(estado_igss, 'no_activo') AS estado_igss,
+               fecha_inicio_igss, observaciones_igss
+       FROM employees WHERE id = $1`,
+      [id]
+    );
+    res.json(full[0] ? snakeToCamel(full[0]) : snakeToCamel(emp as unknown as Record<string, unknown>));
   } catch (err) {
+    logger.error({ err }, "PATCH /employees/:id error");
     res.status(500).json({ error: "Error al actualizar empleado" });
   }
 });

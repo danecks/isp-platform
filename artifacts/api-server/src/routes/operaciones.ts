@@ -813,6 +813,52 @@ operacionesRouter.patch("/operaciones/puestos/:id", async (req, res) => {
   }
 });
 
+// ─── PATCH /api/operaciones/puestos/:id/igss ─────────────────────────────────
+// Actualizar clasificación IGSS de un puesto/servicio
+operacionesRouter.patch("/operaciones/puestos/:id/igss", async (req, res) => {
+  const { aplicaIgss, regimenIgss, notasIgss } = req.body ?? {};
+  const puestoId = parseInt(req.params.id);
+  if (isNaN(puestoId)) return res.status(400).json({ error: "ID inválido" });
+
+  const REGIMENES_VALIDOS = ["aplica", "no_aplica", "en_transicion"];
+  if (regimenIgss !== undefined && !REGIMENES_VALIDOS.includes(regimenIgss)) {
+    return res.status(400).json({ error: "regimen_igss inválido. Use: aplica, no_aplica, en_transicion" });
+  }
+
+  const sets: string[] = ["updated_at = NOW()"];
+  const params: unknown[] = [puestoId];
+
+  if (aplicaIgss !== undefined) {
+    params.push(!!aplicaIgss);
+    sets.push(`aplica_igss = $${params.length}`);
+    // Sincronizar regimen_igss automáticamente si no se pasa explícito
+    if (regimenIgss === undefined) {
+      params.push(aplicaIgss ? "aplica" : "no_aplica");
+      sets.push(`regimen_igss = $${params.length}`);
+    }
+  }
+  if (regimenIgss !== undefined) {
+    params.push(regimenIgss);
+    sets.push(`regimen_igss = $${params.length}`);
+  }
+  if (notasIgss !== undefined) {
+    params.push(notasIgss || null);
+    sets.push(`notas_igss = $${params.length}`);
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `UPDATE puestos_operativos SET ${sets.join(", ")} WHERE id = $1 RETURNING id, nombre, cliente_nombre, aplica_igss, regimen_igss, notas_igss`,
+      params
+    );
+    if (!rows.length) return res.status(404).json({ error: "Puesto no encontrado" });
+    res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "PATCH /operaciones/puestos/:id/igss error");
+    res.status(500).json({ error: "Error al actualizar IGSS del puesto" });
+  }
+});
+
 // ─── POST /api/operaciones/puestos ───────────────────────────────────────────
 // Crear un nuevo puesto operativo
 operacionesRouter.post("/operaciones/puestos", async (req, res) => {

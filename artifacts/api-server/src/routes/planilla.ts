@@ -53,7 +53,11 @@ export const planillaRouter = Router();
 
 // ─── Cálculo por colaborador ──────────────────────────────────────────────────
 
-function calcularLinea(row: Record<string, unknown>, periodoTotalDias: number) {
+function calcularLinea(
+  row: Record<string, unknown>,
+  periodoTotalDias: number,
+  igssData: { aplica_igss: boolean; motivo_exclusion_igss: string | null }
+) {
   const sb       = parseFloat(String(row.sueldo_base  ?? 0));
   const hc       = parseFloat(String(row.horas_contrato ?? 48));
   const faltas   = parseInt(String(row.faltas       ?? 0));
@@ -84,11 +88,61 @@ function calcularLinea(row: Record<string, unknown>, periodoTotalDias: number) {
     total_bruto:      parseFloat(totalBruto.toFixed(2)),
     anticipos:        parseFloat(anticipo.toFixed(2)),
     total_neto:       parseFloat(totalNeto.toFixed(2)),
-    // Deducciones legales — preparadas para implementación futura
+    // IGSS — clasificación (sin cálculo todavía)
+    aplica_igss:          igssData.aplica_igss,
+    motivo_exclusion_igss: igssData.motivo_exclusion_igss,
     igss_trabajador:  0,
     igss_patronal:    0,
     otros_descuentos: 0,
   };
+}
+
+// ─── Clasificación IGSS por empleado ─────────────────────────────────────────
+// Consulta la situación actual del colaborador y su puesto titular para
+// determinar si aplica IGSS en esta planilla y por qué motivo no aplica.
+
+async function clasificarIgss(employeeId: number | null): Promise<{
+  aplica_igss: boolean;
+  motivo_exclusion_igss: string | null;
+}> {
+  if (!employeeId) {
+    return { aplica_igss: false, motivo_exclusion_igss: "Sin ID de empleado vinculado" };
+  }
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        COALESCE(e.aplica_igss_general, FALSE)  AS aplica_igss_general,
+        COALESCE(e.estado_igss, 'no_activo')    AS estado_igss,
+        COALESCE(po.aplica_igss, FALSE)         AS puesto_aplica_igss,
+        COALESCE(po.regimen_igss, 'no_aplica')  AS puesto_regimen_igss
+      FROM employees e
+      LEFT JOIN puestos_operativos po
+        ON po.titular_employee_id = e.id AND po.activo = TRUE
+      WHERE e.id = $1
+      LIMIT 1
+    `, [employeeId]);
+
+    if (!rows.length) {
+      return { aplica_igss: false, motivo_exclusion_igss: "Empleado no encontrado" };
+    }
+    const r = rows[0];
+
+    if (!r.aplica_igss_general) {
+      return { aplica_igss: false, motivo_exclusion_igss: "Colaborador sin IGSS activado" };
+    }
+    if (r.estado_igss === "pendiente_regularizacion") {
+      return { aplica_igss: false, motivo_exclusion_igss: "Colaborador en proceso de regularización IGSS" };
+    }
+    if (r.estado_igss !== "activo") {
+      return { aplica_igss: false, motivo_exclusion_igss: "Estado IGSS del colaborador: no activo" };
+    }
+    if (!r.puesto_aplica_igss) {
+      return { aplica_igss: false, motivo_exclusion_igss: "Servicio/puesto no incluye IGSS (tarifa)" };
+    }
+    return { aplica_igss: true, motivo_exclusion_igss: null };
+  } catch {
+    return { aplica_igss: false, motivo_exclusion_igss: "Error al verificar elegibilidad IGSS" };
+  }
 }
 
 // ─── GET /api/nomina/planillas ────────────────────────────────────────────────
@@ -155,19 +209,63 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
       return res.status(422).json({ error: "El snapshot del cierre está vacío." });
     }
 
+    // Clasificar IGSS para cada colaborador (consulta actual de DB, independiente del snapshot)
+    const igssMap = new Map<number, { aplica_igss: boolean; motivo_exclusion_igss: string | null }>();
+    const empIds = [...new Set(
+      snapshot
+        .map((r) => r.employee_id as number | null)
+        .filter((id): id is number => id != null)
+    )];
+    if (empIds.length > 0) {
+      const { rows: igssRows } = await pool.query(`
+        SELECT
+          e.id                                        AS employee_id,
+          COALESCE(e.aplica_igss_general, FALSE)      AS aplica_igss_general,
+          COALESCE(e.estado_igss, 'no_activo')        AS estado_igss,
+          COALESCE(po.aplica_igss, FALSE)             AS puesto_aplica_igss
+        FROM employees e
+        LEFT JOIN puestos_operativos po
+          ON po.titular_employee_id = e.id AND po.activo = TRUE
+        WHERE e.id = ANY($1::int[])
+      `, [empIds]);
+
+      for (const r of igssRows) {
+        let aplica = false;
+        let motivo: string | null = null;
+        if (!r.aplica_igss_general) {
+          motivo = "Colaborador sin IGSS activado";
+        } else if (r.estado_igss === "pendiente_regularizacion") {
+          motivo = "Colaborador en proceso de regularización IGSS";
+        } else if (r.estado_igss !== "activo") {
+          motivo = "Estado IGSS del colaborador: no activo";
+        } else if (!r.puesto_aplica_igss) {
+          motivo = "Servicio/puesto no incluye IGSS (tarifa)";
+        } else {
+          aplica = true;
+        }
+        igssMap.set(r.employee_id as number, { aplica_igss: aplica, motivo_exclusion_igss: motivo });
+      }
+    }
+
     // Calcular líneas por colaborador
-    const lineas = snapshot.map((row) => ({
-      employee_id:        row.employee_id as number | null,
-      nombre_completo:    String(row.nombre_completo ?? ""),
-      dpi:                row.dpi as string | null,
-      puesto:             (row.puesto_titular_nombre ?? row.puesto_empleado) as string | null,
-      sede:               row.sede as string | null,
-      cliente:            row.cliente_principal as string | null,
-      tipo_jornada:       row.tipo_jornada as string | null,
-      revision_estado:    row.revision_estado as string | null,
-      observaciones_rrhh: row.revision_observaciones as string | null,
-      ...calcularLinea(row, periodoTotalDias),
-    }));
+    const lineas = snapshot.map((row) => {
+      const empId = row.employee_id as number | null;
+      const igssData = empId && igssMap.has(empId)
+        ? igssMap.get(empId)!
+        : { aplica_igss: false, motivo_exclusion_igss: empId ? "Sin datos IGSS" : "Sin ID de empleado" };
+      return {
+        employee_id:        empId,
+        nombre_completo:    String(row.nombre_completo ?? ""),
+        dpi:                row.dpi as string | null,
+        puesto:             (row.puesto_titular_nombre ?? row.puesto_empleado) as string | null,
+        sede:               row.sede as string | null,
+        cliente:            row.cliente_principal as string | null,
+        tipo_jornada:       row.tipo_jornada as string | null,
+        revision_estado:    row.revision_estado as string | null,
+        observaciones_rrhh: row.revision_observaciones as string | null,
+        ...calcularLinea(row, periodoTotalDias, igssData),
+      };
+    });
 
     // Totales de planilla
     const totales = lineas.reduce(
@@ -236,16 +334,18 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
            tipo_jornada, horas_contrato, sueldo_base, periodo_dias,
            dias_trabajados, faltas, suspensiones, horas_trabajadas, horas_extra,
            sueldo_periodo, desc_faltas, valor_he, total_bruto, anticipos, total_neto,
+           aplica_igss, motivo_exclusion_igss,
            igss_trabajador, igss_patronal, otros_descuentos,
            anticipo_ids, novedad_ids, segmento_ids,
            revision_estado, observaciones_rrhh)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
       `, [
         planillaId, l.employee_id, l.nombre_completo, l.dpi, l.puesto, l.sede, l.cliente,
         l.tipo_jornada, l.horas_contrato, l.sueldo_base, l.periodo_dias,
         l.dias_trabajados, l.faltas, l.suspensiones,
         l.horas_trabajadas, l.horas_extra,
         l.sueldo_periodo, l.desc_faltas, l.valor_he, l.total_bruto, l.anticipos, l.total_neto,
+        l.aplica_igss, l.motivo_exclusion_igss,
         l.igss_trabajador, l.igss_patronal, l.otros_descuentos,
         JSON.stringify(anticipoIds), JSON.stringify([]), JSON.stringify([]),
         l.revision_estado, l.observaciones_rrhh,

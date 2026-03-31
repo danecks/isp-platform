@@ -1,0 +1,152 @@
+El sistema ya tiene Planilla Final v2 con:
+	•	anticipos ligados a planilla
+	•	reversión controlada
+	•	trazabilidad
+	•	columnas preparadas para IGSS futuro
+
+No quiero romper nada de lo existente.
+
+Contexto real
+
+En nuestra operación, el IGSS no se puede tratar todavía como una regla universal para todos los colaboradores.
+
+Idealmente queremos que todos paguen IGSS, pero en este momento existen servicios/clientes donde, por la tarifa que pagan, no se está pudiendo asumir ese costo.
+
+Por lo tanto, el sistema debe reflejar esa realidad actual sin simplificarla incorrectamente.
+
+Objetivo
+
+Antes de calcular IGSS automáticamente, quiero implementar una capa de clasificación y elegibilidad IGSS, para que el sistema sepa:
+	•	qué colaboradores están con IGSS
+	•	cuáles no
+	•	en qué asignaciones o servicios aplica
+	•	desde cuándo
+	•	y por qué
+
+⸻
+
+1. No usar solo una bandera global simple
+
+No quiero una solución simplista tipo:
+	•	employee.usa_igss = true/false
+
+Quiero un modelo más realista.
+
+⸻
+
+2. Nivel colaborador
+
+Agregar en empleados una sección/campos de seguridad social, por ejemplo:
+	•	aplica_igss_general (boolean)
+	•	estado_igss (activo, no_activo, pendiente_regularizacion)
+	•	fecha_inicio_igss nullable
+	•	observaciones_igss nullable
+
+Esto representa la situación general del colaborador.
+
+⸻
+
+3. Nivel asignación / servicio / puesto
+
+Necesito que el sistema también pueda reflejar que el IGSS puede depender del servicio o asignación actual.
+
+Agregar una estructura o campos que permitan indicar si en una asignación/puesto/servicio:
+	•	aplica_igss
+	•	no aplica_igss
+	•	en transición
+
+Puede ser a nivel de:
+	•	asignación operativa base
+	•	puesto
+	•	servicio del cliente
+	•	o la estructura que consideres más correcta
+
+Pero quiero que el sistema pueda distinguir entre:
+	•	situación general del colaborador
+	•	realidad del servicio que actualmente cubre
+
+⸻
+
+4. Nivel planilla
+
+En planilla_lineas quiero dejar claro:
+	•	si esa línea aplica IGSS o no
+	•	si no aplica, por qué
+	•	y dejar la base lista para cálculo futuro
+
+Agregar o usar campos tipo:
+	•	aplica_igss
+	•	motivo_exclusion_igss
+	•	igss_trabajador
+	•	igss_patronal
+
+Por ahora no quiero todavía el cálculo completo para todos, solo dejarlo bien clasificado.
+
+⸻
+
+5. UI / fichas
+
+En ficha del colaborador
+
+Mostrar una sección:
+	•	estado IGSS
+	•	aplica IGSS general
+	•	fecha inicio
+	•	observaciones
+
+En cliente / servicio / puesto
+
+Si hace sentido, mostrar:
+	•	este servicio soporta IGSS o no
+	•	régimen actual del servicio
+
+⸻
+
+6. Pre-planilla y planilla
+
+Quiero que pre-planilla y planilla puedan mostrar al menos:
+	•	aplica IGSS: sí/no
+	•	estado IGSS
+	•	si está excluido, motivo
+
+No hace falta el cálculo total todavía.
+Primero quiero visibilidad y clasificación correcta.
+
+⸻
+
+7. Reportería futura
+
+Dejar preparado para que luego podamos responder:
+	•	qué colaboradores sí están con IGSS
+	•	cuáles no
+	•	en qué clientes/servicios no aplica
+	•	cuánto costaría regularizar esos servicios
+
+Esto será útil para decisiones comerciales futuras.
+
+⸻
+
+8. No romper
+
+No romper:
+	•	planilla actual
+	•	reversión
+	•	pre-planilla
+	•	empleados
+	•	clientes
+	•	asignaciones
+	•	RRHH
+	•	reportería
+
+⸻
+
+9. Documentación
+
+Explica claramente:
+	•	diferencia entre estado IGSS del colaborador y aplicación IGSS del servicio
+	•	cómo quedó modelado
+	•	cómo se verá en planilla/pre-planilla
+	•	qué faltará después para calcular IGSS real
+
+Muy importante:
+quiero que el sistema refleje la realidad actual de la empresa, donde IGSS todavía no aplica igual en todos los servicios, pero que quede ordenado y preparado para avanzar hacia una regularización completa más adelante.

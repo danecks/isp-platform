@@ -148,7 +148,39 @@ const QUERY_CONSOLIDADO = `
       JOIN clients c ON c.portal_cliente_id = aa.cliente_id
       WHERE aa.employee_id = e.id AND aa.estado = 'activo'
       LIMIT 1
-    )                                                                           AS cliente_principal
+    )                                                                           AS cliente_principal,
+
+    -- IGSS — elegibilidad del colaborador
+    COALESCE(e.aplica_igss_general, FALSE)                                      AS aplica_igss_general,
+    COALESCE(e.estado_igss, 'no_activo')                                        AS estado_igss,
+    e.fecha_inicio_igss,
+
+    -- IGSS — régimen del puesto/servicio titular
+    COALESCE(po.aplica_igss, FALSE)                                             AS puesto_aplica_igss,
+    COALESCE(po.regimen_igss, 'no_aplica')                                      AS puesto_regimen_igss,
+
+    -- IGSS — clasificación final para este período
+    CASE
+      WHEN COALESCE(e.aplica_igss_general, FALSE) = FALSE
+        THEN FALSE
+      WHEN COALESCE(e.estado_igss, 'no_activo') != 'activo'
+        THEN FALSE
+      WHEN COALESCE(po.aplica_igss, FALSE) = FALSE
+        THEN FALSE
+      ELSE TRUE
+    END                                                                         AS aplica_igss,
+
+    CASE
+      WHEN COALESCE(e.aplica_igss_general, FALSE) = FALSE
+        THEN 'Colaborador sin IGSS activado'
+      WHEN COALESCE(e.estado_igss, 'no_activo') = 'pendiente_regularizacion'
+        THEN 'Colaborador en proceso de regularización IGSS'
+      WHEN COALESCE(e.estado_igss, 'no_activo') != 'activo'
+        THEN 'Estado IGSS del colaborador: no activo'
+      WHEN COALESCE(po.aplica_igss, FALSE) = FALSE
+        THEN 'Servicio/puesto no incluye IGSS (tarifa)'
+      ELSE NULL
+    END                                                                         AS motivo_exclusion_igss
 
   FROM employees e
   INNER JOIN novedades_nomina_diarias n
