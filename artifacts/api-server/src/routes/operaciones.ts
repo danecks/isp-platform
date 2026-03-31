@@ -30,6 +30,7 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         po.zona_operativa_id,
         po.hora_entrada,
         po.hora_salida,
+        po.estado_operativo_puesto,
         e.estado_laboral AS agente_estado_laboral,
         e.puesto         AS agente_puesto,
         e.telefono       AS agente_telefono,
@@ -389,7 +390,8 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
 // ─── POST /api/operaciones/sustituir ─────────────────────────────────────────
 // Sustituir agente en un puesto (hay uno previo)
 operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
-  const { puestoId, agenteEntranteId, motivo, usuario, notas, forzar, tipoSustitucion } = req.body;
+  const { puestoId, agenteEntranteId, motivo, usuario, notas, forzar, tipoSustitucion,
+          tipoNovedad, coberturaTipo } = req.body;
   if (!puestoId || !agenteEntranteId) return res.status(400).json({ error: "puestoId y agenteEntranteId son requeridos" });
 
   // tipoSustitucion: 'relevo' = solo cambia agente_id (titular no cambia)
@@ -493,52 +495,72 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
     );
     const movimientoId = movRows[0]?.id || null;
 
-    // ── Auto-crear evento RRHH si el motivo es falta o suspensión ────────────
-    const motivosRrhh = ["falta", "suspension"];
-    if (motivosRrhh.includes((motivo || "").toLowerCase())) {
-      try {
-        // Determinar tipo de evento
-        const tipoEvento = motivo?.toLowerCase() === "suspension" ? "suspension" : "falta";
+    // ── Auto-crear evento RRHH (expandido: tipoNovedad + motivo legacy) ────────
+    const tiposRrhhSaliente: Record<string, string> = {
+      falta_total:      "falta",
+      abandono_parcial: "falta",
+      suspension:       "suspension",
+      incapacidad:      "incapacidad",
+      vacaciones:       "vacaciones",
+    };
+    const tipoEventoRrhh = tipoNovedad
+      ? tiposRrhhSaliente[tipoNovedad] ?? null
+      : (["falta","suspension"].includes((motivo || "").toLowerCase()) ? motivo?.toLowerCase() : null);
 
-        // Obtener datos del empleado saliente
-        let employeeId: number | null = agenteSalienteId ? Number(agenteSalienteId) : null;
+    if (tipoEventoRrhh && agenteSalienteId) {
+      try {
+        let employeeId: number | null = Number(agenteSalienteId);
         let employeeNombre = agenteSalienteNombre || "Colaborador desconocido";
         let employeeDpi: string | null = null;
-
-        if (employeeId) {
-          const { rows: empRows } = await pool.query(
-            `SELECT id, nombre_completo, dpi FROM employees WHERE id=$1`,
-            [employeeId],
-          );
-          if (empRows.length) {
-            employeeNombre = empRows[0].nombre_completo;
-            employeeDpi = empRows[0].dpi || null;
-          }
+        const { rows: empRows } = await pool.query(
+          `SELECT id, nombre_completo, dpi FROM employees WHERE id=$1`, [employeeId]
+        );
+        if (empRows.length) {
+          employeeNombre = empRows[0].nombre_completo;
+          employeeDpi    = empRows[0].dpi || null;
         }
-
         await pool.query(
           `INSERT INTO eventos_rrhh
              (employee_id, employee_nombre, employee_dpi,
               tipo_evento, fecha, cliente_nombre, puesto_nombre,
-              generado_desde, movimiento_id,
-              estado, usuario_generador, documentos_generados)
+              generado_desde, movimiento_id, estado, usuario_generador, documentos_generados)
            VALUES ($1,$2,$3,$4,NOW(),$5,$6,'operaciones',$7,'pendiente',$8,'[]')`,
-          [
-            employeeId,
-            employeeNombre,
-            employeeDpi,
-            tipoEvento,
-            puesto.cliente_nombre || null,
-            puesto.nombre         || null,
-            movimientoId,
-            usuario || "sistema",
-          ],
+          [employeeId, employeeNombre, employeeDpi, tipoEventoRrhh,
+           puesto.cliente_nombre || null, puesto.nombre || null,
+           movimientoId, usuario || "sistema"]
         );
-        logger.info({ tipoEvento, empleado: employeeNombre }, "Evento RRHH auto-generado desde sustitución");
+        logger.info({ tipoEventoRrhh, empleado: employeeNombre }, "Evento RRHH auto-generado desde sustitución");
       } catch (errRrhh) {
         logger.error({ errRrhh }, "Error al auto-generar evento RRHH (no bloqueante)");
       }
     }
+
+    // A-04: Auto-crear segmento de cobertura para hoy al sustituir agente
+    // Determinar el estado operativo real del puesto basado en tipo_novedad
+    const estadoOpPuesto = (() => {
+      if (!esRelevo) return "normal";
+      switch (tipoNovedad) {
+        case "falta_total":      return "relevo_completo";
+        case "abandono_parcial": return "abandono_parcial";
+        case "vacaciones":       return "vacaciones";
+        case "relevo_vacaciones":return "vacaciones";
+        case "incapacidad":      return "incapacidad";
+        case "suspension":       return "suspension";
+        case "relevo_parcial":   return "relevo_parcial";
+        case "relevo_completo":  return "relevo_completo";
+        case "cierre_tarde_cliente": return "horas_extra";
+        case "servicio_especial": return "servicio_especial";
+        default: return "relevo_completo";
+      }
+    })();
+
+    // Actualizar estado_operativo_puesto en puestos_operativos
+    await pool.query(
+      `UPDATE puestos_operativos
+       SET estado_operativo_puesto = $1, updated_at = NOW()
+       WHERE id = $2`,
+      [estadoOpPuesto, puestoId]
+    );
 
     // A-04: Auto-crear segmento de cobertura para hoy al sustituir agente
     try {
@@ -548,20 +570,23 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
       const horaFin    = turno === "noche" ? "06:00" : "18:00";
       const horasCalc  = 10;
       const tipoSeg    = esRelevo ? "relevo" : "titular";
+      const alcance    = coberturaTipo || "completo";
       await pool.query(
         `INSERT INTO cobertura_segmentos
            (fecha, puesto_id, client_id, employee_id, empleado_nombre,
             tipo_cobertura, hora_inicio, hora_fin, horas_calculadas,
-            fue_en_dia_descanso, genera_horas_extra, usuario_registro)
-         SELECT $1,$2,$3,$4,$5,$6::VARCHAR,$7,$8,$9,FALSE,FALSE,'sustitucion_pizarron'
+            fue_en_dia_descanso, genera_horas_extra, usuario_registro,
+            tipo_novedad, cobertura_alcance)
+         SELECT $1,$2,$3,$4,$5,$6::VARCHAR,$7,$8,$9,FALSE,FALSE,'sustitucion_pizarron',$10,$11
          WHERE NOT EXISTS (
            SELECT 1 FROM cobertura_segmentos
            WHERE fecha=$1 AND puesto_id=$2 AND employee_id=$4
          )`,
         [hoy, puestoId, puesto.cliente_id ?? null, agenteEntranteId,
-         entrante.nombre_completo, tipoSeg, horaInicio, horaFin, horasCalc]
+         entrante.nombre_completo, tipoSeg, horaInicio, horaFin, horasCalc,
+         tipoNovedad ?? null, alcance]
       );
-      logger.info({ puestoId, agenteEntranteId, tipoSeg, hoy }, "A-04: segmento auto-creado en sustitución");
+      logger.info({ puestoId, agenteEntranteId, tipoSeg, tipoNovedad, hoy }, "A-04: segmento auto-creado en sustitución");
 
       // Registrar novedad de nómina para el agente entrante (limpia cualquier falta previa)
       try {
@@ -589,7 +614,9 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
     res.json({
       ok: true,
       mensaje: `Sustitución registrada: ${agenteSalienteNombre} → ${entrante.nombre_completo}`,
-      eventoRrhhGenerado: motivosRrhh.includes((motivo || "").toLowerCase()),
+      eventoRrhhGenerado: !!tipoEventoRrhh,
+      tipoNovedad: tipoNovedad ?? null,
+      estadoOperativoPuesto: estadoOpPuesto,
     });
   } catch (err) {
     logger.error({ err }, "POST /operaciones/sustituir error");

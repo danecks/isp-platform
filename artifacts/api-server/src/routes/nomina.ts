@@ -84,7 +84,9 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
         (SELECT po2.id   FROM puestos_operativos po2 WHERE po2.titular_employee_id = cs.employee_id AND po2.activo = TRUE LIMIT 1) AS puesto_titular_id,
         (SELECT po2.nombre FROM puestos_operativos po2 WHERE po2.titular_employee_id = cs.employee_id AND po2.activo = TRUE LIMIT 1) AS puesto_titular_nombre,
         -- si es relevo, el puesto que cubrió (el primero del día)
-        (SELECT cs2.puesto_id FROM cobertura_segmentos cs2 WHERE cs2.fecha = $1 AND cs2.employee_id = cs.employee_id AND cs2.tipo_cobertura = 'relevo' LIMIT 1) AS puesto_cubierto_id
+        (SELECT cs2.puesto_id   FROM cobertura_segmentos cs2 WHERE cs2.fecha = $1 AND cs2.employee_id = cs.employee_id AND cs2.tipo_cobertura = 'relevo' LIMIT 1) AS puesto_cubierto_id,
+        -- tipo_novedad del segmento de relevo (motivo de la sustitución)
+        (SELECT cs3.tipo_novedad FROM cobertura_segmentos cs3 WHERE cs3.fecha = $1 AND cs3.employee_id = cs.employee_id AND cs3.tipo_cobertura = 'relevo' AND cs3.tipo_novedad IS NOT NULL LIMIT 1) AS tipo_novedad_relevo
       FROM cobertura_segmentos cs
       LEFT JOIN employees e ON e.id = cs.employee_id
       WHERE cs.fecha = $1
@@ -108,8 +110,8 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
           (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
            falta, suspension, descanso_trabajado, afecta_septimo, descuento_dia,
            puesto_titular_id, puesto_titular_nombre, puesto_cubierto_id, puesto_cubierto_nombre,
-           num_puestos_cubiertos, fuente, cierre_id, updated_at)
-        VALUES ($1,$2,$3,TRUE,$4,$5, FALSE,FALSE,$6,FALSE,FALSE, $7,$8,$9,$10,$11,'cierre_operativo',$12,NOW())
+           num_puestos_cubiertos, tipo_novedad, fuente, cierre_id, updated_at)
+        VALUES ($1,$2,$3,TRUE,$4,$5, FALSE,FALSE,$6,FALSE,FALSE, $7,$8,$9,$10,$11,$13,'cierre_operativo',$12,NOW())
         ON CONFLICT (fecha, employee_id)
         DO UPDATE SET
           trabajo_dia           = TRUE,
@@ -122,6 +124,7 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
           puesto_cubierto_id    = EXCLUDED.puesto_cubierto_id,
           puesto_cubierto_nombre= EXCLUDED.puesto_cubierto_nombre,
           num_puestos_cubiertos = EXCLUDED.num_puestos_cubiertos,
+          tipo_novedad          = COALESCE(EXCLUDED.tipo_novedad, novedades_nomina_diarias.tipo_novedad),
           cierre_id             = EXCLUDED.cierre_id,
           updated_at            = NOW()
       `, [
@@ -133,6 +136,7 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
         s.puesto_cubierto_id ?? null, puestoCubierto,
         parseInt(s.num_puestos_cubiertos ?? 0),
         cierreId,
+        s.tipo_novedad_relevo ?? null,
       ]);
       count++;
     }
@@ -150,25 +154,44 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
     `, [fecha]);
 
     for (const a of ausencias) {
+      // Buscar tipo_novedad del relevo para este puesto ese día (si existe)
+      const { rows: tnRowsA } = await pool.query(`
+        SELECT tipo_novedad FROM cobertura_segmentos
+        WHERE fecha=$1 AND puesto_id=$2 AND tipo_cobertura='relevo' AND tipo_novedad IS NOT NULL
+        LIMIT 1
+      `, [fecha, a.puesto_titular_id]);
+      const tipoNovA = tnRowsA[0]?.tipo_novedad ?? null;
+
+      // Tipos que NO generan falta ni descuento al titular
+      const sinFalta = ["vacaciones", "relevo_vacaciones", "incapacidad"].includes(tipoNovA ?? "");
+      const esSuspension = tipoNovA === "suspension";
+
       await pool.query(`
         INSERT INTO novedades_nomina_diarias
           (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
            falta, suspension, descanso_trabajado, afecta_septimo, descuento_dia,
-           puesto_titular_id, puesto_titular_nombre, fuente, cierre_id, updated_at)
-        VALUES ($1,$2,$3,FALSE,0,0, TRUE,FALSE,FALSE,TRUE,TRUE, $4,$5,'cierre_operativo',$6,NOW())
+           puesto_titular_id, puesto_titular_nombre, tipo_novedad, fuente, cierre_id, updated_at)
+        VALUES ($1,$2,$3,FALSE,0,0, $7,$8,FALSE,$9,$10, $4,$5,$6,'cierre_operativo',$11,NOW())
         ON CONFLICT (fecha, employee_id)
         DO UPDATE SET
           trabajo_dia           = FALSE,
-          falta                 = TRUE,
-          afecta_septimo        = TRUE,
-          descuento_dia         = TRUE,
+          falta                 = EXCLUDED.falta,
+          suspension            = EXCLUDED.suspension,
+          afecta_septimo        = EXCLUDED.afecta_septimo,
+          descuento_dia         = EXCLUDED.descuento_dia,
+          tipo_novedad          = COALESCE(EXCLUDED.tipo_novedad, novedades_nomina_diarias.tipo_novedad),
           puesto_titular_id     = EXCLUDED.puesto_titular_id,
           puesto_titular_nombre = EXCLUDED.puesto_titular_nombre,
           cierre_id             = EXCLUDED.cierre_id,
           updated_at            = NOW()
         WHERE novedades_nomina_diarias.trabajo_dia = FALSE
       `, [fecha, a.employee_id, a.empleado_nombre ?? "Desconocido",
-          a.puesto_titular_id ?? null, a.puesto_titular_nombre ?? null, cierreId]);
+          a.puesto_titular_id ?? null, a.puesto_titular_nombre ?? null, tipoNovA,
+          !sinFalta,       // falta
+          esSuspension,    // suspension
+          !sinFalta,       // afecta_septimo
+          !sinFalta,       // descuento_dia
+          cierreId]);
       count++;
     }
 
@@ -207,24 +230,42 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
     `, [fecha]);
 
     for (const t of titularesSinPresencia) {
+      // Buscar tipo_novedad del relevo para este puesto ese día (si existe)
+      const { rows: tnRowsT } = await pool.query(`
+        SELECT tipo_novedad FROM cobertura_segmentos
+        WHERE fecha=$1 AND puesto_id=$2 AND tipo_cobertura='relevo' AND tipo_novedad IS NOT NULL
+        LIMIT 1
+      `, [fecha, t.puesto_titular_id]);
+      const tipoNovT = tnRowsT[0]?.tipo_novedad ?? null;
+
+      const sinFaltaT = ["vacaciones", "relevo_vacaciones", "incapacidad"].includes(tipoNovT ?? "");
+      const esSuspensionT = tipoNovT === "suspension";
+
       await pool.query(`
         INSERT INTO novedades_nomina_diarias
           (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
            falta, suspension, descanso_trabajado, afecta_septimo, descuento_dia,
-           puesto_titular_id, puesto_titular_nombre, fuente, cierre_id, updated_at)
-        VALUES ($1,$2,$3,FALSE,0,0, TRUE,FALSE,FALSE,TRUE,TRUE, $4,$5,'auto_auditoria',$6,NOW())
+           puesto_titular_id, puesto_titular_nombre, tipo_novedad, fuente, cierre_id, updated_at)
+        VALUES ($1,$2,$3,FALSE,0,0, $7,$8,FALSE,$9,$10, $4,$5,$6,'auto_auditoria',$11,NOW())
         ON CONFLICT (fecha, employee_id)
         DO UPDATE SET
-          falta                 = TRUE,
-          afecta_septimo        = TRUE,
-          descuento_dia         = TRUE,
+          falta                 = EXCLUDED.falta,
+          suspension            = EXCLUDED.suspension,
+          afecta_septimo        = EXCLUDED.afecta_septimo,
+          descuento_dia         = EXCLUDED.descuento_dia,
+          tipo_novedad          = COALESCE(EXCLUDED.tipo_novedad, novedades_nomina_diarias.tipo_novedad),
           puesto_titular_id     = EXCLUDED.puesto_titular_id,
           puesto_titular_nombre = EXCLUDED.puesto_titular_nombre,
           cierre_id             = COALESCE(novedades_nomina_diarias.cierre_id, EXCLUDED.cierre_id),
           updated_at            = NOW()
         WHERE novedades_nomina_diarias.trabajo_dia = FALSE
       `, [fecha, t.employee_id, t.empleado_nombre ?? "Desconocido",
-          t.puesto_titular_id ?? null, t.puesto_titular_nombre ?? null, cierreId]);
+          t.puesto_titular_id ?? null, t.puesto_titular_nombre ?? null, tipoNovT,
+          !sinFaltaT,       // falta
+          esSuspensionT,    // suspension
+          !sinFaltaT,       // afecta_septimo
+          !sinFaltaT,       // descuento_dia
+          cierreId]);
       count++;
     }
 

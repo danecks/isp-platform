@@ -56,6 +56,7 @@ interface Puesto {
   zona_nombre: string | null;
   hora_entrada: string | null;
   hora_salida: string | null;
+  estado_operativo_puesto: string | null;
 }
 
 interface ClienteBoard {
@@ -936,11 +937,25 @@ function DroppablePuesto({
                 {puesto.jornada}
               </span>
             )}
-            {esRelevo && (
-              <span className="text-[9px] px-1.5 py-0.5 rounded border text-amber-300/80 bg-amber-500/10 border-amber-500/25 font-bold">
-                RELEVO
-              </span>
-            )}
+            {esRelevo && (() => {
+              const ep = puesto.estado_operativo_puesto;
+              const estadoLabel: Record<string, { label: string; cls: string }> = {
+                relevo_completo:  { label: "RELEVO",      cls: "text-amber-300/80 bg-amber-500/10 border-amber-500/25" },
+                relevo_parcial:   { label: "REL. PARCIAL",cls: "text-orange-300/80 bg-orange-500/10 border-orange-500/25" },
+                vacaciones:       { label: "VACACIONES",  cls: "text-emerald-300/80 bg-emerald-500/10 border-emerald-500/25" },
+                incapacidad:      { label: "INCAPACIDAD", cls: "text-teal-300/80 bg-teal-500/10 border-teal-500/25" },
+                suspension:       { label: "SUSPENSIÓN",  cls: "text-red-300/80 bg-red-500/10 border-red-500/25" },
+                abandono_parcial: { label: "ABANDONO",    cls: "text-rose-300/80 bg-rose-500/10 border-rose-500/25" },
+                horas_extra:      { label: "HRS EXTRA",   cls: "text-purple-300/80 bg-purple-500/10 border-purple-500/25" },
+                servicio_especial:{ label: "SSA",         cls: "text-violet-300/80 bg-violet-500/10 border-violet-500/25" },
+              };
+              const info = ep ? estadoLabel[ep] : null;
+              return (
+                <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold ${info ? info.cls : "text-amber-300/80 bg-amber-500/10 border-amber-500/25"}`}>
+                  {info ? info.label : "RELEVO"}
+                </span>
+              );
+            })()}
           </div>
         </div>
         <div className="shrink-0 mt-0.5">
@@ -1487,6 +1502,35 @@ function ModalEligeCobertura({
 
 // ─── Modal: Confirmar Sustitución / Asignación ────────────────────────────────
 
+// ─── Catálogo de tipos de novedad ─────────────────────────────────────────────
+const TIPOS_NOVEDAD: {
+  value: string;
+  label: string;
+  grupo: "descuento" | "sin_descuento" | "cobertura" | "especial";
+  genera_rrhh?: boolean;
+}[] = [
+  { value: "falta_total",      label: "Falta total",        grupo: "descuento",     genera_rrhh: true },
+  { value: "abandono_parcial", label: "Abandono parcial",   grupo: "descuento",     genera_rrhh: true },
+  { value: "suspension",       label: "Suspensión",         grupo: "descuento",     genera_rrhh: true },
+  { value: "vacaciones",       label: "Vacaciones",         grupo: "sin_descuento", genera_rrhh: true },
+  { value: "incapacidad",      label: "Incapacidad IGSS",   grupo: "sin_descuento", genera_rrhh: true },
+  { value: "permiso_con_goce", label: "Permiso c/goce",     grupo: "sin_descuento" },
+  { value: "permiso_sin_goce", label: "Permiso s/goce",     grupo: "descuento" },
+  { value: "relevo_completo",  label: "Relevo completo",    grupo: "cobertura" },
+  { value: "relevo_parcial",   label: "Relevo parcial",     grupo: "cobertura" },
+  { value: "relevo_vacaciones",label: "Cob. vacaciones",    grupo: "cobertura" },
+  { value: "horas_extra_puras",label: "Horas extra",        grupo: "especial" },
+  { value: "ssa_externo",      label: "Servicio especial",  grupo: "especial" },
+  { value: "cambio_titular",   label: "Cambio de titular",  grupo: "especial" },
+];
+
+const GRUPO_COLORS: Record<string, string> = {
+  descuento:     "text-red-300 bg-red-500/10 border-red-500/25 data-[active]:bg-red-500/25 data-[active]:border-red-500/60",
+  sin_descuento: "text-emerald-300 bg-emerald-500/10 border-emerald-500/25 data-[active]:bg-emerald-500/25 data-[active]:border-emerald-500/60",
+  cobertura:     "text-amber-300 bg-amber-500/10 border-amber-500/25 data-[active]:bg-amber-500/25 data-[active]:border-amber-500/60",
+  especial:      "text-purple-300 bg-purple-500/10 border-purple-500/25 data-[active]:bg-purple-500/25 data-[active]:border-purple-500/60",
+};
+
 function ModalSustitucion({
   puesto,
   agenteEntrante,
@@ -1496,22 +1540,24 @@ function ModalSustitucion({
 }: {
   puesto: Puesto;
   agenteEntrante: Agente;
-  onConfirm: (motivo: string, notas: string, forzar: boolean, tipoSustitucion: string) => Promise<void>;
+  onConfirm: (motivo: string, notas: string, forzar: boolean, tipoSustitucion: string, tipoNovedad: string, coberturaTipo: string) => Promise<void>;
   onCancel: () => void;
   advertencia?: string;
 }) {
-  const [motivo, setMotivo] = useState("rotacion");
+  const [tipoNovedad, setTipoNovedad] = useState("falta_total");
+  const [coberturaTipo, setCoberturaTipo] = useState<"completo" | "parcial">("completo");
   const [notas, setNotas] = useState("");
   const [loading, setLoading] = useState(false);
   const [tipoSustitucion, setTipoSustitucion] = useState<"relevo" | "reasignacion">("relevo");
   const esSustitucion = !!puesto.agente_id;
 
-  const generaRrhh = esSustitucion && (motivo === "falta" || motivo === "suspension");
+  const tipoSeleccionado = TIPOS_NOVEDAD.find((t) => t.value === tipoNovedad);
+  const generaRrhh = esSustitucion && !!tipoSeleccionado?.genera_rrhh;
 
   async function handleConfirm() {
     setLoading(true);
     try {
-      await onConfirm(motivo, notas, !!advertencia, tipoSustitucion);
+      await onConfirm(tipoNovedad, notas, !!advertencia, tipoSustitucion, tipoNovedad, coberturaTipo);
     } finally {
       setLoading(false);
     }
@@ -1610,23 +1656,75 @@ function ModalSustitucion({
             </div>
           )}
 
-          {/* Motivo */}
+          {/* Tipo de novedad — selector estructurado */}
           {esSustitucion && (
-            <div className="space-y-1">
-              <label className="text-xs text-white/40">Motivo de la sustitución</label>
-              <select
-                value={motivo}
-                onChange={(e) => setMotivo(e.target.value)}
-                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50 appearance-none"
-              >
-                <option value="rotacion">Rotación de turno</option>
-                <option value="falta">Falta del agente</option>
-                <option value="descanso">Descanso / tiempo libre</option>
-                <option value="suspension">Suspensión</option>
-                <option value="emergencia">Emergencia</option>
-                <option value="voluntario">Solicitud voluntaria</option>
-                <option value="otro">Otro</option>
-              </select>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-white/40">Tipo de movimiento</label>
+                <div className="flex items-center gap-1">
+                  {tipoSeleccionado && (
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold ${
+                      tipoSeleccionado.grupo === "descuento"     ? "text-red-300 bg-red-500/10 border-red-500/30" :
+                      tipoSeleccionado.grupo === "sin_descuento" ? "text-emerald-300 bg-emerald-500/10 border-emerald-500/30" :
+                      tipoSeleccionado.grupo === "cobertura"     ? "text-amber-300 bg-amber-500/10 border-amber-500/30" :
+                      "text-purple-300 bg-purple-500/10 border-purple-500/30"
+                    }`}>
+                      {tipoSeleccionado.grupo === "descuento" ? "Con descuento" :
+                       tipoSeleccionado.grupo === "sin_descuento" ? "Sin descuento" :
+                       tipoSeleccionado.grupo === "cobertura" ? "Cobertura" : "Especial"}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Grupos */}
+              {(["descuento","sin_descuento","cobertura","especial"] as const).map((grupo) => {
+                const items = TIPOS_NOVEDAD.filter((t) => t.grupo === grupo);
+                const grupoLabel = grupo === "descuento" ? "Con descuento salarial" :
+                                   grupo === "sin_descuento" ? "Sin descuento" :
+                                   grupo === "cobertura" ? "Cobertura / Relevo" : "Especial";
+                return (
+                  <div key={grupo}>
+                    <p className="text-[9px] text-white/25 uppercase tracking-wide mb-1">{grupoLabel}</p>
+                    <div className="flex flex-wrap gap-1">
+                      {items.map((t) => (
+                        <button
+                          key={t.value}
+                          type="button"
+                          data-active={tipoNovedad === t.value ? "" : undefined}
+                          onClick={() => setTipoNovedad(t.value)}
+                          className={`px-2 py-1 rounded-md border text-[10px] font-semibold transition-all ${GRUPO_COLORS[grupo]} ${
+                            tipoNovedad === t.value ? "opacity-100 scale-[1.03]" : "opacity-60 hover:opacity-90"
+                          }`}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Alcance: parcial / completo (solo para relevos) */}
+              {["relevo_parcial","abandono_parcial","permiso_con_goce","permiso_sin_goce"].includes(tipoNovedad) && (
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="text-[10px] text-white/35">Alcance:</span>
+                  {(["completo","parcial"] as const).map((a) => (
+                    <button
+                      key={a}
+                      type="button"
+                      onClick={() => setCoberturaTipo(a)}
+                      className={`px-2 py-0.5 rounded border text-[10px] font-semibold transition-all ${
+                        coberturaTipo === a
+                          ? "bg-blue-500/20 border-blue-500/50 text-blue-300"
+                          : "border-white/10 text-white/30 hover:text-white/50"
+                      }`}
+                    >
+                      {a === "completo" ? "Turno completo" : "Turno parcial"}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -2437,7 +2535,7 @@ export default function Operaciones() {
   }
 
   // ── Confirmar sustitución / asignación ───────────────────────────────────
-  async function confirmarSustitucion(motivo: string, notas: string, forzar: boolean, tipoSustitucion: string = "relevo") {
+  async function confirmarSustitucion(motivo: string, notas: string, forzar: boolean, tipoSustitucion: string = "relevo", tipoNovedad?: string, coberturaTipo?: string) {
     if (!modalSustitucion) return;
     const { puesto, agente } = modalSustitucion;
 
@@ -2450,15 +2548,18 @@ export default function Operaciones() {
           notas,
           forzar,
           tipoSustitucion,
+          tipoNovedad: tipoNovedad ?? null,
+          coberturaTipo: coberturaTipo ?? "completo",
           usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
         });
+        const labelNov = TIPOS_NOVEDAD.find((t) => t.value === (tipoNovedad ?? ""))?.label ?? tipoNovedad ?? "";
         if (resp?.eventoRrhhGenerado) {
           toast({
-            title: "Sustitución registrada + Evento RRHH generado",
-            description: `Boleta y acta disponibles en Eventos RRHH`,
+            title: `Sustitución registrada · ${labelNov}`,
+            description: `Evento RRHH generado. Boleta disponible en Eventos RRHH.`,
           });
         } else {
-          toast({ title: "Sustitución registrada", description: `${puesto.agente_nombre} → ${agente.nombre_completo}` });
+          toast({ title: `Sustitución registrada · ${labelNov}`, description: `${puesto.agente_nombre} → ${agente.nombre_completo}` });
         }
         if (tipoSustitucion === "relevo") {
           setModalIncentivo({

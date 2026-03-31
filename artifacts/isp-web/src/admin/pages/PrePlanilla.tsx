@@ -125,6 +125,7 @@ interface DetalleNovedad {
   observaciones: string | null;
   fuente: string | null;
   cierre_id: number | null;
+  tipo_novedad: string | null;
 }
 
 interface DetalleAnticipo {
@@ -179,6 +180,7 @@ interface AnexoFalta {
   nombre_completo: string;
   dpi: string | null;
   sede: string | null;
+  tipo_novedad: string | null;
 }
 
 interface AnexoAnticipo {
@@ -649,6 +651,28 @@ function DetalleModal({
                         {n.puesto_cubierto_nombre && n.puesto_cubierto_nombre !== n.puesto_titular_nombre && (
                           <span className="px-1.5 py-0.5 rounded bg-purple-400/10 text-purple-400 border border-purple-400/20" title={`Cubrió: ${n.puesto_cubierto_nombre}`}>Relevo</span>
                         )}
+                        {n.tipo_novedad && (() => {
+                          const labelMap: Record<string,string> = {
+                            falta_total: "Falta total", abandono_parcial: "Abandono parcial",
+                            vacaciones: "Vacaciones", relevo_vacaciones: "Cob. vacaciones",
+                            incapacidad: "Incapacidad IGSS", suspension: "Suspensión",
+                            permiso_con_goce: "Permiso c/goce", permiso_sin_goce: "Permiso s/goce",
+                            relevo_completo: "Relevo completo", relevo_parcial: "Relevo parcial",
+                            horas_extra_puras: "Horas extra", ssa_externo: "Serv. especial",
+                            cambio_titular: "Cambio titular",
+                          };
+                          const isDescuento = ["falta_total","abandono_parcial","suspension","permiso_sin_goce"].includes(n.tipo_novedad);
+                          const isNeutral   = ["vacaciones","incapacidad","relevo_vacaciones","permiso_con_goce"].includes(n.tipo_novedad);
+                          return (
+                            <span className={`px-1.5 py-0.5 rounded border text-[10px] font-semibold ${
+                              isDescuento ? "bg-red-500/5 text-red-300/70 border-red-500/15" :
+                              isNeutral   ? "bg-emerald-500/5 text-emerald-300/70 border-emerald-500/15" :
+                              "bg-white/5 text-white/30 border-white/10"
+                            }`}>
+                              {labelMap[n.tipo_novedad] ?? n.tipo_novedad}
+                            </span>
+                          );
+                        })()}
                         {n.observaciones && <span className="text-white/30 text-[10px]">· {n.observaciones}</span>}
                       </div>
                       <span className="text-white/40 w-14 text-right shrink-0">
@@ -873,8 +897,23 @@ function AnexoFaltas({ desde, hasta }: { desde: string; hasta: string }) {
                 </td>
                 <td className="px-3 py-2.5 text-white/40">{r.sede ?? "—"}</td>
                 <td className="px-3 py-2.5">
-                  {r.falta && <span className="px-2 py-0.5 rounded bg-red-400/10 text-red-400 border border-red-400/20 font-semibold">Falta</span>}
-                  {r.suspension && <span className="px-2 py-0.5 rounded bg-amber-400/10 text-amber-400 border border-amber-400/20 font-semibold">Suspensión</span>}
+                  <div className="flex flex-col gap-0.5">
+                    {r.falta && <span className="px-2 py-0.5 rounded bg-red-400/10 text-red-400 border border-red-400/20 font-semibold">Falta</span>}
+                    {r.suspension && <span className="px-2 py-0.5 rounded bg-amber-400/10 text-amber-400 border border-amber-400/20 font-semibold">Suspensión</span>}
+                    {r.tipo_novedad && (() => {
+                      const m: Record<string,string> = {
+                        falta_total:"Falta total",abandono_parcial:"Abandono parcial",
+                        vacaciones:"Vacaciones",incapacidad:"Incap. IGSS",
+                        suspension:"Suspensión",permiso_con_goce:"Permiso c/goce",
+                        permiso_sin_goce:"Permiso s/goce",relevo_completo:"Relevo completo",
+                        relevo_parcial:"Relevo parcial",relevo_vacaciones:"Cob. vacaciones",
+                        horas_extra_puras:"HE",ssa_externo:"SSA",cambio_titular:"Cambio titular",
+                      };
+                      return (
+                        <span className="text-[10px] text-white/40 italic">{m[r.tipo_novedad!] ?? r.tipo_novedad}</span>
+                      );
+                    })()}
+                  </div>
                 </td>
                 <td className="px-3 py-2.5 text-center">
                   {r.descuento_dia

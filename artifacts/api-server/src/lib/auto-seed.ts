@@ -2060,5 +2060,42 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: CONT-01 — error (no bloqueante)");
   }
 
+  // ── MOV-01: tipo_novedad y cobertura_alcance en cobertura_segmentos ──────────
+  // Clasifica el motivo operativo de cada segmento (falta_total, vacaciones, etc.)
+  try {
+    await pool.query(`
+      ALTER TABLE cobertura_segmentos
+        ADD COLUMN IF NOT EXISTS tipo_novedad   VARCHAR(60),
+        ADD COLUMN IF NOT EXISTS cobertura_alcance VARCHAR(20) DEFAULT 'completo'
+    `);
+    logger.info("Auto-migrate: MOV-01 tipo_novedad+cobertura_alcance en cobertura_segmentos");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: MOV-01 — error (no bloqueante)");
+  }
+
+  // ── MOV-02: tipo_novedad en novedades_nomina_diarias ─────────────────────────
+  // Permite propagar el motivo operativo a planilla y pre-planilla
+  try {
+    await pool.query(`
+      ALTER TABLE novedades_nomina_diarias
+        ADD COLUMN IF NOT EXISTS tipo_novedad VARCHAR(60)
+    `);
+    logger.info("Auto-migrate: MOV-02 tipo_novedad en novedades_nomina_diarias");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: MOV-02 — error (no bloqueante)");
+  }
+
+  // ── MOV-03: estado_operativo_puesto en puestos_operativos ────────────────────
+  // Refleja el estado real del puesto más allá de cubierto/descubierto
+  try {
+    await pool.query(`
+      ALTER TABLE puestos_operativos
+        ADD COLUMN IF NOT EXISTS estado_operativo_puesto VARCHAR(50) DEFAULT 'normal'
+    `);
+    logger.info("Auto-migrate: MOV-03 estado_operativo_puesto en puestos_operativos");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: MOV-03 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

@@ -1,0 +1,295 @@
+Quiero ajustar la lógica del sistema ISPSA para que el Pizarrón Operativo sea el verdadero centro de decisión de la operación y de la futura planilla.
+
+No quiero romper nada de lo existente.
+
+## Contexto real de ISPSA
+El Pizarrón Operativo no es solo una herramienta para mover agentes de un puesto a otro.
+
+Quiero que el Pizarrón:
+- le permita al jefe de servicio ver el estado real de todos los proyectos y puestos
+- le ayude a tomar decisiones operativas correctas
+- y que cada movimiento tenga consecuencia real en:
+  - RRHH
+  - pre-planilla
+  - planilla final
+  - cliente
+  - ficha del colaborador
+  - historial del puesto
+
+Muy importante:
+el sistema no debe interpretar todos los movimientos igual, porque según el motivo del movimiento cambia cómo se paga y cómo se descuenta.
+
+---
+
+## 1. El puesto debe ser la base operativa
+Cada puesto debe seguir teniendo claramente:
+- turno base
+- horario esperado
+- horas esperadas por día
+- tipo de servicio
+- si es cobertura 12h o 24h
+- cliente
+- sede
+- zona
+- supervisor
+
+Esto es importante porque el jefe de servicio debe ver el estatus real del servicio y tomar decisiones sabiendo:
+- si un turno es de 12 horas
+- si un turno es de 24 horas
+- si una cobertura parcial deja descubierto el resto
+- si se está generando hora extra
+- si se requiere relevo completo o parcial
+
+---
+
+## 2. No todos los movimientos son iguales
+Quiero que el sistema deje de tratar todos los cambios como si fueran solo “asignar / remover”.
+
+Necesito que los movimientos del Pizarrón Operativo se clasifiquen con un motivo operativo/laboral claro.
+
+### Tipos de movimiento o novedad operativa sugeridos
+- falta_total
+- abandono_parcial
+- vacaciones
+- incapacidad
+- suspension
+- relevo_parcial
+- relevo_completo
+- relevo_vacaciones
+- cambio_titular
+- cobertura_extra
+- apoyo_temporal
+- cierre_tarde_cliente
+- servicio_especial
+
+Puedes ajustar nombres, pero quiero que la lógica quede clara y trazable.
+
+---
+
+## 3. El motivo debe afectar cómo se paga
+Quiero que el sistema use el motivo del movimiento para definir qué debe pasar en nómina.
+
+### A. Falta total
+Ejemplo:
+- el titular no llega
+- otro cubre el puesto
+
+Entonces:
+- al titular no se le paga el día completo
+- se genera la lógica de descuento correspondiente
+- se genera boleta / acta si corresponde
+- el relevo cobra solo la parte que realmente cubrió o la jornada que cubrió
+
+### B. Abandono parcial
+Ejemplo:
+- el titular trabaja solo una parte del turno y se va
+- otro cubre el resto
+
+Entonces:
+- el titular no debe cobrar la jornada completa si no corresponde
+- el relevo cobra solo la parte que cubrió
+- la jornada debe quedar dividida correctamente
+
+### C. Vacaciones
+Ejemplo:
+- el titular está de vacaciones autorizadas
+- el relevo cubre el puesto
+
+Entonces:
+- el relevo debe heredar la lógica completa del puesto
+- no tratarlo como un simple parche de horas
+- debe funcionar como relevo completo del puesto
+- la cobertura debe entenderse como jornada normal heredada
+
+### D. Incapacidad / suspensión
+Ejemplo:
+- el titular no puede cubrir por incapacidad o suspensión
+
+Entonces:
+- debe impactar RRHH
+- debe impactar pre-planilla
+- debe quedar el motivo correctamente clasificado
+- el relevo debe quedar con la lógica que corresponda según cubra parcial o completo
+
+### E. Cierre tarde del cliente
+Ejemplo:
+- el cliente cierra tarde
+- el guardia se queda más tiempo
+
+Entonces:
+- esto debe generar horas extra reales
+- no debe confundirse con falta ni con relevo
+- debe compararse contra las horas esperadas del puesto
+
+---
+
+## 4. Turnos 12h vs 24h
+Quiero que el sistema entienda que no es lo mismo un turno de 12 horas que uno de 24 horas.
+
+### Turno 12h
+- una cobertura parcial o total debe compararse contra 12 horas esperadas
+
+### Turno 24h
+- el sistema debe saber que la cobertura es más larga y que una falta completa tiene un impacto mayor
+- un relevo por vacaciones o por falta debe heredar la lógica del puesto
+- una cobertura parcial debe quedar correctamente dividida y trazable
+
+No quiero reglas genéricas fijas.
+Quiero que la lógica dependa del puesto y del tipo de cobertura.
+
+---
+
+## 5. Relevo parcial vs relevo completo
+Necesito que el sistema distinga claramente entre:
+
+### Relevo parcial
+- cubre solo una parte del turno
+- no hereda toda la lógica del puesto
+- cobra/procesa solo lo parcial
+
+### Relevo completo
+- cubre todo el turno esperado
+- puede heredar la lógica completa del puesto
+
+### Relevo por vacaciones
+- se comporta como una cobertura temporal estructurada del puesto
+- hereda el horario y la jornada esperada del puesto
+- no debe tratarse igual que un relevo parcial por emergencia
+
+---
+
+## 6. Estado operativo del colaborador
+Cuando alguien falta, abandona o entra en una situación especial, no quiero que el sistema lo mande siempre al mismo pool.
+
+Quiero que el sistema tenga estados operativos más claros, por ejemplo:
+- disponible
+- en_puesto
+- descanso
+- faltando
+- suspendido
+- incapacidad
+- pool_relevo
+- SSA_activo
+- sin_asignacion
+
+Muy importante:
+si alguien falta, no debe regresar como “disponible” porque eso confunde a operaciones.
+
+---
+
+## 7. El Pizarrón debe mostrar el estatus real del proyecto
+El jefe de servicio debe poder ver en el Pizarrón:
+- si el puesto está cubierto normal
+- si está cubierto por relevo
+- si está cubierto parcialmente
+- si está en contingencia
+- si está descubierto
+- si hubo abandono parcial
+- si está bajo cobertura por vacaciones
+- si está generando horas extra
+- si está en servicio especial
+
+Quiero que el pizarrón refleje la realidad operativa, no solo “verde o rojo”.
+
+---
+
+## 8. Integración con pre-planilla y planilla
+El sistema debe dejar suficiente información para que pre-planilla y planilla entiendan:
+
+- qué pasó realmente en cada puesto
+- qué parte debe pagarse al titular
+- qué parte debe pagarse al relevo
+- si hubo descuento por falta
+- si hubo cobertura parcial
+- si hubo horas extra
+- si fue una cobertura de vacaciones
+- si fue SSA
+- si fue abandono parcial
+
+No quiero que esto se reconstruya manualmente después.
+
+---
+
+## 9. Integración con RRHH
+Cada tipo de movimiento relevante debe alimentar correctamente:
+- eventos RRHH
+- boletas
+- actas
+- alertas
+- seguimiento
+
+Pero sin romper la operación rápida del pizarrón.
+
+---
+
+## 10. UI / flujo del Pizarrón Operativo
+No quiero volver el pizarrón pesado, pero sí quiero que al hacer movimientos importantes el sistema capture lo necesario.
+
+Quiero que cuando se haga una acción relevante, el sistema permita definir rápidamente:
+- motivo del movimiento
+- tipo de cobertura
+- si es parcial o completa
+- hora real de instalación
+- hora real de salida si aplica
+
+Sin formularios eternos, pero con lo necesario para que la nómina después salga bien.
+
+---
+
+## 11. Qué quiero que construyas
+Quiero que implementes o ajustes una lógica donde los movimientos del Pizarrón Operativo queden tipificados y tengan impacto real en:
+
+- estado operativo del colaborador
+- cobertura del puesto
+- RRHH
+- pre-planilla
+- planilla
+- historial del puesto
+- ficha del colaborador
+- ficha del cliente si aplica
+
+---
+
+## 12. Casos que deben quedar soportados
+Quiero que el sistema soporte correctamente al menos estos casos:
+
+1. Titular falta todo el turno y otro cubre
+2. Titular abandona parcialmente y otro cubre el resto
+3. Titular sale de vacaciones y un relevo hereda el puesto temporalmente
+4. Titular está suspendido o incapacitado y otro cubre
+5. Cliente cierra tarde y el guardia trabaja horas extra
+6. Cobertura en turno de 12 horas
+7. Cobertura en turno de 24 horas
+8. Relevo parcial
+9. Relevo completo
+10. Servicio especial que genera cobertura extraordinaria
+
+---
+
+## 13. No romper
+No romper:
+- Pizarrón Operativo
+- cobertura diaria
+- segmentos
+- historial de titularidad
+- RRHH
+- pre-planilla
+- planilla final
+- IGSS
+- anticipos
+- servicios especiales
+- ficha del colaborador
+- ficha del cliente
+
+---
+
+## 14. Documentación
+Explica claramente:
+- qué tipos de movimiento operativos quedaron soportados
+- cómo se diferencia falta, abandono, vacaciones, relevo parcial y relevo completo
+- cómo se comporta un turno 12h vs 24h
+- cómo esto alimenta pre-planilla y planilla
+- cómo el Pizarrón Operativo se convierte en el centro de verdad operativa del sistema
+
+Muy importante:
+quiero que ISPSA refleje la lógica real de una empresa de seguridad privada, donde el mismo movimiento operativo no siempre se paga igual, y donde el jefe de servicio necesita ver el estatus real del puesto y del proyecto para tomar decisiones correctas.

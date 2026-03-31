@@ -1,0 +1,137 @@
+Quiero corregir el modelo de cálculo de planilla para alinearlo con la lógica real de ISPSA.
+
+No quiero romper nada de lo existente.
+
+## Contexto real de ISPSA
+La lógica de pago no se define por si el colaborador está en pool o disponible, sino por su turno contratado, sus faltas, y si pierde el séptimo.
+
+### Caso turno 12 horas
+Un colaborador trabaja 6 días y descansa 1.
+Si cumple sus días, su descanso se paga.
+Si falta:
+- 1 falta = 1 día descontable
+- además pierde el séptimo
+Ejemplo:
+- 3 faltas = descuento de 4 días
+- 4 faltas = descuento de 5 días
+
+### Caso turno 24 horas
+Un día de 24 horas se trata como 2 jornadas de 12 horas para efectos de descuento.
+Si falta:
+- 1 día completo = 2 días descontables
+- además pierde el séptimo
+Ejemplo:
+- 1 falta = descuento de 3 días en total
+- 3 faltas = descuento de 7 días en total
+
+Esto se hace así porque una falta en esos turnos obliga a cubrir con horas extra más caras.
+
+---
+
+## Objetivo
+Implementar en planilla y pre-planilla una lógica correcta de:
+- descuento por faltas según turno
+- pérdida del séptimo
+- clasificación del colaborador como “faltando” y no como “disponible” cuando corresponde
+
+---
+
+## 1. Modelar regla por turno
+Necesito que el sistema use el turno del colaborador o del puesto para calcular los descuentos.
+
+Ejemplo:
+- turno 12h → factor_descuento_falta = 1
+- turno 24h → factor_descuento_falta = 2
+
+Esto debe quedar claro en la estructura que definas.
+
+---
+
+## 2. Regla del séptimo
+Implementar la lógica para que:
+- si el colaborador tiene faltas en el período, pierda el séptimo según la regla operativa de ISPSA
+- el descuento del séptimo quede visible y trazable en pre-planilla y planilla
+
+Quiero que se vea separado:
+- faltas
+- descuento por faltas
+- descuento por séptimo
+
+---
+
+## 3. Cálculo de días descontables
+Actualizar planilla para que no solo reste “faltas simples”.
+
+Ejemplos esperados:
+### Turno 12h
+- 3 faltas → 4 días descontables
+- 4 faltas → 5 días descontables
+
+### Turno 24h
+- 1 falta → 3 días descontables
+- 3 faltas → 7 días descontables
+
+Documentar claramente la fórmula implementada.
+
+---
+
+## 4. Pre-planilla
+Quiero que la pre-planilla muestre claramente:
+- cantidad de faltas
+- turno del colaborador
+- días descontables
+- séptimo perdido
+- total de descuento estimado
+
+No quiero que RRHH tenga que deducir esto manualmente.
+
+---
+
+## 5. Planilla final
+Quiero que la planilla final muestre:
+- faltas del período
+- factor del turno aplicado
+- séptimo descontado
+- total de días descontados
+- monto descontado
+
+Todo debe quedar trazable por colaborador.
+
+---
+
+## 6. Estado operativo
+Si un colaborador falta:
+- no quiero que pase al pool de “disponible”
+- quiero que pase a una clasificación o estado tipo:
+  - faltando
+  - ausente
+  - no disponible por falta
+
+Esto debe ser visible en operación para no confundirlo con alguien realmente libre para cubrir.
+
+---
+
+## 7. Mantener compatibilidad
+No romper:
+- frecuencia de pago quincenal/mensual
+- IGSS
+- anticipos
+- horas extra
+- RRHH
+- historial del colaborador
+- pre-planilla
+- planilla final
+- pizarrón operativo
+
+---
+
+## 8. Documentación
+Explica claramente:
+- cómo se calcula la falta en turno 12h
+- cómo se calcula la falta en turno 24h
+- cómo se descuenta el séptimo
+- cómo se refleja en pre-planilla y planilla
+- cómo cambia el estado operativo del colaborador cuando falta
+
+Muy importante:
+quiero que el sistema refleje la lógica real de ISPSA, donde el descanso se paga solo si el colaborador cumple su ciclo, y donde las faltas en turnos de 24 horas tienen un impacto mayor porque obligan a cubrir con horas extra más caras.

@@ -694,6 +694,7 @@ prePlanillaRouter.get("/nomina/pre-planilla/anexo/faltas", async (req, res) => {
         n.puesto_cubierto_nombre,
         n.observaciones,
         n.fuente,
+        n.tipo_novedad,
         e.id    AS employee_id,
         e.nombre_completo,
         e.dpi,
