@@ -1,0 +1,103 @@
+Quiero mejorar el selector de agentes en ISPSA para que muestre el estado operativo real (o futuro) del agente al momento de asignar.
+
+Hoy el selector es plano (solo nombres), lo cual genera errores operativos.
+
+---
+
+## Objetivo
+Mostrar los agentes agrupados por estado operativo al momento de asignar en:
+
+- planificación futura
+- pizarrón operativo
+- SSA
+- tramos de cobertura
+
+---
+
+## 1. Estados que deben mostrarse
+El selector debe agrupar agentes en:
+
+- disponibles
+- descansando
+- en_puesto
+- en_ssa
+- ausente
+
+---
+
+## 2. Fuente de datos
+Si la fecha es hoy:
+- usar pool actual
+
+Si la fecha es futura:
+- usar pool-futuro (ya existente en el sistema)
+
+---
+
+## 3. UI del selector
+No usar lista plana.
+
+Mostrar grupos separados con encabezado:
+
+Ejemplo:
+- Disponibles (3)
+- Descansando (2)
+- En puesto (3)
+- Ausentes (2)
+
+Cada agente debe mostrar:
+- nombre
+- estado visual (color o icono)
+- si está asignado, indicar dónde (puesto o SSA)
+
+---
+
+## 4. Reglas de selección
+- disponibles → selección libre
+- descansando → permitir selección (con badge “HE” o advertencia)
+- en_puesto → permitir solo con confirmación
+- en_ssa → bloquear o requerir confirmación fuerte
+- ausente → no seleccionable
+
+---
+
+## 5. Integración
+Aplicar este comportamiento en:
+- Modal de planificación SSA
+- Modal de planificación de ausencias
+- Tramos de cobertura
+- Pizarrón futuro
+- Pizarrón actual
+
+---
+
+## 6. No romper
+No romper:
+- lógica de asignación actual
+- validaciones backend
+- pool actual
+- pool-futuro
+
+Esto es solo mejora de visibilidad y UX operativa.
+
+---
+
+## 7. Verificación
+Confirmar que:
+- los agentes se agrupan correctamente
+- el estado cambia según la fecha seleccionada
+- no se pueden seleccionar agentes ausentes
+- los descansos sí se pueden seleccionar (como horas extra)
+
+---
+
+## 8. Documentación
+Explicar:
+- cómo se calcula el estado
+- diferencia entre hoy y futuro
+- cómo ayuda al operador a tomar decisiones
+
+---
+
+Esto es crítico:
+quiero que el selector deje de ser una lista de nombres y se convierta en una herramienta de decisión operativa.

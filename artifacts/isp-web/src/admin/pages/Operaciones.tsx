@@ -1041,9 +1041,218 @@ const TIPOS_AUSENCIA_FUTURO = [
 // ─── Modal: Planificación Futura ──────────────────────────────────────────────
 
 // ─── Modal: Planificar cobertura para SSA futuro ──────────────────────────────
+// ─── Selector Agrupado por Estado Operativo ──────────────────────────────────
+
+type GrupoEstado = "disponible" | "descansando" | "en_puesto" | "en_ssa" | "ausente";
+
+interface AgenteAgrupado {
+  id: number;
+  nombre: string;
+  grupo: GrupoEstado;
+  detalle: string | null;
+}
+
+const GRUPO_CONFIG: Record<GrupoEstado, {
+  label: string;
+  color: string;
+  dot: string;
+  badge: string | null;
+  seleccionable: boolean;
+  advertencia: string | null;
+}> = {
+  disponible:  { label: "Disponibles",  color: "text-green-400",       dot: "bg-green-500",    badge: null,  seleccionable: true,  advertencia: null },
+  descansando: { label: "Descansando",  color: "text-blue-400",        dot: "bg-blue-400",     badge: "HE",  seleccionable: true,  advertencia: "Este agente está en período de descanso. Se asignará como horas extra." },
+  en_puesto:   { label: "En puesto",    color: "text-teal-400",        dot: "bg-teal-400",     badge: null,  seleccionable: true,  advertencia: "Este agente ya está cubriendo un puesto activo. ¿Confirmar doble asignación?" },
+  en_ssa:      { label: "En SSA",       color: "text-amber-400",       dot: "bg-amber-400",    badge: null,  seleccionable: true,  advertencia: "Este agente ya está asignado a otro servicio especial. ¿Confirmar igualmente?" },
+  ausente:     { label: "Ausentes",     color: "text-red-400/60",      dot: "bg-red-400/50",   badge: null,  seleccionable: false, advertencia: null },
+};
+
+function normalizarPoolActual(p: Pool): AgenteAgrupado[] {
+  const r: AgenteAgrupado[] = [];
+  for (const a of p.disponibles) r.push({ id: a.id, nombre: a.nombre_completo, grupo: "disponible", detalle: null });
+  for (const a of p.enDescanso)  r.push({ id: a.id, nombre: a.nombre_completo, grupo: "descansando", detalle: null });
+  for (const a of p.enPuesto)    r.push({ id: a.id, nombre: a.nombre_completo, grupo: "en_puesto",   detalle: a.nombre_puesto_titular ?? null });
+  for (const a of p.enSSA)       r.push({ id: a.id, nombre: a.nombre_completo, grupo: "en_ssa",      detalle: null });
+  for (const a of [...p.suspendidos, ...p.faltando]) r.push({ id: a.id, nombre: a.nombre_completo, grupo: "ausente", detalle: null });
+  return r;
+}
+
+function normalizarPoolFuturo(p: PoolFuturoData): AgenteAgrupado[] {
+  const r: AgenteAgrupado[] = [];
+  for (const a of p.disponible)        r.push({ id: a.id, nombre: a.nombre_completo, grupo: "disponible",  detalle: null });
+  for (const a of p.relevoProgramado)  r.push({ id: a.id, nombre: a.nombre_completo, grupo: "disponible",  detalle: "Relevo programado" });
+  for (const a of p.descansando)       r.push({ id: a.id, nombre: a.nombre_completo, grupo: "descansando", detalle: a.turno_nombre ?? null });
+  for (const a of p.trabajando)        r.push({ id: a.id, nombre: a.nombre_completo, grupo: "en_puesto",   detalle: a.puesto_nombre ?? null });
+  for (const a of p.ausenteProgramado) r.push({ id: a.id, nombre: a.nombre_completo, grupo: "ausente",     detalle: a.plan_tipo_ausencia ?? null });
+  for (const a of p.noElegible)        r.push({ id: a.id, nombre: a.nombre_completo, grupo: "ausente",     detalle: a.razon_no_elegible ?? null });
+  return r;
+}
+
+function SelectorAgenteAgrupado({
+  fecha,
+  idsExcluidos = [],
+  seleccionado,
+  onSelect,
+}: {
+  fecha: string;
+  idsExcluidos?: number[];
+  seleccionado: number | null;
+  onSelect: (a: AgenteAgrupado) => void;
+}) {
+  const hoy = new Date().toISOString().split("T")[0];
+  const esFuturo = fecha > hoy;
+  const [busqueda, setBusqueda] = useState("");
+  const [pendienteConf, setPendienteConf] = useState<AgenteAgrupado | null>(null);
+
+  const { data: poolActual } = useQuery<Pool>({
+    queryKey: ["operaciones-pool"],
+    queryFn: () => fetch(`${API_BASE}/operaciones/pool`).then((r) => r.json()),
+    enabled: !esFuturo,
+    staleTime: 60_000,
+  });
+
+  const { data: poolFuturoRaw } = useQuery<PoolFuturoData>({
+    queryKey: ["pool-futuro", fecha],
+    queryFn: () =>
+      fetch(`${API_BASE}/operaciones/pool-futuro?fecha=${fecha}`).then((r) => r.json()),
+    enabled: esFuturo,
+    staleTime: 120_000,
+  });
+
+  const todos = useMemo<AgenteAgrupado[]>(() => {
+    if (!esFuturo && poolActual)  return normalizarPoolActual(poolActual);
+    if (esFuturo  && poolFuturoRaw) return normalizarPoolFuturo(poolFuturoRaw);
+    return [];
+  }, [esFuturo, poolActual, poolFuturoRaw]);
+
+  const filtrados = useMemo(() => {
+    const q = busqueda.toLowerCase();
+    return todos.filter(
+      (a) =>
+        !idsExcluidos.includes(a.id) &&
+        (!q || a.nombre.toLowerCase().includes(q)),
+    );
+  }, [todos, idsExcluidos, busqueda]);
+
+  const ORDEN: GrupoEstado[] = ["disponible", "descansando", "en_puesto", "en_ssa", "ausente"];
+  const grupos = ORDEN
+    .map((g) => ({ g, lista: filtrados.filter((a) => a.grupo === g) }))
+    .filter((x) => x.lista.length > 0);
+
+  function handleClick(a: AgenteAgrupado) {
+    const cfg = GRUPO_CONFIG[a.grupo];
+    if (!cfg.seleccionable) return;
+    if (cfg.advertencia) { setPendienteConf(a); return; }
+    onSelect(a);
+  }
+
+  return (
+    <div className="space-y-2">
+      <input
+        value={busqueda}
+        onChange={(e) => setBusqueda(e.target.value)}
+        placeholder="Buscar agente…"
+        className="w-full bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder:text-white/20 outline-none focus:border-blue-400/40"
+      />
+
+      {/* Confirmación inline */}
+      {pendienteConf && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2.5 space-y-2">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+            <p className="text-[10px] text-amber-300/80 leading-snug">
+              <span className="font-semibold">{pendienteConf.nombre}</span> — {GRUPO_CONFIG[pendienteConf.grupo].advertencia}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { onSelect(pendienteConf); setPendienteConf(null); }}
+              className="text-[10px] px-3 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 font-semibold"
+            >
+              Confirmar
+            </button>
+            <button
+              onClick={() => setPendienteConf(null)}
+              className="text-[10px] px-3 py-1 rounded-lg border border-white/10 text-white/40 hover:text-white/60"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Lista agrupada */}
+      <div className="max-h-64 overflow-y-auto space-y-3 pr-0.5">
+        {grupos.length === 0 && (
+          <div className="text-center py-5">
+            <UserMinus className="w-5 h-5 text-white/10 mx-auto mb-1" />
+            <p className="text-[11px] text-white/20">Sin agentes disponibles</p>
+          </div>
+        )}
+        {grupos.map(({ g, lista }) => {
+          const cfg = GRUPO_CONFIG[g];
+          return (
+            <div key={g}>
+              <div className="flex items-center gap-1.5 mb-1 px-0.5">
+                <div className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                <span className={`text-[9px] font-bold uppercase tracking-widest ${cfg.color}`}>
+                  {cfg.label} ({lista.length})
+                </span>
+              </div>
+              <div className="space-y-0.5">
+                {lista.map((a) => {
+                  const selec = seleccionado === a.id;
+                  const bloq  = !cfg.seleccionable;
+                  return (
+                    <button
+                      key={a.id}
+                      onClick={() => handleClick(a)}
+                      disabled={bloq}
+                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-all ${
+                        selec  ? "bg-primary/15 border-primary/40"
+                        : bloq  ? "bg-white/2 border-white/4 opacity-40 cursor-not-allowed"
+                        :         "bg-[#0c1929] border-white/6 hover:border-white/15"
+                      }`}
+                    >
+                      <div className={`w-6 h-6 rounded flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(a.nombre)}`}>
+                        {iniciales(a.nombre)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-white/85 truncate">{a.nombre}</p>
+                        {a.detalle && (
+                          <p className="text-[9px] text-white/28 truncate">{a.detalle}</p>
+                        )}
+                      </div>
+                      {cfg.badge && !bloq && (
+                        <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/20 shrink-0">
+                          {cfg.badge}
+                        </span>
+                      )}
+                      {selec && <CheckCircle2 className="w-3.5 h-3.5 text-primary shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="text-[9px] text-white/18 text-right">
+        {esFuturo
+          ? `Proyección para ${fecha.split("-").reverse().join("-")}`
+          : "Estado operativo actual · hoy"}
+      </p>
+    </div>
+  );
+}
+
+// ─── Slot de agente para ModalPlanSSA ─────────────────────────────────────────
+
 function SlotAgentePlan({
   slotIdx,
   totalSlots,
+  fecha,
   agenteSel,
   idsOcupados,
   onSelect,
@@ -1051,30 +1260,12 @@ function SlotAgentePlan({
 }: {
   slotIdx: number;
   totalSlots: number;
+  fecha: string;
   agenteSel: EmpleadoBusqueda | null;
   idsOcupados: number[];
   onSelect: (emp: EmpleadoBusqueda) => void;
   onClear: () => void;
 }) {
-  const [busqueda, setBusqueda] = useState("");
-
-  const { data: resultado = [] } = useQuery<EmpleadoBusqueda[]>({
-    queryKey: ["emp-busqueda-ssa-slot", slotIdx, busqueda],
-    queryFn: () =>
-      fetch(`${API_BASE}/employees?q=${encodeURIComponent(busqueda)}&limit=20`)
-        .then((r) => r.json())
-        .then((d: any) => {
-          const arr = Array.isArray(d) ? d : (d.employees ?? []);
-          return arr.filter(
-            (e: any) =>
-              (e.estadoLaboral ?? e.estado_laboral) === "activo" &&
-              !idsOcupados.includes(e.id),
-          );
-        }),
-    enabled: busqueda.length >= 2 && !agenteSel,
-    staleTime: 30_000,
-  });
-
   return (
     <div>
       <label className="text-[10px] font-semibold text-white/35 uppercase tracking-widest block mb-1">
@@ -1089,39 +1280,17 @@ function SlotAgentePlan({
             <p className="text-xs font-semibold text-blue-200 truncate">{agenteSel.nombreCompleto}</p>
             <p className="text-[10px] text-blue-300/50">{agenteSel.puesto ?? "Agente"}</p>
           </div>
-          <button onClick={() => { onClear(); setBusqueda(""); }} className="text-white/25 hover:text-red-400 transition-colors">
+          <button onClick={onClear} className="text-white/25 hover:text-red-400 transition-colors">
             <XCircle className="w-3.5 h-3.5" />
           </button>
         </div>
       ) : (
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Buscar agente (mín. 2 letras)…"
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            className="w-full bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-white/20 outline-none focus:border-blue-400/40"
-          />
-          {busqueda.length >= 2 && resultado.length > 0 && (
-            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#07111f] border border-white/10 rounded-xl shadow-2xl overflow-hidden max-h-44 overflow-y-auto">
-              {resultado.map((e) => (
-                <button
-                  key={e.id}
-                  onClick={() => { onSelect(e); setBusqueda(""); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/4 transition-colors"
-                >
-                  <div className={`w-6 h-6 rounded flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(e.nombreCompleto)}`}>
-                    {iniciales(e.nombreCompleto)}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs text-white/80 truncate">{e.nombreCompleto}</p>
-                    <p className="text-[10px] text-white/30">{e.puesto ?? e.area ?? "Agente"}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <SelectorAgenteAgrupado
+          fecha={fecha}
+          idsExcluidos={idsOcupados}
+          seleccionado={null}
+          onSelect={(a) => onSelect({ id: a.id, nombreCompleto: a.nombre, puesto: a.detalle, area: null })}
+        />
       )}
     </div>
   );
@@ -1190,7 +1359,7 @@ function ModalPlanSSA({
               {ssa.hora_inicio ? ` · ${ssa.hora_inicio}–${ssa.hora_fin ?? ""}` : ""}
             </p>
           </div>
-          <button onClick={onClose} className="text-white/30 hover:text-white transition-colors mt-1">
+          <button onClick={onClose} aria-label="Cerrar modal" className="text-white/30 hover:text-white transition-colors mt-1">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -1228,6 +1397,7 @@ function ModalPlanSSA({
                 key={i}
                 slotIdx={i}
                 totalSlots={totalSlots}
+                fecha={fecha}
                 agenteSel={slot}
                 idsOcupados={idsOcupados.filter((_, j) => j !== i ? true : false)}
                 onSelect={(emp) => {
@@ -5645,7 +5815,6 @@ function ModalAsignarSSA({
   const { toast } = useToast();
   const [agenteSeleccionado, setAgenteSeleccionado] = useState<Agente | null>(null);
   const [tipoCobertura, setTipoCobertura]           = useState("disponible");
-  const [busqueda, setBusqueda]                     = useState("");
   const [guardando, setGuardando]                   = useState(false);
   const [conflicto, setConflicto]                   = useState<string | null>(null);
   const [removiendo, setRemoviendo]                 = useState<Record<number, boolean>>({});
@@ -5659,13 +5828,6 @@ function ModalAsignarSSA({
   const cubierto          = agentesLocales.length >= cantidadRequerida;
   const hayCapacidad      = agentesLocales.length < cantidadRequerida;
   const idsYaAsignados    = agentesLocales.map((a) => a.id);
-
-  const agentesDisponibles = disponibles.filter((a) =>
-    !idsYaAsignados.includes(a.id) &&
-    (!busqueda.trim() ||
-      a.nombre_completo.toLowerCase().includes(busqueda.toLowerCase()) ||
-      (a.puesto ?? "").toLowerCase().includes(busqueda.toLowerCase())),
-  );
 
   async function handleAgregar() {
     if (!agenteSeleccionado) {
@@ -5696,7 +5858,6 @@ function ModalAsignarSSA({
         { id: agenteSeleccionado.id, nombre: agenteSeleccionado.nombre_completo, telefono: null, estado: "asignado" },
       ]);
       setAgenteSeleccionado(null);
-      setBusqueda("");
       onSuccess();
     } catch {
       toast({ title: "Error de red", variant: "destructive" });
@@ -5748,7 +5909,7 @@ function ModalAsignarSSA({
               <p className="text-[10px] text-white/35 font-mono">{tarjeta.id}</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-white/30 hover:text-white transition-colors ml-3 shrink-0">
+          <button onClick={onClose} aria-label="Cerrar modal" className="text-white/30 hover:text-white transition-colors ml-3 shrink-0">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -5813,81 +5974,47 @@ function ModalAsignarSSA({
 
           {/* Separador si hay capacidad para más */}
           {hayCapacidad && (
-            <>
-              <div className="px-5 pt-3">
-                <p className="text-[10px] font-semibold text-white/40 uppercase tracking-wide mb-2">
-                  Agregar guardia {agentesLocales.length > 0 ? `(faltan ${cantidadRequerida - agentesLocales.length})` : ""}
-                </p>
+            <div className="px-5 pt-3 pb-3">
+              <p className="text-[10px] font-semibold text-white/40 uppercase tracking-wide mb-2">
+                Agregar guardia {agentesLocales.length > 0 ? `(faltan ${cantidadRequerida - agentesLocales.length})` : ""}
+              </p>
 
-                {/* Tipo de cobertura */}
-                <div className="flex flex-wrap gap-1.5 mb-3">
-                  {TIPOS_COBERTURA.map((tc) => (
-                    <button
-                      key={tc.value}
-                      onClick={() => setTipoCobertura(tc.value)}
-                      className={`text-[10px] px-2.5 py-1 rounded-lg border font-medium transition-colors ${
-                        tipoCobertura === tc.value
-                          ? "bg-primary/20 border-primary/50 text-primary"
-                          : "bg-white/4 border-white/8 text-white/40 hover:border-white/20"
-                      }`}
-                    >
-                      {tc.label}
-                    </button>
-                  ))}
+              {/* Tipo de cobertura */}
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {TIPOS_COBERTURA.map((tc) => (
+                  <button
+                    key={tc.value}
+                    onClick={() => setTipoCobertura(tc.value)}
+                    className={`text-[10px] px-2.5 py-1 rounded-lg border font-medium transition-colors ${
+                      tipoCobertura === tc.value
+                        ? "bg-primary/20 border-primary/50 text-primary"
+                        : "bg-white/4 border-white/8 text-white/40 hover:border-white/20"
+                    }`}
+                  >
+                    {tc.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Conflicto backend */}
+              {conflicto && (
+                <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2.5 mb-3">
+                  <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+                  <p className="text-[10px] text-red-200/70">{conflicto}</p>
                 </div>
+              )}
 
-                {/* Conflicto */}
-                {conflicto && (
-                  <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2.5 mb-2">
-                    <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
-                    <p className="text-[10px] text-red-200/70">{conflicto}</p>
-                  </div>
-                )}
-
-                {/* Búsqueda */}
-                <input
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  placeholder="Buscar agente en pool…"
-                  className="w-full bg-[#0c1929] border border-white/8 rounded-xl px-3 py-2 text-xs text-white/80 outline-none placeholder:text-white/20 focus:border-primary/40"
-                />
-              </div>
-
-              <div className="px-5 pb-3 pt-2 space-y-1 max-h-52 overflow-y-auto">
-                {agentesDisponibles.length === 0 ? (
-                  <div className="text-center py-4">
-                    <UserMinus className="w-5 h-5 text-white/10 mx-auto mb-1" />
-                    <p className="text-xs text-white/25">
-                      {disponibles.length === 0 ? "No hay agentes disponibles" : "Sin resultados"}
-                    </p>
-                  </div>
-                ) : (
-                  agentesDisponibles.map((a) => {
-                    const seleccionado = agenteSeleccionado?.id === a.id;
-                    return (
-                      <button
-                        key={a.id}
-                        onClick={() => { setAgenteSeleccionado(a); setConflicto(null); }}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
-                          seleccionado
-                            ? "bg-primary/15 border-primary/40"
-                            : "bg-[#0c1929] border-white/6 hover:border-white/15"
-                        }`}
-                      >
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarColor(a.nombre_completo)}`}>
-                          {iniciales(a.nombre_completo)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-white/90 truncate">{a.nombre_completo}</p>
-                          <p className="text-[10px] text-white/35 truncate">{a.puesto ?? "Agente"}{a.sede ? ` · ${a.sede}` : ""}</p>
-                        </div>
-                        {seleccionado && <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </>
+              {/* Selector agrupado por estado operativo */}
+              <SelectorAgenteAgrupado
+                fecha={tarjeta.fecha ?? new Date().toISOString().split("T")[0]}
+                idsExcluidos={idsYaAsignados}
+                seleccionado={agenteSeleccionado?.id ?? null}
+                onSelect={(a) => {
+                  setAgenteSeleccionado({ id: a.id, nombre_completo: a.nombre, estado_laboral: "activo", puesto: null, area: null, sede: null, telefono: null, wa_autorizado: false, supervisor_id: null, tipo_asignacion_eoa: "disponible" });
+                  setConflicto(null);
+                }}
+              />
+            </div>
           )}
 
           {/* Cubierto completamente */}
