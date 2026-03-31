@@ -1,0 +1,175 @@
+Quiero corregir ahora los dos bugs críticos principales detectados en el hard test del arranque de cliente nuevo en ISPSA.
+
+No quiero abrir otros frentes todavía.
+No quiero romper nada que ya funciona.
+
+Objetivo
+
+Resolver primero los dos bloqueantes que hoy impiden usar el sistema con seguridad en un arranque real de cliente:
+	1.	RRHH ↔ Nómina desconectados
+	2.	Falta de activación de proyecto el día de arranque
+
+⸻
+
+BUG CRÍTICO 1 — RRHH ↔ Nómina desconectados
+
+Problema actual
+
+Cuando RRHH registra un evento como:
+	•	permiso_sin_goce
+	•	vacaciones
+	•	incapacidad
+	•	suspensión
+
+el generador de novedades no siempre lo toma como fuente de verdad antes de crear la novedad del titular.
+
+Resultado:
+	•	el titular puede aparecer como si hubiera trabajado
+	•	aunque RRHH ya lo marcó ausente
+	•	y además el relevo también puede aparecer trabajando
+
+Eso genera doble asignación de horas y pago incorrecto.
+
+Caso real detectado
+
+Ana tenía permiso_sin_goce el 18/04.
+Pedro trabajó ese puesto.
+Pero la planilla terminó pagando a Ana como si hubiera trabajado 12h.
+
+Qué quiero
+
+Antes de generar novedades de nómina para un día, el sistema debe consultar primero si existe un evento RRHH aplicable al colaborador en esa fecha.
+
+Regla esperada
+
+Si existe un evento RRHH activo en esa fecha y el tipo implica ausencia del titular:
+	•	el titular NO debe recibir novedad de trabajo por defecto
+	•	el titular debe quedar con la lógica correcta según el evento:
+	•	permiso_sin_goce
+	•	vacaciones
+	•	incapacidad
+	•	suspensión
+	•	la cobertura real debe salir de:
+	•	cobertura_segmentos
+	•	o del relevo real asignado
+
+Fuente de verdad
+
+Quiero que para “quién trabajó” el sistema use primero:
+	•	segmentos de cobertura reales (cobertura_segmentos.employee_id)
+y no solo el titular_employee_id del puesto
+
+⸻
+
+BUG CRÍTICO 2 — Activación de proyecto el día de arranque
+
+Problema actual
+
+Comercial puede crear el cliente, configurar puestos y definir fecha de inicio.
+La planificación futura funciona y la tarjeta de inicio aparece.
+
+Pero cuando llega el día de arranque:
+	•	el cliente nuevo no aparece operativo en el tablero
+	•	porque no existen los registros operativos necesarios (EOA o equivalente)
+	•	no hay un paso claro de “activar proyecto”
+
+Qué quiero
+
+Implementar un flujo de activación de proyecto para que, al llegar la fecha de inicio del contrato/proyecto:
+	•	el cliente pase a operación real
+	•	sus puestos aparezcan en el tablero del día
+	•	las asignaciones base necesarias existan
+	•	el jefe de servicio pueda operar el arranque normalmente
+
+Opciones aceptables
+
+Puedes resolverlo de una de estas formas:
+	1.	Activación automática al llegar la fecha
+	2.	Activación manual con botón claro desde planificación / tarjeta de arranque
+	3.	Activación asistida con validaciones
+
+Pero debe quedar claro y funcional.
+
+Lo mínimo que debe pasar
+
+El 18/04, si el proyecto inicia ese día:
+	•	el cliente debe aparecer como operativo en el Pizarrón
+	•	sus puestos deben existir en la operación del día
+	•	si hay titulares configurados, deben verse
+	•	si faltan coberturas, debe verse claramente
+
+⸻
+
+Validación adicional importante
+
+Quiero que revises también este punto relacionado:
+
+Cobertura ↔ Novedades
+
+El generador de novedades no debe mezclar:
+	•	titular teórico del puesto
+	•	con trabajador real del segmento
+
+Debe poder distinguir correctamente:
+	•	quién debía estar
+	•	quién realmente trabajó
+	•	quién faltó
+	•	quién cubrió
+
+⸻
+
+Casos concretos que debes probar después de corregir
+
+Caso 1
+
+Titular con permiso_sin_goce y relevo real
+	•	el titular NO cobra
+	•	el relevo sí cobra
+
+Caso 2
+
+Titular con vacaciones
+	•	el relevo hereda la cobertura
+	•	la novedad refleja correctamente al relevo
+
+Caso 3
+
+Cliente nuevo con fecha futura
+	•	visible en planificación
+	•	no aparece hoy
+	•	al llegar la fecha aparece operativo en tablero
+
+Caso 4
+
+Cliente nuevo con algunos puestos cubiertos y otros no
+	•	el tablero del día muestra ambos casos correctamente
+
+⸻
+
+No romper
+
+No romper:
+	•	planificación futura
+	•	pool futuro
+	•	RRHH
+	•	pre-planilla
+	•	planilla final
+	•	historial de titularidad
+	•	SSA
+	•	anticipos
+	•	turnos
+	•	clientes
+	•	comercial
+
+⸻
+
+Resultado esperado
+
+Quiero que al final me entregues:
+	1.	Qué corregiste exactamente
+	2.	Qué archivos cambiaste
+	3.	Cómo validaste cada bug crítico
+	4.	Si el arranque de un cliente nuevo ya puede pasar del pipeline comercial al pizarrón y luego a nómina sin errores de pago
+
+Muy importante:
+quiero cerrar primero los bugs que hoy hacen que un cliente nuevo pueda arrancar mal y que un colaborador ausente pueda terminar pagado como si hubiera trabajado.

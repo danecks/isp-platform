@@ -48,13 +48,17 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         e.area           AS agente_area,
         e.sede           AS agente_sede,
         cs.nombre        AS sede_nombre,
-        oz.nombre        AS zona_nombre
+        oz.nombre        AS zona_nombre,
+        cl.fecha_inicio_contrato,
+        (cl.fecha_inicio_contrato = CURRENT_DATE) AS es_inicio_hoy
       FROM puestos_operativos po
       LEFT JOIN employees e  ON e.id  = po.agente_id
       LEFT JOIN client_sedes cs ON cs.id = po.sede_id
       LEFT JOIN operational_zones oz ON oz.id = po.zona_operativa_id
       LEFT JOIN turnos t ON t.id = po.tipo_turno_id
+      LEFT JOIN clients cl ON cl.id = po.cliente_id
       WHERE po.activo = TRUE
+        AND (cl.fecha_inicio_contrato IS NULL OR cl.fecha_inicio_contrato <= CURRENT_DATE)
       ORDER BY po.cliente_nombre, po.orden, po.nombre
     `);
 
@@ -62,13 +66,23 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
     const mapaClientes: Record<string, {
       clienteId: number | null;
       clienteNombre: string;
+      fechaInicioContrato: string | null;
+      iniciaHoy: boolean;
       puestos: typeof puestos;
     }> = {};
 
     for (const p of puestos) {
-      const key = p.cliente_nombre;
+      const key = String(p.cliente_id ?? p.cliente_nombre);
       if (!mapaClientes[key]) {
-        mapaClientes[key] = { clienteId: p.cliente_id, clienteNombre: p.cliente_nombre, puestos: [] };
+        mapaClientes[key] = {
+          clienteId: p.cliente_id,
+          clienteNombre: p.cliente_nombre,
+          fechaInicioContrato: p.fecha_inicio_contrato
+            ? String(p.fecha_inicio_contrato).slice(0, 10)
+            : null,
+          iniciaHoy: p.es_inicio_hoy === true,
+          puestos: [],
+        };
       }
       mapaClientes[key].puestos.push(p);
     }

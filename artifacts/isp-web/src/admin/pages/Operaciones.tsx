@@ -69,6 +69,8 @@ interface Puesto {
 interface ClienteBoard {
   clienteId: number | null;
   clienteNombre: string;
+  fechaInicioContrato?: string | null;
+  iniciaHoy?: boolean;
   puestos: Puesto[];
 }
 
@@ -2135,7 +2137,14 @@ function ClienteColumna({
   const colorBarra  = pct === 100 ? "bg-green-500" : pct >= 60 ? "bg-yellow-500" : "bg-red-500";
 
   return (
-    <div className="flex-shrink-0 w-64 bg-[#060f1a] border border-white/8 rounded-2xl overflow-hidden flex flex-col max-h-full">
+    <div className={`flex-shrink-0 w-64 bg-[#060f1a] rounded-2xl overflow-hidden flex flex-col max-h-full ${cliente.iniciaHoy ? "border border-emerald-500/40 ring-1 ring-emerald-500/20" : "border border-white/8"}`}>
+      {/* Badge de inicio de proyecto */}
+      {cliente.iniciaHoy && (
+        <div className="px-3 py-1.5 bg-emerald-500/15 border-b border-emerald-500/25 flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-[10px] font-semibold text-emerald-300 uppercase tracking-wider">Nuevo servicio · Inicia hoy</span>
+        </div>
+      )}
       {/* Header cliente */}
       <div className="px-3 py-3 border-b border-white/8">
         <div className="flex items-start justify-between gap-2 mb-2">

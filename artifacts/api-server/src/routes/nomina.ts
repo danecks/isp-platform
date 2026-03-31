@@ -30,10 +30,43 @@ export const nominaRouter = Router();
  *    en cobertura_diaria(fecha): falta=TRUE, descuento=TRUE
  *  - Por cada ausencia por "suspension" en movimientos_operativos: suspension=TRUE
  */
+// Tipos de evento RRHH que implican ausencia del empleado
+const TIPOS_AUSENCIA_RRHH = [
+  "permiso_sin_goce", "permiso_con_goce", "vacaciones", "relevo_vacaciones",
+  "incapacidad", "suspension", "permiso", "descanso",
+];
+// Tipos de ausencia que NO generan falta ni descuento (solo ausencia justificada)
+const TIPOS_RRHH_SIN_DESCUENTO = [
+  "vacaciones", "relevo_vacaciones", "incapacidad", "permiso_con_goce", "permiso", "descanso",
+];
+
 export async function generarNovedades(fecha: string, cierreId: number | null): Promise<number> {
   let count = 0;
 
   try {
+    // ── Paso RRHH: Cargar todos los eventos de ausencia aplicables para la fecha ──
+    // Fuente de verdad de RRHH: si un empleado tiene evento de ausencia ese día,
+    // NO debe recibir novedad de trabajo aunque aparezca en cobertura_segmentos.
+    let eventosRRHHMap = new Map<number, string>(); // employeeId → tipo_evento
+    try {
+      const { rows: eventosRRHH } = await pool.query(`
+        SELECT er.employee_id, er.tipo_evento
+        FROM eventos_rrhh er
+        WHERE $1::date BETWEEN er.fecha::date
+              AND COALESCE(er.fecha_fin::date, er.fecha::date)
+          AND er.tipo_evento = ANY($2::text[])
+          AND er.estado NOT IN ('anulado', 'cancelado')
+          AND er.employee_id IS NOT NULL
+      `, [fecha, TIPOS_AUSENCIA_RRHH]);
+
+      for (const ev of eventosRRHH) {
+        eventosRRHHMap.set(Number(ev.employee_id), ev.tipo_evento);
+      }
+      logger.info({ fecha, totalEventosRRHH: eventosRRHHMap.size }, "Paso RRHH: eventos de ausencia cargados");
+    } catch (rrhhErr) {
+      logger.warn({ rrhhErr, fecha }, "Paso RRHH: falló carga de eventos (no bloqueante)");
+    }
+
     // ── Paso 0: Limpiar faltas de agentes activamente asignados ─────────────
     // Si un agente está actualmente en un puesto activo O en un SSA con tarjeta_activa,
     // no puede tener falta=true aunque no tenga segmento para esta fecha.
@@ -96,6 +129,52 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
 
     for (const s of segmentos) {
       const nombreFinal = s.nombre_emp ?? s.empleado_nombre ?? "Desconocido";
+      const empId = Number(s.employee_id);
+
+      // ── GUARD RRHH: Si el empleado tiene ausencia registrada en RRHH para esta fecha,
+      // NO puede recibir novedad de trabajo — aunque tenga segmento de cobertura.
+      // Esto puede ocurrir cuando el segmento fue creado antes de que RRHH registrara el evento,
+      // o cuando el segmento quedó stale de una corrección posterior.
+      const rrhhEventoSegmento = eventosRRHHMap.get(empId);
+      if (rrhhEventoSegmento) {
+        logger.info(
+          { fecha, employeeId: empId, tipoEvento: rrhhEventoSegmento },
+          "RRHH Guard (segmento): empleado tiene ausencia RRHH — generando novedad de ausencia en lugar de trabajo"
+        );
+        const sinDescuentoRRHH = TIPOS_RRHH_SIN_DESCUENTO.includes(rrhhEventoSegmento);
+        const esSuspRRHH       = rrhhEventoSegmento === "suspension";
+        await pool.query(`
+          INSERT INTO novedades_nomina_diarias
+            (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
+             falta, suspension, descanso_trabajado, afecta_septimo, descuento_dia,
+             puesto_titular_id, puesto_titular_nombre, tipo_novedad, fuente, cierre_id, updated_at)
+          VALUES ($1,$2,$3,FALSE,0,0, $4,$5,FALSE,$6,$7, $8,$9,$10,'eventos_rrhh',$11,NOW())
+          ON CONFLICT (fecha, employee_id) DO UPDATE SET
+            trabajo_dia           = FALSE,
+            horas_trabajadas      = 0,
+            horas_extra           = 0,
+            falta                 = EXCLUDED.falta,
+            suspension            = EXCLUDED.suspension,
+            afecta_septimo        = EXCLUDED.afecta_septimo,
+            descuento_dia         = EXCLUDED.descuento_dia,
+            tipo_novedad          = EXCLUDED.tipo_novedad,
+            fuente                = 'eventos_rrhh',
+            cierre_id             = EXCLUDED.cierre_id,
+            updated_at            = NOW()
+        `, [
+          fecha, empId, nombreFinal,
+          !sinDescuentoRRHH,  // falta
+          esSuspRRHH,         // suspension
+          !sinDescuentoRRHH,  // afecta_septimo
+          !sinDescuentoRRHH,  // descuento_dia
+          s.puesto_titular_id ?? null, s.puesto_titular_nombre ?? null,
+          rrhhEventoSegmento,
+          cierreId,
+        ]);
+        count++;
+        continue; // No generar novedad de trabajo para este empleado
+      }
+
       // Obtener nombre del puesto cubierto si aplica
       let puestoCubierto: string | null = null;
       if (s.puesto_cubierto_id) {
@@ -128,7 +207,7 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
           cierre_id             = EXCLUDED.cierre_id,
           updated_at            = NOW()
       `, [
-        fecha, s.employee_id, nombreFinal,
+        fecha, empId, nombreFinal,
         parseFloat(s.horas_trabajadas ?? 0).toFixed(2),
         parseFloat(s.horas_extra ?? 0).toFixed(2),
         s.descanso_trabajado ?? false,
@@ -274,16 +353,30 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
         }
       }
 
+      // ── GUARD RRHH en P-NOM-04: si RRHH ya registró una ausencia para este empleado,
+      // usar esa como fuente de verdad del tipo de ausencia (no el cobertura_segmento relevo).
+      const rrhhEventoTitular = eventosRRHHMap.get(Number(t.employee_id));
+
       // Buscar tipo_novedad del relevo para este puesto ese día (si existe)
       const { rows: tnRowsT } = await pool.query(`
         SELECT tipo_novedad FROM cobertura_segmentos
         WHERE fecha=$1 AND puesto_id=$2 AND tipo_cobertura='relevo' AND tipo_novedad IS NOT NULL
         LIMIT 1
       `, [fecha, t.puesto_titular_id]);
-      const tipoNovT = tnRowsT[0]?.tipo_novedad ?? null;
+      const tipoNovRelevo = tnRowsT[0]?.tipo_novedad ?? null;
+
+      // RRHH tiene prioridad sobre el tipo_novedad del segmento de relevo
+      const tipoNovT = rrhhEventoTitular ?? tipoNovRelevo;
+
+      if (rrhhEventoTitular) {
+        logger.info(
+          { fecha, employeeId: t.employee_id, tipoEvento: rrhhEventoTitular },
+          "RRHH Guard (P-NOM-04): usando tipo_novedad de RRHH para titular ausente"
+        );
+      }
 
       // Tipos que NO generan falta ni descuento al titular
-      const sinFaltaT = ["vacaciones", "relevo_vacaciones", "incapacidad", "permiso_con_goce"].includes(tipoNovT ?? "");
+      const sinFaltaT = TIPOS_RRHH_SIN_DESCUENTO.includes(tipoNovT ?? "");
       const esSuspensionT = tipoNovT === "suspension";
 
       await pool.query(`
