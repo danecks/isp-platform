@@ -1,0 +1,356 @@
+Quiero que hagas un hard test funcional integral de 30 días del sistema ISPSA, usando el sistema como si fueras un usuario real y apoyándote en toda la documentación de funciones, flujos y módulos ya existentes.
+
+No quiero un test superficial ni solo técnico.
+No quiero solo unit tests o pruebas aisladas de endpoints.
+
+## Objetivo
+Quiero una prueba real de uso, de punta a punta, donde el sistema sea operado como si ya estuviera en funcionamiento real dentro de la empresa, durante una simulación de 30 días.
+
+Quiero que esta prueba:
+- use el preview de Replit
+- recorra los módulos reales del sistema
+- haga acciones reales como usuario
+- detecte problemas funcionales, operativos, de integración, de datos y de cálculo
+- y me ayude a decidir qué corregir primero
+
+---
+
+## 1. Enfoque de la prueba
+Quiero que pruebes el sistema como si fueras distintos usuarios reales:
+
+- Admin
+- Operaciones / Jefe de servicio
+- RRHH
+- Comercial
+- Cliente (portal)
+- Usuario interno administrativo si aplica
+
+No quiero una prueba de laboratorio aislada.
+Quiero una prueba de operación realista.
+
+---
+
+## 2. Usar documentación existente
+Usa toda la documentación y lógica ya implementada del sistema para guiar la prueba, incluyendo funciones y módulos como:
+
+- Clientes
+- Ficha maestra del cliente
+- Sedes
+- Puestos operativos
+- Zonas operativas
+- Supervisores
+- Colaboradores
+- Usuarios
+- Pizarrón Operativo
+- Cobertura diaria
+- Segmentos
+- Historial de titularidad
+- RRHH
+- Eventos RRHH
+- Anticipos
+- Servicios especiales (SSA)
+- Pre-planilla
+- Cierre de pre-planilla
+- Planilla final
+- IGSS
+- Cambios estructurales
+- Portal del cliente
+- Comercial / leads / cotización / cliente ganado
+- Cualquier función ya implementada y documentada
+
+---
+
+## 3. La prueba debe hacerse en el preview de Replit
+Muy importante:
+quiero que las pruebas se vean reflejadas en el preview de Replit, no solo en llamadas sueltas a API.
+
+Quiero que navegues y operes el sistema real:
+- abrir páginas
+- llenar formularios
+- crear registros
+- mover cosas en el pizarrón
+- revisar paneles
+- validar lo que muestra la UI
+- comprobar que lo que se hace en un módulo se refleja en otro
+
+Si necesitas apoyarte en API o DB para verificar resultados, puedes hacerlo, pero la prueba debe ser principalmente funcional y visible en la aplicación real.
+
+---
+
+## 4. Escenario de prueba
+Usar un escenario coherente y realista de ISPSA.
+
+Cliente base sugerido:
+Cervecería Centro Americana
+
+Pero no limitarse a un solo caso simple.
+
+Quiero que armes un escenario de 30 días donde se prueben:
+- clientes
+- servicios
+- puestos
+- operación diaria
+- RRHH
+- pre-planilla
+- planilla
+- servicios especiales
+- cambios de titular
+- horas extra
+- faltas
+- vacaciones
+- contingencias
+
+---
+
+## 5. Simulación de 30 días
+Quiero que simules 30 días de operación realista.
+
+No hace falta que cada día sea idéntico.
+Quiero una mezcla de:
+- días normales
+- días con incidencias
+- días con faltas
+- días con relevo
+- días con servicios especiales
+- días con cambios estructurales
+- días con cierres y revisión de nómina
+
+---
+
+## 6. Escenarios obligatorios a probar durante los 30 días
+
+### A. Comercial / alta de servicio
+- cliente nuevo pide cotización
+- ventas lo atiende
+- se crea cliente
+- se definen sedes, puestos, tarifas, zonas, supervisor
+- los puestos aparecen en el Pizarrón Operativo
+
+### B. Operación normal
+- titular cubre normalmente
+- cierre diario
+- novedades correctas
+
+### C. Falta total
+- titular no llega
+- se cubre con relevo
+- se genera evento RRHH
+- se refleja en pre-planilla
+
+### D. Abandono parcial
+- titular trabaja parte del turno y se va
+- otro cubre el resto
+- validar cobertura parcial y efecto en pago
+
+### E. Vacaciones
+- un titular sale de vacaciones
+- un relevo hereda el horario del puesto
+- validar lógica distinta a una falta
+
+### F. Suspensión / incapacidad / sick note
+- validar RRHH
+- validar operación
+- validar nómina
+
+### G. Cambio a titular
+- un disponible o relevo pasa a titular
+- validar historial de titularidad
+- validar ficha colaborador
+- validar ficha cliente
+- validar que no queden dobles titulares
+
+### H. Servicio especial SSA
+- cliente solicita
+- pipeline entre áreas
+- comercial, RRHH y operaciones reciben tareas
+- SSA aparece donde corresponda
+- se cubre
+- se refleja en pre-planilla/planilla
+
+### I. Pool sin disponibles
+- simular que no hay disponibles
+- validar alertas
+- validar cómo responde el sistema
+- detectar si falta flujo de contingencia
+
+### J. Horas extra
+- cierre tardío del cliente
+- cobertura extraordinaria
+- validar que las HE salgan según puesto/horario esperado
+
+### K. Turnos 12h y 24h
+- probar ambos
+- validar diferencias en operación y nómina
+
+### L. Anticipos
+- crear anticipos
+- verificar reflejo en pre-planilla y planilla
+- validar que no se dupliquen
+
+### M. IGSS
+- colaboradores con IGSS y sin IGSS
+- validar clasificación
+- validar reflejo en planilla
+
+### N. Frecuencia de pago
+- quincenal
+- mensual
+- validar inclusión/exclusión por período
+
+### O. Contratación
+- crear colaborador nuevo
+- generar dos contratos
+- validar que se vean en ficha
+
+### P. Cambios estructurales
+- cambios iniciados desde operaciones
+- cambios iniciados desde RRHH
+- validación cruzada
+- admin decide si hay conflicto
+
+---
+
+## 7. Probar todas las funciones visibles
+Quiero que pruebes todas las funciones relevantes visibles en la app, no solo algunas.
+
+Eso incluye:
+- botones
+- formularios
+- modales
+- tabs
+- filtros
+- paneles
+- cards
+- badges
+- dashboards
+- flujos de creación/edición
+- estados
+- cierres
+- exportaciones si aplica
+
+Si una función existe en la UI, quiero que se pruebe o al menos se evalúe su comportamiento.
+
+---
+
+## 8. Validar integración entre módulos
+No basta con que una acción funcione localmente.
+
+Quiero que verifiques si una acción hecha en un módulo se refleja correctamente en los demás.
+
+Ejemplos:
+- cambio en pizarrón → RRHH → pre-planilla → planilla
+- cambio en RRHH → operación → planilla
+- servicio especial → comercial → operaciones → planilla
+- cambio de titular → colaborador + cliente + historial
+- contratación → colaborador + contratos + usuarios si aplica
+
+---
+
+## 9. Qué debe revisar específicamente
+Para cada escenario y función, revisar:
+
+### Operación
+- Pizarrón
+- pool
+- coberturas
+- segmentos
+- estados del puesto
+- estados del colaborador
+
+### RRHH
+- eventos
+- boletas
+- actas
+- alertas
+- seguimiento
+
+### Cliente
+- ficha
+- agentes asignados
+- historial
+- solicitudes
+
+### Colaborador
+- ficha
+- usuario
+- asignación
+- contratos
+- historial
+
+### Pre-planilla
+- resumen
+- tabs/anexos
+- revisión
+- cierre
+- snapshot
+
+### Planilla
+- cálculo
+- líneas
+- anticipos
+- clasificación IGSS
+- estado
+- reversión
+
+### Comercial
+- lead
+- cotización
+- cliente ganado
+- tareas
+- SSA
+- facturación si aplica
+
+---
+
+## 10. Qué hacer si encuentras errores
+No quiero que te detengas en el primer error.
+
+Quiero que:
+- sigas avanzando
+- documentes el hallazgo
+- expliques el impacto
+- digas qué debería hacer el sistema
+- y clasifiques la severidad
+
+---
+
+## 11. Resultado final esperado
+Al final quiero un reporte estructurado con:
+
+### A. Escenarios probados
+### B. Funciones probadas
+### C. Qué sí funcionó correctamente
+### D. Qué falló
+### E. Qué quedó inconsistente entre módulos
+### F. Qué debería hacer el sistema en cada caso donde falló
+### G. Hallazgos críticos
+### H. Hallazgos altos
+### I. Hallazgos medios
+### J. Hallazgos bajos
+### K. Qué bloquea operación real
+### L. Qué bloquea una planilla confiable
+### M. Qué recomiendo corregir primero
+### N. Qué ya está suficientemente sólido
+
+---
+
+## 12. Prioridad especial
+Quiero especial atención en:
+- Pizarrón Operativo como centro del sistema
+- coherencia operación → pre-planilla → planilla
+- diferencias entre falta, abandono, vacaciones, relevo parcial y relevo completo
+- turnos 12h y 24h
+- servicios especiales
+- errores visibles en UI del preview
+- errores de lógica que afecten dinero o decisiones reales
+
+---
+
+## 13. Muy importante
+No quiero una prueba superficial ni una lista de endpoints.
+Quiero una prueba real de uso del sistema, como si un usuario estuviera trabajando dentro de ISPSA por 30 días, usando la aplicación en Replit y viendo qué se rompe, qué funciona y qué hace falta ajustar.
+
+Esta prueba debe ayudarme a:
+- detectar problemas reales
+- priorizar correcciones
+- y decidir si el sistema ya aguanta una prueba seria con personal real.

@@ -110,7 +110,15 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       LEFT JOIN puestos_operativos titular_po
         ON titular_po.titular_employee_id = e.id AND titular_po.activo = TRUE
       WHERE e.estado_laboral IN ('activo', 'suspendido', 'licencia')
-        AND COALESCE(e.elegible_pool, TRUE) = TRUE
+        AND (
+          COALESCE(e.elegible_pool, TRUE) = TRUE
+          OR (
+            titular_po.id IS NOT NULL
+            AND (titular_po.agente_id IS NULL OR titular_po.agente_id != e.id)
+            AND COALESCE(titular_po.estado_operativo_puesto, 'normal') != 'normal'
+            AND e.estado_laboral = 'activo'
+          )
+        )
       ORDER BY e.estado_laboral, e.nombre_completo
     `);
 

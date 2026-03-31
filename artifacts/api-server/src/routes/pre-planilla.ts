@@ -199,6 +199,8 @@ const QUERY_CONSOLIDADO = `
     e.id, e.nombre_completo, e.dpi, e.sueldo_base, e.tipo_jornada,
     e.dia_descanso, e.horas_contrato, e.estado_laboral, e.puesto,
     e.area, e.sede, e.supervisor_nombre, e.frecuencia_pago,
+    e.aplica_igss_general, e.estado_igss, e.fecha_inicio_igss,
+    po.aplica_igss, po.regimen_igss,
     pr.estado, pr.observaciones, pr.revisado_por, pr.updated_at,
     pr.aprobado_por, pr.aprobado_at
   ORDER BY e.nombre_completo
