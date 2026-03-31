@@ -1,0 +1,231 @@
+Quiero hacer un hard test operativo real completo del arranque de un cliente nuevo en ISPSA, desde la venta hasta la planilla.
+
+No quiero pruebas técnicas ni simulaciones simples.  
+Quiero una prueba como si el sistema ya estuviera en producción y se estuviera abriendo un servicio real con un cliente.
+
+---
+
+# 🎯 OBJETIVO PRINCIPAL
+
+Validar que ISPSA puede manejar correctamente:
+
+👉 Venta → Arranque → Operación → Cierre → Pre-planilla → Planilla  
+
+sin romper lógica operativa ni generar errores de pago.
+
+---
+
+# 🧪 ESCENARIO BASE
+
+Fecha actual del sistema: 01/04/2026
+
+Cliente:
+Cervecería Centro Americana
+
+Configuración:
+- Fecha inicio proyecto: 18/04/2026
+- 2 sedes
+- 4 puestos:
+  - 2 de 12h
+  - 2 de 24h
+- zona asignada
+- supervisor asignado
+- algunos puestos con titular
+- otros sin cubrir
+
+---
+
+# 🔁 FASE 1 — COMERCIAL
+
+Simular:
+
+- lead → contacto → cotización → ganado
+- creación de cliente
+- definición de:
+  - sedes
+  - puestos
+  - turnos
+  - supervisor
+  - fecha_inicio_contrato (obligatoria)
+
+## Validar:
+- el cliente queda bien configurado
+- no aparece en el pizarrón del día actual
+- no contamina operación actual
+
+---
+
+# 📅 FASE 2 — PLANIFICACIÓN FUTURA
+
+Ir al 18/04/2026
+
+## Validar:
+- aparece tarjeta de:
+  - inicio de proyecto
+- con estilo visual distinto
+- muestra:
+  - cliente
+  - cantidad de puestos
+- NO se ve como cobertura normal
+
+---
+
+# 👁️ FASE 3 — VISIBILIDAD DESDE HOY
+
+Volver al 01/04
+
+## Validar:
+- existe indicador de:
+  - proyecto próximo
+  - fecha visible
+- Operaciones puede anticipar el arranque
+
+---
+
+# 🧠 FASE 4 — PLANIFICACIÓN PREVIA REAL
+
+Antes del 18:
+
+Simular que Operaciones:
+
+- entra al 18/04
+- asigna cobertura futura en algunos puestos
+- deja otros sin cubrir
+
+## Validar:
+- asignaciones futuras funcionan
+- tienen color/badge de planificación
+- NO afectan el día actual
+- NO generan novedades de nómina hoy
+
+---
+
+# 🚨 FASE 5 — ESCENARIOS REALES ANTES DEL ARRANQUE
+
+Simular:
+
+- un agente pide permiso para el 18
+- un agente está en descanso ese día
+- pool limitado (pocos disponibles)
+- un puesto queda sin cobertura
+
+## Validar:
+- el sistema muestra:
+  - ausentes
+  - descansos
+  - disponibles reales
+- Operaciones puede decidir correctamente
+
+---
+
+# 🚀 FASE 6 — DÍA REAL DE ARRANQUE (18/04)
+
+Entrar al 18/04 como día actual
+
+## Validar:
+- el proyecto ya aparece como operativo normal
+- los puestos están activos
+- las coberturas futuras ya aplicadas se reflejan
+- los puestos sin cubrir son visibles claramente
+
+---
+
+# ⚙️ FASE 7 — OPERACIÓN REAL DEL DÍA
+
+Simular:
+
+- 1 puesto cubierto normalmente
+- 1 falta total
+- 1 abandono parcial
+- 1 relevo completo
+- 1 SSA adicional
+
+## Validar:
+- segmentos correctos
+- estados correctos
+- sin inconsistencias tipo:
+  - falta=true + trabajo=true
+  - horas mal calculadas
+
+---
+
+# 🧾 FASE 8 — CIERRE DEL DÍA
+
+Cerrar el 18/04
+
+## Validar:
+- no hay errores críticos
+- alertas correctas
+- novedades generadas correctamente
+
+---
+
+# 💰 FASE 9 — PRE-PLANILLA
+
+Revisar período de abril
+
+## Validar:
+- colaboradores del cliente aparecen
+- faltas correctas
+- coberturas correctas
+- horas correctas
+- sin inconsistencias
+
+---
+
+# 🧮 FASE 10 — PLANILLA FINAL
+
+Generar planilla
+
+## Validar:
+- pagos correctos
+- descuentos correctos
+- anticipos correctos
+- sin duplicidades
+- sin datos faltantes
+
+---
+
+# 🔍 REPORTE FINAL
+
+Quiero un reporte completo con:
+
+### A. Qué funcionó correctamente
+### B. Qué falló
+### C. Qué quedó inconsistente
+### D. Problemas entre módulos
+### E. Problemas en arranque de cliente
+### F. Problemas en planificación futura
+### G. Problemas en operación diaria
+### H. Problemas en pre-planilla
+### I. Problemas en planilla
+
+---
+
+# 🚨 CLASIFICACIÓN
+
+Clasificar cada hallazgo:
+
+- 🔴 Crítico (rompe operación o pago)
+- 🟠 Alto (riesgo real)
+- 🟡 Medio
+- 🟢 Bajo
+
+---
+
+# 🧠 PREGUNTA FINAL CLAVE
+
+Responder claramente:
+
+👉 “¿ISPSA ya puede manejar el arranque de un cliente nuevo desde la venta hasta la planilla sin generar errores operativos ni financieros?”
+
+---
+
+# ⚠️ IMPORTANTE
+
+No quiero teoría.  
+No quiero “parece correcto”.  
+
+Quiero una respuesta basada en comportamiento real del sistema.
+
+Este test debe reflejar si el sistema está listo para usarse en operación real con un cliente sin riesg
