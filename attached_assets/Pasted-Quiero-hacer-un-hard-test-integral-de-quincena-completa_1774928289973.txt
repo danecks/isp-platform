@@ -1,0 +1,226 @@
+Quiero hacer un hard test integral de quincena completa con todo lo que ya construimos hasta ahora.
+
+Objetivo
+
+Validar que todo el sistema siga funcionando de forma coherente después de todas las fases implementadas, y comprobar cómo se ven y cómo se calculan hoy la Pre-Planilla y la Planilla Final en un escenario realista de operación.
+
+No quiero una prueba superficial.
+Quiero una prueba seria, completa y cruzada, usando varios escenarios reales del rubro de seguridad privada.
+
+⸻
+
+1. Entorno de prueba
+
+Usar un entorno limpio/coherente de prueba.
+Conservar el usuario dan2336.
+
+Trabajar sobre un escenario organizado y realista, no sobre datos viejos mezclados.
+
+⸻
+
+2. Escenario base
+
+Usar como cliente principal de prueba:
+Cervecería Centro Americana
+
+Preparar:
+	•	cliente
+	•	sedes
+	•	puestos
+	•	zonas operativas
+	•	supervisor de zona
+	•	titulares
+	•	agentes disponibles
+	•	pool de relevo
+	•	uno o más servicios especiales
+
+⸻
+
+3. Simular una quincena completa
+
+Quiero una simulación de una quincena completa, no solo 1 o 2 días.
+
+Debe incluir días con operación normal y varios escenarios difíciles o realistas.
+
+⸻
+
+4. Escenarios obligatorios a probar
+
+A. Operación normal
+	•	titular cubre normalmente
+	•	cierre del día correcto
+	•	pre-planilla recoge el día correctamente
+
+B. Falta injustificada
+	•	el titular no llega
+	•	otro cubre
+	•	evento RRHH
+	•	descuento del ausente
+	•	pago correcto al relevo
+
+C. Suspensión / incapacidad / sick note
+	•	validar RRHH
+	•	validar pre-planilla
+	•	validar planilla final
+
+D. Relevo parcial
+	•	dos agentes cubren el mismo turno en partes
+	•	segmentos correctos
+	•	horas correctas
+
+E. Horas extra reales
+	•	un puesto se extiende por cierre tardío del cliente
+	•	validar horas esperadas vs reales
+	•	validar efecto en pre-planilla y planilla
+
+F. Cambio a titular
+	•	un disponible entra como nuevo titular
+	•	validar ficha del colaborador
+	•	validar ficha del cliente
+	•	validar historial de titularidad
+
+G. Servicio especial (SSA)
+	•	cliente solicita
+	•	pipeline interno
+	•	tarea a comercial / RRHH / operaciones
+	•	asignación de agente
+	•	impacto en pre-planilla y planilla
+
+H. Agente declina
+	•	asignar
+	•	remover
+	•	devolver al pool
+	•	reasignar otro
+
+I. Pool en 0
+	•	no hay disponibles
+	•	validar alerta
+	•	validar comportamiento esperado del sistema
+
+J. Anticipo dentro del período
+	•	crear anticipo
+	•	reflejarlo en pre-planilla
+	•	reflejarlo en planilla final
+	•	asegurar que no se descuente doble
+
+K. IGSS mixto
+	•	un colaborador con IGSS activo
+	•	otro sin IGSS por servicio/puesto
+	•	validar clasificación en pre-planilla y planilla
+
+L. Servicio 24 horas
+	•	validar cómo responde el sistema ante cobertura continua
+	•	verificar si la lógica actual aguanta correctamente o si deja hallazgos
+
+⸻
+
+5. Validación por módulos
+
+Quiero que en cada escenario se revise:
+
+Operaciones
+	•	pizarrón operativo
+	•	pool
+	•	coberturas
+	•	segmentos
+	•	estados
+
+RRHH
+	•	eventos
+	•	alertas
+	•	impacto laboral
+
+Clientes
+	•	ficha del cliente
+	•	puestos
+	•	agentes asignados
+	•	historial de titularidad si aplica
+
+Colaboradores
+	•	ficha
+	•	asignación base
+	•	estado operativo
+	•	historial
+
+Pre-Planilla
+	•	resumen
+	•	anexos
+	•	alertas
+	•	estados de revisión
+	•	cierre del período
+
+Planilla Final
+	•	generación desde snapshot
+	•	cálculo por colaborador
+	•	horas extra
+	•	descuentos
+	•	anticipos
+	•	clasificación IGSS
+	•	estado y trazabilidad
+
+⸻
+
+6. Qué debe evaluar el reporte final
+
+No quiero solo que digas “pasó” o “falló”.
+
+Quiero que el reporte final me diga:
+
+A. Qué sí funcionó correctamente
+
+B. Qué quedó inconsistente
+
+C. Qué debería hacer el sistema en cada caso
+
+D. Qué módulos no están bien amarrados todavía
+
+E. Qué hallazgos bloquean operación real
+
+F. Qué hallazgos bloquean una planilla confiable
+
+G. Qué faltaría todavía por implementar o ajustar
+
+⸻
+
+7. Clasificación de hallazgos
+
+Clasifica todo en:
+	•	Crítico
+	•	Alto
+	•	Medio
+	•	Bajo
+
+⸻
+
+8. Enfoque especial
+
+Quiero especial atención en:
+	•	Pre-Planilla
+	•	Planilla Final
+	•	coherencia entre operación y pago
+	•	cruces entre RRHH, operaciones, cliente y colaborador
+	•	impacto de SSA y de IGSS
+
+⸻
+
+9. Muy importante
+
+Quiero que esta prueba me permita responder con claridad:
+“Con lo que existe hoy, cómo se vería una quincena real en pre-planilla y planilla, y qué me falta corregir antes de usarlo de forma seria.”
+
+No quiero una prueba superficial.
+Quiero una prueba integral y realista, pensando en operación real de seguridad privada.
+:::
+
+Mi consejo
+
+Sí, esta es la mejor siguiente jugada.
+Porque ya no estás en fase de “construir por construir”. Ahora toca:
+	•	probar,
+	•	ver qué falta,
+	•	y priorizar con cabeza fría.
+
+Cuando te devuelva el resultado, pégamelo aquí y te ayudo a separar:
+	•	lo que sí ya aguanta una prueba real,
+	•	lo que todavía debes corregir,
+	•	y lo que ya puede esperar para más adelante.
