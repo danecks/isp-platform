@@ -221,6 +221,7 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
       SELECT
         e.id,
         e.nombre_completo,
+        e.nombre_completo AS nombre,
         e.elegible_pool,
         e.estado_laboral,
         -- Asignación operativa activa
@@ -231,6 +232,7 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
         -- Turno del puesto
         t.id             AS turno_id,
         t.nombre         AS turno_nombre,
+        CASE WHEN (t.horas_trabajo + t.horas_descanso) <= 24 THEN 'diario' ELSE 'alternado' END AS tipo_ciclo,
         t.horas_trabajo,
         t.horas_descanso,
         po.fecha_inicio_ciclo,

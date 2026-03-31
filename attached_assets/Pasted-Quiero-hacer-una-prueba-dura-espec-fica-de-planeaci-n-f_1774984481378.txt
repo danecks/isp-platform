@@ -1,0 +1,193 @@
+Quiero hacer una prueba dura específica de planeación futura en ISPSA, ahora que ya se implementó:
+
+- turnos obligatorios por puesto
+- fecha de inicio de ciclo
+- eventos RRHH con rango de fechas (fecha_inicio / fecha_fin)
+- cálculo de trabajo/descanso futuro
+- badges “Trabaja” / “Descansa” en tarjetas futuras
+- modal de nuevo puesto con turno y fecha de inicio del ciclo obligatorios
+
+No quiero una prueba superficial.
+Quiero una prueba funcional real, usando la aplicación y el preview de Replit, para confirmar que la planeación futura ya sirve de verdad para Operaciones.
+
+## Objetivo
+Validar que el Pizarrón Futuro y la planificación por fecha funcionen correctamente con datos reales de turnos, descansos y ausencias aprobadas.
+
+Quiero comprobar si el jefe de servicio ya puede usar esto para tomar decisiones futuras de cobertura, sin contaminar el presente, y confirmar que cuando llegue la fecha, esos cambios sí se reflejen correctamente en operación y luego en nómina.
+
+---
+
+## 1. Qué debe probarse
+Probar el sistema como usuario real, especialmente desde:
+- Pizarrón Operativo / futuro
+- RRHH
+- creación de puestos
+- vista de tarjetas futuras
+- pool futuro
+- ausencias aprobadas
+- cobertura futura programada si ya existe
+
+---
+
+## 2. Escenarios obligatorios de prueba
+
+### A. Puesto 12h con fecha de inicio de ciclo
+Crear o usar un puesto real con:
+- turno 12h
+- fecha de inicio de ciclo definida
+
+Verificar en varias fechas futuras:
+- cuándo aparece como “Trabaja”
+- cuándo aparece como “Descansa”
+- si el patrón tiene sentido según el ciclo definido
+
+---
+
+### B. Puesto 24h con fecha de inicio de ciclo
+Crear o usar un puesto real con:
+- turno 24h
+- fecha de inicio de ciclo definida
+
+Verificar en varias fechas futuras:
+- cuándo aparece como “Trabaja”
+- cuándo aparece como “Descansa”
+- si la alternancia es correcta
+
+---
+
+### C. Evento RRHH de 1 día
+Crear un evento futuro (ejemplo: permiso de 1 día) y verificar:
+- que ese día el titular aparezca bloqueado o ausente
+- que no afecte días fuera del rango
+
+---
+
+### D. Evento RRHH de varios días
+Crear una ausencia futura de varios días (ejemplo: vacaciones o incapacidad de 5 días) y verificar:
+- que el titular quede bloqueado durante todos los días del rango
+- que la consulta del pool futuro lo refleje correctamente en cada día
+
+---
+
+### E. Fecha con titular trabajando
+Ir a una fecha futura donde el titular sí debería trabajar y verificar:
+- badge “Trabaja”
+- que no aparezca como descanso
+- que no quede mal clasificado por eventos ajenos
+
+---
+
+### F. Fecha con titular descansando
+Ir a una fecha futura donde el titular debería descansar y verificar:
+- badge “Descansa”
+- que el sistema lo trate correctamente como descanso
+- y que esto sirva para evaluar posible cobertura futura
+
+---
+
+### G. Múltiples puestos con distintos turnos
+Probar en una misma fecha futura:
+- al menos un puesto 12h
+- al menos un puesto 24h
+- al menos un puesto con ausencia aprobada
+- al menos un puesto sin cambios
+
+Y verificar que el tablero diferencie correctamente todos los casos.
+
+---
+
+### H. Nuevo puesto obligatorio con turno
+Crear un puesto desde el modal y verificar:
+- que no permita crear sin tipoTurnoId
+- que no permita crear sin fechaInicioCiclo
+- que al crearlo sí aparezca bien en el Pizarrón Futuro con su lógica de turno
+
+---
+
+### I. Integración con pool futuro
+Verificar que el pool futuro tenga sentido con base en:
+- turnos
+- descansos
+- ausencias aprobadas
+
+No quiero solo que renderice tabs.
+Quiero comprobar si realmente ya ofrece información útil para decidir coberturas futuras.
+
+---
+
+## 3. Validación clave: la planificación futura no debe contaminar el presente
+Esto es muy importante.
+
+Quiero que pruebes explícitamente que una planificación futura:
+- NO afecte el cierre del día actual
+- NO genere novedades de nómina del día actual
+- NO afecte la pre-planilla actual
+- NO cambie estados del pizarrón actual como si ya hubiera ocurrido
+
+Ejemplo:
+si hoy programo una cobertura para el 10 de abril, el cierre del día 3 de abril debe seguir limpio y no debe leer ese cambio como si ya fuera de hoy.
+
+---
+
+## 4. Validación clave: cuando llegue la fecha, el cambio sí debe activarse
+También quiero que pruebes que cuando llegue la fecha futura programada:
+- el cambio ya aparezca en el Pizarrón del día correspondiente
+- la tarjeta tenga su indicador especial de cambio programado si aplica
+- el jefe de servicio pueda ajustarlo si algo cambió a último momento
+- y al cerrar ese día, entonces sí impacte correctamente:
+  - operación
+  - novedades
+  - pre-planilla
+  - planilla
+
+---
+
+## 5. Qué debe revisar el reporte final
+No quiero solo un “funciona / no funciona”.
+
+Quiero que el reporte final explique:
+
+### A. Qué escenarios futuros se probaron
+### B. Qué sí funcionó correctamente
+### C. Qué falló o quedó inconsistente
+### D. Si el cálculo de trabajo/descanso futuro ya es confiable o no
+### E. Si los eventos RRHH por rango afectan correctamente la planeación
+### F. Si la planificación futura contamina o no el presente
+### G. Si al llegar la fecha los cambios se activan correctamente
+### H. Si el Pizarrón Futuro ya sirve para que Operaciones decida coberturas
+### I. Qué sigue faltando para que la planeación futura sea realmente útil
+
+---
+
+## 6. Qué debe evaluarse específicamente
+Quiero que te fijes especialmente en:
+
+- si el badge “Trabaja / Descansa” coincide con el ciclo esperado
+- si las ausencias de rango bloquean correctamente todos los días
+- si un turno mal configurado rompe la lógica o queda prevenido
+- si Operaciones puede entender rápido quién faltará y quién estaría libre
+- si la UI ayuda o todavía confunde
+- si la planeación futura se ve solo bonita o si ya sirve de verdad
+- si el cierre diario actual permanece aislado de lo programado a futuro
+- si al llegar la fecha los cambios futuros pasan correctamente a operación real
+
+---
+
+## 7. Clasificación de hallazgos
+Clasifica los hallazgos como:
+- Crítico
+- Alto
+- Medio
+- Bajo
+
+Y explica el impacto.
+
+---
+
+## 8. Muy importante
+Quiero que esta prueba me diga con claridad:
+
+“¿La planeación futura de ISPSA ya sirve realmente para que un jefe de servicio vea quién trabajará, quién descansará, quién faltará, programe coberturas futuras sin afectar el presente, y que cuando llegue la fecha esos cambios sí entren correctamente en operación y nómina?”
+
+No quiero una evaluación teórica.
+Quiero una prueba real y útil para tomar decisiones.

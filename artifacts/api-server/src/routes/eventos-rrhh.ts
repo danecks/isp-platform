@@ -153,11 +153,14 @@ eventosRrhhRouter.post("/rrhh/eventos", async (req, res) => {
 
     // Fix E2E-04: Auto-generar novedad en nómina para eventos que afectan el pago.
     // Tipos relevantes: falta, falta_injustificada, incapacidad, suspension.
-    // Se hace fuera de la inserción principal (best effort) para no bloquear.
+    // SOLO auto-generar novedad si la fecha del evento es HOY o pasada.
+    // Eventos FUTUROS no contaminan las novedades del día actual.
     const TIPOS_CON_NOVEDAD = ["falta", "falta_injustificada", "incapacidad", "suspension"];
-    if (TIPOS_CON_NOVEDAD.includes(tipoEvento)) {
+    const hoy = new Date().toISOString().split("T")[0];
+    const fechaEvento = fechaInicio ?? hoy; // La fecha real del evento
+    const esHoyOPasado = fechaEvento <= hoy;
+    if (TIPOS_CON_NOVEDAD.includes(tipoEvento) && esHoyOPasado) {
       try {
-        const hoy = new Date().toISOString().split("T")[0];
 
         // Determinar campos según tipo de evento:
         //   falta / falta_injustificada → falta=TRUE, descuento_dia=TRUE, trabajo_dia=FALSE

@@ -70,6 +70,7 @@ The project uses a pnpm workspace monorepo, organizing deployable applications (
 - **Vista Futura con Estado de Turno (T001/T002):** Future-date board view shows real turno name (from catalog, `turno_nombre`), and each puesto card shows whether the titular is expected to be "Trabaja" (teal) or "Descansa" (blue) on that date, based on the agent's pool-futuro cycle calculation. ClienteColumnaFutura now receives poolFuturo data and builds a per-employee lookup. TarjetaPuestoFuturo shows turno badge and work/rest status.
 - **EV-FIN-01 migration:** Added `fecha_fin DATE` column to `eventos_rrhh` for multi-day event ranges (vacaciones, incapacidades). POST /rrhh/eventos now accepts `fechaInicio`/`fechaFin`. Pool-futuro RRHH events query uses `BETWEEN fecha AND COALESCE(fecha_fin, fecha)`.
 - **POST /puestos con turno requerido:** Creating a new puesto now requires `tipoTurnoId` (validated against `turnos` catalog) and `fechaInicioCiclo` (YYYY-MM-DD). ModalNuevoPuesto updated with turno selector and fechaInicioCiclo date input.
+- **Anti-contaminación de eventos RRHH futuros (T003):** Fixed: creating an RRHH event with `fechaInicio` in the future no longer auto-generates a novedad for today. Auto-generation of `novedades_nomina_diarias` is now gated on `fechaEvento <= hoy`. Pool-futuro `tipo_ciclo` is now derived via `CASE WHEN (horas_trabajo + horas_descanso) <= 24` (no `tipo_ciclo` column in `turnos`). Pool-futuro response correctly aliases `nombre_completo AS nombre`.
 
 ## External Dependencies
 - **PostgreSQL:** Primary database.
