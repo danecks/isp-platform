@@ -31,8 +31,7 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
   }
 
   try {
-    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-    const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
+    const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURL();
     res.json({ uploadURL, objectPath });
   } catch (error) {
     logger.error({ err: error }, "[storage] Error al generar URL presignada");
