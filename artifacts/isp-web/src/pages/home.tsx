@@ -116,20 +116,20 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:divide-x divide-white/10">
             <FadeIn delay={0.1} className="flex flex-col items-center text-center">
-              <span className="text-4xl font-display font-bold text-primary mb-2">+400</span>
-              <span className="text-sm font-medium text-muted-foreground">Agentes</span>
+              <span className="text-4xl font-display font-bold text-primary mb-2">{c("bar_stat1_value", "+800")}</span>
+              <span className="text-sm font-medium text-muted-foreground">{c("bar_stat1_label", "Agentes")}</span>
             </FadeIn>
             <FadeIn delay={0.2} className="flex flex-col items-center text-center">
-              <span className="text-4xl font-display font-bold text-primary mb-2">Cobertura</span>
-              <span className="text-sm font-medium text-muted-foreground">Nacional</span>
+              <span className="text-4xl font-display font-bold text-primary mb-2">{c("bar_stat2_value", "Cobertura")}</span>
+              <span className="text-sm font-medium text-muted-foreground">{c("bar_stat2_label", "Nacional")}</span>
             </FadeIn>
             <FadeIn delay={0.3} className="flex flex-col items-center text-center">
-              <span className="text-4xl font-display font-bold text-primary mb-2">24/7</span>
-              <span className="text-sm font-medium text-muted-foreground">Respuesta</span>
+              <span className="text-4xl font-display font-bold text-primary mb-2">{c("bar_stat3_value", "24/7")}</span>
+              <span className="text-sm font-medium text-muted-foreground">{c("bar_stat3_label", "Respuesta")}</span>
             </FadeIn>
             <FadeIn delay={0.4} className="flex flex-col items-center text-center">
-              <span className="text-4xl font-display font-bold text-primary mb-2">+15</span>
-              <span className="text-sm font-medium text-muted-foreground">Años</span>
+              <span className="text-4xl font-display font-bold text-primary mb-2">{c("bar_stat4_value", "+15")}</span>
+              <span className="text-sm font-medium text-muted-foreground">{c("bar_stat4_label", "Años")}</span>
             </FadeIn>
           </div>
         </div>

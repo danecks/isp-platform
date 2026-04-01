@@ -72,6 +72,19 @@ export const CMS_PAGES: CmsPageSchema[] = [
         ],
       },
       {
+        sectionTitle: "Barra de Estadísticas",
+        fields: [
+          { key: "bar_stat1_value", label: "Estadística 1 — Valor", type: "text", placeholder: "+800", hint: 'Número o texto grande. Ej: "+800", "24/7", "Cobertura"' },
+          { key: "bar_stat1_label", label: "Estadística 1 — Etiqueta", type: "text", placeholder: "Agentes" },
+          { key: "bar_stat2_value", label: "Estadística 2 — Valor", type: "text", placeholder: "Cobertura" },
+          { key: "bar_stat2_label", label: "Estadística 2 — Etiqueta", type: "text", placeholder: "Nacional" },
+          { key: "bar_stat3_value", label: "Estadística 3 — Valor", type: "text", placeholder: "24/7" },
+          { key: "bar_stat3_label", label: "Estadística 3 — Etiqueta", type: "text", placeholder: "Respuesta" },
+          { key: "bar_stat4_value", label: "Estadística 4 — Valor", type: "text", placeholder: "+15" },
+          { key: "bar_stat4_label", label: "Estadística 4 — Etiqueta", type: "text", placeholder: "Años" },
+        ],
+      },
+      {
         sectionTitle: "Servicios",
         fields: [
           { key: "service1_title", label: "Servicio 1 — Título", type: "text", placeholder: "Seguridad Física" },
