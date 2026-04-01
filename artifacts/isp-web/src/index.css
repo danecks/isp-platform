@@ -145,3 +145,17 @@
     @apply transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/5 hover:border-primary/30;
   }
 }
+
+/* ── Logos scroll band animation ─────────────────────────────────────────── */
+@keyframes logos-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-33.333%); }
+}
+
+.animate-logos-scroll {
+  animation: logos-scroll 30s linear infinite;
+}
+
+.animate-logos-scroll:hover {
+  animation-play-state: paused;
+}

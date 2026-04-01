@@ -10,8 +10,14 @@ import { FadeIn } from "@/components/animations/FadeIn";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { useCmsPage } from "@/hooks/useCmsPage";
 
+interface ClientLogo { id: string; name: string; path: string; }
+
 export default function Home() {
   const { c } = useCmsPage("home");
+  const { content: logosContent } = useCmsPage("client-logos");
+  const clientLogos: ClientLogo[] = (() => {
+    try { return JSON.parse(logosContent.logos_json ?? "[]"); } catch { return []; }
+  })();
 
   return (
     <PageLayout>
@@ -260,6 +266,43 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* SECTION 4B — CLIENT LOGOS BAND (only shown when logos exist) */}
+      {clientLogos.length > 0 && (
+        <section className="py-12 bg-[#050d1a] border-y border-white/5 overflow-hidden">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-6 text-center">
+            <p className="text-xs font-bold tracking-widest text-white/30 uppercase">
+              {logosContent.section_title || "Empresas que Confían en ISP, S.A."}
+            </p>
+            {logosContent.section_subtitle && (
+              <p className="text-xs text-white/20 mt-1">{logosContent.section_subtitle}</p>
+            )}
+          </div>
+          {/* Infinite scroll band */}
+          <div className="relative">
+            {/* Fade edges */}
+            <div className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-[#050d1a] to-transparent z-10 pointer-events-none" />
+            <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-[#050d1a] to-transparent z-10 pointer-events-none" />
+            {/* Scrolling track */}
+            <div className="flex gap-8 animate-logos-scroll" style={{ width: "max-content" }}>
+              {/* Duplicate for seamless loop */}
+              {[...clientLogos, ...clientLogos, ...clientLogos].map((logo, idx) => (
+                <div
+                  key={`${logo.id}-${idx}`}
+                  className="flex items-center justify-center h-14 px-6 bg-white/5 border border-white/8 rounded-xl shrink-0 hover:bg-white/8 transition-colors"
+                  title={logo.name}
+                >
+                  <img
+                    src={`/api/storage${logo.path}`}
+                    alt={logo.name}
+                    className="max-h-9 max-w-[120px] object-contain opacity-60 hover:opacity-90 transition-opacity"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* SECTION 5 — WHY CHOOSE US */}
       <section className="py-24 bg-background">

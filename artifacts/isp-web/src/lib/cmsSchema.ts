@@ -15,6 +15,12 @@ export interface CmsPageSchema {
 
 export const CMS_PAGES: CmsPageSchema[] = [
   {
+    pageKey: "client-logos",
+    title: "Logos de Clientes",
+    description: "Banda de logos de empresas clientes en la página principal",
+    sections: [],
+  },
+  {
     pageKey: "_global",
     title: "Configuración Global",
     description: "Datos de contacto y empresa usados en todo el sitio",
