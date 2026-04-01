@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   Clock,
   Building2,
+  Pencil,
 } from "lucide-react";
 
 import { logoSrc } from "@/lib/logoSrc";
@@ -105,20 +106,31 @@ export function CmsLogoManager({
   const { currentUser } = useAuth();
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
 
   const [logos, setLogos] = useState<ClientLogo[]>(initialLogos);
   const [sectionTitle, setSectionTitle] = useState(initialTitle);
   const [sectionSubtitle, setSectionSubtitle] = useState(initialSubtitle);
   const [isDirty, setIsDirty] = useState(false);
 
+  // ── Add dialog state ──────────────────────────────────────────────────────
   const [addDialog, setAddDialog] = useState(false);
   const [newName, setNewName] = useState("");
   const [newFile, setNewFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string>("");
   const [uploading, setUploading] = useState(false);
 
+  // ── Edit dialog state ─────────────────────────────────────────────────────
+  const [editDialog, setEditDialog] = useState(false);
+  const [editTarget, setEditTarget] = useState<ClientLogo | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editFile, setEditFile] = useState<File | null>(null);
+  const [editPreview, setEditPreview] = useState<string>("");
+  const [editUploading, setEditUploading] = useState(false);
+
   function markDirty() { setIsDirty(true); }
 
+  // ── Add dialog ────────────────────────────────────────────────────────────
   function openAddDialog() {
     setNewName("");
     setNewFile(null);
@@ -170,6 +182,66 @@ export function CmsLogoManager({
     }
   }
 
+  // ── Edit dialog ───────────────────────────────────────────────────────────
+  function openEditDialog(logo: ClientLogo) {
+    setEditTarget(logo);
+    setEditName(logo.name);
+    setEditFile(null);
+    setEditPreview("");
+    setEditDialog(true);
+  }
+
+  function handleEditFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Formato inválido", description: "Solo se permiten imágenes (PNG, JPG, SVG, WebP)", variant: "destructive" });
+      return;
+    }
+    setEditFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setEditPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  async function handleSaveEdit() {
+    if (!editTarget) return;
+    if (!editName.trim()) {
+      toast({ title: "Nombre requerido", description: "Ingrese el nombre de la empresa.", variant: "destructive" });
+      return;
+    }
+
+    setEditUploading(true);
+    try {
+      let newPath = editTarget.path;
+
+      if (editFile) {
+        const { uploadURL, objectPath } = await requestUploadUrl(editFile);
+        await uploadToGCS(uploadURL, editFile);
+        newPath = objectPath;
+      }
+
+      setLogos((prev) =>
+        prev.map((l) =>
+          l.id === editTarget.id
+            ? { ...l, name: editName.trim(), path: newPath }
+            : l
+        )
+      );
+      setEditDialog(false);
+      markDirty();
+      toast({
+        title: "Logo actualizado",
+        description: `"${editName.trim()}" listo. Publique para que los cambios aparezcan en el sitio.`,
+      });
+    } catch (err: any) {
+      toast({ title: "Error al guardar", description: err.message ?? "Intente nuevamente.", variant: "destructive" });
+    } finally {
+      setEditUploading(false);
+    }
+  }
+
+  // ── Delete / reorder ──────────────────────────────────────────────────────
   function handleDelete(id: string) {
     setLogos((prev) => prev.filter((l) => l.id !== id));
     markDirty();
@@ -369,6 +441,13 @@ export function CmsLogoManager({
                       <ArrowDown className="w-3.5 h-3.5" />
                     </button>
                     <button
+                      onClick={() => openEditDialog(logo)}
+                      className="p-1.5 rounded hover:bg-primary/15 text-white/30 hover:text-primary transition-colors"
+                      title="Editar logo"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
                       onClick={() => handleDelete(logo.id)}
                       className="p-1.5 rounded hover:bg-red-500/15 text-white/30 hover:text-red-400 transition-colors"
                       title="Eliminar"
@@ -455,7 +534,6 @@ export function CmsLogoManager({
             </div>
 
             <div className="px-6 py-5 space-y-4">
-              {/* Company name */}
               <div>
                 <label className="text-xs font-medium text-white/60 block mb-1.5">Nombre de la empresa *</label>
                 <Input
@@ -467,7 +545,6 @@ export function CmsLogoManager({
                 />
               </div>
 
-              {/* File upload */}
               <div>
                 <label className="text-xs font-medium text-white/60 block mb-1.5">Imagen del logo *</label>
                 <input
@@ -523,6 +600,116 @@ export function CmsLogoManager({
                   <><RefreshCcw className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Subiendo...</>
                 ) : (
                   <><Plus className="w-3.5 h-3.5 mr-1.5" /> Agregar</>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Logo Dialog ───────────────────────────────────────────── */}
+      {editDialog && editTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-[#07111f] border border-white/12 rounded-2xl w-full max-w-md mx-4 shadow-2xl">
+            <div className="px-6 py-4 border-b border-white/8 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-white">Editar logo</h3>
+                <p className="text-xs text-white/40 mt-0.5">Cambie el nombre o reemplace la imagen</p>
+              </div>
+              <button
+                onClick={() => setEditDialog(false)}
+                className="text-white/40 hover:text-white transition-colors text-lg leading-none"
+                aria-label="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              {/* Company name */}
+              <div>
+                <label className="text-xs font-medium text-white/60 block mb-1.5">Nombre de la empresa *</label>
+                <Input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="h-9 text-sm bg-[#050d1a] border-white/10"
+                  autoFocus
+                />
+              </div>
+
+              {/* Image replacement */}
+              <div>
+                <label className="text-xs font-medium text-white/60 block mb-1.5">Imagen del logo</label>
+                <input
+                  ref={editFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleEditFileChange}
+                  className="hidden"
+                />
+
+                {editPreview ? (
+                  /* New image selected */
+                  <div className="relative group">
+                    <div className="w-full h-28 bg-white rounded-xl flex items-center justify-center overflow-hidden border border-white/10">
+                      <img src={editPreview} alt="nueva imagen" className="max-h-24 max-w-full object-contain" />
+                    </div>
+                    <button
+                      onClick={() => editFileInputRef.current?.click()}
+                      className="absolute inset-0 rounded-xl bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-xs text-white font-medium"
+                    >
+                      Cambiar imagen
+                    </button>
+                    <p className="text-[10px] text-green-400 mt-1.5 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Nueva imagen lista para subir
+                    </p>
+                  </div>
+                ) : (
+                  /* Show current logo + option to replace */
+                  <div className="space-y-2">
+                    <div className="w-full h-20 bg-white/8 border border-white/10 rounded-xl flex items-center justify-center gap-3 overflow-hidden">
+                      <img
+                        src={logoSrc(editTarget.path)}
+                        alt={editTarget.name}
+                        className="max-h-14 max-w-[120px] object-contain"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                      <span className="text-xs text-white/30">Logo actual</span>
+                    </div>
+                    <button
+                      onClick={() => editFileInputRef.current?.click()}
+                      className="w-full h-10 border border-dashed border-white/15 rounded-lg flex items-center justify-center gap-2 hover:border-primary/50 hover:bg-primary/5 transition-colors text-xs text-white/40 hover:text-primary"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      Reemplazar con nueva imagen
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="px-6 pb-5 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEditDialog(false)}
+                disabled={editUploading}
+                className="h-9 border-white/15 text-white hover:bg-white/10"
+              >
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSaveEdit}
+                disabled={editUploading || !editName.trim()}
+                className="h-9 bg-primary text-black hover:bg-primary/90 font-semibold"
+              >
+                {editUploading ? (
+                  <><RefreshCcw className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Guardando...</>
+                ) : (
+                  <><Save className="w-3.5 h-3.5 mr-1.5" /> Guardar cambios</>
                 )}
               </Button>
             </div>
