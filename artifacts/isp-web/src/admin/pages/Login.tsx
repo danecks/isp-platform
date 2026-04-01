@@ -54,8 +54,8 @@ export default function AdminLogin() {
       <div className="w-full max-w-md relative z-10">
         {/* Logo / Brand */}
         <div className="text-center mb-10">
-          <div className="w-24 h-24 mx-auto mb-4">
-            <img src="/images/logo-isp.png" alt="ISP, S.A." className="w-full h-full object-contain" />
+          <div className="h-32 mx-auto mb-4 flex items-center justify-center">
+            <img src="/images/logo-isp.png" alt="ISP, S.A." className="h-full w-auto object-contain" />
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">{brand.shortName}</h1>
           <p className="text-sm text-muted-foreground mt-1">{brand.systemName}</p>

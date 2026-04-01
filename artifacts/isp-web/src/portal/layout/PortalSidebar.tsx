@@ -41,7 +41,7 @@ export function PortalSidebar({ open, onClose }: PortalSidebarProps) {
             <img
               src={logoImg}
               alt={brand.shortName}
-              className="w-8 h-8 object-contain rounded-full"
+              className="h-10 w-auto object-contain"
               onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
             />
             <div>

@@ -18,13 +18,11 @@ export function Footer() {
           {/* Brand Col */}
           <div className="flex flex-col gap-6">
             <Link href="/" className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-14 h-14 rounded-full bg-white p-1 shadow-md shrink-0">
-                <img
-                  src={logoImg}
-                  alt={`${brand.shortName} Logo`}
-                  className="w-full h-full object-contain rounded-full"
-                />
-              </div>
+              <img
+                src={logoImg}
+                alt={`${brand.shortName} Logo`}
+                className="h-16 w-auto object-contain shrink-0"
+              />
               <div className="flex flex-col">
                 <span className="font-display font-bold text-xl tracking-tight leading-none text-white">
                   {brand.shortName}

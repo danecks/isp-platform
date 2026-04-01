@@ -52,13 +52,11 @@ export function Navbar() {
         <div className="flex items-center justify-between h-20">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-white p-1 shadow-md">
-              <img
-                src={logoImg}
-                alt={`${brand.shortName} Logo`}
-                className="w-full h-full object-contain rounded-full"
-              />
-            </div>
+            <img
+              src={logoImg}
+              alt={`${brand.shortName} Logo`}
+              className="h-14 w-auto object-contain"
+            />
             <div className="flex flex-col">
               <span className="font-display font-bold text-lg tracking-tight leading-none text-white">
                 {brand.shortName}
