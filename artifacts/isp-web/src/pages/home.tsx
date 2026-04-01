@@ -88,22 +88,22 @@ export default function Home() {
             <div className="relative w-full h-full">
               <FadeIn delay={0.3} direction="right" className="absolute top-[20%] right-[10%]">
                 <div className="glass-panel p-6 rounded-2xl flex flex-col items-center shadow-2xl border-l-4 border-l-primary">
-                  <span className="text-4xl font-display font-bold text-white mb-1">+400</span>
-                  <span className="text-sm text-primary font-semibold uppercase tracking-wider">Agentes</span>
+                  <span className="text-4xl font-display font-bold text-white mb-1">{c("bar_stat1_value", "+800")}</span>
+                  <span className="text-sm text-primary font-semibold uppercase tracking-wider">{c("bar_stat1_label", "Agentes")}</span>
                 </div>
               </FadeIn>
               
               <FadeIn delay={0.4} direction="up" className="absolute bottom-[30%] left-[10%]">
                 <div className="glass-panel p-6 rounded-2xl flex flex-col items-center shadow-2xl border-l-4 border-l-primary">
-                  <span className="text-4xl font-display font-bold text-white mb-1">24/7</span>
-                  <span className="text-sm text-primary font-semibold uppercase tracking-wider">Activo</span>
+                  <span className="text-4xl font-display font-bold text-white mb-1">{c("bar_stat3_value", "24/7")}</span>
+                  <span className="text-sm text-primary font-semibold uppercase tracking-wider">{c("bar_stat3_label", "Respuesta")}</span>
                 </div>
               </FadeIn>
 
               <FadeIn delay={0.5} direction="left" className="absolute top-[50%] right-[30%]">
                 <div className="glass-panel p-6 rounded-2xl flex flex-col items-center shadow-2xl border-l-4 border-l-primary">
                   <MapPin className="w-10 h-10 text-white mb-2" />
-                  <span className="text-sm text-primary font-semibold uppercase tracking-wider">Nacional</span>
+                  <span className="text-sm text-primary font-semibold uppercase tracking-wider">{c("bar_stat2_label", "Nacional")}</span>
                 </div>
               </FadeIn>
             </div>
