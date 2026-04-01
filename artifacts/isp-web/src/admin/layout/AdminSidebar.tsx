@@ -6,7 +6,7 @@ import { seccionesParaRol, ROL_LABELS, ROL_COLORES } from "@/config/permissions"
 import { useAuth } from "@/contexts/AuthContext";
 import type { Rol, NavSection } from "@/config/permissions";
 
-const logoImg = "/images/logo-isp.jpg";
+const logoImg = "/images/logo-isp.png";
 
 // Secciones que empiezan expandidas por defecto
 const EXPANDED_BY_DEFAULT = new Set(["general", "operaciones"]);

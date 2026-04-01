@@ -4,7 +4,7 @@ import { Menu, X, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { brand } from "@/config/branding";
 
-const logoImg = "/images/logo-isp.jpg";
+const logoImg = "/images/logo-isp.png";
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
