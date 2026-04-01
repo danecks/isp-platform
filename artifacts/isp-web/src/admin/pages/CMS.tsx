@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { CMS_PAGES, type CmsPageSchema } from "@/lib/cmsSchema";
-import { CmsLogoManager, type ClientLogo } from "@/admin/cms/CmsLogoManager";
 import {
   Globe,
   Save,
@@ -86,7 +85,6 @@ async function publishPage(key: string, body: object): Promise<void> {
 
 // ── Iconos por página ─────────────────────────────────────────────────────────
 const PAGE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  "client-logos":       Building2,
   _global:              Settings,
   home:                 Home,
   nosotros:             Building2,
@@ -104,7 +102,7 @@ const PAGE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
 const SIDEBAR_GROUPS = [
   {
     label: "Elementos globales",
-    keys: ["client-logos", "_global"],
+    keys: ["_global"],
   },
   {
     label: "Páginas principales",
@@ -422,20 +420,6 @@ export default function CMS() {
             <div className="flex items-center justify-center h-64">
               <RefreshCcw className="w-6 h-6 text-muted-foreground animate-spin" />
             </div>
-          ) : selectedKey === "client-logos" ? (
-            <CmsLogoManager
-              pageKey="client-logos"
-              logos={(() => {
-                try { return JSON.parse(pageData?.content?.logos_json ?? "[]") as ClientLogo[]; }
-                catch { return []; }
-              })()}
-              sectionTitle={pageData?.content?.section_title ?? ""}
-              sectionSubtitle={pageData?.content?.section_subtitle ?? ""}
-              status={pageData?.status}
-              updatedBy={pageData?.updated_by}
-              updatedAt={pageData?.updated_at}
-              onSaved={() => { refetchPage(); refetchList(); }}
-            />
           ) : schema ? (
             <>
               {/* ── Header ─────────────────────────────────────────────────── */}
