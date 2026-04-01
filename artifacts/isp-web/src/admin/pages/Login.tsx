@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { Shield, Eye, EyeOff, AlertCircle, Lock, User } from "lucide-react";
+import { Eye, EyeOff, AlertCircle, Lock, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,8 +54,8 @@ export default function AdminLogin() {
       <div className="w-full max-w-md relative z-10">
         {/* Logo / Brand */}
         <div className="text-center mb-10">
-          <div className="w-20 h-20 mx-auto rounded-2xl bg-card border border-primary/20 flex items-center justify-center mb-5 shadow-2xl shadow-primary/10">
-            <Shield className="w-10 h-10 text-primary" />
+          <div className="w-24 h-24 mx-auto mb-4">
+            <img src="/images/logo-isp.png" alt="ISP, S.A." className="w-full h-full object-contain" />
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">{brand.shortName}</h1>
           <p className="text-sm text-muted-foreground mt-1">{brand.systemName}</p>
