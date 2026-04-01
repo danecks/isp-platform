@@ -9,7 +9,7 @@
  *   GET  /storage/public-objects/*     → sirve objetos públicos
  *   GET  /storage/objects/*            → sirve objetos privados
  */
-import { Router, type IRouter, type Request, type Response } from "express";
+import express, { Router, type IRouter, type Request, type Response } from "express";
 import { Readable } from "stream";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { logger } from "../lib/logger";
@@ -38,6 +38,32 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
     res.status(500).json({ error: "Error al generar URL de carga" });
   }
 });
+
+/**
+ * POST /storage/uploads/direct
+ * Sube un archivo directamente a través del servidor (evita restricciones CORS del bucket).
+ * El archivo se envía como body binario (raw).
+ * Header: Content-Type = tipo de imagen (image/png, image/jpeg, image/svg+xml, etc.)
+ * Returns: { objectPath }
+ */
+router.post(
+  "/storage/uploads/direct",
+  express.raw({ type: "*/*", limit: "15mb" }),
+  async (req: Request, res: Response) => {
+    const contentType = req.headers["content-type"] ?? "application/octet-stream";
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+      res.status(400).json({ error: "El cuerpo de la solicitud está vacío" });
+      return;
+    }
+    try {
+      const objectPath = await objectStorageService.saveObjectDirectly(req.body, contentType);
+      res.json({ objectPath });
+    } catch (error) {
+      logger.error({ err: error }, "[storage] Error al subir archivo directo");
+      res.status(500).json({ error: "Error al guardar el archivo" });
+    }
+  }
+);
 
 /**
  * GET /storage/public-objects/*

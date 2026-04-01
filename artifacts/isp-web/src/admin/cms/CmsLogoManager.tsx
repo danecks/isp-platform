@@ -45,23 +45,18 @@ function generateId() {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
 
-async function requestUploadUrl(file: File): Promise<{ uploadURL: string; objectPath: string }> {
-  const res = await fetch(`${API_BASE}/storage/uploads/request-url`, {
+async function uploadFile(file: File): Promise<string> {
+  const res = await fetch(`${API_BASE}/storage/uploads/direct`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
-  });
-  if (!res.ok) throw new Error("No se pudo obtener URL de carga");
-  return res.json();
-}
-
-async function uploadToGCS(uploadURL: string, file: File): Promise<void> {
-  const res = await fetch(uploadURL, {
-    method: "PUT",
     headers: { "Content-Type": file.type },
     body: file,
   });
-  if (!res.ok) throw new Error("Error al subir imagen");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error ?? "Error al subir imagen");
+  }
+  const { objectPath } = await res.json();
+  return objectPath as string;
 }
 
 async function saveCmsPage(
@@ -163,8 +158,7 @@ export function CmsLogoManager({
 
     setUploading(true);
     try {
-      const { uploadURL, objectPath } = await requestUploadUrl(newFile);
-      await uploadToGCS(uploadURL, newFile);
+      const objectPath = await uploadFile(newFile);
 
       const newLogo: ClientLogo = {
         id: generateId(),
@@ -216,9 +210,7 @@ export function CmsLogoManager({
       let newPath = editTarget.path;
 
       if (editFile) {
-        const { uploadURL, objectPath } = await requestUploadUrl(editFile);
-        await uploadToGCS(uploadURL, editFile);
-        newPath = objectPath;
+        newPath = await uploadFile(editFile);
       }
 
       setLogos((prev) =>
