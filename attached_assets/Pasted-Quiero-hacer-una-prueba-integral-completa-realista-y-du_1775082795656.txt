@@ -1,0 +1,325 @@
+Quiero hacer una prueba integral completa, realista y dura en ISPSA usando un cliente nuevo llamado Ingrup, para validar todo el flujo desde la creación del cliente hasta la planilla final.
+
+No quiero una prueba superficial.
+No quiero solo endpoints.
+Quiero una simulación real de operación, como si Ingrup fuera un cliente real que está por arrancar y el sistema tuviera que acompañar todo el proceso.
+
+## Objetivo
+Probar que ISPSA puede manejar correctamente:
+
+- creación de un cliente nuevo
+- planificación futura 10 días antes del arranque
+- configuración operativa del servicio
+- contratación de personal nuevo
+- asignación al servicio
+- faltas
+- relevos
+- horas extra
+- permisos
+- cobertura diaria
+- cierre operativo
+- pre-planilla
+- planilla final
+
+Y al final quiero saber con claridad:
+si el sistema ya aguanta un arranque real de cliente con operación y nómina sin inconsistencias graves.
+
+---
+
+## 1. Escenario base
+Crear un cliente nuevo llamado:
+
+### Cliente:
+Ingrup
+
+### Fecha actual de prueba:
+01/04/2026
+
+### Fecha de inicio del proyecto:
+11/04/2026
+
+Quiero que el sistema lo trate como un arranque futuro visible desde 10 días antes.
+
+---
+
+## 2. Configuración inicial del cliente
+Desde Comercial / Clientes / configuración del servicio, crear Ingrup con:
+
+- fecha_inicio_contrato obligatoria
+- al menos 2 sedes
+- al menos 4 puestos
+- mezcla de turnos:
+  - 2 puestos de 12h
+  - 2 puestos de 24h
+- zona operativa
+- supervisor asignado
+- algunos puestos con titular definido
+- algunos puestos sin cubrir inicialmente
+
+### Validar:
+- que Ingrup no aparezca en el pizarrón del 01/04 como operación actual
+- pero sí aparezca en próximos arranques
+- y sí aparezca en el Pizarrón Futuro del 11/04
+
+---
+
+## 3. Planeación futura 10 días antes
+Ir al pizarrón futuro del 11/04 y validar que:
+
+- aparece la tarjeta de inicio de proyecto de Ingrup
+- se ve diferenciada como arranque nuevo
+- se pueden ver los puestos del nuevo proyecto
+- se puede empezar a planificar desde antes
+
+### Probar:
+- asignación futura de cobertura en algunos puestos
+- dejar otros sin cobertura
+- verificar que esto NO afecte el día actual
+- verificar que no genere novedades ni nómina antes de tiempo
+
+---
+
+## 4. Contratación de personal nuevo para Ingrup
+Quiero que también se pruebe el flujo de contratación.
+
+### Crear al menos:
+- 2 colaboradores nuevos contratados específicamente para cubrir Ingrup
+
+### Validar:
+- creación correcta del empleado
+- frecuencia de pago definida
+- modalidad si aplica
+- sueldo base configurado
+- turno/asignación compatibles
+- generación automática de los 2 contratos
+- que los contratos queden visibles en la ficha del colaborador
+
+### Luego:
+- asignar a esos nuevos colaboradores al servicio de Ingrup
+- validar que queden ligados al puesto/cliente correctamente
+
+---
+
+## 5. Operación real del arranque (11/04)
+Cuando llegue el 11/04, validar que:
+
+- Ingrup aparece ya como parte del pizarrón operativo real
+- sus puestos aparecen en el tablero del día
+- lo planificado desde futuro ya está reflejado
+- lo no cubierto sigue visible como pendiente o descubierto
+
+---
+
+## 6. Escenarios reales a probar durante varios días
+No quiero solo el día 11.
+Quiero simular varios días posteriores al arranque, por ejemplo del 11/04 al 20/04, con distintos casos reales.
+
+### Casos obligatorios:
+#### A. Día normal
+- titular cubre normalmente
+
+#### B. Falta total
+- un agente no llega
+- se genera evento RRHH
+- otro lo cubre
+- validar descuento y cobertura
+
+#### C. Abandono parcial
+- un agente trabaja parte del turno
+- otro cubre el resto
+- validar segmentos y pago parcial
+
+#### D. Vacaciones o permiso programado
+- un titular tiene ausencia programada
+- relevo planificado cubre ese puesto
+- validar que herede la lógica correcta
+
+#### E. Relevo con horas extra
+- usar a alguien que estaba descansando
+- validar que quede como cobertura con HE
+- no como simple disponible
+
+#### F. Turno 24h
+- probar una falta en un turno de 24h
+- validar que la cobertura y la lógica operativa se comporten distinto al 12h
+
+#### G. Servicio especial (SSA)
+- crear un SSA durante la vida del cliente
+- autorizarlo
+- planificarlo
+- asignar guardias
+- validar que se trate como servicio programado especial
+
+#### H. Pool limitado
+- dejar un día con pocos disponibles
+- validar si el sistema lo refleja y qué tanto ayuda a Operaciones
+
+---
+
+## 7. Selectores operativos inteligentes
+En todos los puntos donde se asigne personal, quiero que se pruebe que el selector muestre estados útiles:
+
+- disponibles
+- descansando
+- en_puesto
+- en_ssa
+- ausente
+
+Especialmente en:
+- planificación futura
+- SSA
+- tramos de cobertura
+- ausencias programadas
+
+No quiero listas planas de nombres.
+Quiero que se pruebe la utilidad operativa real.
+
+---
+
+## 8. RRHH
+Quiero que durante esta prueba también se use RRHH de forma real:
+
+- crear eventos RRHH
+- permisos
+- permisos sin goce
+- vacaciones
+- incapacidad
+- suspensión si aplica
+- alertas RRHH
+- verificar que RRHH sí impacte correctamente en novedades y nómina
+
+---
+
+## 9. Cierres diarios
+Durante la prueba, quiero que se cierren días reales del período de operación.
+
+### Validar:
+- que el cierre del día funcione
+- que no se contamine con planificación futura
+- que genere novedades correctas
+- que no pague a quien faltó
+- que sí pague al relevo real
+
+---
+
+## 10. Pre-planilla
+Después de varios días operados, revisar la pre-planilla del período.
+
+### Validar:
+- que salgan los colaboradores de Ingrup
+- que salgan los nuevos contratados
+- que faltas, relevos, HE, vacaciones y anticipos se reflejen correctamente
+- que no existan inconsistencias como:
+  - falta=true + trabajo=true
+  - trabajo real no reflejado
+  - titular ausente pagado por error
+
+---
+
+## 11. Planilla final
+Generar la planilla final del período correspondiente.
+
+### Validar:
+- cálculo por colaborador
+- descuentos por faltas
+- HE
+- anticipos si se usan
+- clasificación IGSS
+- inclusión/exclusión por frecuencia de pago
+- trazabilidad de quién trabajó realmente
+
+No quiero solo que se genere.
+Quiero saber si se genera bien.
+
+---
+
+## 12. Qué debe revisar especialmente el hard test
+Quiero atención especial en estos puntos:
+
+### Operación
+- arranque del cliente
+- visibilidad del proyecto nuevo
+- cobertura real
+- tramos
+- turnos 12h vs 24h
+
+### Planeación futura
+- arranque 10 días antes
+- asignación futura
+- no contaminar el presente
+- activación al llegar la fecha
+
+### RRHH
+- ausencias reales
+- permisos programados
+- conexión con novedades
+
+### Nómina
+- relevos con pago correcto
+- HE correctas
+- faltas correctamente descontadas
+- titular ausente no pagado por error
+- nuevo contratado sí apareciendo donde corresponde
+
+---
+
+## 13. Reporte final esperado
+Quiero un reporte completo y estructurado con:
+
+### A. Qué funcionó correctamente
+### B. Qué falló
+### C. Qué quedó inconsistente
+### D. Qué módulos no están bien amarrados
+### E. Qué bloquea operación real del cliente Ingrup
+### F. Qué bloquea una pre-planilla confiable
+### G. Qué bloquea una planilla final confiable
+### H. Qué corregir primero
+### I. Qué ya está lo suficientemente sólido
+
+---
+
+## 14. Clasificación de hallazgos
+Clasificar cada hallazgo como:
+- Crítico
+- Alto
+- Medio
+- Bajo
+
+Y explicar por qué.
+
+---
+
+## 15. Pregunta final obligatoria
+Al final quiero una respuesta clara y directa a esta pregunta:
+
+### ¿ISPSA ya puede manejar el arranque y operación de un cliente nuevo como Ingrup, desde 10 días antes del inicio hasta la planilla final, sin errores operativos ni financieros graves?
+
+No quiero una respuesta teórica.
+Quiero que esté basada en la prueba real.
+
+---
+
+## 16. Muy importante
+Esta prueba debe hacerse como si el sistema ya estuviera en uso real.
+
+Quiero que actúes como:
+- Comercial
+- Operaciones
+- RRHH
+- Supervisor
+- Administrador
+
+Y que realmente pongas a prueba el sistema con situaciones del día a día:
+- contratación nueva
+- cliente nuevo
+- faltas
+- relevos
+- horas extra
+- planificación futura
+- cierres
+- nómina
+
+Quiero descubrir con honestidad:
+- qué ya sirve de verdad
+- qué sigue flojo
+- y qué falta antes de usarlo con un cliente real sin miedo.
