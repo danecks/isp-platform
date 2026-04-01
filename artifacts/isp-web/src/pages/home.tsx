@@ -49,7 +49,7 @@ export default function Home() {
 
             <FadeIn delay={0.3}>
               <p className="text-xl font-sans text-muted-foreground mb-10 max-w-2xl leading-relaxed">
-                {c("hero_subtitle", "Seguridad física, custodia de transporte y operaciones móviles para empresas de alto requerimiento. Más de 400 agentes activos en todo el territorio guatemalteco.")}
+                {c("hero_subtitle", "Seguridad física, custodia de transporte y operaciones móviles para empresas de alto requerimiento. Más de 800 agentes activos en todo el territorio guatemalteco.")}
               </p>
             </FadeIn>
 
