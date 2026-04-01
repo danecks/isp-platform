@@ -211,14 +211,18 @@ export default function Home() {
             <div>
               <FadeIn>
                 <div className="divider-gold" />
-                <p className="text-sm font-bold tracking-widest text-muted-foreground uppercase mb-2">Capacidad Operativa</p>
-                <h2 className="text-4xl md:text-5xl font-display font-bold text-white mb-6">Un cuerpo de seguridad listo para cualquier escenario.</h2>
+                <p className="text-sm font-bold tracking-widest text-muted-foreground uppercase mb-2">
+                  {c("capacity_label", "Capacidad Operativa")}
+                </p>
+                <h2 className="text-4xl md:text-5xl font-display font-bold text-white mb-6">
+                  {c("capacity_title", "Un cuerpo de seguridad listo para cualquier escenario.")}
+                </h2>
                 <p className="text-lg text-muted-foreground leading-relaxed mb-8">
-                  ISP, S.A. cuenta con la infraestructura humana y logística para responder ante cualquier requerimiento de seguridad. Desde un puesto fijo hasta una operación de custodia nacional de múltiple unidad.
+                  {c("capacity_desc", "ISP, S.A. cuenta con la infraestructura humana y logística para responder ante cualquier requerimiento de seguridad. Desde un puesto fijo hasta una operación de custodia nacional de múltiple unidad.")}
                 </p>
                 <Link href="/solicitar-servicio">
                   <Button variant="outline" className="rounded-full border-primary text-primary hover:bg-primary/10 h-12 px-8">
-                    Solicitar cotización
+                    {c("capacity_btn", "Solicitar cotización")}
                   </Button>
                 </Link>
               </FadeIn>
@@ -227,28 +231,28 @@ export default function Home() {
             <div className="flex flex-col gap-8">
               <FadeIn delay={0.2} className="pb-8 border-b border-primary/20">
                 <div className="flex items-end gap-6">
-                  <span className="text-5xl font-display font-bold text-primary w-24">+400</span>
+                  <span className="text-5xl font-display font-bold text-primary w-24">{c("stat1_number", "+800")}</span>
                   <div>
-                    <h4 className="text-xl font-bold text-white">Agentes Activos</h4>
-                    <p className="text-muted-foreground text-sm mt-1">Distribuidos en toda la república</p>
+                    <h4 className="text-xl font-bold text-white">{c("stat1_title", "Agentes Activos")}</h4>
+                    <p className="text-muted-foreground text-sm mt-1">{c("stat1_desc", "Distribuidos en toda la república")}</p>
                   </div>
                 </div>
               </FadeIn>
               <FadeIn delay={0.3} className="pb-8 border-b border-primary/20">
                 <div className="flex items-end gap-6">
-                  <span className="text-5xl font-display font-bold text-primary w-24">+50</span>
+                  <span className="text-5xl font-display font-bold text-primary w-24">{c("stat2_number", "+50")}</span>
                   <div>
-                    <h4 className="text-xl font-bold text-white">Clientes Activos</h4>
-                    <p className="text-muted-foreground text-sm mt-1">Empresas líderes en sus sectores</p>
+                    <h4 className="text-xl font-bold text-white">{c("stat2_title", "Clientes Activos")}</h4>
+                    <p className="text-muted-foreground text-sm mt-1">{c("stat2_desc", "Empresas líderes en sus sectores")}</p>
                   </div>
                 </div>
               </FadeIn>
               <FadeIn delay={0.4} className="pb-8 border-b border-primary/20">
                 <div className="flex items-end gap-6">
-                  <span className="text-5xl font-display font-bold text-primary w-24">22</span>
+                  <span className="text-5xl font-display font-bold text-primary w-24">{c("stat3_number", "22")}</span>
                   <div>
-                    <h4 className="text-xl font-bold text-white">Departamentos</h4>
-                    <p className="text-muted-foreground text-sm mt-1">Cobertura en todo el territorio nacional</p>
+                    <h4 className="text-xl font-bold text-white">{c("stat3_title", "Departamentos")}</h4>
+                    <p className="text-muted-foreground text-sm mt-1">{c("stat3_desc", "Cobertura en todo el territorio nacional")}</p>
                   </div>
                 </div>
               </FadeIn>

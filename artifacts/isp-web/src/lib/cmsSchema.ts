@@ -79,6 +79,24 @@ export const CMS_PAGES: CmsPageSchema[] = [
         ],
       },
       {
+        sectionTitle: "Capacidad Operativa",
+        fields: [
+          { key: "capacity_label", label: "Etiqueta superior", type: "text", placeholder: "Capacidad Operativa" },
+          { key: "capacity_title", label: "Título", type: "textarea", placeholder: "Un cuerpo de seguridad listo para cualquier escenario." },
+          { key: "capacity_desc", label: "Descripción", type: "textarea", placeholder: "ISP, S.A. cuenta con la infraestructura humana y logística..." },
+          { key: "capacity_btn", label: "Botón", type: "text", placeholder: "Solicitar cotización" },
+          { key: "stat1_number", label: "Estadística 1 — Número", type: "text", placeholder: "+800", hint: 'Ej: "+800", "15+", "22"' },
+          { key: "stat1_title", label: "Estadística 1 — Título", type: "text", placeholder: "Agentes Activos" },
+          { key: "stat1_desc", label: "Estadística 1 — Descripción", type: "text", placeholder: "Distribuidos en toda la república" },
+          { key: "stat2_number", label: "Estadística 2 — Número", type: "text", placeholder: "+50" },
+          { key: "stat2_title", label: "Estadística 2 — Título", type: "text", placeholder: "Clientes Activos" },
+          { key: "stat2_desc", label: "Estadística 2 — Descripción", type: "text", placeholder: "Empresas líderes en sus sectores" },
+          { key: "stat3_number", label: "Estadística 3 — Número", type: "text", placeholder: "22" },
+          { key: "stat3_title", label: "Estadística 3 — Título", type: "text", placeholder: "Departamentos" },
+          { key: "stat3_desc", label: "Estadística 3 — Descripción", type: "text", placeholder: "Cobertura en todo el territorio nacional" },
+        ],
+      },
+      {
         sectionTitle: "CTA Final",
         fields: [
           { key: "cta_title", label: "Título CTA", type: "text", placeholder: "Proteja lo que más importa" },
