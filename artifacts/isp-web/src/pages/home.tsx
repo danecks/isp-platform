@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { FadeIn } from "@/components/animations/FadeIn";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { useCmsPage } from "@/hooks/useCmsPage";
+import { logoSrc } from "@/lib/logoSrc";
 
 interface ClientLogo { id: string; name: string; path: string; }
 
@@ -293,7 +294,7 @@ export default function Home() {
                   title={logo.name}
                 >
                   <img
-                    src={`/api/storage${logo.path}`}
+                    src={logoSrc(logo.path)}
                     alt={logo.name}
                     className="max-h-9 max-w-[120px] object-contain opacity-60 hover:opacity-90 transition-opacity"
                   />

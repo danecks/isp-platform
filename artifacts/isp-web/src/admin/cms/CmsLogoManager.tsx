@@ -19,6 +19,8 @@ import {
   Building2,
 } from "lucide-react";
 
+import { logoSrc } from "@/lib/logoSrc";
+
 const API_BASE = "/api";
 
 export interface ClientLogo {
@@ -336,7 +338,7 @@ export function CmsLogoManager({
                   {/* Preview */}
                   <div className="w-16 h-10 rounded-lg bg-white/5 border border-white/8 flex items-center justify-center overflow-hidden shrink-0">
                     <img
-                      src={`/api/storage${logo.path}`}
+                      src={logoSrc(logo.path)}
                       alt={logo.name}
                       className="max-w-full max-h-full object-contain"
                       onError={(e) => {
@@ -397,7 +399,7 @@ export function CmsLogoManager({
                     className="h-10 px-4 bg-white/5 border border-white/8 rounded-lg flex items-center justify-center"
                   >
                     <img
-                      src={`/api/storage${logo.path}`}
+                      src={logoSrc(logo.path)}
                       alt={logo.name}
                       className="max-h-8 max-w-[100px] object-contain opacity-70"
                       onError={(e) => {
