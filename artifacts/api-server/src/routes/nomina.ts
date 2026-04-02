@@ -127,6 +127,9 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
       GROUP BY cs.employee_id, cs.empleado_nombre, e.nombre_completo
     `, [fecha]);
 
+    // Índice rápido: empleados que ya tienen cobertura_segmentos ese día
+    const empIdsConSegmento = new Set<number>(segmentos.map((s: any) => Number(s.employee_id)));
+
     for (const s of segmentos) {
       const nombreFinal = s.nombre_emp ?? s.empleado_nombre ?? "Desconocido";
       const empId = Number(s.employee_id);
@@ -218,6 +221,127 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
         s.tipo_novedad_relevo ?? null,
       ]);
       count++;
+    }
+
+    // ── Paso 1.5: Fallback cobertura_diaria → novedades ─────────────────────────
+    // Para puestos donde existe cobertura_diaria (tipo titular/relevo/titular_he)
+    // pero NO existen cobertura_segmentos, se genera la novedad directamente
+    // desde cobertura_diaria. Esto garantiza que ningún agente que trabajó
+    // quede sin novedad de nómina por no tener segmentos registrados.
+    try {
+      const { rows: coberturaFallback } = await pool.query(`
+        SELECT
+          cd.cobertura_employee_id                                          AS employee_id,
+          COALESCE(e.nombre_completo, cd.cobertura_nombre)                  AS empleado_nombre,
+          cd.puesto_id                                                      AS puesto_cubierto_id,
+          cd.puesto_nombre                                                  AS puesto_cubierto_nombre,
+          cd.horas_trabajadas,
+          cd.horas_extra,
+          cd.tipo_cobertura,
+          -- Puesto titular del empleado que cubre (puede diferir si es relevo)
+          (SELECT po2.id    FROM puestos_operativos po2 WHERE po2.titular_employee_id = cd.cobertura_employee_id AND po2.activo = TRUE ORDER BY po2.updated_at DESC NULLS LAST LIMIT 1) AS puesto_titular_id,
+          (SELECT po2.nombre FROM puestos_operativos po2 WHERE po2.titular_employee_id = cd.cobertura_employee_id AND po2.activo = TRUE ORDER BY po2.updated_at DESC NULLS LAST LIMIT 1) AS puesto_titular_nombre
+        FROM cobertura_diaria cd
+        LEFT JOIN employees e ON e.id = cd.cobertura_employee_id
+        WHERE cd.fecha = $1
+          AND cd.tipo_cobertura IN ('titular', 'titular_he', 'relevo')
+          AND cd.cobertura_employee_id IS NOT NULL
+      `, [fecha]);
+
+      for (const cd of coberturaFallback) {
+        const empId = Number(cd.employee_id);
+
+        // Caso A: ya tiene segmentos → ya fue procesado en Paso 1, saltar
+        if (empIdsConSegmento.has(empId)) continue;
+
+        const nombreFinal = cd.empleado_nombre ?? "Desconocido";
+        const horasTrab   = parseFloat(cd.horas_trabajadas ?? 0).toFixed(2);
+        const horasExtra  = parseFloat(cd.horas_extra ?? 0).toFixed(2);
+        const esRelevo    = cd.tipo_cobertura === "relevo";
+        const tipoNov     = esRelevo ? "relevo" : null;
+
+        // GUARD RRHH: si el empleado tiene ausencia RRHH ese día, no marcar como trabajó
+        const rrhhEventoFB = eventosRRHHMap.get(empId);
+        if (rrhhEventoFB) {
+          const sinDescRRHH = TIPOS_RRHH_SIN_DESCUENTO.includes(rrhhEventoFB);
+          const esSuspRRHH  = rrhhEventoFB === "suspension";
+          logger.info(
+            { fecha, employeeId: empId, tipoEvento: rrhhEventoFB },
+            "RRHH Guard (fallback cd): empleado tiene ausencia RRHH — generando novedad de ausencia"
+          );
+          await pool.query(`
+            INSERT INTO novedades_nomina_diarias
+              (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
+               falta, suspension, descanso_trabajado, afecta_septimo, descuento_dia,
+               puesto_titular_id, puesto_titular_nombre, tipo_novedad, fuente, cierre_id, updated_at)
+            VALUES ($1,$2,$3,FALSE,0,0, $4,$5,FALSE,$6,$7, $8,$9,$10,'eventos_rrhh',$11,NOW())
+            ON CONFLICT (fecha, employee_id) DO UPDATE SET
+              trabajo_dia           = FALSE,
+              horas_trabajadas      = 0,
+              horas_extra           = 0,
+              falta                 = EXCLUDED.falta,
+              suspension            = EXCLUDED.suspension,
+              afecta_septimo        = EXCLUDED.afecta_septimo,
+              descuento_dia         = EXCLUDED.descuento_dia,
+              tipo_novedad          = EXCLUDED.tipo_novedad,
+              fuente                = 'eventos_rrhh',
+              cierre_id             = EXCLUDED.cierre_id,
+              updated_at            = NOW()
+          `, [
+            fecha, empId, nombreFinal,
+            !sinDescRRHH, esSuspRRHH, !sinDescRRHH, !sinDescRRHH,
+            cd.puesto_titular_id ?? null, cd.puesto_titular_nombre ?? null,
+            rrhhEventoFB, cierreId,
+          ]);
+          count++;
+          continue;
+        }
+
+        // Caso B: sin segmentos y sin evento RRHH → generar novedad de trabajo desde cobertura_diaria
+        logger.info(
+          { fecha, employeeId: empId, tipoCob: cd.tipo_cobertura, horas: horasTrab },
+          "Fallback cobertura_diaria: generando novedad sin segmentos"
+        );
+        await pool.query(`
+          INSERT INTO novedades_nomina_diarias
+            (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
+             falta, suspension, descanso_trabajado, afecta_septimo, descuento_dia,
+             puesto_titular_id, puesto_titular_nombre, puesto_cubierto_id, puesto_cubierto_nombre,
+             tipo_novedad, fuente, cierre_id, updated_at)
+          VALUES ($1,$2,$3,TRUE,$4,$5, FALSE,FALSE,FALSE,FALSE,FALSE, $6,$7,$8,$9,$10,'cobertura_diaria_fallback',$11,NOW())
+          ON CONFLICT (fecha, employee_id) DO UPDATE SET
+            trabajo_dia           = TRUE,
+            horas_trabajadas      = GREATEST(EXCLUDED.horas_trabajadas, novedades_nomina_diarias.horas_trabajadas),
+            horas_extra           = GREATEST(EXCLUDED.horas_extra, novedades_nomina_diarias.horas_extra),
+            falta                 = FALSE,
+            descuento_dia         = FALSE,
+            puesto_titular_id     = COALESCE(novedades_nomina_diarias.puesto_titular_id, EXCLUDED.puesto_titular_id),
+            puesto_titular_nombre = COALESCE(novedades_nomina_diarias.puesto_titular_nombre, EXCLUDED.puesto_titular_nombre),
+            puesto_cubierto_id    = COALESCE(EXCLUDED.puesto_cubierto_id, novedades_nomina_diarias.puesto_cubierto_id),
+            puesto_cubierto_nombre= COALESCE(EXCLUDED.puesto_cubierto_nombre, novedades_nomina_diarias.puesto_cubierto_nombre),
+            tipo_novedad          = COALESCE(novedades_nomina_diarias.tipo_novedad, EXCLUDED.tipo_novedad),
+            fuente                = CASE
+                                      WHEN novedades_nomina_diarias.fuente IN ('cierre_operativo','correccion_manual')
+                                      THEN novedades_nomina_diarias.fuente
+                                      ELSE 'cobertura_diaria_fallback'
+                                    END,
+            cierre_id             = EXCLUDED.cierre_id,
+            updated_at            = NOW()
+          WHERE novedades_nomina_diarias.trabajo_dia = FALSE
+             OR novedades_nomina_diarias.fuente NOT IN ('cierre_operativo','correccion_manual')
+        `, [
+          fecha, empId, nombreFinal,
+          horasTrab, horasExtra,
+          cd.puesto_titular_id ?? null, cd.puesto_titular_nombre ?? null,
+          cd.puesto_cubierto_id ?? null, cd.puesto_cubierto_nombre ?? null,
+          tipoNov, cierreId,
+        ]);
+        count++;
+        // Añadir al índice para que P-NOM-04 no lo marque como falta
+        empIdsConSegmento.add(empId);
+      }
+    } catch (fb1Err) {
+      logger.warn({ fb1Err, fecha }, "Paso 1.5 fallback cobertura_diaria: falló (no bloqueante)");
     }
 
     // 2. Titulares con ausencia_sin_cubrir en cobertura_diaria (faltaron sin relevo)
@@ -316,6 +440,14 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
           WHERE ssa.agente_id = po.titular_employee_id
             AND ssa.estado_general NOT IN ('cancelada', 'cerrada')
             AND ssa.tarjeta_activa = TRUE
+        )
+        -- GUARD: no marcar si ya tiene cobertura_diaria como trabajador ese día
+        -- (el Paso 1.5 ya generó su novedad; evitar marcar erróneamente como falta)
+        AND NOT EXISTS (
+          SELECT 1 FROM cobertura_diaria cd
+          WHERE cd.fecha = $1
+            AND cd.cobertura_employee_id = po.titular_employee_id
+            AND cd.tipo_cobertura IN ('titular', 'titular_he', 'relevo')
         )
     `, [fecha]);
 
