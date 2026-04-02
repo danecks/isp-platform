@@ -83,12 +83,23 @@ interface ElegibilidadRow {
   anios_servicio: number;
   dias_para_aniversario: number;
   fecha_aniversario: string;
+  /** @deprecated Usar dias_gozados — se mantiene por backward compat */
   dias_vacaciones_usados_anio: number;
   faltas_ultimo_anio: number;
   vacacion_activa_tipo: string | null;
   vacacion_activa_inicio: string | null;
   vacacion_activa_fin: string | null;
   proximas_programadas_inicio: string | null;
+  /** Saldo: días ganados por ley (15 × años completos de servicio) */
+  dias_ganados: number;
+  /** Saldo: días ya gozados (vacaciones normales aprobadas, todos los períodos) */
+  dias_gozados: number;
+  /** Saldo: días programados futuros aún no iniciados */
+  dias_programados: number;
+  /** Vacaciones trabajadas: días laborados en período vacacional — NO consumen saldo */
+  dias_trabajados_vac: number;
+  /** Saldo disponible = ganados − gozados − programados */
+  saldo_disponible: number;
 }
 
 interface VacacionEvento {
@@ -250,7 +261,7 @@ function ModalNuevoVacaciones({
                   : "text-yellow-400 bg-yellow-400/10 border-yellow-400/20"
               }`}>
                 {empSel.es_elegible
-                  ? `✓ Elegible · ${empSel.dias_vacaciones_usados_anio} días usados este año`
+                  ? `✓ Elegible · ${empSel.saldo_disponible ?? 0} día${(empSel.saldo_disponible ?? 0) !== 1 ? "s" : ""} disponible${(empSel.saldo_disponible ?? 0) !== 1 ? "s" : ""} (de ${empSel.dias_ganados ?? 15} ganados)`
                   : `⚠ Aún no cumple 1 año de servicio`}
               </div>
             )}
@@ -384,70 +395,155 @@ function VacacionCard({ ev, onAprobar, onCancelar }: {
 // ─── ElegibilidadCard ─────────────────────────────────────────────────────────
 function ElegibilidadRow({ emp }: { emp: ElegibilidadRow }) {
   const diasRestantes = emp.dias_para_aniversario;
-  const urgente = emp.es_elegible && emp.vacacion_activa_tipo === null && emp.proximas_programadas_inicio === null;
-  const diasMaxLey = 15;
-  const diasUsados = emp.dias_vacaciones_usados_anio ?? 0;
-  const pct = Math.min(100, Math.round((diasUsados / diasMaxLey) * 100));
+  const urgente = emp.es_elegible && emp.vacacion_activa_tipo === null && emp.proximas_programadas_inicio === null && (emp.saldo_disponible ?? 0) > 0;
+
+  // Desglose de saldo
+  const ganados   = emp.dias_ganados ?? 0;
+  const gozados   = emp.dias_gozados ?? 0;
+  const programados = emp.dias_programados ?? 0;
+  const trabajados  = emp.dias_trabajados_vac ?? 0;
+  const disponible  = emp.saldo_disponible ?? Math.max(0, ganados - gozados - programados);
+
+  // Barra proporcional: divide ganados en gozados / programados / disponible
+  const pctGozados     = ganados > 0 ? Math.min(100, Math.round((gozados / ganados) * 100)) : 0;
+  const pctProgramados = ganados > 0 ? Math.min(100 - pctGozados, Math.round((programados / ganados) * 100)) : 0;
+  const pctDisponible  = Math.max(0, 100 - pctGozados - pctProgramados);
 
   return (
-    <div className={`bg-[#07111f] border rounded-xl p-3.5 flex flex-col gap-2 ${
+    <div className={`bg-[#07111f] border rounded-xl p-3.5 flex flex-col gap-2.5 ${
       urgente ? "border-yellow-400/20" : "border-white/7"
     }`}>
-      <div className="flex items-center justify-between gap-2">
+      {/* Encabezado */}
+      <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-white truncate">{emp.nombre_completo}</p>
-          <p className="text-[11px] text-white/35 capitalize">
-            {(emp.tipo_personal ?? "guardia").replace("_", " ")} · {emp.anios_servicio ?? 0} año{emp.anios_servicio !== 1 ? "s" : ""}
+          <p className="text-[13px] font-semibold text-white truncate">{emp.nombre_completo}</p>
+          <p className="text-[10px] text-white/35 capitalize mt-0.5">
+            {(emp.tipo_personal ?? "guardia").replace(/_/g, " ")}
+            {emp.anios_servicio != null && ` · ${emp.anios_servicio} año${emp.anios_servicio !== 1 ? "s" : ""} de servicio`}
           </p>
         </div>
-        <div className="shrink-0 text-right">
+        <div className="shrink-0 flex flex-col items-end gap-1">
           {emp.es_elegible ? (
             <span className="text-[10px] font-semibold text-teal-400 bg-teal-400/10 border border-teal-400/20 px-2 py-0.5 rounded-full">
               ✓ Elegible
             </span>
           ) : (
             <span className="text-[10px] font-semibold text-white/30 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-              En {Math.abs(diasRestantes)} días
+              Elegible en {Math.abs(diasRestantes)}d
             </span>
           )}
         </div>
       </div>
 
-      {/* Barra de días usados */}
-      {emp.es_elegible && (
-        <div className="space-y-1">
-          <div className="flex justify-between items-center">
-            <span className="text-[10px] text-white/30">Días usados este año</span>
-            <span className="text-[10px] text-white/50 font-semibold">{diasUsados}/{diasMaxLey}</span>
+      {/* ── Desglose de saldo ─────────────────────────────────────── */}
+      {emp.es_elegible ? (
+        <div className="space-y-2">
+          {/* Barra de composición */}
+          <div className="h-2 bg-white/6 rounded-full overflow-hidden flex">
+            {pctGozados > 0 && (
+              <div className="h-full bg-teal-500/70 transition-all" style={{ width: `${pctGozados}%` }} />
+            )}
+            {pctProgramados > 0 && (
+              <div className="h-full bg-blue-500/70 transition-all" style={{ width: `${pctProgramados}%` }} />
+            )}
+            {pctDisponible > 0 && (
+              <div className="h-full bg-white/10 transition-all" style={{ width: `${pctDisponible}%` }} />
+            )}
           </div>
-          <div className="h-1.5 bg-white/8 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${
-                pct >= 100 ? "bg-red-500" : pct >= 70 ? "bg-yellow-500" : "bg-teal-500"
-              }`}
-              style={{ width: `${pct}%` }}
-            />
+
+          {/* Grid de cifras */}
+          <div className="grid grid-cols-4 gap-1">
+            <div className="text-center">
+              <p className="text-[13px] font-bold text-white/70 leading-none">{ganados}</p>
+              <p className="text-[9px] text-white/25 mt-0.5">Ganados</p>
+            </div>
+            <div className="text-center">
+              <p className="text-[13px] font-bold text-teal-400/80 leading-none">{gozados}</p>
+              <p className="text-[9px] text-white/25 mt-0.5">Gozados</p>
+            </div>
+            <div className="text-center">
+              <p className="text-[13px] font-bold text-blue-400/80 leading-none">{programados}</p>
+              <p className="text-[9px] text-white/25 mt-0.5">Programados</p>
+            </div>
+            <div className="text-center">
+              <p className={`text-[13px] font-bold leading-none ${
+                disponible === 0 ? "text-white/25" : disponible < 5 ? "text-yellow-400" : "text-emerald-400"
+              }`}>{disponible}</p>
+              <p className="text-[9px] text-white/25 mt-0.5">Disponibles</p>
+            </div>
           </div>
+
+          {/* Leyenda de colores */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="flex items-center gap-1 text-[9px] text-white/20">
+              <span className="w-2 h-2 rounded-sm bg-teal-500/60 inline-block" /> Gozados
+            </span>
+            <span className="flex items-center gap-1 text-[9px] text-white/20">
+              <span className="w-2 h-2 rounded-sm bg-blue-500/60 inline-block" /> Programados
+            </span>
+            <span className="flex items-center gap-1 text-[9px] text-white/20">
+              <span className="w-2 h-2 rounded-sm bg-white/10 inline-block" /> Disponible
+            </span>
+          </div>
+        </div>
+      ) : (
+        /* No elegible — solo mostrar fecha de aniversario */
+        <div className="text-[10px] text-white/25 flex items-center gap-1.5">
+          <Clock className="w-3 h-3 text-white/20" />
+          Elegible a partir del {fmtFecha(emp.fecha_aniversario)}
         </div>
       )}
 
-      {/* Estado actual */}
-      {emp.vacacion_activa_tipo && (
-        <div className="flex items-center gap-1.5 text-[10px] text-teal-400">
+      {/* ── Vacaciones trabajadas pendientes ──────────────────────── */}
+      {trabajados > 0 && (
+        <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-orange-500/6 border border-orange-500/15">
+          <Briefcase className="w-3 h-3 text-orange-400/60 shrink-0" />
+          <p className="text-[10px] text-orange-300/60">
+            <span className="font-semibold text-orange-300/80">{trabajados} día{trabajados !== 1 ? "s" : ""}</span> de vacaciones trabajadas
+            — pendientes de reprogramar
+          </p>
+        </div>
+      )}
+
+      {/* ── Estado de vacaciones activo hoy ──────────────────────── */}
+      {emp.vacacion_activa_tipo === "vacaciones" && (
+        <div className="flex items-center gap-1.5 text-[10px] text-teal-400/80">
           <Palmtree className="w-3 h-3" />
-          En vacaciones: {fmtFecha(emp.vacacion_activa_inicio)} → {fmtFecha(emp.vacacion_activa_fin)}
+          Gozando vacaciones: {fmtFecha(emp.vacacion_activa_inicio)} → {fmtFecha(emp.vacacion_activa_fin)}
+        </div>
+      )}
+      {emp.vacacion_activa_tipo === "vacaciones_trabajadas" && (
+        <div className="flex items-center gap-1.5 text-[10px] text-orange-400/70">
+          <Briefcase className="w-3 h-3" />
+          Trabajando en período vacacional: {fmtFecha(emp.vacacion_activa_inicio)} → {fmtFecha(emp.vacacion_activa_fin)}
+        </div>
+      )}
+      {emp.vacacion_activa_tipo === "vacaciones_programadas" && (
+        <div className="flex items-center gap-1.5 text-[10px] text-blue-400/70">
+          <Calendar className="w-3 h-3" />
+          Vacaciones en curso (programadas): {fmtFecha(emp.vacacion_activa_inicio)} → {fmtFecha(emp.vacacion_activa_fin)}
         </div>
       )}
       {!emp.vacacion_activa_tipo && emp.proximas_programadas_inicio && (
-        <div className="flex items-center gap-1.5 text-[10px] text-blue-400">
+        <div className="flex items-center gap-1.5 text-[10px] text-blue-400/70">
           <Calendar className="w-3 h-3" />
-          Programadas a partir del {fmtFecha(emp.proximas_programadas_inicio)}
+          Próximas programadas: {fmtFecha(emp.proximas_programadas_inicio)}
         </div>
       )}
+
+      {/* ── Alerta: elegible sin planificación ──────────────────── */}
       {urgente && (
-        <div className="flex items-center gap-1.5 text-[10px] text-yellow-400">
-          <AlertTriangle className="w-3 h-3" />
-          Elegible — sin vacaciones ni programación pendiente
+        <div className="flex items-center gap-1.5 text-[10px] text-yellow-400/80 px-2 py-1 rounded-lg bg-yellow-400/5 border border-yellow-400/15">
+          <AlertTriangle className="w-3 h-3 shrink-0" />
+          Elegible con {disponible} día{disponible !== 1 ? "s" : ""} disponible{disponible !== 1 ? "s" : ""} — sin programación
+        </div>
+      )}
+
+      {/* ── Faltas en el último año (aviso si alto) ──────────────── */}
+      {emp.faltas_ultimo_anio > 2 && (
+        <div className="flex items-center gap-1.5 text-[10px] text-red-400/60">
+          <AlertTriangle className="w-3 h-3 shrink-0" />
+          {emp.faltas_ultimo_anio} falta{emp.faltas_ultimo_anio !== 1 ? "s" : ""} en el último año
         </div>
       )}
     </div>
@@ -765,10 +861,38 @@ export default function VacacionesTab() {
             </div>
           ) : (
             <>
-              <p className="text-xs text-white/30 mb-3">
-                {elegFilt.filter(e => e.es_elegible).length} elegibles ·{" "}
-                {elegFilt.filter(e => !e.es_elegible).length} aún no elegibles
-              </p>
+              {/* Resumen de contadores */}
+              <div className="flex flex-wrap items-center gap-3 mb-4">
+                <p className="text-xs text-white/30">
+                  {elegFilt.filter(e => e.es_elegible).length} elegibles ·{" "}
+                  {elegFilt.filter(e => !e.es_elegible).length} aún no elegibles
+                </p>
+                <div className="flex items-center gap-2 ml-auto flex-wrap">
+                  {elegFilt.filter(e => e.saldo_disponible > 0 && !e.vacacion_activa_tipo && !e.proximas_programadas_inicio).length > 0 && (
+                    <span className="flex items-center gap-1 text-[10px] font-semibold text-yellow-400/80 bg-yellow-400/8 border border-yellow-400/15 px-2 py-0.5 rounded-full">
+                      <AlertTriangle className="w-2.5 h-2.5" />
+                      {elegFilt.filter(e => e.saldo_disponible > 0 && !e.vacacion_activa_tipo && !e.proximas_programadas_inicio).length} sin programar
+                    </span>
+                  )}
+                  {elegFilt.filter(e => e.dias_trabajados_vac > 0).length > 0 && (
+                    <span className="flex items-center gap-1 text-[10px] font-semibold text-orange-400/70 bg-orange-400/8 border border-orange-400/15 px-2 py-0.5 rounded-full">
+                      <Briefcase className="w-2.5 h-2.5" />
+                      {elegFilt.filter(e => e.dias_trabajados_vac > 0).length} con vac. trabajadas
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Nota sobre cálculo del saldo */}
+              <div className="mb-4 px-3 py-2.5 rounded-xl bg-white/3 border border-white/6 text-[10px] text-white/25 leading-relaxed">
+                <span className="text-white/40 font-semibold">Saldo de vacaciones</span>
+                {" "}— Ley GT: 15 días laborables por año completo de servicio.
+                {" "}<span className="text-teal-400/50">Gozados</span> = vacaciones normales aprobadas.
+                {" "}<span className="text-blue-400/50">Programados</span> = vacaciones_programadas pendientes no iniciadas.
+                {" "}<span className="text-orange-400/50">Trabajadas</span> = laboró en período vacacional; no descuentan saldo pero deben reprogramarse.
+                {" "}Simplificación: se cuentan Lun-Sáb (no se descuentan feriados nacionales).
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                 {elegFilt.map((emp) => (
                   <ElegibilidadRow key={emp.id} emp={emp} />

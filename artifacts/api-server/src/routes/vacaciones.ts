@@ -27,118 +27,146 @@ function diasEntreFechas(inicio: string, fin: string): string[] {
   return dias;
 }
 
+// ─── Helper SQL: días laborables (Lun-Sáb) entre dos fechas ──────────────────
+// DOW 0 = Domingo; excluimos domingo. Sábado cuenta (Guatemala).
+// Simplificación vigente: no se descuentan feriados nacionales.
+function sqlDiasLaborablesFn(fechaCol: string, fechaFinCol: string): string {
+  return `(SELECT COUNT(*)::int
+    FROM generate_series(${fechaCol}::date, COALESCE(${fechaFinCol}::date, ${fechaCol}::date), '1 day'::interval) g(d)
+    WHERE EXTRACT(DOW FROM g.d) != 0)`;
+}
+
 // ─── GET /api/vacaciones/elegibilidad ─────────────────────────────────────────
-// Lista empleados con elegibilidad, faltas, días usados y estado actual
+// Lista empleados con elegibilidad + saldo completo de vacaciones
 vacacionesRouter.get("/vacaciones/elegibilidad", async (req, res) => {
   try {
     const { rows } = await pool.query(`
-      SELECT
-        e.id,
-        e.nombre_completo,
-        COALESCE(e.tipo_personal, 'guardia') AS tipo_personal,
-        e.fecha_ingreso,
-        e.puesto,
-        e.area,
-        e.sede,
-        e.estado_laboral,
-        -- Aniversario de 1 año
-        (e.fecha_ingreso + INTERVAL '1 year')::date AS fecha_aniversario,
-        -- Días hasta/desde el aniversario (negativo = ya pasó)
-        ((e.fecha_ingreso + INTERVAL '1 year')::date - CURRENT_DATE)::int AS dias_para_aniversario,
-        -- Ya es elegible (cumplió 1 año)
-        ((e.fecha_ingreso + INTERVAL '1 year')::date <= CURRENT_DATE) AS es_elegible,
-        -- Años de servicio completos
-        EXTRACT(YEAR FROM AGE(CURRENT_DATE, e.fecha_ingreso::date))::int AS anios_servicio,
-        -- Faltas en el último año (alerta de muchas faltas)
-        COALESCE((
-          SELECT COUNT(*)::int
-          FROM eventos_rrhh ev
-          WHERE ev.employee_id = e.id
-            AND ev.tipo_evento IN ('falta', 'abandono_parcial')
-            AND ev.estado != 'anulado'
-            AND ev.fecha >= NOW() - INTERVAL '1 year'
-        ), 0) AS faltas_ultimo_anio,
-        -- Días de vacaciones consumidos este año
-        COALESCE((
-          SELECT SUM(
-            GREATEST(1,
-              CASE
-                WHEN er.fecha_fin IS NULL THEN 1
-                ELSE (er.fecha_fin::date - er.fecha::date + 1)
-              END
+      WITH employee_base AS (
+        SELECT
+          e.id,
+          e.nombre_completo,
+          COALESCE(e.tipo_personal, 'guardia') AS tipo_personal,
+          e.fecha_ingreso,
+          e.puesto,
+          e.area,
+          e.sede,
+          e.estado_laboral,
+          (e.fecha_ingreso + INTERVAL '1 year')::date AS fecha_aniversario,
+          ((e.fecha_ingreso + INTERVAL '1 year')::date - CURRENT_DATE)::int AS dias_para_aniversario,
+          ((e.fecha_ingreso + INTERVAL '1 year')::date <= CURRENT_DATE) AS es_elegible,
+          EXTRACT(YEAR FROM AGE(CURRENT_DATE, e.fecha_ingreso::date))::int AS anios_servicio,
+          -- Faltas en el último año
+          COALESCE((
+            SELECT COUNT(*)::int
+            FROM eventos_rrhh ev
+            WHERE ev.employee_id = e.id
+              AND ev.tipo_evento IN ('falta', 'abandono_parcial')
+              AND ev.estado != 'anulado'
+              AND ev.fecha >= NOW() - INTERVAL '1 year'
+          ), 0) AS faltas_ultimo_anio,
+          -- ── Saldo: días ganados (15 por año completo — Ley GT art. 130) ──────
+          GREATEST(0, EXTRACT(YEAR FROM AGE(CURRENT_DATE, e.fecha_ingreso::date))::int) * 15
+            AS dias_ganados,
+          -- ── Saldo: días gozados (vacaciones normales aprobadas, todos los períodos) ──
+          -- NOTA: vacaciones_trabajadas NO descuentan saldo
+          COALESCE((
+            SELECT SUM(
+              (SELECT COUNT(*)::int
+               FROM generate_series(er.fecha::date, COALESCE(er.fecha_fin::date, er.fecha::date), '1 day'::interval) g(d)
+               WHERE EXTRACT(DOW FROM g.d) != 0)
             )
-          )::int
-          FROM eventos_rrhh er
-          WHERE er.employee_id = e.id
-            AND er.tipo_evento IN ('vacaciones', 'vacaciones_trabajadas')
-            AND er.estado NOT IN ('anulado', 'cancelado')
-            AND EXTRACT(YEAR FROM er.fecha) = EXTRACT(YEAR FROM CURRENT_DATE)
-        ), 0) AS dias_vacaciones_usados_anio,
-        -- Estado de vacaciones actual
-        (
-          SELECT er2.tipo_evento
-          FROM eventos_rrhh er2
-          WHERE er2.employee_id = e.id
-            AND er2.tipo_evento IN ('vacaciones', 'vacaciones_programadas', 'vacaciones_trabajadas')
-            AND er2.estado NOT IN ('anulado', 'cancelado')
-            AND er2.fecha::date <= CURRENT_DATE
-            AND (er2.fecha_fin IS NULL OR er2.fecha_fin >= CURRENT_DATE)
-          ORDER BY er2.created_at DESC
-          LIMIT 1
-        ) AS vacacion_activa_tipo,
-        (
-          SELECT er2.id
-          FROM eventos_rrhh er2
-          WHERE er2.employee_id = e.id
-            AND er2.tipo_evento IN ('vacaciones', 'vacaciones_programadas', 'vacaciones_trabajadas')
-            AND er2.estado NOT IN ('anulado', 'cancelado')
-            AND er2.fecha::date <= CURRENT_DATE
-            AND (er2.fecha_fin IS NULL OR er2.fecha_fin >= CURRENT_DATE)
-          ORDER BY er2.created_at DESC
-          LIMIT 1
-        ) AS vacacion_activa_id,
-        (
-          SELECT er2.fecha::date
-          FROM eventos_rrhh er2
-          WHERE er2.employee_id = e.id
-            AND er2.tipo_evento IN ('vacaciones', 'vacaciones_programadas', 'vacaciones_trabajadas')
-            AND er2.estado NOT IN ('anulado', 'cancelado')
-            AND er2.fecha::date <= CURRENT_DATE
-            AND (er2.fecha_fin IS NULL OR er2.fecha_fin >= CURRENT_DATE)
-          ORDER BY er2.created_at DESC
-          LIMIT 1
-        ) AS vacacion_activa_inicio,
-        (
-          SELECT er2.fecha_fin
-          FROM eventos_rrhh er2
-          WHERE er2.employee_id = e.id
-            AND er2.tipo_evento IN ('vacaciones', 'vacaciones_programadas', 'vacaciones_trabajadas')
-            AND er2.estado NOT IN ('anulado', 'cancelado')
-            AND er2.fecha::date <= CURRENT_DATE
-            AND (er2.fecha_fin IS NULL OR er2.fecha_fin >= CURRENT_DATE)
-          ORDER BY er2.created_at DESC
-          LIMIT 1
-        ) AS vacacion_activa_fin,
-        -- Próximas vacaciones programadas
-        (
-          SELECT er3.fecha::date
-          FROM eventos_rrhh er3
-          WHERE er3.employee_id = e.id
-            AND er3.tipo_evento = 'vacaciones_programadas'
-            AND er3.estado NOT IN ('anulado', 'cancelado')
-            AND er3.fecha::date > CURRENT_DATE
-          ORDER BY er3.fecha ASC
-          LIMIT 1
-        ) AS proximas_programadas_inicio
-      FROM employees e
-      WHERE e.estado_laboral IN ('activo', 'licencia', 'suspendido')
-        AND e.fecha_ingreso IS NOT NULL
-        AND COALESCE(e.tipo_personal, 'guardia') NOT IN ('gerencia')
+            FROM eventos_rrhh er
+            WHERE er.employee_id = e.id
+              AND er.tipo_evento = 'vacaciones'
+              AND er.estado NOT IN ('anulado', 'cancelado')
+          ), 0)::int AS dias_gozados,
+          -- ── Saldo: días programados a futuro (aún no iniciados) ──────────────
+          COALESCE((
+            SELECT SUM(
+              (SELECT COUNT(*)::int
+               FROM generate_series(er.fecha::date, COALESCE(er.fecha_fin::date, er.fecha::date), '1 day'::interval) g(d)
+               WHERE EXTRACT(DOW FROM g.d) != 0)
+            )
+            FROM eventos_rrhh er
+            WHERE er.employee_id = e.id
+              AND er.tipo_evento = 'vacaciones_programadas'
+              AND er.estado NOT IN ('anulado', 'cancelado')
+              AND er.fecha::date >= CURRENT_DATE
+          ), 0)::int AS dias_programados,
+          -- ── Saldo: días trabajados en período vacacional (pendientes de resolver) ─
+          COALESCE((
+            SELECT SUM(
+              (SELECT COUNT(*)::int
+               FROM generate_series(er.fecha::date, COALESCE(er.fecha_fin::date, er.fecha::date), '1 day'::interval) g(d)
+               WHERE EXTRACT(DOW FROM g.d) != 0)
+            )
+            FROM eventos_rrhh er
+            WHERE er.employee_id = e.id
+              AND er.tipo_evento = 'vacaciones_trabajadas'
+              AND er.estado NOT IN ('anulado', 'cancelado')
+          ), 0)::int AS dias_trabajados_vac,
+          -- ── Vacación activa hoy ───────────────────────────────────────────────
+          (
+            SELECT er2.tipo_evento FROM eventos_rrhh er2
+            WHERE er2.employee_id = e.id
+              AND er2.tipo_evento IN ('vacaciones', 'vacaciones_programadas', 'vacaciones_trabajadas')
+              AND er2.estado NOT IN ('anulado', 'cancelado')
+              AND er2.fecha::date <= CURRENT_DATE
+              AND (er2.fecha_fin IS NULL OR er2.fecha_fin >= CURRENT_DATE)
+            ORDER BY er2.created_at DESC LIMIT 1
+          ) AS vacacion_activa_tipo,
+          (
+            SELECT er2.id FROM eventos_rrhh er2
+            WHERE er2.employee_id = e.id
+              AND er2.tipo_evento IN ('vacaciones', 'vacaciones_programadas', 'vacaciones_trabajadas')
+              AND er2.estado NOT IN ('anulado', 'cancelado')
+              AND er2.fecha::date <= CURRENT_DATE
+              AND (er2.fecha_fin IS NULL OR er2.fecha_fin >= CURRENT_DATE)
+            ORDER BY er2.created_at DESC LIMIT 1
+          ) AS vacacion_activa_id,
+          (
+            SELECT er2.fecha::date FROM eventos_rrhh er2
+            WHERE er2.employee_id = e.id
+              AND er2.tipo_evento IN ('vacaciones', 'vacaciones_programadas', 'vacaciones_trabajadas')
+              AND er2.estado NOT IN ('anulado', 'cancelado')
+              AND er2.fecha::date <= CURRENT_DATE
+              AND (er2.fecha_fin IS NULL OR er2.fecha_fin >= CURRENT_DATE)
+            ORDER BY er2.created_at DESC LIMIT 1
+          ) AS vacacion_activa_inicio,
+          (
+            SELECT er2.fecha_fin FROM eventos_rrhh er2
+            WHERE er2.employee_id = e.id
+              AND er2.tipo_evento IN ('vacaciones', 'vacaciones_programadas', 'vacaciones_trabajadas')
+              AND er2.estado NOT IN ('anulado', 'cancelado')
+              AND er2.fecha::date <= CURRENT_DATE
+              AND (er2.fecha_fin IS NULL OR er2.fecha_fin >= CURRENT_DATE)
+            ORDER BY er2.created_at DESC LIMIT 1
+          ) AS vacacion_activa_fin,
+          -- ── Próximas programadas ──────────────────────────────────────────────
+          (
+            SELECT er3.fecha::date FROM eventos_rrhh er3
+            WHERE er3.employee_id = e.id
+              AND er3.tipo_evento = 'vacaciones_programadas'
+              AND er3.estado NOT IN ('anulado', 'cancelado')
+              AND er3.fecha::date > CURRENT_DATE
+            ORDER BY er3.fecha ASC LIMIT 1
+          ) AS proximas_programadas_inicio
+        FROM employees e
+        WHERE e.estado_laboral IN ('activo', 'licencia', 'suspendido')
+          AND e.fecha_ingreso IS NOT NULL
+          AND COALESCE(e.tipo_personal, 'guardia') NOT IN ('gerencia')
+      )
+      SELECT *,
+        -- Saldo disponible = ganados - gozados - programados
+        -- Las vacaciones_trabajadas NO se descuentan: son pendientes de reprogramar
+        GREATEST(0, dias_ganados - dias_gozados - dias_programados) AS saldo_disponible,
+        -- Alias legado para backward compat
+        dias_gozados AS dias_vacaciones_usados_anio
+      FROM employee_base
       ORDER BY
-        -- Primero elegibles, luego por cercanía al aniversario
-        ((e.fecha_ingreso + INTERVAL '1 year')::date <= CURRENT_DATE) DESC,
-        ABS(((e.fecha_ingreso + INTERVAL '1 year')::date - CURRENT_DATE)) ASC,
-        e.nombre_completo ASC
+        es_elegible DESC,
+        ABS(dias_para_aniversario) ASC,
+        nombre_completo ASC
     `);
 
     res.json(rows);

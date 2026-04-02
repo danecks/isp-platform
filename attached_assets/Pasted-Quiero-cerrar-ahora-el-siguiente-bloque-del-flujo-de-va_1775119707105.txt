@@ -1,0 +1,146 @@
+Quiero cerrar ahora el siguiente bloque del flujo de vacaciones en ISPSA:
+
+# Saldo y consumo de vacaciones
+
+Ya funciona:
+- elegibilidad
+- alertas RRHH
+- programación de vacaciones
+- vacaciones normales
+- vacaciones trabajadas
+- reflejo en pool, pizarrón y planificación futura
+
+Ahora necesito que el sistema controle correctamente el saldo de vacaciones de cada colaborador.
+
+No quiero romper nada existente.
+
+## Objetivo
+Que RRHH pueda ver con claridad:
+
+- cuántos días de vacaciones le corresponden al colaborador
+- cuántos ya gozó
+- cuántos tiene programados
+- cuántos tiene pendientes
+- cuántos quedaron como vacaciones trabajadas y por lo tanto no consumidas
+
+---
+
+## 1. Modelo de saldo
+Quiero que el sistema pueda calcular o almacenar al menos estos valores por colaborador:
+
+- dias_ganados
+- dias_gozados
+- dias_programados
+- dias_trabajados_como_vacaciones
+- saldo_disponible
+
+No me importa si lo resuelves con cálculo dinámico o con una tabla de resumen, mientras quede correcto y trazable.
+
+---
+
+## 2. Regla base de acumulación
+Por ahora quiero usar la lógica base de Guatemala ya conversada:
+
+- después de 1 año trabajado → 15 días hábiles de vacaciones
+
+No hace falta todavía construir un motor legal hiper complejo con todos los matices.
+Pero sí quiero una base funcional y clara para RRHH.
+
+---
+
+## 3. Consumo del saldo
+### Vacaciones normales
+- sí consumen saldo
+
+### Vacaciones trabajadas
+- NO consumen saldo por defecto
+- deben quedar registradas como:
+  - trabajadas
+  - pendientes de reprogramar o resolver
+
+No quiero que el sistema las descuente como si ya se hubieran gozado.
+
+---
+
+## 4. Programadas vs gozadas
+Quiero distinguir claramente:
+
+- días ya gozados
+- días programados a futuro
+- días trabajados en período vacacional
+- saldo todavía libre
+
+No quiero una sola cifra opaca.
+
+---
+
+## 5. UI en módulo de Vacaciones
+Quiero que en la vista de Vacaciones / RRHH se vea claramente por colaborador algo como:
+
+- años de servicio
+- elegible o no
+- días ganados
+- días gozados
+- días programados
+- saldo disponible
+- vacaciones trabajadas pendientes
+
+Puede ser en tabla, tarjetas o panel lateral, pero debe quedar claro.
+
+---
+
+## 6. Integración con eventos RRHH
+Quiero que al aprobar vacaciones normales:
+- se consuma el saldo correspondiente
+
+Y al aprobar vacaciones trabajadas:
+- no se consuma saldo
+- pero sí se registre como “vacaciones trabajadas”
+
+Si luego se cancelan, el saldo debe revertirse o recalcularse correctamente.
+
+---
+
+## 7. Cálculo de días
+No quiero una simplificación absurda.
+
+Quiero que el sistema, al menos para vacaciones normales y programadas, pueda contar correctamente los días que está considerando como parte del período vacacional.
+
+Si por ahora necesitas una regla simple configurable (por ejemplo contar días hábiles), explícalo bien y déjalo claro.
+
+---
+
+## 8. Validación
+Quiero pruebas donde:
+1. un colaborador elegible tenga saldo inicial correcto
+2. se le programen vacaciones normales y baje el saldo
+3. se le programen vacaciones trabajadas y NO baje el saldo
+4. se cancelen vacaciones normales y el saldo se recupere
+5. se vea claramente en RRHH el desglose de saldo
+6. no se rompa el reflejo en pizarrón ni pool
+
+---
+
+## 9. No romper
+No romper:
+- Vacaciones normales
+- Vacaciones trabajadas
+- RRHH eventos
+- planificación futura
+- pool
+- pizarrón
+- pre-planilla
+- planilla
+
+---
+
+## 10. Documentación
+Explica claramente:
+- cómo se calcula el saldo
+- qué consume saldo y qué no
+- cómo se ven los distintos componentes del saldo
+- qué simplificaciones legales se están usando por ahora
+- qué faltaría en una versión más avanzada
+
+Muy importante:
+quiero que RRHH ya no solo pueda programar vacaciones, sino también controlar con claridad el saldo real y distinguir lo gozado, lo programado y lo trabajado.
