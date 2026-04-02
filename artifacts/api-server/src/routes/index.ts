@@ -35,6 +35,7 @@ import { planillaRouter } from "./planilla";
 import adminResetRouter from "./admin-reset";
 import { planificacionFuturaRouter } from "./planificacion-futura";
 import { vacacionesRouter } from "./vacaciones";
+import { vehiculosRouter } from "./vehiculos";
 
 const router: IRouter = Router();
 
@@ -74,5 +75,6 @@ router.use(planillaRouter);
 router.use(adminResetRouter);
 router.use(planificacionFuturaRouter);
 router.use(vacacionesRouter);
+router.use(vehiculosRouter);
 
 export default router;

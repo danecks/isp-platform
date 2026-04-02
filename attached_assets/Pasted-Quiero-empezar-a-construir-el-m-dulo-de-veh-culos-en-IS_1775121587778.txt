@@ -1,0 +1,163 @@
+Quiero empezar a construir el módulo de vehículos en ISPSA, enfocado primero en la operación de supervisión.
+
+No quiero mezclar todavía todo inventario general.
+Primero quiero resolver correctamente la lógica operativa de custodia y trazabilidad de vehículos por zona y por supervisor de turno.
+
+## Contexto real
+En ISPSA tengo vehículos para:
+- supervisión
+- administración
+
+Pero quiero empezar primero con supervisión.
+
+La lógica que necesito es esta:
+
+- cada zona puede tener un vehículo o motocicleta asignado
+- el supervisor que esté trabajando esa zona debe heredar ese vehículo automáticamente
+- ese supervisor pasa a ser el responsable temporal del vehículo durante su turno
+- cuando se hace el relevo de turno, la custodia del vehículo debe pasar al siguiente supervisor
+- y todo eso debe quedar en historial
+
+## Objetivo
+Quiero saber:
+- qué vehículos tengo
+- qué vehículo está asignado a cada zona
+- quién fue responsable de cada vehículo en cada fecha y turno
+- y que eso se herede automáticamente según el supervisor de turno de la zona
+
+---
+
+## 1. Módulo base de vehículos
+Crear el módulo de vehículos con datos mínimos como:
+
+- placa
+- tipo de vehículo (pickup, motocicleta, etc.)
+- marca
+- modelo
+- color
+- año si aplica
+- estado
+- activo / inactivo
+- observaciones
+
+No hace falta todavía mantenimiento ni combustible.
+Primero solo control operativo.
+
+---
+
+## 2. Asignación del vehículo a zona
+Quiero que cada vehículo pueda estar asignado a una zona operativa.
+
+Ejemplo:
+- Zona 1 → motocicleta M1
+- Zona 2 → pickup V2
+
+Esto debe quedar claro en el sistema.
+
+---
+
+## 3. Herencia automática al supervisor de turno
+Esto es lo más importante.
+
+Si una zona tiene vehículo asignado y hay un supervisor trabajando esa zona en ese turno, el sistema debe heredar ese vehículo al supervisor automáticamente como responsable operativo.
+
+Ejemplo:
+- Zona 1 tiene motocicleta M1
+- Hoy el supervisor Daniel está de turno en Zona 1
+- entonces Daniel aparece como responsable actual de M1
+
+Cuando cambie el turno:
+- entra otro supervisor
+- la custodia pasa al nuevo supervisor
+- queda trazabilidad del relevo
+
+---
+
+## 4. Historial / cardex de custodia
+Quiero que en la ficha del supervisor exista una especie de cardex o historial donde se vea:
+
+- vehículo recibido
+- zona
+- fecha/hora de inicio
+- fecha/hora de fin
+- si fue relevo automático o asignación manual
+
+Y en la ficha del vehículo quiero ver también:
+- quién lo tuvo
+- cuándo
+- en qué zona
+- qué supervisor era responsable
+
+---
+
+## 5. Relevo de turno
+Quiero que cuando exista relevo de turno de supervisión, la custodia del vehículo también se releve.
+
+Ejemplo:
+- Supervisor A sale
+- Supervisor B entra
+- el sistema cierra la custodia de A
+- abre la de B
+- y deja historial de ambos
+
+Si hace falta, puede ser automático según turno o con confirmación operativa.
+
+---
+
+## 6. Alcance por ahora
+En esta fase quiero solo:
+- vehículos de supervisión
+- asignación por zona
+- herencia al supervisor de turno
+- historial / cardex
+
+No meter todavía:
+- combustible
+- mantenimiento
+- repuestos
+- inventario completo
+- talleres
+- seguros
+
+Eso puede venir después.
+
+---
+
+## 7. Pizarrón / operación
+Si es viable, me gustaría que desde la operación o ficha de zona también pueda verse:
+- qué vehículo tiene asignado la zona
+- quién es el supervisor actual responsable
+- estado actual del vehículo si aplica
+
+No hace falta hacer algo gigantesco, pero sí visible.
+
+---
+
+## 8. Planilla / RRHH
+No quiero todavía que esto afecte planilla directamente, pero sí quiero que RRHH pueda ver trazabilidad de qué supervisor estuvo a cargo de qué vehículo en qué turno.
+
+Esto ayuda a control y responsabilidad.
+
+---
+
+## 9. Validación
+Quiero pruebas donde:
+1. se cree un vehículo
+2. se asigne a una zona
+3. un supervisor de esa zona herede el vehículo en su turno
+4. cambie el turno y el siguiente supervisor herede el vehículo
+5. quede historial en ficha del supervisor
+6. quede historial en ficha del vehículo
+
+---
+
+## 10. Documentación
+Explica claramente:
+- cómo se modeló la relación vehículo → zona
+- cómo se hereda al supervisor de turno
+- cómo funciona el relevo
+- cómo queda el historial
+- qué se deja preparado para conectar luego con inventario
+
+Muy importante:
+quiero que este módulo arranque como control operativo de vehículos de supervisión, de modo que el sistema pueda decir quién tenía asignado cada vehículo en cada turno y zona.

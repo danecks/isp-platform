@@ -2,6 +2,7 @@ import {
   LayoutDashboard,
   AlertTriangle,
   Truck,
+  Car,
   Users,
   Briefcase,
   CheckSquare,
@@ -120,6 +121,12 @@ export const NAV_SECTIONS: NavSection[] = [
         path: "/admin/custodias",
         label: "Custodias",
         icon: Truck,
+        roles: ["admin", "operaciones", "supervisor"],
+      },
+      {
+        path: "/admin/vehiculos",
+        label: "Vehículos",
+        icon: Car,
         roles: ["admin", "operaciones", "supervisor"],
       },
       {

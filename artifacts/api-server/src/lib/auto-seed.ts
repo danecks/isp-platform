@@ -2430,5 +2430,47 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.warn({ err }, "VAC-01: error al generar alertas de aniversario (no bloqueante)");
   }
 
+  // ── VEH-01: Módulo de vehículos de supervisión ───────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS vehiculos (
+        id                 SERIAL PRIMARY KEY,
+        placa              VARCHAR(15) UNIQUE NOT NULL,
+        tipo               VARCHAR(30) NOT NULL,
+        marca              VARCHAR(50),
+        modelo             VARCHAR(50),
+        color              VARCHAR(30),
+        anio               SMALLINT,
+        estado             VARCHAR(20) NOT NULL DEFAULT 'activo',
+        activo             BOOLEAN NOT NULL DEFAULT true,
+        zona_operativa_id  INTEGER REFERENCES operational_zones(id) ON DELETE SET NULL,
+        observaciones      TEXT,
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS vehiculos_zona ON vehiculos(zona_operativa_id)`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS vehiculo_custodia (
+        id                 SERIAL PRIMARY KEY,
+        vehiculo_id        INTEGER NOT NULL REFERENCES vehiculos(id) ON DELETE CASCADE,
+        employee_id        INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        zona_operativa_id  INTEGER REFERENCES operational_zones(id) ON DELETE SET NULL,
+        fecha_inicio       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        fecha_fin          TIMESTAMPTZ,
+        tipo_relevo        VARCHAR(20) NOT NULL DEFAULT 'manual',
+        notas              TEXT,
+        registrado_por     VARCHAR(100),
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS vc_vehiculo ON vehiculo_custodia(vehiculo_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS vc_employee ON vehiculo_custodia(employee_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS vc_activa ON vehiculo_custodia(vehiculo_id) WHERE fecha_fin IS NULL`);
+    logger.info("Auto-migrate: VEH-01 tablas vehiculos + vehiculo_custodia verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: VEH-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }
