@@ -1,0 +1,117 @@
+Detecté otro hueco funcional en ISPSA:
+
+Aunque los supervisores ya se están tratando como personal operativo con turno, todavía no se pueden asignar a un puesto para cubrirlo, incluso cuando están en descanso por ciclo o disponibles.
+
+Eso no refleja la operación real.
+
+Contexto
+
+En ISPSA, los supervisores:
+	•	pueden trabajar en 12h o 24x24
+	•	pueden estar descansando por ciclo
+	•	pueden estar disponibles
+	•	y en contingencia sí pueden cubrir un puesto cuando:
+	•	no hay guardias disponibles
+	•	nadie acepta horas extra
+	•	el jefe de servicio lo decide
+
+Por lo tanto, si un supervisor está en condición válida, debe poder ser asignado a un puesto.
+
+⸻
+
+Objetivo
+
+Permitir que los supervisores entren realmente al flujo de asignación de cobertura, no solo a la visualización.
+
+⸻
+
+1. Elegibilidad para cubrir
+
+Quiero que la lógica de elegibilidad para asignar a un puesto no se limite solo a guardia.
+
+Debe permitir también:
+	•	supervisor
+	•	jefe_servicio si aplica
+
+siempre que:
+	•	no estén ausentes
+	•	no estén en conflicto
+	•	no estén en SSA bloqueante
+	•	estén descansando por ciclo o disponibles
+	•	o en la condición operativa que se defina como válida
+
+⸻
+
+2. Selector de asignación
+
+Quiero que cuando un supervisor sea elegible:
+	•	aparezca en el selector / ranking
+	•	pueda ser seleccionado
+	•	pueda asignarse realmente al puesto
+
+No quiero que solo sea visible y luego falle al intentar asignarlo.
+
+⸻
+
+3. Registro de la cobertura
+
+Cuando un supervisor cubra un puesto, quiero que quede trazado claramente como algo especial.
+
+Ejemplos aceptables:
+	•	tipo_cobertura = cobertura_supervisor
+	•	badge o etiqueta de “Supervisor cubriendo”
+	•	campo booleano tipo es_cobertura_supervisor
+
+No quiero que quede invisible como si fuera un guardia normal.
+
+⸻
+
+4. Impacto en operación y nómina
+
+Quiero que esa cobertura por supervisor:
+	•	aparezca correctamente en el pizarrón
+	•	genere segmentos si corresponde
+	•	genere novedades si corresponde
+	•	llegue a pre-planilla y planilla
+	•	quede diferenciada por categoría de personal
+
+⸻
+
+5. No romper
+
+No romper:
+	•	asignación normal de guardias
+	•	ranking por zona
+	•	supervisores en panel especial
+	•	jefes de servicio
+	•	RRHH
+	•	SSA
+	•	planilla
+	•	pre-planilla
+	•	turnos
+
+⸻
+
+6. Validación
+
+Quiero pruebas donde:
+	1.	un supervisor en descanso por ciclo pueda cubrir un puesto
+	2.	un supervisor disponible pueda cubrir un puesto
+	3.	un supervisor no elegible no pueda cubrir
+	4.	la cobertura quede registrada correctamente
+	5.	aparezca en operación y en planilla
+	6.	se vea claramente que fue una cobertura por supervisor
+
+⸻
+
+7. Documentación
+
+Explica claramente:
+	•	por qué no se podía asignar antes
+	•	qué lógica se corrigió
+	•	cuándo un supervisor puede cubrir
+	•	cómo queda registrado
+	•	cómo se refleja en operación y nómina
+
+Muy importante:
+quiero que los supervisores, si están en condición válida, puedan ser asignados a cubrir puestos como parte real de la operación de contingencia.

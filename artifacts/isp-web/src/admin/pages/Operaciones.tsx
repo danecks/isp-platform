@@ -1283,8 +1283,10 @@ function SelectorAgenteAgrupado({
   }
 
   function handleClickRanked(ar: AgenteRankeado) {
-    const esDescanso = ar.grupo === "P2" || ar.grupo === "P4";
-    if (esDescanso) { setPendienteRanked(ar); return; }
+    // P2/P4: descanso de ciclo — requiere confirmación de HE
+    // P5: contingencia supervisor/jefe — siempre requiere confirmación especial
+    const requiereConf = ar.grupo === "P2" || ar.grupo === "P4" || ar.grupo === "P5";
+    if (requiereConf) { setPendienteRanked(ar); return; }
     onSelect({
       id: ar.id,
       nombre: ar.nombre_completo,
@@ -1298,15 +1300,16 @@ function SelectorAgenteAgrupado({
     onSelect({
       id: pendienteRanked.id,
       nombre: pendienteRanked.nombre_completo,
-      grupo: "descansando",
+      grupo: pendienteRanked.grupo === "P5" ? "disponible" : "descansando",
       detalle: pendienteRanked.puesto ?? null,
+      tipo_personal: (pendienteRanked as any).tipo_personal,
     } as AgenteAgrupado);
     setPendienteRanked(null);
   }
 
   // ── Render modo ranking ───────────────────────────────────────────────────
   if (modoRanking) {
-    const gruposRanking = (["P1", "P2", "P3", "P4"] as GrupoRanking[])
+    const gruposRanking = (["P1", "P2", "P3", "P4", "P5"] as GrupoRanking[])
       .map((g) => ({ g, lista: filtradosRanked.filter((a) => a.grupo === g) }))
       .filter((x) => x.lista.length > 0);
 
@@ -1319,17 +1322,27 @@ function SelectorAgenteAgrupado({
           className="w-full bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder:text-white/20 outline-none focus:border-indigo-400/40"
         />
 
-        {/* Confirmación para agente en descanso de ciclo */}
+        {/* Confirmación para agente en descanso o contingencia */}
         {pendienteRanked && (
-          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2.5 space-y-2">
+          <div className={`border rounded-xl px-3 py-2.5 space-y-2 ${pendienteRanked.grupo === "P5" ? "bg-orange-500/10 border-orange-500/30" : "bg-amber-500/10 border-amber-500/30"}`}>
             <div className="flex items-start gap-2">
-              <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-              <p className="text-[10px] text-amber-300/80 leading-snug">
-                <span className="font-semibold">{pendienteRanked.nombre_completo}</span> está en descanso de ciclo. Asignar implicaría horas extra.
-              </p>
+              {pendienteRanked.grupo === "P5"
+                ? <ShieldCheck className="w-3.5 h-3.5 text-orange-400 shrink-0 mt-0.5" />
+                : <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />}
+              {pendienteRanked.grupo === "P5" ? (
+                <p className="text-[10px] text-orange-300/80 leading-snug">
+                  <span className="font-semibold">{pendienteRanked.nombre_completo}</span> es{" "}
+                  {(pendienteRanked as any).tipo_personal === "supervisor" ? "Supervisor" : "Jefe de Servicio"}.
+                  {" "}Esta es una <span className="font-semibold text-orange-300">cobertura de contingencia operativa</span>. Solo cubrirá temporalmente, sin cambiar titularidad.
+                </p>
+              ) : (
+                <p className="text-[10px] text-amber-300/80 leading-snug">
+                  <span className="font-semibold">{pendienteRanked.nombre_completo}</span> está en descanso de ciclo. Asignar implicaría horas extra.
+                </p>
+              )}
             </div>
             <div className="flex gap-2">
-              <button onClick={confirmarRanked} className="text-[10px] px-3 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 font-semibold">
+              <button onClick={confirmarRanked} className={`text-[10px] px-3 py-1 rounded-lg font-semibold ${pendienteRanked.grupo === "P5" ? "bg-orange-500/20 border border-orange-500/40 text-orange-300" : "bg-amber-500/20 border border-amber-500/40 text-amber-300"}`}>
                 Confirmar
               </button>
               <button onClick={() => setPendienteRanked(null)} className="text-[10px] px-3 py-1 rounded-lg border border-white/10 text-white/40 hover:text-white/60">
@@ -3152,6 +3165,9 @@ function ModalEligeCobertura({
   onElegir: (soloCobertura: boolean, oldTitularAccion?: OldTitularAccion, fechaEfectiva?: string, motivoCambio?: string, horaInstalacion?: string) => void;
   onCancel: () => void;
 }) {
+  // Supervisores y jefes de servicio → siempre cobertura temporal, nunca titular
+  const esContingencia = agente.tipo_personal === "supervisor" || agente.tipo_personal === "jefe_servicio";
+
   const hayTitularPrevio = !!puesto.titular_employee_id;
   const hoy = toISODate(new Date());
   const manana = toISODate(new Date(Date.now() + 86400000));
@@ -3161,12 +3177,15 @@ function ModalEligeCobertura({
     return `${String(n.getHours()).padStart(2, "0")}:${String(n.getMinutes()).padStart(2, "0")}`;
   };
 
-  const [paso, setPaso] = useState<"elige" | "detalles" | "titularPrevio" | "horaInstalacion">("elige");
+  // Para contingencia: saltar directamente al paso de hora (soloCobertura forzado)
+  const [paso, setPaso] = useState<"elige" | "detalles" | "titularPrevio" | "horaInstalacion">(
+    () => esContingencia ? "horaInstalacion" : "elige"
+  );
   const [oldTitularAccion, setOldTitularAccion] = useState<OldTitularAccion>("disponible");
   const [opcionFecha, setOpcionFecha] = useState<"hoy" | "manana" | "personalizada">("hoy");
   const [fechaPersonalizada, setFechaPersonalizada] = useState(hoy);
   const [motivo, setMotivo] = useState("cobertura_definitiva");
-  const [soloCoberturaPendiente, setSoloCoberturaPendiente] = useState(false);
+  const [soloCoberturaPendiente, setSoloCoberturaPendiente] = useState(() => esContingencia);
   const [horaInstalacion, setHoraInstalacion] = useState(ahoraHHMM());
 
   const fechaEfectiva = opcionFecha === "hoy" ? hoy
@@ -3193,15 +3212,23 @@ function ModalEligeCobertura({
       <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-sm shadow-2xl">
 
         {/* Header */}
-        <div className="px-5 py-4 border-b border-white/8">
+        <div className={`px-5 py-4 border-b ${esContingencia ? "border-orange-500/15 bg-orange-500/3" : "border-white/8"}`}>
           <div className="flex items-center gap-2">
-            <Layers className="w-4 h-4 text-primary" />
-            <h3 className="text-sm font-bold text-white">¿Cómo registrar esta asignación?</h3>
+            {esContingencia
+              ? <ShieldCheck className="w-4 h-4 text-orange-400" />
+              : <Layers className="w-4 h-4 text-primary" />}
+            <h3 className="text-sm font-bold text-white">
+              {esContingencia ? "Cobertura de contingencia" : "¿Cómo registrar esta asignación?"}
+            </h3>
           </div>
           <p className="text-[11px] text-white/35 mt-1.5">
             <span className="text-white/60 font-medium">{agente.nombre_completo}</span>
             {" · "}
-            <span className="capitalize text-white/35">{agente.tipo_asignacion_eoa?.replace("_", " ") ?? "pool"}</span>
+            <span className={esContingencia ? "text-orange-300/60" : "capitalize text-white/35"}>
+              {esContingencia
+                ? (agente.tipo_personal === "supervisor" ? "Supervisor" : "Jefe de Servicio")
+                : (agente.tipo_asignacion_eoa?.replace("_", " ") ?? "pool")}
+            </span>
           </p>
         </div>
 
@@ -3373,6 +3400,19 @@ function ModalEligeCobertura({
         {/* ── Paso final: Hora de instalación ──────────────────────────── */}
         {paso === "horaInstalacion" && (
           <div className="p-5 space-y-4">
+            {/* Banner de contingencia operativa */}
+            {esContingencia && (
+              <div className="flex items-start gap-2 bg-orange-500/8 border border-orange-500/20 rounded-xl px-3 py-2">
+                <ShieldCheck className="w-3.5 h-3.5 text-orange-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-[10px] font-bold text-orange-300">Contingencia operativa</p>
+                  <p className="text-[10px] text-orange-300/60 leading-snug">
+                    {agente.tipo_personal === "supervisor" ? "Supervisor" : "Jefe de Servicio"} cubriendo temporalmente. No cambia titular del puesto. Se registrará con tipo <span className="font-mono">cobertura_{agente.tipo_personal}</span>.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="bg-[#0c1929] border border-white/8 rounded-xl p-3 flex items-center gap-2">
               <Clock className="w-3.5 h-3.5 text-primary/60 shrink-0" />
               <div>
@@ -3398,17 +3438,19 @@ function ModalEligeCobertura({
             </div>
 
             <div className="flex gap-2 pt-1">
-              <button
-                onClick={() => setPaso(soloCoberturaPendiente ? "elige" : (hayTitularPrevio ? "titularPrevio" : "detalles"))}
-                className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors"
-              >
-                Atrás
-              </button>
+              {!esContingencia && (
+                <button
+                  onClick={() => setPaso(soloCoberturaPendiente ? "elige" : (hayTitularPrevio ? "titularPrevio" : "detalles"))}
+                  className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors"
+                >
+                  Atrás
+                </button>
+              )}
               <button
                 onClick={confirmarConHora}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-primary hover:bg-primary/90 transition-colors"
+                className={`py-2.5 rounded-xl text-sm font-bold text-white transition-colors ${esContingencia ? "w-full bg-orange-600 hover:bg-orange-500" : "flex-1 bg-primary hover:bg-primary/90"}`}
               >
-                Confirmar →
+                Confirmar cobertura →
               </button>
             </div>
           </div>
@@ -5624,7 +5666,7 @@ export default function Operaciones() {
                 </div>
               ) : (
                 <div className="divide-y divide-white/5 max-h-[260px] overflow-y-auto">
-                  {(["P1", "P2", "P3", "P4"] as GrupoRanking[]).map((grupo) => {
+                  {(["P1", "P2", "P3", "P4", "P5"] as GrupoRanking[]).map((grupo) => {
                     const grupo_agentes = candidatosRankeados.filter(a => a.grupo === grupo);
                     if (grupo_agentes.length === 0) return null;
                     const cfg = RANKING_GRUPO_CONFIG[grupo];
@@ -5637,6 +5679,9 @@ export default function Operaciones() {
                           <span className={`text-[9px] px-1.5 py-0.5 rounded-full bg-white/6 ${cfg.headerColor} opacity-70`}>
                             {grupo_agentes.length}
                           </span>
+                          {grupo === "P5" && (
+                            <span className="text-[8px] px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-300/70 font-bold ml-auto">Solo cobertura temporal</span>
+                          )}
                         </div>
                         <div className="flex gap-2 overflow-x-auto pb-1">
                           {grupo_agentes.map((agente) => (
