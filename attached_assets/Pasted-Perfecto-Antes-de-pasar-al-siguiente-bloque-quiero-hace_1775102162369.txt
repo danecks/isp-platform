@@ -1,0 +1,101 @@
+Perfecto. Antes de pasar al siguiente bloque, quiero hacer una validación específica del turno 8x8, para asegurar que responde exactamente como lo operamos en ISPSA.
+
+No quiero asumir que está bien solo porque no tuvo regresión.
+Quiero validación explícita.
+
+Contexto real
+
+En ISPSA, el turno 8x8 significa:
+	•	trabaja 8 días consecutivos
+	•	cada día equivale a 24 horas
+	•	luego descansa 8 días consecutivos
+	•	y vuelve a empezar
+
+Es decir:
+	•	8 días ON
+	•	8 días OFF
+
+Objetivo
+
+Confirmar que el sistema está modelando correctamente ese patrón y que se refleja bien en:
+	•	motor
+	•	pool futuro
+	•	pizarrón
+	•	candidatos para horas extra
+
+⸻
+
+1. Qué quiero validar en el motor
+
+Para una fecha de inicio de ciclo dada, quiero ver una secuencia de al menos 20 días consecutivos mostrando:
+	•	posición en el ciclo
+	•	si trabaja o descansa
+	•	cuándo cambia de ON a OFF
+	•	cuándo vuelve a empezar
+
+La lógica esperada es:
+	•	días 0–7 → trabaja
+	•	días 8–15 → descansa
+	•	repetir
+
+⸻
+
+2. Qué quiero validar en pool futuro
+
+Quiero confirmar que:
+
+Durante los 8 días de trabajo
+	•	aparece como trabajando
+	•	disponibleHE = false
+
+Durante los 8 días de descanso
+	•	aparece como descansando por ciclo
+	•	disponibleHE = true
+
+No quiero que se vea como “disponible real” si en realidad está en descanso de ciclo.
+
+⸻
+
+3. Qué quiero validar en el pizarrón
+
+Quiero verificar que un puesto 8x8 se vea así:
+
+Si el titular debería trabajar y no hay agente
+	•	🔴 rojo = gap real
+
+Si el titular está en descanso normal del ciclo
+	•	🔵 azul = descanso de turno / descanso de ciclo
+
+Si el titular está asignado y trabajando
+	•	🟢 verde = cubierto
+
+No quiero mezcla entre descanso normal y descubierto real.
+
+⸻
+
+4. Ejemplo concreto
+
+Usa un caso real con un titular 8x8 y dame tabla de varios días seguidos mostrando:
+	•	Día
+	•	posición
+	•	trabaja / descansa
+	•	cómo aparece en pool
+	•	cómo se vería en pizarrón
+
+⸻
+
+5. Validación final
+
+Quiero una respuesta clara de si el 8x8 ya quedó correctamente modelado para operación real de ISPSA.
+
+No quiero teoría.
+Quiero evidencia en:
+	•	motor
+	•	pool
+	•	pizarrón
+
+⸻
+
+6. Importante
+
+No avances a otro bloque hasta confirmar explícitamente si el 8x8 está correcto o no.
