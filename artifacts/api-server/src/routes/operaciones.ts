@@ -1055,27 +1055,46 @@ operacionesRouter.post("/operaciones/puestos/:id/titular", async (req, res) => {
 });
 
 // ─── PATCH /api/operaciones/puestos/:id ──────────────────────────────────────
-// Actualizar campos de configuración de un puesto (horario, jornada, sede, notas)
+// Actualizar campos de configuración de un puesto (horario, jornada, sede, notas, zona)
 operacionesRouter.patch("/operaciones/puestos/:id", async (req, res) => {
-  const { horario, jornada, sedeId, notas, turno } = req.body;
+  const { horario, jornada, sedeId, notas, turno, zonaOperativaId } = req.body;
 
   // P-03: rechazar body vacío para evitar UPDATE sin efecto
-  if ([horario, jornada, sedeId, notas, turno].every(v => v === undefined || v === null)) {
-    return res.status(400).json({ error: "Debe proporcionar al menos un campo para actualizar (horario, jornada, sedeId, notas, turno)" });
+  if ([horario, jornada, sedeId, notas, turno, zonaOperativaId].every(v => v === undefined || v === null)) {
+    return res.status(400).json({ error: "Debe proporcionar al menos un campo para actualizar (horario, jornada, sedeId, notas, turno, zonaOperativaId)" });
+  }
+
+  // Zona no puede quitarse una vez asignada — es parte estructural del modelo
+  if (zonaOperativaId === null) {
+    return res.status(400).json({ error: "El puesto debe tener una zona operativa asignada" });
   }
 
   try {
+    // Si se actualiza zona, verificar que exista
+    if (zonaOperativaId !== undefined) {
+      const { rows: zonaRows } = await pool.query(
+        `SELECT id FROM operational_zones WHERE id = $1`, [zonaOperativaId]
+      );
+      if (!zonaRows.length) {
+        return res.status(400).json({ error: `La zona operativa con id=${zonaOperativaId} no existe` });
+      }
+    }
+
     const { rows } = await pool.query(
       `UPDATE puestos_operativos
-       SET horario    = COALESCE($1, horario),
-           jornada    = COALESCE($2, jornada),
-           sede_id    = COALESCE($3, sede_id),
-           notas      = COALESCE($4, notas),
-           turno      = COALESCE($5, turno),
-           updated_at = NOW()
-       WHERE id = $6
+       SET horario             = COALESCE($1, horario),
+           jornada             = COALESCE($2, jornada),
+           sede_id             = COALESCE($3, sede_id),
+           notas               = COALESCE($4, notas),
+           turno               = COALESCE($5, turno),
+           zona_operativa_id   = COALESCE($6, zona_operativa_id),
+           updated_at          = NOW()
+       WHERE id = $7
        RETURNING *`,
-      [horario ?? null, jornada ?? null, sedeId ?? null, notas ?? null, turno ?? null, req.params.id]
+      [
+        horario ?? null, jornada ?? null, sedeId ?? null, notas ?? null,
+        turno ?? null, zonaOperativaId ?? null, req.params.id,
+      ]
     );
     if (!rows.length) return res.status(404).json({ error: "Puesto no encontrado" });
     res.json(rows[0]);
@@ -1131,13 +1150,32 @@ operacionesRouter.patch("/operaciones/puestos/:id/igss", async (req, res) => {
   }
 });
 
+// ─── GET /api/operaciones/puestos/sin-zona ───────────────────────────────────
+// Diagnóstico: lista de puestos activos sin zona_operativa_id asignada
+operacionesRouter.get("/operaciones/puestos/sin-zona", async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT po.id,
+             po.nombre,
+             po.cliente_nombre AS cliente
+      FROM puestos_operativos po
+      WHERE po.activo = TRUE AND po.zona_operativa_id IS NULL
+      ORDER BY po.cliente_nombre, po.nombre
+    `);
+    res.json({ total: rows.length, puestos: rows });
+  } catch (err) {
+    logger.error({ err }, "GET /operaciones/puestos/sin-zona error");
+    res.status(500).json({ error: "Error al consultar puestos sin zona" });
+  }
+});
+
 // ─── POST /api/operaciones/puestos ───────────────────────────────────────────
 // Crear un nuevo puesto operativo
-// Requiere: clienteNombre, nombre, tipoTurnoId, fechaInicioCiclo
+// Requiere: clienteNombre, nombre, tipoTurnoId, fechaInicioCiclo, zonaOperativaId
 operacionesRouter.post("/operaciones/puestos", async (req, res) => {
   const {
     clienteId, clienteNombre, nombre, turno, notas, sedeId, horario, jornada,
-    tipoTurnoId, fechaInicioCiclo,
+    tipoTurnoId, fechaInicioCiclo, zonaOperativaId,
   } = req.body;
 
   if (!clienteNombre || !nombre) {
@@ -1149,6 +1187,10 @@ operacionesRouter.post("/operaciones/puestos", async (req, res) => {
   if (!fechaInicioCiclo || !/^\d{4}-\d{2}-\d{2}$/.test(fechaInicioCiclo)) {
     return res.status(400).json({ error: "fechaInicioCiclo (YYYY-MM-DD) es requerida para crear un puesto" });
   }
+  // Zona obligatoria — parte estructural del modelo operativo
+  if (!zonaOperativaId) {
+    return res.status(400).json({ error: "El puesto debe tener una zona operativa asignada" });
+  }
 
   try {
     // Verificar que el turno exista
@@ -1157,6 +1199,14 @@ operacionesRouter.post("/operaciones/puestos", async (req, res) => {
     );
     if (!turnoRows.length) {
       return res.status(400).json({ error: `El turno con id=${tipoTurnoId} no existe o está inactivo` });
+    }
+
+    // Verificar que la zona exista
+    const { rows: zonaRows } = await pool.query(
+      `SELECT id FROM operational_zones WHERE id = $1`, [zonaOperativaId]
+    );
+    if (!zonaRows.length) {
+      return res.status(400).json({ error: `La zona operativa con id=${zonaOperativaId} no existe` });
     }
 
     const { rows: ordenRows } = await pool.query(
@@ -1168,13 +1218,13 @@ operacionesRouter.post("/operaciones/puestos", async (req, res) => {
     const { rows } = await pool.query(
       `INSERT INTO puestos_operativos
          (cliente_id, cliente_nombre, nombre, turno, orden, notas, sede_id, horario, jornada,
-          tipo_turno_id, fecha_inicio_ciclo)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          tipo_turno_id, fecha_inicio_ciclo, zona_operativa_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING *`,
       [
         clienteId || null, clienteNombre, nombre, turno || 'día', orden,
         notas || null, sedeId || null, horario || null, jornada || null,
-        tipoTurnoId, fechaInicioCiclo,
+        tipoTurnoId, fechaInicioCiclo, zonaOperativaId,
       ]
     );
     res.json(rows[0]);

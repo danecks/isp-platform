@@ -1,0 +1,118 @@
+Quiero hacer obligatorio que todos los puestos operativos en ISPSA tengan una zona asignada.
+
+Este cambio debe ser seguro, progresivo y no romper datos existentes.
+
+⸻
+
+1. Regla nueva (MANDATORIA)
+
+A partir de ahora:
+	•	NO se puede crear un puesto sin zona_operativa_id
+	•	NO se puede editar un puesto y dejarlo sin zona
+
+La zona deja de ser opcional y pasa a ser un campo obligatorio del modelo.
+
+⸻
+
+2. Backend
+
+Validaciones
+
+En:
+	•	POST /operaciones/puestos
+	•	PATCH /operaciones/puestos/:id
+
+Agregar validación:
+	•	si zona_operativa_id es null o undefined → rechazar con error claro
+	•	mensaje: “El puesto debe tener una zona operativa asignada”
+
+⸻
+
+3. Base de datos
+
+NO romper producción directamente.
+
+Paso 1
+
+Verificar cuántos puestos actualmente tienen:
+	•	zona_operativa_id = NULL
+
+Paso 2
+
+NO aplicar NOT NULL todavía si existen datos incompletos.
+
+Primero:
+	•	identificar
+	•	listar
+	•	corregir
+
+Paso 3 (cuando todo esté limpio)
+
+Aplicar:
+	•	NOT NULL constraint en zona_operativa_id
+
+⸻
+
+4. Frontend
+
+ModalNuevoPuesto
+	•	hacer obligatorio el selector de zona
+	•	deshabilitar botón “Crear puesto” si no hay zona seleccionada
+	•	mostrar mensaje claro: “Selecciona una zona operativa”
+
+Edición de puesto
+	•	no permitir guardar si zona queda vacía
+
+⸻
+
+5. Puestos existentes sin zona
+
+No quiero romperlos automáticamente.
+
+Crear endpoint o script de diagnóstico:
+
+GET /operaciones/puestos/sin-zona
+
+Debe retornar:
+	•	puesto_id
+	•	cliente
+	•	sede
+	•	nombre del puesto
+
+UI (simple)
+
+Mostrar alerta tipo:
+“Hay X puestos sin zona asignada”
+
+⸻
+
+6. Impacto en sistema
+
+Confirmar que zona se usa en:
+	•	ranking de candidatos
+	•	agrupación del pool
+	•	recomendación por zona
+	•	supervisión
+	•	planificación futura
+
+La zona pasa a ser parte central del modelo operativo.
+
+⸻
+
+7. Validación
+
+Probar:
+	1.	Intentar crear puesto sin zona → debe fallar
+	2.	Crear puesto con zona → OK
+	3.	Editar puesto y quitar zona → debe fallar
+	4.	Ranking de candidatos sigue funcionando igual
+	5.	Pool y pizarrón no se rompen
+
+⸻
+
+8. Objetivo final
+
+Quiero que ningún puesto operativo exista sin zona.
+
+La zona ya no es opcional:
+es parte estructural del sistema y de la toma de decisiones operativas.

@@ -3439,6 +3439,7 @@ function ModalNuevoPuesto({
     notas: string;
     tipoTurnoId: number;
     fechaInicioCiclo: string;
+    zonaOperativaId: number;
   }) => Promise<void>;
   onClose: () => void;
 }) {
@@ -3447,6 +3448,7 @@ function ModalNuevoPuesto({
   const [nombre, setNombre]           = useState("");
   const [notas, setNotas]             = useState("");
   const [tipoTurnoId, setTipoTurnoId] = useState<string>("");
+  const [zonaId, setZonaId]           = useState<string>("");
   const hoy = new Date().toISOString().split("T")[0];
   const [fechaInicioCiclo, setFechaInicioCiclo] = useState<string>(hoy);
   const [loading, setLoading]         = useState(false);
@@ -3462,6 +3464,17 @@ function ModalNuevoPuesto({
     },
   });
 
+  // Cargar catálogo de zonas
+  const { data: zonasCatalogo = [], isLoading: cargandoZonas } = useQuery<{ id: number; nombre: string }[]>({
+    queryKey: ["zonas-catalogo"],
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/operaciones/zonas`, { credentials: "include" });
+      if (!r.ok) throw new Error("Error al cargar zonas");
+      const data = await r.json();
+      return Array.isArray(data) ? data : (data.zonas ?? []);
+    },
+  });
+
   // Resolver nombre del cliente seleccionado
   const clienteSeleccionado = clientes.find((c) => c.id.toString() === clienteId);
   const clienteNombreFinal  = clienteSeleccionado
@@ -3474,6 +3487,7 @@ function ModalNuevoPuesto({
     if (!nombre.trim()) { setError("El nombre del puesto es requerido."); return; }
     if (!clienteNombreFinal.trim()) { setError("Selecciona o escribe un cliente."); return; }
     if (!tipoTurnoId) { setError("Debes seleccionar un tipo de turno."); return; }
+    if (!zonaId) { setError("Debes asignar una zona operativa al puesto."); return; }
     if (!fechaInicioCiclo) { setError("La fecha de inicio del ciclo es requerida."); return; }
     setLoading(true);
     setError("");
@@ -3486,6 +3500,7 @@ function ModalNuevoPuesto({
         notas,
         tipoTurnoId: parseInt(tipoTurnoId),
         fechaInicioCiclo,
+        zonaOperativaId: parseInt(zonaId),
       });
       onClose();
     } catch (e: any) {
@@ -3578,6 +3593,33 @@ function ModalNuevoPuesto({
             )}
           </div>
 
+          {/* Zona operativa — obligatoria */}
+          <div className="space-y-1">
+            <label className="text-xs text-white/40">
+              Zona operativa <span className="text-rose-400">*</span>
+            </label>
+            {cargandoZonas ? (
+              <div className="flex items-center gap-2 text-xs text-white/30 py-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Cargando zonas…
+              </div>
+            ) : zonasCatalogo.length === 0 ? (
+              <p className="text-xs text-amber-400/70 py-1">
+                No hay zonas creadas. Crea una zona operativa primero.
+              </p>
+            ) : (
+              <select
+                value={zonaId}
+                onChange={(e) => setZonaId(e.target.value)}
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50 appearance-none"
+              >
+                <option value="">— Selecciona una zona —</option>
+                {zonasCatalogo.map((z) => (
+                  <option key={z.id} value={z.id}>{z.nombre}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
           {/* Fecha de inicio del ciclo */}
           <div className="space-y-1">
             <label className="text-xs text-white/40">
@@ -3610,7 +3652,7 @@ function ModalNuevoPuesto({
             </button>
             <button
               onClick={handleSave}
-              disabled={loading || !tipoTurnoId}
+              disabled={loading || !tipoTurnoId || !zonaId}
               className="flex-1 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-sm font-bold text-white disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
             >
               {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -4131,6 +4173,14 @@ export default function Operaciones() {
     refetchInterval: 30_000,
   });
 
+  // ── Query: puestos sin zona (alerta operativa) ───────────────────────────
+  const { data: sinZonaData } = useQuery<{ total: number; puestos: { id: number; nombre: string; cliente: string }[] }>({
+    queryKey: ["puestos-sin-zona"],
+    queryFn: () => fetch(`${API_BASE}/operaciones/puestos/sin-zona`, { credentials: "include" }).then((r) => r.json()),
+    refetchInterval: 120_000,
+  });
+  const puestosSinZonaCount = sinZonaData?.total ?? 0;
+
   // ── Queries: planificación futura ────────────────────────────────────────
   const { data: planFuturoDia = [], refetch: refetchPlanFuturo } = useQuery<PlanFuturo[]>({
     queryKey: ["planificacion-futura", fechaVista],
@@ -4562,6 +4612,7 @@ export default function Operaciones() {
     notas: string;
     tipoTurnoId: number;
     fechaInicioCiclo: string;
+    zonaOperativaId: number;
   }) {
     await apiPost(`${API_BASE}/operaciones/puestos`, data);
     toast({ title: "Puesto creado", description: `${data.nombre} — ${data.clienteNombre}` });
@@ -4949,6 +5000,25 @@ export default function Operaciones() {
               <p className="text-xs text-red-400/70">
                 Hay {puestosDescubiertos} puesto{puestosDescubiertos !== 1 ? "s" : ""} descubierto{puestosDescubiertos !== 1 ? "s" : ""} y ningún agente libre para asignar. Considera liberar un agente de su puesto actual o verificar el estado de los suspendidos.
               </p>
+            </div>
+          )}
+
+          {/* ── Alerta: puestos activos sin zona operativa ───────────── */}
+          {puestosSinZonaCount > 0 && esSupervisorOAdmin && (
+            <div className="shrink-0 flex items-start gap-2.5 bg-amber-500/8 border border-amber-500/25 rounded-xl px-4 py-2.5">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-amber-300">
+                  {puestosSinZonaCount} puesto{puestosSinZonaCount !== 1 ? "s" : ""} sin zona operativa
+                </p>
+                <p className="text-[10px] text-amber-400/60 mt-0.5">
+                  Los nuevos puestos requieren zona. Asigna zona a los puestos existentes desde{" "}
+                  <a href="/admin/operaciones/zonas" className="underline hover:text-amber-300 transition-colors">
+                    Zonas Operativas
+                  </a>{" "}
+                  para activar el sistema de recomendación.
+                </p>
+              </div>
             </div>
           )}
 

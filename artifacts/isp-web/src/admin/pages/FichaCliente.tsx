@@ -229,6 +229,7 @@ function ModalPuesto({
 
   async function submit() {
     if (!form.nombre.trim()) { setErr("El nombre del puesto es requerido"); return; }
+    if (!isEdit && !form.zona_operativa_id) { setErr("Debes seleccionar una zona operativa"); return; }
     setSaving(true); setErr("");
     try {
       const body = {

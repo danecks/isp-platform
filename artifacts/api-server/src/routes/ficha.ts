@@ -163,6 +163,9 @@ fichaRouter.post("/clientes/:id/puestos", async (req, res) => {
   } = req.body;
 
   if (!nombre) return res.status(400).json({ error: "nombre es requerido" });
+  if (!zona_operativa_id) {
+    return res.status(400).json({ error: "El puesto debe tener una zona operativa asignada" });
+  }
 
   try {
     // Obtener nombre del cliente
