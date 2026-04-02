@@ -138,6 +138,7 @@ interface Tarjeta {
   tarea_rrhh_estado: string | null;
   tarea_comercial_estado: string | null;
   estado_contabilidad?: string;
+  agentes: { id: number; nombre: string; telefono: string | null; estado: string }[];
 }
 
 // ── Modal de detalle / acción ─────────────────────────────────────────────────
@@ -286,22 +287,52 @@ function ModalDetalle({
               </div>
             )}
 
-            {tarjeta.agente_nombre_completo ? (
-              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 flex items-center gap-3">
-                <UserCheck className="w-5 h-5 text-emerald-400 shrink-0" />
-                <div>
-                  <p className="text-xs text-emerald-300 font-semibold">{tarjeta.agente_nombre_completo}</p>
-                  {tarjeta.tipo_cobertura && (
-                    <p className="text-[11px] text-white/50">{COBERTURA_LABEL[tarjeta.tipo_cobertura] ?? tarjeta.tipo_cobertura}</p>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="bg-white/4 border border-white/8 rounded-lg p-3 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-400/60 shrink-0" />
-                <p className="text-[11px] text-white/40">Sin agente asignado — ir al Pizarrón Operativo para cubrir</p>
-              </div>
-            )}
+            {(() => {
+              const agentesList = (tarjeta.agentes ?? []).filter(a => a.estado === "asignado");
+              const fallback = tarjeta.agente_nombre_completo ?? tarjeta.agente_nombre;
+              if (agentesList.length > 0) {
+                return (
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span className="text-xs text-emerald-400 font-semibold">
+                        {agentesList.length} / {tarjeta.cantidad_guardias} agente{tarjeta.cantidad_guardias !== 1 ? "s" : ""} asignado{agentesList.length !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    <div className="space-y-1 pl-1">
+                      {agentesList.map(a => (
+                        <div key={a.id} className="flex items-center justify-between gap-2">
+                          <p className="text-xs text-emerald-300 font-semibold">• {a.nombre}</p>
+                          {a.telefono && <span className="text-[10px] text-white/40">{a.telefono}</span>}
+                        </div>
+                      ))}
+                    </div>
+                    {tarjeta.tipo_cobertura && (
+                      <p className="text-[11px] text-white/50 mt-2">{COBERTURA_LABEL[tarjeta.tipo_cobertura] ?? tarjeta.tipo_cobertura}</p>
+                    )}
+                  </div>
+                );
+              } else if (fallback) {
+                return (
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 flex items-center gap-3">
+                    <UserCheck className="w-5 h-5 text-emerald-400 shrink-0" />
+                    <div>
+                      <p className="text-xs text-emerald-300 font-semibold">{fallback}</p>
+                      {tarjeta.tipo_cobertura && (
+                        <p className="text-[11px] text-white/50">{COBERTURA_LABEL[tarjeta.tipo_cobertura] ?? tarjeta.tipo_cobertura}</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              } else {
+                return (
+                  <div className="bg-white/4 border border-white/8 rounded-lg p-3 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-400/60 shrink-0" />
+                    <p className="text-[11px] text-white/40">Sin agente asignado — ir al Pizarrón Operativo para cubrir</p>
+                  </div>
+                );
+              }
+            })()}
 
             {/* Estado por área */}
             <div className="grid grid-cols-3 gap-2 pt-1">
@@ -438,8 +469,6 @@ function ModalDetalle({
 // ── Tarjeta visual ────────────────────────────────────────────────────────────
 function TarjetaCard({ t, onClick }: { t: Tarjeta; onClick: () => void }) {
   const tieneResumen = !!t.resumen_final;
-  const tieneAgente = !!t.agente_nombre_completo || !!t.agente_nombre;
-  const agenteName = t.agente_nombre_completo ?? t.agente_nombre;
 
   return (
     <div
@@ -485,23 +514,48 @@ function TarjetaCard({ t, onClick }: { t: Tarjeta; onClick: () => void }) {
         )}
       </div>
 
-      {/* Agente asignado */}
-      {tieneAgente ? (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 flex items-center gap-2">
-          <UserCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-          <div className="min-w-0">
-            <p className="text-[11px] text-emerald-300 font-medium truncate">{agenteName}</p>
-            {t.tipo_cobertura && (
-              <p className="text-[10px] text-white/40">{COBERTURA_LABEL[t.tipo_cobertura] ?? t.tipo_cobertura}</p>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 flex items-center gap-2">
-          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-          <p className="text-[11px] text-amber-300">Sin agente asignado</p>
-        </div>
-      )}
+      {/* Agentes asignados */}
+      {(() => {
+        const agentesList = (t.agentes ?? []).filter(a => a.estado === "asignado");
+        const fallback = t.agente_nombre_completo ?? t.agente_nombre;
+        if (agentesList.length > 0) {
+          return (
+            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 space-y-1">
+              <div className="flex items-center gap-1.5 mb-1">
+                <UserCheck className="w-3 h-3 text-emerald-400 shrink-0" />
+                <span className="text-[10px] text-emerald-400/70 font-semibold uppercase tracking-wider">
+                  {agentesList.length}/{t.cantidad_guardias} agente{t.cantidad_guardias !== 1 ? "s" : ""}
+                </span>
+              </div>
+              {agentesList.map(a => (
+                <p key={a.id} className="text-[11px] text-emerald-300 font-medium truncate pl-0.5">• {a.nombre}</p>
+              ))}
+              {t.tipo_cobertura && (
+                <p className="text-[10px] text-white/40 pt-0.5">{COBERTURA_LABEL[t.tipo_cobertura] ?? t.tipo_cobertura}</p>
+              )}
+            </div>
+          );
+        } else if (fallback) {
+          return (
+            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 flex items-center gap-2">
+              <UserCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[11px] text-emerald-300 font-medium truncate">{fallback}</p>
+                {t.tipo_cobertura && (
+                  <p className="text-[10px] text-white/40">{COBERTURA_LABEL[t.tipo_cobertura] ?? t.tipo_cobertura}</p>
+                )}
+              </div>
+            </div>
+          );
+        } else {
+          return (
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 flex items-center gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <p className="text-[11px] text-amber-300">Sin agente asignado</p>
+            </div>
+          );
+        }
+      })()}
 
       {/* Footer */}
       <div className="flex items-center justify-between gap-2 mt-auto pt-1 border-t border-white/5">
@@ -546,8 +600,8 @@ export default function TableroServicios() {
     return true;
   });
 
-  const conAgente = tarjetas.filter(t => !!t.agente_id).length;
-  const sinAgente = tarjetas.filter(t => !t.agente_id).length;
+  const conAgente = tarjetas.filter(t => (t.agentes ?? []).some(a => a.estado === "asignado") || !!t.agente_id).length;
+  const sinAgente = tarjetas.filter(t => !(t.agentes ?? []).some(a => a.estado === "asignado") && !t.agente_id).length;
   const conResumen = tarjetas.filter(t => !!t.resumen_final).length;
   const urgentes = tarjetas.filter(t => t.prioridad === "urgente").length;
 
