@@ -1,0 +1,126 @@
+Detecté un bug importante en los Servicios Especiales (SSA) de ISPSA.
+
+## Problema
+Un SSA que es de un solo día sigue apareciendo después de su fecha en:
+
+- planificación futura
+- pizarrón
+- banners / próximos servicios
+- vistas donde ya no debería existir operativamente
+
+Eso es incorrecto.
+
+---
+
+## Objetivo
+Corregir la lógica para que un SSA solo aparezca en las fechas donde realmente está vigente operativamente.
+
+---
+
+## 1. Regla correcta de vigencia
+Un SSA debe tener dos cosas separadas:
+
+### Estado administrativo
+- pendiente
+- aprobado
+- cubierto
+- completado
+- facturado
+- cancelado
+
+### Vigencia operativa por fecha
+- fecha_inicio
+- fecha_fin
+
+La aparición en pizarrón / planificación NO debe depender solo del estado administrativo.
+También debe depender de si la fecha consultada cae dentro de la vigencia real del servicio.
+
+---
+
+## 2. Regla esperada
+### Si el SSA es de un solo día
+Ejemplo:
+- fecha_inicio = 10/04/2026
+- fecha_fin = 10/04/2026
+
+Entonces:
+- debe aparecer solo el 10/04/2026
+- el 11/04/2026 ya NO debe aparecer en planificación ni en vistas operativas
+
+### Si el SSA es de varios días
+Debe aparecer únicamente dentro del rango:
+- fecha_inicio <= fecha_consultada <= fecha_fin
+
+---
+
+## 3. Qué revisar
+Quiero que revises todas las consultas y vistas donde los SSA aparecen, especialmente:
+
+- planificación futura
+- pizarrón
+- próximos arranques / servicios programados
+- pool futuro si aplica
+- cualquier dashboard operativo
+
+Probablemente hoy se está usando una condición tipo:
+- estado != cancelado
+- activo = true
+
+sin cortar por fecha fin real.
+
+---
+
+## 4. Qué corregir
+Quiero que el sistema filtre por vigencia real del SSA.
+
+No debe seguir apareciendo solo porque:
+- fue aprobado
+- fue cubierto
+- fue facturado
+- o no está cancelado
+
+Si su fecha ya pasó, operativamente debe salir de la vista futura y del pizarrón de días posteriores.
+
+---
+
+## 5. Validación
+Quiero pruebas con:
+
+### Caso A
+SSA de un solo día
+- aparece en su fecha
+- desaparece al día siguiente
+
+### Caso B
+SSA de varios días
+- aparece dentro del rango
+- desaparece después de fecha_fin
+
+### Caso C
+SSA completado/facturado
+- mantiene trazabilidad histórica
+- pero no sigue apareciendo como activo en vistas futuras
+
+---
+
+## 6. No romper
+No romper:
+- pipeline administrativo del SSA
+- historial
+- facturación
+- trazabilidad
+- planilla
+- cobertura del día correcto
+
+Solo quiero corregir la presencia operativa por fecha.
+
+---
+
+## 7. Documentación
+Explica claramente:
+- por qué ocurría el bug
+- qué consultas se corrigieron
+- cuál es ahora la regla de vigencia operativa de un SSA
+
+Muy importante:
+quiero que un servicio especial deje de contaminar días futuros cuando ya terminó su vigencia operativa.

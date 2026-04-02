@@ -220,16 +220,23 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       ) po ON po.agente_id = e.id
       LEFT JOIN (
         -- Campo legacy: agente_id directo en la solicitud (single-agent)
+        -- Solo vigente si CURRENT_DATE cae dentro del rango fecha..fecha_fin del SSA
         SELECT DISTINCT agente_id
         FROM solicitudes_servicio_adicional
         WHERE agente_id IS NOT NULL
           AND estado_general NOT IN ('cancelada', 'cerrada')
+          AND CURRENT_DATE BETWEEN fecha AND COALESCE(fecha_fin, fecha)
       ) ssa ON ssa.agente_id = e.id
       LEFT JOIN (
         -- Multi-agentes asignados vía tabla ssa_agentes
-        SELECT DISTINCT employee_id
-        FROM ssa_agentes
-        WHERE estado IN ('asignado', 'confirmado')
+        -- Igual: solo vigentes dentro del rango de fecha del SSA padre
+        SELECT DISTINCT sa.employee_id
+        FROM ssa_agentes sa
+        JOIN solicitudes_servicio_adicional s2
+          ON s2.id = sa.ssa_id
+         AND s2.estado_general NOT IN ('cancelada', 'cerrada')
+         AND CURRENT_DATE BETWEEN s2.fecha AND COALESCE(s2.fecha_fin, s2.fecha)
+        WHERE sa.estado IN ('asignado', 'confirmado')
       ) ssa_ag ON ssa_ag.employee_id = e.id
       LEFT JOIN employee_operational_assignments eoa
         ON eoa.employee_id = e.id AND eoa.activa = TRUE
@@ -623,13 +630,14 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
         });
       }
 
-      // Verificar que no esté cubriendo un SSA activo
+      // Verificar que no esté cubriendo un SSA vigente HOY
       const { rows: yaEnSSA } = await pool.query(
         `SELECT s.id, c.nombre AS cliente_nombre, s.tipo_solicitud, s.fecha
          FROM solicitudes_servicio_adicional s
          LEFT JOIN clients c ON c.id = s.cliente_id
          WHERE s.agente_id = $1
-           AND s.estado_general NOT IN ('cancelada', 'cerrada')`,
+           AND s.estado_general NOT IN ('cancelada', 'cerrada')
+           AND CURRENT_DATE BETWEEN s.fecha AND COALESCE(s.fecha_fin, s.fecha)`,
         [agenteId]
       );
       if (yaEnSSA.length > 0) {
@@ -897,12 +905,14 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
         });
       }
 
-      // Bloquear si el entrante cubre un SSA activo — no se puede forzar
+      // Bloquear si el entrante cubre un SSA vigente HOY — no se puede forzar
       const { rows: yaSSA } = await pool.query(
         `SELECT s.id, c.nombre AS cliente_nombre
          FROM solicitudes_servicio_adicional s
          LEFT JOIN clients c ON c.id = s.cliente_id
-         WHERE s.agente_id = $1 AND s.estado_general NOT IN ('cancelada', 'cerrada')`,
+         WHERE s.agente_id = $1
+           AND s.estado_general NOT IN ('cancelada', 'cerrada')
+           AND CURRENT_DATE BETWEEN s.fecha AND COALESCE(s.fecha_fin, s.fecha)`,
         [agenteEntranteId]
       );
       if (yaSSA.length > 0) {

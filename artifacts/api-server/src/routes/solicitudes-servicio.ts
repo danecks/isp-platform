@@ -215,6 +215,7 @@ solicitudesServicioRouter.get("/solicitudes-servicio/tablero", async (_req, res)
       ) ag ON ag.ssa_id = s.id
       WHERE s.tarjeta_activa = TRUE
         AND s.estado_general NOT IN ('cancelada', 'cerrada')
+        AND CURRENT_DATE BETWEEN s.fecha AND COALESCE(s.fecha_fin, s.fecha)
       ORDER BY s.prioridad DESC, s.fecha ASC
     `);
     return res.json(rows);

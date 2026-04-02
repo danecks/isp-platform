@@ -611,7 +611,7 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
         s.estado_general        AS estado_ssa
       FROM solicitudes_servicio_adicional s
       JOIN clients c ON c.id = s.cliente_id
-      WHERE s.fecha = $1::date
+      WHERE $1::date BETWEEN s.fecha AND COALESCE(s.fecha_fin, s.fecha)
         AND s.estado_general NOT IN ('cancelada', 'cubierta')
 
       ORDER BY tipo, cliente_nombre
