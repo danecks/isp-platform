@@ -187,10 +187,22 @@ const QUERY_CONSOLIDADO = `
   INNER JOIN novedades_nomina_diarias n
     ON n.employee_id = e.id
     AND n.fecha BETWEEN $1 AND $2
+  -- TH: buscar el puesto del que fue titular durante el período ($1=desde, $2=hasta)
+  -- Primero busca en puesto_titular_historico; fallback a titular_employee_id actual
   LEFT JOIN LATERAL (
     SELECT po2.aplica_igss, po2.regimen_igss, po2.fecha_inicio_ciclo, po2.tipo_turno_id
     FROM puestos_operativos po2
-    WHERE po2.titular_employee_id = e.id AND po2.activo = TRUE
+    WHERE po2.activo = TRUE
+      AND (
+        EXISTS (
+          SELECT 1 FROM puesto_titular_historico pth
+          WHERE pth.puesto_id = po2.id
+            AND pth.employee_id = e.id
+            AND pth.fecha_inicio <= $2::date
+            AND (pth.fecha_fin IS NULL OR pth.fecha_fin >= $1::date)
+        )
+        OR po2.titular_employee_id = e.id
+      )
     ORDER BY po2.updated_at DESC NULLS LAST
     LIMIT 1
   ) po ON TRUE

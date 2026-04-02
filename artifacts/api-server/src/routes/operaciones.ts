@@ -23,8 +23,9 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         po.turno,
         po.agente_id,
         po.agente_nombre,
-        po.titular_employee_id,
-        po.titular_nombre,
+        -- TH: titular efectivo para la fecha consultada (histórico con fallback a actual)
+        COALESCE(th_tab.hist_titular_id,     po.titular_employee_id) AS titular_employee_id,
+        COALESCE(th_tab.hist_titular_nombre, po.titular_nombre)      AS titular_nombre,
         po.horario,
         po.jornada,
         po.sede_id,
@@ -57,6 +58,18 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         cl.fecha_inicio_contrato,
         (cl.fecha_inicio_contrato = COALESCE($1::date, CURRENT_DATE)) AS es_inicio_hoy
       FROM puestos_operativos po
+      -- TH: obtener titular histórico para la fecha consultada
+      LEFT JOIN LATERAL (
+        SELECT pth.employee_id                                        AS hist_titular_id,
+               COALESCE(e2.nombre_completo, po.titular_nombre)       AS hist_titular_nombre
+        FROM puesto_titular_historico pth
+        LEFT JOIN employees e2 ON e2.id = pth.employee_id
+        WHERE pth.puesto_id = po.id
+          AND pth.fecha_inicio <= COALESCE($1::date, CURRENT_DATE)
+          AND (pth.fecha_fin IS NULL OR pth.fecha_fin >= COALESCE($1::date, CURRENT_DATE))
+        ORDER BY pth.fecha_inicio DESC
+        LIMIT 1
+      ) th_tab ON TRUE
       LEFT JOIN employees e  ON e.id  = po.agente_id
       LEFT JOIN client_sedes cs ON cs.id = po.sede_id
       LEFT JOIN operational_zones oz ON oz.id = po.zona_operativa_id
@@ -1303,7 +1316,25 @@ operacionesRouter.post("/operaciones/cierre", async (req, res) => {
                'cubierto'           AS estado,
                cs.employee_id       AS agente_id,
                cs.empleado_nombre   AS agente_nombre,
-               po.titular_employee_id, po.titular_nombre,
+               -- TH: titular efectivo para la fecha del cierre (histórico con fallback)
+               COALESCE(
+                 (SELECT pth.employee_id FROM puesto_titular_historico pth
+                  WHERE pth.puesto_id = po.id
+                    AND pth.fecha_inicio <= $1::date
+                    AND (pth.fecha_fin IS NULL OR pth.fecha_fin >= $1::date)
+                  ORDER BY pth.fecha_inicio DESC LIMIT 1),
+                 po.titular_employee_id
+               ) AS titular_employee_id,
+               COALESCE(
+                 (SELECT e2.nombre_completo
+                  FROM puesto_titular_historico pth
+                  JOIN employees e2 ON e2.id = pth.employee_id
+                  WHERE pth.puesto_id = po.id
+                    AND pth.fecha_inicio <= $1::date
+                    AND (pth.fecha_fin IS NULL OR pth.fecha_fin >= $1::date)
+                  ORDER BY pth.fecha_inicio DESC LIMIT 1),
+                 po.titular_nombre
+               ) AS titular_nombre,
                po.turno, po.horario, po.jornada, po.notas, po.orden,
                po.zona_operativa_id, oz.nombre AS zona_nombre,
                po.sede_id,          sedes.nombre AS sede_nombre
@@ -1316,10 +1347,29 @@ operacionesRouter.post("/operaciones/cierre", async (req, res) => {
       `, [fechaACerrarISO]);
       snapshotPuestos = segSnap;
     } else {
-      // Estado actual del pizarrón
+      // Estado actual del pizarrón — titular histórico de hoy
       const { rows: puestoSnap } = await pool.query(`
         SELECT po.id, po.nombre, po.cliente_nombre, po.cliente_id, po.estado,
-               po.agente_id, po.agente_nombre, po.titular_employee_id, po.titular_nombre,
+               po.agente_id, po.agente_nombre,
+               -- TH: titular efectivo para hoy (histórico con fallback)
+               COALESCE(
+                 (SELECT pth.employee_id FROM puesto_titular_historico pth
+                  WHERE pth.puesto_id = po.id
+                    AND pth.fecha_inicio <= CURRENT_DATE
+                    AND (pth.fecha_fin IS NULL OR pth.fecha_fin >= CURRENT_DATE)
+                  ORDER BY pth.fecha_inicio DESC LIMIT 1),
+                 po.titular_employee_id
+               ) AS titular_employee_id,
+               COALESCE(
+                 (SELECT e2.nombre_completo
+                  FROM puesto_titular_historico pth
+                  JOIN employees e2 ON e2.id = pth.employee_id
+                  WHERE pth.puesto_id = po.id
+                    AND pth.fecha_inicio <= CURRENT_DATE
+                    AND (pth.fecha_fin IS NULL OR pth.fecha_fin >= CURRENT_DATE)
+                  ORDER BY pth.fecha_inicio DESC LIMIT 1),
+                 po.titular_nombre
+               ) AS titular_nombre,
                po.turno, po.horario, po.jornada, po.notas, po.orden,
                po.zona_operativa_id, oz.nombre AS zona_nombre,
                po.sede_id, sedes.nombre AS sede_nombre

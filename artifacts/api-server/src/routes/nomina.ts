@@ -113,9 +113,23 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
         BOOL_OR(cs.fue_en_dia_descanso)                 AS descanso_trabajado,
         COUNT(DISTINCT cs.puesto_id)                    AS num_puestos_cubiertos,
         e.nombre_completo                               AS nombre_emp,
-        -- puesto titular del empleado (su asignación base en puestos_operativos)
-        (SELECT po2.id   FROM puestos_operativos po2 WHERE po2.titular_employee_id = cs.employee_id AND po2.activo = TRUE LIMIT 1) AS puesto_titular_id,
-        (SELECT po2.nombre FROM puestos_operativos po2 WHERE po2.titular_employee_id = cs.employee_id AND po2.activo = TRUE LIMIT 1) AS puesto_titular_nombre,
+        -- TH: puesto titular del empleado en esa fecha (histórico con fallback a actual)
+        COALESCE(
+          (SELECT pth.puesto_id FROM puesto_titular_historico pth
+           WHERE pth.employee_id = cs.employee_id
+             AND pth.fecha_inicio <= $1::date
+             AND (pth.fecha_fin IS NULL OR pth.fecha_fin >= $1::date)
+           ORDER BY pth.fecha_inicio DESC LIMIT 1),
+          (SELECT po2.id FROM puestos_operativos po2 WHERE po2.titular_employee_id = cs.employee_id AND po2.activo = TRUE LIMIT 1)
+        ) AS puesto_titular_id,
+        (SELECT po3.nombre FROM puestos_operativos po3 WHERE po3.id = COALESCE(
+          (SELECT pth.puesto_id FROM puesto_titular_historico pth
+           WHERE pth.employee_id = cs.employee_id
+             AND pth.fecha_inicio <= $1::date
+             AND (pth.fecha_fin IS NULL OR pth.fecha_fin >= $1::date)
+           ORDER BY pth.fecha_inicio DESC LIMIT 1),
+          (SELECT po2.id FROM puestos_operativos po2 WHERE po2.titular_employee_id = cs.employee_id AND po2.activo = TRUE LIMIT 1)
+        )) AS puesto_titular_nombre,
         -- si es relevo, el puesto que cubrió (el primero del día)
         (SELECT cs2.puesto_id   FROM cobertura_segmentos cs2 WHERE cs2.fecha = $1 AND cs2.employee_id = cs.employee_id AND cs2.tipo_cobertura = 'relevo' LIMIT 1) AS puesto_cubierto_id,
         -- tipo_novedad del segmento de relevo (motivo de la sustitución)
@@ -238,9 +252,23 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
           cd.horas_trabajadas,
           cd.horas_extra,
           cd.tipo_cobertura,
-          -- Puesto titular del empleado que cubre (puede diferir si es relevo)
-          (SELECT po2.id    FROM puestos_operativos po2 WHERE po2.titular_employee_id = cd.cobertura_employee_id AND po2.activo = TRUE ORDER BY po2.updated_at DESC NULLS LAST LIMIT 1) AS puesto_titular_id,
-          (SELECT po2.nombre FROM puestos_operativos po2 WHERE po2.titular_employee_id = cd.cobertura_employee_id AND po2.activo = TRUE ORDER BY po2.updated_at DESC NULLS LAST LIMIT 1) AS puesto_titular_nombre
+          -- TH: puesto titular del empleado en esa fecha (histórico con fallback)
+          COALESCE(
+            (SELECT pth.puesto_id FROM puesto_titular_historico pth
+             WHERE pth.employee_id = cd.cobertura_employee_id
+               AND pth.fecha_inicio <= $1::date
+               AND (pth.fecha_fin IS NULL OR pth.fecha_fin >= $1::date)
+             ORDER BY pth.fecha_inicio DESC LIMIT 1),
+            (SELECT po2.id FROM puestos_operativos po2 WHERE po2.titular_employee_id = cd.cobertura_employee_id AND po2.activo = TRUE ORDER BY po2.updated_at DESC NULLS LAST LIMIT 1)
+          ) AS puesto_titular_id,
+          (SELECT po3.nombre FROM puestos_operativos po3 WHERE po3.id = COALESCE(
+            (SELECT pth.puesto_id FROM puesto_titular_historico pth
+             WHERE pth.employee_id = cd.cobertura_employee_id
+               AND pth.fecha_inicio <= $1::date
+               AND (pth.fecha_fin IS NULL OR pth.fecha_fin >= $1::date)
+             ORDER BY pth.fecha_inicio DESC LIMIT 1),
+            (SELECT po2.id FROM puestos_operativos po2 WHERE po2.titular_employee_id = cd.cobertura_employee_id AND po2.activo = TRUE ORDER BY po2.updated_at DESC NULLS LAST LIMIT 1)
+          )) AS puesto_titular_nombre
         FROM cobertura_diaria cd
         LEFT JOIN employees e ON e.id = cd.cobertura_employee_id
         WHERE cd.fecha = $1
@@ -400,44 +428,65 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
       count++;
     }
 
-    // Fix P-NOM-04: Titulares con puesto activo pero SIN ningún segmento ese día
-    // (complementa la detección de ausencia_sin_cubrir en cobertura_diaria)
+    // Fix P-NOM-04 + TH (Titularidad Histórica): Titulares con puesto activo pero SIN ningún
+    // segmento ese día. Usa puesto_titular_historico para determinar quién era titular en esa
+    // fecha exacta (no el titular_employee_id actual). Fallback: titular_employee_id actual.
     // GUARD: no marcar falta si el titular tiene asignación activa en puesto o SSA
     // (evita faltas prematuras cuando la auto-auditoría corre antes de que se registren segmentos)
     const { rows: titularesSinPresencia } = await pool.query(`
-      SELECT po.titular_employee_id AS employee_id,
-             e.nombre_completo      AS empleado_nombre,
-             po.id                  AS puesto_titular_id,
-             po.nombre              AS puesto_titular_nombre,
+      SELECT
+             -- Titular efectivo para la fecha (histórico con fallback a actual)
+             COALESCE(
+               (SELECT pth.employee_id FROM puesto_titular_historico pth
+                WHERE pth.puesto_id = po.id
+                  AND pth.fecha_inicio <= $1::date
+                  AND (pth.fecha_fin IS NULL OR pth.fecha_fin >= $1::date)
+                ORDER BY pth.fecha_inicio DESC LIMIT 1),
+               po.titular_employee_id
+             )                          AS employee_id,
+             e.nombre_completo          AS empleado_nombre,
+             po.id                      AS puesto_titular_id,
+             po.nombre                  AS puesto_titular_nombre,
              -- Turno del puesto para determinar si es día de descanso del ciclo
-             t.id                   AS turno_id,
-             t.nombre               AS turno_nombre,
-             t.horas_trabajo::float AS horas_trabajo,
-             t.horas_descanso::float AS horas_descanso,
+             t.id                       AS turno_id,
+             t.nombre                   AS turno_nombre,
+             t.horas_trabajo::float     AS horas_trabajo,
+             t.horas_descanso::float    AS horas_descanso,
              (t.horas_trabajo + t.horas_descanso)::float AS ciclo_horas,
              po.fecha_inicio_ciclo::text AS fecha_inicio_ciclo,
              e.dia_descanso
       FROM puestos_operativos po
-      JOIN employees e ON e.id = po.titular_employee_id
+      -- Determinar titular efectivo para la fecha (histórico con fallback)
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(
+          (SELECT pth2.employee_id FROM puesto_titular_historico pth2
+           WHERE pth2.puesto_id = po.id
+             AND pth2.fecha_inicio <= $1::date
+             AND (pth2.fecha_fin IS NULL OR pth2.fecha_fin >= $1::date)
+           ORDER BY pth2.fecha_inicio DESC LIMIT 1),
+          po.titular_employee_id
+        ) AS efectivo_id
+      ) th_hist ON TRUE
+      JOIN employees e ON e.id = th_hist.efectivo_id
       LEFT JOIN turnos t ON t.id = po.tipo_turno_id
       WHERE po.activo = TRUE
-        AND po.titular_employee_id IS NOT NULL
+        AND th_hist.efectivo_id IS NOT NULL
         -- Sin segmento registrado para ese día
         AND NOT EXISTS (
           SELECT 1 FROM cobertura_segmentos cs
           WHERE cs.fecha = $1
-            AND cs.employee_id = po.titular_employee_id
+            AND cs.employee_id = th_hist.efectivo_id
         )
         -- GUARD: no marcar si el agente está activamente cubriendo algún puesto ahora
         AND NOT EXISTS (
           SELECT 1 FROM puestos_operativos po2
-          WHERE po2.agente_id = po.titular_employee_id
+          WHERE po2.agente_id = th_hist.efectivo_id
             AND po2.activo = TRUE
         )
         -- GUARD: no marcar si el agente está en un SSA activo con tarjeta activa
         AND NOT EXISTS (
           SELECT 1 FROM solicitudes_servicio_adicional ssa
-          WHERE ssa.agente_id = po.titular_employee_id
+          WHERE ssa.agente_id = th_hist.efectivo_id
             AND ssa.estado_general NOT IN ('cancelada', 'cerrada')
             AND ssa.tarjeta_activa = TRUE
         )
@@ -446,7 +495,7 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
         AND NOT EXISTS (
           SELECT 1 FROM cobertura_diaria cd
           WHERE cd.fecha = $1
-            AND cd.cobertura_employee_id = po.titular_employee_id
+            AND cd.cobertura_employee_id = th_hist.efectivo_id
             AND cd.tipo_cobertura IN ('titular', 'titular_he', 'relevo')
         )
     `, [fecha]);
