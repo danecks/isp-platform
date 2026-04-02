@@ -272,8 +272,11 @@ solicitudesServicioRouter.get("/solicitudes-servicio/:id", async (req, res) => {
          cs.nombre AS sede_nombre,
          po.nombre AS puesto_nombre,
          t1.id AS top_id, t1.titulo AS top_titulo, t1.estado AS top_estado, t1.asignado AS top_asignado,
+         t1.estado AS tarea_ops_estado,
          t2.id AS trrhh_id, t2.titulo AS trrhh_titulo, t2.estado AS trrhh_estado, t2.asignado AS trrhh_asignado,
-         t3.id AS tcom_id, t3.titulo AS tcom_titulo, t3.estado AS tcom_estado, t3.asignado AS tcom_asignado
+         t2.estado AS tarea_rrhh_estado,
+         t3.id AS tcom_id, t3.titulo AS tcom_titulo, t3.estado AS tcom_estado, t3.asignado AS tcom_asignado,
+         t3.estado AS tarea_comercial_estado
        FROM solicitudes_servicio_adicional s
        LEFT JOIN clients c ON c.id = s.cliente_id
        LEFT JOIN client_sedes cs ON cs.id = s.sede_id

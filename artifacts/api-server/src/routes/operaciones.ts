@@ -166,14 +166,15 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         t.nombre         AS turno_nombre,
         titular_po.fecha_inicio_ciclo AS fecha_inicio_ciclo_turno,
         CASE
-          WHEN po.agente_id  IS NOT NULL AND e.estado_laboral = 'activo' THEN 'en_puesto'
-          WHEN ssa.agente_id IS NOT NULL AND e.estado_laboral = 'activo' THEN 'en_ssa'
-          WHEN e.estado_laboral = 'licencia'                             THEN 'en_descanso'
-          WHEN e.estado_laboral = 'suspendido'                           THEN 'suspendido'
+          WHEN po.agente_id   IS NOT NULL AND e.estado_laboral = 'activo' THEN 'en_puesto'
+          WHEN (ssa.agente_id IS NOT NULL OR ssa_ag.employee_id IS NOT NULL)
+               AND e.estado_laboral = 'activo'                            THEN 'en_ssa'
+          WHEN e.estado_laboral = 'licencia'                              THEN 'en_descanso'
+          WHEN e.estado_laboral = 'suspendido'                            THEN 'suspendido'
           WHEN titular_po.id IS NOT NULL
                AND (titular_po.agente_id IS NULL OR titular_po.agente_id != e.id)
                AND COALESCE(titular_po.estado_operativo_puesto, 'normal') != 'normal'
-               AND e.estado_laboral = 'activo'                           THEN 'faltando'
+               AND e.estado_laboral = 'activo'                            THEN 'faltando'
           ELSE 'disponible'
         END AS categoria
       FROM employees e
@@ -183,11 +184,18 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         WHERE activo = TRUE AND agente_id IS NOT NULL
       ) po ON po.agente_id = e.id
       LEFT JOIN (
+        -- Campo legacy: agente_id directo en la solicitud (single-agent)
         SELECT DISTINCT agente_id
         FROM solicitudes_servicio_adicional
         WHERE agente_id IS NOT NULL
           AND estado_general NOT IN ('cancelada', 'cerrada')
       ) ssa ON ssa.agente_id = e.id
+      LEFT JOIN (
+        -- Multi-agentes asignados vía tabla ssa_agentes
+        SELECT DISTINCT employee_id
+        FROM ssa_agentes
+        WHERE estado IN ('asignado', 'confirmado')
+      ) ssa_ag ON ssa_ag.employee_id = e.id
       LEFT JOIN employee_operational_assignments eoa
         ON eoa.employee_id = e.id AND eoa.activa = TRUE
       LEFT JOIN LATERAL (
@@ -203,11 +211,14 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         AND (
           COALESCE(e.elegible_pool, TRUE) = TRUE
           OR (
+            -- Siempre incluir titulares faltando aunque no sean elegibles para pool
             titular_po.id IS NOT NULL
             AND (titular_po.agente_id IS NULL OR titular_po.agente_id != e.id)
             AND COALESCE(titular_po.estado_operativo_puesto, 'normal') != 'normal'
             AND e.estado_laboral = 'activo'
           )
+          OR ssa.agente_id IS NOT NULL
+          OR ssa_ag.employee_id IS NOT NULL
         )
       ORDER BY e.estado_laboral, e.nombre_completo
     `);
