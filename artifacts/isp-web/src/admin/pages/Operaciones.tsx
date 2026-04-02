@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { ModalFichaArma } from "@/admin/components/ModalFichaArma";
 
 const API_BASE = "/api";
 
@@ -2756,6 +2757,7 @@ function DroppablePuesto({
   cambiosProximos?: PlanFuturo[];
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: `puesto-${puesto.id}` });
+  const [fichaArmaId, setFichaArmaId] = useState<number | null>(null);
   const cubierto       = puesto.estado === "cubierto" && puesto.agente_id;
   const esRelevo       = cubierto && puesto.titular_employee_id && puesto.agente_id !== puesto.titular_employee_id;
   const titularAusente = !puesto.agente_id && !!puesto.titular_employee_id;
@@ -2974,15 +2976,18 @@ function DroppablePuesto({
       )}
 
       {/* Arma asignada al puesto */}
-      {puesto.arma_codigo && (
-        <div className="flex items-center gap-1 mt-1.5 px-1.5 py-0.5 bg-blue-500/8 border border-blue-500/15 rounded-md w-fit"
-          title={`Arma asignada: ${puesto.arma_codigo} — ${puesto.arma_tipo ?? ""}`}>
+      {puesto.arma_codigo && puesto.arma_id && (
+        <button
+          onClick={e => { e.stopPropagation(); setFichaArmaId(puesto.arma_id!); }}
+          title={`Ver ficha: ${puesto.arma_codigo} — ${puesto.arma_tipo ?? ""}`}
+          className="flex items-center gap-1 mt-1.5 px-1.5 py-0.5 bg-blue-500/8 border border-blue-500/15 rounded-md w-fit hover:bg-blue-500/15 hover:border-blue-500/30 transition-colors cursor-pointer"
+        >
           <Shield className="w-2.5 h-2.5 text-blue-400/60 shrink-0" />
           <span className="text-[9px] font-mono font-semibold text-blue-300/70">{puesto.arma_codigo}</span>
           {puesto.arma_tipo && (
             <span className="text-[9px] text-blue-300/40 capitalize">{puesto.arma_tipo}</span>
           )}
-        </div>
+        </button>
       )}
 
       {/* Botón tramos */}
@@ -3000,6 +3005,14 @@ function DroppablePuesto({
       {/* Overlay drag-over */}
       {isOver && (
         <div className="absolute inset-0 rounded-xl border-2 border-primary border-dashed pointer-events-none" />
+      )}
+
+      {/* Modal ficha del arma */}
+      {fichaArmaId && (
+        <ModalFichaArma
+          armaId={fichaArmaId}
+          onClose={() => setFichaArmaId(null)}
+        />
       )}
     </div>
   );
