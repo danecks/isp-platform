@@ -381,7 +381,7 @@ function ModalRelevo({
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-white/50">Nuevo responsable <span className="text-red-400">*</span></label>
             <select value={nuevoEmpId} onChange={e => setNuevoEmpId(e.target.value)} required className={inputCls}>
-              <option value="">— Selecciona supervisor/colaborador —</option>
+              <option value="">— Selecciona supervisor / jefe de servicio / administración —</option>
               {supervisores.map(s => (
                 <option key={s.id} value={s.id}>{s.nombre_completo} ({s.tipo_personal?.replace(/_/g, " ")})</option>
               ))}
@@ -488,16 +488,21 @@ export default function Vehiculos() {
 
   const { data: supervisores = [] } = useQuery<{ id: number; nombre_completo: string; tipo_personal: string }[]>({
     queryKey: ["empleados-para-relevo"],
-    queryFn: () => apiFetch<any[]>(`${API}/employees`).then(list =>
-      list
-        .filter((e: any) => (e.estadoLaboral ?? e.estado_laboral) === "activo" || !(e.estadoLaboral ?? e.estado_laboral))
+    queryFn: () => apiFetch<any[]>(`${API}/employees`).then(list => {
+      const TIPOS_PERMITIDOS = ["supervisor", "jefe_servicio", "administrativo_rrhh", "administrativo_bodega", "gerencia"];
+      return list
+        .filter((e: any) => {
+          const tipo = e.tipoPersonal ?? e.tipo_personal ?? "";
+          const activo = (e.estadoLaboral ?? e.estado_laboral) === "activo" || !(e.estadoLaboral ?? e.estado_laboral);
+          return activo && TIPOS_PERMITIDOS.includes(tipo);
+        })
         .map((e: any) => ({
           id: e.id,
           nombre_completo: e.nombreCompleto ?? e.nombre_completo ?? "",
           tipo_personal: e.tipoPersonal ?? e.tipo_personal ?? "",
         }))
-        .sort((a, b) => a.nombre_completo.localeCompare(b.nombre_completo))
-    ),
+        .sort((a, b) => a.nombre_completo.localeCompare(b.nombre_completo));
+    }),
     staleTime: 120_000,
   });
 
