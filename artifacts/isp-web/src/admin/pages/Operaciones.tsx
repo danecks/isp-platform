@@ -3043,11 +3043,20 @@ function ClienteColumna({
   cambiosFuturosProximos?: Record<number, PlanFuturo[]>;
   resaltado?: boolean;
 }) {
+  const ssKey = `piz_col_cli_${cliente.clienteId ?? cliente.clienteNombre}`;
+  const [colapsado, setColapsado] = useState(() => {
+    try { return sessionStorage.getItem(ssKey) === "1"; } catch { return false; }
+  });
+  const toggleCol = () => setColapsado(prev => {
+    const next = !prev;
+    try { sessionStorage.setItem(ssKey, next ? "1" : "0"); } catch {}
+    return next;
+  });
+
   const cubiertos      = cliente.puestos.filter((p) => p.estado === "cubierto" && p.agente_id).length;
   const descansoCicloN = cliente.puestos.filter((p) => p.descanso_por_ciclo === true && !(p.estado === "cubierto" && p.agente_id)).length;
   const descubiertoN   = cliente.puestos.filter((p) => !(p.estado === "cubierto" && p.agente_id) && !p.descanso_por_ciclo).length;
   const total          = cliente.puestos.length;
-  // Para la barra de progreso, el descanso de ciclo no cuenta como problema
   const pct         = total > 0 ? Math.round(((cubiertos + descansoCicloN) / total) * 100) : 0;
   const colorBarra  = descubiertoN > 0 ? "bg-red-500" : pct === 100 ? "bg-green-500" : "bg-indigo-500";
 
@@ -3057,8 +3066,41 @@ function ClienteColumna({
     ? "border border-emerald-500/40 ring-1 ring-emerald-500/20"
     : "border border-white/8";
 
+  if (colapsado) {
+    return (
+      <div
+        className={`flex-shrink-0 w-10 bg-[#060f1a] rounded-2xl overflow-hidden flex flex-col max-h-full transition-all duration-200 cursor-pointer group ${borderClass}`}
+        onClick={toggleCol}
+        title={`${cliente.clienteNombre} — ${cubiertos}/${total} cubiertos. Clic para expandir`}
+      >
+        {/* Indicador de alertas arriba */}
+        {descubiertoN > 0 && (
+          <div className="w-full h-1 bg-red-500 shrink-0" />
+        )}
+        {descubiertoN === 0 && pct === 100 && (
+          <div className="w-full h-1 bg-green-500 shrink-0" />
+        )}
+        {/* Nombre vertical */}
+        <div className="flex-1 flex items-center justify-center py-3 min-h-0 overflow-hidden">
+          <span
+            className="text-[10px] font-bold text-white/50 group-hover:text-white/80 transition-colors leading-none"
+            style={{ writingMode: "vertical-rl", textOrientation: "mixed", transform: "rotate(180deg)" }}
+          >
+            {cliente.clienteNombre.length > 20 ? cliente.clienteNombre.slice(0, 18) + "…" : cliente.clienteNombre}
+          </span>
+        </div>
+        {/* Conteo abajo */}
+        <div className="shrink-0 flex flex-col items-center gap-0.5 py-2 border-t border-white/6">
+          <span className={`text-[9px] font-bold ${descubiertoN > 0 ? "text-red-400" : "text-green-400"}`}>{cubiertos}</span>
+          <div className="w-px h-2 bg-white/10" />
+          <span className="text-[9px] text-white/20">{total}</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`flex-shrink-0 w-64 bg-[#060f1a] rounded-2xl overflow-hidden flex flex-col max-h-full transition-all duration-700 ${borderClass}`}>
+    <div className={`flex-shrink-0 w-64 bg-[#060f1a] rounded-2xl overflow-hidden flex flex-col max-h-full transition-all duration-200 ${borderClass}`}>
       {/* Badge de inicio de proyecto */}
       {resaltado && (
         <div className="px-3 py-1.5 bg-amber-500/15 border-b border-amber-500/25 flex items-center gap-1.5">
@@ -3075,21 +3117,34 @@ function ClienteColumna({
       {/* Header cliente */}
       <div className="px-3 py-3 border-b border-white/8">
         <div className="flex items-start justify-between gap-2 mb-2">
-          <div className="min-w-0">
-            <h3 className="text-xs font-bold text-white truncate">{cliente.clienteNombre}</h3>
+          <button
+            onClick={toggleCol}
+            className="min-w-0 text-left flex-1 group/col"
+            title="Colapsar columna"
+          >
+            <h3 className="text-xs font-bold text-white truncate group-hover/col:text-white/70 transition-colors">{cliente.clienteNombre}</h3>
             <p className="text-[10px] text-white/35 mt-0.5">
               {cubiertos}/{total} cubiertos
               {descansoCicloN > 0 && <span className="ml-1 text-indigo-400/50">· {descansoCicloN} en ciclo</span>}
               {descubiertoN > 0 && <span className="ml-1 text-red-400/60">· {descubiertoN} descubiertos</span>}
             </p>
-          </div>
-          <button
-            onClick={() => onNuevoPuesto(cliente)}
-            className="text-white/20 hover:text-primary transition-colors shrink-0 mt-0.5"
-            title="Agregar puesto"
-          >
-            <Plus className="w-3.5 h-3.5" />
           </button>
+          <div className="flex items-center gap-1 shrink-0 mt-0.5">
+            <button
+              onClick={toggleCol}
+              className="text-white/15 hover:text-white/50 transition-colors"
+              title="Colapsar columna"
+            >
+              <ChevronRight className="w-3 h-3 rotate-90" />
+            </button>
+            <button
+              onClick={() => onNuevoPuesto(cliente)}
+              className="text-white/20 hover:text-primary transition-colors"
+              title="Agregar puesto"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
         {/* Barra de cobertura */}
         <div className="h-1 bg-white/8 rounded-full overflow-hidden">
