@@ -1,0 +1,93 @@
+Sí, ya vas mucho mejor, pero todavía te corrijo un par de cosas antes de que implemente.
+
+12 horas
+
+La idea general ya está bien:
+	•	6 días trabaja
+	•	1 día descansa
+	•	el día de descanso puede servir para HE
+	•	no debe tratarse como “siempre trabajando”
+
+Eso sí lo entendiste bien.
+
+Lo que te ajustaría
+
+No asumiría todavía que:
+	•	“si inició ciclo el lunes, siempre descansa domingo”
+
+Eso puede ser cierto si la fecha_inicio_ciclo define exactamente el día 1 del bloque de 6, pero quiero que lo implementes como ciclo, no como nombre fijo del día.
+
+O sea, correcto sería:
+	•	fecha_inicio_ciclo = inicio del bloque
+	•	días 0–5 = trabaja
+	•	día 6 = descansa
+	•	repetir
+
+Eso sí.
+
+24x48
+
+Aquí ya entendiste mucho mejor la naturaleza semanal, pero todavía hay una parte que no me convence:
+
+Lo correcto que sí entendiste
+	•	entre semana se parece a 24x24
+	•	el fin de semana hay un bloque largo de 48h
+	•	la semana siguiente se invierten
+	•	no basta con módulo simple de días
+
+Eso está bien.
+
+Lo que no quiero que asumas todavía
+
+No quiero que des por hecho esta tabla como definitiva:
+	•	lunes A trabaja / B descansa
+	•	martes A descansa / B trabaja
+	•	miércoles A trabaja / B descansa
+	•	jueves A descansa / B trabaja
+	•	viernes A inicia 48h
+	•	sábado A sigue
+	•	domingo ambos descansan
+
+Porque ahí todavía hay un riesgo: esa tabla puede no coincidir exactamente con cómo lo operan en la realidad si el corte del bloque de 48h no es exactamente viernes→domingo o si el relevo de semana no se comporta así.
+
+Lo que sí te confirmo
+
+Antes de implementar, quiero que mantengas estas reglas como base:
+
+Turno 12 horas
+	•	ciclo de 7 días
+	•	6 trabajo + 1 descanso
+	•	el descanso cuenta como descanso real de ciclo
+	•	el descanso puede ser candidato a HE
+
+Turno 24x48
+	•	no es un ciclo simple de 3 días
+	•	depende de:
+	•	día de semana
+	•	semana par/impar
+	•	bloque largo de fin de semana
+	•	entre semana alterna como 24x24
+	•	en fin de semana uno toma el bloque largo y el otro descansa
+	•	la semana siguiente se invierten
+
+Lo que quiero antes de implementar
+
+Antes de pasar a código, quiero que me devuelvas solo una cosa más:
+
+Una tabla semanal completa del 24x48
+
+Hazme una tabla de 14 días seguidos para:
+	•	Titular A
+	•	Titular B
+
+Mostrando:
+	•	día
+	•	quién trabaja
+	•	quién descansa
+	•	dónde cae exactamente el bloque de 48h
+
+Sin eso, todavía hay riesgo de que implementes una tabla semanal que no refleje exactamente la operación real.
+
+Respuesta corta
+	•	12 horas: sí, ya lo entendiste bien
+	•	24x48: ya entendiste la idea correcta, pero todavía no te autorizo implementar hasta que me muestres la tabla de 14 días y validemos que el patrón exacto sea el correcto
