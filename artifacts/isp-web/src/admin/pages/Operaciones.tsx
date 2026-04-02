@@ -28,6 +28,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { ModalFichaArma } from "@/admin/components/ModalFichaArma";
+import { ModalFichaVehiculo } from "@/admin/components/ModalFichaVehiculo";
 
 const API_BASE = "/api";
 
@@ -4502,6 +4503,7 @@ export default function Operaciones() {
   const [modalSegmentos, setModalSegmentos]          = useState<Puesto | null>(null);
   const [modalAsignarSSA, setModalAsignarSSA]        = useState<TarjetaSSAPendiente | null>(null);
   const [ssaTabActivo, setSsaTabActivo]              = useState<"sin_asignar" | "cubierta">("sin_asignar");
+  const [fichaVehiculoId, setFichaVehiculoId]        = useState<number | null>(null);
 
   // ── Estado de colapso de paneles (persiste en sessionStorage) ─────────────
   function initCollapse(key: string, defaultVal = false) {
@@ -6067,17 +6069,18 @@ export default function Operaciones() {
                   {(sv as any).vehiculos_zona?.length > 0 && (
                     <div className="flex flex-wrap gap-1 border-t border-white/5 pt-1.5">
                       {((sv as any).vehiculos_zona as Array<{ id: number; placa: string; tipo: string; marca: string; color: string; estado: string }>).map((veh) => (
-                        <span
+                        <button
                           key={veh.id}
-                          className={`flex items-center gap-1 text-[8px] font-bold px-1.5 py-0.5 rounded border ${
+                          onClick={(e) => { e.stopPropagation(); setFichaVehiculoId(veh.id); }}
+                          className={`flex items-center gap-1 text-[8px] font-bold px-1.5 py-0.5 rounded border transition-all ${
                             veh.estado === "activo"
-                              ? "bg-sky-500/10 border-sky-500/25 text-sky-300"
-                              : "bg-white/4 border-white/8 text-white/30 line-through"
+                              ? "bg-sky-500/10 border-sky-500/25 text-sky-300 hover:bg-sky-500/20 hover:border-sky-400/50"
+                              : "bg-white/4 border-white/8 text-white/30 line-through hover:bg-white/8"
                           }`}
-                          title={`${veh.marca} · ${veh.color} · ${veh.estado}`}
+                          title={`Ver ficha: ${veh.marca ?? ""} ${veh.color ?? ""} · ${veh.estado}`}
                         >
                           🚗 {veh.placa}
-                        </span>
+                        </button>
                       ))}
                     </div>
                   )}
@@ -6386,6 +6389,13 @@ export default function Operaciones() {
           fechaParaReabrir={fechaCierreParaReabrir}
           onConfirm={reabrirDia}
           onClose={() => setModalReabrir(false)}
+        />
+      )}
+
+      {fichaVehiculoId && (
+        <ModalFichaVehiculo
+          vehiculoId={fichaVehiculoId}
+          onClose={() => setFichaVehiculoId(null)}
         />
       )}
 
