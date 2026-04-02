@@ -19,7 +19,7 @@ import { AdminLayout } from "../layout/AdminLayout";
 import {
   Users, Loader2, RefreshCw, Plus, X, AlertTriangle,
   CheckCircle2, Clock, User, Phone, MapPin, ArrowLeftRight,
-  History, Trash2, Shield, Activity, Zap, ChevronDown,
+  History, Trash2, Shield, ShieldCheck, Activity, Zap, ChevronDown,
   ChevronRight, ChevronLeft, Info, Building2, Circle, GripVertical,
   UserMinus, UserPlus, UserCheck, XCircle, RotateCcw, FileText,
   Lock, Unlock, Calendar, CalendarDays, AlertCircle, CheckSquare,
@@ -274,6 +274,7 @@ interface AgentePoolFuturo {
   nombre_completo: string;
   elegible_pool: boolean;
   estado_laboral: string;
+  tipo_personal?: string;
   puesto_id: number | null;
   puesto_nombre: string | null;
   cliente_nombre: string | null;
@@ -2364,6 +2365,41 @@ function PoolFuturoPanel({
         )}
       </div>
 
+      {/* ── Supervisores y Jefes de Servicio en esta fecha ────────────── */}
+      {(() => {
+        const svJfTrab = data.trabajando.filter(a => a.tipo_personal === "supervisor" || a.tipo_personal === "jefe_servicio");
+        const svJfDesc = data.descansando.filter(a => a.tipo_personal === "supervisor" || a.tipo_personal === "jefe_servicio");
+        if (svJfTrab.length + svJfDesc.length === 0) return null;
+        return (
+          <div className="border-b border-orange-500/15 bg-orange-500/3 px-3 py-2">
+            <div className="flex items-center gap-2 mb-1.5">
+              <ShieldCheck className="w-3 h-3 text-orange-400/70" />
+              <span className="text-[10px] font-bold text-orange-300/70 uppercase tracking-widest">Supervisores / Jefes de Servicio</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {svJfTrab.map(ag => (
+                <div key={ag.id} className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium bg-orange-500/10 border border-orange-500/20 text-orange-200/80" title={`En turno · ${ag.turno_nombre ?? ""}`}>
+                  <div className={`w-4 h-4 rounded text-[8px] font-bold flex items-center justify-center shrink-0 ${avatarColor(ag.nombre_completo)}`}>
+                    {iniciales(ag.nombre_completo)}
+                  </div>
+                  <span className="truncate max-w-[80px]">{ag.nombre_completo.split(" ").slice(0, 2).join(" ")}</span>
+                  <span className="text-[8px] px-1 py-0.5 rounded bg-teal-500/20 text-teal-300 font-bold shrink-0">TURNO</span>
+                </div>
+              ))}
+              {svJfDesc.map(ag => (
+                <div key={ag.id} className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium bg-orange-500/5 border border-orange-500/10 text-orange-300/50" title={`Descanso · ${ag.turno_nombre ?? ""}`}>
+                  <div className={`w-4 h-4 rounded text-[8px] font-bold flex items-center justify-center shrink-0 opacity-60 ${avatarColor(ag.nombre_completo)}`}>
+                    {iniciales(ag.nombre_completo)}
+                  </div>
+                  <span className="truncate max-w-[80px]">{ag.nombre_completo.split(" ").slice(0, 2).join(" ")}</span>
+                  <span className="text-[8px] px-1 py-0.5 rounded bg-blue-500/15 text-blue-300/70 font-bold shrink-0">DESC</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Tabs */}
       <div className="flex border-b border-white/6 overflow-x-auto">
         {tabs.map((t) => (
@@ -2423,6 +2459,11 @@ function PoolFuturoPanel({
               {iniciales(ag.nombre_completo)}
             </div>
             <span className="truncate max-w-[100px]">{ag.nombre_completo.split(" ").slice(0, 2).join(" ")}</span>
+            {(ag.tipo_personal === "supervisor" || ag.tipo_personal === "jefe_servicio") && (
+              <span className="text-[8px] px-1 py-0.5 rounded font-bold bg-orange-500/20 text-orange-300 shrink-0">
+                {ag.tipo_personal === "supervisor" ? "Sup." : "Jefe"}
+              </span>
+            )}
             {tabActivo === "ausenteProgramado" && (
               <span className={`text-[9px] px-1 py-0.5 rounded font-bold ${ag.fuente_ausencia === "rrhh" ? "bg-orange-500/20 text-orange-300" : "bg-indigo-500/20 text-indigo-300"}`}>
                 {ag.fuente_ausencia === "rrhh" ? "RRHH" : "OP"}
