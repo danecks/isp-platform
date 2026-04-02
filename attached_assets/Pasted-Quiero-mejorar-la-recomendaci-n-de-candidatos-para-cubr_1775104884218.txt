@@ -1,0 +1,129 @@
+Quiero mejorar la recomendación de candidatos para cubrir puestos en ISPSA.
+
+Ya existe:
+- agrupación por zona
+- banner de contexto del puesto
+- lista de candidatos de “misma zona” y “otras zonas”
+
+Ahora quiero que, además de agrupar, el sistema ordene automáticamente a los candidatos por prioridad operativa real.
+
+No quiero romper nada existente.
+
+## Objetivo
+Que el sistema sugiera primero a los agentes más convenientes para cubrir un puesto, usando una lógica de ranking clara y útil para el jefe de servicio.
+
+---
+
+## 1. Regla general
+Cuando se seleccione un puesto vacío o se pida cobertura, quiero que los candidatos ya no salgan solo agrupados por zona, sino también ordenados por prioridad.
+
+---
+
+## 2. Orden de prioridad base
+Quiero este orden inicial:
+
+### Prioridad 1
+Disponible real + misma zona
+
+### Prioridad 2
+Descansando por ciclo + misma zona
+- con badge o indicador de HE
+
+### Prioridad 3
+Disponible real + otras zonas
+
+### Prioridad 4
+Descansando por ciclo + otras zonas
+
+### Deben quedar al final o no ser elegibles
+- ausentes
+- suspendidos
+- incapacidad
+- en SSA si eso los bloquea
+- ya trabajando si eso los bloquea
+
+---
+
+## 3. Ranking más fino dentro de cada grupo
+Dentro de cada grupo, si es posible, ordenar mejor usando criterios adicionales como:
+
+- si ya conoce al cliente
+- si ya estuvo asignado a ese puesto o cliente antes
+- si ya está ligado a esa zona
+- si tiene puesto titular en esa zona
+- si no tiene conflictos operativos
+
+No hace falta hacer un sistema de IA complejo.
+Quiero una lógica práctica y útil.
+
+---
+
+## 4. Mostrar por qué está recomendado
+Quiero que el sistema muestre alguna pista de por qué aparece arriba.
+
+Ejemplos:
+- misma zona
+- disponible
+- descanso de ciclo (HE)
+- ya cubrió este cliente
+- asignado a esta zona
+
+No quiero una lista “mágica” sin explicación.
+
+---
+
+## 5. UI
+La lista debe seguir siendo clara.
+
+Puede mostrar algo como:
+- badge de estado
+- badge de zona
+- badge de razón de prioridad
+- o un pequeño texto secundario
+
+Pero no quiero recargar demasiado la pantalla.
+
+---
+
+## 6. Dónde aplicarlo
+Quiero esta lógica en:
+- pizarrón operativo
+- cobertura de ausencias
+- planificación futura
+- SSA
+- cualquier recomendación de cobertura
+
+---
+
+## 7. No romper
+No romper:
+- agrupación por zona ya implementada
+- pool actual
+- pool futuro
+- selección manual
+- validaciones backend
+- turnos
+- RRHH
+- SSA
+
+---
+
+## 8. Validación
+Quiero pruebas con escenarios donde:
+- haya candidatos de misma zona y otras zonas
+- haya disponibles y descansando por ciclo
+- algunos ya conozcan el cliente
+- otros no
+- y que el ranking final tenga sentido operativo
+
+---
+
+## 9. Documentación
+Explica claramente:
+- qué criterios usa el ranking
+- en qué orden prioriza
+- cómo combina zona + estado + experiencia previa
+- cómo ayuda al jefe de servicio a decidir más rápido
+
+Muy importante:
+quiero que el sistema no solo muestre candidatos, sino que recomiende primero a los más lógicos para cubrir un puesto en la operación real.

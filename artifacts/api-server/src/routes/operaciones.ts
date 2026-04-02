@@ -149,6 +149,8 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
 operacionesRouter.get("/operaciones/pool", async (req, res) => {
   try {
     const hoy = new Date().toISOString().slice(0, 10);
+    // Contexto de puesto: para enriquecer con hints de experiencia previa
+    const puestoIdParam = req.query.puesto_id ? Number(req.query.puesto_id) : null;
 
     const { rows: agentes } = await pool.query(`
       SELECT
@@ -277,6 +279,69 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
           }
         }
       }
+    }
+
+    // ── Enriquecer con hints de experiencia si se proveyó puesto_id ──────────
+    if (puestoIdParam) {
+      // Obtener cliente y zona del puesto contexto
+      const { rows: pCtx } = await pool.query(
+        `SELECT cliente_id, zona_operativa_id FROM puestos_operativos WHERE id = $1`,
+        [puestoIdParam]
+      );
+      const ctxClienteId   = pCtx[0]?.cliente_id   ?? null;
+      const ctxZonaId      = pCtx[0]?.zona_operativa_id ?? null;
+
+      // Agentes que ya cubrieron este puesto específico (historial titular)
+      const { rows: rvPuesto } = await pool.query(
+        `SELECT DISTINCT employee_id FROM puesto_titular_historico WHERE puesto_id = $1`,
+        [puestoIdParam]
+      );
+      const conocenPuestoSet = new Set(rvPuesto.map((r: any) => Number(r.employee_id)));
+
+      // Agentes que conocen el cliente (EOA actual o historial titular de cualquier puesto de ese cliente)
+      let conocenClienteSet = new Set<number>();
+      if (ctxClienteId) {
+        const { rows: rvCliente } = await pool.query(
+          `SELECT DISTINCT eoa.employee_id
+           FROM employee_operational_assignments eoa
+           WHERE eoa.cliente_id = $1
+           UNION
+           SELECT DISTINCT pth.employee_id
+           FROM puesto_titular_historico pth
+           JOIN puestos_operativos po ON po.id = pth.puesto_id
+           WHERE po.cliente_id = $1`,
+          [ctxClienteId]
+        );
+        conocenClienteSet = new Set(rvCliente.map((r: any) => Number(r.employee_id)));
+      }
+
+      // Agentes con puesto titular en la misma zona (refuerza la señal de zona)
+      let zonaExpSet = new Set<number>();
+      if (ctxZonaId) {
+        const { rows: rvZona } = await pool.query(
+          `SELECT DISTINCT titular_employee_id AS employee_id
+           FROM puestos_operativos
+           WHERE zona_operativa_id = $1 AND activo = TRUE AND titular_employee_id IS NOT NULL`,
+          [ctxZonaId]
+        );
+        zonaExpSet = new Set(rvZona.map((r: any) => Number(r.employee_id)));
+      }
+
+      // Anotar todos los grupos con los hints
+      const annotate = (arr: any[]) =>
+        arr.map((a: any) => ({
+          ...a,
+          conoce_puesto:  conocenPuestoSet.has(Number(a.id)),
+          conoce_cliente: conocenClienteSet.has(Number(a.id)),
+          misma_zona_exp: zonaExpSet.has(Number(a.id)),
+        }));
+
+      trabajando.splice(0, trabajando.length, ...annotate(trabajando));
+      descansandoCiclo.splice(0, descansandoCiclo.length, ...annotate(descansandoCiclo));
+      disponibles.splice(0, disponibles.length, ...annotate(disponibles));
+      faltando.splice(0, faltando.length, ...annotate(faltando));
+      enSSA.splice(0, enSSA.length, ...annotate(enSSA));
+      enPuesto.splice(0, enPuesto.length, ...annotate(enPuesto));
     }
 
     res.json({

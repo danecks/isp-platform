@@ -97,6 +97,76 @@ interface Agente {
   /** Zona operativa del agente (desde titular o EOA) */
   zona_operativa_id?: number | null;
   zona_nombre?: string | null;
+  /** Hints de experiencia previa — solo presentes cuando se provee puesto_id al pool */
+  conoce_puesto?: boolean;
+  conoce_cliente?: boolean;
+  misma_zona_exp?: boolean;
+}
+
+// ── Tipos para ranking de candidatos ─────────────────────────────────────────
+type GrupoRanking = "P1" | "P2" | "P3" | "P4";
+
+interface AgenteRankeado extends Agente {
+  grupo: GrupoRanking;
+  /** Etiquetas que explican por qué aparece en esta posición */
+  motivos: string[];
+  score: number;
+}
+
+const RANKING_GRUPO_CONFIG: Record<GrupoRanking, { label: string; sub: string; headerColor: string; borderColor: string }> = {
+  P1: { label: "Disponible · Misma zona",         sub: "Primera opción",       headerColor: "text-emerald-300",     borderColor: "border-emerald-500/25" },
+  P2: { label: "Descanso de ciclo · Misma zona",  sub: "Disponible con HE",    headerColor: "text-blue-300",        borderColor: "border-blue-500/20" },
+  P3: { label: "Disponible · Otras zonas",        sub: "Sin zona coincidente", headerColor: "text-white/50",        borderColor: "border-white/8" },
+  P4: { label: "Descanso de ciclo · Otras zonas", sub: "Disponible con HE",    headerColor: "text-white/30",        borderColor: "border-white/5" },
+};
+
+const RANKING_MOTIVO_CONFIG: Record<string, { label: string; cls: string }> = {
+  disponible:     { label: "Disponible",     cls: "text-emerald-300 bg-emerald-500/15" },
+  descanso_ciclo: { label: "HE",             cls: "text-blue-300 bg-blue-500/15" },
+  misma_zona:     { label: "Misma zona",     cls: "text-primary/90 bg-primary/15" },
+  zona_exp:       { label: "Zona",           cls: "text-primary/70 bg-primary/10" },
+  conoce_cliente: { label: "Conoce cliente", cls: "text-amber-300 bg-amber-500/15" },
+  conoce_puesto:  { label: "Conoce puesto",  cls: "text-purple-300 bg-purple-500/15" },
+};
+
+/** Genera la lista rankeada de candidatos elegibles para cubrir un puesto */
+function rankCandidatos(pool: Pool, zonaId: number | null | undefined): AgenteRankeado[] {
+  const result: AgenteRankeado[] = [];
+
+  const toRanked = (agente: Agente, estado: "disponible" | "descansandoCiclo"): AgenteRankeado => {
+    const mismaZona = !!zonaId && agente.zona_operativa_id === zonaId;
+    const motivos: string[] = [];
+    let score = estado === "disponible" ? 100 : 50;
+
+    // Estado base
+    motivos.push(estado === "disponible" ? "disponible" : "descanso_ciclo");
+
+    // Zona
+    if (mismaZona)             { score += 40; motivos.push("misma_zona"); }
+    else if (agente.misma_zona_exp) { score += 10; motivos.push("zona_exp"); }
+
+    // Experiencia previa (más valiosa → más puntos)
+    if (agente.conoce_puesto)  { score += 20; motivos.push("conoce_puesto"); }
+    if (agente.conoce_cliente) { score += 12; motivos.push("conoce_cliente"); }
+
+    let grupo: GrupoRanking;
+    if      (estado === "disponible"       && mismaZona) grupo = "P1";
+    else if (estado === "descansandoCiclo" && mismaZona) grupo = "P2";
+    else if (estado === "disponible")                     grupo = "P3";
+    else                                                  grupo = "P4";
+
+    return { ...agente, grupo, motivos, score };
+  };
+
+  for (const a of pool.disponibles)      result.push(toRanked(a, "disponible"));
+  for (const a of pool.descansandoCiclo) result.push(toRanked(a, "descansandoCiclo"));
+
+  // Ordenar: primero por grupo (P1→P4) luego por score descendente
+  const grupoOrd: Record<GrupoRanking, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
+  return result.sort((a, b) => {
+    const gd = grupoOrd[a.grupo] - grupoOrd[b.grupo];
+    return gd !== 0 ? gd : b.score - a.score;
+  });
 }
 
 interface Pool {
@@ -419,11 +489,14 @@ function DraggableAgente({
   onClick,
   isSelected,
   disabled,
+  motivos,
 }: {
   agente: Agente;
   onClick: () => void;
   isSelected: boolean;
   disabled?: boolean;
+  /** Badges de motivo de ranking (solo en vista de candidatos rankeados) */
+  motivos?: string[];
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `agent-${agente.id}`,
@@ -466,6 +539,19 @@ function DraggableAgente({
             {agente.nombre_puesto_titular}
             {agente.cliente_puesto_titular ? ` · ${agente.cliente_puesto_titular}` : ""}
           </p>
+        )}
+        {motivos && motivos.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {motivos.slice(0, 3).map((m) => {
+              const cfg = RANKING_MOTIVO_CONFIG[m];
+              if (!cfg) return null;
+              return (
+                <span key={m} className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${cfg.cls}`}>
+                  {cfg.label}
+                </span>
+              );
+            })}
+          </div>
         )}
       </div>
       {agente.disponibleHE && (
@@ -4009,8 +4095,13 @@ export default function Operaciones() {
   });
 
   const { data: pool, isLoading: loadingPool, refetch: refetchPool } = useQuery<Pool>({
-    queryKey: ["operaciones-pool"],
-    queryFn: () => fetch(`${API_BASE}/operaciones/pool`).then((r) => r.json()),
+    queryKey: ["operaciones-pool", puestoContexto?.id ?? null],
+    queryFn: () => {
+      const url = puestoContexto
+        ? `${API_BASE}/operaciones/pool?puesto_id=${puestoContexto.id}`
+        : `${API_BASE}/operaciones/pool`;
+      return fetch(url).then((r) => r.json());
+    },
     refetchInterval: 30_000,
   });
 
@@ -4546,14 +4637,11 @@ export default function Operaciones() {
     return lista;
   })();
 
-  // ── Agrupación por zona para recomendación de candidatos ─────────────────
-  const isZonaContexto = !!puestoContexto?.zona_operativa_id &&
-    (poolTab === "disponibles" || poolTab === "descansandoCiclo");
-  const poolMismaZona  = isZonaContexto
-    ? poolActual.filter(a => a.zona_operativa_id === puestoContexto!.zona_operativa_id)
-    : [];
-  const poolOtrasZonas = isZonaContexto
-    ? poolActual.filter(a => a.zona_operativa_id !== puestoContexto!.zona_operativa_id)
+  // ── Ranking de candidatos para el puesto contextualizado ─────────────────
+  // Se activa cuando hay puestoContexto (independiente de si tiene zona o no).
+  // Combina disponibles + descansandoCiclo en una lista ordenada por prioridad.
+  const candidatosRankeados: AgenteRankeado[] = puestoContexto && pool
+    ? rankCandidatos(pool, puestoContexto.zona_operativa_id)
     : [];
 
   // ── Derivar zonas y clientes únicos para filtros ──────────────────────────
@@ -5188,11 +5276,52 @@ export default function Operaciones() {
               </div>
             )}
 
-            {/* Agentes en el pool — con agrupación por zona si hay contexto de zona */}
+            {/* Agentes en el pool */}
             {loadingPool ? (
               <div className="flex items-center justify-center min-h-[80px]">
                 <Loader2 className="w-4 h-4 animate-spin text-primary" />
               </div>
+            ) : puestoContexto ? (
+              /* ── Vista rankeada: candidatos ordenados por prioridad ───── */
+              candidatosRankeados.length === 0 ? (
+                <div className="flex flex-col items-center justify-center min-h-[80px] gap-1 text-white/20 text-xs px-4 text-center">
+                  <span>Sin candidatos disponibles o de descanso de ciclo</span>
+                  <span className="text-[10px]">Usa las pestañas para explorar el pool completo</span>
+                </div>
+              ) : (
+                <div className="divide-y divide-white/5 max-h-[260px] overflow-y-auto">
+                  {(["P1", "P2", "P3", "P4"] as GrupoRanking[]).map((grupo) => {
+                    const grupo_agentes = candidatosRankeados.filter(a => a.grupo === grupo);
+                    if (grupo_agentes.length === 0) return null;
+                    const cfg = RANKING_GRUPO_CONFIG[grupo];
+                    return (
+                      <div key={grupo} className="p-3">
+                        <div className={`flex items-center gap-2 mb-2 border-l-2 pl-2 ${cfg.borderColor}`}>
+                          <p className={`text-[10px] font-bold uppercase tracking-wider ${cfg.headerColor}`}>
+                            {cfg.label}
+                          </p>
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded-full bg-white/6 ${cfg.headerColor} opacity-70`}>
+                            {grupo_agentes.length}
+                          </span>
+                        </div>
+                        <div className="flex gap-2 overflow-x-auto pb-1">
+                          {grupo_agentes.map((agente) => (
+                            <div key={agente.id} className="shrink-0 w-56">
+                              <DraggableAgente
+                                agente={agente}
+                                isSelected={agenteSeleccionado?.id === agente.id}
+                                motivos={agente.motivos}
+                                onClick={() => { if (isCerrado) return; setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente); }}
+                                disabled={isCerrado}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )
             ) : poolActual.length === 0 ? (
               <div className="flex items-center justify-center min-h-[80px] text-white/20 text-xs px-4 text-center">
                 {poolTab === "disponibles"      ? "No hay agentes genuinamente disponibles hoy" :
@@ -5203,56 +5332,6 @@ export default function Operaciones() {
                  poolTab === "enPuesto"         ? "Ningún agente está en puesto activo" :
                  poolTab === "enSSA"            ? "Ningún agente cubre un SSA activo" :
                  "No hay agentes suspendidos"}
-              </div>
-            ) : isZonaContexto ? (
-              /* ── Vista agrupada por zona ─────────────────────────────── */
-              <div className="divide-y divide-white/5">
-                {/* Prioridad alta: misma zona */}
-                <div className="p-3">
-                  <p className="text-[10px] font-bold text-emerald-400/80 uppercase tracking-wider flex items-center gap-1.5 mb-2">
-                    <MapPin className="w-2.5 h-2.5" />
-                    Misma zona — {puestoContexto!.zona_nombre ?? "Sin nombre"}
-                    <span className="ml-1 px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">{poolMismaZona.length}</span>
-                  </p>
-                  {poolMismaZona.length === 0 ? (
-                    <p className="text-[11px] text-white/20 italic py-1">No hay candidatos en esta zona</p>
-                  ) : (
-                    <div className="flex gap-2 overflow-x-auto pb-1">
-                      {poolMismaZona.map((agente) => (
-                        <div key={agente.id} className="shrink-0 w-52">
-                          <DraggableAgente
-                            agente={agente}
-                            isSelected={agenteSeleccionado?.id === agente.id}
-                            onClick={() => { if (isCerrado) return; setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente); }}
-                            disabled={isCerrado}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {/* Prioridad secundaria: otras zonas */}
-                {poolOtrasZonas.length > 0 && (
-                  <div className="p-3">
-                    <p className="text-[10px] font-semibold text-white/30 uppercase tracking-wider flex items-center gap-1.5 mb-2">
-                      <MapPin className="w-2.5 h-2.5" />
-                      Otras zonas
-                      <span className="ml-1 px-1.5 py-0.5 rounded-full bg-white/6 text-white/40">{poolOtrasZonas.length}</span>
-                    </p>
-                    <div className="flex gap-2 overflow-x-auto pb-1">
-                      {poolOtrasZonas.map((agente) => (
-                        <div key={agente.id} className="shrink-0 w-52">
-                          <DraggableAgente
-                            agente={agente}
-                            isSelected={agenteSeleccionado?.id === agente.id}
-                            onClick={() => { if (isCerrado) return; setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente); }}
-                            disabled={isCerrado}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             ) : (
               /* ── Vista plana normal ──────────────────────────────────── */
