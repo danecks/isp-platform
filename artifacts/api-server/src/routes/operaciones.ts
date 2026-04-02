@@ -139,10 +139,17 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
 });
 
 // ─── GET /api/operaciones/pool ────────────────────────────────────────────────
-// Pool de agentes: disponibles / en descanso / sin asignación
-// P-02: categorización hecha 100% en SQL (LEFT JOIN en vez de filter en JS)
+// Pool de agentes — clasificación inteligente con motor de turnos
+// P-02 (v2): el SQL asigna categorías base (en_puesto, en_ssa, en_descanso,
+// suspendido, faltando). Los "disponible" son post-procesados en JS con
+// calcularEstadoCiclo para distinguir entre:
+//   • trabajando         — su turno indica que laboran hoy
+//   • descansandoCiclo   — su turno indica descanso normal (dPC=true)
+//   • disponibles        — sin turno asignado, genuinamente libres
 operacionesRouter.get("/operaciones/pool", async (req, res) => {
   try {
+    const hoy = new Date().toISOString().slice(0, 10);
+
     const { rows: agentes } = await pool.query(`
       SELECT
         e.id, e.nombre_completo, e.estado_laboral, e.puesto, e.area, e.sede,
@@ -152,6 +159,12 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         titular_po.estado_operativo_puesto AS estado_puesto_titular,
         titular_po.nombre                  AS nombre_puesto_titular,
         titular_po.cliente_nombre          AS cliente_puesto_titular,
+        -- Datos de turno para el motor de cálculo
+        COALESCE(t.tipo_ciclo, CASE WHEN t.horas_trabajo <= 24 THEN 'diario' ELSE 'ciclo_bloques' END) AS tipo_ciclo_turno,
+        t.horas_trabajo  AS horas_trabajo_turno,
+        t.horas_descanso AS horas_descanso_turno,
+        t.nombre         AS turno_nombre,
+        titular_po.fecha_inicio_ciclo AS fecha_inicio_ciclo_turno,
         CASE
           WHEN po.agente_id  IS NOT NULL AND e.estado_laboral = 'activo' THEN 'en_puesto'
           WHEN ssa.agente_id IS NOT NULL AND e.estado_laboral = 'activo' THEN 'en_ssa'
@@ -177,8 +190,15 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       ) ssa ON ssa.agente_id = e.id
       LEFT JOIN employee_operational_assignments eoa
         ON eoa.employee_id = e.id AND eoa.activa = TRUE
-      LEFT JOIN puestos_operativos titular_po
-        ON titular_po.titular_employee_id = e.id AND titular_po.activo = TRUE
+      LEFT JOIN LATERAL (
+        SELECT po2.id, po2.estado_operativo_puesto, po2.nombre, po2.cliente_nombre,
+               po2.agente_id, po2.tipo_turno_id, po2.fecha_inicio_ciclo
+        FROM puestos_operativos po2
+        WHERE po2.titular_employee_id = e.id AND po2.activo = TRUE
+        ORDER BY po2.id
+        LIMIT 1
+      ) titular_po ON TRUE
+      LEFT JOIN turnos t ON t.id = titular_po.tipo_turno_id
       WHERE e.estado_laboral IN ('activo', 'suspendido', 'licencia')
         AND (
           COALESCE(e.elegible_pool, TRUE) = TRUE
@@ -192,14 +212,68 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       ORDER BY e.estado_laboral, e.nombre_completo
     `);
 
-    const disponibles = agentes.filter((a: any) => a.categoria === 'disponible');
-    const enPuesto    = agentes.filter((a: any) => a.categoria === 'en_puesto');
-    const enSSA       = agentes.filter((a: any) => a.categoria === 'en_ssa');
-    const enDescanso  = agentes.filter((a: any) => a.categoria === 'en_descanso');
-    const suspendidos = agentes.filter((a: any) => a.categoria === 'suspendido');
-    const faltando    = agentes.filter((a: any) => a.categoria === 'faltando');
+    // ── Post-proceso: reclasificar "disponible" con el motor de turnos ────────
+    // Un agente laboral-activo sin asignación especial puede estar:
+    //   a) Trabajando hoy (su turno dice que trabaja)
+    //   b) Descansando por ciclo (su turno dice que descansa)
+    //   c) Genuinamente disponible (no tiene puesto titular o turno sin ciclo)
+    const trabajando:       any[] = [];
+    const descansandoCiclo: any[] = [];
+    const disponibles:      any[] = [];
+    const enPuesto:         any[] = [];
+    const enSSA:            any[] = [];
+    const enDescanso:       any[] = [];
+    const suspendidos:      any[] = [];
+    const faltando:         any[] = [];
 
-    res.json({ disponibles, enPuesto, enSSA, enDescanso, suspendidos, faltando, total: agentes.length });
+    for (const a of agentes) {
+      switch (a.categoria) {
+        case 'en_puesto':   enPuesto.push(a);    break;
+        case 'en_ssa':      enSSA.push(a);        break;
+        case 'en_descanso': enDescanso.push(a);   break;
+        case 'suspendido':  suspendidos.push(a);  break;
+        case 'faltando':    faltando.push(a);     break;
+        default: {
+          // ── Aplicar motor de turnos si el agente tiene datos de ciclo ──────
+          if (a.tipo_ciclo_turno && a.horas_trabajo_turno && a.fecha_inicio_ciclo_turno) {
+            // calcularEstadoCiclo espera un objeto Turno como primer argumento
+            const turnoObj = {
+              id: 0,
+              nombre: a.turno_nombre ?? "",
+              tipo_ciclo: a.tipo_ciclo_turno,
+              horas_trabajo: Number(a.horas_trabajo_turno),
+              horas_descanso: Number(a.horas_descanso_turno),
+            };
+            // fecha_inicio_ciclo_turno viene de pg como Date; se convierte a ISO string
+            const fechaInicioStr = a.fecha_inicio_ciclo_turno instanceof Date
+              ? a.fecha_inicio_ciclo_turno.toISOString().slice(0, 10)
+              : String(a.fecha_inicio_ciclo_turno).slice(0, 10);
+
+            const estado = calcularEstadoCiclo(turnoObj, fechaInicioStr, hoy);
+            if (estado.trabaja) {
+              trabajando.push({ ...a, disponibleHE: false });
+            } else {
+              descansandoCiclo.push({ ...a, disponibleHE: estado.disponibleHE ?? true });
+            }
+          } else {
+            // Sin turno de ciclo → genuinamente disponible
+            disponibles.push(a);
+          }
+        }
+      }
+    }
+
+    res.json({
+      trabajando,
+      descansandoCiclo,
+      disponibles,
+      enPuesto,
+      enSSA,
+      enDescanso,
+      suspendidos,
+      faltando,
+      total: agentes.length,
+    });
   } catch (err) {
     logger.error({ err }, "GET /operaciones/pool error");
     res.status(500).json({ error: "Error al cargar pool" });

@@ -91,9 +91,14 @@ interface Agente {
   estado_puesto_titular?: string | null;
   nombre_puesto_titular?: string | null;
   cliente_puesto_titular?: string | null;
+  /** Motor de turnos — disponibles post-proceso */
+  disponibleHE?: boolean;
+  turno_nombre?: string | null;
 }
 
 interface Pool {
+  trabajando: Agente[];
+  descansandoCiclo: Agente[];
   disponibles: Agente[];
   enPuesto: Agente[];
   enSSA: Agente[];
@@ -450,7 +455,9 @@ function DraggableAgente({
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-white/90 truncate">{agente.nombre_completo}</p>
-        <p className="text-[10px] text-white/35 truncate">{agente.puesto ?? "Agente"}</p>
+        <p className="text-[10px] text-white/35 truncate">
+          {agente.turno_nombre ? agente.turno_nombre : (agente.puesto ?? "Agente")}
+        </p>
         {agente.estado_puesto_titular && agente.nombre_puesto_titular && (
           <p className="text-[10px] text-orange-400/80 truncate mt-0.5">
             {agente.nombre_puesto_titular}
@@ -458,6 +465,11 @@ function DraggableAgente({
           </p>
         )}
       </div>
+      {agente.disponibleHE && (
+        <span className="shrink-0 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">
+          HE
+        </span>
+      )}
       {agente.estado_puesto_titular && agente.estado_puesto_titular !== "normal" && (
         <span className={`shrink-0 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
           agente.estado_puesto_titular === "abandono_parcial" ? "bg-red-500/20 text-red-300" :
@@ -1004,11 +1016,13 @@ const GRUPO_CONFIG: Record<GrupoEstado, {
 
 function normalizarPoolActual(p: Pool): AgenteAgrupado[] {
   const r: AgenteAgrupado[] = [];
-  for (const a of p.disponibles) r.push({ id: a.id, nombre: a.nombre_completo, grupo: "disponible", detalle: null });
-  for (const a of p.enDescanso)  r.push({ id: a.id, nombre: a.nombre_completo, grupo: "descansando", detalle: null });
-  for (const a of p.enPuesto)    r.push({ id: a.id, nombre: a.nombre_completo, grupo: "en_puesto",   detalle: a.nombre_puesto_titular ?? null });
-  for (const a of p.enSSA)       r.push({ id: a.id, nombre: a.nombre_completo, grupo: "en_ssa",      detalle: null });
-  for (const a of [...p.suspendidos, ...p.faltando]) r.push({ id: a.id, nombre: a.nombre_completo, grupo: "ausente", detalle: null });
+  for (const a of (p.disponibles ?? []))       r.push({ id: a.id, nombre: a.nombre_completo, grupo: "disponible",  detalle: null });
+  for (const a of (p.descansandoCiclo ?? []))  r.push({ id: a.id, nombre: a.nombre_completo, grupo: "descansando", detalle: a.turno_nombre ?? null });
+  for (const a of (p.trabajando ?? []))        r.push({ id: a.id, nombre: a.nombre_completo, grupo: "en_puesto",   detalle: a.nombre_puesto_titular ?? null });
+  for (const a of (p.enDescanso ?? []))        r.push({ id: a.id, nombre: a.nombre_completo, grupo: "descansando", detalle: "Licencia" });
+  for (const a of (p.enPuesto ?? []))          r.push({ id: a.id, nombre: a.nombre_completo, grupo: "en_puesto",   detalle: a.nombre_puesto_titular ?? null });
+  for (const a of (p.enSSA ?? []))             r.push({ id: a.id, nombre: a.nombre_completo, grupo: "en_ssa",      detalle: null });
+  for (const a of [...(p.suspendidos ?? []), ...(p.faltando ?? [])]) r.push({ id: a.id, nombre: a.nombre_completo, grupo: "ausente", detalle: null });
   return r;
 }
 
@@ -3897,7 +3911,7 @@ export default function Operaciones() {
     sedeId: number | null; fecha: string;
   } | null>(null);
   const [modalLiberar, setModalLiberar]              = useState<Puesto | null>(null);
-  const [poolTab, setPoolTab]                        = useState<"disponibles" | "enDescanso" | "suspendidos" | "enPuesto" | "enSSA" | "faltando">("disponibles");
+  const [poolTab, setPoolTab]                        = useState<"disponibles" | "trabajando" | "descansandoCiclo" | "enDescanso" | "suspendidos" | "enPuesto" | "enSSA" | "faltando">("disponibles");
   const [busquedaPool, setBusquedaPool]              = useState("");
   const [modalCierre, setModalCierre]                = useState(false);
   const [modalReabrir, setModalReabrir]              = useState(false);
@@ -4207,6 +4221,8 @@ export default function Operaciones() {
     const agenteId = parseInt(event.active.id.toString().replace("agent-", ""));
     const agente = [
       ...(pool?.disponibles ?? []),
+      ...(pool?.trabajando ?? []),
+      ...(pool?.descansandoCiclo ?? []),
       ...(pool?.enDescanso ?? []),
       ...(pool?.suspendidos ?? []),
       ...(pool?.enPuesto ?? []),
@@ -4228,6 +4244,8 @@ export default function Operaciones() {
 
     const agente = [
       ...(pool?.disponibles ?? []),
+      ...(pool?.trabajando ?? []),
+      ...(pool?.descansandoCiclo ?? []),
       ...(pool?.enDescanso ?? []),
       ...(pool?.suspendidos ?? []),
       ...(pool?.enPuesto ?? []),
@@ -4578,7 +4596,7 @@ export default function Operaciones() {
               <div className="w-px h-8 bg-white/8" />
               <div className="text-center">
                 <p className="text-lg font-bold text-blue-400 leading-none">{pool?.disponibles?.length ?? 0}</p>
-                <p className="text-[10px] text-white/30 mt-0.5">Disponibles</p>
+                <p className="text-[10px] text-white/30 mt-0.5">Libres</p>
               </div>
             </div>
 
@@ -5093,12 +5111,14 @@ export default function Operaciones() {
 
               {/* Tabs del pool */}
               {[
-                { key: "disponibles" as const, label: "Disponibles", count: pool?.disponibles?.length ?? 0, color: "text-green-400" },
-                { key: "faltando"    as const, label: "Faltando",    count: pool?.faltando?.length ?? 0,    color: "text-orange-400" },
-                { key: "enDescanso"  as const, label: "Descanso",    count: pool?.enDescanso?.length ?? 0,  color: "text-blue-400" },
-                { key: "enPuesto"   as const, label: "En puesto",   count: pool?.enPuesto?.length ?? 0,   color: "text-teal-400" },
-                { key: "enSSA"      as const, label: "En SSA",      count: pool?.enSSA?.length ?? 0,      color: "text-amber-400" },
-                { key: "suspendidos" as const, label: "Suspendidos", count: pool?.suspendidos?.length ?? 0, color: "text-red-400" },
+                { key: "disponibles"      as const, label: "Disponibles",    count: pool?.disponibles?.length ?? 0,      color: "text-green-400"  },
+                { key: "trabajando"       as const, label: "Trabaja hoy",    count: pool?.trabajando?.length ?? 0,       color: "text-orange-400" },
+                { key: "descansandoCiclo" as const, label: "Descanso ciclo", count: pool?.descansandoCiclo?.length ?? 0, color: "text-blue-400"   },
+                { key: "faltando"         as const, label: "Faltando",       count: pool?.faltando?.length ?? 0,         color: "text-rose-400"   },
+                { key: "enDescanso"       as const, label: "Licencia",       count: pool?.enDescanso?.length ?? 0,       color: "text-indigo-400" },
+                { key: "enPuesto"         as const, label: "En puesto",      count: pool?.enPuesto?.length ?? 0,         color: "text-teal-400"   },
+                { key: "enSSA"            as const, label: "En SSA",         count: pool?.enSSA?.length ?? 0,            color: "text-amber-400"  },
+                { key: "suspendidos"      as const, label: "Suspendidos",    count: pool?.suspendidos?.length ?? 0,      color: "text-red-400"    },
               ].map(({ key, label, count, color }) => (
                 <button
                   key={key}
@@ -5139,11 +5159,13 @@ export default function Operaciones() {
                 </div>
               ) : poolActual.length === 0 ? (
                 <div className="flex items-center justify-center w-full text-white/20 text-xs">
-                  {poolTab === "disponibles" ? "No hay agentes disponibles" :
-                   poolTab === "faltando"    ? "No hay ausencias registradas hoy" :
-                   poolTab === "enDescanso"  ? "No hay agentes en descanso" :
-                   poolTab === "enPuesto"    ? "Ningún agente está en puesto activo" :
-                   poolTab === "enSSA"       ? "Ningún agente cubre un SSA activo" :
+                  {poolTab === "disponibles"      ? "No hay agentes genuinamente disponibles hoy" :
+                   poolTab === "trabajando"       ? "Ningún agente en turno de trabajo hoy" :
+                   poolTab === "descansandoCiclo" ? "Ningún agente en descanso de ciclo hoy" :
+                   poolTab === "faltando"         ? "No hay ausencias registradas hoy" :
+                   poolTab === "enDescanso"       ? "No hay agentes en licencia" :
+                   poolTab === "enPuesto"         ? "Ningún agente está en puesto activo" :
+                   poolTab === "enSSA"            ? "Ningún agente cubre un SSA activo" :
                    "No hay agentes suspendidos"}
                 </div>
               ) : (
@@ -5156,7 +5178,7 @@ export default function Operaciones() {
                         if (isCerrado) return;
                         setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente);
                       }}
-                      disabled={poolTab === "enPuesto" || poolTab === "enSSA" || poolTab === "faltando" || isCerrado}
+                      disabled={poolTab === "trabajando" || poolTab === "enPuesto" || poolTab === "enSSA" || poolTab === "faltando" || isCerrado}
                     />
                   </div>
                 ))

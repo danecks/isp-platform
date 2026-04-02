@@ -1,0 +1,107 @@
+Perfecto. Doy por validados los turnos base de ISPSA:
+	•	24x24
+	•	12 horas
+	•	24x48
+	•	24x72
+	•	8x8
+
+Ahora quiero atacar el siguiente bloque operativo crítico:
+
+Pool de hoy inteligente, con la misma lógica real del pool futuro
+
+No quiero romper nada existente.
+
+Problema actual
+
+El pool futuro ya clasifica bien a los agentes según sus turnos:
+	•	trabajando
+	•	descansando por ciclo
+	•	disponibleHE
+	•	ausente
+
+Pero en la vista del día actual, el pool todavía puede mostrar como “disponible” a alguien que en realidad está descansando por ciclo.
+
+Eso confunde al jefe de servicio.
+
+Objetivo
+
+Quiero que el pool de hoy use la misma lógica operativa real del motor de turnos y clasifique correctamente a cada agente.
+
+⸻
+
+1. Estados que quiero ver en pool de hoy
+
+Quiero que el pool actual clasifique agentes como:
+	•	trabajando
+	•	descansando por ciclo
+	•	disponible real
+	•	ausente
+	•	en SSA
+	•	en puesto
+
+No quiero listas planas ni categorías ambiguas.
+
+⸻
+
+2. Regla clave
+
+Si un agente está en su descanso normal del turno:
+	•	NO debe verse como “disponible real”
+	•	debe verse como “descansando por ciclo”
+	•	pero sí puede tener disponibleHE = true
+
+⸻
+
+3. Integración con motor de turnos
+
+Quiero que el pool de hoy use exactamente la misma lógica que ya validamos para:
+	•	24x24
+	•	12h
+	•	24x48
+	•	24x72
+	•	8x8
+
+No quiero una segunda lógica paralela.
+
+⸻
+
+4. UI
+
+Quiero que el pool de hoy muestre claramente:
+	•	nombre
+	•	estado
+	•	si puede hacer HE
+	•	puesto titular si aplica
+	•	color o badge por estado
+
+⸻
+
+5. Validación
+
+Quiero pruebas reales con agentes de varios turnos mostrando que:
+	•	el que trabaja hoy aparece como trabajando
+	•	el que descansa hoy aparece como descansando por ciclo
+	•	el que no tiene compromiso real aparece como disponible
+	•	el que está ausente no puede confundirse con disponible
+
+⸻
+
+6. No romper
+
+No romper:
+	•	pool futuro
+	•	pizarrón
+	•	planificación futura
+	•	RRHH
+	•	SSA
+	•	pre-planilla
+	•	planilla
+
+⸻
+
+7. Resultado esperado
+
+Quiero que el jefe de servicio, viendo el pool de hoy, entienda exactamente lo mismo que ya entiende viendo el pool futuro.
+
+Muy importante:
+quiero que el pool actual deje de ser ambiguo y se vuelva una herramienta real de decisión operativa.
