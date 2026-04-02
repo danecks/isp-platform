@@ -1,0 +1,98 @@
+Perfecto. Doy por válida la lógica del turno 24x48.
+
+Ahora quiero que avances con el siguiente turno:
+
+Turno de 12 horas
+
+No quiero código a ciegas.
+Quiero que primero me expliques claramente la lógica exacta que vas a aplicar y luego la valides.
+
+Contexto real
+
+En ISPSA, el turno de 12 horas NO debe tratarse como “trabaja todos los días siempre”.
+
+La lógica correcta es:
+	•	trabaja 6 días
+	•	descansa 1 día
+	•	el descanso es un descanso real del ciclo
+	•	ese descanso puede servir como candidato para horas extra
+	•	el sistema debe reflejarlo en pizarrón, pool y planificación futura
+
+Objetivo
+
+Quiero que modeles correctamente el turno 12 horas como un ciclo por días, no como un turno diario plano.
+
+⸻
+
+1. Explicación primero
+
+Antes de cualquier implementación adicional, explícame claramente:
+	•	cuál será el ciclo exacto
+	•	cómo usarás fecha_inicio_ciclo
+	•	cómo decidirás si en una fecha dada el agente trabaja o descansa
+	•	cómo se verá eso en el pizarrón
+	•	cómo se verá en el pool
+	•	cómo decidirás si puede hacer horas extra
+
+⸻
+
+2. Regla que espero
+
+La base esperada es:
+	•	ciclo de 7 días
+	•	días 0–5: trabaja
+	•	día 6: descansa
+	•	repetir
+
+Pero quiero que me confirmes cómo lo aplicarás en el sistema.
+
+⸻
+
+3. Validación que quiero después
+
+Cuando lo implementes, quiero prueba con varias fechas consecutivas para demostrar:
+	•	6 días trabajando
+	•	1 día descansando
+	•	que el descanso se vea como descanso de ciclo
+	•	que ese día aparezca como candidato para HE
+	•	que no se trate como “disponible real” sin contexto
+
+⸻
+
+4. Distinción visual
+
+Quiero validar que en el pizarrón se pueda distinguir:
+	•	puesto cubierto
+	•	descanso normal del ciclo
+	•	descubierto real
+
+No quiero volver a mezclar descanso normal con problema operativo.
+
+⸻
+
+5. Integración con pool futuro
+
+Quiero que el pool futuro clasifique bien:
+	•	trabajando
+	•	descansando por ciclo
+	•	disponible para HE
+
+⸻
+
+6. No romper
+
+No romper:
+	•	24x24
+	•	24x48
+	•	pool actual
+	•	pool futuro
+	•	planificación futura
+	•	RRHH
+	•	pre-planilla
+	•	planilla
+
+⸻
+
+7. Resultado esperado
+
+Quiero que al final me confirmes si el turno de 12 horas ya quedó correctamente modelado para operación real de ISPSA, igual que acabamos de hacer con 24x48.
