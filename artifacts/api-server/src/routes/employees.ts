@@ -562,7 +562,7 @@ employeesRouter.post("/employees", async (req, res) => {
         tipoJornada: tipoJornada || null,
         diaDescanso: diaDescanso || null,
         horasContrato: horasContrato ? parseInt(horasContrato) : null,
-        tipoPersonal: ["guardia", "supervisor", "administrativo"].includes(tipoPersonal) ? tipoPersonal : "guardia",
+        tipoPersonal: ["guardia", "supervisor", "jefe_servicio", "administrativo_bodega", "administrativo_rrhh", "gerencia"].includes(tipoPersonal) ? tipoPersonal : "guardia",
       })
       .returning();
 
@@ -704,8 +704,9 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
     const { rows: [empActual] } = await pool.query(
       `SELECT COALESCE(tipo_personal, 'guardia') AS tipo_personal FROM employees WHERE id = $1`, [id]
     );
-    if (empActual?.tipo_personal === "administrativo") {
-      return res.status(403).json({ error: "Sin permiso para modificar personal administrativo. Contacte a RRHH." });
+    const TIPOS_PROTEGIDOS = ["administrativo_bodega", "administrativo_rrhh", "gerencia", "administrativo"];
+    if (TIPOS_PROTEGIDOS.includes(empActual?.tipo_personal ?? "")) {
+      return res.status(403).json({ error: "Sin permiso para modificar personal administrativo o gerencia. Contacte a RRHH." });
     }
   }
 
@@ -768,7 +769,8 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
   if (tipoJornada !== undefined) updates.tipoJornada = tipoJornada || null;
   if (diaDescanso !== undefined) updates.diaDescanso = diaDescanso || null;
   if (horasContrato !== undefined) updates.horasContrato = horasContrato === null || horasContrato === "" ? null : parseInt(horasContrato);
-  if (tipoPersonal !== undefined && ["guardia", "supervisor", "administrativo"].includes(tipoPersonal)) {
+  const VALID_TIPOS = ["guardia", "supervisor", "jefe_servicio", "administrativo_bodega", "administrativo_rrhh", "gerencia", "administrativo"];
+  if (tipoPersonal !== undefined && VALID_TIPOS.includes(tipoPersonal)) {
     updates.tipoPersonal = tipoPersonal;
   }
 

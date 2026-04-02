@@ -131,9 +131,10 @@ export async function runAutoMigrations(): Promise<void> {
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS can_report_emergency BOOLEAN`);
     logger.info("Auto-migrate: columnas de emergencia en 'incidents' y 'users' verificadas");
 
-    // Clasificación de personal: guardia | supervisor | administrativo
+    // Clasificación de personal: guardia | supervisor | jefe_servicio | administrativo_bodega | administrativo_rrhh | gerencia
     await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS tipo_personal VARCHAR(20) NOT NULL DEFAULT 'guardia'`);
-    logger.info("Auto-migrate: columna 'employees.tipo_personal' verificada");
+    await pool.query(`ALTER TABLE employees ALTER COLUMN tipo_personal TYPE VARCHAR(30)`);
+    logger.info("Auto-migrate: columna 'employees.tipo_personal' verificada (VARCHAR(30))");
 
     // Columnas adicionales en users (WhatsApp identity management)
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS can_request_advance BOOLEAN`);

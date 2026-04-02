@@ -1,0 +1,155 @@
+Quiero estructurar mejor el personal no guardia en ISPSA para que el sistema refleje la operación real y la trazabilidad de responsabilidades.
+
+No quiero romper nada existente.
+
+## Objetivo
+Agregar y organizar correctamente:
+
+- supervisores por zona
+- personal administrativo
+- jefes de servicio con turno 24x24
+
+para que aparezcan donde corresponde en:
+- pizarrón operativo
+- planilla
+- usuarios / trazabilidad
+- RRHH
+
+---
+
+## 1. Supervisores por zona
+Quiero que cada zona operativa tenga supervisor asignado.
+
+### Regla base
+Si existen 5 zonas, el sistema debe poder tener 5 supervisores asignados, uno por cada zona.
+
+No quiero que los supervisores queden sueltos o sin relación clara con la zona.
+
+### Lo que necesito
+- relación formal zona ↔ supervisor
+- visible en la zona
+- visible en operación
+- visible en planilla
+
+---
+
+## 2. Jefes de servicio
+Quiero agregar la categoría de jefe de servicio como personal operativo especial.
+
+### Reglas
+- trabajan en turno 24x24
+- deben poder verse en el pizarrón en sección especial
+- deben poder llegar a pre-planilla y planilla
+- quiero que el sistema ayude a saber qué jefe de servicio estaba de turno en una fecha determinada
+
+Esto es importante para:
+- incidentes
+- trazabilidad
+- control de operación
+- RRHH
+
+---
+
+## 3. Personal administrativo
+Quiero crear al menos estas categorías administrativas:
+
+- bodega
+- rrhh
+- gerencia
+
+### Reglas
+- deben existir como empleados
+- deben tener usuario obligatorio
+- deben llegar a pre-planilla / planilla
+- no deben ser editables por jefe de servicio desde el pizarrón operativo
+
+---
+
+## 4. Clasificación de personal
+Quiero que el sistema maneje categorías claras, por ejemplo:
+
+- guardia
+- supervisor
+- jefe_servicio
+- administrativo_bodega
+- administrativo_rrhh
+- gerencia
+
+No quiero mezclar todo en una sola etiqueta genérica.
+
+---
+
+## 5. Pizarrón Operativo
+Quiero que el pizarrón tenga espacio útil para mostrar:
+
+### Supervisores
+- por zona
+- visibles como responsables operativos
+
+### Jefes de servicio
+- visibles como personal de turno 24x24
+- para saber quién estaba de turno ese día
+
+No quiero mezclarlos confusamente con los guardias normales.
+
+---
+
+## 6. Planilla
+Quiero que:
+- supervisores
+- jefes de servicio
+- personal administrativo
+
+aparezcan también en pre-planilla y planilla, diferenciados del personal de guardia.
+
+Puede ser:
+- por sección
+- por categoría
+- por badge
+- o por tab separada
+
+---
+
+## 7. Usuarios y trazabilidad
+Esto es muy importante.
+
+Quiero que el sistema permita distinguir:
+- quién hizo un cambio por usuario del sistema
+- y además qué jefe de servicio o supervisor estaba realmente de turno ese día
+
+Porque no siempre será la misma persona.
+
+---
+
+## 8. Permisos
+### Operaciones / Jefe de servicio
+- puede ver supervisores y jefes de servicio
+- no debe modificar personal administrativo
+
+### RRHH / Admin
+- sí puede gestionar administrativos
+- sí puede gestionar categorías y relaciones estructurales
+
+---
+
+## 9. Validación
+Quiero que pruebes al menos:
+1. 5 zonas con 5 supervisores asignados
+2. jefes de servicio con turno 24x24 visibles
+3. administrativos creados (bodega, rrhh, gerencia)
+4. aparición correcta en planilla
+5. restricciones correctas de permisos
+6. trazabilidad de quién estaba de turno vs quién hizo cambios
+
+---
+
+## 10. Documentación
+Explica claramente:
+- cómo quedó clasificado el personal
+- cómo se asignan supervisores a zonas
+- cómo se modelan los jefes de servicio 24x24
+- cómo aparecen en pizarrón y planilla
+- cómo se separa usuario que hizo cambios vs responsable operativo del turno
+
+Muy importante:
+quiero que ISPSA pueda manejar no solo guardias, sino también supervisores, jefes de servicio y administración de manera ordenada, trazable y útil para RRHH y Operaciones.

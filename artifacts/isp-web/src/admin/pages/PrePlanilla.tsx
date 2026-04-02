@@ -107,7 +107,7 @@ interface ColaboradorPre {
   motivo_exclusion_frecuencia_pago: string | null;
   quincena_tipo: string | null;
   // Tipo de personal
-  tipo_personal: "guardia" | "supervisor" | "administrativo" | null;
+  tipo_personal: string | null;
 }
 
 interface DetalleNovedad {
@@ -1735,7 +1735,10 @@ export default function PrePlanilla() {
                         <option value="todos">Todo tipo</option>
                         <option value="guardia">Guardia</option>
                         <option value="supervisor">Supervisor</option>
-                        <option value="administrativo">Administrativo</option>
+                        <option value="jefe_servicio">Jefe Servicio</option>
+                        <option value="administrativo_bodega">Bodega</option>
+                        <option value="administrativo_rrhh">RRHH</option>
+                        <option value="gerencia">Gerencia</option>
                       </select>
                       <div className="flex gap-1.5 flex-wrap">
                         {[

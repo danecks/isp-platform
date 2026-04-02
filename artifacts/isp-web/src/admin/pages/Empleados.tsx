@@ -54,7 +54,7 @@ interface Empleado {
   // Nómina — frecuencia de pago
   frecuenciaPago: string;
   // Tipo de personal operativo
-  tipoPersonal: "guardia" | "supervisor" | "administrativo";
+  tipoPersonal: string;
   // Seguridad social — IGSS
   aplicaIgssGeneral: boolean;
   estadoIgss: string;
@@ -210,7 +210,7 @@ interface FormState {
   frecuenciaPago: string;
   limiteAnticipo: string;
   tipoLimitePeriodo: string;
-  tipoPersonal: "guardia" | "supervisor" | "administrativo";
+  tipoPersonal: string;
 }
 
 interface AsignacionOperativa {
@@ -303,9 +303,13 @@ const FORM_EMPTY: FormState = {
 };
 
 const TIPO_PERSONAL_CFG = {
-  guardia:        { label: "Guardia",        color: "text-blue-300 bg-blue-500/10 border-blue-500/20"     },
-  supervisor:     { label: "Supervisor",     color: "text-violet-300 bg-violet-500/10 border-violet-500/20" },
-  administrativo: { label: "Administrativo", color: "text-amber-300 bg-amber-500/10 border-amber-500/20"  },
+  guardia:               { label: "Guardia",         color: "text-blue-300 bg-blue-500/10 border-blue-500/20"     },
+  supervisor:            { label: "Supervisor",      color: "text-violet-300 bg-violet-500/10 border-violet-500/20" },
+  jefe_servicio:         { label: "Jefe Servicio",   color: "text-orange-300 bg-orange-500/10 border-orange-500/20" },
+  administrativo_bodega: { label: "Bodega",          color: "text-amber-300 bg-amber-500/10 border-amber-500/20"  },
+  administrativo_rrhh:   { label: "RRHH",            color: "text-teal-300 bg-teal-500/10 border-teal-500/20"     },
+  gerencia:              { label: "Gerencia",        color: "text-rose-300 bg-rose-500/10 border-rose-500/20"     },
+  administrativo:        { label: "Administrativo",  color: "text-amber-300 bg-amber-500/10 border-amber-500/20"  },
 } as const;
 
 function TipoPersonalBadge({ tipo }: { tipo: string }) {
@@ -2542,7 +2546,7 @@ function FormModal({
     frecuenciaPago: emp?.frecuenciaPago ?? "quincenal",
     limiteAnticipo: emp?.limiteAnticipo != null ? String(emp.limiteAnticipo) : "",
     tipoLimitePeriodo: emp?.tipoLimitePeriodo ?? "quincenal",
-    tipoPersonal: (emp?.tipoPersonal ?? "guardia") as "guardia" | "supervisor" | "administrativo",
+    tipoPersonal: emp?.tipoPersonal ?? "guardia",
   }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -2639,8 +2643,11 @@ function FormModal({
               className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50 appearance-none"
             >
               <option value="guardia">Guardia — Personal operativo de campo</option>
-              <option value="supervisor">Supervisor — Visible en pizarrón, no asignable</option>
-              <option value="administrativo">Administrativo — Solo planilla, no visible en ops</option>
+              <option value="supervisor">Supervisor de Zona — Visible en pizarrón</option>
+              <option value="jefe_servicio">Jefe de Servicio — Turno 24×24, visible en pizarrón</option>
+              <option value="administrativo_bodega">Administrativo Bodega — Solo planilla</option>
+              <option value="administrativo_rrhh">Administrativo RRHH — Solo planilla</option>
+              <option value="gerencia">Gerencia — Solo planilla, protegido</option>
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -3004,7 +3011,10 @@ export default function Empleados() {
             <option value="todos">Todos los tipos</option>
             <option value="guardia">Guardia</option>
             <option value="supervisor">Supervisor</option>
-            <option value="administrativo">Administrativo</option>
+            <option value="jefe_servicio">Jefe de Servicio</option>
+            <option value="administrativo_bodega">Bodega</option>
+            <option value="administrativo_rrhh">RRHH</option>
+            <option value="gerencia">Gerencia</option>
           </select>
 
           {/* Toggle vista */}

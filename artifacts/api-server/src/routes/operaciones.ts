@@ -233,12 +233,40 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
     `);
 
     // Supervisores — visibles en pizarrón pero NO en el pool de asignación
+    // La zona se resuelve primero por la FK formal (operational_zones.supervisor_employee_id),
+    // luego por la asignación operativa del empleado
     const { rows: supervisoresRows } = await pool.query(`
       SELECT
         e.id, e.nombre_completo, e.estado_laboral, e.puesto, e.area, e.sede,
         e.telefono, e.wa_autorizado,
-        COALESCE(eoa.zona_operativa_id, NULL) AS zona_operativa_id,
-        oz.nombre AS zona_nombre,
+        COALESCE(oz_formal.id, eoa.zona_operativa_id)          AS zona_operativa_id,
+        COALESCE(oz_formal.nombre, oz_eoa.nombre)              AS zona_nombre,
+        CASE
+          WHEN e.estado_laboral = 'licencia'   THEN 'licencia'
+          WHEN e.estado_laboral = 'suspendido' THEN 'suspendido'
+          ELSE 'activo'
+        END AS estado_display
+      FROM employees e
+      LEFT JOIN employee_operational_assignments eoa ON eoa.employee_id = e.id AND eoa.activa = TRUE
+      LEFT JOIN operational_zones oz_eoa   ON oz_eoa.id  = eoa.zona_operativa_id
+      LEFT JOIN operational_zones oz_formal ON oz_formal.supervisor_employee_id = e.id
+      WHERE COALESCE(e.tipo_personal, 'guardia') = 'supervisor'
+        AND e.estado_laboral IN ('activo', 'licencia', 'suspendido')
+      ORDER BY COALESCE(oz_formal.id, eoa.zona_operativa_id) NULLS LAST, e.nombre_completo
+    `);
+
+    // Jefes de servicio — personal operativo especial 24x24, visible en pizarrón como referencia de turno
+    const { rows: jefesServicioRows } = await pool.query(`
+      SELECT
+        e.id, e.nombre_completo, e.estado_laboral, e.puesto, e.area,
+        e.telefono,
+        eoa.zona_operativa_id,
+        oz.nombre                                              AS zona_nombre,
+        t.id                                                   AS tipo_turno_id,
+        t.nombre                                               AS turno_nombre,
+        t.tipo_ciclo                                           AS tipo_ciclo_turno,
+        t.horas_trabajo                                        AS horas_trabajo_turno,
+        eoa.fecha_inicio                                       AS fecha_inicio_ciclo_turno,
         CASE
           WHEN e.estado_laboral = 'licencia'   THEN 'licencia'
           WHEN e.estado_laboral = 'suspendido' THEN 'suspendido'
@@ -247,9 +275,10 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       FROM employees e
       LEFT JOIN employee_operational_assignments eoa ON eoa.employee_id = e.id AND eoa.activa = TRUE
       LEFT JOIN operational_zones oz ON oz.id = eoa.zona_operativa_id
-      WHERE COALESCE(e.tipo_personal, 'guardia') = 'supervisor'
+      LEFT JOIN turnos t ON t.id = eoa.tipo_turno_id
+      WHERE COALESCE(e.tipo_personal, 'guardia') = 'jefe_servicio'
         AND e.estado_laboral IN ('activo', 'licencia', 'suspendido')
-      ORDER BY e.nombre_completo
+      ORDER BY oz.id NULLS LAST, e.nombre_completo
     `);
 
     // ── Post-proceso: reclasificar "disponible" con el motor de turnos ────────
@@ -376,6 +405,7 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       suspendidos,
       faltando,
       supervisores: supervisoresRows,
+      jefes_servicio: jefesServicioRows,
       total: agentes.length,
     });
   } catch (err) {
