@@ -1,0 +1,146 @@
+Antes de continuar con cualquier desarrollo adicional, quiero validar que entendiste correctamente la lógica de turnos de ISPSA.
+
+No quiero código.
+No quiero cambios.
+Quiero explicación clara, estructurada y validable.
+
+---
+
+## Objetivo
+Explícame cómo estás modelando y calculando cada turno.
+
+Quiero confirmar que el sistema refleja la lógica operativa real, no una simplificación incorrecta.
+
+---
+
+## 1. Explicación por tipo de turno
+
+Explícame paso a paso cómo funciona cada uno:
+
+### A. 24x24
+- cómo decides quién trabaja cada día
+- cómo alternas entre titulares
+- cómo determinas descanso vs trabajo
+
+---
+
+### B. 12 horas
+- cómo manejas el ciclo de trabajo
+- cómo defines el día de descanso
+- cómo determinas si puede hacer horas extra
+
+---
+
+### C. 24x48 (IMPORTANTE)
+Explícame cómo estás modelando esto:
+
+- cómo funciona entre semana
+- cómo detectas el fin de semana
+- cómo asignas el bloque de 48 horas
+- cómo alternas ese bloque entre titulares semana a semana
+
+Quiero ver si entendiste que NO es un patrón fijo simple.
+
+---
+
+### D. 24x72 (IMPORTANTE)
+Explícame:
+
+- cómo defines el bloque de 72 horas
+- cómo decides quién lo toma
+- cómo alterna entre titulares
+- cómo se integra con el resto de los días
+
+---
+
+### E. 8x8
+- cómo calculas los 8 días de trabajo
+- cómo calculas los 8 días de descanso
+- cómo decides en qué parte del ciclo está el agente en una fecha dada
+
+---
+
+## 2. Cálculo por fecha
+
+Para cualquier fecha X, explícame:
+
+- cómo decides si el agente trabaja o descansa
+- qué datos usas (fecha_inicio_ciclo, turno, etc.)
+- si usas día de la semana o solo diferencias de días
+
+---
+
+## 3. Estado del agente
+
+Explícame cómo clasificas a un agente en:
+
+- trabajando
+- descansando por ciclo
+- disponible real
+- ausente
+- en SSA
+
+Y en qué parte del sistema se calcula eso.
+
+---
+
+## 4. Estado del puesto
+
+Explícame cómo decides:
+
+- puesto cubierto
+- puesto en descanso por ciclo
+- puesto realmente descubierto
+
+Quiero saber si el sistema distingue correctamente estos casos.
+
+---
+
+## 5. Horas extra
+
+Explícame:
+
+- quién puede ser candidato para horas extra
+- quién NO puede
+- cómo lo determina el sistema
+
+---
+
+## 6. Ejemplo real
+
+Dame un ejemplo concreto:
+
+Un puesto 24x24 con 2 titulares:
+- Día 1
+- Día 2
+- Día 3
+- Día 4
+
+Y explícame quién trabaja y quién descansa.
+
+Luego otro ejemplo con:
+- 24x48
+- mostrando un fin de semana
+
+---
+
+## 7. Posibles limitaciones
+
+Quiero que me digas claramente:
+
+- qué partes de la lógica todavía son simplificadas
+- qué casos reales aún no están cubiertos
+- dónde podría fallar el sistema hoy
+
+---
+
+## 8. Resultado esperado
+
+Quiero una explicación como si se la estuvieras dando a un jefe de operaciones, no a un programador.
+
+Si la lógica no coincide exactamente con la operación real de ISPSA, dímelo claramente.
+
+---
+
+Muy importante:
+Este paso es solo validación de entendimiento. No avances código hasta que confirmemos que la lógica es correcta.
