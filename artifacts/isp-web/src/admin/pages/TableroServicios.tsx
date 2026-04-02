@@ -37,7 +37,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 
-const API = "http://localhost:8080/api";
+const API = "/api";
 const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
 const h = () => ({ "Content-Type": "application/json", "x-isp-session": getSession() });
 
