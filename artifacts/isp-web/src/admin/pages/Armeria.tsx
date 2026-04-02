@@ -338,8 +338,15 @@ function ModalFichaArma({ arma, onClose, onEdit }: {
   const a = detalle ?? arma;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-gray-900 border border-gray-700/80 rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[92vh]">
+    <div
+      role="dialog" aria-modal="true" aria-label={`Ficha del arma ${a.codigo}`}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-gray-900 border border-gray-700/80 rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[92vh]"
+        onClick={e => e.stopPropagation()}
+      >
 
         {/* ── Header ── */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700/60 flex-shrink-0">
@@ -365,11 +372,11 @@ function ModalFichaArma({ arma, onClose, onEdit }: {
             </div>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
-            <button onClick={onEdit} title="Editar arma"
+            <button onClick={onEdit} title="Editar arma" aria-label="Editar arma"
               className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors">
               <Edit className="w-4 h-4" />
             </button>
-            <button onClick={onClose}
+            <button onClick={onClose} aria-label="Cerrar ficha"
               className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors">
               <X className="w-4 h-4" />
             </button>
