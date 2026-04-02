@@ -1,0 +1,126 @@
+Ajuste importante del modelo de personal en ISPSA:
+
+No solo los jefes de servicio son operativos con turno.
+Los supervisores también trabajan por turnos reales y deben modelarse así.
+
+## Contexto real
+En ISPSA:
+- algunos supervisores trabajan en turno de 12 horas
+- otros trabajan en turno 24x24
+- y en contingencias muchas veces ellos mismos cubren puestos cuando:
+  - no hay disponibles
+  - nadie acepta horas extra
+  - se necesita resolver el servicio
+
+Por lo tanto, el supervisor no debe tratarse como personal meramente administrativo o solo visual.
+
+## Objetivo
+Corregir el modelo para que supervisores y jefes de servicio sean tratados como personal operativo con turno, visibles en operación y elegibles para cubrir puestos cuando corresponda.
+
+---
+
+## 1. Clasificación correcta del personal
+Quiero separar así:
+
+### Personal operativo con turno
+- guardia
+- supervisor
+- jefe_servicio
+
+### Personal no operativo
+- administrativo_bodega
+- administrativo_rrhh
+- gerencia
+
+---
+
+## 2. Supervisores
+Los supervisores deben:
+- tener turno asignable (12h o 24x24)
+- entrar al motor de turnos
+- aparecer como:
+  - trabajando
+  - descansando por ciclo
+  - disponibleHE si aplica
+- poder aparecer en operación y planilla
+
+---
+
+## 3. Jefes de servicio
+Mantener que:
+- son operativos
+- trabajan 24x24
+- visibles en pizarrón
+- incluidos en planilla
+
+---
+
+## 4. Capacidad de cubrir puestos
+Quiero que tanto supervisores como jefes de servicio, si están en condición válida, puedan cubrir puestos operativos.
+
+Especialmente en contingencia:
+- si no hay guardias disponibles
+- si nadie acepta HE
+- el jefe de servicio puede asignar a un supervisor a cubrir un puesto
+
+---
+
+## 5. Trazabilidad especial
+Cuando un supervisor o jefe de servicio cubra un puesto, quiero que el sistema lo marque claramente como algo especial, por ejemplo:
+- cobertura por supervisor
+- cobertura por jefe de servicio
+
+No quiero que quede invisible como si fuera una asignación normal cualquiera.
+
+---
+
+## 6. Pizarrón y pool
+Quiero que supervisores y jefes de servicio:
+- aparezcan en panel o sección especial
+- pero también puedan entrar a la lógica de candidatos si están aptos para cubrir
+
+---
+
+## 7. Planilla
+Quiero que:
+- guardias
+- supervisores
+- jefes de servicio
+- administrativos
+
+aparezcan en planilla, pero diferenciados por categoría.
+
+---
+
+## 8. Permisos
+El jefe de servicio puede operar con:
+- guardias
+- supervisores si deben cubrir
+- jefes de servicio si aplica
+
+Pero no debe editar administrativos.
+
+RRHH/admin sí gestionan categorías, estructura y administrativos.
+
+---
+
+## 9. Validación
+Quiero pruebas donde:
+1. un supervisor de 12h aparezca correctamente en turno
+2. un supervisor de 24x24 aparezca correctamente en turno
+3. un supervisor en descanso pueda salir como candidato para HE
+4. un supervisor pueda cubrir un puesto en contingencia
+5. todo eso quede reflejado en operación y planilla
+
+---
+
+## 10. Documentación
+Explica claramente:
+- qué personal es operativo con turno
+- qué personal no lo es
+- cómo se comportan supervisores y jefes de servicio
+- cómo se registra cuando cubren un puesto
+- cómo aparece eso en planilla
+
+Muy importante:
+quiero que el sistema refleje que supervisores y jefes de servicio también son personal operativo real y que, en contingencia, pueden cubrir puestos como parte de la operación.

@@ -255,17 +255,18 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       ORDER BY COALESCE(oz_formal.id, eoa.zona_operativa_id) NULLS LAST, e.nombre_completo
     `);
 
-    // Jefes de servicio — personal operativo especial 24x24, visible en pizarrón como referencia de turno
+    // Jefes de servicio — personal operativo con turno real 24x24, procesados por el motor de ciclos
     const { rows: jefesServicioRows } = await pool.query(`
       SELECT
         e.id, e.nombre_completo, e.estado_laboral, e.puesto, e.area,
-        e.telefono,
+        e.telefono, e.wa_autorizado,
         eoa.zona_operativa_id,
         oz.nombre                                              AS zona_nombre,
         t.id                                                   AS tipo_turno_id,
         t.nombre                                               AS turno_nombre,
         t.tipo_ciclo                                           AS tipo_ciclo_turno,
         t.horas_trabajo                                        AS horas_trabajo_turno,
+        t.horas_descanso                                       AS horas_descanso_turno,
         eoa.fecha_inicio                                       AS fecha_inicio_ciclo_turno,
         CASE
           WHEN e.estado_laboral = 'licencia'   THEN 'licencia'
@@ -280,6 +281,41 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         AND e.estado_laboral IN ('activo', 'licencia', 'suspendido')
       ORDER BY oz.id NULLS LAST, e.nombre_completo
     `);
+
+    // ── Aplicar motor de ciclos a jefes de servicio ──────────────────────────
+    // Calculamos estado HOY y MAÑANA para el panel "Jefe de Servicio del Día"
+    const mañanaDt = new Date(hoy + "T12:00:00Z");
+    mañanaDt.setUTCDate(mañanaDt.getUTCDate() + 1);
+    const mañana = mañanaDt.toISOString().slice(0, 10);
+
+    const jefesServicioEnriquecidos = jefesServicioRows.map((js: any) => {
+      if (js.estado_display !== 'activo') {
+        return { ...js, trabaja_hoy: false, trabaja_mañana: false, estado_ciclo: js.estado_display };
+      }
+      if (js.tipo_ciclo_turno && js.horas_trabajo_turno && js.fecha_inicio_ciclo_turno) {
+        const turnoObj = {
+          id: js.tipo_turno_id ?? 0,
+          nombre: js.turno_nombre ?? "",
+          tipo_ciclo: js.tipo_ciclo_turno,
+          horas_trabajo:  Number(js.horas_trabajo_turno),
+          horas_descanso: Number(js.horas_descanso_turno ?? js.horas_trabajo_turno),
+        };
+        const fechaInicioStr = js.fecha_inicio_ciclo_turno instanceof Date
+          ? js.fecha_inicio_ciclo_turno.toISOString().slice(0, 10)
+          : String(js.fecha_inicio_ciclo_turno).slice(0, 10);
+
+        const estadoHoy     = calcularEstadoCiclo(turnoObj, fechaInicioStr, hoy);
+        const estadoMañana  = calcularEstadoCiclo(turnoObj, fechaInicioStr, mañana);
+        return {
+          ...js,
+          trabaja_hoy:     estadoHoy.trabaja,
+          trabaja_mañana:  estadoMañana.trabaja,
+          estado_ciclo:    estadoHoy.trabaja ? "trabajando" : "descansando_ciclo",
+        };
+      }
+      // Sin datos de ciclo → disponible pero sin estado de turno conocido
+      return { ...js, trabaja_hoy: null, trabaja_mañana: null, estado_ciclo: "sin_turno" };
+    });
 
     // ── Post-proceso: reclasificar "disponible" con el motor de turnos ────────
     // Un agente laboral-activo sin asignación especial puede estar:
@@ -405,7 +441,9 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       suspendidos,
       faltando,
       supervisores: supervisoresRows,
-      jefes_servicio: jefesServicioRows,
+      jefes_servicio: jefesServicioEnriquecidos,
+      fecha_hoy: hoy,
+      fecha_mañana: mañana,
       total: agentes.length,
     });
   } catch (err) {

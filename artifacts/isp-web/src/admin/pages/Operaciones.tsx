@@ -197,6 +197,10 @@ interface JefeServicioPool {
   horas_trabajo_turno: string | null;
   fecha_inicio_ciclo_turno: string | null;
   estado_display: string;
+  // Calculado por el motor de turnos en el backend
+  trabaja_hoy: boolean | null;
+  trabaja_mañana: boolean | null;
+  estado_ciclo: "trabajando" | "descansando_ciclo" | "sin_turno" | "licencia" | "suspendido" | null;
 }
 
 interface Pool {
@@ -210,6 +214,8 @@ interface Pool {
   faltando: Agente[];
   supervisores: SupervisorPool[];
   jefes_servicio: JefeServicioPool[];
+  fecha_hoy: string;
+  fecha_mañana: string;
   total: number;
 }
 
@@ -5669,57 +5675,122 @@ export default function Operaciones() {
             </div>
           )}
 
-          {/* ── Panel de jefes de servicio 24x24 (solo en vista de hoy) ──── */}
-          {!esFuturo && (pool?.jefes_servicio?.length ?? 0) > 0 && (
-            <div className="shrink-0 bg-[#060f1a] border border-orange-500/15 rounded-2xl overflow-hidden">
-              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-orange-500/10">
-                <Shield className="w-3.5 h-3.5 text-orange-400/60" />
-                <span className="text-xs font-bold text-orange-300/60 uppercase tracking-widest">Jefes de Servicio</span>
-                <span className="text-[10px] text-orange-400/50 font-bold bg-orange-500/10 border border-orange-500/20 px-1.5 py-0.5 rounded-full">
-                  {pool!.jefes_servicio.length}
-                </span>
-                <div className="flex-1" />
-                <span className="text-[10px] text-white/25">Turno 24×24 · trazabilidad operativa</span>
-              </div>
-              <div className="flex gap-2 p-3 overflow-x-auto">
-                {pool!.jefes_servicio.map((js) => (
-                  <div
-                    key={js.id}
-                    className="shrink-0 flex flex-col gap-1.5 bg-[#0c1929] border border-orange-500/15 rounded-xl px-3 py-2.5 w-48"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarColor(js.nombre_completo)}`}>
-                        {iniciales(js.nombre_completo)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-semibold text-white/90 truncate leading-tight">{js.nombre_completo}</p>
-                        <p className="text-[9px] text-orange-300/50 truncate">{js.puesto ?? "Jefe de Servicio"}</p>
-                      </div>
+          {/* ── Jefe de Servicio del Día — panel operativo 24×24 ─────────── */}
+          {!esFuturo && (pool?.jefes_servicio?.length ?? 0) > 0 && (() => {
+            const jefesHoy     = pool!.jefes_servicio.filter(js => js.trabaja_hoy === true);
+            const jefesMañana  = pool!.jefes_servicio.filter(js => js.trabaja_mañana === true && js.trabaja_hoy !== true);
+            const jefesDescanso = pool!.jefes_servicio.filter(js => js.trabaja_hoy === false && js.estado_ciclo === "descansando_ciclo");
+            const jefesOtros   = pool!.jefes_servicio.filter(js => js.trabaja_hoy === null || js.estado_ciclo === "sin_turno");
+
+            const JefeCard = ({ js, variante }: { js: JefeServicioPool; variante: "hoy" | "mañana" | "descanso" | "otro" }) => {
+              const borderCls = variante === "hoy"
+                ? "border-orange-400/40 bg-gradient-to-b from-orange-500/8 to-[#0c1929]"
+                : variante === "mañana"
+                  ? "border-amber-500/25 bg-[#0c1929]"
+                  : "border-white/6 bg-[#080f1e]";
+              const badgeCls = variante === "hoy"
+                ? "text-orange-200 bg-orange-500/20 border-orange-400/40 font-bold"
+                : variante === "mañana"
+                  ? "text-amber-300/80 bg-amber-500/10 border-amber-500/20"
+                  : "text-white/30 bg-white/4 border-white/8";
+              const badgeLabel = variante === "hoy" ? "EN TURNO HOY"
+                : variante === "mañana" ? "TURNO MAÑANA"
+                : variante === "descanso" ? "DESCANSANDO"
+                : "SIN TURNO";
+              return (
+                <div className={`shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 w-52 ${borderCls}`}>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0 ${avatarColor(js.nombre_completo)} ${variante === "hoy" ? "ring-2 ring-orange-400/40" : ""}`}>
+                      {iniciales(js.nombre_completo)}
                     </div>
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border ${
-                        js.estado_display === 'activo'
-                          ? "text-emerald-300 bg-emerald-500/10 border-emerald-500/20"
-                          : js.estado_display === 'licencia'
-                            ? "text-indigo-300 bg-indigo-500/10 border-indigo-500/20"
-                            : "text-red-300 bg-red-500/10 border-red-500/20"
-                      }`}>
-                        {js.estado_display === "activo" ? "ACTIVO" : js.estado_display === "licencia" ? "LICENCIA" : "SUSPENDIDO"}
-                      </span>
-                      {js.turno_nombre && (
-                        <span className="text-[8px] text-orange-300/70 bg-orange-500/8 border border-orange-500/15 px-1.5 py-0.5 rounded font-semibold">
-                          {js.turno_nombre}
-                        </span>
-                      )}
-                      {js.zona_nombre && (
-                        <span className="text-[8px] text-white/40 truncate w-full mt-0.5">📍 {js.zona_nombre}</span>
-                      )}
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-xs font-semibold truncate leading-tight ${variante === "hoy" ? "text-white" : "text-white/70"}`}>{js.nombre_completo}</p>
+                      <p className="text-[9px] text-orange-300/40 truncate">{js.puesto ?? "Jefe de Servicio"}</p>
                     </div>
                   </div>
-                ))}
+                  <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                    <span className={`text-[8px] px-1.5 py-0.5 rounded border ${badgeCls}`}>
+                      {badgeLabel}
+                    </span>
+                    {js.turno_nombre && (
+                      <span className="text-[8px] text-white/30 bg-white/4 border border-white/8 px-1.5 py-0.5 rounded">
+                        {js.turno_nombre}
+                      </span>
+                    )}
+                  </div>
+                  {js.zona_nombre && (
+                    <p className="text-[8px] text-white/30 truncate">📍 {js.zona_nombre}</p>
+                  )}
+                </div>
+              );
+            };
+
+            return (
+              <div className="shrink-0 bg-[#060f1a] border border-orange-500/15 rounded-2xl overflow-hidden">
+                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-orange-500/10">
+                  <Shield className="w-3.5 h-3.5 text-orange-400/70" />
+                  <span className="text-xs font-bold text-orange-300/70 uppercase tracking-widest">Jefe de Servicio del Día</span>
+                  <div className="flex items-center gap-1 ml-1">
+                    {jefesHoy.length > 0 && (
+                      <span className="text-[9px] font-bold bg-orange-500/20 text-orange-300 border border-orange-400/30 px-1.5 py-0.5 rounded-full">
+                        {jefesHoy.length} en turno
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex-1" />
+                  <span className="text-[10px] text-white/20">Turno 24×24 · motor de ciclos · trazabilidad</span>
+                </div>
+
+                <div className="p-3 space-y-3">
+                  {/* HOY */}
+                  {jefesHoy.length > 0 && (
+                    <div>
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-orange-400/70 mb-2 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-orange-400 inline-block animate-pulse" />
+                        Hoy — {pool!.fecha_hoy}
+                      </p>
+                      <div className="flex gap-2 overflow-x-auto">
+                        {jefesHoy.map(js => <JefeCard key={js.id} js={js} variante="hoy" />)}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* MAÑANA — solo si no trabajan hoy */}
+                  {jefesMañana.length > 0 && (
+                    <div>
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-amber-400/50 mb-2 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400/50 inline-block" />
+                        Mañana — {pool!.fecha_mañana}
+                      </p>
+                      <div className="flex gap-2 overflow-x-auto">
+                        {jefesMañana.map(js => <JefeCard key={js.id} js={js} variante="mañana" />)}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* DESCANSANDO hoy (pero volverán mañana o pasado) */}
+                  {jefesDescanso.length > 0 && (
+                    <div>
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-white/25 mb-2 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white/15 inline-block" />
+                        Descanso de ciclo hoy
+                      </p>
+                      <div className="flex gap-2 overflow-x-auto">
+                        {jefesDescanso.map(js => <JefeCard key={js.id} js={js} variante="descanso" />)}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sin turno asignado */}
+                  {jefesOtros.length > 0 && (
+                    <div className="flex gap-2 overflow-x-auto">
+                      {jefesOtros.map(js => <JefeCard key={js.id} js={js} variante="otro" />)}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
         </div>
 
