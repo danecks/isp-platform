@@ -7,22 +7,30 @@
  *   8h     → ciclo 8h   → trabaja todos los días, descanso semanal por dia_descanso
  *   12x36  → ciclo 48h  → trabaja 12h, descansa 36h (cada 2 días)
  *
- *   24x24  → ciclo 48h  → 1 día trabaja, 1 día descansa (2 titulares alternados)
- *   24x48  → ciclo 72h  → 1 día trabaja, 2 días descansa (3 titulares para cobertura)
- *            NOTA: ISPSA usa un modelo semanal mixto (24x24 entre semana + bloque 48h
- *            de fin de semana alterno). Esta implementación usa el ciclo simple como
- *            aproximación. El modelo semanal completo requiere configuración adicional.
+ *   24x24  → ciclo 48h  → 1 día trabaja, 1 día descansa (2 titulares por puesto)
  *
- *   24x72  → ciclo 96h  → 1 día trabaja, 3 días descansa (4 titulares para cobertura)
+ *   24x48  → LÓGICA SEMANAL MIXTA (NO es ciclo fijo de 3 días):
+ *            Entre semana alterna como 24x24 (Lun–Vie).
+ *            En fin de semana (Vie→Dom) uno de los dos titulares cubre 48h corridas.
+ *            La semana siguiente se invierten completamente.
+ *            Requiere fecha_inicio_ciclo = un LUNES (ancla de semana).
+ *            Los dos titulares deben tener fecha_inicio_ciclo con 7 días de diferencia.
+ *
+ *            Patrón semana "propia" (paridad 0):
+ *              Lun=trabaja, Mar=descansa, Mié=trabaja, Jue=descansa,
+ *              Vie=trabaja (inicio 48h), Sáb=trabaja (cont. 48h), Dom=descansa
+ *
+ *            Patrón semana "ajena" (paridad 1):
+ *              Lun=descansa, Mar=trabaja, Mié=descansa, Jue=trabaja,
+ *              Vie=descansa, Sáb=descansa, Dom=trabaja
+ *
+ *   24x72  → ciclo 96h  → 1 día trabaja, 3 días descansa (4 titulares por puesto)
  *
  *   8x8    → ciclo 16 días → 8 días ON, 8 días OFF (horas_trabajo=192, horas_descanso=192)
- *            Para cobertura continua se requieren 2 titulares desfasados 8 días.
  *
  * REGLA CLAVE:
- *   Todos los turnos con ciclo > 24h usan fecha_inicio_ciclo como ancla del patrón.
- *   La posición en el ciclo determina si el agente trabaja o descansa ESE día.
- *   descansoPorCiclo = true → es descanso NORMAL del ciclo, no alerta operativa.
- *   descansoPorCiclo = false Y !trabaja → ausencia o problema real.
+ *   descansoPorCiclo = true → descanso NORMAL del ciclo, no alerta operativa.
+ *   disponibleHE = true     → el agente puede hacer horas extra.
  */
 
 export interface Turno {
@@ -38,11 +46,14 @@ export interface EstadoCiclo {
   trabaja: boolean;
   horasEsperadas: number;
   descansoPorCiclo: boolean;      // true → descanso normal del ciclo (no es alerta)
-  disponibleHE: boolean;          // puede hacer horas extra (descansa o disponible libre)
-  tipoCiclo: "diario" | "ciclo_alternado" | "ciclo_bloques" | "sin_turno";
-  posicionEnCiclo?: number;       // 0-based position in the cycle (for debug)
-  diasCiclo?: number;             // total days in the cycle
-  diasTrabajo?: number;           // days of work in the cycle
+  disponibleHE: boolean;          // puede hacer horas extra
+  tipoCiclo: "diario" | "24x48_semanal" | "ciclo_alternado" | "ciclo_bloques" | "sin_turno";
+  posicionEnCiclo?: number;       // para turnos de ciclo fijo: posición 0-based
+  diasCiclo?: number;
+  diasTrabajo?: number;
+  // Para 24x48: info adicional de debug
+  paridadSemana?: 0 | 1;         // 0=semana propia, 1=semana ajena
+  diaSemana?: number;            // 0=Lun .. 6=Dom
 }
 
 /**
@@ -52,7 +63,8 @@ export interface EstadoCiclo {
  * - ¿puede hacer horas extra?
  *
  * @param turno             Registro del turno con tipo_ciclo y horas
- * @param fechaInicioCiclo  Fecha de inicio del ciclo del agente (ancla). Puede ser null para turnos diarios.
+ * @param fechaInicioCiclo  Fecha de inicio del ciclo del agente (ancla).
+ *                          Para 24x48 DEBE ser un lunes.
  * @param fecha             Fecha a consultar (YYYY-MM-DD)
  * @param diaDescanso       Día de descanso semanal (para turnos diarios: 12h, 8h)
  */
@@ -64,15 +76,21 @@ export function calcularEstadoCiclo(
 ): EstadoCiclo {
   const ht = parseFloat(String(turno.horas_trabajo ?? 0));
   const hd = parseFloat(String(turno.horas_descanso ?? 0));
-  const ciclo = ht + hd;
+  const tipoCiclo = turno.tipo_ciclo ?? "";
+
+  // ── 24x48 — Lógica semanal mixta ────────────────────────────────────────────
+  // No se usa ciclo fijo. Se determina por día de semana + paridad de semana.
+  if (tipoCiclo === "24x48" || (ht === 24 && hd === 48)) {
+    return calcular24x48(fechaInicioCiclo, fecha);
+  }
 
   // ── Turnos diarios (ciclo ≤ 24h): 12h, 8h ─────────────────────────────────
   // El agente trabaja todos los días. El descanso semanal se controla por dia_descanso.
+  const ciclo = ht + hd;
   if (ciclo <= 24) {
     if (diaDescanso) {
       const diaSemana = getDiaSemana(fecha);
       if (diaSemana === normalizarDia(diaDescanso)) {
-        // Es su día de descanso semanal → descansoPorCiclo = true
         return {
           trabaja: false,
           horasEsperadas: 0,
@@ -91,10 +109,9 @@ export function calcularEstadoCiclo(
     };
   }
 
-  // ── Turnos de ciclo largo (24x24, 24x48, 24x72, 8x8, 12x36) ───────────────
-  // Requieren fecha_inicio_ciclo para calcular la posición en el ciclo.
+  // ── Turnos de ciclo largo (24x24, 24x72, 8x8, 12x36) ───────────────────────
+  // Usan módulo simple sobre días desde fecha_inicio_ciclo.
   if (!fechaInicioCiclo) {
-    // Sin fecha base: asumir que trabaja (fallback conservador para no esconder gaps)
     return {
       trabaja: true,
       horasEsperadas: ht,
@@ -104,7 +121,6 @@ export function calcularEstadoCiclo(
     };
   }
 
-  // Normalizar fecha_inicio_ciclo a string YYYY-MM-DD
   const inicioISO = fechaInicioCiclo instanceof Date
     ? fechaInicioCiclo.toISOString().slice(0, 10)
     : String(fechaInicioCiclo).slice(0, 10);
@@ -115,20 +131,17 @@ export function calcularEstadoCiclo(
   const diffMs   = objetivo.getTime() - inicio.getTime();
   const diffDias = Math.round(diffMs / 86_400_000);
 
-  // Para 8x8: horas_trabajo=192 → diasTrabajo=8, horas_descanso=192 → diasDescanso=8
-  const diasTrabajo  = Math.round(ht / 24);    // días de trabajo en el ciclo
-  const diasDescanso = Math.round(hd / 24);    // días de descanso en el ciclo
+  const diasTrabajo  = Math.round(ht / 24);
+  const diasDescanso = Math.round(hd / 24);
   const diasCiclo    = diasTrabajo + diasDescanso;
 
-  // Posición en el ciclo (siempre positiva, maneja fechas pasadas al ancla)
   const posicion = ((diffDias % diasCiclo) + diasCiclo) % diasCiclo;
 
   const trabajaHoy = posicion < diasTrabajo;
 
-  // Determinar tipo de ciclo para contexto
-  const tipoCiclo: EstadoCiclo["tipoCiclo"] = diasCiclo > 10
-    ? "ciclo_bloques"    // 8x8 u otros bloques largos
-    : "ciclo_alternado"; // 24x24, 24x48, 24x72
+  const tipo: EstadoCiclo["tipoCiclo"] = diasCiclo > 10
+    ? "ciclo_bloques"
+    : "ciclo_alternado";
 
   if (trabajaHoy) {
     return {
@@ -136,20 +149,18 @@ export function calcularEstadoCiclo(
       horasEsperadas: ht,
       descansoPorCiclo: false,
       disponibleHE: false,
-      tipoCiclo,
+      tipoCiclo: tipo,
       posicionEnCiclo: posicion,
       diasCiclo,
       diasTrabajo,
     };
   } else {
-    // Está en fase de descanso del ciclo → descansoPorCiclo = true
-    // Puede hacer horas extra (es descanso planeado, no ausencia)
     return {
       trabaja: false,
       horasEsperadas: 0,
       descansoPorCiclo: true,
       disponibleHE: true,
-      tipoCiclo,
+      tipoCiclo: tipo,
       posicionEnCiclo: posicion,
       diasCiclo,
       diasTrabajo,
@@ -157,9 +168,98 @@ export function calcularEstadoCiclo(
   }
 }
 
+// ─── Lógica específica 24x48 ────────────────────────────────────────────────
+
+/**
+ * calcular24x48 — Implementa la lógica semanal mixta del turno 24x48 de ISPSA.
+ *
+ * Reglas:
+ *   1. La semana de referencia se ancla en fecha_inicio_ciclo (debe ser un lunes).
+ *   2. Se calcula cuántas semanas completas han pasado (weeks_diff).
+ *   3. La paridad (0 o 1) determina si esta es la "semana propia" o "semana ajena".
+ *   4. El día de la semana del date consultado determina trabaja/descansa.
+ *
+ *   Paridad 0 (semana propia — titular "abre"):
+ *     Lun=trabaja, Mar=descansa, Mié=trabaja, Jue=descansa,
+ *     Vie=trabaja (inicio bloque 48h), Sáb=trabaja (cont. 48h), Dom=descansa
+ *
+ *   Paridad 1 (semana ajena — titular "cierra"):
+ *     Lun=descansa, Mar=trabaja, Mié=descansa, Jue=trabaja,
+ *     Vie=descansa, Sáb=descansa, Dom=trabaja
+ *
+ *   Para tener cobertura continua, los 2 titulares deben tener fecha_inicio_ciclo
+ *   con exactamente 7 días de diferencia (un lunes y el lunes siguiente).
+ */
+function calcular24x48(
+  fechaInicioCiclo: string | Date | null,
+  fecha: string,
+): EstadoCiclo {
+  if (!fechaInicioCiclo) {
+    // Sin fecha ancla: asumir que trabaja (conservador)
+    return {
+      trabaja: true,
+      horasEsperadas: 24,
+      descansoPorCiclo: false,
+      disponibleHE: false,
+      tipoCiclo: "24x48_semanal",
+    };
+  }
+
+  const inicioISO = fechaInicioCiclo instanceof Date
+    ? fechaInicioCiclo.toISOString().slice(0, 10)
+    : String(fechaInicioCiclo).slice(0, 10);
+
+  const inicio   = parseFecha(inicioISO);
+  const objetivo = parseFecha(fecha);
+
+  const diffDias = Math.round((objetivo.getTime() - inicio.getTime()) / 86_400_000);
+
+  // Cuántas semanas completas han pasado desde la semana de referencia
+  const weeksDiff = Math.floor(diffDias / 7);
+
+  // Paridad: 0 = semana propia, 1 = semana ajena
+  // Usamos (weeksDiff % 2 + 2) % 2 para manejar semanas anteriores al ancla (negativas)
+  const parity = ((weeksDiff % 2) + 2) % 2 as 0 | 1;
+
+  // Día de la semana: JavaScript 0=Dom, 1=Lun...6=Sáb
+  // Convertimos a Lun=0, Mar=1, Mié=2, Jue=3, Vie=4, Sáb=5, Dom=6
+  const jsDay = objetivo.getUTCDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const dowLun = (jsDay + 6) % 7;    // Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6
+
+  // Tabla de trabajo por paridad y día de semana
+  // Índices: [Lun=0, Mar=1, Mié=2, Jue=3, Vie=4, Sáb=5, Dom=6]
+  const PATRON_PROPIA  = [true,  false, true,  false, true,  true,  false]; // paridad 0
+  const PATRON_AJENA   = [false, true,  false, true,  false, false, true ]; // paridad 1
+
+  const trabaja = parity === 0 ? PATRON_PROPIA[dowLun] : PATRON_AJENA[dowLun];
+
+  if (trabaja) {
+    return {
+      trabaja: true,
+      horasEsperadas: 24,
+      descansoPorCiclo: false,
+      disponibleHE: false,
+      tipoCiclo: "24x48_semanal",
+      paridadSemana: parity,
+      diaSemana: dowLun,
+    };
+  } else {
+    return {
+      trabaja: false,
+      horasEsperadas: 0,
+      descansoPorCiclo: true,
+      disponibleHE: true,
+      tipoCiclo: "24x48_semanal",
+      paridadSemana: parity,
+      diaSemana: dowLun,
+    };
+  }
+}
+
+// ─── Exports backward-compatibles ──────────────────────────────────────────
+
 /**
  * calcularJornadaEsperada — API backward-compatible.
- * Wrapper sobre calcularEstadoCiclo para no romper código existente.
  */
 export function calcularJornadaEsperada(
   turno: Turno,
@@ -173,7 +273,6 @@ export function calcularJornadaEsperada(
 
 /**
  * calcularHorasEsperadasPeriodo — Calcula horas totales esperadas en un rango.
- * Útil para pre-planilla.
  */
 export function calcularHorasEsperadasPeriodo(
   turno: Turno,
