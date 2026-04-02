@@ -1,0 +1,138 @@
+Necesito corregir el modelo visual y operativo de los puestos con turnos rotativos en ISPSA.
+
+## Problema actual
+El sistema está mostrando un puesto 24x24 como si fueran dos puestos distintos, por ejemplo:
+- Bodega Par A
+- Bodega Par B
+
+Eso no es correcto para la operación real.
+
+## Lógica correcta
+El puesto físico es uno solo.
+
+Ejemplo:
+- Bodega
+
+Ese puesto tiene:
+- turno 24x24
+- 2 titulares
+- uno trabaja hoy
+- el otro descansa
+- mañana se invierten
+
+Entonces:
+- A y B no son dos puestos distintos
+- son dos titulares/slots del mismo puesto
+
+---
+
+## Objetivo
+Quiero que el sistema mantenga la lógica de turnos correcta, pero que visual y operativamente trate esto como un solo puesto con múltiples titulares alternos, no como dos puestos separados.
+
+---
+
+## 1. Modelo correcto
+Quiero distinguir claramente:
+
+### Puesto físico / operativo
+- uno solo
+- ejemplo: Bodega
+
+### Titulares del puesto
+- Titular A
+- Titular B
+- alternan según el turno
+
+No quiero que el usuario vea “Bodega Par A” y “Bodega Par B” como si fueran dos puestos reales diferentes.
+
+---
+
+## 2. UI del pizarrón
+Quiero que en el pizarrón aparezca una sola tarjeta del puesto, y dentro de ella se vea claramente:
+
+- nombre del puesto
+- turno
+- titular que trabaja hoy
+- titular que descansa hoy
+- estado del puesto
+- arma asignada si aplica
+- tramos / cobertura si aplica
+
+Ejemplo esperado:
+- Puesto: Bodega
+- Turno: 24x24
+- Trabajando hoy: Agente 11 Kilo
+- Descansando hoy: Agente 12 Lima
+- Estado: cubierto
+
+No quiero dos tarjetas separadas para el mismo puesto.
+
+---
+
+## 3. Motor interno
+Si internamente necesitas seguir usando slots/paridad/titulares alternos para calcular el turno, está bien.
+
+Pero eso debe quedar como detalle interno.
+La interfaz operativa debe agruparlos como un solo puesto.
+
+---
+
+## 4. Armería
+Si el arma está asignada al puesto:
+- el responsable actual debe ser el titular que está trabajando hoy
+- no quiero que parezca que el arma está asignada a “Par A” o “Par B” como si fueran dos puestos distintos
+
+---
+
+## 5. Cobertura y relevos
+Si el titular activo falta:
+- el sistema debe mostrar el problema en el puesto único
+- y quién lo cubre
+- sin duplicar puestos
+
+---
+
+## 6. Historial y trazabilidad
+Quiero que siga siendo posible saber:
+- qué titular estaba activo ese día
+- cuál descansaba
+- quién cubrió
+- quién tuvo el arma
+- quién tuvo la responsabilidad del puesto
+
+Pero todo colgando del puesto único.
+
+---
+
+## 7. No romper
+No romper:
+- motor de turnos
+- titulares alternos
+- historial de titularidad
+- armería
+- cobertura
+- planilla
+- pool
+- planificación futura
+
+---
+
+## 8. Validación
+Quiero ver pruebas donde:
+1. un puesto 24x24 con 2 titulares aparezca como un solo puesto
+2. se muestre quién trabaja y quién descansa
+3. al cambiar de día se inviertan correctamente
+4. el arma siga al titular activo del puesto
+5. no se duplique el puesto visualmente
+
+---
+
+## 9. Documentación
+Explica claramente:
+- cómo queda la diferencia entre puesto único y titulares alternos
+- qué se mantuvo interno
+- qué cambió en la UI
+- cómo se resuelve la responsabilidad del puesto, del arma y de la cobertura
+
+Muy importante:
+quiero que el sistema entienda que el puesto es uno, y que los titulares rotan dentro de ese mismo puesto, en lugar de mostrar dos puestos distintos.

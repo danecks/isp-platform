@@ -127,13 +127,76 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       p.descanso_por_ciclo = descanso_por_ciclo;
     }
 
+    // ── Agrupar pares 24x24 ───────────────────────────────────────────────────
+    // Puestos con turno alternado (24x24) y nombre terminando en " Par A" o
+    // " Par B" representan el mismo puesto físico con dos titulares alternos.
+    // Los agrupamos en un objeto unificado para que la UI muestre una sola
+    // tarjeta por puesto físico.
+    const PAR_SUFFIX = /\s+Par\s+[AB]$/i;
+    type PuestoRaw = (typeof puestos)[0];
+    type PuestoAgrupado = PuestoRaw & {
+      es_par_24x24?: boolean;
+      par_trabajando?: PuestoRaw;
+      par_descansando?: PuestoRaw;
+    };
+
+    function agruparPares24x24(lista: PuestoRaw[]): PuestoAgrupado[] {
+      const parMap = new Map<string, { parA?: PuestoRaw; parB?: PuestoRaw }>();
+      const sinPar: PuestoRaw[] = [];
+
+      for (const p of lista) {
+        // Detectar par por nombre ("… Par A" / "… Par B") independientemente de tipo_ciclo
+        // ya que el valor almacenado puede ser "alternado", "24x24" u otro según la tabla turnos.
+        if (PAR_SUFFIX.test(p.nombre)) {
+          const base = p.nombre.replace(PAR_SUFFIX, "").trim();
+          // key: base + zona para evitar colisiones entre clientes con puestos homónimos
+          const mapKey = `${base}|${p.zona_operativa_id ?? ""}|${p.sede_id ?? ""}`;
+          if (!parMap.has(mapKey)) parMap.set(mapKey, {});
+          const entry = parMap.get(mapKey)!;
+          if (/Par\s+A$/i.test(p.nombre)) entry.parA = p;
+          else entry.parB = p;
+        } else {
+          sinPar.push(p);
+        }
+      }
+
+      const resultado: PuestoAgrupado[] = [...sinPar];
+      for (const entry of parMap.values()) {
+        const { parA, parB } = entry;
+        if (parA && parB) {
+          // El slot que NO está en descanso de ciclo es el que trabaja hoy
+          const working: PuestoRaw = !parA.descanso_por_ciclo ? parA : parB;
+          const resting: PuestoRaw  = !parA.descanso_por_ciclo ? parB : parA;
+          resultado.push({
+            ...working,
+            nombre:         working.nombre.replace(PAR_SUFFIX, "").trim(),
+            es_par_24x24:   true,
+            par_trabajando:  { ...working },
+            par_descansando: { ...resting },
+          });
+        } else {
+          // Par incompleto — mostrar como puesto individual
+          if (parA) resultado.push(parA);
+          if (parB) resultado.push(parB);
+        }
+      }
+
+      // Mantener orden original (por orden, luego nombre)
+      resultado.sort((a, b) =>
+        a.orden !== b.orden
+          ? a.orden - b.orden
+          : a.nombre.localeCompare(b.nombre),
+      );
+      return resultado;
+    }
+
     // Agrupar por cliente
     const mapaClientes: Record<string, {
       clienteId: number | null;
       clienteNombre: string;
       fechaInicioContrato: string | null;
       iniciaHoy: boolean;
-      puestos: typeof puestos;
+      puestos: PuestoAgrupado[];
     }> = {};
 
     for (const p of puestos) {
@@ -150,6 +213,11 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         };
       }
       mapaClientes[key].puestos.push(p);
+    }
+
+    // Agrupar pares 24x24 dentro de cada cliente
+    for (const clienteData of Object.values(mapaClientes)) {
+      clienteData.puestos = agruparPares24x24(clienteData.puestos);
     }
 
     res.json(Object.values(mapaClientes));

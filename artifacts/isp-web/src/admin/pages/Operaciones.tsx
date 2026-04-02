@@ -75,6 +75,12 @@ interface Puesto {
   arma_id?: number | null;
   arma_codigo?: string | null;
   arma_tipo?: string | null;
+  /** Puestos 24x24 agrupados: true cuando Par A + Par B se fusionaron en un puesto físico único */
+  es_par_24x24?: boolean;
+  /** Slot del titular que trabaja hoy (la base del objeto también tiene sus datos) */
+  par_trabajando?: Puesto;
+  /** Slot del titular que descansa hoy */
+  par_descansando?: Puesto;
 }
 
 interface ClienteBoard {
@@ -2851,6 +2857,171 @@ function DroppablePuesto({
   const vacacionesTitular = !cubierto && puesto.titular_vac_tipo === "vacaciones";
   // vacacionesTrabajadas: el titular está cubierto pero con vacaciones_trabajadas activas
   const vacacionesTrabajadas = puesto.titular_vac_tipo === "vacaciones_trabajadas";
+
+  // ─── Renderizado especial para puestos 24x24 agrupados ───────────────────
+  if (puesto.es_par_24x24 && puesto.par_trabajando && puesto.par_descansando) {
+    const activo     = puesto.par_trabajando;
+    const descansando = puesto.par_descansando;
+    const activoCubierto = activo.estado === "cubierto" && activo.agente_id;
+    const activoRelevo   = activoCubierto && activo.titular_employee_id &&
+                           activo.agente_id !== activo.titular_employee_id;
+    const activoSinCob   = !activoCubierto; // el slot de hoy no tiene cobertura → alerta
+    const arma = activo.arma_codigo || descansando.arma_codigo;
+    const armaId = activo.arma_id || descansando.arma_id;
+    const armaTipo = activo.arma_tipo || descansando.arma_tipo;
+
+    const borde24 = isOver
+      ? "border-primary bg-primary/10 shadow-lg shadow-primary/20 scale-[1.02]"
+      : activoRelevo
+        ? "bg-[#0f1208] border-amber-500/30 hover:border-amber-400/40"
+        : activoCubierto
+          ? "bg-[#071520] border-violet-500/25 hover:border-violet-400/35"
+          : "bg-[#0c0a16] border-red-500/25 hover:border-red-400/35";
+
+    return (
+      <div
+        ref={setNodeRef}
+        onClick={onClick}
+        className={`relative rounded-xl border p-3 transition-all cursor-pointer group ${borde24} ${isAgenteSeleccionado && !activoCubierto ? "ring-1 ring-primary/50 border-primary/30" : ""}`}
+      >
+        {/* Badge cambios futuros */}
+        {cambiosProximos && cambiosProximos.length > 0 && (
+          <div className="absolute -top-1.5 -right-1.5 z-10 flex items-center gap-0.5 bg-indigo-700/90 border border-indigo-400/40 rounded-full px-1.5 py-0.5" title={`${cambiosProximos.length} cambio(s) futuro(s)`}>
+            <Calendar className="w-2.5 h-2.5 text-indigo-200" />
+            <span className="text-[8px] text-indigo-100 font-bold leading-none">{cambiosProximos.length}</span>
+          </div>
+        )}
+
+        {/* Encabezado */}
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1">
+              <p className="text-xs font-semibold text-white/80 truncate">{puesto.nombre}</p>
+              {onConfigTurno && (
+                <button
+                  onClick={e => { e.stopPropagation(); onConfigTurno(); }}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-white/10"
+                  title="Configurar turno"
+                >
+                  <Settings2 className="w-2.5 h-2.5 text-white/30 hover:text-indigo-400" />
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-[9px] px-1.5 py-0.5 rounded border font-semibold text-violet-300/80 bg-violet-500/8 border-violet-500/20 flex items-center gap-0.5">
+                <Repeat className="w-2 h-2 opacity-70" />
+                {puesto.turno_nombre ?? "24x24"}
+              </span>
+              {activoRelevo && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded border font-bold text-amber-300/80 bg-amber-500/10 border-amber-500/25">RELEVO</span>
+              )}
+            </div>
+          </div>
+          {/* Ícono de estado */}
+          <div className="shrink-0 mt-0.5">
+            {activoCubierto
+              ? <CheckCircle2 className={`w-3.5 h-3.5 ${activoRelevo ? "text-amber-400" : "text-violet-400"}`} />
+              : <Circle className="w-3.5 h-3.5 text-red-400 animate-pulse" />
+            }
+          </div>
+        </div>
+
+        {/* Titular activo (trabaja hoy) */}
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <div className="w-1 h-full min-h-[20px] rounded-full bg-violet-500/40 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[8px] text-violet-400/60 font-semibold uppercase tracking-wider mb-0.5">Trabaja hoy</p>
+              {activoCubierto && activo.agente_nombre ? (
+                <div className="flex items-center gap-1.5">
+                  <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(activo.agente_nombre)}`}>
+                    {iniciales(activo.agente_nombre)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-white/80 font-medium truncate">{activo.agente_nombre}</p>
+                    {activo.agente_telefono && (
+                      <p className="text-[9px] text-white/25 truncate">{activo.agente_telefono}</p>
+                    )}
+                  </div>
+                </div>
+              ) : activoSinCob && activo.titular_nombre ? (
+                <div className={`flex items-center gap-2 transition-colors ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/35"}`}>
+                  <User className="w-3.5 h-3.5 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[11px] truncate">{isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : activo.titular_nombre}</p>
+                    <p className="text-[9px] text-red-400/60">Sin cobertura</p>
+                  </div>
+                </div>
+              ) : (
+                <div className={`flex items-center gap-2 transition-colors ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/20"}`}>
+                  <User className="w-3.5 h-3.5 shrink-0" />
+                  <p className="text-[11px]">{isOver ? "Soltar aquí" : "Sin cobertura"}</p>
+                </div>
+              )}
+            </div>
+            {activoCubierto && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onLiberar(); }}
+                className="opacity-0 group-hover:opacity-100 text-red-400/60 hover:text-red-400 transition-all p-0.5 shrink-0"
+                title="Remover del puesto"
+              >
+                <XCircle className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
+          {/* Titular descansando hoy */}
+          <div className="flex items-center gap-2">
+            <div className="w-1 h-full min-h-[20px] rounded-full bg-indigo-500/20 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[8px] text-indigo-400/40 font-semibold uppercase tracking-wider mb-0.5">Descansa hoy</p>
+              {descansando.titular_nombre ? (
+                <div className="flex items-center gap-1.5">
+                  <Moon className="w-3 h-3 text-indigo-400/30 shrink-0" />
+                  <p className="text-[11px] text-white/30 truncate">{descansando.titular_nombre}</p>
+                </div>
+              ) : (
+                <p className="text-[11px] text-white/15">Sin titular</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Arma (sigue al titular activo del puesto) */}
+        {arma && armaId && (
+          <button
+            onClick={e => { e.stopPropagation(); setFichaArmaId(armaId); }}
+            title={`Ver ficha: ${arma} — ${armaTipo ?? ""}`}
+            className="flex items-center gap-1 mt-1.5 px-1.5 py-0.5 bg-blue-500/8 border border-blue-500/15 rounded-md w-fit hover:bg-blue-500/15 hover:border-blue-500/30 transition-colors cursor-pointer"
+          >
+            <Shield className="w-2.5 h-2.5 text-blue-400/60 shrink-0" />
+            <span className="text-[9px] font-mono font-semibold text-blue-300/70">{arma}</span>
+            {armaTipo && <span className="text-[9px] text-blue-300/40 capitalize">{armaTipo}</span>}
+          </button>
+        )}
+
+        {/* Tramos */}
+        <div className="mt-2 pt-2 border-t border-white/5">
+          <button
+            onClick={(e) => { e.stopPropagation(); onAbrirSegmentos(); }}
+            className="flex items-center gap-1 text-[9px] text-indigo-400/50 hover:text-indigo-400 transition-colors group/tramos"
+            title="Registrar tramos de cobertura"
+          >
+            <Layers className="w-3 h-3" />
+            <span>Tramos</span>
+          </button>
+        </div>
+
+        {isOver && (
+          <div className="absolute inset-0 rounded-xl border-2 border-primary border-dashed pointer-events-none" />
+        )}
+        {fichaArmaId && (
+          <ModalFichaArma armaId={fichaArmaId} onClose={() => setFichaArmaId(null)} />
+        )}
+      </div>
+    );
+  }
+  // ─── Fin renderizado 24x24 agrupado ──────────────────────────────────────
 
   const borderClass = isOver
     ? "border-primary bg-primary/10 shadow-lg shadow-primary/20 scale-[1.02]"
