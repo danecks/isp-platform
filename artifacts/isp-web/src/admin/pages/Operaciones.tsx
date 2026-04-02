@@ -5765,19 +5765,33 @@ export default function Operaciones() {
                         ? { cls: "text-red-300 bg-red-500/10 border-red-500/20", label: "SUSPENDIDO" }
                         : { cls: "text-white/20 bg-white/4 border-white/8", label: "SIN TURNO" };
 
-              const borderCls = sv.puede_cubrir
-                ? "border-violet-500/30 bg-gradient-to-b from-violet-500/5 to-[#0c1929]"
-                : "border-white/6 bg-[#0a1020]";
+              const esSeleccionado = agenteSeleccionado?.id === sv.id;
+              const estaEnDescansoPool = pool!.descansandoCiclo.some(a => a.id === sv.id);
+              const seleccionable = estaEnDescansoPool && !isCerrado;
+
+              const borderCls = esSeleccionado
+                ? "border-violet-400/70 bg-gradient-to-b from-violet-500/20 to-[#0c1929] ring-2 ring-violet-400/40"
+                : sv.puede_cubrir
+                  ? "border-violet-500/30 bg-gradient-to-b from-violet-500/5 to-[#0c1929]"
+                  : "border-white/6 bg-[#0a1020]";
+
+              const handleClick = seleccionable ? () => {
+                const agente = pool!.descansandoCiclo.find(a => a.id === sv.id);
+                if (agente) setAgenteSeleccionado(prev => prev?.id === agente.id ? null : agente);
+              } : undefined;
 
               return (
-                <div className={`shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 w-48 ${borderCls}`}>
+                <div
+                  className={`shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 w-48 transition-all ${borderCls} ${seleccionable ? "cursor-pointer hover:border-violet-400/50 hover:from-violet-500/12" : ""}`}
+                  onClick={handleClick}
+                >
                   {sv.zona_nombre && (
                     <p className="text-[8px] font-bold uppercase tracking-widest text-violet-400/60 truncate border-b border-violet-500/10 pb-1.5 mb-0.5">
                       📍 {sv.zona_nombre}
                     </p>
                   )}
                   <div className="flex items-center gap-2">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarColor(sv.nombre_completo)} ${sv.puede_cubrir ? "ring-1 ring-violet-400/30" : ""}`}>
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarColor(sv.nombre_completo)} ${sv.puede_cubrir ? "ring-1 ring-violet-400/30" : ""} ${esSeleccionado ? "ring-2 ring-violet-400/60" : ""}`}>
                       {iniciales(sv.nombre_completo)}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -5789,11 +5803,19 @@ export default function Operaciones() {
                     <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border ${estadoBadge.cls}`}>
                       {estadoBadge.label}
                     </span>
-                    {sv.puede_cubrir && (
+                    {esSeleccionado ? (
+                      <span className="text-[8px] font-bold text-violet-200 bg-violet-500/25 border border-violet-400/50 px-1.5 py-0.5 rounded animate-pulse">
+                        ✓ Seleccionado — elige un puesto
+                      </span>
+                    ) : estaEnDescansoPool ? (
                       <span className="text-[8px] text-violet-300/70 bg-violet-500/8 border border-violet-500/20 px-1.5 py-0.5 rounded">
+                        clic para asignar
+                      </span>
+                    ) : sv.puede_cubrir ? (
+                      <span className="text-[8px] text-violet-300/40 bg-violet-500/4 border border-violet-500/10 px-1.5 py-0.5 rounded">
                         puede cubrir
                       </span>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               );
@@ -5872,11 +5894,18 @@ export default function Operaciones() {
             const jefesOtros   = pool!.jefes_servicio.filter(js => js.trabaja_hoy === null || js.estado_ciclo === "sin_turno");
 
             const JefeCard = ({ js, variante }: { js: JefeServicioPool; variante: "hoy" | "mañana" | "descanso" | "otro" }) => {
-              const borderCls = variante === "hoy"
-                ? "border-orange-400/40 bg-gradient-to-b from-orange-500/8 to-[#0c1929]"
-                : variante === "mañana"
-                  ? "border-amber-500/25 bg-[#0c1929]"
-                  : "border-white/6 bg-[#080f1e]";
+              const esSeleccionado = agenteSeleccionado?.id === js.id;
+              const seleccionable = variante === "descanso" && !isCerrado;
+
+              const borderCls = esSeleccionado
+                ? "border-orange-400/70 bg-gradient-to-b from-orange-500/20 to-[#0c1929] ring-2 ring-orange-400/40"
+                : variante === "hoy"
+                  ? "border-orange-400/40 bg-gradient-to-b from-orange-500/8 to-[#0c1929]"
+                  : variante === "mañana"
+                    ? "border-amber-500/25 bg-[#0c1929]"
+                    : variante === "descanso"
+                      ? "border-orange-500/20 bg-[#080f1e]"
+                      : "border-white/6 bg-[#080f1e]";
               const badgeCls = variante === "hoy"
                 ? "text-orange-200 bg-orange-500/20 border-orange-400/40 font-bold"
                 : variante === "mañana"
@@ -5886,10 +5915,19 @@ export default function Operaciones() {
                 : variante === "mañana" ? "TURNO MAÑANA"
                 : variante === "descanso" ? "DESCANSANDO"
                 : "SIN TURNO";
+
+              const handleClick = seleccionable ? () => {
+                const agente = pool!.descansandoCiclo.find(a => a.id === js.id);
+                if (agente) setAgenteSeleccionado(prev => prev?.id === agente.id ? null : agente);
+              } : undefined;
+
               return (
-                <div className={`shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 w-52 ${borderCls}`}>
+                <div
+                  className={`shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 w-52 transition-all ${borderCls} ${seleccionable ? "cursor-pointer hover:border-orange-400/40 hover:from-orange-500/10" : ""}`}
+                  onClick={handleClick}
+                >
                   <div className="flex items-center gap-2">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0 ${avatarColor(js.nombre_completo)} ${variante === "hoy" ? "ring-2 ring-orange-400/40" : ""}`}>
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0 ${avatarColor(js.nombre_completo)} ${variante === "hoy" ? "ring-2 ring-orange-400/40" : ""} ${esSeleccionado ? "ring-2 ring-orange-400/60" : ""}`}>
                       {iniciales(js.nombre_completo)}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -5901,11 +5939,19 @@ export default function Operaciones() {
                     <span className={`text-[8px] px-1.5 py-0.5 rounded border ${badgeCls}`}>
                       {badgeLabel}
                     </span>
-                    {js.turno_nombre && (
+                    {esSeleccionado ? (
+                      <span className="text-[8px] font-bold text-orange-200 bg-orange-500/20 border border-orange-400/40 px-1.5 py-0.5 rounded animate-pulse">
+                        ✓ Seleccionado — elige un puesto
+                      </span>
+                    ) : seleccionable ? (
+                      <span className="text-[8px] text-orange-300/50 bg-orange-500/6 border border-orange-500/15 px-1.5 py-0.5 rounded">
+                        clic para asignar
+                      </span>
+                    ) : js.turno_nombre ? (
                       <span className="text-[8px] text-white/30 bg-white/4 border border-white/8 px-1.5 py-0.5 rounded">
                         {js.turno_nombre}
                       </span>
-                    )}
+                    ) : null}
                   </div>
                   {js.zona_nombre && (
                     <p className="text-[8px] text-white/30 truncate">📍 {js.zona_nombre}</p>
