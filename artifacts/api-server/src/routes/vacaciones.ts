@@ -411,6 +411,39 @@ vacacionesRouter.post("/vacaciones", async (req, res) => {
         "Novedades de vacaciones generadas");
     }
 
+    // Para vacaciones_programadas: insertar en planificacion_futura por día
+    // Así Operaciones puede ver y planificar relevo con anticipación
+    if (tipo === "vacaciones_programadas") {
+      const diasFuturos = diasEntreFechas(fecha_inicio, fecha_fin ?? fecha_inicio);
+      const { rows: puestoRows } = await client.query(`
+        SELECT po.id, po.nombre
+        FROM puestos_operativos po
+        WHERE po.titular_employee_id = $1 AND po.activo = TRUE
+        LIMIT 1
+      `, [employee_id]);
+      const puestoTitularId = puestoRows[0]?.id ?? null;
+
+      for (const dia of diasFuturos) {
+        await client.query(`
+          INSERT INTO planificacion_futura (
+            fecha, puesto_id, tipo_evento, tipo_ausencia, tipo_cobertura_futura,
+            titular_ausente_id, motivo, notas, estado, fuente, creado_por
+          ) VALUES ($1, $2, 'titular_ausente', 'vacaciones', 'relevo_vacaciones',
+            $3, $4, $5, 'pendiente', 'vacaciones_rrhh', $6)
+          ON CONFLICT DO NOTHING
+        `, [
+          dia,
+          puestoTitularId,
+          employee_id,
+          `Vacaciones programadas de ${emp.nombre_completo}`,
+          `Evento RRHH #${evento.id}`,
+          usuario ?? "rrhh",
+        ]);
+      }
+      logger.info({ empleado: emp.nombre_completo, dias: diasFuturos.length },
+        "Planificación futura generada para vacaciones programadas");
+    }
+
     await client.query("COMMIT");
 
     res.status(201).json({
@@ -466,7 +499,7 @@ vacacionesRouter.patch("/vacaciones/:id", async (req, res) => {
       RETURNING *
     `, [estado || null, observaciones || null, notas || null, id]);
 
-    // Si se cancela/anula, limpiar novedades generadas
+    // Si se cancela/anula, limpiar novedades generadas y planificacion_futura
     if (estado === "cancelado" || estado === "anulado") {
       await pool.query(`
         UPDATE novedades_nomina_diarias
@@ -479,7 +512,17 @@ vacacionesRouter.patch("/vacaciones/:id", async (req, res) => {
           AND fuente = 'vacaciones'
       `, [ev.employee_id, ev.fecha, ev.fecha_fin ?? ev.fecha]);
 
-      logger.info({ id, empleado: ev.employee_id }, "Novedades de vacaciones revertidas por cancelación");
+      // Cancelar registros de planificacion_futura generados por este evento
+      await pool.query(`
+        UPDATE planificacion_futura
+        SET estado = 'cancelado', motivo = COALESCE(motivo, '') || ' [Cancelado con evento #${id}]'
+        WHERE titular_ausente_id = $1
+          AND fuente = 'vacaciones_rrhh'
+          AND estado != 'cancelado'
+          AND fecha::date BETWEEN $2::date AND COALESCE($3::date, $2::date)
+      `, [ev.employee_id, ev.fecha, ev.fecha_fin ?? ev.fecha]);
+
+      logger.info({ id, empleado: ev.employee_id }, "Novedades y planificación futura revertidas por cancelación");
     }
 
     res.json({ ok: true, evento: rows[0] });
@@ -560,6 +603,18 @@ vacacionesRouter.post("/vacaciones/:id/aprobar", async (req, res) => {
         `Vacaciones aprobadas (Evento #${id})`,
       ]);
     }
+
+    // Actualizar planificacion_futura: marcar como 'confirmado' las entradas creadas por vacaciones_rrhh
+    await client.query(`
+      UPDATE planificacion_futura
+      SET estado = 'confirmado',
+          tipo_ausencia = 'vacaciones',
+          motivo = COALESCE(motivo, '') || ' [Aprobado con evento #${id}]'
+      WHERE titular_ausente_id = $1
+        AND fuente = 'vacaciones_rrhh'
+        AND estado = 'pendiente'
+        AND fecha::date BETWEEN $2::date AND COALESCE($3::date, $2::date)
+    `, [ev.employee_id, fechaInicio, fechaFin]);
 
     await client.query("COMMIT");
     res.json({ ok: true, mensaje: `Vacaciones aprobadas para ${ev.emp_nombre}`, dias_generados: dias.length });

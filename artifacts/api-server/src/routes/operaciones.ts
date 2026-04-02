@@ -59,7 +59,11 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         cs.nombre        AS sede_nombre,
         oz.nombre        AS zona_nombre,
         cl.fecha_inicio_contrato,
-        (cl.fecha_inicio_contrato = COALESCE($1::date, CURRENT_DATE)) AS es_inicio_hoy
+        (cl.fecha_inicio_contrato = COALESCE($1::date, CURRENT_DATE)) AS es_inicio_hoy,
+        -- Vacaciones del titular en la fecha consultada (normal o trabajadas)
+        titular_vac.tipo_evento                                        AS titular_vac_tipo,
+        titular_vac.vac_fecha::date                                    AS titular_vac_inicio,
+        titular_vac.vac_fin                                            AS titular_vac_fin
       FROM puestos_operativos po
       -- TH: obtener titular histórico para la fecha consultada
       LEFT JOIN LATERAL (
@@ -73,6 +77,18 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         ORDER BY pth.fecha_inicio DESC
         LIMIT 1
       ) th_tab ON TRUE
+      -- Vacaciones activas del titular en la fecha consultada
+      LEFT JOIN LATERAL (
+        SELECT er.tipo_evento, er.fecha AS vac_fecha, er.fecha_fin AS vac_fin
+        FROM eventos_rrhh er
+        WHERE er.employee_id = COALESCE(th_tab.hist_titular_id, po.titular_employee_id)
+          AND er.tipo_evento IN ('vacaciones', 'vacaciones_trabajadas')
+          AND er.estado NOT IN ('anulado', 'cancelado')
+          AND er.fecha::date <= COALESCE($1::date, CURRENT_DATE)
+          AND (er.fecha_fin IS NULL OR er.fecha_fin >= COALESCE($1::date, CURRENT_DATE))
+        ORDER BY er.created_at DESC
+        LIMIT 1
+      ) titular_vac ON TRUE
       LEFT JOIN employees e  ON e.id  = po.agente_id
       LEFT JOIN client_sedes cs ON cs.id = po.sede_id
       LEFT JOIN operational_zones oz ON oz.id = po.zona_operativa_id
@@ -396,8 +412,16 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
     for (const a of agentes) {
       // Vacaciones activas tienen prioridad sobre la categoría de ciclo
       if (a.vacacion_activa_tipo) {
-        enVacaciones.push(a);
-        continue;
+        if (a.vacacion_activa_tipo === 'vacaciones_trabajadas') {
+          // Vacaciones trabajadas: el empleado SÍ trabaja, pero se señala con badge especial.
+          // Se deja pasar al motor de turnos y queda en 'trabajando' con flag vacacion_trabajada=true.
+          a.vacacion_trabajada = true;
+          // No hacemos continue: cae al switch normal → motor de turnos → trabajando/descansandoCiclo
+        } else {
+          // Vacaciones normales: el empleado está ausente.
+          enVacaciones.push(a);
+          continue;
+        }
       }
       switch (a.categoria) {
         case 'en_puesto':   enPuesto.push(a);    break;

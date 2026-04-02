@@ -1,0 +1,185 @@
+Quiero cerrar ahora el flujo completo de vacaciones en ISPSA, ya que la base de elegibilidad y alertas RRHH ya está funcionando.
+
+No quiero romper nada existente.
+
+## Contexto
+Ya existe:
+- módulo/tab de Vacaciones en RRHH
+- endpoints de elegibilidad, alertas y resumen
+- lista de colaboradores elegibles o próximos a cumplir 1 año
+
+Ahora quiero pasar de “ver” a “operar” vacaciones de forma realista.
+
+---
+
+## Objetivo
+Permitir que RRHH programe vacaciones y que estas se reflejen correctamente en:
+
+- RRHH
+- planificación futura
+- pizarrón operativo
+- cobertura
+- pre-planilla
+- planilla
+
+Incluyendo un caso especial:
+- vacaciones trabajadas
+
+---
+
+## 1. Programación de vacaciones
+Quiero que RRHH pueda programar vacaciones desde la UI.
+
+### Datos mínimos:
+- colaborador
+- fecha_inicio
+- fecha_fin
+- tipo:
+  - vacaciones
+  - vacaciones_trabajadas
+- observaciones o comentario
+- estado si aplica
+
+Esto debe crear un evento RRHH claro y trazable.
+
+---
+
+## 2. Vacaciones normales
+Cuando el colaborador tenga vacaciones normales:
+
+- debe aparecer como ausente por vacaciones
+- no debe salir como disponible
+- no debe salir como descanso por ciclo
+- no debe salir como candidato para HE
+- su puesto debe requerir cobertura real
+
+### En el pizarrón
+Quiero que:
+- el puesto se vea como requiere cobertura
+- el colaborador se vea como “Vacaciones”
+- con color/badge distinto al descanso de turno
+
+---
+
+## 3. Vacaciones trabajadas
+Quiero soportar el caso real donde el colaborador decide trabajar durante el período de vacaciones.
+
+### Comportamiento esperado
+- sigue apareciendo trabajando
+- pero con una señal clara tipo:
+  - “Vacaciones trabajadas”
+- no quiero que se confunda con un día normal
+
+### Política por defecto
+Por ahora quiero que:
+- vacaciones trabajadas NO consuman saldo automáticamente
+- queden registradas
+- y luego RRHH pueda reprogramarlas o resolverlas
+
+Si hace falta, dejar esta política configurable, pero por defecto usar esa.
+
+---
+
+## 4. Planificación futura
+Si RRHH programa vacaciones futuras:
+
+- deben verse en planificación futura
+- deben reflejarse en pool futuro
+- deben permitir que Operaciones planifique relevo con anticipación
+- no deben contaminar el presente
+
+---
+
+## 5. Pizarrón operativo
+Quiero que el pizarrón distinga claramente entre:
+
+- descanso de ciclo
+- vacaciones
+- vacaciones trabajadas
+- ausencia normal
+- descubierto real
+
+### Ejemplo visual sugerido
+- descanso de ciclo → azul
+- vacaciones → morado o amarillo
+- vacaciones trabajadas → badge especial sobre verde o sobre estado de trabajo
+- descubierto real → rojo
+
+---
+
+## 6. Pool y pool futuro
+### Vacaciones normales
+- no disponible
+- no candidato HE
+- no descanso de ciclo
+- debe salir como ausente programado / vacaciones
+
+### Vacaciones trabajadas
+- sí aparece trabajando si corresponde
+- con etiqueta o estado especial
+
+---
+
+## 7. Nómina / planilla
+### Vacaciones normales
+- pagadas normalmente
+- no generan falta
+- no generan descuento
+- no generan HE por el simple hecho de ser vacaciones
+
+### Vacaciones trabajadas
+- aparecen diferenciadas
+- no consumen saldo por defecto
+- no quiero que el sistema las trate como vacaciones gozadas normales
+
+---
+
+## 8. Saldo / consumo
+No hace falta todavía hacer un motor completo de saldo acumulado si no está listo, pero sí quiero dejar claro que:
+
+- vacaciones normales = consumen saldo
+- vacaciones trabajadas = no consumen saldo por defecto
+
+Si hace falta, dejar columna o estructura preparada para esto.
+
+---
+
+## 9. Validación
+Quiero pruebas donde:
+1. se programe vacaciones normales futuras
+2. aparezcan en RRHH
+3. aparezcan en planificación futura
+4. el colaborador desaparezca como candidato de cobertura
+5. el puesto se vea como requiere cobertura
+6. se programe vacaciones trabajadas
+7. el colaborador siga apareciendo trabajando
+8. el pizarrón lo marque como “Vacaciones trabajadas”
+9. planilla lo trate de forma diferenciada
+
+---
+
+## 10. No romper
+No romper:
+- turnos
+- descanso por ciclo
+- pool
+- pool futuro
+- SSA
+- RRHH eventos ya existentes
+- pre-planilla
+- planilla
+- planificación futura
+
+---
+
+## 11. Documentación
+Explica claramente:
+- diferencia entre vacaciones normales y vacaciones trabajadas
+- cómo se programan
+- cómo se ven en el pizarrón
+- cómo impactan la cobertura
+- cómo impactan planilla
+- cuál es la política por defecto sobre consumo de saldo
+
+Muy importante:
+quiero que ISPSA permita a RRHH y Operaciones coordinar vacaciones de forma realista, incluyendo el caso frecuente donde el colaborador decide trabajar durante el período que le correspondería gozar.

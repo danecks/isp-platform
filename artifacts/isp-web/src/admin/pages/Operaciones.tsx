@@ -65,6 +65,10 @@ interface Puesto {
   horas_trabajo: number | null;
   horas_descanso: number | null;
   descanso_por_ciclo?: boolean;
+  /** Vacaciones activas del titular en la fecha consultada */
+  titular_vac_tipo?: "vacaciones" | "vacaciones_trabajadas" | null;
+  titular_vac_inicio?: string | null;
+  titular_vac_fin?: string | null;
 }
 
 interface ClienteBoard {
@@ -103,6 +107,10 @@ interface Agente {
   misma_zona_exp?: boolean;
   /** Tipo de personal — identifica supervisores/jefes inyectados como contingencia */
   tipo_personal?: string;
+  /** Vacaciones activas del agente: 'vacaciones' | 'vacaciones_trabajadas' | null */
+  vacacion_activa_tipo?: string | null;
+  /** Flag del backend: true si el agente tiene vacaciones_trabajadas activas */
+  vacacion_trabajada?: boolean;
 }
 
 // ── Tipos para ranking de candidatos ─────────────────────────────────────────
@@ -642,6 +650,11 @@ function DraggableAgente({
            agente.estado_puesto_titular === "vacaciones"       ? "VACACIONES" :
            agente.estado_puesto_titular === "incapacidad"      ? "INCAPACIDAD" :
            agente.estado_puesto_titular.toUpperCase()}
+        </span>
+      )}
+      {agente.vacacion_trabajada && (
+        <span className="shrink-0 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/25 leading-tight">
+          VAC.✓
         </span>
       )}
       {isSelected && (
@@ -2745,6 +2758,10 @@ function DroppablePuesto({
   // descansoCiclo: el puesto no tiene cobertura porque su titular está en descanso normal del ciclo
   // No es alerta operativa. El jefe de servicio debe verlo diferente de un descubierto real.
   const descansoCiclo  = !cubierto && (puesto.descanso_por_ciclo === true);
+  // vacacionesTitular: el titular está en vacaciones (sin cobertura asignada)
+  const vacacionesTitular = !cubierto && puesto.titular_vac_tipo === "vacaciones";
+  // vacacionesTrabajadas: el titular está cubierto pero con vacaciones_trabajadas activas
+  const vacacionesTrabajadas = puesto.titular_vac_tipo === "vacaciones_trabajadas";
 
   const borderClass = isOver
     ? "border-primary bg-primary/10 shadow-lg shadow-primary/20 scale-[1.02]"
@@ -2771,6 +2788,24 @@ function DroppablePuesto({
         <div className="absolute -top-1.5 -right-1.5 z-10 flex items-center gap-0.5 bg-indigo-700/90 border border-indigo-400/40 rounded-full px-1.5 py-0.5" title={`${cambiosProximos.length} cambio(s) futuro(s) programado(s)`}>
           <Calendar className="w-2.5 h-2.5 text-indigo-200" />
           <span className="text-[8px] text-indigo-100 font-bold leading-none">{cambiosProximos.length}</span>
+        </div>
+      )}
+      {/* Badge: titular en vacaciones */}
+      {vacacionesTitular && (
+        <div
+          className="absolute -top-1.5 -left-1.5 z-10 flex items-center gap-0.5 bg-emerald-900/90 border border-emerald-500/40 rounded-full px-1.5 py-0.5"
+          title={`Titular en vacaciones${puesto.titular_vac_inicio ? ` desde ${puesto.titular_vac_inicio}` : ""}${puesto.titular_vac_fin ? ` hasta ${puesto.titular_vac_fin}` : ""}`}
+        >
+          <span className="text-[8px] text-emerald-300 font-bold leading-none">VAC</span>
+        </div>
+      )}
+      {/* Badge: titular con vacaciones trabajadas (sigue en puesto) */}
+      {vacacionesTrabajadas && (
+        <div
+          className="absolute -top-1.5 -left-1.5 z-10 flex items-center gap-0.5 bg-orange-900/90 border border-orange-500/40 rounded-full px-1.5 py-0.5"
+          title="Titular trabajando días de vacaciones"
+        >
+          <span className="text-[8px] text-orange-300 font-bold leading-none">VAC✓</span>
         </div>
       )}
       {/* Encabezado: nombre + turno + estado */}
@@ -2885,13 +2920,21 @@ function DroppablePuesto({
           )}
         </div>
       ) : titularAusente ? (
-        /* Titular definido pero sin cobertura: puede ser descanso de ciclo o ausencia real */
+        /* Titular definido pero sin cobertura: puede ser descanso de ciclo, vacaciones, o ausencia real */
         <div className="space-y-1.5">
           {descansoCiclo ? (
             /* Descanso normal del ciclo — no es alerta operativa */
             <div className="flex items-center gap-2 text-indigo-300/50">
               <Moon className="w-4 h-4 shrink-0" />
               <p className="text-[11px]">Descanso de turno</p>
+            </div>
+          ) : vacacionesTitular ? (
+            /* Titular en vacaciones normales — necesita relevo */
+            <div className={`flex items-center gap-2 transition-colors ${isOver || isAgenteSeleccionado ? "text-primary" : "text-emerald-400/60"}`}>
+              <User className="w-4 h-4 shrink-0" />
+              <p className="text-[11px]">
+                {isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : "En vacaciones"}
+              </p>
             </div>
           ) : (
             <div className={`flex items-center gap-2 transition-colors ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/20"}`}>
@@ -2904,12 +2947,14 @@ function DroppablePuesto({
           <div className={`flex items-center gap-1.5 px-1.5 py-1 rounded-lg border ${
             descansoCiclo
               ? "bg-indigo-500/5 border-indigo-500/15"
-              : "bg-red-500/5 border-red-500/10"
+              : vacacionesTitular
+                ? "bg-emerald-500/5 border-emerald-500/15"
+                : "bg-red-500/5 border-red-500/10"
           }`}>
-            <User className={`w-2.5 h-2.5 shrink-0 ${descansoCiclo ? "text-indigo-400/40" : "text-red-400/40"}`} />
-            <p className={`text-[9px] truncate ${descansoCiclo ? "text-indigo-300/50" : "text-red-300/50"}`}>
-              {descansoCiclo ? "Descansando: " : "Titular: "}
-              <span className={descansoCiclo ? "text-indigo-300/70" : "text-red-300/70"}>{puesto.titular_nombre}</span>
+            <User className={`w-2.5 h-2.5 shrink-0 ${descansoCiclo ? "text-indigo-400/40" : vacacionesTitular ? "text-emerald-400/40" : "text-red-400/40"}`} />
+            <p className={`text-[9px] truncate ${descansoCiclo ? "text-indigo-300/50" : vacacionesTitular ? "text-emerald-300/50" : "text-red-300/50"}`}>
+              {descansoCiclo ? "Descansando: " : vacacionesTitular ? "Vacaciones: " : "Titular: "}
+              <span className={descansoCiclo ? "text-indigo-300/70" : vacacionesTitular ? "text-emerald-300/70" : "text-red-300/70"}>{puesto.titular_nombre}</span>
               {descansoCiclo && <span className="ml-1 text-indigo-400/50 font-bold">HE ✓</span>}
             </p>
           </div>
@@ -5729,7 +5774,54 @@ export default function Operaciones() {
                  poolTab === "enVacaciones"     ? "Ningún agente en vacaciones hoy" :
                  "No hay agentes suspendidos"}
               </div>
-            ) : (
+            ) : poolTab === "trabajando" ? (() => {
+              /* ── Trabajando: split regular / vacaciones_trabajadas ─── */
+              const vacTrab = poolActual.filter(a => a.vacacion_trabajada);
+              const normales = poolActual.filter(a => !a.vacacion_trabajada);
+              return (
+                <div className="flex flex-col divide-y divide-white/5">
+                  {normales.length > 0 && (
+                    <div className="flex gap-2 p-3 overflow-x-auto">
+                      {normales.map((agente) => (
+                        <div key={agente.id} className="shrink-0 w-52">
+                          <DraggableAgente
+                            agente={agente}
+                            isSelected={agenteSeleccionado?.id === agente.id}
+                            onClick={() => {}}
+                            disabled={true}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {vacTrab.length > 0 && (
+                    <div className="p-3">
+                      <div className="flex items-center gap-2 mb-2 border-l-2 border-orange-500/40 pl-2">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-orange-300/70">
+                          Vacaciones Trabajadas
+                        </p>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-300/60">
+                          {vacTrab.length}
+                        </span>
+                        <span className="text-[8px] text-orange-300/40 ml-auto">Días de vacaciones trabajados</span>
+                      </div>
+                      <div className="flex gap-2 overflow-x-auto pb-1">
+                        {vacTrab.map((agente) => (
+                          <div key={agente.id} className="shrink-0 w-52">
+                            <DraggableAgente
+                              agente={agente}
+                              isSelected={agenteSeleccionado?.id === agente.id}
+                              onClick={() => {}}
+                              disabled={true}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })() : (
               /* ── Vista plana normal ──────────────────────────────────── */
               <div className="flex gap-2 p-3 overflow-x-auto min-h-[80px]">
                 {poolActual.map((agente) => (
@@ -5741,7 +5833,7 @@ export default function Operaciones() {
                         if (isCerrado) return;
                         setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente);
                       }}
-                      disabled={poolTab === "trabajando" || poolTab === "enPuesto" || poolTab === "enSSA" || poolTab === "faltando" || poolTab === "enVacaciones" || isCerrado}
+                      disabled={poolTab === "enPuesto" || poolTab === "enSSA" || poolTab === "faltando" || poolTab === "enVacaciones" || isCerrado}
                     />
                   </div>
                 ))}
