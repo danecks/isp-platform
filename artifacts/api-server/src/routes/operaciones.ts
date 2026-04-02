@@ -2,6 +2,7 @@ import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { generarNovedades } from "./nomina";
+import { calcularEstadoCiclo } from "../lib/turno-calc";
 
 const operacionesRouter = Router();
 
@@ -80,6 +81,27 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
              OR cl.fecha_inicio_contrato <= COALESCE($1::date, CURRENT_DATE))
       ORDER BY po.cliente_nombre, po.orden, po.nombre
     `, [fechaFiltro]);
+
+    // Calcular descanso_por_ciclo para cada puesto usando el motor de turnos
+    const fechaConsultada = fechaFiltro ?? new Date().toISOString().slice(0, 10);
+
+    for (const p of puestos) {
+      let descanso_por_ciclo = false;
+      if (p.tipo_turno_id && p.fecha_inicio_ciclo) {
+        const estadoCiclo = calcularEstadoCiclo(
+          {
+            id: p.tipo_turno_id,
+            nombre: p.turno_nombre ?? "",
+            horas_trabajo: parseFloat(p.horas_trabajo ?? 0),
+            horas_descanso: parseFloat(p.horas_descanso ?? 0),
+          },
+          p.fecha_inicio_ciclo,
+          fechaConsultada,
+        );
+        descanso_por_ciclo = estadoCiclo.descansoPorCiclo;
+      }
+      p.descanso_por_ciclo = descanso_por_ciclo;
+    }
 
     // Agrupar por cliente
     const mapaClientes: Record<string, {

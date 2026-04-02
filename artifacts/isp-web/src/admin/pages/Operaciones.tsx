@@ -64,6 +64,7 @@ interface Puesto {
   tipo_ciclo: "diario" | "alternado" | null;
   horas_trabajo: number | null;
   horas_descanso: number | null;
+  descanso_por_ciclo?: boolean;
 }
 
 interface ClienteBoard {
@@ -2357,9 +2358,12 @@ function DroppablePuesto({
   cambiosProximos?: PlanFuturo[];
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: `puesto-${puesto.id}` });
-  const cubierto  = puesto.estado === "cubierto" && puesto.agente_id;
-  const esRelevo  = cubierto && puesto.titular_employee_id && puesto.agente_id !== puesto.titular_employee_id;
+  const cubierto       = puesto.estado === "cubierto" && puesto.agente_id;
+  const esRelevo       = cubierto && puesto.titular_employee_id && puesto.agente_id !== puesto.titular_employee_id;
   const titularAusente = !puesto.agente_id && !!puesto.titular_employee_id;
+  // descansoCiclo: el puesto no tiene cobertura porque su titular está en descanso normal del ciclo
+  // No es alerta operativa. El jefe de servicio debe verlo diferente de un descubierto real.
+  const descansoCiclo  = !cubierto && (puesto.descanso_por_ciclo === true);
 
   const borderClass = isOver
     ? "border-primary bg-primary/10 shadow-lg shadow-primary/20 scale-[1.02]"
@@ -2367,7 +2371,9 @@ function DroppablePuesto({
       ? "bg-[#0f1208] border-amber-500/30 hover:border-amber-400/40"
       : cubierto
         ? "bg-[#081620] border-green-500/20 hover:border-green-400/30"
-        : "bg-[#0c0a16] border-red-500/25 hover:border-red-400/35";
+        : descansoCiclo
+          ? "bg-[#08101a] border-indigo-500/25 hover:border-indigo-400/35"
+          : "bg-[#0c0a16] border-red-500/25 hover:border-red-400/35";
 
   return (
     <div
@@ -2454,7 +2460,9 @@ function DroppablePuesto({
         <div className="shrink-0 mt-0.5">
           {cubierto
             ? <CheckCircle2 className={`w-3.5 h-3.5 ${esRelevo ? "text-amber-400" : "text-green-400"}`} />
-            : <Circle className="w-3.5 h-3.5 text-red-400 animate-pulse" />
+            : descansoCiclo
+              ? <Moon className="w-3.5 h-3.5 text-indigo-400/70" title="Descanso normal del ciclo" />
+              : <Circle className="w-3.5 h-3.5 text-red-400 animate-pulse" />
           }
         </div>
       </div>
@@ -2496,20 +2504,37 @@ function DroppablePuesto({
           )}
         </div>
       ) : titularAusente ? (
-        /* Titular definido pero ausente hoy (sin cobertura) */
+        /* Titular definido pero sin cobertura: puede ser descanso de ciclo o ausencia real */
         <div className="space-y-1.5">
-          <div className={`flex items-center gap-2 transition-colors ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/20"}`}>
-            <User className="w-4 h-4 shrink-0" />
-            <p className="text-[11px]">
-              {isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : "Sin cobertura hoy"}
+          {descansoCiclo ? (
+            /* Descanso normal del ciclo — no es alerta operativa */
+            <div className="flex items-center gap-2 text-indigo-300/50">
+              <Moon className="w-4 h-4 shrink-0" />
+              <p className="text-[11px]">Descanso de turno</p>
+            </div>
+          ) : (
+            <div className={`flex items-center gap-2 transition-colors ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/20"}`}>
+              <User className="w-4 h-4 shrink-0" />
+              <p className="text-[11px]">
+                {isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : "Sin cobertura hoy"}
+              </p>
+            </div>
+          )}
+          <div className={`flex items-center gap-1.5 px-1.5 py-1 rounded-lg border ${
+            descansoCiclo
+              ? "bg-indigo-500/5 border-indigo-500/15"
+              : "bg-red-500/5 border-red-500/10"
+          }`}>
+            <User className={`w-2.5 h-2.5 shrink-0 ${descansoCiclo ? "text-indigo-400/40" : "text-red-400/40"}`} />
+            <p className={`text-[9px] truncate ${descansoCiclo ? "text-indigo-300/50" : "text-red-300/50"}`}>
+              {descansoCiclo ? "Descansando: " : "Titular: "}
+              <span className={descansoCiclo ? "text-indigo-300/70" : "text-red-300/70"}>{puesto.titular_nombre}</span>
+              {descansoCiclo && <span className="ml-1 text-indigo-400/50 font-bold">HE ✓</span>}
             </p>
-          </div>
-          <div className="flex items-center gap-1.5 px-1.5 py-1 bg-red-500/5 rounded-lg border border-red-500/10">
-            <User className="w-2.5 h-2.5 text-red-400/40 shrink-0" />
-            <p className="text-[9px] text-red-300/50 truncate">Titular: <span className="text-red-300/70">{puesto.titular_nombre}</span></p>
           </div>
         </div>
       ) : (
+        /* Sin titular definido — descubierto real */
         <div className={`flex items-center gap-2 transition-colors ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/20"}`}>
           <User className="w-4 h-4 shrink-0" />
           <p className="text-[11px]">
@@ -2563,10 +2588,13 @@ function ClienteColumna({
   cambiosFuturosProximos?: Record<number, PlanFuturo[]>;
   resaltado?: boolean;
 }) {
-  const cubiertos   = cliente.puestos.filter((p) => p.estado === "cubierto" && p.agente_id).length;
-  const total       = cliente.puestos.length;
-  const pct         = total > 0 ? Math.round((cubiertos / total) * 100) : 0;
-  const colorBarra  = pct === 100 ? "bg-green-500" : pct >= 60 ? "bg-yellow-500" : "bg-red-500";
+  const cubiertos      = cliente.puestos.filter((p) => p.estado === "cubierto" && p.agente_id).length;
+  const descansoCicloN = cliente.puestos.filter((p) => p.descanso_por_ciclo === true && !(p.estado === "cubierto" && p.agente_id)).length;
+  const descubiertoN   = cliente.puestos.filter((p) => !(p.estado === "cubierto" && p.agente_id) && !p.descanso_por_ciclo).length;
+  const total          = cliente.puestos.length;
+  // Para la barra de progreso, el descanso de ciclo no cuenta como problema
+  const pct         = total > 0 ? Math.round(((cubiertos + descansoCicloN) / total) * 100) : 0;
+  const colorBarra  = descubiertoN > 0 ? "bg-red-500" : pct === 100 ? "bg-green-500" : "bg-indigo-500";
 
   const borderClass = resaltado
     ? "border-2 border-amber-400/70 ring-2 ring-amber-400/30 shadow-[0_0_24px_4px_rgba(251,191,36,0.18)]"
@@ -2594,7 +2622,11 @@ function ClienteColumna({
         <div className="flex items-start justify-between gap-2 mb-2">
           <div className="min-w-0">
             <h3 className="text-xs font-bold text-white truncate">{cliente.clienteNombre}</h3>
-            <p className="text-[10px] text-white/35 mt-0.5">{cubiertos}/{total} puestos cubiertos</p>
+            <p className="text-[10px] text-white/35 mt-0.5">
+              {cubiertos}/{total} cubiertos
+              {descansoCicloN > 0 && <span className="ml-1 text-indigo-400/50">· {descansoCicloN} en ciclo</span>}
+              {descubiertoN > 0 && <span className="ml-1 text-red-400/60">· {descubiertoN} descubiertos</span>}
+            </p>
           </div>
           <button
             onClick={() => onNuevoPuesto(cliente)}

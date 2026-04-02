@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
+import { calcularEstadoCiclo } from "../lib/turno-calc";
 
 export const planificacionFuturaRouter = Router();
 
@@ -438,34 +439,39 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
     `, [fecha]);
     const relevosSet = new Set(relevos.map((r: any) => r.relevo_id as number));
 
-    // 4. Función de cálculo de turno para una fecha
-    // NOTA: pg devuelve NUMERIC como string; usamos parseFloat para evitar concatenación errónea
+    // 4. Función de cálculo de turno para una fecha usando el motor de turnos real
+    // NOTA: pg devuelve NUMERIC como string; parseFloat normaliza antes de pasar al motor
     function calcularEstadoTurno(
       horasTrabajo: number | string | null,
       horasDescanso: number | string | null,
       fechaInicioCiclo: string | Date | null,
-    ): "trabajando" | "descansando" | "sin_turno" {
+      turnoId?: number | null,
+      turnoNombre?: string | null,
+    ): { estado: "trabajando" | "descansando" | "sin_turno"; descansoPorCiclo: boolean; disponibleHE: boolean } {
       const ht = horasTrabajo != null ? parseFloat(String(horasTrabajo)) : null;
       const hd = horasDescanso != null ? parseFloat(String(horasDescanso)) : 0;
-      if (!ht || !fechaInicioCiclo) return "sin_turno";
-      const ciclo = ht + hd;
-      if (ciclo <= 24) return "trabajando"; // turno intra-día: trabaja todos los días
+      if (!ht) return { estado: "sin_turno", descansoPorCiclo: false, disponibleHE: true };
 
-      // Turno de ciclo largo (ej: 24h trabajo + 24h descanso = ciclo 48h)
-      const diasTrabajo   = Math.ceil(ht / 24);
-      const diasDescanso  = Math.ceil(hd / 24);
-      const cicloDias     = diasTrabajo + diasDescanso;
+      const estadoCiclo = calcularEstadoCiclo(
+        {
+          id: turnoId ?? 0,
+          nombre: turnoNombre ?? "",
+          horas_trabajo: ht,
+          horas_descanso: hd,
+        },
+        fechaInicioCiclo,
+        fecha,
+      );
 
-      // Normalizar: puede llegar como Date object, ISO string, o "YYYY-MM-DD"
-      const inicioISO = fechaInicioCiclo instanceof Date
-        ? fechaInicioCiclo.toISOString().slice(0, 10)
-        : String(fechaInicioCiclo).slice(0, 10);
-      const inicio   = new Date(inicioISO + "T00:00:00Z");
-      const objetivo = new Date(fecha + "T00:00:00Z");
-      const diff     = Math.round((objetivo.getTime() - inicio.getTime()) / 86_400_000);
-      const posicion = ((diff % cicloDias) + cicloDias) % cicloDias;
-
-      return posicion < diasTrabajo ? "trabajando" : "descansando";
+      if (estadoCiclo.trabaja) {
+        return { estado: "trabajando", descansoPorCiclo: false, disponibleHE: false };
+      } else {
+        return {
+          estado: estadoCiclo.descansoPorCiclo ? "descansando" : "sin_turno",
+          descansoPorCiclo: estadoCiclo.descansoPorCiclo,
+          disponibleHE: estadoCiclo.disponibleHE,
+        };
+      }
     }
 
     // 5. Categorizar cada empleado
@@ -502,17 +508,21 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
         continue;
       }
 
-      // ¿Tiene puesto asignado? → calcular turno (independiente de elegible_pool)
+      // ¿Tiene puesto asignado? → calcular turno usando motor real (independiente de elegible_pool)
       // Los empleados en puesto fijo tienen elegible_pool=false pero igual trabajan/descansan
       if (emp.puesto_id) {
-        const estado = calcularEstadoTurno(emp.horas_trabajo, emp.horas_descanso, emp.fecha_inicio_ciclo);
+        const { estado, descansoPorCiclo, disponibleHE } = calcularEstadoTurno(
+          emp.horas_trabajo, emp.horas_descanso, emp.fecha_inicio_ciclo,
+          emp.turno_id, emp.turno_nombre,
+        );
         if (estado === "trabajando") {
-          trabajando.push({ ...emp, estado_turno: "trabajando" });
+          trabajando.push({ ...emp, estado_turno: "trabajando", descansoPorCiclo: false, disponibleHE: false });
         } else if (estado === "descansando") {
-          descansando.push({ ...emp, estado_turno: "descansando" });
+          // descansoPorCiclo=true → descanso normal de ciclo, disponible para HE
+          descansando.push({ ...emp, estado_turno: "descansando", descansoPorCiclo, disponibleHE });
         } else {
           // Puesto asignado pero sin turno definido → asumir trabajando
-          trabajando.push({ ...emp, estado_turno: "sin_turno_asume_trabajo" });
+          trabajando.push({ ...emp, estado_turno: "sin_turno_asume_trabajo", descansoPorCiclo: false, disponibleHE: false });
         }
         continue;
       }

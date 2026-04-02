@@ -1,0 +1,248 @@
+Quiero implementar correctamente el motor de turnos reales de ISPSA para que el sistema entienda de forma operativa quién trabaja, quién descansa y quién podría hacer horas extra según el turno asignado.
+
+No quiero romper nada de lo existente.
+
+## Objetivo
+Que el sistema soporte correctamente estos turnos reales de ISPSA:
+
+- 24x24
+- 12 horas
+- 24x48
+- 24x72
+- 8x8
+
+Y que esa lógica se refleje correctamente en:
+- Pizarrón Operativo
+- Pizarrón Futuro
+- Pool actual
+- Pool futuro
+- planeación futura
+- asignación de cobertura
+- decisión de horas extra
+
+---
+
+## 1. Regla general
+Quiero que el sistema deje de tratar los turnos como si fueran solo una suma simple de horas.
+
+Necesito que cada tipo de turno tenga una lógica operativa real y pueda responder, para cualquier fecha:
+
+- si el agente trabaja
+- si el agente descansa
+- si está libre para horas extra
+- si el puesto está en descanso normal del ciclo o realmente descubierto
+
+---
+
+## 2. Turnos que deben quedar soportados
+
+### A. 24x24
+Lógica:
+- 2 agentes titulares
+- un día trabaja uno
+- al día siguiente descansa
+- el otro cubre el día siguiente
+- alternancia diaria
+
+Ejemplo:
+- Día 1: Agente A trabaja / B descansa
+- Día 2: B trabaja / A descansa
+- Día 3: A trabaja / B descansa
+
+---
+
+### B. 12 horas
+Lógica:
+- 1 agente titular
+- trabaja 7 días de la semana y descansa 1 día
+- ejemplo horario fijo:
+  - entra 7:00 AM
+  - sale 7:00 PM
+- el descanso se paga si cumple su ciclo
+- su día de descanso puede ser candidato para horas extra
+
+---
+
+### C. 24x48
+Lógica real de ISPSA:
+- entre semana funciona como modalidad 24x24
+- pero el fin de semana uno de los dos titulares cubre 48 horas corridas
+- el otro titular descansa esas 48 horas
+- la siguiente semana se invierten
+
+Es decir:
+- no es un simple patrón de 24 trabajo / 48 descanso repetido siempre
+- es un turno mixto semanal
+
+Quiero que el sistema pueda modelar:
+- alternancia normal entre semana
+- bloque largo de 48h en fin de semana
+- alternancia semanal del bloque largo entre los titulares
+
+---
+
+### D. 24x72
+Lógica real de ISPSA:
+- misma idea de turno de 24 horas base
+- pero uno de los titulares toma un bloque de 72 horas corridas
+- el otro descansa esas 72 horas
+- luego se invierten
+
+No quiero que el sistema lo trate como una fórmula simple fija.
+Quiero que entienda que es un patrón compuesto con bloque largo alternado.
+
+---
+
+### E. 8x8
+Lógica real:
+- el agente trabaja corrido 24 horas por 8 días consecutivos
+- luego descansa 8 días consecutivos
+
+No es un turno diario simple.
+Es un bloque continuo:
+- 8 días ON
+- 8 días OFF
+
+Quiero que el sistema lo calcule correctamente por fecha.
+
+---
+
+## 3. Qué debe calcular el sistema
+Para cualquier turno y cualquier fecha, el sistema debe poder determinar:
+
+- si el agente trabaja ese día
+- si descansa ese día
+- si está en bloque largo o no
+- si podría aparecer como candidato para horas extra
+- si su descanso es normal del ciclo
+- si el puesto está realmente descubierto o solo está en descanso por diseño del turno
+
+---
+
+## 4. Distinción importante en el pizarrón
+Quiero que el Pizarrón Operativo y Futuro dejen de mezclar estas dos cosas:
+
+### A. Descanso por ciclo
+- es normal
+- no es problema operativo
+- debe verse diferente
+
+### B. Descubierto real
+- no hay cobertura
+- sí es problema operativo
+- debe verse como alerta real
+
+No quiero que un puesto en descanso normal del ciclo se vea igual que un puesto realmente descubierto.
+
+---
+
+## 5. Impacto en pool actual y pool futuro
+Quiero que el pool use la lógica del turno para clasificar agentes correctamente.
+
+### El sistema debe distinguir:
+- trabajando
+- descansando por ciclo
+- disponible real
+- ausente
+- en SSA
+- en puesto
+
+Muy importante:
+un agente que está descansando por ciclo no debe verse igual que uno “libre sin compromiso”.
+Pero sí puede ser candidato para horas extra.
+
+---
+
+## 6. Horas extra
+Quiero que el sistema use esta lógica:
+
+### Puede hacer HE:
+- quien está descansando por ciclo
+- quien está realmente disponible
+
+### No puede hacer HE:
+- quien ya está trabajando ese día
+- quien está ausente
+- quien está suspendido
+- quien está en SSA si eso lo bloquea
+
+Esto debe servir al jefe de servicio para tomar decisiones rápidas.
+
+---
+
+## 7. Datos requeridos por turno
+Si hace falta, cada turno debe tener estructura suficiente para calcular su patrón real.
+
+Por ejemplo:
+- nombre
+- tipo
+- horas_trabajo
+- horas_descanso
+- fecha_inicio_ciclo
+- patrón_semanal
+- bloque_fin_semana
+- duración_bloque_largo
+- alternancia_semanal
+- días_on / días_off para 8x8
+
+No me importa la implementación exacta, pero quiero que soporte correctamente estos turnos reales.
+
+---
+
+## 8. Integración con UI
+Quiero que esto se refleje en:
+- Pizarrón Operativo
+- Pizarrón Futuro
+- tarjetas de puesto
+- pool
+- pool-futuro
+- selectores de asignación
+
+Y que el jefe de servicio pueda entender visualmente:
+- quién trabaja
+- quién descansa
+- quién puede cubrir
+- qué puesto está bien
+- qué puesto sí necesita atención
+
+---
+
+## 9. Casos que debes probar
+Quiero que al final pruebes al menos:
+
+1. Un puesto 24x24 durante varios días consecutivos
+2. Un puesto 12 horas con descanso semanal
+3. Un puesto 24x48 con semana normal + bloque largo de fin de semana
+4. Un puesto 24x72 con bloque largo alternado
+5. Un puesto 8x8 viendo claramente los 8 días ON y 8 días OFF
+6. Validar quién descansa y quién puede hacer HE
+7. Validar diferencia visual entre “descanso por ciclo” y “descubierto real”
+
+---
+
+## 10. No romper
+No romper:
+- pizarrón actual
+- pizarrón futuro
+- pool
+- pool-futuro
+- planificación futura
+- RRHH
+- pre-planilla
+- planilla
+- SSA
+- historial de titularidad
+- clientes y puestos existentes
+
+---
+
+## 11. Documentación
+Explica claramente:
+- cómo quedó modelado cada turno
+- cómo se calcula el estado por fecha
+- cómo se identifica descanso vs descubierto
+- cómo se determina quién puede hacer horas extra
+- qué limitaciones quedan si aún no se resuelven
+
+Muy importante:
+quiero que el sistema refleje la lógica operativa real de ISPSA y que el jefe de servicio pueda confiar en lo que ve cuando revisa quién trabaja, quién descansa y quién puede cubrir un puesto.
