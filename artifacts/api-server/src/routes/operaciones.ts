@@ -63,7 +63,11 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         -- Vacaciones del titular en la fecha consultada (normal o trabajadas)
         titular_vac.tipo_evento                                        AS titular_vac_tipo,
         titular_vac.vac_fecha::date                                    AS titular_vac_inicio,
-        titular_vac.vac_fin                                            AS titular_vac_fin
+        titular_vac.vac_fin                                            AS titular_vac_fin,
+        -- ARM: arma asignada al puesto (si existe)
+        arm.id     AS arma_id,
+        arm.codigo AS arma_codigo,
+        arm.tipo   AS arma_tipo
       FROM puestos_operativos po
       -- TH: obtener titular histórico para la fecha consultada
       LEFT JOIN LATERAL (
@@ -94,6 +98,7 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       LEFT JOIN operational_zones oz ON oz.id = po.zona_operativa_id
       LEFT JOIN turnos t ON t.id = po.tipo_turno_id
       LEFT JOIN clients cl ON cl.id = po.cliente_id
+      LEFT JOIN armas arm ON arm.puesto_id = po.id AND arm.activo = TRUE
       WHERE po.activo = TRUE
         AND (cl.fecha_inicio_contrato IS NULL
              OR cl.fecha_inicio_contrato <= COALESCE($1::date, CURRENT_DATE))

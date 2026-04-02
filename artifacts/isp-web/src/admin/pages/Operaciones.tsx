@@ -69,6 +69,10 @@ interface Puesto {
   titular_vac_tipo?: "vacaciones" | "vacaciones_trabajadas" | null;
   titular_vac_inicio?: string | null;
   titular_vac_fin?: string | null;
+  /** Arma asignada al puesto (si existe) */
+  arma_id?: number | null;
+  arma_codigo?: string | null;
+  arma_tipo?: string | null;
 }
 
 interface ClienteBoard {
@@ -2966,6 +2970,18 @@ function DroppablePuesto({
           <p className="text-[11px]">
             {isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : "Puesto descubierto"}
           </p>
+        </div>
+      )}
+
+      {/* Arma asignada al puesto */}
+      {puesto.arma_codigo && (
+        <div className="flex items-center gap-1 mt-1.5 px-1.5 py-0.5 bg-blue-500/8 border border-blue-500/15 rounded-md w-fit"
+          title={`Arma asignada: ${puesto.arma_codigo} — ${puesto.arma_tipo ?? ""}`}>
+          <Shield className="w-2.5 h-2.5 text-blue-400/60 shrink-0" />
+          <span className="text-[9px] font-mono font-semibold text-blue-300/70">{puesto.arma_codigo}</span>
+          {puesto.arma_tipo && (
+            <span className="text-[9px] text-blue-300/40 capitalize">{puesto.arma_tipo}</span>
+          )}
         </div>
       )}
 
