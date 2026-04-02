@@ -1,0 +1,300 @@
+Quiero hacer un hard test integral completo de ISPSA con datos limpios, para validar el sistema como si fuéramos a operar un cliente nuevo de verdad.
+
+No quiero pruebas aisladas.
+No quiero solo revisar endpoints.
+Quiero una simulación real completa, usando el sistema de punta a punta.
+
+## Objetivo
+Validar cómo se comporta todo lo implementado hasta ahora trabajando junto, especialmente:
+
+- clientes
+- puestos
+- zonas
+- turnos
+- pizarrón operativo
+- planificación
+- supervisores
+- jefes de servicio
+- armería
+- vehículos
+- SSA
+- vacaciones
+- amonestaciones
+- horas extra
+- pre-planilla
+- planilla final
+
+---
+
+## 1. Limpiar datos de prueba actuales
+Quiero trabajar sobre un entorno limpio de prueba.
+
+### Importante
+No quiero borrar usuarios críticos del sistema si son necesarios para login o administración, pero sí quiero limpiar los datos operativos y de prueba que hoy estorban o contaminan la validación.
+
+### Limpiar o resetear, en lo posible:
+- clientes de prueba
+- puestos de prueba
+- coberturas viejas
+- planificaciones viejas
+- SSA viejos
+- vacaciones de prueba
+- novedades de nómina de prueba
+- cierres de prueba
+- planillas de prueba
+- asignaciones operativas de prueba
+- vehículos de prueba
+- armas de prueba
+- supervisores o jefes de servicio de prueba mal cargados
+
+Quiero una base coherente para hacer una simulación seria.
+
+---
+
+## 2. Crear escenario nuevo
+Crear un cliente nuevo completamente de prueba.
+
+### Cliente:
+Un cliente nuevo cualquiera, para pruebas.
+
+### Configuración:
+- 6 puestos
+- todos de 24x24
+- precio cualquiera, no importa que sea real
+- lo importante es probar la operación
+
+### Zonas:
+Distribuir esos 6 puestos en diferentes zonas
+No quiero todos en la misma zona.
+
+---
+
+## 3. Personal para la prueba
+Quiero trabajar con una base de personal controlada.
+
+### Crear / usar:
+- 12 agentes
+- supervisores suficientes según zonas
+- jefes de servicio suficientes para sus turnos
+- personal RRHH / administración si hace falta para el flujo
+
+### Lo que quiero validar
+Que con esos 12 agentes se vea claramente:
+- quién trabaja
+- quién descansa
+- quién puede hacer HE
+- quién cubre puestos
+- qué pasa cuando falta alguien
+- qué pasa cuando hay vacaciones
+
+---
+
+## 4. Vehículos
+Quiero que en esta prueba existan vehículos operativos.
+
+### Crear:
+- 4 motocicletas
+
+### Validar:
+- asignación por zona
+- herencia automática al supervisor activo
+- cambio automático del responsable por relevo de turno
+- historial/cardex del vehículo
+- ver quién fue responsable del vehículo en cada fecha/turno
+
+---
+
+## 5. Armería
+Quiero que también exista armería de prueba.
+
+### Crear:
+- 50 revólveres
+- 10 escopetas
+
+### Validar:
+- asignación del arma a puesto
+- herencia automática al agente que trabaja ese puesto
+- cambio automático por relevo
+- historial de custodia por arma
+- historial en ficha del colaborador
+- si el puesto queda sin cubrir, el arma debe quedar sin responsable actual
+
+---
+
+## 6. Supervisores y jefes de servicio
+Quiero validar bien este bloque.
+
+### Supervisores
+- asignados a zonas
+- con turnos reales (12h o 24x24 según se defina para la prueba)
+- visibles en operación
+- visibles en planificación
+- elegibles para cubrir en contingencia si aplica
+
+### Jefes de servicio
+- operativos
+- turno 24x24
+- visibles en pizarrón
+- visibles en planificación
+- trazables por fecha de turno
+- que se pueda saber qué jefe de servicio estaba de turno en un día concreto
+
+---
+
+## 7. Pizarrón operativo y planificación
+Quiero probar:
+- pizarrón del día
+- planificación futura
+- búsqueda por colaborador
+- ranking por zona
+- candidatos para cobertura
+- descanso por ciclo vs descubierto real
+- supervisores y jefes de servicio visibles
+- servicios programados
+- SSA vigentes por fecha
+
+---
+
+## 8. Vacaciones
+Quiero incluir vacaciones en la prueba.
+
+### Casos a probar:
+- vacaciones normales
+- vacaciones trabajadas
+
+### Validar:
+- que aparezcan en RRHH
+- que impacten planificación futura
+- que el puesto requiera cobertura si son vacaciones normales
+- que vacaciones trabajadas aparezcan como trabajando con su badge
+- que no se mezclen con descanso de turno
+- que afecten correctamente el saldo/consumo si ya está implementado
+
+---
+
+## 9. Amonestaciones / faltas
+Quiero incluir casos reales de disciplina o ausencia.
+
+### Casos a probar:
+- una falta
+- una amonestación
+- una ausencia que requiera relevo
+
+### Validar:
+- impacto en operación
+- impacto en RRHH
+- impacto en pre-planilla / planilla
+
+---
+
+## 10. Horas extra
+Quiero probar horas extra reales.
+
+### Casos:
+- cubrir puesto con agente en descanso
+- supervisor cubriendo contingencia
+- jefe de servicio cubriendo si aplica
+- relevo parcial o total
+
+### Validar:
+- que solo salgan como candidatos HE los que realmente corresponden
+- que se vea claro en operación
+- que se refleje en pre-planilla y planilla
+
+---
+
+## 11. SSA
+Quiero incluir al menos un SSA real de prueba.
+
+### Validar:
+- creación
+- autorización
+- multi-agente si ya aplica
+- vigencia por fecha
+- aparición correcta en su fecha
+- desaparición al terminar
+- impacto en operación y planilla
+
+---
+
+## 12. Pre-planilla y planilla final
+Quiero revisar el cierre financiero de la prueba.
+
+### Validar:
+- que los 12 agentes salgan correctamente
+- descuentos por faltas
+- vacaciones
+- vacaciones trabajadas
+- HE
+- coberturas por supervisor o jefe de servicio si existen
+- clasificación por tipo de personal
+- que no haya multiplicación de horas
+- que no se rompa por múltiples módulos al mismo tiempo
+
+---
+
+## 13. Período de prueba
+No quiero probar un solo día.
+
+Quiero una prueba de varios días consecutivos, suficiente para ver:
+- relevos
+- descansos de ciclo
+- vacaciones
+- SSA
+- cambios de responsable de vehículos
+- cambios de responsable de armas
+- planilla
+
+Puedes usar un rango razonable, por ejemplo una o dos semanas.
+
+---
+
+## 14. Reporte final esperado
+Quiero un reporte completo y honesto con:
+
+### A. Qué funcionó correctamente
+### B. Qué falló
+### C. Qué quedó inconsistente
+### D. Qué módulos no están bien amarrados
+### E. Qué bloquea operación real
+### F. Qué bloquea una planilla confiable
+### G. Qué corregir primero
+### H. Qué ya está suficientemente sólido
+
+---
+
+## 15. Clasificación de hallazgos
+Clasifica cada hallazgo como:
+- Crítico
+- Alto
+- Medio
+- Bajo
+
+Y explica por qué.
+
+---
+
+## 16. Pregunta final obligatoria
+Quiero una respuesta clara a esto:
+
+¿ISPSA ya soporta una operación real mediana con cliente nuevo, 6 puestos, 12 agentes, zonas, supervisión, vehículos, armería, SSA y planilla sin romperse ni producir errores financieros graves?
+
+No quiero teoría.
+Quiero una conclusión basada en la prueba real.
+
+---
+
+## 17. Muy importante
+Haz esta prueba como si fueras:
+- RRHH
+- Operaciones
+- jefe de servicio
+- supervisor
+- administración
+
+Y valida el sistema como una operación real, no como una demo.
+
+Quiero descubrir:
+- qué ya aguanta de verdad
+- qué todavía sigue frágil
+- y qué falta antes de usarlo con confianza total.

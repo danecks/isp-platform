@@ -303,7 +303,7 @@ solicitudesServicioRouter.post("/solicitudes-servicio", async (req, res) => {
   try {
     const {
       clienteId, sedeId, puestoId,
-      tipoSolicitud, fecha, horaInicio, horaFin,
+      tipoSolicitud, fecha, fechaFin, horaInicio, horaFin,
       cantidadGuardias = 1, descripcion, prioridad = "normal",
       contactoSolicitante, aceptaCobroAdicional = false,
       origen = "admin", solicitadoPorNombre,
@@ -328,14 +328,14 @@ solicitudesServicioRouter.post("/solicitudes-servicio", async (req, res) => {
 
     await pool.query(
       `INSERT INTO solicitudes_servicio_adicional
-         (id, cliente_id, sede_id, puesto_id, tipo_solicitud, fecha, hora_inicio, hora_fin,
+         (id, cliente_id, sede_id, puesto_id, tipo_solicitud, fecha, fecha_fin, hora_inicio, hora_fin,
           cantidad_guardias, descripcion, prioridad, contacto_solicitante, acepta_cobro_adicional,
           origen, estado_general, tarea_operaciones_id, tarea_rrhh_id, tarea_comercial_id,
           solicitado_por_nombre)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'en_revision',$15,$16,$17,$18)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'en_revision',$16,$17,$18,$19)`,
       [
         id, clienteId ?? null, sedeId ?? null, puestoId ?? null,
-        tipoSolicitud, fecha, horaInicio ?? null, horaFin ?? null,
+        tipoSolicitud, fecha, fechaFin ?? null, horaInicio ?? null, horaFin ?? null,
         cantidadGuardias, descripcion ?? null, prioridad,
         contactoSolicitante ?? null, aceptaCobroAdicional,
         origen, tareaOpsId, tareaRrhhId, tareaComercialId,
