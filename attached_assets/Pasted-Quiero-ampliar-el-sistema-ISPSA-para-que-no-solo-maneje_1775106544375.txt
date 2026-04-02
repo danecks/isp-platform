@@ -1,0 +1,145 @@
+Quiero ampliar el sistema ISPSA para que no solo maneje guardias operativos, sino también:
+	•	supervisores
+	•	personal administrativo
+
+Pero con reglas distintas según el tipo de personal.
+
+No quiero romper nada existente.
+
+Contexto
+
+Actualmente el sistema está muy enfocado en guardias, relevos, cobertura y operación de campo.
+
+Ahora quiero que:
+
+Supervisores
+	•	aparezcan en el Pizarrón Operativo
+	•	sean visibles para operación
+	•	también lleguen a pre-planilla y planilla
+	•	idealmente en una sección o tratamiento especial
+
+Administración
+	•	también aparezca en la planilla
+	•	pero NO quiero que el jefe de servicio pueda modificarla desde el pizarrón
+	•	su gestión debe quedar en manos de RRHH o admin
+
+⸻
+
+1. Clasificación de personal
+
+Quiero que el sistema maneje claramente tipos o categorías de personal, por ejemplo:
+	•	guardia
+	•	supervisor
+	•	administrativo
+
+Puede ser un campo tipo:
+	•	tipo_personal
+	•	categoria_operativa
+o el nombre que consideres mejor
+
+⸻
+
+2. Reglas por tipo
+
+Guardia
+	•	visible en pizarrón
+	•	editable por operaciones
+	•	incluido en pre-planilla y planilla
+
+Supervisor
+	•	visible en pizarrón
+	•	visible para el jefe de servicio
+	•	incluido en pre-planilla y planilla
+	•	con tratamiento visual distinto a guardia normal
+
+Administrativo
+	•	no debe entrar al flujo editable normal del jefe de servicio en el pizarrón
+	•	sí debe existir y llegar a pre-planilla / planilla
+	•	editable solo por RRHH o admin
+
+⸻
+
+3. Pizarrón Operativo
+
+Quiero que los supervisores aparezcan en el pizarrón de forma útil para operación.
+
+No quiero mezclarlos de forma confusa con todos los guardias si eso vuelve desordenado el tablero.
+
+Puedes resolverlo como:
+	•	sección especial
+	•	panel de supervisión
+	•	categoría visual distinta
+	•	o una solución clara que no rompa el flujo actual
+
+Para administración, no quiero que el jefe de servicio la mueva ni la asigne desde el pizarrón normal.
+
+⸻
+
+4. Planilla
+
+Quiero que tanto supervisores como administrativos aparezcan en pre-planilla y planilla.
+
+Idealmente:
+	•	en sección separada
+	•	o con un indicador claro de tipo de personal
+
+Me interesa especialmente que:
+	•	supervisores tengan su propia visibilidad
+	•	administración también pueda verse y pagarse
+	•	pero sin mezclar todo como si fueran guardias normales
+
+⸻
+
+5. Permisos
+
+Muy importante:
+
+Jefe de servicio / Operaciones
+	•	puede ver supervisores
+	•	puede operar con guardias
+	•	NO puede modificar personal administrativo
+
+RRHH / Admin
+	•	sí puede gestionar administrativos
+	•	sí puede gestionar el resto según permisos actuales
+
+⸻
+
+6. Compatibilidad
+
+No romper:
+	•	guardias
+	•	pizarrón actual
+	•	pool
+	•	RRHH
+	•	pre-planilla
+	•	planilla
+	•	turnos
+	•	historial
+	•	SSA
+
+⸻
+
+7. Validación
+
+Quiero pruebas donde:
+	1.	un supervisor aparezca correctamente en el pizarrón
+	2.	ese supervisor llegue a pre-planilla y planilla
+	3.	un administrativo llegue a planilla
+	4.	el jefe de servicio NO pueda modificar al administrativo
+	5.	RRHH sí pueda hacerlo
+
+⸻
+
+8. Documentación
+
+Explica claramente:
+	•	cómo quedó clasificado el personal
+	•	qué ve operaciones
+	•	qué ve RRHH
+	•	cómo aparecen supervisores en el pizarrón
+	•	cómo aparecen supervisores y administrativos en planilla
+	•	qué restricciones tienen los permisos
+
+Muy importante:
+quiero que ISPSA deje de ser un sistema solo de guardias y pueda manejar también supervisores y administración, pero con reglas distintas y permisos bien controlados.

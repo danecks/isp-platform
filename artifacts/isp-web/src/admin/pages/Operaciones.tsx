@@ -169,6 +169,19 @@ function rankCandidatos(pool: Pool, zonaId: number | null | undefined): AgenteRa
   });
 }
 
+interface SupervisorPool {
+  id: number;
+  nombre_completo: string;
+  estado_laboral: string;
+  puesto: string | null;
+  area: string | null;
+  sede: string | null;
+  telefono: string | null;
+  zona_operativa_id: number | null;
+  zona_nombre: string | null;
+  estado_display: string;
+}
+
 interface Pool {
   trabajando: Agente[];
   descansandoCiclo: Agente[];
@@ -178,6 +191,7 @@ interface Pool {
   enDescanso: Agente[];
   suspendidos: Agente[];
   faltando: Agente[];
+  supervisores: SupervisorPool[];
   total: number;
 }
 
@@ -5588,6 +5602,55 @@ export default function Operaciones() {
               <span>Se refresca cada 30 seg automáticamente</span>
             </div>
           </div>
+          )}
+
+          {/* ── Panel de supervisores (solo en vista de hoy) ─────────────── */}
+          {!esFuturo && (pool?.supervisores?.length ?? 0) > 0 && (
+            <div className="shrink-0 bg-[#060f1a] border border-violet-500/15 rounded-2xl overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-violet-500/10">
+                <Shield className="w-3.5 h-3.5 text-violet-400/60" />
+                <span className="text-xs font-bold text-violet-300/60 uppercase tracking-widest">Supervisores</span>
+                <span className="text-[10px] text-violet-400/50 font-bold bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 rounded-full">
+                  {pool!.supervisores.length}
+                </span>
+                <div className="flex-1" />
+                <span className="text-[10px] text-white/18">Vista informativa · solo lectura</span>
+              </div>
+              <div className="flex gap-2 p-3 overflow-x-auto">
+                {pool!.supervisores.map((sv) => (
+                  <div
+                    key={sv.id}
+                    className="shrink-0 flex flex-col gap-1 bg-[#0c1929] border border-violet-500/15 rounded-xl px-3 py-2.5 w-44"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarColor(sv.nombre_completo)}`}>
+                        {iniciales(sv.nombre_completo)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-white/85 truncate leading-tight">{sv.nombre_completo}</p>
+                        {sv.puesto && <p className="text-[9px] text-violet-300/50 truncate">{sv.puesto}</p>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border ${
+                        sv.estado_display === 'activo'
+                          ? "text-emerald-300 bg-emerald-500/10 border-emerald-500/20"
+                          : sv.estado_display === 'licencia'
+                            ? "text-indigo-300 bg-indigo-500/10 border-indigo-500/20"
+                            : "text-red-300 bg-red-500/10 border-red-500/20"
+                      }`}>
+                        {sv.estado_display === "activo" ? "ACTIVO" : sv.estado_display === "licencia" ? "LICENCIA" : "SUSPENDIDO"}
+                      </span>
+                      {sv.zona_nombre && (
+                        <span className="text-[8px] text-violet-300/60 bg-violet-500/8 border border-violet-500/15 px-1.5 py-0.5 rounded truncate max-w-[90px]">
+                          {sv.zona_nombre}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
         </div>

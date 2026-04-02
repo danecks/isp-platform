@@ -25,7 +25,7 @@ employeesRouter.get("/employees", async (req, res) => {
   try {
     const {
       syncStatus, estadoLaboral, area, sourceSystem,
-      clienteId, supervisorId, q,
+      clienteId, supervisorId, q, tipoPersonal,
     } = req.query as Record<string, string>;
 
     const clauses: string[] = [];
@@ -37,6 +37,7 @@ employeesRouter.get("/employees", async (req, res) => {
     if (sourceSystem)  { params.push(sourceSystem);         clauses.push(`e.source_system = $${params.length}`); }
     if (clienteId)     { params.push(parseInt(clienteId));  clauses.push(`e.cliente_id = $${params.length}`); }
     if (supervisorId)  { params.push(parseInt(supervisorId)); clauses.push(`e.supervisor_id = $${params.length}`); }
+    if (tipoPersonal)  { params.push(tipoPersonal);         clauses.push(`e.tipo_personal = $${params.length}`); }
     if (q) {
       params.push(`%${q}%`);
       const i = params.length;
@@ -47,6 +48,7 @@ employeesRouter.get("/employees", async (req, res) => {
 
     const { rows } = await pool.query(`
       SELECT e.*,
+             COALESCE(e.tipo_personal, 'guardia') AS tipo_personal,
              COALESCE(e.elegible_pool, TRUE) AS elegible_pool,
              COALESCE(e.aplica_igss_general, FALSE) AS aplica_igss_general,
              COALESCE(e.estado_igss, 'no_activo') AS estado_igss,
@@ -55,7 +57,7 @@ employeesRouter.get("/employees", async (req, res) => {
              COALESCE(e.frecuencia_pago, 'quincenal') AS frecuencia_pago
       FROM employees e
       ${where}
-      ORDER BY e.nombre_completo
+      ORDER BY e.tipo_personal, e.nombre_completo
     `, params);
 
     res.json(rows.map(snakeToCamel));
@@ -514,7 +516,7 @@ employeesRouter.post("/employees", async (req, res) => {
     supervisorNombre, supervisorId, clienteId, fechaIngreso, notas,
     externalId, sourceSystem, syncStatus,
     sueldoBase, tipoJornada, diaDescanso, horasContrato,
-    frecuenciaPago,
+    frecuenciaPago, tipoPersonal,
   } = req.body ?? {};
 
   if (!nombreCompleto || !String(nombreCompleto).trim()) {
@@ -560,6 +562,7 @@ employeesRouter.post("/employees", async (req, res) => {
         tipoJornada: tipoJornada || null,
         diaDescanso: diaDescanso || null,
         horasContrato: horasContrato ? parseInt(horasContrato) : null,
+        tipoPersonal: ["guardia", "supervisor", "administrativo"].includes(tipoPersonal) ? tipoPersonal : "guardia",
       })
       .returning();
 
@@ -688,6 +691,24 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
 
+  // Control de permisos: operaciones/jefe_servicio no pueden editar personal administrativo
+  const sessionRaw = req.headers["x-isp-session"] as string | undefined;
+  let rolSesion = "desconocido";
+  if (sessionRaw) {
+    try { rolSesion = (JSON.parse(sessionRaw)?.rol ?? "").toLowerCase(); } catch { /* ignorar */ }
+  }
+  const ROLES_OPS_SOLO = ["operaciones", "jefe_servicio", "ops"];
+
+  // Verificar tipo_personal actual del empleado para el guard
+  if (ROLES_OPS_SOLO.includes(rolSesion)) {
+    const { rows: [empActual] } = await pool.query(
+      `SELECT COALESCE(tipo_personal, 'guardia') AS tipo_personal FROM employees WHERE id = $1`, [id]
+    );
+    if (empActual?.tipo_personal === "administrativo") {
+      return res.status(403).json({ error: "Sin permiso para modificar personal administrativo. Contacte a RRHH." });
+    }
+  }
+
   const {
     nombreCompleto, dpi, telefono, telefonoSecundario, correo,
     puesto, tipoServicio, area, estadoLaboral, sede,
@@ -695,7 +716,7 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
     externalId, sourceSystem, syncStatus, lastSyncAt,
     limiteAnticipo, tipoLimitePeriodo,
     sueldoBase, tipoJornada, diaDescanso, horasContrato,
-    frecuenciaPago,
+    frecuenciaPago, tipoPersonal,
     // IGSS — elegibilidad por colaborador
     aplicaIgssGeneral, estadoIgss, fechaInicioIgss, observacionesIgss,
   } = req.body ?? {};
@@ -747,6 +768,9 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
   if (tipoJornada !== undefined) updates.tipoJornada = tipoJornada || null;
   if (diaDescanso !== undefined) updates.diaDescanso = diaDescanso || null;
   if (horasContrato !== undefined) updates.horasContrato = horasContrato === null || horasContrato === "" ? null : parseInt(horasContrato);
+  if (tipoPersonal !== undefined && ["guardia", "supervisor", "administrativo"].includes(tipoPersonal)) {
+    updates.tipoPersonal = tipoPersonal;
+  }
 
   try {
     const [emp] = await db

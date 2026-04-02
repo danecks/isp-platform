@@ -106,6 +106,8 @@ interface ColaboradorPre {
   excluido_frecuencia_pago: boolean;
   motivo_exclusion_frecuencia_pago: string | null;
   quincena_tipo: string | null;
+  // Tipo de personal
+  tipo_personal: "guardia" | "supervisor" | "administrativo" | null;
 }
 
 interface DetalleNovedad {
@@ -1289,6 +1291,7 @@ export default function PrePlanilla() {
   const [filtroSede, setFiltroSede] = useState("todos");
   const [filtroEstado, setFiltroEstado] = useState("todos");
   const [filtroRevision, setFiltroRevision] = useState("todos");
+  const [filtroTipoPersonal, setFiltroTipoPersonal] = useState("todos");
   const [soloConFaltas, setSoloConFaltas] = useState(false);
   const [soloConAnticipos, setSoloConAnticipos] = useState(false);
   const [soloConIncentivos, setSoloConIncentivos] = useState(false);
@@ -1416,6 +1419,7 @@ export default function PrePlanilla() {
     if (filtroSede !== "todos") data = data.filter((r) => r.sede === filtroSede);
     if (filtroEstado !== "todos") data = data.filter((r) => r.estado_laboral === filtroEstado);
     if (filtroRevision !== "todos") data = data.filter((r) => r.revision_estado === filtroRevision);
+    if (filtroTipoPersonal !== "todos") data = data.filter((r) => (r.tipo_personal ?? "guardia") === filtroTipoPersonal);
     if (soloConFaltas) data = data.filter((r) => Number(r.faltas) > 0 || Number(r.suspensiones) > 0);
     if (soloConAnticipos) data = data.filter((r) => r.anticipos_count > 0);
     if (soloConIncentivos) data = data.filter((r) => Number(r.incentivos_cash_count) > 0);
@@ -1430,7 +1434,7 @@ export default function PrePlanilla() {
       return sortAsc ? String(va).localeCompare(String(vb), "es") : String(vb).localeCompare(String(va), "es");
     });
     return data;
-  }, [rows, busqueda, filtroCliente, filtroSede, filtroEstado, filtroRevision,
+  }, [rows, busqueda, filtroCliente, filtroSede, filtroEstado, filtroRevision, filtroTipoPersonal,
       soloConFaltas, soloConAnticipos, soloConIncentivos, soloConHE, soloRevisar, sortField, sortAsc]);
 
   // KPIs globales (siempre del consolidado completo)
@@ -1726,6 +1730,13 @@ export default function PrePlanilla() {
                         <option value="observada">Observada</option>
                         <option value="aprobado_rrhh">Aprobado RRHH</option>
                       </select>
+                      <select value={filtroTipoPersonal} onChange={(e) => setFiltroTipoPersonal(e.target.value)}
+                        className="bg-[#060e1c] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white outline-none appearance-none">
+                        <option value="todos">Todo tipo</option>
+                        <option value="guardia">Guardia</option>
+                        <option value="supervisor">Supervisor</option>
+                        <option value="administrativo">Administrativo</option>
+                      </select>
                       <div className="flex gap-1.5 flex-wrap">
                         {[
                           { label: "⚠ Revisar", val: soloRevisar, set: setSoloRevisar, cls: "text-rose-400 border-rose-400/30 bg-rose-400/10" },
@@ -1800,7 +1811,18 @@ export default function PrePlanilla() {
                                     {needsReview && <AlertCircle className="w-3 h-3 text-rose-400 shrink-0" />}
                                     {!needsReview && tieneAlerta && <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />}
                                     <div>
-                                      <p className="font-semibold text-white">{r.nombre_completo}</p>
+                                      <div className="flex items-center gap-1.5">
+                                        <p className="font-semibold text-white">{r.nombre_completo}</p>
+                                        {(r.tipo_personal ?? "guardia") !== "guardia" && (
+                                          <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border ${
+                                            r.tipo_personal === "supervisor"
+                                              ? "text-violet-300 bg-violet-500/10 border-violet-500/20"
+                                              : "text-amber-300 bg-amber-500/10 border-amber-500/20"
+                                          }`}>
+                                            {r.tipo_personal === "supervisor" ? "SUPERVISOR" : "ADMIN"}
+                                          </span>
+                                        )}
+                                      </div>
                                       <p className="text-white/30 text-[10px]">{r.dpi ? `****${r.dpi.slice(-4)}` : "—"}</p>
                                     </div>
                                   </div>

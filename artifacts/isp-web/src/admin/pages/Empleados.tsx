@@ -53,6 +53,8 @@ interface Empleado {
   tipoLimitePeriodo: string | null;
   // Nómina — frecuencia de pago
   frecuenciaPago: string;
+  // Tipo de personal operativo
+  tipoPersonal: "guardia" | "supervisor" | "administrativo";
   // Seguridad social — IGSS
   aplicaIgssGeneral: boolean;
   estadoIgss: string;
@@ -208,6 +210,7 @@ interface FormState {
   frecuenciaPago: string;
   limiteAnticipo: string;
   tipoLimitePeriodo: string;
+  tipoPersonal: "guardia" | "supervisor" | "administrativo";
 }
 
 interface AsignacionOperativa {
@@ -296,7 +299,24 @@ const FORM_EMPTY: FormState = {
   sueldoBase: "", tipoJornada: "", diaDescanso: "", horasContrato: "",
   frecuenciaPago: "quincenal",
   limiteAnticipo: "", tipoLimitePeriodo: "quincenal",
+  tipoPersonal: "guardia",
 };
+
+const TIPO_PERSONAL_CFG = {
+  guardia:        { label: "Guardia",        color: "text-blue-300 bg-blue-500/10 border-blue-500/20"     },
+  supervisor:     { label: "Supervisor",     color: "text-violet-300 bg-violet-500/10 border-violet-500/20" },
+  administrativo: { label: "Administrativo", color: "text-amber-300 bg-amber-500/10 border-amber-500/20"  },
+} as const;
+
+function TipoPersonalBadge({ tipo }: { tipo: string }) {
+  const cfg = TIPO_PERSONAL_CFG[tipo as keyof typeof TIPO_PERSONAL_CFG]
+    ?? { label: tipo, color: "text-white/40 bg-white/5 border-white/10" };
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${cfg.color}`}>
+      {cfg.label}
+    </span>
+  );
+}
 
 // ─── Badges ───────────────────────────────────────────────────────────────────
 
@@ -2522,6 +2542,7 @@ function FormModal({
     frecuenciaPago: emp?.frecuenciaPago ?? "quincenal",
     limiteAnticipo: emp?.limiteAnticipo != null ? String(emp.limiteAnticipo) : "",
     tipoLimitePeriodo: emp?.tipoLimitePeriodo ?? "quincenal",
+    tipoPersonal: (emp?.tipoPersonal ?? "guardia") as "guardia" | "supervisor" | "administrativo",
   }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -2610,6 +2631,18 @@ function FormModal({
 
           {/* Datos laborales / nómina */}
           <p className="text-[10px] text-white/30 uppercase tracking-widest pt-2">Datos laborales</p>
+          <div className="space-y-1">
+            <label className="text-xs text-white/50 font-medium">Tipo de personal</label>
+            <select
+              value={form.tipoPersonal}
+              onChange={(e) => set("tipoPersonal", e.target.value)}
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50 appearance-none"
+            >
+              <option value="guardia">Guardia — Personal operativo de campo</option>
+              <option value="supervisor">Supervisor — Visible en pizarrón, no asignable</option>
+              <option value="administrativo">Administrativo — Solo planilla, no visible en ops</option>
+            </select>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-xs text-white/50 font-medium">Sueldo base (Q)</label>
@@ -2792,6 +2825,9 @@ function EmpleadoRow({ emp, onClick, onEdit }: { emp: Empleado; onClick: () => v
         <p className="text-xs text-white/60">{emp.supervisorNombre ?? "—"}</p>
       </td>
       <td className="px-4 py-3">
+        <TipoPersonalBadge tipo={emp.tipoPersonal ?? "guardia"} />
+      </td>
+      <td className="px-4 py-3">
         <EstadoBadge estado={emp.estadoLaboral} />
       </td>
       <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
@@ -2813,6 +2849,7 @@ export default function Empleados() {
   const [busqueda, setBusqueda] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<string>("todos");
   const [filtroArea, setFiltroArea] = useState<string>("todos");
+  const [filtroTipoPersonal, setFiltroTipoPersonal] = useState<string>("todos");
   const [vista, setVista] = useState<"tabla" | "tarjetas">("tabla");
   const [fichaAbierta, setFichaAbierta] = useState<Empleado | null>(null);
   const [formModal, setFormModal] = useState<{ modo: "crear" | "editar"; emp?: Empleado } | null>(null);
@@ -2870,6 +2907,7 @@ export default function Empleados() {
   const filtrados = empleados.filter((e) => {
     if (filtroEstado !== "todos" && e.estadoLaboral !== filtroEstado) return false;
     if (filtroArea !== "todos" && e.area !== filtroArea) return false;
+    if (filtroTipoPersonal !== "todos" && (e.tipoPersonal ?? "guardia") !== filtroTipoPersonal) return false;
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase();
       return (
@@ -2958,6 +2996,17 @@ export default function Empleados() {
             </select>
           )}
 
+          <select
+            value={filtroTipoPersonal}
+            onChange={(e) => setFiltroTipoPersonal(e.target.value)}
+            className="bg-[#0c1929] border border-white/8 rounded-lg px-3 py-2 text-sm text-white/70 outline-none focus:border-primary/40 appearance-none cursor-pointer"
+          >
+            <option value="todos">Todos los tipos</option>
+            <option value="guardia">Guardia</option>
+            <option value="supervisor">Supervisor</option>
+            <option value="administrativo">Administrativo</option>
+          </select>
+
           {/* Toggle vista */}
           <div className="flex items-center bg-[#0c1929] border border-white/8 rounded-lg overflow-hidden">
             <button
@@ -3038,6 +3087,7 @@ export default function Empleados() {
                     <th className="px-4 py-2.5 text-[10px] text-white/30 uppercase tracking-widest font-semibold">Teléfono</th>
                     <th className="px-4 py-2.5 text-[10px] text-white/30 uppercase tracking-widest font-semibold">Puesto / Área</th>
                     <th className="px-4 py-2.5 text-[10px] text-white/30 uppercase tracking-widest font-semibold">Supervisor</th>
+                    <th className="px-4 py-2.5 text-[10px] text-white/30 uppercase tracking-widest font-semibold">Tipo</th>
                     <th className="px-4 py-2.5 text-[10px] text-white/30 uppercase tracking-widest font-semibold">Estado</th>
                     <th className="px-4 py-2.5 text-right text-[10px] text-white/30 uppercase tracking-widest font-semibold">Acciones</th>
                   </tr>

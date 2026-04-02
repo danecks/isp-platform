@@ -93,6 +93,8 @@ export const employeesTable = pgTable("employees", {
   area: varchar("area", { length: 100 }),
   estadoLaboral: varchar("estado_laboral", { length: 50 }).notNull().default("activo"),
   // 'activo' | 'suspendido' | 'baja' | 'licencia'
+  tipoPersonal: varchar("tipo_personal", { length: 20 }).notNull().default("guardia"),
+  // 'guardia' | 'supervisor' | 'administrativo'
   sede: varchar("sede", { length: 100 }),
   supervisorNombre: varchar("supervisor_nombre", { length: 255 }),
   supervisorId: integer("supervisor_id"),   // → employees.id (self-ref, nullable)

@@ -156,6 +156,7 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       SELECT
         e.id, e.nombre_completo, e.estado_laboral, e.puesto, e.area, e.sede,
         e.telefono, e.wa_autorizado, e.supervisor_id,
+        COALESCE(e.tipo_personal, 'guardia') AS tipo_personal,
         COALESCE(e.elegible_pool, TRUE) AS elegible_pool,
         COALESCE(eoa.tipo_asignacion, 'sin_asignacion') AS tipo_asignacion_eoa,
         titular_po.estado_operativo_puesto AS estado_puesto_titular,
@@ -215,6 +216,7 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       LEFT JOIN turnos t ON t.id = titular_po.tipo_turno_id
       LEFT JOIN operational_zones oz ON oz.id = COALESCE(eoa.zona_operativa_id, titular_po.zona_operativa_id)
       WHERE e.estado_laboral IN ('activo', 'suspendido', 'licencia')
+        AND COALESCE(e.tipo_personal, 'guardia') = 'guardia'
         AND (
           COALESCE(e.elegible_pool, TRUE) = TRUE
           OR (
@@ -228,6 +230,26 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
           OR ssa_ag.employee_id IS NOT NULL
         )
       ORDER BY e.estado_laboral, e.nombre_completo
+    `);
+
+    // Supervisores — visibles en pizarrón pero NO en el pool de asignación
+    const { rows: supervisoresRows } = await pool.query(`
+      SELECT
+        e.id, e.nombre_completo, e.estado_laboral, e.puesto, e.area, e.sede,
+        e.telefono, e.wa_autorizado,
+        COALESCE(eoa.zona_operativa_id, NULL) AS zona_operativa_id,
+        oz.nombre AS zona_nombre,
+        CASE
+          WHEN e.estado_laboral = 'licencia'   THEN 'licencia'
+          WHEN e.estado_laboral = 'suspendido' THEN 'suspendido'
+          ELSE 'activo'
+        END AS estado_display
+      FROM employees e
+      LEFT JOIN employee_operational_assignments eoa ON eoa.employee_id = e.id AND eoa.activa = TRUE
+      LEFT JOIN operational_zones oz ON oz.id = eoa.zona_operativa_id
+      WHERE COALESCE(e.tipo_personal, 'guardia') = 'supervisor'
+        AND e.estado_laboral IN ('activo', 'licencia', 'suspendido')
+      ORDER BY e.nombre_completo
     `);
 
     // ── Post-proceso: reclasificar "disponible" con el motor de turnos ────────
@@ -353,6 +375,7 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       enDescanso,
       suspendidos,
       faltando,
+      supervisores: supervisoresRows,
       total: agentes.length,
     });
   } catch (err) {

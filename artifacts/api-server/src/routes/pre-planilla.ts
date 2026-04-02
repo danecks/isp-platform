@@ -60,6 +60,7 @@ const QUERY_CONSOLIDADO = `
     e.area,
     e.sede,
     e.supervisor_nombre,
+    COALESCE(e.tipo_personal, 'guardia')                                        AS tipo_personal,
     COALESCE(e.frecuencia_pago, 'quincenal')                                    AS frecuencia_pago,
 
     -- Métricas del período desde novedades_nomina_diarias
