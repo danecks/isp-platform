@@ -130,14 +130,16 @@ interface AlertaProxima {
 function ModalNuevoVacaciones({
   onClose,
   usuario,
+  initialEmpleadoId,
 }: {
   onClose: () => void;
   usuario: string;
+  initialEmpleadoId?: number;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const [empleadoId, setEmpleadoId] = useState("");
+  const [empleadoId, setEmpleadoId] = useState(initialEmpleadoId ? String(initialEmpleadoId) : "");
   const [busEmp, setBusEmp] = useState("");
   const [tipo, setTipo] = useState<"vacaciones" | "vacaciones_programadas" | "vacaciones_trabajadas">("vacaciones");
   const [fechaInicio, setFechaInicio] = useState(() => new Date().toISOString().slice(0, 10));
@@ -393,7 +395,7 @@ function VacacionCard({ ev, onAprobar, onCancelar }: {
 }
 
 // ─── ElegibilidadCard ─────────────────────────────────────────────────────────
-function ElegibilidadRow({ emp }: { emp: ElegibilidadRow }) {
+function ElegibilidadRow({ emp, onProgramar }: { emp: ElegibilidadRow; onProgramar?: (id: number) => void }) {
   const diasRestantes = emp.dias_para_aniversario;
   const urgente = emp.es_elegible && emp.vacacion_activa_tipo === null && emp.proximas_programadas_inicio === null && (emp.saldo_disponible ?? 0) > 0;
 
@@ -546,6 +548,23 @@ function ElegibilidadRow({ emp }: { emp: ElegibilidadRow }) {
           {emp.faltas_ultimo_anio} falta{emp.faltas_ultimo_anio !== 1 ? "s" : ""} en el último año
         </div>
       )}
+
+      {/* ── Acción: programar vacaciones ─────────────────────────── */}
+      {onProgramar && (
+        <div className="pt-1.5 border-t border-white/5">
+          <button
+            onClick={() => onProgramar(emp.id)}
+            className={`w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${
+              emp.es_elegible && disponible > 0
+                ? "bg-teal-500/10 hover:bg-teal-500/20 text-teal-400 border border-teal-500/20 hover:border-teal-500/35"
+                : "bg-white/4 hover:bg-white/7 text-white/30 border border-white/8"
+            }`}
+          >
+            <Plus className="w-3 h-3" />
+            Registrar vacaciones
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -559,7 +578,7 @@ export default function VacacionesTab() {
   const { currentUser } = useAuth();
   const usuario = currentUser?.nombre ?? currentUser?.username ?? "rrhh";
 
-  const [modalNuevo, setModalNuevo] = useState(false);
+  const [modalEmpleadoId, setModalEmpleadoId] = useState<number | null>(null);
   const [subTab, setSubTab] = useState<SubTab>("activas");
   const [busqueda, setBusqueda] = useState("");
   const [anio, setAnio] = useState(() => new Date().getFullYear());
@@ -762,7 +781,7 @@ export default function VacacionesTab() {
 
         {/* Nuevo */}
         <button
-          onClick={() => setModalNuevo(true)}
+          onClick={() => setModalEmpleadoId(0)}
           className="flex items-center gap-1.5 px-3 py-2 bg-teal-600 hover:bg-teal-500 rounded-xl text-xs font-semibold text-white transition-all"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -830,7 +849,7 @@ export default function VacacionesTab() {
               <Calendar className="w-10 h-10 text-white/10" />
               <p className="text-sm text-white/30">Sin vacaciones programadas para {anio}</p>
               <button
-                onClick={() => setModalNuevo(true)}
+                onClick={() => setModalEmpleadoId(0)}
                 className="flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-500 rounded-xl text-xs font-semibold text-white transition-all"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -895,7 +914,7 @@ export default function VacacionesTab() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                 {elegFilt.map((emp) => (
-                  <ElegibilidadRow key={emp.id} emp={emp} />
+                  <ElegibilidadRow key={emp.id} emp={emp} onProgramar={(id) => setModalEmpleadoId(id)} />
                 ))}
               </div>
             </>
@@ -904,10 +923,11 @@ export default function VacacionesTab() {
       )}
 
       {/* Modal */}
-      {modalNuevo && (
+      {modalEmpleadoId !== null && (
         <ModalNuevoVacaciones
-          onClose={() => setModalNuevo(false)}
+          onClose={() => setModalEmpleadoId(null)}
           usuario={usuario}
+          initialEmpleadoId={modalEmpleadoId > 0 ? modalEmpleadoId : undefined}
         />
       )}
     </div>
