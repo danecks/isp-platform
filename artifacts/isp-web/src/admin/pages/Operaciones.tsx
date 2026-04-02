@@ -2688,12 +2688,14 @@ function ClienteColumnaFutura({
   planPorPuesto,
   onAbrirPlan,
   poolFuturo,
+  colGlobal,
 }: {
   cliente: ClienteBoard;
   fecha?: string;
   planPorPuesto: Record<number, PlanFuturo>;
   onAbrirPlan: (puesto: Puesto) => void;
   poolFuturo?: PoolFuturoData | null;
+  colGlobal?: { v: number; val: boolean };
 }) {
   const total     = cliente.puestos.length;
   const conPlan   = cliente.puestos.filter((p) => planPorPuesto[p.id]).length;
@@ -2705,6 +2707,12 @@ function ClienteColumnaFutura({
   const [colapsado, setColapsado] = useState(() => {
     try { return sessionStorage.getItem(ssKey) === "1"; } catch { return false; }
   });
+  useEffect(() => {
+    if (colGlobal && colGlobal.v > 0) {
+      setColapsado(colGlobal.val);
+      try { sessionStorage.setItem(ssKey, colGlobal.val ? "1" : "0"); } catch {}
+    }
+  }, [colGlobal?.v]); // eslint-disable-line react-hooks/exhaustive-deps
   const toggleCol = () => setColapsado(prev => {
     const next = !prev;
     try { sessionStorage.setItem(ssKey, next ? "1" : "0"); } catch {}
@@ -3106,6 +3114,7 @@ function ClienteColumna({
   onConfigTurno,
   cambiosFuturosProximos,
   resaltado,
+  colGlobal,
 }: {
   cliente: ClienteBoard;
   agenteSeleccionadoId: number | null;
@@ -3117,11 +3126,18 @@ function ClienteColumna({
   onConfigTurno?: (puesto: Puesto) => void;
   cambiosFuturosProximos?: Record<number, PlanFuturo[]>;
   resaltado?: boolean;
+  colGlobal?: { v: number; val: boolean };
 }) {
   const ssKey = `piz_col_cli_${cliente.clienteId ?? cliente.clienteNombre}`;
   const [colapsado, setColapsado] = useState(() => {
     try { return sessionStorage.getItem(ssKey) === "1"; } catch { return false; }
   });
+  useEffect(() => {
+    if (colGlobal && colGlobal.v > 0) {
+      setColapsado(colGlobal.val);
+      try { sessionStorage.setItem(ssKey, colGlobal.val ? "1" : "0"); } catch {}
+    }
+  }, [colGlobal?.v]); // eslint-disable-line react-hooks/exhaustive-deps
   const toggleCol = () => setColapsado(prev => {
     const next = !prev;
     try { sessionStorage.setItem(ssKey, next ? "1" : "0"); } catch {}
@@ -4570,6 +4586,7 @@ export default function Operaciones() {
   const [poolTab, setPoolTab]                        = useState<"disponibles" | "trabajando" | "descansandoCiclo" | "enDescanso" | "suspendidos" | "enPuesto" | "enSSA" | "faltando" | "enVacaciones">("disponibles");
   const [busquedaPool, setBusquedaPool]              = useState("");
   const [busquedaPersona, setBusquedaPersona]        = useState("");
+  const [colGlobal, setColGlobal]                    = useState<{ v: number; val: boolean }>({ v: 0, val: false });
   const [puestoContexto, setPuestoContexto]          = useState<Puesto | null>(null);
   const [modalCierre, setModalCierre]                = useState(false);
   const [modalReabrir, setModalReabrir]              = useState(false);
@@ -5550,8 +5567,8 @@ export default function Operaciones() {
             </div>
           )}
 
-          {/* ── Buscador de colaborador ───────────────────────────────── */}
-          <div className="flex items-center gap-2 shrink-0">
+          {/* ── Buscador de colaborador + Colapsar/Expandir todo ─────── */}
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
             <div className={`relative flex items-center transition-all ${busquedaPersona ? "w-72" : "w-52"}`}>
               <Search className="absolute left-2.5 w-3.5 h-3.5 text-white/25 pointer-events-none" />
               <input
@@ -5579,6 +5596,23 @@ export default function Operaciones() {
                   ? "Sin resultados"
                   : `${tableroFiltrado.flatMap((c) => c.puestos).length} puesto${tableroFiltrado.flatMap((c) => c.puestos).length !== 1 ? "s" : ""} encontrado${tableroFiltrado.flatMap((c) => c.puestos).length !== 1 ? "s" : ""}`}
               </span>
+            )}
+
+            {/* Separador */}
+            {tableroFiltrado.length > 0 && (
+              <div className="w-px h-5 bg-white/10 mx-1 self-center" />
+            )}
+
+            {/* Colapsar / Expandir todo */}
+            {tableroFiltrado.length > 0 && (
+              <button
+                onClick={() => setColGlobal(prev => ({ v: prev.v + 1, val: !colGlobal.val }))}
+                className="flex items-center gap-1.5 text-[11px] text-white/40 hover:text-white/80 transition-colors px-2.5 py-1.5 border border-white/8 hover:border-white/20 rounded-xl whitespace-nowrap"
+                title={colGlobal.val ? "Expandir todas las columnas" : "Colapsar todas las columnas"}
+              >
+                <ChevronRight className={`w-3.5 h-3.5 transition-transform ${colGlobal.val ? "rotate-0" : "rotate-90"}`} />
+                {colGlobal.val ? "Expandir todo" : "Colapsar todo"}
+              </button>
             )}
           </div>
 
@@ -5853,6 +5887,7 @@ export default function Operaciones() {
                     fecha={fechaVista}
                     planPorPuesto={planFuturoPorPuesto}
                     poolFuturo={poolFuturo ?? null}
+                    colGlobal={colGlobal}
                     onAbrirPlan={(puesto) =>
                       setModalPlanFuturo({ puesto, plan: planFuturoPorPuesto[puesto.id] ?? null })
                     }
@@ -5874,6 +5909,7 @@ export default function Operaciones() {
                     onConfigTurno={(p) => setPuestoParaTurno(p)}
                     cambiosFuturosProximos={cambiosFuturosProximos}
                     resaltado={clienteResaltado !== null && cliente.clienteId === clienteResaltado}
+                    colGlobal={colGlobal}
                   />
                 ))}
               </div>
