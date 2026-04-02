@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Shield, Plus, RefreshCw, Search, X, XCircle, ChevronRight,
   MapPin, User, Clock, AlertTriangle, CheckCircle2, Loader2,
-  Edit, History, ArrowRightLeft, Package,
+  Edit, History, ArrowRightLeft, Package, FileText, Hash, Target,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -304,60 +304,213 @@ function ModalArma({
   );
 }
 
-// ── Modal historial de custodia por arma ─────────────────────────────────────
-function ModalHistorial({ arma, onClose }: { arma: Arma; onClose: () => void }) {
+// ── Campo de ficha (componente auxiliar) ─────────────────────────────────────
+function FichaCampo({ label, value, mono = false }: { label: string; value: string | null | undefined; mono?: boolean }) {
+  return (
+    <div className="bg-gray-800/50 rounded-lg px-3 py-2.5">
+      <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">{label}</p>
+      <p className={`text-sm ${mono ? "font-mono font-semibold text-white" : "text-gray-200"} truncate`}>
+        {value || <span className="text-gray-600 italic">—</span>}
+      </p>
+    </div>
+  );
+}
+
+// ── Ficha completa del arma (datos + historial) ───────────────────────────────
+function ModalFichaArma({ arma, onClose, onEdit }: {
+  arma: Arma; onClose: () => void; onEdit: () => void;
+}) {
+  const { data: detalle } = useQuery<Arma>({
+    queryKey: ["arma-detalle", arma.id],
+    queryFn: () => apiFetch(`${API}/armas/${arma.id}`),
+    initialData: arma,
+  });
   const { data: historial = [], isLoading } = useQuery<CustodiaEntry[]>({
     queryKey: ["arma-custodia", arma.id],
     queryFn: () => apiFetch(`${API}/armas/${arma.id}/custodia`),
   });
 
+  const a = detalle ?? arma;
+
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[85vh]">
-        <div className="flex items-center justify-between p-5 border-b border-gray-700 flex-shrink-0">
-          <div>
-            <h2 className="text-base font-semibold text-white flex items-center gap-2">
-              <History className="w-4 h-4 text-purple-400" />
-              Historial de custodia — {arma.codigo}
-            </h2>
-            <p className="text-xs text-gray-400 mt-0.5">{arma.marca} {arma.modelo} · {arma.calibre}</p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white"><X className="w-5 h-5" /></button>
-        </div>
-        <div className="overflow-y-auto flex-1 p-5">
-          {isLoading ? (
-            <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-blue-400" /></div>
-          ) : historial.length === 0 ? (
-            <p className="text-center text-gray-500 py-8">Sin registros de custodia aún</p>
-          ) : (
-            <div className="space-y-2">
-              {historial.map((h, i) => (
-                <div key={h.id} className={`flex gap-4 p-3 rounded-lg border ${h.fecha_fin === null ? "border-teal-500/30 bg-teal-500/5" : "border-gray-700/50 bg-gray-800/30"}`}>
-                  <div className="flex flex-col items-center">
-                    <div className={`w-2.5 h-2.5 rounded-full mt-1 ${h.fecha_fin === null ? "bg-teal-400" : "bg-gray-600"}`} />
-                    {i < historial.length - 1 && <div className="w-px flex-1 bg-gray-700/50 mt-1" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-medium text-white">{h.custodio_nombre ?? "— Sin custodio —"}</p>
-                        <p className="text-xs text-gray-400">{h.puesto_nombre ?? "—"}{h.cliente_nombre ? ` · ${h.cliente_nombre}` : ""}</p>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        {h.fecha_fin === null
-                          ? <span className="text-[10px] text-teal-400 bg-teal-400/10 border border-teal-400/20 px-2 py-0.5 rounded-full">Activa</span>
-                          : <span className="text-[10px] text-gray-500">Cerrada</span>}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 mt-1 flex-wrap">
-                      <span className="text-[10px] text-gray-500">{fmtDatetime(h.fecha_inicio)} → {h.fecha_fin ? fmtDatetime(h.fecha_fin) : "en curso"}</span>
-                      <span className="text-[10px] text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded">{ORIGEN_LABELS[h.tipo_origen] ?? h.tipo_origen}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-gray-900 border border-gray-700/80 rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[92vh]">
+
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700/60 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-500/15 border border-blue-500/25 rounded-xl flex items-center justify-center flex-shrink-0">
+              <Shield className="w-5 h-5 text-blue-400" />
             </div>
-          )}
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-lg font-bold text-white font-mono tracking-wider">{a.codigo}</span>
+                <span className="text-xs text-gray-400 bg-gray-700/60 px-2 py-0.5 rounded-md">
+                  {TIPO_LABELS[a.tipo] ?? a.tipo}
+                </span>
+                <EstadoBadge estado={a.estado} />
+                {!a.activo && (
+                  <span className="text-[10px] text-red-400 bg-red-400/10 border border-red-400/20 px-2 py-0.5 rounded-full">Inactiva</span>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {[a.marca, a.modelo].filter(Boolean).join(" ") || "Sin marca/modelo"}
+                {a.calibre ? ` · ${a.calibre}` : ""}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button onClick={onEdit} title="Editar arma"
+              className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors">
+              <Edit className="w-4 h-4" />
+            </button>
+            <button onClick={onClose}
+              className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-y-auto flex-1">
+
+          {/* ── Datos del arma ── */}
+          <div className="px-5 pt-4 pb-3">
+            <div className="flex items-center gap-2 mb-3">
+              <FileText className="w-3.5 h-3.5 text-gray-500" />
+              <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Datos del arma</h3>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <FichaCampo label="Código" value={a.codigo} mono />
+              <FichaCampo label="Tipo" value={TIPO_LABELS[a.tipo] ?? a.tipo} />
+              <FichaCampo label="Calibre" value={a.calibre} />
+              <FichaCampo label="Marca" value={a.marca} />
+              <FichaCampo label="Modelo" value={a.modelo} />
+              <FichaCampo label="Serie" value={a.serie} mono />
+            </div>
+          </div>
+
+          {/* ── Puesto asignado ── */}
+          <div className="px-5 pb-3">
+            <div className="flex items-center gap-2 mb-3">
+              <MapPin className="w-3.5 h-3.5 text-gray-500" />
+              <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Puesto asignado</h3>
+            </div>
+            {a.puesto_nombre ? (
+              <div className="bg-gray-800/50 rounded-lg px-3 py-2.5 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-white font-medium truncate">{a.puesto_nombre}</p>
+                  {a.cliente_nombre && <p className="text-xs text-gray-400 truncate">{a.cliente_nombre}</p>}
+                </div>
+                {a.custodio_nombre && (
+                  <div className="text-right flex-shrink-0">
+                    <div className="flex items-center gap-1 text-xs text-teal-400">
+                      <User className="w-3 h-3" />
+                      <span className="truncate max-w-[140px]">{a.custodio_nombre}</span>
+                    </div>
+                    {a.custodia_desde && (
+                      <p className="text-[10px] text-gray-500 mt-0.5">desde {fmtDatetime(a.custodia_desde)}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="bg-gray-800/30 rounded-lg px-3 py-2.5 text-sm text-gray-600 italic">Sin puesto asignado</div>
+            )}
+            {a.observaciones && (
+              <div className="mt-2 bg-yellow-500/5 border border-yellow-500/15 rounded-lg px-3 py-2">
+                <p className="text-[10px] text-yellow-400/70 uppercase tracking-wider mb-0.5">Observaciones</p>
+                <p className="text-xs text-gray-300">{a.observaciones}</p>
+              </div>
+            )}
+          </div>
+
+          {/* ── Historial completo ── */}
+          <div className="px-5 pb-5 border-t border-gray-700/40 pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <History className="w-3.5 h-3.5 text-gray-500" />
+                <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Historial de custodia</h3>
+              </div>
+              <span className="text-[10px] text-gray-600 bg-gray-800/50 px-2 py-0.5 rounded-full">
+                {isLoading ? "…" : `${historial.length} registro(s)`}
+              </span>
+            </div>
+
+            {isLoading ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-blue-400" />
+              </div>
+            ) : historial.length === 0 ? (
+              <div className="text-center py-8 text-gray-600">
+                <Target className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Sin registros de custodia aún</p>
+              </div>
+            ) : (
+              <div className="space-y-0">
+                {historial.map((h, i) => {
+                  const isActiva = h.fecha_fin === null;
+                  return (
+                    <div key={h.id} className="flex gap-3">
+                      {/* línea de tiempo */}
+                      <div className="flex flex-col items-center pt-2.5 flex-shrink-0">
+                        <div className={`w-2.5 h-2.5 rounded-full border-2 flex-shrink-0 ${
+                          isActiva ? "bg-teal-400 border-teal-400" : "bg-gray-800 border-gray-600"
+                        }`} />
+                        {i < historial.length - 1 && (
+                          <div className="w-px flex-1 bg-gray-700/50 my-1 min-h-[12px]" />
+                        )}
+                      </div>
+
+                      {/* contenido */}
+                      <div className={`flex-1 min-w-0 pb-3 ${i < historial.length - 1 ? "" : ""}`}>
+                        <div className={`rounded-lg px-3 py-2.5 border ${
+                          isActiva
+                            ? "bg-teal-500/5 border-teal-500/20"
+                            : "bg-gray-800/30 border-gray-700/40"
+                        }`}>
+                          <div className="flex items-start justify-between gap-2 flex-wrap">
+                            <div className="min-w-0">
+                              <p className={`text-sm font-medium ${isActiva ? "text-teal-200" : "text-gray-300"}`}>
+                                {h.custodio_nombre ?? <span className="italic text-gray-600">Sin custodio</span>}
+                              </p>
+                              {h.custodio_tipo && (
+                                <p className="text-[10px] text-gray-500 capitalize">{h.custodio_tipo.replace(/_/g, " ")}</p>
+                              )}
+                              {(h.puesto_nombre || h.cliente_nombre) && (
+                                <p className="text-xs text-gray-500 mt-0.5 truncate">
+                                  {h.puesto_nombre ?? "—"}{h.cliente_nombre ? ` · ${h.cliente_nombre}` : ""}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex-shrink-0 text-right">
+                              {isActiva
+                                ? <span className="text-[10px] text-teal-400 bg-teal-400/10 border border-teal-400/20 px-2 py-0.5 rounded-full font-medium">En curso</span>
+                                : <span className="text-[10px] text-gray-600">Cerrada</span>
+                              }
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                            <span className="text-[10px] text-gray-500 flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {fmtDatetime(h.fecha_inicio)}
+                              {!isActiva && h.fecha_fin && <> → {fmtDatetime(h.fecha_fin)}</>}
+                              {isActiva && <span className="text-teal-400/60 ml-0.5">→ en curso</span>}
+                            </span>
+                            <span className="text-[10px] text-blue-300/70 bg-blue-400/8 border border-blue-400/15 px-1.5 py-0.5 rounded">
+                              {ORIGEN_LABELS[h.tipo_origen] ?? h.tipo_origen}
+                            </span>
+                          </div>
+                          {h.notas && (
+                            <p className="text-[10px] text-gray-500 mt-1 italic">"{h.notas}"</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>,
@@ -366,7 +519,7 @@ function ModalHistorial({ arma, onClose }: { arma: Arma; onClose: () => void }) 
 }
 
 // ── Tab: Estado Operativo ─────────────────────────────────────────────────────
-function TabEstado({ fecha }: { fecha: string }) {
+function TabEstado({ fecha, onFicha }: { fecha: string; onFicha: (a: EstadoArma) => void }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { user } = useAuth();
@@ -435,11 +588,11 @@ function TabEstado({ fecha }: { fecha: string }) {
 
       <div className="grid gap-3">
         {filtered.map(arma => (
-          <div key={arma.id} className="bg-gray-800/50 border border-gray-700/60 rounded-xl p-4 hover:border-gray-600 transition-colors">
+          <div key={arma.id} className="bg-gray-800/50 border border-gray-700/60 rounded-xl p-4 hover:border-gray-600 transition-colors group">
             <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div className="flex items-start gap-3 min-w-0">
+              <div className="flex items-start gap-3 min-w-0 flex-1">
                 <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${arma.responsable_turno ? "bg-teal-400" : arma.descanso_por_ciclo ? "bg-blue-400" : "bg-gray-600"}`} />
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-white font-semibold text-sm">{arma.codigo}</span>
                     <span className="text-gray-400 text-xs">{TIPO_LABELS[arma.tipo] ?? arma.tipo}</span>
@@ -465,7 +618,15 @@ function TabEstado({ fecha }: { fecha: string }) {
                   </div>
                 </div>
               </div>
-              <ResponsableChip responsable={arma.responsable_turno} descansa={arma.descanso_por_ciclo} />
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <ResponsableChip responsable={arma.responsable_turno} descansa={arma.descanso_por_ciclo} />
+                <button
+                  onClick={() => onFicha(arma)}
+                  title="Ver ficha del arma"
+                  className="p-1.5 text-gray-600 hover:text-blue-400 hover:bg-blue-400/10 rounded-md transition-colors opacity-0 group-hover:opacity-100">
+                  <FileText className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
             {arma.custodio_nombre && (
               <div className="mt-2 pt-2 border-t border-gray-700/40 text-[11px] text-gray-500 flex items-center gap-1.5">
@@ -487,8 +648,8 @@ function TabEstado({ fecha }: { fecha: string }) {
 }
 
 // ── Tab: Lista de Armas ───────────────────────────────────────────────────────
-function TabArmas({ onEdit, onHistorial }: {
-  onEdit: (a: Arma) => void; onHistorial: (a: Arma) => void;
+function TabArmas({ onEdit, onFicha }: {
+  onEdit: (a: Arma) => void; onFicha: (a: Arma) => void;
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -592,9 +753,9 @@ function TabArmas({ onEdit, onHistorial }: {
                           <ArrowRightLeft className="w-3.5 h-3.5" />
                         </button>
                       )}
-                      <button onClick={() => onHistorial(arma)} title="Ver historial"
-                        className="p-1.5 text-gray-500 hover:text-purple-400 hover:bg-purple-400/10 rounded-md transition-colors">
-                        <History className="w-3.5 h-3.5" />
+                      <button onClick={() => onFicha(arma)} title="Ver ficha"
+                        className="p-1.5 text-gray-500 hover:text-blue-400 hover:bg-blue-400/10 rounded-md transition-colors">
+                        <FileText className="w-3.5 h-3.5" />
                       </button>
                       <button onClick={() => onEdit(arma)} title="Editar"
                         className="p-1.5 text-gray-500 hover:text-white hover:bg-gray-700 rounded-md transition-colors">
@@ -689,7 +850,7 @@ export default function Armeria() {
   const [tab, setTab] = useState<"estado" | "armas" | "historial">("estado");
   const [fechaConsulta, setFechaConsulta] = useState(hoy());
   const [modalArma, setModalArma] = useState<Arma | null | "nuevo">(null);
-  const [modalHistorial, setModalHistorial] = useState<Arma | null>(null);
+  const [modalFicha, setModalFicha] = useState<Arma | null>(null);
 
   const { data: puestos = [] } = useQuery<Puesto[]>({
     queryKey: ["armas-puestos"],
@@ -756,8 +917,8 @@ export default function Armeria() {
 
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-        {tab === "estado"    && <TabEstado fecha={fechaConsulta} />}
-        {tab === "armas"     && <TabArmas onEdit={a => setModalArma(a)} onHistorial={a => setModalHistorial(a)} />}
+        {tab === "estado"    && <TabEstado fecha={fechaConsulta} onFicha={a => setModalFicha(a)} />}
+        {tab === "armas"     && <TabArmas onEdit={a => setModalArma(a)} onFicha={a => setModalFicha(a)} />}
         {tab === "historial" && <TabHistorial />}
       </div>
 
@@ -771,8 +932,12 @@ export default function Armeria() {
           usuario={(user as any)?.username ?? "admin"}
         />
       )}
-      {modalHistorial && (
-        <ModalHistorial arma={modalHistorial} onClose={() => setModalHistorial(null)} />
+      {modalFicha && (
+        <ModalFichaArma
+          arma={modalFicha}
+          onClose={() => setModalFicha(null)}
+          onEdit={() => { setModalArma(modalFicha); setModalFicha(null); }}
+        />
       )}
     </div>
   );
