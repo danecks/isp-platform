@@ -4448,6 +4448,22 @@ export default function Operaciones() {
   const [modalAsignarSSA, setModalAsignarSSA]        = useState<TarjetaSSAPendiente | null>(null);
   const [ssaTabActivo, setSsaTabActivo]              = useState<"sin_asignar" | "cubierta">("sin_asignar");
 
+  // ── Estado de colapso de paneles (persiste en sessionStorage) ─────────────
+  function initCollapse(key: string, defaultVal = false) {
+    const v = sessionStorage.getItem(key);
+    return v === null ? defaultVal : v === "1";
+  }
+  function togglePanel(key: string, cur: boolean, setter: (v: boolean) => void) {
+    const next = !cur;
+    sessionStorage.setItem(key, next ? "1" : "0");
+    setter(next);
+  }
+  const [colSSA,       setColSSA]       = useState(() => initCollapse("piz_col_ssa"));
+  const [colArranques, setColArranques] = useState(() => initCollapse("piz_col_arr"));
+  const [colSupers,    setColSupers]    = useState(() => initCollapse("piz_col_supers"));
+  const [colJefes,     setColJefes]     = useState(() => initCollapse("piz_col_jefes"));
+  const [colPool,      setColPool]      = useState(() => initCollapse("piz_col_pool"));
+
   // ── Planificación futura ───────────────────────────────────────────────────
   const hoyISO = toISODate(new Date());
 
@@ -5421,20 +5437,27 @@ export default function Operaciones() {
           {tarjetasSSA.length > 0 && (
             <div className="shrink-0 bg-[#06101c] border border-white/8 rounded-2xl overflow-hidden">
               {/* Cabecera del panel */}
-              <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/6">
-                <div className="flex items-center gap-2">
-                  <Zap className="w-3.5 h-3.5 text-amber-400" />
+              <div className="flex items-center gap-2 px-4 py-2 border-b border-white/6">
+                <button
+                  onClick={() => togglePanel("piz_col_ssa", colSSA, setColSSA)}
+                  className="flex items-center gap-2 flex-1 text-left group"
+                >
+                  <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                   <span className="text-xs font-semibold text-white/70">Servicios Especiales Activos</span>
                   <span className="text-[10px] text-white/25 bg-white/6 px-2 py-0.5 rounded-full">{tarjetasSSA.length}</span>
-                </div>
+                  {colSSA && <span className="text-[10px] text-white/20 ml-1">— minimizado</span>}
+                  <ChevronRight className={`w-3.5 h-3.5 text-white/20 group-hover:text-white/40 transition-all ml-auto shrink-0 ${colSSA ? "" : "rotate-90"}`} />
+                </button>
                 <a
                   href="/admin/tablero-servicios"
-                  className="text-[10px] text-primary/60 hover:text-primary transition-colors flex items-center gap-1"
+                  className="text-[10px] text-primary/60 hover:text-primary transition-colors flex items-center gap-1 shrink-0"
                 >
-                  Tablero completo <ChevronRight className="w-3 h-3" />
+                  Ver completo <ChevronRight className="w-3 h-3" />
                 </a>
               </div>
 
+              {!colSSA && (
+              <>
               {/* Tabs de etapas */}
               <div className="flex border-b border-white/6">
                 <button
@@ -5501,6 +5524,68 @@ export default function Operaciones() {
                   )
                 )}
               </div>
+              </> )}
+            </div>
+          )}
+
+          {/* ── Barra compacta de personal especial (supervisores + jefes) ── */}
+          {!esFuturo && ((pool?.supervisores?.length ?? 0) > 0 || (pool?.jefes_servicio?.length ?? 0) > 0) && (
+            <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-[#060f1a] border border-white/6 rounded-xl flex-wrap">
+              <span className="text-[10px] text-white/20 uppercase tracking-widest shrink-0">Personal</span>
+              <div className="w-px h-4 bg-white/8 shrink-0" />
+              {/* Supervisores */}
+              {(pool?.supervisores?.length ?? 0) > 0 && (
+                <>
+                  <span className="text-[10px] text-violet-400/60 font-semibold shrink-0">Supervisores:</span>
+                  {pool!.supervisores.slice(0, 5).map(sv => {
+                    const enTurno = sv.estado_ciclo === "trabajando";
+                    const disponHE = sv.estado_ciclo === "disponible_he";
+                    return (
+                      <span
+                        key={sv.id}
+                        className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border ${
+                          enTurno     ? "text-emerald-300 bg-emerald-500/10 border-emerald-500/20"
+                          : disponHE ? "text-amber-300 bg-amber-500/8 border-amber-500/15"
+                          :            "text-white/20 bg-white/3 border-white/6"
+                        }`}
+                      >
+                        {enTurno && <span className="w-1 h-1 rounded-full bg-emerald-400 inline-block animate-pulse" />}
+                        {sv.nombre_completo.split(" ").slice(0, 2).join(" ")}
+                      </span>
+                    );
+                  })}
+                  {pool!.supervisores.length > 5 && (
+                    <span className="text-[10px] text-white/20">+{pool!.supervisores.length - 5}</span>
+                  )}
+                </>
+              )}
+              {/* Jefes de servicio */}
+              {(pool?.jefes_servicio?.length ?? 0) > 0 && (
+                <>
+                  {(pool?.supervisores?.length ?? 0) > 0 && <div className="w-px h-4 bg-white/8 shrink-0" />}
+                  <span className="text-[10px] text-orange-400/60 font-semibold shrink-0">Jefe:</span>
+                  {pool!.jefes_servicio.slice(0, 3).map(js => {
+                    const enTurno = js.trabaja_hoy === true;
+                    return (
+                      <span
+                        key={js.id}
+                        className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border ${
+                          enTurno ? "text-orange-300 bg-orange-500/10 border-orange-400/20 font-semibold"
+                                  : "text-white/20 bg-white/3 border-white/6"
+                        }`}
+                      >
+                        {enTurno && <span className="w-1 h-1 rounded-full bg-orange-400 inline-block" />}
+                        {js.nombre_completo.split(" ").slice(0, 2).join(" ")}
+                      </span>
+                    );
+                  })}
+                  {pool!.jefes_servicio.length > 3 && (
+                    <span className="text-[10px] text-white/20">+{pool!.jefes_servicio.length - 3}</span>
+                  )}
+                </>
+              )}
+              <div className="flex-1" />
+              <span className="text-[9px] text-white/10 shrink-0">↓ detalle más abajo</span>
             </div>
           )}
 
@@ -5595,13 +5680,20 @@ export default function Operaciones() {
           {/* ── Próximos Arranques de Proyecto ────────────────────────────── */}
           {(proximosArranques?.total ?? 0) > 0 && !esFuturo && (
             <div className="shrink-0 bg-amber-500/4 border border-amber-500/20 rounded-2xl overflow-hidden">
-              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-amber-500/15">
-                <Zap className="w-3.5 h-3.5 text-amber-400" />
+              <button
+                onClick={() => togglePanel("piz_col_arr", colArranques, setColArranques)}
+                className="w-full flex items-center gap-2 px-4 py-2.5 border-b border-amber-500/15 text-left group hover:bg-amber-500/4 transition-colors"
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span className="text-xs font-bold text-amber-300/80 uppercase tracking-widest">Próximos arranques</span>
                 <span className="ml-1 px-2 py-0.5 rounded-full text-[10px] bg-amber-500/15 border border-amber-500/25 text-amber-300">
                   {proximosArranques!.total} en 60 días
                 </span>
-              </div>
+                {colArranques && <span className="text-[10px] text-amber-400/30 ml-1">— minimizado</span>}
+                <ChevronRight className={`w-3.5 h-3.5 text-amber-400/30 group-hover:text-amber-400/60 ml-auto shrink-0 transition-transform ${colArranques ? "" : "rotate-90"}`} />
+              </button>
+              {!colArranques && (
+              <div>
               <div className="p-3 flex flex-col gap-1.5">
                 {proximosArranques!.arranques.map((ip) => {
                   const diasRestantes = ip.dias_para_inicio ?? 99;
@@ -5662,6 +5754,8 @@ export default function Operaciones() {
                 <Shield className="w-2.5 h-2.5 text-blue-400/50" />
                 <span>Servicio adicional (SSA)</span>
               </div>
+              </div>
+              )}
             </div>
           )}
 
@@ -5679,10 +5773,27 @@ export default function Operaciones() {
           <div className="shrink-0 bg-[#060f1a] border border-white/8 rounded-2xl overflow-hidden">
             {/* Header pool */}
             <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/8">
-              <Users className="w-3.5 h-3.5 text-white/30" />
-              <span className="text-xs font-bold text-white/60 uppercase tracking-widest">Pool de agentes</span>
+              <button
+                onClick={() => togglePanel("piz_col_pool", colPool, setColPool)}
+                className="flex items-center gap-2 group shrink-0"
+                title={colPool ? "Expandir pool" : "Minimizar pool"}
+              >
+                <Users className="w-3.5 h-3.5 text-white/30 group-hover:text-white/50 transition-colors" />
+                <span className="text-xs font-bold text-white/60 uppercase tracking-widest group-hover:text-white/80 transition-colors">Pool de agentes</span>
+                <ChevronRight className={`w-3.5 h-3.5 text-white/20 group-hover:text-white/40 transition-all ${colPool ? "" : "rotate-90"}`} />
+              </button>
+              {colPool && (
+                <div className="flex items-center gap-1.5 ml-2">
+                  <span className="text-[10px] text-green-400 font-bold">{pool?.disponibles?.length ?? 0} libres</span>
+                  <span className="text-white/15">·</span>
+                  <span className="text-[10px] text-orange-400 font-bold">{pool?.trabajando?.length ?? 0} trabajando</span>
+                  <span className="text-white/15">·</span>
+                  <span className="text-[10px] text-blue-400 font-bold">{pool?.descansandoCiclo?.length ?? 0} descanso</span>
+                </div>
+              )}
               <div className="flex-1" />
 
+              {!colPool && (<>
               {/* Tabs del pool */}
               {[
                 { key: "disponibles"      as const, label: "Disponibles",    count: pool?.disponibles?.length ?? 0,      color: "text-green-400"  },
@@ -5720,6 +5831,7 @@ export default function Operaciones() {
                   </button>
                 )}
               </div>
+              </>)}
 
               <span className="text-xs text-white/20">
                 {puestoContexto
@@ -5728,6 +5840,7 @@ export default function Operaciones() {
               </span>
             </div>
 
+            {!colPool && (<>
             {/* Banner contextual: candidatos para un puesto específico */}
             {puestoContexto && (
               <div className="flex items-center gap-2 px-4 py-2 bg-primary/6 border-b border-primary/15">
@@ -5878,6 +5991,7 @@ export default function Operaciones() {
               <div className="flex-1" />
               <span>Se refresca cada 30 seg automáticamente</span>
             </div>
+            </>)}
           </div>
           )}
 
@@ -5961,9 +6075,12 @@ export default function Operaciones() {
 
             return (
               <div className="shrink-0 bg-[#060f1a] border border-violet-500/15 rounded-2xl overflow-hidden">
-                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-violet-500/10">
-                  <Shield className="w-3.5 h-3.5 text-violet-400/70" />
-                  <span className="text-xs font-bold text-violet-300/70 uppercase tracking-widest">Supervisores Operativos</span>
+                <button
+                  onClick={() => togglePanel("piz_col_supers", colSupers, setColSupers)}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 border-b border-violet-500/10 text-left group hover:bg-violet-500/4 transition-colors"
+                >
+                  <Shield className="w-3.5 h-3.5 text-violet-400/70 shrink-0" />
+                  <span className="text-xs font-bold text-violet-300/70 uppercase tracking-widest group-hover:text-violet-300/90 transition-colors">Supervisores Operativos</span>
                   <span className="text-[10px] text-violet-400/50 font-bold bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 rounded-full">
                     {pool!.supervisores.length}
                   </span>
@@ -5972,10 +6089,15 @@ export default function Operaciones() {
                       {puedeCubrirCount} apto{puedeCubrirCount !== 1 ? "s" : ""} para cubrir
                     </span>
                   )}
+                  {colSupers && svTrabajando.length > 0 && (
+                    <span className="text-[10px] text-emerald-400/70 ml-2">· {svTrabajando.length} en turno</span>
+                  )}
                   <div className="flex-1" />
-                  <span className="text-[10px] text-white/20">Personal operativo con turno · motor de ciclos</span>
-                </div>
+                  <span className="hidden sm:inline text-[10px] text-white/15">Motor de ciclos</span>
+                  <ChevronRight className={`w-3.5 h-3.5 text-violet-400/30 group-hover:text-violet-400/60 ml-2 shrink-0 transition-transform ${colSupers ? "" : "rotate-90"}`} />
+                </button>
 
+                {!colSupers && (
                 <div className="p-3 space-y-3">
                   {/* En turno hoy */}
                   {svTrabajando.length > 0 && (
@@ -6020,6 +6142,7 @@ export default function Operaciones() {
                     </div>
                   )}
                 </div>
+                )}
               </div>
             );
           })()}
@@ -6100,20 +6223,26 @@ export default function Operaciones() {
 
             return (
               <div className="shrink-0 bg-[#060f1a] border border-orange-500/15 rounded-2xl overflow-hidden">
-                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-orange-500/10">
-                  <Shield className="w-3.5 h-3.5 text-orange-400/70" />
-                  <span className="text-xs font-bold text-orange-300/70 uppercase tracking-widest">Jefe de Servicio del Día</span>
-                  <div className="flex items-center gap-1 ml-1">
-                    {jefesHoy.length > 0 && (
-                      <span className="text-[9px] font-bold bg-orange-500/20 text-orange-300 border border-orange-400/30 px-1.5 py-0.5 rounded-full">
-                        {jefesHoy.length} en turno
-                      </span>
-                    )}
-                  </div>
+                <button
+                  onClick={() => togglePanel("piz_col_jefes", colJefes, setColJefes)}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 border-b border-orange-500/10 text-left group hover:bg-orange-500/4 transition-colors"
+                >
+                  <Shield className="w-3.5 h-3.5 text-orange-400/70 shrink-0" />
+                  <span className="text-xs font-bold text-orange-300/70 uppercase tracking-widest group-hover:text-orange-300/90 transition-colors">Jefe de Servicio del Día</span>
+                  {jefesHoy.length > 0 && (
+                    <span className="text-[9px] font-bold bg-orange-500/20 text-orange-300 border border-orange-400/30 px-1.5 py-0.5 rounded-full ml-1">
+                      {jefesHoy.length} en turno
+                    </span>
+                  )}
+                  {colJefes && jefesHoy.length > 0 && (
+                    <span className="text-[10px] text-orange-300/60 ml-1">· {jefesHoy.map(j => j.nombre_completo.split(" ")[0]).join(", ")}</span>
+                  )}
                   <div className="flex-1" />
-                  <span className="text-[10px] text-white/20">Turno 24×24 · motor de ciclos · trazabilidad</span>
-                </div>
+                  <span className="hidden sm:inline text-[10px] text-white/15">Turno 24×24</span>
+                  <ChevronRight className={`w-3.5 h-3.5 text-orange-400/30 group-hover:text-orange-400/60 ml-2 shrink-0 transition-transform ${colJefes ? "" : "rotate-90"}`} />
+                </button>
 
+                {!colJefes && (
                 <div className="p-3 space-y-3">
                   {/* HOY */}
                   {jefesHoy.length > 0 && (
@@ -6161,6 +6290,7 @@ export default function Operaciones() {
                     </div>
                   )}
                 </div>
+                )}
               </div>
             );
           })()}

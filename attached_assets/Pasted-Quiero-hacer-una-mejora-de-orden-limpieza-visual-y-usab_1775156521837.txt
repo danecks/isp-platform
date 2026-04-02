@@ -1,0 +1,161 @@
+Quiero hacer una mejora de orden, limpieza visual y usabilidad del Pizarrón Operativo en ISPSA, pero sin cambiar cómo funciona por dentro.
+
+## Muy importante
+No quiero romper nada.
+No quiero reescribir la lógica del pizarrón.
+No quiero cambiar flujos operativos ya existentes.
+
+Quiero solo:
+- ordenar mejor la información
+- mejorar la jerarquía visual
+- permitir minimizar/separar bloques como supervisores, agentes u otras secciones
+- hacer más fácil de leer el pizarrón cuando hay mucha información
+
+---
+
+## Objetivo
+Mejorar la presentación del Pizarrón Operativo para que el jefe de servicio pueda entenderlo más rápido, especialmente cuando hay:
+
+- muchos clientes
+- muchos puestos
+- supervisores visibles
+- jefes de servicio
+- pool
+- alertas
+- próximos arranques
+- servicios programados
+- varias tarjetas al mismo tiempo
+
+---
+
+## 1. No cambiar la lógica
+Mantener exactamente como está hoy:
+
+- asignación de agentes
+- pool
+- cobertura
+- turnos
+- planificación futura
+- badges
+- supervisores
+- jefes de servicio
+- ranking de candidatos
+- alertas
+- colores funcionales
+- comportamiento del pizarrón
+
+Solo quiero reorganización visual / UX.
+
+---
+
+## 2. Secciones colapsables / minimizables
+Quiero que el pizarrón permita minimizar o expandir secciones como:
+
+- Supervisores
+- Jefes de servicio
+- Pool
+- Próximos arranques / servicios programados
+- Clientes o columnas si aplica
+
+La idea es que el usuario pueda ocultar temporalmente bloques que no necesita ver en ese momento.
+
+No quiero que desaparezca información; quiero que sea colapsable.
+
+---
+
+## 3. Mejor jerarquía visual
+Quiero que se vea más claro qué es:
+
+- operación principal del día
+- supervisión
+- personal especial
+- pool
+- alertas
+- próximos arranques
+- servicios especiales
+
+No quiero que todo compita visualmente al mismo nivel.
+
+---
+
+## 4. Orden del pizarrón
+Quiero revisar y mejorar el orden general para que quede algo más lógico y limpio.
+
+Por ejemplo, evaluar algo como:
+1. Alertas o banner superior
+2. Próximos arranques / servicios programados
+3. Supervisores / jefes de servicio
+4. Operación principal por clientes y puestos
+5. Pool / candidatos / panel lateral
+
+No tienes que seguir exactamente este orden si encuentras uno mejor, pero sí quiero una estructura más clara.
+
+---
+
+## 5. Supervisores y jefes de servicio
+Quiero que se vean mejor organizados visualmente.
+
+Puede ser:
+- panel aparte
+- sección colapsable
+- bloque superior o lateral
+- tarjetas más compactas
+
+Pero sin perder visibilidad ni funcionalidad.
+
+No quiero que se mezclen desordenadamente con la operación principal de puestos.
+
+---
+
+## 6. Tarjetas y densidad visual
+Quiero que revises si las tarjetas del pizarrón se pueden:
+- compactar un poco
+- alinear mejor
+- tener mejor espaciado
+- mejorar lectura de badges
+- evitar saturación visual
+
+Sin quitar información importante.
+
+---
+
+## 7. Mantener contexto operativo
+Aunque se ordene mejor, el pizarrón debe seguir respondiendo rápido a estas preguntas:
+
+- qué puestos están cubiertos
+- qué puestos están descubiertos
+- quién trabaja
+- quién descansa
+- quién puede cubrir
+- qué supervisor está activo
+- qué jefe de servicio está de turno
+- qué servicios próximos requieren atención
+
+No quiero una UI bonita pero menos útil.
+
+---
+
+## 8. Persistencia visual si es posible
+Si el usuario minimiza una sección, sería bueno que el sistema recuerde esa preferencia durante la sesión o mientras esté trabajando.
+
+No es obligatorio, pero sería útil.
+
+---
+
+## 9. Validación
+Quiero que pruebes y me confirmes que después del reordenamiento:
+
+- el pizarrón sigue funcionando igual
+- no se rompió ninguna asignación
+- no se rompió el pool
+- no se rompió la planificación futura
+- no se rompieron supervisores ni jefes de servicio
+- solo mejoró el orden y la legibilidad
+
+---
+
+## 10. Resultado esperado
+Quiero un Pizarrón Operativo más limpio, ordenado y fácil de navegar, especialmente cuando hay mucha información, pero sin tocar la lógica funcional que ya existe.
+
+Muy importante:
+esto es una mejora de orden y UX, no una reingeniería del flujo operativo.
