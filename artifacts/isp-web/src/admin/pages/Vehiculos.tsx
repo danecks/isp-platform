@@ -122,7 +122,7 @@ function ModalVehiculo({
   onClose,
 }: {
   vehiculo?: Vehiculo;
-  zonas: { id: number; nombre: string }[];
+  zonas: { id: number; nombre: string; supervisor_id: number | null; supervisor_nombre: string | null }[];
   usuario: string;
   onClose: () => void;
 }) {
@@ -140,6 +140,8 @@ function ModalVehiculo({
   const [activo, setActivo]     = useState(vehiculo?.activo ?? true);
   const [zonaId, setZonaId]     = useState(vehiculo?.zona_operativa_id ? String(vehiculo.zona_operativa_id) : "");
   const [obs, setObs]           = useState(vehiculo?.observaciones ?? "");
+
+  const zonaSeleccionada = zonas.find(z => String(z.id) === zonaId) ?? null;
   const [loading, setLoading]   = useState(false);
 
   const inputCls = "w-full bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-teal-500/40 transition-colors";
@@ -236,14 +238,30 @@ function ModalVehiculo({
               <option value="">— Sin zona —</option>
               {zonas.map(z => <option key={z.id} value={z.id}>{z.nombre}</option>)}
             </select>
-            {zonaId && !esEdicion && (
-              <p className="text-[10px] text-teal-400/70">
-                Al asignar zona, la custodia se heredará automáticamente al supervisor formal de esa zona.
-              </p>
+
+            {/* Chip de supervisor heredado al seleccionar zona */}
+            {zonaId && zonaSeleccionada && (
+              <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${
+                esEdicion && vehiculo?.zona_operativa_id && zonaId !== String(vehiculo.zona_operativa_id)
+                  ? "border-yellow-400/30 bg-yellow-400/5 text-yellow-300"
+                  : "border-teal-500/30 bg-teal-500/5 text-teal-300"
+              }`}>
+                <Shield className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  {esEdicion && vehiculo?.zona_operativa_id && zonaId !== String(vehiculo.zona_operativa_id)
+                    ? "Cambio de zona: nueva custodia para "
+                    : "Custodia asignada a "}
+                  <span className="font-semibold">
+                    {zonaSeleccionada.supervisor_nombre ?? "— Sin supervisor asignado en esta zona —"}
+                  </span>
+                </span>
+              </div>
             )}
-            {esEdicion && vehiculo?.zona_operativa_id && zonaId && zonaId !== String(vehiculo.zona_operativa_id) && (
-              <p className="text-[10px] text-yellow-400/70">
-                Cambiar zona cerrará la custodia actual y abrirá una nueva para el supervisor de la nueva zona.
+
+            {zonaId && zonaSeleccionada && !zonaSeleccionada.supervisor_nombre && (
+              <p className="text-[10px] text-yellow-400/60 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                Esta zona no tiene supervisor registrado. La custodia quedará sin responsable hasta asignar uno.
               </p>
             )}
           </div>
@@ -416,10 +434,17 @@ export default function Vehiculos() {
     enabled: subTab === "historial",
   });
 
-  const { data: zonas = [] } = useQuery<{ id: number; nombre: string }[]>({
+  const { data: zonas = [] } = useQuery<{ id: number; nombre: string; supervisor_id: number | null; supervisor_nombre: string | null }[]>({
     queryKey: ["zonas-activas"],
     queryFn: () => apiFetch<any[]>(`${API}/operaciones/zonas`).then(list =>
-      list.filter((z: any) => z.estado === "activo" || !z.estado).map((z: any) => ({ id: z.id, nombre: z.nombre }))
+      list
+        .filter((z: any) => z.estado === "activo" || !z.estado)
+        .map((z: any) => ({
+          id: z.id,
+          nombre: z.nombre,
+          supervisor_id: z.supervisor_employee_id ?? null,
+          supervisor_nombre: z.supervisor_nombre ?? null,
+        }))
     ),
     staleTime: 120_000,
   });
