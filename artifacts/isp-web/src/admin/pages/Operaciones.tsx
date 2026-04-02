@@ -2342,6 +2342,7 @@ function PoolFuturoPanel({
   onPlanSSA?: (ip: InicioProyecto) => void;
 }) {
   const [tabActivo, setTabActivo] = useState<"descansando" | "disponible" | "ausenteProgramado" | "trabajando">("descansando");
+  const [colapsado, setColapsado] = useState(false);
 
   const tabs = [
     {
@@ -2383,20 +2384,35 @@ function PoolFuturoPanel({
   return (
     <div className="shrink-0 bg-[#060f1a] border border-indigo-500/15 rounded-2xl overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/8">
-        <CalendarDays className="w-3.5 h-3.5 text-indigo-400" />
-        <span className="text-xs font-bold text-indigo-300/80 uppercase tracking-widest">Disponibilidad futura</span>
+      <button
+        onClick={() => setColapsado(prev => !prev)}
+        className="w-full flex items-center gap-2 px-4 py-2.5 border-b border-white/8 text-left group hover:bg-indigo-500/4 transition-colors"
+      >
+        <CalendarDays className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+        <span className="text-xs font-bold text-indigo-300/80 uppercase tracking-widest group-hover:text-indigo-300 transition-colors">Pool de agentes</span>
         <span className="text-[10px] text-white/25 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full ml-1">
-          {data.totales.descansando + data.totales.disponible} posibles relevos
+          {data.totales.descansando + data.totales.disponible} disponibles
         </span>
+        {colapsado && (
+          <div className="flex items-center gap-2 ml-1 text-[10px]">
+            <span className="text-blue-400 font-bold">{data.totales.descansando} descanso</span>
+            <span className="text-white/15">·</span>
+            <span className="text-green-400 font-bold">{data.totales.disponible} libres</span>
+            <span className="text-white/15">·</span>
+            <span className="text-teal-400 font-bold">{data.totales.trabajando} en turno</span>
+          </div>
+        )}
         <div className="flex-1" />
-        {data.totales.relevoProgramado > 0 && (
+        {data.totales.relevoProgramado > 0 && !colapsado && (
           <div className="flex items-center gap-1 text-[10px] text-indigo-300/60">
             <CheckCircle2 className="w-3 h-3 text-indigo-400" />
             {data.totales.relevoProgramado} relevos ya asignados
           </div>
         )}
-      </div>
+        <ChevronRight className={`w-3.5 h-3.5 text-indigo-400/30 group-hover:text-indigo-400/60 ml-2 shrink-0 transition-transform ${colapsado ? "" : "rotate-90"}`} />
+      </button>
+
+      {!colapsado && (<>
 
       {/* ── Supervisores y Jefes de Servicio en esta fecha ────────────── */}
       {(() => {
@@ -2659,6 +2675,8 @@ function PoolFuturoPanel({
           </div>
         </div>
       )}
+
+      </>)}
     </div>
   );
 }
@@ -2680,6 +2698,18 @@ function ClienteColumnaFutura({
   const total     = cliente.puestos.length;
   const conPlan   = cliente.puestos.filter((p) => planPorPuesto[p.id]).length;
   const conRelevo = cliente.puestos.filter((p) => planPorPuesto[p.id]?.relevo_id).length;
+  const sinCambios = total - conPlan;
+
+  // Collapse — misma lógica que ClienteColumna pero con prefijo _fut_
+  const ssKey = `piz_col_cli_fut_${cliente.clienteId ?? cliente.clienteNombre}`;
+  const [colapsado, setColapsado] = useState(() => {
+    try { return sessionStorage.getItem(ssKey) === "1"; } catch { return false; }
+  });
+  const toggleCol = () => setColapsado(prev => {
+    const next = !prev;
+    try { sessionStorage.setItem(ssKey, next ? "1" : "0"); } catch {}
+    return next;
+  });
 
   // Lookup: empleado_id → estado en pool-futuro
   const estadoPorEmpleado = useMemo<Map<number, "trabajando" | "descansando" | "ausenteProgramado">>(() => {
@@ -2691,22 +2721,67 @@ function ClienteColumnaFutura({
     return m;
   }, [poolFuturo]);
 
+  const colorBarra = conRelevo === total ? "bg-indigo-500" : conPlan > 0 ? "bg-amber-500/60" : "bg-white/10";
+
+  // ── Estado colapsado: tira vertical igual que ClienteColumna ────────────────
+  if (colapsado) {
+    return (
+      <div
+        className="flex-shrink-0 w-10 bg-[#060f1a] border border-indigo-500/15 rounded-2xl overflow-hidden flex flex-col max-h-full transition-all duration-200 cursor-pointer group"
+        onClick={toggleCol}
+        title={`${cliente.clienteNombre} — ${conRelevo}/${total} con relevo · clic para expandir`}
+      >
+        {conPlan > 0 && (
+          <div className="w-full h-1 bg-indigo-500/60 shrink-0" />
+        )}
+        <div className="flex-1 flex items-center justify-center py-3 min-h-0 overflow-hidden">
+          <span
+            className="text-[10px] font-bold text-white/40 group-hover:text-white/70 transition-colors leading-none"
+            style={{ writingMode: "vertical-rl", textOrientation: "mixed", transform: "rotate(180deg)" }}
+          >
+            {cliente.clienteNombre.length > 20 ? cliente.clienteNombre.slice(0, 18) + "…" : cliente.clienteNombre}
+          </span>
+        </div>
+        <div className="shrink-0 flex flex-col items-center gap-0.5 py-2 border-t border-white/6">
+          <span className="text-[9px] font-bold text-indigo-400">{conRelevo}</span>
+          <div className="w-px h-2 bg-white/10" />
+          <span className="text-[9px] text-white/20">{total}</span>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Estado expandido ─────────────────────────────────────────────────────────
   return (
-    <div className="flex-shrink-0 w-64 bg-[#060f1a] border border-indigo-500/10 rounded-2xl overflow-hidden flex flex-col max-h-full">
+    <div className="flex-shrink-0 w-64 bg-[#060f1a] border border-indigo-500/12 rounded-2xl overflow-hidden flex flex-col max-h-full transition-all duration-200">
+      {/* Header */}
       <div className="px-3 py-3 border-b border-white/8">
         <div className="flex items-start justify-between gap-2 mb-2">
-          <div className="min-w-0">
-            <h3 className="text-xs font-bold text-white truncate">{cliente.clienteNombre}</h3>
+          <button
+            onClick={toggleCol}
+            className="min-w-0 text-left flex-1 group/col"
+            title="Colapsar columna"
+          >
+            <h3 className="text-xs font-bold text-white truncate group-hover/col:text-white/70 transition-colors">
+              {cliente.clienteNombre}
+            </h3>
             <p className="text-[10px] text-indigo-300/50 mt-0.5">
               {conPlan > 0
-                ? `${conPlan}/${total} con cambios · ${conRelevo} con relevo`
+                ? `${conRelevo}/${total} con relevo · ${sinCambios} sin cambios`
                 : `${total} puestos — sin cambios planificados`}
             </p>
-          </div>
+          </button>
+          <button
+            onClick={toggleCol}
+            className="text-white/15 hover:text-indigo-300/50 transition-colors mt-0.5 shrink-0"
+            title="Colapsar columna"
+          >
+            <ChevronRight className="w-3 h-3 rotate-90" />
+          </button>
         </div>
         <div className="h-1 bg-white/8 rounded-full overflow-hidden">
           <div
-            className="h-full bg-indigo-500/50 rounded-full transition-all"
+            className={`h-full ${colorBarra} rounded-full transition-all`}
             style={{ width: `${total > 0 ? Math.round((conRelevo / total) * 100) : 0}%` }}
           />
         </div>
@@ -2714,7 +2789,6 @@ function ClienteColumnaFutura({
 
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
         {cliente.puestos.map((p) => {
-          // Estado del titular para ese puesto en esa fecha futura
           const estadoTitular = p.titular_employee_id
             ? (estadoPorEmpleado.get(p.titular_employee_id) ?? null)
             : null;
@@ -6306,6 +6380,108 @@ export default function Operaciones() {
                   )}
                 </div>
                 )}
+              </div>
+            );
+          })()}
+
+          {/* ── Supervisores — vista futura ─────────────────────────── */}
+          {esFuturo && poolFuturo && (() => {
+            const svTurno    = poolFuturo.trabajando.filter(a => a.tipo_personal === "supervisor");
+            const svDescanso = poolFuturo.descansando.filter(a => a.tipo_personal === "supervisor");
+            if (svTurno.length + svDescanso.length === 0) return null;
+            return (
+              <div className="shrink-0 bg-[#060f1a] border border-violet-500/15 rounded-2xl overflow-hidden">
+                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-violet-500/10">
+                  <UserCheck className="w-3.5 h-3.5 text-violet-400/70 shrink-0" />
+                  <span className="text-xs font-bold text-violet-300/70 uppercase tracking-widest">Supervisores Operativos</span>
+                  <span className="ml-1 text-[9px] font-bold bg-indigo-500/15 text-indigo-300/70 border border-indigo-500/20 px-1.5 py-0.5 rounded-full">Futuro</span>
+                  {svTurno.length > 0 && (
+                    <span className="text-[9px] font-bold bg-violet-500/20 text-violet-300 border border-violet-400/30 px-1.5 py-0.5 rounded-full ml-1">
+                      {svTurno.length} en turno
+                    </span>
+                  )}
+                </div>
+                <div className="flex gap-2 flex-wrap p-3">
+                  {svTurno.map(ag => (
+                    <div key={ag.id} className="shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 w-48 border-violet-500/20 bg-gradient-to-b from-violet-500/5 to-[#0c1929]">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 ring-1 ring-violet-400/30 ${avatarColor(ag.nombre_completo)}`}>
+                          {iniciales(ag.nombre_completo)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold text-white/90 truncate leading-tight">{ag.nombre_completo}</p>
+                          {ag.turno_nombre && <p className="text-[9px] text-violet-300/40 truncate">{ag.turno_nombre}</p>}
+                        </div>
+                      </div>
+                      <span className="text-[8px] font-bold px-1.5 py-0.5 rounded border text-emerald-300 bg-emerald-500/15 border-emerald-500/30 w-fit">EN TURNO</span>
+                    </div>
+                  ))}
+                  {svDescanso.map(ag => (
+                    <div key={ag.id} className="shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 w-48 border-white/6 bg-[#0a1020]">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 opacity-60 ${avatarColor(ag.nombre_completo)}`}>
+                          {iniciales(ag.nombre_completo)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold text-white/50 truncate leading-tight">{ag.nombre_completo}</p>
+                          {ag.turno_nombre && <p className="text-[9px] text-violet-300/30 truncate">{ag.turno_nombre}</p>}
+                        </div>
+                      </div>
+                      <span className="text-[8px] font-bold px-1.5 py-0.5 rounded border text-white/30 bg-white/4 border-white/8 w-fit">DESCANSO</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ── Jefes de Servicio — vista futura ────────────────────── */}
+          {esFuturo && poolFuturo && (() => {
+            const jfTurno    = poolFuturo.trabajando.filter(a => a.tipo_personal === "jefe_servicio");
+            const jfDescanso = poolFuturo.descansando.filter(a => a.tipo_personal === "jefe_servicio");
+            if (jfTurno.length + jfDescanso.length === 0) return null;
+            return (
+              <div className="shrink-0 bg-[#060f1a] border border-orange-500/15 rounded-2xl overflow-hidden">
+                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-orange-500/10">
+                  <Shield className="w-3.5 h-3.5 text-orange-400/70 shrink-0" />
+                  <span className="text-xs font-bold text-orange-300/70 uppercase tracking-widest">Jefes de Servicio</span>
+                  <span className="ml-1 text-[9px] font-bold bg-indigo-500/15 text-indigo-300/70 border border-indigo-500/20 px-1.5 py-0.5 rounded-full">Futuro</span>
+                  {jfTurno.length > 0 && (
+                    <span className="text-[9px] font-bold bg-orange-500/20 text-orange-300 border border-orange-400/30 px-1.5 py-0.5 rounded-full ml-1">
+                      {jfTurno.length} en turno
+                    </span>
+                  )}
+                </div>
+                <div className="flex gap-2 flex-wrap p-3">
+                  {jfTurno.map(ag => (
+                    <div key={ag.id} className="shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 w-52 border-orange-400/30 bg-gradient-to-b from-orange-500/6 to-[#0c1929]">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0 ring-2 ring-orange-400/30 ${avatarColor(ag.nombre_completo)}`}>
+                          {iniciales(ag.nombre_completo)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold text-white truncate leading-tight">{ag.nombre_completo}</p>
+                          <p className="text-[9px] text-orange-300/40 truncate">Jefe de Servicio</p>
+                        </div>
+                      </div>
+                      <span className="text-[8px] px-1.5 py-0.5 rounded border text-orange-200 bg-orange-500/20 border-orange-400/40 font-bold w-fit">EN TURNO</span>
+                    </div>
+                  ))}
+                  {jfDescanso.map(ag => (
+                    <div key={ag.id} className="shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 w-52 border-orange-500/10 bg-[#080f1e]">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0 opacity-60 ${avatarColor(ag.nombre_completo)}`}>
+                          {iniciales(ag.nombre_completo)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold text-white/70 truncate leading-tight">{ag.nombre_completo}</p>
+                          <p className="text-[9px] text-orange-300/30 truncate">Jefe de Servicio</p>
+                        </div>
+                      </div>
+                      <span className="text-[8px] px-1.5 py-0.5 rounded border text-white/30 bg-white/4 border-white/8 font-bold w-fit">DESCANSANDO</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             );
           })()}

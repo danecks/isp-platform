@@ -1,0 +1,113 @@
+Quiero ajustar la vista de Planificación para que se vea lo más parecido posible al Pizarrón Operativo actual, manteniendo la lógica propia de planificación futura.
+
+No quiero romper nada.
+No quiero rediseñar todo desde cero.
+Quiero consistencia visual y operativa.
+
+## Objetivo
+Que cuando el usuario entre a Planificación, sienta que está viendo el mismo Pizarrón Operativo que ya conoce, pero aplicado a una fecha futura.
+
+---
+
+## 1. Regla principal
+La vista de Planificación debe parecerse visualmente al Pizarrón Operativo actual en:
+
+- estructura general
+- orden de bloques
+- jerarquía visual
+- forma de mostrar clientes y puestos
+- paneles de supervisores / jefes de servicio si existen
+- pool lateral o zona de candidatos
+- lenguaje visual de estados
+
+No quiero una interfaz completamente diferente.
+
+---
+
+## 2. Qué debe cambiar
+Lo que cambia no es la forma de verlo, sino la lógica de los datos.
+
+Planificación debe mostrar:
+- coberturas futuras
+- descansos calculados a futuro
+- ausencias programadas
+- vacaciones programadas
+- relevos futuros
+- arranques de servicios
+- SSA programados
+- pendientes de cobertura futura
+
+---
+
+## 3. Mantener coherencia visual
+Quiero que Planificación use una base visual muy similar al pizarrón actual para que el usuario no tenga que aprender otra pantalla distinta.
+
+Ejemplo:
+- si hoy el pizarrón muestra clientes y puestos de cierta forma
+- planificación debe respetar eso lo más posible
+
+---
+
+## 4. Diferencias visuales propias de planificación
+Sí quiero que existan señales que indiquen que esto es futuro, por ejemplo:
+- badge “Programado”
+- badge “Futuro”
+- badge “Relevo”
+- badge “Vacaciones”
+- badge “Arranque”
+- estilos suaves o tonos distintos si hace falta
+
+Pero sin romper la familiaridad con el pizarrón actual.
+
+---
+
+## 5. Supervisores y jefes de servicio
+Si hoy el pizarrón tiene secciones o paneles para supervisores y jefes de servicio, quiero que en planificación también existan de forma similar, pero mostrando la lógica futura:
+- quién trabajará
+- quién descansará
+- quién estará disponible
+- quién podría cubrir
+
+---
+
+## 6. Pool y candidatos
+El pool en planificación debe verse coherente con el pool actual, pero usando la lógica futura ya construida:
+- trabajando
+- descansando por ciclo
+- disponible
+- ausente
+- candidato para HE
+- ranking por zona si aplica
+
+---
+
+## 7. No romper
+No romper:
+- lógica actual del pizarrón
+- lógica de planificación
+- turnos
+- supervisores
+- jefes de servicio
+- pool
+- ranking
+- servicios programados
+- vacaciones
+- SSA
+
+---
+
+## 8. Validación
+Quiero que al final confirmes:
+- que planificación se ve casi igual al pizarrón actual
+- que no perdió funcionalidad
+- que sigue usando correctamente la lógica futura
+- que el usuario puede pasar de una vista a otra sin sentirse en otro sistema distinto
+
+---
+
+## 9. Resultado esperado
+Quiero que la planificación sea visualmente hermana del Pizarrón Operativo actual:
+misma lógica de lectura, misma familiaridad, pero con datos de futuro.
+
+Muy importante:
+no quiero una nueva pantalla rara; quiero el mismo pizarrón, pero aplicado a planificación futura.
