@@ -1,0 +1,154 @@
+Quiero hacer una prueba dura operativa de capacidad real del Pizarrón Operativo en ISPSA con volumen más cercano a una operación real.
+
+No quiero una prueba superficial.
+Quiero validar si el Pizarrón realmente permite al jefe de servicio entender quién trabaja, quién descansa y quién puede hacer horas extra.
+
+## Objetivo
+Probar el sistema con una operación mediana simulada, para confirmar que la lógica de turnos y descansos funciona correctamente con varios clientes y muchos agentes.
+
+---
+
+## 1. Escenario de prueba
+Preparar un entorno de prueba con aproximadamente:
+
+- 10 clientes
+- 50 agentes
+- mezcla de clientes:
+  - algunos ya en operación
+  - algunos con distintos tipos de puestos
+- mezcla de turnos:
+  - puestos 24x24
+  - puestos 12x12
+
+No mezclar datos basura. Quiero un escenario coherente.
+
+---
+
+## 2. Qué quiero validar específicamente
+El objetivo principal es validar si el Pizarrón le dice correctamente al jefe de servicio:
+
+- quién trabaja hoy
+- quién descansa hoy
+- quién trabajará mañana
+- quién descansará mañana
+- quién puede hacer horas extra
+- quién no puede hacer horas extra porque ya está en turno
+
+---
+
+## 3. Lógica de puestos 24x24
+Quiero probar puestos donde la cobertura del servicio es continua, pero los agentes alternan trabajo y descanso.
+
+Ejemplo esperado:
+- un puesto 24x24 necesita cobertura diaria
+- si hoy trabajan ciertos agentes
+- mañana esos agentes descansan
+- y deben entrar otros titulares o la pareja correspondiente
+
+Quiero validar que el sistema pueda reflejar correctamente esa alternancia.
+
+No quiero que el sistema trate un puesto 24x24 como si el mismo agente trabajara todos los días.
+
+---
+
+## 4. Lógica de puestos 12x12
+Quiero probar también puestos de 12x12 o equivalentes operativos donde:
+- se trabaja 12 horas
+- se descansa 12 horas
+- pero no necesariamente significa cobertura continua igual que un 24x24
+
+Quiero validar que el sistema no trate igual un 12x12 y un 24x24.
+
+---
+
+## 5. Disponibilidad para horas extra
+Esto es muy importante.
+
+Quiero que la prueba confirme si el sistema identifica correctamente que:
+
+- los agentes que están descansando pueden ser candidatos para horas extra
+- los agentes que ya están trabajando no deberían aparecer como candidatos para HE porque ya están en turno
+
+Quiero comprobar si eso se ve claro en el Pizarrón y/o en el pool.
+
+---
+
+## 6. Fechas a probar
+Quiero probar al menos:
+- hoy
+- mañana
+- varios días consecutivos
+- alguna fecha futura
+
+La idea es ver si la alternancia sigue coherente día tras día.
+
+---
+
+## 7. Qué debe probarse
+### A. Vista del Pizarrón hoy
+- clientes activos
+- puestos activos
+- quién trabaja
+- quién descansa
+- quién está disponible
+
+### B. Vista del Pizarrón mañana
+- alternancia correcta
+- cambio de quienes descansan/trabajan
+- coherencia con el turno
+
+### C. Pool futuro
+- si muestra bien:
+  - trabajando
+  - descansando
+  - ausente
+  - disponible
+- y si eso coincide con la realidad esperada del turno
+
+### D. Horas extra
+- si el sistema ayuda a ver quién podría cubrir como HE
+- especialmente desde los que descansan
+
+---
+
+## 8. Casos concretos a simular
+Quiero al menos estos casos:
+
+1. Cliente con 1 puesto 24x24 y cobertura diaria correcta
+2. Cliente con 2 puestos 24x24
+3. Cliente con puestos 12x12
+4. Un agente que hoy trabaja y mañana descansa
+5. Un agente que hoy descansa y mañana podría hacer HE
+6. Un puesto descubierto donde el sistema debería mostrar quién podría cubrir
+7. Un permiso o ausencia que cambie la lógica esperada del día siguiente
+
+---
+
+## 9. Qué quiero en el reporte final
+Quiero que el reporte me diga claramente:
+
+### A. Si el Pizarrón ya sirve para que un jefe de servicio entienda la operación real
+### B. Si la lógica 24x24 está bien modelada o no
+### C. Si la lógica 12x12 está bien diferenciada o no
+### D. Si el sistema muestra correctamente quién descansa y quién trabaja
+### E. Si realmente ayuda a decidir quién puede hacer horas extra
+### F. Qué partes siguen fallando o están confusas
+
+---
+
+## 10. Clasificación de hallazgos
+Clasifica los hallazgos como:
+- Crítico
+- Alto
+- Medio
+- Bajo
+
+---
+
+## 11. Muy importante
+No quiero una prueba técnica seca.
+Quiero una prueba real de operación, pensando en el jefe de servicio.
+
+La pregunta final que quiero responder es:
+
+“¿ISPSA ya permite ver correctamente, con varios clientes y muchos agentes, quién trabaja, quién descansa y quién puede hacer horas extra según turnos reales como 24x24 y 12x12?”
