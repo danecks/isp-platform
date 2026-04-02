@@ -94,6 +94,9 @@ interface Agente {
   /** Motor de turnos — disponibles post-proceso */
   disponibleHE?: boolean;
   turno_nombre?: string | null;
+  /** Zona operativa del agente (desde titular o EOA) */
+  zona_operativa_id?: number | null;
+  zona_nombre?: string | null;
 }
 
 interface Pool {
@@ -3913,6 +3916,7 @@ export default function Operaciones() {
   const [modalLiberar, setModalLiberar]              = useState<Puesto | null>(null);
   const [poolTab, setPoolTab]                        = useState<"disponibles" | "trabajando" | "descansandoCiclo" | "enDescanso" | "suspendidos" | "enPuesto" | "enSSA" | "faltando">("disponibles");
   const [busquedaPool, setBusquedaPool]              = useState("");
+  const [puestoContexto, setPuestoContexto]          = useState<Puesto | null>(null);
   const [modalCierre, setModalCierre]                = useState(false);
   const [modalReabrir, setModalReabrir]              = useState(false);
   const [filtroZona, setFiltroZona]                  = useState<string>("");
@@ -4347,6 +4351,7 @@ export default function Operaciones() {
         }).catch(() => {});
       }
       setAgenteSeleccionado(null);
+      setPuestoContexto(null);
       invalidate();
     } catch (e: any) {
       if (e.ssaId) {
@@ -4360,7 +4365,12 @@ export default function Operaciones() {
   // ── Click en puesto: asignar agente seleccionado ──────────────────────────
   async function handlePuestoClick(puesto: Puesto) {
     if (isCerrado) return;
-    if (!agenteSeleccionado) return;
+    if (!agenteSeleccionado) {
+      // Sin agente: contextualizar el pool para recomendar candidatos de este puesto
+      setPuestoContexto(prev => prev?.id === puesto.id ? null : puesto);
+      if (poolTab !== "disponibles" && poolTab !== "descansandoCiclo") setPoolTab("disponibles");
+      return;
+    }
     await iniciarAsignacion(puesto, agenteSeleccionado);
   }
 
@@ -4415,6 +4425,7 @@ export default function Operaciones() {
       }
       setModalSustitucion(null);
       setAgenteSeleccionado(null);
+      setPuestoContexto(null);
       invalidate();
     } catch (e: any) {
       if (e.ssaId) {
@@ -4534,6 +4545,16 @@ export default function Operaciones() {
     }
     return lista;
   })();
+
+  // ── Agrupación por zona para recomendación de candidatos ─────────────────
+  const isZonaContexto = !!puestoContexto?.zona_operativa_id &&
+    (poolTab === "disponibles" || poolTab === "descansandoCiclo");
+  const poolMismaZona  = isZonaContexto
+    ? poolActual.filter(a => a.zona_operativa_id === puestoContexto!.zona_operativa_id)
+    : [];
+  const poolOtrasZonas = isZonaContexto
+    ? poolActual.filter(a => a.zona_operativa_id !== puestoContexto!.zona_operativa_id)
+    : [];
 
   // ── Derivar zonas y clientes únicos para filtros ──────────────────────────
   const zonasDisponibles = (() => {
@@ -5147,29 +5168,96 @@ export default function Operaciones() {
               </div>
 
               <span className="text-xs text-white/20">
-                {agenteSeleccionado ? "Toca un puesto en el tablero" : "Arrastra o selecciona un agente"}
+                {puestoContexto
+                  ? (agenteSeleccionado ? "Selecciona el agente y toca el puesto para asignar" : "Selecciona un candidato recomendado")
+                  : (agenteSeleccionado ? "Toca un puesto en el tablero" : "Toca un puesto vacío · o selecciona un agente")}
               </span>
             </div>
 
-            {/* Agentes en el pool */}
-            <div className="flex gap-2 p-3 overflow-x-auto min-h-[80px]">
-              {loadingPool ? (
-                <div className="flex items-center justify-center w-full">
-                  <Loader2 className="w-4 h-4 animate-spin text-primary" />
+            {/* Banner contextual: candidatos para un puesto específico */}
+            {puestoContexto && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-primary/6 border-b border-primary/15">
+                <MapPin className="w-3.5 h-3.5 text-primary/70 shrink-0" />
+                <span className="text-xs text-primary/80 font-semibold truncate">Candidatos para: {puestoContexto.nombre}</span>
+                {puestoContexto.zona_nombre && (
+                  <span className="text-[10px] text-primary/50 shrink-0">· {puestoContexto.zona_nombre}</span>
+                )}
+                <button onClick={() => setPuestoContexto(null)} className="ml-auto text-white/25 hover:text-white shrink-0 transition-colors">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Agentes en el pool — con agrupación por zona si hay contexto de zona */}
+            {loadingPool ? (
+              <div className="flex items-center justify-center min-h-[80px]">
+                <Loader2 className="w-4 h-4 animate-spin text-primary" />
+              </div>
+            ) : poolActual.length === 0 ? (
+              <div className="flex items-center justify-center min-h-[80px] text-white/20 text-xs px-4 text-center">
+                {poolTab === "disponibles"      ? "No hay agentes genuinamente disponibles hoy" :
+                 poolTab === "trabajando"       ? "Ningún agente en turno de trabajo hoy" :
+                 poolTab === "descansandoCiclo" ? "Ningún agente en descanso de ciclo hoy" :
+                 poolTab === "faltando"         ? "No hay ausencias registradas hoy" :
+                 poolTab === "enDescanso"       ? "No hay agentes en licencia" :
+                 poolTab === "enPuesto"         ? "Ningún agente está en puesto activo" :
+                 poolTab === "enSSA"            ? "Ningún agente cubre un SSA activo" :
+                 "No hay agentes suspendidos"}
+              </div>
+            ) : isZonaContexto ? (
+              /* ── Vista agrupada por zona ─────────────────────────────── */
+              <div className="divide-y divide-white/5">
+                {/* Prioridad alta: misma zona */}
+                <div className="p-3">
+                  <p className="text-[10px] font-bold text-emerald-400/80 uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                    <MapPin className="w-2.5 h-2.5" />
+                    Misma zona — {puestoContexto!.zona_nombre ?? "Sin nombre"}
+                    <span className="ml-1 px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">{poolMismaZona.length}</span>
+                  </p>
+                  {poolMismaZona.length === 0 ? (
+                    <p className="text-[11px] text-white/20 italic py-1">No hay candidatos en esta zona</p>
+                  ) : (
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {poolMismaZona.map((agente) => (
+                        <div key={agente.id} className="shrink-0 w-52">
+                          <DraggableAgente
+                            agente={agente}
+                            isSelected={agenteSeleccionado?.id === agente.id}
+                            onClick={() => { if (isCerrado) return; setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente); }}
+                            disabled={isCerrado}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ) : poolActual.length === 0 ? (
-                <div className="flex items-center justify-center w-full text-white/20 text-xs">
-                  {poolTab === "disponibles"      ? "No hay agentes genuinamente disponibles hoy" :
-                   poolTab === "trabajando"       ? "Ningún agente en turno de trabajo hoy" :
-                   poolTab === "descansandoCiclo" ? "Ningún agente en descanso de ciclo hoy" :
-                   poolTab === "faltando"         ? "No hay ausencias registradas hoy" :
-                   poolTab === "enDescanso"       ? "No hay agentes en licencia" :
-                   poolTab === "enPuesto"         ? "Ningún agente está en puesto activo" :
-                   poolTab === "enSSA"            ? "Ningún agente cubre un SSA activo" :
-                   "No hay agentes suspendidos"}
-                </div>
-              ) : (
-                poolActual.map((agente) => (
+                {/* Prioridad secundaria: otras zonas */}
+                {poolOtrasZonas.length > 0 && (
+                  <div className="p-3">
+                    <p className="text-[10px] font-semibold text-white/30 uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                      <MapPin className="w-2.5 h-2.5" />
+                      Otras zonas
+                      <span className="ml-1 px-1.5 py-0.5 rounded-full bg-white/6 text-white/40">{poolOtrasZonas.length}</span>
+                    </p>
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {poolOtrasZonas.map((agente) => (
+                        <div key={agente.id} className="shrink-0 w-52">
+                          <DraggableAgente
+                            agente={agente}
+                            isSelected={agenteSeleccionado?.id === agente.id}
+                            onClick={() => { if (isCerrado) return; setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente); }}
+                            disabled={isCerrado}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* ── Vista plana normal ──────────────────────────────────── */
+              <div className="flex gap-2 p-3 overflow-x-auto min-h-[80px]">
+                {poolActual.map((agente) => (
                   <div key={agente.id} className="shrink-0 w-52">
                     <DraggableAgente
                       agente={agente}
@@ -5181,9 +5269,9 @@ export default function Operaciones() {
                       disabled={poolTab === "trabajando" || poolTab === "enPuesto" || poolTab === "enSSA" || poolTab === "faltando" || isCerrado}
                     />
                   </div>
-                ))
-              )}
-            </div>
+                ))}
+              </div>
+            )}
 
             {/* Leyenda */}
             <div className="flex items-center gap-4 px-4 py-2 border-t border-white/5 text-[10px] text-white/20">

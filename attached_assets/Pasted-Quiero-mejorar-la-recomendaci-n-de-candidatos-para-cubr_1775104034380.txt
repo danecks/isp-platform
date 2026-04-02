@@ -1,0 +1,114 @@
+Quiero mejorar la recomendación de candidatos para cubrir puestos en ISPSA.
+
+No quiero romper nada existente.
+
+## Contexto
+Hoy el sistema puede mostrar candidatos globales:
+- disponibles globales
+- descansando globales
+
+Pero operativamente eso no es suficiente.
+
+Quiero que cuando se necesite cubrir un puesto, el sistema priorice primero a los agentes de la misma zona operativa del puesto.
+
+## Objetivo
+Que la recomendación de candidatos para cubrir un puesto sea inteligente y ordenada por prioridad operativa.
+
+---
+
+## 1. Regla principal
+Si un puesto pertenece a una zona (por ejemplo Zona 1), quiero que el sistema muestre primero como candidatos:
+
+### Prioridad alta — misma zona
+- disponibles reales de la misma zona
+- descansando por ciclo de la misma zona (HE)
+
+### Prioridad secundaria — otras zonas
+- disponibles reales de otras zonas
+- descansando por ciclo de otras zonas
+
+No quiero perder visibilidad global, pero sí quiero que la zona pese en la recomendación.
+
+---
+
+## 2. Fuente de datos
+Usar la lógica operativa ya existente:
+- pool actual
+- pool futuro
+- estado del agente
+- descanso por ciclo
+- disponibleHE
+- ausencias
+- SSA
+- puesto
+- zona del puesto
+- zona del colaborador / asignación base si existe
+
+---
+
+## 3. Presentación
+Quiero que el sistema muestre los candidatos agrupados como algo así:
+
+### Recomendados — misma zona
+- disponibles
+- descansando por ciclo
+
+### Otras zonas
+- disponibles
+- descansando por ciclo
+
+Y que en cada agente se vea:
+- nombre
+- estado
+- zona
+- si puede hacer HE
+- puesto actual o asignación base si aplica
+
+---
+
+## 4. Orden interno recomendado
+Dentro de cada grupo, priorizar así:
+1. disponible real en misma zona
+2. descansando por ciclo en misma zona
+3. disponible real en otras zonas
+4. descansando por ciclo en otras zonas
+
+No quiero lista plana desordenada.
+
+---
+
+## 5. No bloquear visibilidad total
+Aunque la recomendación priorice por zona, quiero que el jefe de servicio siga pudiendo ver todos los candidatos si lo necesita.
+
+La zona es prioridad, no filtro absoluto.
+
+---
+
+## 6. Dónde aplicarlo
+Quiero que esta lógica se use en:
+- asignación desde pizarrón operativo
+- asignación futura
+- cobertura de ausencias
+- SSA
+- cualquier selector o recomendación para cubrir puestos
+
+---
+
+## 7. Validación
+Quiero pruebas donde:
+- un puesto de Zona 1 tenga candidatos en Zona 1 y otras zonas
+- el sistema recomiende primero los de Zona 1
+- pero siga mostrando los demás
+- y que los estados (disponible / descanso / HE) sigan siendo correctos
+
+---
+
+## 8. Documentación
+Explica claramente:
+- cómo se prioriza por zona
+- cómo se combinan zona + estado operativo
+- cómo se sigue mostrando el universo completo
+- cómo esto ayuda al jefe de servicio a tomar decisiones más rápidas y realistas
+
+Muy importante:
+quiero que el sistema recomiende primero a los agentes de la misma zona del puesto, pero sin ocultar el resto de candidatos disponibles en otras zonas.

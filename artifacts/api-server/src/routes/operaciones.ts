@@ -159,6 +159,9 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         titular_po.estado_operativo_puesto AS estado_puesto_titular,
         titular_po.nombre                  AS nombre_puesto_titular,
         titular_po.cliente_nombre          AS cliente_puesto_titular,
+        -- Zona operativa del agente (titular o EOA)
+        COALESCE(eoa.zona_operativa_id, titular_po.zona_operativa_id) AS zona_operativa_id,
+        oz.nombre AS zona_nombre,
         -- Datos de turno para el motor de cálculo
         COALESCE(t.tipo_ciclo, CASE WHEN t.horas_trabajo <= 24 THEN 'diario' ELSE 'ciclo_bloques' END) AS tipo_ciclo_turno,
         t.horas_trabajo  AS horas_trabajo_turno,
@@ -200,13 +203,15 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         ON eoa.employee_id = e.id AND eoa.activa = TRUE
       LEFT JOIN LATERAL (
         SELECT po2.id, po2.estado_operativo_puesto, po2.nombre, po2.cliente_nombre,
-               po2.agente_id, po2.tipo_turno_id, po2.fecha_inicio_ciclo
+               po2.agente_id, po2.tipo_turno_id, po2.fecha_inicio_ciclo,
+               po2.zona_operativa_id
         FROM puestos_operativos po2
         WHERE po2.titular_employee_id = e.id AND po2.activo = TRUE
         ORDER BY po2.id
         LIMIT 1
       ) titular_po ON TRUE
       LEFT JOIN turnos t ON t.id = titular_po.tipo_turno_id
+      LEFT JOIN operational_zones oz ON oz.id = COALESCE(eoa.zona_operativa_id, titular_po.zona_operativa_id)
       WHERE e.estado_laboral IN ('activo', 'suspendido', 'licencia')
         AND (
           COALESCE(e.elegible_pool, TRUE) = TRUE
