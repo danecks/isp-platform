@@ -2535,6 +2535,27 @@ Por favor ingresa al sistema o responde para continuar.',
       }
       logger.info("Auto-seed: ARM-01 armas de muestra insertadas");
     }
+
+    // ARM-01-FILL: asignar pistola a todos los puestos activos que no tengan arma
+    const { rowCount: fillCount } = await pool.query(`
+      INSERT INTO armas (codigo, tipo, marca, modelo, calibre, puesto_id)
+      SELECT
+        'P-' || LPAD(po.id::text, 3, '0'),
+        'pistola',
+        'Glock',
+        '17',
+        '9mm',
+        po.id
+      FROM puestos_operativos po
+      WHERE po.activo = TRUE
+        AND NOT EXISTS (
+          SELECT 1 FROM armas a WHERE a.puesto_id = po.id AND a.activo = TRUE
+        )
+      ON CONFLICT (codigo) DO NOTHING
+    `);
+    if ((fillCount ?? 0) > 0) {
+      logger.info(`Auto-seed: ARM-01-FILL ${fillCount} pistolas asignadas a puestos sin arma`);
+    }
   } catch (err) {
     logger.error({ err }, "Auto-migrate: ARM-01 — error (no bloqueante)");
   }
