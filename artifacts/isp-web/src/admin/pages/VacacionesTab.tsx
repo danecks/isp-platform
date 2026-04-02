@@ -682,15 +682,23 @@ export default function VacacionesTab() {
           </div>
           <div className="flex flex-wrap gap-2">
             {alertasUrgentes.map((a) => (
-              <div key={a.employee_id} className="flex items-center gap-1.5 bg-yellow-400/10 border border-yellow-400/15 rounded-lg px-2.5 py-1.5">
-                <User className="w-3 h-3 text-yellow-400/70" />
+              <button
+                key={a.employee_id}
+                onClick={() => setModalEmpleadoId(a.employee_id)}
+                className="flex items-center gap-1.5 bg-yellow-400/10 hover:bg-yellow-400/20 border border-yellow-400/15 hover:border-yellow-400/35 rounded-lg px-2.5 py-1.5 transition-all text-left group"
+                title="Clic para programar vacaciones"
+              >
+                <User className="w-3 h-3 text-yellow-400/70 group-hover:text-yellow-300 transition-colors" />
                 <div>
-                  <p className="text-[11px] font-semibold text-yellow-200">{a.nombre_completo}</p>
+                  <p className="text-[11px] font-semibold text-yellow-200 group-hover:text-yellow-100">{a.nombre_completo}</p>
                   <p className="text-[9px] text-yellow-400/60">
                     Aniversario en {a.dias_restantes} día{a.dias_restantes !== 1 ? "s" : ""} · {fmtFecha(a.fecha_aniversario)}
                   </p>
+                  <p className="text-[9px] text-yellow-400/40 group-hover:text-yellow-400/70 transition-colors mt-0.5">
+                    Clic para programar →
+                  </p>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
