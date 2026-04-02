@@ -52,6 +52,7 @@ import AdminCambiosEstructurales from "@/admin/pages/CambiosEstructurales";
 import AdminPipelineServicios from "@/admin/pages/PipelineServicios";
 import AdminTableroServicios from "@/admin/pages/TableroServicios";
 import AdminVehiculos from "@/admin/pages/Vehiculos";
+import AdminArmeria from "@/admin/pages/Armeria";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
@@ -198,6 +199,9 @@ function Router() {
       </Route>
       <Route path="/admin/vehiculos">
         {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminVehiculos /></AuthGuard>}
+      </Route>
+      <Route path="/admin/armeria">
+        {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminArmeria /></AuthGuard>}
       </Route>
 
       <Route component={NotFound} />

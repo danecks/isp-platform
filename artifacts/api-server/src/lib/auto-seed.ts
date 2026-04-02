@@ -2472,5 +2472,72 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: VEH-01 — error (no bloqueante)");
   }
 
+  // ── ARM-01: Módulo de Armería ──────────────────────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS armas (
+        id            SERIAL PRIMARY KEY,
+        codigo        VARCHAR(30) UNIQUE NOT NULL,
+        tipo          VARCHAR(30) NOT NULL DEFAULT 'pistola',
+        marca         VARCHAR(50),
+        modelo        VARCHAR(50),
+        calibre       VARCHAR(20),
+        serie         VARCHAR(60),
+        estado        VARCHAR(25) NOT NULL DEFAULT 'activo',
+        activo        BOOLEAN NOT NULL DEFAULT true,
+        puesto_id     INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        observaciones TEXT,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS armas_puesto ON armas(puesto_id)`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS arma_custodia (
+        id             SERIAL PRIMARY KEY,
+        arma_id        INTEGER NOT NULL REFERENCES armas(id) ON DELETE CASCADE,
+        employee_id    INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        puesto_id      INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        fecha_inicio   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        fecha_fin      TIMESTAMPTZ,
+        tipo_origen    VARCHAR(30) NOT NULL DEFAULT 'turno_normal',
+        notas          TEXT,
+        registrado_por VARCHAR(100),
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ac_arma ON arma_custodia(arma_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ac_employee ON arma_custodia(employee_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ac_activa ON arma_custodia(arma_id) WHERE fecha_fin IS NULL`);
+    logger.info("Auto-migrate: ARM-01 tablas armas + arma_custodia verificadas/creadas");
+
+    // Seed de armas de muestra (solo si la tabla está vacía)
+    const { rows: cntArmas } = await pool.query(`SELECT COUNT(*) AS c FROM armas`);
+    if (parseInt(cntArmas[0].c) === 0) {
+      // Tomar los primeros 4 puestos activos con agente asignado
+      const { rows: puestos } = await pool.query(
+        `SELECT id FROM puestos_operativos WHERE activo=TRUE AND agente_id IS NOT NULL ORDER BY id LIMIT 4`
+      );
+      const seedArmas = [
+        { codigo: "A-001", tipo: "pistola",  marca: "Glock",   modelo: "17",   calibre: "9mm",    serie: "ISP-SN-001" },
+        { codigo: "A-002", tipo: "pistola",  marca: "Beretta", modelo: "92FS", calibre: "9mm",    serie: "ISP-SN-002" },
+        { codigo: "A-003", tipo: "revolver", marca: "Taurus",  modelo: "85",   calibre: ".38 SPL",serie: "ISP-SN-003" },
+        { codigo: "A-004", tipo: "escopeta", marca: "Mossberg",modelo: "500",  calibre: "12 GA",  serie: "ISP-SN-004" },
+      ];
+      for (let i = 0; i < seedArmas.length; i++) {
+        const a = seedArmas[i];
+        const pId = puestos[i]?.id ?? null;
+        await pool.query(
+          `INSERT INTO armas (codigo, tipo, marca, modelo, calibre, serie, puesto_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (codigo) DO NOTHING`,
+          [a.codigo, a.tipo, a.marca, a.modelo, a.calibre, a.serie, pId]
+        );
+      }
+      logger.info("Auto-seed: ARM-01 armas de muestra insertadas");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: ARM-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

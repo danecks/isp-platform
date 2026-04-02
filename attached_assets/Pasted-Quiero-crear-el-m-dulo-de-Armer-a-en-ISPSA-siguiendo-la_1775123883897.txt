@@ -1,0 +1,202 @@
+Quiero crear el módulo de Armería en ISPSA, siguiendo la misma lógica operativa que ya usamos con vehículos, pero aplicada a armas asignadas por puesto.
+
+No quiero romper nada existente.
+
+## Objetivo
+Quiero que las armas no dependan de asignación manual diaria a personas.
+
+Quiero que la responsabilidad del arma se herede automáticamente desde la operación real, igual que los vehículos se heredan desde la zona y el supervisor de turno.
+
+---
+
+## Lógica correcta
+La lógica debe ser esta:
+
+1. El arma se asigna a un puesto operativo
+2. Ese puesto tiene cobertura por turnos y agentes
+3. El agente que esté trabajando ese puesto en una fecha/turno dada debe ser automáticamente el responsable actual del arma
+4. Si cambia el turno o entra un relevo, la custodia del arma debe pasar automáticamente al nuevo agente que queda trabajando ese puesto
+5. El sistema debe guardar historial completo de quién tuvo el arma, en qué fecha y en qué puesto
+
+---
+
+## Ejemplo esperado
+- El arma A-01 está asignada al puesto “Garita Principal”
+- Hoy trabaja Daniel en ese puesto
+- Entonces Daniel es el responsable actual de A-01
+- Mañana entra Pedro en ese mismo puesto
+- Pedro pasa a ser el nuevo responsable actual
+- El sistema cierra la custodia de Daniel y abre la de Pedro
+- Si entra un relevo parcial o total, el relevo hereda la responsabilidad del arma durante el tiempo que cubre
+
+---
+
+## 1. Módulo base de Armería
+Crear el módulo de armas con datos mínimos como:
+
+- código interno
+- tipo de arma
+- marca
+- modelo
+- calibre
+- serie
+- estado
+- activo / inactivo
+- observaciones
+
+No hace falta todavía meter mantenimiento, municiones ni inventario avanzado.
+Primero solo control operativo y custodia.
+
+---
+
+## 2. Asignación base del arma
+El arma debe poder quedar asignada a:
+
+- un puesto operativo
+- no a una persona fija como responsable permanente
+
+La relación base debe ser:
+- arma → puesto
+
+No quiero dependencia de selección manual del responsable actual.
+
+---
+
+## 3. Responsable actual automático
+El responsable actual del arma debe calcularse automáticamente desde:
+
+- el puesto asignado al arma
+- la cobertura real de ese puesto
+- el agente que está trabajando ese puesto en la fecha/hora consultada
+- incluyendo:
+  - titular
+  - relevo
+  - cobertura parcial
+  - cobertura por supervisor si existe
+  - cobertura por jefe de servicio si aplica
+
+El que realmente esté trabajando el puesto en ese momento es el responsable del arma.
+
+---
+
+## 4. Historial / cardex de custodia
+Quiero historial completo de custodia automática, por ejemplo:
+
+- arma
+- puesto
+- agente responsable
+- fecha/hora inicio
+- fecha/hora fin
+- origen:
+  - turno normal
+  - relevo
+  - cobertura parcial
+  - cobertura por supervisor
+  - cobertura por jefe de servicio
+
+En la ficha del arma quiero ver:
+- puesto asignado
+- responsable actual
+- historial de custodias
+
+En la ficha del colaborador quiero ver:
+- historial de armas que tuvo bajo responsabilidad
+- fechas
+- puestos relacionados
+
+---
+
+## 5. Cambio automático por relevo o turno
+Quiero que cuando cambie el agente que cubre el puesto, cambie automáticamente la custodia del arma.
+
+### Casos a soportar
+- cambio normal de turno
+- relevo temporal
+- abandono parcial y entra otro
+- cobertura por supervisor
+- cobertura por jefe de servicio
+- cambio de titular del puesto
+
+Si el puesto tiene un arma asignada, el arma debe seguir al agente que esté cubriendo ese puesto.
+
+---
+
+## 6. Fallback
+Si un arma está asignada a un puesto pero ese puesto no tiene nadie cubriéndolo en ese momento:
+- mostrar “Sin responsable actual”
+- no inventar asignación manual silenciosa
+
+---
+
+## 7. Alcance por ahora
+En esta primera fase quiero solo:
+- armas
+- asignación por puesto
+- responsable automático por cobertura real
+- historial/cardex de custodia
+
+No meter todavía:
+- municiones
+- limpieza
+- mantenimiento
+- inventario detallado de consumibles
+- permisos/licencias
+- bodegas de armas
+- entregas manuales extraordinarias
+
+Eso puede venir después.
+
+---
+
+## 8. Integración con operación
+Si es viable, quiero que desde:
+- ficha del puesto
+- ficha del colaborador
+- ficha del arma
+- y/o pizarrón
+
+se pueda ver:
+- qué arma pertenece al puesto
+- quién la tiene actualmente
+- si el puesto está cubierto o no
+- historial reciente de custodias
+
+---
+
+## 9. No romper
+No romper:
+- cobertura diaria
+- segmentos
+- pizarrón operativo
+- motor de turnos
+- historial de titularidad
+- vehículos
+- supervisores
+- jefes de servicio
+- pre-planilla
+- planilla
+
+---
+
+## 10. Validación
+Quiero pruebas donde:
+1. se cree un arma
+2. se asigne a un puesto
+3. el agente que trabaja ese puesto herede el arma automáticamente
+4. al cambiar turno, cambie el responsable
+5. un relevo herede el arma correctamente
+6. quede historial correcto en arma y colaborador
+7. si el puesto queda sin cubrir, el arma quede sin responsable actual
+
+---
+
+## 11. Documentación
+Explica claramente:
+- cómo se modeló arma → puesto
+- cómo se calcula el responsable actual
+- cómo cambia con turno y relevo
+- cómo queda el historial
+- qué se deja preparado para conectar después con inventario o control de armería más avanzado
+
+Muy importante:
+quiero que el arma esté amarrada al puesto y que el responsable se herede automáticamente según el agente que realmente esté trabajando ese puesto en ese momento.

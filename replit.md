@@ -79,6 +79,8 @@ The project uses a pnpm workspace monorepo, organizing deployable applications (
 - **SelectorAgenteAgrupado (universal):** Shared component for agent selection, grouping agents by real operational status.
 - **Titularidad Histórica Temporal — TH:** Historic ownership of positions is now temporal, defined by `puesto_titular_historico` with fallbacks.
 - **Motor de Turnos Completo — 5 tipos ISPSA (T001-T007):** Rewritten `turno-calc.ts` to support various shift cycles (12h, 24x24, 24x48, 24x72, 8x8).
+- **Módulo Vehículos (`/admin/vehiculos`) — VEH-01:** Full vehicle supervision module with auto custody by zone supervisor on duty. Tables: `vehiculos`, `vehiculo_custodia`. Sync endpoint updates custody based on turn engine.
+- **Módulo Armería (`/admin/armeria`) — ARM-01 (Fase 1):** Weapons control module with arma → puesto → agente logic. Tables: `armas`, `arma_custodia`. Current responsible auto-calculated from `planificacion_futura` (relief override) + `calcularEstadoCiclo` (titular on-duty check). Endpoints: GET /api/armas, GET /api/armas/estado-operativo, POST /api/armas, PATCH /api/armas/:id, POST /api/armas/:id/sync-custodia, POST /api/armas/sync-custodias, GET /api/armas/historial/global. 3-tab UI: Estado Operativo, Armas, Historial. Future phases: municiones, mantenimiento, inventario avanzado.
 
 ## External Dependencies
 - **PostgreSQL:** Primary database.

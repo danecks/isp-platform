@@ -130,6 +130,12 @@ export const NAV_SECTIONS: NavSection[] = [
         roles: ["admin", "operaciones", "supervisor"],
       },
       {
+        path: "/admin/armeria",
+        label: "Armería",
+        icon: Shield,
+        roles: ["admin", "operaciones", "supervisor"],
+      },
+      {
         path: "/admin/cambios-estructurales",
         label: "Cambios Estructurales",
         icon: GitMerge,
