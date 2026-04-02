@@ -95,10 +95,15 @@ function EstadoBadge({ estado }: { estado: string }) {
 }
 
 // ── Chip responsable ────────────────────────────────────────────────────────
-function ResponsableChip({ responsable, descansa }: {
-  responsable: EstadoArma["responsable_turno"]; descansa: boolean;
+function ResponsableChip({ responsable, descansa, enArmeria = false }: {
+  responsable: EstadoArma["responsable_turno"]; descansa: boolean; enArmeria?: boolean;
 }) {
   if (!responsable) {
+    if (enArmeria) return (
+      <span className="flex items-center gap-1 text-[11px] text-indigo-400 bg-indigo-400/10 px-2 py-0.5 rounded-full border border-indigo-400/20">
+        <Shield className="w-3 h-3" />En Armería
+      </span>
+    );
     if (descansa) return (
       <span className="flex items-center gap-1 text-[11px] text-blue-400 bg-blue-400/10 px-2 py-0.5 rounded-full border border-blue-400/20">
         <Clock className="w-3 h-3" />Titular en descanso
@@ -263,7 +268,7 @@ function ModalArma({
             <label className="block text-xs font-medium text-gray-400 mb-1">Puesto operativo asignado</label>
             <select value={form.puesto_id} onChange={e => set("puesto_id", e.target.value)}
               className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
-              <option value="">— Sin puesto asignado —</option>
+              <option value="">— En Armería (sin puesto) —</option>
               {puestos.map(p => (
                 <option key={p.id} value={String(p.id)}>
                   {p.cliente_nombre ? `${p.cliente_nombre} — ` : ""}{p.nombre}
@@ -414,7 +419,13 @@ function ModalFichaArma({ arma, onClose, onEdit }: {
                 )}
               </div>
             ) : (
-              <div className="bg-gray-800/30 rounded-lg px-3 py-2.5 text-sm text-gray-600 italic">Sin puesto asignado</div>
+              <div className="bg-indigo-500/5 border border-indigo-500/15 rounded-lg px-3 py-2.5 flex items-center gap-2">
+                <Shield className="w-4 h-4 text-indigo-400/60 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-indigo-300/80">En Armería</p>
+                  <p className="text-xs text-indigo-300/40">Sin puesto operativo asignado</p>
+                </div>
+              </div>
             )}
             {a.observaciones && (
               <div className="mt-2 bg-yellow-500/5 border border-yellow-500/15 rounded-lg px-3 py-2">
@@ -602,24 +613,34 @@ function TabEstado({ fecha, onFicha }: { fecha: string; onFicha: (a: EstadoArma)
                   </div>
                   <div className="flex items-center gap-1.5 mt-1 text-xs text-gray-400">
                     <MapPin className="w-3 h-3 flex-shrink-0" />
-                    <span className="truncate">{arma.puesto_nombre}</span>
-                    {arma.cliente_nombre && (
+                    {arma.puesto_nombre ? (
                       <>
-                        <ChevronRight key={`chr-cli-${arma.id}`} className="w-3 h-3 flex-shrink-0" />
-                        <span key={`cli-${arma.id}`} className="truncate text-gray-500">{arma.cliente_nombre}</span>
+                        <span className="truncate">{arma.puesto_nombre}</span>
+                        {arma.cliente_nombre && (
+                          <>
+                            <ChevronRight key={`chr-cli-${arma.id}`} className="w-3 h-3 flex-shrink-0" />
+                            <span key={`cli-${arma.id}`} className="truncate text-gray-500">{arma.cliente_nombre}</span>
+                          </>
+                        )}
+                        {arma.zona_nombre && (
+                          <>
+                            <ChevronRight key={`chr-zona-${arma.id}`} className="w-3 h-3 flex-shrink-0" />
+                            <span key={`zona-${arma.id}`} className="text-gray-500 truncate">{arma.zona_nombre}</span>
+                          </>
+                        )}
                       </>
-                    )}
-                    {arma.zona_nombre && (
-                      <>
-                        <ChevronRight key={`chr-zona-${arma.id}`} className="w-3 h-3 flex-shrink-0" />
-                        <span key={`zona-${arma.id}`} className="text-gray-500 truncate">{arma.zona_nombre}</span>
-                      </>
+                    ) : (
+                      <span className="text-indigo-300/70 font-medium">En Armería</span>
                     )}
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
-                <ResponsableChip responsable={arma.responsable_turno} descansa={arma.descanso_por_ciclo} />
+                <ResponsableChip
+                  responsable={arma.responsable_turno}
+                  descansa={arma.descanso_por_ciclo}
+                  enArmeria={!arma.puesto_id}
+                />
                 <button
                   onClick={() => onFicha(arma)}
                   title="Ver ficha del arma"
@@ -737,7 +758,7 @@ function TabArmas({ onEdit, onFicha }: {
                   <td className="px-4 py-3 text-gray-400 text-xs">
                     {arma.puesto_nombre
                       ? <><p className="text-gray-300">{arma.puesto_nombre}</p><p className="text-gray-500">{arma.cliente_nombre}</p></>
-                      : <span className="text-gray-600">Sin puesto</span>}
+                      : <span className="text-indigo-300/60 flex items-center gap-1"><Shield className="w-3 h-3" />En Armería</span>}
                   </td>
                   <td className="px-4 py-3 text-xs">
                     {arma.custodio_nombre

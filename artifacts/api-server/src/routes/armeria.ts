@@ -215,7 +215,7 @@ armeriaRouter.get("/armas/estado-operativo", async (req, res) => {
         ac.fecha_inicio    AS custodia_desde,
         ac.tipo_origen     AS custodia_tipo_origen
       FROM armas a
-      JOIN puestos_operativos po ON po.id = a.puesto_id
+      LEFT JOIN puestos_operativos po ON po.id = a.puesto_id
       LEFT JOIN employees te     ON te.id = po.agente_id
       LEFT JOIN turnos t         ON t.id  = po.tipo_turno_id
       LEFT JOIN operational_zones oz ON oz.id = po.zona_operativa_id
