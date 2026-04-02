@@ -476,6 +476,24 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       enPuesto.splice(0, enPuesto.length, ...annotate(enPuesto));
     }
 
+    // ── Inyectar supervisores/jefes disponibles como contingencia en el pool ─────
+    // Solo los que pueden cubrir pero NO están en turno activo:
+    //   - supervisores con disponible_he=true → van a descansandoCiclo (disponibles para HE)
+    //   - jefes_servicio que no trabajan hoy y están activos → igual
+    // Así rankCandidatos los ve y les asigna grupo P5 (contingencia).
+    for (const sv of supervisoresEnriquecidos) {
+      if (sv.estado_laboral !== 'activo') continue;
+      if (sv.disponible_he) {
+        descansandoCiclo.push({ ...sv, tipo_personal: 'supervisor', disponibleHE: true });
+      }
+    }
+    for (const js of jefesServicioEnriquecidos) {
+      if (js.estado_laboral !== 'activo') continue;
+      if (!js.trabaja_hoy) {
+        descansandoCiclo.push({ ...js, tipo_personal: 'jefe_servicio', disponibleHE: true });
+      }
+    }
+
     res.json({
       trabajando,
       descansandoCiclo,

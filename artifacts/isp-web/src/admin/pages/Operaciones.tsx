@@ -101,10 +101,14 @@ interface Agente {
   conoce_puesto?: boolean;
   conoce_cliente?: boolean;
   misma_zona_exp?: boolean;
+  /** Tipo de personal — identifica supervisores/jefes inyectados como contingencia */
+  tipo_personal?: string;
 }
 
 // ── Tipos para ranking de candidatos ─────────────────────────────────────────
-type GrupoRanking = "P1" | "P2" | "P3" | "P4";
+// P1–P4: guardias normales (disponible/descanso × misma/otra zona)
+// P5: supervisores y jefes de servicio (contingencia operativa — menor prioridad)
+type GrupoRanking = "P1" | "P2" | "P3" | "P4" | "P5";
 
 interface AgenteRankeado extends Agente {
   grupo: GrupoRanking;
@@ -114,19 +118,21 @@ interface AgenteRankeado extends Agente {
 }
 
 const RANKING_GRUPO_CONFIG: Record<GrupoRanking, { label: string; sub: string; headerColor: string; borderColor: string }> = {
-  P1: { label: "Disponible · Misma zona",         sub: "Primera opción",       headerColor: "text-emerald-300",     borderColor: "border-emerald-500/25" },
-  P2: { label: "Descanso de ciclo · Misma zona",  sub: "Disponible con HE",    headerColor: "text-blue-300",        borderColor: "border-blue-500/20" },
-  P3: { label: "Disponible · Otras zonas",        sub: "Sin zona coincidente", headerColor: "text-white/50",        borderColor: "border-white/8" },
-  P4: { label: "Descanso de ciclo · Otras zonas", sub: "Disponible con HE",    headerColor: "text-white/30",        borderColor: "border-white/5" },
+  P1: { label: "Disponible · Misma zona",         sub: "Primera opción",        headerColor: "text-emerald-300",    borderColor: "border-emerald-500/25" },
+  P2: { label: "Descanso de ciclo · Misma zona",  sub: "Disponible con HE",     headerColor: "text-blue-300",       borderColor: "border-blue-500/20" },
+  P3: { label: "Disponible · Otras zonas",        sub: "Sin zona coincidente",  headerColor: "text-white/50",       borderColor: "border-white/8" },
+  P4: { label: "Descanso de ciclo · Otras zonas", sub: "Disponible con HE",     headerColor: "text-white/30",       borderColor: "border-white/5" },
+  P5: { label: "Contingencia operativa",          sub: "Supervisor / Jefe",     headerColor: "text-orange-300/80",  borderColor: "border-orange-500/15" },
 };
 
 const RANKING_MOTIVO_CONFIG: Record<string, { label: string; cls: string }> = {
-  disponible:     { label: "Disponible",     cls: "text-emerald-300 bg-emerald-500/15" },
-  descanso_ciclo: { label: "HE",             cls: "text-blue-300 bg-blue-500/15" },
-  misma_zona:     { label: "Misma zona",     cls: "text-primary/90 bg-primary/15" },
-  zona_exp:       { label: "Zona",           cls: "text-primary/70 bg-primary/10" },
-  conoce_cliente: { label: "Conoce cliente", cls: "text-amber-300 bg-amber-500/15" },
-  conoce_puesto:  { label: "Conoce puesto",  cls: "text-purple-300 bg-purple-500/15" },
+  disponible:      { label: "Disponible",     cls: "text-emerald-300 bg-emerald-500/15" },
+  descanso_ciclo:  { label: "HE",             cls: "text-blue-300 bg-blue-500/15" },
+  misma_zona:      { label: "Misma zona",     cls: "text-primary/90 bg-primary/15" },
+  zona_exp:        { label: "Zona",           cls: "text-primary/70 bg-primary/10" },
+  conoce_cliente:  { label: "Conoce cliente", cls: "text-amber-300 bg-amber-500/15" },
+  conoce_puesto:   { label: "Conoce puesto",  cls: "text-purple-300 bg-purple-500/15" },
+  contingencia:    { label: "Contingencia",   cls: "text-orange-300 bg-orange-500/15" },
 };
 
 /** Genera la lista rankeada de candidatos elegibles para cubrir un puesto */
@@ -135,6 +141,18 @@ function rankCandidatos(pool: Pool, zonaId: number | null | undefined): AgenteRa
 
   const toRanked = (agente: Agente, estado: "disponible" | "descansandoCiclo"): AgenteRankeado => {
     const mismaZona = !!zonaId && agente.zona_operativa_id === zonaId;
+
+    // Supervisores y jefes de servicio → siempre P5 (contingencia operativa)
+    const esContingencia = agente.tipo_personal === "supervisor" || agente.tipo_personal === "jefe_servicio";
+    if (esContingencia) {
+      return {
+        ...agente,
+        grupo: "P5",
+        motivos: ["contingencia", ...(mismaZona ? ["misma_zona"] : [])],
+        score: 20 + (mismaZona ? 10 : 0),
+      };
+    }
+
     const motivos: string[] = [];
     let score = estado === "disponible" ? 100 : 50;
 
@@ -142,7 +160,7 @@ function rankCandidatos(pool: Pool, zonaId: number | null | undefined): AgenteRa
     motivos.push(estado === "disponible" ? "disponible" : "descanso_ciclo");
 
     // Zona
-    if (mismaZona)             { score += 40; motivos.push("misma_zona"); }
+    if (mismaZona)                  { score += 40; motivos.push("misma_zona"); }
     else if (agente.misma_zona_exp) { score += 10; motivos.push("zona_exp"); }
 
     // Experiencia previa (más valiosa → más puntos)
@@ -152,8 +170,8 @@ function rankCandidatos(pool: Pool, zonaId: number | null | undefined): AgenteRa
     let grupo: GrupoRanking;
     if      (estado === "disponible"       && mismaZona) grupo = "P1";
     else if (estado === "descansandoCiclo" && mismaZona) grupo = "P2";
-    else if (estado === "disponible")                     grupo = "P3";
-    else                                                  grupo = "P4";
+    else if (estado === "disponible")                    grupo = "P3";
+    else                                                 grupo = "P4";
 
     return { ...agente, grupo, motivos, score };
   };
@@ -161,8 +179,8 @@ function rankCandidatos(pool: Pool, zonaId: number | null | undefined): AgenteRa
   for (const a of pool.disponibles)      result.push(toRanked(a, "disponible"));
   for (const a of pool.descansandoCiclo) result.push(toRanked(a, "descansandoCiclo"));
 
-  // Ordenar: primero por grupo (P1→P4) luego por score descendente
-  const grupoOrd: Record<GrupoRanking, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
+  // Ordenar: primero por grupo (P1→P5) luego por score descendente
+  const grupoOrd: Record<GrupoRanking, number> = { P1: 0, P2: 1, P3: 2, P4: 3, P5: 4 };
   return result.sort((a, b) => {
     const gd = grupoOrd[a.grupo] - grupoOrd[b.grupo];
     return gd !== 0 ? gd : b.score - a.score;

@@ -364,6 +364,8 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
 
   try {
     // 1. Obtener todos los empleados activos con su asignación y turno
+    //    Para guardias: turno viene del puesto (t).
+    //    Para supervisores/jefes: turno viene directamente del EOA (t_eoa + eoa.fecha_inicio).
     const { rows: empleados } = await pool.query(`
       SELECT
         e.id,
@@ -371,18 +373,26 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
         e.nombre_completo AS nombre,
         e.elegible_pool,
         e.estado_laboral,
+        COALESCE(e.tipo_personal, 'guardia') AS tipo_personal,
         -- Asignación operativa activa
         eoa.puesto_id,
         po.nombre        AS puesto_nombre,
         po.cliente_nombre,
         po.cliente_id,
-        -- Turno del puesto
-        t.id             AS turno_id,
-        t.nombre         AS turno_nombre,
-        COALESCE(t.tipo_ciclo, CASE WHEN (t.horas_trabajo + t.horas_descanso) <= 24 THEN 'diario' ELSE 'alternado' END) AS tipo_ciclo,
-        t.horas_trabajo,
-        t.horas_descanso,
-        po.fecha_inicio_ciclo,
+        -- Turno: desde puesto (guardias) o desde EOA directo (supervisores/jefes)
+        COALESCE(t.id,            t_eoa.id)            AS turno_id,
+        COALESCE(t.nombre,        t_eoa.nombre)        AS turno_nombre,
+        COALESCE(
+          t.tipo_ciclo,
+          t_eoa.tipo_ciclo,
+          CASE WHEN COALESCE(t.horas_trabajo, t_eoa.horas_trabajo, 0)
+                    + COALESCE(t.horas_descanso, t_eoa.horas_descanso, 0) <= 24
+               THEN 'diario' ELSE 'alternado' END
+        )                                              AS tipo_ciclo,
+        COALESCE(t.horas_trabajo,  t_eoa.horas_trabajo)  AS horas_trabajo,
+        COALESCE(t.horas_descanso, t_eoa.horas_descanso) AS horas_descanso,
+        -- fecha_inicio_ciclo: desde puesto o desde EOA.fecha_inicio (supervisores)
+        COALESCE(po.fecha_inicio_ciclo::text, eoa.fecha_inicio::text) AS fecha_inicio_ciclo,
         -- Ausencia en planificacion_futura como titular ausente
         pf.id            AS plan_id,
         pf.tipo_ausencia AS plan_tipo_ausencia,
@@ -396,6 +406,8 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
              ON po.id = eoa.puesto_id AND po.activo = TRUE
       LEFT JOIN turnos t
              ON t.id = po.tipo_turno_id
+      LEFT JOIN turnos t_eoa
+             ON t_eoa.id = eoa.tipo_turno_id
       LEFT JOIN planificacion_futura pf
              ON pf.titular_ausente_id = e.id
             AND pf.fecha = $1
@@ -510,9 +522,9 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
         continue;
       }
 
-      // ¿Tiene puesto asignado? → calcular turno usando motor real (independiente de elegible_pool)
-      // Los empleados en puesto fijo tienen elegible_pool=false pero igual trabajan/descansan
-      if (emp.puesto_id) {
+      // ¿Tiene puesto asignado O turno directo en EOA (supervisores/jefes)?
+      // → calcular ciclo usando motor real (independiente de elegible_pool)
+      if (emp.puesto_id || emp.turno_id) {
         const { estado, descansoPorCiclo, disponibleHE } = calcularEstadoTurno(
           emp.horas_trabajo, emp.horas_descanso, emp.fecha_inicio_ciclo,
           emp.turno_id, emp.turno_nombre, emp.tipo_ciclo,
@@ -520,16 +532,19 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
         if (estado === "trabajando") {
           trabajando.push({ ...emp, estado_turno: "trabajando", descansoPorCiclo: false, disponibleHE: false });
         } else if (estado === "descansando") {
-          // descansoPorCiclo=true → descanso normal de ciclo, disponible para HE
           descansando.push({ ...emp, estado_turno: "descansando", descansoPorCiclo, disponibleHE });
         } else {
-          // Puesto asignado pero sin turno definido → asumir trabajando
-          trabajando.push({ ...emp, estado_turno: "sin_turno_asume_trabajo", descansoPorCiclo: false, disponibleHE: false });
+          // Sin turno definido → asumir trabajando si tiene puesto, disponible si solo tiene EOA
+          if (emp.puesto_id) {
+            trabajando.push({ ...emp, estado_turno: "sin_turno_asume_trabajo", descansoPorCiclo: false, disponibleHE: false });
+          } else {
+            disponible.push({ ...emp, estado_turno: "sin_turno" });
+          }
         }
         continue;
       }
 
-      // Sin puesto asignado: elegible_pool determina si está disponible o excluido
+      // Sin puesto ni turno EOA: elegible_pool determina disponibilidad
       if (!emp.elegible_pool) {
         noElegible.push({ ...emp, razon_no_elegible: "no_elegible_pool" });
         continue;

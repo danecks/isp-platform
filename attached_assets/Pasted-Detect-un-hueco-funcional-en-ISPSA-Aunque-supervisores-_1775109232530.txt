@@ -1,0 +1,107 @@
+Detecté un hueco funcional en ISPSA:
+
+Aunque supervisores y jefes de servicio ya se están tratando como personal operativo con turno, no están apareciendo en la planificación futura ni en el pool futuro.
+
+Quiero corregir eso.
+
+## Contexto
+En ISPSA:
+- supervisores pueden trabajar en 12h o 24x24
+- jefes de servicio trabajan 24x24
+- ambos pueden cubrir puestos en contingencia
+- ambos deben entrar a planilla
+- ambos deben verse como personal operativo real
+
+Por lo tanto, no basta con que aparezcan en pizarrón y planilla.
+También deben entrar en la lógica de planificación.
+
+---
+
+## Objetivo
+Hacer que supervisores y jefes de servicio participen correctamente en:
+
+- planificación futura
+- pool futuro
+- recomendación de candidatos
+- cobertura futura
+
+---
+
+## 1. Planificación futura
+Quiero que cuando se consulte una fecha futura, supervisores y jefes de servicio aparezcan también según su estado del turno:
+
+- trabajando
+- descansando por ciclo
+- disponibleHE
+- ausente
+- en SSA si aplica
+
+---
+
+## 2. Pool futuro
+Quiero que el pool futuro ya no considere solo guardias.
+
+Debe incluir también:
+- supervisores
+- jefes de servicio
+
+siempre que sean personal operativo con turno.
+
+---
+
+## 3. Ranking de candidatos
+Quiero que supervisores y jefes de servicio puedan entrar al ranking como candidatos para cubrir puestos, pero con prioridad menor que los guardias normales.
+
+Orden sugerido:
+1. guardia disponible misma zona
+2. guardia descansando misma zona
+3. guardia disponible otras zonas
+4. guardia descansando otras zonas
+5. supervisor / jefe de servicio disponible o descansando
+6. resto
+
+No quiero que se oculten, pero sí que se note que son una opción de contingencia.
+
+---
+
+## 4. Pizarrón y paneles
+Si ya tienen panel especial en pizarrón, mantenerlo.
+
+Pero además quiero que el sistema los use internamente en la planificación, no solo como visualización.
+
+---
+
+## 5. No romper
+No romper:
+- turnos ya validados
+- planilla
+- pizarrón
+- ranking por zona
+- pool actual
+- pool futuro
+- SSA
+- RRHH
+
+---
+
+## 6. Validación
+Quiero pruebas donde:
+1. un supervisor de 12h aparezca en planificación futura
+2. un supervisor de 24x24 aparezca en pool futuro
+3. un jefe de servicio 24x24 aparezca en planificación futura
+4. ambos puedan salir como candidatos de contingencia
+5. su prioridad sea menor que la de un guardia normal disponible
+6. sigan apareciendo correctamente en planilla
+
+---
+
+## 7. Documentación
+Explica claramente:
+- por qué no aparecían antes
+- cómo se integraron a planificación
+- cómo se clasifican
+- cómo participan en el ranking
+- cómo siguen diferenciándose de guardias y administrativos
+
+Muy importante:
+quiero que supervisores y jefes de servicio, al ser personal operativo con turno, también entren a la planificación futura y al pool futuro como parte real de la operación.
