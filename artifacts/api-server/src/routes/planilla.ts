@@ -129,10 +129,14 @@ async function clasificarIgss(employeeId: number | null): Promise<{
         COALESCE(po.aplica_igss, FALSE)         AS puesto_aplica_igss,
         COALESCE(po.regimen_igss, 'no_aplica')  AS puesto_regimen_igss
       FROM employees e
-      LEFT JOIN puestos_operativos po
-        ON po.titular_employee_id = e.id AND po.activo = TRUE
+      LEFT JOIN LATERAL (
+        SELECT po2.aplica_igss, po2.regimen_igss
+        FROM puestos_operativos po2
+        WHERE po2.titular_employee_id = e.id AND po2.activo = TRUE
+        ORDER BY po2.updated_at DESC NULLS LAST
+        LIMIT 1
+      ) po ON TRUE
       WHERE e.id = $1
-      LIMIT 1
     `, [employeeId]);
 
     if (!rows.length) {
@@ -238,8 +242,13 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
           COALESCE(e.estado_igss, 'no_activo')        AS estado_igss,
           COALESCE(po.aplica_igss, FALSE)             AS puesto_aplica_igss
         FROM employees e
-        LEFT JOIN puestos_operativos po
-          ON po.titular_employee_id = e.id AND po.activo = TRUE
+        LEFT JOIN LATERAL (
+          SELECT po2.aplica_igss
+          FROM puestos_operativos po2
+          WHERE po2.titular_employee_id = e.id AND po2.activo = TRUE
+          ORDER BY po2.updated_at DESC NULLS LAST
+          LIMIT 1
+        ) po ON TRUE
         WHERE e.id = ANY($1::int[])
       `, [empIds]);
 

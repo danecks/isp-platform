@@ -187,8 +187,13 @@ const QUERY_CONSOLIDADO = `
   INNER JOIN novedades_nomina_diarias n
     ON n.employee_id = e.id
     AND n.fecha BETWEEN $1 AND $2
-  LEFT JOIN puestos_operativos po
-    ON po.titular_employee_id = e.id AND po.activo = TRUE
+  LEFT JOIN LATERAL (
+    SELECT po2.aplica_igss, po2.regimen_igss, po2.fecha_inicio_ciclo, po2.tipo_turno_id
+    FROM puestos_operativos po2
+    WHERE po2.titular_employee_id = e.id AND po2.activo = TRUE
+    ORDER BY po2.updated_at DESC NULLS LAST
+    LIMIT 1
+  ) po ON TRUE
   LEFT JOIN turnos t
     ON t.id = po.tipo_turno_id
   LEFT JOIN pre_planilla_revision pr

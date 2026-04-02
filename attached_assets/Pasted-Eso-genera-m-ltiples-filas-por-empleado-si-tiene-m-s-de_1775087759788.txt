@@ -1,0 +1,96 @@
+Eso genera múltiples filas por empleado si tiene más de un puesto activo o histórico mal amarrado, y contamina los SUM.
+
+⸻
+
+Objetivo
+
+Corregir la query consolidada de pre-planilla para que cada colaborador se procese una sola vez en esa parte del JOIN y no se multipliquen las horas ni los importes.
+
+⸻
+
+1. Corregir query de pre-planilla
+
+Quiero que revises y corrijas la consulta principal de pre-planilla.
+
+Solución esperada
+
+Usar una estrategia segura como:
+	•	LEFT JOIN LATERAL (...) LIMIT 1
+	•	o DISTINCT ON
+	•	o una subquery agregada por empleado
+
+Pero el resultado debe ser:
+	•	1 sola relación efectiva por empleado para esa parte
+	•	0 multiplicación de filas
+	•	horas reales correctas
+	•	montos correctos
+
+No me importa si usas LATERAL o otra técnica, mientras quede correcto y claro.
+
+⸻
+
+2. Validación obligatoria
+
+Después del fix, quiero que verifiques explícitamente estos casos reales del reporte:
+	•	Héctor Chávez
+	•	Luis Pop
+	•	Elsa Ramos
+
+Y me digas:
+	•	horas reales esperadas
+	•	horas que devolvía antes
+	•	horas que devuelve ahora
+
+⸻
+
+3. Confirmar impacto en planilla final
+
+Quiero que revises si la planilla final estaba heredando esos valores contaminados.
+
+Después del fix, confirma:
+	•	si el total_bruto cambia
+	•	si el total_neto cambia
+	•	si ya queda financieramente consistente
+
+⸻
+
+4. No romper
+
+No romper:
+	•	filtros
+	•	tabs
+	•	cierre de pre-planilla
+	•	snapshot
+	•	planilla final
+	•	RRHH
+	•	anticipos
+	•	IGSS
+	•	SSA
+	•	clientes nuevos
+
+⸻
+
+5. Después del fix crítico
+
+Si queda resuelto, entonces como segundo paso inmediato quiero que prepares el siguiente fix:
+
+Cierre operativo retroactivo
+
+Quiero que POST /api/operaciones/cierre acepte una fecha opcional para admin/supervisor, de forma controlada.
+
+Pero primero resuelve el bug crítico del JOIN.
+
+⸻
+
+6. Reporte esperado
+
+Al terminar quiero un resumen claro con:
+	•	qué cambiaste
+	•	en qué archivo/query
+	•	por qué ocurría el bug
+	•	cómo quedó corregido
+	•	evidencia de que ya no multiplica horas
+	•	evidencia de que la planilla final ya no hereda ese error
+
+Muy importante:
+este es el bug más delicado del sistema en este momento porque afecta directamente dinero y confianza en la planilla. Quiero resolverlo antes de seguir con cualquier otra mejora.
