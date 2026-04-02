@@ -175,6 +175,10 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         t.horas_descanso AS horas_descanso_turno,
         t.nombre         AS turno_nombre,
         titular_po.fecha_inicio_ciclo AS fecha_inicio_ciclo_turno,
+        -- Vacaciones activas hoy
+        vac_activa.tipo_evento AS vacacion_activa_tipo,
+        vac_activa.fecha::date AS vacacion_inicio,
+        vac_activa.fecha_fin   AS vacacion_fin,
         CASE
           WHEN po.agente_id   IS NOT NULL AND e.estado_laboral = 'activo' THEN 'en_puesto'
           WHEN (ssa.agente_id IS NOT NULL OR ssa_ag.employee_id IS NOT NULL)
@@ -219,6 +223,18 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       ) titular_po ON TRUE
       LEFT JOIN turnos t ON t.id = titular_po.tipo_turno_id
       LEFT JOIN operational_zones oz ON oz.id = COALESCE(eoa.zona_operativa_id, titular_po.zona_operativa_id)
+      -- Vacaciones activas hoy (no incluye programadas futuras ni canceladas)
+      LEFT JOIN LATERAL (
+        SELECT er.tipo_evento, er.fecha, er.fecha_fin
+        FROM eventos_rrhh er
+        WHERE er.employee_id = e.id
+          AND er.tipo_evento IN ('vacaciones', 'vacaciones_trabajadas')
+          AND er.estado NOT IN ('anulado', 'cancelado')
+          AND er.fecha::date <= CURRENT_DATE
+          AND (er.fecha_fin IS NULL OR er.fecha_fin >= CURRENT_DATE)
+        ORDER BY er.created_at DESC
+        LIMIT 1
+      ) vac_activa ON TRUE
       WHERE e.estado_laboral IN ('activo', 'suspendido', 'licencia')
         AND COALESCE(e.tipo_personal, 'guardia') = 'guardia'
         AND (
@@ -375,8 +391,14 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
     const enDescanso:       any[] = [];
     const suspendidos:      any[] = [];
     const faltando:         any[] = [];
+    const enVacaciones:     any[] = [];
 
     for (const a of agentes) {
+      // Vacaciones activas tienen prioridad sobre la categoría de ciclo
+      if (a.vacacion_activa_tipo) {
+        enVacaciones.push(a);
+        continue;
+      }
       switch (a.categoria) {
         case 'en_puesto':   enPuesto.push(a);    break;
         case 'en_ssa':      enSSA.push(a);        break;
@@ -503,6 +525,7 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       enDescanso,
       suspendidos,
       faltando,
+      enVacaciones,
       supervisores: supervisoresEnriquecidos,
       jefes_servicio: jefesServicioEnriquecidos,
       fecha_hoy: hoy,

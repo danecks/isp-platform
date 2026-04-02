@@ -2378,5 +2378,57 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SP-01 servicios_programados_v — error (no bloqueante)");
   }
 
+  // ── VAC-01: Generar alertas de aniversario de vacaciones (30/15/7 días) ─────
+  try {
+    const { rows: proximosAniversarios } = await pool.query(`
+      SELECT
+        e.id AS employee_id,
+        e.nombre_completo,
+        (e.fecha_ingreso + INTERVAL '1 year')::date AS fecha_aniversario,
+        ((e.fecha_ingreso + INTERVAL '1 year')::date - CURRENT_DATE)::int AS dias_restantes
+      FROM employees e
+      WHERE e.estado_laboral = 'activo'
+        AND e.fecha_ingreso IS NOT NULL
+        AND (e.fecha_ingreso + INTERVAL '1 year')::date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'
+    `);
+
+    let alertasGeneradas = 0;
+    for (const emp of proximosAniversarios) {
+      const d = emp.dias_restantes;
+      if (![7, 15, 30].includes(d)) continue;
+
+      // No duplicar: verificar si ya existe alerta activa del mismo tipo/empleado para esta fecha
+      const { rows: existe } = await pool.query(`
+        SELECT id FROM rrhh_alertas
+        WHERE employee_id = $1
+          AND tipo = 'aniversario_vacaciones'
+          AND estado != 'resuelta'
+          AND datos_clave LIKE $2
+      `, [emp.employee_id, `%${emp.fecha_aniversario}%`]);
+
+      if (existe.length > 0) continue;
+
+      const prioridad = d <= 7 ? "alta" : d <= 15 ? "media" : "baja";
+      const sugerencia = `${emp.nombre_completo} cumple 1 año el ${emp.fecha_aniversario} (en ${d} días). Programar vacaciones.`;
+
+      await pool.query(`
+        INSERT INTO rrhh_alertas (employee_id, employee_nombre, tipo, prioridad, estado, datos_clave, sugerencia)
+        VALUES ($1, $2, 'aniversario_vacaciones', $3, 'nueva', $4, $5)
+      `, [
+        emp.employee_id,
+        emp.nombre_completo,
+        prioridad,
+        JSON.stringify({ fecha_aniversario: emp.fecha_aniversario, dias_restantes: d }),
+        sugerencia,
+      ]);
+      alertasGeneradas++;
+    }
+    if (alertasGeneradas > 0) {
+      logger.info({ alertasGeneradas }, "VAC-01: alertas de aniversario de vacaciones generadas");
+    }
+  } catch (err) {
+    logger.warn({ err }, "VAC-01: error al generar alertas de aniversario (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

@@ -1,0 +1,131 @@
+4"}
+Vamos a implementar el manejo real de vacaciones en ISPSA considerando tanto la ley laboral de Guatemala como la operación real de seguridad.
+
+---
+
+## 1. Base legal
+
+Según el Código de Trabajo de Guatemala:
+
+- el colaborador tiene derecho a 15 días hábiles de vacaciones
+- después de 1 año de trabajo continuo
+
+---
+
+## 2. Elegibilidad
+
+Implementar lógica de elegibilidad:
+
+### Regla base:
+- 1 año calendario desde fecha de ingreso
+
+### Adicional:
+- mostrar alertas si el colaborador tiene muchas faltas (ej: >15 días)
+
+No bloquear automáticamente — RRHH decide.
+
+---
+
+## 3. Alertas anticipadas
+
+Crear alerta automática:
+
+- colaboradores que cumplirán 1 año en:
+  - 30 días
+  - 15 días
+  - 7 días
+
+Vista en panel RRHH.
+
+---
+
+## 4. Tipos de vacaciones
+
+Crear estados:
+
+- vacaciones (descanso real)
+- vacaciones_programadas (futuro)
+- vacaciones_trabajadas (trabaja pero en período de vacaciones)
+
+---
+
+## 5. Pizarrón operativo
+
+### vacaciones:
+- mostrar como ausente
+- color distinto (ej: morado)
+- puesto → descubierto
+
+### vacaciones_trabajadas:
+- aparece trabajando
+- pero con badge:
+  "Vacaciones trabajadas"
+
+---
+
+## 6. Pool y planificación
+
+Agente en:
+- vacaciones → no aparece como disponible
+- vacaciones_trabajadas → sí aparece como trabajando
+
+---
+
+## 7. Planilla
+
+Definir comportamiento configurable:
+
+- vacaciones normales → pago normal
+- vacaciones trabajadas:
+  opción A:
+    no consume vacaciones
+  opción B:
+    consume vacaciones
+
+Dejar configurable.
+
+---
+
+## 8. No romper
+
+No afectar:
+- turnos
+- pool
+- pool futuro
+- SSA
+- RRHH
+- pre-planilla
+- planilla
+
+---
+
+## 9. Validación
+
+Probar:
+
+1. colaborador cumple 1 año
+2. aparece en alertas
+3. se programan vacaciones
+4. aparece en pizarrón
+5. puesto queda descubierto
+6. caso vacaciones trabajadas
+7. se muestra badge correctamente
+8. planilla lo maneja correctamente
+
+---
+
+## 10. Documentación
+
+Explicar:
+
+- cómo se calcula elegibilidad
+- cómo se manejan faltas
+- diferencia entre vacaciones y descanso de turno
+- cómo funciona vacaciones trabajadas
+- cómo se refleja en operación y planilla
+
+---
+
+Muy importante:
+
+quiero que el sistema permita a RRHH y Operaciones coordinar vacaciones de forma realista, incluyendo casos donde el colaborador decide trabajar su período de vacacion

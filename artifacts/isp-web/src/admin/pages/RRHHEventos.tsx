@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import { AdminLayout } from "../layout/AdminLayout";
@@ -9,8 +9,9 @@ import {
   Shield, Calendar, BookOpen, Ban, XCircle,
   AlertCircle, ChevronDown, Plus,
   ShieldAlert, ShieldCheck, ShieldOff, BarChart2,
-  TrendingUp, ArrowUpRight, Minus, Users2,
+  TrendingUp, ArrowUpRight, Minus, Users2, Palmtree,
 } from "lucide-react";
+import VacacionesTab from "./VacacionesTab";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import type { EventoRrhh } from "@/lib/pdfRrhh";
@@ -711,6 +712,7 @@ export default function RRHHEventos() {
   const qc = useQueryClient();
   const { currentUser } = useAuth();
 
+  const [paginaActiva, setPaginaActiva] = useState<"eventos" | "vacaciones">("eventos");
   const [filtroTipo, setFiltroTipo] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
   const [busqueda, setBusqueda] = useState("");
@@ -870,29 +872,63 @@ export default function RRHHEventos() {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <ClipboardList className="w-5 h-5 text-purple-400" />
-              <h1 className="text-xl font-bold text-white">Eventos RRHH</h1>
+              <h1 className="text-xl font-bold text-white">RRHH</h1>
             </div>
             <p className="text-sm text-white/40">
-              Faltas y suspensiones · boleta de descuento · acta administrativa · reversión con auditoría
+              Eventos disciplinarios · vacaciones · documentos laborales
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => { refetch(); qc.invalidateQueries({ queryKey: ["rrhh-stats"] }); }}
-              className="flex items-center gap-1.5 px-3 py-2 bg-white/5 hover:bg-white/8 border border-white/10 rounded-xl text-xs text-white/50 hover:text-white transition-all"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              Actualizar
-            </button>
-            <button
-              onClick={() => setModalNuevo(true)}
-              className="flex items-center gap-1.5 px-3 py-2 bg-purple-600 hover:bg-purple-500 rounded-xl text-xs font-semibold text-white transition-all"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Nuevo evento
-            </button>
-          </div>
+          {paginaActiva === "eventos" && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { refetch(); qc.invalidateQueries({ queryKey: ["rrhh-stats"] }); }}
+                className="flex items-center gap-1.5 px-3 py-2 bg-white/5 hover:bg-white/8 border border-white/10 rounded-xl text-xs text-white/50 hover:text-white transition-all"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Actualizar
+              </button>
+              <button
+                onClick={() => setModalNuevo(true)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-purple-600 hover:bg-purple-500 rounded-xl text-xs font-semibold text-white transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Nuevo evento
+              </button>
+            </div>
+          )}
         </div>
+
+        {/* ── Tabs principales ───────────────────────────────────────────── */}
+        <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-xl p-1 w-fit">
+          <button
+            onClick={() => setPaginaActiva("eventos")}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+              paginaActiva === "eventos"
+                ? "bg-purple-600 text-white shadow"
+                : "text-white/40 hover:text-white/70"
+            }`}
+          >
+            <ClipboardList className="w-4 h-4" />
+            Eventos RRHH
+          </button>
+          <button
+            onClick={() => setPaginaActiva("vacaciones")}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+              paginaActiva === "vacaciones"
+                ? "bg-teal-600 text-white shadow"
+                : "text-white/40 hover:text-white/70"
+            }`}
+          >
+            <Palmtree className="w-4 h-4" />
+            Vacaciones
+          </button>
+        </div>
+
+        {/* ── Contenido del tab de Vacaciones ────────────────────────────── */}
+        {paginaActiva === "vacaciones" && <VacacionesTab />}
+
+        {/* ── Todo lo siguiente solo se muestra en tab Eventos ───────────── */}
+        {paginaActiva === "eventos" && (<React.Fragment>
 
         {/* ── Stats ──────────────────────────────────────────────────────── */}
         {stats && (
@@ -1132,6 +1168,7 @@ export default function RRHHEventos() {
             </div>
           </>
         )}
+        </React.Fragment>)}
       </div>
 
       {/* ── Modal de anulación ─────────────────────────────────────────── */}

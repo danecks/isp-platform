@@ -241,6 +241,7 @@ interface Pool {
   enDescanso: Agente[];
   suspendidos: Agente[];
   faltando: Agente[];
+  enVacaciones: Agente[];
   supervisores: SupervisorPool[];
   jefes_servicio: JefeServicioPool[];
   fecha_hoy: string;
@@ -4362,7 +4363,7 @@ export default function Operaciones() {
     sedeId: number | null; fecha: string;
   } | null>(null);
   const [modalLiberar, setModalLiberar]              = useState<Puesto | null>(null);
-  const [poolTab, setPoolTab]                        = useState<"disponibles" | "trabajando" | "descansandoCiclo" | "enDescanso" | "suspendidos" | "enPuesto" | "enSSA" | "faltando">("disponibles");
+  const [poolTab, setPoolTab]                        = useState<"disponibles" | "trabajando" | "descansandoCiclo" | "enDescanso" | "suspendidos" | "enPuesto" | "enSSA" | "faltando" | "enVacaciones">("disponibles");
   const [busquedaPool, setBusquedaPool]              = useState("");
   const [puestoContexto, setPuestoContexto]          = useState<Puesto | null>(null);
   const [modalCierre, setModalCierre]                = useState(false);
@@ -5618,6 +5619,7 @@ export default function Operaciones() {
                 { key: "enPuesto"         as const, label: "En puesto",      count: pool?.enPuesto?.length ?? 0,         color: "text-teal-400"   },
                 { key: "enSSA"            as const, label: "En SSA",         count: pool?.enSSA?.length ?? 0,            color: "text-amber-400"  },
                 { key: "suspendidos"      as const, label: "Suspendidos",    count: pool?.suspendidos?.length ?? 0,      color: "text-red-400"    },
+                { key: "enVacaciones"     as const, label: "Vacaciones",      count: pool?.enVacaciones?.length ?? 0,     color: "text-violet-400" },
               ].map(({ key, label, count, color }) => (
                 <button
                   key={key}
@@ -5724,6 +5726,7 @@ export default function Operaciones() {
                  poolTab === "enDescanso"       ? "No hay agentes en licencia" :
                  poolTab === "enPuesto"         ? "Ningún agente está en puesto activo" :
                  poolTab === "enSSA"            ? "Ningún agente cubre un SSA activo" :
+                 poolTab === "enVacaciones"     ? "Ningún agente en vacaciones hoy" :
                  "No hay agentes suspendidos"}
               </div>
             ) : (
@@ -5738,7 +5741,7 @@ export default function Operaciones() {
                         if (isCerrado) return;
                         setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente);
                       }}
-                      disabled={poolTab === "trabajando" || poolTab === "enPuesto" || poolTab === "enSSA" || poolTab === "faltando" || isCerrado}
+                      disabled={poolTab === "trabajando" || poolTab === "enPuesto" || poolTab === "enSSA" || poolTab === "faltando" || poolTab === "enVacaciones" || isCerrado}
                     />
                   </div>
                 ))}
