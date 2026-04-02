@@ -3217,9 +3217,16 @@ function ModalEligeCobertura({
             {esContingencia
               ? <ShieldCheck className="w-4 h-4 text-orange-400" />
               : <Layers className="w-4 h-4 text-primary" />}
-            <h3 className="text-sm font-bold text-white">
+            <h3 className="text-sm font-bold text-white flex-1">
               {esContingencia ? "Cobertura de contingencia" : "¿Cómo registrar esta asignación?"}
             </h3>
+            <button
+              onClick={onCancel}
+              className="text-white/30 hover:text-white/70 transition-colors p-1 rounded-lg hover:bg-white/5"
+              aria-label="Cancelar y cerrar"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
           <p className="text-[11px] text-white/35 mt-1.5">
             <span className="text-white/60 font-medium">{agente.nombre_completo}</span>
@@ -3438,7 +3445,14 @@ function ModalEligeCobertura({
             </div>
 
             <div className="flex gap-2 pt-1">
-              {!esContingencia && (
+              {esContingencia ? (
+                <button
+                  onClick={onCancel}
+                  className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white/80 transition-colors"
+                >
+                  Cancelar
+                </button>
+              ) : (
                 <button
                   onClick={() => setPaso(soloCoberturaPendiente ? "elige" : (hayTitularPrevio ? "titularPrevio" : "detalles"))}
                   className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors"
@@ -3448,7 +3462,7 @@ function ModalEligeCobertura({
               )}
               <button
                 onClick={confirmarConHora}
-                className={`py-2.5 rounded-xl text-sm font-bold text-white transition-colors ${esContingencia ? "w-full bg-orange-600 hover:bg-orange-500" : "flex-1 bg-primary hover:bg-primary/90"}`}
+                className={`py-2.5 rounded-xl text-sm font-bold text-white transition-colors ${esContingencia ? "flex-1 bg-orange-600 hover:bg-orange-500" : "flex-1 bg-primary hover:bg-primary/90"}`}
               >
                 Confirmar cobertura →
               </button>
@@ -5805,7 +5819,7 @@ export default function Operaciones() {
                     </span>
                     {esSeleccionado ? (
                       <span className="text-[8px] font-bold text-violet-200 bg-violet-500/25 border border-violet-400/50 px-1.5 py-0.5 rounded animate-pulse">
-                        ✓ Seleccionado — elige un puesto
+                        ✓ Seleccionado · clic aquí para cancelar
                       </span>
                     ) : estaEnDescansoPool ? (
                       <span className="text-[8px] text-violet-300/70 bg-violet-500/8 border border-violet-500/20 px-1.5 py-0.5 rounded">
@@ -5941,7 +5955,7 @@ export default function Operaciones() {
                     </span>
                     {esSeleccionado ? (
                       <span className="text-[8px] font-bold text-orange-200 bg-orange-500/20 border border-orange-400/40 px-1.5 py-0.5 rounded animate-pulse">
-                        ✓ Seleccionado — elige un puesto
+                        ✓ Seleccionado · clic aquí para cancelar
                       </span>
                     ) : seleccionable ? (
                       <span className="text-[8px] text-orange-300/50 bg-orange-500/6 border border-orange-500/15 px-1.5 py-0.5 rounded">
