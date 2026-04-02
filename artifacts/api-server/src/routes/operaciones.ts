@@ -1224,86 +1224,178 @@ operacionesRouter.get("/operaciones/cierre-hoy", async (req, res) => {
 });
 
 // ─── POST /api/operaciones/cierre ────────────────────────────────────────────
-// Cerrar la fecha activa (solo supervisor/admin)
+// Cerrar la fecha activa o una fecha pasada (retroactivo, solo supervisor/admin).
+//
+// Body:
+//   confirmacion  : string  — "CERRAR DD/MM/YYYY" (fecha a cerrar)
+//   comentario    : string? — Motivo / nota libre
+//   usuario       : string  — Nombre del usuario
+//   usuarioId     : number? — ID del usuario
+//   rol           : string  — Rol del usuario
+//   fecha         : string? — "YYYY-MM-DD". Si no se envía → cierra la fecha activa.
+//                             Si es pasada → cierre retroactivo (requiere admin/supervisor).
+//                             Si es futura → rechazado.
 operacionesRouter.post("/operaciones/cierre", async (req, res) => {
-  const { confirmacion, comentario, usuario, usuarioId, rol } = req.body;
+  const { confirmacion, comentario, usuario, usuarioId, rol, fecha: fechaSolicitada } = req.body;
 
   if (!['admin', 'supervisor'].includes(rol)) {
     return res.status(403).json({ error: 'Solo supervisores y administradores pueden cerrar el día' });
   }
 
   try {
-    const { fechaActivaISO, fechaActivaStr } = await calcFechaActiva();
-    const confirmacionEsperada = `CERRAR ${fechaActivaStr}`;
+    const ahora = new Date();
+    const todayISO = `${ahora.getUTCFullYear()}-${String(ahora.getUTCMonth() + 1).padStart(2, '0')}-${String(ahora.getUTCDate()).padStart(2, '0')}`;
+
+    // ── Determinar fecha a cerrar y si es retroactiva ──────────────────────
+    let fechaACerrarISO: string;
+    let esRetroactivo: boolean;
+
+    if (fechaSolicitada && fechaSolicitada !== todayISO) {
+      if (fechaSolicitada > todayISO) {
+        return res.status(400).json({ error: 'No se puede cerrar una fecha futura' });
+      }
+      // Cierre retroactivo de una fecha pasada
+      const diasAtras = Math.floor(
+        (new Date(todayISO).getTime() - new Date(fechaSolicitada).getTime()) / 86_400_000
+      );
+      // Supervisor puede cerrar hasta 7 días atrás; admin sin límite
+      if (rol === 'supervisor' && diasAtras > 7) {
+        return res.status(403).json({
+          error: `Supervisores solo pueden cerrar hasta 7 días atrás (esta fecha tiene ${diasAtras} días). Contacta a un administrador.`,
+        });
+      }
+      fechaACerrarISO = fechaSolicitada;
+      esRetroactivo = true;
+    } else {
+      // Cierre normal: usar la fecha activa calculada por calcFechaActiva()
+      const { fechaActivaISO } = await calcFechaActiva();
+      fechaACerrarISO = fechaActivaISO;
+      esRetroactivo = false;
+    }
+
+    const fechaACerrarStr = isoADDMMYYYY(fechaACerrarISO);
+
+    // ── Validar confirmación ────────────────────────────────────────────────
+    const confirmacionEsperada = `CERRAR ${fechaACerrarStr}`;
     if (confirmacion !== confirmacionEsperada) {
       return res.status(400).json({ error: `Texto incorrecto. Escribe exactamente: ${confirmacionEsperada}` });
     }
 
+    // ── Verificar que no esté ya cerrado ───────────────────────────────────
     const { rows: existente } = await pool.query(
       `SELECT estado FROM cierre_operativo_diario WHERE fecha = $1`,
-      [fechaActivaISO]
+      [fechaACerrarISO]
     );
     if (existente[0]?.estado === 'cerrado') {
-      return res.status(400).json({ error: 'El día operativo ya está cerrado' });
+      return res.status(400).json({ error: `El día ${fechaACerrarStr} ya está cerrado` });
     }
 
-    // Snapshot de cobertura — incluye campos visuales para reproducir el pizarrón histórico
-    const { rows: puestos } = await pool.query(`
-      SELECT po.id, po.nombre, po.cliente_nombre, po.cliente_id, po.estado,
-             po.agente_id, po.agente_nombre, po.titular_employee_id, po.titular_nombre,
-             po.turno, po.horario, po.jornada, po.notas, po.orden,
-             po.zona_operativa_id, oz.nombre AS zona_nombre,
-             po.sede_id, cs.nombre AS sede_nombre
-      FROM puestos_operativos po
-      LEFT JOIN operational_zones oz ON oz.id = po.zona_operativa_id
-      LEFT JOIN client_sedes cs ON cs.id = po.sede_id
-      WHERE po.activo = TRUE
-      ORDER BY po.cliente_nombre, po.orden, po.nombre
-    `);
-    const totalPuestos        = puestos.length;
-    const cubiertos           = puestos.filter((p: any) => p.estado === 'cubierto').length;
-    const descubiertos        = totalPuestos - cubiertos;
-    const cubiertosPorTitular = puestos.filter((p: any) => p.agente_id && p.agente_id === p.titular_employee_id).length;
-    const cubiertosPorRelevo  = puestos.filter((p: any) => p.agente_id && p.agente_id !== p.titular_employee_id).length;
+    // ── Snapshot de cobertura ──────────────────────────────────────────────
+    // Retroactivo: reconstruir desde cobertura_segmentos de esa fecha
+    // Normal: estado actual del pizarrón
+    let snapshotPuestos: any[];
 
-    const { rows: movHoy } = await pool.query(`
-      SELECT tipo, motivo, agente_saliente_nombre, agente_entrante_nombre, puesto_nombre, cliente_nombre, fecha_hora
+    if (esRetroactivo) {
+      // Reconstruir puestos cubiertos desde segmentos históricos de la fecha
+      const { rows: segSnap } = await pool.query(`
+        SELECT DISTINCT ON (cs.puesto_id)
+               po.id, po.nombre, po.cliente_nombre, po.cliente_id,
+               'cubierto'           AS estado,
+               cs.employee_id       AS agente_id,
+               cs.empleado_nombre   AS agente_nombre,
+               po.titular_employee_id, po.titular_nombre,
+               po.turno, po.horario, po.jornada, po.notas, po.orden,
+               po.zona_operativa_id, oz.nombre AS zona_nombre,
+               po.sede_id,          sedes.nombre AS sede_nombre
+        FROM cobertura_segmentos cs
+        JOIN puestos_operativos po   ON po.id = cs.puesto_id
+        LEFT JOIN operational_zones oz ON oz.id = po.zona_operativa_id
+        LEFT JOIN client_sedes sedes   ON sedes.id = po.sede_id
+        WHERE cs.fecha = $1
+        ORDER BY cs.puesto_id, cs.hora_inicio
+      `, [fechaACerrarISO]);
+      snapshotPuestos = segSnap;
+    } else {
+      // Estado actual del pizarrón
+      const { rows: puestoSnap } = await pool.query(`
+        SELECT po.id, po.nombre, po.cliente_nombre, po.cliente_id, po.estado,
+               po.agente_id, po.agente_nombre, po.titular_employee_id, po.titular_nombre,
+               po.turno, po.horario, po.jornada, po.notas, po.orden,
+               po.zona_operativa_id, oz.nombre AS zona_nombre,
+               po.sede_id, sedes.nombre AS sede_nombre
+        FROM puestos_operativos po
+        LEFT JOIN operational_zones oz  ON oz.id = po.zona_operativa_id
+        LEFT JOIN client_sedes sedes    ON sedes.id = po.sede_id
+        WHERE po.activo = TRUE
+        ORDER BY po.cliente_nombre, po.orden, po.nombre
+      `);
+      snapshotPuestos = puestoSnap;
+    }
+
+    const totalPuestos        = snapshotPuestos.length;
+    const cubiertos           = snapshotPuestos.filter((p: any) => p.estado === 'cubierto').length;
+    const descubiertos        = totalPuestos - cubiertos;
+    const cubiertosPorTitular = snapshotPuestos.filter((p: any) => p.agente_id && p.agente_id === p.titular_employee_id).length;
+    const cubiertosPorRelevo  = snapshotPuestos.filter((p: any) => p.agente_id && p.agente_id !== p.titular_employee_id).length;
+
+    // Movimientos de la fecha cerrada (históricos)
+    const { rows: movDia } = await pool.query(`
+      SELECT tipo, motivo, agente_saliente_nombre, agente_entrante_nombre,
+             puesto_nombre, cliente_nombre, fecha_hora
       FROM movimientos_operativos
       WHERE DATE(fecha_hora AT TIME ZONE 'America/Guatemala') = $1::date
       ORDER BY fecha_hora
-    `, [fechaActivaISO]);
-    const ausencias = movHoy.filter((m: any) => m.motivo === 'falta').length;
+    `, [fechaACerrarISO]);
+    const ausencias = movDia.filter((m: any) => m.motivo === 'falta').length;
 
     const resumen = {
       totalPuestos, cubiertos, descubiertos,
       cubiertosPorTitular, cubiertosPorRelevo,
       ausencias, horasExtra: 0,
-      snapshotPuestos: puestos,
-      movimientosHoy:  movHoy,
-      fechaCierre:     new Date().toISOString(),
+      snapshotPuestos,
+      movimientosHoy:   movDia,
+      fechaCierre:      new Date().toISOString(),
+      retroactivo:      esRetroactivo,
+      cerradoPor:       usuario,
+      cerradoEn:        new Date().toISOString(),
     };
 
     const { rows: cierreRows } = await pool.query(`
       INSERT INTO cierre_operativo_diario
-        (fecha, estado, resumen_json, cerrado_por_id, cerrado_por, cerrado_en, comentario)
-      VALUES ($1, 'cerrado', $2, $3, $4, NOW(), $5)
+        (fecha, estado, resumen_json, cerrado_por_id, cerrado_por, cerrado_en, comentario, retroactivo)
+      VALUES ($1, 'cerrado', $2, $3, $4, NOW(), $5, $6)
       ON CONFLICT (fecha) DO UPDATE
-        SET estado='cerrado', resumen_json=$2, cerrado_por_id=$3,
-            cerrado_por=$4, cerrado_en=NOW(), comentario=$5, updated_at=NOW()
+        SET estado        = 'cerrado',
+            resumen_json  = $2,
+            cerrado_por_id = $3,
+            cerrado_por   = $4,
+            cerrado_en    = NOW(),
+            comentario    = $5,
+            retroactivo   = $6,
+            updated_at    = NOW()
       RETURNING *
-    `, [fechaActivaISO, JSON.stringify(resumen), usuarioId ?? null, usuario ?? 'sistema', comentario ?? null]);
+    `, [fechaACerrarISO, JSON.stringify(resumen), usuarioId ?? null, usuario ?? 'sistema', comentario ?? null, esRetroactivo]);
+
+    // ── Auditoría ──────────────────────────────────────────────────────────
+    const accionAudit  = esRetroactivo ? 'cerrar_retroactivo' : 'cerrar';
+    const detalleAudit = esRetroactivo
+      ? `Cierre RETROACTIVO de ${fechaACerrarStr} realizado por ${usuario ?? 'sistema'} el ${isoADDMMYYYY(todayISO)}.${comentario ? ` Motivo: ${comentario}` : ''}`
+      : `Día ${fechaACerrarStr} cerrado.${comentario ? ` Comentario: ${comentario}` : ''}`;
 
     await pool.query(`
       INSERT INTO cierre_auditoria (cierre_id, accion, user_id, user_nombre, detalle)
-      VALUES ($1, 'cerrar', $2, $3, $4)
-    `, [cierreRows[0].id, usuarioId ?? null, usuario ?? 'sistema',
-        `Día ${fechaActivaStr} cerrado.${comentario ? ` Comentario: ${comentario}` : ''}`]);
+      VALUES ($1, $2, $3, $4, $5)
+    `, [cierreRows[0].id, accionAudit, usuarioId ?? null, usuario ?? 'sistema', detalleAudit]);
 
-    // ── Generar novedades de nómina desde segmentos de cobertura ───────────
-    const novedadesGeneradas = await generarNovedades(fechaActivaISO, cierreRows[0].id);
+    // ── Generar novedades de nómina desde segmentos de cobertura ──────────
+    const novedadesGeneradas = await generarNovedades(fechaACerrarISO, cierreRows[0].id);
 
-    logger.info({ usuario, fecha: fechaActivaStr, novedadesGeneradas }, "Día operativo cerrado");
-    res.json({ ok: true, cierre: cierreRows[0], resumen, novedadesGeneradas });
+    const mensaje = esRetroactivo
+      ? `Cierre retroactivo de ${fechaACerrarStr} completado. ${novedadesGeneradas} novedad(es) de nómina generada(s).`
+      : `Día ${fechaACerrarStr} cerrado. ${novedadesGeneradas} novedad(es) de nómina generada(s).`;
+
+    logger.info({ usuario, fecha: fechaACerrarStr, esRetroactivo, novedadesGeneradas }, "Día operativo cerrado");
+    res.json({ ok: true, cierre: cierreRows[0], resumen, novedadesGeneradas, retroactivo: esRetroactivo, mensaje });
   } catch (err) {
     logger.error({ err }, "POST /operaciones/cierre error");
     res.status(500).json({ error: "Error al cerrar el día" });
@@ -1385,6 +1477,7 @@ operacionesRouter.get("/operaciones/cierres", async (req, res) => {
         TO_CHAR(cod.reabierto_en AT TIME ZONE 'America/Guatemala', 'DD/MM/YY HH24:MI') AS reabierto_en_str,
         cod.motivo_reapertura,
         cod.comentario,
+        cod.retroactivo,
         (cod.resumen_json->>'totalPuestos')::int  AS total_puestos,
         (cod.resumen_json->>'cubiertos')::int     AS cubiertos,
         (cod.resumen_json->>'descubiertos')::int  AS descubiertos,

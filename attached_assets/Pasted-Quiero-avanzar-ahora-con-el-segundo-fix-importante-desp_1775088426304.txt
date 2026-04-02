@@ -1,0 +1,106 @@
+Quiero avanzar ahora con el segundo fix importante después de corregir el bug crítico de pre-planilla:
+
+Cierre operativo retroactivo
+
+No quiero romper nada de lo que ya funciona.
+
+Problema actual
+
+Hoy POST /api/operaciones/cierre usa la fecha activa del sistema y solo permite cerrar el día actual.
+
+Eso en operación real es insuficiente, porque si Operaciones olvida cerrar un día, ya no puede recuperarlo desde la UI ni por flujo normal del sistema.
+
+En la prueba de Ingrup, para seguir avanzando hubo que insertar cierres directo en base de datos, y eso no puede ser la solución real.
+
+⸻
+
+Objetivo
+
+Permitir cierre operativo retroactivo, de forma controlada y segura, para fechas pasadas.
+
+⸻
+
+1. Endpoint de cierre
+
+Actualizar POST /api/operaciones/cierre para que acepte una fecha opcional en el body.
+
+Regla esperada
+	•	si no se envía fecha → sigue cerrando el día actual como hoy
+	•	si se envía fecha → intenta cerrar esa fecha específica
+
+⸻
+
+2. Restricción de permisos
+
+El cierre retroactivo no debe quedar abierto a cualquiera.
+
+Quiero que solo puedan hacerlo:
+	•	admin
+	•	supervisor
+
+Si otro rol lo intenta, debe fallar con mensaje claro.
+
+⸻
+
+3. Auditoría
+
+Cada cierre retroactivo debe dejar trazabilidad clara:
+	•	fecha cerrada
+	•	quién hizo el cierre
+	•	cuándo lo hizo
+	•	si fue retroactivo o no
+	•	comentario si aplica
+
+⸻
+
+4. Generación de novedades
+
+Al cerrar una fecha retroactiva, el sistema debe:
+	•	generar las novedades correspondientes a esa fecha
+	•	igual que en un cierre normal
+	•	sin contaminar otras fechas
+
+⸻
+
+5. No romper el cierre actual
+
+No romper:
+	•	cierre de hoy
+	•	validaciones existentes
+	•	confirmación textual
+	•	overlay de día cerrado
+	•	reabrir día
+	•	auditoría actual
+
+⸻
+
+6. Casos a probar
+
+Quiero que valides al menos:
+	1.	cierre normal del día actual
+	2.	cierre retroactivo de un día pasado
+	3.	cierre retroactivo por admin
+	4.	cierre retroactivo por supervisor
+	5.	intento de cierre retroactivo por rol no autorizado
+	6.	generación correcta de novedades de la fecha retroactiva
+
+⸻
+
+7. UI / flujo
+
+Si hace falta, preparar la UI para que en el futuro pueda elegirse una fecha pasada desde Operaciones o desde un módulo de cierres.
+
+No hace falta hacer toda la pantalla perfecta ahorita, pero sí dejar el backend y flujo listos.
+
+⸻
+
+8. Documentación
+
+Explica claramente:
+	•	cómo funciona el cierre retroactivo
+	•	qué permisos lo controlan
+	•	cómo queda auditado
+	•	cómo impacta las novedades de nómina
+
+Muy importante:
+quiero eliminar la dependencia de tocar la base de datos manualmente cuando un día no se cerró a tiempo, pero sin debilitar el control operativo ni la auditoría.

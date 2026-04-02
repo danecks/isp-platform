@@ -1222,6 +1222,7 @@ Por favor ingresa al sistema o responde para continuar.',
         cerrado_por       VARCHAR(100),
         cerrado_en        TIMESTAMPTZ,
         comentario        TEXT,
+        retroactivo       BOOLEAN NOT NULL DEFAULT FALSE,
         reabierto_por_id  INTEGER,
         reabierto_por     VARCHAR(100),
         reabierto_en      TIMESTAMPTZ,
@@ -1229,6 +1230,10 @@ Por favor ingresa al sistema o responde para continuar.',
         created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
+    `);
+    await pool.query(`
+      ALTER TABLE cierre_operativo_diario
+        ADD COLUMN IF NOT EXISTS retroactivo BOOLEAN NOT NULL DEFAULT FALSE
     `);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS cierre_auditoria (
