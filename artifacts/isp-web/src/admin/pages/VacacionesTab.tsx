@@ -141,6 +141,7 @@ function ModalNuevoVacaciones({
 
   const [empleadoId, setEmpleadoId] = useState(initialEmpleadoId ? String(initialEmpleadoId) : "");
   const [busEmp, setBusEmp] = useState("");
+  const [empFijo, setEmpFijo] = useState(!!initialEmpleadoId);
   const [tipo, setTipo] = useState<"vacaciones" | "vacaciones_programadas" | "vacaciones_trabajadas">("vacaciones");
   const [fechaInicio, setFechaInicio] = useState(() => new Date().toISOString().slice(0, 10));
   const [fechaFin, setFechaFin] = useState("");
@@ -232,30 +233,57 @@ function ModalNuevoVacaciones({
 
           {/* Empleado */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-white/50">
-              Empleado <span className="text-red-400">*</span>
-            </label>
-            <input
-              type="text"
-              placeholder="Buscar por nombre..."
-              value={busEmp}
-              onChange={(e) => { setBusEmp(e.target.value); setEmpleadoId(""); }}
-              className={inputCls}
-            />
-            <select
-              value={empleadoId}
-              onChange={(e) => setEmpleadoId(e.target.value)}
-              className={inputCls}
-              required
-            >
-              <option value="">— selecciona un empleado —</option>
-              {filtrados.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.nombre_completo}
-                  {e.es_elegible ? " ✓" : " (aún no elegible)"}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-white/50">
+                Empleado <span className="text-red-400">*</span>
+              </label>
+              {empFijo && (
+                <button
+                  type="button"
+                  onClick={() => { setEmpFijo(false); setEmpleadoId(""); setBusEmp(""); }}
+                  className="text-[10px] text-white/30 hover:text-white/60 transition-colors"
+                >
+                  Cambiar empleado
+                </button>
+              )}
+            </div>
+
+            {empFijo && empSel ? (
+              /* ── Empleado bloqueado (viene pre-seleccionado desde tarjeta) ── */
+              <div className="flex items-center gap-2.5 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5">
+                <User className="w-4 h-4 text-white/30 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-white">{empSel.nombre_completo}</p>
+                  <p className="text-[10px] text-white/30 capitalize">{empSel.tipo_personal?.replace(/_/g, " ")}</p>
+                </div>
+              </div>
+            ) : (
+              /* ── Selector libre ── */
+              <>
+                <input
+                  type="text"
+                  placeholder="Buscar por nombre..."
+                  value={busEmp}
+                  onChange={(e) => { setBusEmp(e.target.value); setEmpleadoId(""); }}
+                  className={inputCls}
+                />
+                <select
+                  value={empleadoId}
+                  onChange={(e) => setEmpleadoId(e.target.value)}
+                  className={inputCls}
+                  required
+                >
+                  <option value="">— selecciona un empleado —</option>
+                  {filtrados.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.nombre_completo}
+                      {e.es_elegible ? " ✓" : " (aún no elegible)"}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+
             {empSel && (
               <div className={`text-[11px] px-3 py-1.5 rounded-lg border ${
                 empSel.es_elegible
