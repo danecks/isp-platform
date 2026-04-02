@@ -292,12 +292,26 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
           WHEN e.estado_laboral = 'licencia'   THEN 'licencia'
           WHEN e.estado_laboral = 'suspendido' THEN 'suspendido'
           ELSE 'activo'
-        END AS estado_display
+        END AS estado_display,
+        veh_zona.vehiculos_zona
       FROM employees e
       LEFT JOIN employee_operational_assignments eoa ON eoa.employee_id = e.id AND eoa.activa = TRUE
       LEFT JOIN operational_zones oz_eoa   ON oz_eoa.id  = eoa.zona_operativa_id
       LEFT JOIN operational_zones oz_formal ON oz_formal.supervisor_employee_id = e.id
       LEFT JOIN turnos t ON t.id = eoa.tipo_turno_id
+      LEFT JOIN LATERAL (
+        SELECT json_agg(json_build_object(
+          'id',     v.id,
+          'placa',  v.placa,
+          'tipo',   v.tipo,
+          'marca',  v.marca,
+          'color',  v.color,
+          'estado', v.estado
+        ) ORDER BY v.id) AS vehiculos_zona
+        FROM vehiculos v
+        WHERE v.zona_operativa_id = COALESCE(oz_formal.id, eoa.zona_operativa_id)
+          AND v.activo = TRUE
+      ) veh_zona ON TRUE
       WHERE COALESCE(e.tipo_personal, 'guardia') = 'supervisor'
         AND e.estado_laboral IN ('activo', 'licencia', 'suspendido')
       ORDER BY COALESCE(oz_formal.id, eoa.zona_operativa_id) NULLS LAST, e.nombre_completo

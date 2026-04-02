@@ -6063,6 +6063,24 @@ export default function Operaciones() {
                       </span>
                     ) : null}
                   </div>
+                  {/* Vehículos asignados a la zona del supervisor */}
+                  {(sv as any).vehiculos_zona?.length > 0 && (
+                    <div className="flex flex-wrap gap-1 border-t border-white/5 pt-1.5">
+                      {((sv as any).vehiculos_zona as Array<{ id: number; placa: string; tipo: string; marca: string; color: string; estado: string }>).map((veh) => (
+                        <span
+                          key={veh.id}
+                          className={`flex items-center gap-1 text-[8px] font-bold px-1.5 py-0.5 rounded border ${
+                            veh.estado === "activo"
+                              ? "bg-sky-500/10 border-sky-500/25 text-sky-300"
+                              : "bg-white/4 border-white/8 text-white/30 line-through"
+                          }`}
+                          title={`${veh.marca} · ${veh.color} · ${veh.estado}`}
+                        >
+                          🚗 {veh.placa}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             };
