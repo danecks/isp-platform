@@ -1,0 +1,106 @@
+Quiero agregar un motor de búsqueda por colaborador dentro del Pizarrón Operativo, pero sin romper ni alterar el funcionamiento actual.
+
+## Objetivo
+Que si busco un colaborador, el pizarrón me muestre únicamente el puesto o tarjeta donde está ese colaborador en la fecha consultada.
+
+Muy importante:
+esto debe ser solo un filtro visual / de búsqueda.
+No debe afectar:
+- asignaciones
+- cobertura
+- pool
+- estados
+- lógica operativa
+
+---
+
+## 1. Qué debe hacer la búsqueda
+Si escribo el nombre de un colaborador, por ejemplo:
+- Daniel
+- Pedro
+- Ana
+- EMP-0005
+
+quiero que el pizarrón filtre visualmente y muestre solo:
+- el cliente
+- la sede
+- el puesto
+- la tarjeta
+donde ese colaborador está asignado en esa fecha.
+
+---
+
+## 2. Qué debe considerar la búsqueda
+La búsqueda debe encontrar al colaborador si aparece como:
+
+- agente asignado actual del puesto
+- titular de ese puesto para la fecha consultada
+- relevo si está cubriendo
+- cobertura futura si estoy en planificación
+- supervisor o jefe de servicio si más adelante aplica en su panel
+
+No quiero una búsqueda limitada solo a un campo.
+
+---
+
+## 3. Comportamiento visual
+Cuando hay un término de búsqueda activo:
+- el pizarrón muestra solo el resultado relacionado con ese colaborador
+- o, si hay varios resultados, solo esos resultados
+- el resto del pizarrón se oculta temporalmente por filtro
+
+También quiero:
+- botón X o “limpiar búsqueda”
+- al limpiar, vuelve el pizarrón normal completo
+
+---
+
+## 4. Si no encuentra nada
+Si no existe coincidencia, mostrar mensaje claro:
+- “No se encontró ese colaborador en la fecha actual”
+o equivalente
+
+Pero sin romper el pizarrón.
+
+---
+
+## 5. Sin afectar funcionamiento
+Muy importante:
+esta búsqueda NO debe:
+- mover agentes
+- alterar el pool
+- alterar la cobertura
+- alterar estados
+- cambiar asignaciones
+- cambiar el comportamiento de drag and drop
+
+Debe ser solo una capa de búsqueda / filtro visual.
+
+---
+
+## 6. Dónde aplicarlo
+Quiero que funcione al menos en:
+- Pizarrón Operativo actual
+- Planificación futura, si es posible con la misma lógica
+
+---
+
+## 7. UX
+Quiero un campo de búsqueda simple, visible y rápido.
+No quiero algo complejo.
+
+El jefe de servicio debe poder escribir el nombre del colaborador y ubicarlo rápido.
+
+---
+
+## 8. Validación
+Quiero pruebas donde:
+1. se busque un colaborador asignado a un puesto y aparezca solo ese puesto
+2. se busque un colaborador en relevo y aparezca su puesto actual
+3. se limpie la búsqueda y regrese el pizarrón normal
+4. no se rompa ninguna función actual del pizarrón
+
+---
+
+## 9. Resultado esperado
+Quiero que el pizarrón tenga una búsqueda rápida por colaborador para ubicarlo fácilmente sin afectar la lógica operativa existente.

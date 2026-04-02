@@ -23,7 +23,7 @@ import {
   ChevronRight, ChevronLeft, Info, Building2, Circle, GripVertical,
   UserMinus, UserPlus, UserCheck, XCircle, RotateCcw, FileText,
   Lock, Unlock, Calendar, CalendarDays, AlertCircle, CheckSquare,
-  Layers, Timer, Moon, Settings2, Repeat, Sun, ExternalLink,
+  Layers, Timer, Moon, Settings2, Repeat, Sun, ExternalLink, Search,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -4569,6 +4569,7 @@ export default function Operaciones() {
   const [modalLiberar, setModalLiberar]              = useState<Puesto | null>(null);
   const [poolTab, setPoolTab]                        = useState<"disponibles" | "trabajando" | "descansandoCiclo" | "enDescanso" | "suspendidos" | "enPuesto" | "enSSA" | "faltando" | "enVacaciones">("disponibles");
   const [busquedaPool, setBusquedaPool]              = useState("");
+  const [busquedaPersona, setBusquedaPersona]        = useState("");
   const [puestoContexto, setPuestoContexto]          = useState<Puesto | null>(null);
   const [modalCierre, setModalCierre]                = useState(false);
   const [modalReabrir, setModalReabrir]              = useState(false);
@@ -5252,16 +5253,33 @@ export default function Operaciones() {
 
   // ── Tablero filtrado ──────────────────────────────────────────────────────
   const tableroFiltrado: typeof tablero = (() => {
-    if (!filtroZona && !filtroCliente) return tablero;
-    return tablero
-      .filter((c) => !filtroCliente || String(c.clienteId) === filtroCliente)
-      .map((c) => ({
-        ...c,
-        puestos: filtroZona
-          ? c.puestos.filter((p) => String(p.zona_operativa_id) === filtroZona)
-          : c.puestos,
-      }))
-      .filter((c) => c.puestos.length > 0);
+    let result = tablero;
+    if (filtroCliente) {
+      result = result.filter((c) => String(c.clienteId) === filtroCliente);
+    }
+    if (filtroZona) {
+      result = result
+        .map((c) => ({ ...c, puestos: c.puestos.filter((p) => String(p.zona_operativa_id) === filtroZona) }))
+        .filter((c) => c.puestos.length > 0);
+    }
+    if (busquedaPersona.trim()) {
+      const q = busquedaPersona.toLowerCase().trim();
+      result = result
+        .map((c) => ({
+          ...c,
+          puestos: c.puestos.filter((p) => {
+            const campos: (string | null | undefined)[] = [
+              p.agente_nombre,
+              p.titular_nombre,
+              planFuturoPorPuesto[p.id]?.relevo_nombre,
+              planFuturoPorPuesto[p.id]?.titular_ausente_nombre,
+            ];
+            return campos.some((v) => v && v.toLowerCase().includes(q));
+          }),
+        }))
+        .filter((c) => c.puestos.length > 0);
+    }
+    return result;
   })();
 
   // ── Stats generales ───────────────────────────────────────────────────────
@@ -5528,8 +5546,41 @@ export default function Operaciones() {
                   Mostrando {tableroFiltrado.flatMap((c) => c.puestos).length} puestos
                 </span>
               )}
+
             </div>
           )}
+
+          {/* ── Buscador de colaborador ───────────────────────────────── */}
+          <div className="flex items-center gap-2 shrink-0">
+            <div className={`relative flex items-center transition-all ${busquedaPersona ? "w-72" : "w-52"}`}>
+              <Search className="absolute left-2.5 w-3.5 h-3.5 text-white/25 pointer-events-none" />
+              <input
+                type="text"
+                value={busquedaPersona}
+                onChange={(e) => setBusquedaPersona(e.target.value)}
+                placeholder="Buscar colaborador en el pizarrón…"
+                className={`w-full bg-[#0c1929] border rounded-xl pl-8 pr-8 py-1.5 text-xs text-white placeholder-white/20 outline-none transition-all ${
+                  busquedaPersona ? "border-primary/40 bg-primary/5" : "border-white/8 focus:border-white/20"
+                }`}
+              />
+              {busquedaPersona && (
+                <button
+                  onClick={() => setBusquedaPersona("")}
+                  className="absolute right-2.5 text-white/30 hover:text-white transition-colors"
+                  title="Limpiar búsqueda"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            {busquedaPersona.trim() && (
+              <span className={`text-[11px] font-medium whitespace-nowrap ${tableroFiltrado.length === 0 ? "text-red-400/70" : "text-primary/80"}`}>
+                {tableroFiltrado.length === 0
+                  ? "Sin resultados"
+                  : `${tableroFiltrado.flatMap((c) => c.puestos).length} puesto${tableroFiltrado.flatMap((c) => c.puestos).length !== 1 ? "s" : ""} encontrado${tableroFiltrado.flatMap((c) => c.puestos).length !== 1 ? "s" : ""}`}
+              </span>
+            )}
+          </div>
 
           {/* ── Alerta: pool sin disponibles + puestos descubiertos ─────── */}
           {(pool?.disponibles?.length ?? 0) === 0 && puestosDescubiertos > 0 && !isCerrado && (
