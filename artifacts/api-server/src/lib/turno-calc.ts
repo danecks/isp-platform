@@ -84,6 +84,14 @@ export function calcularEstadoCiclo(
     return calcular24x48(fechaInicioCiclo, fecha);
   }
 
+  // ── 24x72 — Patrón explícito de 30 días (2 titulares complementarios) ───────
+  // ISPSA: NO es ciclo simple de 4 días (1 trabaja + 3 descansa).
+  // Requiere 2 titulares con fecha_inicio_ciclo desplazada 15 días entre sí.
+  // Cada titular trabaja exactamente 15/30 días (50%). Cobertura perfecta: 1 por día.
+  if (tipoCiclo === "24x72") {
+    return calcular24x72Patron30(fechaInicioCiclo, fecha);
+  }
+
   // ── 12h — Ciclo de 7 días: 6 trabaja + 1 descansa ──────────────────────────
   // El turno de 12h NO es un turno diario plano. El agente trabaja 12h por día
   // durante 6 días consecutivos y descansa el séptimo.
@@ -117,8 +125,9 @@ export function calcularEstadoCiclo(
     };
   }
 
-  // ── Turnos de ciclo largo (24x24, 24x72, 8x8, 12x36) ───────────────────────
+  // ── Turnos de ciclo largo (24x24, 8x8, 12x36) ──────────────────────────────
   // Usan módulo simple sobre días desde fecha_inicio_ciclo.
+  // NOTA: 24x72 ya fue interceptado arriba con su patrón especial de 30 días.
   if (!fechaInicioCiclo) {
     return {
       trabaja: true,
@@ -174,6 +183,78 @@ export function calcularEstadoCiclo(
       diasTrabajo,
     };
   }
+}
+
+// ─── Lógica específica 24x72 ────────────────────────────────────────────────
+
+/**
+ * calcular24x72Patron30 — Turno 24x72 real de ISPSA.
+ *
+ * NO es un ciclo simple de 4 días (1 trabaja + 3 descansa).
+ *
+ * Modelo correcto:
+ *   - 2 titulares complementarios por posición operativa.
+ *   - Patrón explícito de 30 días: cada titular trabaja exactamente 15/30 días.
+ *   - Cobertura perfecta: exactamente 1 titular trabaja cada día.
+ *   - T2 usa la MISMA función con fecha_inicio_ciclo = T1.fecha_inicio_ciclo + 15 días.
+ *
+ * Patrón de 30 días (índice 0-29):
+ *   Días  0-14 (T1 lidera): T D D D T D T D T T T D T D T  → 8 trabaja
+ *   Días 15-29 (T2 lidera): D T T T D T D T D D D T D T D  → 7 trabaja para T1
+ *   Total T1: 15/30. Total T2: 15/30. Balanceado.
+ *
+ * Propiedad garantizada: PATRON_30[i] + PATRON_30[(i+15)%30] = 1 para todo i.
+ */
+function calcular24x72Patron30(
+  fechaInicioCiclo: string | Date | null,
+  fecha: string,
+): EstadoCiclo {
+  if (!fechaInicioCiclo) {
+    console.warn(`[turno-calc] ALERTA: turno 24x72 sin fecha_inicio_ciclo para ${fecha}. Fallback "trabaja".`);
+    return {
+      trabaja: true,
+      horasEsperadas: 24,
+      descansoPorCiclo: false,
+      disponibleHE: false,
+      tipoCiclo: "ciclo_bloques",
+    };
+  }
+
+  /**
+   * Patrón base (días 1-15 de T1) provisto por ISPSA:
+   *   T D D D T D T D T T T D T T T
+   * Segunda mitad = complemento exacto de la primera mitad.
+   * La propiedad PATRON_30[i] + PATRON_30[(i+15)%30] = 1 garantiza
+   * que T1 y T2 nunca trabajan el mismo día ni hay brecha de cobertura.
+   */
+  const PATRON_30: readonly number[] = [
+    // Días 0-14: T1 lidera (8 días trabaja)
+    1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1,
+    // Días 15-29: T2 lidera / T1 sigue patrón de T2 (7 días trabaja)
+    0, 1, 1, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0,
+  ];
+
+  const inicioISO = fechaInicioCiclo instanceof Date
+    ? fechaInicioCiclo.toISOString().slice(0, 10)
+    : String(fechaInicioCiclo).slice(0, 10);
+
+  const inicio   = parseFecha(inicioISO);
+  const objetivo = parseFecha(fecha);
+  const diffDias = Math.round((objetivo.getTime() - inicio.getTime()) / 86_400_000);
+
+  const posicion = ((diffDias % 30) + 30) % 30;
+  const trabaja  = PATRON_30[posicion] === 1;
+
+  return {
+    trabaja,
+    horasEsperadas: trabaja ? 24 : 0,
+    descansoPorCiclo: !trabaja,
+    disponibleHE: !trabaja,
+    tipoCiclo: "ciclo_bloques",
+    posicionEnCiclo: posicion,
+    diasCiclo: 30,
+    diasTrabajo: 15,
+  };
 }
 
 // ─── Lógica específica 12h ──────────────────────────────────────────────────
