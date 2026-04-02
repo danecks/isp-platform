@@ -1,0 +1,107 @@
+Quiero corregir el módulo de vehículos de supervisión en ISPSA.
+
+## Problema actual
+Hoy el módulo obliga a seleccionar manualmente quién es el responsable del vehículo.
+
+Eso no es lo que quiero.
+
+## Objetivo
+Quiero que la responsabilidad del vehículo sea automática, heredada desde la operación real.
+
+---
+
+## Lógica correcta
+No quiero asignar manualmente un responsable por vehículo cada vez.
+
+Quiero esta lógica:
+
+1. El vehículo se asigna a una zona operativa
+2. La zona tiene supervisores asignados
+3. Los supervisores trabajan por turno (por ejemplo 24x24 o 12h)
+4. El sistema ya sabe quién de esos supervisores está trabajando hoy
+5. Entonces automáticamente ese supervisor debe quedar como responsable actual del vehículo de esa zona
+6. Cuando cambie el turno, el responsable del vehículo también cambia automáticamente
+7. El sistema debe dejar historial de ese relevo
+
+---
+
+## Ejemplo esperado
+- Zona 1 tiene vehículo M-01
+- Supervisor Daniel y Supervisor Pedro pertenecen a Zona 1 y rotan 24x24
+- Hoy trabaja Daniel → Daniel es responsable actual de M-01
+- Mañana Daniel descansa y trabaja Pedro → Pedro pasa a ser responsable actual de M-01
+- El sistema cierra la custodia de Daniel y abre la de Pedro automáticamente
+
+---
+
+## Qué quiero que cambies
+
+### 1. Relación base
+El vehículo debe quedar asignado a:
+- una zona
+- no a una persona manualmente como responsable fijo
+
+### 2. Responsable actual
+El responsable actual del vehículo debe calcularse automáticamente desde:
+- la zona del vehículo
+- los supervisores asignados a esa zona
+- el motor de turnos
+- la fecha consultada
+
+### 3. Historial
+Quiero que exista historial de custodia automática:
+- vehículo
+- zona
+- supervisor responsable
+- fecha/hora inicio
+- fecha/hora fin
+- origen = relevo automático por turno
+
+### 4. Fallback
+Si no existe supervisor activo para esa zona en esa fecha:
+- mostrar “Sin responsable actual”
+- no inventar uno manualmente
+
+### 5. UI
+En la ficha del vehículo quiero ver:
+- zona asignada
+- responsable actual automático
+- historial de responsables por turno
+
+En la ficha del supervisor quiero ver:
+- qué vehículo heredó en sus turnos
+- historial de custodia
+
+---
+
+## Importante
+No quiero romper:
+- el módulo de vehículos ya creado
+- zonas
+- supervisores
+- motor de turnos
+- pizarrón operativo
+
+Solo quiero eliminar la dependencia de seleccionar manualmente el responsable y reemplazarla por herencia automática basada en zona + turno.
+
+---
+
+## Validación
+Quiero pruebas donde:
+1. un vehículo quede asignado a una zona
+2. dos supervisores roten en 24x24 en esa zona
+3. el sistema muestre automáticamente quién es responsable hoy
+4. al cambiar de día, cambie el responsable automáticamente
+5. quede historial correcto en el vehículo y en el supervisor
+
+---
+
+## Documentación
+Explica claramente:
+- cómo se calcula el responsable actual
+- cómo se hereda desde la zona
+- cómo cambia con el turno
+- cómo queda el historial
+
+Muy importante:
+quiero que el vehículo esté amarrado a la zona y que el responsable se herede automáticamente según el supervisor que realmente esté trabajando en esa zona.

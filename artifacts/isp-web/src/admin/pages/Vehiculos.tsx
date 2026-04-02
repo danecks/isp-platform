@@ -75,6 +75,17 @@ interface Vehiculo {
   custodia_tipo_relevo: string | null;
 }
 
+interface SupervisorTurno {
+  id: number;
+  nombre_completo: string;
+  tipo_personal: string;
+  telefono: string | null;
+  turno_nombre: string | null;
+  tipo_ciclo: string | null;
+  trabaja_hoy: boolean | null;
+  estado_ciclo: string;
+}
+
 interface EstadoOpZona {
   zona_id: number;
   zona_nombre: string;
@@ -93,6 +104,8 @@ interface EstadoOpZona {
   custodio_tipo: string | null;
   custodia_desde: string | null;
   custodia_tipo_relevo: string | null;
+  responsable_turno: SupervisorTurno | null;
+  supervisores_zona: SupervisorTurno[];
 }
 
 interface CustodiaRow {
@@ -413,6 +426,30 @@ export default function Vehiculos() {
   const [modalNuevo, setModalNuevo] = useState(false);
   const [editando, setEditando] = useState<Vehiculo | null>(null);
   const [relevando, setRelevando] = useState<Vehiculo | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  async function syncTodasCustodias() {
+    setSyncing(true);
+    try {
+      const res = await fetch(`${API}/vehiculos/sync-custodias`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
+        body: JSON.stringify({ usuario }),
+      });
+      const data = await res.json();
+      toast({
+        title: `Custodias sincronizadas`,
+        description: `${data.cambios} cambio(s) aplicado(s) sobre ${data.total} vehículo(s) en turno.`,
+      });
+      qc.invalidateQueries({ queryKey: ["vehiculos"] });
+      qc.invalidateQueries({ queryKey: ["vehiculos-estado"] });
+      qc.invalidateQueries({ queryKey: ["vehiculos-historial"] });
+    } catch {
+      toast({ title: "Error al sincronizar", variant: "destructive" });
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   const { data: vehiculos = [], isLoading: loadingVeh, refetch: refetchVeh } = useQuery<Vehiculo[]>({
     queryKey: ["vehiculos"],
@@ -568,6 +605,22 @@ export default function Vehiculos() {
       {/* ── SUB-TAB: Estado Operativo ──────────────────────────────────────── */}
       {subTab === "estado" && (
         <div className="space-y-4">
+          {/* Botón sincronizar custodias */}
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <p className="text-xs text-white/30">
+              El responsable se hereda automáticamente del supervisor en turno activo de cada zona.
+            </p>
+            <button
+              onClick={syncTodasCustodias}
+              disabled={syncing}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-600/20 border border-teal-500/30 text-xs font-medium text-teal-300 hover:bg-teal-600/30 transition-all disabled:opacity-50"
+            >
+              {syncing
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <RefreshCw className="w-3.5 h-3.5" />}
+              Sincronizar custodias al turno actual
+            </button>
+          </div>
           {loadingEstado ? (
             <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-teal-400" /></div>
           ) : (
@@ -581,6 +634,9 @@ export default function Vehiculos() {
                     {zonasConVehiculo.map(z => {
                       const estadoCfg = ESTADO_CONFIG[z.vehiculo_estado ?? "activo"] ?? ESTADO_CONFIG.activo;
                       const vehiculoDesc = [z.tipo ? TIPO_LABELS[z.tipo] ?? z.tipo : null, z.marca, z.modelo].filter(Boolean).join(" ");
+                      const rt = z.responsable_turno;
+                      const svs = z.supervisores_zona ?? [];
+                      const custodioSincronizado = rt && z.custodio_id && z.custodio_id === rt.id;
                       return (
                         <div key={z.zona_id} className="bg-white/4 border border-white/8 rounded-2xl p-4 space-y-3">
                           {/* Zona */}
@@ -604,37 +660,62 @@ export default function Vehiculos() {
                             </div>
                           </div>
 
-                          {/* Custodio actual */}
-                          <div className="space-y-1">
-                            <p className="text-[10px] text-white/30 uppercase tracking-wider">Custodia actual</p>
-                            {z.custodio_nombre ? (
-                              <div className="flex items-center gap-2">
-                                <Shield className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                                <div>
-                                  <p className="text-[12px] font-semibold text-white">{z.custodio_nombre}</p>
-                                  <p className="text-[9px] text-white/35">
-                                    {z.custodio_tipo?.replace(/_/g, " ")} · Desde {fmtDatetime(z.custodia_desde)}
-                                    {z.custodia_tipo_relevo && <span className="ml-1 text-blue-400/50">· {z.custodia_tipo_relevo}</span>}
+                          {/* Responsable de turno (calculado del motor de ciclos) */}
+                          <div className="space-y-1.5">
+                            <p className="text-[10px] text-white/30 uppercase tracking-wider">Responsable por turno hoy</p>
+                            {rt ? (
+                              <div className={`flex items-center gap-2 px-2.5 py-2 rounded-xl border ${
+                                custodioSincronizado
+                                  ? "border-teal-500/30 bg-teal-500/8"
+                                  : "border-yellow-400/30 bg-yellow-400/5"
+                              }`}>
+                                <Shield className={`w-3.5 h-3.5 shrink-0 ${custodioSincronizado ? "text-teal-400" : "text-yellow-400"}`} />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[12px] font-bold text-white truncate">{rt.nombre_completo}</p>
+                                  <p className="text-[9px] text-white/40">
+                                    {rt.tipo_ciclo ?? rt.turno_nombre ?? "Turno activo"}
+                                    {!custodioSincronizado && (
+                                      <span className="ml-1 text-yellow-400/70">· pendiente sincronizar</span>
+                                    )}
                                   </p>
                                 </div>
+                                {custodioSincronizado && <CheckCircle2 className="w-3.5 h-3.5 text-teal-400 shrink-0" />}
                               </div>
-                            ) : z.supervisor_zona_nombre ? (
+                            ) : svs.length > 0 ? (
                               <div className="flex items-center gap-2 text-yellow-400/60">
                                 <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                                <p className="text-[11px]">Sin custodia activa · Sup. zona: {z.supervisor_zona_nombre}</p>
+                                <p className="text-[11px]">Sin supervisor en turno activo hoy</p>
                               </div>
                             ) : (
-                              <p className="text-[11px] text-white/20">Sin custodia ni supervisor asignado</p>
+                              <p className="text-[11px] text-white/20">No hay supervisores asignados a esta zona</p>
+                            )}
+
+                            {/* Lista de supervisores con estado de turno */}
+                            {svs.length > 0 && (
+                              <div className="space-y-1 pt-0.5">
+                                {svs.map((sv: SupervisorTurno) => (
+                                  <div key={sv.id} className="flex items-center gap-2">
+                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                      sv.trabaja_hoy === true  ? "bg-teal-400" :
+                                      sv.trabaja_hoy === false ? "bg-white/20" :
+                                      "bg-yellow-400/60"
+                                    }`} />
+                                    <span className={`text-[10px] truncate ${sv.trabaja_hoy ? "text-white/70" : "text-white/30"}`}>
+                                      {sv.nombre_completo}
+                                    </span>
+                                    <span className={`text-[9px] ml-auto shrink-0 ${
+                                      sv.trabaja_hoy === true  ? "text-teal-400" :
+                                      sv.trabaja_hoy === false ? "text-white/20" :
+                                      "text-yellow-400/60"
+                                    }`}>
+                                      {sv.trabaja_hoy === true ? "En turno" :
+                                       sv.trabaja_hoy === false ? "Descansando" : "Sin turno"}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
                             )}
                           </div>
-
-                          {/* Supervisor formal de zona */}
-                          {z.supervisor_zona_nombre && z.supervisor_zona_nombre !== z.custodio_nombre && (
-                            <div className="flex items-center gap-1.5 text-[10px] text-white/30">
-                              <User className="w-3 h-3" />
-                              Supervisor zona: {z.supervisor_zona_nombre}
-                            </div>
-                          )}
                         </div>
                       );
                     })}
