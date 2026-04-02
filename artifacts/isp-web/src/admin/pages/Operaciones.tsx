@@ -5665,67 +5665,6 @@ export default function Operaciones() {
             </div>
           )}
 
-          {/* ── Barra compacta de personal especial (supervisores + jefes) ── */}
-          {!esFuturo && ((pool?.supervisores?.length ?? 0) > 0 || (pool?.jefes_servicio?.length ?? 0) > 0) && (
-            <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-[#060f1a] border border-white/6 rounded-xl flex-wrap">
-              <span className="text-[10px] text-white/20 uppercase tracking-widest shrink-0">Personal</span>
-              <div className="w-px h-4 bg-white/8 shrink-0" />
-              {/* Supervisores */}
-              {(pool?.supervisores?.length ?? 0) > 0 && (
-                <>
-                  <span className="text-[10px] text-violet-400/60 font-semibold shrink-0">Supervisores:</span>
-                  {pool!.supervisores.slice(0, 5).map(sv => {
-                    const enTurno = sv.estado_ciclo === "trabajando";
-                    const disponHE = sv.estado_ciclo === "disponible_he";
-                    return (
-                      <span
-                        key={sv.id}
-                        className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border ${
-                          enTurno     ? "text-emerald-300 bg-emerald-500/10 border-emerald-500/20"
-                          : disponHE ? "text-amber-300 bg-amber-500/8 border-amber-500/15"
-                          :            "text-white/20 bg-white/3 border-white/6"
-                        }`}
-                      >
-                        {enTurno && <span className="w-1 h-1 rounded-full bg-emerald-400 inline-block animate-pulse" />}
-                        {sv.nombre_completo.split(" ").slice(0, 2).join(" ")}
-                      </span>
-                    );
-                  })}
-                  {pool!.supervisores.length > 5 && (
-                    <span className="text-[10px] text-white/20">+{pool!.supervisores.length - 5}</span>
-                  )}
-                </>
-              )}
-              {/* Jefes de servicio */}
-              {(pool?.jefes_servicio?.length ?? 0) > 0 && (
-                <>
-                  {(pool?.supervisores?.length ?? 0) > 0 && <div className="w-px h-4 bg-white/8 shrink-0" />}
-                  <span className="text-[10px] text-orange-400/60 font-semibold shrink-0">Jefe:</span>
-                  {pool!.jefes_servicio.slice(0, 3).map(js => {
-                    const enTurno = js.trabaja_hoy === true;
-                    return (
-                      <span
-                        key={js.id}
-                        className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border ${
-                          enTurno ? "text-orange-300 bg-orange-500/10 border-orange-400/20 font-semibold"
-                                  : "text-white/20 bg-white/3 border-white/6"
-                        }`}
-                      >
-                        {enTurno && <span className="w-1 h-1 rounded-full bg-orange-400 inline-block" />}
-                        {js.nombre_completo.split(" ").slice(0, 2).join(" ")}
-                      </span>
-                    );
-                  })}
-                  {pool!.jefes_servicio.length > 3 && (
-                    <span className="text-[10px] text-white/20">+{pool!.jefes_servicio.length - 3}</span>
-                  )}
-                </>
-              )}
-              <div className="flex-1" />
-              <span className="text-[9px] text-white/10 shrink-0">↓ detalle más abajo</span>
-            </div>
-          )}
-
           {/* ── Tablero ──────────────────────────────────────────────────── */}
           <div className="flex-1 overflow-auto relative" style={{ minHeight: 0 }}>
             {/* Read-only overlay when active date is closed */}
