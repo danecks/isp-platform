@@ -149,6 +149,10 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
 operacionesRouter.get("/operaciones/pool", async (req, res) => {
   try {
     const hoy = new Date().toISOString().slice(0, 10);
+    // Fecha de mañana para el panel de jefes y supervisores 24x24
+    const mañanaDt = new Date(hoy + "T12:00:00Z");
+    mañanaDt.setUTCDate(mañanaDt.getUTCDate() + 1);
+    const mañana = mañanaDt.toISOString().slice(0, 10);
     // Contexto de puesto: para enriquecer con hints de experiencia previa
     const puestoIdParam = req.query.puesto_id ? Number(req.query.puesto_id) : null;
 
@@ -232,7 +236,7 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       ORDER BY e.estado_laboral, e.nombre_completo
     `);
 
-    // Supervisores — visibles en pizarrón pero NO en el pool de asignación
+    // Supervisores — personal operativo con turno real (12h o 24x24)
     // La zona se resuelve primero por la FK formal (operational_zones.supervisor_employee_id),
     // luego por la asignación operativa del empleado
     const { rows: supervisoresRows } = await pool.query(`
@@ -241,6 +245,12 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         e.telefono, e.wa_autorizado,
         COALESCE(oz_formal.id, eoa.zona_operativa_id)          AS zona_operativa_id,
         COALESCE(oz_formal.nombre, oz_eoa.nombre)              AS zona_nombre,
+        t.id                                                   AS tipo_turno_id,
+        t.nombre                                               AS turno_nombre,
+        t.tipo_ciclo                                           AS tipo_ciclo_turno,
+        t.horas_trabajo                                        AS horas_trabajo_turno,
+        t.horas_descanso                                       AS horas_descanso_turno,
+        eoa.fecha_inicio                                       AS fecha_inicio_ciclo_turno,
         CASE
           WHEN e.estado_laboral = 'licencia'   THEN 'licencia'
           WHEN e.estado_laboral = 'suspendido' THEN 'suspendido'
@@ -250,10 +260,48 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       LEFT JOIN employee_operational_assignments eoa ON eoa.employee_id = e.id AND eoa.activa = TRUE
       LEFT JOIN operational_zones oz_eoa   ON oz_eoa.id  = eoa.zona_operativa_id
       LEFT JOIN operational_zones oz_formal ON oz_formal.supervisor_employee_id = e.id
+      LEFT JOIN turnos t ON t.id = eoa.tipo_turno_id
       WHERE COALESCE(e.tipo_personal, 'guardia') = 'supervisor'
         AND e.estado_laboral IN ('activo', 'licencia', 'suspendido')
       ORDER BY COALESCE(oz_formal.id, eoa.zona_operativa_id) NULLS LAST, e.nombre_completo
     `);
+
+    // ── Aplicar motor de ciclos a supervisores ────────────────────────────────
+    const supervisoresEnriquecidos = supervisoresRows.map((sv: any) => {
+      if (sv.estado_display !== 'activo') {
+        return { ...sv, trabaja_hoy: false, trabaja_mañana: false, estado_ciclo: sv.estado_display, puede_cubrir: false, disponible_he: false };
+      }
+      if (sv.tipo_ciclo_turno && sv.horas_trabajo_turno && sv.fecha_inicio_ciclo_turno) {
+        const turnoObj = {
+          id: sv.tipo_turno_id ?? 0,
+          nombre: sv.turno_nombre ?? "",
+          tipo_ciclo: sv.tipo_ciclo_turno,
+          horas_trabajo:  Number(sv.horas_trabajo_turno),
+          horas_descanso: Number(sv.horas_descanso_turno ?? 0),
+        };
+        const fechaInicioStr = sv.fecha_inicio_ciclo_turno instanceof Date
+          ? sv.fecha_inicio_ciclo_turno.toISOString().slice(0, 10)
+          : String(sv.fecha_inicio_ciclo_turno).slice(0, 10);
+
+        const estadoHoy    = calcularEstadoCiclo(turnoObj, fechaInicioStr, hoy);
+        const estadoMañana = calcularEstadoCiclo(turnoObj, fechaInicioStr, mañana);
+
+        // Un supervisor puede cubrir si: trabaja hoy (turno activo) o descansa pero disponibleHE
+        const puedeHoy = estadoHoy.trabaja || (estadoHoy.disponibleHE === true);
+
+        return {
+          ...sv,
+          trabaja_hoy:    estadoHoy.trabaja,
+          trabaja_mañana: estadoMañana.trabaja,
+          disponible_he:  !estadoHoy.trabaja && (estadoHoy.disponibleHE === true),
+          estado_ciclo:   estadoHoy.trabaja ? "trabajando"
+            : (estadoHoy.disponibleHE ? "disponible_he" : "descansando_ciclo"),
+          puede_cubrir:   puedeHoy,
+        };
+      }
+      // Sin turno → disponible por defecto
+      return { ...sv, trabaja_hoy: null, trabaja_mañana: null, estado_ciclo: "sin_turno", puede_cubrir: true, disponible_he: false };
+    });
 
     // Jefes de servicio — personal operativo con turno real 24x24, procesados por el motor de ciclos
     const { rows: jefesServicioRows } = await pool.query(`
@@ -284,9 +332,6 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
 
     // ── Aplicar motor de ciclos a jefes de servicio ──────────────────────────
     // Calculamos estado HOY y MAÑANA para el panel "Jefe de Servicio del Día"
-    const mañanaDt = new Date(hoy + "T12:00:00Z");
-    mañanaDt.setUTCDate(mañanaDt.getUTCDate() + 1);
-    const mañana = mañanaDt.toISOString().slice(0, 10);
 
     const jefesServicioEnriquecidos = jefesServicioRows.map((js: any) => {
       if (js.estado_display !== 'activo') {
@@ -440,7 +485,7 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       enDescanso,
       suspendidos,
       faltando,
-      supervisores: supervisoresRows,
+      supervisores: supervisoresEnriquecidos,
       jefes_servicio: jefesServicioEnriquecidos,
       fecha_hoy: hoy,
       fecha_mañana: mañana,
@@ -653,8 +698,18 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
       const horasStandard   = 10;
       const generaExtra     = horasCalcFinal > horasStandard;
       const horasExtraCalc  = generaExtra ? Math.round((horasCalcFinal - horasStandard) * 10) / 10 : 0;
-      const tipoSegmento    = soloCobertura ? 'relevo' : 'titular';
-      const obsSegmento     = horaInstalacion ? `Instalación real: ${horaInstalacion}` : null;
+      // Marcar cobertura especial cuando es supervisor o jefe de servicio — trazabilidad
+      const tipoPersonalAgente = agente.tipo_personal ?? 'guardia';
+      const tipoSegmento = tipoPersonalAgente === 'supervisor'
+        ? 'cobertura_supervisor'
+        : tipoPersonalAgente === 'jefe_servicio'
+          ? 'cobertura_jefe_servicio'
+          : soloCobertura ? 'relevo' : 'titular';
+      const obsSegmento = [
+        tipoPersonalAgente === 'supervisor'   ? '⚠ Cobertura por Supervisor de Zona' : null,
+        tipoPersonalAgente === 'jefe_servicio' ? '⚠ Cobertura por Jefe de Servicio' : null,
+        horaInstalacion ? `Instalación real: ${horaInstalacion}` : null,
+      ].filter(Boolean).join(' | ') || null;
 
       // Intentar insertar; si ya existe (mismo empleado+puesto+fecha), actualizar
       const ins = await pool.query(
@@ -905,7 +960,13 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
       const horaInicio = turno === "noche" ? "20:00" : "08:00";
       const horaFin    = turno === "noche" ? "06:00" : "18:00";
       const horasCalc  = 10;
-      const tipoSeg    = esRelevo ? "relevo" : "titular";
+      // Marcar cobertura especial cuando el entrante es supervisor o jefe de servicio
+      const tipoPersonalEntrante = entrante.tipo_personal ?? 'guardia';
+      const tipoSeg = tipoPersonalEntrante === 'supervisor'
+        ? 'cobertura_supervisor'
+        : tipoPersonalEntrante === 'jefe_servicio'
+          ? 'cobertura_jefe_servicio'
+          : esRelevo ? "relevo" : "titular";
       const alcance    = coberturaTipo || "completo";
       await pool.query(
         `INSERT INTO cobertura_segmentos
