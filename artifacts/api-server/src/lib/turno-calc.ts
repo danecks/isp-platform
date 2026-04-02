@@ -84,7 +84,15 @@ export function calcularEstadoCiclo(
     return calcular24x48(fechaInicioCiclo, fecha);
   }
 
-  // ── Turnos diarios (ciclo ≤ 24h): 12h, 8h ─────────────────────────────────
+  // ── 12h — Ciclo de 7 días: 6 trabaja + 1 descansa ──────────────────────────
+  // El turno de 12h NO es un turno diario plano. El agente trabaja 12h por día
+  // durante 6 días consecutivos y descansa el séptimo.
+  // horasEsperadas = 12 (no 24) en los días de trabajo.
+  if (tipoCiclo === "12h") {
+    return calcular12Horas(fechaInicioCiclo, fecha);
+  }
+
+  // ── Turnos diarios (ciclo ≤ 24h): 8h y similares ──────────────────────────
   // El agente trabaja todos los días. El descanso semanal se controla por dia_descanso.
   const ciclo = ht + hd;
   if (ciclo <= 24) {
@@ -164,6 +172,75 @@ export function calcularEstadoCiclo(
       posicionEnCiclo: posicion,
       diasCiclo,
       diasTrabajo,
+    };
+  }
+}
+
+// ─── Lógica específica 12h ──────────────────────────────────────────────────
+
+/**
+ * calcular12Horas — Ciclo real de 7 días para el turno de 12 horas de ISPSA.
+ *
+ * Reglas:
+ *   - Días 0 a 5 desde fecha_inicio_ciclo → trabaja (12h ese día)
+ *   - Día 6 → descansa (descanso de ciclo, disponible para HE)
+ *   - Repite indefinidamente.
+ *
+ * Si no hay fecha_inicio_ciclo: fallback conservador → trabaja (igual que antes).
+ * Se registra una advertencia interna de configuración incompleta.
+ */
+function calcular12Horas(
+  fechaInicioCiclo: string | Date | null,
+  fecha: string,
+): EstadoCiclo {
+  if (!fechaInicioCiclo) {
+    // Configuración incompleta: sin fecha_inicio_ciclo no podemos calcular el ciclo.
+    // Fallback conservador: asumir que trabaja (mismo comportamiento anterior).
+    // En producción esto debería alertar al administrador del puesto.
+    console.warn(`[turno-calc] ALERTA: turno 12h sin fecha_inicio_ciclo para fecha ${fecha}. Usando fallback "trabaja".`);
+    return {
+      trabaja: true,
+      horasEsperadas: 12,
+      descansoPorCiclo: false,
+      disponibleHE: false,
+      tipoCiclo: "diario",   // se clasifica como diario para no romper nómina
+    };
+  }
+
+  const inicioISO = fechaInicioCiclo instanceof Date
+    ? fechaInicioCiclo.toISOString().slice(0, 10)
+    : String(fechaInicioCiclo).slice(0, 10);
+
+  const inicio   = parseFecha(inicioISO);
+  const objetivo = parseFecha(fecha);
+  const diffDias = Math.round((objetivo.getTime() - inicio.getTime()) / 86_400_000);
+
+  // Posición en el ciclo de 7 días (siempre positiva)
+  const posicion = ((diffDias % 7) + 7) % 7;
+
+  if (posicion < 6) {
+    // Días 0-5: trabaja
+    return {
+      trabaja: true,
+      horasEsperadas: 12,        // 12h por día, no 24
+      descansoPorCiclo: false,
+      disponibleHE: false,
+      tipoCiclo: "ciclo_alternado",
+      posicionEnCiclo: posicion,
+      diasCiclo: 7,
+      diasTrabajo: 6,
+    };
+  } else {
+    // Día 6: descanso de ciclo
+    return {
+      trabaja: false,
+      horasEsperadas: 0,
+      descansoPorCiclo: true,    // descanso NORMAL, no falta ni problema
+      disponibleHE: true,        // puede hacer horas extra
+      tipoCiclo: "ciclo_alternado",
+      posicionEnCiclo: posicion,
+      diasCiclo: 7,
+      diasTrabajo: 6,
     };
   }
 }

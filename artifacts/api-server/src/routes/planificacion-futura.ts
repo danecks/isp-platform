@@ -379,7 +379,7 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
         -- Turno del puesto
         t.id             AS turno_id,
         t.nombre         AS turno_nombre,
-        CASE WHEN (t.horas_trabajo + t.horas_descanso) <= 24 THEN 'diario' ELSE 'alternado' END AS tipo_ciclo,
+        COALESCE(t.tipo_ciclo, CASE WHEN (t.horas_trabajo + t.horas_descanso) <= 24 THEN 'diario' ELSE 'alternado' END) AS tipo_ciclo,
         t.horas_trabajo,
         t.horas_descanso,
         po.fecha_inicio_ciclo,
@@ -447,6 +447,7 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
       fechaInicioCiclo: string | Date | null,
       turnoId?: number | null,
       turnoNombre?: string | null,
+      tipoCiclo?: string | null,
     ): { estado: "trabajando" | "descansando" | "sin_turno"; descansoPorCiclo: boolean; disponibleHE: boolean } {
       const ht = horasTrabajo != null ? parseFloat(String(horasTrabajo)) : null;
       const hd = horasDescanso != null ? parseFloat(String(horasDescanso)) : 0;
@@ -458,6 +459,7 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
           nombre: turnoNombre ?? "",
           horas_trabajo: ht,
           horas_descanso: hd,
+          tipo_ciclo: tipoCiclo ?? undefined,
         },
         fechaInicioCiclo,
         fecha,
@@ -513,7 +515,7 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
       if (emp.puesto_id) {
         const { estado, descansoPorCiclo, disponibleHE } = calcularEstadoTurno(
           emp.horas_trabajo, emp.horas_descanso, emp.fecha_inicio_ciclo,
-          emp.turno_id, emp.turno_nombre,
+          emp.turno_id, emp.turno_nombre, emp.tipo_ciclo,
         );
         if (estado === "trabajando") {
           trabajando.push({ ...emp, estado_turno: "trabajando", descansoPorCiclo: false, disponibleHE: false });

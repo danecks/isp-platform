@@ -44,11 +44,13 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         t.horas_trabajo,
         t.horas_descanso,
         (t.horas_trabajo + COALESCE(t.horas_descanso, 0))             AS ciclo_horas,
-        CASE
-          WHEN (t.horas_trabajo + COALESCE(t.horas_descanso, 0)) <= 24
-            THEN 'diario'
-          ELSE 'alternado'
-        END                                                            AS tipo_ciclo,
+        COALESCE(t.tipo_ciclo,
+          CASE
+            WHEN (t.horas_trabajo + COALESCE(t.horas_descanso, 0)) <= 24
+              THEN 'diario'
+            ELSE 'alternado'
+          END
+        )                                                              AS tipo_ciclo,
         e.estado_laboral AS agente_estado_laboral,
         e.puesto         AS agente_puesto,
         e.telefono       AS agente_telefono,
@@ -94,6 +96,7 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
             nombre: p.turno_nombre ?? "",
             horas_trabajo: parseFloat(p.horas_trabajo ?? 0),
             horas_descanso: parseFloat(p.horas_descanso ?? 0),
+            tipo_ciclo: p.tipo_ciclo ?? undefined,
           },
           p.fecha_inicio_ciclo,
           fechaConsultada,
@@ -1820,11 +1823,13 @@ operacionesRouter.patch("/operaciones/puestos/:id/turno", async (req, res) => {
         t.horas_trabajo,
         t.horas_descanso,
         (t.horas_trabajo + COALESCE(t.horas_descanso, 0)) AS ciclo_horas,
-        CASE
-          WHEN (t.horas_trabajo + COALESCE(t.horas_descanso, 0)) <= 24
-            THEN 'diario'
-          ELSE 'alternado'
-        END AS tipo_ciclo
+        COALESCE(t.tipo_ciclo,
+          CASE
+            WHEN (t.horas_trabajo + COALESCE(t.horas_descanso, 0)) <= 24
+              THEN 'diario'
+            ELSE 'alternado'
+          END
+        ) AS tipo_ciclo
       FROM puestos_operativos po
       LEFT JOIN turnos t ON t.id = po.tipo_turno_id
       WHERE po.id = $1
@@ -1861,10 +1866,12 @@ operacionesRouter.get("/operaciones/puestos/:id/turno", async (req, res) => {
         t.horas_trabajo,
         t.horas_descanso,
         (t.horas_trabajo + COALESCE(t.horas_descanso, 0))  AS ciclo_horas,
-        CASE
-          WHEN (t.horas_trabajo + COALESCE(t.horas_descanso, 0)) <= 24 THEN 'diario'
-          ELSE 'alternado'
-        END AS tipo_ciclo,
+        COALESCE(t.tipo_ciclo,
+          CASE
+            WHEN (t.horas_trabajo + COALESCE(t.horas_descanso, 0)) <= 24 THEN 'diario'
+            ELSE 'alternado'
+          END
+        ) AS tipo_ciclo,
         CEIL(t.horas_trabajo / 24.0)                        AS dias_trabajo,
         CEIL(COALESCE(t.horas_descanso, 0) / 24.0)          AS dias_descanso
       FROM puestos_operativos po
@@ -1876,21 +1883,21 @@ operacionesRouter.get("/operaciones/puestos/:id/turno", async (req, res) => {
 
     const p = rows[0];
     let estado_turno: string | null = null;
+    let descanso_por_ciclo = false;
+    let disponible_he = false;
 
-    if (p.tipo_turno_id && p.fecha_inicio_ciclo && p.ciclo_horas > 24) {
-      const diasTrabajo  = Math.ceil(p.horas_trabajo / 24);
-      const diasDescanso = Math.ceil((p.horas_descanso ?? 0) / 24);
-      const cicloDias    = diasTrabajo + diasDescanso;
-      const inicio       = new Date(p.fecha_inicio_ciclo + "T00:00:00Z");
-      const objetivo     = new Date(fecha + "T00:00:00Z");
-      const diff         = Math.round((objetivo.getTime() - inicio.getTime()) / 86_400_000);
-      const posicion     = ((diff % cicloDias) + cicloDias) % cicloDias;
-      estado_turno       = posicion < diasTrabajo ? "trabajando" : "descansando";
-    } else if (p.tipo_turno_id) {
-      estado_turno = "trabajando"; // turno diario: siempre trabaja
+    if (p.tipo_turno_id) {
+      const ec = calcularEstadoCiclo(
+        { id: p.tipo_turno_id, horas_trabajo: p.horas_trabajo, horas_descanso: p.horas_descanso, tipo_ciclo: p.tipo_ciclo },
+        p.fecha_inicio_ciclo,
+        fecha,
+      );
+      estado_turno       = ec.trabaja ? "trabajando" : "descansando";
+      descanso_por_ciclo = ec.descansoPorCiclo;
+      disponible_he      = ec.disponibleHE;
     }
 
-    res.json({ ...p, estado_turno, fecha_consultada: fecha });
+    res.json({ ...p, estado_turno, descanso_por_ciclo, disponible_he, fecha_consultada: fecha });
   } catch (err) {
     logger.error({ err }, "GET /operaciones/puestos/:id/turno error");
     res.status(500).json({ error: "Error al obtener turno del puesto" });
