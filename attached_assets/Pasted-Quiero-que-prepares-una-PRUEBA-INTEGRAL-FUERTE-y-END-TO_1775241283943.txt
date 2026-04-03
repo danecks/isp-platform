@@ -1,0 +1,402 @@
+Quiero que prepares una PRUEBA INTEGRAL, FUERTE y END-TO-END del sistema de nómina para la SEGUNDA QUINCENA DE ABRIL, enfocada en validar que NO se mezclan datos entre empleados, puestos, coberturas, eventos RRHH, pre-planilla y planilla final.
+
+OBJETIVO GENERAL
+Necesito una simulación completa desde cero para validar todo el flujo del sistema:
+
+1. creación de cliente
+2. creación de sedes / ubicación de operación
+3. creación de puestos
+4. configuración salarial y reglas del puesto
+5. contratación de personal
+6. asignación de personal a puestos
+7. creación de calendario / turnos / pizarrón
+8. registro de incidencias reales
+9. generación de coberturas
+10. cálculo de horas extra por cobertura de descanso
+11. generación de pre-planilla
+12. consolidado final de planilla
+
+La prueba debe ser lo suficientemente fuerte para detectar:
+- mezcla de datos entre colaboradores
+- mezcla de incidencias entre períodos
+- empleados duplicados en cálculos
+- coberturas mal asignadas
+- errores en pago de séptimo día
+- errores en cálculo de permisos sin goce
+- errores en vacaciones
+- errores en horas extra
+- inconsistencias entre pizarrón, incidencias y pre-planilla
+- errores al consolidar nómina final
+
+PERÍODO DE PRUEBA
+Usar como período de cálculo:
+- segunda quincena de abril
+- fecha_inicio = 2026-04-16
+- fecha_fin = 2026-04-30
+
+IMPORTANTE
+Quiero que esta prueba se corra sobre datos de prueba generados por el sistema, no manualmente en UI uno por uno si eso hace la prueba lenta o poco reproducible.
+Necesito que se creen seeds / fixtures / scripts de prueba automatizados.
+
+======================================================================
+1. CREACIÓN DEL ESCENARIO BASE
+======================================================================
+
+Crear un cliente de prueba con estos datos:
+- nombre: CLIENTE PRUEBA E2E ABRIL
+- código: CLT-E2E-ABRIL
+- estado: activo
+
+Crear al menos 2 sedes:
+- Sede Norte
+- Sede Sur
+
+Crear al menos 6 puestos operativos distintos, por ejemplo:
+- Agente de Seguridad
+- Recepcionista
+- Monitorista
+- Supervisor
+- Motorista
+- Auxiliar Operativo
+
+Cada puesto debe tener configuración suficiente para nómina:
+- salario_base
+- tipo_pago (quincenal o mensual, según definas)
+- aplica_igss
+- requiere_cobertura = true para puestos operativos
+- permite_horas_extra = true
+- jornada / turno base
+- cantidad mínima requerida por día
+
+Crear mínimo 24 colaboradores distribuidos entre puestos y sedes.
+
+REQUISITO
+La muestra debe ser suficientemente grande para generar presión sobre el sistema. No quiero una prueba con 4 o 5 empleados. Quiero volumen suficiente para detectar mezcla de datos.
+
+Distribución sugerida:
+- 12 en Sede Norte
+- 12 en Sede Sur
+
+======================================================================
+2. CONTRATACIÓN Y ASIGNACIÓN DE PERSONAL
+======================================================================
+
+Crear expediente completo de cada colaborador de prueba:
+- código de empleado
+- nombre
+- DPI o identificador ficticio
+- fecha de ingreso
+- puesto asignado
+- sede asignada
+- salario
+- estado_igss
+- aplica_bonificacion_incentivo
+- jornada
+- descanso programado
+
+Asegúrate de que:
+- cada colaborador tenga un identificador único
+- cada relación empleado-puesto-sede quede bien amarrada
+- no existan ambigüedades de asignación
+- cada empleado pertenezca a un solo puesto principal durante el período de prueba
+
+======================================================================
+3. PIZARRÓN / TURNOS / PROGRAMACIÓN
+======================================================================
+
+Generar programación del pizarrón para todo el período del 16 al 30 de abril.
+
+REQUISITO DEL PIZARRÓN
+- Debe quedar claro quién estaba programado para trabajar cada día
+- Debe quedar claro quién descansaba cada día
+- Debe quedar claro qué puestos requerían cobertura mínima
+- Debe permitir detectar si una falta deja un hueco real en operación
+
+Esto es importante porque quiero validar la siguiente regla:
+
+REGLA DE COBERTURA Y HORAS EXTRA
+Si hay faltas o ausencias de cualquier tipo, el sistema debe intentar cubrirlas así:
+
+Orden esperado:
+1. primero usar personal disponible no programado o redistribuible sin generar hora extra
+2. si no hay personal disponible, entonces asignar cobertura extraordinaria
+3. si la cobertura cae en día de descanso del colaborador asignado, entonces debe generar hora extra o pago extraordinario según la regla del sistema
+
+Quiero que el test valide esa lógica explícitamente.
+
+======================================================================
+4. INCIDENCIAS FUERTES DEL PERÍODO
+======================================================================
+
+Necesito un escenario duro con múltiples incidencias mezcladas a propósito.
+
+Generar al menos 20 incidencias de distintos tipos durante la segunda quincena de abril.
+
+Debes incluir como mínimo:
+
+A. FALTAS DE 1 DÍA
+- varias personas con 1 falta de un día
+- al menos 6 colaboradores con faltas de 1 día
+- algunas faltas deben afectar séptimo día
+- otras faltas no deben afectar séptimo día por decisión RRHH
+
+B. SÉPTIMO DÍA
+- registrar eventos RRHH para controlar explícitamente si afecta o no afecta séptimo día
+- al menos 4 colaboradores con pérdida de séptimo
+- al menos 3 colaboradores con incidencias pero sin pérdida de séptimo por excepción RRHH
+
+C. PERMISOS SIN GOCE DE SALARIO
+- varios colaboradores con permiso sin goce
+- al menos 6 personas con permiso sin goce en diferentes fechas
+- algunos de 1 día, otros de varios días
+- validar que esos días se reflejen correctamente en pre-planilla
+- validar que no entren como días pagables para bono incentivo
+
+D. VACACIONES
+- al menos 6 colaboradores con vacaciones
+- estas vacaciones deben provocar necesidad de cobertura del puesto
+- el sistema debe mostrar que el puesto quedó cubierto por otras personas
+
+E. HORAS EXTRA POR COBERTURA
+- generar casos donde la ausencia sí pueda cubrirse con personal disponible sin horas extra
+- generar otros casos donde NO haya disponible y se deba asignar a alguien en su descanso
+- cuando se asigne a alguien en su descanso, eso debe generar horas extra o pago extraordinario
+- necesito varios casos de ambos tipos para validar la diferencia
+
+F. OTROS EVENTOS
+Agregar también algunos de estos para volver la prueba más real:
+- incapacidad
+- permiso con goce
+- llegadas tarde o ausencias parciales si existen en el sistema
+- cambio temporal de puesto si el sistema lo soporta
+
+======================================================================
+5. MATRIZ DE COBERTURA OPERATIVA
+======================================================================
+
+Quiero que la prueba incluya una validación explícita entre:
+- faltas
+- vacaciones
+- permisos sin goce
+- personal disponible
+- coberturas asignadas
+- horas extra generadas
+
+REGLA FUNCIONAL A PROBAR
+Si existen, por ejemplo, 20 faltas de distinto tipo en el período:
+- primero revisar si esas ausencias se pueden cubrir con personal disponible
+- si sí se pueden cubrir, NO generar hora extra innecesaria
+- si NO se pueden cubrir, entonces asignar cobertura extraordinaria
+- si esa cobertura extraordinaria usa a una persona en su día de descanso, entonces sí debe generar hora extra
+
+Esto debe quedar visible en los resultados.
+
+Necesito que el sistema produzca evidencia para cada ausencia:
+- empleado ausente
+- tipo de ausencia
+- fecha
+- puesto afectado
+- si requería cobertura
+- si hubo cobertura
+- quién cubrió
+- si esa cobertura fue con personal disponible o con personal en descanso
+- si generó horas extra
+- cuántas horas extra generó
+- costo asociado si el sistema ya lo calcula
+
+======================================================================
+6. PRUEBA DE NO MEZCLA DE DATOS
+======================================================================
+
+Este punto es crítico.
+
+Necesito que la prueba verifique explícitamente que NO se mezclan datos entre personas en pre-planilla.
+
+Validaciones obligatorias:
+1. que una falta de un colaborador no aparezca en otro
+2. que vacaciones de un colaborador no sumen en otro
+3. que horas extra de cobertura se asignen solo al colaborador que realmente cubrió
+4. que pérdida de séptimo solo afecte a quien tenga evento RRHH correspondiente
+5. que permisos sin goce solo descuenten a quien corresponda
+6. que el cálculo de dias_pagables para bonificación incentivo sea individual por colaborador
+7. que no haya arrastre de datos de la primera quincena hacia la segunda quincena
+8. que al recalcular pre-planilla no se dupliquen incidencias
+9. que al recalcular coberturas no se generen duplicados
+10. que el consolidado final cuadre con el detalle individual
+
+======================================================================
+7. PRE-PLANILLA
+======================================================================
+
+Generar pre-planilla detallada por colaborador para el período 2026-04-16 a 2026-04-30.
+
+Cada empleado debe mostrar como mínimo:
+- empleado_id
+- nombre
+- sede
+- puesto
+- salario_base
+- tipo_pago
+- días del período
+- días trabajados
+- dias_vacaciones
+- dias_incapacidad
+- dias_permiso_sin_goce
+- dias_permiso_con_goce
+- dias_pagables
+- bonificacion_incentivo
+- igss_trabajador
+- igss_patronal
+- faltas
+- desc_septimo
+- horas_extra
+- monto_horas_extra
+- anticipos
+- total_bruto
+- total_neto
+
+REQUISITO
+Necesito poder revisar varios colaboradores específicos con escenarios distintos:
+- uno con falta y pérdida de séptimo
+- uno con falta pero sin pérdida de séptimo
+- uno con permiso sin goce
+- uno con vacaciones
+- uno que cubrió sin horas extra
+- uno que cubrió con horas extra por descanso
+- uno sin incidencias para comparar
+
+======================================================================
+8. PLANILLA FINAL Y RESÚMENES
+======================================================================
+
+Generar consolidado final con:
+- total_bruto
+- total_igss_trabajador
+- total_igss_patronal
+- total_bonificacion_incentivo
+- total_descuento_septimo
+- total_permiso_sin_goce
+- total_horas_extra
+- total_pago_horas_extra
+- total_neto
+
+Además, generar reportes auxiliares:
+1. reporte de incidencias por tipo
+2. reporte de coberturas por puesto
+3. reporte de horas extra por cobertura
+4. reporte de vacaciones y reemplazos
+5. reporte de excepciones RRHH para séptimo día
+6. reporte de validaciones de integridad
+
+======================================================================
+9. PRUEBAS AUTOMATIZADAS
+======================================================================
+
+Quiero tests automáticos en varios niveles:
+
+A. UNIT TESTS
+- cálculo de bono incentivo proporcional
+- cálculo de séptimo día
+- cálculo de IGSS
+- cálculo de permiso sin goce
+- cálculo de horas extra
+- cálculo de dias_pagables
+
+B. INTEGRATION TESTS
+- incidencias -> pre-planilla
+- vacaciones -> cobertura -> pre-planilla
+- falta -> revisión de disponible -> cobertura -> hora extra si aplica
+- eventos RRHH -> descuento séptimo
+- pizarrón -> cobertura -> pago final
+
+C. END-TO-END TESTS
+flujo completo:
+cliente -> puesto -> contratación -> programación -> incidencias -> cobertura -> pre-planilla -> planilla final
+
+======================================================================
+10. CASOS ESPECÍFICOS QUE DEBEN EXISTIR
+======================================================================
+
+Quiero que armes por lo menos estos casos concretos dentro del dataset:
+
+CASO A
+Empleado con 1 falta de un día + pérdida de séptimo confirmada por RRHH
+
+CASO B
+Empleado con 1 falta de un día + RRHH decide NO perder séptimo
+
+CASO C
+Empleado con permiso sin goce de 2 días
+
+CASO D
+Empleado con vacaciones de varios días y puesto cubierto por otra persona disponible sin horas extra
+
+CASO E
+Empleado con vacaciones de varios días y puesto cubierto por una persona en descanso, generando horas extra
+
+CASO F
+Empleado que acumula horas extra por cubrir más de un turno
+
+CASO G
+Empleado sin ninguna incidencia para usar como control
+
+CASO H
+Múltiples ausencias el mismo día en una sede para forzar al sistema a decidir entre disponibles y horas extra
+
+======================================================================
+11. VALIDACIONES DE INTEGRIDAD
+======================================================================
+
+Necesito que al final el sistema corra validaciones automáticas y reporte PASS/FAIL de estas reglas:
+
+- no hay empleados duplicados en pre-planilla
+- no hay incidencias duplicadas
+- no hay coberturas duplicadas
+- cada cobertura corresponde a una ausencia real o necesidad operativa real
+- toda hora extra tiene respaldo en cobertura o evento válido
+- ningún empleado recibe horas extra por error si no cubrió nada
+- ningún empleado pierde séptimo sin evento RRHH
+- ningún permiso sin goce entra como día pagable
+- vacaciones sí salen en su contador correcto
+- el total consolidado coincide con la suma del detalle individual
+- recalcular pre-planilla dos veces produce el mismo resultado sin duplicar movimientos
+
+======================================================================
+12. SALIDA ESPERADA
+======================================================================
+
+Quiero que ejecutes esta prueba y me entregues:
+
+1. listado de archivos modificados o creados
+2. seed/fixture/script de generación de datos
+3. tests creados
+4. resultado de ejecución de tests
+5. muestra del dataset generado
+6. muestra del pizarrón del período
+7. muestra de incidencias registradas
+8. muestra de coberturas generadas
+9. pre-planilla detallada de todos los colaboradores
+10. resumen final de planilla
+11. reporte de validaciones de integridad con PASS/FAIL
+12. explicación clara de cualquier error encontrado
+13. si detectas mezcla de datos, duplicación o inconsistencia, corrígela y vuelve a correr las pruebas
+
+======================================================================
+13. IMPORTANTE PARA IMPLEMENTACIÓN
+======================================================================
+
+- Usa nombres de funciones y archivos consistentes
+- No hardcodear resultados finales
+- Todo debe salir de la simulación real del sistema
+- Si faltan tablas o modelos, créalos
+- Si faltan relaciones entre incidencias, coberturas y pre-planilla, complétalas
+- Si faltan validaciones de integridad, agrégalas
+- Si existe un bug de mezcla de datos, arréglalo de raíz
+- Si el cálculo actual no soporta este volumen de incidencias, refactoriza donde sea necesario
+- Si es posible, deja un comando tipo:
+  `npm run test:e2e-payroll-april`
+  o equivalente
+  para repetir la prueba fácilmente
+
+Quiero una prueba verdaderamente dura, reproducible y orientada a detectar errores reales del flujo completo.
+No te limites a pruebas superficiales: necesito una simulación operativa completa.
