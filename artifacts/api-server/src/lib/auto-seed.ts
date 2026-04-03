@@ -764,9 +764,9 @@ export async function runAutoSeed(): Promise<void> {
     `);
     logger.info("Auto-migrate: mensajes WA para usuarios externos verificados (4 mensajes)");
 
-    // 3. Seed de tareas iniciales si la tabla está vacía
+    // 3. Seed de tareas iniciales si la tabla está vacía (omitido si demo_seed_disabled=true)
     const [{ tareaCount }] = await db.select({ tareaCount: count() }).from(tareasTable);
-    if (tareaCount === 0) {
+    if (tareaCount === 0 && !demoSeedDisabled) {
       await db.insert(tareasTable).values([
         {
           id: "TASK-0091",
