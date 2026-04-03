@@ -3093,11 +3093,15 @@ function DroppablePuesto({
   if (puesto.es_par_24x24 && puesto.par_trabajando && puesto.par_descansando) {
     const activo      = puesto.par_trabajando;   // TitularCiclo — trabaja hoy
     const descansando = puesto.par_descansando;  // TitularCiclo — descansa hoy
-    // Cobertura: usamos los datos del puesto fusionado (agente, arma, estado)
-    const activoCubierto = puesto.estado === "cubierto" && puesto.agente_id;
-    const activoRelevo   = activoCubierto && activo.employee_id &&
-                           puesto.agente_id !== activo.employee_id;
-    const activoSinCob   = !activoCubierto;
+    // Cobertura:
+    // cubiertoManual  = alguien fue asignado explícitamente vía agente_id (relevo/pool)
+    // cubiertoTitular = el titular configurado para hoy cubre el puesto (sin override)
+    const cubiertoManual  = puesto.estado === "cubierto" && !!puesto.agente_id;
+    const cubiertoTitular = !cubiertoManual && activo.trabaja_hoy && !!activo.employee_id;
+    const activoCubierto  = cubiertoManual || cubiertoTitular;
+    const activoRelevo    = cubiertoManual && !!activo.employee_id &&
+                            puesto.agente_id !== activo.employee_id;
+    const activoSinCob    = !activoCubierto;
     const arma     = puesto.arma_codigo;
     const armaId   = puesto.arma_id;
     const armaTipo = puesto.arma_tipo;
@@ -3158,24 +3162,26 @@ function DroppablePuesto({
 
             {/* Agente activo — PROMINENTE */}
             <div className="mt-1.5">
-              {activoCubierto && puesto.agente_nombre ? (
+              {cubiertoManual && puesto.agente_nombre ? (
                 <div className="flex items-center gap-1.5">
                   <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(puesto.agente_nombre)}`}>
                     {iniciales(puesto.agente_nombre)}
                   </div>
                   <p className="text-[13px] font-semibold text-white/90 truncate">{puesto.agente_nombre}</p>
                 </div>
-              ) : activoSinCob && activo.nombre ? (
-                <div className={`flex items-center gap-2 ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/30"}`}>
-                  <User className="w-4 h-4 shrink-0" />
-                  <p className="text-sm">{isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : activo.nombre}</p>
+              ) : cubiertoTitular && activo.nombre ? (
+                <div className="flex items-center gap-1.5">
+                  <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(activo.nombre)}`}>
+                    {iniciales(activo.nombre)}
+                  </div>
+                  <p className="text-[13px] font-semibold text-white/90 truncate">{activo.nombre}</p>
                 </div>
-              ) : (
+              ) : activoSinCob ? (
                 <div className={`flex items-center gap-2 ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/20"}`}>
                   <User className="w-4 h-4 shrink-0" />
-                  <p className="text-sm">{isOver ? "Soltar aquí" : "Sin cobertura"}</p>
+                  <p className="text-sm">{isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : "Sin cobertura"}</p>
                 </div>
-              )}
+              ) : null}
             </div>
 
             {/* ── EXPANDED: detalles completos ── */}
@@ -3204,8 +3210,8 @@ function DroppablePuesto({
                   </button>
                 )}
 
-                {/* Liberar */}
-                {activoCubierto && (
+                {/* Liberar — solo si hay agente asignado manualmente (no titular automático) */}
+                {cubiertoManual && (
                   <button onClick={e => { e.stopPropagation(); onLiberar(); }} className="flex items-center gap-1 text-[9px] text-red-400/60 hover:text-red-400 transition-colors" title="Remover del puesto">
                     <XCircle className="w-3 h-3" /><span>Remover agente</span>
                   </button>
