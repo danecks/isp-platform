@@ -3701,6 +3701,142 @@ function toISODate(d: Date) {
   return d.toISOString().split("T")[0];
 }
 
+// ─── Modal: ¿A quién sustituye? (puestos multi-titular) ───────────────────────
+function ModalSustituyeTitular({
+  puesto,
+  agente,
+  onConfirm,
+  onCancel,
+}: {
+  puesto: Puesto;
+  agente: Agente;
+  onConfirm: (titularSustituidoId: number, motivo: string, horaInstalacion: string) => void;
+  onCancel: () => void;
+}) {
+  const t1 = puesto.par_trabajando;
+  const t2 = puesto.par_descansando;
+  const defaultId = t1?.employee_id ?? t2?.employee_id ?? 0;
+
+  const [seleccionado, setSeleccionado] = useState<number>(defaultId);
+  const [motivo, setMotivo] = useState("falta_total");
+  const ahoraHHMM = () => {
+    const n = new Date();
+    return `${String(n.getHours()).padStart(2, "0")}:${String(n.getMinutes()).padStart(2, "0")}`;
+  };
+  const [hora, setHora] = useState(ahoraHHMM);
+
+  const MOTIVOS_RAPIDOS = [
+    { value: "falta_total",      label: "Falta total",      color: "text-red-300" },
+    { value: "incapacidad",      label: "Incapacidad IGSS", color: "text-orange-300" },
+    { value: "permiso_con_goce", label: "Permiso c/goce",   color: "text-emerald-300" },
+    { value: "permiso_sin_goce", label: "Permiso s/goce",   color: "text-yellow-300" },
+    { value: "vacaciones",       label: "Vacaciones",        color: "text-sky-300" },
+    { value: "relevo_completo",  label: "Relevo completo",  color: "text-violet-300" },
+    { value: "abandono_parcial", label: "Abandono parcial", color: "text-red-400" },
+  ];
+
+  function TitularOpcion({ tc, label }: { tc: TitularCiclo; label: string }) {
+    const activo = seleccionado === tc.employee_id;
+    return (
+      <button
+        type="button"
+        onClick={() => setSeleccionado(tc.employee_id)}
+        className={`w-full text-left p-3 rounded-lg border transition-all ${
+          activo
+            ? "border-violet-500 bg-violet-500/20"
+            : "border-white/10 bg-white/5 hover:bg-white/10"
+        }`}
+      >
+        <div className="flex items-center gap-2">
+          <div className={`w-3.5 h-3.5 rounded-full border-2 flex-shrink-0 transition-all ${
+            activo ? "border-violet-400 bg-violet-400" : "border-white/30"
+          }`} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-white truncate">{tc.nombre}</p>
+            <p className={`text-[11px] font-medium ${label === "Trabaja hoy" ? "text-green-400" : "text-blue-400"}`}>
+              {label}
+            </p>
+          </div>
+        </div>
+      </button>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-[#1a1f2e] border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm">
+        {/* Header */}
+        <div className="px-5 pt-5 pb-4 border-b border-white/8">
+          <p className="text-[11px] text-white/40 uppercase tracking-widest mb-1">Relevo en {puesto.nombre}</p>
+          <h2 className="text-lg font-bold text-white">¿A quién sustituye?</h2>
+          <p className="text-xs text-white/50 mt-1">
+            <span className="text-violet-300 font-medium">{agente.nombre_completo}</span> reemplazará al titular ausente
+          </p>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Selección de titular */}
+          <div className="space-y-2">
+            {t1 && <TitularOpcion tc={t1} label="Trabaja hoy" />}
+            {t2 && <TitularOpcion tc={t2} label="Descansa hoy" />}
+          </div>
+
+          {/* Motivo */}
+          <div>
+            <p className="text-xs text-white/50 mb-2 font-medium uppercase tracking-wider">Motivo de ausencia</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {MOTIVOS_RAPIDOS.map((m) => (
+                <button
+                  key={m.value}
+                  type="button"
+                  onClick={() => setMotivo(m.value)}
+                  className={`text-left px-2.5 py-1.5 rounded-md border text-[11px] font-medium transition-all ${
+                    motivo === m.value
+                      ? `${m.color} border-current bg-current/10`
+                      : "text-white/40 border-white/10 hover:text-white/70 hover:border-white/20"
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Hora de instalación */}
+          <div>
+            <p className="text-xs text-white/50 mb-1.5 font-medium uppercase tracking-wider">Hora de instalación</p>
+            <input
+              type="time"
+              value={hora}
+              onChange={(e) => setHora(e.target.value)}
+              className="w-full bg-white/5 border border-white/15 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 pb-5 flex gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 py-2.5 rounded-lg border border-white/15 text-sm text-white/60 hover:text-white hover:border-white/30 transition-all"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={!seleccionado}
+            onClick={() => onConfirm(seleccionado, motivo, hora)}
+            className="flex-1 py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-sm font-semibold text-white transition-all"
+          >
+            Confirmar relevo
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ModalEligeCobertura({
   puesto,
   agente,
@@ -4902,6 +5038,7 @@ export default function Operaciones() {
   const [nuevoPuestoData, setNuevoPuestoData]        = useState<ClienteBoard | null | "nuevo">(null);
   const [modalSustitucion, setModalSustitucion]      = useState<{ puesto: Puesto; agente: Agente; advertencia?: string } | null>(null);
   const [modalEligeCobertura, setModalEligeCobertura] = useState<{ puesto: Puesto; agente: Agente } | null>(null);
+  const [modalSustituyeTitular, setModalSustituyeTitular] = useState<{ puesto: Puesto; agente: Agente } | null>(null);
   const [modalIncentivo, setModalIncentivo]           = useState<{
     agenteId: number; agenteName: string;
     puestoId: number; puestoName: string;
@@ -5328,6 +5465,13 @@ export default function Operaciones() {
     // Si ya tiene el mismo agente, no hacer nada
     if (puesto.agente_id === agente.id) return;
 
+    // ── Puesto multi-titular sin relevo manual activo ─────────────────────────
+    // Preguntamos A QUIÉN sustituye antes de continuar
+    if (!puesto.agente_id && puesto.es_par_24x24 && (puesto.par_trabajando || puesto.par_descansando)) {
+      setModalSustituyeTitular({ puesto, agente });
+      return;
+    }
+
     // ── NUEVO: Agente de pool → puesto SIN agente activo ─────────────────────
     // Preguntamos si es cobertura temporal o cambio de titular
     if (!puesto.agente_id && esAgentePool(agente)) {
@@ -5404,6 +5548,44 @@ export default function Operaciones() {
           }),
         }).catch(() => {});
       }
+      setAgenteSeleccionado(null);
+      setPuestoContexto(null);
+      invalidate();
+    } catch (e: any) {
+      if (e.ssaId) {
+        toast({ title: "Conflicto — Servicio Especial activo", description: e.error ?? "El agente cubre un SSA activo. Libéralo primero.", variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: e.error ?? "Error al procesar", variant: "destructive" });
+      }
+    }
+  }
+
+  // ── Confirmar selección de titular a sustituir (multi-titular) ───────────
+  async function confirmarSustituyeTitular(titularSustituidoId: number, motivo: string, horaInstalacion: string) {
+    if (!modalSustituyeTitular) return;
+    const { puesto, agente } = modalSustituyeTitular;
+    setModalSustituyeTitular(null);
+    try {
+      await apiPost(`${API_BASE}/operaciones/asignar`, {
+        puestoId: puesto.id,
+        agenteId: agente.id,
+        soloCobertura: true,
+        titularSustituidoId,
+        motivoCambio: motivo,
+        horaInstalacion: horaInstalacion || null,
+        usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+      });
+      toast({ title: "Relevo registrado", description: `${agente.nombre_completo} cubre ${puesto.nombre} desde las ${horaInstalacion}` });
+      setModalIncentivo({
+        agenteId: agente.id,
+        agenteName: agente.nombre_completo,
+        puestoId: puesto.id,
+        puestoName: puesto.nombre,
+        clienteId: puesto.cliente_id,
+        clienteNombre: puesto.cliente_nombre ?? null,
+        sedeId: puesto.sede_id,
+        fecha: fechaActivaStr,
+      });
       setAgenteSeleccionado(null);
       setPuestoContexto(null);
       invalidate();
@@ -6854,6 +7036,15 @@ export default function Operaciones() {
           movimientos={historial}
           isLoading={loadingHistorial}
           onClose={() => setHistorialAbierto(false)}
+        />
+      )}
+
+      {modalSustituyeTitular && (
+        <ModalSustituyeTitular
+          puesto={modalSustituyeTitular.puesto}
+          agente={modalSustituyeTitular.agente}
+          onConfirm={confirmarSustituyeTitular}
+          onCancel={() => setModalSustituyeTitular(null)}
         />
       )}
 
