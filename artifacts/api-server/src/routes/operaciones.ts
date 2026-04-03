@@ -1796,8 +1796,282 @@ operacionesRouter.get("/operaciones/cierre-hoy", async (req, res) => {
 //   fecha         : string? — "YYYY-MM-DD". Si no se envía → cierra la fecha activa.
 //                             Si es pasada → cierre retroactivo (requiere admin/supervisor).
 //                             Si es futura → rechazado.
+// ─── Helper: calcula responsable de turno en zona (para sync vehículos) ──────
+async function calcularResponsableTurnoLocal(zonaId: number, fecha: string): Promise<any | null> {
+  const { rows } = await pool.query(`
+    SELECT
+      e.id, e.nombre_completo, e.tipo_personal,
+      t.id AS tipo_turno_id, t.nombre AS turno_nombre,
+      t.tipo_ciclo, t.horas_trabajo, t.horas_descanso,
+      eoa.fecha_inicio AS fecha_inicio_ciclo
+    FROM employee_operational_assignments eoa
+    JOIN employees e ON e.id = eoa.employee_id
+    LEFT JOIN turnos t ON t.id = eoa.tipo_turno_id
+    WHERE eoa.zona_operativa_id = $1
+      AND eoa.activa = TRUE
+      AND e.estado_laboral = 'activo'
+      AND e.tipo_personal IN ('supervisor','jefe_servicio')
+    ORDER BY e.nombre_completo
+  `, [zonaId]);
+  for (const sv of rows) {
+    if (!sv.tipo_ciclo || !sv.horas_trabajo || !sv.fecha_inicio_ciclo) continue;
+    const turno = {
+      id: sv.tipo_turno_id ?? 0, nombre: sv.turno_nombre ?? "",
+      tipo_ciclo: sv.tipo_ciclo,
+      horas_trabajo:  Number(sv.horas_trabajo),
+      horas_descanso: Number(sv.horas_descanso ?? sv.horas_trabajo),
+    };
+    const fechaStr = sv.fecha_inicio_ciclo instanceof Date
+      ? sv.fecha_inicio_ciclo.toISOString().slice(0, 10)
+      : String(sv.fecha_inicio_ciclo).slice(0, 10);
+    const estado = calcularEstadoCiclo(turno, fechaStr, fecha);
+    if (estado.trabaja) return sv;
+  }
+  return null;
+}
+
+// ─── Helper: ejecuta sync de custodias al cierre y escribe auditoría ─────────
+async function sincronizarCustodiasAlCierre(
+  fecha: string,
+  cierreId: number,
+  snapshotPuestos: any[],
+  usuario: string,
+  usuarioId: number | null | undefined,
+): Promise<{ armas: any[]; vehiculos: any[]; totalCambios: number }> {
+  const resultadosArmas: any[] = [];
+  const resultadosVehiculos: any[] = [];
+
+  // ── Armas: usa agente real del snapshot ────────────────────────────────────
+  const { rows: armas } = await pool.query(`
+    SELECT a.id, a.codigo, a.puesto_id,
+           po.nombre AS puesto_nombre
+    FROM armas a
+    JOIN puestos_operativos po ON po.id = a.puesto_id
+    WHERE a.activo = TRUE AND a.puesto_id IS NOT NULL
+  `);
+
+  // índice snapshot: puesto_id → agente_id
+  const snapMap = new Map<number, { agente_id: number | null; agente_nombre: string | null }>();
+  for (const p of snapshotPuestos) {
+    snapMap.set(Number(p.id), { agente_id: p.agente_id ?? null, agente_nombre: p.agente_nombre ?? null });
+  }
+
+  for (const arma of armas) {
+    const snap = snapMap.get(Number(arma.puesto_id));
+    const nuevoId = snap?.agente_id ?? null;
+    if (!nuevoId) {
+      resultadosArmas.push({ codigo: arma.codigo, cambio: false, motivo: "Puesto sin agente al cierre" });
+      continue;
+    }
+
+    const { rows: custRows } = await pool.query(
+      `SELECT id, employee_id, (SELECT nombre_completo FROM employees WHERE id = employee_id) AS nombre
+       FROM arma_custodia WHERE arma_id=$1 AND fecha_fin IS NULL`,
+      [arma.id]
+    );
+    const custActual = custRows[0] ?? null;
+    if (custActual && Number(custActual.employee_id) === Number(nuevoId)) {
+      resultadosArmas.push({ codigo: arma.codigo, cambio: false, motivo: "Sin cambio" });
+      continue;
+    }
+
+    const { rows: eNuevo } = await pool.query(`SELECT nombre_completo FROM employees WHERE id=$1`, [nuevoId]);
+    const nombreNuevo = eNuevo[0]?.nombre_completo ?? null;
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      if (custActual) {
+        await client.query(`UPDATE arma_custodia SET fecha_fin=NOW() WHERE id=$1`, [custActual.id]);
+      }
+      await client.query(`
+        INSERT INTO arma_custodia (arma_id, employee_id, puesto_id, tipo_origen, notas, registrado_por)
+        VALUES ($1,$2,$3,'cierre_operativo',$4,$5)
+      `, [arma.id, nuevoId, arma.puesto_id, `Custodia sincronizada al cierre — ${fecha}`, usuario]);
+      await client.query(`
+        INSERT INTO custodia_sync_log
+          (cierre_id,fecha,tipo_activo,activo_id,activo_codigo,
+           custodio_anterior_id,custodio_anterior_nombre,
+           custodio_nuevo_id,custodio_nuevo_nombre,
+           referencia_nombre,origen,usuario,usuario_id)
+        VALUES ($1,$2,'arma',$3,$4,$5,$6,$7,$8,$9,'cierre_operativo',$10,$11)
+      `, [
+        cierreId, fecha, arma.id, arma.codigo,
+        custActual?.employee_id ?? null, custActual?.nombre ?? null,
+        nuevoId, nombreNuevo,
+        arma.puesto_nombre, usuario, usuarioId ?? null,
+      ]);
+      await client.query("COMMIT");
+      resultadosArmas.push({
+        codigo: arma.codigo, cambio: true,
+        custodioAnteriorNombre: custActual?.nombre ?? "(Sin custodio)",
+        custodioNuevoNombre: nombreNuevo,
+      });
+    } catch (e: any) {
+      await client.query("ROLLBACK").catch(() => {});
+      resultadosArmas.push({ codigo: arma.codigo, cambio: false, error: e.message });
+    } finally {
+      client.release();
+    }
+  }
+
+  // ── Vehículos: usa motor de turnos para la fecha del cierre ────────────────
+  const { rows: vehiculos } = await pool.query(`
+    SELECT v.id, v.placa, v.zona_operativa_id,
+           oz.nombre AS zona_nombre
+    FROM vehiculos v
+    JOIN operational_zones oz ON oz.id = v.zona_operativa_id
+    WHERE v.activo = TRUE AND v.zona_operativa_id IS NOT NULL
+  `);
+
+  for (const v of vehiculos) {
+    const responsable = await calcularResponsableTurnoLocal(v.zona_operativa_id, fecha);
+    if (!responsable) {
+      resultadosVehiculos.push({ placa: v.placa, cambio: false, motivo: "Sin responsable en zona" });
+      continue;
+    }
+
+    const { rows: custRows } = await pool.query(
+      `SELECT id, employee_id, (SELECT nombre_completo FROM employees WHERE id = employee_id) AS nombre
+       FROM vehiculo_custodia WHERE vehiculo_id=$1 AND fecha_fin IS NULL`,
+      [v.id]
+    );
+    const custActual = custRows[0] ?? null;
+    if (custActual && Number(custActual.employee_id) === Number(responsable.id)) {
+      resultadosVehiculos.push({ placa: v.placa, cambio: false, motivo: "Sin cambio" });
+      continue;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      if (custActual) {
+        await client.query(`UPDATE vehiculo_custodia SET fecha_fin=NOW() WHERE id=$1`, [custActual.id]);
+      }
+      await client.query(`
+        INSERT INTO vehiculo_custodia (vehiculo_id, employee_id, zona_operativa_id, tipo_relevo, notas, registrado_por)
+        VALUES ($1,$2,$3,'cierre_operativo',$4,$5)
+      `, [v.id, responsable.id, v.zona_operativa_id, `Custodia sincronizada al cierre — ${fecha}`, usuario]);
+      await client.query(`
+        INSERT INTO custodia_sync_log
+          (cierre_id,fecha,tipo_activo,activo_id,activo_codigo,
+           custodio_anterior_id,custodio_anterior_nombre,
+           custodio_nuevo_id,custodio_nuevo_nombre,
+           referencia_nombre,origen,usuario,usuario_id)
+        VALUES ($1,$2,'vehiculo',$3,$4,$5,$6,$7,$8,$9,'cierre_operativo',$10,$11)
+      `, [
+        cierreId, fecha, v.id, v.placa,
+        custActual?.employee_id ?? null, custActual?.nombre ?? null,
+        responsable.id, responsable.nombre_completo,
+        v.zona_nombre, usuario, usuarioId ?? null,
+      ]);
+      await client.query("COMMIT");
+      resultadosVehiculos.push({
+        placa: v.placa, cambio: true,
+        custodioAnteriorNombre: custActual?.nombre ?? "(Sin custodio)",
+        custodioNuevoNombre: responsable.nombre_completo,
+      });
+    } catch (e: any) {
+      await client.query("ROLLBACK").catch(() => {});
+      resultadosVehiculos.push({ placa: v.placa, cambio: false, error: e.message });
+    } finally {
+      client.release();
+    }
+  }
+
+  return {
+    armas: resultadosArmas,
+    vehiculos: resultadosVehiculos,
+    totalCambios:
+      resultadosArmas.filter((r: any) => r.cambio).length +
+      resultadosVehiculos.filter((r: any) => r.cambio).length,
+  };
+}
+
+// ─── GET /api/operaciones/cierre/preview-custodias ────────────────────────────
+// Preview sin aplicar cambios: qué custodias cambiarían al cerrar.
+// ?fecha=YYYY-MM-DD (opcional; por defecto fecha activa de hoy)
+operacionesRouter.get("/operaciones/cierre/preview-custodias", async (req, res) => {
+  try {
+    const ahora = new Date();
+    const todayISO = `${ahora.getUTCFullYear()}-${String(ahora.getUTCMonth() + 1).padStart(2, '0')}-${String(ahora.getUTCDate()).padStart(2, '0')}`;
+    const fechaParam = req.query.fecha as string | undefined;
+    const fecha = (fechaParam && /^\d{4}-\d{2}-\d{2}$/.test(fechaParam)) ? fechaParam : todayISO;
+
+    // Armas: compara custodio actual con agente que cubre el puesto hoy
+    const { rows: armasRows } = await pool.query(`
+      SELECT
+        a.id, a.codigo, a.puesto_id,
+        po.nombre           AS puesto_nombre,
+        po.cliente_nombre,
+        po.agente_id        AS nuevo_custodio_id,
+        e_nuevo.nombre_completo AS nuevo_custodio_nombre,
+        ac.employee_id      AS custodio_actual_id,
+        e_actual.nombre_completo AS custodio_actual_nombre
+      FROM armas a
+      JOIN puestos_operativos po     ON po.id = a.puesto_id
+      LEFT JOIN arma_custodia ac     ON ac.arma_id = a.id AND ac.fecha_fin IS NULL
+      LEFT JOIN employees e_actual   ON e_actual.id = ac.employee_id
+      LEFT JOIN employees e_nuevo    ON e_nuevo.id  = po.agente_id
+      WHERE a.activo = TRUE AND a.puesto_id IS NOT NULL
+    `);
+
+    const armasCambios = armasRows
+      .filter((r: any) => r.nuevo_custodio_id && String(r.custodio_actual_id) !== String(r.nuevo_custodio_id))
+      .map((r: any) => ({
+        tipo: 'arma' as const,
+        id: r.id,
+        codigo: r.codigo,
+        referencaNombre: r.puesto_nombre,
+        clienteNombre: r.cliente_nombre,
+        custodioAnteriorNombre: r.custodio_actual_nombre ?? '(Sin custodio)',
+        custodioNuevoNombre: r.nuevo_custodio_nombre,
+      }));
+
+    // Vehículos: compara custodio actual con responsable de zona según motor de ciclos
+    const { rows: vehiculosRows } = await pool.query(`
+      SELECT
+        v.id, v.placa, v.zona_operativa_id,
+        oz.nombre AS zona_nombre,
+        vc.employee_id AS custodio_actual_id,
+        e_actual.nombre_completo AS custodio_actual_nombre
+      FROM vehiculos v
+      JOIN operational_zones oz      ON oz.id = v.zona_operativa_id
+      LEFT JOIN vehiculo_custodia vc ON vc.vehiculo_id = v.id AND vc.fecha_fin IS NULL
+      LEFT JOIN employees e_actual   ON e_actual.id = vc.employee_id
+      WHERE v.activo = TRUE AND v.zona_operativa_id IS NOT NULL
+    `);
+
+    const vehiculosCambios: any[] = [];
+    for (const v of vehiculosRows) {
+      const responsable = await calcularResponsableTurnoLocal(v.zona_operativa_id, fecha);
+      if (!responsable) continue;
+      if (v.custodio_actual_id && String(v.custodio_actual_id) === String(responsable.id)) continue;
+      vehiculosCambios.push({
+        tipo: 'vehiculo',
+        id: v.id,
+        codigo: v.placa,
+        referencaNombre: v.zona_nombre,
+        custodioAnteriorNombre: v.custodio_actual_nombre ?? '(Sin custodio)',
+        custodioNuevoNombre: responsable.nombre_completo,
+      });
+    }
+
+    res.json({
+      fecha,
+      armas: armasCambios,
+      vehiculos: vehiculosCambios,
+      totalCambios: armasCambios.length + vehiculosCambios.length,
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /operaciones/cierre/preview-custodias error");
+    res.status(500).json({ error: "Error al calcular preview de custodias" });
+  }
+});
+
+// ─── POST /api/operaciones/cierre ─────────────────────────────────────────────
 operacionesRouter.post("/operaciones/cierre", async (req, res) => {
-  const { confirmacion, comentario, usuario, usuarioId, rol, fecha: fechaSolicitada } = req.body;
+  const { confirmacion, comentario, usuario, usuarioId, rol, fecha: fechaSolicitada, sincronizarCustodias } = req.body;
 
   if (!['admin', 'supervisor'].includes(rol)) {
     return res.status(403).json({ error: 'Solo supervisores y administradores pueden cerrar el día' });
@@ -1988,12 +2262,26 @@ operacionesRouter.post("/operaciones/cierre", async (req, res) => {
     // ── Generar novedades de nómina desde segmentos de cobertura ──────────
     const novedadesGeneradas = await generarNovedades(fechaACerrarISO, cierreRows[0].id);
 
+    // ── Sincronización de custodias (opcional) ─────────────────────────────
+    let syncCustodias: { armas: any[]; vehiculos: any[]; totalCambios: number } | null = null;
+    if (sincronizarCustodias) {
+      try {
+        syncCustodias = await sincronizarCustodiasAlCierre(
+          fechaACerrarISO, cierreRows[0].id, snapshotPuestos,
+          usuario ?? 'sistema', usuarioId ?? null
+        );
+        logger.info({ totalCambios: syncCustodias.totalCambios }, "Custodias sincronizadas al cierre");
+      } catch (syncErr) {
+        logger.error({ syncErr }, "Error al sincronizar custodias al cierre (no bloqueante)");
+      }
+    }
+
     const mensaje = esRetroactivo
       ? `Cierre retroactivo de ${fechaACerrarStr} completado. ${novedadesGeneradas} novedad(es) de nómina generada(s).`
       : `Día ${fechaACerrarStr} cerrado. ${novedadesGeneradas} novedad(es) de nómina generada(s).`;
 
     logger.info({ usuario, fecha: fechaACerrarStr, esRetroactivo, novedadesGeneradas }, "Día operativo cerrado");
-    res.json({ ok: true, cierre: cierreRows[0], resumen, novedadesGeneradas, retroactivo: esRetroactivo, mensaje });
+    res.json({ ok: true, cierre: cierreRows[0], resumen, novedadesGeneradas, retroactivo: esRetroactivo, mensaje, syncCustodias });
   } catch (err) {
     logger.error({ err }, "POST /operaciones/cierre error");
     res.status(500).json({ error: "Error al cerrar el día" });

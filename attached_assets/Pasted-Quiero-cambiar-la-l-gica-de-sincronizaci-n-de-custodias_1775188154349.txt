@@ -1,0 +1,104 @@
+Quiero cambiar la lógica de sincronización de custodias de armas y vehículos para que el flujo principal ocurra al cierre del pizarrón operativo, no como acción manual separada.
+
+## Objetivo
+Que la custodia final de armas y vehículos se actualice usando el estado real definitivo del turno, es decir, el resultado final del día al momento de cerrar el pizarrón.
+
+---
+
+## 1. Nueva regla principal
+La sincronización de custodias debe ejecutarse como parte del cierre del pizarrón operativo.
+
+No quiero que el flujo normal dependa de un botón manual separado.
+
+---
+
+## 2. Lógica esperada
+Al cerrar el día, el sistema debe:
+
+1. revisar quién quedó realmente trabajando en cada puesto al cierre
+2. revisar quién quedó realmente activo en cada zona/sede al cierre
+3. para cada arma asignada a puesto:
+   - verificar custodio actual
+   - comparar con el agente que terminó cubriendo ese puesto
+   - actualizar si cambió
+4. para cada vehículo asignado a zona/sede:
+   - verificar custodio actual
+   - comparar con supervisor o jefe de servicio que terminó activo
+   - actualizar si cambió
+
+---
+
+## 3. Auditoría obligatoria
+Cada sincronización hecha durante el cierre debe guardar:
+
+- fecha y hora
+- usuario que cerró
+- tipo de activo (arma o vehículo)
+- activo afectado
+- custodio anterior
+- custodio nuevo
+- puesto / zona / sede relacionada
+- origen: cierre operativo
+
+---
+
+## 4. Resumen antes de confirmar
+Antes de completar el cierre, quiero que el sistema muestre un resumen tipo:
+
+Se actualizarán estas custodias:
+- Arma ARM-004: Pedro → Juan
+- Vehículo M-01: Daniel → Marco
+
+Y luego:
+- Confirmar cierre
+- Confirmar cierre y sincronización
+
+O una confirmación equivalente clara.
+
+---
+
+## 5. No sincronizar a mitad del día como verdad final
+La custodia definitiva debe basarse en el cierre del turno/día, no en cambios intermedios del pizarrón.
+
+No quiero que relevos temporales a medio proceso sobrescriban prematuramente la responsabilidad final sin cierre.
+
+---
+
+## 6. Botón manual extraordinario
+Si ya existe un botón manual de sincronización, no hace falta borrarlo, pero debe quedar como:
+
+- herramienta extraordinaria
+- ajuste excepcional
+- no flujo principal
+
+Idealmente con un label claro tipo:
+“Sincronización extraordinaria”
+
+---
+
+## 7. No romper
+No romper:
+- cierre operativo actual
+- cobertura
+- armería
+- vehículos
+- planilla
+- historial existente
+
+Solo integrar la sincronización al flujo de cierre del día.
+
+---
+
+## 8. Validación
+Quiero pruebas donde:
+1. un agente releva a otro en un puesto con arma
+2. al cierre, el arma pase al custodio correcto
+3. un supervisor cambia en zona con vehículo
+4. al cierre, el vehículo pase al responsable correcto
+5. quede auditoría completa
+6. no se actualicen custodias incorrectamente antes del cierre
+
+---
+
+## 9. Resultado esperado
+Quiero que el cierre del pizarrón sea el momento oficial en que se consolidan también las custodias de armas y vehículos, para mantener trazabilidad real y evitar desalineaciones entre operación y custodia.

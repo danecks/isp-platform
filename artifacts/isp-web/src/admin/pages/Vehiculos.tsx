@@ -642,12 +642,13 @@ export default function Vehiculos() {
             <button
               onClick={syncTodasCustodias}
               disabled={syncing}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-600/20 border border-teal-500/30 text-xs font-medium text-teal-300 hover:bg-teal-600/30 transition-all disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-orange-600/10 border border-orange-500/20 text-xs font-medium text-orange-400 hover:bg-orange-600/20 transition-all disabled:opacity-50"
+              title="Herramienta de ajuste excepcional — el flujo normal ocurre al cierre del pizarrón"
             >
               {syncing
                 ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 : <RefreshCw className="w-3.5 h-3.5" />}
-              Sincronizar custodias al turno actual
+              Sincronización extraordinaria
             </button>
           </div>
           {loadingEstado ? (

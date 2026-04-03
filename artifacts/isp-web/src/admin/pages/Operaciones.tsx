@@ -4871,30 +4871,59 @@ function ModalLiberar({
 
 // ─── Modal: Cerrar día ────────────────────────────────────────────────────────
 
+type PreviewCustodia = {
+  tipo: "arma" | "vehiculo";
+  id: number;
+  codigo: string;
+  referencaNombre: string;
+  custodioAnteriorNombre: string;
+  custodioNuevoNombre: string;
+};
+
 function ModalCierre({
   resumen,
   advertencias,
   fechaActivaStr,
+  fechaIso,
   onConfirm,
   onClose,
 }: {
   resumen: CierreResumen;
   advertencias: string[];
   fechaActivaStr: string;
-  onConfirm: (comentario: string) => Promise<void>;
+  fechaIso?: string;
+  onConfirm: (comentario: string, sincronizarCustodias: boolean) => Promise<void>;
   onClose: () => void;
 }) {
   const hoy      = fechaActivaStr;
   const esperado = `CERRAR ${hoy}`;
-  const [texto,      setTexto]      = useState("");
-  const [comentario, setComentario] = useState("");
-  const [loading,    setLoading]    = useState(false);
+  const [texto,         setTexto]         = useState("");
+  const [comentario,    setComentario]    = useState("");
+  const [loading,       setLoading]       = useState(false);
+  const [loadingPreview, setLoadingPreview] = useState(true);
+  const [previewArmas,   setPreviewArmas]   = useState<PreviewCustodia[]>([]);
+  const [previewVeh,     setPreviewVeh]     = useState<PreviewCustodia[]>([]);
   const valido = texto === esperado;
+  const totalCambios = previewArmas.length + previewVeh.length;
 
-  async function handleConfirm() {
+  useEffect(() => {
+    const ctrl = new AbortController();
+    const qp = fechaIso ? `?fecha=${fechaIso}` : "";
+    fetch(`${API_BASE}/operaciones/cierre/preview-custodias${qp}`, { signal: ctrl.signal })
+      .then(r => r.json())
+      .then(d => {
+        setPreviewArmas(d.armas ?? []);
+        setPreviewVeh(d.vehiculos ?? []);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingPreview(false));
+    return () => ctrl.abort();
+  }, [fechaIso]);
+
+  async function handleConfirm(sincronizarCustodias: boolean) {
     if (!valido) return;
     setLoading(true);
-    try { await onConfirm(comentario); }
+    try { await onConfirm(comentario, sincronizarCustodias); }
     finally { setLoading(false); }
   }
 
@@ -4983,20 +5012,62 @@ function ModalCierre({
             )}
           </div>
 
+          {/* Preview de custodias */}
+          <div className="rounded-xl border border-white/8 bg-[#060e1c] overflow-hidden">
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-white/6">
+              <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
+              <span className="text-[11px] font-semibold text-white/60 uppercase tracking-widest">Custodias a sincronizar</span>
+              {loadingPreview && <Loader2 className="w-3 h-3 animate-spin text-white/30 ml-auto" />}
+              {!loadingPreview && (
+                <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full ${totalCambios > 0 ? "bg-teal-500/20 text-teal-400" : "bg-white/5 text-white/30"}`}>
+                  {totalCambios} cambio{totalCambios !== 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+            {!loadingPreview && totalCambios === 0 && (
+              <p className="text-[11px] text-white/30 px-3 py-2">Sin cambios pendientes de custodia.</p>
+            )}
+            {!loadingPreview && totalCambios > 0 && (
+              <div className="divide-y divide-white/4 max-h-36 overflow-y-auto">
+                {[...previewArmas, ...previewVeh].map((c, i) => (
+                  <div key={i} className="flex items-center gap-2 px-3 py-1.5 text-xs">
+                    <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ${c.tipo === "arma" ? "bg-orange-500/15 text-orange-400" : "bg-blue-500/15 text-blue-400"}`}>
+                      {c.tipo === "arma" ? "Arma" : "Vehículo"}
+                    </span>
+                    <span className="font-mono text-white/80 font-semibold">{c.codigo}</span>
+                    <span className="text-white/30 truncate flex-1 text-[10px]">{c.referencaNombre}</span>
+                    <span className="text-white/40 text-[10px] shrink-0">{c.custodioAnteriorNombre.split(" ")[0]}</span>
+                    <span className="text-white/20 text-[10px]">→</span>
+                    <span className="text-teal-400 text-[10px] shrink-0 font-semibold">{c.custodioNuevoNombre.split(" ")[0]}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="flex gap-2 pt-1">
             <button
               onClick={onClose}
-              className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors"
+              className="py-2.5 px-4 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors"
             >
               Cancelar
             </button>
             <button
-              onClick={handleConfirm}
+              onClick={() => handleConfirm(false)}
               disabled={!valido || loading}
-              className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-sm font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              className="flex-1 py-2.5 rounded-xl border border-amber-500/30 bg-amber-600/10 hover:bg-amber-600/20 text-sm text-amber-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
             >
               {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Lock className="w-3.5 h-3.5" />}
-              Cerrar día
+              Solo cerrar
+            </button>
+            <button
+              onClick={() => handleConfirm(true)}
+              disabled={!valido || loading || totalCambios === 0}
+              className="flex-1 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-sm font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              title={totalCambios === 0 ? "Sin custodias que sincronizar" : `Cerrar y sincronizar ${totalCambios} custodia(s)`}
+            >
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+              Cerrar + custodias
             </button>
           </div>
         </div>
@@ -5816,16 +5887,20 @@ export default function Operaciones() {
   }
 
   // ── Cerrar día ─────────────────────────────────────────────────────────────
-  async function cerrarDia(comentario: string) {
+  async function cerrarDia(comentario: string, sincronizarCustodias: boolean) {
     try {
-      await apiPost(`${API_BASE}/operaciones/cierre`, {
+      const resp: any = await apiPost(`${API_BASE}/operaciones/cierre`, {
         confirmacion: `CERRAR ${fechaActivaStr}`,
         comentario,
         usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
         usuarioId: currentUser?.id,
         rol: currentUser?.rol,
+        sincronizarCustodias,
       });
-      toast({ title: "Día operativo cerrado", description: `Cierre de ${fechaActivaStr} registrado` });
+      const syncMsg = resp?.syncCustodias?.totalCambios
+        ? ` • ${resp.syncCustodias.totalCambios} custodia(s) actualizada(s).`
+        : "";
+      toast({ title: "Día operativo cerrado", description: `Cierre de ${fechaActivaStr} registrado.${syncMsg}` });
       setModalCierre(false);
       refetchCierre();
     } catch (e: any) {
@@ -7138,6 +7213,7 @@ export default function Operaciones() {
           resumen={cierreHoy.resumen}
           advertencias={cierreHoy.advertencias}
           fechaActivaStr={fechaActivaStr}
+          fechaIso={cierreHoy.fechaActiva}
           onConfirm={cerrarDia}
           onClose={() => setModalCierre(false)}
         />

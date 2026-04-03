@@ -2664,5 +2664,33 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: PT-01 puesto_titulares — error (no bloqueante)");
   }
 
+  // CUST-01: tabla de auditoría de sincronizaciones de custodia al cierre
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS custodia_sync_log (
+        id                       SERIAL PRIMARY KEY,
+        cierre_id                INTEGER REFERENCES cierre_operativo_diario(id),
+        fecha                    DATE NOT NULL,
+        tipo_activo              TEXT NOT NULL CHECK (tipo_activo IN ('arma','vehiculo')),
+        activo_id                INTEGER NOT NULL,
+        activo_codigo            TEXT,
+        custodio_anterior_id     INTEGER,
+        custodio_anterior_nombre TEXT,
+        custodio_nuevo_id        INTEGER,
+        custodio_nuevo_nombre    TEXT,
+        referencia_nombre        TEXT,
+        origen                   TEXT NOT NULL DEFAULT 'cierre_operativo',
+        usuario                  TEXT,
+        usuario_id               INTEGER,
+        creado_en                TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_csl_cierre  ON custodia_sync_log(cierre_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_csl_fecha   ON custodia_sync_log(fecha)`);
+    logger.info("Auto-migrate: CUST-01 tabla custodia_sync_log verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: CUST-01 custodia_sync_log — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

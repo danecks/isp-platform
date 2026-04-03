@@ -601,9 +601,10 @@ function TabEstado({ fecha, onFicha }: { fecha: string; onFicha: (a: EstadoArma)
           <RefreshCw className="w-4 h-4" />Refrescar
         </button>
         <button onClick={syncTodas} disabled={syncing}
-          className="flex items-center gap-1.5 px-4 py-2 text-sm bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg transition-colors disabled:opacity-50">
+          className="flex items-center gap-1.5 px-4 py-2 text-sm bg-orange-600/10 hover:bg-orange-600/20 text-orange-400 border border-orange-500/20 rounded-lg transition-colors disabled:opacity-50"
+          title="Herramienta de ajuste excepcional — el flujo normal ocurre al cierre del pizarrón">
           {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRightLeft className="w-4 h-4" />}
-          Sincronizar custodias
+          Sincronización extraordinaria
         </button>
       </div>
 
@@ -779,8 +780,8 @@ function TabArmas({ onEdit, onFicha }: {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1 justify-end">
                       {arma.puesto_id && (
-                        <button onClick={() => syncArma(arma)} title="Sincronizar custodia"
-                          className="p-1.5 text-gray-500 hover:text-blue-400 hover:bg-blue-400/10 rounded-md transition-colors">
+                        <button onClick={() => syncArma(arma)} title="Sincronización extraordinaria (ajuste excepcional)"
+                          className="p-1.5 text-gray-500 hover:text-orange-400 hover:bg-orange-400/10 rounded-md transition-colors">
                           <ArrowRightLeft className="w-3.5 h-3.5" />
                         </button>
                       )}
