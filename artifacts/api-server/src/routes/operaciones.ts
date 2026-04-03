@@ -67,7 +67,9 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         -- ARM: arma asignada al puesto (si existe)
         arm.id     AS arma_id,
         arm.codigo AS arma_codigo,
-        arm.tipo   AS arma_tipo
+        arm.tipo   AS arma_tipo,
+        -- PT: todos los titulares del puesto con sus fechas de ciclo individuales
+        COALESCE(pt_tab.titulares_json, '[]'::json)                   AS titulares_json
       FROM puestos_operativos po
       -- TH: obtener titular histórico para la fecha consultada
       LEFT JOIN LATERAL (
@@ -93,6 +95,20 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         ORDER BY er.created_at DESC
         LIMIT 1
       ) titular_vac ON TRUE
+      -- PT: JSON array de titulares (multi-titular para 24x24 / 24x48 / etc.)
+      LEFT JOIN LATERAL (
+        SELECT json_agg(
+          json_build_object(
+            'employee_id',       pt.employee_id,
+            'nombre',            COALESCE(e_pt.nombre_completo, '—'),
+            'orden',             pt.orden,
+            'fecha_inicio_ciclo', pt.fecha_inicio_ciclo
+          ) ORDER BY pt.orden
+        ) AS titulares_json
+        FROM puesto_titulares pt
+        LEFT JOIN employees e_pt ON e_pt.id = pt.employee_id
+        WHERE pt.puesto_id = po.id AND pt.activo = TRUE
+      ) pt_tab ON TRUE
       LEFT JOIN employees e  ON e.id  = po.agente_id
       LEFT JOIN client_sedes cs ON cs.id = po.sede_id
       LEFT JOIN operational_zones oz ON oz.id = po.zona_operativa_id
@@ -105,90 +121,79 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       ORDER BY po.cliente_nombre, po.orden, po.nombre
     `, [fechaFiltro]);
 
-    // Calcular descanso_por_ciclo para cada puesto usando el motor de turnos
+    // ── Calcular estado de ciclo por puesto Y por cada titular individual ─────
     const fechaConsultada = fechaFiltro ?? new Date().toISOString().slice(0, 10);
 
-    for (const p of puestos) {
-      let descanso_por_ciclo = false;
-      if (p.tipo_turno_id && p.fecha_inicio_ciclo) {
-        const estadoCiclo = calcularEstadoCiclo(
-          {
-            id: p.tipo_turno_id,
-            nombre: p.turno_nombre ?? "",
-            horas_trabajo: parseFloat(p.horas_trabajo ?? 0),
-            horas_descanso: parseFloat(p.horas_descanso ?? 0),
-            tipo_ciclo: p.tipo_ciclo ?? undefined,
-          },
-          p.fecha_inicio_ciclo,
-          fechaConsultada,
-        );
-        descanso_por_ciclo = estadoCiclo.descansoPorCiclo;
-      }
-      p.descanso_por_ciclo = descanso_por_ciclo;
-    }
-
-    // ── Agrupar pares 24x24 ───────────────────────────────────────────────────
-    // Puestos con turno alternado (24x24) y nombre terminando en " Par A" o
-    // " Par B" representan el mismo puesto físico con dos titulares alternos.
-    // Los agrupamos en un objeto unificado para que la UI muestre una sola
-    // tarjeta por puesto físico.
-    const PAR_SUFFIX = /\s+Par\s+[AB]$/i;
     type PuestoRaw = (typeof puestos)[0];
-    type PuestoAgrupado = PuestoRaw & {
-      es_par_24x24?: boolean;
-      par_trabajando?: PuestoRaw;
-      par_descansando?: PuestoRaw;
+    type TitularEnriquecido = {
+      employee_id: number;
+      nombre: string;
+      orden: number;
+      fecha_inicio_ciclo: string | null;
+      trabaja_hoy: boolean;
+      descanso_por_ciclo: boolean;
+    };
+    type PuestoFinal = PuestoRaw & {
+      titulares: TitularEnriquecido[];
+      es_par_24x24: boolean;
+      par_trabajando?: TitularEnriquecido;
+      par_descansando?: TitularEnriquecido;
     };
 
-    function agruparPares24x24(lista: PuestoRaw[]): PuestoAgrupado[] {
-      const parMap = new Map<string, { parA?: PuestoRaw; parB?: PuestoRaw }>();
-      const sinPar: PuestoRaw[] = [];
-
-      for (const p of lista) {
-        // Detectar par por nombre ("… Par A" / "… Par B") independientemente de tipo_ciclo
-        // ya que el valor almacenado puede ser "alternado", "24x24" u otro según la tabla turnos.
-        if (PAR_SUFFIX.test(p.nombre)) {
-          const base = p.nombre.replace(PAR_SUFFIX, "").trim();
-          // key: base + zona para evitar colisiones entre clientes con puestos homónimos
-          const mapKey = `${base}|${p.zona_operativa_id ?? ""}|${p.sede_id ?? ""}`;
-          if (!parMap.has(mapKey)) parMap.set(mapKey, {});
-          const entry = parMap.get(mapKey)!;
-          if (/Par\s+A$/i.test(p.nombre)) entry.parA = p;
-          else entry.parB = p;
-        } else {
-          sinPar.push(p);
-        }
-      }
-
-      const resultado: PuestoAgrupado[] = [...sinPar];
-      for (const entry of parMap.values()) {
-        const { parA, parB } = entry;
-        if (parA && parB) {
-          // El slot que NO está en descanso de ciclo es el que trabaja hoy
-          const working: PuestoRaw = !parA.descanso_por_ciclo ? parA : parB;
-          const resting: PuestoRaw  = !parA.descanso_por_ciclo ? parB : parA;
-          resultado.push({
-            ...working,
-            nombre:         working.nombre.replace(PAR_SUFFIX, "").trim(),
-            es_par_24x24:   true,
-            par_trabajando:  { ...working },
-            par_descansando: { ...resting },
-          });
-        } else {
-          // Par incompleto — mostrar como puesto individual
-          if (parA) resultado.push(parA);
-          if (parB) resultado.push(parB);
-        }
-      }
-
-      // Mantener orden original (por orden, luego nombre)
-      resultado.sort((a, b) =>
-        a.orden !== b.orden
-          ? a.orden - b.orden
-          : a.nombre.localeCompare(b.nombre),
-      );
-      return resultado;
+    function buildTurnoObj(p: PuestoRaw) {
+      if (!p.tipo_turno_id) return null;
+      return {
+        id: p.tipo_turno_id,
+        nombre: p.turno_nombre ?? "",
+        horas_trabajo: parseFloat(p.horas_trabajo ?? 0),
+        horas_descanso: parseFloat(p.horas_descanso ?? 0),
+        tipo_ciclo: p.tipo_ciclo ?? undefined,
+      };
     }
+
+    const puestosFinales: PuestoFinal[] = puestos.map((p) => {
+      const turnoObj = buildTurnoObj(p);
+
+      // descanso_por_ciclo del puesto (ancla del titular A — para compatibilidad legacy)
+      let descanso_por_ciclo = false;
+      if (turnoObj && p.fecha_inicio_ciclo) {
+        descanso_por_ciclo = calcularEstadoCiclo(
+          turnoObj,
+          String(p.fecha_inicio_ciclo).slice(0, 10),
+          fechaConsultada,
+        ).descansoPorCiclo;
+      }
+      p.descanso_por_ciclo = descanso_por_ciclo;
+
+      // Enriquecer cada titular con su propio estado de ciclo
+      const rawTitulares: Array<{
+        employee_id: number;
+        nombre: string;
+        orden: number;
+        fecha_inicio_ciclo: string | null;
+      }> = Array.isArray(p.titulares_json) ? p.titulares_json : [];
+
+      const titulares: TitularEnriquecido[] = rawTitulares.map((t) => {
+        let trabaja_hoy = true;
+        let desc = false;
+        if (turnoObj && t.fecha_inicio_ciclo) {
+          const estado = calcularEstadoCiclo(
+            turnoObj,
+            String(t.fecha_inicio_ciclo).slice(0, 10),
+            fechaConsultada,
+          );
+          desc = estado.descansoPorCiclo;
+          trabaja_hoy = !desc;
+        }
+        return { ...t, trabaja_hoy, descanso_por_ciclo: desc };
+      });
+
+      const esPar = titulares.length >= 2;
+      const par_trabajando  = esPar ? (titulares.find((t) => t.trabaja_hoy)  ?? titulares[0]) : undefined;
+      const par_descansando = esPar ? (titulares.find((t) => !t.trabaja_hoy) ?? titulares[1]) : undefined;
+
+      return { ...p, titulares, es_par_24x24: esPar, par_trabajando, par_descansando };
+    });
 
     // Agrupar por cliente
     const mapaClientes: Record<string, {
@@ -196,10 +201,10 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       clienteNombre: string;
       fechaInicioContrato: string | null;
       iniciaHoy: boolean;
-      puestos: PuestoAgrupado[];
+      puestos: PuestoFinal[];
     }> = {};
 
-    for (const p of puestos) {
+    for (const p of puestosFinales) {
       const key = String(p.cliente_id ?? p.cliente_nombre);
       if (!mapaClientes[key]) {
         mapaClientes[key] = {
@@ -213,11 +218,6 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         };
       }
       mapaClientes[key].puestos.push(p);
-    }
-
-    // Agrupar pares 24x24 dentro de cada cliente
-    for (const clienteData of Object.values(mapaClientes)) {
-      clienteData.puestos = agruparPares24x24(clienteData.puestos);
     }
 
     res.json(Object.values(mapaClientes));
@@ -309,11 +309,15 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       LEFT JOIN employee_operational_assignments eoa
         ON eoa.employee_id = e.id AND eoa.activa = TRUE
       LEFT JOIN LATERAL (
+        -- Busca el puesto del empleado vía puesto_titulares (multi-titular)
+        -- con COALESCE fallback a puestos_operativos.titular_employee_id (legacy)
         SELECT po2.id, po2.estado_operativo_puesto, po2.nombre, po2.cliente_nombre,
-               po2.agente_id, po2.tipo_turno_id, po2.fecha_inicio_ciclo,
+               po2.agente_id, po2.tipo_turno_id,
+               COALESCE(pt2.fecha_inicio_ciclo, po2.fecha_inicio_ciclo) AS fecha_inicio_ciclo,
                po2.zona_operativa_id
-        FROM puestos_operativos po2
-        WHERE po2.titular_employee_id = e.id AND po2.activo = TRUE
+        FROM puesto_titulares pt2
+        JOIN puestos_operativos po2 ON po2.id = pt2.puesto_id AND po2.activo = TRUE
+        WHERE pt2.employee_id = e.id AND pt2.activo = TRUE
         ORDER BY po2.id
         LIMIT 1
       ) titular_po ON TRUE

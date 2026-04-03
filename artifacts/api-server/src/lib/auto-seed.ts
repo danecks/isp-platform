@@ -2603,5 +2603,45 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: ARM-01 — error (no bloqueante)");
   }
 
+  // ── PT-01: tabla puesto_titulares — multi-titular por puesto ─────────────────
+  // Soporta: 24x24 (2 titulares), 24x48 (2), 24x72 (2), 8x8 (2), 12x12 (1)
+  // Cada titular tiene su propia fecha_inicio_ciclo para el motor de ciclos.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS puesto_titulares (
+        id                SERIAL PRIMARY KEY,
+        puesto_id         INTEGER  NOT NULL REFERENCES puestos_operativos(id) ON DELETE CASCADE,
+        employee_id       INTEGER  NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
+        orden             SMALLINT NOT NULL DEFAULT 1,
+        fecha_inicio_ciclo DATE,
+        activo            BOOLEAN  NOT NULL DEFAULT TRUE,
+        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (puesto_id, employee_id)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_pt_puesto   ON puesto_titulares(puesto_id)   WHERE activo = TRUE`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_pt_employee ON puesto_titulares(employee_id) WHERE activo = TRUE`);
+    logger.info("Auto-migrate: PT-01 tabla puesto_titulares verificada/creada");
+
+    // PT-02: seed inicial desde puestos_operativos activos (puestos sin " Par B")
+    // Idempotente: solo corre si la tabla está vacía.
+    const { rows: ptCount } = await pool.query(`SELECT COUNT(*) AS c FROM puesto_titulares`);
+    if (parseInt(ptCount[0].c) === 0) {
+      await pool.query(`
+        INSERT INTO puesto_titulares (puesto_id, employee_id, orden, fecha_inicio_ciclo)
+        SELECT po.id, po.titular_employee_id, 1, po.fecha_inicio_ciclo
+        FROM puestos_operativos po
+        WHERE po.activo = TRUE
+          AND po.titular_employee_id IS NOT NULL
+          AND po.nombre NOT ILIKE '% Par B'
+        ON CONFLICT DO NOTHING
+      `);
+      logger.info("Auto-migrate: PT-02 seed titulares orden=1 desde puestos_operativos completado");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PT-01 puesto_titulares — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

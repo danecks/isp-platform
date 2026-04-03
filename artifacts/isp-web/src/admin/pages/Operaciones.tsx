@@ -75,12 +75,24 @@ interface Puesto {
   arma_id?: number | null;
   arma_codigo?: string | null;
   arma_tipo?: string | null;
-  /** Puestos 24x24 agrupados: true cuando Par A + Par B se fusionaron en un puesto físico único */
+  /** Puestos con múltiples titulares (24x24 / 24x48 / etc.) */
   es_par_24x24?: boolean;
-  /** Slot del titular que trabaja hoy (la base del objeto también tiene sus datos) */
-  par_trabajando?: Puesto;
-  /** Slot del titular que descansa hoy */
-  par_descansando?: Puesto;
+  /** Todos los titulares del puesto con su estado de ciclo individual */
+  titulares?: TitularCiclo[];
+  /** Titular que trabaja hoy */
+  par_trabajando?: TitularCiclo;
+  /** Titular que descansa hoy */
+  par_descansando?: TitularCiclo;
+}
+
+/** Titular individual con su propio estado de ciclo */
+interface TitularCiclo {
+  employee_id: number;
+  nombre: string;
+  orden: number;
+  fecha_inicio_ciclo: string | null;
+  trabaja_hoy: boolean;
+  descanso_por_ciclo: boolean;
 }
 
 interface ClienteBoard {
@@ -2858,17 +2870,18 @@ function DroppablePuesto({
   const expanded = puestoContextoId === puesto.id;
   const dimmed   = puestoContextoId !== null && puestoContextoId !== undefined && !expanded;
 
-  // ─── Renderizado especial para puestos 24x24 agrupados ───────────────────
+  // ─── Renderizado especial para puestos con múltiples titulares (24x24) ───
   if (puesto.es_par_24x24 && puesto.par_trabajando && puesto.par_descansando) {
-    const activo      = puesto.par_trabajando;
-    const descansando = puesto.par_descansando;
-    const activoCubierto = activo.estado === "cubierto" && activo.agente_id;
-    const activoRelevo   = activoCubierto && activo.titular_employee_id &&
-                           activo.agente_id !== activo.titular_employee_id;
+    const activo      = puesto.par_trabajando;   // TitularCiclo — trabaja hoy
+    const descansando = puesto.par_descansando;  // TitularCiclo — descansa hoy
+    // Cobertura: usamos los datos del puesto fusionado (agente, arma, estado)
+    const activoCubierto = puesto.estado === "cubierto" && puesto.agente_id;
+    const activoRelevo   = activoCubierto && activo.employee_id &&
+                           puesto.agente_id !== activo.employee_id;
     const activoSinCob   = !activoCubierto;
-    const arma     = activo.arma_codigo || descansando.arma_codigo;
-    const armaId   = activo.arma_id    || descansando.arma_id;
-    const armaTipo = activo.arma_tipo  || descansando.arma_tipo;
+    const arma     = puesto.arma_codigo;
+    const armaId   = puesto.arma_id;
+    const armaTipo = puesto.arma_tipo;
 
     const statusStrip = activoCubierto
       ? (activoRelevo ? "bg-amber-400" : "bg-violet-400")
@@ -2926,17 +2939,17 @@ function DroppablePuesto({
 
             {/* Agente activo — PROMINENTE */}
             <div className="mt-1.5">
-              {activoCubierto && activo.agente_nombre ? (
+              {activoCubierto && puesto.agente_nombre ? (
                 <div className="flex items-center gap-1.5">
-                  <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(activo.agente_nombre)}`}>
-                    {iniciales(activo.agente_nombre)}
+                  <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(puesto.agente_nombre)}`}>
+                    {iniciales(puesto.agente_nombre)}
                   </div>
-                  <p className="text-[13px] font-semibold text-white/90 truncate">{activo.agente_nombre}</p>
+                  <p className="text-[13px] font-semibold text-white/90 truncate">{puesto.agente_nombre}</p>
                 </div>
-              ) : activoSinCob && activo.titular_nombre ? (
+              ) : activoSinCob && activo.nombre ? (
                 <div className={`flex items-center gap-2 ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/30"}`}>
                   <User className="w-4 h-4 shrink-0" />
-                  <p className="text-sm">{isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : activo.titular_nombre}</p>
+                  <p className="text-sm">{isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : activo.nombre}</p>
                 </div>
               ) : (
                 <div className={`flex items-center gap-2 ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/20"}`}>
@@ -2954,10 +2967,10 @@ function DroppablePuesto({
                   <div className="w-1 h-full min-h-[18px] rounded-full bg-indigo-500/20 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-[8px] text-indigo-400/40 font-semibold uppercase tracking-wider mb-0.5">Descansa hoy</p>
-                    {descansando.titular_nombre ? (
+                    {descansando.nombre ? (
                       <div className="flex items-center gap-1.5">
                         <Moon className="w-3 h-3 text-indigo-400/30 shrink-0" />
-                        <p className="text-[11px] text-white/30 truncate">{descansando.titular_nombre}</p>
+                        <p className="text-[11px] text-white/30 truncate">{descansando.nombre}</p>
                       </div>
                     ) : <p className="text-[11px] text-white/15">Sin titular</p>}
                   </div>
