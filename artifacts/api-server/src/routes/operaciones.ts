@@ -1093,14 +1093,21 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
       snapshotPuesto: { nombre: puesto.nombre, cliente_nombre: puesto.cliente_nombre, salario_puesto: puesto.salario_puesto },
     });
 
+    // SAL-02: solo admin/rrhh ven el impacto salarial en la respuesta
+    let rolSesion = "";
+    try { rolSesion = JSON.parse(req.headers["x-isp-session"] as string ?? "")?.role ?? ""; } catch {}
+    const puedeVerImpacto = rolSesion === "admin" || rolSesion === "rrhh";
+
     res.json({
       ok: true,
       mensaje: `${agente.nombre_completo} asignado a ${puesto.nombre}`,
       asignadoComoTitular: !soloCobertura && sinTitular,
       soloCobertura,
-      impactoSalarial: impacto.tieneImpacto
-        ? { detectado: true, impactoId: impacto.impactoId }
-        : { detectado: false },
+      ...(puedeVerImpacto && {
+        impactoSalarial: impacto.tieneImpacto
+          ? { detectado: true, impactoId: impacto.impactoId }
+          : { detectado: false },
+      }),
     });
   } catch (err) {
     logger.error({ err }, "POST /operaciones/asignar error");
@@ -1356,15 +1363,22 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
       snapshotPuesto: { nombre: puesto.nombre, cliente_nombre: puesto.cliente_nombre, salario_puesto: puesto.salario_puesto },
     });
 
+    // SAL-02: solo admin/rrhh ven el impacto salarial en la respuesta
+    let rolSesionSus = "";
+    try { rolSesionSus = JSON.parse(req.headers["x-isp-session"] as string ?? "")?.role ?? ""; } catch {}
+    const puedeVerImpactoSus = rolSesionSus === "admin" || rolSesionSus === "rrhh";
+
     res.json({
       ok: true,
       mensaje: `Sustitución registrada: ${agenteSalienteNombre} → ${entrante.nombre_completo}`,
       eventoRrhhGenerado: !!tipoEventoRrhh,
       tipoNovedad: tipoNovedad ?? null,
       estadoOperativoPuesto: estadoOpPuesto,
-      impactoSalarial: impacto.tieneImpacto
-        ? { detectado: true, impactoId: impacto.impactoId }
-        : { detectado: false },
+      ...(puedeVerImpactoSus && {
+        impactoSalarial: impacto.tieneImpacto
+          ? { detectado: true, impactoId: impacto.impactoId }
+          : { detectado: false },
+      }),
     });
   } catch (err) {
     logger.error({ err }, "POST /operaciones/sustituir error");

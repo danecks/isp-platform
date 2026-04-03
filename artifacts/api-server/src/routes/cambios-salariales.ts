@@ -1,12 +1,23 @@
 import { Router } from "express";
+import type { Request, Response } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
 
 const router = Router();
 
+// ─── Helper: verificar rol admin/rrhh ────────────────────────────────────────
+function rolesPermitidos(req: Request, res: Response): boolean {
+  let rol = "";
+  try { rol = JSON.parse(req.headers["x-isp-session"] as string ?? "")?.role ?? ""; } catch {}
+  if (rol === "admin" || rol === "rrhh") return true;
+  res.status(403).json({ error: "Acceso restringido a RRHH y administradores" });
+  return false;
+}
+
 // ─── GET /api/cambios-salariales ─────────────────────────────────────────────
 // Listar cambios salariales con filtros opcionales
 router.get("/cambios-salariales", async (req, res) => {
+  if (!rolesPermitidos(req, res)) return;
   try {
     const { estado, employee_id, desde, hasta } = req.query;
 
@@ -22,8 +33,11 @@ router.get("/cambios-salariales", async (req, res) => {
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
     const { rows } = await pool.query(
-      `SELECT cs.*
+      `SELECT
+         cs.*,
+         e.nombre_completo AS empleado_nombre
        FROM cambios_salariales cs
+       LEFT JOIN employees e ON e.id = cs.employee_id
        ${where}
        ORDER BY cs.created_at DESC`,
       params
@@ -37,7 +51,8 @@ router.get("/cambios-salariales", async (req, res) => {
 
 // ─── GET /api/cambios-salariales/pendientes/count ────────────────────────────
 // Badge de notificación: cuántos cambios están pendientes
-router.get("/cambios-salariales/pendientes/count", async (_req, res) => {
+router.get("/cambios-salariales/pendientes/count", async (req, res) => {
+  if (!rolesPermitidos(req, res)) return;
   try {
     const { rows } = await pool.query(
       `SELECT COUNT(*) AS total FROM cambios_salariales WHERE estado = 'pendiente_rrhh'`
@@ -49,8 +64,31 @@ router.get("/cambios-salariales/pendientes/count", async (_req, res) => {
   }
 });
 
+// ─── GET /api/cambios-salariales/employee/:employeeId/periodo ────────────────
+// Para planilla: obtener cambios aprobados/modificados de un empleado en un período
+router.get("/cambios-salariales/employee/:employeeId/periodo", async (req, res) => {
+  if (!rolesPermitidos(req, res)) return;
+  const { desde, hasta } = req.query;
+  try {
+    const { rows } = await pool.query(
+      `SELECT cs.*
+       FROM cambios_salariales cs
+       WHERE cs.employee_id = $1
+         AND cs.estado IN ('aprobado','modificado')
+         AND cs.fecha BETWEEN $2 AND $3
+       ORDER BY cs.fecha ASC`,
+      [req.params.employeeId, desde, hasta]
+    );
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "GET cambios-salariales/employee/:id/periodo error");
+    res.status(500).json({ error: "Error al consultar cambios salariales del período" });
+  }
+});
+
 // ─── GET /api/cambios-salariales/:id ─────────────────────────────────────────
 router.get("/cambios-salariales/:id", async (req, res) => {
+  if (!rolesPermitidos(req, res)) return;
   try {
     const { rows } = await pool.query(
       `SELECT cs.*,
@@ -73,6 +111,7 @@ router.get("/cambios-salariales/:id", async (req, res) => {
 // ─── PATCH /api/cambios-salariales/:id/resolver ──────────────────────────────
 // RRHH aprueba, rechaza o modifica el cambio salarial
 router.patch("/cambios-salariales/:id/resolver", async (req, res) => {
+  if (!rolesPermitidos(req, res)) return;
   const { estado, valor_aprobado, notas, usuario } = req.body;
   const estadosValidos = ["aprobado", "rechazado", "modificado"];
 
@@ -104,7 +143,7 @@ router.patch("/cambios-salariales/:id/resolver", async (req, res) => {
        RETURNING *`,
       [
         estado,
-        estado === "aprobado"  ? existing[0].salario_puesto :
+        estado === "aprobado"   ? existing[0].salario_puesto :
         estado === "modificado" ? valor_aprobado : null,
         notas ?? null,
         usuario ?? "rrhh",
@@ -117,27 +156,6 @@ router.patch("/cambios-salariales/:id/resolver", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "PATCH /cambios-salariales/:id/resolver error");
     res.status(500).json({ error: "Error al resolver cambio salarial" });
-  }
-});
-
-// ─── GET /api/cambios-salariales/employee/:employeeId/periodo ────────────────
-// Para planilla: obtener cambios aprobados/modificados de un empleado en un período
-router.get("/cambios-salariales/employee/:employeeId/periodo", async (req, res) => {
-  const { desde, hasta } = req.query;
-  try {
-    const { rows } = await pool.query(
-      `SELECT cs.*
-       FROM cambios_salariales cs
-       WHERE cs.employee_id = $1
-         AND cs.estado IN ('aprobado','modificado')
-         AND cs.fecha BETWEEN $2 AND $3
-       ORDER BY cs.fecha ASC`,
-      [req.params.employeeId, desde, hasta]
-    );
-    res.json(rows);
-  } catch (err) {
-    logger.error({ err }, "GET cambios-salariales/employee/:id/periodo error");
-    res.status(500).json({ error: "Error al consultar cambios salariales del período" });
   }
 });
 
