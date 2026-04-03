@@ -1613,6 +1613,64 @@ operacionesRouter.patch("/operaciones/puestos/:id", async (req, res) => {
   }
 });
 
+// ─── PATCH /api/operaciones/puestos/:id/salario ──────────────────────────────
+// Solo admin/rrhh pueden actualizar el salario_puesto
+operacionesRouter.patch("/operaciones/puestos/:id/salario", async (req, res) => {
+  const sessionRaw = req.headers["x-isp-session"];
+  let userRole = "";
+  try { userRole = JSON.parse(sessionRaw as string)?.role ?? ""; } catch {}
+  if (!["admin", "rrhh"].includes(userRole)) {
+    return res.status(403).json({ error: "Solo RRHH o administradores pueden modificar el salario del puesto" });
+  }
+  const { salarioPuesto } = req.body;
+  if (salarioPuesto === undefined) {
+    return res.status(400).json({ error: "salarioPuesto es requerido" });
+  }
+  const salarioVal = salarioPuesto === null ? null : Number(salarioPuesto);
+  if (salarioPuesto !== null && (isNaN(salarioVal!) || salarioVal! < 0)) {
+    return res.status(400).json({ error: "salarioPuesto debe ser un número positivo" });
+  }
+  try {
+    const { rows } = await pool.query(
+      `UPDATE puestos_operativos SET salario_puesto = $1, updated_at = NOW()
+       WHERE id = $2 RETURNING id, nombre, cliente_nombre, salario_puesto`,
+      [salarioVal, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Puesto no encontrado" });
+    res.json({ ok: true, puesto: rows[0] });
+  } catch (err) {
+    logger.error({ err }, "PATCH /operaciones/puestos/:id/salario error");
+    res.status(500).json({ error: "Error al actualizar salario del puesto" });
+  }
+});
+
+// ─── GET /api/operaciones/puestos-salarios ────────────────────────────────────
+// Lista todos los puestos operativos con su salario (solo admin/rrhh)
+operacionesRouter.get("/operaciones/puestos-salarios", async (req, res) => {
+  const sessionRaw = req.headers["x-isp-session"];
+  let userRole = "";
+  try { userRole = JSON.parse(sessionRaw as string)?.role ?? ""; } catch {}
+  if (!["admin", "rrhh"].includes(userRole)) {
+    return res.status(403).json({ error: "Solo RRHH o administradores pueden ver los salarios" });
+  }
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        po.id, po.nombre, po.cliente_id, po.cliente_nombre,
+        po.salario_puesto, po.activo, po.estado,
+        c.nombre_comercial AS cliente_nombre_comercial
+      FROM puestos_operativos po
+      LEFT JOIN clients c ON c.id = po.cliente_id
+      WHERE po.activo = true
+      ORDER BY po.cliente_nombre, po.nombre
+    `);
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "GET /operaciones/puestos-salarios error");
+    res.status(500).json({ error: "Error al obtener puestos" });
+  }
+});
+
 // ─── PATCH /api/operaciones/puestos/:id/igss ─────────────────────────────────
 // Actualizar clasificación IGSS de un puesto/servicio
 operacionesRouter.patch("/operaciones/puestos/:id/igss", async (req, res) => {

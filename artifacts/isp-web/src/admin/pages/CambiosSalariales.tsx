@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import AdminLayout from "../layout/AdminLayout";
+import { AdminLayout } from "../layout/AdminLayout";
 import { useToast } from "@/hooks/use-toast";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";

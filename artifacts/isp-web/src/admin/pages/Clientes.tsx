@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import { AdminLayout } from "../layout/AdminLayout";
@@ -7,11 +7,14 @@ import { useDeleteMode } from "@/contexts/DeleteModeContext";
 import {
   Building2, Tag, MapPin, Search, Plus, Trash2, ChevronDown, ChevronRight,
   X, Loader2, CheckCircle, AlertTriangle, Hash, RefreshCw, Layers,
-  Shield, Users, Clock, ExternalLink
+  Shield, Users, Clock, ExternalLink, DollarSign, Pencil, Check
 } from "lucide-react";
 
 const API = "/api";
 const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getRole = (): string => {
+  try { return JSON.parse(getSession())?.role ?? ""; } catch { return ""; }
+};
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 interface Alias { id: number; alias: string; tipoAlias: string; createdAt: string; }
@@ -28,6 +31,11 @@ interface ServiceLocation {
 interface ResolverResult {
   input: string; inputNormalizado: string; totalCoincidencias: number;
   confianzaMaxima: number; ambiguo: boolean; resultados: any[]; sugerencia: string | null;
+}
+interface PuestoOp {
+  id: number; nombre: string; cliente_id: number | null; cliente_nombre: string;
+  salario_puesto: string | null; activo: boolean; estado: string;
+  cliente_nombre_comercial: string | null;
 }
 
 // ─── Colores de confianza ─────────────────────────────────────────────────────
@@ -859,10 +867,220 @@ function TabSedes({ clients }: { clients: Client[] }) {
   );
 }
 
+// ─── Tab: Salarios de Puestos (solo admin/rrhh) ───────────────────────────────
+function TabSalarios() {
+  const [puestos, setPuestos] = useState<PuestoOp[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editVal, setEditVal] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${API}/operaciones/puestos-salarios`, { headers: { "x-isp-session": getSession() } });
+      const data = await r.json();
+      setPuestos(Array.isArray(data) ? data : []);
+    } catch { setPuestos([]); }
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const startEdit = (p: PuestoOp) => {
+    setEditingId(p.id);
+    setEditVal(p.salario_puesto ? String(Number(p.salario_puesto).toFixed(2)) : "");
+  };
+
+  const cancelEdit = () => { setEditingId(null); setEditVal(""); };
+
+  const saveEdit = async (puestoId: number) => {
+    setSaving(true);
+    try {
+      const val = editVal.trim() === "" ? null : parseFloat(editVal);
+      if (val !== null && (isNaN(val) || val < 0)) {
+        setToast({ ok: false, msg: "Ingrese un monto válido (número positivo)" });
+        setSaving(false);
+        setTimeout(() => setToast(null), 3000);
+        return;
+      }
+      const r = await fetch(`${API}/operaciones/puestos/${puestoId}/salario`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
+        body: JSON.stringify({ salarioPuesto: val }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Error al guardar");
+      setPuestos(prev => prev.map(p => p.id === puestoId ? { ...p, salario_puesto: val !== null ? String(val) : null } : p));
+      setEditingId(null);
+      setEditVal("");
+      setToast({ ok: true, msg: "Salario actualizado correctamente" });
+    } catch (e: any) {
+      setToast({ ok: false, msg: e.message || "Error al guardar" });
+    }
+    setSaving(false);
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const filtered = puestos.filter(p =>
+    !search ||
+    p.nombre.toLowerCase().includes(search.toLowerCase()) ||
+    p.cliente_nombre.toLowerCase().includes(search.toLowerCase()) ||
+    (p.cliente_nombre_comercial || "").toLowerCase().includes(search.toLowerCase())
+  );
+
+  const sinSalario = puestos.filter(p => !p.salario_puesto).length;
+
+  return (
+    <div className="p-5 space-y-4">
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg text-xs font-medium border flex items-center gap-2 shadow-lg ${toast.ok ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" : "bg-red-500/15 text-red-300 border-red-500/30"}`}>
+          {toast.ok ? <CheckCircle className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+          {toast.msg}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <p className="text-xs text-white/40">
+            <span className="text-white font-semibold">{puestos.length}</span> puestos operativos
+            {sinSalario > 0 && (
+              <span className="ml-2 text-amber-400">· <span className="font-semibold">{sinSalario}</span> sin salario definido</span>
+            )}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="w-3 h-3 text-white/30 absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar puesto o cliente..."
+              className="bg-white/5 border border-white/8 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-white/20 focus:outline-none focus:border-primary/40 w-52"
+            />
+          </div>
+          <button
+            onClick={load}
+            className="p-1.5 rounded-lg bg-white/3 hover:bg-white/6 border border-white/8 text-white/40 hover:text-white/70 transition-all"
+            title="Recargar"
+          >
+            <RefreshCw className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="w-5 h-5 animate-spin text-white/30" />
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-white/5">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-white/30 border-b border-white/5 uppercase tracking-wide text-[10px] bg-white/2">
+                <th className="text-left px-4 py-3">Puesto Operativo</th>
+                <th className="text-left px-4 py-3">Cliente</th>
+                <th className="text-left px-4 py-3">Estado</th>
+                <th className="text-right px-4 py-3">Salario del Puesto (Q)</th>
+                <th className="px-4 py-3 w-10" />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr><td colSpan={5} className="px-5 py-12 text-center text-white/25 italic">No hay puestos que coincidan</td></tr>
+              ) : (
+                filtered.map(p => (
+                  <tr key={p.id} className="border-b border-white/3 hover:bg-white/2 transition-colors">
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-white">{p.nombre}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="text-primary/80">{p.cliente_nombre_comercial || p.cliente_nombre}</p>
+                      {p.cliente_nombre_comercial && <p className="text-[10px] text-white/30">{p.cliente_nombre}</p>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge value={p.estado} />
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {editingId === p.id ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span className="text-white/40 text-xs">Q</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={editVal}
+                            onChange={e => setEditVal(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === "Enter") saveEdit(p.id);
+                              if (e.key === "Escape") cancelEdit();
+                            }}
+                            autoFocus
+                            className="bg-white/8 border border-primary/40 rounded px-2 py-1 text-xs text-white w-28 text-right focus:outline-none focus:border-primary/70"
+                            placeholder="0.00"
+                          />
+                          <button
+                            onClick={() => saveEdit(p.id)}
+                            disabled={saving}
+                            className="p-1 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+                          >
+                            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                          </button>
+                          <button
+                            onClick={cancelEdit}
+                            className="p-1 rounded bg-white/5 border border-white/10 text-white/40 hover:text-white/70 transition-colors"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span
+                          className={`font-mono cursor-pointer ${p.salario_puesto ? "text-white" : "text-white/20 italic"}`}
+                          onClick={() => startEdit(p)}
+                          title="Hacer clic para editar"
+                        >
+                          {p.salario_puesto
+                            ? `Q ${Number(p.salario_puesto).toLocaleString("es-GT", { minimumFractionDigits: 2 })}`
+                            : "Sin definir"
+                          }
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {editingId !== p.id && (
+                        <button
+                          onClick={() => startEdit(p)}
+                          className="p-1 rounded text-white/20 hover:text-primary hover:bg-primary/10 transition-colors"
+                          title="Editar salario"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <p className="text-[10px] text-white/25 italic">
+        El salario del puesto es usado por el sistema de control de cambios salariales para detectar diferencias cuando se asigna un agente a este puesto.
+      </p>
+    </div>
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
-type Tab = "clientes" | "puestos" | "resolver" | "sedes";
+type Tab = "clientes" | "puestos" | "resolver" | "sedes" | "salarios";
 
 export default function Clientes() {
+  const role = getRole();
+  const puedeVerSalarios = role === "admin" || role === "rrhh";
   const [tab, setTab] = useState<Tab>("clientes");
   const [clients, setClients] = useState<Client[]>([]);
   const [puestos, setPuestos] = useState<ServiceLocation[]>([]);
@@ -951,13 +1169,14 @@ export default function Clientes() {
         {/* TABS */}
         <div className="bg-[#0c1829] border border-white/5 rounded-xl overflow-hidden">
           <div className="px-5 py-3 border-b border-white/5 flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex gap-1">
+            <div className="flex gap-1 flex-wrap">
               {([
                 { id: "clientes", label: "Clientes", icon: Building2 },
                 { id: "sedes", label: "Sedes Operativas", icon: Shield },
                 { id: "puestos", label: "Puestos y Rutas", icon: MapPin },
                 { id: "resolver", label: "Resolver Alias", icon: Search },
-              ] as const).map(({ id, label, icon: Icon }) => (
+                ...(puedeVerSalarios ? [{ id: "salarios", label: "Salarios de Puestos", icon: DollarSign }] : []),
+              ] as { id: Tab; label: string; icon: React.FC<{ className?: string }> }[]).map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
                   onClick={() => setTab(id)}
@@ -1003,6 +1222,9 @@ export default function Clientes() {
 
           {/* Tab: Sedes Operativas */}
           {tab === "sedes" && <TabSedes clients={clients} />}
+
+          {/* Tab: Salarios de Puestos (solo admin/rrhh) */}
+          {tab === "salarios" && puedeVerSalarios && <TabSalarios />}
 
           {/* Tab: Resolver */}
           {tab === "resolver" && (
