@@ -2785,5 +2785,29 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SAL-01 cambios_salariales — error (no bloqueante)");
   }
 
+  // NRRHH-01: Flujo de revisión de incidencias RRHH — columnas en novedades + eventos
+  try {
+    await pool.query(`ALTER TABLE novedades_nomina_diarias ADD COLUMN IF NOT EXISTS impacto_nomina VARCHAR(30)`);
+    await pool.query(`ALTER TABLE novedades_nomina_diarias ADD COLUMN IF NOT EXISTS requiere_revision_rrhh BOOLEAN DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE novedades_nomina_diarias ADD COLUMN IF NOT EXISTS evento_rrhh_id INTEGER REFERENCES eventos_rrhh(id) ON DELETE SET NULL`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_nnd_revision ON novedades_nomina_diarias(requiere_revision_rrhh, impacto_nomina) WHERE requiere_revision_rrhh = TRUE`);
+    logger.info("Auto-migrate: NRRHH-01 columnas novedades_nomina_diarias verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: NRRHH-01 novedades — error (no bloqueante)");
+  }
+
+  try {
+    await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS tipo_resolucion VARCHAR(50)`);
+    await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS afecta_nomina BOOLEAN DEFAULT TRUE`);
+    await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS cantidad_horas NUMERIC(5,2)`);
+    await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS cantidad_dias NUMERIC(5,2)`);
+    await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS afecta_septimo_res BOOLEAN DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS rrhh_resuelto_por VARCHAR(100)`);
+    await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS rrhh_resuelto_at TIMESTAMPTZ`);
+    logger.info("Auto-migrate: NRRHH-01 columnas eventos_rrhh verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: NRRHH-01 eventos_rrhh — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

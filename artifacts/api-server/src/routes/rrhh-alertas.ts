@@ -151,4 +151,198 @@ rrhhAlertasRouter.post("/rrhh/alertas/:id/vista", async (req, res) => {
   }
 });
 
+// ────────────────────────────────────────────────────────────────────────────
+// INCIDENCIAS PENDIENTES DE REVISIÓN RRHH
+// Flujo: pizarrón libera agente → novedad queda impacto_nomina='pendiente'
+//        RRHH clasifica aquí → falta/descuento se aplican en nómina
+// ────────────────────────────────────────────────────────────────────────────
+
+// GET /api/rrhh/incidencias/pendientes — listar novedades pendientes de revisión
+rrhhAlertasRouter.get("/rrhh/incidencias/pendientes", async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        nnd.id,
+        nnd.fecha,
+        nnd.employee_id,
+        nnd.empleado_nombre,
+        nnd.tipo_novedad,
+        nnd.impacto_nomina,
+        nnd.requiere_revision_rrhh,
+        nnd.evento_rrhh_id,
+        nnd.puesto_titular_id,
+        nnd.puesto_titular_nombre,
+        nnd.fuente,
+        nnd.cierre_id,
+        nnd.created_at,
+        nnd.updated_at,
+        -- Datos del empleado
+        e.dpi,
+        e.puesto       AS empleado_cargo,
+        -- Datos del evento RRHH vinculado
+        er.tipo_evento         AS evento_tipo,
+        er.estado              AS evento_estado,
+        er.cliente_nombre      AS evento_cliente,
+        er.puesto_nombre       AS evento_puesto,
+        er.generado_desde      AS evento_origen,
+        er.observaciones       AS evento_observaciones,
+        er.usuario_generador   AS evento_usuario
+      FROM novedades_nomina_diarias nnd
+      LEFT JOIN employees e ON e.id = nnd.employee_id
+      LEFT JOIN eventos_rrhh er ON er.id = nnd.evento_rrhh_id
+      WHERE nnd.requiere_revision_rrhh = TRUE
+        AND nnd.impacto_nomina = 'pendiente'
+      ORDER BY nnd.fecha DESC, nnd.empleado_nombre
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Error al cargar incidencias pendientes" });
+  }
+});
+
+// GET /api/rrhh/incidencias/pendientes/count — conteo para badge de navegación
+rrhhAlertasRouter.get("/rrhh/incidencias/pendientes/count", async (_req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT COUNT(*)::int AS total
+      FROM novedades_nomina_diarias
+      WHERE requiere_revision_rrhh = TRUE
+        AND impacto_nomina = 'pendiente'
+    `);
+    res.json({ total: rows[0]?.total ?? 0 });
+  } catch (err) {
+    res.status(500).json({ error: "Error al contar incidencias" });
+  }
+});
+
+// Mapeo de tipo_resolucion → campos de novedad
+const RESOLUCION_MAP: Record<string, { falta: boolean; suspension: boolean; descuento_dia: boolean; afecta_septimo: boolean }> = {
+  falta_injustificada: { falta: true,  suspension: false, descuento_dia: true,  afecta_septimo: true  },
+  permiso_con_goce:    { falta: false, suspension: false, descuento_dia: false, afecta_septimo: false },
+  permiso_sin_goce:    { falta: false, suspension: false, descuento_dia: true,  afecta_septimo: true  },
+  incapacidad:         { falta: false, suspension: false, descuento_dia: false, afecta_septimo: false },
+  suspension:          { falta: false, suspension: true,  descuento_dia: true,  afecta_septimo: true  },
+  descuento_horas:     { falta: false, suspension: false, descuento_dia: false, afecta_septimo: false },
+  amonestacion:        { falta: false, suspension: false, descuento_dia: false, afecta_septimo: false },
+  sin_impacto:         { falta: false, suspension: false, descuento_dia: false, afecta_septimo: false },
+};
+
+// PATCH /api/rrhh/incidencias/:id/resolver — RRHH clasifica la incidencia
+rrhhAlertasRouter.patch("/rrhh/incidencias/:id/resolver", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+
+  const { tipo_resolucion, observaciones, cantidad_horas, cantidad_dias, usuario } = req.body;
+
+  if (!tipo_resolucion || !RESOLUCION_MAP[tipo_resolucion]) {
+    return res.status(400).json({
+      error: "tipo_resolucion inválido",
+      validos: Object.keys(RESOLUCION_MAP),
+    });
+  }
+
+  const efecto = RESOLUCION_MAP[tipo_resolucion];
+
+  try {
+    // Obtener novedad actual
+    const { rows: novRows } = await pool.query(
+      `SELECT * FROM novedades_nomina_diarias WHERE id = $1`,
+      [id]
+    );
+    if (!novRows.length) return res.status(404).json({ error: "Novedad no encontrada" });
+    const novedad = novRows[0];
+
+    if (novedad.impacto_nomina !== 'pendiente') {
+      return res.status(409).json({
+        error: "Esta incidencia ya fue resuelta",
+        impacto_actual: novedad.impacto_nomina,
+      });
+    }
+
+    // Actualizar novedad con la resolución RRHH
+    const { rows: updatedRows } = await pool.query(`
+      UPDATE novedades_nomina_diarias SET
+        falta                  = $2,
+        suspension             = $3,
+        descuento_dia          = $4,
+        afecta_septimo         = $5,
+        impacto_nomina         = 'aprobado_rrhh',
+        requiere_revision_rrhh = FALSE,
+        tipo_novedad           = COALESCE(tipo_novedad, $6),
+        updated_at             = NOW()
+      WHERE id = $1
+      RETURNING *
+    `, [id, efecto.falta, efecto.suspension, efecto.descuento_dia, efecto.afecta_septimo, tipo_resolucion]);
+
+    // Actualizar evento RRHH vinculado si existe
+    if (novedad.evento_rrhh_id) {
+      await pool.query(`
+        UPDATE eventos_rrhh SET
+          tipo_resolucion   = $2,
+          afecta_nomina     = $3,
+          cantidad_horas    = $4,
+          cantidad_dias     = $5,
+          afecta_septimo_res = $6,
+          rrhh_resuelto_por  = $7,
+          rrhh_resuelto_at   = NOW(),
+          estado             = 'revisado',
+          updated_at         = NOW()
+        WHERE id = $1
+      `, [
+        novedad.evento_rrhh_id,
+        tipo_resolucion,
+        efecto.falta || efecto.descuento_dia || efecto.suspension,
+        cantidad_horas ?? null,
+        cantidad_dias ?? null,
+        efecto.afecta_septimo,
+        usuario || 'rrhh',
+      ]);
+    }
+
+    res.json({
+      ok: true,
+      novedad: updatedRows[0],
+      tipo_resolucion,
+      efecto,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Error al resolver incidencia" });
+  }
+});
+
+// GET /api/rrhh/incidencias/historial — incidencias ya resueltas (últimos 30 días)
+rrhhAlertasRouter.get("/rrhh/incidencias/historial", async (req, res) => {
+  try {
+    const dias = parseInt(req.query.dias as string) || 30;
+    const { rows } = await pool.query(`
+      SELECT
+        nnd.id,
+        nnd.fecha,
+        nnd.employee_id,
+        nnd.empleado_nombre,
+        nnd.tipo_novedad,
+        nnd.impacto_nomina,
+        nnd.falta,
+        nnd.suspension,
+        nnd.descuento_dia,
+        nnd.afecta_septimo,
+        nnd.puesto_titular_nombre,
+        nnd.fuente,
+        nnd.updated_at,
+        er.tipo_resolucion,
+        er.rrhh_resuelto_por,
+        er.rrhh_resuelto_at,
+        er.observaciones AS resolucion_observaciones
+      FROM novedades_nomina_diarias nnd
+      LEFT JOIN eventos_rrhh er ON er.id = nnd.evento_rrhh_id
+      WHERE nnd.impacto_nomina IN ('aprobado_rrhh', 'rechazado_rrhh')
+        AND nnd.fecha >= CURRENT_DATE - $1::int
+      ORDER BY nnd.fecha DESC, nnd.updated_at DESC
+    `, [dias]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Error al cargar historial de incidencias" });
+  }
+});
+
 export { rrhhAlertasRouter };

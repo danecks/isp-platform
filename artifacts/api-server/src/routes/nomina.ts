@@ -399,19 +399,33 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
       const sinFalta = TIPOS_SIN_FALTA.includes(tipoNovA ?? "");
       const esSuspension = tipoNovA === "suspension";
 
+      // Incidentes no pre-aprobados van a revisión RRHH; RRHH aprobados (vacaciones/incapacidad/etc.) no requieren revisión
       await pool.query(`
         INSERT INTO novedades_nomina_diarias
           (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
            falta, suspension, descanso_trabajado, afecta_septimo, descuento_dia,
+           impacto_nomina, requiere_revision_rrhh,
            puesto_titular_id, puesto_titular_nombre, tipo_novedad, fuente, cierre_id, updated_at)
-        VALUES ($1,$2,$3,FALSE,0,0, $7,$8,FALSE,$9,$10, $4,$5,$6,'cierre_operativo',$11,NOW())
+        VALUES ($1,$2,$3,FALSE,0,0, FALSE,FALSE,FALSE,FALSE,FALSE, $7,$8, $4,$5,$6,'cierre_operativo',$9,NOW())
         ON CONFLICT (fecha, employee_id)
         DO UPDATE SET
           trabajo_dia           = FALSE,
-          falta                 = EXCLUDED.falta,
-          suspension            = EXCLUDED.suspension,
-          afecta_septimo        = EXCLUDED.afecta_septimo,
-          descuento_dia         = EXCLUDED.descuento_dia,
+          falta                 = FALSE,
+          suspension            = FALSE,
+          afecta_septimo        = FALSE,
+          descuento_dia         = FALSE,
+          impacto_nomina        = CASE
+            WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+            THEN novedades_nomina_diarias.impacto_nomina
+            WHEN EXCLUDED.impacto_nomina IS NOT NULL
+            THEN EXCLUDED.impacto_nomina
+            ELSE novedades_nomina_diarias.impacto_nomina
+          END,
+          requiere_revision_rrhh = CASE
+            WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+            THEN novedades_nomina_diarias.requiere_revision_rrhh
+            ELSE EXCLUDED.requiere_revision_rrhh
+          END,
           tipo_novedad          = COALESCE(EXCLUDED.tipo_novedad, novedades_nomina_diarias.tipo_novedad),
           puesto_titular_id     = EXCLUDED.puesto_titular_id,
           puesto_titular_nombre = EXCLUDED.puesto_titular_nombre,
@@ -420,11 +434,9 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
         WHERE novedades_nomina_diarias.trabajo_dia = FALSE
       `, [fecha, a.employee_id, a.empleado_nombre ?? "Desconocido",
           a.puesto_titular_id ?? null, a.puesto_titular_nombre ?? null, tipoNovA,
-          !sinFalta,       // falta
-          esSuspension,    // suspension
-          !sinFalta,       // afecta_septimo
-          !sinFalta,       // descuento_dia
-          cierreId]);
+          !sinFalta ? 'pendiente' : null,  // $7 impacto_nomina
+          !sinFalta,                        // $8 requiere_revision_rrhh
+          cierreId]);                       // $9
       count++;
     }
 
@@ -560,18 +572,32 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
       const sinFaltaT = TIPOS_RRHH_SIN_DESCUENTO.includes(tipoNovT ?? "");
       const esSuspensionT = tipoNovT === "suspension";
 
+      // Incidentes sin evento RRHH van a revisión RRHH; RRHH aprobados (vacaciones/etc.) no requieren
       await pool.query(`
         INSERT INTO novedades_nomina_diarias
           (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
            falta, suspension, descanso_trabajado, afecta_septimo, descuento_dia,
+           impacto_nomina, requiere_revision_rrhh,
            puesto_titular_id, puesto_titular_nombre, tipo_novedad, fuente, cierre_id, updated_at)
-        VALUES ($1,$2,$3,FALSE,0,0, $7,$8,FALSE,$9,$10, $4,$5,$6,'auto_auditoria',$11,NOW())
+        VALUES ($1,$2,$3,FALSE,0,0, FALSE,FALSE,FALSE,FALSE,FALSE, $7,$8, $4,$5,$6,'auto_auditoria',$9,NOW())
         ON CONFLICT (fecha, employee_id)
         DO UPDATE SET
-          falta                 = EXCLUDED.falta,
-          suspension            = EXCLUDED.suspension,
-          afecta_septimo        = EXCLUDED.afecta_septimo,
-          descuento_dia         = EXCLUDED.descuento_dia,
+          falta                 = FALSE,
+          suspension            = FALSE,
+          afecta_septimo        = FALSE,
+          descuento_dia         = FALSE,
+          impacto_nomina        = CASE
+            WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+            THEN novedades_nomina_diarias.impacto_nomina
+            WHEN EXCLUDED.impacto_nomina IS NOT NULL
+            THEN EXCLUDED.impacto_nomina
+            ELSE novedades_nomina_diarias.impacto_nomina
+          END,
+          requiere_revision_rrhh = CASE
+            WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+            THEN novedades_nomina_diarias.requiere_revision_rrhh
+            ELSE EXCLUDED.requiere_revision_rrhh
+          END,
           tipo_novedad          = COALESCE(EXCLUDED.tipo_novedad, novedades_nomina_diarias.tipo_novedad),
           puesto_titular_id     = EXCLUDED.puesto_titular_id,
           puesto_titular_nombre = EXCLUDED.puesto_titular_nombre,
@@ -580,11 +606,9 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
         WHERE novedades_nomina_diarias.trabajo_dia = FALSE
       `, [fecha, t.employee_id, t.empleado_nombre ?? "Desconocido",
           t.puesto_titular_id ?? null, t.puesto_titular_nombre ?? null, tipoNovT,
-          !sinFaltaT,       // falta
-          esSuspensionT,    // suspension
-          !sinFaltaT,       // afecta_septimo
-          !sinFaltaT,       // descuento_dia
-          cierreId]);
+          !sinFaltaT ? 'pendiente' : null,  // $7 impacto_nomina
+          !sinFaltaT,                        // $8 requiere_revision_rrhh
+          cierreId]);                        // $9
       count++;
     }
 
@@ -600,19 +624,33 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
     `, [fecha]);
 
     for (const s of suspensiones) {
+      // Suspensión desde pizarrón → requiere revisión RRHH para confirmar impacto nómina
       await pool.query(`
         INSERT INTO novedades_nomina_diarias
           (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
            falta, suspension, descanso_trabajado, afecta_septimo, descuento_dia,
-           fuente, cierre_id, updated_at)
-        VALUES ($1,$2,$3,FALSE,0,0, FALSE,TRUE,FALSE,TRUE,TRUE, 'cierre_operativo',$4,NOW())
+           impacto_nomina, requiere_revision_rrhh,
+           tipo_novedad, fuente, cierre_id, updated_at)
+        VALUES ($1,$2,$3,FALSE,0,0, FALSE,FALSE,FALSE,FALSE,FALSE,
+                'pendiente',TRUE, 'suspension','cierre_operativo',$4,NOW())
         ON CONFLICT (fecha, employee_id)
         DO UPDATE SET
-          suspension   = TRUE,
-          afecta_septimo = TRUE,
-          descuento_dia  = TRUE,
-          cierre_id      = EXCLUDED.cierre_id,
-          updated_at     = NOW()
+          suspension             = FALSE,
+          afecta_septimo         = FALSE,
+          descuento_dia          = FALSE,
+          tipo_novedad           = COALESCE(novedades_nomina_diarias.tipo_novedad, 'suspension'),
+          impacto_nomina         = CASE
+            WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+            THEN novedades_nomina_diarias.impacto_nomina
+            ELSE 'pendiente'
+          END,
+          requiere_revision_rrhh = CASE
+            WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+            THEN novedades_nomina_diarias.requiere_revision_rrhh
+            ELSE TRUE
+          END,
+          cierre_id              = EXCLUDED.cierre_id,
+          updated_at             = NOW()
         WHERE novedades_nomina_diarias.trabajo_dia = FALSE
       `, [fecha, s.employee_id, s.empleado_nombre ?? "Desconocido", cierreId]);
     }

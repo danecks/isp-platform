@@ -1487,28 +1487,47 @@ operacionesRouter.post("/operaciones/liberar", async (req, res) => {
         const { rows: empRows } = await pool.query(`SELECT * FROM employees WHERE id=$1`, [agenteId]);
         const emp = empRows[0];
         if (emp) {
-          await pool.query(
+          // Capturar ID del evento RRHH para enlazarlo a la novedad
+          const { rows: eventoRows } = await pool.query(
             `INSERT INTO eventos_rrhh
                (employee_id, employee_nombre, employee_dpi, tipo_evento, fecha,
                 cliente_nombre, puesto_nombre, generado_desde, movimiento_id, estado,
                 usuario_generador, observaciones)
-             VALUES ($1, $2, $3, 'falta', NOW(), $4, $5, 'pizarron', $6, 'pendiente', $7, $8)`,
+             VALUES ($1, $2, $3, 'falta', NOW(), $4, $5, 'pizarron', $6, 'pendiente', $7, $8)
+             RETURNING id`,
             [emp.id, emp.nombre_completo, emp.dpi ?? null,
              puesto.cliente_nombre, puesto.nombre,
              movId, usuario || 'sistema', notas || null]
           );
-          // Novedad de nómina: falta = no se paga el día
+          const eventoRrhhId = eventoRows[0]?.id ?? null;
+
+          // Novedad pendiente de revisión RRHH — no se descuenta hasta que RRHH resuelva
           await pool.query(
             `INSERT INTO novedades_nomina_diarias
                (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
-                falta, descuento_dia, puesto_titular_id, puesto_titular_nombre, fuente)
-             VALUES ($1, $2, $3, FALSE, 0, 0, TRUE, TRUE, $4, $5, 'liberacion_pizarron')
+                falta, descuento_dia, impacto_nomina, requiere_revision_rrhh,
+                tipo_novedad, evento_rrhh_id, puesto_titular_id, puesto_titular_nombre, fuente)
+             VALUES ($1, $2, $3, FALSE, 0, 0, FALSE, FALSE, 'pendiente', TRUE,
+                     'falta_total', $6, $4, $5, 'liberacion_pizarron')
              ON CONFLICT (fecha, employee_id) DO UPDATE SET
-               falta = TRUE, descuento_dia = TRUE, trabajo_dia = FALSE, horas_trabajadas = 0,
-               updated_at = NOW()`,
-            [hoy, emp.id, emp.nombre_completo, puesto.id, puesto.nombre]
+               trabajo_dia            = FALSE,
+               horas_trabajadas       = 0,
+               tipo_novedad           = COALESCE(novedades_nomina_diarias.tipo_novedad, 'falta_total'),
+               evento_rrhh_id         = COALESCE(novedades_nomina_diarias.evento_rrhh_id, EXCLUDED.evento_rrhh_id),
+               impacto_nomina         = CASE
+                 WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+                 THEN novedades_nomina_diarias.impacto_nomina
+                 ELSE 'pendiente'
+               END,
+               requiere_revision_rrhh = CASE
+                 WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+                 THEN novedades_nomina_diarias.requiere_revision_rrhh
+                 ELSE TRUE
+               END,
+               updated_at             = NOW()`,
+            [hoy, emp.id, emp.nombre_completo, puesto.id, puesto.nombre, eventoRrhhId]
           );
-          logger.info({ agenteId, hoy }, "liberar: evento falta + novedad nómina registrados");
+          logger.info({ agenteId, hoy, eventoRrhhId }, "liberar: incidencia creada como pendiente RRHH");
         }
       } catch (faltaErr) {
         logger.warn({ faltaErr }, "liberar: no se pudo crear evento falta (no bloqueante)");

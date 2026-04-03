@@ -1,0 +1,236 @@
+Quiero transformar el flujo actual de faltas y novedades de nómina sin romper lo que ya existe, siguiendo esta regla principal:
+
+Pizarrón reporta el hecho.  
+RRHH decide la consecuencia.  
+Planilla consume la resolución RRHH + horas reales trabajadas.
+
+---
+
+## 🔴 CONTEXTO ACTUAL (IMPORTANTE NO ROMPER)
+Hoy el sistema funciona así:
+
+- Desde el pizarrón se registra:
+  - Falta total
+  - Abandono parcial
+  - Suspensión
+  - Permiso sin goce
+
+- El sistema genera automáticamente:
+  1. Evento RRHH (pendiente)
+  2. Novedad de nómina con:
+     - falta = true
+     - descuento_dia = true
+
+👉 Esto está mal porque Operaciones está decidiendo impacto de nómina.
+
+---
+
+## 🟢 OBJETIVO
+Separar claramente:
+
+### Operaciones
+Solo registra hechos reales
+
+### RRHH
+Decide consecuencias laborales y económicas
+
+### Planilla
+Hace merge entre:
+- operación real
+- decisiones RRHH
+
+---
+
+## 1. CAMBIO PRINCIPAL (CRÍTICO)
+Modificar la creación de novedades de nómina desde el pizarrón.
+
+### ❌ Antes
+- falta = true
+- descuento_dia = true
+
+### ✅ Ahora
+Crear registro en estado:
+
+- impacto_nomina = pendiente
+- requiere_revision_rrhh = true
+
+NO aplicar descuento automático.
+
+---
+
+## 2. LO QUE SÍ DEBE HACER EL PIZARRÓN
+Cuando ocurre una incidencia:
+
+Debe seguir generando:
+
+- incidencia operativa (hecho real)
+- evento RRHH en estado pendiente
+- tarea para RRHH
+- horas reales trabajadas
+- horas extra del relevo
+
+👉 Esto se mantiene.
+
+---
+
+## 3. NUEVA ENTIDAD LÓGICA (SI YA EXISTE, USARLA)
+La incidencia debe guardar:
+
+- empleado afectado
+- fecha
+- puesto
+- tipo (falta, abandono, etc.)
+- hora esperada
+- hora real
+- relevo (quién cubrió)
+- total / parcial
+- horas afectadas
+
+Esto es la verdad operativa.
+
+---
+
+## 4. TAREAS PARA RRHH
+Cada incidencia debe generar una tarea automática:
+
+Tipo:
+“Revisión de incidencia operativa”
+
+Debe incluir:
+- colaborador
+- fecha
+- puesto
+- resumen
+- link a incidencia
+- link a ficha del empleado
+
+---
+
+## 5. RESOLUCIÓN RRHH (CLAVE)
+RRHH debe resolver creando o actualizando un evento en la ficha del empleado con:
+
+- tipo de evento:
+  - falta injustificada
+  - permiso con goce
+  - permiso sin goce
+  - incapacidad
+  - suspensión
+  - descuento por horas
+  - descuento día completo
+  - descuento día + séptimo
+  - amonestación sin descuento
+
+- afecta_nomina = true/false
+- cantidad_horas
+- cantidad_dias
+- afecta_septimo
+- observaciones
+
+---
+
+## 6. ESTADOS
+Agregar estados claros:
+
+Para incidencia:
+- reportado_operaciones
+- pendiente_rrhh
+- resuelto_rrhh
+
+Para impacto nómina:
+- pendiente
+- aprobado_rrhh
+- rechazado_rrhh
+
+---
+
+## 7. PRE-PLANILLA (CAMBIO IMPORTANTE)
+La pre-planilla debe calcular usando:
+
+### A. Operación (cierres del pizarrón)
+- días trabajados
+- horas trabajadas
+- horas extra
+- relevos
+
+### B. Eventos RRHH
+- descuentos
+- faltas
+- permisos
+- vacaciones
+- suspensiones
+
+👉 Merge por empleado + fecha
+
+---
+
+## 8. REGLAS DE MERGE
+Ejemplos:
+
+- trabajó pero RRHH descontó horas → aplicar ajuste
+- no trabajó pero RRHH justificó → no descontar
+- falta total + RRHH aprobó descuento → aplicar día
+- abandono parcial → descuento proporcional
+
+---
+
+## 9. CIERRE DEL PIZARRÓN
+NO cambiar su función principal.
+
+Debe seguir:
+
+- congelando el día operativo
+- guardando quién trabajó
+- guardando relevos
+- guardando horas
+- generando incidencias
+
+NO debe aplicar castigos.
+
+---
+
+## 10. CASOS FUTUROS (DEJAR PREPARADO)
+Permitir que RRHH cree eventos directamente sin pizarrón para:
+
+- empleados sin puesto ese día
+- faltas en descanso de ciclo
+- ajustes manuales
+
+---
+
+## 11. NO ROMPER
+No romper:
+
+- pizarrón operativo
+- drag & drop
+- relevos
+- cierres
+- generación actual de eventos RRHH
+- tareas
+- estructura de planilla
+
+Solo cambiar el momento en que se aplica el impacto económico.
+
+---
+
+## 12. VALIDACIÓN
+Probar:
+
+1. falta total → no descuenta automático
+2. genera tarea RRHH
+3. RRHH resuelve
+4. evento queda en ficha
+5. pre-planilla refleja correctamente
+6. HE del relevo sigue funcionando
+7. no hay regresión en otros turnos
+
+---
+
+## 13. RESULTADO FINAL
+Quiero que el sistema funcione así:
+
+- Operaciones reporta lo que pasó
+- RRHH decide qué significa
+- Planilla paga en base a la realidad + decisión RRHH
+
+Muy importante:
+quiero eliminar completamente la lógica donde el pizarrón define directamente descuentos de nómina.
