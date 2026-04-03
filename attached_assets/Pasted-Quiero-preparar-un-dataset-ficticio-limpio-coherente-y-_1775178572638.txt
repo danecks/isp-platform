@@ -1,0 +1,212 @@
+Quiero preparar un dataset ficticio, limpio, coherente y realista en el preview para poder evaluar visualmente cómo quedó el nuevo layout del Pizarrón Operativo y luego probar el modo enfoque.
+
+No quiero datos basura ni desordenados.
+Quiero una base de prueba bien armada para ver el sistema como si ya estuviera operando.
+
+## Objetivo
+Cargar datos ficticios suficientes y coherentes para probar visualmente y funcionalmente:
+
+- layout del pizarrón
+- sidebar derecho
+- pool
+- supervisores
+- jefes de servicio
+- administración
+- custodios
+- clientes
+- zonas
+- armas
+- vehículos
+- cobertura
+- turnos
+
+---
+
+## 1. Base del escenario
+Crear una operación ficticia pero realista con:
+
+### Clientes
+- al menos 3 clientes
+- con nombres ficticios coherentes
+- no demasiados, pero sí suficientes para que el pizarrón se vea vivo
+
+### Zonas
+- al menos 4 zonas
+- cada zona con nombre claro
+- zonas usadas por supervisores, puestos y vehículos
+
+### Sede central
+- para jefes de servicio
+
+---
+
+## 2. Puestos operativos
+Crear puestos suficientes para que el tablero tenga volumen visual útil.
+
+### Recomendación
+- entre 8 y 12 puestos en total
+- mezcla de turnos:
+  - 24x24
+  - 12 horas
+  - 24x48
+  - 8x8 si ayuda a la visualización
+
+### Muy importante
+Si un puesto es 24x24:
+- debe verse como 1 solo puesto
+- con 2 titulares
+- uno trabajando y otro descansando
+- no quiero duplicación tipo Par A / Par B visible
+
+---
+
+## 3. Agentes
+Crear agentes ficticios suficientes para que el pool y la cobertura se vean reales.
+
+### Recomendación
+- entre 12 y 18 agentes
+- con turnos variados
+- algunos trabajando
+- algunos descansando por ciclo
+- algunos disponibles
+- alguno ausente si ayuda a probar el layout
+
+---
+
+## 4. Custodios
+Quiero incluir custodios porque también son parte del sistema operativo.
+
+### Reglas
+- son agentes con rol de custodio
+- también tienen turno
+- deben aparecer en el pizarrón bajo sección de custodia por cliente
+- deben impactar pool y visualización
+
+### Recomendación
+- al menos 3 o 4 custodias activas
+
+---
+
+## 5. Supervisores
+Quiero supervisores asignados a zonas.
+
+### Reglas
+- algunos con turno 12h
+- otros con turno 24x24
+- visibles en el panel de supervisores
+- si la zona es 24x24, deben verse dos titulares alternando
+
+### Recomendación
+- al menos 1 supervisor por zona
+- y en las zonas 24x24, cargar el par completo
+
+---
+
+## 6. Jefes de servicio
+Quiero cargar los jefes de servicio de forma realista.
+
+### Reglas
+- trabajan en sede central
+- turno 24x24
+- deben verse como un solo bloque con 2 titulares alternando
+- uno trabajando y uno descansando
+
+### Recomendación
+- crear 2 jefes de servicio
+
+---
+
+## 7. Administración
+Quiero cargar personal administrativo para poder ver el panel de backoffice.
+
+### Crear al menos:
+- 1 RRHH
+- 1 Bodega
+- 1 Gerencia
+
+Todos con:
+- turno
+- estado visible
+- datos suficientes para que el panel aparezca y se vea real
+
+---
+
+## 8. Vehículos
+Quiero ver el módulo de vehículos en contexto.
+
+### Crear:
+- 4 vehículos o motocicletas
+- asignados a zonas
+- con herencia automática al supervisor activo de esa zona
+
+Quiero que se pueda comprobar visualmente quién es responsable actual.
+
+---
+
+## 9. Armería
+Quiero incluir también armas para probar coherencia visual y operativa.
+
+### Crear:
+- entre 8 y 12 armas basta para esta prueba visual
+- asignadas a puestos
+- con herencia automática al agente que cubre el puesto
+
+No necesito 50 todavía para esta validación visual del layout.
+Quiero algo suficiente para comprobar que sí se ve y se comporta bien.
+
+---
+
+## 10. Estados variados
+Quiero que el dataset no sea uniforme.
+
+Necesito que existan casos de:
+- cubierto
+- descanso de ciclo
+- descubierto real
+- vacaciones trabajadas o vacaciones normales si ayuda
+- disponibles en pool
+- descansando con HE
+- supervisores visibles
+- jefes de servicio visibles
+- administración visible
+
+La idea es poder evaluar realmente el layout y no ver un tablero “plano”.
+
+---
+
+## 11. Prioridad visual
+Este dataset se crea principalmente para poder revisar:
+
+- si el tablero principal se lee bien
+- si el sidebar derecho quedó útil
+- si administración no estorba
+- si SSA y próximos arranques en sidebar se ven bien
+- si supervisores y jefes de servicio se entienden
+- si el pool sigue siendo fácil de usar
+
+---
+
+## 12. No romper
+No romper la lógica ya implementada.
+
+No quiero hacks visuales.
+Quiero que los datos se carguen respetando el modelo real del sistema.
+
+---
+
+## 13. Validación
+Después de cargar el dataset, quiero un resumen claro de:
+- cuántos clientes se crearon
+- cuántos puestos
+- cuántos agentes
+- cuántos custodios
+- cuántos supervisores
+- cuántos jefes de servicio
+- cuántos administrativos
+- cuántos vehículos
+- cuántas armas
+
+Y confirmación de que el pizarrón ya se ve suficientemente poblado para probar el layout y el modo enfoque.
+
+Muy importante:
+quiero un dataset ficticio pero realista, solo para poder evaluar visualmente y operativamente cómo quedó el nuevo Pizarrón Operativo con todos los módulos integrados.
