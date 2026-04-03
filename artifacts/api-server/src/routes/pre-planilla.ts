@@ -69,6 +69,13 @@ const QUERY_CONSOLIDADO = `
     COUNT(DISTINCT n.fecha) FILTER (WHERE n.falta = TRUE)                       AS faltas,
     COUNT(DISTINCT n.fecha) FILTER (WHERE n.suspension = TRUE)                  AS suspensiones,
     COUNT(DISTINCT n.fecha) FILTER (WHERE n.descanso_trabajado = TRUE)          AS descansos_trabajados,
+
+    -- Contadores de novedades especiales (para referencia en pre-planilla y reportes)
+    -- Fuente: novedades_nomina_diarias.tipo_novedad
+    COUNT(DISTINCT n.fecha) FILTER (WHERE n.tipo_novedad = 'vacaciones')        AS dias_vacaciones,
+    COUNT(DISTINCT n.fecha) FILTER (WHERE n.tipo_novedad = 'incapacidad')       AS dias_incapacidad,
+    COUNT(DISTINCT n.fecha) FILTER (WHERE n.tipo_novedad = 'permiso_sin_goce')  AS dias_permiso_sin_goce,
+    COUNT(DISTINCT n.fecha) FILTER (WHERE n.tipo_novedad = 'permiso_con_goce')  AS dias_permiso_con_goce,
     COALESCE(SUM(CASE WHEN n.trabajo_dia THEN n.horas_trabajadas::numeric ELSE 0 END), 0) AS horas_trabajadas,
     COALESCE(SUM(CASE WHEN n.trabajo_dia THEN n.horas_extra::numeric ELSE 0 END), 0)      AS horas_extra,
 
@@ -183,7 +190,20 @@ const QUERY_CONSOLIDADO = `
       WHEN COALESCE(po.aplica_igss, FALSE) = FALSE
         THEN 'Servicio/puesto no incluye IGSS (tarifa)'
       ELSE NULL
-    END                                                                         AS motivo_exclusion_igss
+    END                                                                         AS motivo_exclusion_igss,
+
+    -- Séptimo día — resolución RRHH
+    -- Número de semanas ISO del período en las que RRHH determinó pérdida del séptimo.
+    -- Fuente autoritativa: eventos_rrhh.afecta_septimo_res = TRUE.
+    -- descSeptimo en planilla = sueldoDia × septimos_perdidos (ver nomina-calc.ts).
+    COALESCE((
+      SELECT COUNT(DISTINCT DATE_TRUNC('week', er.fecha::date))::INT
+      FROM eventos_rrhh er
+      WHERE er.employee_id = e.id
+        AND er.afecta_septimo_res = TRUE
+        AND er.fecha::date BETWEEN $1::date AND $2::date
+        AND COALESCE(er.estado, 'activo') != 'anulado'
+    ), 0)                                                                       AS septimos_perdidos
 
   FROM employees e
   INNER JOIN novedades_nomina_diarias n
@@ -680,16 +700,18 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
     for (const row of snapshotRows) {
       const anticipo = toNum(row.anticipos_monto);
       const { totalBruto } = calcularBruto({
-        sueldoBase:      toNum(row.sueldo_base),
-        horasContrato:   toNum(row.horas_contrato),
-        faltas:          toInt(row.faltas),
-        suspensiones:    toInt(row.suspensiones),
-        horasExtra:      toNum(row.horas_extra),
+        sueldoBase:       toNum(row.sueldo_base),
+        horasContrato:    toNum(row.horas_contrato),
+        faltas:           toInt(row.faltas),
+        suspensiones:     toInt(row.suspensiones),
+        horasExtra:       toNum(row.horas_extra),
         periodoTotalDias: periodoDias,
-        frecuenciaPago:  String(row.frecuencia_pago ?? "quincenal"),
+        frecuenciaPago:   String(row.frecuencia_pago ?? "quincenal"),
         quincenaTipo,
+        septimosPerdidos: toInt(row.septimos_perdidos),
       });
-      totalEstimado += Math.max(0, totalBruto - anticipo);
+      // Redondear por línea antes de acumular (igual que planilla.ts) → convergencia exacta
+      totalEstimado += parseFloat(Math.max(0, totalBruto - anticipo).toFixed(2));
     }
 
     // Guardar cierre

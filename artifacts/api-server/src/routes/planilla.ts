@@ -31,10 +31,11 @@
  *     • igss_patronal     → 12.67% del total bruto
  *     • otros_descuentos  → campo libre
  *
- * ─── LIMITACIONES ACTUALES ───────────────────────────────────────────────────
- *   ❌ IGSS no calculado (campos presentes como 0)
- *   ❌ Bonificación incentivo no incluida
- *   ❌ Séptimo no incluido
+ * ─── DEDUCCIONES IMPLEMENTADAS ───────────────────────────────────────────────
+ *   ✅ IGSS trabajador 4.83% (aplica según elegibilidad en employees/puestos_operativos)
+ *   ✅ IGSS patronal 12.67% (costo empresa, almacenado en planilla_lineas.igss_patronal)
+ *   ✅ Séptimo día (RRHH-driven via eventos_rrhh.afecta_septimo_res)
+ *   ❌ Bonificación incentivo no incluida aún
  *
  * ENDPOINTS:
  *   GET    /api/nomina/planillas            → Lista todas las planillas activas
@@ -74,19 +75,45 @@ function calcularLinea(
   const he        = toNum(row.horas_extra);
   const anticipo  = toNum(row.anticipos_monto);
   const frecuencia = String(row.frecuencia_pago ?? "quincenal");
+  // septimosPerdidos: determinado por RRHH (eventos_rrhh.afecta_septimo_res = TRUE)
+  // viene del snapshot del cierre, que a su vez viene de QUERY_CONSOLIDADO
+  const septimos  = toInt(row.septimos_perdidos);
 
   const bruto = calcularBruto({
-    sueldoBase:      sb,
-    horasContrato:   hc,
+    sueldoBase:       sb,
+    horasContrato:    hc,
     faltas,
-    suspensiones:    susp,
-    horasExtra:      he,
+    suspensiones:     susp,
+    horasExtra:       he,
     periodoTotalDias,
-    frecuenciaPago:  frecuencia,
+    frecuenciaPago:   frecuencia,
     quincenaTipo,
+    septimosPerdidos: septimos,
   });
 
-  const totalNeto = Math.max(0, bruto.totalBruto - anticipo);
+  // IGSS Guatemala (Acuerdo 1118 IGSS):
+  //   Trabajador: 4.83% del bruto (retención del colaborador)
+  //   Patronal:   12.67% del bruto (costo empresa, no es descuento al colaborador)
+  // Solo aplica si el colaborador está activo en IGSS y su puesto está en régimen IGSS.
+  const totalBrutoRnd = parseFloat(bruto.totalBruto.toFixed(2));
+  const igssT = igssData.aplica_igss ? parseFloat((totalBrutoRnd * 0.0483).toFixed(2)) : 0;
+  const igssP = igssData.aplica_igss ? parseFloat((totalBrutoRnd * 0.1267).toFixed(2)) : 0;
+
+  // Bonificación incentivo Decreto 78-89 Art. 7 (Guatemala):
+  //   Mínimo Q250/mes → Q125/quincena para empleados quincenales.
+  //   Para empleados mensuales: Q250 en segunda quincena, Q0 en primera (pago único mensual).
+  //   NO aplica IGSS sobre esta bonificación (es adicional al salario contractual).
+  const BONO_QUINCENAL = 125;
+  const BONO_MENSUAL   = 250;
+  let bonificacion_incentivo: number;
+  if (frecuencia === "mensual") {
+    bonificacion_incentivo = quincenaTipo === "segunda" ? BONO_MENSUAL : 0;
+  } else {
+    // quincenal, diario, u otros → Q125 por quincena
+    bonificacion_incentivo = BONO_QUINCENAL;
+  }
+
+  const totalNeto = parseFloat(Math.max(0, totalBrutoRnd - igssT + bonificacion_incentivo - anticipo).toFixed(2));
 
   return {
     sueldo_base:      sb,
@@ -98,16 +125,19 @@ function calcularLinea(
     suspensiones:     susp,
     horas_trabajadas: toNum(row.horas_trabajadas),
     horas_extra:      he,
+    septimos_perdidos: septimos,
     sueldo_periodo:   parseFloat(bruto.sueldoPeriodo.toFixed(2)),
     desc_faltas:      parseFloat(bruto.descFaltas.toFixed(2)),
+    desc_septimo:     parseFloat(bruto.descSeptimo.toFixed(2)),
     valor_he:         parseFloat(bruto.valorHE.toFixed(2)),
-    total_bruto:      parseFloat(bruto.totalBruto.toFixed(2)),
+    total_bruto:      totalBrutoRnd,
     anticipos:        parseFloat(anticipo.toFixed(2)),
-    total_neto:       parseFloat(totalNeto.toFixed(2)),
+    igss_trabajador:  igssT,
+    igss_patronal:    igssP,
+    bonificacion_incentivo,
+    total_neto:       totalNeto,
     aplica_igss:           igssData.aplica_igss,
     motivo_exclusion_igss: igssData.motivo_exclusion_igss,
-    igss_trabajador:  0,
-    igss_patronal:    0,
     otros_descuentos: 0,
   };
 }
@@ -295,31 +325,46 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
     // Totales de planilla
     const totales = lineas.reduce(
       (acc, l) => ({
-        total_sueldo_periodo: acc.total_sueldo_periodo + l.sueldo_periodo,
-        total_desc_faltas:    acc.total_desc_faltas    + l.desc_faltas,
-        total_valor_he:       acc.total_valor_he       + l.valor_he,
-        total_bruto:          acc.total_bruto          + l.total_bruto,
-        total_anticipos:      acc.total_anticipos      + l.anticipos,
-        total_neto:           acc.total_neto           + l.total_neto,
+        total_sueldo_periodo:         acc.total_sueldo_periodo         + l.sueldo_periodo,
+        total_desc_faltas:            acc.total_desc_faltas            + l.desc_faltas,
+        total_desc_septimo:           acc.total_desc_septimo           + l.desc_septimo,
+        total_valor_he:               acc.total_valor_he               + l.valor_he,
+        total_bruto:                  acc.total_bruto                  + l.total_bruto,
+        total_igss_trabajador:        acc.total_igss_trabajador        + l.igss_trabajador,
+        total_igss_patronal:          acc.total_igss_patronal          + l.igss_patronal,
+        total_bonificacion_incentivo: acc.total_bonificacion_incentivo + l.bonificacion_incentivo,
+        total_anticipos:              acc.total_anticipos              + l.anticipos,
+        total_neto:                   acc.total_neto                   + l.total_neto,
       }),
-      { total_sueldo_periodo: 0, total_desc_faltas: 0, total_valor_he: 0, total_bruto: 0, total_anticipos: 0, total_neto: 0 }
+      {
+        total_sueldo_periodo: 0, total_desc_faltas: 0, total_desc_septimo: 0,
+        total_valor_he: 0, total_bruto: 0,
+        total_igss_trabajador: 0, total_igss_patronal: 0,
+        total_bonificacion_incentivo: 0,
+        total_anticipos: 0, total_neto: 0,
+      }
     );
 
     // Insertar planilla
     const { rows: planRows } = await pool.query(`
       INSERT INTO planillas
         (periodo_desde, periodo_hasta, cierre_id, generado_por, observaciones,
-         total_colaboradores, total_sueldo_periodo, total_desc_faltas, total_valor_he,
-         total_bruto, total_anticipos, total_neto)
-      VALUES ($1::date, $2::date, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         total_colaboradores, total_sueldo_periodo, total_desc_faltas, total_desc_septimo,
+         total_valor_he, total_bruto, total_igss_trabajador, total_igss_patronal,
+         total_bonificacion_incentivo, total_anticipos, total_neto)
+      VALUES ($1::date, $2::date, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING id
     `, [
       desde, hasta, cierre.id, generadoPor, observaciones ?? null,
       lineas.length,
       totales.total_sueldo_periodo.toFixed(2),
       totales.total_desc_faltas.toFixed(2),
+      totales.total_desc_septimo.toFixed(2),
       totales.total_valor_he.toFixed(2),
       totales.total_bruto.toFixed(2),
+      totales.total_igss_trabajador.toFixed(2),
+      totales.total_igss_patronal.toFixed(2),
+      totales.total_bonificacion_incentivo.toFixed(2),
       totales.total_anticipos.toFixed(2),
       totales.total_neto.toFixed(2),
     ]);
@@ -358,20 +403,20 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
           (planilla_id, employee_id, nombre_completo, dpi, puesto, sede, cliente,
            tipo_jornada, horas_contrato, frecuencia_pago, sueldo_base, periodo_dias,
            dias_trabajados, faltas, suspensiones, horas_trabajadas, horas_extra,
-           sueldo_periodo, desc_faltas, valor_he, total_bruto, anticipos, total_neto,
+           sueldo_periodo, desc_faltas, desc_septimo, valor_he, total_bruto, anticipos,
            aplica_igss, motivo_exclusion_igss,
-           igss_trabajador, igss_patronal, otros_descuentos,
+           igss_trabajador, igss_patronal, bonificacion_incentivo, otros_descuentos, total_neto,
            anticipo_ids, novedad_ids, segmento_ids,
            revision_estado, observaciones_rrhh)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35)
       `, [
         planillaId, l.employee_id, l.nombre_completo, l.dpi, l.puesto, l.sede, l.cliente,
         l.tipo_jornada, l.horas_contrato, l.frecuencia_pago, l.sueldo_base, l.periodo_dias,
         l.dias_trabajados, l.faltas, l.suspensiones,
         l.horas_trabajadas, l.horas_extra,
-        l.sueldo_periodo, l.desc_faltas, l.valor_he, l.total_bruto, l.anticipos, l.total_neto,
+        l.sueldo_periodo, l.desc_faltas, l.desc_septimo, l.valor_he, l.total_bruto, l.anticipos,
         l.aplica_igss, l.motivo_exclusion_igss,
-        l.igss_trabajador, l.igss_patronal, l.otros_descuentos,
+        l.igss_trabajador, l.igss_patronal, l.bonificacion_incentivo, l.otros_descuentos, l.total_neto,
         JSON.stringify(anticipoIds), JSON.stringify([]), JSON.stringify([]),
         l.revision_estado, l.observaciones_rrhh,
       ]);

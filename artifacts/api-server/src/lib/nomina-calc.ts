@@ -33,6 +33,12 @@ export interface BrutoParams {
   periodoTotalDias: number;
   frecuenciaPago: string;
   quincenaTipo: "primera" | "segunda";
+  /**
+   * Número de semanas ISO en el período donde RRHH determinó que el colaborador
+   * pierde el séptimo día (eventos_rrhh.afecta_septimo_res = TRUE).
+   * Por defecto 0 (sin descuento de séptimo).
+   */
+  septimosPerdidos?: number;
 }
 
 export interface BrutoResult {
@@ -40,6 +46,7 @@ export interface BrutoResult {
   horasDia: number;
   sueldoPeriodo: number;
   descFaltas: number;
+  descSeptimo: number;
   valorHE: number;
   totalBruto: number;
 }
@@ -61,17 +68,27 @@ export function calcularHorasDia(horasContrato: number | null | undefined): numb
  *
  * Debe usarse tanto en el cierre de pre-planilla (total_estimado) como
  * en la generación de la planilla final (planilla_lineas.total_bruto).
+ *
+ * SÉPTIMO DÍA (Guatemala — Art. 126 CT):
+ *   Por cada 6 días trabajados, el colaborador gana 1 día de descanso remunerado.
+ *   Si RRHH determina que el colaborador pierde el séptimo de una semana
+ *   (afecta_septimo_res = TRUE en eventos_rrhh), se descuenta 1 sueldoDia adicional
+ *   por cada semana afectada. El campo septimosPerdidos = número de semanas perdidas.
+ *
+ *   Fórmula: descSeptimo = sueldoDia × septimosPerdidos
+ *   totalBruto = max(0, sueldoPeriodo − descFaltas − descSeptimo + valorHE)
  */
 export function calcularBruto(p: BrutoParams): BrutoResult {
-  const sueldoDia    = p.sueldoBase / 30;
-  const horasDia     = calcularHorasDia(p.horasContrato);
-  const esMensualSeg = p.frecuenciaPago === "mensual" && p.quincenaTipo === "segunda";
+  const sueldoDia     = p.sueldoBase / 30;
+  const horasDia      = calcularHorasDia(p.horasContrato);
+  const esMensualSeg  = p.frecuenciaPago === "mensual" && p.quincenaTipo === "segunda";
   const sueldoPeriodo = esMensualSeg ? p.sueldoBase : sueldoDia * p.periodoTotalDias;
-  const descFaltas   = sueldoDia * (p.faltas + p.suspensiones);
-  const valorHE      = p.horasExtra > 0 ? (sueldoDia / horasDia) * 1.5 * p.horasExtra : 0;
-  const totalBruto   = Math.max(0, sueldoPeriodo - descFaltas + valorHE);
+  const descFaltas    = sueldoDia * (p.faltas + p.suspensiones);
+  const descSeptimo   = sueldoDia * (p.septimosPerdidos ?? 0);
+  const valorHE       = p.horasExtra > 0 ? (sueldoDia / horasDia) * 1.5 * p.horasExtra : 0;
+  const totalBruto    = Math.max(0, sueldoPeriodo - descFaltas - descSeptimo + valorHE);
 
-  return { sueldoDia, horasDia, sueldoPeriodo, descFaltas, valorHE, totalBruto };
+  return { sueldoDia, horasDia, sueldoPeriodo, descFaltas, descSeptimo, valorHE, totalBruto };
 }
 
 /**

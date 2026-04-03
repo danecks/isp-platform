@@ -2819,6 +2819,19 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SSA-CAN-01 — error (no bloqueante)");
   }
 
+  // ── SEP-01: columnas de séptimo día en eventos_rrhh, planilla_lineas y planillas ─────────────
+  // impacto_septimo: nivel de impacto que decide RRHH (mantiene/pierde/proporcional)
+  // desc_septimo: descuento efectivo aplicado en la línea de planilla
+  // total_desc_septimo: suma de desc_septimo en el encabezado de planilla
+  try {
+    await pool.query(`ALTER TABLE eventos_rrhh      ADD COLUMN IF NOT EXISTS impacto_septimo     VARCHAR(20) DEFAULT 'pierde'`);
+    await pool.query(`ALTER TABLE planilla_lineas   ADD COLUMN IF NOT EXISTS desc_septimo        NUMERIC(10,2) DEFAULT 0`);
+    await pool.query(`ALTER TABLE planillas         ADD COLUMN IF NOT EXISTS total_desc_septimo  NUMERIC(12,2) DEFAULT 0`);
+    logger.info("Auto-migrate: SEP-01 columnas séptimo día verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SEP-01 — error (no bloqueante)");
+  }
+
   // ── PLAN-CUN-01: índice parcial en pre_planilla_cierres para permitir re-cierre tras anulación ──
   // Reemplaza el UNIQUE constraint global por uno que solo bloquea (periodo_desde, periodo_hasta)
   // cuando anulado = FALSE. Permite crear un nuevo cierre para el mismo período si el anterior
@@ -2833,6 +2846,30 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.info("Auto-migrate: PLAN-CUN-01 índice parcial en pre_planilla_cierres verificado/creado");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: PLAN-CUN-01 — error (no bloqueante)");
+  }
+
+  // ── IGSS-02: columnas de totales IGSS en planillas ───────────────────────────
+  // total_igss_trabajador: suma de descuentos IGSS trabajador (4.83%) de todas las líneas
+  // total_igss_patronal:   suma de cuota patronal IGSS (12.67%) — costo empresa, no es descuento
+  // Ambas vienen del cálculo en planilla.ts (calcularLinea). La elegibilidad IGSS se
+  // determina al momento de generar la planilla desde el estado actual de employees y puestos_operativos.
+  try {
+    await pool.query(`ALTER TABLE planillas ADD COLUMN IF NOT EXISTS total_igss_trabajador NUMERIC(12,2) NOT NULL DEFAULT 0`);
+    await pool.query(`ALTER TABLE planillas ADD COLUMN IF NOT EXISTS total_igss_patronal   NUMERIC(12,2) NOT NULL DEFAULT 0`);
+    logger.info("Auto-migrate: IGSS-02 columnas totales IGSS en planillas verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: IGSS-02 — error (no bloqueante)");
+  }
+
+  // ── BONO-01: bonificación incentivo Decreto 78-89 en planilla_lineas y planillas ──────────────
+  // bonificacion_incentivo en línea: Q125/quincena, Q250/mensual segunda quincena
+  // No aplica IGSS (Decreto 78-89, Art. 7 — es un beneficio laboral adicional al salario base)
+  try {
+    await pool.query(`ALTER TABLE planilla_lineas ADD COLUMN IF NOT EXISTS bonificacion_incentivo NUMERIC(10,2) NOT NULL DEFAULT 0`);
+    await pool.query(`ALTER TABLE planillas       ADD COLUMN IF NOT EXISTS total_bonificacion_incentivo NUMERIC(12,2) NOT NULL DEFAULT 0`);
+    logger.info("Auto-migrate: BONO-01 columnas bonificación incentivo verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: BONO-01 — error (no bloqueante)");
   }
 
   logger.info("Auto-seed completado");
