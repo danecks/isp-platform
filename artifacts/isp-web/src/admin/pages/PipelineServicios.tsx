@@ -77,6 +77,9 @@ interface SolicitudSSA {
   tarea_comercial_estado: string | null;
   solicitado_por_nombre: string | null;
   created_at: string;
+  motivo_cancelacion: string | null;
+  cancelado_por: string | null;
+  cancelado_at: string | null;
 }
 
 interface StatsSSA {
@@ -370,6 +373,20 @@ function ModalDetalle({ solicitud: s, onClose, onRefresh }: ModalDetalleProps) {
   const [obsCom, setObsCom]             = useState(s.observaciones_comercial ?? "");
 
   const [saving, setSaving] = useState(false);
+  const [cancelConfirm, setCancelConfirm] = useState(false);
+  const [motivoCancelacion, setMotivoCancelacion] = useState("");
+  const [cancelando, setCancelando] = useState(false);
+
+  async function cancelarSolicitud() {
+    setCancelando(true);
+    try {
+      await apiPatch(`/solicitudes-servicio/${s.id}/cancelar`, { motivoCancelacion: motivoCancelacion || null });
+      onRefresh();
+      onClose();
+      toast({ title: "Servicio cancelado", description: "La solicitud fue marcada como cancelada." });
+    } catch (e: any) { toast({ title: "Error", description: e.message, variant: "destructive" }); }
+    setCancelando(false);
+  }
 
   async function saveOps() {
     setSaving(true);
@@ -636,6 +653,71 @@ function ModalDetalle({ solicitud: s, onClose, onRefresh }: ModalDetalleProps) {
             </div>
           )}
         </div>
+
+        {/* ── Footer: Cancelar Servicio ────────────────────────────────────── */}
+        {s.estado_general !== "cancelada" && s.estado_general !== "cerrada" && (
+          <div className="border-t border-white/7 px-6 py-4 shrink-0">
+            {!cancelConfirm ? (
+              <button
+                onClick={() => setCancelConfirm(true)}
+                className="flex items-center gap-2 text-xs font-semibold text-red-400 hover:text-red-300 transition-colors"
+              >
+                <XCircle className="w-4 h-4" />
+                Cancelar este servicio
+              </button>
+            ) : (
+              <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                  <p className="text-sm font-semibold text-red-300">¿Confirmar cancelación del servicio?</p>
+                </div>
+                <p className="text-xs text-white/50 leading-relaxed">
+                  Esta acción marcará la solicitud como <span className="text-red-400 font-semibold">Cancelada</span>. No se puede deshacer automáticamente.
+                </p>
+                <div>
+                  <label className="text-xs font-semibold text-white/50 uppercase tracking-wide block mb-1.5">Motivo de cancelación <span className="text-white/25 font-normal">(opcional)</span></label>
+                  <textarea
+                    rows={2}
+                    value={motivoCancelacion}
+                    onChange={(e) => setMotivoCancelacion(e.target.value)}
+                    placeholder="Ej: Cliente solicitó cancelación, ajuste presupuestario..."
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-white/25 outline-none resize-none"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={cancelarSolicitud}
+                    disabled={cancelando}
+                    className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {cancelando ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                    Sí, cancelar servicio
+                  </button>
+                  <button
+                    onClick={() => { setCancelConfirm(false); setMotivoCancelacion(""); }}
+                    className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 text-sm font-semibold transition-colors"
+                  >
+                    No
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Mostrar info de cancelación si ya está cancelada */}
+        {s.estado_general === "cancelada" && (
+          <div className="border-t border-white/7 px-6 py-3 shrink-0">
+            <div className="flex items-start gap-2 text-xs text-red-400/70">
+              <XCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <div>
+                <span className="font-semibold">Servicio cancelado</span>
+                {s.cancelado_por && <span className="text-white/30"> · por {s.cancelado_por}</span>}
+                {s.motivo_cancelacion && <span className="text-white/40 block mt-0.5">{s.motivo_cancelacion}</span>}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

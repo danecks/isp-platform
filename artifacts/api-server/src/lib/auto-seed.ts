@@ -2809,5 +2809,15 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: NRRHH-01 eventos_rrhh — error (no bloqueante)");
   }
 
+  // ── SSA-CAN-01: columnas de cancelación en solicitudes_servicio_adicional ─────
+  try {
+    await pool.query(`ALTER TABLE solicitudes_servicio_adicional ADD COLUMN IF NOT EXISTS motivo_cancelacion TEXT`);
+    await pool.query(`ALTER TABLE solicitudes_servicio_adicional ADD COLUMN IF NOT EXISTS cancelado_por VARCHAR(100)`);
+    await pool.query(`ALTER TABLE solicitudes_servicio_adicional ADD COLUMN IF NOT EXISTS cancelado_at TIMESTAMPTZ`);
+    logger.info("Auto-migrate: SSA-CAN-01 columnas cancelación verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SSA-CAN-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

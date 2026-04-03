@@ -415,6 +415,58 @@ solicitudesServicioRouter.patch("/solicitudes-servicio/:id/operaciones", async (
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/solicitudes-servicio/:id/cancelar — cancelar solicitud
+// ─────────────────────────────────────────────────────────────────────────────
+solicitudesServicioRouter.patch("/solicitudes-servicio/:id/cancelar", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { motivoCancelacion } = req.body;
+
+    let canceladoPor: string | null = null;
+    try {
+      const sessionRaw = req.headers["x-isp-session"] as string;
+      if (sessionRaw) {
+        const sess = JSON.parse(sessionRaw);
+        canceladoPor = sess?.nombre ?? sess?.usuario ?? null;
+      }
+    } catch { /* ignore */ }
+
+    const { rows: curr } = await pool.query(
+      `SELECT estado_general FROM solicitudes_servicio_adicional WHERE id = $1`,
+      [id],
+    );
+    if (curr.length === 0) return res.status(404).json({ error: "Solicitud no encontrada" });
+    if (curr[0].estado_general === "cancelada") {
+      return res.status(400).json({ error: "La solicitud ya está cancelada" });
+    }
+    if (curr[0].estado_general === "cerrada") {
+      return res.status(400).json({ error: "No se puede cancelar una solicitud cerrada" });
+    }
+
+    await pool.query(
+      `UPDATE solicitudes_servicio_adicional
+       SET estado_general = 'cancelada',
+           motivo_cancelacion = $1,
+           cancelado_por = $2,
+           cancelado_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $3`,
+      [motivoCancelacion ?? null, canceladoPor, id],
+    );
+
+    const { rows } = await pool.query(
+      `SELECT s.*, c.nombre AS cliente_nombre
+       FROM solicitudes_servicio_adicional s LEFT JOIN clients c ON c.id = s.cliente_id WHERE s.id = $1`,
+      [id],
+    );
+    return res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "solicitudes-servicio: PATCH cancelar error");
+    return res.status(500).json({ error: "Error al cancelar solicitud" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PATCH /api/solicitudes-servicio/:id/rrhh — área de RRHH
 // ─────────────────────────────────────────────────────────────────────────────
 solicitudesServicioRouter.patch("/solicitudes-servicio/:id/rrhh", async (req, res) => {
