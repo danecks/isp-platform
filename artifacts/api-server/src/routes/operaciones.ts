@@ -329,6 +329,8 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         t.horas_descanso AS horas_descanso_turno,
         t.nombre         AS turno_nombre,
         titular_po.fecha_inicio_ciclo AS fecha_inicio_ciclo_turno,
+        -- hora_entrada del puesto: necesaria para detectar descanso intra-día en turnos ≤12h
+        titular_po.hora_entrada AS hora_entrada_puesto,
         -- Vacaciones activas hoy
         vac_activa.tipo_evento AS vacacion_activa_tipo,
         vac_activa.fecha::date AS vacacion_inicio,
@@ -379,7 +381,8 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         SELECT po2.id, po2.estado_operativo_puesto, po2.nombre, po2.cliente_nombre,
                po2.agente_id, po2.tipo_turno_id,
                COALESCE(pt2.fecha_inicio_ciclo, po2.fecha_inicio_ciclo) AS fecha_inicio_ciclo,
-               po2.zona_operativa_id
+               po2.zona_operativa_id,
+               po2.hora_entrada  -- para detección de descanso intra-día (12x12, 8h, etc.)
         FROM puesto_titulares pt2
         JOIN puestos_operativos po2 ON po2.id = pt2.puesto_id AND po2.activo = TRUE
         WHERE pt2.employee_id = e.id AND pt2.activo = TRUE
@@ -595,7 +598,6 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         default: {
           // ── Aplicar motor de turnos si el agente tiene datos de ciclo ──────
           if (a.tipo_ciclo_turno && a.horas_trabajo_turno && a.fecha_inicio_ciclo_turno) {
-            // calcularEstadoCiclo espera un objeto Turno como primer argumento
             const turnoObj = {
               id: 0,
               nombre: a.turno_nombre ?? "",
@@ -603,12 +605,36 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
               horas_trabajo: Number(a.horas_trabajo_turno),
               horas_descanso: Number(a.horas_descanso_turno),
             };
-            // fecha_inicio_ciclo_turno viene de pg como Date; se convierte a ISO string
             const fechaInicioStr = a.fecha_inicio_ciclo_turno instanceof Date
               ? a.fecha_inicio_ciclo_turno.toISOString().slice(0, 10)
               : String(a.fecha_inicio_ciclo_turno).slice(0, 10);
 
             const estado = calcularEstadoCiclo(turnoObj, fechaInicioStr, hoy);
+
+            // ── Refinamiento intra-día para turnos diarios cortos (≤12h) ─────
+            // calcularEstadoCiclo opera a nivel de día: para un 12x12 siempre dice "trabaja"
+            // porque el ciclo cabe dentro de un día. Aquí añadimos la detección por hora:
+            // si el agente tiene hora_entrada y en este momento está fuera de su ventana
+            // laboral → está en descanso y es apto para HE.
+            if (estado.trabaja && Number(a.horas_trabajo_turno) <= 12 && a.hora_entrada_puesto) {
+              const [hh, mm] = String(a.hora_entrada_puesto).split(":").map(Number);
+              if (!isNaN(hh) && !isNaN(mm)) {
+                const nowGT  = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Guatemala" }));
+                const ahora  = nowGT.getHours() * 60 + nowGT.getMinutes();
+                const inicio = hh * 60 + mm;
+                const fin    = inicio + Number(a.horas_trabajo_turno) * 60;
+                // Manejo de cruce de medianoche: ej. turno 20:00-08:00
+                const enTurno = fin > 1440
+                  ? (ahora >= inicio || ahora < fin - 1440)
+                  : (ahora >= inicio && ahora < fin);
+                if (!enTurno) {
+                  // Fuera de ventana laboral → descanso intra-día, disponible para HE
+                  descansandoCiclo.push({ ...a, disponibleHE: true });
+                  break;
+                }
+              }
+            }
+
             if (estado.trabaja) {
               trabajando.push({ ...a, disponibleHE: false });
             } else {
