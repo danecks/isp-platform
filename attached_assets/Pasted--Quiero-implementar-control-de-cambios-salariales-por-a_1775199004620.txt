@@ -1,0 +1,117 @@
+}
+Quiero implementar control de cambios salariales por asignación de puesto sin bloquear la operación, pero con autorización obligatoria de RRHH.
+
+## Objetivo
+Permitir que Operaciones mueva agentes libremente entre puestos, pero que cualquier cambio que implique diferencia salarial requiera aprobación de RRHH antes de impactar planilla.
+
+---
+
+## 1. Detección automática
+Cuando un agente es asignado a un puesto:
+
+- detectar si el puesto tiene condiciones salariales distintas
+- comparar contra el salario base del empleado
+
+Si hay diferencia:
+- marcar como cambio con impacto salarial
+
+---
+
+## 2. Alerta en Operaciones
+Al hacer el movimiento, mostrar mensaje:
+
+“Este puesto tiene condiciones salariales distintas.  
+El cambio se aplicará operativamente, pero requiere autorización de RRHH.”
+
+Permitir continuar sin bloquear.
+
+---
+
+## 3. Registro automático
+El sistema debe:
+
+- registrar el movimiento operativo
+- guardar snapshot del puesto y condiciones salariales
+- marcar el registro como:
+  impacto_pendiente_rrhh
+
+---
+
+## 4. Generar tarea RRHH
+Crear automáticamente una tarea para RRHH con:
+
+- empleado
+- puesto
+- fecha
+- tipo de impacto:
+  - aumento
+  - disminución
+- diferencia estimada
+- link al movimiento
+
+---
+
+## 5. Resolución RRHH
+RRHH debe poder:
+
+- aprobar cambio
+- rechazar cambio
+- modificar condiciones (ej. pagar solo parcial)
+
+---
+
+## 6. Impacto en planilla
+Mientras el estado sea:
+- impacto_pendiente_rrhh
+
+NO aplicar cambio salarial aún.
+
+Cuando:
+- impacto_aprobado_rrhh → aplicar diferencial
+- impacto_rechazado → usar salario normal
+
+---
+
+## 7. Auditoría
+Guardar:
+
+- quién hizo el movimiento
+- cuándo
+- quién aprobó/rechazó
+- condiciones finales aplicadas
+
+---
+
+## 8. No romper
+No romper:
+
+- pizarrón operativo
+- cobertura
+- relevos
+- planilla actual
+- RRHH eventos
+- tareas
+
+---
+
+## 9. Validación
+Probar:
+
+1. mover agente a puesto con salario mayor → genera alerta y tarea RRHH
+2. mover agente a puesto con salario menor → igual flujo
+3. RRHH aprueba → planilla aplica cambio
+4. RRHH rechaza → planilla ignora cambio
+5. RRHH modifica → aplica valor ajustado
+
+---
+
+## 10. Resultado esperado
+Quiero un sistema donde:
+
+- la operación nunca se detiene
+- los cambios salariales no se aplican sin control
+- RRHH tiene la última palabra
+- se evita riesgo legal (despido indirecto)
+
+Muy importante:
+el sistema debe permitir operar rápido pero controlar correctamente el impacto salarial

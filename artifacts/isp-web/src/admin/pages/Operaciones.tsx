@@ -5772,7 +5772,7 @@ export default function Operaciones() {
     const { puesto, agente } = modalEligeCobertura;
     setModalEligeCobertura(null);
     try {
-      await apiPost(`${API_BASE}/operaciones/asignar`, {
+      const respAsignar = await apiPost(`${API_BASE}/operaciones/asignar`, {
         puestoId: puesto.id,
         agenteId: agente.id,
         soloCobertura,
@@ -5782,6 +5782,13 @@ export default function Operaciones() {
         horaInstalacion: horaInstalacion ?? null,
         usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
       });
+      if (respAsignar?.impactoSalarial?.detectado) {
+        setTimeout(() => toast({
+          title: "⚠️ Cambio con impacto salarial",
+          description: "Este puesto tiene condiciones salariales distintas. El cambio requiere autorización de RRHH.",
+          variant: "destructive",
+        }), 400);
+      }
       if (soloCobertura) {
         const horaLabel = horaInstalacion ? ` desde las ${horaInstalacion}` : "";
         toast({ title: "Cobertura temporal registrada", description: `${agente.nombre_completo} cubre ${puesto.nombre}${horaLabel}` });
@@ -5907,6 +5914,13 @@ export default function Operaciones() {
           coberturaTipo: coberturaTipo ?? "completo",
           usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
         });
+        if (resp?.impactoSalarial?.detectado) {
+          setTimeout(() => toast({
+            title: "⚠️ Cambio con impacto salarial",
+            description: "Este puesto tiene condiciones salariales distintas. El cambio se aplicó operativamente, pero requiere autorización de RRHH.",
+            variant: "destructive",
+          }), 400);
+        }
         const labelNov = TIPOS_NOVEDAD.find((t) => t.value === (tipoNovedad ?? ""))?.label ?? tipoNovedad ?? "";
         if (resp?.eventoRrhhGenerado) {
           toast({

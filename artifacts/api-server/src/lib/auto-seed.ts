@@ -2741,5 +2741,49 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: CUST-02 tipo_puesto — error (no bloqueante)");
   }
 
+  // SAL-01: Control de cambios salariales por asignación de puesto
+  try {
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS salario_puesto NUMERIC(12,2)`);
+    logger.info("Auto-migrate: SAL-01 salario_puesto en puestos_operativos verificado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SAL-01 salario_puesto — error (no bloqueante)");
+  }
+
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS cambios_salariales (
+        id                    SERIAL PRIMARY KEY,
+        movimiento_id         INTEGER REFERENCES movimientos_operativos(id) ON DELETE SET NULL,
+        employee_id           INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        empleado_nombre       VARCHAR(255) NOT NULL,
+        puesto_id             INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        puesto_nombre         VARCHAR(255),
+        cliente_nombre        VARCHAR(255),
+        fecha                 DATE NOT NULL DEFAULT CURRENT_DATE,
+        salario_actual        NUMERIC(12,2) NOT NULL,
+        salario_puesto        NUMERIC(12,2) NOT NULL,
+        diferencia            NUMERIC(12,2) NOT NULL,
+        tipo_impacto          VARCHAR(20) NOT NULL CHECK (tipo_impacto IN ('aumento','disminucion')),
+        estado                VARCHAR(30) NOT NULL DEFAULT 'pendiente_rrhh'
+                              CHECK (estado IN ('pendiente_rrhh','aprobado','rechazado','modificado')),
+        valor_aprobado        NUMERIC(12,2),
+        rrhh_notas            TEXT,
+        rrhh_usuario          VARCHAR(100),
+        rrhh_resuelto_at      TIMESTAMPTZ,
+        operacion_usuario     VARCHAR(100),
+        tipo_movimiento       VARCHAR(30),
+        snapshot_puesto       JSONB,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_cs_employee  ON cambios_salariales(employee_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_cs_estado    ON cambios_salariales(estado)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_cs_fecha     ON cambios_salariales(fecha)`);
+    logger.info("Auto-migrate: SAL-01 tabla cambios_salariales verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SAL-01 cambios_salariales — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

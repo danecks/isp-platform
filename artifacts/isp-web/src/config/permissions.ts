@@ -29,6 +29,7 @@ import {
   Calendar,
   Kanban,
   Trash2,
+  ArrowUpDown,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -234,6 +235,12 @@ export const NAV_SECTIONS: NavSection[] = [
         path: "/admin/rrhh/turnos",
         label: "Tipos de Turno",
         icon: Timer,
+        roles: ["admin", "rrhh"],
+      },
+      {
+        path: "/admin/rrhh/cambios-salariales",
+        label: "Cambios Salariales",
+        icon: ArrowUpDown,
         roles: ["admin", "rrhh"],
       },
     ],

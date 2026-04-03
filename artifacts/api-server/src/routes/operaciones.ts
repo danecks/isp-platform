@@ -6,6 +6,52 @@ import { calcularEstadoCiclo } from "../lib/turno-calc";
 
 const operacionesRouter = Router();
 
+// ─── Helper: detectar y registrar impacto salarial ───────────────────────────
+// Llámalo DESPUÉS de actualizar puestos_operativos.
+// No lanza excepciones — falla silenciosamente para no bloquear la operación.
+async function registrarImpactoSalarial(opts: {
+  agenteId:       number;
+  agenteNombre:   string;
+  puestoId:       number;
+  puestoNombre:   string;
+  clienteNombre:  string;
+  salarioPuesto:  number | null;
+  salarioActual:  number | null;
+  movimientoId?:  number | null;
+  usuario?:       string;
+  tipoMovimiento: string;
+  snapshotPuesto?: Record<string, unknown>;
+}): Promise<{ tieneImpacto: boolean; impactoId?: number }> {
+  try {
+    const { salarioPuesto, salarioActual } = opts;
+    // Solo aplica si ambos salarios están definidos y son distintos
+    if (!salarioPuesto || !salarioActual) return { tieneImpacto: false };
+    const diferencia = salarioPuesto - salarioActual;
+    if (Math.abs(diferencia) < 0.01) return { tieneImpacto: false };
+
+    const tipoImpacto = diferencia > 0 ? "aumento" : "disminucion";
+    const { rows } = await pool.query(
+      `INSERT INTO cambios_salariales
+         (employee_id, empleado_nombre, puesto_id, puesto_nombre, cliente_nombre,
+          salario_actual, salario_puesto, diferencia, tipo_impacto,
+          movimiento_id, operacion_usuario, tipo_movimiento, snapshot_puesto)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       RETURNING id`,
+      [
+        opts.agenteId, opts.agenteNombre, opts.puestoId, opts.puestoNombre, opts.clienteNombre,
+        salarioActual, salarioPuesto, Math.abs(diferencia), tipoImpacto,
+        opts.movimientoId ?? null, opts.usuario ?? null, opts.tipoMovimiento,
+        opts.snapshotPuesto ? JSON.stringify(opts.snapshotPuesto) : null
+      ]
+    );
+    logger.info({ impactoId: rows[0].id, tipoImpacto, diferencia }, "Impacto salarial registrado");
+    return { tieneImpacto: true, impactoId: rows[0].id };
+  } catch (err) {
+    logger.warn({ err }, "registrarImpactoSalarial: error no bloqueante");
+    return { tieneImpacto: false };
+  }
+}
+
 // ─── GET /api/operaciones/tablero ─────────────────────────────────────────────
 // Devuelve: clientes con sus puestos, agente actual, titular y datos de sede/horario
 // ?fecha=YYYY-MM-DD — opcional; si se omite usa CURRENT_DATE.
@@ -1033,11 +1079,28 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
       logger.warn({ segErr }, "A-04: no se pudo crear segmento al asignar (no bloqueante)");
     }
 
+    // SAL-01: Detectar impacto salarial (no bloqueante)
+    const impacto = await registrarImpactoSalarial({
+      agenteId:      agenteId,
+      agenteNombre:  agente.nombre_completo,
+      puestoId:      puestoId,
+      puestoNombre:  puesto.nombre,
+      clienteNombre: puesto.cliente_nombre ?? "",
+      salarioPuesto: puesto.salario_puesto  ? Number(puesto.salario_puesto)  : null,
+      salarioActual: agente.sueldo_base     ? Number(agente.sueldo_base)     : null,
+      usuario:       usuario ?? null,
+      tipoMovimiento: soloCobertura ? "cobertura" : "asignacion_titular",
+      snapshotPuesto: { nombre: puesto.nombre, cliente_nombre: puesto.cliente_nombre, salario_puesto: puesto.salario_puesto },
+    });
+
     res.json({
       ok: true,
       mensaje: `${agente.nombre_completo} asignado a ${puesto.nombre}`,
       asignadoComoTitular: !soloCobertura && sinTitular,
       soloCobertura,
+      impactoSalarial: impacto.tieneImpacto
+        ? { detectado: true, impactoId: impacto.impactoId }
+        : { detectado: false },
     });
   } catch (err) {
     logger.error({ err }, "POST /operaciones/asignar error");
@@ -1279,12 +1342,29 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
       logger.warn({ segErr }, "A-04: no se pudo auto-crear segmento al sustituir (no bloqueante)");
     }
 
+    // SAL-01: Detectar impacto salarial (no bloqueante)
+    const impacto = await registrarImpactoSalarial({
+      agenteId:      agenteEntranteId,
+      agenteNombre:  entrante.nombre_completo,
+      puestoId:      puestoId,
+      puestoNombre:  puesto.nombre,
+      clienteNombre: puesto.cliente_nombre ?? "",
+      salarioPuesto: puesto.salario_puesto ? Number(puesto.salario_puesto) : null,
+      salarioActual: entrante.sueldo_base  ? Number(entrante.sueldo_base)  : null,
+      usuario:       usuario ?? null,
+      tipoMovimiento: esRelevo ? "relevo" : "reasignacion",
+      snapshotPuesto: { nombre: puesto.nombre, cliente_nombre: puesto.cliente_nombre, salario_puesto: puesto.salario_puesto },
+    });
+
     res.json({
       ok: true,
       mensaje: `Sustitución registrada: ${agenteSalienteNombre} → ${entrante.nombre_completo}`,
       eventoRrhhGenerado: !!tipoEventoRrhh,
       tipoNovedad: tipoNovedad ?? null,
       estadoOperativoPuesto: estadoOpPuesto,
+      impactoSalarial: impacto.tieneImpacto
+        ? { detectado: true, impactoId: impacto.impactoId }
+        : { detectado: false },
     });
   } catch (err) {
     logger.error({ err }, "POST /operaciones/sustituir error");

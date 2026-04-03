@@ -55,6 +55,7 @@ import AdminTableroServicios from "@/admin/pages/TableroServicios";
 import AdminVehiculos from "@/admin/pages/Vehiculos";
 import AdminArmeria from "@/admin/pages/Armeria";
 import AdminSolicitudesEliminacion from "@/admin/pages/SolicitudesEliminacion";
+import AdminCambiosSalariales from "@/admin/pages/CambiosSalariales";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
@@ -207,6 +208,9 @@ function Router() {
       </Route>
       <Route path="/admin/solicitudes-eliminacion">
         {() => <AuthGuard requiredRoles={["admin"]}><AdminSolicitudesEliminacion /></AuthGuard>}
+      </Route>
+      <Route path="/admin/rrhh/cambios-salariales">
+        {() => <AuthGuard requiredRoles={["admin", "rrhh"]}><AdminCambiosSalariales /></AuthGuard>}
       </Route>
 
       <Route component={NotFound} />
