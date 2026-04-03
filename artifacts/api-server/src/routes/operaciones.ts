@@ -1375,16 +1375,21 @@ operacionesRouter.post("/operaciones/puestos/:id/titular", async (req, res) => {
 // ─── PATCH /api/operaciones/puestos/:id ──────────────────────────────────────
 // Actualizar campos de configuración de un puesto (horario, jornada, sede, notas, zona)
 operacionesRouter.patch("/operaciones/puestos/:id", async (req, res) => {
-  const { horario, jornada, sedeId, notas, turno, zonaOperativaId } = req.body;
+  const { horario, jornada, sedeId, notas, turno, zonaOperativaId, tipoPuesto } = req.body;
 
   // P-03: rechazar body vacío para evitar UPDATE sin efecto
-  if ([horario, jornada, sedeId, notas, turno, zonaOperativaId].every(v => v === undefined || v === null)) {
-    return res.status(400).json({ error: "Debe proporcionar al menos un campo para actualizar (horario, jornada, sedeId, notas, turno, zonaOperativaId)" });
+  if ([horario, jornada, sedeId, notas, turno, zonaOperativaId, tipoPuesto].every(v => v === undefined || v === null)) {
+    return res.status(400).json({ error: "Debe proporcionar al menos un campo para actualizar (horario, jornada, sedeId, notas, turno, zonaOperativaId, tipoPuesto)" });
   }
 
   // Zona no puede quitarse una vez asignada — es parte estructural del modelo
   if (zonaOperativaId === null) {
     return res.status(400).json({ error: "El puesto debe tener una zona operativa asignada" });
+  }
+
+  // Validar tipo_puesto si viene
+  if (tipoPuesto !== undefined && !['normal', 'custodia'].includes(tipoPuesto)) {
+    return res.status(400).json({ error: "tipoPuesto debe ser 'normal' o 'custodia'" });
   }
 
   try {
@@ -1406,12 +1411,13 @@ operacionesRouter.patch("/operaciones/puestos/:id", async (req, res) => {
            notas               = COALESCE($4, notas),
            turno               = COALESCE($5, turno),
            zona_operativa_id   = COALESCE($6, zona_operativa_id),
+           tipo_puesto         = COALESCE($7, tipo_puesto),
            updated_at          = NOW()
-       WHERE id = $7
+       WHERE id = $8
        RETURNING *`,
       [
         horario ?? null, jornada ?? null, sedeId ?? null, notas ?? null,
-        turno ?? null, zonaOperativaId ?? null, req.params.id,
+        turno ?? null, zonaOperativaId ?? null, tipoPuesto ?? null, req.params.id,
       ]
     );
     if (!rows.length) return res.status(404).json({ error: "Puesto no encontrado" });
@@ -1493,7 +1499,7 @@ operacionesRouter.get("/operaciones/puestos/sin-zona", async (req, res) => {
 operacionesRouter.post("/operaciones/puestos", async (req, res) => {
   const {
     clienteId, clienteNombre, nombre, turno, notas, sedeId, horario, jornada,
-    tipoTurnoId, fechaInicioCiclo, zonaOperativaId,
+    tipoTurnoId, fechaInicioCiclo, zonaOperativaId, tipoPuesto,
   } = req.body;
 
   if (!clienteNombre || !nombre) {
@@ -1533,16 +1539,18 @@ operacionesRouter.post("/operaciones/puestos", async (req, res) => {
     );
     const orden = ordenRows[0].siguiente;
 
+    const tipoPuestoFinal = (tipoPuesto === 'custodia') ? 'custodia' : 'normal';
+
     const { rows } = await pool.query(
       `INSERT INTO puestos_operativos
          (cliente_id, cliente_nombre, nombre, turno, orden, notas, sede_id, horario, jornada,
-          tipo_turno_id, fecha_inicio_ciclo, zona_operativa_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          tipo_turno_id, fecha_inicio_ciclo, zona_operativa_id, tipo_puesto)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
       [
         clienteId || null, clienteNombre, nombre, turno || 'día', orden,
         notas || null, sedeId || null, horario || null, jornada || null,
-        tipoTurnoId, fechaInicioCiclo, zonaOperativaId,
+        tipoTurnoId, fechaInicioCiclo, zonaOperativaId, tipoPuestoFinal,
       ]
     );
     res.json(rows[0]);
@@ -2898,6 +2906,83 @@ operacionesRouter.put("/operaciones/puestos/:id/titulares", async (req, res) => 
   } catch (err) {
     logger.error({ err }, "PUT /operaciones/puestos/:id/titulares error");
     res.status(500).json({ error: "Error al actualizar titulares" });
+  }
+});
+
+// ─── GET /api/custodias/puestos ──────────────────────────────────────────────
+// Lista puestos marcados como tipo_puesto = 'custodia' con estado operativo calculado.
+// Estado:
+//   incidente_activo    → tiene incident activo ligado al puesto
+//   incidente_completado → sólo incidentes cerrados
+//   en_ruta             → agente asignado hoy, sin incidentes abiertos
+//   planificada         → sin agente asignado
+operacionesRouter.get("/custodias/puestos", async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        p.id,
+        p.nombre,
+        p.cliente_id,
+        p.cliente_nombre,
+        p.turno,
+        p.horario,
+        p.tipo_puesto,
+        p.agente_id,
+        p.agente_nombre,
+        p.titular_employee_id,
+        p.titular_nombre,
+        p.notas,
+        p.activo,
+        oz.nombre                           AS zona_nombre,
+        cs.nombre                           AS sede_nombre,
+        t.nombre                            AS turno_tipo_nombre,
+        p.tipo_turno_id,
+        TO_CHAR(p.fecha_inicio_ciclo,'YYYY-MM-DD') AS fecha_inicio_ciclo,
+        -- Calcular estado operativo de custodia
+        -- Estados activos de incident: abierta, en_proceso
+        -- Estado cerrado: cerrada (y cualquier otra cosa)
+        CASE
+          WHEN EXISTS (
+            SELECT 1 FROM incidents i
+            WHERE i.puesto_id = p.id
+              AND i.estado IN ('abierta','en_proceso')
+          ) THEN 'incidente_activo'
+          WHEN EXISTS (
+            SELECT 1 FROM incidents i
+            WHERE i.puesto_id = p.id
+              AND i.estado NOT IN ('abierta','en_proceso')
+          ) AND NOT EXISTS (
+            SELECT 1 FROM incidents i
+            WHERE i.puesto_id = p.id
+              AND i.estado IN ('abierta','en_proceso')
+          ) THEN 'incidente_completado'
+          WHEN p.agente_id IS NOT NULL THEN 'en_ruta'
+          ELSE 'planificada'
+        END                                 AS estado_custodia,
+        -- Contar incidentes totales asociados
+        (SELECT COUNT(*) FROM incidents i WHERE i.puesto_id = p.id) AS total_incidentes,
+        (SELECT COUNT(*) FROM incidents i WHERE i.puesto_id = p.id
+           AND i.estado IN ('abierta','en_proceso'))                  AS incidentes_activos
+      FROM puestos_operativos p
+      LEFT JOIN operational_zones oz ON oz.id = p.zona_operativa_id
+      LEFT JOIN client_sedes     cs ON cs.id = p.sede_id
+      LEFT JOIN turnos            t  ON t.id  = p.tipo_turno_id
+      WHERE p.tipo_puesto = 'custodia'
+        AND p.activo      = TRUE
+      ORDER BY
+        CASE
+          WHEN EXISTS (SELECT 1 FROM incidents i WHERE i.puesto_id = p.id AND i.estado NOT IN ('cerrado','resuelto','completado')) THEN 0
+          WHEN p.agente_id IS NOT NULL THEN 1
+          ELSE 2
+        END,
+        p.cliente_nombre,
+        p.nombre
+    `);
+
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "GET /custodias/puestos error");
+    res.status(500).json({ error: "Error al obtener custodias" });
   }
 });
 

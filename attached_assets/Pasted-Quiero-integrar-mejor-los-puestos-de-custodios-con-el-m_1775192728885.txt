@@ -1,0 +1,150 @@
+Quiero integrar mejor los puestos de custodios con el módulo de Custodios en ISPSA.
+
+No quiero romper la lógica actual de puestos, turnos, pizarrón ni planilla.
+Quiero ampliar el modelo para distinguir correctamente cuándo un puesto pertenece a custodia.
+
+Objetivo
+
+Que al crear un puesto se pueda definir si ese puesto es de custodia, y que automáticamente quede ligado al módulo de Custodios.
+
+Además, quiero que el módulo Custodios permita ver claramente el estado operativo de cada custodia.
+
+⸻
+
+1. Campo nuevo al crear puesto
+
+Cuando se cree o edite un puesto, quiero que se pueda seleccionar claramente si el puesto es:
+	•	puesto operativo normal
+	•	puesto de custodia
+
+Puede ser con un campo tipo:
+	•	tipo_puesto
+o
+	•	es_custodia
+
+Pero debe quedar claro y usable.
+
+⸻
+
+2. Integración con módulo Custodios
+
+Si un puesto se marca como custodia:
+	•	debe aparecer en el módulo Custodios
+	•	debe quedar ligado al cliente correspondiente
+	•	debe poder usarse en pizarrón y planificación como servicio de custodia
+	•	debe seguir teniendo turnos, cobertura, agentes y planilla como cualquier recurso operativo
+
+No quiero que custodios viva como módulo aislado.
+
+⸻
+
+3. Vista del módulo Custodios
+
+En el módulo Custodios quiero poder ver claramente qué custodias están en cada estado:
+	•	En ruta
+	•	Incidente activo
+	•	Incidente completado
+	•	Planificada
+
+Quiero que esta vista sea útil para operación, no solo una lista plana.
+
+⸻
+
+4. Estados de custodia
+
+Definir claramente cómo se clasifica una custodia en uno de estos estados:
+
+En ruta
+	•	la custodia está activa y ejecutándose hoy / ahora
+
+Incidente activo
+	•	ocurrió un incidente y sigue abierto
+
+Incidente completado
+	•	hubo incidente, pero ya fue cerrado/resuelto
+
+Planificada
+	•	es una custodia futura o programada
+
+Si hace falta, usar un campo de estado específico para custodias.
+
+⸻
+
+5. Relación con pizarrón
+
+Si el puesto es de custodia:
+	•	debe reflejarse correctamente en el pizarrón
+	•	debe verse en la sección de custodias del cliente
+	•	debe poder ser cubierto, relevado y planificado igual que otros recursos operativos
+
+⸻
+
+6. Relación con planilla
+
+Los custodios ligados a estos puestos deben seguir impactando:
+	•	novedades
+	•	horas trabajadas
+	•	horas extra
+	•	vacaciones
+	•	faltas
+	•	planilla
+
+No quiero que por ser custodia se salgan del flujo de nómina.
+
+⸻
+
+7. UI
+
+En creación/edición de puesto
+
+Agregar selector claro de tipo:
+	•	normal
+	•	custodia
+
+En módulo Custodios
+
+Mostrar agrupado o filtrable por estado:
+	•	En ruta
+	•	Incidente activo
+	•	Incidente completado
+	•	Planificada
+
+⸻
+
+8. No romper
+
+No romper:
+	•	puestos normales
+	•	turnos
+	•	pizarrón
+	•	planificación
+	•	planilla
+	•	pool
+	•	SSA
+	•	cobertura
+
+Esto es una integración y clasificación mejor, no una reescritura.
+
+⸻
+
+9. Validación
+
+Quiero pruebas donde:
+	1.	se cree un puesto marcado como custodia
+	2.	ese puesto aparezca automáticamente en el módulo Custodios
+	3.	se vea en el pizarrón como custodia
+	4.	pueda clasificarse como en ruta / incidente / planificada
+	5.	siga impactando operación y planilla normalmente
+
+⸻
+
+10. Documentación
+
+Explica claramente:
+	•	cómo se distingue un puesto de custodia
+	•	cómo se enlaza al módulo Custodios
+	•	cómo se calculan o asignan los estados
+	•	cómo impacta en operación y planilla
+
+Muy importante:
+quiero que los puestos de custodia nazcan correctamente desde la creación del puesto y que el módulo Custodios muestre su estado operativo real.

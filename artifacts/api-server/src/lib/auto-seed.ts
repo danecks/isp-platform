@@ -2722,5 +2722,24 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: CUST-01 custodia_sync_log — error (no bloqueante)");
   }
 
+  // CUST-02: campo tipo_puesto en puestos_operativos
+  try {
+    await pool.query(`
+      ALTER TABLE puestos_operativos
+        ADD COLUMN IF NOT EXISTS tipo_puesto VARCHAR(20) NOT NULL DEFAULT 'normal'
+    `);
+    await pool.query(`
+      ALTER TABLE puestos_operativos
+        DROP CONSTRAINT IF EXISTS chk_tipo_puesto
+    `);
+    await pool.query(`
+      ALTER TABLE puestos_operativos
+        ADD CONSTRAINT chk_tipo_puesto CHECK (tipo_puesto IN ('normal','custodia'))
+    `);
+    logger.info("Auto-migrate: CUST-02 tipo_puesto en puestos_operativos verificado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: CUST-02 tipo_puesto — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

@@ -75,6 +75,8 @@ interface Puesto {
   arma_id?: number | null;
   arma_codigo?: string | null;
   arma_tipo?: string | null;
+  /** Tipo de puesto: normal (operativo) o custodia */
+  tipo_puesto?: "normal" | "custodia" | null;
   /** Puestos con múltiples titulares (24x24 / 24x48 / etc.) */
   es_par_24x24?: boolean;
   /** Todos los titulares del puesto con su estado de ciclo individual */
@@ -3187,7 +3189,12 @@ function DroppablePuesto({
             {/* Header */}
             <div className="flex items-start justify-between gap-1">
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-white/80 truncate leading-tight">{puesto.nombre}</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-semibold text-white/80 truncate leading-tight">{puesto.nombre}</p>
+                  {puesto.tipo_puesto === "custodia" && (
+                    <span className="text-[8px] px-1 py-0.5 rounded border font-bold text-amber-300/90 bg-amber-500/10 border-amber-500/30 shrink-0">CUSTODIA</span>
+                  )}
+                </div>
                 <div className="flex items-center gap-1 mt-0.5">
                   <span className="text-[9px] text-violet-300/50 flex items-center gap-0.5">
                     <Repeat className="w-2 h-2 opacity-50" />{puesto.turno_nombre ?? "24x24"}
@@ -3348,7 +3355,12 @@ function DroppablePuesto({
           {/* Fila superior: nombre + turno + estado */}
           <div className="flex items-start justify-between gap-1">
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-white/80 truncate leading-tight">{puesto.nombre}</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs font-semibold text-white/80 truncate leading-tight">{puesto.nombre}</p>
+                {puesto.tipo_puesto === "custodia" && (
+                  <span className="text-[8px] px-1 py-0.5 rounded border font-bold text-amber-300/90 bg-amber-500/10 border-amber-500/30 shrink-0">CUSTODIA</span>
+                )}
+              </div>
               <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                 {puesto.tipo_turno_id ? (
                   <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold cursor-pointer ${puesto.tipo_ciclo === "alternado" ? "text-indigo-300/70 bg-indigo-500/8 border-indigo-500/20" : "text-emerald-300/60 bg-emerald-500/6 border-emerald-500/15"}`} onClick={e => { e.stopPropagation(); onConfigTurno?.(); }} title="Clic para cambiar turno">
@@ -4534,6 +4546,7 @@ function ModalNuevoPuesto({
     tipoTurnoId: number;
     fechaInicioCiclo: string;
     zonaOperativaId: number;
+    tipoPuesto: "normal" | "custodia";
   }) => Promise<void>;
   onClose: () => void;
 }) {
@@ -4543,6 +4556,7 @@ function ModalNuevoPuesto({
   const [notas, setNotas]             = useState("");
   const [tipoTurnoId, setTipoTurnoId] = useState<string>("");
   const [zonaId, setZonaId]           = useState<string>("");
+  const [tipoPuesto, setTipoPuesto]   = useState<"normal" | "custodia">("normal");
   const hoy = new Date().toISOString().split("T")[0];
   const [fechaInicioCiclo, setFechaInicioCiclo] = useState<string>(hoy);
   const [loading, setLoading]         = useState(false);
@@ -4595,6 +4609,7 @@ function ModalNuevoPuesto({
         tipoTurnoId: parseInt(tipoTurnoId),
         fechaInicioCiclo,
         zonaOperativaId: parseInt(zonaId),
+        tipoPuesto,
       });
       onClose();
     } catch (e: any) {
@@ -4728,6 +4743,34 @@ function ModalNuevoPuesto({
             <p className="text-[10px] text-white/25">
               Fecha desde la que el ciclo de turno empieza a contar.
             </p>
+          </div>
+
+          {/* Tipo de puesto */}
+          <div className="space-y-1">
+            <label className="text-xs text-white/40">Tipo de puesto</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(["normal", "custodia"] as const).map((tipo) => (
+                <button
+                  key={tipo}
+                  type="button"
+                  onClick={() => setTipoPuesto(tipo)}
+                  className={`py-2 rounded-lg border text-xs font-medium transition-all ${
+                    tipoPuesto === tipo
+                      ? tipo === "custodia"
+                        ? "bg-amber-500/15 border-amber-400/40 text-amber-300"
+                        : "bg-indigo-500/15 border-indigo-400/40 text-indigo-300"
+                      : "bg-white/3 border-white/8 text-white/40 hover:text-white/70"
+                  }`}
+                >
+                  {tipo === "normal" ? "Operativo normal" : "Custodia"}
+                </button>
+              ))}
+            </div>
+            {tipoPuesto === "custodia" && (
+              <p className="text-[10px] text-amber-400/60 mt-1">
+                Este puesto aparecerá en el módulo de Custodios con su estado operativo.
+              </p>
+            )}
           </div>
 
           <div className="space-y-1">
@@ -5880,9 +5923,11 @@ export default function Operaciones() {
     tipoTurnoId: number;
     fechaInicioCiclo: string;
     zonaOperativaId: number;
+    tipoPuesto: "normal" | "custodia";
   }) {
     await apiPost(`${API_BASE}/operaciones/puestos`, data);
-    toast({ title: "Puesto creado", description: `${data.nombre} — ${data.clienteNombre}` });
+    const tipoBadge = data.tipoPuesto === "custodia" ? " · Custodia" : "";
+    toast({ title: "Puesto creado", description: `${data.nombre} — ${data.clienteNombre}${tipoBadge}` });
     invalidate();
   }
 
