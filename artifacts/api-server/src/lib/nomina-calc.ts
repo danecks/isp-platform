@@ -91,6 +91,75 @@ export function calcularBruto(p: BrutoParams): BrutoResult {
   return { sueldoDia, horasDia, sueldoPeriodo, descFaltas, descSeptimo, valorHE, totalBruto };
 }
 
+// ─── Parámetros para bonificación incentivo ──────────────────────────────────
+
+export interface BonificacionParams {
+  /** 'quincenal' → Q125 base | 'mensual' → Q250 base | cualquier otro → Q125 */
+  frecuenciaPago: string;
+  /** Fecha de inicio del período YYYY-MM-DD */
+  desde: string;
+  /** Fecha de fin del período YYYY-MM-DD (inclusive) */
+  hasta: string;
+  /** Días que el colaborador trabajó efectivamente */
+  diasTrabajados: number;
+  /** Días de vacaciones gozadas en el período */
+  diasVacaciones: number;
+  /** Días de permiso con goce de sueldo */
+  diasPermisoConGoce: number;
+  /**
+   * Días de incapacidad con goce (IGSS cubre al patrono).
+   * Si no existe columna separada, pasar el total de incapacidad.
+   */
+  diasIncapacidadConGoce: number;
+}
+
+/**
+ * Calcula la bonificación incentivo proporcional al tiempo laborable.
+ *
+ * Decreto 78-89 Art. 7 (Guatemala): Q250/mes mínimo.
+ * → Q125/quincena para empleados quincenales.
+ * → Q250 para empleados mensuales (pagado en segunda quincena).
+ *
+ * REGLA DE PROPORCIONALIDAD:
+ *   bonificacion = montoBase × (diasPagables / diasPeriodo)
+ *
+ * Donde:
+ *   diasPeriodo  = días calendario del período (inclusive ambos extremos)
+ *   diasPagables = diasTrabajados + diasVacaciones + diasPermisoConGoce + diasIncapacidadConGoce
+ *                  (capped al máximo de diasPeriodo, mínimo 0)
+ *
+ * NO se incluyen en diasPagables:
+ *   - permisos sin goce
+ *   - ausencias injustificadas
+ *   - suspensiones sin goce
+ *
+ * Si diasPeriodo ≤ 0 o diasPagables = 0 → retorna 0.
+ * Resultado redondeado a 2 decimales.
+ */
+export function calcularBonificacionIncentivo(p: BonificacionParams): number {
+  // Días calendario del período (extremos inclusivos)
+  const d1 = new Date(p.desde + "T00:00:00Z");
+  const d2 = new Date(p.hasta + "T00:00:00Z");
+  const diasPeriodo = Math.round((d2.getTime() - d1.getTime()) / 86400000) + 1;
+
+  // Monto base según frecuencia
+  const montoBase = p.frecuenciaPago === "mensual" ? 250 : 125;
+
+  // Días que generan derecho a bonificación
+  let diasPagables =
+    (p.diasTrabajados        || 0) +
+    (p.diasVacaciones        || 0) +
+    (p.diasPermisoConGoce    || 0) +
+    (p.diasIncapacidadConGoce || 0);
+
+  // Clamp: no puede exceder el período ni ser negativo
+  diasPagables = Math.max(0, Math.min(diasPagables, diasPeriodo));
+
+  if (diasPeriodo <= 0 || diasPagables <= 0) return 0;
+
+  return parseFloat((montoBase * (diasPagables / diasPeriodo)).toFixed(2));
+}
+
 /**
  * Convierte cualquier valor de fila de BD a número seguro.
  * Cero si null/undefined/NaN.

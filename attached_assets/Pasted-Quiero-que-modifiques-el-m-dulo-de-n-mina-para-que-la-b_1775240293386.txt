@@ -1,0 +1,99 @@
+Quiero que modifiques el módulo de nómina para que la bonificación incentivo en Guatemala se calcule SIEMPRE de forma proporcional a los días pagables del período.
+
+OBJETIVO
+Eliminar la lógica actual de bonificación incentivo fija:
+- quincenal = Q125
+- mensual = Q250
+
+y reemplazarla por una lógica obligatoria de bonificación incentivo proporcional.
+
+REGLA PRINCIPAL
+La bonificación incentivo debe calcularse siempre así:
+
+bonificacion_incentivo = monto_base * (dias_pagables / dias_periodo)
+
+Donde:
+- monto_base = Q125 para empleados quincenales
+- monto_base = Q250 para empleados mensuales
+- redondear a 2 decimales
+- si dias_pagables = 0, entonces bonificacion_incentivo = Q0.00
+- no permitir valores negativos
+- si dias_pagables > dias_periodo, limitar dias_pagables al máximo de dias_periodo
+
+DEFINICIÓN DE DÍAS
+Necesito que implementes explícitamente estas variables:
+
+- `dias_periodo`: total de días calendario del período de pago, calculado desde `fecha_inicio` hasta `fecha_fin`
+- `dias_pagables`: días que sí generan pago de bonificación incentivo
+
+REGLA DE `dias_pagables`
+Por ahora calcular así:
+
+dias_pagables =
+    dias_trabajados
+  + dias_vacaciones
+  + dias_permiso_con_goce
+  + dias_incapacidad_con_goce
+
+NO incluir en `dias_pagables`:
+- dias_permiso_sin_goce
+- ausencias injustificadas
+- suspensiones sin goce
+
+Si en el código actual no existe `dias_incapacidad_con_goce`, usar temporalmente:
+
+dias_pagables =
+    dias_trabajados
+  + dias_vacaciones
+  + dias_permiso_con_goce
+
+IMPORTANTE
+- No dejar opción de bono fijo.
+- No usar bandera de configuración.
+- No usar `bono_incentivo_proporcional = true|false`.
+- La bonificación incentivo proporcional debe ser la única forma válida de cálculo.
+- No asumir 15 días siempre para quincena; usar los días reales del período.
+- Si el empleado es mensual, usar los días reales del mes o del período liquidado.
+- Este valor debe mantenerse separado del salario base.
+- La bonificación incentivo no debe mezclarse con descuentos ni anticipos.
+
+FÓRMULA DE NETO
+Mantener intacta la fórmula actual:
+
+total_neto = total_bruto - igss_trabajador + bonificacion_incentivo - anticipos
+
+CAMBIOS TÉCNICOS
+1. Busca la función donde actualmente se calcula `bonificacion_incentivo`.
+2. Elimina la lógica fija anterior y reemplázala por una función obligatoria de cálculo proporcional.
+3. Refactoriza el código para que quede con una estructura similar a esta:
+
+```ts
+function calcularBonificacionIncentivo(params) {
+  const {
+    tipo_pago, // 'quincenal' | 'mensual'
+    fecha_inicio,
+    fecha_fin,
+    dias_trabajados,
+    dias_vacaciones,
+    dias_permiso_con_goce,
+    dias_permiso_sin_goce,
+    dias_incapacidad_con_goce
+  } = params;
+
+  const dias_periodo = calcularDiasPeriodo(fecha_inicio, fecha_fin);
+  const monto_base = tipo_pago === 'mensual' ? 250 : 125;
+
+  let dias_pagables =
+    (dias_trabajados || 0) +
+    (dias_vacaciones || 0) +
+    (dias_permiso_con_goce || 0) +
+    (dias_incapacidad_con_goce || 0);
+
+  dias_pagables = Math.max(0, Math.min(dias_pagables, dias_periodo));
+
+  if (dias_periodo <= 0 || dias_pagables <= 0) {
+    return 0;
+  }
+
+  return round2(monto_base * (dias_pagables / dias_periodo));
+}

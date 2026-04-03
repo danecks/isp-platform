@@ -49,7 +49,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
-import { calcularBruto, toNum, toInt } from "../lib/nomina-calc";
+import { calcularBruto, calcularBonificacionIncentivo, toNum, toInt } from "../lib/nomina-calc";
 
 export const planillaRouter = Router();
 
@@ -62,11 +62,14 @@ function detectarQuincena(hasta: string): "primera" | "segunda" {
 // ─── Cálculo por colaborador ─────────────────────────────────────────────────
 // Usa calcularBruto() de nomina-calc.ts (fuente única de verdad compartida con
 // pre-planilla) para garantizar que total_estimado == total_bruto.
+// Usa calcularBonificacionIncentivo() para la bonificación proporcional.
 function calcularLinea(
   row: Record<string, unknown>,
   periodoTotalDias: number,
   igssData: { aplica_igss: boolean; motivo_exclusion_igss: string | null },
-  quincenaTipo: "primera" | "segunda"
+  quincenaTipo: "primera" | "segunda",
+  desde: string,
+  hasta: string,
 ) {
   const sb        = toNum(row.sueldo_base);
   const hc        = toNum(row.horas_contrato);
@@ -99,19 +102,20 @@ function calcularLinea(
   const igssT = igssData.aplica_igss ? parseFloat((totalBrutoRnd * 0.0483).toFixed(2)) : 0;
   const igssP = igssData.aplica_igss ? parseFloat((totalBrutoRnd * 0.1267).toFixed(2)) : 0;
 
-  // Bonificación incentivo Decreto 78-89 Art. 7 (Guatemala):
-  //   Mínimo Q250/mes → Q125/quincena para empleados quincenales.
-  //   Para empleados mensuales: Q250 en segunda quincena, Q0 en primera (pago único mensual).
-  //   NO aplica IGSS sobre esta bonificación (es adicional al salario contractual).
-  const BONO_QUINCENAL = 125;
-  const BONO_MENSUAL   = 250;
-  let bonificacion_incentivo: number;
-  if (frecuencia === "mensual") {
-    bonificacion_incentivo = quincenaTipo === "segunda" ? BONO_MENSUAL : 0;
-  } else {
-    // quincenal, diario, u otros → Q125 por quincena
-    bonificacion_incentivo = BONO_QUINCENAL;
-  }
+  // Bonificación incentivo Decreto 78-89 Art. 7 (Guatemala) — PROPORCIONAL.
+  // Base: Q125/quincena (quincenal) | Q250/mes (mensual).
+  // Proporcional a los días con derecho: trabajados + vacaciones + permiso_con_goce + incapacidad.
+  // NO incluye permiso_sin_goce, ausencias injustificadas ni suspensiones.
+  // Cálculo centralizado en calcularBonificacionIncentivo() de nomina-calc.ts.
+  const bonificacion_incentivo = calcularBonificacionIncentivo({
+    frecuenciaPago:         frecuencia,
+    desde,
+    hasta,
+    diasTrabajados:         toInt(row.dias_trabajados),
+    diasVacaciones:         toInt(row.dias_vacaciones),
+    diasPermisoConGoce:     toInt(row.dias_permiso_con_goce),
+    diasIncapacidadConGoce: toInt(row.dias_incapacidad),  // usar total incapacidad hasta tener columna separada
+  });
 
   const totalNeto = parseFloat(Math.max(0, totalBrutoRnd - igssT + bonificacion_incentivo - anticipo).toFixed(2));
 
@@ -318,7 +322,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         tipo_jornada:       row.tipo_jornada as string | null,
         revision_estado:    row.revision_estado as string | null,
         observaciones_rrhh: row.revision_observaciones as string | null,
-        ...calcularLinea(row, periodoTotalDias, igssData, quincenaTipo),
+        ...calcularLinea(row, periodoTotalDias, igssData, quincenaTipo, desde, hasta),
       };
     });
 
