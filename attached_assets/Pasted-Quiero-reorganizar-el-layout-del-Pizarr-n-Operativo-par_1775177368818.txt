@@ -1,0 +1,143 @@
+Quiero reorganizar el layout del Pizarrón Operativo para mejorar claridad, usabilidad y velocidad de decisión, sin cambiar la lógica existente.
+
+---
+
+## 1. Objetivo
+Que el pizarrón sea claro, rápido y usable en operación real, incluso con:
+
+- puestos
+- custodios
+- supervisores
+- jefes de servicio
+- administración
+- pool de candidatos
+
+---
+
+## 2. Estructura general
+
+### IZQUIERDA (contenido principal)
+Zona de operación principal:
+
+Mostrar por cliente:
+- puestos operativos
+- custodias
+
+Esto es lo más importante y debe ocupar la mayor parte de la pantalla.
+
+---
+
+### DERECHA (sidebar contextual)
+
+Ordenar los paneles así:
+
+1. Pool (candidatos)
+2. Supervisores (por zona)
+3. Jefes de servicio
+4. Administración (backoffice)
+
+---
+
+## 3. Colapsado obligatorio
+
+Todos los paneles del sidebar deben ser:
+
+- colapsables
+- expandibles
+- recordar estado (persistencia en sesión)
+
+---
+
+## 4. Administración
+
+El panel de administración debe:
+
+- estar colapsado por defecto
+- solo aparecer si hay empleados administrativos
+- no saturar el pizarrón
+
+---
+
+## 5. Supervisores
+
+- agrupados por zona
+- mostrar turno
+- mostrar estado (trabaja / descansa)
+
+---
+
+## 6. Jefes de servicio
+
+- sección única
+- sede central
+- turno 24x24
+- mostrar 2 titulares:
+  - uno trabajando
+  - uno descansando
+
+---
+
+## 7. Pool (prioridad alta)
+
+Debe estar arriba del sidebar.
+
+Cuando hay contexto (clic en puesto):
+- mostrar candidatos priorizados
+- agrupar por:
+  - misma zona
+  - otras zonas
+
+---
+
+## 8. Modo enfoque (muy importante)
+
+Cuando el usuario hace clic en un puesto:
+
+- resaltar el cliente y puesto seleccionado
+- atenuar visualmente el resto
+- mantener visible el pool con candidatos
+
+No ocultar todo, solo bajar énfasis visual.
+
+---
+
+## 9. No cambiar lógica
+
+No modificar:
+
+- turnos
+- cobertura
+- asignación
+- planilla
+- SSA
+- pool
+- ranking
+
+Esto es solo reorganización visual.
+
+---
+
+## 10. Validación
+
+Quiero ver:
+
+1. pizarrón limpio con muchos módulos activos
+2. sidebar ordenado y usable
+3. administración no estorba
+4. supervisores y jefes visibles pero no invasivos
+5. flujo rápido:
+   - clic puesto → ver candidatos → asignar
+
+---
+
+## 11. Resultado esperado
+
+Un pizarrón que:
+
+- sea claro incluso con muchos datos
+- permita decisiones rápidas
+- no abrume al usuario
+- escale con el crecimiento del sistema
+
+Muy importante:
+ordenar sin romper la lógica existente.
