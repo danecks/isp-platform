@@ -1540,6 +1540,27 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: T-02 puestos_operativos turno — error (no bloqueante)");
   }
 
+  // ── T-02b: columna num_titulares en turnos ─────────────────────────────────
+  try {
+    await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS num_titulares INTEGER NOT NULL DEFAULT 2`);
+    // Actualiza los valores correctos para cada turno existente
+    await pool.query(`
+      UPDATE turnos SET num_titulares = CASE
+        WHEN nombre = '12x12'  THEN 1
+        WHEN nombre = '8 horas' THEN 1
+        WHEN nombre = '24x24'  THEN 2
+        WHEN nombre = '24x48'  THEN 2
+        WHEN nombre = '12x36'  THEN 2
+        WHEN nombre = '24x72'  THEN 2
+        WHEN nombre = '8x8'    THEN 2
+        ELSE 2
+      END
+    `);
+    logger.info("Auto-migrate: T-02b num_titulares en turnos verificado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: T-02b num_titulares — error (no bloqueante)");
+  }
+
   // ── T-03: campos de turno en novedades_nomina_diarias ──────────────────────
   try {
     await pool.query(`ALTER TABLE novedades_nomina_diarias ADD COLUMN IF NOT EXISTS tipo_turno_id    INTEGER REFERENCES turnos(id) ON DELETE SET NULL`);

@@ -48,7 +48,7 @@ turnosRouter.get("/turnos", async (_req, res) => {
 
 // ─── POST /api/turnos ─────────────────────────────────────────────────────────
 turnosRouter.post("/turnos", async (req, res) => {
-  const { nombre, descripcion, horas_trabajo, horas_descanso } = req.body ?? {};
+  const { nombre, descripcion, horas_trabajo, horas_descanso, num_titulares } = req.body ?? {};
 
   if (!nombre?.trim() || horas_trabajo == null) {
     return res.status(400).json({ error: "nombre y horas_trabajo son requeridos" });
@@ -58,13 +58,14 @@ turnosRouter.post("/turnos", async (req, res) => {
   }
 
   const horasDesc = parseFloat(horas_descanso ?? 0);
+  const numTit = parseInt(num_titulares ?? 2);
 
   try {
     const { rows } = await pool.query(`
-      INSERT INTO turnos (nombre, descripcion, horas_trabajo, horas_descanso)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO turnos (nombre, descripcion, horas_trabajo, horas_descanso, num_titulares)
+      VALUES ($1, $2, $3, $4, $5)
       RETURNING *
-    `, [nombre.trim(), descripcion?.trim() || null, parseFloat(horas_trabajo), horasDesc]);
+    `, [nombre.trim(), descripcion?.trim() || null, parseFloat(horas_trabajo), horasDesc, numTit]);
     res.status(201).json(rows[0]);
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === "23505") {
@@ -80,7 +81,7 @@ turnosRouter.patch("/turnos/:id", async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
 
-  const { nombre, descripcion, horas_trabajo, horas_descanso, activo } = req.body ?? {};
+  const { nombre, descripcion, horas_trabajo, horas_descanso, activo, num_titulares } = req.body ?? {};
 
   try {
     const { rows } = await pool.query(`
@@ -90,6 +91,7 @@ turnosRouter.patch("/turnos/:id", async (req, res) => {
         horas_trabajo  = COALESCE($3, horas_trabajo),
         horas_descanso = COALESCE($4, horas_descanso),
         activo         = COALESCE($5, activo),
+        num_titulares  = COALESCE($7, num_titulares),
         updated_at     = NOW()
       WHERE id = $6
       RETURNING *
@@ -100,6 +102,7 @@ turnosRouter.patch("/turnos/:id", async (req, res) => {
       horas_descanso != null ? parseFloat(horas_descanso) : null,
       activo != null ? Boolean(activo) : null,
       id,
+      num_titulares != null ? parseInt(num_titulares) : null,
     ]);
 
     if (!rows.length) return res.status(404).json({ error: "Turno no encontrado" });
