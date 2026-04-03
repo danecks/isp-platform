@@ -1,0 +1,207 @@
+Quiero hacer una prueba integral fuerte de planilla sobre una quincena completa, usando escenarios reales de operación y RRHH para detectar inconsistencias antes de usar el sistema con confianza.
+
+No quiero una prueba superficial.
+Quiero una simulación real con datos controlados y un reporte final honesto.
+
+## Objetivo
+Validar cómo se comporta la planilla cuando se mezclan en la misma quincena:
+
+- días trabajados
+- vacaciones
+- faltas laborales
+- amonestaciones
+- ausencias programadas
+- servicios especiales
+- horas extra
+- suspensiones / incapacidad / IGSS
+- eventos RRHH
+- cierres del pizarrón
+- pre-planilla
+- planilla final
+
+---
+
+## 1. Alcance de la prueba
+Quiero probar una quincena completa con varios colaboradores y escenarios distintos.
+
+La idea es verificar si la pre-planilla y la planilla final:
+- consolidan bien los días trabajados
+- no duplican ni pierden días
+- diferencian bien vacaciones, faltas, suspensiones y HE
+- reflejan correctamente los eventos RRHH
+- no generan pagos o descuentos incorrectos
+
+---
+
+## 2. Regla esperada del sistema
+La lógica que quiero validar es esta:
+
+- el pizarrón/cierre operativo marca los días y horas realmente trabajadas
+- los eventos RRHH definen qué días se pagan, cuáles se descuentan y qué impacto laboral tiene cada caso
+- la pre-planilla debe hacer merge de ambas verdades
+- la planilla final debe reflejar el resultado correcto por colaborador
+
+---
+
+## 3. Escenarios obligatorios a probar
+
+### Agente 1
+Trabajó 13 días
+Tuvo una amonestación que implica:
+- descuento de 1 día
+- descuento de 7° día si corresponde según la regla RRHH
+
+Quiero validar que el sistema termine reflejando correctamente esa consecuencia.
+
+---
+
+### Agente 2
+Tuvo 15 días de vacaciones pagadas
+
+Quiero validar que:
+- aparezca como vacaciones
+- se pague correctamente
+- no se mezcle con días trabajados
+- no aparezca como falta
+- si existe detalle, que se vea en apartado claro de vacaciones
+
+---
+
+### Agente 3
+Trabajó 2 días y luego se fue de vacaciones
+
+Quiero validar que el resultado final se vea como:
+- 2 días trabajados
+- 15 días de vacaciones pagadas
+o el equivalente correcto según cómo el sistema represente el período y los días hábiles/pagados
+
+Quiero que en el detalle exista un apartado visible de vacaciones.
+
+---
+
+### Agente 4
+Tuvo:
+- 14 días pagados
+- 1 día sin goce de salario por ausencia programada
+
+Quiero validar que:
+- no se trate como falta injustificada si no corresponde
+- sí se descuente ese día
+- el resto salga pagado correctamente
+
+---
+
+### Agente 5
+Tuvo:
+- 15 días trabajados
+- 5 horas extra
+
+Quiero validar que:
+- las horas extra sí se calculen
+- no se pierdan
+- no se dupliquen
+- el valor pase correctamente a planilla
+
+---
+
+### Agente 6
+Tuvo:
+- 10 días trabajados
+- 5 días suspendido / incapacidad / IGSS
+
+Quiero validar que:
+- esos 5 días no se traten como falta común
+- el sistema los diferencie claramente
+- si la lógica actual del IGSS es placeholder, quiero que lo diga claramente
+- pero que por lo menos la clasificación del caso sea correcta
+
+---
+
+## 4. Servicios especiales (SSA)
+Quiero incluir también al menos un caso donde un colaborador haya participado en un servicio especial dentro de la quincena.
+
+Validar que:
+- el SSA no contamine días fuera de su fecha
+- sí impacte correctamente horas trabajadas o HE si corresponde
+- quede trazabilidad clara del origen del trabajo
+
+---
+
+## 5. Qué quiero revisar en pre-planilla
+Quiero confirmar para cada colaborador:
+
+- días trabajados reales
+- días pagados
+- días descontados
+- vacaciones
+- horas extra
+- tipo de ausencia
+- eventos RRHH aplicados
+- alertas o inconsistencias detectadas
+
+Y quiero ver si la pre-planilla los interpreta correctamente antes de cerrar.
+
+---
+
+## 6. Qué quiero revisar en planilla final
+Quiero confirmar para cada colaborador:
+
+- sueldo período
+- descuentos
+- HE
+- vacaciones
+- total bruto
+- total neto
+- clasificación IGSS si aplica
+- observaciones o detalle por tipo de evento
+
+---
+
+## 7. Inconsistencias que quiero detectar
+Quiero que busques específicamente si pasa algo de esto:
+
+- días duplicados
+- días perdidos
+- vacaciones mezcladas como trabajo
+- faltas descontadas incorrectamente
+- permisos sin goce tratados mal
+- HE duplicadas o faltantes
+- SSA contaminando otros días
+- eventos RRHH sin reflejo en planilla
+- cierres del pizarrón que no coinciden con RRHH
+- empleados con resultado final incoherente
+
+---
+
+## 8. Reporte final esperado
+Quiero un reporte completo con esta estructura:
+
+### A. Qué funcionó correctamente
+### B. Qué falló
+### C. Qué quedó inconsistente
+### D. Qué módulos no están bien amarrados
+### E. Qué bloquea una planilla confiable
+### F. Qué corregir primero
+
+Y clasificar hallazgos como:
+- Crítico
+- Alto
+- Medio
+- Bajo
+
+---
+
+## 9. Muy importante
+No quiero que asumas que el sistema está bien.
+Quiero que lo pruebes como auditor duro.
+
+Si algo no cuadra, aunque sea pequeño, repórtalo.
+
+---
+
+## 10. Pregunta final obligatoria
+Quiero una conclusión clara:
+
+¿La planilla soporta correctamente una quincena real con vacaciones, faltas, ausencias programadas, HE, SSA y suspensiones sin generar errores financieros graves?
+
+Si la respuesta es no, explica exactamente por qué.
