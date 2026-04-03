@@ -1,16 +1,15 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Car, Plus, RefreshCw, Search, X, XCircle, ChevronRight,
   MapPin, User, Clock, AlertTriangle, CheckCircle2, Loader2,
-  ArrowRightLeft, Edit, History, Shield, ArrowLeft, Menu,
+  ArrowRightLeft, Edit, History, Shield,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
-import { AdminSidebar } from "../layout/AdminSidebar";
+import { AdminLayout } from "../layout/AdminLayout";
 
 const API = "/api";
 const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
@@ -425,7 +424,6 @@ export default function Vehiculos() {
   const { active: deleteModeActive, requestDelete } = useDeleteMode();
   const usuario = currentUser?.nombre ?? currentUser?.username ?? "sistema";
 
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [subTab, setSubTab] = useState<SubTab>("estado");
   const [busqueda, setBusqueda] = useState("");
   const [modalNuevo, setModalNuevo] = useState(false);
@@ -535,37 +533,17 @@ export default function Vehiculos() {
   const zonasSinVehiculo = estadoOp.filter(z => !z.vehiculo_id);
 
   return (
-    <>
-      <AdminSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-    <div className="flex flex-col gap-5 p-6 max-w-7xl mx-auto">
+    <AdminLayout title="Vehículos de Supervisión">
+    <div className="flex flex-col gap-5">
 
       {/* ── Encabezado ─────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          {/* Hamburger + Back */}
-          <button
-            onClick={() => setSidebarOpen(true)}
-            title="Menú de módulos"
-            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-all"
-          >
-            <Menu className="w-4 h-4" />
-          </button>
-          <Link href="/admin">
-            <button
-              title="Volver al inicio"
-              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-all"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-          </Link>
-          <div className="w-px h-6 bg-white/10" />
-          <div>
-            <h1 className="text-xl font-bold text-white flex items-center gap-2">
-              <Car className="w-5 h-5 text-teal-400" />
-              Vehículos de Supervisión
-            </h1>
-            <p className="text-sm text-white/40 mt-0.5">Control operativo, custodia y trazabilidad por zona y turno</p>
-          </div>
+        <div>
+          <h1 className="text-xl font-bold text-white flex items-center gap-2">
+            <Car className="w-5 h-5 text-teal-400" />
+            Vehículos de Supervisión
+          </h1>
+          <p className="text-sm text-white/40 mt-0.5">Control operativo, custodia y trazabilidad por zona y turno</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -966,6 +944,6 @@ export default function Vehiculos() {
         />
       )}
     </div>
-    </>
+    </AdminLayout>
   );
 }
