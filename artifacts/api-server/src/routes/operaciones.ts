@@ -332,7 +332,7 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         LIMIT 1
       ) vac_activa ON TRUE
       WHERE e.estado_laboral IN ('activo', 'suspendido', 'licencia')
-        AND COALESCE(e.tipo_personal, 'guardia') = 'guardia'
+        AND COALESCE(e.tipo_personal, 'guardia') IN ('guardia', 'custodio')
         AND (
           COALESCE(e.elegible_pool, TRUE) = TRUE
           OR (
@@ -2420,6 +2420,82 @@ operacionesRouter.get("/operaciones/puestos/:id/turno", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "GET /operaciones/puestos/:id/turno error");
     res.status(500).json({ error: "Error al obtener turno del puesto" });
+  }
+});
+
+// ─── GET /api/operaciones/tablero/administracion ──────────────────────────────
+// Devuelve personal administrativo (bodega, rrhh, gerencia) con estado de turno.
+// ?fecha=YYYY-MM-DD — opcional; si se omite usa la fecha actual.
+operacionesRouter.get("/operaciones/tablero/administracion", async (req, res) => {
+  const { fecha } = req.query as { fecha?: string };
+  const hoy = (fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) ? fecha : new Date().toISOString().slice(0, 10);
+
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        e.id,
+        e.nombre_completo,
+        e.estado_laboral,
+        e.puesto,
+        e.area,
+        e.sede,
+        e.tipo_personal,
+        t.id                    AS tipo_turno_id,
+        t.nombre                AS turno_nombre,
+        t.tipo_ciclo            AS tipo_ciclo_turno,
+        t.horas_trabajo         AS horas_trabajo_turno,
+        t.horas_descanso        AS horas_descanso_turno,
+        eoa.fecha_inicio        AS fecha_inicio_ciclo_turno
+      FROM employees e
+      LEFT JOIN employee_operational_assignments eoa ON eoa.employee_id = e.id AND eoa.activa = TRUE
+      LEFT JOIN turnos t ON t.id = eoa.tipo_turno_id
+      WHERE e.tipo_personal IN ('administrativo_bodega', 'administrativo_rrhh', 'gerencia')
+        AND e.estado_laboral IN ('activo', 'licencia', 'suspendido')
+      ORDER BY
+        CASE e.tipo_personal
+          WHEN 'gerencia'            THEN 1
+          WHEN 'administrativo_rrhh' THEN 2
+          WHEN 'administrativo_bodega' THEN 3
+          ELSE 4
+        END,
+        e.nombre_completo
+    `);
+
+    const enriquecidos = rows.map((e: any) => {
+      if (e.estado_laboral !== 'activo') {
+        return { ...e, trabaja_hoy: false, estado_ciclo: e.estado_laboral };
+      }
+      if (e.tipo_ciclo_turno && e.horas_trabajo_turno && e.fecha_inicio_ciclo_turno) {
+        const turnoObj = {
+          id: e.tipo_turno_id ?? 0,
+          nombre: e.turno_nombre ?? "",
+          tipo_ciclo: e.tipo_ciclo_turno,
+          horas_trabajo:  Number(e.horas_trabajo_turno),
+          horas_descanso: Number(e.horas_descanso_turno ?? e.horas_trabajo_turno),
+        };
+        const fechaInicioStr = e.fecha_inicio_ciclo_turno instanceof Date
+          ? e.fecha_inicio_ciclo_turno.toISOString().slice(0, 10)
+          : String(e.fecha_inicio_ciclo_turno).slice(0, 10);
+        const estadoHoy = calcularEstadoCiclo(turnoObj, fechaInicioStr, hoy);
+        return {
+          ...e,
+          trabaja_hoy:  estadoHoy.trabaja,
+          estado_ciclo: estadoHoy.trabaja ? "trabajando" : "descansando_ciclo",
+        };
+      }
+      return { ...e, trabaja_hoy: null, estado_ciclo: "sin_turno" };
+    });
+
+    const grupos = {
+      gerencia:             enriquecidos.filter((e: any) => e.tipo_personal === 'gerencia'),
+      administrativo_rrhh:  enriquecidos.filter((e: any) => e.tipo_personal === 'administrativo_rrhh'),
+      administrativo_bodega: enriquecidos.filter((e: any) => e.tipo_personal === 'administrativo_bodega'),
+    };
+
+    res.json({ fecha: hoy, empleados: enriquecidos, grupos });
+  } catch (err) {
+    logger.error({ err }, "GET /operaciones/tablero/administracion error");
+    res.status(500).json({ error: "Error al obtener personal administrativo" });
   }
 });
 

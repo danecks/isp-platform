@@ -4783,6 +4783,7 @@ export default function Operaciones() {
   const [colSupers,    setColSupers]    = useState(() => initCollapse("piz_col_supers"));
   const [colJefes,     setColJefes]     = useState(() => initCollapse("piz_col_jefes"));
   const [colPool,      setColPool]      = useState(() => initCollapse("piz_col_pool"));
+  const [colAdmin,     setColAdmin]     = useState(() => initCollapse("piz_col_admin"));
 
   // ── Planificación futura ───────────────────────────────────────────────────
   const hoyISO = toISODate(new Date());
@@ -4876,6 +4877,32 @@ export default function Operaciones() {
       return fetch(url).then((r) => r.json());
     },
     refetchInterval: 30_000,
+  });
+
+  interface AdminPersonal {
+    id: number; nombre_completo: string; estado_laboral: string;
+    puesto: string | null; area: string | null; sede: string | null;
+    tipo_personal: string; turno_nombre: string | null;
+    trabaja_hoy: boolean | null; estado_ciclo: string;
+  }
+  interface AdminTablero {
+    fecha: string;
+    empleados: AdminPersonal[];
+    grupos: {
+      gerencia: AdminPersonal[];
+      administrativo_rrhh: AdminPersonal[];
+      administrativo_bodega: AdminPersonal[];
+    };
+  }
+  const { data: adminTablero } = useQuery<AdminTablero>({
+    queryKey: ["operaciones-admin", esFuturo ? fechaVista : "hoy"],
+    queryFn: () => {
+      const url = esFuturo
+        ? `${API_BASE}/operaciones/tablero/administracion?fecha=${fechaVista}`
+        : `${API_BASE}/operaciones/tablero/administracion`;
+      return fetch(url).then((r) => r.json());
+    },
+    refetchInterval: esFuturo ? false : 60_000,
   });
 
   const { data: historial = [], isLoading: loadingHistorial } = useQuery<Movimiento[]>({
@@ -6740,6 +6767,123 @@ export default function Operaciones() {
                     </div>
                   ))}
                 </div>
+              </div>
+            );
+          })()}
+
+          {/* ── Panel Administración / Backoffice ─────────────────────── */}
+          {adminTablero && adminTablero.empleados.length > 0 && (() => {
+            const GRUPOS_LABELS: Record<string, { label: string; color: string; bg: string; border: string }> = {
+              gerencia:             { label: "Gerencia",  color: "text-amber-300/80",  bg: "bg-amber-500/10",  border: "border-amber-500/25" },
+              administrativo_rrhh:  { label: "RRHH",     color: "text-sky-300/80",    bg: "bg-sky-500/10",    border: "border-sky-500/25" },
+              administrativo_bodega:{ label: "Bodega",   color: "text-teal-300/80",   bg: "bg-teal-500/10",   border: "border-teal-500/25" },
+            };
+            const totalTrabajando = adminTablero.empleados.filter(e => e.estado_ciclo === "trabajando").length;
+            const totalDesc       = adminTablero.empleados.filter(e => e.estado_ciclo === "descansando_ciclo").length;
+            const totalAusente    = adminTablero.empleados.filter(e => ["licencia","suspendido"].includes(e.estado_ciclo)).length;
+            const totalSinTurno   = adminTablero.empleados.filter(e => e.estado_ciclo === "sin_turno").length;
+
+            const AdminCard = ({ p }: { p: AdminPersonal }) => {
+              const trabajando   = p.estado_ciclo === "trabajando";
+              const descansando  = p.estado_ciclo === "descansando_ciclo";
+              const ausente      = ["licencia","suspendido"].includes(p.estado_ciclo);
+              const badgeTxt  = trabajando ? "TRABAJA HOY"  : descansando ? "DESCANSA HOY" : ausente ? p.estado_ciclo.toUpperCase() : "SIN TURNO";
+              const badgeCls  = trabajando
+                ? "text-emerald-300 bg-emerald-500/15 border-emerald-500/30"
+                : descansando
+                ? "text-white/30 bg-white/4 border-white/8"
+                : ausente
+                ? "text-yellow-300/70 bg-yellow-500/10 border-yellow-500/20"
+                : "text-white/20 bg-white/3 border-white/6";
+              const cardBorder = trabajando ? "border-emerald-500/15" : descansando ? "border-white/5" : ausente ? "border-yellow-500/10" : "border-white/4";
+              const cardBg     = trabajando ? "from-emerald-500/4 to-[#0a1820]" : "from-white/2 to-[#0a1020]";
+              return (
+                <div className={`shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 w-48 bg-gradient-to-b ${cardBorder} ${cardBg}`}>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 ring-1 ring-white/10 ${trabajando ? "" : "opacity-50"} ${avatarColor(p.nombre_completo)}`}>
+                      {iniciales(p.nombre_completo)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-xs font-semibold truncate leading-tight ${trabajando ? "text-white" : "text-white/50"}`}>{p.nombre_completo}</p>
+                      {p.turno_nombre && <p className="text-[9px] text-white/25 truncate">{p.turno_nombre}</p>}
+                    </div>
+                  </div>
+                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border w-fit ${badgeCls}`}>{badgeTxt}</span>
+                </div>
+              );
+            };
+
+            return (
+              <div className="shrink-0 bg-[#060f1a] border border-slate-500/15 rounded-2xl overflow-hidden">
+                {/* Header */}
+                <button
+                  onClick={() => togglePanel("piz_col_admin", colAdmin, setColAdmin)}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 border-b border-slate-500/10 text-left group hover:bg-slate-500/4 transition-colors"
+                >
+                  <Building2 className="w-3.5 h-3.5 text-slate-400/70 shrink-0" />
+                  <span className="text-xs font-bold text-slate-300/70 uppercase tracking-widest group-hover:text-slate-300/90 transition-colors">Administración / Backoffice</span>
+                  {totalTrabajando > 0 && (
+                    <span className="text-[9px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-400/25 px-1.5 py-0.5 rounded-full ml-1">
+                      {totalTrabajando} hoy
+                    </span>
+                  )}
+                  {colAdmin && totalTrabajando > 0 && (
+                    <span className="text-[10px] text-slate-300/50 ml-1">· {adminTablero.empleados.filter(e => e.estado_ciclo === "trabajando").map(e => e.nombre_completo.split(" ")[0]).join(", ")}</span>
+                  )}
+                  <div className="flex-1" />
+                  <span className="hidden sm:inline text-[10px] text-white/15">{adminTablero.empleados.length} colaboradores</span>
+                  <ChevronRight className={`w-3.5 h-3.5 text-slate-400/30 group-hover:text-slate-400/60 ml-2 shrink-0 transition-transform ${colAdmin ? "" : "rotate-90"}`} />
+                </button>
+
+                {!colAdmin && (
+                  <div className="p-3 space-y-4">
+                    {/* Resumen rápido */}
+                    <div className="flex gap-2 flex-wrap">
+                      {totalTrabajando > 0 && (
+                        <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-300/80 border border-emerald-500/15">
+                          {totalTrabajando} trabajan hoy
+                        </span>
+                      )}
+                      {totalDesc > 0 && (
+                        <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-white/4 text-white/30 border border-white/8">
+                          {totalDesc} descansan
+                        </span>
+                      )}
+                      {totalAusente > 0 && (
+                        <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-yellow-500/10 text-yellow-300/60 border border-yellow-500/15">
+                          {totalAusente} ausentes
+                        </span>
+                      )}
+                      {totalSinTurno > 0 && (
+                        <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-white/3 text-white/20 border border-white/5">
+                          {totalSinTurno} sin turno
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Grupos por departamento */}
+                    {(["gerencia","administrativo_rrhh","administrativo_bodega"] as const).map(key => {
+                      const personas = adminTablero.grupos[key];
+                      if (personas.length === 0) return null;
+                      const meta = GRUPOS_LABELS[key];
+                      const trabajandoGrupo = personas.filter(p => p.estado_ciclo === "trabajando").length;
+                      return (
+                        <div key={key}>
+                          <p className={`text-[9px] font-bold uppercase tracking-widest mb-2 flex items-center gap-1.5 ${meta.color}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full inline-block ${trabajandoGrupo > 0 ? "bg-emerald-400 animate-pulse" : "bg-white/20"}`} />
+                            {meta.label}
+                            <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full border ml-1 ${meta.color} ${meta.bg} ${meta.border}`}>
+                              {personas.length}
+                            </span>
+                          </p>
+                          <div className="flex gap-2 overflow-x-auto pb-1">
+                            {personas.map(p => <AdminCard key={p.id} p={p} />)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })()}

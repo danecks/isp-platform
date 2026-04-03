@@ -1,0 +1,231 @@
+}
+Quiero integrar completamente TODOS los tipos de personal dentro del modelo operativo del sistema, incluyendo:
+
+- guardias
+- custodios
+- supervisores
+- jefes de servicio
+- administración
+
+---
+
+## 1. Regla base
+Todo el personal puede tener:
+
+- turno
+- descanso
+- asistencia
+- impacto en planilla
+
+No debe existir personal fuera del sistema de turnos.
+
+---
+
+## 2. Tipos de personal
+El sistema debe manejar:
+
+- guardia
+- custodio
+- supervisor
+- jefe_servicio
+- administracion
+
+---
+
+## 3. Aplicación de turnos
+Los turnos aplican según:
+
+- puesto → guardias
+- servicio → custodios
+- zona → supervisores
+- sede → jefes de servicio
+- departamento → administración
+
+---
+
+## 4. Jefes de servicio
+- trabajan en sede central
+- turno 24x24
+- siempre 2 titulares
+- uno trabaja / uno descansa
+
+Debe mostrarse como:
+
+Sede Central
+Jefe de Servicio
+
+- Titular A → trabajando
+- Titular B → descansando
+
+---
+
+## 5. Supervisores
+Dependen de zona:
+
+Cada zona debe tener:
+- tipo_turno
+
+Si es 24x24:
+- 2 titulares
+
+Si es 12h:
+- ciclo diario
+
+---
+
+## 6. Custodios
+- tienen turnos
+- aparecen en pizarrón
+- aparecen en planificación
+- aparecen en pool
+- impactan planilla
+
+---
+
+## 7. Puestos 24x24
+Un puesto 24x24 es:
+
+- 1 puesto
+- 2 titulares
+
+NO dividir en Par A / Par B
+
+---
+
+## 8. Administración (NUEVO)
+Administración también tiene:
+
+- turnos
+- descansos
+- asistencia
+- planilla
+
+Pero:
+
+NO debe mezclarse con operación de campo.
+
+---
+
+## 9. UI — Administración
+Crear sección separada:
+
+"Administración / Backoffice"
+
+Ejemplo:
+- RRHH
+- Bodega
+- Gerencia
+
+Mostrar:
+- quién trabaja hoy
+- quién descansa
+- ausencias
+
+---
+
+## 10. Motor de turnos
+Debe funcionar para TODOS:
+
+- guardia
+- custodio
+- supervisor
+- jefe_servicio
+- administracion
+
+Debe calcular:
+- trabaja
+- descansa
+- HE
+- disponible
+- ausente
+
+---
+
+## 11. Pool
+Deben aparecer:
+
+- guardias
+- custodios
+- supervisores
+- jefes de servicio
+
+Administración solo si aplica para cobertura (configurable).
+
+---
+
+## 12. Planificación
+Debe incluir:
+
+- todos los roles operativos
+- custodios
+- supervisores
+- jefes de servicio
+
+Administración opcional según configuración.
+
+---
+
+## 13. Planilla
+TODOS deben impactar planilla:
+
+- días trabajados
+- HE
+- vacaciones
+- faltas
+
+---
+
+## 14. Armería y vehículos
+Responsabilidad dinámica:
+
+- puesto → agente activo
+- zona → supervisor activo
+- sede → jefe de servicio activo
+
+---
+
+## 15. Visual del pizarrón
+
+### Cliente
+- puestos
+- custodias
+
+### Zona
+- supervisores
+
+### Sede
+- jefes de servicio
+
+### Administración
+- sección separada
+
+---
+
+## 16. NO romper
+No romper:
+
+- turnos
+- cobertura
+- planificación
+- planilla
+- SSA
+- pool
+
+---
+
+## 17. Validación
+
+1. jefes de servicio rotan 24x24
+2. supervisores respetan turno por zona
+3. custodios aparecen correctamente
+4. administración tiene turnos y descansos
+5. todos impactan planilla
+6. UI sigue clara y no saturada
+
+---
+
+## 18. Resultado esperado
+Un sistema donde TODO el personal tenga lógica de turnos, pero visualmente organizado por tipo operativo.
+
+Muy importante:
+no todo el personal se muestra igual, pero todos viven dentro del mismo motor
