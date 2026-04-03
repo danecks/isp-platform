@@ -1,0 +1,133 @@
+Quiero corregir el modelo de turnos en el sistema porque actualmente no refleja correctamente la operación real.
+
+## Regla operativa obligatoria
+
+Los siguientes turnos requieren múltiples titulares:
+
+- 24x24 → 2 titulares
+- 24x48 → 2 titulares
+- 24x72 → 2 titulares
+- 8x8 → 2 titulares
+
+Esto NO es opcional.
+
+---
+
+## Problema actual
+
+El sistema está tratando los puestos como:
+
+- 1 puesto = 1 titular
+o
+- duplicando puestos (Par A / Par B)
+
+Esto es incorrecto y rompe la lógica operativa.
+
+---
+
+## Modelo correcto
+
+Quiero que el sistema maneje:
+
+### 1 puesto → múltiples titulares
+
+Ejemplo:
+Puesto: Garita Bancaria
+
+Titulares:
+- Titular A
+- Titular B
+
+El sistema decide diariamente:
+- quién trabaja
+- quién descansa
+
+---
+
+## Motor de turnos
+
+Debe calcular:
+
+- estado del titular en una fecha:
+  - trabajando
+  - descansando por ciclo
+
+Y derivar:
+
+- cobertura del puesto
+- disponibilidad para HE
+
+---
+
+## UI del pizarrón
+
+Para estos turnos, la tarjeta debe mostrar SIEMPRE:
+
+- nombre del puesto
+- turno
+- titular activo (trabaja hoy)
+- titular en descanso (descansa hoy)
+
+No quiero:
+
+- Par A / Par B
+- tarjetas duplicadas
+- titulares separados
+
+---
+
+## Base de datos
+
+Evaluar si es necesario:
+
+- permitir múltiples titulares por puesto
+- tabla de relación puesto ↔ empleados
+- con:
+  - fecha_inicio_ciclo
+  - tipo_turno
+
+---
+
+## Validaciones
+
+El sistema debe impedir:
+
+- crear un puesto 24x24 con solo 1 titular
+- dejar un puesto sin la cantidad mínima de titulares según turno
+
+---
+
+## Impacto
+
+Asegurar que funcione correctamente en:
+
+- pizarrón operativo
+- pool (descanso = HE)
+- planificación futura
+- planilla
+- vehículos
+- armería
+
+---
+
+## Migración
+
+Si existen puestos duplicados (Par A / Par B):
+
+- identificarlos
+- unificarlos en un solo puesto
+- mover los titulares al nuevo modelo
+
+---
+
+## Resultado esperado
+
+Un sistema donde:
+
+- los turnos con múltiples titulares se manejan correctamente
+- la UI refleja la realidad operativa
+- no existen duplicaciones artificiales
+- el jefe de servicio entiende el estado del puesto inmediatamente
+
+Muy importante:
+los turnos definen la cantidad de titulares, no al revés.
