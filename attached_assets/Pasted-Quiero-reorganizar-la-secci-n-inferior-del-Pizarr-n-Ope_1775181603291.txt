@@ -1,0 +1,124 @@
+Quiero reorganizar la sección inferior del Pizarrón Operativo donde están:
+
+- Supervisores
+- Jefes de Servicio
+- Administración / Backoffice
+
+## Corrección de layout
+NO quiero que queden en una fila horizontal.
+
+Quiero que se vean así, uno debajo del otro:
+
+[ Supervisores ]
+[ Jefes de Servicio ]
+[ Administración ]
+
+Pero mucho más compactos que ahora.
+
+---
+
+## Objetivo
+Mantener estas tres secciones en vertical, en ese orden exacto, pero convertirlas en bloques resumen pequeños que ocupen mucho menos espacio.
+
+---
+
+## 1. Orden exacto
+Debe quedar así:
+
+1. Supervisores
+2. Jefes de Servicio
+3. Administración
+
+Uno debajo del otro.
+
+---
+
+## 2. Modo compacto
+Cada bloque debe ocupar poca altura.
+
+No quiero paneles altos con tarjetas grandes.
+
+Quiero algo más tipo resumen compacto.
+
+---
+
+## 3. Qué mostrar por defecto
+
+### Supervisores
+Mostrar por defecto solo:
+- total
+- en turno
+- descanso
+- aptos para cubrir
+
+Ejemplo:
+Supervisores (4)
+🟢 2 en turno · 🔵 2 descanso · ⚡ 1 apto
+
+---
+
+### Jefes de Servicio
+Mostrar por defecto:
+- quién está en turno
+- quién descansa
+
+Ejemplo:
+Jefes de Servicio
+🟢 Ramón · 🔵 Pedro
+
+---
+
+### Administración
+Mostrar por defecto:
+- total
+- cuántos trabajan hoy
+- cuántos descansan
+- cuántos ausentes si aplica
+
+Ejemplo:
+Administración (3)
+🟢 2 trabajan · 🔵 1 descansa
+
+---
+
+## 4. Detalle bajo demanda
+No mostrar las listas completas por defecto.
+
+Si el usuario quiere ver detalle:
+- clic en el bloque para expandir
+- o un toggle para abrir/cerrar
+
+---
+
+## 5. No romper lógica
+No cambiar:
+- turnos
+- estados
+- cobertura
+- planilla
+- cálculos
+
+Solo cambiar la visualización para que sea compacta y ordenada.
+
+---
+
+## 6. Validación
+Quiero confirmar que:
+
+1. siguen en vertical
+2. están en el orden correcto
+3. ocupan menos altura
+4. no saturan el tablero
+5. mantienen acceso al detalle si se necesita
+
+---
+
+## 7. Resultado esperado
+Quiero una sección visualmente limpia, con tres bloques compactos en vertical:
+
+[ Supervisores ]
+[ Jefes de Servicio ]
+[ Administración ]
+
+Muy importante:
+quiero mantener ese orden visual, pero sin que consuman tanto espacio como ahora.

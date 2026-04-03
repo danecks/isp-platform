@@ -6072,8 +6072,8 @@ export default function Operaciones() {
               </div>
             )}
           </div>
-          {/* ── BOTTOM: Supervisión y apoyo ──────────────────────────────── */}
-          <div className="shrink-0 flex gap-3 overflow-x-auto pb-2">
+          {/* ── BOTTOM: Supervisión (vertical compacta) ─────────────────── */}
+          <div className="shrink-0 flex flex-col gap-1.5 pb-1">
 
           {/* ── Panel de supervisores operativos con turno (solo en vista de hoy) */}
           {!esFuturo && (pool?.supervisores?.length ?? 0) > 0 && (() => {
@@ -6126,31 +6126,24 @@ export default function Operaciones() {
             };
 
             return (
-              <div className="shrink-0 w-72 bg-[#060f1a] border border-violet-500/15 rounded-2xl overflow-hidden">
+              <div className="bg-[#060f1a] border border-violet-500/15 rounded-xl overflow-hidden">
                 <button
                   onClick={() => togglePanel("piz_col_supers", colSupers, setColSupers)}
-                  className="w-full flex items-center gap-2 px-4 py-2.5 border-b border-violet-500/10 text-left group hover:bg-violet-500/4 transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left group hover:bg-violet-500/5 transition-colors"
                 >
-                  <Shield className="w-3.5 h-3.5 text-violet-400/70 shrink-0" />
-                  <span className="text-xs font-bold text-violet-300/70 uppercase tracking-widest group-hover:text-violet-300/90 transition-colors">Supervisores Operativos</span>
-                  <span className="text-[10px] text-violet-400/50 font-bold bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 rounded-full">
-                    {pool!.supervisores.length}
-                  </span>
-                  {puedeCubrirCount > 0 && (
-                    <span className="text-[9px] font-bold bg-violet-500/15 text-violet-300 border border-violet-400/25 px-1.5 py-0.5 rounded-full ml-1">
-                      {puedeCubrirCount} apto{puedeCubrirCount !== 1 ? "s" : ""} para cubrir
-                    </span>
-                  )}
-                  {colSupers && svTrabajando.length > 0 && (
-                    <span className="text-[10px] text-emerald-400/70 ml-2">· {svTrabajando.length} en turno</span>
-                  )}
+                  <Shield className="w-3 h-3 text-violet-400/60 shrink-0" />
+                  <span className="text-[11px] font-bold text-violet-300/65 uppercase tracking-widest">Supervisores</span>
+                  <span className="text-[9px] text-violet-400/45 font-bold bg-violet-500/10 border border-violet-500/15 px-1 py-0.5 rounded-full">{pool!.supervisores.length}</span>
                   <div className="flex-1" />
-                  <span className="hidden sm:inline text-[10px] text-white/15">Motor de ciclos</span>
-                  <ChevronRight className={`w-3.5 h-3.5 text-violet-400/30 group-hover:text-violet-400/60 ml-2 shrink-0 transition-transform ${colSupers ? "" : "rotate-90"}`} />
+                  <div className="flex items-center gap-2 text-[10px]">
+                    {svTrabajando.length > 0 && <span className="text-emerald-400/80 font-semibold">🟢 {svTrabajando.length} turno</span>}
+                    {(svDescanso.length + svDisponHE.length) > 0 && <span className="text-blue-400/60">🔵 {svDescanso.length + svDisponHE.length} descanso</span>}
+                    {puedeCubrirCount > 0 && <span className="text-violet-300/90 font-bold bg-violet-500/12 border border-violet-500/20 px-1.5 py-0.5 rounded-full">⚡ {puedeCubrirCount} apto</span>}
+                  </div>
+                  <ChevronRight className={`w-3 h-3 text-violet-400/25 group-hover:text-violet-400/50 ml-2 shrink-0 transition-transform ${colSupers ? "" : "rotate-90"}`} />
                 </button>
-
                 {!colSupers && (
-                <div className="p-2 space-y-0.5">
+                <div className="border-t border-violet-500/8 p-1.5 space-y-0.5 max-h-36 overflow-y-auto">
                   {[...svTrabajando, ...svDisponHE, ...svDescanso, ...svOtros].map(sv => (
                     <SvCard key={sv.id} sv={sv} />
                   ))}
@@ -6198,27 +6191,29 @@ export default function Operaciones() {
             };
 
             return (
-              <div className="shrink-0 w-72 bg-[#060f1a] border border-orange-500/15 rounded-2xl overflow-hidden">
+              <div className="bg-[#060f1a] border border-orange-500/15 rounded-xl overflow-hidden">
                 <button
                   onClick={() => togglePanel("piz_col_jefes", colJefes, setColJefes)}
-                  className="w-full flex items-center gap-2 px-4 py-2.5 border-b border-orange-500/10 text-left group hover:bg-orange-500/4 transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left group hover:bg-orange-500/5 transition-colors"
                 >
-                  <Shield className="w-3.5 h-3.5 text-orange-400/70 shrink-0" />
-                  <span className="text-xs font-bold text-orange-300/70 uppercase tracking-widest group-hover:text-orange-300/90 transition-colors">Jefes de Servicio</span>
-                  {jefesHoy.length > 0 && (
-                    <span className="text-[9px] font-bold bg-orange-500/20 text-orange-300 border border-orange-400/30 px-1.5 py-0.5 rounded-full ml-1">
-                      {jefesHoy.length} en turno
-                    </span>
-                  )}
-                  {colJefes && jefesHoy.length > 0 && (
-                    <span className="text-[10px] text-orange-300/60 ml-1">· {jefesHoy.map(j => j.nombre_completo.split(" ")[0]).join(", ")}</span>
-                  )}
+                  <Shield className="w-3 h-3 text-orange-400/60 shrink-0" />
+                  <span className="text-[11px] font-bold text-orange-300/65 uppercase tracking-widest">Jefes de Servicio</span>
                   <div className="flex-1" />
-                  <ChevronRight className={`w-3.5 h-3.5 text-orange-400/30 group-hover:text-orange-400/60 ml-2 shrink-0 transition-transform ${colJefes ? "" : "rotate-90"}`} />
+                  <div className="flex items-center gap-2 text-[10px]">
+                    {jefesHoy.length > 0 && (
+                      <span className="text-emerald-400/80 font-semibold">🟢 {jefesHoy.map(j => j.nombre_completo.split(" ")[0]).join(" · ")}</span>
+                    )}
+                    {jefesDescanso.length > 0 && (
+                      <span className="text-blue-400/60">🔵 {jefesDescanso.map(j => j.nombre_completo.split(" ")[0]).join(" · ")}</span>
+                    )}
+                    {jefesHoy.length === 0 && jefesDescanso.length === 0 && (
+                      <span className="text-white/20">Sin turno activo</span>
+                    )}
+                  </div>
+                  <ChevronRight className={`w-3 h-3 text-orange-400/25 group-hover:text-orange-400/50 ml-2 shrink-0 transition-transform ${colJefes ? "" : "rotate-90"}`} />
                 </button>
-
                 {!colJefes && (
-                <div className="p-2 space-y-0.5">
+                <div className="border-t border-orange-500/8 p-1.5 space-y-0.5 max-h-36 overflow-y-auto">
                   {[...jefesHoy.map(js => ({ js, variante: "hoy" as const })), ...jefesMañana.map(js => ({ js, variante: "mañana" as const })), ...jefesDescanso.map(js => ({ js, variante: "descanso" as const })), ...jefesOtros.map(js => ({ js, variante: "otro" as const }))].map(({ js, variante }) => (
                     <JefeCard key={js.id} js={js} variante={variante} />
                   ))}
@@ -6373,53 +6368,25 @@ export default function Operaciones() {
             };
 
             return (
-              <div className="shrink-0 w-72 bg-[#060f1a] border border-slate-500/15 rounded-2xl overflow-hidden">
-                {/* Header */}
+              <div className="bg-[#060f1a] border border-slate-500/15 rounded-xl overflow-hidden">
                 <button
                   onClick={() => togglePanel("piz_col_admin", colAdmin, setColAdmin)}
-                  className="w-full flex items-center gap-2 px-4 py-2.5 border-b border-slate-500/10 text-left group hover:bg-slate-500/4 transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left group hover:bg-slate-500/5 transition-colors"
                 >
-                  <Building2 className="w-3.5 h-3.5 text-slate-400/70 shrink-0" />
-                  <span className="text-xs font-bold text-slate-300/70 uppercase tracking-widest group-hover:text-slate-300/90 transition-colors">Administración / Backoffice</span>
-                  {totalTrabajando > 0 && (
-                    <span className="text-[9px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-400/25 px-1.5 py-0.5 rounded-full ml-1">
-                      {totalTrabajando} hoy
-                    </span>
-                  )}
-                  {colAdmin && totalTrabajando > 0 && (
-                    <span className="text-[10px] text-slate-300/50 ml-1">· {adminTablero.empleados.filter(e => e.estado_ciclo === "trabajando").map(e => e.nombre_completo.split(" ")[0]).join(", ")}</span>
-                  )}
+                  <Building2 className="w-3 h-3 text-slate-400/60 shrink-0" />
+                  <span className="text-[11px] font-bold text-slate-300/65 uppercase tracking-widest">Administración</span>
+                  <span className="text-[9px] text-slate-400/45 font-bold bg-slate-500/10 border border-slate-500/15 px-1 py-0.5 rounded-full">{adminTablero.empleados.length}</span>
                   <div className="flex-1" />
-                  <span className="hidden sm:inline text-[10px] text-white/15">{adminTablero.empleados.length} colaboradores</span>
-                  <ChevronRight className={`w-3.5 h-3.5 text-slate-400/30 group-hover:text-slate-400/60 ml-2 shrink-0 transition-transform ${colAdmin ? "" : "rotate-90"}`} />
+                  <div className="flex items-center gap-2 text-[10px]">
+                    {totalTrabajando > 0 && <span className="text-emerald-400/80 font-semibold">🟢 {totalTrabajando} trabajan</span>}
+                    {totalDesc > 0 && <span className="text-blue-400/60">🔵 {totalDesc} descanso</span>}
+                    {totalAusente > 0 && <span className="text-yellow-300/60">⚠ {totalAusente} ausentes</span>}
+                  </div>
+                  <ChevronRight className={`w-3 h-3 text-slate-400/25 group-hover:text-slate-400/50 ml-2 shrink-0 transition-transform ${colAdmin ? "" : "rotate-90"}`} />
                 </button>
 
                 {!colAdmin && (
-                  <div className="p-3 space-y-4">
-                    {/* Resumen rápido */}
-                    <div className="flex gap-2 flex-wrap">
-                      {totalTrabajando > 0 && (
-                        <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-300/80 border border-emerald-500/15">
-                          {totalTrabajando} trabajan hoy
-                        </span>
-                      )}
-                      {totalDesc > 0 && (
-                        <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-white/4 text-white/30 border border-white/8">
-                          {totalDesc} descansan
-                        </span>
-                      )}
-                      {totalAusente > 0 && (
-                        <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-yellow-500/10 text-yellow-300/60 border border-yellow-500/15">
-                          {totalAusente} ausentes
-                        </span>
-                      )}
-                      {totalSinTurno > 0 && (
-                        <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-white/3 text-white/20 border border-white/5">
-                          {totalSinTurno} sin turno
-                        </span>
-                      )}
-                    </div>
-
+                  <div className="border-t border-slate-500/8 p-2 space-y-2.5 max-h-48 overflow-y-auto">
                     {/* Grupos por departamento */}
                     {(["gerencia","administrativo_rrhh","administrativo_bodega"] as const).map(key => {
                       const personas = adminTablero.grupos[key];
@@ -6428,14 +6395,14 @@ export default function Operaciones() {
                       const trabajandoGrupo = personas.filter(p => p.estado_ciclo === "trabajando").length;
                       return (
                         <div key={key}>
-                          <p className={`text-[9px] font-bold uppercase tracking-widest mb-2 flex items-center gap-1.5 ${meta.color}`}>
+                          <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 flex items-center gap-1.5 ${meta.color}`}>
                             <span className={`w-1.5 h-1.5 rounded-full inline-block ${trabajandoGrupo > 0 ? "bg-emerald-400 animate-pulse" : "bg-white/20"}`} />
                             {meta.label}
                             <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full border ml-1 ${meta.color} ${meta.bg} ${meta.border}`}>
                               {personas.length}
                             </span>
                           </p>
-                          <div className="flex gap-2 overflow-x-auto pb-1">
+                          <div className="flex gap-1.5 flex-wrap">
                             {personas.map(p => <AdminCard key={p.id} p={p} />)}
                           </div>
                         </div>
@@ -6449,7 +6416,7 @@ export default function Operaciones() {
 
           {/* ── Panel SSA: Servicios Especiales — todas las etapas activas ─ */}
           {tarjetasSSA.length > 0 && (
-            <div className="shrink-0 w-80 bg-[#06101c] border border-white/8 rounded-2xl overflow-hidden">
+            <div className="bg-[#06101c] border border-white/8 rounded-xl overflow-hidden">
               {/* Cabecera del panel */}
               <div className="flex items-center gap-2 px-4 py-2 border-b border-white/6">
                 <button
@@ -6542,7 +6509,7 @@ export default function Operaciones() {
 
           {/* ── Próximos Arranques de Proyecto ────────────────────────────── */}
           {(proximosArranques?.total ?? 0) > 0 && !esFuturo && (
-            <div className="shrink-0 w-80 bg-amber-500/4 border border-amber-500/20 rounded-2xl overflow-hidden">
+            <div className="bg-amber-500/4 border border-amber-500/20 rounded-xl overflow-hidden">
               <button
                 onClick={() => togglePanel("piz_col_arr", colArranques, setColArranques)}
                 className="w-full flex items-center gap-2 px-4 py-2.5 border-b border-amber-500/15 text-left group hover:bg-amber-500/4 transition-colors"
