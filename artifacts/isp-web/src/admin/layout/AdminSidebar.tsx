@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { X, ExternalLink, ChevronDown } from "lucide-react";
+import { X, ExternalLink, ChevronDown, Trash2 } from "lucide-react";
 import { brand } from "@/config/branding";
 import { seccionesParaRol, ROL_LABELS, ROL_COLORES } from "@/config/permissions";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDeleteMode } from "@/contexts/DeleteModeContext";
 import type { Rol, NavSection } from "@/config/permissions";
 
 const logoImg = "/images/logo-isp.png";
@@ -19,6 +20,7 @@ interface AdminSidebarProps {
 export function AdminSidebar({ open, onClose }: AdminSidebarProps) {
   const [location] = useLocation();
   const { currentUser } = useAuth();
+  const { active: deleteModeActive, toggle: toggleDeleteMode } = useDeleteMode();
   const rol = currentUser?.rol as Rol | undefined;
   const secciones = seccionesParaRol(rol);
 
@@ -161,6 +163,23 @@ export function AdminSidebar({ open, onClose }: AdminSidebarProps) {
 
         {/* Footer */}
         <div className="p-2 border-t border-white/5 shrink-0">
+          {/* Modo eliminación */}
+          <button
+            onClick={toggleDeleteMode}
+            title="Activar o desactivar el modo de solicitud de eliminación de registros"
+            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors mb-1 ${
+              deleteModeActive
+                ? "bg-red-500/15 text-red-400 border border-red-500/20 hover:bg-red-500/25"
+                : "text-white/30 hover:text-white/60 hover:bg-white/5"
+            }`}
+          >
+            <Trash2 className={`w-3.5 h-3.5 ${deleteModeActive ? "animate-pulse" : ""}`} />
+            <span className="truncate">{deleteModeActive ? "Salir modo eliminación" : "Modo eliminación"}</span>
+            {deleteModeActive && (
+              <span className="ml-auto w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse shrink-0" />
+            )}
+          </button>
+
           <Link href="/">
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-white/30 hover:text-white/60 cursor-pointer transition-colors">
               <ExternalLink className="w-3.5 h-3.5" />

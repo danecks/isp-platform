@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDeleteMode } from "@/contexts/DeleteModeContext";
 import { AdminSidebar } from "../layout/AdminSidebar";
 
 const API = "/api";
@@ -421,6 +422,7 @@ export default function Vehiculos() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const { currentUser } = useAuth();
+  const { active: deleteModeActive, requestDelete } = useDeleteMode();
   const usuario = currentUser?.nombre ?? currentUser?.username ?? "sistema";
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -859,6 +861,15 @@ export default function Vehiculos() {
                       >
                         <ArrowRightLeft className="w-3 h-3" /> Relevo
                       </button>
+                      {deleteModeActive && (
+                        <button
+                          onClick={() => requestDelete({ entidad: "vehiculo", entidad_id: v.id, entidad_descripcion: v.placa })}
+                          title="Solicitar eliminación"
+                          className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

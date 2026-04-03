@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDeleteMode } from "@/contexts/DeleteModeContext";
 import { AdminSidebar } from "../layout/AdminSidebar";
 
 const API = "/api";
@@ -621,6 +622,7 @@ function TabEstado({ fecha, onFicha }: { fecha: string; onFicha: (a: EstadoArma)
   const qc = useQueryClient();
   const { toast } = useToast();
   const { user } = useAuth();
+  const { active: deleteModeActive, requestDelete } = useDeleteMode();
   const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState("");
   const [filtroDoc, setFiltroDoc] = useState<FiltroDocumental>("todos");
@@ -772,6 +774,14 @@ function TabEstado({ fecha, onFicha }: { fecha: string; onFicha: (a: EstadoArma)
                   className="p-1.5 text-gray-600 hover:text-blue-400 hover:bg-blue-400/10 rounded-md transition-colors opacity-0 group-hover:opacity-100">
                   <FileText className="w-3.5 h-3.5" />
                 </button>
+                {deleteModeActive && (
+                  <button
+                    onClick={() => requestDelete({ entidad: "arma", entidad_id: arma.id, entidad_descripcion: arma.codigo })}
+                    title="Solicitar eliminación"
+                    className="p-1.5 text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors border border-red-500/20">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
             {arma.custodio_nombre && (
@@ -800,6 +810,7 @@ function TabArmas({ onEdit, onFicha }: {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { user } = useAuth();
+  const { active: deleteModeActive, requestDelete } = useDeleteMode();
   const [search, setSearch] = useState("");
   const [soloActivas, setSoloActivas] = useState(true);
 
@@ -909,6 +920,14 @@ function TabArmas({ onEdit, onFicha }: {
                         className="p-1.5 text-gray-500 hover:text-white hover:bg-gray-700 rounded-md transition-colors">
                         <Edit className="w-3.5 h-3.5" />
                       </button>
+                      {deleteModeActive && (
+                        <button
+                          onClick={() => requestDelete({ entidad: "arma", entidad_id: arma.id, entidad_descripcion: arma.codigo })}
+                          title="Solicitar eliminación"
+                          className="p-1.5 text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors border border-red-500/20">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

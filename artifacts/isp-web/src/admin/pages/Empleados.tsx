@@ -15,6 +15,7 @@ import {
   UserCog,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useDeleteMode } from "@/contexts/DeleteModeContext";
 
 const API_BASE = "/api";
 
@@ -2800,6 +2801,7 @@ function EmpleadoCard({ emp, onClick }: { emp: Empleado; onClick: () => void }) 
 // ─── Fila de Empleado (tabla) ─────────────────────────────────────────────────
 
 function EmpleadoRow({ emp, onClick, onEdit }: { emp: Empleado; onClick: () => void; onEdit: () => void }) {
+  const { active: deleteModeActive, requestDelete } = useDeleteMode();
   return (
     <tr className="border-b border-white/5 hover:bg-white/2 transition-colors group cursor-pointer" onClick={onClick}>
       <td className="px-4 py-3">
@@ -2838,13 +2840,24 @@ function EmpleadoRow({ emp, onClick, onEdit }: { emp: Empleado; onClick: () => v
         <EstadoBadge estado={emp.estadoLaboral} />
       </td>
       <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-        <button
-          onClick={onEdit}
-          className="text-white/25 hover:text-primary transition-colors p-1"
-          title="Editar"
-        >
-          <Pencil className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center justify-end gap-1">
+          <button
+            onClick={onEdit}
+            className="text-white/25 hover:text-primary transition-colors p-1"
+            title="Editar"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+          {deleteModeActive && (
+            <button
+              onClick={() => requestDelete({ entidad: "empleado", entidad_id: emp.id, entidad_descripcion: emp.nombreCompleto })}
+              title="Solicitar eliminación"
+              className="p-1 text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors border border-red-500/20"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </td>
     </tr>
   );

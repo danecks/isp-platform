@@ -1,0 +1,127 @@
+}
+Quiero implementar un modo eliminación (delete mode) en todo el sistema para evitar saturar la interfaz y reducir errores de usuario.
+
+## Objetivo
+No quiero botones de borrar visibles en todos los registros.
+
+Quiero que la eliminación solo sea posible cuando el usuario activa explícitamente un modo especial.
+
+---
+
+## 1. Activador de modo eliminación
+
+Agregar un botón discreto en la UI (por ejemplo cerca del usuario o en la barra superior):
+
+- icono tipo 🗑️
+- label opcional: "Modo eliminar"
+
+Al hacer clic:
+- activa el modo eliminación
+
+---
+
+## 2. Comportamiento del modo
+
+Cuando el modo eliminación está activo:
+
+- mostrar una "X" o icono de eliminar en cada registro:
+  - clientes
+  - puestos
+  - colaboradores
+  - armas
+  - vehículos
+  - etc.
+
+- la UI debe indicar claramente que el modo está activo:
+  - banner
+  - color
+  - etiqueta tipo:
+    “Modo eliminación activo”
+
+---
+
+## 3. Acción de eliminar
+
+Al hacer clic en una X:
+
+NO eliminar directamente.
+
+Abrir modal:
+
+- mostrar qué se quiere eliminar
+- pedir motivo obligatorio
+- botón:
+  - "Enviar solicitud de eliminación"
+- botón cancelar
+
+Esto crea la solicitud (no borra directamente).
+
+---
+
+## 4. Salida del modo
+
+Debe poder desactivarse fácilmente:
+
+- clic nuevamente en el botón
+- botón "Salir de modo eliminación"
+- opcional: tecla ESC
+
+Al salir:
+- desaparecen todas las X
+
+---
+
+## 5. Seguridad
+
+- fuera del modo eliminación no debe existir forma de borrar
+- evitar clics accidentales
+- no ejecutar eliminación directa
+
+---
+
+## 6. Integración con autorización
+
+El flujo debe seguir siendo:
+
+1. usuario activa modo eliminación
+2. usuario solicita eliminación
+3. admin aprueba o rechaza
+
+---
+
+## 7. No romper
+
+No romper:
+- flujos actuales
+- drag & drop
+- pizarrón operativo
+- planificación
+- armería
+- vehículos
+
+---
+
+## 8. Validación
+
+Quiero confirmar:
+
+1. la UI sigue limpia sin X visibles por defecto
+2. al activar el modo aparecen las X
+3. al hacer clic abre el modal
+4. no se borra directamente
+5. se puede salir del modo fácilmente
+6. no hay acciones accidentales
+
+---
+
+## 9. Resultado esperado
+
+Un sistema donde:
+
+- la eliminación es segura
+- la UI no está saturada
+- el usuario no comete errores
+- el admin recibe solo solicitudes reales
+
+Muy importante:
+la eliminación debe ser una acción consciente, no un clic accidenta

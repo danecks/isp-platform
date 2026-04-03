@@ -202,6 +202,7 @@ armeriaRouter.get("/armas/estado-operativo", async (req, res) => {
     // Puestos con arma asignada + agente titular + turno
     const { rows } = await pool.query(`
       SELECT
+        a.id,
         a.id   AS arma_id,
         a.codigo, a.tipo, a.marca, a.modelo, a.calibre, a.estado AS arma_estado,
         a.numero_tenencia, a.fecha_vencimiento_tenencia,

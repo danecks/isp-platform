@@ -2664,6 +2664,27 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: PT-01 puesto_titulares — error (no bloqueante)");
   }
 
+  // DEL-01: tabla de solicitudes de eliminación
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS solicitudes_eliminacion (
+        id                   SERIAL PRIMARY KEY,
+        entidad              VARCHAR(50)  NOT NULL,
+        entidad_id           INTEGER      NOT NULL,
+        entidad_descripcion  TEXT         NOT NULL,
+        motivo               TEXT         NOT NULL,
+        solicitante_username VARCHAR(100) NOT NULL,
+        estado               VARCHAR(20)  NOT NULL DEFAULT 'pendiente',
+        revisado_por         VARCHAR(100),
+        revisado_at          TIMESTAMPTZ,
+        created_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: DEL-01 tabla solicitudes_eliminacion verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: DEL-01 — error (no bloqueante)");
+  }
+
   // ARM-02: campos documentales de tenencia en armas
   try {
     await pool.query(`ALTER TABLE armas ADD COLUMN IF NOT EXISTS numero_tenencia TEXT`);

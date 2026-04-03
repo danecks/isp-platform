@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import { AdminLayout } from "../layout/AdminLayout";
 import { StatusBadge } from "../components/StatusBadge";
+import { useDeleteMode } from "@/contexts/DeleteModeContext";
 import {
   Building2, Tag, MapPin, Search, Plus, Trash2, ChevronDown, ChevronRight,
   X, Loader2, CheckCircle, AlertTriangle, Hash, RefreshCw, Layers,
@@ -255,6 +256,7 @@ function FilaCliente({ client, onRefresh }: { client: Client; onRefresh: () => v
   const [open, setOpen] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [, navigate] = useLocation();
+  const { active: deleteModeActive, requestDelete } = useDeleteMode();
 
   const addAlias = async (alias: string, tipo: string) => {
     const r = await fetch(`${API}/alias/clientes/${client.id}/alias`, {
@@ -328,11 +330,22 @@ function FilaCliente({ client, onRefresh }: { client: Client; onRefresh: () => v
           </div>
         </td>
         <td className="px-3 py-4"><StatusBadge value={client.estado} /></td>
+        <td className="px-3 py-4" onClick={(e) => e.stopPropagation()}>
+          {deleteModeActive && (
+            <button
+              onClick={() => requestDelete({ entidad: "cliente", entidad_id: client.id, entidad_descripcion: client.nombreComercial || client.nombre })}
+              title="Solicitar eliminación"
+              className="p-1.5 text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors border border-red-500/20"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </td>
       </tr>
 
       {open && (
         <tr className="border-b border-white/5 bg-[#060e1a]">
-          <td colSpan={5} className="px-6 py-4">
+          <td colSpan={6} className="px-6 py-4">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-[10px] text-white/40 uppercase tracking-wide font-bold">Alias registrados ({client.aliases.length})</p>
