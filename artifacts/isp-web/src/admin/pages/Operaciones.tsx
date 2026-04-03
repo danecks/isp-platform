@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDeleteMode } from "@/contexts/DeleteModeContext";
 import { ModalFichaArma } from "@/admin/components/ModalFichaArma";
 import { ModalFichaVehiculo } from "@/admin/components/ModalFichaVehiculo";
 
@@ -3540,6 +3541,7 @@ function ClienteColumna({
   resaltado,
   colGlobal,
   puestoContextoId,
+  isDeleteMode,
 }: {
   cliente: ClienteBoard;
   agenteSeleccionadoId: number | null;
@@ -3554,6 +3556,7 @@ function ClienteColumna({
   resaltado?: boolean;
   colGlobal?: { v: number; val: boolean };
   puestoContextoId?: number | null;
+  isDeleteMode?: boolean;
 }) {
   const ssKey = `piz_col_cli_${cliente.clienteId ?? cliente.clienteNombre}`;
   const [colapsado, setColapsado] = useState(() => {
@@ -3685,14 +3688,16 @@ function ClienteColumna({
               planFuturo={planFuturoPorPuesto?.[p.id] ?? null}
               puestoContextoId={puestoContextoId}
             />
-            {/* Botón eliminar puesto */}
-            <button
-              onClick={(e) => { e.stopPropagation(); onEliminarPuesto(p); }}
-              className="absolute -top-1.5 -right-1.5 opacity-0 group-hover/puesto:opacity-100 bg-red-500/80 hover:bg-red-500 text-white rounded-full p-0.5 transition-all z-10"
-              title="Eliminar puesto"
-            >
-              <X className="w-2.5 h-2.5" />
-            </button>
+            {/* Botón eliminar puesto — solo visible en modo eliminación */}
+            {isDeleteMode && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onEliminarPuesto(p); }}
+                className="absolute -top-1.5 -right-1.5 opacity-0 group-hover/puesto:opacity-100 bg-red-500/80 hover:bg-red-500 text-white rounded-full p-0.5 transition-all z-10"
+                title="Eliminar puesto"
+              >
+                <X className="w-2.5 h-2.5" />
+              </button>
+            )}
           </div>
         ))}
         {cliente.puestos.length === 0 && (
@@ -5231,6 +5236,7 @@ export default function Operaciones() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { currentUser } = useAuth();
+  const { active: isDeleteMode } = useDeleteMode();
 
   // ── Roles ─────────────────────────────────────────────────────────────────
   const esAdmin             = currentUser?.rol === "admin";
@@ -5979,6 +5985,11 @@ export default function Operaciones() {
 
   // ── Eliminar puesto ───────────────────────────────────────────────────────
   async function eliminarPuesto(puesto: Puesto) {
+    // Guardia: sólo permitido en modo eliminación
+    if (!isDeleteMode) {
+      toast({ title: "Modo eliminación inactivo", description: "Activa el modo de eliminación para poder borrar puestos.", variant: "destructive" });
+      return;
+    }
     if (!confirm(`¿Eliminar el puesto "${puesto.nombre}" de ${puesto.cliente_nombre}?`)) return;
     try {
       await apiDelete(`${API_BASE}/operaciones/puestos/${puesto.id}`);
@@ -6692,6 +6703,7 @@ export default function Operaciones() {
                       : setModalLiberar(p)}
                     onNuevoPuesto={(c) => setNuevoPuestoData(c)}
                     onEliminarPuesto={eliminarPuesto}
+                    isDeleteMode={isDeleteMode}
                     onAbrirSegmentos={(p) => { if (!esFuturo) setModalSegmentos(p); }}
                     onConfigTurno={(p) => esFuturo
                       ? setModalPlanFuturo({ puesto: p, plan: planFuturoPorPuesto[p.id] ?? null })
