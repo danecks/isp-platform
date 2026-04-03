@@ -575,6 +575,21 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
     const faltando:         any[] = [];
     const enVacaciones:     any[] = [];
 
+    // Helper: ¿el agente está DENTRO de su ventana laboral ahora mismo?
+    // Para turnos diarios cortos (≤12h) con hora_entrada configurada.
+    // Maneja cruce de medianoche (ej. turno 19:00-07:00).
+    const estaEnVentanaLaboral = (horaEntradaStr: string, horasTrabajo: number): boolean => {
+      const [hh, mm] = horaEntradaStr.split(":").map(Number);
+      if (isNaN(hh) || isNaN(mm)) return true; // sin dato → asumir trabajando
+      const nowGT = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Guatemala" }));
+      const ahora = nowGT.getHours() * 60 + nowGT.getMinutes();
+      const inicio = hh * 60 + mm;
+      const fin    = inicio + horasTrabajo * 60;
+      return fin > 1440
+        ? (ahora >= inicio || ahora < fin - 1440)   // turno cruza medianoche
+        : (ahora >= inicio && ahora < fin);
+    };
+
     for (const a of agentes) {
       // Vacaciones activas tienen prioridad sobre la categoría de ciclo
       if (a.vacacion_activa_tipo) {
@@ -590,7 +605,19 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         }
       }
       switch (a.categoria) {
-        case 'en_puesto':   enPuesto.push(a);    break;
+        case 'en_puesto': {
+          // Para turnos cortos diarios (≤12h): si el agente está fuera de su ventana laboral,
+          // va a descansandoCiclo (disponible para HE) en lugar de enPuesto
+          if (Number(a.horas_trabajo_turno) <= 12 && a.hora_entrada_puesto) {
+            const enVentana = estaEnVentanaLaboral(String(a.hora_entrada_puesto), Number(a.horas_trabajo_turno));
+            if (!enVentana) {
+              descansandoCiclo.push({ ...a, disponibleHE: true });
+              break;
+            }
+          }
+          enPuesto.push(a);
+          break;
+        }
         case 'en_ssa':      enSSA.push(a);        break;
         case 'en_descanso': enDescanso.push(a);   break;
         case 'suspendido':  suspendidos.push(a);  break;
@@ -613,25 +640,12 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
 
             // ── Refinamiento intra-día para turnos diarios cortos (≤12h) ─────
             // calcularEstadoCiclo opera a nivel de día: para un 12x12 siempre dice "trabaja"
-            // porque el ciclo cabe dentro de un día. Aquí añadimos la detección por hora:
-            // si el agente tiene hora_entrada y en este momento está fuera de su ventana
-            // laboral → está en descanso y es apto para HE.
+            // porque el ciclo cabe dentro de un día. Aquí verificamos la hora actual:
+            // si el agente está fuera de su ventana laboral → descanso, disponible para HE.
             if (estado.trabaja && Number(a.horas_trabajo_turno) <= 12 && a.hora_entrada_puesto) {
-              const [hh, mm] = String(a.hora_entrada_puesto).split(":").map(Number);
-              if (!isNaN(hh) && !isNaN(mm)) {
-                const nowGT  = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Guatemala" }));
-                const ahora  = nowGT.getHours() * 60 + nowGT.getMinutes();
-                const inicio = hh * 60 + mm;
-                const fin    = inicio + Number(a.horas_trabajo_turno) * 60;
-                // Manejo de cruce de medianoche: ej. turno 20:00-08:00
-                const enTurno = fin > 1440
-                  ? (ahora >= inicio || ahora < fin - 1440)
-                  : (ahora >= inicio && ahora < fin);
-                if (!enTurno) {
-                  // Fuera de ventana laboral → descanso intra-día, disponible para HE
-                  descansandoCiclo.push({ ...a, disponibleHE: true });
-                  break;
-                }
+              if (!estaEnVentanaLaboral(String(a.hora_entrada_puesto), Number(a.horas_trabajo_turno))) {
+                descansandoCiclo.push({ ...a, disponibleHE: true });
+                break;
               }
             }
 
