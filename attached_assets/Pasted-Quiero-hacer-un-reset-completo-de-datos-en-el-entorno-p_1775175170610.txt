@@ -1,0 +1,133 @@
+Quiero hacer un reset completo de datos en el entorno preview para iniciar una nueva prueba integral desde cero.
+
+## Objetivo
+Eliminar TODOS los datos operativos y de prueba del sistema, incluyendo colaboradores, pero manteniendo únicamente los usuarios necesarios para acceso.
+
+---
+
+## 1. USUARIOS — REGLA CRÍTICA
+Conservar únicamente estos usuarios:
+
+- dan2336
+- admin
+
+Todos los demás usuarios deben eliminarse o desvincularse de datos operativos si aplica.
+
+IMPORTANTE:
+- El login debe seguir funcionando con estos dos usuarios
+- No romper autenticación ni roles asociados
+
+---
+
+## 2. BORRAR COMPLETAMENTE
+
+Eliminar TODOS los datos de prueba en:
+
+### Colaboradores
+- empleados / colaboradores
+- contratos_empleados
+- asignaciones operativas (EOA)
+- historiales de titularidad
+- cualquier relación de empleados con operación
+
+### Clientes y operación
+- clients
+- sedes
+- puestos_operativos
+
+### Planificación y cobertura
+- planificacion_futura
+- cobertura_diaria
+- cobertura_segmentos
+
+### RRHH
+- eventos_rrhh
+- vacaciones
+
+### SSA
+- solicitudes_servicio_adicional
+- ssa_agentes
+
+### Nómina
+- novedades_nomina_diarias
+- pre_planilla_cierres
+- planillas
+- planilla_lineas
+- cierre_operativo_diario
+- cierre_auditoria
+- anticipos si existen
+
+### Vehículos
+- vehiculos
+- vehiculo_asignaciones
+- vehiculo_cardex
+
+### Armería
+- armas
+- arma_asignaciones
+- arma_cardex
+
+---
+
+## 3. NO BORRAR
+No eliminar:
+
+- catálogos base (turnos, tipos, estados, etc.)
+- configuración del sistema
+- estructura de la base de datos
+- roles necesarios para funcionamiento
+- usuarios dan2336 y admin
+
+---
+
+## 4. ORDEN DE BORRADO
+Eliminar respetando relaciones:
+
+1. cardex, segmentos, detalles
+2. asignaciones
+3. novedades / RRHH / SSA
+4. empleados
+5. puestos
+6. clientes
+
+---
+
+## 5. REINICIO DE SECUENCIAS
+Reiniciar IDs autoincrementales para empezar desde 1.
+
+---
+
+## 6. VALIDACIÓN FINAL
+
+Después del reset:
+
+- no deben existir colaboradores
+- no deben existir clientes
+- no deben existir puestos
+- no deben existir SSA
+- no deben existir planillas
+- no deben existir vehículos ni armas
+- no debe haber datos operativos
+
+Pero:
+
+- login funciona con dan2336 y admin
+- sistema permite crear datos nuevos sin errores
+
+---
+
+## 7. RESULTADO ESPERADO
+Sistema completamente limpio, sin ruido de pruebas anteriores, listo para una prueba integral desde cero.
+
+---
+
+## 8. DOCUMENTACIÓN
+Explica:
+
+- qué tablas se limpiaron
+- cuántos registros se eliminaron
+- confirmación de que solo quedaron los usuarios dan2336 y admin
+- confirmación de que el sistema sigue estable
+
+Muy importante:
+quiero un entorno totalmente limpio para poder probar el sistema correctamente sin contaminación de datos anteriores.

@@ -27,6 +27,16 @@ const SALT_ROUNDS = 10;
 export async function runAutoMigrations(): Promise<void> {
   logger.info("Auto-migrate: verificando tablas...");
   try {
+    // Tabla system_config — flags de configuración del sistema (ej. demo_seed_disabled)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS system_config (
+        key        VARCHAR(100) PRIMARY KEY,
+        value      TEXT NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'system_config' verificada/creada");
+
     // Tabla anticipos (nueva en Fase 1 de anticipos)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS anticipos (
@@ -316,6 +326,21 @@ export async function runAutoSeed(): Promise<void> {
   // En producción no se crean datos de muestra (empleados, clientes, puestos)
   const isProduction = process.env.NODE_ENV === "production";
 
+  // Si el admin ejecutó un reset limpio, el flag demo_seed_disabled bloquea el re-seed
+  // de datos de muestra (empleados, clientes, puestos). Los usuarios sí se re-crean.
+  let demoSeedDisabled = false;
+  try {
+    const { rows } = await pool.query(
+      `SELECT value FROM system_config WHERE key = 'demo_seed_disabled' LIMIT 1`,
+    );
+    demoSeedDisabled = rows[0]?.value === "true";
+    if (demoSeedDisabled) {
+      logger.info("Auto-seed: demo_seed_disabled=true — omitiendo seed de empleados/clientes/puestos");
+    }
+  } catch {
+    // La tabla system_config aún no existe — se crea durante las migraciones; ignorar aquí
+  }
+
   // ── 1. Usuarios ──────────────────────────────────────────────────────
   try {
     const [{ total: userCount }] = await db.select({ total: count() }).from(usersTable);
@@ -340,7 +365,7 @@ export async function runAutoSeed(): Promise<void> {
   // ── 2. Empleados ─────────────────────────────────────────────────────
   try {
     const [{ total: empCount }] = await db.select({ total: count() }).from(employeesTable);
-    if (Number(empCount) === 0 && !isProduction) {
+    if (Number(empCount) === 0 && !isProduction && !demoSeedDisabled) {
       logger.info("Auto-seed: creando empleados de muestra...");
       for (const e of SEED_EMPLOYEES) {
         await db.insert(employeesTable).values({
@@ -369,7 +394,7 @@ export async function runAutoSeed(): Promise<void> {
   // ── 3. Asignaciones de agentes para CLI-001 ──────────────────────────
   try {
     const [{ total: assignCount }] = await db.select({ total: count() }).from(agentAssignmentsTable);
-    if (Number(assignCount) === 0 && !isProduction) {
+    if (Number(assignCount) === 0 && !isProduction && !demoSeedDisabled) {
       // Obtener IDs reales de los empleados recién sembrados
       const empleados = await db.select().from(employeesTable);
       if (empleados.length > 0) {
@@ -402,7 +427,7 @@ export async function runAutoSeed(): Promise<void> {
   // ── 4. Alias de clientes y puestos ───────────────────────────────────
   try {
     const [{ total: clientCount }] = await db.select({ total: count() }).from(clientsTable);
-    if (Number(clientCount) === 0 && !isProduction) {
+    if (Number(clientCount) === 0 && !isProduction && !demoSeedDisabled) {
       logger.info("Auto-seed: creando clientes y alias de muestra...");
 
       // ── Cervecería Centro Americana ──────────────────────────────────
@@ -1030,10 +1055,14 @@ Por favor ingresa al sistema o responde para continuar.',
     `);
     logger.info("Auto-migrate: tabla 'movimientos_operativos' verificada/creada");
 
-    // Seed inicial de puestos si existen clientes y empleados
+    // Seed inicial de puestos si existen clientes y empleados (omitido si demo_seed_disabled=true)
+    const { rows: _sflagP } = await pool.query(
+      `SELECT value FROM system_config WHERE key = 'demo_seed_disabled' LIMIT 1`,
+    );
+    const _seedDisabledP = _sflagP[0]?.value === "true";
     const clientCount = await pool.query(`SELECT COUNT(*) FROM clients WHERE estado='activo'`);
     const puestoCount = await pool.query(`SELECT COUNT(*) FROM puestos_operativos`);
-    if (parseInt(clientCount.rows[0].count) > 0 && parseInt(puestoCount.rows[0].count) === 0) {
+    if (!_seedDisabledP && parseInt(clientCount.rows[0].count) > 0 && parseInt(puestoCount.rows[0].count) === 0) {
       const clients = await pool.query(`SELECT id, nombre, nombre_comercial FROM clients WHERE estado='activo' LIMIT 4`);
       const empleados = await pool.query(`SELECT id, nombre_completo FROM employees WHERE estado_laboral='activo' LIMIT 8`);
       let orden = 0;
@@ -2197,7 +2226,14 @@ Por favor ingresa al sistema o responde para continuar.',
   }
 
   // ── CLI-001-SEED: garantizar cliente y usuario portal CLI-001 ────────────────────
+  // Este bloque se omite si demo_seed_disabled=true (post-reset limpio)
   try {
+    const { rows: seedFlagRows } = await pool.query(
+      `SELECT value FROM system_config WHERE key = 'demo_seed_disabled' LIMIT 1`,
+    );
+    if (seedFlagRows[0]?.value === "true") {
+      logger.info("Auto-migrate: CLI-001-SEED omitido (demo_seed_disabled=true)");
+    } else {
     // a) Usuario portal cliente01
     const { rows: userCheck } = await pool.query(
       `SELECT id FROM users WHERE username = 'cliente01' LIMIT 1`,
@@ -2249,6 +2285,7 @@ Por favor ingresa al sistema o responde para continuar.',
     } else {
       logger.info("Auto-migrate: CLI-001-SEED portal_cliente_id CLI-001 ya existe");
     }
+    } // end else (demoSeedDisabled === false)
   } catch (err) {
     logger.error({ err }, "Auto-migrate: CLI-001-SEED — error (no bloqueante)");
   }
@@ -2511,9 +2548,13 @@ Por favor ingresa al sistema o responde para continuar.',
     await pool.query(`CREATE INDEX IF NOT EXISTS ac_activa ON arma_custodia(arma_id) WHERE fecha_fin IS NULL`);
     logger.info("Auto-migrate: ARM-01 tablas armas + arma_custodia verificadas/creadas");
 
-    // Seed de armas de muestra (solo si la tabla está vacía)
+    // Seed de armas de muestra y asignación automática (omitido si demo_seed_disabled=true)
+    const { rows: _sflagA } = await pool.query(
+      `SELECT value FROM system_config WHERE key = 'demo_seed_disabled' LIMIT 1`,
+    );
+    const _seedDisabledA = _sflagA[0]?.value === "true";
     const { rows: cntArmas } = await pool.query(`SELECT COUNT(*) AS c FROM armas`);
-    if (parseInt(cntArmas[0].c) === 0) {
+    if (!_seedDisabledA && parseInt(cntArmas[0].c) === 0) {
       // Tomar los primeros 4 puestos activos con agente asignado
       const { rows: puestos } = await pool.query(
         `SELECT id FROM puestos_operativos WHERE activo=TRUE AND agente_id IS NOT NULL ORDER BY id LIMIT 4`
@@ -2536,25 +2577,27 @@ Por favor ingresa al sistema o responde para continuar.',
       logger.info("Auto-seed: ARM-01 armas de muestra insertadas");
     }
 
-    // ARM-01-FILL: asignar pistola a todos los puestos activos que no tengan arma
-    const { rowCount: fillCount } = await pool.query(`
-      INSERT INTO armas (codigo, tipo, marca, modelo, calibre, puesto_id)
-      SELECT
-        'P-' || LPAD(po.id::text, 3, '0'),
-        'pistola',
-        'Glock',
-        '17',
-        '9mm',
-        po.id
-      FROM puestos_operativos po
-      WHERE po.activo = TRUE
-        AND NOT EXISTS (
-          SELECT 1 FROM armas a WHERE a.puesto_id = po.id AND a.activo = TRUE
-        )
-      ON CONFLICT (codigo) DO NOTHING
-    `);
-    if ((fillCount ?? 0) > 0) {
-      logger.info(`Auto-seed: ARM-01-FILL ${fillCount} pistolas asignadas a puestos sin arma`);
+    // ARM-01-FILL: asignar pistola a todos los puestos activos que no tengan arma (omitido si demo_seed_disabled)
+    if (!_seedDisabledA) {
+      const { rowCount: fillCount } = await pool.query(`
+        INSERT INTO armas (codigo, tipo, marca, modelo, calibre, puesto_id)
+        SELECT
+          'P-' || LPAD(po.id::text, 3, '0'),
+          'pistola',
+          'Glock',
+          '17',
+          '9mm',
+          po.id
+        FROM puestos_operativos po
+        WHERE po.activo = TRUE
+          AND NOT EXISTS (
+            SELECT 1 FROM armas a WHERE a.puesto_id = po.id AND a.activo = TRUE
+          )
+        ON CONFLICT (codigo) DO NOTHING
+      `);
+      if ((fillCount ?? 0) > 0) {
+        logger.info(`Auto-seed: ARM-01-FILL ${fillCount} pistolas asignadas a puestos sin arma`);
+      }
     }
   } catch (err) {
     logger.error({ err }, "Auto-migrate: ARM-01 — error (no bloqueante)");
