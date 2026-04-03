@@ -1,0 +1,116 @@
+Quiero corregir la vista de Planificación para que vuelva a verse y sentirse como el Pizarrón Operativo actual, aun después de los cambios para soportar turnos con múltiples titulares.
+
+## Problema
+Ya se implementó correctamente el nuevo flujo funcional para relevar puestos multititular:
+- al arrastrar un agente a un puesto multititular
+- aparece modal:
+  - ¿a quién sustituye?
+  - motivo de ausencia
+  - hora de instalación
+
+Eso está bien.
+
+Pero no quiero que este cambio haga que Planificación se vea distinta, rara o rota respecto al Pizarrón Operativo normal.
+
+---
+
+## Objetivo
+Que Planificación se vea estéticamente casi igual al Pizarrón Operativo actual y funcione de manera parecida, pero con lógica de futuro.
+
+---
+
+## 1. Regla visual principal
+La pantalla de Planificación debe mantener:
+
+- mismo layout general del pizarrón
+- misma estructura visual
+- mismas tarjetas
+- mismo orden de bloques
+- misma jerarquía de información
+- misma lógica de lectura
+
+No quiero una experiencia visual diferente.
+
+---
+
+## 2. Diferencia funcional aceptada
+La única diferencia importante debe ser que en planificación:
+
+- se trabaja sobre una fecha futura
+- se pueden registrar relevos futuros
+- en puestos multititular aparece el modal de:
+  - a quién sustituye
+  - motivo
+  - hora
+
+Eso sí está correcto y debe mantenerse.
+
+---
+
+## 3. Puestos multititular en planificación
+Para puestos con múltiples titulares, incluyendo:
+
+- 24x24
+- 24x48
+- 24x72
+- 8x8
+
+la tarjeta debe seguir viéndose limpia y familiar, mostrando:
+- puesto único
+- titular que trabaja en esa fecha futura
+- titular que descansa en esa fecha futura
+
+No quiero que la UI de planificación se complique o se vea distinta solo por soportar varios titulares.
+
+---
+
+## 4. Drag & drop
+Quiero que el drag & drop siga sintiéndose igual que en el pizarrón operativo.
+
+Solo cuando el contexto lo requiera (multititular / relevo) debe aparecer el modal adicional.
+
+No quiero que el flujo base se sienta roto.
+
+---
+
+## 5. Modal de sustitución
+Cuando se arrastre un agente a un puesto multititular (24x24, 24x48, 24x72, 8x8), el modal debe:
+
+- mostrar claramente los titulares del puesto
+- indicar quién trabaja en esa fecha
+- indicar quién descansa en esa fecha
+- preseleccionar al que trabaja en esa fecha como sustitución por defecto
+- permitir cambiarlo si el caso real es distinto
+
+---
+
+## 6. No romper
+No romper:
+- nuevo modal de sustitución
+- motivo de ausencia
+- hora de instalación
+- lógica de múltiple titular
+- cálculo de quién trabaja / descansa
+- cobertura futura
+
+Solo corregir la experiencia visual y de interacción para que siga siendo coherente con el pizarrón actual.
+
+---
+
+## 7. Validación
+Quiero confirmar al final que:
+
+1. Planificación se ve casi igual al pizarrón actual
+2. El drag & drop sigue siendo natural
+3. Los puestos multititular se entienden bien
+4. El modal solo aparece cuando corresponde
+5. Esto aplica también a 8x8
+6. No se perdió la estética ni la simplicidad del tablero original
+
+---
+
+## 8. Resultado esperado
+Quiero que el usuario sienta que está usando el mismo pizarrón de siempre, pero en una fecha futura y con herramientas de planificación.
+
+Muy importante:
+la lógica nueva está bien, pero la experiencia visual de planificación no debe alejarse del pizarrón operativo real.

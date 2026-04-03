@@ -1223,6 +1223,24 @@ function normalizarPoolActual(p: Pool): AgenteAgrupado[] {
   return r;
 }
 
+function poolFuturoToAgente(a: AgentePoolFuturo): Agente {
+  return {
+    id: a.id,
+    nombre_completo: a.nombre_completo,
+    estado_laboral: a.estado_laboral,
+    puesto: a.puesto_nombre,
+    area: null,
+    sede: null,
+    telefono: null,
+    wa_autorizado: false,
+    supervisor_id: null,
+    tipo_asignacion_eoa: a.puesto_id ? "titular" : "disponible",
+    tipo_personal: a.tipo_personal,
+    turno_nombre: a.turno_nombre,
+    disponibleHE: false,
+  };
+}
+
 function normalizarPoolFuturo(p: PoolFuturoData): AgenteAgrupado[] {
   const r: AgenteAgrupado[] = [];
   for (const a of p.disponible)        r.push({ id: a.id, nombre: a.nombre_completo, grupo: "disponible",  detalle: null });
@@ -2573,10 +2591,14 @@ function PoolFuturoPanel({
   data,
   onAbrirPlan,
   onPlanSSA,
+  onSelectAgente,
+  agenteSeleccionadoId,
 }: {
   data: PoolFuturoData;
   onAbrirPlan?: () => void;
   onPlanSSA?: (ip: InicioProyecto) => void;
+  onSelectAgente?: (agente: Agente) => void;
+  agenteSeleccionadoId?: number | null;
 }) {
   const [tabActivo, setTabActivo] = useState<"descansando" | "disponible" | "ausenteProgramado" | "trabajando">("descansando");
   const [colapsado, setColapsado] = useState(false);
@@ -2719,44 +2741,68 @@ function PoolFuturoPanel({
       <div className="flex gap-2 flex-wrap p-3 max-h-40 overflow-y-auto">
         {agentesActivos.length === 0 ? (
           <p className="text-[11px] text-white/20 py-2 px-2">Sin agentes en esta categoría</p>
-        ) : agentesActivos.map((ag) => (
-          <div
-            key={ag.id}
-            title={
-              tabActivo === "ausenteProgramado"
-                ? `${ag.fuente_ausencia === "rrhh" ? LABELS_AUSENCIA_RRHH[ag.tipo_ausencia_rrhh ?? ""] ?? ag.tipo_ausencia_rrhh : LABELS_AUSENCIA_FUTURO[ag.plan_tipo_ausencia ?? ""] ?? ag.plan_tipo_ausencia ?? "Ausencia"} · ${ag.fuente_ausencia === "rrhh" ? "Aprobado por RRHH" : "Planificado en Operaciones"}`
-                : tabActivo === "descansando"
-                ? `Turno: ${ag.turno_nombre ?? "—"} · ${ag.puesto_nombre ?? ""}`
-                : tabActivo === "trabajando"
-                ? `Puesto: ${ag.puesto_nombre ?? "—"} · ${ag.cliente_nombre ?? ""}`
-                : ""
-            }
-            className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-medium border transition-all cursor-default ${
-              tabActivo === "descansando"
-                ? "bg-blue-500/8 border-blue-500/20 text-blue-300/80"
-                : tabActivo === "disponible"
-                ? "bg-green-500/8 border-green-500/20 text-green-300/80"
-                : tabActivo === "ausenteProgramado"
-                ? "bg-red-500/8 border-red-500/20 text-red-300/80"
-                : "bg-teal-500/8 border-teal-500/20 text-teal-300/80"
-            }`}
-          >
-            <div className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(ag.nombre_completo)}`}>
-              {iniciales(ag.nombre_completo)}
+        ) : agentesActivos.map((ag) => {
+          const canDrag = (tabActivo === "disponible" || tabActivo === "descansando") && !!onSelectAgente;
+          if (canDrag) {
+            const agenteObj = poolFuturoToAgente(ag as AgentePoolFuturo);
+            const isSelected = agenteSeleccionadoId === ag.id;
+            return (
+              <div
+                key={ag.id}
+                onClick={() => onSelectAgente!(agenteObj)}
+                className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-medium border transition-all cursor-pointer select-none ${
+                  isSelected
+                    ? "ring-2 ring-primary bg-primary/15 border-primary/40 text-white scale-105"
+                    : tabActivo === "descansando"
+                    ? "bg-blue-500/8 border-blue-500/20 text-blue-300/80 hover:bg-blue-500/15 hover:border-blue-400/40"
+                    : "bg-green-500/8 border-green-500/20 text-green-300/80 hover:bg-green-500/15 hover:border-green-400/40"
+                }`}
+              >
+                <div className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(ag.nombre_completo)}`}>
+                  {iniciales(ag.nombre_completo)}
+                </div>
+                <span className="truncate max-w-[100px]">{ag.nombre_completo.split(" ").slice(0, 2).join(" ")}</span>
+                {(ag.tipo_personal === "supervisor" || ag.tipo_personal === "jefe_servicio") && (
+                  <span className="text-[8px] px-1 py-0.5 rounded font-bold bg-orange-500/20 text-orange-300 shrink-0">
+                    {ag.tipo_personal === "supervisor" ? "Sup." : "Jefe"}
+                  </span>
+                )}
+              </div>
+            );
+          }
+          return (
+            <div
+              key={ag.id}
+              title={
+                tabActivo === "ausenteProgramado"
+                  ? `${ag.fuente_ausencia === "rrhh" ? LABELS_AUSENCIA_RRHH[ag.tipo_ausencia_rrhh ?? ""] ?? ag.tipo_ausencia_rrhh : LABELS_AUSENCIA_FUTURO[ag.plan_tipo_ausencia ?? ""] ?? ag.plan_tipo_ausencia ?? "Ausencia"} · ${ag.fuente_ausencia === "rrhh" ? "Aprobado por RRHH" : "Planificado en Operaciones"}`
+                  : tabActivo === "trabajando"
+                  ? `Puesto: ${ag.puesto_nombre ?? "—"} · ${ag.cliente_nombre ?? ""}`
+                  : ""
+              }
+              className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-medium border transition-all cursor-default ${
+                tabActivo === "ausenteProgramado"
+                  ? "bg-red-500/8 border-red-500/20 text-red-300/80"
+                  : "bg-teal-500/8 border-teal-500/20 text-teal-300/80"
+              }`}
+            >
+              <div className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(ag.nombre_completo)}`}>
+                {iniciales(ag.nombre_completo)}
+              </div>
+              <span className="truncate max-w-[100px]">{ag.nombre_completo.split(" ").slice(0, 2).join(" ")}</span>
+              {(ag.tipo_personal === "supervisor" || ag.tipo_personal === "jefe_servicio") && (
+                <span className="text-[8px] px-1 py-0.5 rounded font-bold bg-orange-500/20 text-orange-300 shrink-0">
+                  {ag.tipo_personal === "supervisor" ? "Sup." : "Jefe"}
+                </span>
+              )}
+              {tabActivo === "ausenteProgramado" && (
+                <span className={`text-[9px] px-1 py-0.5 rounded font-bold ${ag.fuente_ausencia === "rrhh" ? "bg-orange-500/20 text-orange-300" : "bg-indigo-500/20 text-indigo-300"}`}>
+                  {ag.fuente_ausencia === "rrhh" ? "RRHH" : "OP"}
+                </span>
+              )}
             </div>
-            <span className="truncate max-w-[100px]">{ag.nombre_completo.split(" ").slice(0, 2).join(" ")}</span>
-            {(ag.tipo_personal === "supervisor" || ag.tipo_personal === "jefe_servicio") && (
-              <span className="text-[8px] px-1 py-0.5 rounded font-bold bg-orange-500/20 text-orange-300 shrink-0">
-                {ag.tipo_personal === "supervisor" ? "Sup." : "Jefe"}
-              </span>
-            )}
-            {tabActivo === "ausenteProgramado" && (
-              <span className={`text-[9px] px-1 py-0.5 rounded font-bold ${ag.fuente_ausencia === "rrhh" ? "bg-orange-500/20 text-orange-300" : "bg-indigo-500/20 text-indigo-300"}`}>
-                {ag.fuente_ausencia === "rrhh" ? "RRHH" : "OP"}
-              </span>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* ── Servicios Programados (inicios de proyecto + SSA) ── */}
@@ -3068,6 +3114,7 @@ function DroppablePuesto({
   onConfigTurno,
   cambiosProximos,
   puestoContextoId,
+  planFuturo,
 }: {
   puesto: Puesto;
   isAgenteSeleccionado: boolean;
@@ -3077,6 +3124,7 @@ function DroppablePuesto({
   onConfigTurno?: () => void;
   cambiosProximos?: PlanFuturo[];
   puestoContextoId?: number | null;
+  planFuturo?: PlanFuturo | null;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: `puesto-${puesto.id}` });
   const [fichaArmaId, setFichaArmaId] = useState<number | null>(null);
@@ -3225,6 +3273,26 @@ function DroppablePuesto({
             )}
           </div>
         </div>
+
+        {/* Plan futuro (modo planificación) */}
+        {planFuturo && (
+          <div className={`mt-2 pt-2 border-t border-white/6 flex items-center gap-1.5 ${planFuturo.relevo_id ? "text-indigo-300/70" : "text-amber-300/70"}`}>
+            {planFuturo.relevo_id ? (
+              <>
+                <div className={`w-5 h-5 rounded text-[8px] font-bold flex items-center justify-center shrink-0 ${avatarColor(planFuturo.relevo_nombre ?? "")}`}>
+                  {iniciales(planFuturo.relevo_nombre ?? "")}
+                </div>
+                <p className="text-[10px] font-medium truncate flex-1">{planFuturo.relevo_nombre}</p>
+                <span className="text-[8px] shrink-0 opacity-60 font-bold">RELEVO</span>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="w-3 h-3 shrink-0" />
+                <p className="text-[10px] truncate">{LABELS_AUSENCIA_FUTURO[planFuturo.tipo_ausencia ?? ""] ?? "Ausencia"} · sin relevo</p>
+              </>
+            )}
+          </div>
+        )}
 
         {isOver && <div className="absolute inset-0 rounded-xl border-2 border-primary border-dashed pointer-events-none" />}
         {fichaArmaId && <ModalFichaArma armaId={fichaArmaId} onClose={() => setFichaArmaId(null)} />}
@@ -3418,6 +3486,26 @@ function DroppablePuesto({
         </div>
       </div>
 
+      {/* Plan futuro (modo planificación) */}
+      {planFuturo && (
+        <div className={`mt-2 pt-2 border-t border-white/6 flex items-center gap-1.5 ${planFuturo.relevo_id ? "text-indigo-300/70" : "text-amber-300/70"}`}>
+          {planFuturo.relevo_id ? (
+            <>
+              <div className={`w-5 h-5 rounded text-[8px] font-bold flex items-center justify-center shrink-0 ${avatarColor(planFuturo.relevo_nombre ?? "")}`}>
+                {iniciales(planFuturo.relevo_nombre ?? "")}
+              </div>
+              <p className="text-[10px] font-medium truncate flex-1">{planFuturo.relevo_nombre}</p>
+              <span className="text-[8px] shrink-0 opacity-60 font-bold">RELEVO</span>
+            </>
+          ) : (
+            <>
+              <AlertCircle className="w-3 h-3 shrink-0" />
+              <p className="text-[10px] truncate">{LABELS_AUSENCIA_FUTURO[planFuturo.tipo_ausencia ?? ""] ?? "Ausencia"} · sin relevo</p>
+            </>
+          )}
+        </div>
+      )}
+
       {isOver && <div className="absolute inset-0 rounded-xl border-2 border-primary border-dashed pointer-events-none" />}
       {fichaArmaId && <ModalFichaArma armaId={fichaArmaId} onClose={() => setFichaArmaId(null)} />}
     </div>
@@ -3436,6 +3524,7 @@ function ClienteColumna({
   onAbrirSegmentos,
   onConfigTurno,
   cambiosFuturosProximos,
+  planFuturoPorPuesto,
   resaltado,
   colGlobal,
   puestoContextoId,
@@ -3449,6 +3538,7 @@ function ClienteColumna({
   onAbrirSegmentos: (puesto: Puesto) => void;
   onConfigTurno?: (puesto: Puesto) => void;
   cambiosFuturosProximos?: Record<number, PlanFuturo[]>;
+  planFuturoPorPuesto?: Record<number, PlanFuturo>;
   resaltado?: boolean;
   colGlobal?: { v: number; val: boolean };
   puestoContextoId?: number | null;
@@ -3580,6 +3670,7 @@ function ClienteColumna({
               onAbrirSegmentos={() => onAbrirSegmentos(p)}
               onConfigTurno={onConfigTurno ? () => onConfigTurno(p) : undefined}
               cambiosProximos={cambiosFuturosProximos?.[p.id]}
+              planFuturo={planFuturoPorPuesto?.[p.id] ?? null}
               puestoContextoId={puestoContextoId}
             />
             {/* Botón eliminar puesto */}
@@ -5601,6 +5692,16 @@ export default function Operaciones() {
   // ── Click en puesto: asignar agente seleccionado ──────────────────────────
   async function handlePuestoClick(puesto: Puesto) {
     if (isCerrado) return;
+    // En modo planificación: click en puesto abre el modal de plan futuro
+    if (esFuturo) {
+      if (agenteSeleccionado) {
+        // Asignar como relevo en planificación
+        setModalPlanFuturo({ puesto, plan: planFuturoPorPuesto[puesto.id] ?? null });
+      } else {
+        setModalPlanFuturo({ puesto, plan: planFuturoPorPuesto[puesto.id] ?? null });
+      }
+      return;
+    }
     if (!agenteSeleccionado) {
       // Sin agente: contextualizar el pool para recomendar candidatos de este puesto
       setPuestoContexto(prev => prev?.id === puesto.id ? null : puesto);
@@ -6192,6 +6293,10 @@ export default function Operaciones() {
             <PoolFuturoPanel
               data={poolFuturo}
               onPlanSSA={(ip) => setModalPlanSSA(ip)}
+              onSelectAgente={(ag) =>
+                setAgenteSeleccionado(prev => prev?.id === ag.id ? null : ag)
+              }
+              agenteSeleccionadoId={agenteSeleccionado?.id ?? null}
             />
           ) : esFuturo && loadingPoolFuturo ? (
             <div className="shrink-0 bg-[#060f1a] border border-indigo-500/15 rounded-2xl flex items-center justify-center px-6 py-4 gap-2 text-xs text-indigo-300/50">
@@ -6454,22 +6559,6 @@ export default function Operaciones() {
                   Limpiar filtros
                 </button>
               </div>
-            ) : esFuturo ? (
-              <div className="flex gap-3 h-full pb-2">
-                {tableroFiltrado.map((cliente) => (
-                  <ClienteColumnaFutura
-                    key={cliente.clienteNombre}
-                    cliente={cliente}
-                    fecha={fechaVista}
-                    planPorPuesto={planFuturoPorPuesto}
-                    poolFuturo={poolFuturo ?? null}
-                    colGlobal={colGlobal}
-                    onAbrirPlan={(puesto) =>
-                      setModalPlanFuturo({ puesto, plan: planFuturoPorPuesto[puesto.id] ?? null })
-                    }
-                  />
-                ))}
-              </div>
             ) : (
               <div className="flex gap-3 h-full pb-2">
                 {tableroFiltrado.map((cliente) => (
@@ -6478,12 +6567,17 @@ export default function Operaciones() {
                     cliente={cliente}
                     agenteSeleccionadoId={agenteSeleccionado?.id ?? null}
                     onPuestoClick={handlePuestoClick}
-                    onLiberar={(p) => setModalLiberar(p)}
+                    onLiberar={(p) => esFuturo
+                      ? setModalPlanFuturo({ puesto: p, plan: planFuturoPorPuesto[p.id] ?? null })
+                      : setModalLiberar(p)}
                     onNuevoPuesto={(c) => setNuevoPuestoData(c)}
                     onEliminarPuesto={eliminarPuesto}
-                    onAbrirSegmentos={(p) => setModalSegmentos(p)}
-                    onConfigTurno={(p) => setPuestoParaTurno(p)}
-                    cambiosFuturosProximos={cambiosFuturosProximos}
+                    onAbrirSegmentos={(p) => { if (!esFuturo) setModalSegmentos(p); }}
+                    onConfigTurno={(p) => esFuturo
+                      ? setModalPlanFuturo({ puesto: p, plan: planFuturoPorPuesto[p.id] ?? null })
+                      : setPuestoParaTurno(p)}
+                    cambiosFuturosProximos={!esFuturo ? cambiosFuturosProximos : undefined}
+                    planFuturoPorPuesto={esFuturo ? planFuturoPorPuesto : undefined}
                     resaltado={clienteResaltado !== null && cliente.clienteId === clienteResaltado}
                     colGlobal={colGlobal}
                     puestoContextoId={puestoContexto?.id ?? null}
