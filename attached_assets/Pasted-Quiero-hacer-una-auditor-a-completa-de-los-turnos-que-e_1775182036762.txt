@@ -1,0 +1,94 @@
+Quiero hacer una auditoría completa de los turnos que existen actualmente en el sistema antes de eliminar o modificar alguno.
+
+## Objetivo
+Identificar todos los tipos de turno configurados y cómo se están usando realmente en la base de datos y en la operación.
+
+---
+
+## 1. Listado completo de turnos
+
+Quiero que me devuelvas TODOS los turnos registrados en el sistema, incluyendo:
+
+- nombre del turno
+- tipo (ej: 24x24, 12h, 24x48, 24x72, 8x8, etc.)
+- horas_trabajo
+- horas_descanso
+- tipo_ciclo (si existe)
+- largo del ciclo calculado
+
+---
+
+## 2. Uso de cada turno
+
+Para cada turno, quiero saber:
+
+- cuántos puestos lo están usando
+- cuántos empleados lo tienen asignado
+- en qué clientes se usa
+- en qué zonas se usa
+
+---
+
+## 3. Identificar inconsistencias
+
+Quiero que detectes:
+
+- turnos duplicados (ej: dos versiones de 24x24)
+- turnos mal configurados (ej: 12h tratado como 24h)
+- turnos que no se están usando (0 puestos, 0 empleados)
+- turnos que no coinciden con la lógica operativa definida
+
+---
+
+## 4. Casos específicos a revisar
+
+Validar explícitamente si existen estos turnos:
+
+- 24x24 (correcto)
+- 12 horas (6x1)
+- 24x48 (modelo semanal especial)
+- 24x72 (modelo de 30 días o patrón actual)
+- 8x8 (8 días ON / 8 OFF)
+
+Y confirmar si están bien modelados o no.
+
+---
+
+## 5. Turnos incorrectos o legacy
+
+Quiero que identifiques:
+
+- turnos que quedaron de pruebas
+- turnos antiguos que ya no deberían existir
+- configuraciones que ya no coinciden con la operación actual
+
+---
+
+## 6. Recomendación final
+
+Después del análisis, quiero que me propongas:
+
+- qué turnos se deben conservar
+- qué turnos se deben corregir
+- qué turnos se deben eliminar
+
+---
+
+## 7. Importante
+
+No hagas cambios todavía.
+
+Solo quiero un diagnóstico completo antes de decidir qué borrar o modificar.
+
+---
+
+## 8. Resultado esperado
+
+Un resumen claro que me permita decidir:
+
+- qué turnos dejar
+- cuáles unificar
+- cuáles eliminar
+
+Muy importante:
+quiero entender exactamente cómo está configurado el sistema hoy antes de hacer limpieza.
