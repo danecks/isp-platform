@@ -1,19 +1,20 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   UserCog, Plus, Search, Pencil, KeyRound, Power, PowerOff,
   X, Check, AlertCircle, Loader2, ShieldCheck, Mail, Phone,
   User, Lock, ChevronDown, MessageSquare, Zap, Wallet, Shield,
-  Info, Building, UserCheck,
+  Info, Building, UserCheck, Save,
 } from "lucide-react";
 import { AdminLayout } from "@/admin/layout/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { usersApi, type UserSafe } from "@/lib/api";
-import { ROL_LABELS, ROL_COLORES, type Rol } from "@/config/permissions";
+import { ROL_LABELS, ROL_COLORES, NAV_SECTIONS, type Rol } from "@/config/permissions";
 import { useToast } from "@/hooks/use-toast";
+import { usePermisos } from "@/hooks/usePermisos";
 
 const ROLES: Rol[] = ["admin", "operaciones", "rrhh", "comercial", "supervisor", "guardia", "cliente"];
 
@@ -743,6 +744,175 @@ interface Inconsistencia {
   totalInconsistencias: number;
 }
 
+// ─── PermisosRolMatrix ────────────────────────────────────────────────────────
+const ROLES_MATRIX: Rol[] = ["admin", "operaciones", "rrhh", "comercial", "supervisor"];
+const BASE_URL = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
+const SESSION_KEY_M = "isp_admin_session_v2";
+
+function PermisosRolMatrix() {
+  const { mapaEfectivo, isLoading } = usePermisos();
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  // Estado local del editor: path → Set de roles habilitados
+  const [edicion, setEdicion] = useState<Record<string, Set<string>> | null>(null);
+  const [guardando, setGuardando] = useState(false);
+
+  // Inicializar editor cuando cargan los datos
+  const initEdicion = (mapa: Record<string, string[]>) => {
+    const init: Record<string, Set<string>> = {};
+    for (const s of NAV_SECTIONS) {
+      for (const item of s.items) {
+        init[item.path] = new Set(mapa[item.path] ?? item.roles);
+      }
+    }
+    return init;
+  };
+
+  // Inicializar el editor una sola vez cuando los datos cargan desde la API
+  useEffect(() => {
+    if (!isLoading) {
+      setEdicion((prev) => prev ?? initEdicion(mapaEfectivo));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading]);
+
+  function toggle(path: string, rol: Rol) {
+    if (rol === "admin") return;
+    setEdicion((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, [path]: new Set(prev[path]) };
+      if (next[path].has(rol)) next[path].delete(rol);
+      else next[path].add(rol);
+      return next;
+    });
+  }
+
+  async function guardar() {
+    if (!edicion) return;
+    setGuardando(true);
+    try {
+      const payload = Object.entries(edicion).map(([path, roles]) => ({
+        path,
+        roles: [...roles],
+      }));
+      const res = await fetch(`${BASE_URL}/api/config/permisos`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-isp-session": sessionStorage.getItem(SESSION_KEY_M) ?? "",
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Error desconocido" }));
+        throw new Error(err.error ?? "Error al guardar");
+      }
+      await qc.invalidateQueries({ queryKey: ["permisos-ruta-rol"] });
+      toast({ title: "Permisos actualizados", description: "Los cambios se aplicarán en el siguiente acceso al sistema." });
+    } catch (e: unknown) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "No se pudieron guardar los permisos", variant: "destructive" });
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  if (isLoading || !edicion) {
+    return (
+      <div className="flex items-center justify-center py-10 text-white/30 gap-2 text-sm">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Cargando permisos…
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="overflow-x-auto rounded-lg border border-white/5">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-white/10 bg-white/2">
+              <th className="text-left text-white/40 font-semibold px-4 py-3 w-72">Módulo / Ruta</th>
+              {ROLES_MATRIX.map((r) => (
+                <th key={r} className="text-center px-3 py-3 whitespace-nowrap">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${ROL_COLORES[r]}`}>
+                    {ROL_LABELS[r]}
+                  </span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {NAV_SECTIONS.map((seccion) => (
+              <>
+                <tr key={`sec-${seccion.id}`} className="border-b border-white/5 bg-white/1">
+                  <td colSpan={ROLES_MATRIX.length + 1} className="px-4 py-1.5">
+                    <span className="text-[9px] uppercase tracking-widest font-bold text-white/30">{seccion.label}</span>
+                  </td>
+                </tr>
+                {seccion.items.map((item) => {
+                  const rolesItem = edicion[item.path] ?? new Set(item.roles);
+                  return (
+                    <tr key={item.path} className="border-b border-white/3 hover:bg-white/2 transition-colors">
+                      <td className="px-4 py-2.5 text-white/60">
+                        <div className="flex items-center gap-2">
+                          <item.icon className="w-3 h-3 text-white/25 shrink-0" />
+                          <span>{item.label}</span>
+                        </div>
+                      </td>
+                      {ROLES_MATRIX.map((r) => {
+                        const checked = rolesItem.has(r);
+                        const esAdmin = r === "admin";
+                        return (
+                          <td key={r} className="text-center px-3 py-2.5">
+                            <button
+                              type="button"
+                              disabled={esAdmin}
+                              onClick={() => toggle(item.path, r)}
+                              title={esAdmin ? "Admin siempre tiene acceso total" : checked ? `Quitar acceso ${ROL_LABELS[r]}` : `Dar acceso ${ROL_LABELS[r]}`}
+                              className={`w-5 h-5 rounded border-2 mx-auto flex items-center justify-center transition-all ${
+                                esAdmin
+                                  ? "border-red-400/40 bg-red-400/15 cursor-not-allowed"
+                                  : checked
+                                  ? "border-primary/60 bg-primary/15 cursor-pointer hover:bg-primary/25"
+                                  : "border-white/10 bg-transparent cursor-pointer hover:border-white/25"
+                              }`}
+                            >
+                              {checked && (
+                                <Check className={`w-3 h-3 ${esAdmin ? "text-red-400" : "text-primary"}`} />
+                              )}
+                            </button>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex items-center justify-between pt-3 px-1">
+        <p className="text-[10px] text-white/30 flex items-center gap-1">
+          <Info className="w-3 h-3" />
+          Admin siempre tiene acceso completo. Los cambios aplican en el siguiente inicio de sesión.
+        </p>
+        <Button
+          size="sm"
+          onClick={guardar}
+          disabled={guardando}
+          className="gap-2"
+        >
+          {guardando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+          {guardando ? "Guardando…" : "Guardar cambios"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminUsuarios() {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -1065,62 +1235,13 @@ export default function AdminUsuarios() {
           )}
         </div>
 
-        {/* Role reference table */}
+        {/* Permissions matrix — editable */}
         <div className="bg-card border border-white/5 rounded-xl p-5">
           <h3 className="text-xs font-bold text-white/60 uppercase tracking-widest mb-4 flex items-center gap-2">
             <ShieldCheck className="w-3.5 h-3.5" />
-            Referencia de Permisos por Rol
+            Permisos por Módulo y Rol
           </h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-white/5">
-                  <th className="text-left text-white/30 font-medium pb-2 pr-4">Módulo / Capacidad</th>
-                  {ROLES_ADMIN.map(r => (
-                    <th key={r} className="text-center pb-2 px-2">
-                      <RolBadge rol={r} />
-                    </th>
-                  ))}
-                  <th className="text-center pb-2 px-2"><RolBadge rol="guardia" /></th>
-                  <th className="text-center pb-2 px-2"><RolBadge rol="cliente" /></th>
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  { mod: "Panel admin",        admin: true,  operaciones: true,  rrhh: true,  comercial: true,  supervisor: true,  guardia: false, cliente: false },
-                  { mod: "Incidencias",        admin: true,  operaciones: true,  rrhh: false, comercial: false, supervisor: true,  guardia: false, cliente: false },
-                  { mod: "Tareas",             admin: true,  operaciones: true,  rrhh: false, comercial: false, supervisor: true,  guardia: false, cliente: false },
-                  { mod: "Reclutamiento",      admin: true,  operaciones: false, rrhh: true,  comercial: false, supervisor: false, guardia: false, cliente: false },
-                  { mod: "Anticipos (panel)",  admin: true,  operaciones: false, rrhh: true,  comercial: false, supervisor: false, guardia: false, cliente: false },
-                  { mod: "Comercial / Leads",  admin: true,  operaciones: false, rrhh: false, comercial: true,  supervisor: false, guardia: false, cliente: false },
-                  { mod: "KPI Ejecutivo",      admin: true,  operaciones: false, rrhh: false, comercial: false, supervisor: false, guardia: false, cliente: false },
-                  { mod: "Usuarios",           admin: true,  operaciones: false, rrhh: false, comercial: false, supervisor: false, guardia: false, cliente: false },
-                  { mod: "Portal de cliente",  admin: false, operaciones: false, rrhh: false, comercial: false, supervisor: false, guardia: false, cliente: true  },
-                  { mod: "WhatsApp (reportar)", admin: true, operaciones: true,  rrhh: false, comercial: false, supervisor: true,  guardia: "permiso", cliente: false },
-                  { mod: "WhatsApp (anticipo)", admin: true, operaciones: false, rrhh: false, comercial: false, supervisor: false, guardia: "permiso", cliente: false },
-                ].map(row => (
-                  <tr key={row.mod} className="border-b border-white/3 hover:bg-white/1">
-                    <td className="py-2 pr-4 text-white/60">{row.mod}</td>
-                    {(["admin", "operaciones", "rrhh", "comercial", "supervisor", "guardia", "cliente"] as const).map(r => (
-                      <td key={r} className="text-center py-2 px-2">
-                        {row[r] === true ? (
-                          <Check className="w-3.5 h-3.5 text-green-400 mx-auto" />
-                        ) : row[r] === "permiso" ? (
-                          <span className="text-[9px] text-primary font-bold mx-auto block text-center">PERM</span>
-                        ) : (
-                          <span className="text-white/15 text-base">—</span>
-                        )}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="text-[10px] text-white/25 mt-3 flex items-center gap-1">
-            <Info className="w-3 h-3" />
-            <strong className="text-white/40">PERM</strong> = Requiere habilitación explícita desde el tab "Permisos WA" de este módulo.
-          </p>
+          <PermisosRolMatrix />
         </div>
 
       </div>

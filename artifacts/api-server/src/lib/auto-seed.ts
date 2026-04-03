@@ -2785,5 +2785,113 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SAL-01 cambios_salariales — error (no bloqueante)");
   }
 
+  // ── PERM-01: Tabla de permisos por ruta y rol ──────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS permisos_ruta_rol (
+        id    SERIAL PRIMARY KEY,
+        rol   VARCHAR(30)  NOT NULL,
+        path  VARCHAR(255) NOT NULL,
+        UNIQUE(rol, path)
+      )
+    `);
+    const { rows: existentes } = await pool.query(`SELECT COUNT(*)::int AS total FROM permisos_ruta_rol`);
+    if (existentes[0].total === 0) {
+      const defaults: { rol: string; path: string }[] = [
+        // admin — todo
+        { rol: "admin", path: "/admin/dashboard" },
+        { rol: "admin", path: "/admin/operaciones" },
+        { rol: "admin", path: "/admin/tablero-servicios" },
+        { rol: "admin", path: "/admin/pipeline-servicios" },
+        { rol: "admin", path: "/admin/tareas" },
+        { rol: "admin", path: "/admin/incidencias" },
+        { rol: "admin", path: "/admin/custodias" },
+        { rol: "admin", path: "/admin/vehiculos" },
+        { rol: "admin", path: "/admin/armeria" },
+        { rol: "admin", path: "/admin/cambios-estructurales" },
+        { rol: "admin", path: "/admin/clientes" },
+        { rol: "admin", path: "/admin/comercial" },
+        { rol: "admin", path: "/admin/reportes" },
+        { rol: "admin", path: "/admin/kpi" },
+        { rol: "admin", path: "/admin/empleados" },
+        { rol: "admin", path: "/admin/reclutamiento" },
+        { rol: "admin", path: "/admin/anticipos" },
+        { rol: "admin", path: "/admin/rrhh/eventos" },
+        { rol: "admin", path: "/admin/rrhh/alertas" },
+        { rol: "admin", path: "/admin/rrhh/nomina" },
+        { rol: "admin", path: "/admin/rrhh/pre-planilla" },
+        { rol: "admin", path: "/admin/rrhh/planilla" },
+        { rol: "admin", path: "/admin/rrhh/turnos" },
+        { rol: "admin", path: "/admin/rrhh/cambios-salariales" },
+        { rol: "admin", path: "/admin/solicitudes-eliminacion" },
+        { rol: "admin", path: "/admin/usuarios" },
+        { rol: "admin", path: "/admin/configuracion/whatsapp" },
+        { rol: "admin", path: "/admin/cms" },
+        { rol: "admin", path: "/admin/simulador-whatsapp" },
+        // operaciones
+        { rol: "operaciones", path: "/admin/dashboard" },
+        { rol: "operaciones", path: "/admin/operaciones" },
+        { rol: "operaciones", path: "/admin/tablero-servicios" },
+        { rol: "operaciones", path: "/admin/pipeline-servicios" },
+        { rol: "operaciones", path: "/admin/tareas" },
+        { rol: "operaciones", path: "/admin/incidencias" },
+        { rol: "operaciones", path: "/admin/custodias" },
+        { rol: "operaciones", path: "/admin/vehiculos" },
+        { rol: "operaciones", path: "/admin/armeria" },
+        { rol: "operaciones", path: "/admin/cambios-estructurales" },
+        { rol: "operaciones", path: "/admin/clientes" },
+        { rol: "operaciones", path: "/admin/reportes" },
+        { rol: "operaciones", path: "/admin/empleados" },
+        { rol: "operaciones", path: "/admin/rrhh/eventos" },
+        // rrhh
+        { rol: "rrhh", path: "/admin/dashboard" },
+        { rol: "rrhh", path: "/admin/tablero-servicios" },
+        { rol: "rrhh", path: "/admin/pipeline-servicios" },
+        { rol: "rrhh", path: "/admin/cambios-estructurales" },
+        { rol: "rrhh", path: "/admin/reportes" },
+        { rol: "rrhh", path: "/admin/empleados" },
+        { rol: "rrhh", path: "/admin/reclutamiento" },
+        { rol: "rrhh", path: "/admin/anticipos" },
+        { rol: "rrhh", path: "/admin/rrhh/eventos" },
+        { rol: "rrhh", path: "/admin/rrhh/alertas" },
+        { rol: "rrhh", path: "/admin/rrhh/nomina" },
+        { rol: "rrhh", path: "/admin/rrhh/pre-planilla" },
+        { rol: "rrhh", path: "/admin/rrhh/planilla" },
+        { rol: "rrhh", path: "/admin/rrhh/turnos" },
+        { rol: "rrhh", path: "/admin/rrhh/cambios-salariales" },
+        // comercial
+        { rol: "comercial", path: "/admin/dashboard" },
+        { rol: "comercial", path: "/admin/tablero-servicios" },
+        { rol: "comercial", path: "/admin/pipeline-servicios" },
+        { rol: "comercial", path: "/admin/clientes" },
+        { rol: "comercial", path: "/admin/comercial" },
+        { rol: "comercial", path: "/admin/reportes" },
+        // supervisor
+        { rol: "supervisor", path: "/admin/dashboard" },
+        { rol: "supervisor", path: "/admin/operaciones" },
+        { rol: "supervisor", path: "/admin/tablero-servicios" },
+        { rol: "supervisor", path: "/admin/pipeline-servicios" },
+        { rol: "supervisor", path: "/admin/tareas" },
+        { rol: "supervisor", path: "/admin/incidencias" },
+        { rol: "supervisor", path: "/admin/custodias" },
+        { rol: "supervisor", path: "/admin/vehiculos" },
+        { rol: "supervisor", path: "/admin/armeria" },
+        { rol: "supervisor", path: "/admin/empleados" },
+        { rol: "supervisor", path: "/admin/reportes" },
+      ];
+      for (const d of defaults) {
+        await pool.query(
+          `INSERT INTO permisos_ruta_rol (rol, path) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+          [d.rol, d.path]
+        );
+      }
+      logger.info(`Auto-migrate: PERM-01 permisos_ruta_rol sembrado con ${defaults.length} entradas`);
+    } else {
+      logger.info("Auto-migrate: PERM-01 permisos_ruta_rol ya existe");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PERM-01 permisos_ruta_rol — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }
