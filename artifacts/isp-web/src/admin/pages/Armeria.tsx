@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import { Link } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Shield, Plus, RefreshCw, Search, X, XCircle, ChevronRight,
   MapPin, User, Clock, AlertTriangle, CheckCircle2, Loader2,
   Edit, History, ArrowRightLeft, Package, FileText, Hash, Target,
+  ArrowLeft, Menu,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { AdminSidebar } from "../layout/AdminSidebar";
 
 const API = "/api";
 const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
@@ -875,6 +878,7 @@ function TabHistorial() {
 export default function Armeria() {
   const qc = useQueryClient();
   const { user } = useAuth();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [tab, setTab] = useState<"estado" | "armas" | "historial">("estado");
   const [fechaConsulta, setFechaConsulta] = useState(hoy());
   const [modalArma, setModalArma] = useState<Arma | null | "nuevo">(null);
@@ -900,11 +904,30 @@ export default function Armeria() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
+      <AdminSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+
       {/* Header */}
       <div className="border-b border-gray-800/60 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-14 gap-4">
             <div className="flex items-center gap-3">
+              {/* Hamburger + Back */}
+              <button
+                onClick={() => setSidebarOpen(true)}
+                title="Menú de módulos"
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+              >
+                <Menu className="w-4 h-4" />
+              </button>
+              <Link href="/admin">
+                <button
+                  title="Volver al inicio"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+              </Link>
+              <div className="w-px h-5 bg-gray-700/60" />
               <div className="w-8 h-8 bg-blue-500/15 border border-blue-500/30 rounded-lg flex items-center justify-center">
                 <Shield className="w-4 h-4 text-blue-400" />
               </div>
