@@ -84,6 +84,9 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
               AND (
                 seg.horas_calculadas IS NULL
                 OR seg.horas_calculadas = 0
+                -- Turnos de 24h+: trabajan todo el día; el TIME wrappea en PostgreSQL,
+                -- así que si el segmento está abierto hoy, siempre están en turno
+                OR seg.horas_calculadas >= 24
                 OR (seg.hora_inicio::time + (seg.horas_calculadas || ' hours')::interval) > CURRENT_TIME
               )
           ) THEN TRUE
@@ -3009,6 +3012,8 @@ operacionesRouter.get("/custodias/puestos", async (req, res) => {
               AND (
                 seg.horas_calculadas IS NULL
                 OR seg.horas_calculadas = 0
+                -- Turnos de 24h+: trabajan todo el día; TIME wrappea en PostgreSQL
+                OR seg.horas_calculadas >= 24
                 OR (seg.hora_inicio::time + (seg.horas_calculadas || ' hours')::interval) > CURRENT_TIME
               )
           ) THEN 'en_ruta'
@@ -3024,6 +3029,9 @@ operacionesRouter.get("/custodias/puestos", async (req, res) => {
                   seg.hora_fin IS NULL
                   AND seg.horas_calculadas IS NOT NULL
                   AND seg.horas_calculadas > 0
+                  -- Solo aplicar el chequeo de tiempo-expirado para turnos < 24h;
+                  -- los de 24h+ nunca "terminan" dentro del mismo día
+                  AND seg.horas_calculadas < 24
                   AND (seg.hora_inicio::time + (seg.horas_calculadas || ' hours')::interval) <= CURRENT_TIME
                 )
               )
