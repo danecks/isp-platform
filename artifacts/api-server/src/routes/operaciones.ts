@@ -70,9 +70,11 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         arm.tipo   AS arma_tipo,
         -- PT: todos los titulares del puesto con sus fechas de ciclo individuales
         COALESCE(pt_tab.titulares_json, '[]'::json)                   AS titulares_json,
-        -- TURNO-RT: ¿el agente asignado tiene un segmento abierto HOY dentro de las horas esperadas?
-        -- Permite al pizarrón mostrar si el colaborador está actualmente en turno o descansando.
+        -- TURNO-RT: ¿el agente asignado está actualmente dentro de su ventana de turno?
+        -- Prioridad 1: cobertura_segmentos (registro formal de cobertura del día).
+        -- Prioridad 2: hora_entrada + horas_trabajo del turno (fallback cuando no hay cobertura formal).
         CASE
+          -- Cobertura formal abierta HOY dentro de las horas esperadas
           WHEN po.agente_id IS NOT NULL AND EXISTS (
             SELECT 1 FROM cobertura_segmentos seg
             WHERE seg.puesto_id   = po.id
@@ -85,6 +87,17 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
                 OR (seg.hora_inicio::time + (seg.horas_calculadas || ' hours')::interval) > CURRENT_TIME
               )
           ) THEN TRUE
+          -- Sin cobertura formal hoy: usar hora_entrada + horas del turno configuradas en el puesto
+          WHEN po.agente_id IS NOT NULL
+            AND po.hora_entrada IS NOT NULL
+            AND t.horas_trabajo IS NOT NULL
+            AND po.hora_entrada::time <= CURRENT_TIME
+            AND (po.hora_entrada::time + (t.horas_trabajo || ' hours')::interval) > CURRENT_TIME
+            AND NOT EXISTS (
+              SELECT 1 FROM cobertura_segmentos seg
+              WHERE seg.puesto_id = po.id AND seg.fecha = CURRENT_DATE
+            )
+          THEN TRUE
           ELSE FALSE
         END AS agente_en_turno
       FROM puestos_operativos po
@@ -2588,7 +2601,7 @@ operacionesRouter.patch("/operaciones/puestos/:id/turno", async (req, res) => {
   const puestoId = parseInt(req.params.id);
   if (isNaN(puestoId)) return res.status(400).json({ error: "ID de puesto inválido" });
 
-  const { tipo_turno_id, fecha_inicio_ciclo } = req.body ?? {};
+  const { tipo_turno_id, fecha_inicio_ciclo, hora_entrada } = req.body ?? {};
 
   // Validación: si se provee un turno, la fecha_inicio_ciclo es obligatoria
   if (tipo_turno_id != null && !fecha_inicio_ciclo) {
@@ -2598,6 +2611,11 @@ operacionesRouter.patch("/operaciones/puestos/:id/turno", async (req, res) => {
   // Validar formato de fecha
   if (fecha_inicio_ciclo && !/^\d{4}-\d{2}-\d{2}$/.test(fecha_inicio_ciclo)) {
     return res.status(400).json({ error: "fecha_inicio_ciclo debe tener formato YYYY-MM-DD" });
+  }
+
+  // Validar hora_entrada: si se provee, debe ser HH:MM
+  if (hora_entrada != null && hora_entrada !== "" && !/^\d{2}:\d{2}$/.test(hora_entrada)) {
+    return res.status(400).json({ error: "hora_entrada debe tener formato HH:MM" });
   }
 
   try {
@@ -2621,21 +2639,29 @@ operacionesRouter.patch("/operaciones/puestos/:id/turno", async (req, res) => {
       }
     }
 
+    // hora_entrada solo aplica a turnos diarios (< 24h); para alternados se limpia
+    const horaEntradaFinal = (tipo_turno_id != null && hora_entrada && hora_entrada !== "")
+      ? hora_entrada
+      : null;
+
     const { rows: updated } = await pool.query(`
       UPDATE puestos_operativos
       SET
-        tipo_turno_id     = $1,
+        tipo_turno_id      = $1,
         fecha_inicio_ciclo = $2,
-        updated_at        = NOW()
-      WHERE id = $3
+        hora_entrada       = $3,
+        updated_at         = NOW()
+      WHERE id = $4
       RETURNING
         id,
         nombre,
         tipo_turno_id,
-        fecha_inicio_ciclo
+        fecha_inicio_ciclo,
+        hora_entrada
     `, [
       tipo_turno_id ?? null,
       tipo_turno_id != null ? fecha_inicio_ciclo : null,
+      horaEntradaFinal,
       puestoId,
     ]);
 

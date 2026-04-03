@@ -2028,6 +2028,7 @@ function ModalConfigTurno({
   const { toast } = useToast();
   const [turnoId, setTurnoId]         = useState<string>(String(puesto.tipo_turno_id ?? ""));
   const [fechaInicio, setFechaInicio] = useState<string>(puesto.fecha_inicio_ciclo ?? new Date().toISOString().slice(0, 10));
+  const [horaEntrada, setHoraEntrada] = useState<string>(puesto.hora_entrada ?? "");
   const [guardando, setGuardando]     = useState(false);
 
   // ── Titulares ────────────────────────────────────────────────────────────────
@@ -2076,6 +2077,17 @@ function ModalConfigTurno({
     return !yaEsTitular && coincide;
   });
 
+  // Hora de salida esperada, calculada en el cliente para mostrar en el UI
+  const salidaEsperada = (() => {
+    if (!horaEntrada || !turnoSeleccionado?.horas_trabajo) return null;
+    const [hh, mm] = horaEntrada.split(":").map(Number);
+    if (isNaN(hh) || isNaN(mm)) return null;
+    const totalMin = hh * 60 + mm + turnoSeleccionado.horas_trabajo * 60;
+    const sh = Math.floor(totalMin / 60) % 24;
+    const sm = totalMin % 60;
+    return `${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}`;
+  })();
+
   async function guardarTurno() {
     if (!turnoId) { toast({ title: "Selecciona un turno", variant: "destructive" }); return; }
     if (!fechaInicio) { toast({ title: "Indica la fecha de inicio de ciclo", variant: "destructive" }); return; }
@@ -2085,7 +2097,11 @@ function ModalConfigTurno({
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tipo_turno_id: parseInt(turnoId), fecha_inicio_ciclo: fechaInicio }),
+        body: JSON.stringify({
+          tipo_turno_id:      parseInt(turnoId),
+          fecha_inicio_ciclo: fechaInicio,
+          hora_entrada:       !esTurnoAlternado && horaEntrada ? horaEntrada : null,
+        }),
       });
       if (!r.ok) { const e = await r.json(); throw new Error(e.error ?? "Error al guardar turno"); }
       toast({ title: "✅ Turno actualizado" });
@@ -2258,6 +2274,35 @@ function ModalConfigTurno({
                 className="w-full bg-[#0d1e38] border border-white/12 text-white/80 text-xs rounded-lg px-3 py-2.5 focus:outline-none focus:border-indigo-500/50"
               />
             </div>
+
+            {/* Hora de inicio — solo para turnos diarios (12x12, 8h, etc.) */}
+            {!esTurnoAlternado && turnoSeleccionado && (
+              <div>
+                <label className="block text-[11px] font-semibold text-white/60 mb-1.5">
+                  Hora de inicio del turno
+                  <span className="ml-1 text-white/30 font-normal">— ej: 08:00 o 20:00</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="time"
+                    value={horaEntrada}
+                    onChange={e => setHoraEntrada(e.target.value)}
+                    className="flex-1 bg-[#0d1e38] border border-white/12 text-white/80 text-xs rounded-lg px-3 py-2.5 focus:outline-none focus:border-emerald-500/50"
+                  />
+                  {salidaEsperada && (
+                    <div className="flex items-center gap-1.5 px-3 py-2.5 bg-emerald-500/6 border border-emerald-500/20 rounded-lg shrink-0">
+                      <Clock className="w-3 h-3 text-emerald-400/70" />
+                      <span className="text-[11px] text-emerald-300/80 font-semibold">
+                        Sale: {salidaEsperada}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <p className="text-[10px] text-white/25 mt-1.5">
+                  Los turnos 24h (24x24, 24x48, 24x72) no requieren horario — solo cumplen el ciclo de días.
+                </p>
+              </div>
+            )}
 
             {/* Botón: guardar solo el turno */}
             <button
