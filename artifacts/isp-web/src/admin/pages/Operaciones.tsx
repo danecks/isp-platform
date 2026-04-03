@@ -6622,18 +6622,17 @@ export default function Operaciones() {
 
               return (
                 <div
-                  className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border transition-all ${esSeleccionado ? "border-violet-400/60 bg-violet-500/15 ring-1 ring-violet-400/30" : seleccionable ? "border-violet-500/20 bg-violet-500/5 cursor-pointer hover:border-violet-400/40 hover:bg-violet-500/10" : "border-white/5 bg-transparent"}`}
+                  className={`inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg border transition-all select-none ${esSeleccionado ? "border-violet-400/60 bg-violet-500/15 ring-1 ring-violet-400/30" : seleccionable ? "border-violet-500/20 bg-violet-500/5 cursor-pointer hover:border-violet-400/40 hover:bg-violet-500/10" : "border-white/5 bg-transparent"}`}
                   onClick={handleClick}
                 >
-                  <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(sv.nombre_completo)} ${esSeleccionado ? "ring-2 ring-violet-400/50" : sv.puede_cubrir ? "ring-1 ring-violet-400/20" : ""}`}>
+                  <div className={`w-5 h-5 rounded flex items-center justify-center text-[8px] font-bold text-white shrink-0 ${avatarColor(sv.nombre_completo)} ${esSeleccionado ? "ring-2 ring-violet-400/50" : sv.puede_cubrir ? "ring-1 ring-violet-400/20" : ""}`}>
                     {iniciales(sv.nombre_completo)}
                   </div>
-                  <p className={`text-[11px] font-medium truncate flex-1 ${sv.puede_cubrir || estadoCiclo === "trabajando" ? "text-white/80" : "text-white/35"}`}>{sv.nombre_completo}</p>
+                  <p className={`text-[11px] font-medium truncate max-w-[88px] ${sv.puede_cubrir || estadoCiclo === "trabajando" ? "text-white/80" : "text-white/35"}`}>{sv.nombre_completo.split(" ").slice(0,2).join(" ")}</p>
                   <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${estadoBadge.cls}`}>{estadoBadge.label}</span>
                   {esSeleccionado && <span className="text-[8px] text-violet-300 animate-pulse shrink-0">✓</span>}
-                  {/* Vehículos zona */}
                   {(sv as any).vehiculos_zona?.length > 0 && ((sv as any).vehiculos_zona as Array<{ id: number; placa: string; estado: string }>).filter(v => v.estado === "activo").slice(0,1).map(veh => (
-                    <button key={veh.id} onClick={e => { e.stopPropagation(); setFichaVehiculoId(veh.id); }} className="text-[8px] text-sky-300/60 border border-sky-500/20 bg-sky-500/8 px-1 py-0.5 rounded shrink-0">🚗 {veh.placa}</button>
+                    <button key={veh.id} onClick={e => { e.stopPropagation(); setFichaVehiculoId(veh.id); }} className="text-[8px] text-sky-300/60 border border-sky-500/20 bg-sky-500/8 px-1 py-0.5 rounded shrink-0">🚗</button>
                   ))}
                 </div>
               );
@@ -6657,7 +6656,7 @@ export default function Operaciones() {
                   <ChevronRight className={`w-3 h-3 text-violet-400/25 group-hover:text-violet-400/50 ml-2 shrink-0 transition-transform ${colSupers ? "" : "rotate-90"}`} />
                 </button>
                 {!colSupers && (
-                <div className="border-t border-violet-500/8 p-1.5 space-y-0.5 max-h-36 overflow-y-auto">
+                <div className="border-t border-violet-500/8 p-2 flex flex-wrap gap-2 max-h-28 overflow-y-auto">
                   {[...svTrabajando, ...svDisponHE, ...svDescanso, ...svOtros].map(sv => (
                     <SvCard key={sv.id} sv={sv} />
                   ))}
@@ -6691,13 +6690,13 @@ export default function Operaciones() {
 
               return (
                 <div
-                  className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border transition-all ${esSeleccionado ? "border-orange-400/60 bg-orange-500/15 ring-1 ring-orange-400/30" : seleccionable ? "border-orange-500/20 bg-orange-500/5 cursor-pointer hover:border-orange-400/40" : variante === "hoy" ? "border-orange-500/25 bg-orange-500/6" : "border-white/5 bg-transparent"}`}
+                  className={`inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg border transition-all select-none ${esSeleccionado ? "border-orange-400/60 bg-orange-500/15 ring-1 ring-orange-400/30" : seleccionable ? "border-orange-500/20 bg-orange-500/5 cursor-pointer hover:border-orange-400/40" : variante === "hoy" ? "border-orange-500/25 bg-orange-500/6" : "border-white/5 bg-transparent"}`}
                   onClick={handleClick}
                 >
-                  <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(js.nombre_completo)} ${variante === "hoy" ? "ring-1 ring-orange-400/35" : ""} ${esSeleccionado ? "ring-2 ring-orange-400/50" : ""}`}>
+                  <div className={`w-5 h-5 rounded flex items-center justify-center text-[8px] font-bold text-white shrink-0 ${avatarColor(js.nombre_completo)} ${variante === "hoy" ? "ring-1 ring-orange-400/35" : ""} ${esSeleccionado ? "ring-2 ring-orange-400/50" : ""}`}>
                     {iniciales(js.nombre_completo)}
                   </div>
-                  <p className={`text-[11px] font-medium truncate flex-1 ${variante === "hoy" ? "text-white/90" : "text-white/40"}`}>{js.nombre_completo}</p>
+                  <p className={`text-[11px] font-medium truncate max-w-[88px] ${variante === "hoy" ? "text-white/90" : "text-white/40"}`}>{js.nombre_completo.split(" ").slice(0,2).join(" ")}</p>
                   <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${badgeCls}`}>{badgeLabel}</span>
                   {esSeleccionado && <span className="text-[8px] text-orange-300 animate-pulse shrink-0">✓</span>}
                 </div>
@@ -6727,7 +6726,7 @@ export default function Operaciones() {
                   <ChevronRight className={`w-3 h-3 text-orange-400/25 group-hover:text-orange-400/50 ml-2 shrink-0 transition-transform ${colJefes ? "" : "rotate-90"}`} />
                 </button>
                 {!colJefes && (
-                <div className="border-t border-orange-500/8 p-1.5 space-y-0.5 max-h-36 overflow-y-auto">
+                <div className="border-t border-orange-500/8 p-2 flex flex-wrap gap-2 max-h-28 overflow-y-auto">
                   {[...jefesHoy.map(js => ({ js, variante: "hoy" as const })), ...jefesMañana.map(js => ({ js, variante: "mañana" as const })), ...jefesDescanso.map(js => ({ js, variante: "descanso" as const })), ...jefesOtros.map(js => ({ js, variante: "otro" as const }))].map(({ js, variante }) => (
                     <JefeCard key={js.id} js={js} variante={variante} />
                   ))}
@@ -6743,47 +6742,35 @@ export default function Operaciones() {
             const svDescanso = poolFuturo.descansando.filter(a => a.tipo_personal === "supervisor");
             if (svTurno.length + svDescanso.length === 0) return null;
             return (
-              <div className="shrink-0 w-72 bg-[#060f1a] border border-violet-500/15 rounded-2xl overflow-hidden">
-                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-violet-500/10">
-                  <UserCheck className="w-3.5 h-3.5 text-violet-400/70 shrink-0" />
-                  <span className="text-xs font-bold text-violet-300/70 uppercase tracking-widest">Supervisores Operativos</span>
-                  <span className="ml-1 text-[9px] font-bold bg-indigo-500/15 text-indigo-300/70 border border-indigo-500/20 px-1.5 py-0.5 rounded-full">Futuro</span>
-                  {svTurno.length > 0 && (
-                    <span className="text-[9px] font-bold bg-violet-500/20 text-violet-300 border border-violet-400/30 px-1.5 py-0.5 rounded-full ml-1">
-                      {svTurno.length} en turno
-                    </span>
-                  )}
-                </div>
-                <div className="flex gap-2 flex-wrap p-3">
-                  {svTurno.map(ag => (
-                    <div key={ag.id} className="shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 w-48 border-violet-500/20 bg-gradient-to-b from-violet-500/5 to-[#0c1929]">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 ring-1 ring-violet-400/30 ${avatarColor(ag.nombre_completo)}`}>
+              <div className="bg-[#060f1a] border border-violet-500/15 rounded-xl overflow-hidden">
+                <button
+                  onClick={() => togglePanel("piz_col_supers", colSupers, setColSupers)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left group hover:bg-violet-500/5 transition-colors"
+                >
+                  <Shield className="w-3 h-3 text-violet-400/60 shrink-0" />
+                  <span className="text-[11px] font-bold text-violet-300/65 uppercase tracking-widest">Supervisores</span>
+                  <span className="text-[9px] text-violet-400/45 font-bold bg-violet-500/10 border border-violet-500/15 px-1 py-0.5 rounded-full">{svTurno.length + svDescanso.length}</span>
+                  <div className="flex-1" />
+                  {svTurno.length > 0 && <span className="text-emerald-400/80 text-[10px] font-semibold">🟢 {svTurno.length} turno</span>}
+                  {svDescanso.length > 0 && <span className="text-blue-400/60 text-[10px]">🔵 {svDescanso.length} descanso</span>}
+                  <ChevronRight className={`w-3 h-3 text-violet-400/25 group-hover:text-violet-400/50 ml-2 shrink-0 transition-transform ${colSupers ? "" : "rotate-90"}`} />
+                </button>
+                {!colSupers && (
+                <div className="border-t border-violet-500/8 p-2 flex flex-wrap gap-2 max-h-28 overflow-y-auto">
+                  {[...svTurno, ...svDescanso].map(ag => {
+                    const enTurno = svTurno.some(s => s.id === ag.id);
+                    return (
+                      <div key={ag.id} className={`inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg border ${enTurno ? "border-violet-500/25 bg-violet-500/6" : "border-white/5"}`}>
+                        <div className={`w-5 h-5 rounded flex items-center justify-center text-[8px] font-bold text-white shrink-0 ${enTurno ? "" : "opacity-50"} ${avatarColor(ag.nombre_completo)}`}>
                           {iniciales(ag.nombre_completo)}
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-semibold text-white/90 truncate leading-tight">{ag.nombre_completo}</p>
-                          {ag.turno_nombre && <p className="text-[9px] text-violet-300/40 truncate">{ag.turno_nombre}</p>}
-                        </div>
+                        <p className={`text-[11px] font-medium truncate max-w-[88px] ${enTurno ? "text-white/85" : "text-white/40"}`}>{ag.nombre_completo.split(" ").slice(0,2).join(" ")}</p>
+                        <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${enTurno ? "text-emerald-300 bg-emerald-500/15 border-emerald-500/30" : "text-white/25 bg-white/3 border-white/8"}`}>{enTurno ? "EN TURNO" : "DESCANSO"}</span>
                       </div>
-                      <span className="text-[8px] font-bold px-1.5 py-0.5 rounded border text-emerald-300 bg-emerald-500/15 border-emerald-500/30 w-fit">EN TURNO</span>
-                    </div>
-                  ))}
-                  {svDescanso.map(ag => (
-                    <div key={ag.id} className="shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 w-48 border-white/6 bg-[#0a1020]">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 opacity-60 ${avatarColor(ag.nombre_completo)}`}>
-                          {iniciales(ag.nombre_completo)}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-semibold text-white/50 truncate leading-tight">{ag.nombre_completo}</p>
-                          {ag.turno_nombre && <p className="text-[9px] text-violet-300/30 truncate">{ag.turno_nombre}</p>}
-                        </div>
-                      </div>
-                      <span className="text-[8px] font-bold px-1.5 py-0.5 rounded border text-white/30 bg-white/4 border-white/8 w-fit">DESCANSO</span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
+                )}
               </div>
             );
           })()}
@@ -6794,47 +6781,35 @@ export default function Operaciones() {
             const jfDescanso = poolFuturo.descansando.filter(a => a.tipo_personal === "jefe_servicio");
             if (jfTurno.length + jfDescanso.length === 0) return null;
             return (
-              <div className="shrink-0 w-72 bg-[#060f1a] border border-orange-500/15 rounded-2xl overflow-hidden">
-                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-orange-500/10">
-                  <Shield className="w-3.5 h-3.5 text-orange-400/70 shrink-0" />
-                  <span className="text-xs font-bold text-orange-300/70 uppercase tracking-widest">Jefes de Servicio</span>
-                  <span className="ml-1 text-[9px] font-bold bg-indigo-500/15 text-indigo-300/70 border border-indigo-500/20 px-1.5 py-0.5 rounded-full">Futuro</span>
-                  {jfTurno.length > 0 && (
-                    <span className="text-[9px] font-bold bg-orange-500/20 text-orange-300 border border-orange-400/30 px-1.5 py-0.5 rounded-full ml-1">
-                      {jfTurno.length} en turno
-                    </span>
-                  )}
-                </div>
-                <div className="flex gap-2 flex-wrap p-3">
-                  {jfTurno.map(ag => (
-                    <div key={ag.id} className="shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 w-52 border-orange-400/30 bg-gradient-to-b from-orange-500/6 to-[#0c1929]">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0 ring-2 ring-orange-400/30 ${avatarColor(ag.nombre_completo)}`}>
+              <div className="bg-[#060f1a] border border-orange-500/15 rounded-xl overflow-hidden">
+                <button
+                  onClick={() => togglePanel("piz_col_jefes", colJefes, setColJefes)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left group hover:bg-orange-500/5 transition-colors"
+                >
+                  <Shield className="w-3 h-3 text-orange-400/60 shrink-0" />
+                  <span className="text-[11px] font-bold text-orange-300/65 uppercase tracking-widest">Jefes de Servicio</span>
+                  <span className="text-[9px] text-orange-400/45 font-bold bg-orange-500/10 border border-orange-500/15 px-1 py-0.5 rounded-full">{jfTurno.length + jfDescanso.length}</span>
+                  <div className="flex-1" />
+                  {jfTurno.length > 0 && <span className="text-emerald-400/80 text-[10px] font-semibold">🟢 {jfTurno.map(j => j.nombre_completo.split(" ")[0]).join(" · ")}</span>}
+                  {jfDescanso.length > 0 && <span className="text-blue-400/60 text-[10px]">🔵 {jfDescanso.length} descanso</span>}
+                  <ChevronRight className={`w-3 h-3 text-orange-400/25 group-hover:text-orange-400/50 ml-2 shrink-0 transition-transform ${colJefes ? "" : "rotate-90"}`} />
+                </button>
+                {!colJefes && (
+                <div className="border-t border-orange-500/8 p-2 flex flex-wrap gap-2 max-h-28 overflow-y-auto">
+                  {[...jfTurno, ...jfDescanso].map(ag => {
+                    const enTurno = jfTurno.some(j => j.id === ag.id);
+                    return (
+                      <div key={ag.id} className={`inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg border ${enTurno ? "border-orange-500/25 bg-orange-500/6" : "border-white/5"}`}>
+                        <div className={`w-5 h-5 rounded flex items-center justify-center text-[8px] font-bold text-white shrink-0 ${enTurno ? "ring-1 ring-orange-400/30" : "opacity-50"} ${avatarColor(ag.nombre_completo)}`}>
                           {iniciales(ag.nombre_completo)}
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-semibold text-white truncate leading-tight">{ag.nombre_completo}</p>
-                          <p className="text-[9px] text-orange-300/40 truncate">Jefe de Servicio</p>
-                        </div>
+                        <p className={`text-[11px] font-medium truncate max-w-[88px] ${enTurno ? "text-white/90" : "text-white/40"}`}>{ag.nombre_completo.split(" ").slice(0,2).join(" ")}</p>
+                        <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${enTurno ? "text-orange-200 bg-orange-500/20 border-orange-400/35" : "text-white/25 bg-white/3 border-white/8"}`}>{enTurno ? "EN TURNO" : "DESCANSO"}</span>
                       </div>
-                      <span className="text-[8px] px-1.5 py-0.5 rounded border text-orange-200 bg-orange-500/20 border-orange-400/40 font-bold w-fit">EN TURNO</span>
-                    </div>
-                  ))}
-                  {jfDescanso.map(ag => (
-                    <div key={ag.id} className="shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 w-52 border-orange-500/10 bg-[#080f1e]">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0 opacity-60 ${avatarColor(ag.nombre_completo)}`}>
-                          {iniciales(ag.nombre_completo)}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-semibold text-white/70 truncate leading-tight">{ag.nombre_completo}</p>
-                          <p className="text-[9px] text-orange-300/30 truncate">Jefe de Servicio</p>
-                        </div>
-                      </div>
-                      <span className="text-[8px] px-1.5 py-0.5 rounded border text-white/30 bg-white/4 border-white/8 font-bold w-fit">DESCANSANDO</span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
+                )}
               </div>
             );
           })()}
@@ -6851,32 +6826,28 @@ export default function Operaciones() {
             const totalAusente    = adminTablero.empleados.filter(e => ["licencia","suspendido"].includes(e.estado_ciclo)).length;
             const totalSinTurno   = adminTablero.empleados.filter(e => e.estado_ciclo === "sin_turno").length;
 
-            const AdminCard = ({ p }: { p: AdminPersonal }) => {
-              const trabajando   = p.estado_ciclo === "trabajando";
-              const descansando  = p.estado_ciclo === "descansando_ciclo";
-              const ausente      = ["licencia","suspendido"].includes(p.estado_ciclo);
-              const badgeTxt  = trabajando ? "TRABAJA HOY"  : descansando ? "DESCANSA HOY" : ausente ? p.estado_ciclo.toUpperCase() : "SIN TURNO";
-              const badgeCls  = trabajando
+            const AdminChip = ({ p, grupoKey }: { p: AdminPersonal; grupoKey: string }) => {
+              const trabajando  = p.estado_ciclo === "trabajando";
+              const descansando = p.estado_ciclo === "descansando_ciclo";
+              const ausente     = ["licencia","suspendido"].includes(p.estado_ciclo);
+              const badgeTxt    = trabajando ? "HOY" : descansando ? "DESCANSO" : ausente ? "AUSENTE" : "S/T";
+              const badgeCls    = trabajando
                 ? "text-emerald-300 bg-emerald-500/15 border-emerald-500/30"
                 : descansando
                 ? "text-white/30 bg-white/4 border-white/8"
                 : ausente
                 ? "text-yellow-300/70 bg-yellow-500/10 border-yellow-500/20"
                 : "text-white/20 bg-white/3 border-white/6";
-              const cardBorder = trabajando ? "border-emerald-500/15" : descansando ? "border-white/5" : ausente ? "border-yellow-500/10" : "border-white/4";
-              const cardBg     = trabajando ? "from-emerald-500/4 to-[#0a1820]" : "from-white/2 to-[#0a1020]";
+              const cardBorder  = trabajando ? "border-emerald-500/20" : descansando ? "border-white/5" : ausente ? "border-yellow-500/10" : "border-white/5";
+              const meta        = GRUPOS_LABELS[grupoKey] ?? GRUPOS_LABELS["gerencia"];
               return (
-                <div className={`shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 w-48 bg-gradient-to-b ${cardBorder} ${cardBg}`}>
-                  <div className="flex items-center gap-2">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 ring-1 ring-white/10 ${trabajando ? "" : "opacity-50"} ${avatarColor(p.nombre_completo)}`}>
-                      {iniciales(p.nombre_completo)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className={`text-xs font-semibold truncate leading-tight ${trabajando ? "text-white" : "text-white/50"}`}>{p.nombre_completo}</p>
-                      {p.turno_nombre && <p className="text-[9px] text-white/25 truncate">{p.turno_nombre}</p>}
-                    </div>
+                <div className={`inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg border ${cardBorder}`}>
+                  <div className={`w-5 h-5 rounded flex items-center justify-center text-[8px] font-bold text-white shrink-0 ${trabajando ? "" : "opacity-50"} ${avatarColor(p.nombre_completo)}`}>
+                    {iniciales(p.nombre_completo)}
                   </div>
-                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border w-fit ${badgeCls}`}>{badgeTxt}</span>
+                  <p className={`text-[11px] font-medium truncate max-w-[80px] ${trabajando ? "text-white/85" : "text-white/40"}`}>{p.nombre_completo.split(" ").slice(0,2).join(" ")}</p>
+                  <span className={`text-[8px] font-bold px-1 py-0.5 rounded border shrink-0 ${meta.color} ${meta.bg} ${meta.border}`}>{meta.label}</span>
+                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${badgeCls}`}>{badgeTxt}</span>
                 </div>
               );
             };
@@ -6900,28 +6871,12 @@ export default function Operaciones() {
                 </button>
 
                 {!colAdmin && (
-                  <div className="border-t border-slate-500/8 p-2 space-y-2.5 max-h-48 overflow-y-auto">
-                    {/* Grupos por departamento */}
-                    {(["gerencia","administrativo_rrhh","administrativo_bodega"] as const).map(key => {
-                      const personas = adminTablero.grupos[key];
-                      if (personas.length === 0) return null;
-                      const meta = GRUPOS_LABELS[key];
-                      const trabajandoGrupo = personas.filter(p => p.estado_ciclo === "trabajando").length;
-                      return (
-                        <div key={key}>
-                          <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 flex items-center gap-1.5 ${meta.color}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full inline-block ${trabajandoGrupo > 0 ? "bg-emerald-400 animate-pulse" : "bg-white/20"}`} />
-                            {meta.label}
-                            <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full border ml-1 ${meta.color} ${meta.bg} ${meta.border}`}>
-                              {personas.length}
-                            </span>
-                          </p>
-                          <div className="flex gap-1.5 flex-wrap">
-                            {personas.map(p => <AdminCard key={p.id} p={p} />)}
-                          </div>
-                        </div>
-                      );
-                    })}
+                  <div className="border-t border-slate-500/8 p-2 flex flex-wrap gap-2 max-h-28 overflow-y-auto">
+                    {(["gerencia","administrativo_rrhh","administrativo_bodega"] as const).flatMap(key =>
+                      adminTablero.grupos[key].map(p => (
+                        <AdminChip key={p.id} p={p} grupoKey={key} />
+                      ))
+                    )}
                   </div>
                 )}
               </div>

@@ -1,0 +1,117 @@
+Quiero ajustar la visualización de estas secciones del Pizarrón Operativo y de Planificación:
+
+- Supervisores
+- Jefes de Servicio
+- Administración / Backoffice
+
+## Problema actual
+Hoy estas secciones se están renderizando con tarjetas apiladas verticalmente, lo que consume demasiada altura y hace que la pantalla se sienta vacía o desequilibrada.
+
+Eso no es lo que quiero.
+
+---
+
+## Objetivo
+Quiero que estas secciones se vean más anchas horizontalmente y que los colaboradores dentro de cada bloque se acomoden horizontalmente, no en columna vertical.
+
+Esto debe aplicar tanto a:
+- vista de Hoy
+- vista de Planificación
+
+---
+
+## 1. Regla visual
+Cada bloque debe seguir existiendo por separado:
+
+- Supervisores
+- Jefes de Servicio
+- Administración
+
+Pero dentro de cada bloque, los colaboradores deben mostrarse en una disposición horizontal.
+
+Ejemplo esperado:
+
+### Supervisores
+[ Supervisor 1 ] [ Supervisor 2 ] [ Supervisor 3 ] [ Supervisor 4 ]
+
+### Jefes de Servicio
+[ Jefe 1 ] [ Jefe 2 ]
+
+### Administración
+[ RRHH ] [ Bodega ] [ Gerencia ]
+
+---
+
+## 2. Layout del bloque
+Quiero que cada bloque:
+
+- tenga más ancho horizontal
+- no se vea como columna alta
+- pueda usar grid o flex horizontal
+- permita wrap si no caben todos en una sola línea
+- mantenga una altura razonable y compacta
+
+---
+
+## 3. No cambiar agentes
+Esto NO aplica al pool de agentes.
+
+Los agentes / pool están bien como están.
+Solo quiero este cambio para:
+- supervisores
+- jefes de servicio
+- administración
+
+---
+
+## 4. Hoy y Planificación
+Muy importante:
+este mismo comportamiento visual debe existir tanto en:
+- Pizarrón Operativo de hoy
+- Planificación futura
+
+No quiero que hoy se vea de una forma y planificación de otra.
+
+---
+
+## 5. Mantener lógica
+No cambiar:
+- turnos
+- estados
+- cálculos
+- quién trabaja / descansa
+- cobertura
+- planilla
+
+Solo cambiar el layout visual de estas secciones.
+
+---
+
+## 6. Qué debe mantenerse visible
+Cada tarjeta horizontal debe seguir mostrando al menos:
+- nombre
+- tipo o rol si aplica
+- turno
+- estado (en turno / descanso / ausente)
+
+Pero de forma compacta.
+
+---
+
+## 7. Validación
+Quiero confirmar al final que:
+
+1. Supervisores se muestran horizontalmente
+2. Jefes de Servicio se muestran horizontalmente
+3. Administración se muestra horizontalmente
+4. Esto aplica en Hoy y en Planificación
+5. Los agentes no se tocaron
+6. La pantalla se ve menos vacía y mejor aprovechada
+
+---
+
+## 8. Resultado esperado
+Quiero que estas secciones de contexto se sientan como franjas compactas horizontales, no como paneles verticales largos.
+
+Muy importante:
+los agentes quedan igual; el cambio es solo para supervisores, jefes de servicio y administración, en hoy y en planificación.
