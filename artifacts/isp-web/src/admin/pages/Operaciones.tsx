@@ -2836,6 +2836,7 @@ function DroppablePuesto({
   onAbrirSegmentos,
   onConfigTurno,
   cambiosProximos,
+  puestoContextoId,
 }: {
   puesto: Puesto;
   isAgenteSeleccionado: boolean;
@@ -2844,31 +2845,34 @@ function DroppablePuesto({
   onAbrirSegmentos: () => void;
   onConfigTurno?: () => void;
   cambiosProximos?: PlanFuturo[];
+  puestoContextoId?: number | null;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: `puesto-${puesto.id}` });
   const [fichaArmaId, setFichaArmaId] = useState<number | null>(null);
   const cubierto       = puesto.estado === "cubierto" && puesto.agente_id;
   const esRelevo       = cubierto && puesto.titular_employee_id && puesto.agente_id !== puesto.titular_employee_id;
   const titularAusente = !puesto.agente_id && !!puesto.titular_employee_id;
-  // descansoCiclo: el puesto no tiene cobertura porque su titular está en descanso normal del ciclo
-  // No es alerta operativa. El jefe de servicio debe verlo diferente de un descubierto real.
   const descansoCiclo  = !cubierto && (puesto.descanso_por_ciclo === true);
-  // vacacionesTitular: el titular está en vacaciones (sin cobertura asignada)
   const vacacionesTitular = !cubierto && puesto.titular_vac_tipo === "vacaciones";
-  // vacacionesTrabajadas: el titular está cubierto pero con vacaciones_trabajadas activas
   const vacacionesTrabajadas = puesto.titular_vac_tipo === "vacaciones_trabajadas";
+  const expanded = puestoContextoId === puesto.id;
+  const dimmed   = puestoContextoId !== null && puestoContextoId !== undefined && !expanded;
 
   // ─── Renderizado especial para puestos 24x24 agrupados ───────────────────
   if (puesto.es_par_24x24 && puesto.par_trabajando && puesto.par_descansando) {
-    const activo     = puesto.par_trabajando;
+    const activo      = puesto.par_trabajando;
     const descansando = puesto.par_descansando;
     const activoCubierto = activo.estado === "cubierto" && activo.agente_id;
     const activoRelevo   = activoCubierto && activo.titular_employee_id &&
                            activo.agente_id !== activo.titular_employee_id;
-    const activoSinCob   = !activoCubierto; // el slot de hoy no tiene cobertura → alerta
-    const arma = activo.arma_codigo || descansando.arma_codigo;
-    const armaId = activo.arma_id || descansando.arma_id;
-    const armaTipo = activo.arma_tipo || descansando.arma_tipo;
+    const activoSinCob   = !activoCubierto;
+    const arma     = activo.arma_codigo || descansando.arma_codigo;
+    const armaId   = activo.arma_id    || descansando.arma_id;
+    const armaTipo = activo.arma_tipo  || descansando.arma_tipo;
+
+    const statusStrip = activoCubierto
+      ? (activoRelevo ? "bg-amber-400" : "bg-violet-400")
+      : "bg-red-500 animate-pulse";
 
     const borde24 = isOver
       ? "border-primary bg-primary/10 shadow-lg shadow-primary/20 scale-[1.02]"
@@ -2882,7 +2886,7 @@ function DroppablePuesto({
       <div
         ref={setNodeRef}
         onClick={onClick}
-        className={`relative rounded-xl border p-3 transition-all cursor-pointer group ${borde24} ${isAgenteSeleccionado && !activoCubierto ? "ring-1 ring-primary/50 border-primary/30" : ""}`}
+        className={`relative rounded-xl border p-3 transition-all cursor-pointer group ${borde24} ${isAgenteSeleccionado && !activoCubierto ? "ring-1 ring-primary/50 border-primary/30" : ""} ${dimmed ? "opacity-25 hover:opacity-70" : ""}`}
       >
         {/* Badge cambios futuros */}
         {cambiosProximos && cambiosProximos.length > 0 && (
@@ -2892,132 +2896,100 @@ function DroppablePuesto({
           </div>
         )}
 
-        {/* Encabezado */}
-        <div className="flex items-start justify-between gap-2 mb-2">
+        {/* ── COMPACT: siempre visible ── */}
+        <div className="flex gap-2">
+          <div className={`w-1 self-stretch rounded-full shrink-0 ${statusStrip}`} />
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1">
-              <p className="text-xs font-semibold text-white/80 truncate">{puesto.nombre}</p>
-              {onConfigTurno && (
-                <button
-                  onClick={e => { e.stopPropagation(); onConfigTurno(); }}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-white/10"
-                  title="Configurar turno"
-                >
-                  <Settings2 className="w-2.5 h-2.5 text-white/30 hover:text-indigo-400" />
-                </button>
-              )}
+            {/* Header */}
+            <div className="flex items-start justify-between gap-1">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-white/80 truncate leading-tight">{puesto.nombre}</p>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <span className="text-[9px] text-violet-300/50 flex items-center gap-0.5">
+                    <Repeat className="w-2 h-2 opacity-50" />{puesto.turno_nombre ?? "24x24"}
+                  </span>
+                  {activoRelevo && <span className="text-[8px] px-1 py-0.5 bg-amber-500/15 border border-amber-500/20 rounded text-amber-300/70 font-bold">REL</span>}
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                {onConfigTurno && (
+                  <button onClick={e => { e.stopPropagation(); onConfigTurno(); }} className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-white/10" title="Configurar turno">
+                    <Settings2 className="w-2.5 h-2.5 text-white/30 hover:text-indigo-400" />
+                  </button>
+                )}
+                {activoCubierto
+                  ? <CheckCircle2 className={`w-3.5 h-3.5 ${activoRelevo ? "text-amber-400" : "text-violet-400"}`} />
+                  : <Circle className="w-3.5 h-3.5 text-red-400 animate-pulse" />
+                }
+              </div>
             </div>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="text-[9px] px-1.5 py-0.5 rounded border font-semibold text-violet-300/80 bg-violet-500/8 border-violet-500/20 flex items-center gap-0.5">
-                <Repeat className="w-2 h-2 opacity-70" />
-                {puesto.turno_nombre ?? "24x24"}
-              </span>
-              {activoRelevo && (
-                <span className="text-[9px] px-1.5 py-0.5 rounded border font-bold text-amber-300/80 bg-amber-500/10 border-amber-500/25">RELEVO</span>
-              )}
-            </div>
-          </div>
-          {/* Ícono de estado */}
-          <div className="shrink-0 mt-0.5">
-            {activoCubierto
-              ? <CheckCircle2 className={`w-3.5 h-3.5 ${activoRelevo ? "text-amber-400" : "text-violet-400"}`} />
-              : <Circle className="w-3.5 h-3.5 text-red-400 animate-pulse" />
-            }
-          </div>
-        </div>
 
-        {/* Titular activo (trabaja hoy) */}
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <div className="w-1 h-full min-h-[20px] rounded-full bg-violet-500/40 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-[8px] text-violet-400/60 font-semibold uppercase tracking-wider mb-0.5">Trabaja hoy</p>
+            {/* Agente activo — PROMINENTE */}
+            <div className="mt-1.5">
               {activoCubierto && activo.agente_nombre ? (
                 <div className="flex items-center gap-1.5">
                   <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(activo.agente_nombre)}`}>
                     {iniciales(activo.agente_nombre)}
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-[11px] text-white/80 font-medium truncate">{activo.agente_nombre}</p>
-                    {activo.agente_telefono && (
-                      <p className="text-[9px] text-white/25 truncate">{activo.agente_telefono}</p>
-                    )}
-                  </div>
+                  <p className="text-[13px] font-semibold text-white/90 truncate">{activo.agente_nombre}</p>
                 </div>
               ) : activoSinCob && activo.titular_nombre ? (
-                <div className={`flex items-center gap-2 transition-colors ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/35"}`}>
-                  <User className="w-3.5 h-3.5 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-[11px] truncate">{isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : activo.titular_nombre}</p>
-                    <p className="text-[9px] text-red-400/60">Sin cobertura</p>
+                <div className={`flex items-center gap-2 ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/30"}`}>
+                  <User className="w-4 h-4 shrink-0" />
+                  <p className="text-sm">{isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : activo.titular_nombre}</p>
+                </div>
+              ) : (
+                <div className={`flex items-center gap-2 ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/20"}`}>
+                  <User className="w-4 h-4 shrink-0" />
+                  <p className="text-sm">{isOver ? "Soltar aquí" : "Sin cobertura"}</p>
+                </div>
+              )}
+            </div>
+
+            {/* ── EXPANDED: detalles completos ── */}
+            {expanded && (
+              <div className="mt-2.5 pt-2 border-t border-white/8 space-y-2">
+                {/* Descansa hoy */}
+                <div className="flex items-center gap-2">
+                  <div className="w-1 h-full min-h-[18px] rounded-full bg-indigo-500/20 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[8px] text-indigo-400/40 font-semibold uppercase tracking-wider mb-0.5">Descansa hoy</p>
+                    {descansando.titular_nombre ? (
+                      <div className="flex items-center gap-1.5">
+                        <Moon className="w-3 h-3 text-indigo-400/30 shrink-0" />
+                        <p className="text-[11px] text-white/30 truncate">{descansando.titular_nombre}</p>
+                      </div>
+                    ) : <p className="text-[11px] text-white/15">Sin titular</p>}
                   </div>
                 </div>
-              ) : (
-                <div className={`flex items-center gap-2 transition-colors ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/20"}`}>
-                  <User className="w-3.5 h-3.5 shrink-0" />
-                  <p className="text-[11px]">{isOver ? "Soltar aquí" : "Sin cobertura"}</p>
-                </div>
-              )}
-            </div>
-            {activoCubierto && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onLiberar(); }}
-                className="opacity-0 group-hover:opacity-100 text-red-400/60 hover:text-red-400 transition-all p-0.5 shrink-0"
-                title="Remover del puesto"
-              >
-                <XCircle className="w-3 h-3" />
-              </button>
+
+                {/* Arma */}
+                {arma && armaId && (
+                  <button onClick={e => { e.stopPropagation(); setFichaArmaId(armaId); }} title={`Ver ficha: ${arma} — ${armaTipo ?? ""}`} className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-500/8 border border-blue-500/15 rounded-md w-fit hover:bg-blue-500/15 hover:border-blue-500/30 transition-colors">
+                    <Shield className="w-2.5 h-2.5 text-blue-400/60 shrink-0" />
+                    <span className="text-[9px] font-mono font-semibold text-blue-300/70">{arma}</span>
+                    {armaTipo && <span className="text-[9px] text-blue-300/40 capitalize ml-0.5">{armaTipo}</span>}
+                  </button>
+                )}
+
+                {/* Liberar */}
+                {activoCubierto && (
+                  <button onClick={e => { e.stopPropagation(); onLiberar(); }} className="flex items-center gap-1 text-[9px] text-red-400/60 hover:text-red-400 transition-colors" title="Remover del puesto">
+                    <XCircle className="w-3 h-3" /><span>Remover agente</span>
+                  </button>
+                )}
+
+                {/* Tramos */}
+                <button onClick={e => { e.stopPropagation(); onAbrirSegmentos(); }} className="flex items-center gap-1 text-[9px] text-indigo-400/50 hover:text-indigo-400 transition-colors" title="Tramos de cobertura">
+                  <Layers className="w-3 h-3" /><span>Tramos</span>
+                </button>
+              </div>
             )}
           </div>
-
-          {/* Titular descansando hoy */}
-          <div className="flex items-center gap-2">
-            <div className="w-1 h-full min-h-[20px] rounded-full bg-indigo-500/20 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-[8px] text-indigo-400/40 font-semibold uppercase tracking-wider mb-0.5">Descansa hoy</p>
-              {descansando.titular_nombre ? (
-                <div className="flex items-center gap-1.5">
-                  <Moon className="w-3 h-3 text-indigo-400/30 shrink-0" />
-                  <p className="text-[11px] text-white/30 truncate">{descansando.titular_nombre}</p>
-                </div>
-              ) : (
-                <p className="text-[11px] text-white/15">Sin titular</p>
-              )}
-            </div>
-          </div>
         </div>
 
-        {/* Arma (sigue al titular activo del puesto) */}
-        {arma && armaId && (
-          <button
-            onClick={e => { e.stopPropagation(); setFichaArmaId(armaId); }}
-            title={`Ver ficha: ${arma} — ${armaTipo ?? ""}`}
-            className="flex items-center gap-1 mt-1.5 px-1.5 py-0.5 bg-blue-500/8 border border-blue-500/15 rounded-md w-fit hover:bg-blue-500/15 hover:border-blue-500/30 transition-colors cursor-pointer"
-          >
-            <Shield className="w-2.5 h-2.5 text-blue-400/60 shrink-0" />
-            <span className="text-[9px] font-mono font-semibold text-blue-300/70">{arma}</span>
-            {armaTipo && <span className="text-[9px] text-blue-300/40 capitalize">{armaTipo}</span>}
-          </button>
-        )}
-
-        {/* Tramos */}
-        <div className="mt-2 pt-2 border-t border-white/5">
-          <button
-            onClick={(e) => { e.stopPropagation(); onAbrirSegmentos(); }}
-            className="flex items-center gap-1 text-[9px] text-indigo-400/50 hover:text-indigo-400 transition-colors group/tramos"
-            title="Registrar tramos de cobertura"
-          >
-            <Layers className="w-3 h-3" />
-            <span>Tramos</span>
-          </button>
-        </div>
-
-        {isOver && (
-          <div className="absolute inset-0 rounded-xl border-2 border-primary border-dashed pointer-events-none" />
-        )}
-        {fichaArmaId && (
-          <ModalFichaArma armaId={fichaArmaId} onClose={() => setFichaArmaId(null)} />
-        )}
+        {isOver && <div className="absolute inset-0 rounded-xl border-2 border-primary border-dashed pointer-events-none" />}
+        {fichaArmaId && <ModalFichaArma armaId={fichaArmaId} onClose={() => setFichaArmaId(null)} />}
       </div>
     );
   }
@@ -3028,246 +3000,188 @@ function DroppablePuesto({
     : esRelevo
       ? "bg-[#0f1208] border-amber-500/30 hover:border-amber-400/40"
       : cubierto
-        ? "bg-[#081620] border-green-500/20 hover:border-green-400/30"
+        ? "bg-[#071a0f] border-green-500/20 hover:border-green-400/30"
         : descansoCiclo
           ? "bg-[#08101a] border-indigo-500/25 hover:border-indigo-400/35"
           : "bg-[#0c0a16] border-red-500/25 hover:border-red-400/35";
+
+  const statusStrip = cubierto
+    ? (esRelevo ? "bg-amber-400" : "bg-green-400")
+    : descansoCiclo
+      ? "bg-indigo-400"
+      : "bg-red-500 animate-pulse";
 
   return (
     <div
       ref={setNodeRef}
       onClick={onClick}
-      className={`
-        relative rounded-xl border p-3 transition-all cursor-pointer group
-        ${borderClass}
-        ${isAgenteSeleccionado && !cubierto ? "ring-1 ring-primary/50 border-primary/30" : ""}
-      `}
+      className={`relative rounded-xl border p-3 transition-all cursor-pointer group ${borderClass} ${isAgenteSeleccionado && !cubierto ? "ring-1 ring-primary/50 border-primary/30" : ""} ${dimmed ? "opacity-25 hover:opacity-70" : ""}`}
     >
-      {/* Badge: cambios futuros programados */}
+      {/* Badge cambios futuros */}
       {cambiosProximos && cambiosProximos.length > 0 && (
         <div className="absolute -top-1.5 -right-1.5 z-10 flex items-center gap-0.5 bg-indigo-700/90 border border-indigo-400/40 rounded-full px-1.5 py-0.5" title={`${cambiosProximos.length} cambio(s) futuro(s) programado(s)`}>
           <Calendar className="w-2.5 h-2.5 text-indigo-200" />
           <span className="text-[8px] text-indigo-100 font-bold leading-none">{cambiosProximos.length}</span>
         </div>
       )}
-      {/* Badge: titular en vacaciones */}
       {vacacionesTitular && (
-        <div
-          className="absolute -top-1.5 -left-1.5 z-10 flex items-center gap-0.5 bg-emerald-900/90 border border-emerald-500/40 rounded-full px-1.5 py-0.5"
-          title={`Titular en vacaciones${puesto.titular_vac_inicio ? ` desde ${puesto.titular_vac_inicio}` : ""}${puesto.titular_vac_fin ? ` hasta ${puesto.titular_vac_fin}` : ""}`}
-        >
+        <div className="absolute -top-1.5 -left-1.5 z-10 flex items-center gap-0.5 bg-emerald-900/90 border border-emerald-500/40 rounded-full px-1.5 py-0.5" title={`Titular en vacaciones${puesto.titular_vac_inicio ? ` desde ${puesto.titular_vac_inicio}` : ""}${puesto.titular_vac_fin ? ` hasta ${puesto.titular_vac_fin}` : ""}`}>
           <span className="text-[8px] text-emerald-300 font-bold leading-none">VAC</span>
         </div>
       )}
-      {/* Badge: titular con vacaciones trabajadas (sigue en puesto) */}
       {vacacionesTrabajadas && (
-        <div
-          className="absolute -top-1.5 -left-1.5 z-10 flex items-center gap-0.5 bg-orange-900/90 border border-orange-500/40 rounded-full px-1.5 py-0.5"
-          title="Titular trabajando días de vacaciones"
-        >
+        <div className="absolute -top-1.5 -left-1.5 z-10 flex items-center gap-0.5 bg-orange-900/90 border border-orange-500/40 rounded-full px-1.5 py-0.5" title="Titular trabajando días de vacaciones">
           <span className="text-[8px] text-orange-300 font-bold leading-none">VAC✓</span>
         </div>
       )}
-      {/* Encabezado: nombre + turno + estado */}
-      <div className="flex items-start justify-between gap-2 mb-2">
+
+      {/* ── COMPACT: siempre visible ── */}
+      <div className="flex gap-2">
+        <div className={`w-1 self-stretch rounded-full shrink-0 ${statusStrip}`} />
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1">
-            <p className="text-xs font-semibold text-white/80 truncate">{puesto.nombre}</p>
-            {onConfigTurno && (
-              <button
-                onClick={e => { e.stopPropagation(); onConfigTurno(); }}
-                className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-white/10"
-                title="Configurar turno"
-              >
-                <Settings2 className="w-2.5 h-2.5 text-white/30 hover:text-indigo-400" />
-              </button>
-            )}
-          </div>
-          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-            {/* Turno real (tipo_turno_id) o turno texto legacy */}
-            {puesto.tipo_turno_id ? (
-              <span
-                className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold cursor-pointer ${
-                  puesto.tipo_ciclo === "alternado"
-                    ? "text-indigo-300/80 bg-indigo-500/8 border-indigo-500/20"
-                    : "text-emerald-300/70 bg-emerald-500/6 border-emerald-500/15"
-                }`}
-                onClick={e => { e.stopPropagation(); onConfigTurno?.(); }}
-                title="Clic para cambiar turno"
-              >
-                {puesto.tipo_ciclo === "alternado" ? <Repeat className="w-2 h-2 inline mr-0.5 opacity-70" /> : null}
-                {puesto.turno_nombre}
-              </span>
-            ) : (
-              <span
-                className="text-[9px] px-1.5 py-0.5 rounded border font-semibold text-amber-300/60 bg-amber-500/6 border-amber-500/15 cursor-pointer"
-                onClick={e => { e.stopPropagation(); onConfigTurno?.(); }}
-                title="Sin turno asignado — clic para configurar"
-              >
-                {puesto.turno ?? "Sin turno"}
-              </span>
-            )}
-            {puesto.jornada && (
-              <span className="text-[9px] px-1.5 py-0.5 rounded border text-blue-300/60 bg-blue-500/5 border-blue-500/15 font-semibold">
-                {puesto.jornada}
-              </span>
-            )}
-            {esRelevo && (() => {
-              const ep = puesto.estado_operativo_puesto;
-              const estadoLabel: Record<string, { label: string; cls: string }> = {
-                relevo_completo:  { label: "RELEVO",      cls: "text-amber-300/80 bg-amber-500/10 border-amber-500/25" },
-                relevo_parcial:   { label: "REL. PARCIAL",cls: "text-orange-300/80 bg-orange-500/10 border-orange-500/25" },
-                vacaciones:       { label: "VACACIONES",  cls: "text-emerald-300/80 bg-emerald-500/10 border-emerald-500/25" },
-                incapacidad:      { label: "INCAPACIDAD", cls: "text-teal-300/80 bg-teal-500/10 border-teal-500/25" },
-                suspension:       { label: "SUSPENSIÓN",  cls: "text-red-300/80 bg-red-500/10 border-red-500/25" },
-                abandono_parcial: { label: "ABANDONO",    cls: "text-rose-300/80 bg-rose-500/10 border-rose-500/25" },
-                horas_extra:      { label: "HRS EXTRA",   cls: "text-purple-300/80 bg-purple-500/10 border-purple-500/25" },
-                servicio_especial:{ label: "SSA",         cls: "text-violet-300/80 bg-violet-500/10 border-violet-500/25" },
-              };
-              const info = ep ? estadoLabel[ep] : null;
-              return (
-                <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold ${info ? info.cls : "text-amber-300/80 bg-amber-500/10 border-amber-500/25"}`}>
-                  {info ? info.label : "RELEVO"}
-                </span>
-              );
-            })()}
-          </div>
-        </div>
-        <div className="shrink-0 mt-0.5">
-          {cubierto
-            ? <CheckCircle2 className={`w-3.5 h-3.5 ${esRelevo ? "text-amber-400" : "text-green-400"}`} />
-            : descansoCiclo
-              ? <Moon className="w-3.5 h-3.5 text-indigo-400/70" title="Descanso normal del ciclo" />
-              : <Circle className="w-3.5 h-3.5 text-red-400 animate-pulse" />
-          }
-        </div>
-      </div>
-
-      {/* Cobertura actual */}
-      {cubierto && puesto.agente_nombre ? (
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className={`w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarColor(puesto.agente_nombre)}`}>
-                {iniciales(puesto.agente_nombre)}
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1">
-                  <p className="text-[11px] text-white/80 font-medium truncate">{puesto.agente_nombre}</p>
-                  {!esRelevo && (
-                    <span className="text-[8px] text-green-400/70 font-bold shrink-0">T</span>
-                  )}
-                </div>
-                {puesto.agente_telefono && (
-                  <p className="text-[10px] text-white/25 truncate">{puesto.agente_telefono}</p>
+          {/* Fila superior: nombre + turno + estado */}
+          <div className="flex items-start justify-between gap-1">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-white/80 truncate leading-tight">{puesto.nombre}</p>
+              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                {puesto.tipo_turno_id ? (
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold cursor-pointer ${puesto.tipo_ciclo === "alternado" ? "text-indigo-300/70 bg-indigo-500/8 border-indigo-500/20" : "text-emerald-300/60 bg-emerald-500/6 border-emerald-500/15"}`} onClick={e => { e.stopPropagation(); onConfigTurno?.(); }} title="Clic para cambiar turno">
+                    {puesto.tipo_ciclo === "alternado" ? <Repeat className="w-2 h-2 inline mr-0.5 opacity-70" /> : null}{puesto.turno_nombre}
+                  </span>
+                ) : (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded border font-semibold text-amber-300/60 bg-amber-500/6 border-amber-500/15 cursor-pointer" onClick={e => { e.stopPropagation(); onConfigTurno?.(); }} title="Sin turno — clic para configurar">
+                    {puesto.turno ?? "Sin turno"}
+                  </span>
                 )}
+                {esRelevo && (() => {
+                  const ep = puesto.estado_operativo_puesto;
+                  const estadoLabel: Record<string, { label: string; cls: string }> = {
+                    relevo_completo:  { label: "RELEVO",      cls: "text-amber-300/80 bg-amber-500/10 border-amber-500/25" },
+                    relevo_parcial:   { label: "REL. PARCIAL",cls: "text-orange-300/80 bg-orange-500/10 border-orange-500/25" },
+                    vacaciones:       { label: "VACACIONES",  cls: "text-emerald-300/80 bg-emerald-500/10 border-emerald-500/25" },
+                    incapacidad:      { label: "INCAPACIDAD", cls: "text-teal-300/80 bg-teal-500/10 border-teal-500/25" },
+                    suspension:       { label: "SUSPENSIÓN",  cls: "text-red-300/80 bg-red-500/10 border-red-500/25" },
+                    abandono_parcial: { label: "ABANDONO",    cls: "text-rose-300/80 bg-rose-500/10 border-rose-500/25" },
+                    horas_extra:      { label: "HRS EXTRA",   cls: "text-purple-300/80 bg-purple-500/10 border-purple-500/25" },
+                    servicio_especial:{ label: "SSA",         cls: "text-violet-300/80 bg-violet-500/10 border-violet-500/25" },
+                  };
+                  const info = ep ? estadoLabel[ep] : null;
+                  return <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold ${info ? info.cls : "text-amber-300/80 bg-amber-500/10 border-amber-500/25"}`}>{info ? info.label : "RELEVO"}</span>;
+                })()}
               </div>
             </div>
-            <button
-              onClick={(e) => { e.stopPropagation(); onLiberar(); }}
-              className="opacity-0 group-hover:opacity-100 text-red-400/60 hover:text-red-400 transition-all p-0.5"
-              title="Remover del puesto"
-            >
-              <XCircle className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-1 shrink-0 mt-0.5">
+              {onConfigTurno && (
+                <button onClick={e => { e.stopPropagation(); onConfigTurno(); }} className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-white/10" title="Configurar turno">
+                  <Settings2 className="w-2.5 h-2.5 text-white/30 hover:text-indigo-400" />
+                </button>
+              )}
+              {cubierto
+                ? <CheckCircle2 className={`w-3.5 h-3.5 ${esRelevo ? "text-amber-400" : "text-green-400"}`} />
+                : descansoCiclo
+                  ? <Moon className="w-3.5 h-3.5 text-indigo-400/70" title="Descanso de ciclo" />
+                  : <Circle className="w-3.5 h-3.5 text-red-400 animate-pulse" />
+              }
+            </div>
           </div>
-          {/* Si es relevo: mostrar titular ausente */}
-          {esRelevo && puesto.titular_nombre && (
-            <div className="flex items-center gap-1.5 px-1.5 py-1 bg-white/4 rounded-lg border border-white/5">
-              <User className="w-2.5 h-2.5 text-white/25 shrink-0" />
-              <p className="text-[9px] text-white/35 truncate">Titular ausente: <span className="text-white/50">{puesto.titular_nombre}</span></p>
-            </div>
-          )}
-        </div>
-      ) : titularAusente ? (
-        /* Titular definido pero sin cobertura: puede ser descanso de ciclo, vacaciones, o ausencia real */
-        <div className="space-y-1.5">
-          {descansoCiclo ? (
-            /* Descanso normal del ciclo — no es alerta operativa */
-            <div className="flex items-center gap-2 text-indigo-300/50">
-              <Moon className="w-4 h-4 shrink-0" />
-              <p className="text-[11px]">Descanso de turno</p>
-            </div>
-          ) : vacacionesTitular ? (
-            /* Titular en vacaciones normales — necesita relevo */
-            <div className={`flex items-center gap-2 transition-colors ${isOver || isAgenteSeleccionado ? "text-primary" : "text-emerald-400/60"}`}>
-              <User className="w-4 h-4 shrink-0" />
-              <p className="text-[11px]">
-                {isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : "En vacaciones"}
-              </p>
-            </div>
-          ) : (
-            <div className={`flex items-center gap-2 transition-colors ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/20"}`}>
-              <User className="w-4 h-4 shrink-0" />
-              <p className="text-[11px]">
-                {isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : "Sin cobertura hoy"}
-              </p>
-            </div>
-          )}
-          <div className={`flex items-center gap-1.5 px-1.5 py-1 rounded-lg border ${
-            descansoCiclo
-              ? "bg-indigo-500/5 border-indigo-500/15"
-              : vacacionesTitular
-                ? "bg-emerald-500/5 border-emerald-500/15"
-                : "bg-red-500/5 border-red-500/10"
-          }`}>
-            <User className={`w-2.5 h-2.5 shrink-0 ${descansoCiclo ? "text-indigo-400/40" : vacacionesTitular ? "text-emerald-400/40" : "text-red-400/40"}`} />
-            <p className={`text-[9px] truncate ${descansoCiclo ? "text-indigo-300/50" : vacacionesTitular ? "text-emerald-300/50" : "text-red-300/50"}`}>
-              {descansoCiclo ? "Descansando: " : vacacionesTitular ? "Vacaciones: " : "Titular: "}
-              <span className={descansoCiclo ? "text-indigo-300/70" : vacacionesTitular ? "text-emerald-300/70" : "text-red-300/70"}>{puesto.titular_nombre}</span>
-              {descansoCiclo && <span className="ml-1 text-indigo-400/50 font-bold">HE ✓</span>}
-            </p>
+
+          {/* Agente activo — PROMINENTE */}
+          <div className="mt-1.5">
+            {cubierto && puesto.agente_nombre ? (
+              <div className="flex items-center gap-1.5">
+                <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(puesto.agente_nombre)}`}>
+                  {iniciales(puesto.agente_nombre)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1">
+                    <p className="text-[13px] font-semibold text-white/90 truncate">{puesto.agente_nombre}</p>
+                    {!esRelevo && <span className="text-[8px] text-green-400/70 font-bold shrink-0">T</span>}
+                  </div>
+                </div>
+              </div>
+            ) : descansoCiclo ? (
+              <div className="flex items-center gap-2 text-indigo-300/50">
+                <Moon className="w-4 h-4 shrink-0" />
+                <p className="text-sm">Descanso de turno</p>
+              </div>
+            ) : vacacionesTitular ? (
+              <div className={`flex items-center gap-2 ${isOver || isAgenteSeleccionado ? "text-primary" : "text-emerald-400/60"}`}>
+                <User className="w-4 h-4 shrink-0" />
+                <p className="text-sm">{isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : "En vacaciones"}</p>
+              </div>
+            ) : titularAusente ? (
+              <div className={`flex items-center gap-2 ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/25"}`}>
+                <User className="w-4 h-4 shrink-0" />
+                <p className="text-sm">{isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : "Sin cobertura hoy"}</p>
+              </div>
+            ) : (
+              <div className={`flex items-center gap-2 ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/20"}`}>
+                <User className="w-4 h-4 shrink-0" />
+                <p className="text-sm">{isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : "Puesto descubierto"}</p>
+              </div>
+            )}
           </div>
-        </div>
-      ) : (
-        /* Sin titular definido — descubierto real */
-        <div className={`flex items-center gap-2 transition-colors ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/20"}`}>
-          <User className="w-4 h-4 shrink-0" />
-          <p className="text-[11px]">
-            {isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : "Puesto descubierto"}
-          </p>
-        </div>
-      )}
 
-      {/* Arma asignada al puesto */}
-      {puesto.arma_codigo && puesto.arma_id && (
-        <button
-          onClick={e => { e.stopPropagation(); setFichaArmaId(puesto.arma_id!); }}
-          title={`Ver ficha: ${puesto.arma_codigo} — ${puesto.arma_tipo ?? ""}`}
-          className="flex items-center gap-1 mt-1.5 px-1.5 py-0.5 bg-blue-500/8 border border-blue-500/15 rounded-md w-fit hover:bg-blue-500/15 hover:border-blue-500/30 transition-colors cursor-pointer"
-        >
-          <Shield className="w-2.5 h-2.5 text-blue-400/60 shrink-0" />
-          <span className="text-[9px] font-mono font-semibold text-blue-300/70">{puesto.arma_codigo}</span>
-          {puesto.arma_tipo && (
-            <span className="text-[9px] text-blue-300/40 capitalize">{puesto.arma_tipo}</span>
+          {/* ── EXPANDED: detalles completos ── */}
+          {expanded && (
+            <div className="mt-2.5 pt-2 border-t border-white/8 space-y-2">
+              {/* Relevo: titular ausente */}
+              {esRelevo && puesto.titular_nombre && (
+                <div className="flex items-center gap-1.5 px-1.5 py-1 bg-white/4 rounded-lg border border-white/5">
+                  <User className="w-2.5 h-2.5 text-white/25 shrink-0" />
+                  <p className="text-[9px] text-white/35 truncate">Titular ausente: <span className="text-white/50">{puesto.titular_nombre}</span></p>
+                </div>
+              )}
+              {/* Descanso ciclo: titular */}
+              {descansoCiclo && puesto.titular_nombre && (
+                <div className="flex items-center gap-1.5 px-1.5 py-1 bg-indigo-500/5 border border-indigo-500/15 rounded-lg">
+                  <User className="w-2.5 h-2.5 text-indigo-400/40 shrink-0" />
+                  <p className="text-[9px] text-indigo-300/50 truncate">Descansando: <span className="text-indigo-300/70">{puesto.titular_nombre}</span> <span className="text-indigo-400/50 font-bold">HE ✓</span></p>
+                </div>
+              )}
+              {/* Vacaciones: titular */}
+              {vacacionesTitular && puesto.titular_nombre && (
+                <div className="flex items-center gap-1.5 px-1.5 py-1 bg-emerald-500/5 border border-emerald-500/15 rounded-lg">
+                  <User className="w-2.5 h-2.5 text-emerald-400/40 shrink-0" />
+                  <p className="text-[9px] text-emerald-300/50 truncate">Vacaciones: <span className="text-emerald-300/70">{puesto.titular_nombre}</span></p>
+                </div>
+              )}
+              {/* Titular sin cobertura (no descanso, no vac) */}
+              {titularAusente && !descansoCiclo && !vacacionesTitular && puesto.titular_nombre && (
+                <div className="flex items-center gap-1.5 px-1.5 py-1 bg-red-500/5 border border-red-500/10 rounded-lg">
+                  <User className="w-2.5 h-2.5 text-red-400/40 shrink-0" />
+                  <p className="text-[9px] text-red-300/50 truncate">Titular: <span className="text-red-300/70">{puesto.titular_nombre}</span></p>
+                </div>
+              )}
+              {/* Teléfono */}
+              {cubierto && puesto.agente_telefono && (
+                <p className="text-[9px] text-white/25 truncate">{puesto.agente_telefono}</p>
+              )}
+              {/* Arma */}
+              {puesto.arma_codigo && puesto.arma_id && (
+                <button onClick={e => { e.stopPropagation(); setFichaArmaId(puesto.arma_id!); }} title={`Ver ficha: ${puesto.arma_codigo} — ${puesto.arma_tipo ?? ""}`} className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-500/8 border border-blue-500/15 rounded-md w-fit hover:bg-blue-500/15 hover:border-blue-500/30 transition-colors">
+                  <Shield className="w-2.5 h-2.5 text-blue-400/60 shrink-0" />
+                  <span className="text-[9px] font-mono font-semibold text-blue-300/70">{puesto.arma_codigo}</span>
+                  {puesto.arma_tipo && <span className="text-[9px] text-blue-300/40 capitalize ml-0.5">{puesto.arma_tipo}</span>}
+                </button>
+              )}
+              {/* Liberar */}
+              {cubierto && (
+                <button onClick={e => { e.stopPropagation(); onLiberar(); }} className="flex items-center gap-1 text-[9px] text-red-400/60 hover:text-red-400 transition-colors" title="Remover del puesto">
+                  <XCircle className="w-3 h-3" /><span>Remover agente</span>
+                </button>
+              )}
+              {/* Tramos */}
+              <button onClick={e => { e.stopPropagation(); onAbrirSegmentos(); }} className="flex items-center gap-1 text-[9px] text-indigo-400/50 hover:text-indigo-400 transition-colors" title="Tramos de cobertura">
+                <Layers className="w-3 h-3" /><span>Tramos</span>
+              </button>
+            </div>
           )}
-        </button>
-      )}
-
-      {/* Botón tramos */}
-      <div className="mt-2 pt-2 border-t border-white/5">
-        <button
-          onClick={(e) => { e.stopPropagation(); onAbrirSegmentos(); }}
-          className="flex items-center gap-1 text-[9px] text-indigo-400/50 hover:text-indigo-400 transition-colors group/tramos"
-          title="Registrar tramos de cobertura"
-        >
-          <Layers className="w-3 h-3" />
-          <span>Tramos</span>
-        </button>
+        </div>
       </div>
 
-      {/* Overlay drag-over */}
-      {isOver && (
-        <div className="absolute inset-0 rounded-xl border-2 border-primary border-dashed pointer-events-none" />
-      )}
-
-      {/* Modal ficha del arma */}
-      {fichaArmaId && (
-        <ModalFichaArma
-          armaId={fichaArmaId}
-          onClose={() => setFichaArmaId(null)}
-        />
-      )}
+      {isOver && <div className="absolute inset-0 rounded-xl border-2 border-primary border-dashed pointer-events-none" />}
+      {fichaArmaId && <ModalFichaArma armaId={fichaArmaId} onClose={() => setFichaArmaId(null)} />}
     </div>
   );
 }
@@ -3286,6 +3200,7 @@ function ClienteColumna({
   cambiosFuturosProximos,
   resaltado,
   colGlobal,
+  puestoContextoId,
 }: {
   cliente: ClienteBoard;
   agenteSeleccionadoId: number | null;
@@ -3298,6 +3213,7 @@ function ClienteColumna({
   cambiosFuturosProximos?: Record<number, PlanFuturo[]>;
   resaltado?: boolean;
   colGlobal?: { v: number; val: boolean };
+  puestoContextoId?: number | null;
 }) {
   const ssKey = `piz_col_cli_${cliente.clienteId ?? cliente.clienteNombre}`;
   const [colapsado, setColapsado] = useState(() => {
@@ -3426,6 +3342,7 @@ function ClienteColumna({
               onAbrirSegmentos={() => onAbrirSegmentos(p)}
               onConfigTurno={onConfigTurno ? () => onConfigTurno(p) : undefined}
               cambiosProximos={cambiosFuturosProximos?.[p.id]}
+              puestoContextoId={puestoContextoId}
             />
             {/* Botón eliminar puesto */}
             <button
@@ -5934,6 +5851,7 @@ export default function Operaciones() {
                     cambiosFuturosProximos={cambiosFuturosProximos}
                     resaltado={clienteResaltado !== null && cliente.clienteId === clienteResaltado}
                     colGlobal={colGlobal}
+                    puestoContextoId={puestoContexto?.id ?? null}
                   />
                 ))}
               </div>
@@ -6189,26 +6107,20 @@ export default function Operaciones() {
             const SvCard = ({ sv }: { sv: SupervisorPool }) => {
               const estadoCiclo = sv.estado_ciclo;
               const estadoBadge = estadoCiclo === "trabajando"
-                ? { cls: "text-emerald-300 bg-emerald-500/15 border-emerald-500/30", label: "EN TURNO" }
+                ? { cls: "text-emerald-300/90 bg-emerald-500/15 border-emerald-500/30", label: "EN TURNO" }
                 : estadoCiclo === "disponible_he"
-                  ? { cls: "text-amber-300 bg-amber-500/15 border-amber-500/30", label: "DISP. HE" }
+                  ? { cls: "text-amber-300/80 bg-amber-500/12 border-amber-500/25", label: "DISP. HE" }
                   : estadoCiclo === "descansando_ciclo"
-                    ? { cls: "text-white/30 bg-white/4 border-white/8", label: "DESCANSO" }
+                    ? { cls: "text-white/25 bg-white/3 border-white/8", label: "DESCANSO" }
                     : estadoCiclo === "licencia"
-                      ? { cls: "text-indigo-300 bg-indigo-500/10 border-indigo-500/20", label: "LICENCIA" }
+                      ? { cls: "text-indigo-300/70 bg-indigo-500/10 border-indigo-500/20", label: "LICENCIA" }
                       : estadoCiclo === "suspendido"
-                        ? { cls: "text-red-300 bg-red-500/10 border-red-500/20", label: "SUSPENDIDO" }
-                        : { cls: "text-white/20 bg-white/4 border-white/8", label: "SIN TURNO" };
+                        ? { cls: "text-red-300/70 bg-red-500/10 border-red-500/20", label: "SUSP." }
+                        : { cls: "text-white/20 bg-white/3 border-white/6", label: "SIN TURNO" };
 
               const esSeleccionado = agenteSeleccionado?.id === sv.id;
               const estaEnDescansoPool = pool!.descansandoCiclo.some(a => a.id === sv.id);
               const seleccionable = estaEnDescansoPool && !isCerrado;
-
-              const borderCls = esSeleccionado
-                ? "border-violet-400/70 bg-gradient-to-b from-violet-500/20 to-[#0c1929] ring-2 ring-violet-400/40"
-                : sv.puede_cubrir
-                  ? "border-violet-500/30 bg-gradient-to-b from-violet-500/5 to-[#0c1929]"
-                  : "border-white/6 bg-[#0a1020]";
 
               const handleClick = seleccionable ? () => {
                 const agente = pool!.descansandoCiclo.find(a => a.id === sv.id);
@@ -6217,60 +6129,19 @@ export default function Operaciones() {
 
               return (
                 <div
-                  className={`shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 w-48 transition-all ${borderCls} ${seleccionable ? "cursor-pointer hover:border-violet-400/50 hover:from-violet-500/12" : ""}`}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border transition-all ${esSeleccionado ? "border-violet-400/60 bg-violet-500/15 ring-1 ring-violet-400/30" : seleccionable ? "border-violet-500/20 bg-violet-500/5 cursor-pointer hover:border-violet-400/40 hover:bg-violet-500/10" : "border-white/5 bg-transparent"}`}
                   onClick={handleClick}
                 >
-                  {sv.zona_nombre && (
-                    <p className="text-[8px] font-bold uppercase tracking-widest text-violet-400/60 truncate border-b border-violet-500/10 pb-1.5 mb-0.5">
-                      📍 {sv.zona_nombre}
-                    </p>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarColor(sv.nombre_completo)} ${sv.puede_cubrir ? "ring-1 ring-violet-400/30" : ""} ${esSeleccionado ? "ring-2 ring-violet-400/60" : ""}`}>
-                      {iniciales(sv.nombre_completo)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className={`text-xs font-semibold truncate leading-tight ${sv.puede_cubrir ? "text-white/90" : "text-white/50"}`}>{sv.nombre_completo}</p>
-                      {sv.turno_nombre && <p className="text-[9px] text-violet-300/40 truncate">{sv.turno_nombre}</p>}
-                    </div>
+                  <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(sv.nombre_completo)} ${esSeleccionado ? "ring-2 ring-violet-400/50" : sv.puede_cubrir ? "ring-1 ring-violet-400/20" : ""}`}>
+                    {iniciales(sv.nombre_completo)}
                   </div>
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border ${estadoBadge.cls}`}>
-                      {estadoBadge.label}
-                    </span>
-                    {esSeleccionado ? (
-                      <span className="text-[8px] font-bold text-violet-200 bg-violet-500/25 border border-violet-400/50 px-1.5 py-0.5 rounded animate-pulse">
-                        ✓ Seleccionado · clic aquí para cancelar
-                      </span>
-                    ) : estaEnDescansoPool ? (
-                      <span className="text-[8px] text-violet-300/70 bg-violet-500/8 border border-violet-500/20 px-1.5 py-0.5 rounded">
-                        clic para asignar
-                      </span>
-                    ) : sv.puede_cubrir ? (
-                      <span className="text-[8px] text-violet-300/40 bg-violet-500/4 border border-violet-500/10 px-1.5 py-0.5 rounded">
-                        puede cubrir
-                      </span>
-                    ) : null}
-                  </div>
-                  {/* Vehículos asignados a la zona del supervisor */}
-                  {(sv as any).vehiculos_zona?.length > 0 && (
-                    <div className="flex flex-wrap gap-1 border-t border-white/5 pt-1.5">
-                      {((sv as any).vehiculos_zona as Array<{ id: number; placa: string; tipo: string; marca: string; color: string; estado: string }>).map((veh) => (
-                        <button
-                          key={veh.id}
-                          onClick={(e) => { e.stopPropagation(); setFichaVehiculoId(veh.id); }}
-                          className={`flex items-center gap-1 text-[8px] font-bold px-1.5 py-0.5 rounded border transition-all ${
-                            veh.estado === "activo"
-                              ? "bg-sky-500/10 border-sky-500/25 text-sky-300 hover:bg-sky-500/20 hover:border-sky-400/50"
-                              : "bg-white/4 border-white/8 text-white/30 line-through hover:bg-white/8"
-                          }`}
-                          title={`Ver ficha: ${veh.marca ?? ""} ${veh.color ?? ""} · ${veh.estado}`}
-                        >
-                          🚗 {veh.placa}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  <p className={`text-[11px] font-medium truncate flex-1 ${sv.puede_cubrir || estadoCiclo === "trabajando" ? "text-white/80" : "text-white/35"}`}>{sv.nombre_completo}</p>
+                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${estadoBadge.cls}`}>{estadoBadge.label}</span>
+                  {esSeleccionado && <span className="text-[8px] text-violet-300 animate-pulse shrink-0">✓</span>}
+                  {/* Vehículos zona */}
+                  {(sv as any).vehiculos_zona?.length > 0 && ((sv as any).vehiculos_zona as Array<{ id: number; placa: string; estado: string }>).filter(v => v.estado === "activo").slice(0,1).map(veh => (
+                    <button key={veh.id} onClick={e => { e.stopPropagation(); setFichaVehiculoId(veh.id); }} className="text-[8px] text-sky-300/60 border border-sky-500/20 bg-sky-500/8 px-1 py-0.5 rounded shrink-0">🚗 {veh.placa}</button>
+                  ))}
                 </div>
               );
             };
@@ -6300,49 +6171,10 @@ export default function Operaciones() {
                 </button>
 
                 {!colSupers && (
-                <div className="p-3 space-y-3">
-                  {/* En turno hoy */}
-                  {svTrabajando.length > 0 && (
-                    <div>
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-400/60 mb-2 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
-                        En turno hoy ({svTrabajando.length})
-                      </p>
-                      <div className="flex gap-2 overflow-x-auto">
-                        {svTrabajando.map(sv => <SvCard key={sv.id} sv={sv} />)}
-                      </div>
-                    </div>
-                  )}
-                  {/* Disponible para HE */}
-                  {svDisponHE.length > 0 && (
-                    <div>
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-amber-400/60 mb-2 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400/70 inline-block" />
-                        Disponibles para horas extra ({svDisponHE.length})
-                      </p>
-                      <div className="flex gap-2 overflow-x-auto">
-                        {svDisponHE.map(sv => <SvCard key={sv.id} sv={sv} />)}
-                      </div>
-                    </div>
-                  )}
-                  {/* Descanso de ciclo */}
-                  {svDescanso.length > 0 && (
-                    <div>
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-white/25 mb-2 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-white/15 inline-block" />
-                        Descanso de ciclo ({svDescanso.length})
-                      </p>
-                      <div className="flex gap-2 overflow-x-auto">
-                        {svDescanso.map(sv => <SvCard key={sv.id} sv={sv} />)}
-                      </div>
-                    </div>
-                  )}
-                  {/* Otros (licencia, suspendido, sin turno) */}
-                  {svOtros.length > 0 && (
-                    <div className="flex gap-2 overflow-x-auto">
-                      {svOtros.map(sv => <SvCard key={sv.id} sv={sv} />)}
-                    </div>
-                  )}
+                <div className="p-2 space-y-0.5">
+                  {[...svTrabajando, ...svDisponHE, ...svDescanso, ...svOtros].map(sv => (
+                    <SvCard key={sv.id} sv={sv} />
+                  ))}
                 </div>
                 )}
               </div>
@@ -6359,25 +6191,12 @@ export default function Operaciones() {
             const JefeCard = ({ js, variante }: { js: JefeServicioPool; variante: "hoy" | "mañana" | "descanso" | "otro" }) => {
               const esSeleccionado = agenteSeleccionado?.id === js.id;
               const seleccionable = variante === "descanso" && !isCerrado;
-
-              const borderCls = esSeleccionado
-                ? "border-orange-400/70 bg-gradient-to-b from-orange-500/20 to-[#0c1929] ring-2 ring-orange-400/40"
-                : variante === "hoy"
-                  ? "border-orange-400/40 bg-gradient-to-b from-orange-500/8 to-[#0c1929]"
-                  : variante === "mañana"
-                    ? "border-amber-500/25 bg-[#0c1929]"
-                    : variante === "descanso"
-                      ? "border-orange-500/20 bg-[#080f1e]"
-                      : "border-white/6 bg-[#080f1e]";
               const badgeCls = variante === "hoy"
-                ? "text-orange-200 bg-orange-500/20 border-orange-400/40 font-bold"
+                ? "text-orange-200/90 bg-orange-500/20 border-orange-400/35"
                 : variante === "mañana"
-                  ? "text-amber-300/80 bg-amber-500/10 border-amber-500/20"
-                  : "text-white/30 bg-white/4 border-white/8";
-              const badgeLabel = variante === "hoy" ? "EN TURNO HOY"
-                : variante === "mañana" ? "TURNO MAÑANA"
-                : variante === "descanso" ? "DESCANSANDO"
-                : "SIN TURNO";
+                  ? "text-amber-300/70 bg-amber-500/10 border-amber-500/20"
+                  : "text-white/25 bg-white/3 border-white/8";
+              const badgeLabel = variante === "hoy" ? "EN TURNO" : variante === "mañana" ? "MAÑANA" : variante === "descanso" ? "DESCANSO" : "SIN TURNO";
 
               const handleClick = seleccionable ? () => {
                 const agente = pool!.descansandoCiclo.find(a => a.id === js.id);
@@ -6386,39 +6205,15 @@ export default function Operaciones() {
 
               return (
                 <div
-                  className={`shrink-0 flex flex-col gap-1.5 border rounded-xl px-3 py-2.5 w-52 transition-all ${borderCls} ${seleccionable ? "cursor-pointer hover:border-orange-400/40 hover:from-orange-500/10" : ""}`}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border transition-all ${esSeleccionado ? "border-orange-400/60 bg-orange-500/15 ring-1 ring-orange-400/30" : seleccionable ? "border-orange-500/20 bg-orange-500/5 cursor-pointer hover:border-orange-400/40" : variante === "hoy" ? "border-orange-500/25 bg-orange-500/6" : "border-white/5 bg-transparent"}`}
                   onClick={handleClick}
                 >
-                  <div className="flex items-center gap-2">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0 ${avatarColor(js.nombre_completo)} ${variante === "hoy" ? "ring-2 ring-orange-400/40" : ""} ${esSeleccionado ? "ring-2 ring-orange-400/60" : ""}`}>
-                      {iniciales(js.nombre_completo)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className={`text-xs font-semibold truncate leading-tight ${variante === "hoy" ? "text-white" : "text-white/70"}`}>{js.nombre_completo}</p>
-                      <p className="text-[9px] text-orange-300/40 truncate">{js.puesto ?? "Jefe de Servicio"}</p>
-                    </div>
+                  <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(js.nombre_completo)} ${variante === "hoy" ? "ring-1 ring-orange-400/35" : ""} ${esSeleccionado ? "ring-2 ring-orange-400/50" : ""}`}>
+                    {iniciales(js.nombre_completo)}
                   </div>
-                  <div className="flex items-center gap-1 flex-wrap mt-0.5">
-                    <span className={`text-[8px] px-1.5 py-0.5 rounded border ${badgeCls}`}>
-                      {badgeLabel}
-                    </span>
-                    {esSeleccionado ? (
-                      <span className="text-[8px] font-bold text-orange-200 bg-orange-500/20 border border-orange-400/40 px-1.5 py-0.5 rounded animate-pulse">
-                        ✓ Seleccionado · clic aquí para cancelar
-                      </span>
-                    ) : seleccionable ? (
-                      <span className="text-[8px] text-orange-300/50 bg-orange-500/6 border border-orange-500/15 px-1.5 py-0.5 rounded">
-                        clic para asignar
-                      </span>
-                    ) : js.turno_nombre ? (
-                      <span className="text-[8px] text-white/30 bg-white/4 border border-white/8 px-1.5 py-0.5 rounded">
-                        {js.turno_nombre}
-                      </span>
-                    ) : null}
-                  </div>
-                  {js.zona_nombre && (
-                    <p className="text-[8px] text-white/30 truncate">📍 {js.zona_nombre}</p>
-                  )}
+                  <p className={`text-[11px] font-medium truncate flex-1 ${variante === "hoy" ? "text-white/90" : "text-white/40"}`}>{js.nombre_completo}</p>
+                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${badgeCls}`}>{badgeLabel}</span>
+                  {esSeleccionado && <span className="text-[8px] text-orange-300 animate-pulse shrink-0">✓</span>}
                 </div>
               );
             };
@@ -6430,7 +6225,7 @@ export default function Operaciones() {
                   className="w-full flex items-center gap-2 px-4 py-2.5 border-b border-orange-500/10 text-left group hover:bg-orange-500/4 transition-colors"
                 >
                   <Shield className="w-3.5 h-3.5 text-orange-400/70 shrink-0" />
-                  <span className="text-xs font-bold text-orange-300/70 uppercase tracking-widest group-hover:text-orange-300/90 transition-colors">Jefe de Servicio del Día</span>
+                  <span className="text-xs font-bold text-orange-300/70 uppercase tracking-widest group-hover:text-orange-300/90 transition-colors">Jefes de Servicio</span>
                   {jefesHoy.length > 0 && (
                     <span className="text-[9px] font-bold bg-orange-500/20 text-orange-300 border border-orange-400/30 px-1.5 py-0.5 rounded-full ml-1">
                       {jefesHoy.length} en turno
@@ -6440,57 +6235,14 @@ export default function Operaciones() {
                     <span className="text-[10px] text-orange-300/60 ml-1">· {jefesHoy.map(j => j.nombre_completo.split(" ")[0]).join(", ")}</span>
                   )}
                   <div className="flex-1" />
-                  <span className="hidden sm:inline text-[10px] text-white/15">Turno 24×24</span>
                   <ChevronRight className={`w-3.5 h-3.5 text-orange-400/30 group-hover:text-orange-400/60 ml-2 shrink-0 transition-transform ${colJefes ? "" : "rotate-90"}`} />
                 </button>
 
                 {!colJefes && (
-                <div className="p-3 space-y-3">
-                  {/* HOY */}
-                  {jefesHoy.length > 0 && (
-                    <div>
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-orange-400/70 mb-2 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-orange-400 inline-block animate-pulse" />
-                        Hoy — {pool!.fecha_hoy}
-                      </p>
-                      <div className="flex gap-2 overflow-x-auto">
-                        {jefesHoy.map(js => <JefeCard key={js.id} js={js} variante="hoy" />)}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* MAÑANA — solo si no trabajan hoy */}
-                  {jefesMañana.length > 0 && (
-                    <div>
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-amber-400/50 mb-2 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400/50 inline-block" />
-                        Mañana — {pool!.fecha_mañana}
-                      </p>
-                      <div className="flex gap-2 overflow-x-auto">
-                        {jefesMañana.map(js => <JefeCard key={js.id} js={js} variante="mañana" />)}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* DESCANSANDO hoy (pero volverán mañana o pasado) */}
-                  {jefesDescanso.length > 0 && (
-                    <div>
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-white/25 mb-2 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-white/15 inline-block" />
-                        Descanso de ciclo hoy
-                      </p>
-                      <div className="flex gap-2 overflow-x-auto">
-                        {jefesDescanso.map(js => <JefeCard key={js.id} js={js} variante="descanso" />)}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Sin turno asignado */}
-                  {jefesOtros.length > 0 && (
-                    <div className="flex gap-2 overflow-x-auto">
-                      {jefesOtros.map(js => <JefeCard key={js.id} js={js} variante="otro" />)}
-                    </div>
-                  )}
+                <div className="p-2 space-y-0.5">
+                  {[...jefesHoy.map(js => ({ js, variante: "hoy" as const })), ...jefesMañana.map(js => ({ js, variante: "mañana" as const })), ...jefesDescanso.map(js => ({ js, variante: "descanso" as const })), ...jefesOtros.map(js => ({ js, variante: "otro" as const }))].map(({ js, variante }) => (
+                    <JefeCard key={js.id} js={js} variante={variante} />
+                  ))}
                 </div>
                 )}
               </div>
