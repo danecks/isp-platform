@@ -78,6 +78,8 @@ interface Puesto {
   arma_tipo?: string | null;
   /** Tipo de puesto: normal (operativo) o custodia */
   tipo_puesto?: "normal" | "custodia" | null;
+  /** El agente asignado tiene un segmento activo HOY dentro de las horas esperadas del turno */
+  agente_en_turno?: boolean;
   /** Puestos con múltiples titulares (24x24 / 24x48 / etc.) */
   es_par_24x24?: boolean;
   /** Todos los titulares del puesto con su estado de ciclo individual */
@@ -3220,15 +3222,21 @@ function DroppablePuesto({
             <div className="mt-1.5">
               {cubiertoManual && puesto.agente_nombre ? (
                 <div className="flex items-center gap-1.5">
-                  <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(puesto.agente_nombre)}`}>
-                    {iniciales(puesto.agente_nombre)}
+                  <div className="relative shrink-0">
+                    <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white ${avatarColor(puesto.agente_nombre)}`}>
+                      {iniciales(puesto.agente_nombre)}
+                    </div>
+                    <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#0a1628] ${puesto.agente_en_turno ? "bg-green-400" : "bg-slate-500"}`} title={puesto.agente_en_turno ? "En turno ahora" : "Fuera de turno"} />
                   </div>
                   <p className="text-[13px] font-semibold text-white/90 truncate">{puesto.agente_nombre}</p>
                 </div>
               ) : cubiertoTitular && activo.nombre ? (
                 <div className="flex items-center gap-1.5">
-                  <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(activo.nombre)}`}>
-                    {iniciales(activo.nombre)}
+                  <div className="relative shrink-0">
+                    <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white ${avatarColor(activo.nombre)}`}>
+                      {iniciales(activo.nombre)}
+                    </div>
+                    <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#0a1628] ${puesto.agente_en_turno ? "bg-green-400" : "bg-slate-500"}`} title={puesto.agente_en_turno ? "En turno ahora" : "Fuera de turno"} />
                   </div>
                   <p className="text-[13px] font-semibold text-white/90 truncate">{activo.nombre}</p>
                 </div>
@@ -3408,8 +3416,11 @@ function DroppablePuesto({
           <div className="mt-1.5">
             {cubierto && puesto.agente_nombre ? (
               <div className="flex items-center gap-1.5">
-                <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(puesto.agente_nombre)}`}>
-                  {iniciales(puesto.agente_nombre)}
+                <div className="relative shrink-0">
+                  <div className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white ${avatarColor(puesto.agente_nombre)}`}>
+                    {iniciales(puesto.agente_nombre)}
+                  </div>
+                  <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#0a1628] ${puesto.agente_en_turno ? "bg-green-400" : "bg-slate-500"}`} title={puesto.agente_en_turno ? "En turno ahora" : "Fuera de turno"} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1">

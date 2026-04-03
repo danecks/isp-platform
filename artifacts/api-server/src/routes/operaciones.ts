@@ -69,7 +69,24 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         arm.codigo AS arma_codigo,
         arm.tipo   AS arma_tipo,
         -- PT: todos los titulares del puesto con sus fechas de ciclo individuales
-        COALESCE(pt_tab.titulares_json, '[]'::json)                   AS titulares_json
+        COALESCE(pt_tab.titulares_json, '[]'::json)                   AS titulares_json,
+        -- TURNO-RT: ¿el agente asignado tiene un segmento abierto HOY dentro de las horas esperadas?
+        -- Permite al pizarrón mostrar si el colaborador está actualmente en turno o descansando.
+        CASE
+          WHEN po.agente_id IS NOT NULL AND EXISTS (
+            SELECT 1 FROM cobertura_segmentos seg
+            WHERE seg.puesto_id   = po.id
+              AND seg.employee_id = po.agente_id
+              AND seg.fecha       = CURRENT_DATE
+              AND seg.hora_fin    IS NULL
+              AND (
+                seg.horas_calculadas IS NULL
+                OR seg.horas_calculadas = 0
+                OR (seg.hora_inicio::time + (seg.horas_calculadas || ' hours')::interval) > CURRENT_TIME
+              )
+          ) THEN TRUE
+          ELSE FALSE
+        END AS agente_en_turno
       FROM puestos_operativos po
       -- TH: obtener titular histórico para la fecha consultada
       LEFT JOIN LATERAL (
