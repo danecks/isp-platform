@@ -102,7 +102,39 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
             )
           THEN TRUE
           ELSE FALSE
-        END AS agente_en_turno
+        END AS agente_en_turno,
+        -- APTO-HE: agente con turno corto (≤12h) que está en su periodo de descanso → disponible para horas extras
+        CASE
+          WHEN po.agente_id IS NOT NULL
+            AND t.horas_trabajo IS NOT NULL
+            AND t.horas_trabajo <= 12
+            AND NOT (
+              -- No está en cobertura formal activa ahora
+              EXISTS (
+                SELECT 1 FROM cobertura_segmentos seg
+                WHERE seg.puesto_id   = po.id
+                  AND seg.employee_id = po.agente_id
+                  AND seg.fecha       = CURRENT_DATE
+                  AND seg.hora_fin    IS NULL
+                  AND (
+                    seg.horas_calculadas IS NULL
+                    OR seg.horas_calculadas = 0
+                    OR seg.horas_calculadas >= 24
+                    OR (seg.hora_inicio::time + (seg.horas_calculadas || ' hours')::interval) > CURRENT_TIME
+                  )
+              )
+              OR
+              -- No está dentro de la ventana de hora_entrada configurada
+              (
+                po.hora_entrada IS NOT NULL
+                AND po.hora_entrada::time <= CURRENT_TIME
+                AND (po.hora_entrada::time + (t.horas_trabajo || ' hours')::interval) > CURRENT_TIME
+                AND NOT EXISTS (SELECT 1 FROM cobertura_segmentos s2 WHERE s2.puesto_id = po.id AND s2.fecha = CURRENT_DATE)
+              )
+            )
+          THEN TRUE
+          ELSE FALSE
+        END AS apto_horas_extra
       FROM puestos_operativos po
       -- TH: obtener titular histórico para la fecha consultada
       LEFT JOIN LATERAL (
