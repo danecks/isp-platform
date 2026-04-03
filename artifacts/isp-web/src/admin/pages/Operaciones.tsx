@@ -2102,7 +2102,7 @@ function ModalConfigTurno({
 
   function agregarTitular() {
     const emp = empleadosPool.find(e => String(e.id) === nuevoEmpId);
-    if (!emp) { toast({ title: "Selecciona un colaborador", variant: "destructive" }); return; }
+    if (!emp) { toast({ title: "Selecciona un colaborador de la lista", variant: "destructive" }); return; }
     if (!nuevoFecha) { toast({ title: "Indica la fecha de inicio", variant: "destructive" }); return; }
     setTitulares(prev => [...prev, { employee_id: emp.id, nombre_completo: emp.nombre_completo, fecha_inicio_ciclo: nuevoFecha }]);
     setNuevoEmpId("");
@@ -2291,27 +2291,28 @@ function ModalConfigTurno({
                     <p className="text-[10px] font-semibold text-indigo-300/70">Nuevo titular</p>
                     <input
                       type="text"
-                      placeholder="Buscar colaborador…"
+                      placeholder="Filtrar por nombre…"
                       value={busqueda}
                       onChange={e => { setBusqueda(e.target.value); setNuevoEmpId(""); }}
                       className="w-full bg-[#0d1e38] border border-white/12 text-white/80 text-xs rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500/50 placeholder-white/20"
                     />
-                    {busqueda.length >= 2 && (
-                      <div className="max-h-32 overflow-y-auto rounded-lg border border-white/8 bg-[#0a1628]">
-                        {empleadosFiltrados.slice(0, 8).map(e => (
+                    <div className="max-h-40 overflow-y-auto rounded-lg border border-white/8 bg-[#0a1628]">
+                      {empleadosFiltrados.length === 0 ? (
+                        <p className="px-3 py-2 text-[10px] text-white/30">
+                          {busqueda ? "Sin resultados" : "Todos los colaboradores ya son titulares"}
+                        </p>
+                      ) : (
+                        empleadosFiltrados.map(e => (
                           <button
                             key={e.id}
-                            onClick={() => { setNuevoEmpId(String(e.id)); setBusqueda(e.nombre_completo); }}
-                            className={`w-full text-left px-3 py-1.5 text-[11px] hover:bg-white/6 transition-colors ${nuevoEmpId === String(e.id) ? "bg-indigo-500/15 text-indigo-200" : "text-white/70"}`}
+                            onClick={() => { setNuevoEmpId(String(e.id)); }}
+                            className={`w-full text-left px-3 py-2 text-[11px] hover:bg-white/6 transition-colors border-b border-white/4 last:border-0 ${nuevoEmpId === String(e.id) ? "bg-indigo-500/20 text-indigo-200 font-semibold" : "text-white/70"}`}
                           >
                             {e.nombre_completo}
                           </button>
-                        ))}
-                        {empleadosFiltrados.length === 0 && (
-                          <p className="px-3 py-2 text-[10px] text-white/30">Sin resultados</p>
-                        )}
-                      </div>
-                    )}
+                        ))
+                      )}
+                    </div>
                     <div className="flex items-center gap-2">
                       <div className="flex-1">
                         <label className="block text-[9px] text-white/40 mb-0.5">Fecha inicio ciclo</label>
