@@ -1,0 +1,117 @@
+Quiero reorganizar nuevamente el layout del Pizarrón Operativo porque el orden actual no está ayudando a la operación real.
+
+No quiero romper lógica, turnos, cobertura ni asignaciones.
+Quiero solo reorganizar la pantalla para que tenga más sentido para el jefe de servicio.
+
+## Problema actual
+Hoy el pool quedó reducido en el panel derecho y prácticamente solo se ve “Disponibles”.
+Eso no me sirve, porque el jefe de servicio también necesita ver rápidamente:
+
+- disponibles
+- descansando
+- faltando / ausentes
+- vacaciones
+- otros estados útiles
+
+Además, supervisores, jefes de servicio y administración están ocupando una posición demasiado alta en la pantalla, quitándole protagonismo al pool y a los puestos.
+
+---
+
+## Objetivo
+Reorganizar el tablero para que el flujo visual sea:
+
+### 1. Arriba
+Pool de agentes como bloque principal superior
+
+### 2. Centro
+Puestos / clientes como tablero principal
+
+### 3. Abajo
+Supervisores
+Jefes de servicio
+Administración / Backoffice
+
+---
+
+## 1. Pool arriba del tablero
+Quiero que el pool quede arriba de los puestos, no al lado.
+
+Debe verse como una franja o bloque superior amplio, útil y claro.
+
+Quiero que vuelva a mostrar todos los estados importantes, no solo “Disponibles”.
+
+### El pool debe incluir al menos:
+- Disponibles
+- Descansando
+- Faltando / Ausentes
+- Vacaciones
+- SSA si aplica
+- otros estados operativos que ya existan
+
+No quiero perder esa visibilidad porque sí le sirve al jefe de servicio.
+
+---
+
+## 2. Puestos en el centro
+Debajo del pool debe quedar el tablero principal de clientes y puestos.
+
+Ese sigue siendo el centro operativo, pero el pool debe quedar antes, porque primero necesito ver qué recurso humano tengo y luego cubrir.
+
+---
+
+## 3. Supervisores, jefes de servicio y administración abajo
+Quiero que estos paneles bajen y queden debajo del tablero de puestos.
+
+Orden sugerido:
+- Supervisores
+- Jefes de servicio
+- Administración / Backoffice
+
+No quiero que desaparezcan.
+Solo quiero que dejen de competir visualmente con el pool y con los puestos.
+
+---
+
+## 4. Pool completo, no recortado
+El pool no debe quedar como una cajita mínima.
+
+Quiero que tenga espacio suficiente para ser útil y que permita entender rápido:
+- quién está libre
+- quién descansa
+- quién falta
+- quién está de vacaciones
+
+---
+
+## 5. Mantener lógica
+No cambiar:
+- turnos
+- cobertura
+- asignaciones
+- ranking
+- planilla
+- SSA
+- lógica del pizarrón
+
+Solo reorganización visual y de jerarquía.
+
+---
+
+## 6. Validación
+Quiero confirmar al final que:
+1. el pool quedó arriba
+2. vuelve a mostrar estados útiles además de disponibles
+3. los puestos quedan en el centro
+4. supervisores/jefes/admin quedan abajo
+5. el tablero se siente menos saturado y más útil para operación
+
+---
+
+## 7. Resultado esperado
+Quiero que el pizarrón se lea así:
+- primero: qué personal tengo hoy
+- segundo: qué puestos debo cubrir
+- tercero: qué supervisión y apoyo tengo
+
+Muy importante:
+el pool debe volver a ser una herramienta principal del jefe de servicio, no un panel pequeño secundario.
