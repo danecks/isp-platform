@@ -163,9 +163,6 @@ function ModalPuesto({
   const isEdit = puesto !== null;
   const [form, setForm] = useState({
     nombre: puesto?.nombre ?? "",
-    turno: puesto?.turno ?? "",
-    jornada: puesto?.jornada ?? "",
-    horario: puesto?.horario ?? "",
     hora_entrada: puesto?.hora_entrada ?? "",
     hora_salida: puesto?.hora_salida ?? "",
     descanso_inicio: puesto?.descanso_inicio ?? "",
@@ -182,6 +179,7 @@ function ModalPuesto({
     fecha_inicio_ciclo: puesto?.fecha_inicio_ciclo ?? "",
   });
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [turnosDisponibles, setTurnosDisponibles] = useState<Array<{ id: number; nombre: string; horas_trabajo: number; horas_descanso: number }>>([]);
 
@@ -200,6 +198,39 @@ function ModalPuesto({
       .then((r) => r.json())
       .then((d) => setZonas(Array.isArray(d) ? d : []))
       .catch(() => {});
+  }, []);
+
+  // Cargar datos frescos del servidor al abrir en modo edición
+  useEffect(() => {
+    if (!isEdit || !puesto?.id) return;
+    setLoading(true);
+    fetch(`${API}/puestos/${puesto.id}`, { headers: { "x-isp-session": getSession() } })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => {
+        if (!d) return;
+        setForm({
+          nombre: d.nombre ?? "",
+          hora_entrada: d.hora_entrada ?? "",
+          hora_salida: d.hora_salida ?? "",
+          descanso_inicio: d.descanso_inicio ?? "",
+          descanso_fin: d.descanso_fin ?? "",
+          cantidad_contratada: d.cantidad_contratada ?? 1,
+          tarifa_puesto: d.tarifa_puesto ?? "",
+          tipo_servicio: d.tipo_servicio ?? "",
+          elegible_horas_extra: d.elegible_horas_extra ?? false,
+          costo_hora: d.costo_hora ?? "",
+          sede_id: d.sede_id ? String(d.sede_id) : "",
+          zona_operativa_id: d.zona_operativa_id ? String(d.zona_operativa_id) : "",
+          notas: d.notas ?? "",
+          tipo_turno_id: d.tipo_turno_id ? String(d.tipo_turno_id) : "",
+          fecha_inicio_ciclo: d.fecha_inicio_ciclo ?? "",
+        });
+        setBusquedaTitular(d.titular_nombre_completo ?? d.titular_nombre ?? "");
+        setTitularId(d.titular_employee_id ?? null);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Búsqueda de titular
@@ -232,17 +263,18 @@ function ModalPuesto({
     if (!isEdit && !form.zona_operativa_id) { setErr("Debes seleccionar una zona operativa"); return; }
     setSaving(true); setErr("");
     try {
+      const turnoSeleccionado = turnosDisponibles.find(t => String(t.id) === form.tipo_turno_id);
       const body = {
-        ...form,
+        nombre: form.nombre,
         sede_id: form.sede_id ? Number(form.sede_id) : null,
         zona_operativa_id: form.zona_operativa_id ? Number(form.zona_operativa_id) : null,
         titular_employee_id: titularId ?? null,
         cantidad_contratada: Number(form.cantidad_contratada) || 1,
         tarifa_puesto: form.tarifa_puesto ? Number(form.tarifa_puesto) : null,
         costo_hora: form.costo_hora ? Number(form.costo_hora) : null,
-        turno: form.turno || null,
-        jornada: form.jornada || null,
-        horario: form.horario || null,
+        turno: turnoSeleccionado?.nombre || null,
+        jornada: null,
+        horario: null,
         hora_entrada: form.hora_entrada || null,
         hora_salida: form.hora_salida || null,
         descanso_inicio: form.descanso_inicio || null,
@@ -251,6 +283,7 @@ function ModalPuesto({
         notas: form.notas || null,
         tipo_turno_id: form.tipo_turno_id ? Number(form.tipo_turno_id) : null,
         fecha_inicio_ciclo: form.fecha_inicio_ciclo || null,
+        elegible_horas_extra: form.elegible_horas_extra,
       };
       const url = isEdit ? `${API}/puestos/${puesto!.id}` : `${API}/clientes/${clientId}/puestos`;
       const method = isEdit ? "PATCH" : "POST";
@@ -280,7 +313,10 @@ function ModalPuesto({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
       <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl my-4">
         <div className="flex items-center justify-between p-5 border-b border-white/8">
-          <h3 className="text-sm font-bold text-white">{isEdit ? "Editar puesto" : "Nuevo puesto"}</h3>
+          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            {isEdit ? "Editar puesto" : "Nuevo puesto"}
+            {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-white/40" />}
+          </h3>
           <button onClick={onClose} className="text-white/30 hover:text-white transition-colors">
             <X className="w-4 h-4" />
           </button>
@@ -423,48 +459,14 @@ function ModalPuesto({
             </div>
           </div>
 
-          {/* Horario / Jornada */}
+          {/* Horario */}
           <div>
-            <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Horario y jornada</p>
+            <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Horario de trabajo</p>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-[10px] text-white/40 uppercase tracking-wide">Turno</label>
-                <select
-                  value={form.turno}
-                  onChange={(e) => up("turno", e.target.value)}
-                  className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50"
-                >
-                  <option value="">Seleccionar...</option>
-                  <option value="diurno">Diurno</option>
-                  <option value="nocturno">Nocturno</option>
-                  <option value="mixto">Mixto</option>
-                  <option value="12x12">12x12</option>
-                  <option value="24h">24 horas</option>
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] text-white/40 uppercase tracking-wide">Jornada</label>
-                <select
-                  value={form.jornada}
-                  onChange={(e) => up("jornada", e.target.value)}
-                  className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50"
-                >
-                  <option value="">Seleccionar...</option>
-                  <option value="12x12">12x12</option>
-                  <option value="8h">8 horas</option>
-                  <option value="24x48">24x48</option>
-                  <option value="diurna_completa">Diurna completa</option>
-                  <option value="nocturna_completa">Nocturna completa</option>
-                  <option value="lunes_viernes">Lunes-Viernes</option>
-                </select>
-              </div>
               <Field label="Hora entrada" k="hora_entrada" placeholder="06:00" />
               <Field label="Hora salida" k="hora_salida" placeholder="18:00" />
               <Field label="Inicio descanso" k="descanso_inicio" placeholder="18:01" />
               <Field label="Fin descanso" k="descanso_fin" placeholder="05:59" />
-              <div className="col-span-2">
-                <Field label="Descripción de horario" k="horario" placeholder="Ej: 06:00-18:00 diario" />
-              </div>
             </div>
           </div>
 
@@ -1628,7 +1630,7 @@ function PuestoRow({ puesto, onEdit, onDelete }: { puesto: Puesto; onEdit: () =>
             )}
           </div>
           <p className="text-[10px] text-white/30 mt-0.5">
-            {[puesto.turno, puesto.jornada, puesto.hora_entrada && puesto.hora_salida ? `${puesto.hora_entrada}–${puesto.hora_salida}` : puesto.horario].filter(Boolean).join(" · ")}
+            {[puesto.tipo_turno_nombre ?? puesto.turno, puesto.hora_entrada && puesto.hora_salida ? `${puesto.hora_entrada}–${puesto.hora_salida}` : null].filter(Boolean).join(" · ")}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -1647,8 +1649,8 @@ function PuestoRow({ puesto, onEdit, onDelete }: { puesto: Puesto; onEdit: () =>
         <div className="px-4 pb-3 grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white/1.5 border-t border-white/4">
           {[
             { label: "Cubre hoy", value: puesto.agente_nombre },
-            { label: "Jornada", value: puesto.jornada },
-            { label: "Horario", value: puesto.hora_entrada && puesto.hora_salida ? `${puesto.hora_entrada}–${puesto.hora_salida}` : puesto.horario },
+            { label: "Turno", value: puesto.tipo_turno_nombre ?? puesto.turno },
+            { label: "Horario", value: puesto.hora_entrada && puesto.hora_salida ? `${puesto.hora_entrada}–${puesto.hora_salida}` : null },
             { label: "Descanso", value: puesto.descanso_inicio && puesto.descanso_fin ? `${puesto.descanso_inicio}–${puesto.descanso_fin}` : null },
             { label: "Costo/hora", value: puesto.costo_hora ? fmtQ(puesto.costo_hora) : null },
             { label: "HE elegible", value: puesto.elegible_horas_extra ? "Sí" : "No" },

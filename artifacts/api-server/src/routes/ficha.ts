@@ -47,12 +47,15 @@ fichaRouter.get("/clientes/:id/ficha", async (req, res) => {
          po.agente_id, po.agente_nombre,
          po.estado, po.orden, po.notas, po.activo,
          po.zona_operativa_id, oz.nombre AS zona_nombre,
+         po.tipo_turno_id, t.nombre AS tipo_turno_nombre,
+         po.fecha_inicio_ciclo,
          e.nombre_completo AS titular_nombre_completo,
          e.telefono AS titular_telefono,
          e.estado_laboral AS titular_estado_laboral
        FROM puestos_operativos po
        LEFT JOIN client_sedes cs ON cs.id = po.sede_id
        LEFT JOIN operational_zones oz ON oz.id = po.zona_operativa_id
+       LEFT JOIN turnos t ON t.id = po.tipo_turno_id
        LEFT JOIN employees e ON e.id = po.titular_employee_id
        WHERE po.cliente_id = $1 AND po.activo = TRUE
        ORDER BY cs.nombre NULLS LAST, po.orden, po.nombre`,
@@ -160,6 +163,7 @@ fichaRouter.post("/clientes/:id/puestos", async (req, res) => {
     elegible_horas_extra, costo_hora,
     sede_id, notas, orden,
     zona_operativa_id, titular_employee_id,
+    tipo_turno_id, fecha_inicio_ciclo,
   } = req.body;
 
   if (!nombre) return res.status(400).json({ error: "nombre es requerido" });
@@ -189,8 +193,9 @@ fichaRouter.post("/clientes/:id/puestos", async (req, res) => {
           hora_entrada, hora_salida, descanso_inicio, descanso_fin,
           cantidad_contratada, tarifa_puesto, tipo_servicio, elegible_horas_extra,
           costo_hora, sede_id, notas, orden, zona_operativa_id,
-          titular_employee_id, titular_nombre, estado, activo)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,'disponible',TRUE)
+          titular_employee_id, titular_nombre, tipo_turno_id, fecha_inicio_ciclo,
+          estado, activo)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,'disponible',TRUE)
        RETURNING *`,
       [
         clientId, clienteNombre, nombre,
@@ -208,6 +213,8 @@ fichaRouter.post("/clientes/:id/puestos", async (req, res) => {
         zona_operativa_id || null,
         titular_employee_id || null,
         titularNombre,
+        tipo_turno_id || null,
+        fecha_inicio_ciclo || null,
       ]
     );
     res.status(201).json(rows[0]);
@@ -292,6 +299,40 @@ fichaRouter.patch("/puestos/:id", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "PATCH /puestos/:id error");
     res.status(500).json({ error: "Error al actualizar puesto" });
+  }
+});
+
+// ─── GET /api/puestos/:id ─────────────────────────────────────────────────────
+// Datos frescos de un puesto (para re-poblar el modal de edición)
+fichaRouter.get("/puestos/:id", async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         po.id, po.nombre, po.turno, po.jornada, po.horario,
+         po.hora_entrada, po.hora_salida, po.descanso_inicio, po.descanso_fin,
+         po.cantidad_contratada, po.tarifa_puesto, po.tipo_servicio,
+         po.elegible_horas_extra, po.costo_hora,
+         po.sede_id, cs.nombre AS sede_nombre,
+         po.titular_employee_id, po.titular_nombre,
+         po.agente_id, po.agente_nombre,
+         po.estado, po.orden, po.notas, po.activo,
+         po.zona_operativa_id, oz.nombre AS zona_nombre,
+         po.tipo_turno_id, t.nombre AS turno_nombre,
+         po.fecha_inicio_ciclo,
+         e.nombre_completo AS titular_nombre_completo
+       FROM puestos_operativos po
+       LEFT JOIN client_sedes cs ON cs.id = po.sede_id
+       LEFT JOIN operational_zones oz ON oz.id = po.zona_operativa_id
+       LEFT JOIN turnos t ON t.id = po.tipo_turno_id
+       LEFT JOIN employees e ON e.id = po.titular_employee_id
+       WHERE po.id = $1`,
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Puesto no encontrado" });
+    res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "GET /puestos/:id error");
+    res.status(500).json({ error: "Error al cargar puesto" });
   }
 });
 
