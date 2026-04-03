@@ -1095,7 +1095,7 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
 
     // SAL-02: solo admin/rrhh ven el impacto salarial en la respuesta
     let rolSesion = "";
-    try { rolSesion = JSON.parse(req.headers["x-isp-session"] as string ?? "")?.role ?? ""; } catch {}
+    try { rolSesion = JSON.parse(req.headers["x-isp-session"] as string ?? "")?.rol ?? ""; } catch {}
     const puedeVerImpacto = rolSesion === "admin" || rolSesion === "rrhh";
 
     res.json({
@@ -1365,7 +1365,7 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
 
     // SAL-02: solo admin/rrhh ven el impacto salarial en la respuesta
     let rolSesionSus = "";
-    try { rolSesionSus = JSON.parse(req.headers["x-isp-session"] as string ?? "")?.role ?? ""; } catch {}
+    try { rolSesionSus = JSON.parse(req.headers["x-isp-session"] as string ?? "")?.rol ?? ""; } catch {}
     const puedeVerImpactoSus = rolSesionSus === "admin" || rolSesionSus === "rrhh";
 
     res.json({
@@ -1632,7 +1632,7 @@ operacionesRouter.patch("/operaciones/puestos/:id", async (req, res) => {
 operacionesRouter.patch("/operaciones/puestos/:id/salario", async (req, res) => {
   const sessionRaw = req.headers["x-isp-session"];
   let userRole = "";
-  try { userRole = JSON.parse(sessionRaw as string)?.role ?? ""; } catch {}
+  try { userRole = JSON.parse(sessionRaw as string)?.rol ?? ""; } catch {}
   if (!["admin", "rrhh"].includes(userRole)) {
     return res.status(403).json({ error: "Solo RRHH o administradores pueden modificar el salario del puesto" });
   }
@@ -1663,7 +1663,7 @@ operacionesRouter.patch("/operaciones/puestos/:id/salario", async (req, res) => 
 operacionesRouter.get("/operaciones/puestos-salarios", async (req, res) => {
   const sessionRaw = req.headers["x-isp-session"];
   let userRole = "";
-  try { userRole = JSON.parse(sessionRaw as string)?.role ?? ""; } catch {}
+  try { userRole = JSON.parse(sessionRaw as string)?.rol ?? ""; } catch {}
   if (!["admin", "rrhh"].includes(userRole)) {
     return res.status(403).json({ error: "Solo RRHH o administradores pueden ver los salarios" });
   }

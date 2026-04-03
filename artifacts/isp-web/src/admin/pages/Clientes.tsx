@@ -13,7 +13,7 @@ import {
 const API = "/api";
 const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
 const getRole = (): string => {
-  try { return JSON.parse(getSession())?.role ?? ""; } catch { return ""; }
+  try { return JSON.parse(getSession())?.rol ?? ""; } catch { return ""; }
 };
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────

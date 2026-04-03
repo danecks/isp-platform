@@ -8,7 +8,7 @@ const router = Router();
 // ─── Helper: verificar rol admin/rrhh ────────────────────────────────────────
 function rolesPermitidos(req: Request, res: Response): boolean {
   let rol = "";
-  try { rol = JSON.parse(req.headers["x-isp-session"] as string ?? "")?.role ?? ""; } catch {}
+  try { rol = JSON.parse(req.headers["x-isp-session"] as string ?? "")?.rol ?? ""; } catch {}
   if (rol === "admin" || rol === "rrhh") return true;
   res.status(403).json({ error: "Acceso restringido a RRHH y administradores" });
   return false;
