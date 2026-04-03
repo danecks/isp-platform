@@ -2,10 +2,9 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { X, ExternalLink, ChevronDown, Trash2 } from "lucide-react";
 import { brand } from "@/config/branding";
-import { ROL_LABELS, ROL_COLORES } from "@/config/permissions";
+import { seccionesParaRol, ROL_LABELS, ROL_COLORES } from "@/config/permissions";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
-import { usePermisos } from "@/hooks/usePermisos";
 import type { Rol, NavSection } from "@/config/permissions";
 
 const logoImg = "/images/logo-isp.png";
@@ -23,8 +22,7 @@ export function AdminSidebar({ open, onClose }: AdminSidebarProps) {
   const { currentUser } = useAuth();
   const { active: deleteModeActive, toggle: toggleDeleteMode } = useDeleteMode();
   const rol = currentUser?.rol as Rol | undefined;
-  const { seccionesParaRolDinamico } = usePermisos();
-  const secciones = seccionesParaRolDinamico(rol);
+  const secciones = seccionesParaRol(rol);
 
   // Determinar qué sección está activa basándonos en la ruta actual
   const activeSectionId = secciones.find((s) =>

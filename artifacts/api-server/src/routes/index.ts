@@ -39,7 +39,6 @@ import { vehiculosRouter } from "./vehiculos";
 import { armeriaRouter } from "./armeria";
 import { solicitudesEliminacionRouter } from "./solicitudes-eliminacion";
 import cambiosSalarialesRouter from "./cambios-salariales";
-import configRouter from "./config";
 
 const router: IRouter = Router();
 
@@ -83,6 +82,5 @@ router.use(vehiculosRouter);
 router.use(armeriaRouter);
 router.use(solicitudesEliminacionRouter);
 router.use(cambiosSalarialesRouter);
-router.use(configRouter);
 
 export default router;
