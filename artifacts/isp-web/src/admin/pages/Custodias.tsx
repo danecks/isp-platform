@@ -4,12 +4,12 @@ import { AdminLayout } from "../layout/AdminLayout";
 import { StatusBadge } from "../components/StatusBadge";
 import {
   Truck, Filter, AlertTriangle, ShieldCheck, Shield,
-  CalendarClock, Loader2, RefreshCw, User, MapPin, Clock,
+  CalendarClock, Loader2, RefreshCw, User, MapPin, Clock, CheckCircle2,
 } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
 
-type EstadoCustodia = "planificada" | "en_ruta" | "incidente_activo" | "incidente_completado";
+type EstadoCustodia = "planificada" | "en_ruta" | "incidente_activo" | "incidente_completado" | "completada";
 
 interface CustodiaOperativa {
   id: number;
@@ -36,18 +36,20 @@ interface CustodiaOperativa {
 }
 
 const ESTADO_CONFIG: Record<EstadoCustodia, { label: string; color: string; icon: typeof Shield }> = {
-  en_ruta:              { label: "En Ruta",              color: "text-green-300 bg-green-500/10 border-green-500/25",  icon: Truck },
-  incidente_activo:     { label: "Incidente Activo",     color: "text-red-300 bg-red-500/10 border-red-500/25",        icon: AlertTriangle },
-  incidente_completado: { label: "Incidente Completado", color: "text-amber-300 bg-amber-500/10 border-amber-500/25",  icon: ShieldCheck },
-  planificada:          { label: "Planificada",           color: "text-blue-300 bg-blue-500/10 border-blue-500/25",    icon: CalendarClock },
+  en_ruta:              { label: "En Ruta",              color: "text-green-300 bg-green-500/10 border-green-500/25",   icon: Truck },
+  incidente_activo:     { label: "Incidente Activo",     color: "text-red-300 bg-red-500/10 border-red-500/25",         icon: AlertTriangle },
+  incidente_completado: { label: "Incidente Completado", color: "text-amber-300 bg-amber-500/10 border-amber-500/25",   icon: ShieldCheck },
+  completada:           { label: "Turno Completado",     color: "text-slate-300 bg-slate-500/10 border-slate-500/25",   icon: CheckCircle2 },
+  planificada:          { label: "Planificada",          color: "text-blue-300 bg-blue-500/10 border-blue-500/25",      icon: CalendarClock },
 };
 
 const FILTROS: { key: EstadoCustodia | "todas"; label: string }[] = [
-  { key: "todas",              label: "Todas" },
-  { key: "en_ruta",            label: "En Ruta" },
-  { key: "incidente_activo",   label: "Incidente Activo" },
+  { key: "todas",                label: "Todas" },
+  { key: "en_ruta",              label: "En Ruta" },
+  { key: "incidente_activo",     label: "Incidente Activo" },
   { key: "incidente_completado", label: "Incidente Completado" },
-  { key: "planificada",        label: "Planificada" },
+  { key: "completada",           label: "Turno Completado" },
+  { key: "planificada",          label: "Planificada" },
 ];
 
 export default function Custodias() {
@@ -71,11 +73,12 @@ export default function Custodias() {
   const conIncidente    = custodias.filter((c) => c.estado_custodia === "incidente_activo");
 
   const conteo: Record<EstadoCustodia | "todas", number> = {
-    todas:               custodias.length,
-    en_ruta:             custodias.filter((c) => c.estado_custodia === "en_ruta").length,
-    incidente_activo:    custodias.filter((c) => c.estado_custodia === "incidente_activo").length,
-    incidente_completado:custodias.filter((c) => c.estado_custodia === "incidente_completado").length,
-    planificada:         custodias.filter((c) => c.estado_custodia === "planificada").length,
+    todas:                custodias.length,
+    en_ruta:              custodias.filter((c) => c.estado_custodia === "en_ruta").length,
+    incidente_activo:     custodias.filter((c) => c.estado_custodia === "incidente_activo").length,
+    incidente_completado: custodias.filter((c) => c.estado_custodia === "incidente_completado").length,
+    completada:           custodias.filter((c) => c.estado_custodia === "completada").length,
+    planificada:          custodias.filter((c) => c.estado_custodia === "planificada").length,
   };
 
   return (
@@ -132,11 +135,17 @@ export default function Custodias() {
             )}
 
             {/* STATS CARDS */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {(["en_ruta", "incidente_activo", "incidente_completado", "planificada"] as EstadoCustodia[]).map((estado) => {
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              {(["en_ruta", "incidente_activo", "incidente_completado", "completada", "planificada"] as EstadoCustodia[]).map((estado) => {
                 const cfg = ESTADO_CONFIG[estado];
                 const Icon = cfg.icon;
                 const count = conteo[estado];
+                const iconColor =
+                  estado === "incidente_activo"     ? "text-red-400" :
+                  estado === "en_ruta"              ? "text-green-400" :
+                  estado === "incidente_completado" ? "text-amber-400" :
+                  estado === "completada"           ? "text-slate-400" :
+                  "text-blue-400";
                 return (
                   <button
                     key={estado}
@@ -146,23 +155,13 @@ export default function Custodias() {
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <Icon className={`w-4 h-4 ${
-                        estado === "incidente_activo"     ? "text-red-400" :
-                        estado === "en_ruta"              ? "text-green-400" :
-                        estado === "incidente_completado" ? "text-amber-400" :
-                        "text-blue-400"
-                      }`} />
+                      <Icon className={`w-4 h-4 ${iconColor}`} />
                       {filtro === estado && (
                         <span className="text-[9px] text-primary font-bold px-1.5 py-0.5 bg-primary/10 border border-primary/20 rounded-full">activo</span>
                       )}
                     </div>
                     <p className="text-2xl font-bold text-white">{count}</p>
-                    <p className={`text-[10px] font-semibold mt-1 ${
-                      estado === "incidente_activo"     ? "text-red-400/70" :
-                      estado === "en_ruta"              ? "text-green-400/70" :
-                      estado === "incidente_completado" ? "text-amber-400/70" :
-                      "text-blue-400/70"
-                    }`}>{cfg.label}</p>
+                    <p className={`text-[10px] font-semibold mt-1 ${iconColor}/70`}>{cfg.label}</p>
                   </button>
                 );
               })}

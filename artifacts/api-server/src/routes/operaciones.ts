@@ -2956,7 +2956,37 @@ operacionesRouter.get("/custodias/puestos", async (req, res) => {
             WHERE i.puesto_id = p.id
               AND i.estado IN ('abierta','en_proceso')
           ) THEN 'incidente_completado'
-          WHEN p.agente_id IS NOT NULL THEN 'en_ruta'
+          -- Agente tiene segmento abierto HOY y dentro de la ventana esperada de horas
+          WHEN p.agente_id IS NOT NULL AND EXISTS (
+            SELECT 1 FROM cobertura_segmentos seg
+            WHERE seg.puesto_id    = p.id
+              AND seg.employee_id  = p.agente_id
+              AND seg.fecha        = CURRENT_DATE
+              AND seg.hora_fin     IS NULL
+              AND (
+                seg.horas_calculadas IS NULL
+                OR seg.horas_calculadas = 0
+                OR (seg.hora_inicio::time + (seg.horas_calculadas || ' hours')::interval) > CURRENT_TIME
+              )
+          ) THEN 'en_ruta'
+          -- Agente tuvo turno hoy pero las horas ya terminaron (o fue liberado formalmente)
+          WHEN p.agente_id IS NOT NULL AND EXISTS (
+            SELECT 1 FROM cobertura_segmentos seg
+            WHERE seg.puesto_id   = p.id
+              AND seg.employee_id = p.agente_id
+              AND seg.fecha       = CURRENT_DATE
+              AND (
+                seg.hora_fin IS NOT NULL
+                OR (
+                  seg.hora_fin IS NULL
+                  AND seg.horas_calculadas IS NOT NULL
+                  AND seg.horas_calculadas > 0
+                  AND (seg.hora_inicio::time + (seg.horas_calculadas || ' hours')::interval) <= CURRENT_TIME
+                )
+              )
+          ) THEN 'completada'
+          -- Agente asignado pero sin cobertura activa hoy (turno futuro o sin registro)
+          WHEN p.agente_id IS NOT NULL THEN 'planificada'
           ELSE 'planificada'
         END                                 AS estado_custodia,
         -- Contar incidentes totales asociados
