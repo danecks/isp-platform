@@ -2503,4 +2503,114 @@ operacionesRouter.get("/operaciones/tablero/administracion", async (req, res) =>
   }
 });
 
+// ─── GET /api/operaciones/puestos/:id/titulares ───────────────────────────────
+// Devuelve la lista de titulares activos del puesto con su fecha_inicio_ciclo.
+operacionesRouter.get("/operaciones/puestos/:id/titulares", async (req, res) => {
+  const puestoId = parseInt(req.params.id);
+  if (isNaN(puestoId)) return res.status(400).json({ error: "ID de puesto inválido" });
+
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        pt.id,
+        pt.employee_id,
+        pt.orden,
+        TO_CHAR(pt.fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
+        pt.activo,
+        e.nombre_completo,
+        e.puesto          AS cargo,
+        e.estado_laboral
+      FROM puesto_titulares pt
+      JOIN employees e ON e.id = pt.employee_id
+      WHERE pt.puesto_id = $1 AND pt.activo = TRUE
+      ORDER BY pt.orden
+    `, [puestoId]);
+
+    res.json({ titulares: rows });
+  } catch (err) {
+    logger.error({ err }, "GET /operaciones/puestos/:id/titulares error");
+    res.status(500).json({ error: "Error al obtener titulares" });
+  }
+});
+
+// ─── PUT /api/operaciones/puestos/:id/titulares ───────────────────────────────
+// Reemplaza todos los titulares activos del puesto.
+// Body: { titulares: [{ employee_id: number, fecha_inicio_ciclo: string }] }
+operacionesRouter.put("/operaciones/puestos/:id/titulares", async (req, res) => {
+  const puestoId = parseInt(req.params.id);
+  if (isNaN(puestoId)) return res.status(400).json({ error: "ID de puesto inválido" });
+
+  const { titulares } = req.body ?? {};
+  if (!Array.isArray(titulares)) {
+    return res.status(400).json({ error: "Se requiere un arreglo de titulares" });
+  }
+
+  for (const t of titulares) {
+    if (!t.employee_id || !t.fecha_inicio_ciclo) {
+      return res.status(400).json({ error: "Cada titular requiere employee_id y fecha_inicio_ciclo" });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(t.fecha_inicio_ciclo)) {
+      return res.status(400).json({ error: "fecha_inicio_ciclo debe tener formato YYYY-MM-DD" });
+    }
+  }
+
+  try {
+    const { rows: puestos } = await pool.query(
+      `SELECT id, nombre FROM puestos_operativos WHERE id = $1 AND activo = TRUE`,
+      [puestoId]
+    );
+    if (puestos.length === 0) return res.status(404).json({ error: "Puesto no encontrado" });
+
+    await pool.query(`DELETE FROM puesto_titulares WHERE puesto_id = $1`, [puestoId]);
+
+    if (titulares.length > 0) {
+      const values = titulares.map((t: any, i: number) =>
+        `($1, $${i * 2 + 2}, $${i * 2 + 3}, ${i + 1})`
+      ).join(", ");
+      const params: any[] = [puestoId];
+      titulares.forEach((t: any) => params.push(t.employee_id, t.fecha_inicio_ciclo));
+
+      await pool.query(
+        `INSERT INTO puesto_titulares (puesto_id, employee_id, fecha_inicio_ciclo, orden)
+         VALUES ${values}`,
+        params
+      );
+
+      // Si sólo hay 1 titular, actualizar agente_id/nombre en el puesto también
+      if (titulares.length >= 1) {
+        const { rows: emp } = await pool.query(
+          `SELECT nombre_completo FROM employees WHERE id = $1`,
+          [titulares[0].employee_id]
+        );
+        if (emp.length > 0) {
+          await pool.query(`
+            UPDATE puestos_operativos
+            SET titular_employee_id = $1,
+                titular_nombre       = $2,
+                fecha_inicio_ciclo   = $3,
+                updated_at           = NOW()
+            WHERE id = $4
+          `, [titulares[0].employee_id, emp[0].nombre_completo, titulares[0].fecha_inicio_ciclo, puestoId]);
+        }
+      }
+    }
+
+    const { rows: resultado } = await pool.query(`
+      SELECT pt.id, pt.employee_id, pt.orden,
+             TO_CHAR(pt.fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
+             e.nombre_completo
+      FROM puesto_titulares pt
+      JOIN employees e ON e.id = pt.employee_id
+      WHERE pt.puesto_id = $1 AND pt.activo = TRUE
+      ORDER BY pt.orden
+    `, [puestoId]);
+
+    logger.info({ puestoId, count: titulares.length }, "PUT /operaciones/puestos/:id/titulares: titulares actualizados");
+    res.json({ ok: true, titulares: resultado });
+  } catch (err) {
+    logger.error({ err }, "PUT /operaciones/puestos/:id/titulares error");
+    res.status(500).json({ error: "Error al actualizar titulares" });
+  }
+});
+
 export default operacionesRouter;
