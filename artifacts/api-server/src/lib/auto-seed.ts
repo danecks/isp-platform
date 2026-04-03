@@ -2819,5 +2819,21 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SSA-CAN-01 — error (no bloqueante)");
   }
 
+  // ── PLAN-CUN-01: índice parcial en pre_planilla_cierres para permitir re-cierre tras anulación ──
+  // Reemplaza el UNIQUE constraint global por uno que solo bloquea (periodo_desde, periodo_hasta)
+  // cuando anulado = FALSE. Permite crear un nuevo cierre para el mismo período si el anterior
+  // fue anulado. Sin este índice, anular y re-cerrar falla con duplicate key.
+  try {
+    await pool.query(`ALTER TABLE pre_planilla_cierres DROP CONSTRAINT IF EXISTS pre_planilla_cierres_periodo_desde_periodo_hasta_key`);
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_cierres_periodo_unico
+      ON pre_planilla_cierres (periodo_desde, periodo_hasta)
+      WHERE anulado = FALSE
+    `);
+    logger.info("Auto-migrate: PLAN-CUN-01 índice parcial en pre_planilla_cierres verificado/creado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PLAN-CUN-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

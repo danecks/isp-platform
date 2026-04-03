@@ -42,6 +42,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
+import { calcularBruto, toNum, toInt } from "../lib/nomina-calc";
 
 export const prePlanillaRouter = Router();
 
@@ -673,21 +674,22 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
     const d2 = new Date(hasta);
     const periodoDias = Math.round((d2.getTime() - d1.getTime()) / 86400000) + 1;
 
-    // Calcular total estimado (mensual en segunda quincena = sueldo_base completo)
+    // Calcular total estimado usando calcularBruto() de nomina-calc.ts
+    // (misma función que usa la planilla final → total_estimado == total_bruto)
     let totalEstimado = 0;
     for (const row of snapshotRows) {
-      const sb = parseFloat(row.sueldo_base || 0);
-      const he = parseFloat(row.horas_extra || 0);
-      const anticipo = parseFloat(row.anticipos_monto || 0);
-      const hDia = parseFloat(row.turno_horas_trabajo || row.horas_contrato || 48) / 6;
-      const sueldoDia = sb / 30;
-      const faltas = parseInt(row.faltas || 0) + parseInt(row.suspensiones || 0);
-      const esMensual = (row.frecuencia_pago ?? "quincenal") === "mensual";
-
-      const sueldoPeriodo = esMensual && quincenaTipo === "segunda" ? sb : sueldoDia * periodoDias;
-      const descFaltas = sueldoDia * faltas;
-      const valorHE = he > 0 ? (sueldoDia / hDia) * 1.5 * he : 0;
-      totalEstimado += Math.max(0, sueldoPeriodo - descFaltas + valorHE - anticipo);
+      const anticipo = toNum(row.anticipos_monto);
+      const { totalBruto } = calcularBruto({
+        sueldoBase:      toNum(row.sueldo_base),
+        horasContrato:   toNum(row.horas_contrato),
+        faltas:          toInt(row.faltas),
+        suspensiones:    toInt(row.suspensiones),
+        horasExtra:      toNum(row.horas_extra),
+        periodoTotalDias: periodoDias,
+        frecuenciaPago:  String(row.frecuencia_pago ?? "quincenal"),
+        quincenaTipo,
+      });
+      totalEstimado += Math.max(0, totalBruto - anticipo);
     }
 
     // Guardar cierre

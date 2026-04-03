@@ -48,10 +48,9 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
+import { calcularBruto, toNum, toInt } from "../lib/nomina-calc";
 
 export const planillaRouter = Router();
-
-// ─── Cálculo por colaborador ──────────────────────────────────────────────────
 
 // ─── Detecta si un período es primera o segunda quincena ─────────────────────
 function detectarQuincena(hasta: string): "primera" | "segunda" {
@@ -59,50 +58,53 @@ function detectarQuincena(hasta: string): "primera" | "segunda" {
   return d.getUTCDate() <= 15 ? "primera" : "segunda";
 }
 
+// ─── Cálculo por colaborador ─────────────────────────────────────────────────
+// Usa calcularBruto() de nomina-calc.ts (fuente única de verdad compartida con
+// pre-planilla) para garantizar que total_estimado == total_bruto.
 function calcularLinea(
   row: Record<string, unknown>,
   periodoTotalDias: number,
   igssData: { aplica_igss: boolean; motivo_exclusion_igss: string | null },
   quincenaTipo: "primera" | "segunda"
 ) {
-  const sb       = parseFloat(String(row.sueldo_base  ?? 0));
-  const hc       = parseFloat(String(row.horas_contrato ?? 48));
-  const faltas   = parseInt(String(row.faltas       ?? 0));
-  const susp     = parseInt(String(row.suspensiones ?? 0));
-  const he       = parseFloat(String(row.horas_extra ?? 0));
-  const anticipo = parseFloat(String(row.anticipos_monto ?? 0));
+  const sb        = toNum(row.sueldo_base);
+  const hc        = toNum(row.horas_contrato);
+  const faltas    = toInt(row.faltas);
+  const susp      = toInt(row.suspensiones);
+  const he        = toNum(row.horas_extra);
+  const anticipo  = toNum(row.anticipos_monto);
   const frecuencia = String(row.frecuencia_pago ?? "quincenal");
 
-  const horasDia  = hc > 0 ? hc / 6 : 8;
-  const sueldoDia = sb / 30;
+  const bruto = calcularBruto({
+    sueldoBase:      sb,
+    horasContrato:   hc,
+    faltas,
+    suspensiones:    susp,
+    horasExtra:      he,
+    periodoTotalDias,
+    frecuenciaPago:  frecuencia,
+    quincenaTipo,
+  });
 
-  // Mensual en segunda quincena recibe el sueldo mensual completo (sb); cualquier otro caso usa la fórmula estándar
-  const esMensualSegunda = frecuencia === "mensual" && quincenaTipo === "segunda";
-  const sueldoPeriodo = esMensualSegunda ? sb : sueldoDia * periodoTotalDias;
-
-  const descFaltas  = sueldoDia * (faltas + susp);
-  const valorHE     = he > 0 ? (sueldoDia / horasDia) * 1.5 * he : 0;
-  const totalBruto  = Math.max(0, sueldoPeriodo - descFaltas + valorHE);
-  const totalNeto   = Math.max(0, totalBruto - anticipo);
+  const totalNeto = Math.max(0, bruto.totalBruto - anticipo);
 
   return {
     sueldo_base:      sb,
     horas_contrato:   hc,
     frecuencia_pago:  frecuencia,
     periodo_dias:     periodoTotalDias,
-    dias_trabajados:  parseInt(String(row.dias_trabajados ?? 0)),
-    faltas:           faltas,
+    dias_trabajados:  toInt(row.dias_trabajados),
+    faltas,
     suspensiones:     susp,
-    horas_trabajadas: parseFloat(String(row.horas_trabajadas ?? 0)),
+    horas_trabajadas: toNum(row.horas_trabajadas),
     horas_extra:      he,
-    sueldo_periodo:   parseFloat(sueldoPeriodo.toFixed(2)),
-    desc_faltas:      parseFloat(descFaltas.toFixed(2)),
-    valor_he:         parseFloat(valorHE.toFixed(2)),
-    total_bruto:      parseFloat(totalBruto.toFixed(2)),
+    sueldo_periodo:   parseFloat(bruto.sueldoPeriodo.toFixed(2)),
+    desc_faltas:      parseFloat(bruto.descFaltas.toFixed(2)),
+    valor_he:         parseFloat(bruto.valorHE.toFixed(2)),
+    total_bruto:      parseFloat(bruto.totalBruto.toFixed(2)),
     anticipos:        parseFloat(anticipo.toFixed(2)),
     total_neto:       parseFloat(totalNeto.toFixed(2)),
-    // IGSS — clasificación (sin cálculo todavía)
-    aplica_igss:          igssData.aplica_igss,
+    aplica_igss:           igssData.aplica_igss,
     motivo_exclusion_igss: igssData.motivo_exclusion_igss,
     igss_trabajador:  0,
     igss_patronal:    0,
