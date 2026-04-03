@@ -28,6 +28,7 @@ import {
   UserSearch,
   Calendar,
   Kanban,
+  Trash2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -243,6 +244,12 @@ export const NAV_SECTIONS: NavSection[] = [
     id: "sistema",
     label: "Sistema",
     items: [
+      {
+        path: "/admin/solicitudes-eliminacion",
+        label: "Solicitudes de Eliminación",
+        icon: Trash2,
+        roles: ["admin"],
+      },
       {
         path: "/admin/usuarios",
         label: "Usuarios del Sistema",
