@@ -1,0 +1,127 @@
+Quiero ampliar el módulo de Armería para incluir control documental de tenencia por arma.
+
+No quiero romper la lógica actual de custodia, historial ni asignación automática.
+Quiero agregar control de vencimientos y alertas.
+
+## Objetivo
+Que cada arma pueda registrar su información de tenencia y que el sistema avise con anticipación cuando la licencia/tenencia esté próxima a vencer o ya venció.
+
+---
+
+## 1. Nuevos campos por arma
+En la ficha de cada arma agregar:
+
+- numero_tenencia
+- fecha_vencimiento_tenencia
+
+Estos campos deben poder verse y editarse desde el módulo de Armería.
+
+---
+
+## 2. Cálculo automático
+A partir de la fecha de vencimiento, el sistema debe calcular automáticamente:
+
+- días_restantes_para_vencer
+- estado_documental del arma
+
+Estados sugeridos:
+- vigente
+- proximo_a_vencer
+- vencida
+
+---
+
+## 3. Regla visual
+Quiero reglas claras:
+
+### Vigente
+- se muestra normal
+
+### Próximo a vencer
+- cuando falten 6 meses o menos (180 días o menos)
+- mostrar color ámbar o badge visible
+- mostrar cuántos días faltan
+
+### Vencida
+- mostrar rojo
+- badge “Vencida”
+- o “0 días / vencida”
+
+---
+
+## 4. Dónde se debe ver
+Quiero que esto se vea al menos en:
+
+- listado general de armas
+- ficha individual del arma
+- cualquier tarjeta/resumen del arma donde tenga sentido
+
+Ejemplos:
+- esquina superior de la tarjeta
+- badge pequeño
+- texto secundario tipo “vence en 132 días”
+
+---
+
+## 5. Alertas
+Quiero que el sistema pueda alertar cuando falten:
+
+- 180 días
+- 90 días
+- 30 días
+- 15 días
+- 0 días o vencida
+
+No hace falta necesariamente hacer notificaciones complejas todavía, pero sí debe quedar visible en el módulo.
+
+Si ya existe un sistema de alertas/listados, se puede integrar ahí.
+
+---
+
+## 6. Filtros
+Quiero poder filtrar en Armería por:
+
+- todas
+- vigentes
+- próximas a vencer
+- vencidas
+
+Y si es posible también por:
+- rango de días restantes
+- cliente
+- puesto
+- custodio actual
+
+---
+
+## 7. No romper
+No romper:
+- custodia automática
+- historial/cardex
+- asignación por puesto
+- sincronización al cierre
+- auditoría
+
+Esto es una ampliación documental, no un reemplazo del flujo operativo.
+
+---
+
+## 8. Validación
+Quiero pruebas donde:
+1. un arma tenga fecha de vencimiento lejana y salga vigente
+2. un arma con menos de 180 días salga como próxima a vencer
+3. un arma vencida salga en rojo
+4. el listado pueda filtrarse por estado
+5. la ficha del arma muestre número de tenencia y vencimiento claramente
+
+---
+
+## 9. Documentación
+Explica claramente:
+- cómo se calcula el estado documental
+- cuándo entra en alerta
+- cómo se muestran los días restantes
+- cómo funcionan los filtros
+
+Muy importante:
+quiero que Armería no solo controle quién tiene el arma, sino también el estado legal/documental de su tenencia.

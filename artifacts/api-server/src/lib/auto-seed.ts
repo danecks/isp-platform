@@ -2664,6 +2664,15 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: PT-01 puesto_titulares — error (no bloqueante)");
   }
 
+  // ARM-02: campos documentales de tenencia en armas
+  try {
+    await pool.query(`ALTER TABLE armas ADD COLUMN IF NOT EXISTS numero_tenencia TEXT`);
+    await pool.query(`ALTER TABLE armas ADD COLUMN IF NOT EXISTS fecha_vencimiento_tenencia DATE`);
+    logger.info("Auto-migrate: ARM-02 campos de tenencia en armas verificados/creados");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: ARM-02 — error (no bloqueante)");
+  }
+
   // CUST-01: tabla de auditoría de sincronizaciones de custodia al cierre
   try {
     await pool.query(`
