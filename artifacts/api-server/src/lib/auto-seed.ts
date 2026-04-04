@@ -3049,5 +3049,14 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: PREST-01 — error (no bloqueante)");
   }
 
+  // ── BJ-01: columnas fecha_baja y motivo_baja en employees ──────────────────────
+  try {
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS fecha_baja DATE`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS motivo_baja VARCHAR(100)`);
+    logger.info("Auto-migrate: BJ-01 columnas fecha_baja/motivo_baja en employees verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: BJ-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

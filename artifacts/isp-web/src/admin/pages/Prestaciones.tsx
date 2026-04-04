@@ -21,6 +21,7 @@ import {
   Landmark, Palmtree, Receipt, Settings2, Plus, RefreshCw,
   TrendingUp, Users, CheckCircle2, Clock, ChevronRight,
   Download, Search, FileText, Coins, BookOpen,
+  UserX, AlertTriangle, CalendarX,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AdminLayout } from "@/admin/layout/AdminLayout";
@@ -120,10 +121,10 @@ interface SimulacionLiquidacion {
 
 interface Employee {
   id: number;
-  nombre_completo: string;
-  sueldo_base: string;
-  fecha_ingreso: string;
-  estado_laboral: string;
+  nombreCompleto: string;
+  sueldoBase: string;
+  fechaIngreso: string;
+  estadoLaboral: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -491,7 +492,7 @@ function ModalLiquidacion({ onClose, onDone }: { onClose: () => void; onDone: ()
   });
 
   const filtEmp = (empleados as Employee[]).filter(
-    (e) => !busEmp || e.nombre_completo.toLowerCase().includes(busEmp.toLowerCase())
+    (e) => !busEmp || (e.nombreCompleto ?? "").toLowerCase().includes(busEmp.toLowerCase())
   );
 
   async function handleSimular() {
@@ -506,7 +507,16 @@ function ModalLiquidacion({ onClose, onDone }: { onClose: () => void; onDone: ()
         promedio_ultimos_seis_meses: promedioSeis !== "" ? Number(promedioSeis) : undefined,
         vacaciones_dias_pendientes: vacacionesPendientes !== "" ? Number(vacacionesPendientes) : undefined,
       });
-      setSim(r);
+      // La API devuelve { simulacion, employee_id, nombre_completo, liquidacion: { rubros, totalGeneral, ... } }
+      setSim({
+        employee_id: r.employee_id,
+        empleado_nombre: r.nombre_completo,
+        tipo_egreso: tipoEgreso,
+        fecha_egreso: fechaEgreso,
+        rubros: r.liquidacion?.rubros ?? [],
+        totalGeneral: r.liquidacion?.totalGeneral ?? 0,
+        simulacion: r.simulacion ?? true,
+      });
       setStep("preview");
     } catch (e: Error | unknown) {
       toast({ title: "Error al simular", description: (e as Error).message, variant: "destructive" });
@@ -550,8 +560,8 @@ function ModalLiquidacion({ onClose, onDone }: { onClose: () => void; onDone: ()
       <DialogContent className="bg-[#07111f] border border-teal-500/20 text-white rounded-2xl max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-sm font-bold">
-            <Receipt className="w-4 h-4 text-teal-400" />
-            {step === "form" ? "Nueva Liquidación Final" : "Vista Previa de Liquidación"}
+            <UserX className="w-4 h-4 text-orange-400" />
+            {step === "form" ? "Dar de Baja a Empleado" : "Confirmar Liquidación Final"}
           </DialogTitle>
         </DialogHeader>
 
@@ -564,9 +574,9 @@ function ModalLiquidacion({ onClose, onDone }: { onClose: () => void; onDone: ()
                 <div className="max-h-36 overflow-y-auto rounded-xl border border-white/10 bg-[#060e1c]">
                   {filtEmp.slice(0, 8).map((e) => (
                     <button key={e.id} type="button"
-                      onClick={() => { setEmpId(String(e.id)); setBusEmp(e.nombre_completo); }}
-                      className={`w-full text-left px-3 py-2 text-xs hover:bg-teal-500/10 transition-colors ${String(e.id) === empId ? "bg-teal-500/20 text-teal-300" : "text-white/70"}`}
-                    >{e.nombre_completo}</button>
+                      onClick={() => { setEmpId(String(e.id)); setBusEmp(e.nombreCompleto); }}
+                      className={`w-full text-left px-3 py-2 text-xs hover:bg-orange-500/10 transition-colors ${String(e.id) === empId ? "bg-orange-500/20 text-orange-300" : "text-white/70"}`}
+                    >{e.nombreCompleto}</button>
                   ))}
                 </div>
               )}
@@ -605,8 +615,8 @@ function ModalLiquidacion({ onClose, onDone }: { onClose: () => void; onDone: ()
 
             <DialogFooter className="gap-2 pt-2">
               <Button type="button" variant="ghost" onClick={onClose} className="text-white/50 hover:text-white rounded-xl">Cancelar</Button>
-              <Button onClick={handleSimular} disabled={loading || !empId} className="bg-teal-600 hover:bg-teal-500 text-white rounded-xl">
-                {loading ? "Calculando…" : "Simular"}
+              <Button onClick={handleSimular} disabled={loading || !empId} className="bg-orange-600 hover:bg-orange-500 text-white rounded-xl">
+                {loading ? "Calculando…" : "Calcular Liquidación →"}
               </Button>
             </DialogFooter>
           </div>
@@ -614,10 +624,23 @@ function ModalLiquidacion({ onClose, onDone }: { onClose: () => void; onDone: ()
 
         {step === "preview" && sim && (
           <div className="space-y-4 mt-2">
+            {/* Advertencia de baja */}
+            <div className="flex items-start gap-2.5 bg-orange-500/10 border border-orange-500/25 rounded-xl px-3 py-2.5">
+              <AlertTriangle className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-semibold text-orange-300">Acción irreversible</p>
+                <p className="text-[11px] text-orange-200/60 mt-0.5">
+                  Al confirmar, <span className="font-semibold text-orange-200">{sim.empleado_nombre}</span> quedará marcado como <span className="font-semibold text-orange-200">BAJA</span> en el sistema y se registrará su liquidación final.
+                </p>
+              </div>
+            </div>
+
             <div className="bg-white/3 rounded-xl p-3 text-xs text-white/50 space-y-0.5">
               <p><span className="text-white/30">Empleado:</span> {sim.empleado_nombre}</p>
-              <p><span className="text-white/30">Egreso:</span> {TIPO_EGRESO_LABELS[sim.tipo_egreso] ?? sim.tipo_egreso} · {fmtDate(sim.fecha_egreso)}</p>
+              <p><span className="text-white/30">Motivo:</span> {TIPO_EGRESO_LABELS[sim.tipo_egreso] ?? sim.tipo_egreso}</p>
+              <p><span className="text-white/30">Fecha de baja:</span> {fmtDate(sim.fecha_egreso)}</p>
             </div>
+
             <div className="space-y-2">
               {sim.rubros.map((r) => (
                 <div key={r.rubro} className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-white/3 border border-white/6">
@@ -625,15 +648,16 @@ function ModalLiquidacion({ onClose, onDone }: { onClose: () => void; onDone: ()
                   <span className="text-sm font-semibold text-white">{fmt(r.monto)}</span>
                 </div>
               ))}
-              <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-teal-500/10 border border-teal-500/20">
-                <span className="text-sm font-bold text-teal-300">TOTAL GENERAL</span>
-                <span className="text-lg font-bold text-teal-300">{fmt(sim.totalGeneral)}</span>
+              <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-orange-500/10 border border-orange-500/20">
+                <span className="text-sm font-bold text-orange-300">TOTAL LIQUIDACIÓN</span>
+                <span className="text-lg font-bold text-orange-300">{fmt(sim.totalGeneral)}</span>
               </div>
             </div>
+
             <DialogFooter className="gap-2 pt-2">
-              <Button type="button" variant="ghost" onClick={() => setStep("form")} className="text-white/50 hover:text-white rounded-xl">Atrás</Button>
-              <Button onClick={handleConfirmar} disabled={loading} className="bg-teal-600 hover:bg-teal-500 text-white rounded-xl">
-                {loading ? "Registrando…" : "Confirmar y Registrar"}
+              <Button type="button" variant="ghost" onClick={() => setStep("form")} className="text-white/50 hover:text-white rounded-xl">← Atrás</Button>
+              <Button onClick={handleConfirmar} disabled={loading} className="bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-semibold">
+                {loading ? "Procesando…" : "Confirmar Baja y Liquidar"}
               </Button>
             </DialogFooter>
           </div>
@@ -723,6 +747,7 @@ function TabLiquidaciones() {
   const [modalOpen, setModalOpen] = useState(false);
   const [detalleId, setDetalleId] = useState<number | null>(null);
   const [busEmp, setBusEmp] = useState("");
+  const [filtroEstado, setFiltroEstado] = useState<string>("todas");
 
   const { data, isLoading } = useQuery<{ liquidaciones: LiquidacionItem[] }>({
     queryKey: ["prestaciones-liqlist"],
@@ -730,39 +755,103 @@ function TabLiquidaciones() {
     staleTime: 30_000,
   });
 
-  const liqFilt = (data?.liquidaciones ?? []).filter(
-    (l) => !busEmp || l.empleado_nombre.toLowerCase().includes(busEmp.toLowerCase())
-  );
+  const todas = data?.liquidaciones ?? [];
+
+  // Estadísticas rápidas
+  const activas = todas.filter((l) => l.estado === "activa");
+  const totalPagado = activas.reduce((s, l) => s + parseFloat(String(l.total_general) || "0"), 0);
+
+  const liqFilt = todas.filter((l) => {
+    const matchNombre = !busEmp || l.empleado_nombre.toLowerCase().includes(busEmp.toLowerCase());
+    const matchEstado = filtroEstado === "todas" || l.estado === filtroEstado;
+    return matchNombre && matchEstado;
+  });
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="relative w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
-          <Input
-            className="bg-[#060e1c] border border-white/10 rounded-xl pl-8 pr-3 py-2 text-sm text-white outline-none focus:border-teal-500/40"
-            placeholder="Buscar empleado…"
-            value={busEmp}
-            onChange={(e) => setBusEmp(e.target.value)}
-          />
+    <div className="p-6 space-y-6">
+
+      {/* Banner informativo */}
+      <div className="flex items-start gap-3 bg-orange-500/8 border border-orange-500/20 rounded-2xl px-4 py-3">
+        <UserX className="w-4 h-4 text-orange-400 mt-0.5 shrink-0" />
+        <div>
+          <p className="text-xs font-semibold text-orange-300">Módulo de Bajas y Liquidaciones</p>
+          <p className="text-[11px] text-white/40 mt-0.5">
+            Aquí se registra la baja formal de un colaborador. Al confirmar, el sistema calcula su liquidación según la ley guatemalteca, actualiza su estado a <span className="text-white/60">BAJA</span> y guarda el registro para auditoría.
+          </p>
+        </div>
+      </div>
+
+      {/* Tarjetas de resumen */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
+          <p className="text-[11px] text-white/40 uppercase tracking-wide">Total Bajas</p>
+          <p className="text-2xl font-bold text-white mt-1">{activas.length}</p>
+          <p className="text-[10px] text-white/30 mt-0.5">registros activos</p>
+        </div>
+        <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
+          <p className="text-[11px] text-white/40 uppercase tracking-wide">Total Pagado</p>
+          <p className="text-xl font-bold text-orange-300 mt-1">{fmt(totalPagado)}</p>
+          <p className="text-[10px] text-white/30 mt-0.5">en liquidaciones activas</p>
+        </div>
+        <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
+          <p className="text-[11px] text-white/40 uppercase tracking-wide">Renuncias</p>
+          <p className="text-2xl font-bold text-white mt-1">{activas.filter(l => l.tipo_egreso === "renuncia").length}</p>
+          <p className="text-[10px] text-white/30 mt-0.5">por renuncia voluntaria</p>
+        </div>
+        <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
+          <p className="text-[11px] text-white/40 uppercase tracking-wide">Despidos</p>
+          <p className="text-2xl font-bold text-white mt-1">{activas.filter(l => l.tipo_egreso?.includes("despido")).length}</p>
+          <p className="text-[10px] text-white/30 mt-0.5">justificados e injustificados</p>
+        </div>
+      </div>
+
+      {/* Barra de búsqueda y acción */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="relative w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
+            <Input
+              className="bg-[#060e1c] border border-white/10 rounded-xl pl-8 pr-3 py-2 text-sm text-white outline-none focus:border-orange-500/40"
+              placeholder="Buscar colaborador…"
+              value={busEmp}
+              onChange={(e) => setBusEmp(e.target.value)}
+            />
+          </div>
+          <select
+            value={filtroEstado}
+            onChange={(e) => setFiltroEstado(e.target.value)}
+            className="bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2 text-sm text-white/70 outline-none focus:border-orange-500/40 appearance-none"
+          >
+            <option value="todas">Todas</option>
+            <option value="activa">Activas</option>
+            <option value="anulada">Anuladas</option>
+          </select>
         </div>
         <Button
           onClick={() => setModalOpen(true)}
-          className="bg-teal-600 hover:bg-teal-500 text-white rounded-xl"
+          className="bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-semibold"
         >
-          <Plus className="w-4 h-4 mr-2" /> Nueva Liquidación
+          <UserX className="w-4 h-4 mr-2" /> Dar de Baja a Empleado
         </Button>
       </div>
 
+      {/* Historial de bajas */}
       <div className="rounded-2xl border border-white/8 overflow-hidden">
+        <div className="px-4 py-3 border-b border-white/8 flex items-center gap-2">
+          <CalendarX className="w-3.5 h-3.5 text-white/30" />
+          <span className="text-xs font-semibold text-white/50 uppercase tracking-wide">Historial de Bajas</span>
+          {liqFilt.length > 0 && (
+            <Badge className="ml-auto bg-white/5 text-white/40 border-white/10 text-[10px]">{liqFilt.length} registro{liqFilt.length !== 1 ? "s" : ""}</Badge>
+          )}
+        </div>
         <Table>
           <TableHeader>
             <TableRow className="border-white/8 hover:bg-transparent">
               <TableHead className="text-white/40 text-xs">#</TableHead>
-              <TableHead className="text-white/40 text-xs">Empleado</TableHead>
-              <TableHead className="text-white/40 text-xs">Tipo Egreso</TableHead>
-              <TableHead className="text-white/40 text-xs">Fecha Egreso</TableHead>
-              <TableHead className="text-white/40 text-xs text-right">Total</TableHead>
+              <TableHead className="text-white/40 text-xs">Colaborador</TableHead>
+              <TableHead className="text-white/40 text-xs">Motivo de Egreso</TableHead>
+              <TableHead className="text-white/40 text-xs">Fecha de Baja</TableHead>
+              <TableHead className="text-white/40 text-xs text-right">Liquidación</TableHead>
               <TableHead className="text-white/40 text-xs">Estado</TableHead>
               <TableHead className="text-white/40 text-xs" />
             </TableRow>
@@ -772,29 +861,33 @@ function TabLiquidaciones() {
               <TableRow><TableCell colSpan={7} className="text-center text-white/30 text-xs py-10">Cargando…</TableCell></TableRow>
             )}
             {!isLoading && liqFilt.length === 0 && (
-              <TableRow><TableCell colSpan={7} className="text-center text-white/25 text-xs py-12">
+              <TableRow><TableCell colSpan={7} className="text-center text-white/25 text-xs py-14">
                 <div className="flex flex-col items-center gap-2">
-                  <Receipt className="w-6 h-6" />
-                  <span>No hay liquidaciones registradas</span>
+                  <UserX className="w-7 h-7 text-white/15" />
+                  <span className="text-white/30">No hay bajas registradas</span>
+                  <button
+                    onClick={() => setModalOpen(true)}
+                    className="mt-2 text-orange-400 hover:text-orange-300 text-xs underline underline-offset-2 transition-colors"
+                  >
+                    Registrar primera baja
+                  </button>
                 </div>
               </TableCell></TableRow>
             )}
             {liqFilt.map((l) => {
               const badge = ESTADO_BADGE[l.estado] ?? { label: l.estado, cls: "bg-white/10 text-white/50" };
               return (
-                <TableRow key={l.id} className="border-white/5 hover:bg-white/3">
+                <TableRow key={l.id} className="border-white/5 hover:bg-white/3 cursor-pointer" onClick={() => setDetalleId(l.id)}>
                   <TableCell className="text-xs text-white/40">{l.id}</TableCell>
                   <TableCell className="text-sm text-white/80 font-medium">{l.empleado_nombre}</TableCell>
                   <TableCell className="text-sm text-white/60">{TIPO_EGRESO_LABELS[l.tipo_egreso] ?? l.tipo_egreso}</TableCell>
                   <TableCell className="text-sm text-white/60">{fmtDate(l.fecha_egreso)}</TableCell>
-                  <TableCell className="text-sm font-semibold text-white text-right">{fmt(l.total_general)}</TableCell>
+                  <TableCell className="text-sm font-semibold text-orange-300 text-right">{fmt(l.total_general)}</TableCell>
                   <TableCell>
                     <Badge className={`${badge.cls} text-xs border`}>{badge.label}</Badge>
                   </TableCell>
                   <TableCell>
-                    <button onClick={() => setDetalleId(l.id)} className="text-white/30 hover:text-teal-400 transition-colors">
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
+                    <ChevronRight className="w-4 h-4 text-white/20 group-hover:text-teal-400" />
                   </TableCell>
                 </TableRow>
               );
@@ -806,7 +899,10 @@ function TabLiquidaciones() {
       {modalOpen && (
         <ModalLiquidacion
           onClose={() => setModalOpen(false)}
-          onDone={() => qc.invalidateQueries({ queryKey: ["prestaciones-liqlist"] })}
+          onDone={() => {
+            qc.invalidateQueries({ queryKey: ["prestaciones-liqlist"] });
+            qc.invalidateQueries({ queryKey: ["employees-activos"] });
+          }}
         />
       )}
       {detalleId !== null && (

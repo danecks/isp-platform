@@ -518,6 +518,16 @@ prestacionesRouter.post("/prestaciones/liquidaciones", async (req, res) => {
         );
       }
 
+      // Marcar al empleado como dado de baja
+      await db.query(
+        `UPDATE employees SET
+           estado_laboral = 'baja',
+           fecha_baja     = $1,
+           motivo_baja    = $2
+         WHERE id = $3`,
+        [fechaEgreso, causal, empId]
+      );
+
       await db.query("COMMIT");
       return res.status(201).json({ ok: true, liquidacion_id: liq.id, liquidacion: result });
     } catch (err) {
