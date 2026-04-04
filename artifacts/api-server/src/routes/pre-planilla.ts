@@ -235,6 +235,7 @@ const QUERY_CONSOLIDADO = `
     ON pr.employee_id = e.id
     AND pr.periodo_desde = $1::date
     AND pr.periodo_hasta = $2::date
+  WHERE (e.fecha_baja IS NULL OR e.fecha_baja >= $1::date)
   GROUP BY
     e.id, e.nombre_completo, e.dpi, e.sueldo_base, e.tipo_jornada,
     e.dia_descanso, e.horas_contrato, e.estado_laboral, e.puesto,
@@ -464,11 +465,11 @@ prePlanillaRouter.get("/nomina/pre-planilla/validacion", async (req, res) => {
       ORDER BY n.fecha, e.nombre_completo
     `, [desde, hasta]);
 
-    // Alerta 1: colaborador activo sin ningún registro en el período
+    // Alerta 1: colaborador activo (o con baja dentro del período) sin ningún registro en el período
     const { rows: alertaSinRegistros } = await pool.query(`
       SELECT e.id AS employee_id, e.nombre_completo, e.puesto, e.sede
       FROM employees e
-      WHERE e.estado_laboral = 'activo'
+      WHERE (e.fecha_baja IS NULL OR e.fecha_baja >= $1::date)
         AND e.id NOT IN (
           SELECT DISTINCT n.employee_id FROM novedades_nomina_diarias n
           WHERE n.fecha BETWEEN $1 AND $2
@@ -750,7 +751,8 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
         `SELECT e.id, e.nombre_completo, e.sueldo_base, e.sede, e.puesto,
                 e.fecha_ingreso, e.frecuencia_pago,
                 COALESCE(e.cliente_id, 0) AS client_id
-         FROM employees e WHERE e.estado_laboral = 'activo'`
+         FROM employees e
+         WHERE (e.fecha_baja IS NULL OR e.fecha_baja >= $1::date)`, [desde]
       );
 
       const db = await pool.connect();
