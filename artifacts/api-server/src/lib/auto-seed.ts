@@ -3131,5 +3131,71 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: PESP-01 — error (no bloqueante)");
   }
 
+  // ── BDG-01: Módulo de Bodega / Inventario ────────────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS bodega_categorias (
+        id          SERIAL PRIMARY KEY,
+        nombre      VARCHAR(80)  NOT NULL,
+        descripcion TEXT,
+        activo      BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS bodega_articulos (
+        id               SERIAL PRIMARY KEY,
+        categoria_id     INTEGER REFERENCES bodega_categorias(id) ON DELETE SET NULL,
+        nombre           VARCHAR(120) NOT NULL,
+        descripcion      TEXT,
+        codigo_prefijo   VARCHAR(6)   NOT NULL,
+        tipo_rastreo     VARCHAR(20)  NOT NULL DEFAULT 'seriado',
+        tipo_asignacion  VARCHAR(20)  NOT NULL DEFAULT 'colaborador',
+        activo           BOOLEAN      NOT NULL DEFAULT TRUE,
+        created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ba_cat ON bodega_articulos(categoria_id)`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS bodega_unidades (
+        id                SERIAL PRIMARY KEY,
+        articulo_id       INTEGER NOT NULL REFERENCES bodega_articulos(id) ON DELETE RESTRICT,
+        codigo_inventario VARCHAR(30) UNIQUE NOT NULL,
+        numero_serie      VARCHAR(80),
+        condicion         VARCHAR(20) NOT NULL DEFAULT 'bueno',
+        estado            VARCHAR(30) NOT NULL DEFAULT 'disponible',
+        puesto_id         INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        employee_id       INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        notas             TEXT,
+        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS bu_art  ON bodega_unidades(articulo_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS bu_psto ON bodega_unidades(puesto_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS bu_emp  ON bodega_unidades(employee_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS bu_est  ON bodega_unidades(estado)`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS bodega_movimientos (
+        id                SERIAL PRIMARY KEY,
+        unidad_id         INTEGER NOT NULL REFERENCES bodega_unidades(id) ON DELETE CASCADE,
+        tipo              VARCHAR(30) NOT NULL,
+        puesto_id         INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        employee_id       INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        condicion_antes   VARCHAR(20),
+        condicion_despues VARCHAR(20),
+        notas             TEXT,
+        registrado_por    VARCHAR(100),
+        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS bm_unid ON bodega_movimientos(unidad_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS bm_date ON bodega_movimientos(created_at DESC)`);
+    logger.info("Auto-migrate: BDG-01 tablas bodega creadas/verificadas (4 tablas)");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: BDG-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

@@ -33,6 +33,7 @@ import {
   Landmark,
   Gift,
   BookOpen,
+  Package,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -301,6 +302,20 @@ export const NAV_SECTIONS: NavSection[] = [
         label: "Simulador WhatsApp",
         icon: FlaskConical,
         roles: ["admin"],
+      },
+    ],
+  },
+
+  // ── 7. BODEGA ──────────────────────────────────────────────────────────────
+  {
+    id: "bodega",
+    label: "Bodega",
+    items: [
+      {
+        path: "/admin/bodega",
+        label: "Inventario",
+        icon: Package,
+        roles: ["admin", "operaciones"],
       },
     ],
   },
