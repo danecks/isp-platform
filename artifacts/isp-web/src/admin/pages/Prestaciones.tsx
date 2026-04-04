@@ -95,12 +95,12 @@ interface Provision {
 interface LiquidacionItem {
   id: number;
   employee_id: number;
-  empleado_nombre: string;
-  tipo_egreso: string;
+  empleado: string;
+  causal_egreso: string;
   fecha_egreso: string;
   total_general: string;
   estado: string;
-  generado_at: string;
+  created_at: string;
 }
 
 interface RubroLiquidacion {
@@ -150,8 +150,9 @@ const TIPO_EGRESO_LABELS: Record<string, string> = {
 };
 
 const ESTADO_BADGE: Record<string, { label: string; cls: string }> = {
-  activa: { label: "Activa", cls: "bg-green-500/20 text-green-300 border-green-500/30" },
-  anulada: { label: "Anulada", cls: "bg-red-500/20 text-red-300 border-red-500/30" },
+  confirmada: { label: "Confirmada", cls: "bg-green-500/20 text-green-300 border-green-500/30" },
+  activa:     { label: "Activa",     cls: "bg-green-500/20 text-green-300 border-green-500/30" },
+  anulada:    { label: "Anulada",    cls: "bg-red-500/20 text-red-300 border-red-500/30" },
 };
 
 // ─── Tab: Configuración ───────────────────────────────────────────────────────
@@ -704,7 +705,7 @@ function ModalDetalleLiquidacion({ liqId, onClose }: { liqId: number; onClose: (
             {liq && (
               <div className="bg-white/3 rounded-xl p-3 text-xs text-white/50 space-y-0.5">
                 <p><span className="text-white/30">Empleado:</span> {liq.empleado_nombre}</p>
-                <p><span className="text-white/30">Egreso:</span> {TIPO_EGRESO_LABELS[liq.tipo_egreso] ?? liq.tipo_egreso} · {fmtDate(liq.fecha_egreso)}</p>
+                <p><span className="text-white/30">Egreso:</span> {TIPO_EGRESO_LABELS[liq.causal_egreso] ?? liq.causal_egreso} · {fmtDate(liq.fecha_egreso)}</p>
                 <p><span className="text-white/30">Estado:</span> {liq.estado}</p>
               </div>
             )}
@@ -722,7 +723,7 @@ function ModalDetalleLiquidacion({ liqId, onClose }: { liqId: number; onClose: (
                 </div>
               )}
             </div>
-            {liq?.estado === "activa" && (
+            {(liq?.estado === "confirmada" || liq?.estado === "activa") && (
               <DialogFooter className="gap-2 pt-2">
                 <Button type="button" variant="ghost" onClick={onClose} className="text-white/50 hover:text-white rounded-xl">Cerrar</Button>
                 <Button
@@ -749,20 +750,20 @@ function TabLiquidaciones() {
   const [busEmp, setBusEmp] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<string>("todas");
 
-  const { data, isLoading } = useQuery<{ liquidaciones: LiquidacionItem[] }>({
+  const { data, isLoading } = useQuery<{ rows: LiquidacionItem[]; total: number }>({
     queryKey: ["prestaciones-liqlist"],
     queryFn: () => apiGet("/prestaciones/liquidaciones"),
     staleTime: 30_000,
   });
 
-  const todas = data?.liquidaciones ?? [];
+  const todas = data?.rows ?? [];
 
-  // Estadísticas rápidas
-  const activas = todas.filter((l) => l.estado === "activa");
+  // Estadísticas rápidas — "confirmada" es el estado activo en la BD
+  const activas = todas.filter((l) => l.estado === "confirmada" || l.estado === "activa");
   const totalPagado = activas.reduce((s, l) => s + parseFloat(String(l.total_general) || "0"), 0);
 
   const liqFilt = todas.filter((l) => {
-    const matchNombre = !busEmp || l.empleado_nombre.toLowerCase().includes(busEmp.toLowerCase());
+    const matchNombre = !busEmp || (l.empleado ?? "").toLowerCase().includes(busEmp.toLowerCase());
     const matchEstado = filtroEstado === "todas" || l.estado === filtroEstado;
     return matchNombre && matchEstado;
   });
@@ -795,12 +796,12 @@ function TabLiquidaciones() {
         </div>
         <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
           <p className="text-[11px] text-white/40 uppercase tracking-wide">Renuncias</p>
-          <p className="text-2xl font-bold text-white mt-1">{activas.filter(l => l.tipo_egreso === "renuncia").length}</p>
+          <p className="text-2xl font-bold text-white mt-1">{activas.filter(l => l.causal_egreso === "renuncia").length}</p>
           <p className="text-[10px] text-white/30 mt-0.5">por renuncia voluntaria</p>
         </div>
         <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
           <p className="text-[11px] text-white/40 uppercase tracking-wide">Despidos</p>
-          <p className="text-2xl font-bold text-white mt-1">{activas.filter(l => l.tipo_egreso?.includes("despido")).length}</p>
+          <p className="text-2xl font-bold text-white mt-1">{activas.filter(l => l.causal_egreso?.includes("despido")).length}</p>
           <p className="text-[10px] text-white/30 mt-0.5">justificados e injustificados</p>
         </div>
       </div>
@@ -823,7 +824,7 @@ function TabLiquidaciones() {
             className="bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2 text-sm text-white/70 outline-none focus:border-orange-500/40 appearance-none"
           >
             <option value="todas">Todas</option>
-            <option value="activa">Activas</option>
+            <option value="confirmada">Confirmadas</option>
             <option value="anulada">Anuladas</option>
           </select>
         </div>
@@ -879,8 +880,8 @@ function TabLiquidaciones() {
               return (
                 <TableRow key={l.id} className="border-white/5 hover:bg-white/3 cursor-pointer" onClick={() => setDetalleId(l.id)}>
                   <TableCell className="text-xs text-white/40">{l.id}</TableCell>
-                  <TableCell className="text-sm text-white/80 font-medium">{l.empleado_nombre}</TableCell>
-                  <TableCell className="text-sm text-white/60">{TIPO_EGRESO_LABELS[l.tipo_egreso] ?? l.tipo_egreso}</TableCell>
+                  <TableCell className="text-sm text-white/80 font-medium">{l.empleado}</TableCell>
+                  <TableCell className="text-sm text-white/60">{TIPO_EGRESO_LABELS[l.causal_egreso] ?? l.causal_egreso}</TableCell>
                   <TableCell className="text-sm text-white/60">{fmtDate(l.fecha_egreso)}</TableCell>
                   <TableCell className="text-sm font-semibold text-orange-300 text-right">{fmt(l.total_general)}</TableCell>
                   <TableCell>
