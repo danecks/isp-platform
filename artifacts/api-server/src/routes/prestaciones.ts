@@ -427,19 +427,77 @@ async function buildLiquidacion(empId: number, body: Record<string, unknown>) {
     periodoBono14Fin:         body.periodo_bono14_fin      as string ?? b14Periodo.fin,
   });
 
-  return { emp: emp[0], result, fechaEgreso, causal, diasVac };
+  // ── Descontar pagos ya realizados vía planillas especiales ───────────────────
+  const { rows: pagosEsp } = await pool.query(
+    `SELECT pe.tipo, l.monto_ya_pagado::numeric AS monto_ya_pagado
+     FROM planillas_especiales_lineas l
+     JOIN planillas_especiales pe ON pe.id = l.planilla_especial_id
+     WHERE l.employee_id = $1
+       AND pe.estado != 'anulada'
+       AND l.monto_ya_pagado > 0
+       AND (
+         (pe.tipo = 'aguinaldo' AND pe.anio = $2) OR
+         (pe.tipo = 'bono14'    AND pe.anio = $2)
+       )`,
+    [empId, anoPago]
+  );
+
+  const aguinaldoYaPagado = pagosEsp
+    .filter((r) => r.tipo === "aguinaldo")
+    .reduce((s, r) => s + parseFloat(r.monto_ya_pagado), 0);
+  const bono14YaPagado = pagosEsp
+    .filter((r) => r.tipo === "bono14")
+    .reduce((s, r) => s + parseFloat(r.monto_ya_pagado), 0);
+
+  if (aguinaldoYaPagado > 0) {
+    result.rubros.push({
+      rubro:             "descuento_aguinaldo_pagado",
+      descripcion:       `Aguinaldo ${anoPago} ya cancelado vía planilla especial`,
+      salarioReferencia: result.sueldoMensual,
+      monto:             parseFloat((-aguinaldoYaPagado).toFixed(2)),
+      baseCalculo:       JSON.stringify({ planilla_especial: true, ya_pagado: aguinaldoYaPagado }),
+    });
+    result.totalAguinaldo = Math.max(
+      0, parseFloat((result.totalAguinaldo - aguinaldoYaPagado).toFixed(2))
+    );
+  }
+  if (bono14YaPagado > 0) {
+    result.rubros.push({
+      rubro:             "descuento_bono14_pagado",
+      descripcion:       `Bono 14 ${anoPago} ya cancelado vía planilla especial`,
+      salarioReferencia: result.sueldoMensual,
+      monto:             parseFloat((-bono14YaPagado).toFixed(2)),
+      baseCalculo:       JSON.stringify({ planilla_especial: true, ya_pagado: bono14YaPagado }),
+    });
+    result.totalBono14 = Math.max(
+      0, parseFloat((result.totalBono14 - bono14YaPagado).toFixed(2))
+    );
+  }
+  if (aguinaldoYaPagado > 0 || bono14YaPagado > 0) {
+    result.totalGeneral = parseFloat((
+      result.totalSalarioPendiente +
+      result.totalVacaciones +
+      result.totalAguinaldo +
+      result.totalBono14 +
+      result.totalIndemnizacion
+    ).toFixed(2));
+  }
+
+  return { emp: emp[0], result, fechaEgreso, causal, diasVac, aguinaldoYaPagado, bono14YaPagado };
 }
 
 // ─── POST /api/prestaciones/simular-liquidacion ───────────────────────────────
 prestacionesRouter.post("/prestaciones/simular-liquidacion", async (req, res) => {
   try {
     const empId = parseInt(req.body.employee_id);
-    const { emp, result } = await buildLiquidacion(empId, req.body);
+    const { emp, result, aguinaldoYaPagado, bono14YaPagado } = await buildLiquidacion(empId, req.body);
     return res.json({
-      simulacion:      true,
-      employee_id:     empId,
-      nombre_completo: emp.nombre_completo,
-      liquidacion:     result,
+      simulacion:           true,
+      employee_id:          empId,
+      nombre_completo:      emp.nombre_completo,
+      liquidacion:          result,
+      aguinaldo_ya_pagado:  aguinaldoYaPagado,
+      bono14_ya_pagado:     bono14YaPagado,
     });
   } catch (err: unknown) {
     return res.status(500).json({ error: String(err) });

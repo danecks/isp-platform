@@ -3058,5 +3058,78 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: BJ-01 — error (no bloqueante)");
   }
 
+  // ── PESP-01: Planillas Especiales (Bono 14 y Aguinaldo) ──────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS planillas_especiales (
+        id                  SERIAL PRIMARY KEY,
+        tipo                VARCHAR(20)   NOT NULL CHECK (tipo IN ('bono14', 'aguinaldo')),
+        anio                INTEGER       NOT NULL,
+        periodo_inicio      DATE          NOT NULL,
+        periodo_fin         DATE          NOT NULL,
+        num_pagos           INTEGER       NOT NULL DEFAULT 1 CHECK (num_pagos BETWEEN 1 AND 3),
+        estado              VARCHAR(20)   NOT NULL DEFAULT 'borrador'
+                            CHECK (estado IN ('borrador', 'aprobada', 'completada', 'anulada')),
+        total_colaboradores INTEGER       NOT NULL DEFAULT 0,
+        total_bruto         NUMERIC(14,2) NOT NULL DEFAULT 0,
+        generado_por        TEXT,
+        observaciones       TEXT,
+        created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        updated_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS planillas_especiales_lineas (
+        id                    SERIAL PRIMARY KEY,
+        planilla_especial_id  INTEGER       NOT NULL REFERENCES planillas_especiales(id) ON DELETE CASCADE,
+        employee_id           INTEGER       REFERENCES employees(id) ON DELETE SET NULL,
+        nombre_completo       TEXT          NOT NULL,
+        puesto                TEXT,
+        sede                  TEXT,
+        cliente               TEXT,
+        fecha_ingreso         DATE          NOT NULL,
+        fecha_egreso_emp      DATE,
+        dias_periodo_total    INTEGER       NOT NULL,
+        dias_laborados        INTEGER       NOT NULL,
+        salario_referencia    NUMERIC(12,2) NOT NULL,
+        monto_total           NUMERIC(12,2) NOT NULL,
+        monto_ya_pagado       NUMERIC(12,2) NOT NULL DEFAULT 0,
+        created_at            TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS planillas_especiales_pagos (
+        id                    SERIAL PRIMARY KEY,
+        planilla_especial_id  INTEGER       NOT NULL REFERENCES planillas_especiales(id) ON DELETE CASCADE,
+        numero_pago           INTEGER       NOT NULL CHECK (numero_pago >= 1),
+        porcentaje            NUMERIC(6,2)  NOT NULL CHECK (porcentaje > 0 AND porcentaje <= 100),
+        fecha_programada      DATE,
+        estado                VARCHAR(20)   NOT NULL DEFAULT 'pendiente'
+                              CHECK (estado IN ('pendiente', 'pagado')),
+        total_este_pago       NUMERIC(14,2) NOT NULL DEFAULT 0,
+        pagado_por            TEXT,
+        pagado_at             TIMESTAMPTZ,
+        observaciones         TEXT,
+        created_at            TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        UNIQUE (planilla_especial_id, numero_pago)
+      )
+    `);
+
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_pesp_lineas_employee
+      ON planillas_especiales_lineas(employee_id, planilla_especial_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_pesp_pagos_estado
+      ON planillas_especiales_pagos(planilla_especial_id, estado)`);
+    await pool.query(`DROP INDEX IF EXISTS planillas_especiales_tipo_anio_key`);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_planillas_esp_tipo_anio_activa
+      ON planillas_especiales(tipo, anio) WHERE estado != 'anulada'`);
+
+    logger.info("Auto-migrate: PESP-01 tablas planillas_especiales creadas/verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PESP-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

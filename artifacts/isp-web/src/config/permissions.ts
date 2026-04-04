@@ -31,6 +31,7 @@ import {
   Trash2,
   ArrowUpDown,
   Landmark,
+  Gift,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -248,6 +249,12 @@ export const NAV_SECTIONS: NavSection[] = [
         path: "/admin/rrhh/prestaciones",
         label: "Prestaciones Laborales",
         icon: Landmark,
+        roles: ["admin", "rrhh"],
+      },
+      {
+        path: "/admin/rrhh/planillas-especiales",
+        label: "Bono 14 & Aguinaldo",
+        icon: Gift,
         roles: ["admin", "rrhh"],
       },
     ],
