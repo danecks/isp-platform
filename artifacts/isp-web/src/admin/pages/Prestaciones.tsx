@@ -29,7 +29,7 @@ import VacacionesTab from "@/admin/pages/VacacionesTab";
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 
-const API = "http://localhost:8080/api";
+const API = "/api";
 
 function getSession() {
   return sessionStorage.getItem("isp_admin_session_v2") || "";
