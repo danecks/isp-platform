@@ -586,16 +586,43 @@ prestacionesRouter.get("/prestaciones/liquidaciones/:id", async (req, res) => {
 
 // ─── PATCH /api/prestaciones/liquidaciones/:id/anular ─────────────────────────
 prestacionesRouter.patch("/prestaciones/liquidaciones/:id/anular", async (req, res) => {
+  const client = await pool.connect();
   try {
+    await client.query("BEGIN");
+
     const id = parseInt(req.params.id);
-    const { rows } = await pool.query(
-      `UPDATE prestaciones_liquidaciones SET estado='anulada', updated_at=NOW()
-       WHERE id = $1 AND estado != 'anulada' RETURNING id`, [id]
+
+    // Marcar liquidación como anulada y obtener el employee_id
+    const { rows } = await client.query(
+      `UPDATE prestaciones_liquidaciones
+          SET estado = 'anulada', updated_at = NOW()
+        WHERE id = $1 AND estado != 'anulada'
+        RETURNING id, employee_id`, [id]
     );
-    if (rows.length === 0) return res.status(404).json({ error: "Liquidación no encontrada o ya anulada" });
-    return res.json({ ok: true, id });
+    if (rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Liquidación no encontrada o ya anulada" });
+    }
+
+    const employeeId = rows[0].employee_id;
+
+    // Reactivar al empleado: estado activo, limpiar fecha_baja y motivo_baja
+    await client.query(
+      `UPDATE employees
+          SET estado_laboral = 'activo',
+              fecha_baja     = NULL,
+              motivo_baja    = NULL,
+              updated_at     = NOW()
+        WHERE id = $1`, [employeeId]
+    );
+
+    await client.query("COMMIT");
+    return res.json({ ok: true, id, employeeId, reactivado: true });
   } catch (err: unknown) {
+    await client.query("ROLLBACK");
     return res.status(500).json({ error: String(err) });
+  } finally {
+    client.release();
   }
 });
 
