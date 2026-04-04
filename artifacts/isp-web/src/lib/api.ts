@@ -270,6 +270,50 @@ export interface TareaStats {
   cancelada: number;
 }
 
+// --- DASHBOARD SUMMARY ---
+export interface DashboardSummary {
+  operaciones: {
+    incidencias_activas: number;
+    emergencias_activas: number;
+    tareas_pendientes: number;
+  };
+  rrhh: {
+    empleados_activos: number;
+    suspendidos: number;
+    bajas_este_mes: number;
+    alertas_activas: number;
+    anticipos_pendientes: number;
+    liquidaciones_confirmadas: number;
+    postulaciones_nuevas: number;
+  };
+  comercial: {
+    leads_nuevos: number;
+    postulaciones_nuevas: number;
+  };
+}
+
+export const dashboardApi = {
+  getSummary: () => apiFetch<DashboardSummary>("/dashboard/summary"),
+};
+
+// --- RRHH ALERTAS (para dashboard) ---
+export interface AlertaRRHH {
+  id: number;
+  employeeNombre: string;
+  tipo: string;
+  prioridad: string;
+  estado: string;
+  sugerencia: string | null;
+  generadaAt: string;
+}
+
+export const rrhhAlertasApi = {
+  getActivas: (limit = 8) =>
+    apiFetch<{ alertas: AlertaRRHH[]; resumen: Record<string, number> }>(`/rrhh/alertas?estado=activas`).then(
+      (d) => ({ ...d, alertas: (d.alertas ?? []).slice(0, limit) }),
+    ),
+};
+
 export const tareasApi = {
   getAll: () => apiFetch<Tarea[]>("/tareas"),
   getStats: () => apiFetch<TareaStats>("/tareas/stats"),
@@ -309,3 +353,4 @@ export const tareasApi = {
   }),
   cancelar: (id: string) => apiFetch<{ ok: boolean }>(`/tareas/${id}`, { method: "DELETE" }),
 };
+

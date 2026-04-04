@@ -40,6 +40,7 @@ import { armeriaRouter } from "./armeria";
 import { solicitudesEliminacionRouter } from "./solicitudes-eliminacion";
 import cambiosSalarialesRouter from "./cambios-salariales";
 import { prestacionesRouter } from "./prestaciones";
+import dashboardRouter from "./dashboard";
 
 const router: IRouter = Router();
 
@@ -84,5 +85,6 @@ router.use(armeriaRouter);
 router.use(solicitudesEliminacionRouter);
 router.use(cambiosSalarialesRouter);
 router.use(prestacionesRouter);
+router.use(dashboardRouter);
 
 export default router;
