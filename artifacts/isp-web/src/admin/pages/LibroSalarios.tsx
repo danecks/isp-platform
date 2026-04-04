@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { BookOpen, Users, User, Search, Download, ChevronDown, ChevronUp, FileSpreadsheet, Loader2, AlertCircle, Info } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { BookOpen, Users, User, Search, Download, ChevronDown, ChevronUp, FileSpreadsheet, Loader2, AlertCircle, Info, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AdminLayout } from "../layout/AdminLayout";
@@ -423,17 +423,151 @@ function VistaGeneral() {
   );
 }
 
+// ─── Combobox de colaborador ──────────────────────────────────────────────────
+function ColaboradorCombobox({
+  empleados,
+  loading,
+  empId,
+  empNombre,
+  onSelect,
+  onClear,
+}: {
+  empleados: Empleado[];
+  loading: boolean;
+  empId: number | "";
+  empNombre: string;
+  onSelect: (id: number, nombre: string) => void;
+  onClear: () => void;
+}) {
+  const [busqueda, setBusqueda] = useState("");
+  const [open, setOpen]         = useState(false);
+  const containerRef            = useRef<HTMLDivElement>(null);
+  const inputRef                = useRef<HTMLInputElement>(null);
+
+  const filtrados = busqueda.trim().length === 0
+    ? empleados.slice(0, 50)
+    : empleados.filter((e) =>
+        e.nombre_completo.toLowerCase().includes(busqueda.toLowerCase())
+      ).slice(0, 50);
+
+  useEffect(() => {
+    function handleClickOutside(ev: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(ev.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function seleccionar(emp: Empleado) {
+    onSelect(emp.id, emp.nombre_completo);
+    setBusqueda("");
+    setOpen(false);
+  }
+
+  function limpiar() {
+    onClear();
+    setBusqueda("");
+    setOpen(false);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 text-gray-500 text-sm py-2">
+        <Loader2 className="w-4 h-4 animate-spin" /> Cargando colaboradores...
+      </div>
+    );
+  }
+
+  return (
+    <div ref={containerRef} className="relative min-w-[280px]">
+      {empId !== "" ? (
+        /* Chip — colaborador seleccionado */
+        <div className="flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2">
+          <User className="w-4 h-4 text-yellow-400 shrink-0" />
+          <span className="text-yellow-200 text-sm font-medium truncate max-w-[220px]">{empNombre}</span>
+          <button
+            onClick={limpiar}
+            className="ml-auto shrink-0 text-yellow-400/60 hover:text-yellow-300 transition-colors"
+            title="Cambiar colaborador"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ) : (
+        /* Input de búsqueda */
+        <>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
+            <input
+              ref={inputRef}
+              type="text"
+              placeholder="Buscar colaborador..."
+              value={busqueda}
+              onChange={(e) => { setBusqueda(e.target.value); setOpen(true); }}
+              onFocus={() => setOpen(true)}
+              className="w-full bg-[#07111f] border border-white/10 rounded-lg pl-9 pr-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500/50 placeholder:text-gray-600"
+            />
+          </div>
+
+          {/* Dropdown */}
+          {open && (
+            <div className="absolute z-50 top-full mt-1 w-full bg-[#0d1a2a] border border-white/15 rounded-xl shadow-2xl overflow-hidden">
+              {filtrados.length === 0 ? (
+                <div className="px-4 py-3 text-gray-500 text-sm">Sin resultados para "{busqueda}"</div>
+              ) : (
+                <ul className="max-h-64 overflow-y-auto divide-y divide-white/5">
+                  {filtrados.map((emp) => {
+                    const partes = busqueda.trim()
+                      ? emp.nombre_completo.split(new RegExp(`(${busqueda.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"))
+                      : [emp.nombre_completo];
+                    return (
+                      <li key={emp.id}>
+                        <button
+                          onMouseDown={(e) => { e.preventDefault(); seleccionar(emp); }}
+                          className="w-full text-left px-4 py-2.5 hover:bg-white/5 transition-colors flex items-center gap-3"
+                        >
+                          <User className="w-3.5 h-3.5 text-gray-600 shrink-0" />
+                          <span className="text-sm text-gray-300">
+                            {partes.map((p, i) =>
+                              p.toLowerCase() === busqueda.toLowerCase()
+                                ? <mark key={i} className="bg-yellow-500/30 text-yellow-200 rounded px-0.5">{p}</mark>
+                                : p
+                            )}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                  {empleados.filter((e) => e.nombre_completo.toLowerCase().includes(busqueda.toLowerCase())).length > 50 && (
+                    <li className="px-4 py-2 text-gray-600 text-xs text-center">
+                      Mostrando 50 de {empleados.filter((e) => e.nombre_completo.toLowerCase().includes(busqueda.toLowerCase())).length} — sigue escribiendo para afinar
+                    </li>
+                  )}
+                </ul>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Vista Individual ─────────────────────────────────────────────────────────
 function VistaIndividual() {
   const hoy = new Date();
-  const [empleados, setEmpleados] = useState<Empleado[]>([]);
-  const [empId,    setEmpId]   = useState<number | "">("");
-  const [desde,    setDesde]   = useState(`${hoy.getFullYear()}-01-01`);
-  const [hasta,    setHasta]   = useState(`${hoy.getFullYear()}-12-31`);
-  const [data,     setData]    = useState<{ rows: LineaLibro[]; empleado: { id: number; nombre_completo: string; dpi: string } | null } | null>(null);
-  const [loading,  setLoading] = useState(false);
-  const [loadingEmp, setLoadingEmp] = useState(true);
-  const [error,    setError]   = useState<string | null>(null);
+  const [empleados,   setEmpleados]   = useState<Empleado[]>([]);
+  const [empId,       setEmpId]       = useState<number | "">("");
+  const [empNombre,   setEmpNombre]   = useState("");
+  const [desde,       setDesde]       = useState(`${hoy.getFullYear()}-01-01`);
+  const [hasta,       setHasta]       = useState(`${hoy.getFullYear()}-12-31`);
+  const [data,        setData]        = useState<{ rows: LineaLibro[]; empleado: { id: number; nombre_completo: string; dpi: string } | null } | null>(null);
+  const [loading,     setLoading]     = useState(false);
+  const [loadingEmp,  setLoadingEmp]  = useState(true);
+  const [error,       setError]       = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/libro-salarios/empleados", { headers: { "x-isp-session": getSession() } })
@@ -460,32 +594,24 @@ function VistaIndividual() {
     }
   }
 
-  const nombreColaborador = data?.empleado?.nombre_completo ?? empleados.find((e) => e.id === empId)?.nombre_completo ?? "";
+  const nombreColaborador = data?.empleado?.nombre_completo ?? empNombre;
 
   return (
     <div className="space-y-5">
       {/* Filtros */}
       <div className="bg-[#0f1623] border border-white/10 rounded-xl p-5">
         <div className="flex flex-wrap items-end gap-4">
-          {/* Colaborador */}
-          <div className="min-w-[220px]">
+          {/* Colaborador — combobox */}
+          <div>
             <label className="block text-xs text-gray-400 mb-1.5">Colaborador</label>
-            {loadingEmp ? (
-              <div className="flex items-center gap-2 text-gray-500 text-sm py-2">
-                <Loader2 className="w-4 h-4 animate-spin" /> Cargando...
-              </div>
-            ) : (
-              <select
-                value={empId}
-                onChange={(e) => setEmpId(e.target.value === "" ? "" : +e.target.value)}
-                className="bg-[#07111f] border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500/50 min-w-[220px]"
-              >
-                <option value="">— Seleccionar colaborador —</option>
-                {empleados.map((e) => (
-                  <option key={e.id} value={e.id}>{e.nombre_completo}</option>
-                ))}
-              </select>
-            )}
+            <ColaboradorCombobox
+              empleados={empleados}
+              loading={loadingEmp}
+              empId={empId}
+              empNombre={empNombre}
+              onSelect={(id, nombre) => { setEmpId(id); setEmpNombre(nombre); setData(null); }}
+              onClear={() => { setEmpId(""); setEmpNombre(""); setData(null); }}
+            />
           </div>
 
           {/* Desde */}
