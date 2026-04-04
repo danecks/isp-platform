@@ -318,7 +318,12 @@ function TabProvisiones() {
   });
   const [hasta, setHasta] = useState(() => new Date().toISOString().slice(0, 10));
 
-  const { data: provisionesData, refetch, isFetching } = useQuery<{ provisiones: Provision[] }>({
+  const { data: provisionesData, refetch, isFetching } = useQuery<{
+    rows: Provision[];
+    total: number;
+    total_por_tipo: Record<string, number>;
+    total_general: number;
+  }>({
     queryKey: ["prest-provisiones", desde, hasta],
     queryFn: () => apiGet(`/prestaciones/provisiones?periodo_desde=${desde}&periodo_hasta=${hasta}`),
     enabled: false,
@@ -333,13 +338,9 @@ function TabProvisiones() {
 
   const inputCls = "bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-teal-500/40 transition-colors";
 
-  // Calcular totales por tipo desde los datos cargados
-  const totalesPorTipo: Record<string, number> = {};
-  let totalGeneral = 0;
-  for (const p of provisionesData?.provisiones ?? []) {
-    totalesPorTipo[p.tipo] = (totalesPorTipo[p.tipo] ?? 0) + parseFloat(String(p.monto_provision));
-    totalGeneral += parseFloat(String(p.monto_provision));
-  }
+  const filas = provisionesData?.rows ?? [];
+  const totalesPorTipo = provisionesData?.total_por_tipo ?? {};
+  const totalGeneral = provisionesData?.total_general ?? 0;
 
   return (
     <div className="p-6 space-y-6">
@@ -382,7 +383,7 @@ function TabProvisiones() {
       </div>
 
       {/* Resumen por tipo (cuando hay datos) */}
-      {(provisionesData?.provisiones?.length ?? 0) > 0 && (
+      {filas.length > 0 && (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {(["aguinaldo", "bono14", "vacaciones", "indemnizacion"] as const).map((tipo) => {
@@ -401,7 +402,7 @@ function TabProvisiones() {
           <div className="flex items-center gap-4 px-4 py-3 rounded-xl bg-white/3 border border-white/8">
             <div>
               <span className="text-xs text-white/40">Registros</span>
-              <p className="text-lg font-bold text-white">{provisionesData.provisiones.length}</p>
+              <p className="text-lg font-bold text-white">{filas.length}</p>
             </div>
             <Separator orientation="vertical" className="h-8 border-white/10" />
             <div>
@@ -412,7 +413,7 @@ function TabProvisiones() {
         </>
       )}
 
-      {provisionesData && (provisionesData?.provisiones?.length ?? 0) === 0 && (
+      {provisionesData && filas.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12 text-white/25 gap-2">
           <TrendingUp className="w-8 h-8" />
           <p className="text-sm">Sin provisiones registradas para este período</p>
@@ -421,7 +422,7 @@ function TabProvisiones() {
       )}
 
       {/* Detalle tabla */}
-      {provisionesData?.provisiones && provisionesData.provisiones.length > 0 && (
+      {filas.length > 0 && (
         <div className="rounded-2xl border border-white/8 overflow-hidden">
           <Table>
             <TableHeader>
@@ -434,7 +435,7 @@ function TabProvisiones() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {provisionesData.provisiones.slice(0, 100).map((p, i) => (
+              {filas.slice(0, 100).map((p, i) => (
                 <TableRow key={i} className="border-white/5 hover:bg-white/3">
                   <TableCell className="text-sm text-white/80">{p.empleado_nombre}</TableCell>
                   <TableCell>
