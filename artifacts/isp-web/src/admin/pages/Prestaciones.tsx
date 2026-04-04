@@ -18,8 +18,8 @@ import {
 } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import {
-  Landmark, Palmtree, Receipt, Calculator, Settings2, Plus, RefreshCw,
-  TrendingUp, Users, AlertCircle, CheckCircle2, Clock, ChevronRight,
+  Landmark, Palmtree, Receipt, Settings2, Plus, RefreshCw,
+  TrendingUp, Users, CheckCircle2, Clock, ChevronRight,
   Download, Search, FileText, Coins, BookOpen,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -89,12 +89,6 @@ interface Provision {
   monto_provision: string;
   dias_periodo: number;
   salario_referencia: string;
-}
-
-interface ProvisionResumen {
-  tipo: string;
-  total: string;
-  count: number;
 }
 
 interface LiquidacionItem {
@@ -318,52 +312,17 @@ function TabConfiguracion() {
 // ─── Tab: Provisiones ─────────────────────────────────────────────────────────
 
 function TabProvisiones() {
-  const { toast } = useToast();
-  const qc = useQueryClient();
   const [desde, setDesde] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
   });
   const [hasta, setHasta] = useState(() => new Date().toISOString().slice(0, 10));
-  const [resultado, setResultado] = useState<null | {
-    empleados_procesados: number;
-    provisiones_generadas: number;
-    total_por_tipo: Record<string, number>;
-    total_general: number;
-    errores: string[];
-  }>(null);
-  const [loading, setLoading] = useState(false);
 
-  const { data: provisionesData, refetch } = useQuery<{ provisiones: Provision[] }>({
+  const { data: provisionesData, refetch, isFetching } = useQuery<{ provisiones: Provision[] }>({
     queryKey: ["prest-provisiones", desde, hasta],
     queryFn: () => apiGet(`/prestaciones/provisiones?periodo_desde=${desde}&periodo_hasta=${hasta}`),
     enabled: false,
   });
-
-  const { data: resumenData } = useQuery<{ resumen: ProvisionResumen[] }>({
-    queryKey: ["prest-provisiones-resumen", desde, hasta],
-    queryFn: () =>
-      apiGet(`/prestaciones/provisiones?periodo_desde=${desde}&periodo_hasta=${hasta}&agrupar_por=tipo`),
-    enabled: false,
-  });
-
-  async function handleProvisionar() {
-    setLoading(true);
-    try {
-      const r = await apiPost("/prestaciones/provisionar", {
-        periodo_desde: desde,
-        periodo_hasta: hasta,
-        tipos: ["aguinaldo", "bono14", "vacaciones", "indemnizacion"],
-      });
-      setResultado(r);
-      qc.invalidateQueries({ queryKey: ["prest-provisiones"] });
-      toast({ title: `Provisión completada: ${r.empleados_procesados} empleados procesados` });
-    } catch (e: Error | unknown) {
-      toast({ title: "Error al provisionar", description: (e as Error).message, variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
-  }
 
   const TIPO_COLOR: Record<string, string> = {
     aguinaldo: "teal",
@@ -374,12 +333,31 @@ function TabProvisiones() {
 
   const inputCls = "bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-teal-500/40 transition-colors";
 
+  // Calcular totales por tipo desde los datos cargados
+  const totalesPorTipo: Record<string, number> = {};
+  let totalGeneral = 0;
+  for (const p of provisionesData?.provisiones ?? []) {
+    totalesPorTipo[p.tipo] = (totalesPorTipo[p.tipo] ?? 0) + parseFloat(String(p.monto_provision));
+    totalGeneral += parseFloat(String(p.monto_provision));
+  }
+
   return (
     <div className="p-6 space-y-6">
-      {/* Controls */}
+      {/* Info banner */}
+      <div className="flex items-start gap-3 bg-teal-500/8 border border-teal-500/20 rounded-2xl px-4 py-3">
+        <CheckCircle2 className="w-4 h-4 text-teal-400 mt-0.5 shrink-0" />
+        <div>
+          <p className="text-xs font-semibold text-teal-300">Generación automática</p>
+          <p className="text-[11px] text-white/40 mt-0.5">
+            Las provisiones se calculan y registran automáticamente cada vez que se cierra una pre-planilla. Aquí puedes consultar el historial por período.
+          </p>
+        </div>
+      </div>
+
+      {/* Filtro de consulta */}
       <div className="bg-white/3 border border-white/8 rounded-2xl p-5">
         <h3 className="text-sm font-semibold text-white/70 mb-4 flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-teal-400" /> Calcular Provisiones del Período
+          <TrendingUp className="w-4 h-4 text-teal-400" /> Consultar Provisiones del Período
         </h3>
         <div className="flex flex-wrap items-end gap-4">
           <div className="space-y-1.5">
@@ -391,71 +369,54 @@ function TabProvisiones() {
             <Input type="date" className={inputCls} value={hasta} onChange={(e) => setHasta(e.target.value)} />
           </div>
           <Button
-            onClick={handleProvisionar}
-            disabled={loading}
-            className="bg-teal-600 hover:bg-teal-500 text-white rounded-xl"
-          >
-            {loading ? (
-              <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Calculando…</>
-            ) : (
-              <><Calculator className="w-4 h-4 mr-2" />Provisionar</>
-            )}
-          </Button>
-          <Button
             variant="ghost"
             onClick={() => refetch()}
-            className="text-white/50 hover:text-white rounded-xl border border-white/10"
+            disabled={isFetching}
+            className="text-white/70 hover:text-white rounded-xl border border-white/10"
           >
-            <Search className="w-4 h-4 mr-2" /> Ver Provisiones
+            {isFetching
+              ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Cargando…</>
+              : <><Search className="w-4 h-4 mr-2" />Ver Provisiones</>}
           </Button>
         </div>
-        <p className="text-[10px] text-white/25 mt-3">
-          La provisión es idempotente — re-ejecutar el mismo período actualiza los montos sin duplicar registros.
-        </p>
       </div>
 
-      {/* Resultado */}
-      {resultado && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {(["aguinaldo", "bono14", "vacaciones", "indemnizacion"] as const).map((tipo) => {
-            const color = TIPO_COLOR[tipo] ?? "teal";
-            const monto = resultado.total_por_tipo?.[tipo];
-            return (
-              <div key={tipo} className={`bg-${color}-500/10 border border-${color}-500/20 rounded-2xl p-4`}>
-                <p className="text-xs text-white/40 capitalize">{tipo === "indemnizacion" ? "Indemnización" : tipo.charAt(0).toUpperCase() + tipo.slice(1)}</p>
-                <p className={`text-xl font-bold text-${color}-300 mt-1`}>
-                  {monto != null ? fmt(monto) : "—"}
-                </p>
-              </div>
-            );
-          })}
-        </div>
+      {/* Resumen por tipo (cuando hay datos) */}
+      {(provisionesData?.provisiones?.length ?? 0) > 0 && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {(["aguinaldo", "bono14", "vacaciones", "indemnizacion"] as const).map((tipo) => {
+              const color = TIPO_COLOR[tipo] ?? "teal";
+              const monto = totalesPorTipo[tipo];
+              return (
+                <div key={tipo} className={`bg-${color}-500/10 border border-${color}-500/20 rounded-2xl p-4`}>
+                  <p className="text-xs text-white/40 capitalize">{tipo === "indemnizacion" ? "Indemnización" : tipo.charAt(0).toUpperCase() + tipo.slice(1)}</p>
+                  <p className={`text-xl font-bold text-${color}-300 mt-1`}>
+                    {monto != null ? fmt(monto) : "—"}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-4 px-4 py-3 rounded-xl bg-white/3 border border-white/8">
+            <div>
+              <span className="text-xs text-white/40">Registros</span>
+              <p className="text-lg font-bold text-white">{provisionesData.provisiones.length}</p>
+            </div>
+            <Separator orientation="vertical" className="h-8 border-white/10" />
+            <div>
+              <span className="text-xs text-white/40">Total General</span>
+              <p className="text-lg font-bold text-teal-300">{fmt(totalGeneral)}</p>
+            </div>
+          </div>
+        </>
       )}
 
-      {resultado && (
-        <div className="flex items-center gap-4 px-4 py-3 rounded-xl bg-white/3 border border-white/8">
-          <div>
-            <span className="text-xs text-white/40">Empleados procesados</span>
-            <p className="text-lg font-bold text-white">{resultado.empleados_procesados}</p>
-          </div>
-          <Separator orientation="vertical" className="h-8 border-white/10" />
-          <div>
-            <span className="text-xs text-white/40">Registros generados</span>
-            <p className="text-lg font-bold text-white">{resultado.provisiones_generadas}</p>
-          </div>
-          <Separator orientation="vertical" className="h-8 border-white/10" />
-          <div>
-            <span className="text-xs text-white/40">Total General</span>
-            <p className="text-lg font-bold text-teal-300">{resultado.total_general != null ? fmt(resultado.total_general) : "—"}</p>
-          </div>
-          {resultado.errores?.length > 0 && (
-            <>
-              <Separator orientation="vertical" className="h-8 border-white/10" />
-              <div className="text-xs text-red-400 flex items-center gap-1">
-                <AlertCircle className="w-3.5 h-3.5" /> {resultado.errores.length} errores
-              </div>
-            </>
-          )}
+      {provisionesData && (provisionesData?.provisiones?.length ?? 0) === 0 && (
+        <div className="flex flex-col items-center justify-center py-12 text-white/25 gap-2">
+          <TrendingUp className="w-8 h-8" />
+          <p className="text-sm">Sin provisiones registradas para este período</p>
+          <p className="text-xs text-white/20">Las provisiones se generan al cerrar la pre-planilla</p>
         </div>
       )}
 

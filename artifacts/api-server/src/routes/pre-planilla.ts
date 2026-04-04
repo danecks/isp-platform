@@ -43,6 +43,7 @@ import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { calcularBruto, toNum, toInt } from "../lib/nomina-calc";
+import { calcularProvisionPeriodo, diasEntreFechas } from "../lib/prestaciones-calc";
 
 export const prePlanillaRouter = Router();
 
@@ -733,9 +734,71 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
       VALUES ($1::date, $2::date, NULL, 'cierre', $3, $4, $5)
     `, [desde, hasta, cerradoPor, observaciones ?? null, JSON.stringify({ total_colaboradores: snapshotRows.length, total_estimado: totalEstimado.toFixed(2), forzar: !!forzar })]);
 
+    // ── Auto-provisionar prestaciones al cerrar la pre-planilla ──────────────
+    // Operación best-effort: un error no cancela el cierre, sólo se registra.
+    let provisionResult: { empleados: number; provisiones: number } | null = null;
+    try {
+      const diasPeriodo = diasEntreFechas(desde, hasta);
+      const tiposCalc: Array<"aguinaldo" | "bono14" | "vacaciones" | "indemnizacion"> =
+        ["aguinaldo", "bono14", "vacaciones", "indemnizacion"];
+
+      const { rows: empleados } = await pool.query<{
+        id: number; nombre_completo: string; sueldo_base: string;
+        sede: string | null; puesto: string | null; fecha_ingreso: string;
+        frecuencia_pago: string; client_id: number;
+      }>(
+        `SELECT e.id, e.nombre_completo, e.sueldo_base, e.sede, e.puesto,
+                e.fecha_ingreso, e.frecuencia_pago,
+                COALESCE(e.cliente_id, 0) AS client_id
+         FROM employees e WHERE e.estado_laboral = 'activo'`
+      );
+
+      const db = await pool.connect();
+      let provisionesCount = 0;
+      try {
+        await db.query("BEGIN");
+        for (const emp of empleados) {
+          const sueldo = parseFloat(emp.sueldo_base);
+          if (!isFinite(sueldo) || sueldo <= 0) continue;
+          const fechaIngreso = new Date(emp.fecha_ingreso);
+          const hoy = new Date(hasta);
+          const aniosServ = Math.max(0, hoy.getUTCFullYear() - fechaIngreso.getUTCFullYear());
+          for (const tipo of tiposCalc) {
+            try {
+              const result = calcularProvisionPeriodo({ sueldoMensual: sueldo, diasPeriodo, tipo, aniosServicio: aniosServ });
+              await db.query(
+                `INSERT INTO prestaciones_provisiones
+                   (periodo_desde, periodo_hasta, tipo, employee_id, empleado_nombre, sede, puesto,
+                    client_id, dias_periodo, salario_referencia, monto_provision, generado_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())
+                 ON CONFLICT (periodo_desde, periodo_hasta, tipo, employee_id) DO UPDATE SET
+                   monto_provision=EXCLUDED.monto_provision, salario_referencia=EXCLUDED.salario_referencia,
+                   dias_periodo=EXCLUDED.dias_periodo, generado_at=NOW()`,
+                [desde, hasta, tipo, emp.id, emp.nombre_completo,
+                 emp.sede ?? null, emp.puesto ?? null, emp.client_id,
+                 diasPeriodo, sueldo, result.montoProvision]
+              );
+              provisionesCount++;
+            } catch { /* skip single employee/tipo error */ }
+          }
+        }
+        await db.query("COMMIT");
+        provisionResult = { empleados: empleados.length, provisiones: provisionesCount };
+        logger.info({ desde, hasta, provisionResult }, "Auto-provisionamiento al cierre completado");
+      } catch (provErr) {
+        await db.query("ROLLBACK");
+        logger.error({ provErr }, "Auto-provisionamiento al cierre — ROLLBACK (cierre no afectado)");
+      } finally {
+        db.release();
+      }
+    } catch (provErr) {
+      logger.error({ provErr }, "Auto-provisionamiento al cierre — error no bloqueante");
+    }
+
     res.status(201).json({
       ...cierreRows[0],
       mensaje: `Pre-planilla del período ${desde} — ${hasta} cerrada correctamente.`,
+      provisiones_generadas: provisionResult,
     });
   } catch (err) {
     logger.error({ err }, "POST /nomina/pre-planilla/cierre error");
