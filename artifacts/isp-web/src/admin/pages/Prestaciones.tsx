@@ -128,8 +128,11 @@ interface Employee {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function fmt(n: number | string) {
-  return `Q${parseFloat(String(n)).toLocaleString("es-GT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function fmt(n: number | string | null | undefined) {
+  if (n == null || n === "") return "Q0.00";
+  const v = parseFloat(String(n));
+  if (!isFinite(v)) return "—";
+  return `Q${v.toLocaleString("es-GT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function fmtDate(d: string) {

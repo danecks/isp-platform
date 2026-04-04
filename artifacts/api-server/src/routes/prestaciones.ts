@@ -357,8 +357,9 @@ prestacionesRouter.get("/prestaciones/provisiones", async (req, res) => {
     const params: unknown[] = [];
     let pIdx = 1;
 
-    if (periodo_desde) { q += ` AND pp.periodo_desde >= $${pIdx++}`; params.push(periodo_desde); }
-    if (periodo_hasta) { q += ` AND pp.periodo_hasta <= $${pIdx++}`; params.push(periodo_hasta); }
+    // Solapamiento: muestra provisiones cuyo período se cruza con el rango consultado
+    if (periodo_desde) { q += ` AND pp.periodo_hasta >= $${pIdx++}`; params.push(periodo_desde); }
+    if (periodo_hasta) { q += ` AND pp.periodo_desde <= $${pIdx++}`; params.push(periodo_hasta); }
     if (tipo)         { q += ` AND pp.tipo = $${pIdx++}`;           params.push(tipo); }
     if (employee_id)  { q += ` AND pp.employee_id = $${pIdx++}`;    params.push(parseInt(employee_id as string)); }
     if (sede)         { q += ` AND pp.sede = $${pIdx++}`;           params.push(sede); }
