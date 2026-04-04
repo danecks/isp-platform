@@ -3,7 +3,7 @@
  * Aguinaldo · Bono 14 · Vacaciones · Indemnización · Liquidación Final · Provisiones
  */
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { AdminLayout } from "@/admin/layout/AdminLayout";
 import { useAuth } from "@/contexts/AuthContext";
+import VacacionesTab from "@/admin/pages/VacacionesTab";
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 
@@ -76,14 +77,6 @@ interface PrestacionesConfig {
   vacacionesDiasElegibilidad: number;
   indemnizacionSoloLegal: boolean;
   redondeoDecimales: number;
-}
-
-interface VacacionesSaldo {
-  employee_id: number;
-  dias_ganados: number;
-  dias_gozados: number;
-  dias_disponibles: number;
-  fecha_ultima_actualizacion: string | null;
 }
 
 interface Provision {
@@ -319,276 +312,8 @@ function TabConfiguracion() {
   );
 }
 
-// ─── Tab: Vacaciones ──────────────────────────────────────────────────────────
-
-function ModalVacMovimiento({
-  onClose,
-  onDone,
-}: {
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const { toast } = useToast();
-  const [empId, setEmpId] = useState("");
-  const [busEmp, setBusEmp] = useState("");
-  const [tipo, setTipo] = useState<"ganadas" | "gozadas">("ganadas");
-  const [dias, setDias] = useState("");
-  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
-  const [obs, setObs] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const { data: empleados = [] } = useQuery<Employee[]>({
-    queryKey: ["employees-activos"],
-    queryFn: () => apiGet("/employees?estado_laboral=activo"),
-    staleTime: 60_000,
-  });
-
-  const filtrados = (empleados as Employee[]).filter(
-    (e) => !busEmp || e.nombre_completo.toLowerCase().includes(busEmp.toLowerCase())
-  );
-
-  async function handleSubmit(ev: React.FormEvent) {
-    ev.preventDefault();
-    if (!empId || !dias || !fecha) return;
-    setLoading(true);
-    try {
-      await apiPost("/prestaciones/vacaciones/movimiento", {
-        employee_id: Number(empId),
-        tipo,
-        dias: parseFloat(dias),
-        fecha,
-        observaciones: obs.trim() || undefined,
-      });
-      toast({ title: "Movimiento registrado" });
-      onDone();
-      onClose();
-    } catch (e: Error | unknown) {
-      toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const inputCls = "w-full bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-teal-500/40 transition-colors";
-
-  return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="bg-[#07111f] border border-teal-500/20 text-white rounded-2xl max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-sm font-bold">
-            <Palmtree className="w-4 h-4 text-teal-400" /> Registrar Movimiento de Vacaciones
-          </DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-          <div className="space-y-1.5">
-            <Label className="text-xs text-white/50">Buscar Empleado</Label>
-            <Input
-              className={inputCls}
-              placeholder="Nombre del empleado…"
-              value={busEmp}
-              onChange={(e) => setBusEmp(e.target.value)}
-            />
-            {busEmp && (
-              <div className="max-h-40 overflow-y-auto rounded-xl border border-white/10 bg-[#060e1c]">
-                {filtrados.slice(0, 10).map((e) => (
-                  <button
-                    key={e.id}
-                    type="button"
-                    onClick={() => { setEmpId(String(e.id)); setBusEmp(e.nombre_completo); }}
-                    className={`w-full text-left px-3 py-2 text-xs hover:bg-teal-500/10 transition-colors ${String(e.id) === empId ? "bg-teal-500/20 text-teal-300" : "text-white/70"}`}
-                  >
-                    {e.nombre_completo}
-                  </button>
-                ))}
-                {filtrados.length === 0 && <p className="text-xs text-white/30 px-3 py-2">Sin resultados</p>}
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-xs text-white/50">Tipo de Movimiento</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {(["ganadas", "gozadas"] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setTipo(t)}
-                  className={`py-2 px-3 rounded-xl text-sm font-medium border transition-all ${tipo === t ? "border-teal-500/50 bg-teal-500/20 text-teal-300" : "border-white/10 bg-white/3 text-white/50 hover:border-white/20"}`}
-                >
-                  {t === "ganadas" ? "Días Ganados" : "Días Gozados"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-white/50">Días</Label>
-              <Input type="number" step="0.5" min="0.5" className={inputCls} value={dias} onChange={(e) => setDias(e.target.value)} placeholder="15" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-white/50">Fecha</Label>
-              <Input type="date" className={inputCls} value={fecha} onChange={(e) => setFecha(e.target.value)} />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-xs text-white/50">Observaciones (opcional)</Label>
-            <Input className={inputCls} placeholder="Período vacacional…" value={obs} onChange={(e) => setObs(e.target.value)} />
-          </div>
-
-          <DialogFooter className="gap-2 pt-2">
-            <Button type="button" variant="ghost" onClick={onClose} className="text-white/50 hover:text-white rounded-xl">Cancelar</Button>
-            <Button type="submit" disabled={loading || !empId || !dias} className="bg-teal-600 hover:bg-teal-500 text-white rounded-xl">
-              {loading ? "Guardando…" : "Registrar"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function TabVacaciones() {
-  const qc = useQueryClient();
-  const [busEmp, setBusEmp] = useState("");
-  const [empIdSel, setEmpIdSel] = useState<number | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
-
-  const { data: empleados = [] } = useQuery<Employee[]>({
-    queryKey: ["employees-activos"],
-    queryFn: () => apiGet("/employees?estado_laboral=activo"),
-    staleTime: 60_000,
-  });
-
-  const { data: saldo, isLoading: saldoLoading } = useQuery<VacacionesSaldo>({
-    queryKey: ["vac-saldo", empIdSel],
-    queryFn: () => apiGet(`/prestaciones/vacaciones/saldo/${empIdSel}`),
-    enabled: !!empIdSel,
-  });
-
-  const { data: movs } = useQuery<{ movimientos: Array<{ id: number; tipo: string; dias: number; fecha: string; observaciones: string | null }> }>({
-    queryKey: ["prest-movs", empIdSel],
-    queryFn: () => apiGet(`/prestaciones/movimientos/${empIdSel}`),
-    enabled: !!empIdSel,
-  });
-
-  const filtEmp = (empleados as Employee[]).filter(
-    (e) => !busEmp || e.nombre_completo.toLowerCase().includes(busEmp.toLowerCase())
-  );
-
-  return (
-    <div className="flex gap-6 p-6">
-      {/* Left: employee list */}
-      <div className="w-72 shrink-0 space-y-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
-          <Input
-            className="bg-[#060e1c] border border-white/10 rounded-xl pl-8 pr-3 py-2 text-sm text-white outline-none focus:border-teal-500/40"
-            placeholder="Buscar empleado…"
-            value={busEmp}
-            onChange={(e) => setBusEmp(e.target.value)}
-          />
-        </div>
-        <div className="space-y-1 max-h-[520px] overflow-y-auto pr-1">
-          {filtEmp.slice(0, 50).map((e) => (
-            <button
-              key={e.id}
-              onClick={() => setEmpIdSel(e.id)}
-              className={`w-full text-left px-3 py-2.5 rounded-xl text-xs transition-all ${empIdSel === e.id ? "bg-teal-500/20 text-teal-300 border border-teal-500/30" : "bg-white/3 text-white/60 hover:bg-white/6 border border-transparent"}`}
-            >
-              <div className="font-medium truncate">{e.nombre_completo}</div>
-              <div className="text-white/30 mt-0.5">{fmt(e.sueldo_base ?? 0)} / mes</div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Right: detail */}
-      <div className="flex-1 min-w-0">
-        {!empIdSel && (
-          <div className="flex flex-col items-center justify-center h-64 text-white/25 gap-2">
-            <Palmtree className="w-8 h-8" />
-            <p className="text-sm">Selecciona un empleado para ver su saldo de vacaciones</p>
-          </div>
-        )}
-
-        {empIdSel && (
-          <>
-            {/* Saldo cards */}
-            <div className="grid grid-cols-3 gap-3 mb-6">
-              {[
-                { label: "Días Ganados", val: saldo?.dias_ganados ?? 0, color: "teal" },
-                { label: "Días Gozados", val: saldo?.dias_gozados ?? 0, color: "blue" },
-                { label: "Disponibles", val: saldo?.dias_disponibles ?? 0, color: "green" },
-              ].map(({ label, val, color }) => (
-                <div key={label} className={`bg-${color}-500/10 border border-${color}-500/20 rounded-2xl p-4`}>
-                  <p className="text-xs text-white/40">{label}</p>
-                  <p className={`text-2xl font-bold text-${color}-300 mt-1`}>
-                    {saldoLoading ? "…" : parseFloat(String(val)).toFixed(1)}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider">Movimientos</h4>
-              <Button
-                size="sm"
-                onClick={() => setModalOpen(true)}
-                className="bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 border border-teal-500/30 rounded-xl text-xs"
-              >
-                <Plus className="w-3.5 h-3.5 mr-1" /> Registrar
-              </Button>
-            </div>
-
-            <div className="rounded-2xl border border-white/8 overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-white/8 hover:bg-transparent">
-                    <TableHead className="text-white/40 text-xs">Tipo</TableHead>
-                    <TableHead className="text-white/40 text-xs">Días</TableHead>
-                    <TableHead className="text-white/40 text-xs">Fecha</TableHead>
-                    <TableHead className="text-white/40 text-xs">Obs.</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(movs?.movimientos ?? []).filter((m) => m.tipo === "ganadas" || m.tipo === "gozadas").map((m) => (
-                    <TableRow key={m.id} className="border-white/5 hover:bg-white/3">
-                      <TableCell>
-                        <Badge className={m.tipo === "ganadas" ? "bg-teal-500/20 text-teal-300 border-teal-500/30" : "bg-blue-500/20 text-blue-300 border-blue-500/30"}>
-                          {m.tipo}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-white/80">{parseFloat(String(m.dias)).toFixed(1)}</TableCell>
-                      <TableCell className="text-sm text-white/60">{fmtDate(m.fecha)}</TableCell>
-                      <TableCell className="text-xs text-white/40">{m.observaciones ?? "—"}</TableCell>
-                    </TableRow>
-                  ))}
-                  {(movs?.movimientos ?? []).filter((m) => m.tipo === "ganadas" || m.tipo === "gozadas").length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-white/30 text-xs py-8">Sin movimientos registrados</TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </>
-        )}
-      </div>
-
-      {modalOpen && (
-        <ModalVacMovimiento
-          onClose={() => setModalOpen(false)}
-          onDone={() => {
-            qc.invalidateQueries({ queryKey: ["vac-saldo", empIdSel] });
-            qc.invalidateQueries({ queryKey: ["prest-movs", empIdSel] });
-          }}
-        />
-      )}
-    </div>
-  );
-}
+// ─── Tab: Vacaciones — usa el componente completo de RRHH Eventos ─────────────
+// VacacionesTab importado al inicio del archivo
 
 // ─── Tab: Provisiones ─────────────────────────────────────────────────────────
 
@@ -1159,8 +884,8 @@ export default function Prestaciones() {
             </TabsList>
           </div>
 
-          <TabsContent value="vacaciones" className="mt-0 flex-1">
-            <TabVacaciones />
+          <TabsContent value="vacaciones" className="mt-0 flex-1 px-6 pt-4">
+            <VacacionesTab />
           </TabsContent>
           <TabsContent value="provisiones" className="mt-0 flex-1">
             <TabProvisiones />
