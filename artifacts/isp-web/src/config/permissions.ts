@@ -30,6 +30,7 @@ import {
   Kanban,
   Trash2,
   ArrowUpDown,
+  Landmark,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -241,6 +242,12 @@ export const NAV_SECTIONS: NavSection[] = [
         path: "/admin/rrhh/cambios-salariales",
         label: "Cambios Salariales",
         icon: ArrowUpDown,
+        roles: ["admin", "rrhh"],
+      },
+      {
+        path: "/admin/rrhh/prestaciones",
+        label: "Prestaciones Laborales",
+        icon: Landmark,
         roles: ["admin", "rrhh"],
       },
     ],

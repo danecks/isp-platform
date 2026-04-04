@@ -2872,5 +2872,182 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: BONO-01 — error (no bloqueante)");
   }
 
+  // ── PREST-01: Módulo de Prestaciones Laborales (Guatemala) ──────────────────────
+  // Tablas para aguinaldo, bono14, vacaciones, indemnización, liquidación y provisiones.
+  // Toda la lógica de cálculo está en prestaciones-calc.ts; estas tablas solo persisten.
+  try {
+    // Configuración por empresa/cliente
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS prestaciones_config (
+        id                           SERIAL PRIMARY KEY,
+        client_id                    INTEGER,
+        aguinaldo_base               VARCHAR(30)  NOT NULL DEFAULT 'salario_actual',
+        bono14_base                  VARCHAR(30)  NOT NULL DEFAULT 'promedio_periodo',
+        vacaciones_dias_primer_anio  INTEGER      NOT NULL DEFAULT 15,
+        vacaciones_dias_quinquenio   INTEGER      NOT NULL DEFAULT 20,
+        vacaciones_dias_elegibilidad INTEGER      NOT NULL DEFAULT 150,
+        indemnizacion_solo_legal     BOOLEAN      NOT NULL DEFAULT TRUE,
+        redondeo_decimales           INTEGER      NOT NULL DEFAULT 2,
+        activo                       BOOLEAN      NOT NULL DEFAULT TRUE,
+        created_at                   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        updated_at                   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    // Índice único para evitar configuraciones duplicadas por client_id (admite NULL)
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_prestaciones_config_client
+      ON prestaciones_config (COALESCE(client_id, 0))
+    `);
+
+    // Acumulados anuales por empleado y tipo
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS prestaciones_acumulados (
+        id               SERIAL PRIMARY KEY,
+        employee_id      INTEGER      NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        tipo             VARCHAR(30)  NOT NULL,
+        anio             INTEGER      NOT NULL,
+        dias_acumulados  NUMERIC(10,4) NOT NULL DEFAULT 0,
+        monto_acumulado  NUMERIC(12,2) NOT NULL DEFAULT 0,
+        monto_pagado     NUMERIC(12,2) NOT NULL DEFAULT 0,
+        monto_pendiente  NUMERIC(12,2) NOT NULL DEFAULT 0,
+        UNIQUE(employee_id, tipo, anio)
+      )
+    `);
+
+    // Historial completo de movimientos (trazabilidad total)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS prestaciones_movimientos (
+        id                    SERIAL PRIMARY KEY,
+        employee_id           INTEGER      NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        empleado_nombre       TEXT,
+        tipo_prestacion       VARCHAR(30)  NOT NULL,
+        subtipo               VARCHAR(30),
+        periodo_inicio        DATE,
+        periodo_fin           DATE,
+        fecha_calculo         DATE         NOT NULL DEFAULT CURRENT_DATE,
+        base_calculo          TEXT,
+        monto                 NUMERIC(12,2) NOT NULL,
+        dias_base             NUMERIC(10,4),
+        dias_aplicados        NUMERIC(10,4),
+        salario_referencia    NUMERIC(12,2),
+        promedio_referencia   NUMERIC(12,2),
+        origen                VARCHAR(60),
+        referencia_origen_id  INTEGER,
+        observaciones         TEXT,
+        version_calculo       INTEGER      NOT NULL DEFAULT 1,
+        created_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    // Provisiones periódicas (idempotentes por unique constraint)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS prestaciones_provisiones (
+        id                  SERIAL PRIMARY KEY,
+        periodo_desde       DATE         NOT NULL,
+        periodo_hasta       DATE         NOT NULL,
+        tipo                VARCHAR(30)  NOT NULL,
+        employee_id         INTEGER      NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        empleado_nombre     TEXT,
+        sede                TEXT,
+        puesto              TEXT,
+        client_id           INTEGER,
+        dias_periodo        NUMERIC(10,4),
+        salario_referencia  NUMERIC(12,2),
+        monto_provision     NUMERIC(12,2) NOT NULL,
+        observaciones       TEXT,
+        generado_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        UNIQUE(periodo_desde, periodo_hasta, tipo, employee_id)
+      )
+    `);
+
+    // Liquidaciones finales (encabezado)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS prestaciones_liquidaciones (
+        id                      SERIAL PRIMARY KEY,
+        employee_id             INTEGER      NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
+        empleado_nombre         TEXT,
+        fecha_egreso            DATE         NOT NULL,
+        causal_egreso           VARCHAR(40)  NOT NULL,
+        fecha_ingreso           DATE         NOT NULL,
+        anios_servicio          NUMERIC(10,4),
+        dias_servicio           INTEGER,
+        salario_actual          NUMERIC(12,2),
+        promedio_salario        NUMERIC(12,2),
+        total_salario_pendiente NUMERIC(12,2) NOT NULL DEFAULT 0,
+        total_vacaciones        NUMERIC(12,2) NOT NULL DEFAULT 0,
+        total_aguinaldo         NUMERIC(12,2) NOT NULL DEFAULT 0,
+        total_bono14            NUMERIC(12,2) NOT NULL DEFAULT 0,
+        total_indemnizacion     NUMERIC(12,2) NOT NULL DEFAULT 0,
+        total_otros             NUMERIC(12,2) NOT NULL DEFAULT 0,
+        total_general           NUMERIC(12,2) NOT NULL DEFAULT 0,
+        estado                  VARCHAR(20)  NOT NULL DEFAULT 'confirmada',
+        simulacion              BOOLEAN      NOT NULL DEFAULT FALSE,
+        observaciones           TEXT,
+        version                 INTEGER      NOT NULL DEFAULT 1,
+        created_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        updated_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    // Detalle por rubro de cada liquidación
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS prestaciones_liquidacion_detalle (
+        id                  SERIAL PRIMARY KEY,
+        liquidacion_id      INTEGER      NOT NULL REFERENCES prestaciones_liquidaciones(id) ON DELETE CASCADE,
+        rubro               VARCHAR(40)  NOT NULL,
+        descripcion         TEXT,
+        periodo_inicio      DATE,
+        periodo_fin         DATE,
+        dias_base           NUMERIC(10,4),
+        salario_referencia  NUMERIC(12,2),
+        monto               NUMERIC(12,2) NOT NULL,
+        base_calculo        TEXT,
+        created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    // Saldo de vacaciones por empleado (tabla de estado actual)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS vacaciones_saldos (
+        id                        SERIAL PRIMARY KEY,
+        employee_id               INTEGER      NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        dias_ganados              NUMERIC(10,4) NOT NULL DEFAULT 0,
+        dias_gozados              NUMERIC(10,4) NOT NULL DEFAULT 0,
+        dias_disponibles          NUMERIC(10,4) NOT NULL DEFAULT 0,
+        dias_pendientes_pago      NUMERIC(10,4) NOT NULL DEFAULT 0,
+        fecha_ultima_actualizacion TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        UNIQUE(employee_id)
+      )
+    `);
+
+    // Movimientos de vacaciones (histórico detallado)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS vacaciones_movimientos (
+        id             SERIAL PRIMARY KEY,
+        employee_id    INTEGER      NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        tipo           VARCHAR(20)  NOT NULL,
+        dias           NUMERIC(10,4) NOT NULL,
+        fecha          DATE         NOT NULL,
+        periodo_inicio DATE,
+        periodo_fin    DATE,
+        referencia     TEXT,
+        observaciones  TEXT,
+        created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    // Índices de performance
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_prest_mov_employee   ON prestaciones_movimientos(employee_id, tipo_prestacion)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_prest_prov_periodo   ON prestaciones_provisiones(periodo_desde, periodo_hasta, tipo)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_prest_liq_employee   ON prestaciones_liquidaciones(employee_id, estado)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_vac_mov_employee     ON vacaciones_movimientos(employee_id, fecha)`);
+
+    logger.info("Auto-migrate: PREST-01 tablas de prestaciones creadas/verificadas (8 tablas)");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PREST-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

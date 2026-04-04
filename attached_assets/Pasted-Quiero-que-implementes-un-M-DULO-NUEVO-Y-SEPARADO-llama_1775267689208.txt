@@ -1,0 +1,364 @@
+Quiero que implementes un MÓDULO NUEVO Y SEPARADO llamado `prestaciones` dentro del sistema, sin mezclarlo con el módulo actual de nómina o pre-planilla.
+
+OBJETIVO
+Crear un módulo especializado para administrar, calcular, acumular, provisionar y liquidar prestaciones laborales en Guatemala.
+
+ALCANCE DEL MÓDULO DE PRESTACIONES
+Este módulo debe incluir como mínimo:
+
+1. Aguinaldo
+2. Bono 14
+3. Vacaciones
+4. Indemnización
+5. Liquidación final de prestaciones al egreso
+6. Provisiones contables de prestaciones
+7. Historial, trazabilidad y auditoría de cálculo
+
+IMPORTANTE DE ARQUITECTURA
+- El módulo de prestaciones debe estar separado del módulo de nómina.
+- Nómina puede consumir datos de prestaciones, pero no debe contener la lógica principal de prestaciones.
+- Crear servicios, entidades, tablas, repositorios y tests propios del módulo `prestaciones`.
+- Diseñar este módulo para que sea reusable tanto en cálculo periódico como en liquidación por baja.
+- NO meter ISR dentro de este módulo.
+- ISR debe quedar fuera, en un futuro módulo fiscal/tributario independiente.
+
+======================================================================
+1. SUBMÓDULOS REQUERIDOS
+======================================================================
+
+A. Aguinaldo
+Implementar cálculo de aguinaldo conforme reglas de Guatemala:
+- prestación anual
+- equivalente a un salario ordinario mensual cuando aplica año completo
+- proporcional si el tiempo laborado es menor
+- debe poder calcularse:
+  1. devengado acumulado
+  2. provisión mensual/quincenal
+  3. pago anual
+  4. pago proporcional por egreso
+
+B. Bono 14
+Implementar cálculo de Bono 14 conforme reglas de Guatemala:
+- prestación anual obligatoria
+- equivalente a un salario ordinario mensual para año completo
+- proporcional si el tiempo laborado es menor
+- basada en promedio de salarios ordinarios del período anual correspondiente
+- debe poder calcularse:
+  1. devengado acumulado
+  2. provisión mensual/quincenal
+  3. pago anual en ciclo de julio
+  4. pago proporcional por egreso
+
+C. Vacaciones
+Implementar control de vacaciones:
+- días ganados
+- días disponibles
+- días gozados
+- días pendientes
+- cálculo proporcional
+- cálculo de vacaciones en liquidación al egreso
+- validación de elegibilidad según reglas configuradas del sistema
+- capacidad de integrarse con incidencias y nómina
+
+D. Indemnización
+Implementar cálculo de indemnización:
+- cálculo por tiempo de servicio
+- proporcional por fracción de año si aplica en el sistema
+- contemplar solo cuando el tipo de baja o causal corresponda
+- separar claramente:
+  - renuncia
+  - despido justificado
+  - despido injustificado
+  - mutuo acuerdo
+  - fin de contrato
+- dejar la lógica parametrizada por causal laboral
+
+E. Liquidación Final
+Implementar motor de liquidación final que consolide:
+- salario pendiente
+- vacaciones pendientes
+- aguinaldo proporcional
+- bono 14 proporcional
+- indemnización si corresponde
+- otros rubros configurables del sistema
+
+======================================================================
+2. DISEÑO FUNCIONAL DEL MÓDULO
+======================================================================
+
+Quiero que el módulo `prestaciones` tenga al menos estas capacidades:
+
+1. Calcular prestación individual por colaborador
+2. Calcular prestaciones masivas por período
+3. Generar provisiones por período
+4. Consultar acumulados históricos
+5. Simular liquidación antes de ejecutar pago
+6. Ejecutar liquidación final
+7. Recalcular sin duplicar movimientos
+8. Mantener trazabilidad completa de cada cálculo
+
+======================================================================
+3. MODELO DE DATOS
+======================================================================
+
+Crear las entidades o tablas necesarias para algo similar a esto:
+
+- prestaciones_config
+- prestaciones_periodos
+- prestaciones_acumulados
+- prestaciones_movimientos
+- prestaciones_provisiones
+- prestaciones_liquidaciones
+- prestaciones_liquidacion_detalle
+- vacaciones_saldos
+- vacaciones_movimientos
+
+Cada movimiento debe guardar como mínimo:
+- id
+- empleado_id
+- tipo_prestacion
+- periodo_inicio
+- periodo_fin
+- fecha_calculo
+- base_calculo
+- monto
+- dias_base
+- dias_aplicados
+- salario_referencia
+- promedio_referencia
+- origen
+- referencia_origen_id
+- observaciones
+- version_calculo
+- created_at
+- updated_at
+
+REQUISITO CRÍTICO
+Todo cálculo debe ser auditable.
+No quiero cálculos opacos.
+Necesito poder rastrear de dónde salió cada monto.
+
+======================================================================
+4. REGLAS DE CÁLCULO
+======================================================================
+
+A. Aguinaldo
+Implementar lógica configurable pero con defaults legales para Guatemala:
+- año completo = equivalente a 1 salario ordinario mensual
+- proporcional por tiempo laborado
+- permitir cálculo usando:
+  - salario actual ordinario
+  - o promedio del período, si el sistema así lo requiere por configuración
+- soportar cálculo por egreso
+
+B. Bono 14
+Implementar lógica configurable pero con defaults legales:
+- año completo = equivalente a 1 salario ordinario mensual
+- proporcional por tiempo laborado
+- base por promedio ordinario del período anual correspondiente
+- soportar cálculo por egreso
+- soportar pago anual y provisión periódica
+
+C. Vacaciones
+Implementar:
+- acumulación de derecho
+- descuento por goce
+- saldo pendiente
+- cálculo proporcional para liquidación
+- integración con incidencias de vacaciones ya existentes en el sistema
+
+D. Indemnización
+Implementar motor por causal:
+- si causal no genera indemnización => monto = 0
+- si causal sí genera indemnización => calcular según tiempo de servicio y salario base de referencia
+- separar el cálculo legal base del cálculo empresarial si hay política interna mejorada
+
+======================================================================
+5. CONFIGURACIÓN
+======================================================================
+
+Crear configuración por empresa/cliente para permitir:
+- método de cálculo de aguinaldo
+- método de cálculo de bono 14
+- política de vacaciones
+- si la indemnización se calcula solo legal
+- si existen prestaciones mejoradas por política interna
+- reglas de redondeo
+- base salarial usada en cada prestación
+- incluir o excluir rubros específicos en la base de cálculo
+
+IMPORTANTE
+Las configuraciones deben tener valores por defecto, pero ser parametrizables por cliente.
+
+======================================================================
+6. INTEGRACIÓN CON NÓMINA
+======================================================================
+
+El módulo de prestaciones debe integrarse con nómina así:
+
+1. Nómina puede consultar provisiones del período
+2. Nómina puede consultar pagos extraordinarios de prestaciones
+3. La liquidación final puede emitir rubros que luego pasen a pago
+4. No duplicar lógica de cálculo dentro de nómina
+5. Prestaciones es la fuente de verdad para:
+   - aguinaldo
+   - bono 14
+   - vacaciones pendientes
+   - indemnización
+
+======================================================================
+7. PROVISIONES
+======================================================================
+
+Implementar provisiones automáticas por período para:
+- aguinaldo
+- bono 14
+- vacaciones
+- indemnización (si la empresa decide provisionarla)
+
+Cada provisión debe:
+- calcularse por empleado
+- totalizarse por cliente / sede / centro de costo si existe
+- poder regenerarse sin duplicar
+- dejar histórico por período
+
+Quiero reportes de provisión como mínimo:
+- por empleado
+- por sede
+- por puesto
+- por cliente
+- total general
+
+======================================================================
+8. LIQUIDACIÓN FINAL
+======================================================================
+
+Crear un flujo de liquidación final que:
+1. reciba empleado + fecha de egreso + causal
+2. calcule automáticamente:
+   - salario pendiente
+   - vacaciones pendientes
+   - aguinaldo proporcional
+   - bono 14 proporcional
+   - indemnización si aplica
+3. produzca:
+   - resumen
+   - detalle por rubro
+   - base de cálculo por rubro
+   - total final
+4. permita simulación antes de confirmar
+5. evite duplicar liquidaciones para el mismo egreso
+
+======================================================================
+9. PRUEBAS
+======================================================================
+
+Necesito tests fuertes en tres niveles:
+
+A. UNIT TESTS
+- aguinaldo año completo
+- aguinaldo proporcional
+- bono 14 año completo
+- bono 14 proporcional
+- vacaciones acumuladas
+- vacaciones pendientes
+- indemnización con causal que aplica
+- indemnización con causal que no aplica
+- redondeos
+- idempotencia de provisiones
+
+B. INTEGRATION TESTS
+- contratación -> acumulación de prestaciones
+- vacaciones gozadas -> disminución de saldo
+- egreso -> cálculo de liquidación
+- provisiones -> consulta desde nómina
+- recalcular -> no duplicar movimientos
+
+C. E2E TESTS
+flujo completo:
+- crear cliente
+- crear configuración de prestaciones
+- contratar empleado
+- correr períodos
+- acumular provisiones
+- registrar vacaciones
+- generar liquidación final
+- validar saldos y detalle
+
+======================================================================
+10. CASOS DE PRUEBA OBLIGATORIOS
+======================================================================
+
+Crear mínimo estos casos:
+
+CASO 1
+Empleado con año completo -> aguinaldo completo + bono 14 completo
+
+CASO 2
+Empleado con ingreso reciente -> aguinaldo y bono 14 proporcionales
+
+CASO 3
+Empleado con salario variable -> usar promedio según configuración
+
+CASO 4
+Empleado con vacaciones gozadas parciales -> saldo restante correcto
+
+CASO 5
+Empleado que egresa por renuncia -> sin indemnización legal, pero sí prestaciones proporcionales
+
+CASO 6
+Empleado que egresa por despido injustificado -> con indemnización + prestaciones proporcionales
+
+CASO 7
+Recalcular provisiones dos veces -> sin duplicados
+
+CASO 8
+Generar liquidación dos veces -> segunda vez debe bloquear o versionar, pero nunca duplicar pago
+
+======================================================================
+11. VALIDACIONES DE INTEGRIDAD
+======================================================================
+
+Agregar validaciones automáticas PASS/FAIL para:
+- no duplicación de movimientos
+- no duplicación de provisiones
+- no duplicación de liquidaciones
+- consistencia entre acumulado y detalle
+- consistencia entre vacaciones gozadas y saldo
+- consistencia entre liquidación resumen y detalle
+- trazabilidad completa de base de cálculo
+- idempotencia de recálculo
+
+======================================================================
+12. SALIDA ESPERADA
+======================================================================
+
+Quiero que al terminar:
+1. me muestres la arquitectura propuesta del módulo
+2. me indiques los archivos creados o modificados
+3. me muestres el modelo de datos
+4. me enseñes los servicios principales
+5. me muestres tests creados
+6. ejecutes los tests
+7. me entregues ejemplos de cálculo real
+8. me muestres una simulación de liquidación final
+9. me muestres reportes de provisiones
+10. documentes cualquier supuesto o ajuste técnico realizado
+
+======================================================================
+13. IMPORTANTE
+======================================================================
+
+- Mantén ISR fuera del módulo de prestaciones
+- No hardcodear resultados
+- Toda la lógica debe ser reproducible con datos reales de prueba
+- Si detectas lógica duplicada entre nómina y prestaciones, refactorízala
+- Si faltan tablas o relaciones, créalas
+- Si faltan seeds o fixtures, agrégalos
+- Si puedes, deja comandos como:
+  - pnpm test:prestaciones
+  - pnpm test:prestaciones-e2e
+  - pnpm prestaciones:provisionar
+  - pnpm prestaciones:simular-liquidacion
+
+Quiero un módulo serio, auditable, escalable y separado del cálculo normal de planilla.
