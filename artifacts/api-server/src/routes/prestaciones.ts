@@ -592,16 +592,15 @@ prestacionesRouter.patch("/prestaciones/liquidaciones/:id/anular", async (req, r
 
     const id = parseInt(req.params.id);
 
-    // Marcar liquidación como anulada y obtener el employee_id
+    // Eliminar la liquidación (anulación implica borrado del registro)
     const { rows } = await client.query(
-      `UPDATE prestaciones_liquidaciones
-          SET estado = 'anulada', updated_at = NOW()
-        WHERE id = $1 AND estado != 'anulada'
+      `DELETE FROM prestaciones_liquidaciones
+        WHERE id = $1
         RETURNING id, employee_id`, [id]
     );
     if (rows.length === 0) {
       await client.query("ROLLBACK");
-      return res.status(404).json({ error: "Liquidación no encontrada o ya anulada" });
+      return res.status(404).json({ error: "Liquidación no encontrada" });
     }
 
     const employeeId = rows[0].employee_id;
