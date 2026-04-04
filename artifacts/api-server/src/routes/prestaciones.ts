@@ -368,10 +368,11 @@ prestacionesRouter.get("/prestaciones/provisiones", async (req, res) => {
 
     const { rows } = await pool.query(q, params);
 
-    // Totales por tipo
+    // Totales por tipo — parseFloat puede devolver NaN si monto_provision es null
     const totalPorTipo: Record<string, number> = {};
     for (const row of rows) {
-      totalPorTipo[row.tipo] = r2((totalPorTipo[row.tipo] ?? 0) + parseFloat(row.monto_provision));
+      const monto = parseFloat(row.monto_provision) || 0;
+      totalPorTipo[row.tipo] = r2((totalPorTipo[row.tipo] ?? 0) + monto);
     }
 
     return res.json({
