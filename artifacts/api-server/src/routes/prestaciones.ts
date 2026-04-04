@@ -483,7 +483,69 @@ async function buildLiquidacion(empId: number, body: Record<string, unknown>) {
     ).toFixed(2));
   }
 
-  return { emp: emp[0], result, fechaEgreso, causal, diasVac, aguinaldoYaPagado, bono14YaPagado };
+  // ── Verificar recuperación de vacaciones anticipadas ─────────────────────────
+  // Si el empleado gozó más días de los que ganó proporcionalmente hasta el egreso
+  // se genera un rubro negativo para recuperar la diferencia.
+  const { rows: vacProrataRows } = await pool.query(`
+    WITH srv AS (
+      SELECT
+        ($2::date - fecha_ingreso::date)::int AS dias_servicio,
+        EXTRACT(YEAR FROM AGE($2::date, fecha_ingreso::date))::int AS anios_servicio
+      FROM employees WHERE id = $1
+    ),
+    autorizados AS (
+      SELECT COALESCE(SUM(
+        (SELECT COUNT(*)::int
+         FROM generate_series(er.fecha::date, COALESCE(er.fecha_fin::date, er.fecha::date), '1 day'::interval) g(d)
+         WHERE EXTRACT(DOW FROM g.d) != 0)
+      ), 0) AS total
+      FROM eventos_rrhh er
+      WHERE er.employee_id = $1
+        AND er.tipo_evento IN ('vacaciones', 'vacaciones_programadas')
+        AND er.estado NOT IN ('anulado', 'cancelado')
+        AND er.fecha::date <= $2::date
+    )
+    SELECT
+      ROUND(
+        (dias_servicio::numeric / 365.0) *
+        CASE WHEN anios_servicio >= 5 THEN 20 ELSE 15 END,
+        2
+      ) AS dias_ganados_proporcional,
+      a.total AS dias_autorizados
+    FROM srv, autorizados a
+  `, [empId, fechaEgreso]);
+
+  const diasGanadosProporcional = parseFloat(String(vacProrataRows[0]?.dias_ganados_proporcional ?? 0));
+  const diasAutorizadosTotal    = parseInt(String(vacProrataRows[0]?.dias_autorizados ?? 0));
+
+  if (diasAutorizadosTotal > diasGanadosProporcional) {
+    const diasRecuperar    = parseFloat((diasAutorizadosTotal - diasGanadosProporcional).toFixed(2));
+    const montoRecuperacion = parseFloat((diasRecuperar * (sueldo / 30)).toFixed(2));
+    result.rubros.push({
+      rubro:             "recuperacion_vacaciones_anticipadas",
+      descripcion:       `Recuperación vacaciones anticipadas: gozó ${diasAutorizadosTotal} día(s), ganó ${diasGanadosProporcional} proporcional`,
+      salarioReferencia: sueldo,
+      monto:             -montoRecuperacion,
+      baseCalculo:       JSON.stringify({
+        dias_autorizados:        diasAutorizadosTotal,
+        dias_ganados_proporcional: diasGanadosProporcional,
+        dias_a_recuperar:         diasRecuperar,
+        tasa_diaria:              parseFloat((sueldo / 30).toFixed(2)),
+      }),
+    });
+    // Restar del total de vacaciones (si quedaba algo) y recalcular total general
+    result.totalVacaciones  = Math.max(0, parseFloat((result.totalVacaciones - montoRecuperacion).toFixed(2)));
+    result.totalGeneral     = parseFloat((
+      result.totalSalarioPendiente +
+      result.totalVacaciones +
+      result.totalAguinaldo +
+      result.totalBono14 +
+      result.totalIndemnizacion
+    ).toFixed(2));
+  }
+
+  return { emp: emp[0], result, fechaEgreso, causal, diasVac, aguinaldoYaPagado, bono14YaPagado,
+           diasGanadosProporcional, diasAutorizadosTotal };
 }
 
 // ─── POST /api/prestaciones/simular-liquidacion ───────────────────────────────

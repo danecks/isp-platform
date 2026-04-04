@@ -176,6 +176,119 @@ vacacionesRouter.get("/vacaciones/elegibilidad", async (req, res) => {
   }
 });
 
+// ─── GET /api/vacaciones/saldo/:employeeId ────────────────────────────────────
+// Saldo individual de vacaciones: pro-rata, autorizado, balance (puede ser negativo)
+vacacionesRouter.get("/vacaciones/saldo/:employeeId", async (req, res) => {
+  const empId = parseInt(req.params.employeeId);
+  if (isNaN(empId)) return res.status(400).json({ error: "ID inválido" });
+
+  try {
+    const { rows } = await pool.query(`
+      WITH emp AS (
+        SELECT
+          e.id,
+          e.nombre_completo,
+          e.fecha_ingreso::text              AS fecha_ingreso,
+          e.sueldo_base::numeric             AS sueldo_base,
+          e.estado_laboral,
+          (CURRENT_DATE - e.fecha_ingreso::date)::int AS dias_servicio,
+          EXTRACT(YEAR FROM AGE(CURRENT_DATE, e.fecha_ingreso::date))::int AS anios_servicio,
+          (e.fecha_ingreso + INTERVAL '1 year')::date::text AS fecha_aniversario,
+          ((e.fecha_ingreso + INTERVAL '1 year')::date - CURRENT_DATE)::int AS dias_para_aniversario,
+          ((e.fecha_ingreso + INTERVAL '1 year')::date <= CURRENT_DATE) AS es_elegible
+        FROM employees e
+        WHERE e.id = $1
+      ),
+      ganado_calc AS (
+        SELECT
+          -- Proporcional total (puede ser < 1 año): días_servicio / 365 × tasa
+          ROUND(
+            (dias_servicio::numeric / 365.0) *
+            CASE WHEN anios_servicio >= 5 THEN 20 ELSE 15 END,
+            2
+          ) AS dias_ganados_proporcional,
+          -- Completo: años completos × 15 (o 20)
+          GREATEST(0, anios_servicio) * CASE WHEN anios_servicio >= 5 THEN 20 ELSE 15 END
+            AS dias_ganados_completo
+        FROM emp
+      ),
+      autorizados AS (
+        -- Días autorizados que CONSUMEN saldo: vacaciones + vacaciones_programadas
+        SELECT COALESCE(SUM(
+          (SELECT COUNT(*)::int
+           FROM generate_series(er.fecha::date, COALESCE(er.fecha_fin::date, er.fecha::date), '1 day'::interval) g(d)
+           WHERE EXTRACT(DOW FROM g.d) != 0)
+        ), 0) AS total_autorizados
+        FROM eventos_rrhh er
+        WHERE er.employee_id = $1
+          AND er.tipo_evento IN ('vacaciones', 'vacaciones_programadas')
+          AND er.estado NOT IN ('anulado', 'cancelado')
+      ),
+      vac_activa AS (
+        SELECT
+          er.id,
+          er.tipo_evento,
+          er.fecha::date::text   AS fecha_inicio,
+          er.fecha_fin::text     AS fecha_fin,
+          er.estado,
+          (SELECT COUNT(*)::int
+           FROM generate_series(er.fecha::date, COALESCE(er.fecha_fin::date, er.fecha::date), '1 day'::interval) g(d)
+           WHERE EXTRACT(DOW FROM g.d) != 0) AS dias
+        FROM eventos_rrhh er
+        WHERE er.employee_id = $1
+          AND er.tipo_evento IN ('vacaciones', 'vacaciones_programadas', 'vacaciones_trabajadas')
+          AND er.estado NOT IN ('anulado', 'cancelado')
+          AND er.fecha::date <= CURRENT_DATE
+          AND (er.fecha_fin IS NULL OR er.fecha_fin >= CURRENT_DATE)
+        ORDER BY er.created_at DESC
+        LIMIT 1
+      ),
+      historial AS (
+        SELECT
+          er.id,
+          er.tipo_evento,
+          er.fecha::date::text   AS fecha_inicio,
+          er.fecha_fin::text     AS fecha_fin,
+          er.estado,
+          er.observaciones,
+          er.created_at,
+          (SELECT COUNT(*)::int
+           FROM generate_series(er.fecha::date, COALESCE(er.fecha_fin::date, er.fecha::date), '1 day'::interval) g(d)
+           WHERE EXTRACT(DOW FROM g.d) != 0) AS dias
+        FROM eventos_rrhh er
+        WHERE er.employee_id = $1
+          AND er.tipo_evento IN ('vacaciones', 'vacaciones_programadas', 'vacaciones_trabajadas')
+          AND er.estado NOT IN ('anulado', 'cancelado')
+        ORDER BY er.fecha DESC
+        LIMIT 10
+      )
+      SELECT
+        e.*,
+        gc.dias_ganados_proporcional,
+        gc.dias_ganados_completo,
+        a.total_autorizados,
+        gc.dias_ganados_proporcional - a.total_autorizados AS balance_proporcional,
+        GREATEST(0, gc.dias_ganados_completo - a.total_autorizados) AS balance_completo,
+        (a.total_autorizados > gc.dias_ganados_proporcional) AS es_anticipada,
+        (a.total_autorizados - gc.dias_ganados_proporcional) AS dias_en_deuda,
+        ROUND(e.sueldo_base / 30, 2) AS tasa_diaria,
+        ROUND(
+          GREATEST(0, a.total_autorizados - gc.dias_ganados_proporcional) * (e.sueldo_base / 30),
+          2
+        ) AS monto_en_deuda,
+        (SELECT row_to_json(va.*) FROM vac_activa va LIMIT 1) AS vacacion_activa,
+        (SELECT json_agg(h.*) FROM historial h) AS historial
+      FROM emp e, ganado_calc gc, autorizados a
+    `, [empId]);
+
+    if (!rows.length) return res.status(404).json({ error: "Empleado no encontrado" });
+    res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "GET /vacaciones/saldo/:employeeId error");
+    res.status(500).json({ error: "Error al obtener saldo de vacaciones" });
+  }
+});
+
 // ─── GET /api/vacaciones/alertas ──────────────────────────────────────────────
 // Retorna alertas de aniversario próximas (30/15/7 días)
 vacacionesRouter.get("/vacaciones/alertas", async (req, res) => {
@@ -325,8 +438,9 @@ vacacionesRouter.post("/vacaciones", async (req, res) => {
     }
     const emp = empRows[0];
 
-    // Verificar elegibilidad (solo para vacaciones reales)
-    if (tipo === "vacaciones") {
+    // Verificar elegibilidad (solo para vacaciones reales y cuando NO se fuerza anticipada)
+    const forzarAnticipada = req.body.forzar_anticipada === true;
+    if (tipo === "vacaciones" && !forzarAnticipada) {
       if (!emp.fecha_ingreso) {
         await client.query("ROLLBACK");
         return res.status(400).json({ error: "El empleado no tiene fecha de ingreso registrada" });
@@ -338,6 +452,7 @@ vacacionesRouter.post("/vacaciones", async (req, res) => {
         return res.status(400).json({
           error: `El empleado aún no cumple 1 año. Aniversario: ${aniversario.toISOString().slice(0, 10)}`,
           fecha_aniversario: aniversario.toISOString().slice(0, 10),
+          anticipada: true,
         });
       }
     }
