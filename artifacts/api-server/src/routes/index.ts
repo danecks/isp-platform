@@ -42,6 +42,7 @@ import cambiosSalarialesRouter from "./cambios-salariales";
 import { prestacionesRouter } from "./prestaciones";
 import dashboardRouter from "./dashboard";
 import { planillasEspecialesRouter } from "./planillas-especiales";
+import { libroSalariosRouter } from "./libro-salarios";
 
 const router: IRouter = Router();
 
@@ -88,5 +89,6 @@ router.use(cambiosSalarialesRouter);
 router.use(prestacionesRouter);
 router.use(dashboardRouter);
 router.use(planillasEspecialesRouter);
+router.use(libroSalariosRouter);
 
 export default router;

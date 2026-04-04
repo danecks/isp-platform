@@ -32,6 +32,7 @@ import {
   ArrowUpDown,
   Landmark,
   Gift,
+  BookOpen,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -255,6 +256,12 @@ export const NAV_SECTIONS: NavSection[] = [
         path: "/admin/rrhh/planillas-especiales",
         label: "Bono 14 & Aguinaldo",
         icon: Gift,
+        roles: ["admin", "rrhh"],
+      },
+      {
+        path: "/admin/rrhh/libro-salarios",
+        label: "Libro de Salarios",
+        icon: BookOpen,
         roles: ["admin", "rrhh"],
       },
     ],
