@@ -315,22 +315,32 @@ function TabConfiguracion() {
 // ─── Tab: Provisiones ─────────────────────────────────────────────────────────
 
 function TabProvisiones() {
-  const [desde, setDesde] = useState(() => {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
-  });
-  const [hasta, setHasta] = useState(() => new Date().toISOString().slice(0, 10));
+  const hoy = new Date().toISOString().slice(0, 10);
+  const primerDiaMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
 
-  const { data: provisionesData, refetch, isFetching } = useQuery<{
+  // Inputs del usuario (cambian mientras escribe/selecciona)
+  const [desde, setDesde] = useState(primerDiaMes);
+  const [hasta, setHasta] = useState(hoy);
+
+  // Valores confirmados (cambian solo al hacer clic en "Ver Provisiones")
+  const [queryDesde, setQueryDesde] = useState<string | null>(null);
+  const [queryHasta, setQueryHasta] = useState<string | null>(null);
+
+  const { data: provisionesData, isFetching } = useQuery<{
     rows: Provision[];
     total: number;
     total_por_tipo: Record<string, number>;
     total_general: number;
   }>({
-    queryKey: ["prest-provisiones", desde, hasta],
-    queryFn: () => apiGet(`/prestaciones/provisiones?periodo_desde=${desde}&periodo_hasta=${hasta}`),
-    enabled: false,
+    queryKey: ["prest-provisiones", queryDesde, queryHasta],
+    queryFn: () => apiGet(`/prestaciones/provisiones?periodo_desde=${queryDesde}&periodo_hasta=${queryHasta}`),
+    enabled: !!queryDesde && !!queryHasta,
   });
+
+  const handleBuscar = () => {
+    setQueryDesde(desde);
+    setQueryHasta(hasta);
+  };
 
   const TIPO_COLOR: Record<string, string> = {
     aguinaldo: "teal",
@@ -374,7 +384,7 @@ function TabProvisiones() {
           </div>
           <Button
             variant="ghost"
-            onClick={() => refetch()}
+            onClick={handleBuscar}
             disabled={isFetching}
             className="text-white/70 hover:text-white rounded-xl border border-white/10"
           >
