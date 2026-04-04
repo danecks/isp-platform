@@ -402,7 +402,7 @@ async function buildLiquidacion(empId: number, body: Record<string, unknown>) {
   );
 
   const fechaEgreso  = body.fecha_egreso as string;
-  const causal       = (body.causal_egreso ?? "renuncia") as CausalEgreso;
+  const causal       = (body.causal_egreso ?? body.tipo_egreso ?? "renuncia") as CausalEgreso;
   const fechaIngreso = emp[0].fecha_ingreso.toISOString().slice(0, 10);
   const sueldo       = parseFloat(emp[0].sueldo_base);
 
