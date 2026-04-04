@@ -152,6 +152,7 @@ const TIPO_EGRESO_LABELS: Record<string, string> = {
 const ESTADO_BADGE: Record<string, { label: string; cls: string }> = {
   confirmada: { label: "Confirmada", cls: "bg-green-500/20 text-green-300 border-green-500/30" },
   activa:     { label: "Activa",     cls: "bg-green-500/20 text-green-300 border-green-500/30" },
+  anulada:    { label: "Anulada",    cls: "bg-red-500/20 text-red-300 border-red-500/30" },
 };
 
 // ─── Tab: Configuración ───────────────────────────────────────────────────────
@@ -680,7 +681,7 @@ function ModalDetalleLiquidacion({ liqId, onClose }: { liqId: number; onClose: (
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["prestaciones-liqlist"] });
       qc.invalidateQueries({ queryKey: ["liq-detalle", liqId] });
-      toast({ title: "Liquidación eliminada. Empleado reactivado." });
+      toast({ title: "Liquidación anulada" });
       onClose();
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -824,6 +825,7 @@ function TabLiquidaciones() {
           >
             <option value="todas">Todas</option>
             <option value="confirmada">Confirmadas</option>
+            <option value="anulada">Anuladas</option>
           </select>
         </div>
         <Button
