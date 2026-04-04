@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { AdminLayout } from "../layout/AdminLayout";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -313,6 +314,7 @@ export default function PlanillasEspeciales() {
   // ─── RENDER: Lista ────────────────────────────────────────────────────────
   if (selectedId == null) {
     return (
+      <AdminLayout>
       <div className="p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -635,11 +637,13 @@ export default function PlanillasEspeciales() {
           </DialogContent>
         </Dialog>
       </div>
+      </AdminLayout>
     );
   }
 
   // ─── RENDER: Detalle ──────────────────────────────────────────────────────
   return (
+    <AdminLayout>
     <div className="p-6 space-y-6">
       {/* Nav */}
       <div className="flex items-center gap-4">
@@ -958,5 +962,6 @@ export default function PlanillasEspeciales() {
         </DialogContent>
       </Dialog>
     </div>
+    </AdminLayout>
   );
 }
