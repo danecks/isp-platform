@@ -190,6 +190,9 @@ function Router() {
       <Route path="/admin/rrhh/pre-planilla">
         {() => <AuthGuard requiredRoles={["admin", "rrhh"]}><AdminPrePlanilla /></AuthGuard>}
       </Route>
+      <Route path="/admin/pre-planilla">
+        {() => <Redirect to="/admin/rrhh/pre-planilla" />}
+      </Route>
       <Route path="/admin/rrhh/planilla">
         {() => <AuthGuard requiredRoles={["admin", "rrhh"]}><AdminPlanilla /></AuthGuard>}
       </Route>

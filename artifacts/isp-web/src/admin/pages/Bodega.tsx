@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AdminLayout } from "../layout/AdminLayout";
+import { useToast } from "@/hooks/use-toast";
 
 function getSession() {
   return sessionStorage.getItem("isp_admin_session_v2") || "";
@@ -482,6 +483,7 @@ function TabCatalogo() {
 // ─── Modal Crear Unidades ─────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 function ModalCrearUnidades({ articulos, onClose, onSaved }: { articulos: Articulo[]; onClose: () => void; onSaved: () => void }) {
+  const { toast } = useToast();
   const [artId, setArtId] = useState<string>("");
   const [cantidad, setCantidad] = useState(1);
   const [lineas, setLineas] = useState<{ codigo: string; serie: string; condicion: string }[]>([]);
@@ -515,7 +517,13 @@ function ModalCrearUnidades({ articulos, onClose, onSaved }: { articulos: Articu
       }),
     });
     setSaving(false);
-    if (r.ok) { onSaved(); onClose(); } else setErr(await r.text());
+    if (r.ok) {
+      toast({ title: "Unidades registradas", description: `${lineas.length} unidad${lineas.length !== 1 ? "es" : ""} agregada${lineas.length !== 1 ? "s" : ""} al inventario.` });
+      onSaved();
+      onClose();
+    } else {
+      setErr(await r.text());
+    }
   }
 
   function updateLinea(i: number, field: string, val: string) {

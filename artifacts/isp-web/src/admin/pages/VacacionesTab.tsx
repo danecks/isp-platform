@@ -307,7 +307,7 @@ function ModalNuevoVacaciones({
                 type="date"
                 value={fechaInicio}
                 onChange={(e) => setFechaInicio(e.target.value)}
-                className={inputCls}
+                className={inputCls + " [color-scheme:dark]"}
                 required
               />
             </div>
@@ -318,7 +318,7 @@ function ModalNuevoVacaciones({
                 value={fechaFin}
                 min={fechaInicio}
                 onChange={(e) => setFechaFin(e.target.value)}
-                className={inputCls}
+                className={inputCls + " [color-scheme:dark]"}
               />
             </div>
           </div>
