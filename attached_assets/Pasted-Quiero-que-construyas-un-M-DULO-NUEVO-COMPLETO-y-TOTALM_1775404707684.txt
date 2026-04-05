@@ -1,0 +1,632 @@
+Quiero que construyas un MÓDULO NUEVO, COMPLETO y TOTALMENTE AISLADO para control operativo con NFC en puestos de seguridad, pero SIN AFECTAR EN ABSOLUTO el sistema actual que ya funciona correctamente.
+
+CONTEXTO CRÍTICO
+El sistema actual de la empresa ya funciona bien y no debe romperse.
+Actualmente funcionan correctamente módulos importantes como:
+- planilla
+- pre-planilla
+- prestaciones laborales
+- lógica de incidencias
+- cálculos de nómina
+- flujos actuales del sistema
+
+Por lo tanto, este nuevo desarrollo debe hacerse como un módulo experimental / piloto / sandbox, totalmente desacoplado del flujo productivo actual.
+
+OBJETIVO GENERAL
+Crear un módulo nuevo para pruebas de operación en puestos de seguridad usando:
+- llaveros NFC para agentes
+- fichas NFC para supervisores
+- teléfono o tablet asignado al puesto
+- captura de foto
+- validación contra programación de turnos
+- formularios de control operativo del puesto
+
+PERO EN ESTA PRIMERA FASE:
+- NO integrar el módulo con planilla
+- NO integrar el módulo con pre-planilla
+- NO integrar el módulo con prestaciones
+- NO integrar el módulo con el pizarrón operativo real
+- NO alterar tablas, servicios o flujos existentes del sistema actual
+- NO reemplazar la asistencia actual si existe
+- NO disparar descuentos, faltas, horas extra ni eventos RRHH reales
+
+Este módulo debe crearse primero como una BASE COMPLETA y PROBABLEMENTE INTEGRABLE EN EL FUTURO, pero por ahora funcionando en aislamiento total para hacer pruebas controladas.
+
+======================================================================
+1. REGLA ARQUITECTÓNICA PRINCIPAL
+======================================================================
+
+Quiero que todo este desarrollo siga estas reglas estrictas:
+
+1. No modificar el comportamiento de módulos actuales.
+2. No reutilizar directamente tablas productivas si eso puede afectar la operación.
+3. Si hace falta, crear tablas nuevas exclusivas del módulo piloto.
+4. Si se necesita leer datos del sistema actual, hacerlo en modo SOLO LECTURA.
+5. No generar side effects en nómina, planilla, prestaciones o RRHH.
+6. Todo lo nuevo debe quedar detrás de un feature flag o modo sandbox.
+7. Todo endpoint nuevo debe ir bajo una ruta aislada.
+8. Todo frontend nuevo debe vivir en una sección nueva claramente separada.
+9. No mezclar este módulo con los procesos productivos actuales.
+10. Debe ser posible desactivar completamente este módulo sin afectar nada existente.
+
+======================================================================
+2. NOMBRE Y ALCANCE DEL MÓDULO
+======================================================================
+
+Crear un nuevo módulo con nombre similar a:
+
+- `control_operativo_nfc`
+o
+- `nfc_operaciones`
+o
+- `pilot_nfc_guard`
+
+elige el nombre más consistente con la arquitectura actual.
+
+Este módulo debe contemplar:
+
+A. Marcaje NFC de agentes
+B. Marcaje NFC de supervisores
+C. Dispositivo asignado a puesto
+D. Captura de foto al marcar
+E. Validación operativa contra turnos programados de prueba
+F. Formularios operativos de supervisión
+G. Auditoría de eventos
+H. Modo sandbox / piloto
+
+======================================================================
+3. ALCANCE FUNCIONAL DE FASE 1
+======================================================================
+
+FASE 1 = CREAR EL MÓDULO COMPLETO PERO AISLADO
+
+Quiero que en esta fase sí construyas el módulo completo, incluyendo backend, frontend, modelo de datos y pruebas, pero SIN conectarlo a procesos reales del sistema.
+
+Debe servir para:
+- registrar dispositivos de puesto
+- registrar NFC tags de agentes
+- registrar NFC tags de supervisores
+- simular marcajes de inicio y fin de turno
+- tomar foto
+- registrar inspecciones de supervisor
+- consultar estados de marcaje
+- detectar casos como:
+  - turno programado
+  - fuera de turno
+  - intento irregular
+  - validación pendiente
+- generar historial y trazabilidad
+
+Pero NO debe:
+- afectar asistencia oficial
+- afectar planilla
+- afectar pre-planilla
+- afectar cálculos salariales
+- afectar incidencias oficiales
+- afectar vacaciones
+- afectar horas extra reales
+- afectar módulos ya en producción
+
+======================================================================
+4. CASO DE USO PRINCIPAL DEL AGENTE
+======================================================================
+
+Quiero soportar este flujo:
+
+1. Cada agente tiene un llavero NFC personal.
+2. Cada llavero NFC está asociado a un empleado de prueba o a un empleado real SOLO EN MODO REFERENCIAL.
+3. Cada puesto tiene un teléfono o tablet asignado.
+4. El dispositivo del puesto está registrado como dispositivo autorizado.
+5. El agente llega al puesto.
+6. Acerca su llavero NFC al dispositivo del puesto.
+7. El sistema reconoce el NFC.
+8. El sistema identifica al agente.
+9. El sistema toma una foto.
+10. El sistema abre una pantalla de inicio de turno.
+11. El sistema registra un evento piloto de marcaje.
+12. El sistema compara contra una programación de prueba o contra lectura de turnos en modo solo lectura.
+13. El sistema clasifica el evento como:
+   - inicio correcto
+   - fuera de programación
+   - cobertura posible
+   - validación pendiente
+   - intento sospechoso
+
+IMPORTANTE
+Aunque el llavero identifica al agente, el NFC por sí solo NO debe confirmar asistencia real.
+Solo debe iniciar el flujo de validación.
+
+======================================================================
+5. CASO DE USO PRINCIPAL DEL SUPERVISOR
+======================================================================
+
+Quiero soportar este flujo:
+
+1. Cada supervisor tiene su propia ficha o llavero NFC.
+2. Cuando el supervisor acerca su NFC al dispositivo del puesto:
+   - NO se abre el flujo de agente
+   - se abre el modo supervisor
+3. El modo supervisor debe abrir un formulario operativo del puesto.
+
+El formulario de supervisor debe permitir como mínimo:
+
+A. Estado del arma
+- asignada
+- sin novedad
+- dañada
+- mantenimiento
+- no entregada
+
+B. Estado del uniforme del agente
+- completo
+- incompleto
+- dañado
+- requiere reemplazo
+
+C. Estado del equipo
+- radio
+- bastón
+- linterna
+- chaleco
+- munición
+- libreta
+- otros configurables
+
+Cada ítem puede estar:
+- OK
+- faltante
+- dañado
+- reemplazar
+
+D. Estado del puesto
+- sin novedad
+- con novedad
+- riesgo detectado
+- observación del cliente
+
+E. Estado del agente
+- presente
+- no presente
+- uniforme incompleto
+- sin arma
+- observación disciplinaria
+- requiere seguimiento RRHH
+
+F. Observaciones
+- campo de texto libre
+- opción de adjuntar foto si es posible
+
+Todo esto debe quedar registrado como inspección operativa piloto.
+
+======================================================================
+6. SEGURIDAD DEL MÓDULO
+======================================================================
+
+Este punto es crítico.
+
+Quiero que el módulo esté diseñado para evitar fraude básico. Por lo tanto:
+
+1. El NFC del agente NO debe ser suficiente para marcar desde cualquier dispositivo.
+2. Solo dispositivos autorizados deben poder registrar eventos válidos.
+3. Cada dispositivo debe estar amarrado a un puesto de prueba.
+4. Si un NFC se usa desde un dispositivo no autorizado, el sistema debe rechazar el intento.
+5. Si un NFC se usa fuera de la ventana horaria esperada, el sistema debe marcarlo como irregular.
+6. La foto debe quedar almacenada como evidencia del evento piloto.
+7. Si el reconocimiento facial aún no se implementa, por ahora solo guardar la foto y el estado de validación como:
+   - validado manualmente
+   - pendiente de revisión
+   - rechazado
+8. Dejar preparada la arquitectura para una futura validación facial, pero NO hacer obligatoria la integración si eso complica esta fase.
+
+IMPORTANTE
+No quiero que por ahora se implemente una dependencia compleja que ponga en riesgo el módulo.
+Prefiero:
+- NFC
+- dispositivo autorizado
+- foto
+- trazabilidad
+y dejar reconocimiento facial avanzado para después.
+
+======================================================================
+7. MODO SANDBOX / PILOTO
+======================================================================
+
+Todo el módulo debe operar en modo sandbox.
+
+Quiero que implementes explícitamente estas ideas:
+
+- `sandbox_mode = true`
+- `produccion = false`
+- `no_side_effects = true`
+
+Necesito que cualquier evento generado por este módulo:
+- quede guardado en tablas propias
+- no toque tablas productivas
+- no dispare jobs de producción
+- no modifique estados de nómina o asistencia reales
+
+Si el módulo necesita datos de empleados, puestos o clientes:
+- puede leerlos
+- puede copiarlos a tablas espejo del sandbox
+- o puede referenciarlos en modo read-only
+
+Pero jamás debe alterar datos productivos.
+
+======================================================================
+8. MODELO DE DATOS
+======================================================================
+
+Crear tablas o entidades propias del módulo, por ejemplo:
+
+- nfc_devices
+- nfc_device_assignments
+- nfc_tags
+- nfc_tag_profiles
+- nfc_shift_events
+- nfc_shift_photos
+- nfc_supervisor_forms
+- nfc_supervisor_form_items
+- nfc_shift_sandbox_schedule
+- nfc_validation_queue
+- nfc_feature_flags
+- nfc_audit_logs
+
+Campos sugeridos:
+
+A. nfc_devices
+- id
+- device_code
+- device_name
+- puesto_id_ref
+- cliente_id_ref
+- sede_id_ref
+- status
+- sandbox_mode
+- last_seen_at
+- created_at
+- updated_at
+
+B. nfc_tags
+- id
+- tag_uid
+- profile_type (AGENTE | SUPERVISOR)
+- empleado_id_ref
+- supervisor_id_ref
+- status
+- sandbox_mode
+- issued_at
+- revoked_at
+- created_at
+- updated_at
+
+C. nfc_shift_events
+- id
+- tag_id
+- empleado_id_ref
+- device_id
+- puesto_id_ref
+- event_type (INICIO_TURNO, FIN_TURNO, INTENTO_IRREGULAR, COBERTURA_POTENCIAL, VALIDACION_PENDIENTE)
+- scheduled_status
+- validation_status
+- event_at
+- photo_id
+- notes
+- sandbox_mode
+- created_at
+- updated_at
+
+D. nfc_supervisor_forms
+- id
+- supervisor_tag_id
+- supervisor_id_ref
+- device_id
+- puesto_id_ref
+- agente_id_ref
+- arma_estado
+- uniforme_estado
+- puesto_estado
+- observaciones
+- photo_id
+- form_status
+- sandbox_mode
+- created_at
+- updated_at
+
+E. nfc_supervisor_form_items
+- id
+- form_id
+- item_type
+- item_name
+- item_status
+- item_notes
+- created_at
+- updated_at
+
+======================================================================
+9. BACKEND
+======================================================================
+
+Crear servicios y endpoints aislados.
+
+Rutas sugeridas, bajo prefijo separado, por ejemplo:
+
+`/api/pilot/nfc/...`
+
+o
+
+`/api/sandbox/nfc/...`
+
+Endpoints mínimos:
+
+DISPOSITIVOS
+- POST /devices
+- GET /devices
+- GET /devices/:id
+- PATCH /devices/:id
+- POST /devices/:id/assign
+
+TAGS NFC
+- POST /tags
+- GET /tags
+- GET /tags/:id
+- PATCH /tags/:id
+- POST /tags/:id/revoke
+
+MARCACIONES PILOTO
+- POST /scan
+- POST /shift-events/start
+- POST /shift-events/end
+- GET /shift-events
+- GET /shift-events/:id
+
+SUPERVISIÓN
+- POST /supervisor/scan
+- POST /supervisor/forms
+- GET /supervisor/forms
+- GET /supervisor/forms/:id
+
+VALIDACIÓN
+- GET /validation/pending
+- POST /validation/:id/approve
+- POST /validation/:id/reject
+
+AUDITORÍA
+- GET /audit-logs
+
+IMPORTANTE
+Todos estos endpoints deben operar solo sobre tablas del módulo piloto.
+
+======================================================================
+10. FRONTEND
+======================================================================
+
+Crear una sección nueva, separada de todo lo demás, por ejemplo:
+
+- `/admin/operaciones/nfc-piloto`
+o equivalente
+
+Esta sección debe tener al menos estas pantallas:
+
+1. Dashboard del módulo piloto
+- total de dispositivos
+- total de tags
+- total de eventos del día
+- validaciones pendientes
+- supervisiones realizadas
+
+2. Dispositivos
+- listado
+- crear dispositivo
+- asignar a puesto
+- ver estado
+
+3. Tags NFC
+- listado
+- crear tag
+- asignar a agente o supervisor
+- revocar tag
+
+4. Pantalla kiosco del puesto
+- fullscreen
+- espera de NFC
+- toma foto
+- muestra resultado
+- flujo simple y grande
+
+5. Eventos de turno
+- lista de eventos piloto
+- filtros por fecha, puesto, empleado, estado
+
+6. Cola de validación
+- fotos pendientes
+- aprobar / rechazar
+- comentarios
+
+7. Formulario supervisor
+- vista amigable
+- checklist de arma
+- uniforme
+- equipo
+- estado del puesto
+- observaciones
+
+8. Auditoría
+- ver todos los movimientos del módulo
+
+======================================================================
+11. KIOSCO / DISPOSITIVO DEL PUESTO
+======================================================================
+
+Quiero una pantalla especial tipo kiosco para el dispositivo del puesto.
+
+Características:
+- diseño simple
+- botones grandes
+- texto claro
+- listo para usarse por personal con poca experiencia tecnológica
+- flujo casi automático
+
+Cuando detecte un NFC de agente:
+- mostrar nombre
+- mostrar puesto
+- tomar foto
+- mostrar “inicio de turno detectado” o mensaje equivalente
+- registrar evento piloto
+
+Cuando detecte un NFC de supervisor:
+- abrir formulario de supervisión del puesto
+
+Si no se puede leer NFC directamente por navegador en algunos equipos:
+- dejar arquitectura preparada para soportar:
+  - input manual del tag
+  - simulación por código
+  - o integración futura con hardware
+
+Es decir:
+quiero el diseño para NFC real, pero también un fallback para pruebas.
+
+======================================================================
+12. PROGRAMACIÓN / PIZARRÓN DE PRUEBA
+======================================================================
+
+No quiero tocar el pizarrón productivo actual.
+
+Por lo tanto:
+- crear una programación sandbox de turnos
+o
+- crear un adaptador read-only que lea programación sin escribir nada
+
+Necesito que el módulo pueda clasificar un evento contra una programación de prueba:
+- programado
+- no programado
+- fuera de horario
+- cobertura potencial
+- pendiente de revisión
+
+Pero todo esto solo dentro del módulo piloto.
+
+======================================================================
+13. RECONOCIMIENTO FACIAL
+======================================================================
+
+Por ahora no quiero que el proyecto se bloquee por esta parte.
+
+Quiero que dejes la arquitectura preparada para reconocimiento facial futuro, pero en esta fase solo necesito:
+
+- captura de foto
+- almacenamiento de evidencia
+- estado de validación manual
+- cola de revisión
+
+Opcional:
+si puedes dejar una interfaz o adapter type para futura integración de face verification, hazlo, pero sin obligar dependencia compleja.
+
+======================================================================
+14. PRUEBAS
+======================================================================
+
+Necesito tests completos para este módulo piloto, sin tocar los tests del sistema actual.
+
+A. UNIT TESTS
+- creación de dispositivo
+- creación de tag
+- clasificación de evento
+- rechazo por dispositivo no autorizado
+- validación de sandbox_mode
+- apertura de flujo agente
+- apertura de flujo supervisor
+
+B. INTEGRATION TESTS
+- scan agente -> foto -> evento piloto
+- scan supervisor -> formulario
+- tag revocado -> rechazo
+- device no autorizado -> rechazo
+- validación manual -> approve / reject
+
+C. E2E TESTS
+- crear dispositivo
+- asignarlo a puesto
+- crear tag de agente
+- simular scan
+- registrar evento
+- ver evento en dashboard
+- crear tag de supervisor
+- simular scan supervisor
+- guardar formulario
+- revisar cola de validación
+
+======================================================================
+15. REGLAS DE NO AFECTACIÓN
+======================================================================
+
+Esto es obligatorio y debes respetarlo estrictamente:
+
+1. No modificar lógica existente de planilla
+2. No modificar lógica existente de pre-planilla
+3. No modificar lógica existente de prestaciones
+4. No modificar lógica existente del pizarrón actual
+5. No modificar tablas productivas salvo que sea estrictamente necesario y en modo lectura
+6. No conectar este módulo a flujos automáticos productivos
+7. No generar movimientos reales de asistencia
+8. No generar incidencias reales
+9. No generar faltas reales
+10. No generar horas extra reales
+11. No generar eventos RRHH reales
+
+Si para construir esto hace falta copiar o espejar estructuras, hazlo dentro del sandbox.
+
+======================================================================
+16. FUTURA INTEGRACIÓN
+======================================================================
+
+Aunque en esta fase no se debe integrar al sistema vivo, quiero que la arquitectura quede preparada para que después pueda integrarse con:
+
+- pizarrón operativo
+- asistencia real
+- incidencias
+- RRHH
+- pre-planilla
+- planilla
+
+Pero SOLO A FUTURO.
+
+Por ahora, únicamente dejar:
+- interfaces
+- adapters
+- services desacoplados
+- puntos de integración futuros
+
+SIN ACTIVARLOS.
+
+======================================================================
+17. SALIDA ESPERADA
+======================================================================
+
+Al terminar, quiero que:
+
+1. me muestres la arquitectura propuesta
+2. me digas exactamente qué archivos creaste o modificaste
+3. me indiques qué tablas nuevas creaste
+4. me muestres los endpoints nuevos
+5. me muestres las pantallas nuevas del frontend
+6. me expliques cómo garantizaste que no se afecte el sistema actual
+7. ejecutes tests del nuevo módulo
+8. me muestres resultados de tests
+9. si detectas cualquier riesgo de afectar producción, lo corrijas
+10. documentes claramente cómo activar/desactivar el módulo piloto
+
+======================================================================
+18. IMPORTANTE
+======================================================================
+
+- Este módulo debe ser aislado, seguro y reversible.
+- Prefiero duplicar un poco de estructura antes que arriesgar el sistema actual.
+- No quiero cambios invasivos.
+- Si necesitas usar feature flags, úsalos.
+- Si necesitas crear tablas específicas del piloto, créalas.
+- Si necesitas separar rutas, sepáralas.
+- Si necesitas montar frontend aparte, hazlo.
+- El objetivo de esta fase es PROBAR sin romper nada.
+
+Quiero que construyas este módulo con mentalidad de sandbox empresarial:
+completo, funcional, testeable, pero sin tocar la operación real.

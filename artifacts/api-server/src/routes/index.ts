@@ -47,6 +47,7 @@ import { bodegaRouter } from "./bodega";
 import { importacionRouter } from "./importacion";
 import { dotacionRouter } from "./dotacion";
 import { uniformesRouter } from "./uniformes";
+import { nfcPilotoRouter } from "./nfc-piloto";
 
 const router: IRouter = Router();
 
@@ -98,5 +99,6 @@ router.use(bodegaRouter);
 router.use(importacionRouter);
 router.use(dotacionRouter);
 router.use(uniformesRouter);
+router.use(nfcPilotoRouter);
 
 export default router;

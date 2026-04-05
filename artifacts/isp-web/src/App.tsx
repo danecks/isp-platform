@@ -61,6 +61,7 @@ import AdminPlanillasEspeciales from "@/admin/pages/PlanillasEspeciales";
 import AdminLibroSalarios from "@/admin/pages/LibroSalarios";
 import AdminBodega from "@/admin/pages/Bodega";
 import AdminImportacion from "@/admin/pages/Importacion";
+import AdminNfcPiloto from "@/admin/pages/NfcPiloto";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
@@ -234,6 +235,12 @@ function Router() {
       </Route>
       <Route path="/admin/importacion">
         {() => <AuthGuard requiredRoles={["admin"]}><AdminImportacion /></AuthGuard>}
+      </Route>
+      <Route path="/admin/nfc-piloto">
+        {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminNfcPiloto /></AuthGuard>}
+      </Route>
+      <Route path="/admin/nfc-piloto/kiosko/:deviceCode">
+        {() => <AdminNfcPiloto kioskMode />}
       </Route>
 
       <Route component={NotFound} />

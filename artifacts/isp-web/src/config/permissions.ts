@@ -35,6 +35,7 @@ import {
   BookOpen,
   Package,
   FileUp,
+  Cpu,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -331,6 +332,20 @@ export const NAV_SECTIONS: NavSection[] = [
         label: "Importar Datos",
         icon: FileUp,
         roles: ["admin"],
+      },
+    ],
+  },
+
+  // ── 9. PILOTO NFC ─────────────────────────────────────────────────────────
+  {
+    id: "nfc_piloto",
+    label: "Piloto NFC 🧪",
+    items: [
+      {
+        path: "/admin/nfc-piloto",
+        label: "Control Operativo NFC",
+        icon: Cpu,
+        roles: ["admin", "operaciones", "supervisor"],
       },
     ],
   },

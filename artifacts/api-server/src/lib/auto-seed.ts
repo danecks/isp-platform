@@ -3372,5 +3372,141 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: UNIF-01 — error (no bloqueante)");
   }
 
+  // ── NFC-PILOT-01: Módulo Piloto de Control Operativo NFC ─────────────────────
+  // SANDBOX: sandbox_mode=TRUE | produccion=FALSE | no_side_effects=TRUE
+  // REGLA: Este bloque NO modifica ninguna tabla productiva. Solo crea tablas nfc_*.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS nfc_devices (
+        id             SERIAL PRIMARY KEY,
+        device_code    VARCHAR(60)  UNIQUE NOT NULL,
+        device_name    VARCHAR(150) NOT NULL,
+        puesto_id_ref  INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        cliente_id_ref INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+        sede_id_ref    INTEGER REFERENCES client_sedes(id) ON DELETE SET NULL,
+        status         VARCHAR(20) NOT NULL DEFAULT 'active',
+        sandbox_mode   BOOLEAN NOT NULL DEFAULT TRUE,
+        last_seen_at   TIMESTAMPTZ,
+        notes          TEXT,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_dev_status ON nfc_devices(status)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_dev_puesto ON nfc_devices(puesto_id_ref)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS nfc_tags (
+        id              SERIAL PRIMARY KEY,
+        tag_uid         VARCHAR(100) UNIQUE NOT NULL,
+        profile_type    VARCHAR(20) NOT NULL DEFAULT 'AGENTE',
+        empleado_id_ref INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        alias           VARCHAR(100),
+        status          VARCHAR(20) NOT NULL DEFAULT 'active',
+        sandbox_mode    BOOLEAN NOT NULL DEFAULT TRUE,
+        issued_at       DATE,
+        revoked_at      TIMESTAMPTZ,
+        notes           TEXT,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_tag_status ON nfc_tags(status)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_tag_emp    ON nfc_tags(empleado_id_ref)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS nfc_shift_events (
+        id               SERIAL PRIMARY KEY,
+        tag_id           INTEGER REFERENCES nfc_tags(id) ON DELETE SET NULL,
+        empleado_id_ref  INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        device_id        INTEGER REFERENCES nfc_devices(id) ON DELETE SET NULL,
+        puesto_id_ref    INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        event_type       VARCHAR(30) NOT NULL DEFAULT 'INICIO_TURNO',
+        scheduled_status VARCHAR(30) NOT NULL DEFAULT 'pendiente',
+        validation_status VARCHAR(30) NOT NULL DEFAULT 'pendiente',
+        photo_path       VARCHAR(500),
+        notes            TEXT,
+        sandbox_mode     BOOLEAN NOT NULL DEFAULT TRUE,
+        event_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        validated_by     VARCHAR(100),
+        validated_at     TIMESTAMPTZ,
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_ev_tag    ON nfc_shift_events(tag_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_ev_val    ON nfc_shift_events(validation_status)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_ev_at     ON nfc_shift_events(event_at DESC)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS nfc_supervisor_forms (
+        id                 SERIAL PRIMARY KEY,
+        supervisor_tag_id  INTEGER REFERENCES nfc_tags(id) ON DELETE SET NULL,
+        supervisor_id_ref  INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        device_id          INTEGER REFERENCES nfc_devices(id) ON DELETE SET NULL,
+        puesto_id_ref      INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        agente_id_ref      INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        arma_estado        VARCHAR(30) NOT NULL DEFAULT 'sin_novedad',
+        uniforme_estado    VARCHAR(30) NOT NULL DEFAULT 'completo',
+        puesto_estado      VARCHAR(30) NOT NULL DEFAULT 'sin_novedad',
+        agente_estado      VARCHAR(30) NOT NULL DEFAULT 'presente',
+        observaciones      TEXT,
+        photo_path         VARCHAR(500),
+        form_status        VARCHAR(20) NOT NULL DEFAULT 'borrador',
+        sandbox_mode       BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_sf_puesto ON nfc_supervisor_forms(puesto_id_ref)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_sf_at     ON nfc_supervisor_forms(created_at DESC)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS nfc_supervisor_form_items (
+        id          SERIAL PRIMARY KEY,
+        form_id     INTEGER NOT NULL REFERENCES nfc_supervisor_forms(id) ON DELETE CASCADE,
+        item_type   VARCHAR(30) NOT NULL,
+        item_name   VARCHAR(100) NOT NULL,
+        item_status VARCHAR(20) NOT NULL DEFAULT 'ok',
+        item_notes  TEXT,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_sfi_form ON nfc_supervisor_form_items(form_id)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS nfc_sandbox_schedules (
+        id              SERIAL PRIMARY KEY,
+        device_id       INTEGER REFERENCES nfc_devices(id) ON DELETE CASCADE,
+        puesto_id_ref   INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        empleado_id_ref INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        dia_semana      INTEGER,
+        hora_inicio     TIME NOT NULL,
+        hora_fin        TIME NOT NULL,
+        activo          BOOLEAN NOT NULL DEFAULT TRUE,
+        notes           TEXT,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS nfc_audit_log (
+        id          SERIAL PRIMARY KEY,
+        entity_type VARCHAR(50) NOT NULL,
+        entity_id   INTEGER,
+        action      VARCHAR(50) NOT NULL,
+        actor       VARCHAR(100),
+        meta        JSONB,
+        sandbox_mode BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_al_at ON nfc_audit_log(created_at DESC)`);
+
+    logger.info("Auto-migrate: NFC-PILOT-01 tablas módulo piloto NFC creadas/verificadas (6 tablas)");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: NFC-PILOT-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }
