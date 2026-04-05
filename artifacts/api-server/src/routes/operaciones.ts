@@ -1837,10 +1837,92 @@ operacionesRouter.post("/operaciones/puestos", async (req, res) => {
 });
 
 // ─── DELETE /api/operaciones/puestos/:id ─────────────────────────────────────
+// Al desactivar un puesto:
+//   1. Marca el puesto como inactivo
+//   2. Desactiva sus registros en puesto_titulares
+//   3. Marca los agentes involucrados como elegibles para el pool (disponibles)
+//   4. Registra un movimiento operativo de liberación
 operacionesRouter.delete("/operaciones/puestos/:id", async (req, res) => {
+  const sessionRaw = req.headers["x-isp-session"];
+  const session = sessionRaw ? JSON.parse(Buffer.from(String(sessionRaw), "base64").toString()) : null;
+  const usuario = session?.nombre ?? session?.username ?? "sistema";
+
   try {
-    await pool.query(`UPDATE puestos_operativos SET activo=FALSE WHERE id=$1`, [req.params.id]);
-    res.json({ ok: true });
+    const puestoId = parseInt(req.params.id);
+
+    // Leer el puesto antes de desactivarlo para saber quién es el titular/agente
+    const { rows: puestoRows } = await pool.query(
+      `SELECT id, nombre, cliente_nombre, titular_employee_id, agente_id
+       FROM puestos_operativos WHERE id = $1`,
+      [puestoId]
+    );
+    if (!puestoRows.length) return res.status(404).json({ error: "Puesto no encontrado" });
+    const puesto = puestoRows[0];
+
+    // 1. Desactivar el puesto
+    await pool.query(
+      `UPDATE puestos_operativos SET activo = FALSE, agente_id = NULL, agente_nombre = NULL, updated_at = NOW() WHERE id = $1`,
+      [puestoId]
+    );
+
+    // 2. Desactivar registros de puesto_titulares para este puesto
+    await pool.query(
+      `UPDATE puesto_titulares SET activo = FALSE, updated_at = NOW() WHERE puesto_id = $1 AND activo = TRUE`,
+      [puestoId]
+    );
+
+    // 3. Recolectar IDs de empleados afectados (titular y/o agente activo)
+    const afectadosSet = new Set<number>();
+    if (puesto.titular_employee_id) afectadosSet.add(Number(puesto.titular_employee_id));
+    if (puesto.agente_id && puesto.agente_id !== puesto.titular_employee_id) afectadosSet.add(Number(puesto.agente_id));
+
+    // También los titulares registrados en puesto_titulares (multi-titular)
+    const { rows: titularesRows } = await pool.query(
+      `SELECT employee_id FROM puesto_titulares WHERE puesto_id = $1`,
+      [puestoId]
+    );
+    for (const t of titularesRows) {
+      if (t.employee_id) afectadosSet.add(Number(t.employee_id));
+    }
+
+    const afectadosArr = [...afectadosSet];
+
+    if (afectadosArr.length > 0) {
+      // 4. Marcar empleados afectados como elegibles para el pool (disponibles)
+      await pool.query(
+        `UPDATE employees SET elegible_pool = TRUE, updated_at = NOW()
+         WHERE id = ANY($1::int[]) AND estado_laboral = 'activo'`,
+        [afectadosArr]
+      );
+
+      // 5. Registrar movimiento operativo por cada empleado liberado
+      for (const empId of afectadosArr) {
+        const { rows: empRows } = await pool.query(
+          `SELECT nombre_completo FROM employees WHERE id = $1`, [empId]
+        );
+        const empNombre = empRows[0]?.nombre_completo ?? "Desconocido";
+        await pool.query(
+          `INSERT INTO movimientos_operativos
+             (tipo, motivo, puesto_id, puesto_nombre, cliente_nombre,
+              agente_saliente_id, agente_saliente_nombre, usuario_cambio, fecha_hora)
+           VALUES ('salida', 'puesto_desactivado', $1, $2, $3, $4, $5, $6, NOW())`,
+          [puestoId, puesto.nombre, puesto.cliente_nombre, empId, empNombre, usuario]
+        );
+      }
+    }
+
+    logger.info(
+      { puestoId, nombre: puesto.nombre, afectados: afectadosArr },
+      "Puesto desactivado — agentes liberados al pool"
+    );
+
+    res.json({
+      ok: true,
+      agentes_liberados: afectadosArr.length,
+      mensaje: afectadosArr.length > 0
+        ? `Puesto desactivado. ${afectadosArr.length} agente(s) pasaron a disponibles en el pool.`
+        : "Puesto desactivado. No había agentes asignados.",
+    });
   } catch (err) {
     logger.error({ err }, "DELETE /operaciones/puestos/:id error");
     res.status(500).json({ error: "Error al eliminar puesto" });
