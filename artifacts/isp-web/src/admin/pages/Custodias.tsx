@@ -244,11 +244,26 @@ export default function Custodias() {
               </div>
 
               {filtradas.length === 0 ? (
-                <div className="py-12 text-center text-white/20 text-sm">
-                  {custodias.length === 0
-                    ? "No hay puestos de custodia configurados. Crea un puesto y márcalo como custodia desde el Pizarrón Operativo."
-                    : "No hay custodias con el filtro seleccionado."
-                  }
+                <div className="py-14 text-center space-y-4">
+                  {custodias.length === 0 ? (
+                    <>
+                      <Shield className="w-10 h-10 text-white/10 mx-auto" />
+                      <div>
+                        <p className="text-sm font-semibold text-white/30">No hay puestos de custodia configurados</p>
+                        <p className="text-xs text-white/20 mt-1 max-w-xs mx-auto">
+                          Los puestos de custodia se crean desde el Pizarrón Operativo. Al crear un puesto, selecciona el tipo "Custodia de Valores".
+                        </p>
+                      </div>
+                      <a
+                        href="/admin/operaciones"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 border border-primary/25 hover:bg-primary/20 rounded-xl text-xs font-semibold text-primary transition-colors"
+                      >
+                        Ir al Pizarrón Operativo
+                      </a>
+                    </>
+                  ) : (
+                    <p className="text-sm text-white/20">No hay custodias con el filtro seleccionado.</p>
+                  )}
                 </div>
               ) : (
                 <div className="overflow-x-auto">

@@ -225,19 +225,26 @@ function ModalNuevoEvento({
               }}
               className={inputCls + " appearance-none mt-1.5" + (employeeId ? " border-purple-500/40" : "")}
               required
-              size={empFiltrados.length > 0 ? Math.min(empFiltrados.length + 1, 5) : 2}
             >
-              <option value="">-- Seleccionar empleado --</option>
-              {empFiltrados.slice(0, 20).map((emp) => (
+              <option value="">
+                {empFiltrados.length === 0 && busEmpleado
+                  ? "Sin resultados — cambia el filtro"
+                  : "-- Seleccionar empleado --"}
+              </option>
+              {empFiltrados.slice(0, 30).map((emp) => (
                 <option key={emp.id} value={String(emp.id)}>
                   {emp.nombreCompleto}{emp.dpi ? ` · ${emp.dpi}` : ""}
                 </option>
               ))}
             </select>
-            {empleadoSeleccionado && (
+            {empleadoSeleccionado ? (
               <p className="text-[11px] text-purple-400 mt-1 flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3" />
                 {empleadoSeleccionado.nombreCompleto}
+              </p>
+            ) : (
+              <p className="text-[11px] text-white/25 mt-1">
+                Filtra por nombre arriba y selecciona del menú
               </p>
             )}
           </div>

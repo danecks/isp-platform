@@ -220,7 +220,7 @@ const QUERY_CONSOLIDADO = `
     ), 0)                                                                       AS septimos_perdidos
 
   FROM employees e
-  INNER JOIN novedades_nomina_diarias n
+  LEFT JOIN novedades_nomina_diarias n
     ON n.employee_id = e.id
     AND n.fecha BETWEEN $1 AND $2
   -- TH: buscar el puesto del que fue titular durante el período ($1=desde, $2=hasta)
