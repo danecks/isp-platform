@@ -142,6 +142,8 @@ interface Agente {
   vacacion_activa_tipo?: string | null;
   /** Flag del backend: true si el agente tiene vacaciones_trabajadas activas */
   vacacion_trabajada?: boolean;
+  /** Etiqueta de la sección del pool — solo presente en modo búsqueda global */
+  _seccionLabel?: string;
 }
 
 // ── Tipos para ranking de candidatos ─────────────────────────────────────────
@@ -6111,18 +6113,34 @@ export default function Operaciones() {
   }
 
   // ── Pool filtrado ─────────────────────────────────────────────────────────
+  // Cuando hay búsqueda activa, se busca en TODOS los tabs del pool para no perder
+  // agentes que estén en una sección distinta a la que el usuario tiene abierta.
   const poolActual: Agente[] = (() => {
     if (!pool) return [];
-    let lista = pool[poolTab] ?? [];
     if (busquedaPool.trim()) {
       const q = busquedaPool.toLowerCase();
-      lista = lista.filter((a) =>
-        a.nombre_completo.toLowerCase().includes(q) ||
-        a.puesto?.toLowerCase().includes(q) ||
-        a.area?.toLowerCase().includes(q)
+      const secciones: Array<[string, Agente[]]> = [
+        ["Disponible",    pool.disponibles      ?? []],
+        ["Descanso ciclo",pool.descansandoCiclo ?? []],
+        ["Trabaja hoy",   pool.trabajando       ?? []],
+        ["Faltando",      pool.faltando         ?? []],
+        ["Licencia",      pool.enDescanso       ?? []],
+        ["En puesto",     pool.enPuesto         ?? []],
+        ["En SSA",        pool.enSSA            ?? []],
+        ["Suspendido",    pool.suspendidos      ?? []],
+        ["Vacaciones",    pool.enVacaciones     ?? []],
+      ];
+      return secciones.flatMap(([label, lista]) =>
+        lista
+          .filter((a) =>
+            a.nombre_completo.toLowerCase().includes(q) ||
+            a.puesto?.toLowerCase().includes(q) ||
+            a.area?.toLowerCase().includes(q)
+          )
+          .map((a) => ({ ...a, _seccionLabel: label }))
       );
     }
-    return lista;
+    return pool[poolTab] ?? [];
   })();
 
   // ── Ranking de candidatos para el puesto contextualizado ─────────────────
@@ -6705,17 +6723,19 @@ export default function Operaciones() {
               )
             ) : poolActual.length === 0 ? (
               <div className="flex items-center justify-center min-h-[80px] text-white/20 text-xs px-4 text-center">
-                {poolTab === "disponibles"      ? "No hay agentes genuinamente disponibles hoy" :
-                 poolTab === "trabajando"       ? "Ningún agente en turno de trabajo hoy" :
-                 poolTab === "descansandoCiclo" ? "Ningún agente en descanso de ciclo hoy" :
-                 poolTab === "faltando"         ? "No hay ausencias registradas hoy" :
-                 poolTab === "enDescanso"       ? "No hay agentes en licencia" :
-                 poolTab === "enPuesto"         ? "Ningún agente está en puesto activo" :
-                 poolTab === "enSSA"            ? "Ningún agente cubre un SSA activo" :
-                 poolTab === "enVacaciones"     ? "Ningún agente en vacaciones hoy" :
-                 "No hay agentes suspendidos"}
+                {busquedaPool.trim()
+                  ? `No se encontró ningún agente con "${busquedaPool}" en ninguna sección`
+                  : poolTab === "disponibles"      ? "No hay agentes genuinamente disponibles hoy" :
+                    poolTab === "trabajando"       ? "Ningún agente en turno de trabajo hoy" :
+                    poolTab === "descansandoCiclo" ? "Ningún agente en descanso de ciclo hoy" :
+                    poolTab === "faltando"         ? "No hay ausencias registradas hoy" :
+                    poolTab === "enDescanso"       ? "No hay agentes en licencia" :
+                    poolTab === "enPuesto"         ? "Ningún agente está en puesto activo" :
+                    poolTab === "enSSA"            ? "Ningún agente cubre un SSA activo" :
+                    poolTab === "enVacaciones"     ? "Ningún agente en vacaciones hoy" :
+                    "No hay agentes suspendidos"}
               </div>
-            ) : poolTab === "trabajando" ? (() => {
+            ) : poolTab === "trabajando" && !busquedaPool.trim() ? (() => {
               const vacTrab = poolActual.filter(a => a.vacacion_trabajada);
               const normales = poolActual.filter(a => !a.vacacion_trabajada);
               return (
@@ -6749,19 +6769,45 @@ export default function Operaciones() {
               );
             })() : (
               <div className="flex gap-2 p-3 overflow-x-auto min-h-[80px]">
-                {poolActual.map((agente) => (
-                  <div key={agente.id} className="shrink-0 w-52">
-                    <DraggableAgente
-                      agente={agente}
-                      isSelected={agenteSeleccionado?.id === agente.id}
-                      onClick={() => {
-                        if (isCerrado || hayDiasPendientes) return;
-                        setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente);
-                      }}
-                      disabled={poolTab === "enPuesto" || poolTab === "enSSA" || poolTab === "faltando" || poolTab === "enVacaciones" || isCerrado}
-                    />
-                  </div>
-                ))}
+                {poolActual.map((agente) => {
+                  const seccion = agente._seccionLabel;
+                  const seccionDeshabilitada = seccion === "En puesto" || seccion === "En SSA" || seccion === "Faltando" || seccion === "Vacaciones";
+                  const seccionColor: Record<string, string> = {
+                    "Disponible":     "bg-emerald-500/20 text-emerald-300",
+                    "Descanso ciclo": "bg-blue-500/20 text-blue-300",
+                    "Trabaja hoy":    "bg-orange-500/20 text-orange-300",
+                    "Faltando":       "bg-rose-500/20 text-rose-300",
+                    "Licencia":       "bg-indigo-500/20 text-indigo-300",
+                    "En puesto":      "bg-teal-500/20 text-teal-300",
+                    "En SSA":         "bg-amber-500/20 text-amber-300",
+                    "Suspendido":     "bg-red-500/20 text-red-300",
+                    "Vacaciones":     "bg-violet-500/20 text-violet-300",
+                  };
+                  return (
+                    <div key={agente.id} className="shrink-0 w-52">
+                      {seccion && (
+                        <div className="mb-1 flex justify-center">
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${seccionColor[seccion] ?? "bg-white/10 text-white/40"}`}>
+                            {seccion}
+                          </span>
+                        </div>
+                      )}
+                      <DraggableAgente
+                        agente={agente}
+                        isSelected={agenteSeleccionado?.id === agente.id}
+                        onClick={() => {
+                          if (isCerrado || hayDiasPendientes) return;
+                          setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente);
+                        }}
+                        disabled={
+                          seccion
+                            ? seccionDeshabilitada || isCerrado
+                            : poolTab === "enPuesto" || poolTab === "enSSA" || poolTab === "faltando" || poolTab === "enVacaciones" || isCerrado
+                        }
+                      />
+                    </div>
+                  );
+                })}
               </div>
             )}
 
