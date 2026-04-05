@@ -432,7 +432,8 @@ function KioskScreen({ devices, onClose }: { devices: NfcDevice[]; onClose?: () 
       </div>
 
       {/* Main area */}
-      <div className="flex-1 flex items-center justify-center p-8">
+      <div className="flex-1 overflow-y-auto">
+      <div className="min-h-full flex items-center justify-center p-8">
         {!result && !showSuperForm && (
           <div className="max-w-md w-full text-center space-y-6">
             {/* NFC Icon */}
@@ -576,6 +577,7 @@ function KioskScreen({ devices, onClose }: { devices: NfcDevice[]; onClose?: () 
             </div>
           </div>
         )}
+      </div>
       </div>
 
       {/* Footer */}
