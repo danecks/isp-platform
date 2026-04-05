@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { pool } from "@workspace/db";
+import { pool, todayGT } from "@workspace/db";
 import pino from "pino";
 
 const logger = pino({ name: "vacaciones" });
@@ -338,7 +338,7 @@ vacacionesRouter.get("/vacaciones/alertas", async (req, res) => {
 vacacionesRouter.get("/vacaciones", async (req, res) => {
   try {
     const { year, employee_id, tipo, estado } = req.query;
-    const anio = year ? Number(year) : new Date().getFullYear();
+    const anio = year ? Number(year) : Number(todayGT().substring(0, 4));
 
     let whereClause = `er.tipo_evento IN ('vacaciones', 'vacaciones_programadas', 'vacaciones_trabajadas')`;
     const params: any[] = [];
@@ -447,7 +447,7 @@ vacacionesRouter.post("/vacaciones", async (req, res) => {
       }
       const aniversario = new Date(emp.fecha_ingreso);
       aniversario.setFullYear(aniversario.getFullYear() + 1);
-      if (aniversario > new Date()) {
+      if (aniversario > new Date(todayGT() + "T12:00:00Z")) {
         await client.query("ROLLBACK");
         return res.status(400).json({
           error: `El empleado aún no cumple 1 año. Aniversario: ${aniversario.toISOString().slice(0, 10)}`,

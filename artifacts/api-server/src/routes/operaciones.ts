@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { pool } from "@workspace/db";
+import { pool, todayGT } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { generarNovedades } from "./nomina";
 import { calcularEstadoCiclo } from "../lib/turno-calc";
@@ -233,7 +233,7 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
     `, [fechaFiltro]);
 
     // ── Calcular estado de ciclo por puesto Y por cada titular individual ─────
-    const fechaConsultada = fechaFiltro ?? new Date().toISOString().slice(0, 10);
+    const fechaConsultada = fechaFiltro ?? todayGT();
 
     type PuestoRaw = (typeof puestos)[0];
     type TitularEnriquecido = {
@@ -348,7 +348,7 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
 //   • disponibles        — sin turno asignado, genuinamente libres
 operacionesRouter.get("/operaciones/pool", async (req, res) => {
   try {
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = todayGT();
     // Fecha de mañana para el panel de jefes y supervisores 24x24
     const mañanaDt = new Date(hoy + "T12:00:00Z");
     mañanaDt.setUTCDate(mañanaDt.getUTCDate() + 1);
@@ -924,7 +924,7 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
       // ── Registro en historial de titularidad (TH) ────────────────────────
       const fechaEfectivaDate = fechaEfectiva
         ? fechaEfectiva  // "YYYY-MM-DD" string → PostgreSQL lo parsea como DATE
-        : new Date().toISOString().split("T")[0];
+        : todayGT();
 
       // Cerrar registro activo del titular anterior (si lo había)
       if (titularPrevioId) {
@@ -993,7 +993,7 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
 
     // A-04: Auto-crear / actualizar segmento de cobertura para hoy
     try {
-      const hoy = new Date().toISOString().split("T")[0];
+      const hoy = todayGT();
       const turno = (puesto.turno ?? "día").toLowerCase();
       const horaFinTurno = turno === "noche" ? "06:00" : "18:00";
       const horaInicioDefault = turno === "noche" ? "20:00" : "08:00";
@@ -1296,7 +1296,7 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
 
     // A-04: Auto-crear segmento de cobertura para hoy al sustituir agente
     try {
-      const hoy = new Date().toISOString().split("T")[0];
+      const hoy = todayGT();
       const turno = (puesto.turno ?? "día").toLowerCase();
       const horaInicio = turno === "noche" ? "20:00" : "08:00";
       const horaFin    = turno === "noche" ? "06:00" : "18:00";
@@ -1406,7 +1406,7 @@ operacionesRouter.post("/operaciones/liberar", async (req, res) => {
 
     const agenteId = puesto.agente_id as number;
     const agenteNombre = puesto.agente_nombre as string;
-    const hoy = new Date().toISOString().split("T")[0];
+    const hoy = todayGT();
 
     // ── Operación atómica: limpiar agente + registrar movimiento ─────────────
     // Si cualquiera de los dos pasos falla, se hace ROLLBACK completo.
@@ -1902,12 +1902,10 @@ operacionesRouter.get("/operaciones/agentes/:id/disponibilidad", async (req, res
   }
 });
 
-// ─── Helper: fecha hoy en formato DD-MM-YYYY ──────────────────────────────────
+// ─── Helper: fecha hoy en formato DD-MM-YYYY (Guatemala) ─────────────────────
 function fechaHoyStr(): string {
-  const hoy = new Date();
-  const dd   = String(hoy.getDate()).padStart(2, '0');
-  const mm   = String(hoy.getMonth() + 1).padStart(2, '0');
-  const yyyy = hoy.getFullYear();
+  const iso = todayGT(); // YYYY-MM-DD en hora Guatemala
+  const [yyyy, mm, dd] = iso.split('-');
   return `${dd}-${mm}-${yyyy}`;
 }
 
@@ -1929,21 +1927,10 @@ interface FechaActivaResult {
   cierreDeHoy: any | null;
 }
 
-// Zona horaria oficial de operaciones
-const TZ_GT = "America/Guatemala";
-
-// Fecha de hoy en Guatemala como string ISO YYYY-MM-DD (via DB para evitar desfase UTC)
-async function fechaHoyGT(): Promise<string> {
-  const { rows } = await pool.query(
-    `SELECT (NOW() AT TIME ZONE $1)::date AS hoy`,
-    [TZ_GT]
-  );
-  return (rows[0].hoy as Date).toISOString().substring(0, 10);
-}
-
 async function calcFechaActiva(): Promise<FechaActivaResult> {
-  // Siempre usar la fecha Guatemala, nunca UTC ni CURRENT_DATE del servidor
-  const todayISO = await fechaHoyGT();
+  // todayGT() da la fecha de hoy en Guatemala (UTC-6); el pool también está
+  // configurado en America/Guatemala, por lo que CURRENT_DATE en SQL coincide.
+  const todayISO = todayGT();
 
   const { rows: hoyRows } = await pool.query(
     `SELECT * FROM cierre_operativo_diario WHERE fecha = $1`,
@@ -2060,7 +2047,6 @@ operacionesRouter.get("/operaciones/cierre-hoy", async (req, res) => {
     if (puestosSinTramos > 0) advertencias.push(`${puestosSinTramos} puesto${puestosSinTramos !== 1 ? 's' : ''} cubierto${puestosSinTramos !== 1 ? 's' : ''} sin tramos de cobertura registrados`);
 
     // Días pasados (antes de hoy en Guatemala) con actividad operativa sin cierre
-    const todayGT = await fechaHoyGT();
     const { rows: pendientesRows } = await pool.query(`
       SELECT DISTINCT cd.fecha::text AS fecha
       FROM cobertura_diaria cd
@@ -2078,7 +2064,7 @@ operacionesRouter.get("/operaciones/cierre-hoy", async (req, res) => {
           WHERE cod.fecha = DATE(fecha_hora AT TIME ZONE 'America/Guatemala') AND cod.estado = 'cerrado'
         )
       ORDER BY fecha
-    `, [todayGT]);
+    `, [todayGT()]);
 
     const diasPendientesCierre = pendientesRows.map((r: any) => ({
       fecha:     r.fecha as string,
@@ -2319,10 +2305,8 @@ async function sincronizarCustodiasAlCierre(
 // ?fecha=YYYY-MM-DD (opcional; por defecto fecha activa de hoy)
 operacionesRouter.get("/operaciones/cierre/preview-custodias", async (req, res) => {
   try {
-    const ahora = new Date();
-    const todayISO = `${ahora.getUTCFullYear()}-${String(ahora.getUTCMonth() + 1).padStart(2, '0')}-${String(ahora.getUTCDate()).padStart(2, '0')}`;
     const fechaParam = req.query.fecha as string | undefined;
-    const fecha = (fechaParam && /^\d{4}-\d{2}-\d{2}$/.test(fechaParam)) ? fechaParam : todayISO;
+    const fecha = (fechaParam && /^\d{4}-\d{2}-\d{2}$/.test(fechaParam)) ? fechaParam : todayGT();
 
     // Armas: compara custodio actual con agente que cubre el puesto hoy
     const { rows: armasRows } = await pool.query(`
@@ -2404,8 +2388,7 @@ operacionesRouter.post("/operaciones/cierre", async (req, res) => {
   }
 
   try {
-    const ahora = new Date();
-    const todayISO = `${ahora.getUTCFullYear()}-${String(ahora.getUTCMonth() + 1).padStart(2, '0')}-${String(ahora.getUTCDate()).padStart(2, '0')}`;
+    const todayISO = todayGT();
 
     // ── Determinar fecha a cerrar y si es retroactiva ──────────────────────
     let fechaACerrarISO: string;
@@ -2634,8 +2617,7 @@ operacionesRouter.post("/operaciones/reabrir", async (req, res) => {
       fechaISO = (fecha as string).substring(0, 10);
       fechaStr = isoADDMMYYYY(fechaISO);
     } else {
-      const ahora = new Date();
-      fechaISO = `${ahora.getUTCFullYear()}-${String(ahora.getUTCMonth()+1).padStart(2,'0')}-${String(ahora.getUTCDate()).padStart(2,'0')}`;
+      fechaISO = todayGT();
       fechaStr = isoADDMMYYYY(fechaISO);
     }
 
@@ -3002,7 +2984,7 @@ operacionesRouter.get("/operaciones/puestos/:id/turno", async (req, res) => {
   const puestoId = parseInt(req.params.id);
   if (isNaN(puestoId)) return res.status(400).json({ error: "ID de puesto inválido" });
 
-  const fecha = (req.query.fecha as string) || new Date().toISOString().slice(0, 10);
+  const fecha = (req.query.fecha as string) || todayGT();
 
   try {
     const { rows } = await pool.query(`
@@ -3059,7 +3041,7 @@ operacionesRouter.get("/operaciones/puestos/:id/turno", async (req, res) => {
 // ?fecha=YYYY-MM-DD — opcional; si se omite usa la fecha actual.
 operacionesRouter.get("/operaciones/tablero/administracion", async (req, res) => {
   const { fecha } = req.query as { fecha?: string };
-  const hoy = (fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) ? fecha : new Date().toISOString().slice(0, 10);
+  const hoy = (fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) ? fecha : todayGT();
 
   try {
     const { rows } = await pool.query(`

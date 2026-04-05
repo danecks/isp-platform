@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { pool } from "@workspace/db";
+import { pool, todayGT } from "@workspace/db";
 import { logger } from "../lib/logger";
 
 const coberturaRouter = Router();
@@ -8,7 +8,7 @@ const coberturaRouter = Router();
 // Cobertura del día (o fecha específica), opcionalmente filtrada por cliente
 coberturaRouter.get("/cobertura/diaria", async (req, res) => {
   try {
-    const fecha     = (req.query.fecha as string)    || new Date().toISOString().split("T")[0];
+    const fecha     = (req.query.fecha as string)    || todayGT();
     const clienteId = req.query.clienteId as string;
 
     let sql = `
@@ -102,7 +102,7 @@ coberturaRouter.post("/cobertura/diaria", async (req, res) => {
 // Reporte de cobertura para un rango de fechas
 coberturaRouter.get("/cobertura/reporte", async (req, res) => {
   try {
-    const desde     = (req.query.desde as string)    || new Date().toISOString().split("T")[0];
+    const desde     = (req.query.desde as string)    || todayGT();
     const hasta     = (req.query.hasta as string)    || desde;
     const clienteId = req.query.clienteId as string;
 
@@ -181,7 +181,7 @@ function solapaCon(inicioSeg: string, finSeg: string, descInicio: string | null,
 // Tramos de cobertura para un puesto en una fecha (o todos los de un empleado en una fecha)
 coberturaRouter.get("/cobertura/segmentos", async (req, res) => {
   try {
-    const fecha      = (req.query.fecha as string) || new Date().toISOString().split("T")[0];
+    const fecha      = (req.query.fecha as string) || todayGT();
     const puestoId   = req.query.puestoId   as string | undefined;
     const employeeId = req.query.employeeId as string | undefined;
 

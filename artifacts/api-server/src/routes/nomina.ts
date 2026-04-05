@@ -13,7 +13,7 @@
  */
 
 import { Router } from "express";
-import { pool } from "@workspace/db";
+import { pool, todayGT } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { calcularJornadaEsperada } from "../lib/turno-calc";
 
@@ -806,7 +806,7 @@ nominaRouter.get("/nomina/novedades", async (req, res) => {
       params.push(d, h);
       clauses.push(`n.fecha BETWEEN $${params.length - 1} AND $${params.length}`);
     } else {
-      params.push(new Date().toISOString().split("T")[0]);
+      params.push(todayGT());
       clauses.push(`n.fecha = $${params.length}`);
     }
 
@@ -916,7 +916,7 @@ nominaRouter.put("/nomina/novedades/:id", async (req, res) => {
 // Resumen consolidado por período para pre-planilla
 nominaRouter.get("/nomina/novedades/resumen-periodo", async (req, res) => {
   try {
-    const desde = (req.query.desde as string) || new Date().toISOString().split("T")[0];
+    const desde = (req.query.desde as string) || todayGT();
     const hasta = (req.query.hasta as string) || desde;
 
     const { rows } = await pool.query(`
