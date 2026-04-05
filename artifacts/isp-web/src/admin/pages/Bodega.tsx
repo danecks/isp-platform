@@ -1325,7 +1325,15 @@ function TabUniformes() {
       api("/api/bodega/articulos?limit=200"),
     ]);
     if (pRes.ok) setPendientes(await pRes.json());
-    if (eRes.ok) { const d = await eRes.json(); setEmpleados(d.employees ?? d); }
+    if (eRes.ok) {
+      const d = await eRes.json();
+      const arr: any[] = d.employees ?? d;
+      setEmpleados(arr.map(e => ({
+        id: e.id,
+        nombre_completo: e.nombre_completo ?? e.nombreCompleto ?? "",
+        puesto: e.puesto ?? e.area ?? undefined,
+      })));
+    }
     if (aRes.ok) { const d = await aRes.json(); setArticulos(d.articulos ?? d); }
     setLoading(false);
   }
