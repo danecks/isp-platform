@@ -471,6 +471,11 @@ interface CierreDiaRecord {
   motivo_reapertura: string | null;
 }
 
+interface DiaPendienteCierre {
+  fecha: string;
+  fechaStr: string;
+}
+
 interface CierreHoyData {
   estado: "abierto" | "cerrado";
   cierre: CierreDiaRecord | null;
@@ -480,6 +485,7 @@ interface CierreHoyData {
   cierreDeHoy: CierreDiaRecord | null;
   resumen: CierreResumen;
   advertencias: string[];
+  diasPendientesCierre: DiaPendienteCierre[];
 }
 
 interface Segmento {
@@ -5328,6 +5334,7 @@ export default function Operaciones() {
   const [modalAsignarSSA, setModalAsignarSSA]        = useState<TarjetaSSAPendiente | null>(null);
   const [ssaTabActivo, setSsaTabActivo]              = useState<"sin_asignar" | "cubierta">("sin_asignar");
   const [fichaVehiculoId, setFichaVehiculoId]        = useState<number | null>(null);
+  const [modalCierrePendiente, setModalCierrePendiente] = useState(false);
 
   // ── Estado de colapso de paneles (persiste en sessionStorage) ─────────────
   function initCollapse(key: string, defaultVal = false) {
@@ -5564,6 +5571,12 @@ export default function Operaciones() {
     ? (cierreHoy!.cierreDeHoy!.fecha_str ?? fechaHoyStr())
     : fechaHoyStr();
 
+  // Días pasados sin cerrar — bloquean el trabajo del día actual
+  const diasPendientesCierre: DiaPendienteCierre[] = cierreHoy?.diasPendientesCierre ?? [];
+  const hayDiasPendientes = diasPendientesCierre.length > 0;
+  // El más antiguo primero (ya vienen ordenados del backend)
+  const primerDiaPendiente: DiaPendienteCierre | null = diasPendientesCierre[0] ?? null;
+
   // ── Invalidar y refrescar ─────────────────────────────────────────────────
   function invalidate() {
     qc.invalidateQueries({ queryKey: ["operaciones-tablero"] });
@@ -5681,7 +5694,7 @@ export default function Operaciones() {
 
   // ── DnD: inicio ───────────────────────────────────────────────────────────
   function handleDragStart(event: DragStartEvent) {
-    if (isCerrado) return;
+    if (isCerrado || hayDiasPendientes) return;
     const agenteId = parseInt(event.active.id.toString().replace("agent-", ""));
     const agente = [
       ...(pool?.disponibles ?? []),
@@ -5700,7 +5713,7 @@ export default function Operaciones() {
     const { active, over } = event;
     setDraggingAgente(null);
 
-    if (isCerrado) return;
+    if (isCerrado || hayDiasPendientes) return;
     if (!over) return;
 
     const agenteId = parseInt(active.id.toString().replace("agent-", ""));
@@ -5876,7 +5889,7 @@ export default function Operaciones() {
 
   // ── Click en puesto: asignar agente seleccionado ──────────────────────────
   async function handlePuestoClick(puesto: Puesto) {
-    if (isCerrado) return;
+    if (isCerrado || hayDiasPendientes) return;
     // En modo planificación: click en puesto abre el modal de plan futuro
     if (esFuturo) {
       if (agenteSeleccionado) {
@@ -6032,6 +6045,31 @@ export default function Operaciones() {
     }
   }
 
+  // ── Cerrar día pendiente (fecha pasada sin cierre) ─────────────────────────
+  async function cerrarDiaPendiente(comentario: string, sincronizarCustodias: boolean) {
+    if (!primerDiaPendiente) return;
+    try {
+      const resp: any = await apiPost(`${API_BASE}/operaciones/cierre`, {
+        confirmacion: `CERRAR ${primerDiaPendiente.fechaStr}`,
+        comentario,
+        usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+        usuarioId: currentUser?.id,
+        rol: currentUser?.rol,
+        sincronizarCustodias,
+        fecha: primerDiaPendiente.fecha,
+      });
+      const syncMsg = resp?.syncCustodias?.totalCambios
+        ? ` • ${resp.syncCustodias.totalCambios} custodia(s) actualizada(s).`
+        : "";
+      toast({ title: "Día anterior cerrado", description: `Cierre de ${primerDiaPendiente.fechaStr} registrado.${syncMsg}` });
+      setModalCierrePendiente(false);
+      refetchCierre();
+    } catch (e: any) {
+      toast({ title: "Error al cerrar", description: e.error ?? "Error desconocido", variant: "destructive" });
+      throw e;
+    }
+  }
+
   // ── Reabrir día ────────────────────────────────────────────────────────────
   async function reabrirDia(motivo: string) {
     const fechaISO = diaHoyCerrado
@@ -6150,6 +6188,36 @@ export default function Operaciones() {
     <AdminLayout title="Pizarrón Operativo">
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="flex flex-col h-full gap-4" style={{ minHeight: 0 }}>
+
+          {/* ── ALERTA: día anterior sin cerrar ──────────────────────────── */}
+          {hayDiasPendientes && primerDiaPendiente && (
+            <div className="shrink-0 rounded-xl border border-red-500/60 bg-red-950/40 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="shrink-0 w-9 h-9 rounded-lg bg-red-500/20 flex items-center justify-center">
+                  <Lock className="w-4.5 h-4.5 text-red-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-red-300 leading-tight">
+                    Pizarrón bloqueado — día anterior sin cerrar
+                  </p>
+                  <p className="text-xs text-red-400/80 mt-0.5">
+                    El día <span className="font-bold text-red-300">{primerDiaPendiente.fechaStr}</span> no fue cerrado.
+                    {diasPendientesCierre.length > 1 && (
+                      <span> Hay <span className="font-bold">{diasPendientesCierre.length}</span> días pendientes en total.</span>
+                    )}
+                    {" "}Debes cerrarlo antes de trabajar en el día actual.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setModalCierrePendiente(true)}
+                className="shrink-0 flex items-center gap-2 bg-red-500 hover:bg-red-400 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+              >
+                <AlertTriangle className="w-4 h-4" />
+                Cerrar {primerDiaPendiente.fechaStr}
+              </button>
+            </div>
+          )}
 
           {/* ── Barra de acciones ────────────────────────────────────────── */}
           <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -6624,7 +6692,7 @@ export default function Operaciones() {
                                 agente={agente}
                                 isSelected={agenteSeleccionado?.id === agente.id}
                                 motivos={agente.motivos}
-                                onClick={() => { if (isCerrado) return; setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente); }}
+                                onClick={() => { if (isCerrado || hayDiasPendientes) return; setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente); }}
                                 disabled={isCerrado}
                               />
                             </div>
@@ -6687,7 +6755,7 @@ export default function Operaciones() {
                       agente={agente}
                       isSelected={agenteSeleccionado?.id === agente.id}
                       onClick={() => {
-                        if (isCerrado) return;
+                        if (isCerrado || hayDiasPendientes) return;
                         setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente);
                       }}
                       disabled={poolTab === "enPuesto" || poolTab === "enSSA" || poolTab === "faltando" || poolTab === "enVacaciones" || isCerrado}
@@ -7345,6 +7413,18 @@ export default function Operaciones() {
           fechaIso={cierreHoy.fechaActiva}
           onConfirm={cerrarDia}
           onClose={() => setModalCierre(false)}
+        />
+      )}
+
+      {/* Modal de cierre para día pendiente (pasado sin cerrar) */}
+      {modalCierrePendiente && primerDiaPendiente && (
+        <ModalCierre
+          resumen={{ totalPuestos: 0, cubiertos: 0, descubiertos: 0, cubiertosPorTitular: 0, cubiertosPorRelevo: 0, ausencias: 0, horasExtra: 0 }}
+          advertencias={[`Cierre retroactivo del día ${primerDiaPendiente.fechaStr}`]}
+          fechaActivaStr={primerDiaPendiente.fechaStr}
+          fechaIso={primerDiaPendiente.fecha}
+          onConfirm={cerrarDiaPendiente}
+          onClose={() => setModalCierrePendiente(false)}
         />
       )}
 

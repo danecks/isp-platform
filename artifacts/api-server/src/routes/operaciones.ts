@@ -2044,6 +2044,31 @@ operacionesRouter.get("/operaciones/cierre-hoy", async (req, res) => {
     if (relevossinMotivo > 0) advertencias.push(`${relevossinMotivo} relevo${relevossinMotivo !== 1 ? 's' : ''} sin motivo registrado`);
     if (puestosSinTramos > 0) advertencias.push(`${puestosSinTramos} puesto${puestosSinTramos !== 1 ? 's' : ''} cubierto${puestosSinTramos !== 1 ? 's' : ''} sin tramos de cobertura registrados`);
 
+    // Días pasados con actividad operativa que NO tienen cierre registrado
+    const { rows: pendientesRows } = await pool.query(`
+      SELECT DISTINCT cd.fecha::text AS fecha
+      FROM cobertura_diaria cd
+      WHERE cd.fecha < CURRENT_DATE
+        AND NOT EXISTS (
+          SELECT 1 FROM cierre_operativo_diario cod
+          WHERE cod.fecha = cd.fecha AND cod.estado = 'cerrado'
+        )
+      UNION
+      SELECT DISTINCT DATE(fecha_hora AT TIME ZONE 'America/Guatemala')::text AS fecha
+      FROM movimientos_operativos
+      WHERE DATE(fecha_hora AT TIME ZONE 'America/Guatemala') < CURRENT_DATE
+        AND NOT EXISTS (
+          SELECT 1 FROM cierre_operativo_diario cod
+          WHERE cod.fecha = DATE(fecha_hora AT TIME ZONE 'America/Guatemala') AND cod.estado = 'cerrado'
+        )
+      ORDER BY fecha
+    `);
+
+    const diasPendientesCierre = pendientesRows.map((r: any) => ({
+      fecha:     r.fecha as string,
+      fechaStr:  isoADDMMYYYY(r.fecha as string),
+    }));
+
     res.json({
       estado:         cierreActiva?.estado ?? 'abierto',
       cierre:         cierreActiva ?? null,
@@ -2061,6 +2086,7 @@ operacionesRouter.get("/operaciones/cierre-hoy", async (req, res) => {
         horasExtra: 0,
       },
       advertencias,
+      diasPendientesCierre,
     });
   } catch (err) {
     logger.error({ err }, "GET /operaciones/cierre-hoy error");
