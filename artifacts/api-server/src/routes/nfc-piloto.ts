@@ -10,6 +10,15 @@
 
 import { Router } from "express";
 import { pool } from "@workspace/db";
+import { createHash, randomBytes } from "node:crypto";
+
+// ── Token helpers (SHA-256, no bcrypt por simplicidad en piloto) ──────────────
+function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+function genToken(): string {
+  return randomBytes(32).toString("hex"); // 64-char hex
+}
 
 const router = Router();
 const P = "/pilot/nfc"; // prefijo aislado
@@ -162,6 +171,179 @@ router.patch(`${P}/devices/:id`, async (req, res) => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
+// ENROLAMIENTO DE DISPOSITIVOS
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** Enrola el dispositivo: genera device_uuid (si no existe) + nuevo token.
+ *  El token en texto plano se devuelve UNA SOLA VEZ — el admin lo da al kiosko. */
+router.post(`${P}/devices/:id/enroll`, async (req, res) => {
+  try {
+    const token = genToken();
+    const tokenHash = hashToken(token);
+    const { rows } = await pool.query(
+      `UPDATE nfc_devices
+       SET device_uuid       = COALESCE(device_uuid, gen_random_uuid()::text),
+           device_token_hash = $1,
+           enrolled_at       = NOW(),
+           revoked_at        = NULL,
+           status            = 'active',
+           updated_at        = NOW()
+       WHERE id = $2 AND sandbox_mode = TRUE
+       RETURNING id, device_uuid, device_code, device_name, enrolled_at`,
+      [tokenHash, req.params.id],
+    );
+    if (!rows.length) return res.status(404).json({ error: "Dispositivo no encontrado" });
+    await audit("device", rows[0].id, "device_enrolled", actor(req));
+    res.json({
+      device_uuid:  rows[0].device_uuid,
+      device_code:  rows[0].device_code,
+      device_name:  rows[0].device_name,
+      device_token: token,            // Solo se muestra UNA VEZ — no se guarda en texto plano
+      enrolled_at:  rows[0].enrolled_at,
+      message: "Dispositivo enrolado. Copia el token — no se mostrará de nuevo.",
+    });
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+/** Re-enrola: revoca token anterior y genera uno nuevo. El historial de eventos se conserva. */
+router.post(`${P}/devices/:id/re-enroll`, async (req, res) => {
+  try {
+    const token = genToken();
+    const tokenHash = hashToken(token);
+    const { rows } = await pool.query(
+      `UPDATE nfc_devices
+       SET device_token_hash = $1,
+           enrolled_at       = NOW(),
+           revoked_at        = NULL,
+           status            = 'active',
+           updated_at        = NOW()
+       WHERE id = $2 AND sandbox_mode = TRUE
+       RETURNING id, device_uuid, device_code, device_name, enrolled_at`,
+      [tokenHash, req.params.id],
+    );
+    if (!rows.length) return res.status(404).json({ error: "Dispositivo no encontrado" });
+    await audit("device", rows[0].id, "device_reenrolled", actor(req));
+    res.json({
+      device_uuid:  rows[0].device_uuid,
+      device_code:  rows[0].device_code,
+      device_name:  rows[0].device_name,
+      device_token: token,
+      enrolled_at:  rows[0].enrolled_at,
+      message: "Dispositivo re-enrolado. El token anterior fue invalidado.",
+    });
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+/** Revoca el token del dispositivo. El kiosko ya no podrá marcar hasta re-enrolamiento. */
+router.post(`${P}/devices/:id/revoke-token`, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE nfc_devices
+       SET device_token_hash = NULL,
+           revoked_at        = NOW(),
+           status            = 'inactive',
+           updated_at        = NOW()
+       WHERE id = $1 AND sandbox_mode = TRUE
+       RETURNING id, device_code, device_name`,
+      [req.params.id],
+    );
+    if (!rows.length) return res.status(404).json({ error: "Dispositivo no encontrado" });
+    await audit("device", rows[0].id, "device_token_revoked", actor(req));
+    res.json({ message: "Token revocado. El kiosko requiere re-enrolamiento.", device_code: rows[0].device_code });
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// KIOSKO — Activación y verificación de identidad
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** El kiosko presenta device_code + token para obtener sus credenciales y activarse. */
+router.post(`${P}/kiosk/activate`, async (req, res) => {
+  try {
+    const { device_code, device_token } = req.body;
+    if (!device_code || !device_token) {
+      return res.status(400).json({ error: "device_code y device_token son requeridos" });
+    }
+
+    const { rows } = await pool.query(
+      `SELECT d.*, p.nombre AS nombre_puesto FROM nfc_devices d
+       LEFT JOIN puestos_operativos p ON p.id = d.puesto_id_ref
+       WHERE d.device_code = $1 AND d.sandbox_mode = TRUE`,
+      [device_code],
+    );
+
+    if (!rows.length) {
+      await audit("device", null, "kiosk_activation_failed", "kiosk", { device_code, reason: "not_found" });
+      return res.status(404).json({ error: "Dispositivo no encontrado", code: "DEVICE_NOT_FOUND" });
+    }
+
+    const device = rows[0];
+
+    if (!device.device_token_hash) {
+      await audit("device", device.id, "kiosk_activation_failed", "kiosk", { device_code, reason: "not_enrolled" });
+      return res.status(403).json({ error: "Dispositivo no enrolado. Contacta al administrador.", code: "NOT_ENROLLED" });
+    }
+
+    if (device.device_token_hash !== hashToken(device_token)) {
+      await audit("device", device.id, "kiosk_activation_failed", "kiosk", { device_code, reason: "invalid_token" });
+      return res.status(403).json({ error: "Token inválido", code: "INVALID_TOKEN" });
+    }
+
+    if (device.status !== "active") {
+      return res.status(403).json({ error: "Dispositivo inactivo o revocado", code: "DEVICE_INACTIVE" });
+    }
+
+    await pool.query(`UPDATE nfc_devices SET last_seen_at=NOW() WHERE id=$1`, [device.id]);
+
+    res.json({
+      device_uuid:  device.device_uuid,
+      device_code:  device.device_code,
+      device_name:  device.device_name,
+      puesto_nombre: device.nombre_puesto,
+      status:       device.status,
+      enrolled_at:  device.enrolled_at,
+    });
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+/** El kiosko verifica sus credenciales en cada arranque. */
+router.get(`${P}/kiosk/me`, async (req, res) => {
+  try {
+    const { device_uuid, device_token } = req.query as Record<string, string>;
+    if (!device_uuid || !device_token) {
+      return res.status(400).json({ error: "device_uuid y device_token son requeridos" });
+    }
+
+    const { rows } = await pool.query(
+      `SELECT d.*, p.nombre AS nombre_puesto FROM nfc_devices d
+       LEFT JOIN puestos_operativos p ON p.id = d.puesto_id_ref
+       WHERE d.device_uuid = $1 AND d.device_token_hash = $2 AND d.sandbox_mode = TRUE`,
+      [device_uuid, hashToken(device_token)],
+    );
+
+    if (!rows.length) {
+      return res.status(403).json({ error: "Credenciales inválidas o revocadas", code: "INVALID_CREDENTIALS" });
+    }
+
+    const device = rows[0];
+    if (device.status !== "active") {
+      return res.status(403).json({ error: "Dispositivo inactivo", code: "DEVICE_INACTIVE" });
+    }
+
+    await pool.query(`UPDATE nfc_devices SET last_seen_at=NOW() WHERE id=$1`, [device.id]);
+
+    res.json({
+      device_uuid:  device.device_uuid,
+      device_code:  device.device_code,
+      device_name:  device.device_name,
+      puesto_nombre: device.nombre_puesto,
+      status:       device.status,
+      enrolled_at:  device.enrolled_at,
+    });
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
 // TAGS NFC
 // ──────────────────────────────────────────────────────────────────────────────
 router.get(`${P}/tags`, async (_req, res) => {
@@ -227,23 +409,48 @@ router.post(`${P}/tags/:id/revoke`, async (req, res) => {
 // ──────────────────────────────────────────────────────────────────────────────
 router.post(`${P}/scan`, async (req, res) => {
   try {
-    const { tag_uid, device_code, photo_path } = req.body;
-    if (!tag_uid || !device_code) {
-      return res.status(400).json({ error: "tag_uid y device_code son requeridos" });
+    const { tag_uid, device_code, device_uuid, device_token, photo_path } = req.body;
+    if (!tag_uid) return res.status(400).json({ error: "tag_uid es requerido" });
+    if (!device_uuid && !device_code) {
+      return res.status(400).json({ error: "Se requiere device_uuid o device_code" });
     }
 
-    // 1. Verificar dispositivo autorizado
-    const devRes = await pool.query(
-      `SELECT d.*, p.nombre AS nombre_puesto FROM nfc_devices d
-       LEFT JOIN puestos_operativos p ON p.id = d.puesto_id_ref
-       WHERE d.device_code = $1 AND d.status = 'active' AND d.sandbox_mode = TRUE`,
-      [device_code],
-    );
+    // 1. Verificar dispositivo — por device_uuid (modo enrolado) o device_code (modo legado)
+    let devRes;
+    if (device_uuid) {
+      devRes = await pool.query(
+        `SELECT d.*, p.nombre AS nombre_puesto FROM nfc_devices d
+         LEFT JOIN puestos_operativos p ON p.id = d.puesto_id_ref
+         WHERE d.device_uuid = $1 AND d.status = 'active' AND d.sandbox_mode = TRUE`,
+        [device_uuid],
+      );
+    } else {
+      devRes = await pool.query(
+        `SELECT d.*, p.nombre AS nombre_puesto FROM nfc_devices d
+         LEFT JOIN puestos_operativos p ON p.id = d.puesto_id_ref
+         WHERE d.device_code = $1 AND d.status = 'active' AND d.sandbox_mode = TRUE`,
+        [device_code],
+      );
+    }
+
     if (!devRes.rows.length) {
-      await audit("event", null, "scan_rejected_device", "kiosk", { tag_uid, device_code });
+      await audit("event", null, "scan_rejected_device", "kiosk", { tag_uid, device_code, device_uuid });
       return res.status(403).json({ error: "Dispositivo no autorizado", code: "DEVICE_UNAUTHORIZED" });
     }
     const device = devRes.rows[0];
+
+    // 1b. Si el dispositivo tiene token registrado, validarlo obligatoriamente
+    if (device.device_token_hash) {
+      if (!device_token) {
+        await audit("event", device.id, "scan_rejected_invalid_token", "kiosk", { tag_uid, reason: "missing_token" });
+        return res.status(403).json({ error: "Este dispositivo requiere token de autenticación", code: "TOKEN_REQUIRED" });
+      }
+      if (device.device_token_hash !== hashToken(device_token)) {
+        await audit("event", device.id, "scan_rejected_invalid_token", "kiosk", { tag_uid, reason: "invalid_token" });
+        return res.status(403).json({ error: "Token de dispositivo inválido", code: "INVALID_TOKEN" });
+      }
+    }
+    // Si device.device_token_hash es NULL → modo pre-enrolamiento (sandbox legado permitido)
 
     // 2. Verificar tag
     const tagRes = await pool.query(

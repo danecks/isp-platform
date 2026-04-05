@@ -3508,5 +3508,24 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: NFC-PILOT-01 — error (no bloqueante)");
   }
 
+  // ── NFC-PILOT-02: Sistema de enrolamiento de dispositivos ─────────────────────
+  // Agrega identity segura (device_uuid + device_token_hash) sin romper la tabla existente
+  try {
+    await pool.query(`ALTER TABLE nfc_devices ADD COLUMN IF NOT EXISTS device_uuid TEXT UNIQUE`);
+    await pool.query(`ALTER TABLE nfc_devices ADD COLUMN IF NOT EXISTS device_token_hash TEXT`);
+    await pool.query(`ALTER TABLE nfc_devices ADD COLUMN IF NOT EXISTS enrolled_at TIMESTAMPTZ`);
+    await pool.query(`ALTER TABLE nfc_devices ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ`);
+    // Backfill device_uuid para dispositivos ya creados (no crea token — quedan en "pendiente de enrolamiento")
+    await pool.query(`
+      UPDATE nfc_devices
+      SET device_uuid = gen_random_uuid()::text
+      WHERE device_uuid IS NULL
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_dev_uuid ON nfc_devices(device_uuid)`);
+    logger.info("Auto-migrate: NFC-PILOT-02 columnas de enrolamiento en nfc_devices verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: NFC-PILOT-02 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

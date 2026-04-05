@@ -1,0 +1,375 @@
+Quiero que ajustes el módulo piloto de NFC que ya fue creado y está funcionando, PERO SIN ROMPER NADA de lo ya implementado y SIN AFECTAR el sistema productivo actual.
+
+OBJETIVO DEL CAMBIO
+Quiero dejar de depender de la idea de usar el serial number físico del teléfono como identidad del dispositivo.
+
+En su lugar, quiero implementar un modelo correcto de:
+- dispositivo enrolado
+- kiosco autorizado
+- device_uuid interno del sistema
+- device_token de autenticación
+- device_code visible para operación
+
+IMPORTANTE
+Este cambio debe hacerse:
+- sin romper el módulo NFC piloto ya construido
+- sin afectar planilla
+- sin afectar pre-planilla
+- sin afectar prestaciones
+- sin afectar pizarrón real
+- sin afectar otros módulos productivos
+- manteniendo el módulo NFC como sandbox/piloto aislado
+
+======================================================================
+1. CAMBIO FUNCIONAL REQUERIDO
+======================================================================
+
+Quiero que el sistema ya no intente usar ni asumir:
+- serial del teléfono
+- IMEI
+- identificadores físicos del hardware
+- ningún dato del dispositivo que dependa del navegador o permisos especiales del sistema operativo
+
+En cambio, quiero que cada dispositivo del puesto funcione con estas identidades:
+
+1. `device_code`
+   - identificador visible y administrativo
+   - ejemplo: GARITA-NORTE-01
+   - lo usa RRHH / operaciones para reconocer el equipo
+
+2. `device_name`
+   - nombre editable y humano
+   - ejemplo: Tablet Garita Norte
+
+3. `device_uuid`
+   - identificador interno único generado por el sistema
+   - no editable
+   - no depende del hardware real
+   - se genera al enrolar el dispositivo
+
+4. `device_token`
+   - secreto de autenticación del kiosco
+   - usado para validar que ese navegador/dispositivo está autorizado
+   - debe renovarse o invalidarse si el dispositivo se revoca
+
+Quiero que el backend reconozca el dispositivo por:
+- `device_uuid`
+- `device_token`
+
+y no por el serial físico del teléfono.
+
+======================================================================
+2. PRINCIPIO DE SEGURIDAD
+======================================================================
+
+El sistema debe asumir que:
+- cualquier persona puede tener un teléfono con NFC
+- un agente podría leer su llavero desde otro teléfono
+- leer el NFC NO es suficiente para marcar
+
+Por lo tanto, un marcaje piloto solo debe considerarse válido si:
+1. el tag NFC existe y está activo
+2. el dispositivo está enrolado
+3. el `device_uuid` está registrado
+4. el `device_token` coincide
+5. el dispositivo está activo
+6. el dispositivo está asignado al puesto correcto
+7. el evento cumple las reglas del sandbox
+
+Si no, debe rechazarse como:
+- dispositivo no autorizado
+- token inválido
+- dispositivo revocado
+- puesto incorrecto
+- intento irregular
+
+======================================================================
+3. COMPATIBILIDAD HACIA ATRÁS
+======================================================================
+
+IMPORTANTE:
+No quiero que rompas la UI ni endpoints que ya existen, salvo lo mínimo necesario.
+
+Haz este ajuste con compatibilidad hacia atrás:
+
+- si existe `device_code`, mantenerlo
+- si existe `device_name`, mantenerlo
+- agregar `device_uuid` y `device_token`
+- si hay dispositivos ya creados en el piloto, migrarlos automáticamente
+- no borrar datos actuales
+- no perder asignaciones ya existentes
+
+Si hace falta una migración:
+- crearla
+- correrla de forma segura
+- backfillear `device_uuid` y `device_token` para los dispositivos ya existentes
+
+======================================================================
+4. MODELO DE DATOS
+======================================================================
+
+Actualizar la tabla o entidad de dispositivos NFC para incluir, como mínimo:
+
+- id
+- device_code
+- device_name
+- device_uuid
+- device_token_hash o equivalente seguro
+- puesto_id_ref
+- cliente_id_ref
+- sede_id_ref
+- status
+- sandbox_mode
+- enrolled_at
+- last_seen_at
+- revoked_at
+- notes
+- created_at
+- updated_at
+
+REGLAS:
+- `device_uuid` debe ser único
+- `device_code` debe seguir funcionando como identificador visible
+- `device_token` no debe guardarse en texto plano si ya tienes utilidades de hash seguro
+- si decides guardar token plano por fase piloto, documentarlo claramente, pero preferiblemente usar hash
+
+======================================================================
+5. FLUJO DE ENROLAMIENTO DEL DISPOSITIVO
+======================================================================
+
+Quiero crear un flujo claro de enrolamiento del kiosco.
+
+CASO 1: primer enrolamiento
+1. un admin crea el dispositivo en el panel
+2. el sistema genera:
+   - `device_code`
+   - `device_uuid`
+   - `device_token`
+3. el dispositivo queda en estado:
+   - pendiente de enrolamiento
+   o
+   - listo para activar
+4. desde la pantalla kiosco se introduce o escanea un código de activación
+5. el kiosco guarda localmente:
+   - `device_uuid`
+   - `device_token`
+6. el backend marca el dispositivo como enrolado
+
+CASO 2: re-enrolamiento
+Si el navegador pierde datos o se cambia de equipo:
+- debe poder revocarse el enrolamiento anterior
+- debe generarse nuevo token
+- debe re-enrolarse el kiosco sin romper historial
+
+======================================================================
+6. ALMACENAMIENTO LOCAL DEL KIOSCO
+======================================================================
+
+Quiero que el frontend kiosco guarde localmente:
+- `device_uuid`
+- `device_token`
+- `device_code`
+- metadata mínima del kiosco
+
+Esto debe servir para que el navegador del puesto se identifique automáticamente en cada marcaje.
+
+Si el kiosco no tiene credenciales locales válidas:
+- no debe permitir marcaje real del piloto
+- debe mostrar pantalla de “dispositivo no enrolado”
+- debe ofrecer flujo de activación solo a usuarios autorizados o por código de activación
+
+======================================================================
+7. VALIDACIÓN EN CADA SCAN / MARCAJE
+======================================================================
+
+Actualizar el flujo actual de scan NFC para que cada evento piloto envíe además:
+- `device_uuid`
+- `device_token`
+
+Y el backend valide eso antes de aceptar el evento.
+
+Orden de validación sugerido:
+1. sandbox_mode activo
+2. device_uuid existe
+3. token válido
+4. dispositivo activo
+5. dispositivo asignado a puesto
+6. tag NFC activo
+7. reglas del evento
+
+Si falla algo:
+- rechazar
+- registrar auditoría
+- devolver mensaje claro
+
+======================================================================
+8. CAMBIOS EN FRONTEND
+======================================================================
+
+Ajustar el frontend del módulo piloto sin romper su funcionamiento actual.
+
+A. Pantalla de dispositivos
+Mostrar:
+- device_code
+- device_name
+- puesto
+- estado
+- enrolado sí/no
+- último uso
+- acciones:
+  - editar
+  - revocar token
+  - re-enrolar
+  - ver detalle
+
+B. Modal de edición de dispositivo
+Mostrar como fijos:
+- device_code
+- device_uuid
+- estado de enrolamiento
+
+Editables:
+- device_name
+- puesto operativo
+- notas
+
+C. Pantalla kiosco
+Si el dispositivo está enrolado:
+- entrar directo al modo espera de NFC
+
+Si no está enrolado:
+- mostrar pantalla de activación
+- permitir ingresar código de activación o usar flujo equivalente
+
+======================================================================
+9. ENDPOINTS NUEVOS O AJUSTADOS
+======================================================================
+
+Agregar o ajustar endpoints para soportar esta lógica, por ejemplo:
+
+DISPOSITIVOS
+- POST /api/pilot/nfc/devices
+- GET /api/pilot/nfc/devices
+- GET /api/pilot/nfc/devices/:id
+- PATCH /api/pilot/nfc/devices/:id
+
+ENROLAMIENTO
+- POST /api/pilot/nfc/devices/:id/enroll
+- POST /api/pilot/nfc/devices/:id/re-enroll
+- POST /api/pilot/nfc/devices/:id/revoke-token
+- POST /api/pilot/nfc/kiosk/activate
+- GET /api/pilot/nfc/kiosk/me
+
+MARCACIÓN / SCAN
+- POST /api/pilot/nfc/scan
+
+Todos deben seguir operando SOLO sobre el módulo piloto.
+
+======================================================================
+10. KIOSK / API CONTRACT
+======================================================================
+
+Quiero que el contrato de la API del kiosco quede claro.
+
+Ejemplo de payload para scan:
+
+{
+  "device_uuid": "...",
+  "device_token": "...",
+  "tag_uid": "...",
+  "photo_url": "...",
+  "event_type": "INICIO_TURNO"
+}
+
+Respuesta ejemplo:
+- validado
+- validación pendiente
+- dispositivo no autorizado
+- token inválido
+- tag revocado
+- fuera de programación
+- supervisor mode
+
+======================================================================
+11. AUDITORÍA
+======================================================================
+
+Registrar eventos de seguridad del dispositivo, por ejemplo:
+- device_created
+- device_enrolled
+- device_reenrolled
+- device_token_revoked
+- kiosk_activation_failed
+- scan_rejected_invalid_device
+- scan_rejected_invalid_token
+- scan_accepted
+
+Todo debe quedar en auditoría del módulo piloto.
+
+======================================================================
+12. PRUEBAS
+======================================================================
+
+Necesito tests nuevos o ajustados, sin romper la suite existente del piloto.
+
+A. UNIT TESTS
+- generación de device_uuid
+- generación de token
+- validación de token
+- rechazo si device_uuid no existe
+- rechazo si token es inválido
+- aceptación si device_uuid + token son válidos
+- migración de dispositivos existentes
+
+B. INTEGRATION TESTS
+- crear dispositivo
+- enrolarlo
+- kiosco consulta /me
+- scan válido con token
+- scan rechazado con token inválido
+- revocar token
+- scan rechazado tras revocación
+
+C. E2E TESTS
+- admin crea dispositivo
+- kiosco activa dispositivo
+- se guarda credencial local
+- agente escanea NFC
+- evento se registra correctamente
+- re-enrolamiento funciona
+- dispositivo viejo deja de poder usar el token anterior
+
+======================================================================
+13. RESTRICCIÓN ABSOLUTA
+======================================================================
+
+NO TOCAR:
+- planilla
+- pre-planilla
+- prestaciones
+- pizarrón productivo
+- RRHH real
+- asistencia real
+- lógica salarial
+- módulos actuales que hoy funcionan bien
+
+TODO debe quedarse en el módulo piloto NFC.
+
+======================================================================
+14. SALIDA ESPERADA
+======================================================================
+
+Quiero que al terminar:
+1. me indiques qué archivos modificaste
+2. me expliques la migración de dispositivos existentes
+3. me muestres los nuevos campos agregados
+4. me muestres el flujo de enrolamiento
+5. me muestres los endpoints creados o ajustados
+6. ejecutes los tests
+7. me muestres resultados
+8. confirmes explícitamente cómo garantizaste que no se rompió nada del sistema actual
+9. si detectas riesgo de romper el módulo actual, lo corrijas antes de terminar
+
+IMPORTANTE FINAL
+Haz este ajuste como una mejora segura del módulo NFC piloto, no como una reescritura destructiva.
+Quiero conservar lo ya construido y solo endurecer la identidad del dispositivo con un sistema de enrolamiento correcto.

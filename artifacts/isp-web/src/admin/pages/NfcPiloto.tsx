@@ -25,6 +25,20 @@ interface NfcDevice {
   puesto_id_ref: number | null; cliente_id_ref: number | null;
   status: string; sandbox_mode: boolean; last_seen_at: string | null;
   notes: string | null; created_at: string; nombre_puesto?: string; cliente_nombre?: string;
+  // NFC-PILOT-02: enrolamiento
+  device_uuid?: string | null;
+  device_token_hash?: string | null; // null = no enrolado (modo legado)
+  enrolled_at?: string | null;
+  revoked_at?: string | null;
+}
+
+// Credenciales del kiosko almacenadas en localStorage
+const KIOSK_CREDS_KEY = "nfc_kiosk_creds_v1";
+interface KioskCreds {
+  device_uuid: string;
+  device_token: string;
+  device_code: string;
+  device_name: string;
 }
 interface NfcTag {
   id: number; tag_uid: string; profile_type: string;
@@ -145,7 +159,22 @@ interface ScanResult {
 
 function KioskScreen({ devices, onClose }: { devices: NfcDevice[]; onClose?: () => void }) {
   const { toast } = useToast();
+
+  // ── Credenciales locales del kiosko ──────────────────────────────────────────
+  const [creds, setCreds] = useState<KioskCreds | null>(() => {
+    try { const s = localStorage.getItem(KIOSK_CREDS_KEY); return s ? JSON.parse(s) : null; }
+    catch { return null; }
+  });
+  const [verifying, setVerifying] = useState(!!creds);
+  const [activating, setActivating] = useState(false);
+  const [activateCode, setActivateCode] = useState("");
+  const [activateToken, setActivateToken] = useState("");
+  const [activateError, setActivateError] = useState("");
+
+  // ── Legado: selección manual cuando no hay creds ──────────────────────────────
   const [deviceCode, setDeviceCode] = useState("");
+
+  // ── Scan ─────────────────────────────────────────────────────────────────────
   const [tagUid, setTagUid] = useState("");
   const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState<ScanResult | null>(null);
@@ -158,27 +187,79 @@ function KioskScreen({ devices, onClose }: { devices: NfcDevice[]; onClose?: () 
   const [savingForm, setSavingForm] = useState(false);
   const tagRef = useRef<HTMLInputElement>(null);
 
-  const selectedDevice = devices.find(d => d.device_code === deviceCode);
+  // ── Verificar creds al arranque ───────────────────────────────────────────────
+  useEffect(() => {
+    if (!creds) return;
+    setVerifying(true);
+    api(`/api/pilot/nfc/kiosk/me?device_uuid=${creds.device_uuid}&device_token=${creds.device_token}`)
+      .then(async r => {
+        if (!r.ok) { localStorage.removeItem(KIOSK_CREDS_KEY); setCreds(null); }
+      })
+      .catch(() => { localStorage.removeItem(KIOSK_CREDS_KEY); setCreds(null); })
+      .finally(() => setVerifying(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Activación del kiosko ─────────────────────────────────────────────────────
+  async function activateKiosk() {
+    if (!activateCode.trim() || !activateToken.trim()) {
+      setActivateError("Ingresa el código del dispositivo y el token de activación"); return;
+    }
+    setActivating(true); setActivateError("");
+    try {
+      const r = await api("/api/pilot/nfc/kiosk/activate", {
+        method: "POST",
+        body: JSON.stringify({ device_code: activateCode.trim().toUpperCase(), device_token: activateToken.trim() }),
+      });
+      const data = await r.json();
+      if (!r.ok) { setActivateError(data.error || "Error de activación"); return; }
+      const newCreds: KioskCreds = {
+        device_uuid:  data.device_uuid,
+        device_token: activateToken.trim(),
+        device_code:  data.device_code,
+        device_name:  data.device_name,
+      };
+      localStorage.setItem(KIOSK_CREDS_KEY, JSON.stringify(newCreds));
+      setCreds(newCreds);
+      toast({ title: "Kiosko activado", description: `${data.device_name} (${data.device_code})` });
+    } catch (e) { setActivateError(String(e)); }
+    finally { setActivating(false); }
+  }
+
+  function clearCreds() {
+    localStorage.removeItem(KIOSK_CREDS_KEY);
+    setCreds(null); setActivateCode(""); setActivateToken(""); setActivateError("");
+  }
+
+  const effectiveDeviceCode = creds?.device_code || deviceCode;
+  const selectedDevice = devices.find(d => d.device_code === effectiveDeviceCode);
 
   const doScan = useCallback(async () => {
-    if (!tagUid.trim() || !deviceCode) {
+    if (!tagUid.trim() || !effectiveDeviceCode) {
       setError("Selecciona un dispositivo e ingresa el UID del tag");
       return;
     }
     setScanning(true); setError(""); setResult(null);
     try {
-      const r = await api("/api/pilot/nfc/scan", {
-        method: "POST",
-        body: JSON.stringify({ tag_uid: tagUid.trim(), device_code: deviceCode }),
-      });
+      // Si hay creds de enrolamiento, enviar device_uuid + device_token
+      const payload = creds
+        ? { tag_uid: tagUid.trim(), device_uuid: creds.device_uuid, device_token: creds.device_token }
+        : { tag_uid: tagUid.trim(), device_code: effectiveDeviceCode };
+
+      const r = await api("/api/pilot/nfc/scan", { method: "POST", body: JSON.stringify(payload) });
       const data = await r.json();
-      if (!r.ok) { setError(data.error || "Error en el scan"); return; }
+      if (!r.ok) {
+        // Si el token fue revocado, limpiar creds locales
+        if (data.code === "INVALID_TOKEN" || data.code === "INVALID_CREDENTIALS") clearCreds();
+        setError(data.error || "Error en el scan"); return;
+      }
       setResult(data);
       setTagUid("");
       if (data.profile_type === "SUPERVISOR") setShowSuperForm(true);
     } catch (e) { setError(String(e)); }
     finally { setScanning(false); setTimeout(() => tagRef.current?.focus(), 100); }
-  }, [tagUid, deviceCode]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tagUid, effectiveDeviceCode, creds]);
 
   async function guardarFormSupervisor() {
     if (!result) return;
@@ -212,26 +293,114 @@ function KioskScreen({ devices, onClose }: { devices: NfcDevice[]; onClose?: () 
     COBERTURA_POTENCIAL: "border-amber-500 bg-amber-500/10",
   };
 
+  // ── Pantalla de activación cuando no hay creds ──────────────────────────────
+  if (verifying) {
+    return (
+      <div className="fixed inset-0 z-50 bg-[#04080f] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
+        <span className="ml-3 text-white/60 text-sm">Verificando credenciales...</span>
+      </div>
+    );
+  }
+
+  if (!creds) {
+    return (
+      <div className="fixed inset-0 z-50 bg-[#04080f] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-3 border-b border-white/10 bg-black/30">
+          <div className="flex items-center gap-2">
+            <Cpu className="w-5 h-5 text-amber-400" />
+            <span className="text-sm font-bold text-white">Kiosko NFC — Activación</span>
+            <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded">SANDBOX</span>
+          </div>
+          {onClose && (
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-white/60 hover:text-white">
+              <Minimize2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+        <div className="flex-1 flex items-center justify-center p-8">
+          <div className="max-w-sm w-full space-y-6">
+            <div className="text-center space-y-2">
+              <div className="w-16 h-16 rounded-full bg-amber-500/10 border-2 border-amber-500/30 flex items-center justify-center mx-auto">
+                <Settings className="w-8 h-8 text-amber-400" />
+              </div>
+              <h2 className="text-lg font-bold text-white">Dispositivo no enrolado</h2>
+              <p className="text-sm text-white/50">Ingresa el código y el token de activación que generó el administrador.</p>
+            </div>
+            <div className="space-y-3">
+              <input
+                value={activateCode}
+                onChange={e => setActivateCode(e.target.value.toUpperCase())}
+                placeholder="Código del dispositivo (Ej. GARITA-NORTE-01)"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-blue-500/50"
+              />
+              <input
+                type="password"
+                value={activateToken}
+                onChange={e => setActivateToken(e.target.value)}
+                placeholder="Token de activación (64 caracteres)"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-blue-500/50 font-mono"
+              />
+              {activateError && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">{activateError}</p>}
+              <button
+                onClick={activateKiosk}
+                disabled={activating}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+              >
+                {activating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Activar este kiosko
+              </button>
+            </div>
+            <div className="border-t border-white/8 pt-4">
+              <p className="text-[10px] text-white/25 text-center">Modo de emergencia (sin enrolamiento): usa el selector de dispositivo en modo sandbox sin token</p>
+              <button
+                onClick={() => setCreds({ device_uuid: "", device_token: "", device_code: "__legacy__", device_name: "Modo legado" })}
+                className="mt-2 w-full py-2 bg-white/3 border border-white/8 text-white/30 hover:text-white/50 rounded-xl text-xs transition-colors"
+              >
+                Continuar sin enrolamiento (solo sandbox)
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Modo enrolado: pantalla normal de scan ────────────────────────────────────
+  const isLegacyMode = creds.device_code === "__legacy__";
+
   return (
     <div className="fixed inset-0 z-50 bg-[#04080f] flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-3 border-b border-white/10 bg-black/30">
         <div className="flex items-center gap-2">
           <Cpu className="w-5 h-5 text-blue-400" />
-          <span className="text-sm font-bold text-white">Kiosko NFC</span>
+          {isLegacyMode ? (
+            <span className="text-sm font-bold text-white/60">Kiosko NFC — Modo legado</span>
+          ) : (
+            <>
+              <span className="text-sm font-bold text-white">Kiosko NFC</span>
+              <span className="text-xs text-blue-300 font-mono">{creds.device_name}</span>
+            </>
+          )}
           <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded">SANDBOX</span>
         </div>
         <div className="flex items-center gap-3">
-          <select
-            value={deviceCode}
-            onChange={e => setDeviceCode(e.target.value)}
-            className="text-xs bg-white/5 border border-white/15 rounded-lg px-3 py-1.5 text-white"
-          >
-            <option value="">— Seleccionar dispositivo —</option>
-            {devices.filter(d => d.status === "active").map(d => (
-              <option key={d.id} value={d.device_code}>{d.device_name} ({d.device_code})</option>
-            ))}
-          </select>
+          {isLegacyMode && (
+            <select
+              value={deviceCode}
+              onChange={e => setDeviceCode(e.target.value)}
+              className="text-xs bg-white/5 border border-white/15 rounded-lg px-3 py-1.5 text-white"
+            >
+              <option value="">— Seleccionar dispositivo —</option>
+              {devices.filter(d => d.status === "active").map(d => (
+                <option key={d.id} value={d.device_code}>{d.device_name} ({d.device_code})</option>
+              ))}
+            </select>
+          )}
+          <button onClick={clearCreds} className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-amber-300 transition-colors" title="Des-enrolar este navegador">
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
           {onClose && (
             <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-white/60 hover:text-white">
               <Minimize2 className="w-4 h-4" />
@@ -475,6 +644,14 @@ export default function NfcPiloto({ kioskMode }: { kioskMode?: boolean }) {
   const [editingTag, setEditingTag] = useState<NfcTag | null>(null);
   const [editTagForm, setEditTagForm] = useState({ alias: "", empleado_id_ref: "", notes: "" });
 
+  // Enrollment modal state (NFC-PILOT-02)
+  const [enrollResult, setEnrollResult] = useState<{
+    device_uuid: string; device_code: string; device_name: string;
+    device_token: string; enrolled_at: string; message: string;
+  } | null>(null);
+  const [enrolling, setEnrolling] = useState<number | null>(null); // device id
+  const [revoking, setRevoking] = useState<number | null>(null);
+
   // ── Loaders ──────────────────────────────────────────────────────────────
   const loadDashboard = useCallback(async () => {
     const r = await api("/api/pilot/nfc/dashboard"); if (r.ok) setStats(await r.json());
@@ -595,6 +772,37 @@ export default function NfcPiloto({ kioskMode }: { kioskMode?: boolean }) {
       setEditingTag(null);
       loadTags();
     } else { toast({ title: "Error", description: await r.text(), variant: "destructive" }); }
+  }
+
+  // ── Enrolamiento NFC-PILOT-02 ──────────────────────────────────────────────
+  async function enrollDevice(dev: NfcDevice, reEnroll = false) {
+    if (reEnroll && !confirm(`¿Re-enrolar "${dev.device_name}"? El token anterior será invalidado y el kiosko deberá re-activarse.`)) return;
+    setEnrolling(dev.id);
+    const endpoint = reEnroll ? `/api/pilot/nfc/devices/${dev.id}/re-enroll` : `/api/pilot/nfc/devices/${dev.id}/enroll`;
+    const r = await api(endpoint, { method: "POST" });
+    setEnrolling(null);
+    if (r.ok) {
+      const data = await r.json();
+      setEnrollResult(data);
+      loadDevices();
+    } else {
+      const d = await r.json();
+      toast({ title: "Error de enrolamiento", description: d.error, variant: "destructive" });
+    }
+  }
+
+  async function revokeDeviceToken(dev: NfcDevice) {
+    if (!confirm(`¿Revocar el token de "${dev.device_name}"? El kiosko quedará bloqueado hasta re-enrolamiento.`)) return;
+    setRevoking(dev.id);
+    const r = await api(`/api/pilot/nfc/devices/${dev.id}/revoke-token`, { method: "POST" });
+    setRevoking(null);
+    if (r.ok) {
+      toast({ title: "Token revocado", description: `${dev.device_name} necesita re-enrolamiento` });
+      loadDevices();
+    } else {
+      const d = await r.json();
+      toast({ title: "Error", description: d.error, variant: "destructive" });
+    }
   }
 
   async function approveVal(id: number) {
@@ -752,39 +960,76 @@ export default function NfcPiloto({ kioskMode }: { kioskMode?: boolean }) {
             </div>
           ) : (
             <div className="space-y-2">
-              {filteredDevices.map(dev => (
-                <div key={dev.id} className="flex items-center gap-4 bg-white/3 border border-white/8 rounded-xl px-5 py-3.5">
-                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
-                    <Smartphone className="w-5 h-5 text-blue-400" />
+              {filteredDevices.map(dev => {
+                const isEnrolled = !!dev.device_token_hash;
+                const isRevoking_ = revoking === dev.id;
+                const isEnrolling_ = enrolling === dev.id;
+                return (
+                <div key={dev.id} className="flex items-start gap-4 bg-white/3 border border-white/8 rounded-xl px-5 py-3.5">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${isEnrolled ? "bg-green-500/10 border border-green-500/20" : "bg-blue-500/10 border border-blue-500/20"}`}>
+                    {isEnrolled ? <ShieldCheck className="w-5 h-5 text-green-400" /> : <Smartphone className="w-5 h-5 text-blue-400" />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-semibold text-white">{dev.device_name}</p>
                       <StatusDot status={dev.status} />
                       <span className="text-[10px] text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded font-mono">sandbox</span>
+                      {isEnrolled
+                        ? <span className="text-[10px] text-green-300 bg-green-500/10 border border-green-500/20 px-1.5 py-0.5 rounded font-semibold flex items-center gap-0.5"><ShieldCheck className="w-2.5 h-2.5" />Enrolado</span>
+                        : <span className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded font-semibold flex items-center gap-0.5"><AlertTriangle className="w-2.5 h-2.5" />Sin enrolar</span>
+                      }
                     </div>
                     <p className="text-xs text-white/40 font-mono mt-0.5">{dev.device_code}</p>
+                    {dev.device_uuid && <p className="text-[10px] text-white/20 font-mono mt-0.5">UUID: {dev.device_uuid}</p>}
                     {dev.nombre_puesto && <p className="text-xs text-white/30 mt-0.5">{dev.nombre_puesto}</p>}
+                    {dev.enrolled_at && <p className="text-[10px] text-white/25 mt-0.5">Enrolado: {fmtDate(dev.enrolled_at)}</p>}
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-[10px] text-white/30">{dev.last_seen_at ? `Visto: ${fmtDate(dev.last_seen_at)}` : "Sin actividad"}</p>
-                    <div className="flex items-center gap-2 mt-1 justify-end">
+                    <p className="text-[10px] text-white/30 mb-1.5">{dev.last_seen_at ? `Visto: ${fmtDate(dev.last_seen_at)}` : "Sin actividad"}</p>
+                    <div className="flex items-center gap-1.5 justify-end flex-wrap">
                       <button
                         onClick={() => openEditDevice(dev)}
-                        className="text-[10px] px-2.5 py-1 rounded-lg border font-semibold transition-colors text-blue-300/70 border-blue-500/20 hover:bg-blue-500/10 flex items-center gap-1"
+                        className="text-[10px] px-2 py-1 rounded-lg border font-semibold transition-colors text-blue-300/70 border-blue-500/20 hover:bg-blue-500/10 flex items-center gap-1"
                       >
                         <Pencil className="w-2.5 h-2.5" />Editar
                       </button>
+                      {!isEnrolled ? (
+                        <button
+                          onClick={() => enrollDevice(dev, false)}
+                          disabled={isEnrolling_}
+                          className="text-[10px] px-2 py-1 rounded-lg border font-semibold transition-colors text-green-300/80 border-green-500/25 hover:bg-green-500/10 flex items-center gap-1 disabled:opacity-40"
+                        >
+                          {isEnrolling_ ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <ShieldCheck className="w-2.5 h-2.5" />}Enrolar
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => enrollDevice(dev, true)}
+                            disabled={isEnrolling_}
+                            className="text-[10px] px-2 py-1 rounded-lg border font-semibold transition-colors text-amber-300/80 border-amber-500/25 hover:bg-amber-500/10 flex items-center gap-1 disabled:opacity-40"
+                          >
+                            {isEnrolling_ ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <RotateCcw className="w-2.5 h-2.5" />}Re-enrolar
+                          </button>
+                          <button
+                            onClick={() => revokeDeviceToken(dev)}
+                            disabled={isRevoking_}
+                            className="text-[10px] px-2 py-1 rounded-lg border font-semibold transition-colors text-red-300/70 border-red-500/20 hover:bg-red-500/10 flex items-center gap-1 disabled:opacity-40"
+                          >
+                            {isRevoking_ ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Ban className="w-2.5 h-2.5" />}Revocar
+                          </button>
+                        </>
+                      )}
                       <button
                         onClick={() => toggleDevice(dev)}
-                        className={`text-[10px] px-2.5 py-1 rounded-lg border font-semibold transition-colors ${dev.status === "active" ? "text-red-300/70 border-red-500/20 hover:bg-red-500/10" : "text-green-300/70 border-green-500/20 hover:bg-green-500/10"}`}
+                        className={`text-[10px] px-2 py-1 rounded-lg border font-semibold transition-colors ${dev.status === "active" ? "text-red-300/60 border-red-500/15 hover:bg-red-500/8" : "text-green-300/70 border-green-500/20 hover:bg-green-500/10"}`}
                       >
                         {dev.status === "active" ? "Desactivar" : "Activar"}
                       </button>
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -1025,6 +1270,55 @@ export default function NfcPiloto({ kioskMode }: { kioskMode?: boolean }) {
       )}
 
       {/* ── MODALS ────────────────────────────────────────────────────────── */}
+
+      {/* Enrollment result modal — token shown ONCE */}
+      {enrollResult && (
+        <Modal title="Dispositivo enrolado — Guarda el token" onClose={() => setEnrollResult(null)}>
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 p-3 bg-green-500/10 border border-green-500/20 rounded-xl">
+              <ShieldCheck className="w-5 h-5 text-green-400 shrink-0" />
+              <p className="text-xs text-green-300">{enrollResult.message}</p>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <p className="text-[10px] text-white/40 mb-1 font-medium">Dispositivo</p>
+                <p className="text-sm text-white font-semibold">{enrollResult.device_name} <span className="text-white/40 font-normal font-mono text-xs">({enrollResult.device_code})</span></p>
+              </div>
+              <div>
+                <p className="text-[10px] text-white/40 mb-1 font-medium">UUID del dispositivo</p>
+                <p className="text-xs text-white/60 font-mono bg-white/5 px-3 py-2 rounded-lg break-all">{enrollResult.device_uuid}</p>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[10px] text-amber-400 font-medium flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />TOKEN DE ACTIVACIÓN — SE MUESTRA UNA SOLA VEZ
+                  </p>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(enrollResult.device_token); }}
+                    className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                  >
+                    <Eye className="w-2.5 h-2.5" />Copiar
+                  </button>
+                </div>
+                <p className="text-xs font-mono bg-amber-500/10 border border-amber-500/25 px-3 py-2.5 rounded-lg break-all text-amber-200 select-all">{enrollResult.device_token}</p>
+              </div>
+            </div>
+            <div className="bg-white/3 border border-white/8 rounded-xl p-3 text-xs text-white/40 space-y-1">
+              <p className="font-semibold text-white/60">Pasos para activar el kiosko:</p>
+              <p>1. Copia el token de activación (botón "Copiar")</p>
+              <p>2. Abre el kiosko NFC en el navegador de la tablet</p>
+              <p>3. Ingresa el código <span className="font-mono text-white/60">{enrollResult.device_code}</span> y el token</p>
+              <p>4. El kiosko quedará activado y podrá registrar marcas</p>
+            </div>
+            <button
+              onClick={() => setEnrollResult(null)}
+              className="w-full py-2.5 bg-white/5 border border-white/10 text-white/70 rounded-xl text-sm hover:text-white transition-colors"
+            >
+              Cerrar — ya copié el token
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {/* New device modal */}
       {showDevModal && (
