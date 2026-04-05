@@ -373,3 +373,107 @@ importacionRouter.post("/importacion/articulos", async (req, res) => {
 
   res.json({ preview, exitosos, errores, omitidos, total: rows.length, resultados: results });
 });
+
+// ── POST /importacion/armas ────────────────────────────────────────────────────
+importacionRouter.post("/importacion/armas", async (req: any, res: any) => {
+  const session = requireAdmin(req, res);
+  if (!session) return;
+
+  const { rows, preview } = req.body as {
+    rows: Record<string, string>[];
+    preview: boolean;
+  };
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ error: "No hay filas para importar" });
+  }
+
+  let autoCodeBase = 0;
+  if (!preview) {
+    const { rows: cnt } = await pool.query(`SELECT COUNT(*)::int AS n FROM armas`);
+    autoCodeBase = cnt[0].n;
+  }
+
+  const results: any[] = [];
+  let exitosos = 0, errores = 0, omitidos = 0;
+  const TIPOS_VALIDOS = ["pistola", "revolver", "escopeta", "fusil", "subametralladora", "otro"];
+  const ESTADOS_VALIDOS = ["activo", "inactivo", "baja", "mantenimiento", "disponible", "asignada"];
+  let autoIdx = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const fila = i + 2;
+
+    const rawTipo = trim(row["tipo"]).toLowerCase();
+    const tipo = TIPOS_VALIDOS.includes(rawTipo) ? rawTipo : (rawTipo || "pistola");
+
+    let codigo = trim(row["codigo"]).toUpperCase();
+    if (!codigo) {
+      autoIdx++;
+      const n = String(autoCodeBase + autoIdx).padStart(3, "0");
+      const prefix = tipo.slice(0, 4).toUpperCase();
+      codigo = `${prefix}-${n}`;
+    }
+
+    const marca          = trim(row["marca"])   || null;
+    const modelo         = trim(row["modelo"])  || null;
+    const calibre        = trim(row["calibre"]) || null;
+    const serie          = trim(row["serie"])   || null;
+    const rawEstado      = trim(row["estado"]).toLowerCase();
+    const estado         = ESTADOS_VALIDOS.includes(rawEstado) ? rawEstado : "activo";
+    const numeroTenencia = trim(row["numero_tenencia"]) || null;
+    const rawFecha       = trim(row["fecha_vencimiento_tenencia"]);
+    const fechaVence     = rawFecha ? parseDate(rawFecha) : null;
+    const observaciones  = trim(row["observaciones"]) || null;
+
+    const datos = { codigo, tipo, marca, modelo, calibre, serie, estado,
+                    numero_tenencia: numeroTenencia,
+                    fecha_vencimiento_tenencia: fechaVence, observaciones };
+
+    if (preview) {
+      results.push({ fila, estado: "ok", datos });
+      exitosos++;
+      continue;
+    }
+
+    const { rows: dupCodigo } = await pool.query(
+      `SELECT id FROM armas WHERE codigo = $1 LIMIT 1`, [codigo]
+    );
+    if (dupCodigo.length > 0) {
+      results.push({ fila, estado: "omitido",
+        mensaje: `Código "${codigo}" ya existe (ID ${dupCodigo[0].id})` });
+      omitidos++;
+      continue;
+    }
+
+    if (serie) {
+      const { rows: dupSerie } = await pool.query(
+        `SELECT id, codigo FROM armas WHERE serie = $1 LIMIT 1`, [serie]
+      );
+      if (dupSerie.length > 0) {
+        results.push({ fila, estado: "omitido",
+          mensaje: `No. serie "${serie}" ya existe (arma ${dupSerie[0].codigo})` });
+        omitidos++;
+        continue;
+      }
+    }
+
+    try {
+      await pool.query(
+        `INSERT INTO armas
+           (codigo, tipo, marca, modelo, calibre, serie, estado, activo,
+            numero_tenencia, fecha_vencimiento_tenencia, observaciones)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE,$8,$9,$10)`,
+        [codigo, tipo, marca, modelo, calibre, serie, estado,
+         numeroTenencia, fechaVence, observaciones]
+      );
+      results.push({ fila, estado: "ok", datos: { codigo, tipo, marca } });
+      exitosos++;
+    } catch (e: any) {
+      results.push({ fila, estado: "error", mensaje: e.message });
+      errores++;
+    }
+  }
+
+  res.json({ preview, exitosos, errores, omitidos, total: rows.length, resultados: results });
+});
