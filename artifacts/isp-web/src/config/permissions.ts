@@ -131,18 +131,6 @@ export const NAV_SECTIONS: NavSection[] = [
         roles: ["admin", "operaciones", "supervisor"],
       },
       {
-        path: "/admin/vehiculos",
-        label: "Vehículos",
-        icon: Car,
-        roles: ["admin", "operaciones", "supervisor"],
-      },
-      {
-        path: "/admin/armeria",
-        label: "Armería",
-        icon: Shield,
-        roles: ["admin", "operaciones", "supervisor"],
-      },
-      {
         path: "/admin/cambios-estructurales",
         label: "Cambios Estructurales",
         icon: GitMerge,
@@ -307,16 +295,28 @@ export const NAV_SECTIONS: NavSection[] = [
     ],
   },
 
-  // ── 7. BODEGA ──────────────────────────────────────────────────────────────
+  // ── 7. BODEGA E INVENTARIO ─────────────────────────────────────────────────
   {
     id: "bodega",
-    label: "Bodega",
+    label: "Bodega e Inventario",
     items: [
       {
         path: "/admin/bodega",
-        label: "Inventario",
+        label: "Inventario General",
         icon: Package,
         roles: ["admin", "operaciones"],
+      },
+      {
+        path: "/admin/vehiculos",
+        label: "Vehículos",
+        icon: Car,
+        roles: ["admin", "operaciones", "supervisor"],
+      },
+      {
+        path: "/admin/armeria",
+        label: "Armería",
+        icon: Shield,
+        roles: ["admin", "operaciones", "supervisor"],
       },
     ],
   },
