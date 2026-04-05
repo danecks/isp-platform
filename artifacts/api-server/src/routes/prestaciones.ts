@@ -17,6 +17,7 @@
 
 import { Router } from "express";
 import { pool } from "@workspace/db";
+import { getSaldoUniformePendiente } from "./uniformes";
 import {
   calcularAguinaldo,
   calcularBono14,
@@ -544,8 +545,22 @@ async function buildLiquidacion(empId: number, body: Record<string, unknown>) {
     ).toFixed(2));
   }
 
+  // ── Saldo pendiente de uniformes / dotación ──────────────────────────────────
+  // Cuotas no descontadas en planilla = rubro negativo en la liquidación.
+  const saldoUniforme = await getSaldoUniformePendiente(empId);
+  if (saldoUniforme > 0) {
+    result.rubros.push({
+      rubro:             "descuento_uniforme_pendiente",
+      descripcion:       `Saldo pendiente de cobro de uniformes/botas (cuotas no descontadas en planilla)`,
+      salarioReferencia: sueldo,
+      monto:             parseFloat((-saldoUniforme).toFixed(2)),
+      baseCalculo:       JSON.stringify({ saldo_uniforme_pendiente: saldoUniforme }),
+    });
+    result.totalGeneral = parseFloat((result.totalGeneral - saldoUniforme).toFixed(2));
+  }
+
   return { emp: emp[0], result, fechaEgreso, causal, diasVac, aguinaldoYaPagado, bono14YaPagado,
-           diasGanadosProporcional, diasAutorizadosTotal };
+           diasGanadosProporcional, diasAutorizadosTotal, saldoUniforme };
 }
 
 // ─── POST /api/prestaciones/simular-liquidacion ───────────────────────────────

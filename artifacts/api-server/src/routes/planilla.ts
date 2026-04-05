@@ -50,6 +50,7 @@ import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { calcularBruto, calcularBonificacionIncentivo, toNum, toInt } from "../lib/nomina-calc";
+import { buildUniformeCuotaMap, descontarCuotaUniforme } from "./uniformes";
 
 export const planillaRouter = Router();
 
@@ -70,6 +71,7 @@ function calcularLinea(
   quincenaTipo: "primera" | "segunda",
   desde: string,
   hasta: string,
+  uniformeMonto: number = 0,
 ) {
   const sb        = toNum(row.sueldo_base);
   const hc        = toNum(row.horas_contrato);
@@ -117,7 +119,8 @@ function calcularLinea(
     diasIncapacidadConGoce: toInt(row.dias_incapacidad),  // usar total incapacidad hasta tener columna separada
   });
 
-  const totalNeto = parseFloat(Math.max(0, totalBrutoRnd - igssT + bonificacion_incentivo - anticipo).toFixed(2));
+  const uniforme = parseFloat(uniformeMonto.toFixed(2));
+  const totalNeto = parseFloat(Math.max(0, totalBrutoRnd - igssT + bonificacion_incentivo - anticipo - uniforme).toFixed(2));
 
   return {
     sueldo_base:      sb,
@@ -142,7 +145,8 @@ function calcularLinea(
     total_neto:       totalNeto,
     aplica_igss:           igssData.aplica_igss,
     motivo_exclusion_igss: igssData.motivo_exclusion_igss,
-    otros_descuentos: 0,
+    otros_descuentos:    0,
+    descuentos_uniforme: uniforme,
   };
 }
 
@@ -306,12 +310,16 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
       }
     }
 
+    // Construir mapa de cuotas de uniforme pendientes por empleado
+    const unifMap = await buildUniformeCuotaMap(empIds);
+
     // Calcular líneas por colaborador
     const lineas = snapshot.map((row) => {
       const empId = row.employee_id as number | null;
       const igssData = empId && igssMap.has(empId)
         ? igssMap.get(empId)!
         : { aplica_igss: false, motivo_exclusion_igss: empId ? "Sin datos IGSS" : "Sin ID de empleado" };
+      const uniformeMonto = empId ? (unifMap.get(empId)?.monto ?? 0) : 0;
       return {
         employee_id:        empId,
         nombre_completo:    String(row.nombre_completo ?? ""),
@@ -322,7 +330,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         tipo_jornada:       row.tipo_jornada as string | null,
         revision_estado:    row.revision_estado as string | null,
         observaciones_rrhh: row.revision_observaciones as string | null,
-        ...calcularLinea(row, periodoTotalDias, igssData, quincenaTipo, desde, hasta),
+        ...calcularLinea(row, periodoTotalDias, igssData, quincenaTipo, desde, hasta, uniformeMonto),
       };
     });
 
@@ -375,11 +383,12 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
 
     const planillaId = planRows[0].id;
 
-    // Insertar líneas con trazabilidad de anticipos
+    // Insertar líneas con trazabilidad de anticipos y cuotas de uniforme
     let totalAnticiposVinculados = 0;
+    let totalCuotasUniforme = 0;
 
     for (const l of lineas) {
-      // Buscar anticipos del empleado que aún no estén vinculados a una planilla
+      // ── Anticipos ────────────────────────────────────────────────────────────
       let anticipoIds: number[] = [];
       if (l.employee_id) {
         const { rows: antRows } = await pool.query(`
@@ -392,13 +401,23 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         anticipoIds = antRows.map((r: Record<string, unknown>) => r.id as number);
         totalAnticiposVinculados += anticipoIds.length;
 
-        // Vincular anticipos: marcar como descontados en esta planilla
         if (anticipoIds.length > 0) {
           await pool.query(`
             UPDATE anticipos
             SET planilla_id = $1, estado = 'descontado', updated_at = NOW()
             WHERE id = ANY($2::int[])
           `, [planillaId, anticipoIds]);
+        }
+      }
+
+      // ── Cuota de uniforme ─────────────────────────────────────────────────────
+      let uniformeCuotaIds: number[] = [];
+      if (l.employee_id && l.descuentos_uniforme > 0) {
+        const unifData = unifMap.get(l.employee_id);
+        if (unifData) {
+          await descontarCuotaUniforme(unifData.cuotaId, planillaId);
+          uniformeCuotaIds = [unifData.cuotaId];
+          totalCuotasUniforme += 1;
         }
       }
 
@@ -411,8 +430,9 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
            aplica_igss, motivo_exclusion_igss,
            igss_trabajador, igss_patronal, bonificacion_incentivo, otros_descuentos, total_neto,
            anticipo_ids, novedad_ids, segmento_ids,
-           revision_estado, observaciones_rrhh)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35)
+           revision_estado, observaciones_rrhh,
+           descuentos_uniforme, uniforme_cuota_ids)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37)
       `, [
         planillaId, l.employee_id, l.nombre_completo, l.dpi, l.puesto, l.sede, l.cliente,
         l.tipo_jornada, l.horas_contrato, l.frecuencia_pago, l.sueldo_base, l.periodo_dias,
@@ -423,6 +443,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         l.igss_trabajador, l.igss_patronal, l.bonificacion_incentivo, l.otros_descuentos, l.total_neto,
         JSON.stringify(anticipoIds), JSON.stringify([]), JSON.stringify([]),
         l.revision_estado, l.observaciones_rrhh,
+        l.descuentos_uniforme, JSON.stringify(uniformeCuotaIds),
       ]);
     }
 

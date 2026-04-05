@@ -4,6 +4,7 @@ import {
   ChevronRight, Edit2, Trash2, X, Check, Loader2, AlertCircle,
   ArrowDownToLine, ArrowUpFromLine, RefreshCw, Archive, Tag,
   ClipboardList, BarChart3, History, ShoppingCart, UserCheck, Settings,
+  Layers, CreditCard, ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1257,16 +1258,274 @@ function TabOrdenes() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// ─── Tab Uniformes & Cobros (UNIF-01) ─────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+interface EntregaPendiente {
+  id: number; employee_id: number; nombre_articulo: string; tipo_cargo: string;
+  monto_total: number; num_cuotas: number; cuotas_pagadas: number; estado: string;
+  created_at: string; empleado_nombre: string; empleado_puesto: string | null;
+  cliente_nombre: string | null; cuotas_pendientes: number; saldo_pendiente: number;
+}
+interface EmpleadoOption { id: number; nombre_completo: string; puesto?: string; }
+interface ArticuloOption { id: number; nombre: string; costo_unitario: number; }
+
+function TabUniformes() {
+  const [vista, setVista] = useState<"pendientes" | "nueva">("pendientes");
+  const [pendientes, setPendientes] = useState<EntregaPendiente[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [empleados, setEmpleados] = useState<EmpleadoOption[]>([]);
+  const [articulos, setArticulos] = useState<ArticuloOption[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [ok, setOk] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const BLANK_FORM = {
+    employee_id: "",
+    nombre_articulo: "",
+    tipo_cargo: "cargo_empleado" as "cargo_empleado" | "dotacion_cliente",
+    monto_total: "",
+    num_cuotas: "1",
+    notas: "",
+  };
+  const [form, setForm] = useState(BLANK_FORM);
+  const up = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }));
+
+  const fmtQ = (n: number) => `Q${Number(n).toLocaleString("es-GT", { minimumFractionDigits: 2 })}`;
+
+  async function cargar() {
+    setLoading(true);
+    const [pRes, eRes, aRes] = await Promise.all([
+      api("/api/uniformes/pendientes"),
+      api("/api/employees?activos=true&limit=500"),
+      api("/api/bodega/articulos?limit=200"),
+    ]);
+    if (pRes.ok) setPendientes(await pRes.json());
+    if (eRes.ok) { const d = await eRes.json(); setEmpleados(d.employees ?? d); }
+    if (aRes.ok) { const d = await aRes.json(); setArticulos(d.articulos ?? d); }
+    setLoading(false);
+  }
+  useEffect(() => { cargar(); }, []);
+
+  async function registrar() {
+    setErr(null);
+    if (!form.employee_id || !form.nombre_articulo) { setErr("Empleado y artículo son requeridos"); return; }
+    if (form.tipo_cargo === "cargo_empleado" && (!form.monto_total || Number(form.monto_total) <= 0)) {
+      setErr("Monto requerido para cobro al empleado"); return;
+    }
+    setSaving(true);
+    const r = await api("/api/uniformes/entregas", {
+      method: "POST",
+      body: JSON.stringify({
+        employee_id: parseInt(form.employee_id),
+        nombre_articulo: form.nombre_articulo,
+        tipo_cargo: form.tipo_cargo,
+        monto_total: form.tipo_cargo === "cargo_empleado" ? parseFloat(form.monto_total) : 0,
+        num_cuotas: parseInt(form.num_cuotas) || 1,
+        notas: form.notas || null,
+      }),
+    });
+    setSaving(false);
+    if (r.ok) { setOk(true); setForm(BLANK_FORM); setVista("pendientes"); await cargar(); setTimeout(() => setOk(false), 3000); }
+    else { const d = await r.json(); setErr(d.error ?? "Error al registrar"); }
+  }
+
+  async function condonar(id: number) {
+    if (!confirm("¿Condonar el saldo pendiente de esta entrega?")) return;
+    await api(`/api/uniformes/entregas/${id}/condonar`, { method: "PATCH", body: JSON.stringify({}) });
+    cargar();
+  }
+
+  if (loading) return <div className="flex justify-center py-16 text-gray-500"><Loader2 className="w-5 h-5 animate-spin" /></div>;
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm text-gray-400">Entrega y cobro de uniformes y botas. Las cuotas se descuentan automáticamente en planilla.</p>
+        </div>
+        <button onClick={() => setVista(v => v === "nueva" ? "pendientes" : "nueva")}
+          className="flex items-center gap-2 px-3 py-2 text-xs font-medium bg-orange-500/15 hover:bg-orange-500/25 text-orange-300 rounded-lg border border-orange-500/20 transition-colors">
+          {vista === "nueva" ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+          {vista === "nueva" ? "Cancelar" : "Registrar entrega"}
+        </button>
+      </div>
+
+      {ok && (
+        <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3">
+          <Check className="w-4 h-4 text-emerald-400" />
+          <p className="text-sm text-emerald-300">Entrega registrada. Las cuotas se descontarán en la próxima planilla.</p>
+        </div>
+      )}
+
+      {/* Formulario de registro */}
+      {vista === "nueva" && (
+        <div className="bg-[#0f1623] border border-white/10 rounded-xl p-5 space-y-4">
+          <p className="text-xs font-semibold text-white/80">Nueva Entrega de Uniforme / Botas</p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-[10px] text-white/40 uppercase tracking-wide">Colaborador *</label>
+              <select value={form.employee_id} onChange={e => up("employee_id", e.target.value)}
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-orange-400/50">
+                <option value="">— Seleccionar —</option>
+                {empleados.map(e => <option key={e.id} value={e.id}>{e.nombre_completo}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-white/40 uppercase tracking-wide">Artículo entregado *</label>
+              <select value={form.nombre_articulo} onChange={e => {
+                const art = articulos.find(a => a.nombre === e.target.value);
+                up("nombre_articulo", e.target.value);
+                if (art && !form.monto_total) up("monto_total", String(art.costo_unitario ?? ""));
+              }}
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-orange-400/50">
+                <option value="">— Artículo de bodega —</option>
+                {articulos.map(a => <option key={a.id} value={a.nombre}>{a.nombre}</option>)}
+                <option value="Uniforme completo">Uniforme completo</option>
+                <option value="Botas de seguridad">Botas de seguridad</option>
+                <option value="Camisa">Camisa</option>
+                <option value="Pantalón">Pantalón</option>
+              </select>
+              {!form.nombre_articulo && (
+                <input type="text" placeholder="O escribir nombre del artículo"
+                  onChange={e => up("nombre_articulo", e.target.value)}
+                  className="w-full mt-1 bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-orange-400/50" />
+              )}
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-[10px] text-white/40 uppercase tracking-wide">Tipo de cargo</label>
+              <select value={form.tipo_cargo} onChange={e => up("tipo_cargo", e.target.value as any)}
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-orange-400/50">
+                <option value="cargo_empleado">Cobro al empleado (cuotas planilla)</option>
+                <option value="dotacion_cliente">Dotación del cliente (sin cobro)</option>
+              </select>
+              {form.tipo_cargo === "dotacion_cliente" && (
+                <p className="text-[10px] text-yellow-400/70 mt-1">No genera cuotas. El cliente cubre el costo.</p>
+              )}
+            </div>
+            {form.tipo_cargo === "cargo_empleado" && (
+              <>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-white/40 uppercase tracking-wide">Monto total (Q)</label>
+                  <input type="number" min="0" step="0.01" value={form.monto_total} onChange={e => up("monto_total", e.target.value)}
+                    className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-orange-400/50"
+                    placeholder="0.00" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-white/40 uppercase tracking-wide">Número de cuotas</label>
+                  <select value={form.num_cuotas} onChange={e => up("num_cuotas", e.target.value)}
+                    className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-orange-400/50">
+                    {[1, 2, 3, 4, 6].map(n => (
+                      <option key={n} value={n}>
+                        {n} cuota{n > 1 ? "s" : ""}
+                        {form.monto_total && Number(form.monto_total) > 0
+                          ? ` — ${fmtQ(Number(form.monto_total) / n)} c/u`
+                          : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-white/30">Cada cuota se descuenta en una planilla diferente</p>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] text-white/40 uppercase tracking-wide">Notas (opcional)</label>
+            <textarea value={form.notas} onChange={e => up("notas", e.target.value)} rows={2}
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-orange-400/50 resize-none"
+              placeholder="Motivo, talla, observaciones..." />
+          </div>
+
+          {err && <div className="flex items-center gap-2 text-red-400 text-xs"><AlertCircle className="w-4 h-4 flex-shrink-0" />{err}</div>}
+
+          <div className="flex gap-2 pt-1">
+            <button onClick={() => setVista("pendientes")} className="px-4 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors">Cancelar</button>
+            <button onClick={registrar} disabled={saving}
+              className="flex-1 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-400 text-sm font-bold text-white disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              Registrar entrega
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Lista de pendientes */}
+      {vista === "pendientes" && (
+        <>
+          {pendientes.length === 0
+            ? <div className="text-center py-12 text-gray-600 border border-dashed border-white/10 rounded-xl">
+                <Layers className="w-8 h-8 mx-auto mb-2" />
+                <p className="text-sm">Sin cuotas de uniforme pendientes.</p>
+                <p className="text-xs mt-1 text-gray-700">Al registrar una entrega con cargo al empleado aparecerá aquí.</p>
+              </div>
+            : (
+              <div className="bg-[#0f1623] border border-white/10 rounded-xl overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-gray-500 border-b border-white/5 uppercase text-[10px]">
+                      <th className="px-4 py-3 text-left">Colaborador</th>
+                      <th className="px-4 py-3 text-left">Artículo</th>
+                      <th className="px-4 py-3 text-right">Total</th>
+                      <th className="px-4 py-3 text-center">Cuotas</th>
+                      <th className="px-4 py-3 text-right">Saldo</th>
+                      <th className="px-4 py-3 text-left">Fecha</th>
+                      <th className="px-4 py-3"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendientes.map(r => (
+                      <tr key={r.id} className="border-b border-white/5 hover:bg-white/2">
+                        <td className="px-4 py-3">
+                          <p className="text-white/80 font-medium">{r.empleado_nombre}</p>
+                          {r.empleado_puesto && <p className="text-gray-600 text-[10px]">{r.empleado_puesto}</p>}
+                        </td>
+                        <td className="px-4 py-3 text-white/60">{r.nombre_articulo}</td>
+                        <td className="px-4 py-3 text-right font-mono text-white/70">{fmtQ(r.monto_total)}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="text-orange-300 font-mono">{r.cuotas_pendientes}</span>
+                          <span className="text-gray-600">/{r.num_cuotas}</span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono text-orange-300 font-semibold">{fmtQ(r.saldo_pendiente)}</td>
+                        <td className="px-4 py-3 text-gray-600">{new Date(r.created_at).toLocaleDateString("es-GT")}</td>
+                        <td className="px-4 py-3 text-right">
+                          <button onClick={() => condonar(r.id)}
+                            className="text-[10px] px-2 py-1 bg-white/5 hover:bg-red-500/10 text-gray-500 hover:text-red-400 rounded-lg border border-white/10 transition-colors">
+                            Condonar
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          }
+          <p className="text-[10px] text-white/20 text-right">
+            Las cuotas se descuentan automáticamente al generar planilla. Al liquidar, el saldo restante se descuenta del finiquito.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // ─── Página principal ─────────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 const TABS = [
-  { id: "dashboard",   label: "Dashboard",       icon: BarChart3 },
-  { id: "catalogo",    label: "Catálogo",         icon: ClipboardList },
-  { id: "inventario",  label: "Inventario",       icon: Package },
-  { id: "movimientos", label: "Movimientos",      icon: History },
-  { id: "kit_ingreso", label: "Kit de Ingreso",   icon: Settings },
-  { id: "dotaciones",  label: "Dotaciones",       icon: UserCheck },
-  { id: "ordenes",     label: "Órdenes de Compra", icon: ShoppingCart },
+  { id: "dashboard",   label: "Dashboard",         icon: BarChart3 },
+  { id: "catalogo",    label: "Catálogo",           icon: ClipboardList },
+  { id: "inventario",  label: "Inventario",         icon: Package },
+  { id: "movimientos", label: "Movimientos",        icon: History },
+  { id: "kit_ingreso", label: "Kit de Ingreso",     icon: Settings },
+  { id: "dotaciones",  label: "Dotaciones",         icon: UserCheck },
+  { id: "ordenes",     label: "Órdenes de Compra",  icon: ShoppingCart },
+  { id: "uniformes",   label: "Uniformes & Cobros", icon: Layers },
 ] as const;
 
 type TabId = typeof TABS[number]["id"];
@@ -1308,6 +1567,7 @@ export default function Bodega() {
         {tab === "kit_ingreso" && <TabKitIngreso />}
         {tab === "dotaciones"  && <TabDotaciones />}
         {tab === "ordenes"     && <TabOrdenes />}
+        {tab === "uniformes"   && <TabUniformes />}
       </div>
     </AdminLayout>
   );

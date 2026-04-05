@@ -29,6 +29,8 @@ interface ClienteFicha {
   tarifa_base_mensual: string | null;
   estado_contrato: string | null;
   notas: string | null;
+  dotacion_uniforme_num: number | null;
+  dotacion_uniforme_frecuencia_meses: number | null;
 }
 
 interface Sede {
@@ -552,6 +554,8 @@ function ModalEditarCliente({
     tarifa_base_mensual: cliente.tarifa_base_mensual ?? "",
     estado_contrato: cliente.estado_contrato ?? "activo",
     notas: cliente.notas ?? "",
+    dotacion_uniforme_num: String(cliente.dotacion_uniforme_num ?? 0),
+    dotacion_uniforme_frecuencia_meses: String(cliente.dotacion_uniforme_frecuencia_meses ?? 0),
   });
   const [saving, setSaving] = useState(false);
 
@@ -570,6 +574,15 @@ function ModalEditarCliente({
           nombreComercial: form.nombreComercial || null,
           nit: form.nit || null,
           sector: form.sector || null,
+        }),
+      });
+      // Guardar configuración de dotación uniforme (UNIF-01)
+      await fetch(`${API}/uniformes/config-cliente/${cliente.id}`, {
+        method: "PATCH",
+        headers: h(),
+        body: JSON.stringify({
+          dotacion_uniforme_num: parseInt(form.dotacion_uniforme_num) || 0,
+          dotacion_uniforme_frecuencia_meses: parseInt(form.dotacion_uniforme_frecuencia_meses) || 0,
         }),
       });
       onSaved();
@@ -603,6 +616,33 @@ function ModalEditarCliente({
               />
             </div>
           ))}
+          {/* Dotación de uniformes */}
+          <div className="pt-1 pb-0.5">
+            <p className="text-[10px] text-orange-400/70 uppercase tracking-widest font-semibold">Dotación de Uniformes</p>
+            <p className="text-[10px] text-white/30 mt-0.5">Uniforme pagado por el cliente (titulares). 0 = no aplica.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <label className="text-[10px] text-white/40 uppercase tracking-wide">Uniformes por dotación</label>
+              <input
+                type="number" min="0" max="10"
+                value={form.dotacion_uniforme_num}
+                onChange={(e) => up("dotacion_uniforme_num", e.target.value)}
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50"
+                placeholder="0"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-white/40 uppercase tracking-wide">Cada (meses)</label>
+              <input
+                type="number" min="0" max="36"
+                value={form.dotacion_uniforme_frecuencia_meses}
+                onChange={(e) => up("dotacion_uniforme_frecuencia_meses", e.target.value)}
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50"
+                placeholder="6"
+              />
+            </div>
+          </div>
           <div className="space-y-1">
             <label className="text-[10px] text-white/40 uppercase tracking-wide">Estado del contrato</label>
             <select
@@ -1224,6 +1264,12 @@ export default function FichaCliente() {
                     { label: "Inicio de contrato", value: cliente.fecha_inicio_contrato ? new Date(cliente.fecha_inicio_contrato).toLocaleDateString("es-GT") : null },
                     { label: "Tarifa base mensual", value: cliente.tarifa_base_mensual ? fmtQ(cliente.tarifa_base_mensual) : null },
                     { label: "Tarifa total puestos", value: tarifaTotal > 0 ? fmtQ(tarifaTotal) : null },
+                    {
+                      label: "Dotación de uniformes",
+                      value: (cliente.dotacion_uniforme_num ?? 0) > 0
+                        ? `${cliente.dotacion_uniforme_num} uniforme(s) c/${cliente.dotacion_uniforme_frecuencia_meses} meses`
+                        : "No aplica (agente asume costo)",
+                    },
                   ].map(({ label, value }) => (
                     <div key={label} className="flex justify-between gap-2 border-b border-white/4 pb-2">
                       <p className="text-xs text-white/35">{label}</p>

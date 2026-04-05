@@ -57,6 +57,7 @@ The project uses a pnpm workspace monorepo, organizing deployable applications (
     - **Novedades RRHH — Flujo de Revisión Pendiente (NRRHH-01):** Workflow for HR review of daily absences and incidents before payroll impact.
     - **Integración Custodios ↔ Puestos (CUST-02):** Introduces `tipo_puesto` for 'custodia' positions with a dedicated dashboard.
     - **Módulo Prestaciones Laborales (PREST-01):** Comprehensive Guatemala labor benefits module including aguinaldo, bono14, vacations, indemnification, and provisions with a dedicated calculation library and API.
+    - **Sistema de Dotación de Uniformes (UNIF-01):** Full uniform/boots deduction system. Clients can be configured with a uniform quota (N uniforms every X months) for their titular agents. Deliveries are registered in Bodega with installment cuotas (1–N). Cuotas automatically deduct from planilla (same pattern as anticipos). Unpaid balance at termination deducts from liquidación as a negative rubro. Tables: `entregas_uniforme`, `entregas_uniforme_cuotas`. New planilla_lineas columns: `descuentos_uniforme`, `uniforme_cuota_ids`. New client columns: `dotacion_uniforme_num`, `dotacion_uniforme_frecuencia_meses`.
 
 ## External Dependencies
 - **PostgreSQL:** Primary database.

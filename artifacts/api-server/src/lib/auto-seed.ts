@@ -3299,5 +3299,59 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: DOT-01 — error (no bloqueante)");
   }
 
+  // ── UNIF-01: Dotación de uniformes ─────────────────────────────────────────
+  try {
+    // Configuración por cliente
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS dotacion_uniforme_num          INTEGER DEFAULT 0`);
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS dotacion_uniforme_frecuencia_meses INTEGER DEFAULT 0`);
+
+    // Columnas en planilla_lineas para trazabilidad de cuotas
+    await pool.query(`ALTER TABLE planilla_lineas ADD COLUMN IF NOT EXISTS descuentos_uniforme NUMERIC(10,2) NOT NULL DEFAULT 0`);
+    await pool.query(`ALTER TABLE planilla_lineas ADD COLUMN IF NOT EXISTS uniforme_cuota_ids  JSONB        NOT NULL DEFAULT '[]'`);
+
+    // Tabla maestra de entregas
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS entregas_uniforme (
+        id              SERIAL PRIMARY KEY,
+        employee_id     INTEGER NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
+        articulo_id     INTEGER REFERENCES bodega_articulos(id) ON DELETE SET NULL,
+        nombre_articulo VARCHAR(150) NOT NULL DEFAULT 'Uniforme',
+        tipo_cargo      VARCHAR(30)  NOT NULL DEFAULT 'cargo_empleado',
+        cliente_id      INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+        puesto_id       INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        monto_total     NUMERIC(10,2) NOT NULL DEFAULT 0,
+        num_cuotas      INTEGER NOT NULL DEFAULT 1,
+        cuotas_pagadas  INTEGER NOT NULL DEFAULT 0,
+        estado          VARCHAR(20) NOT NULL DEFAULT 'activo',
+        notas           TEXT,
+        registrado_por  VARCHAR(100),
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS eu_emp  ON entregas_uniforme(employee_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS eu_est  ON entregas_uniforme(estado)`);
+
+    // Tabla de cuotas individuales
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS entregas_uniforme_cuotas (
+        id           SERIAL PRIMARY KEY,
+        entrega_id   INTEGER NOT NULL REFERENCES entregas_uniforme(id) ON DELETE CASCADE,
+        num_cuota    INTEGER NOT NULL,
+        monto        NUMERIC(10,2) NOT NULL,
+        planilla_id  INTEGER REFERENCES planillas(id) ON DELETE SET NULL,
+        descontado   BOOLEAN NOT NULL DEFAULT FALSE,
+        fecha_descuento DATE,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS euc_ent ON entregas_uniforme_cuotas(entrega_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS euc_des ON entregas_uniforme_cuotas(descontado)`);
+
+    logger.info("Auto-migrate: UNIF-01 dotación de uniformes — tablas y columnas creadas/verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: UNIF-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

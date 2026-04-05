@@ -46,6 +46,7 @@ import { libroSalariosRouter } from "./libro-salarios";
 import { bodegaRouter } from "./bodega";
 import { importacionRouter } from "./importacion";
 import { dotacionRouter } from "./dotacion";
+import { uniformesRouter } from "./uniformes";
 
 const router: IRouter = Router();
 
@@ -96,5 +97,6 @@ router.use(libroSalariosRouter);
 router.use(bodegaRouter);
 router.use(importacionRouter);
 router.use(dotacionRouter);
+router.use(uniformesRouter);
 
 export default router;
