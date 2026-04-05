@@ -12,7 +12,7 @@ import {
   Clock, ClipboardList, BarChart3, History, Shield, ShieldCheck,
   ShieldAlert, Check, XCircle, Loader2, AlertCircle, Eye,
   Maximize2, Minimize2, RotateCcw, Ban, ChevronDown, Zap,
-  Camera, Settings, QrCode, Calendar,
+  Camera, Settings, QrCode, Calendar, Pencil,
 } from "lucide-react";
 import { AdminLayout } from "../layout/AdminLayout";
 import { useToast } from "@/hooks/use-toast";
@@ -468,6 +468,13 @@ export default function NfcPiloto({ kioskMode }: { kioskMode?: boolean }) {
   // Validation note
   const [valNota, setValNota] = useState("");
 
+  // Edit state: device
+  const [editingDevice, setEditingDevice] = useState<NfcDevice | null>(null);
+  const [editDevForm, setEditDevForm] = useState({ device_name: "", puesto_id_ref: "", notes: "" });
+  // Edit state: tag
+  const [editingTag, setEditingTag] = useState<NfcTag | null>(null);
+  const [editTagForm, setEditTagForm] = useState({ alias: "", empleado_id_ref: "", notes: "" });
+
   // ── Loaders ──────────────────────────────────────────────────────────────
   const loadDashboard = useCallback(async () => {
     const r = await api("/api/pilot/nfc/dashboard"); if (r.ok) setStats(await r.json());
@@ -547,6 +554,47 @@ export default function NfcPiloto({ kioskMode }: { kioskMode?: boolean }) {
     const newStatus = dev.status === "active" ? "inactive" : "active";
     const r = await api(`/api/pilot/nfc/devices/${dev.id}`, { method: "PATCH", body: JSON.stringify({ status: newStatus }) });
     if (r.ok) { toast({ title: newStatus === "active" ? "Dispositivo activado" : "Dispositivo desactivado" }); loadDevices(); }
+  }
+
+  function openEditDevice(dev: NfcDevice) {
+    setEditingDevice(dev);
+    setEditDevForm({ device_name: dev.device_name, puesto_id_ref: dev.puesto_id_ref ? String(dev.puesto_id_ref) : "", notes: dev.notes || "" });
+  }
+
+  async function updateDevice() {
+    if (!editingDevice) return;
+    if (!editDevForm.device_name.trim()) return toast({ title: "Nombre requerido", variant: "destructive" });
+    setSaving(true);
+    const r = await api(`/api/pilot/nfc/devices/${editingDevice.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ device_name: editDevForm.device_name, puesto_id_ref: editDevForm.puesto_id_ref || null, notes: editDevForm.notes || null }),
+    });
+    setSaving(false);
+    if (r.ok) {
+      toast({ title: "Dispositivo actualizado" });
+      setEditingDevice(null);
+      loadDevices();
+    } else { toast({ title: "Error", description: await r.text(), variant: "destructive" }); }
+  }
+
+  function openEditTag(tag: NfcTag) {
+    setEditingTag(tag);
+    setEditTagForm({ alias: tag.alias || "", empleado_id_ref: tag.empleado_id_ref ? String(tag.empleado_id_ref) : "", notes: tag.notes || "" });
+  }
+
+  async function updateTag() {
+    if (!editingTag) return;
+    setSaving(true);
+    const r = await api(`/api/pilot/nfc/tags/${editingTag.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ alias: editTagForm.alias || null, empleado_id_ref: editTagForm.empleado_id_ref || null, notes: editTagForm.notes || null }),
+    });
+    setSaving(false);
+    if (r.ok) {
+      toast({ title: "Tag actualizado" });
+      setEditingTag(null);
+      loadTags();
+    } else { toast({ title: "Error", description: await r.text(), variant: "destructive" }); }
   }
 
   async function approveVal(id: number) {
@@ -722,6 +770,12 @@ export default function NfcPiloto({ kioskMode }: { kioskMode?: boolean }) {
                     <p className="text-[10px] text-white/30">{dev.last_seen_at ? `Visto: ${fmtDate(dev.last_seen_at)}` : "Sin actividad"}</p>
                     <div className="flex items-center gap-2 mt-1 justify-end">
                       <button
+                        onClick={() => openEditDevice(dev)}
+                        className="text-[10px] px-2.5 py-1 rounded-lg border font-semibold transition-colors text-blue-300/70 border-blue-500/20 hover:bg-blue-500/10 flex items-center gap-1"
+                      >
+                        <Pencil className="w-2.5 h-2.5" />Editar
+                      </button>
+                      <button
                         onClick={() => toggleDevice(dev)}
                         className={`text-[10px] px-2.5 py-1 rounded-lg border font-semibold transition-colors ${dev.status === "active" ? "text-red-300/70 border-red-500/20 hover:bg-red-500/10" : "text-green-300/70 border-green-500/20 hover:bg-green-500/10"}`}
                       >
@@ -773,9 +827,14 @@ export default function NfcPiloto({ kioskMode }: { kioskMode?: boolean }) {
                   <div className="shrink-0 flex items-center gap-2">
                     <p className="text-[10px] text-white/25">{fmtDate(tag.created_at)}</p>
                     {tag.status === "active" && (
-                      <button onClick={() => revokeTag(tag.id)} className="text-[10px] text-red-300/60 border border-red-500/20 hover:bg-red-500/10 px-2.5 py-1 rounded-lg font-semibold transition-colors flex items-center gap-1">
-                        <Ban className="w-3 h-3" />Revocar
-                      </button>
+                      <>
+                        <button onClick={() => openEditTag(tag)} className="text-[10px] text-blue-300/70 border border-blue-500/20 hover:bg-blue-500/10 px-2.5 py-1 rounded-lg font-semibold transition-colors flex items-center gap-1">
+                          <Pencil className="w-2.5 h-2.5" />Editar
+                        </button>
+                        <button onClick={() => revokeTag(tag.id)} className="text-[10px] text-red-300/60 border border-red-500/20 hover:bg-red-500/10 px-2.5 py-1 rounded-lg font-semibold transition-colors flex items-center gap-1">
+                          <Ban className="w-3 h-3" />Revocar
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -1025,6 +1084,80 @@ export default function NfcPiloto({ kioskMode }: { kioskMode?: boolean }) {
               <button onClick={() => setShowTagModal(false)} className="flex-1 py-2.5 bg-white/5 border border-white/10 text-white/60 rounded-xl text-sm hover:text-white transition-colors">Cancelar</button>
               <button onClick={createTag} disabled={saving} className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}Registrar
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Edit device modal */}
+      {editingDevice && (
+        <Modal title={`Editar dispositivo — ${editingDevice.device_code}`} onClose={() => setEditingDevice(null)}>
+          <div className="space-y-4">
+            <div className="bg-white/4 border border-white/10 rounded-xl px-4 py-2 text-xs text-white/40 font-mono">
+              Código: <span className="text-amber-300">{editingDevice.device_code}</span> (no editable)
+            </div>
+            <Field label="Nombre del dispositivo *">
+              <input
+                value={editDevForm.device_name}
+                onChange={e => setEditDevForm(p => ({ ...p, device_name: e.target.value }))}
+                placeholder="Nombre descriptivo del dispositivo"
+                className={inputCls}
+              />
+            </Field>
+            <Field label="Puesto operativo (referencia)">
+              <select value={editDevForm.puesto_id_ref} onChange={e => setEditDevForm(p => ({ ...p, puesto_id_ref: e.target.value }))} className={selectCls}>
+                <option value="">— Sin asignar —</option>
+                {refPuestos.map(p => <option key={p.id} value={p.id}>{p.nombre_puesto}</option>)}
+              </select>
+            </Field>
+            <Field label="Notas">
+              <textarea value={editDevForm.notes} onChange={e => setEditDevForm(p => ({ ...p, notes: e.target.value }))} rows={2} placeholder="Notas opcionales..." className={`${inputCls} resize-none`} />
+            </Field>
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setEditingDevice(null)} className="flex-1 py-2.5 bg-white/5 border border-white/10 text-white/60 rounded-xl text-sm hover:text-white transition-colors">Cancelar</button>
+              <button onClick={updateDevice} disabled={saving} className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}Guardar cambios
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Edit tag modal */}
+      {editingTag && (
+        <Modal title={`Editar tag NFC — ${editingTag.tag_uid}`} onClose={() => setEditingTag(null)}>
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 bg-white/4 border border-white/10 rounded-xl px-4 py-2">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${editingTag.profile_type === "SUPERVISOR" ? "bg-indigo-500/15 border border-indigo-500/25" : "bg-green-500/10 border border-green-500/20"}`}>
+                {editingTag.profile_type === "SUPERVISOR" ? <Shield className="w-4 h-4 text-indigo-400" /> : <User className="w-4 h-4 text-green-400" />}
+              </div>
+              <div>
+                <p className="text-xs font-mono text-white/60">{editingTag.tag_uid}</p>
+                <p className="text-[10px] text-white/30">{editingTag.profile_type} · creado {fmtDate(editingTag.created_at)}</p>
+              </div>
+            </div>
+            <Field label="Alias / nombre del llavero">
+              <input
+                value={editTagForm.alias}
+                onChange={e => setEditTagForm(p => ({ ...p, alias: e.target.value }))}
+                placeholder="Ej. Llavero Rojo #012"
+                className={inputCls}
+              />
+            </Field>
+            <Field label="Empleado asociado (referencia)">
+              <select value={editTagForm.empleado_id_ref} onChange={e => setEditTagForm(p => ({ ...p, empleado_id_ref: e.target.value }))} className={selectCls}>
+                <option value="">— Sin vincular —</option>
+                {refEmpleados.map(e => <option key={e.id} value={e.id}>{e.nombre_completo} ({e.tipo_personal})</option>)}
+              </select>
+            </Field>
+            <Field label="Notas">
+              <textarea value={editTagForm.notes} onChange={e => setEditTagForm(p => ({ ...p, notes: e.target.value }))} rows={2} className={`${inputCls} resize-none`} />
+            </Field>
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setEditingTag(null)} className="flex-1 py-2.5 bg-white/5 border border-white/10 text-white/60 rounded-xl text-sm hover:text-white transition-colors">Cancelar</button>
+              <button onClick={updateTag} disabled={saving} className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}Guardar cambios
               </button>
             </div>
           </div>

@@ -595,7 +595,7 @@ router.get(`${P}/ref/empleados`, async (_req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT id, nombre_completo, tipo_personal
-       FROM employees WHERE estado = 'activo' ORDER BY nombre_completo LIMIT 300`,
+       FROM employees WHERE estado_laboral != 'baja' ORDER BY nombre_completo LIMIT 300`,
     );
     res.json(rows);
   } catch (err) { res.status(500).json({ error: String(err) }); }
