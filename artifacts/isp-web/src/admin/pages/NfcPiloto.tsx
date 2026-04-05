@@ -200,6 +200,13 @@ function KioskScreen({ devices, onClose }: { devices: NfcDevice[]; onClose?: () 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Limpiar deviceCode si el dispositivo seleccionado fue enrolado ────────────
+  useEffect(() => {
+    if (!deviceCode || !devices.length) return;
+    const selected = devices.find(d => d.device_code === deviceCode);
+    if (selected?.device_token_hash) setDeviceCode("");
+  }, [devices, deviceCode]);
+
   // ── Activación del kiosko ─────────────────────────────────────────────────────
   async function activateKiosk() {
     if (!activateCode.trim() || !activateToken.trim()) {
@@ -405,9 +412,12 @@ function KioskScreen({ devices, onClose }: { devices: NfcDevice[]; onClose?: () 
               className="text-xs bg-white/5 border border-white/15 rounded-lg px-3 py-1.5 text-white"
             >
               <option value="">— Seleccionar dispositivo —</option>
-              {devices.filter(d => d.status === "active").map(d => (
+              {devices.filter(d => d.status === "active" && !d.device_token_hash).map(d => (
                 <option key={d.id} value={d.device_code}>{d.device_name} ({d.device_code})</option>
               ))}
+              {devices.some(d => d.status === "active" && !!d.device_token_hash) && (
+                <option disabled>── Enrolados (requieren activación) ──</option>
+              )}
             </select>
           )}
           <button onClick={clearCreds} className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-amber-300 transition-colors" title="Des-enrolar este navegador">
