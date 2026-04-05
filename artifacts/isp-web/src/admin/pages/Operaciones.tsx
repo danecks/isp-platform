@@ -6594,72 +6594,80 @@ export default function Operaciones() {
           ) : (
           <div className="shrink-0 bg-[#060f1a] border border-white/8 rounded-2xl overflow-hidden">
             {/* Header pool */}
-            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/8">
-              <button
-                onClick={() => togglePanel("piz_col_pool", colPool, setColPool)}
-                className="flex items-center gap-2 group shrink-0"
-                title={colPool ? "Expandir pool" : "Minimizar pool"}
-              >
-                <Users className="w-3.5 h-3.5 text-white/30 group-hover:text-white/50 transition-colors" />
-                <span className="text-xs font-bold text-white/60 uppercase tracking-widest group-hover:text-white/80 transition-colors">Pool de agentes</span>
-                <ChevronRight className={`w-3.5 h-3.5 text-white/20 group-hover:text-white/40 transition-all ${colPool ? "" : "rotate-90"}`} />
-              </button>
-              {colPool && (
-                <div className="flex items-center gap-1.5 ml-2">
-                  <span className="text-[10px] text-green-400 font-bold">{pool?.disponibles?.length ?? 0} libres</span>
-                  <span className="text-white/15">·</span>
-                  <span className="text-[10px] text-orange-400 font-bold">{pool?.trabajando?.length ?? 0} trabajando</span>
-                  <span className="text-white/15">·</span>
-                  <span className="text-[10px] text-blue-400 font-bold">{pool?.descansandoCiclo?.length ?? 0} descanso</span>
+            <div className="border-b border-white/8">
+              {/* Fila 1: título + búsqueda + ayuda */}
+              <div className="flex items-center gap-2 px-4 py-2.5">
+                <button
+                  onClick={() => togglePanel("piz_col_pool", colPool, setColPool)}
+                  className="flex items-center gap-2 group shrink-0"
+                  title={colPool ? "Expandir pool" : "Minimizar pool"}
+                >
+                  <Users className="w-3.5 h-3.5 text-white/30 group-hover:text-white/50 transition-colors" />
+                  <span className="text-xs font-bold text-white/60 uppercase tracking-widest group-hover:text-white/80 transition-colors">Pool de agentes</span>
+                  <ChevronRight className={`w-3.5 h-3.5 text-white/20 group-hover:text-white/40 transition-all ${colPool ? "" : "rotate-90"}`} />
+                </button>
+                {colPool && (
+                  <div className="flex items-center gap-1.5 ml-2">
+                    <span className="text-[10px] text-green-400 font-bold">{pool?.disponibles?.length ?? 0} libres</span>
+                    <span className="text-white/15">·</span>
+                    <span className="text-[10px] text-orange-400 font-bold">{pool?.trabajando?.length ?? 0} trabajando</span>
+                    <span className="text-white/15">·</span>
+                    <span className="text-[10px] text-blue-400 font-bold">{pool?.descansandoCiclo?.length ?? 0} descanso</span>
+                  </div>
+                )}
+                <div className="flex-1" />
+                {!colPool && (
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={busquedaPool}
+                      onChange={(e) => setBusquedaPool(e.target.value)}
+                      placeholder="Buscar agente…"
+                      className="bg-[#060e1c] border border-white/8 rounded-lg px-3 py-1.5 text-xs text-white placeholder-white/20 outline-none focus:border-primary/40 w-40"
+                    />
+                    {busquedaPool && (
+                      <button onClick={() => setBusquedaPool("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-white/20 hover:text-white">
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                )}
+                <span className="text-xs text-white/20 shrink-0">
+                  {puestoContexto
+                    ? (agenteSeleccionado ? "Selecciona el agente y toca el puesto para asignar" : "Selecciona un candidato recomendado")
+                    : (agenteSeleccionado ? "Toca un puesto en el tablero" : "Toca un puesto vacío · o selecciona un agente")}
+                </span>
+              </div>
+              {/* Fila 2: tabs del pool (ancho completo, scrollable) */}
+              {!colPool && (
+                <div className="flex items-center gap-1 px-4 py-1.5 overflow-x-auto border-t border-white/5" style={{ scrollbarWidth: "none" }}>
+                  {[
+                    { key: "disponibles"      as const, label: "Disponibles",    count: pool?.disponibles?.length ?? 0,      color: "text-green-400",  dot: "bg-green-400"  },
+                    { key: "trabajando"       as const, label: "Trabaja hoy",    count: pool?.trabajando?.length ?? 0,       color: "text-orange-400", dot: "bg-orange-400" },
+                    { key: "descansandoCiclo" as const, label: "Descanso ciclo", count: pool?.descansandoCiclo?.length ?? 0, color: "text-blue-400",   dot: "bg-blue-400"   },
+                    { key: "faltando"         as const, label: "Faltando",       count: pool?.faltando?.length ?? 0,         color: "text-rose-400",   dot: "bg-rose-400"   },
+                    { key: "enDescanso"       as const, label: "Licencia",       count: pool?.enDescanso?.length ?? 0,       color: "text-indigo-400", dot: "bg-indigo-400" },
+                    { key: "enPuesto"         as const, label: "En puesto",      count: pool?.enPuesto?.length ?? 0,         color: "text-teal-400",   dot: "bg-teal-400"   },
+                    { key: "enSSA"            as const, label: "En SSA",         count: pool?.enSSA?.length ?? 0,            color: "text-amber-400",  dot: "bg-amber-400"  },
+                    { key: "suspendidos"      as const, label: "Suspendidos",    count: pool?.suspendidos?.length ?? 0,      color: "text-red-400",    dot: "bg-red-400"    },
+                    { key: "enVacaciones"     as const, label: "Vacaciones",     count: pool?.enVacaciones?.length ?? 0,     color: "text-violet-400", dot: "bg-violet-400" },
+                  ].map(({ key, label, count, color, dot }) => (
+                    <button
+                      key={key}
+                      onClick={() => setPoolTab(key)}
+                      className={`shrink-0 flex items-center gap-1.5 text-xs px-3 py-1 rounded-lg transition-colors whitespace-nowrap ${
+                        poolTab === key
+                          ? "bg-white/8 text-white"
+                          : "text-white/35 hover:text-white/65"
+                      }`}
+                    >
+                      {poolTab === key && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />}
+                      {label}
+                      <span className={`text-[10px] font-bold ${color}`}>{count}</span>
+                    </button>
+                  ))}
                 </div>
               )}
-              <div className="flex-1" />
-
-              {!colPool && (<>
-              {/* Tabs del pool */}
-              {[
-                { key: "disponibles"      as const, label: "Disponibles",    count: pool?.disponibles?.length ?? 0,      color: "text-green-400"  },
-                { key: "trabajando"       as const, label: "Trabaja hoy",    count: pool?.trabajando?.length ?? 0,       color: "text-orange-400" },
-                { key: "descansandoCiclo" as const, label: "Descanso ciclo", count: pool?.descansandoCiclo?.length ?? 0, color: "text-blue-400"   },
-                { key: "faltando"         as const, label: "Faltando",       count: pool?.faltando?.length ?? 0,         color: "text-rose-400"   },
-                { key: "enDescanso"       as const, label: "Licencia",       count: pool?.enDescanso?.length ?? 0,       color: "text-indigo-400" },
-                { key: "enPuesto"         as const, label: "En puesto",      count: pool?.enPuesto?.length ?? 0,         color: "text-teal-400"   },
-                { key: "enSSA"            as const, label: "En SSA",         count: pool?.enSSA?.length ?? 0,            color: "text-amber-400"  },
-                { key: "suspendidos"      as const, label: "Suspendidos",    count: pool?.suspendidos?.length ?? 0,      color: "text-red-400"    },
-                { key: "enVacaciones"     as const, label: "Vacaciones",     count: pool?.enVacaciones?.length ?? 0,     color: "text-violet-400" },
-              ].map(({ key, label, count, color }) => (
-                <button
-                  key={key}
-                  onClick={() => setPoolTab(key)}
-                  className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors ${poolTab === key ? "bg-white/8 text-white" : "text-white/30 hover:text-white/60"}`}
-                >
-                  {label}
-                  <span className={`text-[10px] font-bold ${color}`}>{count}</span>
-                </button>
-              ))}
-
-              {/* Búsqueda en pool */}
-              <div className="relative">
-                <input
-                  type="text"
-                  value={busquedaPool}
-                  onChange={(e) => setBusquedaPool(e.target.value)}
-                  placeholder="Buscar agente…"
-                  className="bg-[#060e1c] border border-white/8 rounded-lg px-3 py-1.5 text-xs text-white placeholder-white/20 outline-none focus:border-primary/40 w-36"
-                />
-                {busquedaPool && (
-                  <button onClick={() => setBusquedaPool("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-white/20 hover:text-white">
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-              </>)}
-
-              <span className="text-xs text-white/20">
-                {puestoContexto
-                  ? (agenteSeleccionado ? "Selecciona el agente y toca el puesto para asignar" : "Selecciona un candidato recomendado")
-                  : (agenteSeleccionado ? "Toca un puesto en el tablero" : "Toca un puesto vacío · o selecciona un agente")}
-              </span>
             </div>
 
             {!colPool && (<>
