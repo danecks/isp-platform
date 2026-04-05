@@ -231,18 +231,24 @@ function KioskScreen({ devices, onClose }: { devices: NfcDevice[]; onClose?: () 
     setCreds(null); setActivateCode(""); setActivateToken(""); setActivateError("");
   }
 
-  const effectiveDeviceCode = creds?.device_code || deviceCode;
+  // Modo legado: creds vacías o sentinel "__legacy__" → usa el dropdown manual
+  const isLegacyMode = !creds || creds.device_code === "__legacy__";
+  const effectiveDeviceCode = isLegacyMode ? deviceCode : (creds?.device_code ?? "");
   const selectedDevice = devices.find(d => d.device_code === effectiveDeviceCode);
 
   const doScan = useCallback(async () => {
-    if (!tagUid.trim() || !effectiveDeviceCode) {
-      setError("Selecciona un dispositivo e ingresa el UID del tag");
+    if (!tagUid.trim()) { setError("Ingresa el UID del tag NFC"); return; }
+    if (!effectiveDeviceCode) {
+      setError(isLegacyMode
+        ? "Selecciona un dispositivo en el menú superior antes de escanear"
+        : "Dispositivo no identificado — reactiva el kiosko");
       return;
     }
     setScanning(true); setError(""); setResult(null);
     try {
-      // Si hay creds de enrolamiento, enviar device_uuid + device_token
-      const payload = creds
+      // Modo enrolado: autenticar con device_uuid + device_token
+      // Modo legado: usar device_code del dropdown
+      const payload = !isLegacyMode && creds
         ? { tag_uid: tagUid.trim(), device_uuid: creds.device_uuid, device_token: creds.device_token }
         : { tag_uid: tagUid.trim(), device_code: effectiveDeviceCode };
 
@@ -259,7 +265,7 @@ function KioskScreen({ devices, onClose }: { devices: NfcDevice[]; onClose?: () 
     } catch (e) { setError(String(e)); }
     finally { setScanning(false); setTimeout(() => tagRef.current?.focus(), 100); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tagUid, effectiveDeviceCode, creds]);
+  }, [tagUid, effectiveDeviceCode, creds, isLegacyMode]);
 
   async function guardarFormSupervisor() {
     if (!result) return;
@@ -367,7 +373,6 @@ function KioskScreen({ devices, onClose }: { devices: NfcDevice[]; onClose?: () 
   }
 
   // ── Modo enrolado: pantalla normal de scan ────────────────────────────────────
-  const isLegacyMode = creds.device_code === "__legacy__";
 
   return (
     <div className="fixed inset-0 z-50 bg-[#04080f] flex flex-col">
