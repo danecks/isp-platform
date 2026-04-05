@@ -1280,6 +1280,30 @@ function TabUniformes() {
   const [ok, setOk] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Autocomplete de empleados
+  const [empSearch, setEmpSearch] = useState("");
+  const [empFocused, setEmpFocused] = useState(false);
+  const [selectedEmp, setSelectedEmp] = useState<EmpleadoOption | null>(null);
+  const empRef = useRef<HTMLDivElement>(null);
+
+  const empFiltered = empSearch.trim().length >= 1
+    ? empleados.filter(e =>
+        e.nombre_completo?.toLowerCase().includes(empSearch.toLowerCase())
+      ).slice(0, 8)
+    : [];
+
+  function selectEmp(emp: EmpleadoOption) {
+    setSelectedEmp(emp);
+    setEmpSearch(emp.nombre_completo);
+    setEmpFocused(false);
+    setForm(p => ({ ...p, employee_id: String(emp.id) }));
+  }
+  function clearEmp() {
+    setSelectedEmp(null);
+    setEmpSearch("");
+    setForm(p => ({ ...p, employee_id: "" }));
+  }
+
   const BLANK_FORM = {
     employee_id: "",
     nombre_articulo: "",
@@ -1326,7 +1350,7 @@ function TabUniformes() {
       }),
     });
     setSaving(false);
-    if (r.ok) { setOk(true); setForm(BLANK_FORM); setVista("pendientes"); await cargar(); setTimeout(() => setOk(false), 3000); }
+    if (r.ok) { setOk(true); setForm(BLANK_FORM); clearEmp(); setVista("pendientes"); await cargar(); setTimeout(() => setOk(false), 3000); }
     else { const d = await r.json(); setErr(d.error ?? "Error al registrar"); }
   }
 
@@ -1364,13 +1388,69 @@ function TabUniformes() {
         <div className="bg-[#0f1623] border border-white/10 rounded-xl p-5 space-y-4">
           <p className="text-xs font-semibold text-white/80">Nueva Entrega de Uniforme / Botas</p>
           <div className="grid sm:grid-cols-2 gap-3">
-            <div className="space-y-1">
+            {/* ── Autocomplete de colaborador ── */}
+            <div className="space-y-1" ref={empRef}>
               <label className="text-[10px] text-white/40 uppercase tracking-wide">Colaborador *</label>
-              <select value={form.employee_id} onChange={e => up("employee_id", e.target.value)}
-                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-orange-400/50">
-                <option value="">— Seleccionar —</option>
-                {empleados.map(e => <option key={e.id} value={e.id}>{e.nombre_completo}</option>)}
-              </select>
+              <div className="relative">
+                <div className="relative flex items-center">
+                  <Search className="absolute left-3 w-3.5 h-3.5 text-white/25 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={empSearch}
+                    onChange={e => {
+                      setEmpSearch(e.target.value);
+                      if (selectedEmp && e.target.value !== selectedEmp.nombre_completo) {
+                        setSelectedEmp(null);
+                        setForm(p => ({ ...p, employee_id: "" }));
+                      }
+                      setEmpFocused(true);
+                    }}
+                    onFocus={() => setEmpFocused(true)}
+                    onBlur={() => setTimeout(() => setEmpFocused(false), 150)}
+                    placeholder="Buscar colaborador..."
+                    className={`w-full bg-[#060e1c] border rounded-lg pl-8 pr-8 py-2 text-sm text-white placeholder-white/20 outline-none transition-colors ${
+                      selectedEmp ? "border-orange-400/40" : "border-white/10 focus:border-orange-400/50"
+                    }`}
+                  />
+                  {empSearch && (
+                    <button
+                      type="button"
+                      onClick={clearEmp}
+                      className="absolute right-2.5 text-white/20 hover:text-white/60 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Dropdown de sugerencias */}
+                {empFocused && empFiltered.length > 0 && (
+                  <div className="absolute z-50 top-full mt-1 w-full bg-[#0b1628] border border-white/15 rounded-xl shadow-2xl overflow-hidden">
+                    {empFiltered.map(emp => (
+                      <button
+                        key={emp.id}
+                        type="button"
+                        onMouseDown={() => selectEmp(emp)}
+                        className="w-full text-left px-3 py-2.5 text-sm text-white/80 hover:bg-orange-500/10 hover:text-white border-b border-white/5 last:border-0 transition-colors"
+                      >
+                        <span className="font-medium">{emp.nombre_completo}</span>
+                        {emp.puesto && <span className="text-[11px] text-white/35 ml-2">— {emp.puesto}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Sin resultados */}
+                {empFocused && empSearch.trim().length >= 2 && empFiltered.length === 0 && !selectedEmp && (
+                  <div className="absolute z-50 top-full mt-1 w-full bg-[#0b1628] border border-white/15 rounded-xl shadow-2xl px-3 py-2.5">
+                    <p className="text-xs text-white/30">Sin coincidencias para "{empSearch}"</p>
+                  </div>
+                )}
+
+                {selectedEmp && (
+                  <p className="text-[10px] text-orange-400/60 mt-1">Seleccionado: ID {selectedEmp.id}</p>
+                )}
+              </div>
             </div>
             <div className="space-y-1">
               <label className="text-[10px] text-white/40 uppercase tracking-wide">Artículo entregado *</label>
