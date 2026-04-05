@@ -238,11 +238,18 @@ function KioskScreen({ devices, onClose }: { devices: NfcDevice[]; onClose?: () 
 
   const doScan = useCallback(async () => {
     if (!tagUid.trim()) { setError("Ingresa el UID del tag NFC"); return; }
-    if (!effectiveDeviceCode) {
-      setError(isLegacyMode
-        ? "Selecciona un dispositivo en el menú superior antes de escanear"
-        : "Dispositivo no identificado — reactiva el kiosko");
-      return;
+    // Modo enrolado: solo necesita device_uuid + device_token (NO device_code)
+    if (!isLegacyMode) {
+      if (!creds?.device_uuid || !creds?.device_token) {
+        setError("Kiosko no autenticado — cierra y vuelve a activar");
+        return;
+      }
+    } else {
+      // Modo legado: requiere selección del dropdown
+      if (!effectiveDeviceCode) {
+        setError("Selecciona un dispositivo en el menú superior");
+        return;
+      }
     }
     setScanning(true); setError(""); setResult(null);
     try {
