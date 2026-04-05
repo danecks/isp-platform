@@ -34,6 +34,7 @@ import {
   Gift,
   BookOpen,
   Package,
+  FileUp,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -316,6 +317,20 @@ export const NAV_SECTIONS: NavSection[] = [
         label: "Inventario",
         icon: Package,
         roles: ["admin", "operaciones"],
+      },
+    ],
+  },
+
+  // ── 8. MIGRACIÓN ───────────────────────────────────────────────────────────
+  {
+    id: "migracion",
+    label: "Migración",
+    items: [
+      {
+        path: "/admin/importacion",
+        label: "Importar Datos",
+        icon: FileUp,
+        roles: ["admin"],
       },
     ],
   },

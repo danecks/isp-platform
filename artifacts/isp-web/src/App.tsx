@@ -60,6 +60,7 @@ import AdminPrestaciones from "@/admin/pages/Prestaciones";
 import AdminPlanillasEspeciales from "@/admin/pages/PlanillasEspeciales";
 import AdminLibroSalarios from "@/admin/pages/LibroSalarios";
 import AdminBodega from "@/admin/pages/Bodega";
+import AdminImportacion from "@/admin/pages/Importacion";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
@@ -227,6 +228,9 @@ function Router() {
       </Route>
       <Route path="/admin/bodega">
         {() => <AuthGuard requiredRoles={["admin", "operaciones"]}><AdminBodega /></AuthGuard>}
+      </Route>
+      <Route path="/admin/importacion">
+        {() => <AuthGuard requiredRoles={["admin"]}><AdminImportacion /></AuthGuard>}
       </Route>
 
       <Route component={NotFound} />

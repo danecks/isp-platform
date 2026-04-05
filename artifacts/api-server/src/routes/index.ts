@@ -44,6 +44,7 @@ import dashboardRouter from "./dashboard";
 import { planillasEspecialesRouter } from "./planillas-especiales";
 import { libroSalariosRouter } from "./libro-salarios";
 import { bodegaRouter } from "./bodega";
+import { importacionRouter } from "./importacion";
 
 const router: IRouter = Router();
 
@@ -92,5 +93,6 @@ router.use(dashboardRouter);
 router.use(planillasEspecialesRouter);
 router.use(libroSalariosRouter);
 router.use(bodegaRouter);
+router.use(importacionRouter);
 
 export default router;
