@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "../layout/AdminLayout";
 import { StatusBadge } from "../components/StatusBadge";
 import { leadsApi } from "@/lib/api";
-import { Briefcase, Filter, Loader2, RefreshCw, ExternalLink, Send, CheckCircle2, UserPlus, X, Calendar } from "lucide-react";
+import { Briefcase, Filter, Loader2, RefreshCw, ExternalLink, Send, CheckCircle2, UserPlus, X, Calendar, Plus } from "lucide-react";
+import LeadDetallePanel from "../components/LeadDetallePanel";
 
 type EstadoLead = "nuevo" | "contactado" | "cotizado" | "ganado" | "perdido";
 type CanalFilter = "todos" | "whatsapp" | "web" | "otro";
@@ -51,7 +52,125 @@ interface ModalConvertirState {
   error: string | null;
 }
 
+const JORNADAS_OPT = ["24x24", "12x12", "8x8", "6x6", "turno_unico"];
+const CANALES_MANUAL = ["manual", "referido", "prospeccion", "feria", "llamada", "whatsapp", "web"];
+
+function ModalNuevoLead({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [form, setForm] = useState({
+    empresa: "", contacto: "", telefono: "", correo: "",
+    servicio: "", ubicacion: "Guatemala", canal: "manual",
+    ejecutivo: "", notas: "", num_puestos: "", tipo_jornada: "24x24",
+  });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  function set(k: string, v: string) { setForm(p => ({ ...p, [k]: v })); }
+
+  async function guardar() {
+    if (!form.empresa.trim() || !form.contacto.trim() || !form.servicio.trim()) {
+      return setErr("Empresa, contacto y servicio son requeridos.");
+    }
+    setSaving(true); setErr(null);
+    const r = await fetch(`${API}/leads`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        empresa: form.empresa, contacto: form.contacto, telefono: form.telefono,
+        correo: form.correo, servicio: form.servicio, ubicacion: form.ubicacion,
+        canal: form.canal, ejecutivo: form.ejecutivo || null, notas: form.notas || null,
+        num_puestos: form.num_puestos ? parseInt(form.num_puestos) : null,
+        tipo_jornada: form.tipo_jornada || null,
+      }),
+    });
+    setSaving(false);
+    if (r.ok) { onCreated(); onClose(); }
+    else { const d = await r.json(); setErr(d.error || "Error al crear lead"); }
+  }
+
+  const inputCls = "w-full bg-[#060f1a] border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50";
+  const labelCls = "text-xs text-white/40 block mb-1.5";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-xl bg-[#0a1628] border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/8">
+          <div className="flex items-center gap-2">
+            <Plus className="w-4 h-4 text-primary" />
+            <span className="text-sm font-semibold text-white">Nuevo Lead</span>
+          </div>
+          <button onClick={onClose} className="text-white/30 hover:text-white transition-colors"><X size={16} /></button>
+        </div>
+        <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className={labelCls}>Empresa / Prospecto *</label>
+              <input value={form.empresa} onChange={e => set("empresa", e.target.value)} placeholder="Ej: Supermercados La Colonia" className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Contacto *</label>
+              <input value={form.contacto} onChange={e => set("contacto", e.target.value)} placeholder="Nombre del contacto" className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Teléfono</label>
+              <input value={form.telefono} onChange={e => set("telefono", e.target.value)} placeholder="+(502) 5555-0000" className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Correo</label>
+              <input type="email" value={form.correo} onChange={e => set("correo", e.target.value)} placeholder="correo@empresa.com" className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Servicio solicitado *</label>
+              <input value={form.servicio} onChange={e => set("servicio", e.target.value)} placeholder="Ej: Seguridad física 24x7" className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Ubicación</label>
+              <input value={form.ubicacion} onChange={e => set("ubicacion", e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Canal de origen</label>
+              <select value={form.canal} onChange={e => set("canal", e.target.value)} className={inputCls}>
+                {CANALES_MANUAL.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Ejecutivo asignado</label>
+              <input value={form.ejecutivo} onChange={e => set("ejecutivo", e.target.value)} placeholder="Nombre del ejecutivo" className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>N° de puestos estimados</label>
+              <input type="number" min={0} value={form.num_puestos} onChange={e => set("num_puestos", e.target.value)} placeholder="Ej: 3" className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Tipo de jornada</label>
+              <select value={form.tipo_jornada} onChange={e => set("tipo_jornada", e.target.value)} className={inputCls}>
+                {JORNADAS_OPT.map(j => <option key={j} value={j}>{j.replace("_", " ")}</option>)}
+              </select>
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>Notas</label>
+              <textarea value={form.notas} onChange={e => set("notas", e.target.value)} rows={2}
+                className="w-full bg-[#060f1a] border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none resize-none" />
+            </div>
+          </div>
+          {err && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{err}</p>}
+        </div>
+        <div className="flex gap-2 px-6 pb-5">
+          <button onClick={onClose} className="flex-1 px-3 py-2 text-sm text-white/50 border border-white/10 rounded-lg hover:bg-white/5 transition-colors">
+            Cancelar
+          </button>
+          <button onClick={guardar} disabled={saving}
+            className="flex-1 px-3 py-2 text-sm font-semibold bg-primary/20 hover:bg-primary/30 text-primary border border-primary/25 rounded-lg transition-colors disabled:opacity-40 flex items-center justify-center gap-2">
+            {saving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+            Crear Lead
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Comercial() {
+  const qc = useQueryClient();
   const [filtro, setFiltro] = useState<EstadoLead | "todos">("todos");
   const [canalFiltro, setCanalFiltro] = useState<CanalFilter>("todos");
   const [sendingId, setSendingId] = useState<number | null>(null);
@@ -60,6 +179,8 @@ export default function Comercial() {
   const [convertidos, setConvertidos] = useState<Record<number, number>>({});
   const [errores, setErrores] = useState<Record<number, string>>({});
   const [modalConvertir, setModalConvertir] = useState<ModalConvertirState | null>(null);
+  const [modalNuevoLead, setModalNuevoLead] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<any | null>(null);
 
   const { data: leads = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["leads"],
@@ -167,7 +288,15 @@ export default function Comercial() {
               <p className="text-sm font-bold text-white">Pipeline Comercial</p>
               <span className="text-[10px] text-primary/60 bg-primary/10 px-2 py-0.5 rounded-full font-semibold ml-1">Base de datos real</span>
             </div>
-            <span className="text-xs text-white/30">{filtrados.length} leads</span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-white/30">{filtrados.length} leads</span>
+              <button
+                onClick={() => setModalNuevoLead(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/15 hover:bg-primary/25 text-primary text-xs rounded-lg border border-primary/20 transition-colors"
+              >
+                <Plus size={12} /> Nuevo Lead
+              </button>
+            </div>
           </div>
 
           {isLoading && (
@@ -209,7 +338,8 @@ export default function Comercial() {
                     return (
                     <tr
                       key={l.id}
-                      className={`border-b border-white/3 hover:bg-white/2 transition-colors ${
+                      onClick={() => setSelectedLead(l)}
+                      className={`border-b border-white/3 hover:bg-white/2 transition-colors cursor-pointer ${
                         l.canal === "whatsapp" ? "bg-[#25D366]/3" : ""
                       }`}
                     >
@@ -231,7 +361,8 @@ export default function Comercial() {
                           </a>
                         ) : (
                           <button
-                            onClick={async () => {
+                            onClick={async (e) => {
+                              e.stopPropagation();
                               setSendingId(l.id);
                               const res = await sendLeadToTrello(l.id);
                               if (res.ok && res.url) setTrelloUrls(p => ({ ...p, [l.id]: res.url! }));
@@ -255,7 +386,7 @@ export default function Comercial() {
                           ) : (
                             <div className="flex flex-col gap-0.5">
                               <button
-                                onClick={() => setModalConvertir({ leadId: l.id, empresa: l.empresa, fecha: "", submitting: false, error: null })}
+                                onClick={e => { e.stopPropagation(); setModalConvertir({ leadId: l.id, empresa: l.empresa, fecha: "", submitting: false, error: null }); }}
                                 disabled={convirtiendo === l.id}
                                 className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 hover:text-emerald-300 text-[11px] rounded-lg border border-emerald-500/20 transition-colors disabled:opacity-50"
                                 title="Convertir a Cliente"
@@ -287,6 +418,23 @@ export default function Comercial() {
         </div>
 
       </div>
+      {/* ── Modal: Nuevo Lead ── */}
+      {modalNuevoLead && (
+        <ModalNuevoLead onClose={() => setModalNuevoLead(false)} onCreated={() => { refetch(); qc.invalidateQueries({ queryKey: ["leads"] }); }} />
+      )}
+
+      {/* ── Panel Detalle Lead ── */}
+      {selectedLead && (
+        <LeadDetallePanel
+          lead={selectedLead}
+          onClose={() => setSelectedLead(null)}
+          onLeadUpdate={(updated) => {
+            setSelectedLead(updated);
+            refetch();
+          }}
+        />
+      )}
+
       {/* ── Modal: Convertir Lead a Cliente ── */}
       {modalConvertir && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">

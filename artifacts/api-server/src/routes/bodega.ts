@@ -125,31 +125,33 @@ bodegaRouter.get("/bodega/articulos", async (_req, res) => {
 });
 
 bodegaRouter.post("/bodega/articulos", async (req, res) => {
-  const { nombre, descripcion, categoria_id, codigo_prefijo, tipo_rastreo, tipo_asignacion } = req.body;
+  const { nombre, descripcion, categoria_id, codigo_prefijo, tipo_rastreo, tipo_asignacion, costo_unitario } = req.body;
   if (!nombre?.trim() || !codigo_prefijo?.trim()) return res.status(400).json({ error: "Nombre y prefijo requeridos" });
   const prefijo = codigo_prefijo.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
   try {
     const { rows } = await pool.query(`
       INSERT INTO bodega_articulos
-        (nombre, descripcion, categoria_id, codigo_prefijo, tipo_rastreo, tipo_asignacion)
-      VALUES ($1,$2,$3,$4,$5,$6) RETURNING *
+        (nombre, descripcion, categoria_id, codigo_prefijo, tipo_rastreo, tipo_asignacion, costo_unitario)
+      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *
     `, [nombre.trim(), descripcion?.trim() || null, categoria_id || null, prefijo,
-        tipo_rastreo || "seriado", tipo_asignacion || "colaborador"]);
+        tipo_rastreo || "seriado", tipo_asignacion || "colaborador",
+        parseFloat(costo_unitario) || 0]);
     res.json(rows[0]);
   } catch (e: any) { res.status(500).send(e.message); }
 });
 
 bodegaRouter.put("/bodega/articulos/:id", async (req, res) => {
-  const { nombre, descripcion, categoria_id, codigo_prefijo, tipo_rastreo, tipo_asignacion } = req.body;
+  const { nombre, descripcion, categoria_id, codigo_prefijo, tipo_rastreo, tipo_asignacion, costo_unitario } = req.body;
   const prefijo = codigo_prefijo?.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
   try {
     const { rows } = await pool.query(`
       UPDATE bodega_articulos SET
         nombre=$1, descripcion=$2, categoria_id=$3,
-        codigo_prefijo=$4, tipo_rastreo=$5, tipo_asignacion=$6, updated_at=NOW()
-      WHERE id=$7 RETURNING *
+        codigo_prefijo=$4, tipo_rastreo=$5, tipo_asignacion=$6,
+        costo_unitario=$7, updated_at=NOW()
+      WHERE id=$8 RETURNING *
     `, [nombre?.trim(), descripcion?.trim() || null, categoria_id || null, prefijo,
-        tipo_rastreo, tipo_asignacion, req.params.id]);
+        tipo_rastreo, tipo_asignacion, parseFloat(costo_unitario) || 0, req.params.id]);
     res.json(rows[0]);
   } catch (e: any) { res.status(500).send(e.message); }
 });

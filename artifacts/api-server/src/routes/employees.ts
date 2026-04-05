@@ -588,6 +588,28 @@ employeesRouter.post("/employees", async (req, res) => {
     const { rows: empCompleto } = await pool.query(
       `SELECT *, COALESCE(frecuencia_pago, 'quincenal') AS frecuencia_pago FROM employees WHERE id = $1`, [emp.id]
     );
+
+    // DOT-KIT: si hay un kit de ingreso configurado, generar dotación pendiente para bodega
+    try {
+      const { rows: kitItems } = await pool.query(
+        `SELECT * FROM kit_ingreso_items WHERE activo = TRUE ORDER BY id`
+      );
+      if (kitItems.length > 0) {
+        const { rows: [dotPend] } = await pool.query(`
+          INSERT INTO dotacion_pendiente (employee_id, estado, notas)
+          VALUES ($1, 'pendiente', $2) RETURNING id
+        `, [emp.id, `Kit de ingreso generado automáticamente al dar de alta a ${nombreCompletoLimpio}`]);
+        for (const item of kitItems) {
+          await pool.query(`
+            INSERT INTO dotacion_pendiente_items (dotacion_id, articulo_id, nombre_articulo, cantidad)
+            VALUES ($1, $2, $3, $4)
+          `, [dotPend.id, item.articulo_id || null, item.nombre_articulo, item.cantidad]);
+        }
+      }
+    } catch (kitErr) {
+      logger.warn({ kitErr }, "DOT-KIT: no se pudo crear dotación pendiente (no bloqueante)");
+    }
+
     res.status(201).json(snakeToCamel(empCompleto[0] ?? emp as unknown as Record<string, unknown>));
   } catch (err) {
     logger.error({ err }, "POST /employees error");

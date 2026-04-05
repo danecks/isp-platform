@@ -3197,5 +3197,107 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: BDG-01 — error (no bloqueante)");
   }
 
+  // ── DOT-01: Dotación / Kit de Ingreso / Órdenes de Compra ──────────────────
+  try {
+    // Extender tablas existentes (columnas opcionales, no rompen nada)
+    await pool.query(`ALTER TABLE bodega_articulos ADD COLUMN IF NOT EXISTS costo_unitario NUMERIC(12,2) NOT NULL DEFAULT 0`);
+    await pool.query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS num_puestos INTEGER`);
+    await pool.query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS tipo_jornada VARCHAR(30)`);
+
+    // Artículos de dotación vinculados a un lead comercial
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS lead_dotacion_items (
+        id                  SERIAL PRIMARY KEY,
+        lead_id             INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+        articulo_id         INTEGER REFERENCES bodega_articulos(id) ON DELETE SET NULL,
+        nombre_articulo     VARCHAR(200) NOT NULL,
+        es_equipo_personal  BOOLEAN NOT NULL DEFAULT FALSE,
+        cantidad_por_puesto NUMERIC(8,2) NOT NULL DEFAULT 1,
+        costo_unitario      NUMERIC(12,2) NOT NULL DEFAULT 0,
+        notas               TEXT,
+        created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ldi_lead ON lead_dotacion_items(lead_id)`);
+
+    // Kit global de ingreso (configuración única, todos los empleados nuevos lo reciben)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS kit_ingreso_items (
+        id              SERIAL PRIMARY KEY,
+        articulo_id     INTEGER REFERENCES bodega_articulos(id) ON DELETE SET NULL,
+        nombre_articulo VARCHAR(200) NOT NULL,
+        cantidad        INTEGER NOT NULL DEFAULT 1,
+        activo          BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    // Dotaciones pendientes de entrega a empleados nuevos
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS dotacion_pendiente (
+        id          SERIAL PRIMARY KEY,
+        employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        lead_id     INTEGER REFERENCES leads(id) ON DELETE SET NULL,
+        estado      VARCHAR(20) NOT NULL DEFAULT 'pendiente',
+        notas       TEXT,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS dp_emp ON dotacion_pendiente(employee_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS dp_est ON dotacion_pendiente(estado)`);
+
+    // Ítems individuales de cada dotación pendiente
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS dotacion_pendiente_items (
+        id              SERIAL PRIMARY KEY,
+        dotacion_id     INTEGER NOT NULL REFERENCES dotacion_pendiente(id) ON DELETE CASCADE,
+        articulo_id     INTEGER REFERENCES bodega_articulos(id) ON DELETE SET NULL,
+        nombre_articulo VARCHAR(200) NOT NULL,
+        cantidad        INTEGER NOT NULL DEFAULT 1,
+        entregado       BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS dpi_dot ON dotacion_pendiente_items(dotacion_id)`);
+
+    // Órdenes de compra generadas cuando falta stock para un contrato
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ordenes_compra (
+        id         SERIAL PRIMARY KEY,
+        lead_id    INTEGER REFERENCES leads(id) ON DELETE SET NULL,
+        cliente_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+        estado     VARCHAR(20) NOT NULL DEFAULT 'pendiente',
+        total      NUMERIC(14,2) NOT NULL DEFAULT 0,
+        notas      TEXT,
+        created_by VARCHAR(100),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS oc_lead ON ordenes_compra(lead_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS oc_est  ON ordenes_compra(estado)`);
+
+    // Ítems de cada orden de compra
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ordenes_compra_items (
+        id              SERIAL PRIMARY KEY,
+        orden_id        INTEGER NOT NULL REFERENCES ordenes_compra(id) ON DELETE CASCADE,
+        articulo_id     INTEGER REFERENCES bodega_articulos(id) ON DELETE SET NULL,
+        nombre_articulo VARCHAR(200) NOT NULL,
+        cantidad        INTEGER NOT NULL DEFAULT 1,
+        costo_unitario  NUMERIC(12,2) NOT NULL DEFAULT 0,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS oci_ord ON ordenes_compra_items(orden_id)`);
+
+    logger.info("Auto-migrate: DOT-01 tablas dotación, kit ingreso, órdenes de compra (7 tablas + 3 columnas nuevas)");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: DOT-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

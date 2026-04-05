@@ -3,7 +3,7 @@ import {
   Package, PackageOpen, Building2, User, Search, Plus, ChevronDown,
   ChevronRight, Edit2, Trash2, X, Check, Loader2, AlertCircle,
   ArrowDownToLine, ArrowUpFromLine, RefreshCw, Archive, Tag,
-  ClipboardList, BarChart3, History,
+  ClipboardList, BarChart3, History, ShoppingCart, UserCheck, Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,7 @@ interface Articulo {
   id: number; nombre: string; descripcion: string | null;
   categoria_id: number | null; categoria_nombre: string | null;
   codigo_prefijo: string; tipo_rastreo: string; tipo_asignacion: string; activo: boolean;
+  costo_unitario: number;
   stock_total: number; stock_disponible: number; stock_asignado_puesto: number;
   stock_asignado_colaborador: number; stock_reparacion: number; stock_baja: number;
 }
@@ -283,6 +284,7 @@ function ModalArticulo({ art, categorias, onClose, onSaved }: { art?: Articulo; 
   const [prefijo, setPrefijo] = useState(art?.codigo_prefijo ?? "");
   const [rastreo, setRastreo] = useState(art?.tipo_rastreo ?? "seriado");
   const [asignacion, setAsignacion] = useState(art?.tipo_asignacion ?? "colaborador");
+  const [costo, setCosto] = useState<string>(art?.costo_unitario != null ? String(art.costo_unitario) : "0");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
@@ -291,7 +293,11 @@ function ModalArticulo({ art, categorias, onClose, onSaved }: { art?: Articulo; 
     setSaving(true); setErr("");
     const url = art ? `/api/bodega/articulos/${art.id}` : "/api/bodega/articulos";
     const method = art ? "PUT" : "POST";
-    const r = await api(url, { method, body: JSON.stringify({ nombre, descripcion: desc, categoria_id: catId ? +catId : null, codigo_prefijo: prefijo, tipo_rastreo: rastreo, tipo_asignacion: asignacion }) });
+    const r = await api(url, { method, body: JSON.stringify({
+      nombre, descripcion: desc, categoria_id: catId ? +catId : null,
+      codigo_prefijo: prefijo, tipo_rastreo: rastreo, tipo_asignacion: asignacion,
+      costo_unitario: parseFloat(costo) || 0,
+    }) });
     setSaving(false);
     if (r.ok) { onSaved(); onClose(); } else setErr(await r.text());
   }
@@ -336,6 +342,12 @@ function ModalArticulo({ art, categorias, onClose, onSaved }: { art?: Articulo; 
               <option value="puesto">Puesto operativo (bastón, pito, radio…)</option>
               <option value="ambos">Ambos</option>
             </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-400 block mb-1">Costo unitario (Q)</label>
+            <input type="number" min={0} step={0.01} value={costo} onChange={e => setCosto(e.target.value)} placeholder="0.00"
+              className="w-full bg-[#07111f] border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500/50" />
+            <p className="text-[11px] text-gray-600 mt-1">Para calcular inversión en dotaciones de leads</p>
           </div>
           <div className="col-span-2">
             <label className="text-xs text-gray-400 block mb-1">Descripción</label>
@@ -971,13 +983,290 @@ function TabMovimientos() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// ─── Tab Kit de Ingreso ───────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+interface KitItem { id?: number; articulo_id: number | null; nombre_articulo: string; cantidad: number; stock_disponible?: number; }
+
+function TabKitIngreso() {
+  const [items, setItems] = useState<KitItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [nuevo, setNuevo] = useState({ nombre: "", cantidad: 1 });
+
+  async function cargar() {
+    const r = await api("/api/dotacion/kit-ingreso");
+    if (r.ok) { const d = await r.json(); setItems(d.map((i: any) => ({ id: i.id, articulo_id: i.articulo_id, nombre_articulo: i.nombre_articulo, cantidad: i.cantidad, stock_disponible: i.stock_disponible }))); }
+    setLoading(false);
+  }
+  useEffect(() => { cargar(); }, []);
+
+  async function guardar() {
+    setSaving(true);
+    await api("/api/dotacion/kit-ingreso", { method: "PUT", body: JSON.stringify({ items }) });
+    setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000);
+  }
+
+  function agregar() {
+    if (!nuevo.nombre.trim()) return;
+    setItems(p => [...p, { articulo_id: null, nombre_articulo: nuevo.nombre, cantidad: nuevo.cantidad }]);
+    setNuevo({ nombre: "", cantidad: 1 });
+  }
+
+  if (loading) return <div className="flex justify-center py-16 text-gray-500"><Loader2 className="w-5 h-5 animate-spin" /></div>;
+
+  return (
+    <div className="space-y-5 max-w-2xl">
+      <div className="bg-orange-500/8 border border-orange-500/20 rounded-xl px-4 py-3 text-sm text-orange-300">
+        <strong>Kit de ingreso:</strong> artículos que se asignan automáticamente a cada empleado nuevo al ser dado de alta en RRHH.
+      </div>
+      {items.length === 0
+        ? <div className="text-center py-10 text-gray-600 border border-dashed border-white/10 rounded-xl">Sin artículos configurados aún.</div>
+        : (
+          <div className="bg-[#0f1623] border border-white/10 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 text-xs border-b border-white/5 uppercase">
+                  <th className="px-4 py-3 text-left">Artículo</th>
+                  <th className="px-4 py-3 text-center w-20">Cantidad</th>
+                  <th className="px-4 py-3 w-10"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item, i) => (
+                  <tr key={i} className="border-b border-white/5 hover:bg-white/2">
+                    <td className="px-4 py-2.5 text-white/80">{item.nombre_articulo}</td>
+                    <td className="px-4 py-2.5 text-center">
+                      <input type="number" min={1} value={item.cantidad}
+                        onChange={e => setItems(p => p.map((it, j) => j === i ? { ...it, cantidad: +e.target.value } : it))}
+                        className="w-16 bg-[#07111f] border border-white/10 rounded px-2 py-1 text-white text-center text-xs" />
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <button onClick={() => setItems(p => p.filter((_, j) => j !== i))} className="text-red-400/50 hover:text-red-400 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+      {/* Agregar */}
+      <div className="flex gap-2 items-center">
+        <input value={nuevo.nombre} onChange={e => setNuevo(p => ({ ...p, nombre: e.target.value }))}
+          placeholder="Nombre del artículo del kit..."
+          className="flex-1 bg-[#0f1623] border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none" />
+        <input type="number" min={1} value={nuevo.cantidad} onChange={e => setNuevo(p => ({ ...p, cantidad: +e.target.value }))}
+          className="w-16 bg-[#0f1623] border border-white/10 rounded-lg px-3 py-2 text-white text-sm text-center focus:outline-none" />
+        <button onClick={agregar} className="px-3 py-2 bg-orange-500/15 hover:bg-orange-500/25 text-orange-300 rounded-lg border border-orange-500/20 transition-colors">
+          <Plus className="w-4 h-4" />
+        </button>
+      </div>
+      <button onClick={guardar} disabled={saving}
+        className="flex items-center gap-2 px-5 py-2 bg-orange-500/15 hover:bg-orange-500/25 text-orange-300 rounded-lg border border-orange-500/20 text-sm transition-colors disabled:opacity-40">
+        {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : saved ? <Check className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+        {saved ? "Guardado ✓" : "Guardar kit de ingreso"}
+      </button>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ─── Tab Dotaciones Pendientes ─────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+interface DotPend { id: number; empleado_nombre: string; empleado_puesto: string; estado: string; total_items: number; items_entregados: number; created_at: string; }
+
+function TabDotaciones() {
+  const [rows, setRows] = useState<DotPend[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actioning, setActioning] = useState<number | null>(null);
+
+  async function cargar() {
+    const r = await api("/api/dotacion/pendientes");
+    if (r.ok) setRows(await r.json());
+    setLoading(false);
+  }
+  useEffect(() => { cargar(); }, []);
+
+  async function entregar(id: number) {
+    setActioning(id);
+    await api(`/api/dotacion/pendientes/${id}/entregar`, { method: "PATCH" });
+    await cargar(); setActioning(null);
+  }
+  async function cancelar(id: number) {
+    if (!confirm("¿Cancelar esta dotación?")) return;
+    setActioning(id);
+    await api(`/api/dotacion/pendientes/${id}/cancelar`, { method: "PATCH" });
+    await cargar(); setActioning(null);
+  }
+
+  const ESTADO_COLOR: Record<string, string> = {
+    pendiente: "text-yellow-300 bg-yellow-500/10 border-yellow-500/20",
+    entregado: "text-emerald-300 bg-emerald-500/10 border-emerald-500/20",
+    cancelado: "text-gray-500 bg-white/5 border-white/10",
+  };
+
+  if (loading) return <div className="flex justify-center py-16 text-gray-500"><Loader2 className="w-5 h-5 animate-spin" /></div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-400">Kit de ingreso a entregar por bodega a cada colaborador nuevo registrado en RRHH.</p>
+        <span className="text-xs text-gray-600">{rows.length} registros</span>
+      </div>
+      {rows.length === 0
+        ? <div className="text-center py-12 text-gray-600 border border-dashed border-white/10 rounded-xl"><UserCheck className="w-8 h-8 mx-auto mb-2" /><p className="text-sm">Sin dotaciones pendientes.</p></div>
+        : (
+          <div className="bg-[#0f1623] border border-white/10 rounded-xl overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-gray-500 border-b border-white/5 uppercase text-[10px]">
+                  <th className="px-4 py-3 text-left">#</th>
+                  <th className="px-4 py-3 text-left">Empleado</th>
+                  <th className="px-4 py-3 text-left">Puesto</th>
+                  <th className="px-4 py-3 text-center">Progreso</th>
+                  <th className="px-4 py-3 text-center">Estado</th>
+                  <th className="px-4 py-3 text-left">Fecha</th>
+                  <th className="px-4 py-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r => (
+                  <tr key={r.id} className="border-b border-white/5 hover:bg-white/2">
+                    <td className="px-4 py-3 font-mono text-orange-400">#{r.id}</td>
+                    <td className="px-4 py-3 text-white/80 font-medium">{r.empleado_nombre}</td>
+                    <td className="px-4 py-3 text-gray-400">{r.empleado_puesto || "—"}</td>
+                    <td className="px-4 py-3 text-center text-gray-400">{r.items_entregados}/{r.total_items}</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full border ${ESTADO_COLOR[r.estado] ?? ""}`}>{r.estado}</span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">{new Date(r.created_at).toLocaleDateString("es-GT")}</td>
+                    <td className="px-4 py-3 text-right">
+                      {r.estado === "pendiente" && (
+                        <div className="flex gap-1 justify-end">
+                          <button onClick={() => entregar(r.id)} disabled={actioning === r.id}
+                            className="text-[10px] px-2 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 rounded-lg border border-emerald-500/20 transition-colors">
+                            {actioning === r.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Marcar entregado"}
+                          </button>
+                          <button onClick={() => cancelar(r.id)} disabled={actioning === r.id}
+                            className="text-[10px] px-2 py-1 bg-white/5 hover:bg-red-500/15 text-gray-500 hover:text-red-400 rounded-lg border border-white/10 transition-colors">
+                            Cancelar
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ─── Tab Órdenes de Compra ─────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+interface Orden { id: number; estado: string; total: number; lead_empresa: string | null; cliente_nombre: string | null; items_count: number; created_by: string; created_at: string; }
+
+function TabOrdenes() {
+  const [rows, setRows] = useState<Orden[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actioning, setActioning] = useState<number | null>(null);
+
+  async function cargar() {
+    const r = await api("/api/dotacion/ordenes-compra");
+    if (r.ok) setRows(await r.json());
+    setLoading(false);
+  }
+  useEffect(() => { cargar(); }, []);
+
+  async function cambiarEstado(id: number, estado: string) {
+    setActioning(id);
+    await api(`/api/dotacion/ordenes-compra/${id}/estado`, { method: "PATCH", body: JSON.stringify({ estado }) });
+    await cargar(); setActioning(null);
+  }
+
+  const ESTADO_COLOR: Record<string, string> = {
+    pendiente:  "text-yellow-300 bg-yellow-500/10 border-yellow-500/20",
+    procesada:  "text-emerald-300 bg-emerald-500/10 border-emerald-500/20",
+    cancelada:  "text-gray-500 bg-white/5 border-white/10",
+  };
+
+  function fmtQ(n: number) {
+    return `Q${Number(n).toLocaleString("es-GT", { minimumFractionDigits: 2 })}`;
+  }
+
+  if (loading) return <div className="flex justify-center py-16 text-gray-500"><Loader2 className="w-5 h-5 animate-spin" /></div>;
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-400">Órdenes de compra generadas automáticamente desde la dotación de leads.</p>
+      {rows.length === 0
+        ? <div className="text-center py-12 text-gray-600 border border-dashed border-white/10 rounded-xl"><ShoppingCart className="w-8 h-8 mx-auto mb-2" /><p className="text-sm">Sin órdenes de compra registradas.</p></div>
+        : (
+          <div className="bg-[#0f1623] border border-white/10 rounded-xl overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-gray-500 border-b border-white/5 uppercase text-[10px]">
+                  <th className="px-4 py-3 text-left">#</th>
+                  <th className="px-4 py-3 text-left">Lead / Cliente</th>
+                  <th className="px-4 py-3 text-center">Ítems</th>
+                  <th className="px-4 py-3 text-right">Total</th>
+                  <th className="px-4 py-3 text-center">Estado</th>
+                  <th className="px-4 py-3 text-left">Fecha</th>
+                  <th className="px-4 py-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r => (
+                  <tr key={r.id} className="border-b border-white/5 hover:bg-white/2">
+                    <td className="px-4 py-3 font-mono text-orange-400">#{r.id}</td>
+                    <td className="px-4 py-3 text-white/80">{r.lead_empresa || r.cliente_nombre || "—"}</td>
+                    <td className="px-4 py-3 text-center text-gray-400">{r.items_count}</td>
+                    <td className="px-4 py-3 text-right font-mono text-white/70">{fmtQ(r.total)}</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full border ${ESTADO_COLOR[r.estado] ?? ""}`}>{r.estado}</span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">{new Date(r.created_at).toLocaleDateString("es-GT")}</td>
+                    <td className="px-4 py-3 text-right">
+                      {r.estado === "pendiente" && (
+                        <div className="flex gap-1 justify-end">
+                          <button onClick={() => cambiarEstado(r.id, "procesada")} disabled={actioning === r.id}
+                            className="text-[10px] px-2 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 rounded-lg border border-emerald-500/20 transition-colors">
+                            Procesada
+                          </button>
+                          <button onClick={() => cambiarEstado(r.id, "cancelada")} disabled={actioning === r.id}
+                            className="text-[10px] px-2 py-1 bg-white/5 hover:bg-red-500/15 text-gray-500 hover:text-red-400 rounded-lg border border-white/10 transition-colors">
+                            Cancelar
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // ─── Página principal ─────────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 const TABS = [
-  { id: "dashboard", label: "Dashboard",  icon: BarChart3 },
-  { id: "catalogo",  label: "Catálogo",   icon: ClipboardList },
-  { id: "inventario",label: "Inventario", icon: Package },
-  { id: "movimientos",label: "Movimientos", icon: History },
+  { id: "dashboard",   label: "Dashboard",       icon: BarChart3 },
+  { id: "catalogo",    label: "Catálogo",         icon: ClipboardList },
+  { id: "inventario",  label: "Inventario",       icon: Package },
+  { id: "movimientos", label: "Movimientos",      icon: History },
+  { id: "kit_ingreso", label: "Kit de Ingreso",   icon: Settings },
+  { id: "dotaciones",  label: "Dotaciones",       icon: UserCheck },
+  { id: "ordenes",     label: "Órdenes de Compra", icon: ShoppingCart },
 ] as const;
 
 type TabId = typeof TABS[number]["id"];
@@ -1016,6 +1305,9 @@ export default function Bodega() {
         {tab === "catalogo"    && <TabCatalogo />}
         {tab === "inventario"  && <TabInventario />}
         {tab === "movimientos" && <TabMovimientos />}
+        {tab === "kit_ingreso" && <TabKitIngreso />}
+        {tab === "dotaciones"  && <TabDotaciones />}
+        {tab === "ordenes"     && <TabOrdenes />}
       </div>
     </AdminLayout>
   );
