@@ -3,6 +3,7 @@ import { AdminLayout } from "../layout/AdminLayout";
 import {
   FileUp, Download, CheckCircle2, XCircle, AlertCircle,
   Loader2, ChevronRight, RotateCcw, Users, MapPin, Package,
+  Wand2, HelpCircle,
 } from "lucide-react";
 
 const API_BASE = "/api";
@@ -51,13 +52,38 @@ function parseCSV(text: string): Record<string, string>[] {
 
 // ─── Template generator ──────────────────────────────────────────────────────
 function downloadCSV(filename: string, headers: string[], example: string[]) {
-  const bom = "\uFEFF"; // BOM para que Excel lo abra en UTF-8
+  const bom = "\uFEFF";
   const content = bom + [headers.join(","), example.join(",")].join("\n");
   const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
+}
+
+// ─── Auto-prefix generator ────────────────────────────────────────────────────
+function generatePrefix(nombre: string): string {
+  return nombre
+    .toUpperCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 6) || "ITEM";
+}
+
+function applyAutoPrefixes(
+  rows: Record<string, string>[],
+  nameField: string,
+  prefixField: string,
+): Record<string, string>[] {
+  const usedPrefixes = new Map<string, number>();
+  return rows.map((row) => {
+    if (row[prefixField]) return row;
+    const base = generatePrefix(row[nameField] || "ITEM");
+    const count = (usedPrefixes.get(base) ?? 0) + 1;
+    usedPrefixes.set(base, count);
+    const prefix = count === 1 ? base : base.slice(0, 4) + String(count).padStart(2, "0");
+    return { ...row, [prefixField]: prefix.slice(0, 6) };
+  });
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -78,6 +104,12 @@ type ImportResult = {
 type Step = "upload" | "preview" | "result";
 
 // ─── ImporterTab ──────────────────────────────────────────────────────────────
+interface AutoPrefixConfig {
+  prefixField: string;
+  nameField: string;
+  label: string;
+}
+
 interface ImporterTabProps {
   endpoint: string;
   templateHeaders: string[];
@@ -85,11 +117,12 @@ interface ImporterTabProps {
   templateFilename: string;
   columns: { key: string; label: string; required?: boolean }[];
   entityLabel: string;
+  autoPrefix?: AutoPrefixConfig;
 }
 
 function ImporterTab({
   endpoint, templateHeaders, templateExample, templateFilename,
-  columns, entityLabel,
+  columns, entityLabel, autoPrefix,
 }: ImporterTabProps) {
   const [step, setStep] = useState<Step>("upload");
   const [rows, setRows] = useState<Record<string, string>[]>([]);
@@ -97,10 +130,14 @@ function ImporterTab({
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  // null = no decision yet | true = auto-generate | false = user will fix manually
+  const [autoPrefixChoice, setAutoPrefixChoice] = useState<boolean | null>(null);
+  const [prefixMissing, setPrefixMissing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const reset = () => {
     setStep("upload"); setRows([]); setPreviewResult(null); setImportResult(null);
+    setAutoPrefixChoice(null); setPrefixMissing(false);
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -114,11 +151,19 @@ function ImporterTab({
       const text = e.target?.result as string;
       const parsed = parseCSV(text);
       if (parsed.length === 0) { alert("El archivo no tiene datos válidos"); return; }
+
+      // Detect missing auto-prefix field
+      if (autoPrefix) {
+        const allEmpty = parsed.every((r) => !r[autoPrefix.prefixField]?.trim());
+        setPrefixMissing(allEmpty);
+        setAutoPrefixChoice(allEmpty ? null : false);
+      }
+
       setRows(parsed);
       setStep("preview");
     };
     reader.readAsText(file, "UTF-8");
-  }, []);
+  }, [autoPrefix]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault(); setDragOver(false);
@@ -126,13 +171,21 @@ function ImporterTab({
     if (file) handleFile(file);
   }, [handleFile]);
 
+  // Resolve rows to send: apply auto-prefix if chosen
+  const getEffectiveRows = () => {
+    if (autoPrefix && autoPrefixChoice === true && prefixMissing) {
+      return applyAutoPrefixes(rows, autoPrefix.nameField, autoPrefix.prefixField);
+    }
+    return rows;
+  };
+
   const runPreview = async () => {
     setLoading(true);
     try {
       const r = await fetch(`${API_BASE}/${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
-        body: JSON.stringify({ rows, preview: true }),
+        body: JSON.stringify({ rows: getEffectiveRows(), preview: true }),
       });
       const data: ImportResult = await r.json();
       setPreviewResult(data);
@@ -146,7 +199,7 @@ function ImporterTab({
       const r = await fetch(`${API_BASE}/${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
-        body: JSON.stringify({ rows, preview: false }),
+        body: JSON.stringify({ rows: getEffectiveRows(), preview: false }),
       });
       const data: ImportResult = await r.json();
       setImportResult(data);
@@ -157,7 +210,6 @@ function ImporterTab({
   // ── Step: Upload ─────────────────────────────────────────────────────────
   if (step === "upload") return (
     <div className="space-y-6">
-      {/* Instrucciones + plantilla */}
       <div className="bg-white/[0.03] border border-white/10 rounded-xl p-5 space-y-4">
         <div>
           <h3 className="text-sm font-semibold text-white/90 mb-2">Columnas del archivo CSV</h3>
@@ -183,7 +235,6 @@ function ImporterTab({
         </button>
       </div>
 
-      {/* Drop zone */}
       <div
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
@@ -211,12 +262,81 @@ function ImporterTab({
 
   // ── Step: Preview ────────────────────────────────────────────────────────
   if (step === "preview") {
-    // Columnas visibles: intersección entre columnas definidas y las que trae el CSV
+    const effectiveRows = getEffectiveRows();
     const csvKeys = Object.keys(rows[0] ?? {});
-    const visibleCols = columns.filter((c) => csvKeys.includes(c.key));
+    const effectiveKeys = Object.keys(effectiveRows[0] ?? {});
+    const visibleCols = columns.filter((c) =>
+      csvKeys.includes(c.key) || effectiveKeys.includes(c.key)
+    );
+    const needsDecision = prefixMissing && autoPrefixChoice === null;
 
     return (
       <div className="space-y-4">
+        {/* Auto-prefix prompt */}
+        {autoPrefix && prefixMissing && autoPrefixChoice === null && (
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <HelpCircle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-yellow-200">
+                  El archivo no incluye la columna <code className="font-mono bg-yellow-400/10 px-1 rounded">{autoPrefix.prefixField}</code>
+                </p>
+                <p className="text-xs text-yellow-300/70 mt-1">
+                  {autoPrefix.label} ¿Deseas que el sistema lo genere automáticamente desde el nombre del artículo?
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 pl-8">
+              <button
+                onClick={() => setAutoPrefixChoice(true)}
+                className="flex items-center gap-1.5 text-xs bg-primary text-black font-semibold px-3 py-1.5 rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                <Wand2 className="w-3.5 h-3.5" />
+                Sí, generar automáticamente
+              </button>
+              <button
+                onClick={() => setAutoPrefixChoice(false)}
+                className="text-xs bg-white/10 hover:bg-white/15 text-white/70 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                No, lo completaré manualmente
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Auto-prefix confirmation badge */}
+        {autoPrefix && autoPrefixChoice === true && prefixMissing && (
+          <div className="flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-xl px-4 py-2.5">
+            <Wand2 className="w-4 h-4 text-primary flex-shrink-0" />
+            <p className="text-xs text-primary/90">
+              El sistema generará el código prefijo automáticamente desde el nombre de cada artículo.
+            </p>
+            <button
+              onClick={() => { setAutoPrefixChoice(null); setPreviewResult(null); }}
+              className="ml-auto text-[10px] text-white/30 hover:text-white/60 transition-colors underline"
+            >
+              cambiar
+            </button>
+          </div>
+        )}
+
+        {/* Manual fix notice */}
+        {autoPrefix && autoPrefixChoice === false && prefixMissing && (
+          <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5">
+            <AlertCircle className="w-4 h-4 text-white/30 flex-shrink-0" />
+            <p className="text-xs text-white/40">
+              Las filas sin <code className="font-mono">codigo_prefijo</code> se marcarán como error.
+              Puedes corregir el CSV y re-subirlo.
+            </p>
+            <button
+              onClick={() => { setAutoPrefixChoice(null); setPreviewResult(null); }}
+              className="ml-auto text-[10px] text-white/30 hover:text-white/60 transition-colors underline"
+            >
+              cambiar
+            </button>
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-white/70">
@@ -233,7 +353,7 @@ function ImporterTab({
             <button onClick={reset} className="text-xs text-white/40 hover:text-white/70 flex items-center gap-1">
               <RotateCcw className="w-3.5 h-3.5" /> Nuevo archivo
             </button>
-            {!previewResult && (
+            {!previewResult && !needsDecision && (
               <button
                 onClick={runPreview}
                 disabled={loading}
@@ -243,7 +363,7 @@ function ImporterTab({
                 Validar datos
               </button>
             )}
-            {previewResult && previewResult.exitosos > 0 && (
+            {previewResult && previewResult.exitosos > 0 && !needsDecision && (
               <button
                 onClick={runImport}
                 disabled={loading}
@@ -266,14 +386,18 @@ function ImporterTab({
                 {visibleCols.map((c) => (
                   <th key={c.key} className="text-left px-3 py-2 text-white/40 font-medium whitespace-nowrap">
                     {c.label}
+                    {autoPrefix && c.key === autoPrefix.prefixField && autoPrefixChoice === true && prefixMissing && (
+                      <span className="ml-1 text-primary/60 text-[10px] font-normal">(auto)</span>
+                    )}
                   </th>
                 ))}
                 {previewResult && <th className="text-left px-3 py-2 text-white/40 font-medium">Mensaje</th>}
               </tr>
             </thead>
             <tbody>
-              {rows.slice(0, 200).map((row, i) => {
+              {effectiveRows.slice(0, 200).map((row, i) => {
                 const resultado = previewResult?.resultados.find((r) => r.fila === i + 2);
+                const originalRow = rows[i];
                 return (
                   <tr key={i} className={`border-t border-white/5 ${
                     resultado?.estado === "error" ? "bg-red-500/5" :
@@ -287,11 +411,27 @@ function ImporterTab({
                         {resultado?.estado === "omitido" && <span className="text-yellow-400 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> existe</span>}
                       </td>
                     )}
-                    {visibleCols.map((c) => (
-                      <td key={c.key} className={`px-3 py-1.5 ${c.required && !row[c.key] ? "text-red-400" : "text-white/70"}`}>
-                        {row[c.key] || <span className="text-white/20 italic">—</span>}
-                      </td>
-                    ))}
+                    {visibleCols.map((c) => {
+                      const val = row[c.key];
+                      const wasAutoGenerated =
+                        autoPrefix &&
+                        c.key === autoPrefix.prefixField &&
+                        autoPrefixChoice === true &&
+                        prefixMissing &&
+                        !originalRow[c.key];
+                      return (
+                        <td key={c.key} className={`px-3 py-1.5 ${
+                          c.required && !val ? "text-red-400" :
+                          wasAutoGenerated ? "text-primary/80" :
+                          "text-white/70"
+                        }`}>
+                          {val
+                            ? <>{val}{wasAutoGenerated && <Wand2 className="w-2.5 h-2.5 inline ml-1 opacity-50" />}</>
+                            : <span className="text-white/20 italic">—</span>
+                          }
+                        </td>
+                      );
+                    })}
                     {previewResult && (
                       <td className="px-3 py-1.5 text-white/40 text-[11px] max-w-[200px]">
                         {resultado?.mensaje || ""}
@@ -319,7 +459,6 @@ function ImporterTab({
 
     return (
       <div className="space-y-5">
-        {/* Summary cards */}
         <div className="grid grid-cols-3 gap-3">
           {[
             { label: "Importados", value: importResult.exitosos, color: "text-green-400 bg-green-400/10 border-green-400/20" },
@@ -343,7 +482,6 @@ function ImporterTab({
           </div>
         )}
 
-        {/* Error rows */}
         {errorRows.length > 0 && (
           <div>
             <h4 className="text-xs font-semibold text-red-400 mb-2">Filas con error</h4>
@@ -359,7 +497,6 @@ function ImporterTab({
           </div>
         )}
 
-        {/* Omitted rows */}
         {omitidoRows.length > 0 && (
           <div>
             <h4 className="text-xs font-semibold text-yellow-400 mb-2">Filas omitidas (ya existen)</h4>
@@ -420,6 +557,7 @@ const TABS = [
       { key: "tipo_servicio", label: "Tipo servicio" },
       { key: "notas", label: "Notas" },
     ],
+    autoPrefix: undefined,
   },
   {
     id: "puestos",
@@ -446,6 +584,7 @@ const TABS = [
       { key: "costo_hora", label: "Costo/hora" },
       { key: "notas", label: "Notas" },
     ],
+    autoPrefix: undefined,
   },
   {
     id: "articulos",
@@ -470,6 +609,11 @@ const TABS = [
       { key: "tipo_asignacion", label: "Tipo asignación" },
       { key: "descripcion", label: "Descripción" },
     ],
+    autoPrefix: {
+      prefixField: "codigo_prefijo",
+      nameField: "nombre",
+      label: "El código prefijo se usa para identificar artículos (ej. GLOCK, RADIO, TORCH).",
+    },
   },
 ] as const;
 
@@ -482,7 +626,6 @@ export default function Importacion() {
     <AdminLayout title="Importar Datos">
       <div className="max-w-4xl mx-auto space-y-6">
 
-        {/* Header */}
         <div>
           <h1 className="text-xl font-semibold text-white">Importación Masiva de Datos</h1>
           <p className="text-sm text-white/50 mt-1">
@@ -491,7 +634,6 @@ export default function Importacion() {
           </p>
         </div>
 
-        {/* Process steps */}
         <div className="flex items-center gap-0 bg-white/[0.02] border border-white/10 rounded-xl p-4">
           {[
             { n: 1, label: "Descarga la plantilla" },
@@ -511,9 +653,7 @@ export default function Importacion() {
           ))}
         </div>
 
-        {/* Tabs */}
         <div className="bg-white/[0.03] border border-white/10 rounded-xl overflow-hidden">
-          {/* Tab headers */}
           <div className="flex border-b border-white/10">
             {TABS.map((t) => {
               const Icon = t.icon;
@@ -535,7 +675,6 @@ export default function Importacion() {
             })}
           </div>
 
-          {/* Tab content */}
           <div className="p-6">
             <ImporterTab
               key={activeTab}
@@ -545,11 +684,11 @@ export default function Importacion() {
               templateFilename={tab.templateFilename}
               columns={[...tab.columns]}
               entityLabel={tab.entityLabel}
+              autoPrefix={tab.autoPrefix}
             />
           </div>
         </div>
 
-        {/* Tips */}
         <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 space-y-2">
           <h4 className="text-xs font-semibold text-white/60">Consejos para la migración</h4>
           <ul className="space-y-1 text-xs text-white/40 list-disc list-inside">
