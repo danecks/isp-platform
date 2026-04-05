@@ -391,8 +391,15 @@ planificacionFuturaRouter.get("/operaciones/pool-futuro", async (req, res) => {
         )                                              AS tipo_ciclo,
         COALESCE(t.horas_trabajo,  t_eoa.horas_trabajo)  AS horas_trabajo,
         COALESCE(t.horas_descanso, t_eoa.horas_descanso) AS horas_descanso,
-        -- fecha_inicio_ciclo: desde puesto o desde EOA.fecha_inicio (supervisores)
-        COALESCE(po.fecha_inicio_ciclo::text, eoa.fecha_inicio::text) AS fecha_inicio_ciclo,
+        -- fecha_inicio_ciclo: EOA individual tiene prioridad (rotaciones 24x24 con
+        -- dos titulares de distinta fecha_inicio). Fallback a puesto (supervisores sin EOA).
+        -- IMPORTANTE: usar AT TIME ZONE 'UTC' antes de ::date para extraer la fecha
+        -- en UTC y evitar que la sesión Guatemala (UTC-6) desplace la medianoche UTC
+        -- al día anterior (e.g. "2026-04-03 00:00:00+00" → 2026-04-02 en Guatemala → INCORRECTO).
+        COALESCE(
+          (eoa.fecha_inicio AT TIME ZONE 'UTC')::date::text,
+          po.fecha_inicio_ciclo::text
+        ) AS fecha_inicio_ciclo,
         -- Ausencia en planificacion_futura como titular ausente
         pf.id            AS plan_id,
         pf.tipo_ausencia AS plan_tipo_ausencia,
