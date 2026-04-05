@@ -2660,6 +2660,25 @@ Por favor ingresa al sistema o responde para continuar.',
       `);
       logger.info("Auto-migrate: PT-02 seed titulares orden=1 desde puestos_operativos completado");
     }
+
+    // PT-03: limpiar agente_id de puestos con 2+ titulares en puesto_titulares.
+    // Para puestos con rotación automática (24x24, etc.) el ciclo se calcula desde
+    // puesto_titulares; agente_id solo debe estar seteado cuando hay un relevo manual real.
+    // Si el seed asignó agente_id = titular orden-1, se limpia para evitar que el sistema
+    // muestre ese titular como "REL" (relevo falso) en los días del orden-2.
+    const { rowCount: pt03 } = await pool.query(`
+      UPDATE puestos_operativos po
+      SET    agente_id  = NULL,
+             updated_at = NOW()
+      WHERE  po.activo = TRUE
+        AND  po.agente_id IS NOT NULL
+        AND  po.agente_id = po.titular_employee_id
+        AND  (SELECT COUNT(*) FROM puesto_titulares pt
+              WHERE pt.puesto_id = po.id AND pt.activo = TRUE) >= 2
+    `);
+    if ((pt03 ?? 0) > 0) {
+      logger.info(`Auto-migrate: PT-03 agente_id limpiado en ${pt03} puestos con rotación automática`);
+    }
   } catch (err) {
     logger.error({ err }, "Auto-migrate: PT-01 puesto_titulares — error (no bloqueante)");
   }
