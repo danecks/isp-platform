@@ -1929,12 +1929,25 @@ interface FechaActivaResult {
   cierreDeHoy: any | null;
 }
 
+// Zona horaria oficial de operaciones
+const TZ_GT = "America/Guatemala";
+
+// Fecha de hoy en Guatemala como string ISO YYYY-MM-DD (via DB para evitar desfase UTC)
+async function fechaHoyGT(): Promise<string> {
+  const { rows } = await pool.query(
+    `SELECT (NOW() AT TIME ZONE $1)::date AS hoy`,
+    [TZ_GT]
+  );
+  return (rows[0].hoy as Date).toISOString().substring(0, 10);
+}
+
 async function calcFechaActiva(): Promise<FechaActivaResult> {
-  const ahora = new Date();
-  const todayISO = `${ahora.getUTCFullYear()}-${String(ahora.getUTCMonth()+1).padStart(2,'0')}-${String(ahora.getUTCDate()).padStart(2,'0')}`;
+  // Siempre usar la fecha Guatemala, nunca UTC ni CURRENT_DATE del servidor
+  const todayISO = await fechaHoyGT();
 
   const { rows: hoyRows } = await pool.query(
-    `SELECT * FROM cierre_operativo_diario WHERE fecha = CURRENT_DATE`
+    `SELECT * FROM cierre_operativo_diario WHERE fecha = $1`,
+    [todayISO]
   );
   const cierreDeHoy = hoyRows[0] ?? null;
 
@@ -1947,25 +1960,27 @@ async function calcFechaActiva(): Promise<FechaActivaResult> {
     };
   }
 
-  // Hoy está cerrado → encontrar el primer día no cerrado
+  // Hoy está cerrado → encontrar el primer día no cerrado desde hoy
   const { rows: closedRows } = await pool.query(`
     SELECT fecha::text AS fecha FROM cierre_operativo_diario
-    WHERE fecha >= CURRENT_DATE AND estado = 'cerrado'
+    WHERE fecha >= $1 AND estado = 'cerrado'
     ORDER BY fecha
-  `);
+  `, [todayISO]);
 
-  let fechaActiva = new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), ahora.getUTCDate()));
+  // Avanzar día a día desde hoy hasta encontrar uno sin cierre
+  let fechaActivaISO = todayISO;
   for (const row of closedRows) {
     const rowISO = (row.fecha as string).substring(0, 10);
-    const faISO  = fechaActiva.toISOString().substring(0, 10);
-    if (rowISO === faISO) {
-      fechaActiva = new Date(fechaActiva.getTime() + 86_400_000);
+    if (rowISO === fechaActivaISO) {
+      // Este día está cerrado → avanzar un día
+      const d = new Date(fechaActivaISO + 'T12:00:00Z');
+      d.setUTCDate(d.getUTCDate() + 1);
+      fechaActivaISO = d.toISOString().substring(0, 10);
     } else {
       break;
     }
   }
 
-  const fechaActivaISO = fechaActiva.toISOString().substring(0, 10);
   return {
     fechaActivaISO,
     fechaActivaStr: isoADDMMYYYY(fechaActivaISO),
@@ -2011,9 +2026,9 @@ operacionesRouter.get("/operaciones/cierre-hoy", async (req, res) => {
     const { rows: movHoy } = await pool.query(`
       SELECT tipo, motivo, COUNT(*) AS cantidad
       FROM movimientos_operativos
-      WHERE DATE(fecha_hora AT TIME ZONE 'America/Guatemala') = CURRENT_DATE
+      WHERE DATE(fecha_hora AT TIME ZONE 'America/Guatemala') = $1
       GROUP BY tipo, motivo
-    `);
+    `, [fechaActivaISO]);
 
     const ausencias = movHoy
       .filter((m: any) => m.motivo === 'falta')
@@ -2021,9 +2036,9 @@ operacionesRouter.get("/operaciones/cierre-hoy", async (req, res) => {
 
     const { rows: relevosRows } = await pool.query(`
       SELECT COUNT(*) AS cantidad FROM movimientos_operativos
-      WHERE DATE(fecha_hora AT TIME ZONE 'America/Guatemala') = CURRENT_DATE
+      WHERE DATE(fecha_hora AT TIME ZONE 'America/Guatemala') = $1
         AND tipo = 'sustitucion' AND (motivo IS NULL OR motivo = '')
-    `);
+    `, [fechaActivaISO]);
     const relevossinMotivo = parseInt(relevosRows[0]?.cantidad ?? '0');
 
     // Puestos cubiertos sin tramos registrados en cobertura_segmentos
@@ -2044,11 +2059,12 @@ operacionesRouter.get("/operaciones/cierre-hoy", async (req, res) => {
     if (relevossinMotivo > 0) advertencias.push(`${relevossinMotivo} relevo${relevossinMotivo !== 1 ? 's' : ''} sin motivo registrado`);
     if (puestosSinTramos > 0) advertencias.push(`${puestosSinTramos} puesto${puestosSinTramos !== 1 ? 's' : ''} cubierto${puestosSinTramos !== 1 ? 's' : ''} sin tramos de cobertura registrados`);
 
-    // Días pasados con actividad operativa que NO tienen cierre registrado
+    // Días pasados (antes de hoy en Guatemala) con actividad operativa sin cierre
+    const todayGT = await fechaHoyGT();
     const { rows: pendientesRows } = await pool.query(`
       SELECT DISTINCT cd.fecha::text AS fecha
       FROM cobertura_diaria cd
-      WHERE cd.fecha < CURRENT_DATE
+      WHERE cd.fecha < $1
         AND NOT EXISTS (
           SELECT 1 FROM cierre_operativo_diario cod
           WHERE cod.fecha = cd.fecha AND cod.estado = 'cerrado'
@@ -2056,13 +2072,13 @@ operacionesRouter.get("/operaciones/cierre-hoy", async (req, res) => {
       UNION
       SELECT DISTINCT DATE(fecha_hora AT TIME ZONE 'America/Guatemala')::text AS fecha
       FROM movimientos_operativos
-      WHERE DATE(fecha_hora AT TIME ZONE 'America/Guatemala') < CURRENT_DATE
+      WHERE DATE(fecha_hora AT TIME ZONE 'America/Guatemala') < $1
         AND NOT EXISTS (
           SELECT 1 FROM cierre_operativo_diario cod
           WHERE cod.fecha = DATE(fecha_hora AT TIME ZONE 'America/Guatemala') AND cod.estado = 'cerrado'
         )
       ORDER BY fecha
-    `);
+    `, [todayGT]);
 
     const diasPendientesCierre = pendientesRows.map((r: any) => ({
       fecha:     r.fecha as string,
