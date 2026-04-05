@@ -123,6 +123,19 @@ const QUERY_CONSOLIDADO = `
         AND a.estado IN ('aprobada', 'pagada')
     ), 0)                                                                       AS anticipos_count,
 
+    -- Próxima cuota de uniforme pendiente (UNIF-01)
+    COALESCE((
+      SELECT euc.monto::float
+      FROM entregas_uniforme_cuotas euc
+      JOIN entregas_uniforme eu ON eu.id = euc.entrega_id
+      WHERE eu.employee_id = e.id
+        AND euc.descontado = FALSE
+        AND eu.tipo_cargo = 'cargo_empleado'
+        AND eu.estado = 'activo'
+      ORDER BY euc.num_cuota ASC
+      LIMIT 1
+    ), 0)                                                                       AS cuota_uniforme_monto,
+
     -- Estado de revisión RRHH
     COALESCE(pr.estado, 'pendiente')                                            AS revision_estado,
     pr.observaciones                                                            AS revision_observaciones,

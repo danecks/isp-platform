@@ -77,6 +77,7 @@ interface ColaboradorPre {
   dias_sin_horas: number;
   anticipos_monto: number;
   anticipos_count: number;
+  cuota_uniforme_monto: number;
   incentivos_cash_monto: number;
   incentivos_cash_count: number;
   revision_estado: "pendiente" | "revisada" | "observada" | "aprobado_rrhh";
@@ -276,8 +277,9 @@ function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: number | n
   const he = parseFloat(String(col.horas_extra ?? "0"));
   const valorHE = valorHora * 1.5 * he;
   const anticipo = Number(col.anticipos_monto);
-  const total = sueldoPeriodo - descFaltas + valorHE - anticipo;
-  return { sueldoPeriodo, descFaltas, valorHE, anticipo, total };
+  const cuotaUniforme = Number(col.cuota_uniforme_monto ?? 0);
+  const total = sueldoPeriodo - descFaltas + valorHE - anticipo - cuotaUniforme;
+  return { sueldoPeriodo, descFaltas, valorHE, anticipo, cuotaUniforme, total };
 }
 
 // ─── Badge revisión ───────────────────────────────────────────────────────────
@@ -454,6 +456,12 @@ function DetalleModal({
                       <div className="flex justify-between text-xs">
                         <span className="text-amber-400/70">— Anticipo del período</span>
                         <span className="text-amber-400">–{fmtQ(est.anticipo)}</span>
+                      </div>
+                    )}
+                    {est.cuotaUniforme > 0 && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-orange-300/70">— Cuota uniforme/botas</span>
+                        <span className="text-orange-300">–{fmtQ(est.cuotaUniforme)}</span>
                       </div>
                     )}
                   </div>
