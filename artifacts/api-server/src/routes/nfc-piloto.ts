@@ -107,6 +107,22 @@ router.get(`${P}/dashboard`, async (_req, res) => {
 // ──────────────────────────────────────────────────────────────────────────────
 // DEVICES
 // ──────────────────────────────────────────────────────────────────────────────
+// Endpoint público para el kiosko — no requiere sesión de admin
+router.get(`${P}/kiosk/devices`, async (_req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT d.id, d.device_code, d.device_name, d.status,
+             d.device_token_hash IS NOT NULL AS has_token,
+             p.nombre AS nombre_puesto
+      FROM nfc_devices d
+      LEFT JOIN puestos_operativos p ON p.id = d.puesto_id_ref
+      WHERE d.status = 'active' AND d.sandbox_mode = TRUE
+      ORDER BY d.device_name
+    `);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
 router.get(`${P}/devices`, async (_req, res) => {
   try {
     const { rows } = await pool.query(`
