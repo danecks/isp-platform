@@ -48,6 +48,7 @@ import { importacionRouter } from "./importacion";
 import { dotacionRouter } from "./dotacion";
 import { uniformesRouter } from "./uniformes";
 import { nfcPilotoRouter } from "./nfc-piloto";
+import { puestoSlotsRouter } from "./puesto-slots";
 
 const router: IRouter = Router();
 
@@ -100,5 +101,6 @@ router.use(importacionRouter);
 router.use(dotacionRouter);
 router.use(uniformesRouter);
 router.use(nfcPilotoRouter);
+router.use(puestoSlotsRouter);
 
 export default router;

@@ -81,6 +81,33 @@ interface Puesto {
   fecha_inicio_ciclo: string | null;
 }
 
+interface PuestoSlot {
+  id: number;
+  puesto_id: number;
+  puesto_nombre: string;
+  sede_id: number | null;
+  sede_nombre: string | null;
+  slot_numero: number;
+  horas_turno: number;
+  hora_entrada: string;
+  dias_trabajo: number[];
+  empleado_id: number | null;
+  empleado_nombre: string | null;
+  empleado_estado: string | null;
+  empleado_telefono: string | null;
+  notas: string | null;
+}
+
+const DIAS_SEMANA = [
+  { n: 1, label: "L", full: "Lunes" },
+  { n: 2, label: "M", full: "Martes" },
+  { n: 3, label: "X", full: "Miércoles" },
+  { n: 4, label: "J", full: "Jueves" },
+  { n: 5, label: "V", full: "Viernes" },
+  { n: 6, label: "S", full: "Sábado" },
+  { n: 7, label: "D", full: "Domingo" },
+] as const;
+
 interface CoberturaHoy {
   puestos: Array<{
     puesto_id: number;
@@ -1084,7 +1111,7 @@ function TabUsuariosCliente({ clienteDbId }: { clienteDbId: number }) {
 }
 
 // ─── Página principal ─────────────────────────────────────────────────────────
-type Tab = "general" | "estructura" | "cobertura" | "titulares" | "usuarios";
+type Tab = "general" | "estructura" | "cobertura" | "titulares" | "turnos" | "usuarios";
 
 export default function FichaCliente() {
   const [, params] = useRoute("/admin/clientes/:id");
@@ -1222,6 +1249,7 @@ export default function FichaCliente() {
               { id: "estructura", label: "Sedes y Estructura", icon: LayoutGrid },
               { id: "cobertura", label: "Cobertura Hoy", icon: Activity },
               { id: "titulares", label: "Titulares", icon: UserCheck },
+              { id: "turnos", label: "Plantilla de Turnos", icon: Calendar },
               { id: "usuarios", label: "Usuarios del Cliente", icon: UserCog },
             ] as const).map(({ id, label, icon: Icon }) => (
               <button
@@ -1489,6 +1517,11 @@ export default function FichaCliente() {
             </div>
           )}
 
+          {/* ── Tab Plantilla de Turnos ───────────────────────────────────── */}
+          {tab === "turnos" && (
+            <TabPlantillaTurnos clienteId={clientId} puestos={puestos} />
+          )}
+
           {/* ── Tab Usuarios del Cliente ──────────────────────────────────── */}
           {tab === "usuarios" && (
             <TabUsuariosCliente clienteDbId={clientId} />
@@ -1716,6 +1749,424 @@ function PuestoRow({ puesto, onEdit, onDelete }: { puesto: Puesto; onEdit: () =>
           {/* Historial de titularidad por puesto */}
           <HistorialTitularPuesto puestoId={puesto.id} />
         </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ModalCrearSlot ────────────────────────────────────────────────────────────
+function ModalCrearSlot({
+  puestos,
+  defaultPuestoId,
+  onClose,
+  onSaved,
+}: {
+  puestos: Puesto[];
+  defaultPuestoId?: number;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [puestoId, setPuestoId] = useState<number>(defaultPuestoId || puestos[0]?.id || 0);
+  const [horasTurno, setHorasTurno] = useState<12 | 24>(24);
+  const [horaEntrada, setHoraEntrada] = useState("07:00");
+  const [diasTrabajo, setDiasTrabajo] = useState<number[]>([1, 3, 5, 7]);
+  const [empleadoBusqueda, setEmpleadoBusqueda] = useState("");
+  const [empleadoId, setEmpleadoId] = useState<number | null>(null);
+  const [empleadoResultados, setEmpleadoResultados] = useState<any[]>([]);
+  const [notas, setNotas] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  const toggleDia = (d: number) =>
+    setDiasTrabajo(prev =>
+      prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort((a, b) => a - b)
+    );
+
+  useEffect(() => {
+    if (empleadoBusqueda.length < 2) { setEmpleadoResultados([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`${API}/employees?q=${encodeURIComponent(empleadoBusqueda)}&limit=8`, { headers: h() });
+        const data = await r.json();
+        setEmpleadoResultados(Array.isArray(data) ? data : (data.employees || []));
+      } catch { setEmpleadoResultados([]); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [empleadoBusqueda]);
+
+  async function save() {
+    if (!puestoId) { setErr("Selecciona un puesto"); return; }
+    if (diasTrabajo.length === 0) { setErr("Marca al menos un día de trabajo"); return; }
+    setSaving(true); setErr("");
+    try {
+      const r = await fetch(`${API}/puestos/${puestoId}/slots`, {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({
+          horas_turno: horasTurno,
+          hora_entrada: horaEntrada,
+          dias_trabajo: diasTrabajo,
+          empleado_id: empleadoId || null,
+          notas: notas || null,
+        }),
+      });
+      if (!r.ok) { const e = await r.json(); setErr(e.error || "Error al guardar"); return; }
+      onSaved();
+    } catch { setErr("Error de red"); }
+    setSaving(false);
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4">
+      <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-md p-6 space-y-4 overflow-y-auto max-h-[90vh]">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-bold text-white flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-primary" /> Nuevo slot de turno
+          </p>
+          <button onClick={onClose} className="text-white/40 hover:text-white"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="space-y-3">
+          {/* Puesto */}
+          <div>
+            <label className="text-[10px] text-white/40 uppercase tracking-wide block mb-1">Puesto</label>
+            <select
+              value={puestoId}
+              onChange={e => setPuestoId(Number(e.target.value))}
+              className="w-full h-9 bg-[#060e1c] border border-white/10 text-white text-xs rounded-lg px-3 outline-none focus:border-primary/50"
+            >
+              {puestos.map(p => (
+                <option key={p.id} value={p.id}>{p.nombre}{p.sede_nombre ? ` — ${p.sede_nombre}` : ""}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Tipo y hora */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] text-white/40 uppercase tracking-wide block mb-1">Tipo de turno</label>
+              <div className="flex gap-2">
+                {([12, 24] as const).map(hrs => (
+                  <button
+                    key={hrs}
+                    onClick={() => setHorasTurno(hrs)}
+                    className={`flex-1 h-9 rounded-lg text-sm font-bold border transition-all ${horasTurno === hrs ? "bg-primary/15 border-primary/40 text-primary" : "bg-white/4 border-white/10 text-white/50 hover:text-white/80"}`}
+                  >
+                    {hrs}h
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] text-white/40 uppercase tracking-wide block mb-1">Hora de entrada</label>
+              <input
+                type="time"
+                value={horaEntrada}
+                onChange={e => setHoraEntrada(e.target.value)}
+                className="w-full h-9 bg-[#060e1c] border border-white/10 text-white text-sm rounded-lg px-3 outline-none focus:border-primary/50"
+              />
+            </div>
+          </div>
+
+          {/* Días que trabaja */}
+          <div>
+            <label className="text-[10px] text-white/40 uppercase tracking-wide block mb-2">Días que trabaja</label>
+            <div className="flex gap-1.5">
+              {DIAS_SEMANA.map(({ n, label, full }) => (
+                <button
+                  key={n}
+                  title={full}
+                  onClick={() => toggleDia(n)}
+                  className={`flex-1 h-9 rounded-lg text-xs font-bold border transition-all ${diasTrabajo.includes(n) ? "bg-primary/20 border-primary/50 text-primary" : "bg-white/4 border-white/8 text-white/30 hover:text-white/60"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-white/25 mt-1.5">
+              Descansa: {DIAS_SEMANA.filter(d => !diasTrabajo.includes(d.n)).map(d => d.full).join(", ") || "ningún día"}
+            </p>
+          </div>
+
+          {/* Agente */}
+          <div className="relative">
+            <label className="text-[10px] text-white/40 uppercase tracking-wide block mb-1">Agente asignado (opcional)</label>
+            <input
+              type="text"
+              value={empleadoBusqueda}
+              onChange={e => {
+                setEmpleadoBusqueda(e.target.value);
+                if (!e.target.value) setEmpleadoId(null);
+              }}
+              placeholder="Buscar por nombre…"
+              className="w-full h-9 bg-[#060e1c] border border-white/10 text-white text-xs rounded-lg px-3 outline-none focus:border-primary/50"
+            />
+            {empleadoResultados.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-[#07111f] border border-white/10 rounded-lg divide-y divide-white/5 max-h-36 overflow-y-auto z-10">
+                {empleadoResultados.map((emp: any) => (
+                  <button
+                    key={emp.id}
+                    onClick={() => { setEmpleadoId(emp.id); setEmpleadoBusqueda(emp.nombre_completo); setEmpleadoResultados([]); }}
+                    className="w-full text-left px-3 py-2 text-xs text-white/70 hover:bg-white/5 transition-colors flex items-center justify-between"
+                  >
+                    <span>{emp.nombre_completo}</span>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${emp.estado_laboral === "activo" ? "text-green-400 bg-green-400/10" : "text-white/30 bg-white/5"}`}>{emp.estado_laboral}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Notas */}
+          <div>
+            <label className="text-[10px] text-white/40 uppercase tracking-wide block mb-1">Notas (opcional)</label>
+            <input
+              type="text"
+              value={notas}
+              onChange={e => setNotas(e.target.value)}
+              placeholder="Observaciones…"
+              className="w-full h-9 bg-[#060e1c] border border-white/10 text-white text-xs rounded-lg px-3 outline-none focus:border-primary/50"
+            />
+          </div>
+        </div>
+
+        {err && <p className="text-xs text-red-400 bg-red-400/10 rounded-lg px-3 py-2">{err}</p>}
+
+        <div className="flex gap-2 pt-1">
+          <button onClick={onClose} className="flex-1 h-9 border border-white/10 text-white/60 rounded-lg text-xs hover:text-white transition-colors">Cancelar</button>
+          <button
+            onClick={save}
+            disabled={saving}
+            className="flex-1 h-9 bg-primary text-black font-bold rounded-lg text-xs hover:bg-primary/90 disabled:opacity-40 flex items-center justify-center gap-1"
+          >
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5" /> Guardar slot</>}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── TabPlantillaTurnos ────────────────────────────────────────────────────────
+function TabPlantillaTurnos({ clienteId, puestos }: { clienteId: number; puestos: Puesto[] }) {
+  const [slots, setSlots] = useState<PuestoSlot[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [defaultPuestoId, setDefaultPuestoId] = useState<number | undefined>();
+  const [savingSlotId, setSavingSlotId] = useState<number | null>(null);
+
+  async function load(silent = false) {
+    if (!silent) setLoading(true);
+    try {
+      const r = await fetch(`${API}/clientes/${clienteId}/slots`, { headers: h() });
+      if (r.ok) { const d = await r.json(); setSlots(d.slots || []); }
+    } catch {}
+    if (!silent) setLoading(false);
+  }
+
+  useEffect(() => { load(); }, [clienteId]);
+
+  async function toggleDia(slot: PuestoSlot, dia: number) {
+    const nuevos = slot.dias_trabajo.includes(dia)
+      ? slot.dias_trabajo.filter(d => d !== dia)
+      : [...slot.dias_trabajo, dia].sort((a, b) => a - b);
+
+    setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, dias_trabajo: nuevos } : s));
+    setSavingSlotId(slot.id);
+    try {
+      await fetch(`${API}/slots/${slot.id}`, {
+        method: "PUT", headers: h(),
+        body: JSON.stringify({ dias_trabajo: nuevos }),
+      });
+    } catch {}
+    setSavingSlotId(null);
+  }
+
+  async function deleteSlot(id: number) {
+    if (!confirm("¿Eliminar este slot de turno?")) return;
+    await fetch(`${API}/slots/${id}`, { method: "DELETE", headers: h() });
+    load();
+  }
+
+  function openModalForPuesto(pid: number) {
+    setDefaultPuestoId(pid);
+    setShowModal(true);
+  }
+
+  // Agrupar slots por puesto; incluir puestos sin slots
+  const grouped = new Map<number, { nombre: string; sedeNombre: string | null; slots: PuestoSlot[] }>();
+  for (const p of puestos) {
+    grouped.set(p.id, { nombre: p.nombre, sedeNombre: p.sede_nombre, slots: [] });
+  }
+  for (const s of slots) {
+    if (!grouped.has(s.puesto_id)) {
+      grouped.set(s.puesto_id, { nombre: s.puesto_nombre, sedeNombre: s.sede_nombre, slots: [] });
+    }
+    grouped.get(s.puesto_id)!.slots.push(s);
+  }
+  const puestosOrdenados = Array.from(grouped.entries()).sort((a, b) => a[1].nombre.localeCompare(b[1].nombre));
+
+  const slotsConAgente = slots.filter(s => s.empleado_id).length;
+
+  return (
+    <div className="p-5 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <p className="text-xs text-white/30">Cuadrícula semanal: ✓ = trabaja, vacío = descansa (disponible para cobertura)</p>
+          <p className="text-[10px] text-white/20 mt-0.5">
+            {slots.length} slots · {slotsConAgente} con agente · {slots.length - slotsConAgente} sin asignar
+          </p>
+        </div>
+        <button
+          onClick={() => { setDefaultPuestoId(puestos[0]?.id); setShowModal(true); }}
+          className="flex items-center gap-1.5 text-[10px] px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 border border-primary/20 text-primary transition-colors"
+        >
+          <Plus className="w-3 h-3" /> Nuevo slot
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="w-5 h-5 text-white/20 animate-spin" />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {puestosOrdenados.map(([pId, grupo]) => (
+            <div key={pId} className="bg-[#070f1c] border border-white/8 rounded-xl overflow-hidden">
+              {/* Cabecera del puesto */}
+              <div className="px-4 py-2.5 bg-white/3 border-b border-white/5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Shield className="w-3.5 h-3.5 text-primary/50" />
+                  <p className="text-xs font-semibold text-white">{grupo.nombre}</p>
+                  {grupo.sedeNombre && (
+                    <span className="text-[9px] text-white/30 bg-white/4 px-1.5 py-0.5 rounded-full">{grupo.sedeNombre}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-[9px] text-white/25">{grupo.slots.length} slot{grupo.slots.length !== 1 ? "s" : ""}</span>
+                  <button
+                    onClick={() => openModalForPuesto(pId)}
+                    className="text-[9px] text-primary/60 hover:text-primary transition-colors flex items-center gap-0.5"
+                  >
+                    <Plus className="w-2.5 h-2.5" /> slot
+                  </button>
+                </div>
+              </div>
+
+              {grupo.slots.length === 0 ? (
+                <div className="px-4 py-6 text-center">
+                  <p className="text-xs text-white/25 italic">Sin slots definidos</p>
+                  <button
+                    onClick={() => openModalForPuesto(pId)}
+                    className="mt-1.5 text-[10px] text-primary hover:text-primary/80 underline"
+                  >
+                    Agregar primer slot
+                  </button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs min-w-[560px]">
+                    <thead>
+                      <tr className="border-b border-white/5">
+                        <th className="text-left px-4 py-2 text-[9px] text-white/25 font-semibold uppercase tracking-wide w-14">Slot</th>
+                        <th className="text-left px-2 py-2 text-[9px] text-white/25 font-semibold uppercase tracking-wide w-20">Turno</th>
+                        {DIAS_SEMANA.map(({ n, label }) => (
+                          <th key={n} className="py-2 text-[9px] text-white/25 font-semibold w-9 text-center">{label}</th>
+                        ))}
+                        <th className="text-left px-3 py-2 text-[9px] text-white/25 font-semibold uppercase tracking-wide">Agente</th>
+                        <th className="w-8" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/4">
+                      {grupo.slots.map(slot => {
+                        const saving = savingSlotId === slot.id;
+                        return (
+                          <tr key={slot.id} className="hover:bg-white/1.5 transition-colors">
+                            {/* # slot */}
+                            <td className="px-4 py-3 text-white/35 text-[10px] font-mono">#{slot.slot_numero}</td>
+
+                            {/* Tipo turno + hora */}
+                            <td className="px-2 py-3">
+                              <div className="flex flex-col gap-0.5">
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full w-fit ${slot.horas_turno === 24 ? "text-blue-300 bg-blue-500/10 border border-blue-500/20" : "text-purple-300 bg-purple-500/10 border border-purple-500/20"}`}>
+                                  {slot.horas_turno}h
+                                </span>
+                                <span className="text-[9px] text-white/25">{slot.hora_entrada}</span>
+                              </div>
+                            </td>
+
+                            {/* Días — toggle interactivo */}
+                            {DIAS_SEMANA.map(({ n, full }) => {
+                              const trabaja = slot.dias_trabajo.includes(n);
+                              return (
+                                <td key={n} className="py-3 text-center">
+                                  <button
+                                    title={trabaja ? `Trabaja ${full} — clic para marcar descanso` : `Descansa ${full} — clic para marcar trabajo`}
+                                    disabled={saving}
+                                    onClick={() => toggleDia(slot, n)}
+                                    className={`w-7 h-7 rounded-lg flex items-center justify-center mx-auto text-[11px] font-bold border transition-all ${
+                                      trabaja
+                                        ? "bg-primary/20 border-primary/50 text-primary hover:bg-primary/10"
+                                        : "bg-white/3 border-white/8 text-white/10 hover:border-white/20 hover:text-white/25"
+                                    } ${saving ? "opacity-40 cursor-wait" : "cursor-pointer"}`}
+                                  >
+                                    {trabaja ? "✓" : ""}
+                                  </button>
+                                </td>
+                              );
+                            })}
+
+                            {/* Agente */}
+                            <td className="px-3 py-3 min-w-[140px]">
+                              {slot.empleado_nombre ? (
+                                <div>
+                                  <p className="text-[11px] text-white/70 font-medium leading-tight truncate max-w-[150px]">{slot.empleado_nombre}</p>
+                                  <span className={`text-[9px] ${slot.empleado_estado === "activo" ? "text-green-400" : "text-white/30"}`}>
+                                    {slot.empleado_estado}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-[10px] text-white/20 italic">Sin asignar</span>
+                              )}
+                            </td>
+
+                            {/* Eliminar */}
+                            <td className="pr-3">
+                              <button onClick={() => deleteSlot(slot.id)} className="p-1 text-red-400/20 hover:text-red-400 transition-colors" title="Eliminar slot">
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Leyenda */}
+      <div className="bg-blue-950/20 border border-blue-500/15 rounded-xl px-4 py-3 flex items-start gap-2.5">
+        <Zap className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+        <div className="text-[10px] text-blue-300/70 leading-relaxed">
+          <p><strong>✓ Trabaja</strong> ese día → agente en servicio activo.</p>
+          <p><strong>Vacío = Descansa</strong> → agente disponible para cubrir turnos extra en caso de faltante.</p>
+          <p className="mt-1 text-blue-300/40">Los cambios en los días se guardan automáticamente al hacer clic.</p>
+        </div>
+      </div>
+
+      {showModal && (
+        <ModalCrearSlot
+          puestos={puestos}
+          defaultPuestoId={defaultPuestoId}
+          onClose={() => { setShowModal(false); setDefaultPuestoId(undefined); }}
+          onSaved={() => { setShowModal(false); setDefaultPuestoId(undefined); load(true); }}
+        />
       )}
     </div>
   );

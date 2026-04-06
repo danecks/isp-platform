@@ -3580,5 +3580,33 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: NFC-PILOT-03 — error (no bloqueante)");
   }
 
+  // ── TURNOS-01: Plantilla de turnos por puesto (puesto_slots) ──────────────
+  // Define qué días trabaja/descansa cada slot de agente en un puesto.
+  // Es la base para calcular disponibilidad de cobertura (horas extra).
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS puesto_slots (
+        id            SERIAL PRIMARY KEY,
+        puesto_id     INTEGER NOT NULL REFERENCES puestos_operativos(id) ON DELETE CASCADE,
+        slot_numero   INTEGER NOT NULL DEFAULT 1,
+        horas_turno   INTEGER NOT NULL DEFAULT 24,
+        hora_entrada  TIME    NOT NULL DEFAULT '07:00:00',
+        -- dias_trabajo: 1=Lun, 2=Mar, 3=Mié, 4=Jue, 5=Vie, 6=Sáb, 7=Dom
+        dias_trabajo  INTEGER[] NOT NULL DEFAULT '{1,2,3,4,5,6,7}',
+        empleado_id   INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        notas         TEXT,
+        activo        BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ps_puesto    ON puesto_slots(puesto_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ps_empleado  ON puesto_slots(empleado_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ps_activo    ON puesto_slots(activo) WHERE activo = TRUE`);
+    logger.info("Auto-migrate: TURNOS-01 tabla puesto_slots creada/verificada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: TURNOS-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }
