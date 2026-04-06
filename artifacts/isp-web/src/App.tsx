@@ -62,6 +62,7 @@ import AdminLibroSalarios from "@/admin/pages/LibroSalarios";
 import AdminBodega from "@/admin/pages/Bodega";
 import AdminImportacion from "@/admin/pages/Importacion";
 import AdminNfcPiloto from "@/admin/pages/NfcPiloto";
+import KioskoPublico from "@/pages/kiosko";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
@@ -242,6 +243,7 @@ function Router() {
       <Route path="/admin/nfc-piloto/kiosko/:deviceCode">
         {() => <AdminNfcPiloto kioskMode />}
       </Route>
+      <Route path="/kiosko" component={KioskoPublico} />
 
       <Route component={NotFound} />
     </Switch>

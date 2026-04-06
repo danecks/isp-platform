@@ -157,7 +157,7 @@ interface ScanResult {
   puesto_nombre: string; event_type: string; scheduled_status: string; mensaje: string;
 }
 
-function KioskScreen({ devices, onClose }: { devices: NfcDevice[]; onClose?: () => void }) {
+export function KioskScreen({ devices, onClose }: { devices: NfcDevice[]; onClose?: () => void }) {
   const { toast } = useToast();
 
   // ── Credenciales locales del kiosko ──────────────────────────────────────────
