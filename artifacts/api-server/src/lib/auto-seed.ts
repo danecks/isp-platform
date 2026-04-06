@@ -3527,5 +3527,58 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: NFC-PILOT-02 — error (no bloqueante)");
   }
 
+  // ── NFC-PILOT-03: GPS + Rondas de Patrullaje ──────────────────────────────────
+  try {
+    // GPS en registros existentes
+    await pool.query(`ALTER TABLE nfc_shift_events     ADD COLUMN IF NOT EXISTS latitud           NUMERIC(10,7)`);
+    await pool.query(`ALTER TABLE nfc_shift_events     ADD COLUMN IF NOT EXISTS longitud          NUMERIC(10,7)`);
+    await pool.query(`ALTER TABLE nfc_shift_events     ADD COLUMN IF NOT EXISTS precision_metros  INTEGER`);
+    await pool.query(`ALTER TABLE nfc_supervisor_forms ADD COLUMN IF NOT EXISTS latitud           NUMERIC(10,7)`);
+    await pool.query(`ALTER TABLE nfc_supervisor_forms ADD COLUMN IF NOT EXISTS longitud          NUMERIC(10,7)`);
+    await pool.query(`ALTER TABLE nfc_supervisor_forms ADD COLUMN IF NOT EXISTS precision_metros  INTEGER`);
+
+    // Catálogo de puntos de ronda (chips NFC fijos en ubicaciones físicas)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS nfc_ronda_puntos (
+        id            SERIAL PRIMARY KEY,
+        cliente_id    INTEGER,
+        puesto_id     INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        nombre        TEXT NOT NULL,
+        descripcion   TEXT,
+        tag_uid       TEXT NOT NULL,
+        orden         INTEGER NOT NULL DEFAULT 1,
+        latitud_ref   NUMERIC(10,7),
+        longitud_ref  NUMERIC(10,7),
+        activo        BOOLEAN NOT NULL DEFAULT TRUE,
+        sandbox_mode  BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS nfc_rp_uid ON nfc_ronda_puntos(tag_uid) WHERE activo = TRUE`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_rp_puesto   ON nfc_ronda_puntos(puesto_id)`);
+
+    // Eventos de ronda (cada vez que el dispositivo escanea un punto)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS nfc_ronda_eventos (
+        id               SERIAL PRIMARY KEY,
+        ronda_punto_id   INTEGER NOT NULL REFERENCES nfc_ronda_puntos(id) ON DELETE CASCADE,
+        device_id        INTEGER REFERENCES nfc_devices(id) ON DELETE SET NULL,
+        escaneado_en     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        numero_ronda     INTEGER NOT NULL DEFAULT 1,
+        latitud          NUMERIC(10,7),
+        longitud         NUMERIC(10,7),
+        precision_metros INTEGER,
+        sandbox_mode     BOOLEAN NOT NULL DEFAULT TRUE
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_re_punto  ON nfc_ronda_eventos(ronda_punto_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_re_device ON nfc_ronda_eventos(device_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_re_at     ON nfc_ronda_eventos(escaneado_en DESC)`);
+
+    logger.info("Auto-migrate: NFC-PILOT-03 GPS + tablas de rondas verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: NFC-PILOT-03 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

@@ -12,7 +12,7 @@ import {
   Clock, ClipboardList, BarChart3, History, Shield, ShieldCheck,
   ShieldAlert, Check, XCircle, Loader2, AlertCircle, Eye,
   Maximize2, Minimize2, RotateCcw, Ban, ChevronDown, Zap,
-  Camera, Settings, QrCode, Calendar, Pencil,
+  Camera, Settings, QrCode, Calendar, Pencil, MapPin, Navigation,
 } from "lucide-react";
 import { AdminLayout } from "../layout/AdminLayout";
 import { useToast } from "@/hooks/use-toast";
@@ -62,7 +62,25 @@ interface NfcForm {
   arma_estado: string; uniforme_estado: string; puesto_estado: string;
   agente_estado: string; observaciones: string | null; form_status: string;
   created_at: string;
+  latitud?: number | null; longitud?: number | null; precision_metros?: number | null;
   supervisor_nombre?: string; agente_nombre?: string; nombre_puesto?: string; device_name?: string;
+}
+interface RondaPunto {
+  id: number; puesto_id: number | null; cliente_id: number | null;
+  nombre: string; descripcion: string | null; tag_uid: string;
+  orden: number; activo: boolean; sandbox_mode: boolean;
+  latitud_ref: number | null; longitud_ref: number | null; created_at: string;
+  nombre_puesto?: string; nombre_cliente?: string;
+}
+interface RondaReporteRow {
+  punto_id: number; punto_nombre: string; descripcion: string | null;
+  orden: number; puesto_id: number | null; cliente_id: number | null;
+  latitud_ref: number | null; longitud_ref: number | null;
+  nombre_puesto: string | null; nombre_cliente: string | null;
+  veces_escaneado_hoy: number;
+  ultimo_scan: string | null;
+  lat_ultimo: number | null; lng_ultimo: number | null; prec_ultimo: number | null;
+  device_name_ultimo: string | null;
 }
 interface DashboardStats {
   total_devices: number; active_tags: number; events_today: number;
@@ -79,6 +97,24 @@ async function api(path: string, opts?: RequestInit) {
   return fetch(path, {
     headers: { "Content-Type": "application/json", "x-isp-session": getSession(), ...(opts?.headers ?? {}) },
     ...opts,
+  });
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// GPS helper — solicita coordenadas en segundo plano, no bloquea el scan
+// ──────────────────────────────────────────────────────────────────────────────
+async function getGPS(): Promise<{ lat: number; lng: number; precision: number } | null> {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) { resolve(null); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        precision: Math.round(pos.coords.accuracy),
+      }),
+      () => resolve(null),
+      { timeout: 5000, maximumAge: 15000, enableHighAccuracy: true },
+    );
   });
 }
 
@@ -152,9 +188,22 @@ function StatCard({ label, value, icon, color }: { label: string; value: number;
 // ──────────────────────────────────────────────────────────────────────────────
 // Kiosk Mode overlay
 // ──────────────────────────────────────────────────────────────────────────────
+interface GpsInfo { lat: number; lng: number; precision: number; }
 interface ScanResult {
-  event: NfcEvent; profile_type: string; nombre_empleado: string;
-  puesto_nombre: string; event_type: string; scheduled_status: string; mensaje: string;
+  // Asistencia
+  tipo?: "asistencia" | "ronda";
+  event?: NfcEvent; profile_type?: string; nombre_empleado?: string;
+  puesto_nombre?: string; event_type?: string; scheduled_status?: string;
+  // Ronda
+  ronda_evento?: { id: number; numero_ronda: number; escaneado_en: string };
+  punto?: { id: number; nombre: string; descripcion?: string; nombre_puesto?: string; nombre_cliente?: string };
+  numero_ronda?: number;
+  ronda_completa?: boolean;
+  puntos_total?: number;
+  puntos_visitados?: number;
+  // Común
+  gps?: GpsInfo | null;
+  mensaje: string;
 }
 
 export function KioskScreen({ devices, onClose }: { devices: NfcDevice[]; onClose?: () => void }) {
@@ -260,22 +309,33 @@ export function KioskScreen({ devices, onClose }: { devices: NfcDevice[]; onClos
     }
     setScanning(true); setError(""); setResult(null);
     try {
-      // Modo enrolado: autenticar con device_uuid + device_token
-      // Modo legado: usar device_code del dropdown
-      const payload = !isLegacyMode && creds
-        ? { tag_uid: tagUid.trim(), device_uuid: creds.device_uuid, device_token: creds.device_token }
-        : { tag_uid: tagUid.trim(), device_code: effectiveDeviceCode };
+      // Capturar GPS en paralelo con la preparación del payload (no espera)
+      const gpsPromise = getGPS();
+
+      const base = !isLegacyMode && creds
+        ? { device_uuid: creds.device_uuid, device_token: creds.device_token }
+        : { device_code: effectiveDeviceCode };
+
+      const gps = await gpsPromise;
+      const payload = {
+        tag_uid: tagUid.trim(),
+        ...base,
+        ...(gps ? { lat: gps.lat, lng: gps.lng, precision: gps.precision } : {}),
+      };
 
       const r = await api("/api/pilot/nfc/scan", { method: "POST", body: JSON.stringify(payload) });
       const data = await r.json();
       if (!r.ok) {
-        // Si el token fue revocado, limpiar creds locales
         if (data.code === "INVALID_TOKEN" || data.code === "INVALID_CREDENTIALS") clearCreds();
         setError(data.error || "Error en el scan"); return;
       }
       setResult(data);
       setTagUid("");
-      if (data.profile_type === "SUPERVISOR") setShowSuperForm(true);
+      if (data.tipo === "ronda") {
+        // Ronda: feedback breve, no formulario
+      } else if (data.profile_type === "SUPERVISOR") {
+        setShowSuperForm(true);
+      }
     } catch (e) { setError(String(e)); }
     finally { setScanning(false); setTimeout(() => tagRef.current?.focus(), 100); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -285,12 +345,14 @@ export function KioskScreen({ devices, onClose }: { devices: NfcDevice[]; onClos
     if (!result) return;
     setSavingForm(true);
     try {
+      const gps = await getGPS();
       const r = await api("/api/pilot/nfc/supervisor/forms", {
         method: "POST",
         body: JSON.stringify({
           ...supervisorForm,
-          device_id: result.event.device_id,
-          puesto_id_ref: result.event.puesto_id_ref,
+          device_id: result.event?.device_id,
+          puesto_id_ref: result.event?.puesto_id_ref,
+          ...(gps ? { lat: gps.lat, lng: gps.lng, precision: gps.precision } : {}),
           form_items: [
             { item_type: "radio", item_name: "Radio", item_status: "ok" },
             { item_type: "baston", item_name: "Bastón", item_status: "ok" },
@@ -490,9 +552,51 @@ export function KioskScreen({ devices, onClose }: { devices: NfcDevice[]; onClos
           </div>
         )}
 
-        {/* RESULT: Agente */}
-        {result && !showSuperForm && (
-          <div className={`max-w-md w-full border-2 rounded-3xl p-8 text-center space-y-4 ${eventColor[result.event_type] ?? "border-white/20 bg-white/5"}`}>
+        {/* RESULT: Ronda */}
+        {result && result.tipo === "ronda" && !showSuperForm && (
+          <div className={`max-w-md w-full border-2 rounded-3xl p-8 text-center space-y-4 ${result.ronda_completa ? "border-amber-400 bg-amber-500/10" : "border-emerald-500 bg-emerald-500/10"}`}>
+            <div className="flex justify-center">
+              <div className={`w-24 h-24 rounded-full flex items-center justify-center ${result.ronda_completa ? "bg-amber-500/20" : "bg-emerald-500/15"}`}>
+                {result.ronda_completa
+                  ? <span className="text-5xl">🎉</span>
+                  : <MapPin className="w-12 h-12 text-emerald-400" />
+                }
+              </div>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-white">{result.punto?.nombre}</p>
+              {result.punto?.descripcion && <p className="text-white/50 text-sm mt-1">{result.punto.descripcion}</p>}
+              {result.punto?.nombre_puesto && <p className="text-white/40 text-xs mt-1">{result.punto.nombre_puesto}</p>}
+            </div>
+            {result.ronda_completa ? (
+              <div>
+                <p className="text-amber-300 font-bold text-xl">¡Ronda completa!</p>
+                <p className="text-white/60 text-sm">Todos los {result.puntos_total} puntos visitados</p>
+              </div>
+            ) : (
+              <div className="flex justify-center gap-1">
+                {Array.from({ length: result.puntos_total ?? 0 }).map((_, i) => (
+                  <div key={i} className={`w-3 h-3 rounded-full ${i < (result.puntos_visitados ?? 0) ? "bg-emerald-400" : "bg-white/20"}`} />
+                ))}
+              </div>
+            )}
+            <p className="text-lg text-white/80 font-medium">{result.mensaje}</p>
+            <p className="text-xs text-white/30">
+              Ronda #{result.numero_ronda} · {result.puntos_visitados}/{result.puntos_total} puntos
+              {result.gps && <span className="ml-2">📍 ±{result.gps.precision}m</span>}
+            </p>
+            <button
+              onClick={() => setResult(null)}
+              className="mt-2 bg-white/10 hover:bg-white/15 text-white px-6 py-2.5 rounded-xl font-medium transition-colors flex items-center gap-2 mx-auto"
+            >
+              <RotateCcw className="w-4 h-4" /> Siguiente punto
+            </button>
+          </div>
+        )}
+
+        {/* RESULT: Asistencia / Agente */}
+        {result && result.tipo !== "ronda" && !showSuperForm && (
+          <div className={`max-w-md w-full border-2 rounded-3xl p-8 text-center space-y-4 ${eventColor[result.event_type ?? ""] ?? "border-white/20 bg-white/5"}`}>
             <div className="flex justify-center">
               <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center">
                 <User className="w-10 h-10 text-white" />
@@ -503,11 +607,14 @@ export function KioskScreen({ devices, onClose }: { devices: NfcDevice[]; onClos
               {result.puesto_nombre && <p className="text-white/60 text-sm mt-1">{result.puesto_nombre}</p>}
             </div>
             <div className="flex justify-center gap-2 flex-wrap">
-              <EventTypeBadge type={result.event_type} />
-              <SchedBadge status={result.scheduled_status} />
+              <EventTypeBadge type={result.event_type ?? ""} />
+              <SchedBadge status={result.scheduled_status ?? ""} />
             </div>
             <p className="text-lg text-white/80 font-medium">{result.mensaje}</p>
-            <p className="text-xs text-white/30">{fmtDate(result.event.event_at)}</p>
+            <p className="text-xs text-white/30">
+              {fmtDate(result.event?.event_at)}
+              {result.gps && <span className="ml-2">📍 ±{result.gps.precision}m</span>}
+            </p>
             <button
               onClick={() => setResult(null)}
               className="mt-2 bg-white/10 hover:bg-white/15 text-white px-6 py-2.5 rounded-xl font-medium transition-colors flex items-center gap-2 mx-auto"
@@ -619,11 +726,193 @@ const inputCls = "w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2 
 const selectCls = `${inputCls} cursor-pointer`;
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Rondas panel — sub-componente del admin
+// ──────────────────────────────────────────────────────────────────────────────
+function RondasPanel({
+  puntos, reporte, refPuestos, fecha,
+  onFechaChange, onRefreshReporte, onRefreshPuntos, onTogglePunto, onAddPunto,
+}: {
+  puntos: RondaPunto[];
+  reporte: RondaReporteRow[];
+  refPuestos: RefPuesto[];
+  fecha: string;
+  onFechaChange: (f: string) => void;
+  onRefreshReporte: (f: string) => void;
+  onRefreshPuntos: () => void;
+  onTogglePunto: (p: RondaPunto) => void;
+  onAddPunto: () => void;
+}) {
+  const [subTab, setSubTab] = useState<"puntos" | "reporte">("puntos");
+
+  // Group reporte by puesto
+  const puestosConPuntos = Array.from(
+    reporte.reduce((m, r) => {
+      const k = r.nombre_puesto ?? "Sin puesto";
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(r);
+      return m;
+    }, new Map<string, RondaReporteRow[]>()),
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* sub-tabs */}
+      <div className="flex gap-1 border-b border-white/8">
+        {[{ id: "puntos", label: "Puntos de ronda" }, { id: "reporte", label: "Reporte del día" }].map(st => (
+          <button
+            key={st.id}
+            onClick={() => setSubTab(st.id as "puntos" | "reporte")}
+            className={`px-4 py-2 text-xs font-semibold border-b-2 transition-colors ${subTab === st.id ? "border-emerald-400 text-emerald-300" : "border-transparent text-white/40 hover:text-white/70"}`}
+          >
+            {st.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── PUNTOS ── */}
+      {subTab === "puntos" && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-white/40">{puntos.filter(p => p.activo).length} punto(s) activo(s)</p>
+            <div className="flex gap-2">
+              <button onClick={onRefreshPuntos} className="p-1.5 rounded-lg hover:bg-white/10 text-white/30 hover:text-white transition-colors"><RefreshCw className="w-3.5 h-3.5" /></button>
+              <button onClick={onAddPunto} className="flex items-center gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg transition-colors"><Plus className="w-3.5 h-3.5" />Nuevo punto</button>
+            </div>
+          </div>
+
+          {/* Group by puesto */}
+          {(() => {
+            const grouped = Array.from(
+              puntos.reduce((m, p) => {
+                const k = p.nombre_puesto ?? "Sin puesto asignado";
+                if (!m.has(k)) m.set(k, []);
+                m.get(k)!.push(p);
+                return m;
+              }, new Map<string, RondaPunto[]>()),
+            );
+            if (!grouped.length) return (
+              <div className="py-16 text-center text-white/30 text-sm">
+                <MapPin className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                No hay puntos de ronda registrados
+              </div>
+            );
+            return grouped.map(([puestoNombre, pts]) => (
+              <div key={puestoNombre} className="bg-white/3 border border-white/8 rounded-xl overflow-hidden">
+                <div className="px-4 py-2.5 bg-white/3 border-b border-white/8">
+                  <p className="text-xs font-semibold text-white/60 flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-emerald-400" />{puestoNombre}
+                    <span className="text-white/30 font-normal ml-1">{pts.length} punto(s)</span>
+                  </p>
+                </div>
+                <div className="divide-y divide-white/5">
+                  {pts.sort((a, b) => a.orden - b.orden).map(p => (
+                    <div key={p.id} className={`flex items-center gap-3 px-4 py-3 ${!p.activo ? "opacity-50" : ""}`}>
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                        <span className="text-xs font-bold text-emerald-400">{p.orden}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-white truncate">{p.nombre}</p>
+                        {p.descripcion && <p className="text-xs text-white/40 truncate">{p.descripcion}</p>}
+                        <p className="text-[10px] text-white/25 font-mono mt-0.5">{p.tag_uid}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {p.activo
+                          ? <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">Activo</span>
+                          : <span className="text-[10px] bg-white/5 text-white/30 border border-white/10 px-2 py-0.5 rounded-full">Inactivo</span>
+                        }
+                        <button onClick={() => onTogglePunto(p)} className="p-1.5 rounded-lg hover:bg-white/10 text-white/30 hover:text-amber-300 transition-colors" title={p.activo ? "Desactivar" : "Activar"}>
+                          {p.activo ? <XCircle className="w-3.5 h-3.5" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ));
+          })()}
+        </div>
+      )}
+
+      {/* ── REPORTE ── */}
+      {subTab === "reporte" && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <input
+              type="date"
+              value={fecha}
+              onChange={e => { onFechaChange(e.target.value); onRefreshReporte(e.target.value); }}
+              className="bg-white/5 border border-white/15 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
+            />
+            <button onClick={() => onRefreshReporte(fecha)} className="p-2 rounded-lg hover:bg-white/10 text-white/30 hover:text-white transition-colors"><RefreshCw className="w-3.5 h-3.5" /></button>
+            <p className="text-xs text-white/40 ml-auto">
+              {reporte.filter(r => r.veces_escaneado_hoy > 0).length}/{reporte.length} puntos visitados
+            </p>
+          </div>
+
+          {!reporte.length ? (
+            <div className="py-16 text-center text-white/30 text-sm">
+              <Navigation className="w-8 h-8 mx-auto mb-2 opacity-20" />
+              Sin puntos de ronda activos para mostrar
+            </div>
+          ) : puestosConPuntos.map(([puestoNombre, rows]) => (
+            <div key={puestoNombre} className="bg-white/3 border border-white/8 rounded-xl overflow-hidden">
+              <div className="px-4 py-2.5 bg-white/3 border-b border-white/8 flex items-center justify-between">
+                <p className="text-xs font-semibold text-white/60 flex items-center gap-1.5">
+                  <Navigation className="w-3.5 h-3.5 text-blue-400" />{puestoNombre}
+                </p>
+                <span className="text-[10px] text-white/30">{rows.filter(r => r.veces_escaneado_hoy > 0).length}/{rows.length} puntos</span>
+              </div>
+              <div className="divide-y divide-white/5">
+                {rows.sort((a, b) => a.orden - b.orden).map(r => (
+                  <div key={r.punto_id} className="flex items-center gap-3 px-4 py-3">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${r.veces_escaneado_hoy > 0 ? "bg-emerald-500/15 border border-emerald-500/25" : "bg-white/5 border border-white/10"}`}>
+                      {r.veces_escaneado_hoy > 0
+                        ? <CheckCircle className="w-4 h-4 text-emerald-400" />
+                        : <Clock className="w-4 h-4 text-white/25" />
+                      }
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-white truncate">{r.punto_nombre}</p>
+                        {r.veces_escaneado_hoy > 0 && (
+                          <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded-full shrink-0">{r.veces_escaneado_hoy}×</span>
+                        )}
+                      </div>
+                      {r.ultimo_scan && (
+                        <p className="text-xs text-white/40 mt-0.5">
+                          Último: {new Date(r.ultimo_scan).toLocaleTimeString("es-GT", { timeZone: "America/Guatemala", hour: "2-digit", minute: "2-digit" })}
+                          {r.device_name_ultimo && <span className="ml-2 text-white/25">· {r.device_name_ultimo}</span>}
+                        </p>
+                      )}
+                    </div>
+                    {r.lat_ultimo && (
+                      <a
+                        href={`https://maps.google.com/?q=${r.lat_ultimo},${r.lng_ultimo}`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 bg-blue-500/10 px-2 py-1 rounded-lg shrink-0"
+                        title="Ver en Google Maps"
+                      >
+                        <MapPin className="w-3 h-3" />
+                        {r.prec_ultimo ? `±${r.prec_ultimo}m` : "GPS"}
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Main page component
 // ──────────────────────────────────────────────────────────────────────────────
 export default function NfcPiloto({ kioskMode }: { kioskMode?: boolean }) {
   const { toast } = useToast();
-  const [tab, setTab] = useState<"dashboard"|"devices"|"tags"|"events"|"validation"|"forms"|"audit">("dashboard");
+  const [tab, setTab] = useState<"dashboard"|"devices"|"tags"|"events"|"validation"|"forms"|"rondas"|"audit">("dashboard");
   const [kioskOpen, setKioskOpen] = useState(!!kioskMode);
 
   // Data
@@ -636,6 +925,15 @@ export default function NfcPiloto({ kioskMode }: { kioskMode?: boolean }) {
   const [auditLogs, setAuditLogs] = useState<{ id: number; entity_type: string; entity_id: number; action: string; actor: string; created_at: string; meta: Record<string,unknown> }[]>([]);
   const [refPuestos, setRefPuestos] = useState<RefPuesto[]>([]);
   const [refEmpleados, setRefEmpleados] = useState<RefEmpleado[]>([]);
+
+  // Rondas
+  const [rondaPuntos, setRondaPuntos]   = useState<RondaPunto[]>([]);
+  const [rondaReporte, setRondaReporte] = useState<RondaReporteRow[]>([]);
+  const [rondaFecha, setRondaFecha]     = useState(() => new Date().toLocaleString("en-US", { timeZone: "America/Guatemala" }).split(",")[0].split("/").map((v,i) => i === 2 ? v : v.padStart(2,"0")).join("-").replace(/(\d+)-(\d+)-(\d+)/, "$3-$1-$2"));
+  const [showPuntoModal, setShowPuntoModal] = useState(false);
+  const [puntoForm, setPuntoForm]           = useState({ nombre: "", descripcion: "", tag_uid: "", orden: "1", puesto_id: "", cliente_id: "" });
+  const [savingPunto, setSavingPunto]       = useState(false);
+  const [editingPunto, setEditingPunto]     = useState<RondaPunto | null>(null);
 
   // Loading
   const [loading, setLoading] = useState(false);
@@ -702,6 +1000,13 @@ export default function NfcPiloto({ kioskMode }: { kioskMode?: boolean }) {
   const loadAudit = useCallback(async () => {
     const r = await api("/api/pilot/nfc/audit-logs"); if (r.ok) setAuditLogs(await r.json());
   }, []);
+  const loadRondaPuntos = useCallback(async () => {
+    const r = await api("/api/pilot/nfc/rondas/puntos"); if (r.ok) setRondaPuntos(await r.json());
+  }, []);
+  const loadRondaReporte = useCallback(async (fecha?: string) => {
+    const qs = fecha ? `?fecha=${fecha}` : "";
+    const r = await api(`/api/pilot/nfc/rondas/reporte${qs}`); if (r.ok) setRondaReporte(await r.json());
+  }, []);
   const loadRefs = useCallback(async () => {
     const [rp, re] = await Promise.all([api("/api/pilot/nfc/ref/puestos"), api("/api/pilot/nfc/ref/empleados")]);
     if (rp.ok) setRefPuestos(await rp.json());
@@ -719,6 +1024,7 @@ export default function NfcPiloto({ kioskMode }: { kioskMode?: boolean }) {
   useEffect(() => { if (tab === "validation") loadPending(); }, [tab, loadPending]);
   useEffect(() => { if (tab === "forms") loadForms(); }, [tab, loadForms]);
   useEffect(() => { if (tab === "audit") loadAudit(); }, [tab, loadAudit]);
+  useEffect(() => { if (tab === "rondas") { loadRondaPuntos(); loadRondaReporte(rondaFecha); } }, [tab, loadRondaPuntos, loadRondaReporte, rondaFecha]);
 
   // ── Actions ──────────────────────────────────────────────────────────────
   async function createDevice() {
@@ -841,6 +1147,42 @@ export default function NfcPiloto({ kioskMode }: { kioskMode?: boolean }) {
     else { toast({ title: "Error", variant: "destructive" }); }
   }
 
+  async function createPunto() {
+    if (!puntoForm.nombre || !puntoForm.tag_uid) return toast({ title: "Nombre y UID requeridos", variant: "destructive" });
+    setSavingPunto(true);
+    try {
+      const r = await api("/api/pilot/nfc/rondas/puntos", {
+        method: "POST",
+        body: JSON.stringify({
+          nombre: puntoForm.nombre,
+          descripcion: puntoForm.descripcion || null,
+          tag_uid: puntoForm.tag_uid,
+          orden: parseInt(puntoForm.orden) || 1,
+          puesto_id: puntoForm.puesto_id || null,
+          cliente_id: puntoForm.cliente_id || null,
+        }),
+      });
+      if (r.ok) {
+        toast({ title: "Punto de ronda creado" });
+        setShowPuntoModal(false);
+        setPuntoForm({ nombre: "", descripcion: "", tag_uid: "", orden: "1", puesto_id: "", cliente_id: "" });
+        setEditingPunto(null);
+        loadRondaPuntos();
+      } else {
+        const d = await r.json();
+        toast({ title: d.code === "UID_DUPLICATE" ? "UID duplicado" : "Error", description: d.error, variant: "destructive" });
+      }
+    } finally { setSavingPunto(false); }
+  }
+
+  async function togglePunto(p: RondaPunto) {
+    await api(`/api/pilot/nfc/rondas/puntos/${p.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ nombre: p.nombre, descripcion: p.descripcion, orden: p.orden, activo: !p.activo }),
+    });
+    loadRondaPuntos();
+  }
+
   // ── Filtered data ────────────────────────────────────────────────────────
   const filteredDevices = devices.filter(d =>
     d.device_name.toLowerCase().includes(devSearch.toLowerCase()) ||
@@ -864,6 +1206,7 @@ export default function NfcPiloto({ kioskMode }: { kioskMode?: boolean }) {
     { id: "events", label: "Eventos", icon: <Activity className="w-3.5 h-3.5" /> },
     { id: "validation", label: "Validación", icon: <ShieldCheck className="w-3.5 h-3.5" />, badge: pending.length || undefined, badgeColor: "red" },
     { id: "forms", label: "Supervisión", icon: <ClipboardList className="w-3.5 h-3.5" /> },
+    { id: "rondas", label: "Rondas", icon: <MapPin className="w-3.5 h-3.5" />, badge: rondaPuntos.filter(p => p.activo).length || undefined },
     { id: "audit", label: "Auditoría", icon: <History className="w-3.5 h-3.5" /> },
   ] as const;
 
@@ -1254,6 +1597,62 @@ export default function NfcPiloto({ kioskMode }: { kioskMode?: boolean }) {
             </div>
           )}
         </div>
+      )}
+
+      {/* ── RONDAS DE PATRULLAJE ────────────────────────────────────────── */}
+      {tab === "rondas" && (
+        <div className="space-y-6">
+          <RondasPanel
+            puntos={rondaPuntos}
+            reporte={rondaReporte}
+            refPuestos={refPuestos}
+            fecha={rondaFecha}
+            onFechaChange={(f) => setRondaFecha(f)}
+            onRefreshReporte={(f) => loadRondaReporte(f)}
+            onRefreshPuntos={loadRondaPuntos}
+            onTogglePunto={togglePunto}
+            onAddPunto={() => {
+              setPuntoForm({ nombre: "", descripcion: "", tag_uid: "", orden: "1", puesto_id: "", cliente_id: "" });
+              setEditingPunto(null);
+              setShowPuntoModal(true);
+            }}
+          />
+        </div>
+      )}
+
+      {/* Modal: Nuevo punto de ronda */}
+      {showPuntoModal && (
+        <Modal title={editingPunto ? "Editar punto de ronda" : "Nuevo punto de ronda"} onClose={() => { setShowPuntoModal(false); setEditingPunto(null); }}>
+          <div className="space-y-4">
+            <Field label="Nombre del punto *">
+              <input value={puntoForm.nombre} onChange={e => setPuntoForm(p => ({ ...p, nombre: e.target.value }))} className={inputCls} placeholder="Ej. Puerta principal, Bodega norte…" />
+            </Field>
+            <Field label="UID del chip NFC *">
+              <input value={puntoForm.tag_uid} onChange={e => setPuntoForm(p => ({ ...p, tag_uid: e.target.value.toUpperCase() }))} className={inputCls} placeholder="XX:XX:XX:XX" style={{ fontFamily: "monospace" }} />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Puesto operativo">
+                <select value={puntoForm.puesto_id} onChange={e => setPuntoForm(p => ({ ...p, puesto_id: e.target.value }))} className={selectCls}>
+                  <option value="">— Ninguno —</option>
+                  {refPuestos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                </select>
+              </Field>
+              <Field label="Orden">
+                <input type="number" min={1} value={puntoForm.orden} onChange={e => setPuntoForm(p => ({ ...p, orden: e.target.value }))} className={inputCls} />
+              </Field>
+            </div>
+            <Field label="Descripción">
+              <textarea value={puntoForm.descripcion} onChange={e => setPuntoForm(p => ({ ...p, descripcion: e.target.value }))} rows={2} className={inputCls} placeholder="Detalles del punto (opcional)" />
+            </Field>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => { setShowPuntoModal(false); setEditingPunto(null); }} className="flex-1 bg-white/5 border border-white/15 text-white/60 hover:text-white py-2.5 rounded-xl text-sm font-medium transition-colors">Cancelar</button>
+              <button onClick={createPunto} disabled={savingPunto} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white py-2.5 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2">
+                {savingPunto ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                Guardar punto
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {/* ── AUDIT LOG ───────────────────────────────────────────────────── */}

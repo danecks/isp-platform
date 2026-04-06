@@ -409,13 +409,17 @@ router.post(`${P}/tags/:id/revoke`, async (req, res) => {
 // ──────────────────────────────────────────────────────────────────────────────
 router.post(`${P}/scan`, async (req, res) => {
   try {
-    const { tag_uid, device_code, device_uuid, device_token, photo_path } = req.body;
+    const { tag_uid, device_code, device_uuid, device_token, photo_path, lat, lng, precision } = req.body;
     if (!tag_uid) return res.status(400).json({ error: "tag_uid es requerido" });
     if (!device_uuid && !device_code) {
       return res.status(400).json({ error: "Se requiere device_uuid o device_code" });
     }
 
-    // 1. Verificar dispositivo — por device_uuid (modo enrolado) o device_code (modo legado)
+    const latVal  = (lat  != null && !isNaN(Number(lat)))  ? Number(lat)  : null;
+    const lngVal  = (lng  != null && !isNaN(Number(lng)))  ? Number(lng)  : null;
+    const precVal = (precision != null && !isNaN(Number(precision))) ? Math.round(Number(precision)) : null;
+
+    // 1. Verificar dispositivo
     let devRes;
     if (device_uuid) {
       devRes = await pool.query(
@@ -439,7 +443,7 @@ router.post(`${P}/scan`, async (req, res) => {
     }
     const device = devRes.rows[0];
 
-    // 1b. Si el dispositivo tiene token registrado, validarlo obligatoriamente
+    // 1b. Validar token si el dispositivo está enrolado
     if (device.device_token_hash) {
       if (!device_token) {
         await audit("event", device.id, "scan_rejected_invalid_token", "kiosk", { tag_uid, reason: "missing_token" });
@@ -450,9 +454,74 @@ router.post(`${P}/scan`, async (req, res) => {
         return res.status(403).json({ error: "Token de dispositivo inválido", code: "INVALID_TOKEN" });
       }
     }
-    // Si device.device_token_hash es NULL → modo pre-enrolamiento (sandbox legado permitido)
 
-    // 2. Verificar tag
+    // 2. ¿Es un punto de ronda? — prioridad sobre tags de empleados
+    const rondaRes = await pool.query(
+      `SELECT rp.*, p.nombre AS nombre_puesto, c.nombre AS nombre_cliente
+       FROM nfc_ronda_puntos rp
+       LEFT JOIN puestos_operativos p ON p.id = rp.puesto_id
+       LEFT JOIN clients c ON c.id = rp.cliente_id
+       WHERE rp.tag_uid = $1 AND rp.activo = TRUE AND rp.sandbox_mode = TRUE`,
+      [tag_uid],
+    );
+
+    if (rondaRes.rows.length > 0) {
+      // ── FLUJO RONDA ──────────────────────────────────────────────────────────
+      const punto = rondaRes.rows[0];
+
+      // Calcular número de ronda del día para este punto
+      const { rows: hoy } = await pool.query(
+        `SELECT COUNT(*) AS cnt FROM nfc_ronda_eventos
+         WHERE ronda_punto_id = $1
+           AND (escaneado_en AT TIME ZONE 'America/Guatemala')::date = CURRENT_DATE`,
+        [punto.id],
+      );
+      const numeroRonda = parseInt(hoy[0].cnt) + 1;
+
+      // Registrar evento de ronda
+      const { rows: evRows } = await pool.query(
+        `INSERT INTO nfc_ronda_eventos
+           (ronda_punto_id, device_id, numero_ronda, latitud, longitud, precision_metros)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+        [punto.id, device.id, numeroRonda, latVal, lngVal, precVal],
+      );
+
+      // Verificar si todos los puntos del puesto fueron escaneados hoy (ronda completa)
+      const { rows: totalPuntos } = await pool.query(
+        `SELECT COUNT(*) AS cnt FROM nfc_ronda_puntos WHERE puesto_id = $1 AND activo = TRUE`,
+        [punto.puesto_id],
+      );
+      const { rows: visitados } = await pool.query(
+        `SELECT COUNT(DISTINCT rp.id) AS cnt
+         FROM nfc_ronda_puntos rp
+         JOIN nfc_ronda_eventos re ON re.ronda_punto_id = rp.id
+           AND (re.escaneado_en AT TIME ZONE 'America/Guatemala')::date = CURRENT_DATE
+         WHERE rp.puesto_id = $1 AND rp.activo = TRUE`,
+        [punto.puesto_id],
+      );
+
+      const totalCount   = parseInt(totalPuntos[0].cnt);
+      const visitadoCount = parseInt(visitados[0].cnt);
+      const rondaCompleta = totalCount > 0 && visitadoCount >= totalCount;
+
+      await pool.query(`UPDATE nfc_devices SET last_seen_at=NOW() WHERE id=$1`, [device.id]);
+      await audit("event", evRows[0].id, "ronda_scan", "kiosk", { tag_uid, punto_id: punto.id, numero_ronda: numeroRonda });
+
+      return res.json({
+        tipo: "ronda",
+        ronda_evento: evRows[0],
+        punto,
+        numero_ronda: numeroRonda,
+        ronda_completa: rondaCompleta,
+        puntos_total: totalCount,
+        puntos_visitados: visitadoCount,
+        mensaje: `Ronda ${numeroRonda} — ${punto.nombre}`,
+        device,
+        gps: latVal ? { lat: latVal, lng: lngVal, precision: precVal } : null,
+      });
+    }
+
+    // 3. Tag de empleado — flujo de asistencia/supervisión
     const tagRes = await pool.query(
       `SELECT t.*, e.nombre_completo AS nombre_empleado
        FROM nfc_tags t
@@ -461,7 +530,7 @@ router.post(`${P}/scan`, async (req, res) => {
       [tag_uid],
     );
     if (!tagRes.rows.length) {
-      return res.status(404).json({ error: "Tag no registrado", code: "TAG_NOT_FOUND" });
+      return res.status(404).json({ error: "Tag no registrado en el sistema", code: "TAG_NOT_FOUND" });
     }
     const tag = tagRes.rows[0];
 
@@ -473,7 +542,7 @@ router.post(`${P}/scan`, async (req, res) => {
       return res.status(403).json({ error: "Tag inactivo", code: "TAG_INACTIVE" });
     }
 
-    // 3. Validar contra programación sandbox (solo lectura)
+    // 4. Validar contra programación sandbox
     const nowGT = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Guatemala" }));
     const horaActual = nowGT.toTimeString().slice(0, 5);
     const diaSemana = nowGT.getDay();
@@ -498,7 +567,7 @@ router.post(`${P}/scan`, async (req, res) => {
       scheduled_status = "no_programado";
     }
 
-    // 4. Determinar si es inicio o fin de turno
+    // 5. Determinar tipo de evento
     let event_type = "INICIO_TURNO";
     if (tag.profile_type === "AGENTE") {
       const prevRes = await pool.query(
@@ -512,20 +581,21 @@ router.post(`${P}/scan`, async (req, res) => {
       if (prevRes.rows.length) event_type = "FIN_TURNO";
     }
 
-    // 5. Registrar evento (sandbox, sin side effects)
+    // 6. Registrar evento con GPS
     const { rows } = await pool.query(
       `INSERT INTO nfc_shift_events
-         (tag_id, empleado_id_ref, device_id, puesto_id_ref, event_type, scheduled_status, validation_status, photo_path)
-       VALUES ($1,$2,$3,$4,$5,$6,'pendiente',$7) RETURNING *`,
-      [tag.id, tag.empleado_id_ref, device.id, device.puesto_id_ref, event_type, scheduled_status, photo_path || null],
+         (tag_id, empleado_id_ref, device_id, puesto_id_ref, event_type, scheduled_status,
+          validation_status, photo_path, latitud, longitud, precision_metros)
+       VALUES ($1,$2,$3,$4,$5,$6,'pendiente',$7,$8,$9,$10) RETURNING *`,
+      [tag.id, tag.empleado_id_ref, device.id, device.puesto_id_ref, event_type,
+       scheduled_status, photo_path || null, latVal, lngVal, precVal],
     );
 
-    // 6. Actualizar last_seen_at del dispositivo
     await pool.query(`UPDATE nfc_devices SET last_seen_at=NOW() WHERE id=$1`, [device.id]);
-
     await audit("event", rows[0].id, "scan_ok", "kiosk", { tag_uid, device_code, event_type });
 
     res.json({
+      tipo: "asistencia",
       event: rows[0],
       tag,
       device,
@@ -534,6 +604,7 @@ router.post(`${P}/scan`, async (req, res) => {
       nombre_empleado: tag.nombre_empleado,
       puesto_nombre: device.nombre_puesto,
       event_type,
+      gps: latVal ? { lat: latVal, lng: lngVal, precision: precVal } : null,
       mensaje: event_type === "FIN_TURNO" ? "Fin de turno registrado" : "Inicio de turno detectado",
     });
   } catch (err) { res.status(500).json({ error: String(err) }); }
@@ -677,19 +748,26 @@ router.post(`${P}/supervisor/forms`, async (req, res) => {
     const {
       supervisor_tag_id, supervisor_id_ref, device_id, puesto_id_ref, agente_id_ref,
       arma_estado, uniforme_estado, puesto_estado, agente_estado, observaciones, photo_path, form_items,
+      lat, lng, precision,
     } = req.body;
+
+    const latVal  = (lat  != null && !isNaN(Number(lat)))  ? Number(lat)  : null;
+    const lngVal  = (lng  != null && !isNaN(Number(lng)))  ? Number(lng)  : null;
+    const precVal = (precision != null && !isNaN(Number(precision))) ? Math.round(Number(precision)) : null;
 
     const { rows } = await pool.query(
       `INSERT INTO nfc_supervisor_forms
          (supervisor_tag_id, supervisor_id_ref, device_id, puesto_id_ref, agente_id_ref,
-          arma_estado, uniforme_estado, puesto_estado, agente_estado, observaciones, photo_path, form_status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'completado') RETURNING *`,
+          arma_estado, uniforme_estado, puesto_estado, agente_estado, observaciones, photo_path, form_status,
+          latitud, longitud, precision_metros)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'completado',$12,$13,$14) RETURNING *`,
       [
         supervisor_tag_id || null, supervisor_id_ref || null, device_id || null,
         puesto_id_ref || null, agente_id_ref || null,
         arma_estado || "sin_novedad", uniforme_estado || "completo",
         puesto_estado || "sin_novedad", agente_estado || "presente",
         observaciones || null, photo_path || null,
+        latVal, lngVal, precVal,
       ],
     );
     const form = rows[0];
@@ -775,8 +853,146 @@ router.delete(`${P}/schedules/:id`, async (req, res) => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
-// AUDIT LOG
+// RONDAS DE PATRULLAJE
 // ──────────────────────────────────────────────────────────────────────────────
+
+// Listado de puntos de ronda
+router.get(`${P}/rondas/puntos`, async (req, res) => {
+  try {
+    const { puesto_id, cliente_id } = req.query;
+    const where = ["rp.sandbox_mode = TRUE"];
+    const params: unknown[] = [];
+    if (puesto_id)  { params.push(puesto_id);  where.push(`rp.puesto_id = $${params.length}`); }
+    if (cliente_id) { params.push(cliente_id); where.push(`rp.cliente_id = $${params.length}`); }
+
+    const { rows } = await pool.query(`
+      SELECT rp.*,
+             p.nombre AS nombre_puesto,
+             c.nombre AS nombre_cliente
+      FROM nfc_ronda_puntos rp
+      LEFT JOIN puestos_operativos p ON p.id = rp.puesto_id
+      LEFT JOIN clients c ON c.id = rp.cliente_id
+      WHERE ${where.join(" AND ")}
+      ORDER BY rp.puesto_id, rp.orden, rp.id
+    `, params);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// Crear punto de ronda
+router.post(`${P}/rondas/puntos`, async (req, res) => {
+  try {
+    const { puesto_id, cliente_id, nombre, descripcion, tag_uid, orden, latitud_ref, longitud_ref } = req.body;
+    if (!nombre || !tag_uid) return res.status(400).json({ error: "nombre y tag_uid son requeridos" });
+
+    const { rows } = await pool.query(
+      `INSERT INTO nfc_ronda_puntos
+         (puesto_id, cliente_id, nombre, descripcion, tag_uid, orden, latitud_ref, longitud_ref)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [puesto_id || null, cliente_id || null, nombre, descripcion || null,
+       tag_uid.trim().toUpperCase(), orden || 1,
+       latitud_ref || null, longitud_ref || null],
+    );
+    await audit("ronda_punto", rows[0].id, "create", actor(req));
+    res.status(201).json(rows[0]);
+  } catch (err: unknown) {
+    if ((err as { code?: string }).code === "23505") {
+      return res.status(409).json({ error: "Ya existe un punto activo con ese UID de chip", code: "UID_DUPLICATE" });
+    }
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// Actualizar punto de ronda
+router.put(`${P}/rondas/puntos/:id`, async (req, res) => {
+  try {
+    const { nombre, descripcion, orden, activo, latitud_ref, longitud_ref } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE nfc_ronda_puntos
+       SET nombre=$1, descripcion=$2, orden=$3, activo=$4, latitud_ref=$5, longitud_ref=$6
+       WHERE id=$7 RETURNING *`,
+      [nombre, descripcion || null, orden || 1, activo ?? true,
+       latitud_ref || null, longitud_ref || null, req.params.id],
+    );
+    if (!rows.length) return res.status(404).json({ error: "Punto no encontrado" });
+    await audit("ronda_punto", rows[0].id, "update", actor(req));
+    res.json(rows[0]);
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// Reporte de rondas del día (o de una fecha)
+router.get(`${P}/rondas/reporte`, async (req, res) => {
+  try {
+    const fecha = (req.query.fecha as string) || new Date().toLocaleString("en-US", { timeZone: "America/Guatemala" }).split(",")[0];
+
+    const { rows } = await pool.query(`
+      SELECT
+        rp.id AS punto_id,
+        rp.nombre AS punto_nombre,
+        rp.descripcion,
+        rp.orden,
+        rp.puesto_id,
+        rp.cliente_id,
+        rp.latitud_ref,
+        rp.longitud_ref,
+        p.nombre AS nombre_puesto,
+        c.nombre AS nombre_cliente,
+        COALESCE(ev.veces_hoy, 0)   AS veces_escaneado_hoy,
+        ev.ultimo_scan,
+        ev.lat_ultimo,
+        ev.lng_ultimo,
+        ev.prec_ultimo,
+        ev.device_name_ultimo
+      FROM nfc_ronda_puntos rp
+      LEFT JOIN puestos_operativos p ON p.id = rp.puesto_id
+      LEFT JOIN clients c ON c.id = rp.cliente_id
+      LEFT JOIN (
+        SELECT
+          re.ronda_punto_id,
+          COUNT(*)                        AS veces_hoy,
+          MAX(re.escaneado_en)            AS ultimo_scan,
+          (array_agg(re.latitud  ORDER BY re.escaneado_en DESC))[1] AS lat_ultimo,
+          (array_agg(re.longitud ORDER BY re.escaneado_en DESC))[1] AS lng_ultimo,
+          (array_agg(re.precision_metros ORDER BY re.escaneado_en DESC))[1] AS prec_ultimo,
+          (array_agg(d.device_name ORDER BY re.escaneado_en DESC))[1] AS device_name_ultimo
+        FROM nfc_ronda_eventos re
+        LEFT JOIN nfc_devices d ON d.id = re.device_id
+        WHERE (re.escaneado_en AT TIME ZONE 'America/Guatemala')::date = $1::date
+        GROUP BY re.ronda_punto_id
+      ) ev ON ev.ronda_punto_id = rp.id
+      WHERE rp.activo = TRUE AND rp.sandbox_mode = TRUE
+      ORDER BY rp.puesto_id NULLS LAST, rp.orden, rp.id
+    `, [fecha]);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// Historial de eventos de ronda
+router.get(`${P}/rondas/eventos`, async (req, res) => {
+  try {
+    const { desde, hasta, puesto_id } = req.query;
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (desde)    { params.push(desde);    where.push(`(re.escaneado_en AT TIME ZONE 'America/Guatemala')::date >= $${params.length}::date`); }
+    if (hasta)    { params.push(hasta);    where.push(`(re.escaneado_en AT TIME ZONE 'America/Guatemala')::date <= $${params.length}::date`); }
+    if (puesto_id){ params.push(puesto_id); where.push(`rp.puesto_id = $${params.length}`); }
+
+    const { rows } = await pool.query(`
+      SELECT re.*,
+             rp.nombre AS punto_nombre, rp.orden, rp.puesto_id, rp.cliente_id,
+             p.nombre  AS nombre_puesto,
+             d.device_name
+      FROM nfc_ronda_eventos re
+      JOIN nfc_ronda_puntos  rp ON rp.id = re.ronda_punto_id
+      LEFT JOIN puestos_operativos p ON p.id = rp.puesto_id
+      LEFT JOIN nfc_devices d ON d.id = re.device_id
+      ${where.length ? "WHERE " + where.join(" AND ") : ""}
+      ORDER BY re.escaneado_en DESC LIMIT 200
+    `, params);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
 router.get(`${P}/audit-logs`, async (_req, res) => {
   try {
     const { rows } = await pool.query(
