@@ -11,7 +11,6 @@ const authCheck = (req: any, res: any): boolean => {
 };
 
 // ─── GET /api/puestos/:puestoId/slots ────────────────────────────────────────
-// Lista todos los slots activos de un puesto, con datos del empleado asignado
 puestoSlotsRouter.get("/puestos/:puestoId/slots", async (req, res) => {
   if (!authCheck(req, res)) return;
   const puestoId = Number(req.params.puestoId);
@@ -22,7 +21,9 @@ puestoSlotsRouter.get("/puestos/:puestoId/slots", async (req, res) => {
       `SELECT
          ps.id, ps.puesto_id, ps.slot_numero, ps.horas_turno,
          to_char(ps.hora_entrada, 'HH24:MI') AS hora_entrada,
-         ps.dias_trabajo, ps.empleado_id, ps.notas, ps.activo,
+         ps.dias_trabajo, ps.longitud_ciclo,
+         to_char(ps.fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
+         ps.empleado_id, ps.notas, ps.activo,
          ps.created_at, ps.updated_at,
          e.nombre_completo AS empleado_nombre,
          e.estado_laboral  AS empleado_estado,
@@ -41,8 +42,6 @@ puestoSlotsRouter.get("/puestos/:puestoId/slots", async (req, res) => {
 });
 
 // ─── GET /api/clientes/:clienteId/slots ──────────────────────────────────────
-// Lista todos los slots activos de todos los puestos de un cliente
-// Incluye datos del puesto y del empleado asignado
 puestoSlotsRouter.get("/clientes/:clienteId/slots", async (req, res) => {
   if (!authCheck(req, res)) return;
   const clienteId = Number(req.params.clienteId);
@@ -53,7 +52,9 @@ puestoSlotsRouter.get("/clientes/:clienteId/slots", async (req, res) => {
       `SELECT
          ps.id, ps.puesto_id, ps.slot_numero, ps.horas_turno,
          to_char(ps.hora_entrada, 'HH24:MI') AS hora_entrada,
-         ps.dias_trabajo, ps.empleado_id, ps.notas, ps.activo,
+         ps.dias_trabajo, ps.longitud_ciclo,
+         to_char(ps.fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
+         ps.empleado_id, ps.notas, ps.activo,
          ps.updated_at,
          po.nombre AS puesto_nombre,
          po.sede_id,
@@ -77,13 +78,12 @@ puestoSlotsRouter.get("/clientes/:clienteId/slots", async (req, res) => {
 });
 
 // ─── POST /api/puestos/:puestoId/slots ───────────────────────────────────────
-// Crea un nuevo slot para un puesto
 puestoSlotsRouter.post("/puestos/:puestoId/slots", async (req, res) => {
   if (!authCheck(req, res)) return;
   const puestoId = Number(req.params.puestoId);
   if (!puestoId) return res.status(400).json({ error: "puestoId inválido" });
 
-  const { slot_numero, horas_turno, hora_entrada, dias_trabajo, empleado_id, notas } = req.body;
+  const { slot_numero, horas_turno, hora_entrada, dias_trabajo, fecha_inicio_ciclo, empleado_id, notas } = req.body;
 
   if (!horas_turno || ![12, 24].includes(Number(horas_turno))) {
     return res.status(400).json({ error: "horas_turno debe ser 12 o 24" });
@@ -92,11 +92,11 @@ puestoSlotsRouter.post("/puestos/:puestoId/slots", async (req, res) => {
   if (!Array.isArray(dias_trabajo) || dias_trabajo.length === 0) {
     return res.status(400).json({ error: "dias_trabajo debe ser un arreglo no vacío" });
   }
-  const diasValidos = dias_trabajo.every((d: any) => Number.isInteger(d) && d >= 1 && d <= 7);
-  if (!diasValidos) return res.status(400).json({ error: "dias_trabajo debe contener números del 1 al 7" });
+  // Ciclo fijo de 14 días: valores 1–14
+  const diasValidos = dias_trabajo.every((d: any) => Number.isInteger(d) && d >= 1 && d <= 14);
+  if (!diasValidos) return res.status(400).json({ error: "dias_trabajo debe contener números del 1 al 14" });
 
   try {
-    // Auto-asignar slot_numero si no se indica
     let slotNum = Number(slot_numero) || null;
     if (!slotNum) {
       const { rows } = await pool.query(
@@ -107,13 +107,16 @@ puestoSlotsRouter.post("/puestos/:puestoId/slots", async (req, res) => {
     }
 
     const { rows } = await pool.query(
-      `INSERT INTO puesto_slots (puesto_id, slot_numero, horas_turno, hora_entrada, dias_trabajo, empleado_id, notas)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO puesto_slots
+         (puesto_id, slot_numero, horas_turno, hora_entrada, dias_trabajo, longitud_ciclo, fecha_inicio_ciclo, empleado_id, notas)
+       VALUES ($1, $2, $3, $4, $5, 14, $6, $7, $8)
        RETURNING id, puesto_id, slot_numero, horas_turno,
                  to_char(hora_entrada, 'HH24:MI') AS hora_entrada,
-                 dias_trabajo, empleado_id, notas, activo, created_at`,
+                 dias_trabajo, longitud_ciclo,
+                 to_char(fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
+                 empleado_id, notas, activo, created_at`,
       [puestoId, slotNum, Number(horas_turno), hora_entrada,
-       dias_trabajo, empleado_id || null, notas || null]
+       dias_trabajo, fecha_inicio_ciclo || null, empleado_id || null, notas || null]
     );
     res.status(201).json({ slot: rows[0] });
   } catch (err) {
@@ -123,13 +126,12 @@ puestoSlotsRouter.post("/puestos/:puestoId/slots", async (req, res) => {
 });
 
 // ─── PUT /api/slots/:id ───────────────────────────────────────────────────────
-// Actualiza un slot existente (días, hora, empleado, etc.)
 puestoSlotsRouter.put("/slots/:id", async (req, res) => {
   if (!authCheck(req, res)) return;
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: "id inválido" });
 
-  const { horas_turno, hora_entrada, dias_trabajo, empleado_id, notas, slot_numero } = req.body;
+  const { horas_turno, hora_entrada, dias_trabajo, fecha_inicio_ciclo, empleado_id, notas, slot_numero } = req.body;
 
   const updates: string[] = [];
   const params: any[] = [];
@@ -142,7 +144,12 @@ puestoSlotsRouter.put("/slots/:id", async (req, res) => {
   if (hora_entrada !== undefined) { updates.push(`hora_entrada = $${p++}`); params.push(hora_entrada); }
   if (dias_trabajo !== undefined) {
     if (!Array.isArray(dias_trabajo) || dias_trabajo.length === 0) return res.status(400).json({ error: "dias_trabajo inválido" });
+    const diasValidos = dias_trabajo.every((d: any) => Number.isInteger(d) && d >= 1 && d <= 14);
+    if (!diasValidos) return res.status(400).json({ error: "dias_trabajo debe contener números del 1 al 14" });
     updates.push(`dias_trabajo = $${p++}`); params.push(dias_trabajo);
+  }
+  if (fecha_inicio_ciclo !== undefined) {
+    updates.push(`fecha_inicio_ciclo = $${p++}`); params.push(fecha_inicio_ciclo || null);
   }
   if (empleado_id !== undefined) { updates.push(`empleado_id = $${p++}`); params.push(empleado_id || null); }
   if (notas !== undefined) { updates.push(`notas = $${p++}`); params.push(notas || null); }
@@ -157,7 +164,9 @@ puestoSlotsRouter.put("/slots/:id", async (req, res) => {
       `UPDATE puesto_slots SET ${updates.join(", ")} WHERE id = $${p} AND activo = TRUE
        RETURNING id, puesto_id, slot_numero, horas_turno,
                  to_char(hora_entrada, 'HH24:MI') AS hora_entrada,
-                 dias_trabajo, empleado_id, notas, activo, updated_at`,
+                 dias_trabajo, longitud_ciclo,
+                 to_char(fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
+                 empleado_id, notas, activo, updated_at`,
       params
     );
     if (!rows.length) return res.status(404).json({ error: "Slot no encontrado" });
@@ -169,7 +178,6 @@ puestoSlotsRouter.put("/slots/:id", async (req, res) => {
 });
 
 // ─── DELETE /api/slots/:id ────────────────────────────────────────────────────
-// Elimina (soft delete) un slot
 puestoSlotsRouter.delete("/slots/:id", async (req, res) => {
   if (!authCheck(req, res)) return;
   const id = Number(req.params.id);
@@ -185,31 +193,24 @@ puestoSlotsRouter.delete("/slots/:id", async (req, res) => {
 });
 
 // ─── GET /api/operaciones/disponibles-cobertura ───────────────────────────────
-// Devuelve agentes que descansan en la fecha indicada (día de semana)
-// y están disponibles para cubrir turnos extra.
+// Devuelve agentes que descansan en la fecha indicada según su ciclo de 14 días.
 // ?fecha=YYYY-MM-DD (default: hoy Guatemala UTC-6)
 puestoSlotsRouter.get("/operaciones/disponibles-cobertura", async (req, res) => {
   if (!authCheck(req, res)) return;
 
   try {
-    // Día de semana Guatemala (1=Lun ... 7=Dom)
     let fechaStr = req.query.fecha as string | undefined;
-    let diaSemana: number;
 
-    if (fechaStr) {
-      const d = new Date(fechaStr + "T12:00:00Z");
-      // getDay() → 0=Dom, 1=Lun ... 6=Sáb → convertir a 1=Lun...7=Dom
-      diaSemana = d.getDay() === 0 ? 7 : d.getDay();
-    } else {
-      // Hoy en Guatemala (UTC-6)
+    if (!fechaStr) {
       const { rows } = await pool.query(
-        `SELECT EXTRACT(ISODOW FROM NOW() AT TIME ZONE 'America/Guatemala')::int AS dow`
+        `SELECT to_char(NOW() AT TIME ZONE 'America/Guatemala', 'YYYY-MM-DD') AS hoy`
       );
-      diaSemana = rows[0].dow;
-      fechaStr = new Date().toISOString().split("T")[0];
+      fechaStr = rows[0].hoy;
     }
 
-    // Agentes con slots activos que NO trabajan ese día → descansan → disponibles
+    // Agentes con slots activos que descansan en la fecha indicada:
+    // Si tiene fecha_inicio_ciclo → calcula día del ciclo
+    // Si no tiene → usa el día ISO de semana como fallback (compatibilidad)
     const { rows } = await pool.query(
       `SELECT
          e.id             AS empleado_id,
@@ -224,7 +225,15 @@ puestoSlotsRouter.get("/operaciones/disponibles-cobertura", async (req, res) => 
          ps.slot_numero,
          ps.horas_turno,
          to_char(ps.hora_entrada, 'HH24:MI') AS hora_entrada,
-         ps.dias_trabajo
+         ps.dias_trabajo,
+         ps.longitud_ciclo,
+         to_char(ps.fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
+         CASE
+           WHEN ps.fecha_inicio_ciclo IS NULL THEN
+             EXTRACT(ISODOW FROM $1::date)::int
+           ELSE
+             ((($1::date - ps.fecha_inicio_ciclo) % ps.longitud_ciclo) + 1)
+         END AS dia_en_ciclo
        FROM puesto_slots ps
        JOIN employees e ON e.id = ps.empleado_id
        JOIN puestos_operativos po ON po.id = ps.puesto_id
@@ -232,14 +241,20 @@ puestoSlotsRouter.get("/operaciones/disponibles-cobertura", async (req, res) => 
        WHERE ps.activo = TRUE
          AND po.activo = TRUE
          AND e.estado_laboral NOT IN ('baja', 'suspendido', 'vacaciones')
-         AND NOT ($1 = ANY(ps.dias_trabajo))
+         AND NOT (
+           CASE
+             WHEN ps.fecha_inicio_ciclo IS NULL THEN
+               EXTRACT(ISODOW FROM $1::date)::int = ANY(ps.dias_trabajo)
+             ELSE
+               ((($1::date - ps.fecha_inicio_ciclo) % ps.longitud_ciclo) + 1) = ANY(ps.dias_trabajo)
+           END
+         )
        ORDER BY c.nombre ASC, e.nombre_completo ASC`,
-      [diaSemana]
+      [fechaStr]
     );
 
     res.json({
       fecha: fechaStr,
-      dia_semana: diaSemana,
       disponibles: rows
     });
   } catch (err) {

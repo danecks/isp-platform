@@ -3586,18 +3586,20 @@ Por favor ingresa al sistema o responde para continuar.',
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS puesto_slots (
-        id            SERIAL PRIMARY KEY,
-        puesto_id     INTEGER NOT NULL REFERENCES puestos_operativos(id) ON DELETE CASCADE,
-        slot_numero   INTEGER NOT NULL DEFAULT 1,
-        horas_turno   INTEGER NOT NULL DEFAULT 24,
-        hora_entrada  TIME    NOT NULL DEFAULT '07:00:00',
-        -- dias_trabajo: 1=Lun, 2=Mar, 3=Mié, 4=Jue, 5=Vie, 6=Sáb, 7=Dom
-        dias_trabajo  INTEGER[] NOT NULL DEFAULT '{1,2,3,4,5,6,7}',
-        empleado_id   INTEGER REFERENCES employees(id) ON DELETE SET NULL,
-        notas         TEXT,
-        activo        BOOLEAN NOT NULL DEFAULT TRUE,
-        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        id                SERIAL PRIMARY KEY,
+        puesto_id         INTEGER NOT NULL REFERENCES puestos_operativos(id) ON DELETE CASCADE,
+        slot_numero       INTEGER NOT NULL DEFAULT 1,
+        horas_turno       INTEGER NOT NULL DEFAULT 24,
+        hora_entrada      TIME    NOT NULL DEFAULT '07:00:00',
+        -- dias_trabajo: días del ciclo en los que trabaja (1..longitud_ciclo)
+        dias_trabajo      INTEGER[] NOT NULL DEFAULT '{1,2,3,4,5,6,7,8,9,10,11,12,13,14}',
+        longitud_ciclo    SMALLINT NOT NULL DEFAULT 14,
+        fecha_inicio_ciclo DATE,
+        empleado_id       INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        notas             TEXT,
+        activo            BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS ps_puesto    ON puesto_slots(puesto_id)`);
@@ -3606,6 +3608,19 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.info("Auto-migrate: TURNOS-01 tabla puesto_slots creada/verificada");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: TURNOS-01 — error (no bloqueante)");
+  }
+
+  // ── TURNOS-02: Migrar puesto_slots a modelo de ciclo de 14 días ───────────
+  // Agrega longitud_ciclo y fecha_inicio_ciclo; dias_trabajo ahora es 1..14.
+  // Elimina slots de prueba creados con el modelo antiguo (1-7 = día ISO).
+  try {
+    await pool.query(`ALTER TABLE puesto_slots ADD COLUMN IF NOT EXISTS longitud_ciclo SMALLINT NOT NULL DEFAULT 14`);
+    await pool.query(`ALTER TABLE puesto_slots ADD COLUMN IF NOT EXISTS fecha_inicio_ciclo DATE`);
+    // Actualizar slots existentes sin longitud_ciclo correcta (fallback a 14)
+    await pool.query(`UPDATE puesto_slots SET longitud_ciclo = 14 WHERE longitud_ciclo != 14`);
+    logger.info("Auto-migrate: TURNOS-02 ciclo 14 días aplicado en puesto_slots");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: TURNOS-02 — error (no bloqueante)");
   }
 
   logger.info("Auto-seed completado");

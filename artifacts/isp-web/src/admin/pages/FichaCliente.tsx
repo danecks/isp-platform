@@ -91,6 +91,8 @@ interface PuestoSlot {
   horas_turno: number;
   hora_entrada: string;
   dias_trabajo: number[];
+  longitud_ciclo: number;
+  fecha_inicio_ciclo: string | null;
   empleado_id: number | null;
   empleado_nombre: string | null;
   empleado_estado: string | null;
@@ -98,15 +100,10 @@ interface PuestoSlot {
   notas: string | null;
 }
 
-const DIAS_SEMANA = [
-  { n: 1, label: "L", full: "Lunes" },
-  { n: 2, label: "M", full: "Martes" },
-  { n: 3, label: "X", full: "Miércoles" },
-  { n: 4, label: "J", full: "Jueves" },
-  { n: 5, label: "V", full: "Viernes" },
-  { n: 6, label: "S", full: "Sábado" },
-  { n: 7, label: "D", full: "Domingo" },
-] as const;
+// Ciclo de 14 días: D1..D14
+const DIAS_CICLO = Array.from({ length: 14 }, (_, i) => ({ n: i + 1, label: `D${i + 1}` }));
+const SEMANA1 = DIAS_CICLO.slice(0, 7);
+const SEMANA2 = DIAS_CICLO.slice(7, 14);
 
 interface CoberturaHoy {
   puestos: Array<{
@@ -1768,39 +1765,43 @@ function TabTitulares({ puestos, clienteId }: { puestos: Puesto[]; clienteId: nu
               {pSlots.length === 0 ? (
                 <p className="text-[11px] text-white/20 italic">Sin slots definidos — configura en la pestaña "Plantilla de Turnos"</p>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   {pSlots.map(slot => {
-                    const DIAS_LABELS = ["L", "M", "X", "J", "V", "S", "D"];
-                    const diasDescanso = [1, 2, 3, 4, 5, 6, 7].filter(d => !slot.dias_trabajo.includes(d));
                     return (
-                      <div key={slot.id} className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[9px] text-white/30">#{slot.slot_numero}</span>
-                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${slot.horas_turno === 24 ? "bg-blue-500/15 text-blue-300 border border-blue-400/20" : "bg-purple-500/15 text-purple-300 border border-purple-400/20"}`}>
-                          {slot.horas_turno}h
-                        </span>
-                        <span className="text-[10px] text-white/40">{slot.hora_entrada}</span>
-                        <div className="flex gap-0.5">
-                          {DIAS_LABELS.map((label, i) => {
-                            const trabaja = slot.dias_trabajo.includes(i + 1);
-                            return (
-                              <span
-                                key={i}
-                                title={trabaja ? "Trabaja" : "Descansa"}
-                                className={`w-5 h-5 flex items-center justify-center rounded text-[9px] font-bold ${trabaja ? "bg-primary/20 text-primary border border-primary/30" : "bg-white/3 text-white/15 border border-white/8"}`}
-                              >
-                                {trabaja ? label : "·"}
-                              </span>
-                            );
-                          })}
-                        </div>
-                        {diasDescanso.length > 0 && (
-                          <span className="text-[9px] text-white/20">
-                            Descansa: {diasDescanso.map(d => DIAS_LABELS[d - 1]).join(", ")}
+                      <div key={slot.id} className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[9px] text-white/30">#{slot.slot_numero}</span>
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${slot.horas_turno === 24 ? "bg-blue-500/15 text-blue-300 border border-blue-400/20" : "bg-purple-500/15 text-purple-300 border border-purple-400/20"}`}>
+                            {slot.horas_turno}h
                           </span>
-                        )}
-                        {slot.empleado_nombre && (
-                          <span className="text-[9px] text-emerald-400/60 bg-emerald-400/8 px-2 py-0.5 rounded-full">{slot.empleado_nombre}</span>
-                        )}
+                          <span className="text-[10px] text-white/40">{slot.hora_entrada}</span>
+                          {slot.fecha_inicio_ciclo && (
+                            <span className="text-[9px] text-white/20">inicio: {slot.fecha_inicio_ciclo}</span>
+                          )}
+                          {slot.empleado_nombre && (
+                            <span className="text-[9px] text-emerald-400/60 bg-emerald-400/8 px-2 py-0.5 rounded-full">{slot.empleado_nombre}</span>
+                          )}
+                        </div>
+                        {/* Mini cuadrícula 14 días — 2 filas de 7 */}
+                        <div className="space-y-0.5">
+                          {[SEMANA1, SEMANA2].map((semana, si) => (
+                            <div key={si} className="flex gap-0.5">
+                              <span className="text-[8px] text-white/20 w-4 flex items-center">S{si + 1}</span>
+                              {semana.map(({ n, label }) => {
+                                const trabaja = slot.dias_trabajo.includes(n);
+                                return (
+                                  <span
+                                    key={n}
+                                    title={trabaja ? `${label} trabaja` : `${label} descansa`}
+                                    className={`w-5 h-5 flex items-center justify-center rounded text-[8px] font-bold ${trabaja ? "bg-primary/20 text-primary border border-primary/30" : "bg-white/3 text-white/10 border border-white/6"}`}
+                                  >
+                                    {trabaja ? label : "·"}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     );
                   })}
@@ -1829,7 +1830,11 @@ function ModalCrearSlot({
   const [puestoId, setPuestoId] = useState<number>(defaultPuestoId || puestos[0]?.id || 0);
   const [horasTurno, setHorasTurno] = useState<12 | 24>(24);
   const [horaEntrada, setHoraEntrada] = useState("07:00");
-  const [diasTrabajo, setDiasTrabajo] = useState<number[]>([1, 3, 5, 7]);
+  const [diasTrabajo, setDiasTrabajo] = useState<number[]>([]);
+  const [fechaInicioCiclo, setFechaInicioCiclo] = useState<string>(() => {
+    const hoy = new Date();
+    return hoy.toISOString().split("T")[0];
+  });
   const [empleadoBusqueda, setEmpleadoBusqueda] = useState("");
   const [empleadoId, setEmpleadoId] = useState<number | null>(null);
   const [empleadoResultados, setEmpleadoResultados] = useState<any[]>([]);
@@ -1866,6 +1871,7 @@ function ModalCrearSlot({
           horas_turno: horasTurno,
           hora_entrada: horaEntrada,
           dias_trabajo: diasTrabajo,
+          fecha_inicio_ciclo: fechaInicioCiclo || null,
           empleado_id: empleadoId || null,
           notas: notas || null,
         }),
@@ -1928,24 +1934,51 @@ function ModalCrearSlot({
             </div>
           </div>
 
-          {/* Días que trabaja */}
+          {/* Fecha de inicio del ciclo */}
           <div>
-            <label className="text-[10px] text-white/40 uppercase tracking-wide block mb-2">Días que trabaja</label>
-            <div className="flex gap-1.5">
-              {DIAS_SEMANA.map(({ n, label, full }) => (
-                <button
-                  key={n}
-                  title={full}
-                  onClick={() => toggleDia(n)}
-                  className={`flex-1 h-9 rounded-lg text-xs font-bold border transition-all ${diasTrabajo.includes(n) ? "bg-primary/20 border-primary/50 text-primary" : "bg-white/4 border-white/8 text-white/30 hover:text-white/60"}`}
-                >
-                  {label}
-                </button>
+            <label className="text-[10px] text-white/40 uppercase tracking-wide block mb-1">
+              Fecha de inicio del ciclo <span className="text-white/20">(el Día 1 del ciclo corresponde a esta fecha)</span>
+            </label>
+            <input
+              type="date"
+              value={fechaInicioCiclo}
+              onChange={e => setFechaInicioCiclo(e.target.value)}
+              className="w-full h-9 bg-[#060e1c] border border-white/10 text-white text-sm rounded-lg px-3 outline-none focus:border-primary/50"
+            />
+          </div>
+
+          {/* Días que trabaja — cuadrícula 14 días */}
+          <div>
+            <label className="text-[10px] text-white/40 uppercase tracking-wide block mb-2">
+              Días que trabaja en el ciclo de 14 días
+            </label>
+            <div className="space-y-1.5">
+              {[SEMANA1, SEMANA2].map((semana, si) => (
+                <div key={si} className="flex items-center gap-1.5">
+                  <span className="text-[9px] text-white/25 w-6 shrink-0">S{si + 1}</span>
+                  <div className="flex gap-1 flex-1">
+                    {semana.map(({ n, label }) => (
+                      <button
+                        key={n}
+                        onClick={() => toggleDia(n)}
+                        className={`flex-1 h-8 rounded-lg text-[10px] font-bold border transition-all ${diasTrabajo.includes(n) ? "bg-primary/20 border-primary/50 text-primary" : "bg-white/4 border-white/8 text-white/30 hover:text-white/60"}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
-            <p className="text-[10px] text-white/25 mt-1.5">
-              Descansa: {DIAS_SEMANA.filter(d => !diasTrabajo.includes(d.n)).map(d => d.full).join(", ") || "ningún día"}
-            </p>
+            <div className="flex items-center justify-between mt-1.5">
+              <p className="text-[10px] text-white/25">
+                {diasTrabajo.length} días trabaja · {14 - diasTrabajo.length} días descansa
+              </p>
+              <div className="flex gap-2">
+                <button onClick={() => setDiasTrabajo(DIAS_CICLO.map(d => d.n))} className="text-[9px] text-white/30 hover:text-white/60 underline">todos</button>
+                <button onClick={() => setDiasTrabajo([])} className="text-[9px] text-white/30 hover:text-white/60 underline">ninguno</button>
+              </div>
+            </div>
           </div>
 
           {/* Agente */}
@@ -2074,7 +2107,7 @@ function TabPlantillaTurnos({ clienteId, puestos }: { clienteId: number; puestos
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <p className="text-xs text-white/30">Cuadrícula semanal: ✓ = trabaja, vacío = descansa (disponible para cobertura)</p>
+          <p className="text-xs text-white/30">Cuadrícula de ciclo 14 días: ✓ = trabaja, vacío = descansa (disponible para cobertura)</p>
           <p className="text-[10px] text-white/20 mt-0.5">
             {slots.length} slots · {slotsConAgente} con agente · {slots.length - slotsConAgente} sin asignar
           </p>
@@ -2127,13 +2160,27 @@ function TabPlantillaTurnos({ clienteId, puestos }: { clienteId: number; puestos
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-xs min-w-[560px]">
+                  <table className="w-full text-xs min-w-[900px]">
                     <thead>
+                      {/* Fila 1 — agrupadores de semana */}
+                      <tr className="border-b border-white/3">
+                        <th colSpan={2} className="w-36" />
+                        <th colSpan={7} className="py-1 text-[9px] text-white/30 font-semibold text-center border-l border-white/5">
+                          — Semana 1 —
+                        </th>
+                        <th colSpan={7} className="py-1 text-[9px] text-white/30 font-semibold text-center border-l border-white/5">
+                          — Semana 2 —
+                        </th>
+                        <th colSpan={2} className="w-44" />
+                      </tr>
+                      {/* Fila 2 — columnas individuales */}
                       <tr className="border-b border-white/5">
                         <th className="text-left px-4 py-2 text-[9px] text-white/25 font-semibold uppercase tracking-wide w-14">Slot</th>
                         <th className="text-left px-2 py-2 text-[9px] text-white/25 font-semibold uppercase tracking-wide w-20">Turno</th>
-                        {DIAS_SEMANA.map(({ n, label }) => (
-                          <th key={n} className="py-2 text-[9px] text-white/25 font-semibold w-9 text-center">{label}</th>
+                        {DIAS_CICLO.map(({ n, label }) => (
+                          <th key={n} className={`py-2 text-[9px] text-white/25 font-semibold w-8 text-center ${n === 8 ? "border-l border-white/5" : ""}`}>
+                            {label}
+                          </th>
                         ))}
                         <th className="text-left px-3 py-2 text-[9px] text-white/25 font-semibold uppercase tracking-wide">Agente</th>
                         <th className="w-8" />
@@ -2145,28 +2192,33 @@ function TabPlantillaTurnos({ clienteId, puestos }: { clienteId: number; puestos
                         return (
                           <tr key={slot.id} className="hover:bg-white/1.5 transition-colors">
                             {/* # slot */}
-                            <td className="px-4 py-3 text-white/35 text-[10px] font-mono">#{slot.slot_numero}</td>
+                            <td className="px-4 py-2.5 text-white/35 text-[10px] font-mono">
+                              #{slot.slot_numero}
+                            </td>
 
                             {/* Tipo turno + hora */}
-                            <td className="px-2 py-3">
+                            <td className="px-2 py-2.5">
                               <div className="flex flex-col gap-0.5">
                                 <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full w-fit ${slot.horas_turno === 24 ? "text-blue-300 bg-blue-500/10 border border-blue-500/20" : "text-purple-300 bg-purple-500/10 border border-purple-500/20"}`}>
                                   {slot.horas_turno}h
                                 </span>
                                 <span className="text-[9px] text-white/25">{slot.hora_entrada}</span>
+                                {slot.fecha_inicio_ciclo && (
+                                  <span className="text-[8px] text-white/15 leading-tight">D1={slot.fecha_inicio_ciclo}</span>
+                                )}
                               </div>
                             </td>
 
-                            {/* Días — toggle interactivo */}
-                            {DIAS_SEMANA.map(({ n, full }) => {
+                            {/* 14 días — toggle interactivo */}
+                            {DIAS_CICLO.map(({ n, label }) => {
                               const trabaja = slot.dias_trabajo.includes(n);
                               return (
-                                <td key={n} className="py-3 text-center">
+                                <td key={n} className={`py-2.5 text-center ${n === 8 ? "border-l border-white/5" : ""}`}>
                                   <button
-                                    title={trabaja ? `Trabaja ${full} — clic para marcar descanso` : `Descansa ${full} — clic para marcar trabajo`}
+                                    title={trabaja ? `${label} trabaja — clic para descanso` : `${label} descansa — clic para trabajo`}
                                     disabled={saving}
                                     onClick={() => toggleDia(slot, n)}
-                                    className={`w-7 h-7 rounded-lg flex items-center justify-center mx-auto text-[11px] font-bold border transition-all ${
+                                    className={`w-6 h-6 rounded flex items-center justify-center mx-auto text-[10px] font-bold border transition-all ${
                                       trabaja
                                         ? "bg-primary/20 border-primary/50 text-primary hover:bg-primary/10"
                                         : "bg-white/3 border-white/8 text-white/10 hover:border-white/20 hover:text-white/25"
@@ -2179,7 +2231,7 @@ function TabPlantillaTurnos({ clienteId, puestos }: { clienteId: number; puestos
                             })}
 
                             {/* Agente */}
-                            <td className="px-3 py-3 min-w-[140px]">
+                            <td className="px-3 py-2.5 min-w-[140px]">
                               {slot.empleado_nombre ? (
                                 <div>
                                   <p className="text-[11px] text-white/70 font-medium leading-tight truncate max-w-[150px]">{slot.empleado_nombre}</p>
@@ -2214,9 +2266,9 @@ function TabPlantillaTurnos({ clienteId, puestos }: { clienteId: number; puestos
       <div className="bg-blue-950/20 border border-blue-500/15 rounded-xl px-4 py-3 flex items-start gap-2.5">
         <Zap className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
         <div className="text-[10px] text-blue-300/70 leading-relaxed">
-          <p><strong>✓ Trabaja</strong> ese día → agente en servicio activo.</p>
-          <p><strong>Vacío = Descansa</strong> → agente disponible para cubrir turnos extra en caso de faltante.</p>
-          <p className="mt-1 text-blue-300/40">Los cambios en los días se guardan automáticamente al hacer clic.</p>
+          <p><strong>Ciclo de 14 días</strong>: cada slot tiene una fecha de inicio que ancla el Día 1 del ciclo. El patrón se repite cada 14 días automáticamente.</p>
+          <p><strong>✓ Trabaja</strong> ese día → agente en servicio activo. <strong>Vacío = Descansa</strong> → disponible para cobertura de horas extra.</p>
+          <p className="mt-1 text-blue-300/40">Los cambios en los días se guardan automáticamente al hacer clic. La columna "D1=fecha" muestra cuándo empieza el ciclo.</p>
         </div>
       </div>
 
