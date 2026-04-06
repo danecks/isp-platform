@@ -456,18 +456,19 @@ function ModalPuesto({
             )}
           </div>
 
-          {/* Tipo de Turno (nómina) */}
+          {/* Ciclo de nómina */}
           <div>
-            <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Tipo de turno (nómina)</p>
+            <p className="text-[10px] text-white/30 uppercase tracking-widest mb-1">Ciclo de nómina (para planilla)</p>
+            <p className="text-[10px] text-white/20 mb-2">Define el patrón de descansos compensatorios para el cálculo de planilla. El horario operativo real se gestiona en la pestaña "Plantilla de Turnos".</p>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-[10px] text-white/40 uppercase tracking-wide">Turno de nómina</label>
+                <label className="text-[10px] text-white/40 uppercase tracking-wide">Ciclo de nómina</label>
                 <select
                   value={form.tipo_turno_id}
                   onChange={(e) => up("tipo_turno_id", e.target.value)}
                   className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50"
                 >
-                  <option value="">Sin turno asignado</option>
+                  <option value="">Sin ciclo asignado</option>
                   {turnosDisponibles.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.nombre} ({t.horas_trabajo}h + {t.horas_descanso}h)
@@ -483,20 +484,17 @@ function ModalPuesto({
                   onChange={(e) => up("fecha_inicio_ciclo", e.target.value)}
                   className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50"
                 />
-                <p className="text-[10px] text-white/25">Solo para turnos &gt; 24h (24x24, 24x48…)</p>
+                <p className="text-[10px] text-white/25">Solo para ciclos &gt; 24h (24x24, 24x48…)</p>
               </div>
             </div>
           </div>
 
-          {/* Horario */}
-          <div>
-            <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Horario de trabajo</p>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Hora entrada" k="hora_entrada" placeholder="06:00" />
-              <Field label="Hora salida" k="hora_salida" placeholder="18:00" />
-              <Field label="Inicio descanso" k="descanso_inicio" placeholder="18:01" />
-              <Field label="Fin descanso" k="descanso_fin" placeholder="05:59" />
-            </div>
+          {/* Nota horario operativo */}
+          <div className="bg-primary/5 border border-primary/15 rounded-xl px-4 py-3 flex items-start gap-2">
+            <Calendar className="w-3.5 h-3.5 text-primary/50 shrink-0 mt-0.5" />
+            <p className="text-[11px] text-white/40 leading-relaxed">
+              El horario operativo (días y horas exactas por slot) se define en la pestaña <span className="text-primary/70 font-medium">Plantilla de Turnos</span> de esta misma ficha. Los agentes heredan automáticamente el horario del puesto al que están asignados.
+            </p>
           </div>
 
           {/* Datos contractuales */}
@@ -1529,54 +1527,7 @@ export default function FichaCliente() {
 
           {/* ── Tab Titulares ─────────────────────────────────────────────── */}
           {tab === "titulares" && (
-            <div className="p-5">
-              {puestos.filter(p => p.titular_employee_id).length === 0 ? (
-                <div className="text-center py-12">
-                  <UserCheck className="w-7 h-7 text-white/10 mx-auto mb-3" />
-                  <p className="text-white/30 text-sm">Sin colaboradores titulares asignados</p>
-                  <p className="text-white/15 text-xs mt-1">Asigna titulares desde el pizarrón operativo.</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {puestos.filter(p => p.titular_employee_id).map(p => (
-                    <div key={p.id} className="bg-[#070f1c] border border-white/8 rounded-xl p-4">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-white">{p.titular_nombre_completo || p.titular_nombre}</p>
-                          {p.titular_estado_laboral && (
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full mt-1 inline-block ${p.titular_estado_laboral === "activo" ? "text-green-400 bg-green-400/10" : "text-white/30 bg-white/5"}`}>
-                              {p.titular_estado_laboral}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs font-semibold text-white/70">{p.nombre}</p>
-                          {p.sede_nombre && <p className="text-[10px] text-white/30">Sede: {p.sede_nombre}</p>}
-                        </div>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2 text-[10px] text-white/40">
-                        {p.turno && <span className="bg-white/5 px-2 py-0.5 rounded-full">{p.turno}</span>}
-                        {p.jornada && <span className="bg-white/5 px-2 py-0.5 rounded-full">{p.jornada}</span>}
-                        {(p.hora_entrada && p.hora_salida) && (
-                          <span className="bg-white/5 px-2 py-0.5 rounded-full">{p.hora_entrada}–{p.hora_salida}</span>
-                        )}
-                        {p.titular_telefono && <span className="bg-white/5 px-2 py-0.5 rounded-full">{p.titular_telefono}</span>}
-                        {p.elegible_horas_extra && (
-                          <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-400/20 px-2 py-0.5 rounded-full">
-                            <Zap className="w-2.5 h-2.5 inline-block mr-0.5" />HE elegible
-                          </span>
-                        )}
-                        {p.descanso_inicio && p.descanso_fin && (
-                          <span className="bg-purple-500/10 text-purple-300 border border-purple-400/15 px-2 py-0.5 rounded-full">
-                            Descanso: {p.descanso_inicio}–{p.descanso_fin}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <TabTitulares puestos={puestos} clienteId={clientId} />
           )}
         </div>
 
@@ -1709,7 +1660,7 @@ function PuestoRow({ puesto, onEdit, onDelete }: { puesto: Puesto; onEdit: () =>
             )}
           </div>
           <p className="text-[10px] text-white/30 mt-0.5">
-            {[puesto.tipo_turno_nombre ?? puesto.turno, puesto.hora_entrada && puesto.hora_salida ? `${puesto.hora_entrada}–${puesto.hora_salida}` : null].filter(Boolean).join(" · ")}
+            {puesto.tipo_turno_nombre ? `Nómina: ${puesto.tipo_turno_nombre}` : "Sin ciclo de nómina"}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -1728,9 +1679,7 @@ function PuestoRow({ puesto, onEdit, onDelete }: { puesto: Puesto; onEdit: () =>
         <div className="px-4 pb-3 grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white/1.5 border-t border-white/4">
           {[
             { label: "Cubre hoy", value: puesto.agente_nombre },
-            { label: "Turno", value: puesto.tipo_turno_nombre ?? puesto.turno },
-            { label: "Horario", value: puesto.hora_entrada && puesto.hora_salida ? `${puesto.hora_entrada}–${puesto.hora_salida}` : null },
-            { label: "Descanso", value: puesto.descanso_inicio && puesto.descanso_fin ? `${puesto.descanso_inicio}–${puesto.descanso_fin}` : null },
+            { label: "Ciclo de nómina", value: puesto.tipo_turno_nombre ?? null },
             { label: "Costo/hora", value: puesto.costo_hora ? fmtQ(puesto.costo_hora) : null },
             { label: "HE elegible", value: puesto.elegible_horas_extra ? "Sí" : "No" },
             { label: "Estado", value: puesto.estado },
@@ -1750,6 +1699,117 @@ function PuestoRow({ puesto, onEdit, onDelete }: { puesto: Puesto; onEdit: () =>
           <HistorialTitularPuesto puestoId={puesto.id} />
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── TabTitulares ──────────────────────────────────────────────────────────────
+function TabTitulares({ puestos, clienteId }: { puestos: Puesto[]; clienteId: number }) {
+  const [slots, setSlots] = useState<PuestoSlot[]>([]);
+
+  useEffect(() => {
+    fetch(`${API}/clientes/${clienteId}/slots`, { headers: { "x-isp-session": getSession() } })
+      .then(r => r.ok ? r.json() : { slots: [] })
+      .then(d => setSlots(d.slots || []))
+      .catch(() => {});
+  }, [clienteId]);
+
+  const slotsPorPuesto = (puestoId: number) => slots.filter(s => s.puesto_id === puestoId);
+  const puestosConTitular = puestos.filter(p => p.titular_employee_id);
+
+  if (puestosConTitular.length === 0) {
+    return (
+      <div className="p-5 text-center py-12">
+        <UserCheck className="w-7 h-7 text-white/10 mx-auto mb-3" />
+        <p className="text-white/30 text-sm">Sin colaboradores titulares asignados</p>
+        <p className="text-white/15 text-xs mt-1">Asigna titulares desde el pizarrón operativo.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-5 space-y-3">
+      {puestosConTitular.map(p => {
+        const pSlots = slotsPorPuesto(p.id);
+        return (
+          <div key={p.id} className="bg-[#070f1c] border border-white/8 rounded-xl p-4">
+            {/* Cabecera: agente titular */}
+            <div className="flex items-start justify-between gap-2 mb-3">
+              <div>
+                <p className="text-sm font-semibold text-white">{p.titular_nombre_completo || p.titular_nombre}</p>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  {p.titular_estado_laboral && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${p.titular_estado_laboral === "activo" ? "text-green-400 bg-green-400/10" : "text-white/30 bg-white/5"}`}>
+                      {p.titular_estado_laboral}
+                    </span>
+                  )}
+                  {p.titular_telefono && (
+                    <span className="text-[10px] text-white/40 bg-white/5 px-2 py-0.5 rounded-full">{p.titular_telefono}</span>
+                  )}
+                  {p.elegible_horas_extra && (
+                    <span className="text-[10px] bg-yellow-500/10 text-yellow-400 border border-yellow-400/20 px-2 py-0.5 rounded-full">
+                      <Zap className="w-2.5 h-2.5 inline-block mr-0.5" />HE elegible
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-xs font-semibold text-white/70">{p.nombre}</p>
+                {p.sede_nombre && <p className="text-[10px] text-white/30 mt-0.5">Sede: {p.sede_nombre}</p>}
+                {p.tipo_turno_nombre && (
+                  <p className="text-[9px] text-white/20 mt-0.5">Nómina: {p.tipo_turno_nombre}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Plantilla de turnos del puesto (heredada) */}
+            <div className="border-t border-white/5 pt-3">
+              <p className="text-[9px] text-white/25 uppercase tracking-widest mb-2">Plantilla de turnos del puesto (heredada por el agente)</p>
+              {pSlots.length === 0 ? (
+                <p className="text-[11px] text-white/20 italic">Sin slots definidos — configura en la pestaña "Plantilla de Turnos"</p>
+              ) : (
+                <div className="space-y-2">
+                  {pSlots.map(slot => {
+                    const DIAS_LABELS = ["L", "M", "X", "J", "V", "S", "D"];
+                    const diasDescanso = [1, 2, 3, 4, 5, 6, 7].filter(d => !slot.dias_trabajo.includes(d));
+                    return (
+                      <div key={slot.id} className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[9px] text-white/30">#{slot.slot_numero}</span>
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${slot.horas_turno === 24 ? "bg-blue-500/15 text-blue-300 border border-blue-400/20" : "bg-purple-500/15 text-purple-300 border border-purple-400/20"}`}>
+                          {slot.horas_turno}h
+                        </span>
+                        <span className="text-[10px] text-white/40">{slot.hora_entrada}</span>
+                        <div className="flex gap-0.5">
+                          {DIAS_LABELS.map((label, i) => {
+                            const trabaja = slot.dias_trabajo.includes(i + 1);
+                            return (
+                              <span
+                                key={i}
+                                title={trabaja ? "Trabaja" : "Descansa"}
+                                className={`w-5 h-5 flex items-center justify-center rounded text-[9px] font-bold ${trabaja ? "bg-primary/20 text-primary border border-primary/30" : "bg-white/3 text-white/15 border border-white/8"}`}
+                              >
+                                {trabaja ? label : "·"}
+                              </span>
+                            );
+                          })}
+                        </div>
+                        {diasDescanso.length > 0 && (
+                          <span className="text-[9px] text-white/20">
+                            Descansa: {diasDescanso.map(d => DIAS_LABELS[d - 1]).join(", ")}
+                          </span>
+                        )}
+                        {slot.empleado_nombre && (
+                          <span className="text-[9px] text-emerald-400/60 bg-emerald-400/8 px-2 py-0.5 rounded-full">{slot.empleado_nombre}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
