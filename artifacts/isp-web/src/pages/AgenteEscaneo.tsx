@@ -196,9 +196,25 @@ export default function AgenteEscaneo() {
     navigator.geolocation.getCurrentPosition(
       pos => { if (settled) return; settled = true; setGpsCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude, precision: Math.round(pos.coords.accuracy) }); setEstado("enviando"); },
       err => { if (settled) return; settled = true; if (err.code === 1) setEstado("gps_denegado"); else setEstado("enviando"); },
-      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 30000 }
     );
   }, [estado, tipoEfectivo]);
+
+  // Escuchar cambios de permiso GPS — si el usuario activa en Ajustes y vuelve, reintenta
+  useEffect(() => {
+    if (estado !== "gps_denegado") return;
+    if (!navigator.permissions) return;
+    let removed = false;
+    navigator.permissions.query({ name: "geolocation" as PermissionName })
+      .then(status => {
+        const handleChange = () => {
+          if (!removed && status.state !== "denied") { setGpsCoords(null); setEstado("esperando_gps"); }
+        };
+        status.addEventListener("change", handleChange);
+        return () => { removed = true; status.removeEventListener("change", handleChange); };
+      })
+      .catch(() => {});
+  }, [estado]);
 
   // 5. Enviar fichaje (puesto o maestro en modo fichaje)
   useEffect(() => {
@@ -571,27 +587,37 @@ export default function AgenteEscaneo() {
                   El fichaje <strong className="text-white">no fue registrado</strong>. Sigue los pasos según tu teléfono:
                 </p>
 
-                <div className="mt-3 bg-orange-500/5 border border-orange-500/20 rounded-xl p-3 text-left">
-                  <p className="text-xs text-orange-300 font-semibold uppercase tracking-wide mb-2">📱 iPhone / iPad</p>
-                  <p className="text-xs text-white/70 font-semibold mb-0.5">Paso 1:</p>
-                  <p className="text-xs text-white/50 leading-relaxed mb-2">
-                    <strong className="text-white/75">Ajustes</strong> → <strong className="text-white/75">Privacidad y Seguridad</strong> → <strong className="text-white/75">Localización</strong> → <strong className="text-white/75">Safari</strong> → elige <strong className="text-orange-300">Al usar la app</strong>
-                  </p>
-                  <p className="text-xs text-white/70 font-semibold mb-0.5">Paso 2:</p>
-                  <p className="text-xs text-white/50 leading-relaxed">
-                    En esa misma pantalla → <strong className="text-white/75">Acceso a Sitios Web</strong> → <strong className="text-white/75">ispsa.net</strong> → <strong className="text-orange-300">Permitir</strong>
-                  </p>
+                <div className="mt-3 bg-orange-500/5 border border-orange-500/20 rounded-xl p-3 text-left space-y-2">
+                  <p className="text-xs text-orange-300 font-semibold uppercase tracking-wide">📱 iPhone / iPad</p>
+                  <div>
+                    <p className="text-xs text-white/70 font-semibold mb-0.5">Paso 1:</p>
+                    <p className="text-xs text-white/50 leading-relaxed">
+                      <strong className="text-white/75">Ajustes → Privacidad y Seguridad → Localización → Safari</strong> → elige <strong className="text-orange-300">Al usar la app</strong>
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-white/70 font-semibold mb-0.5">Paso 2:</p>
+                    <p className="text-xs text-white/50 leading-relaxed">
+                      En esa pantalla → <strong className="text-white/75">Acceso a Sitios Web → ispsa.net → Permitir</strong>
+                    </p>
+                  </div>
+                  <div className="bg-amber-500/8 border border-amber-500/20 rounded-lg p-2.5">
+                    <p className="text-xs text-amber-300/80 font-semibold mb-0.5">⚠️ ¿Ya hiciste los pasos y sigue bloqueado?</p>
+                    <p className="text-xs text-white/40 leading-relaxed">
+                      Safari guarda el rechazo. Cierra Safari completamente (desliza hacia arriba), escanea el QR de nuevo y acepta la ubicación cuando pregunte.
+                    </p>
+                  </div>
                 </div>
 
                 <div className="mt-2 bg-orange-500/5 border border-orange-500/20 rounded-xl p-3 text-left">
                   <p className="text-xs text-orange-300 font-semibold uppercase tracking-wide mb-1">🤖 Android</p>
                   <p className="text-xs text-white/50 leading-relaxed">
-                    <strong className="text-white/75">Ajustes</strong> → <strong className="text-white/75">Aplicaciones</strong> → <strong className="text-white/75">Chrome</strong> → <strong className="text-white/75">Permisos</strong> → <strong className="text-white/75">Ubicación</strong> → <strong className="text-orange-300">Permitir todo el tiempo</strong>
+                    <strong className="text-white/75">Ajustes → Aplicaciones → Chrome → Permisos → Ubicación → Permitir todo el tiempo</strong>
                   </p>
                 </div>
 
                 <button onClick={() => { setGpsCoords(null); setEstado("esperando_gps"); }} className="mt-4 w-full py-3 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 rounded-xl text-sm text-orange-300 font-semibold transition-colors">
-                  Ya la activé — Intentar de nuevo
+                  Ya lo hice — Intentar de nuevo
                 </button>
               </div>
             )}

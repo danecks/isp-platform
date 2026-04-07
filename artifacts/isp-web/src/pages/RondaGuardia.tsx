@@ -51,42 +51,44 @@ export default function RondaGuardia() {
       .catch(e => { setMensajeError(e.message); setEstado("token_invalido"); });
   }, [token]);
 
-  // 2. Solicitar GPS — intenta obtener ubicación; si el permiso está denegado lo informa.
-  //    Si hay timeout u otro error de hardware, envía igual (sin GPS).
+  // 2. Solicitar GPS
   useEffect(() => {
     if (estado !== "esperando_gps") return;
-
-    if (!navigator.geolocation) {
-      setEstado("enviando");
-      return;
-    }
+    if (!navigator.geolocation) { setEstado("enviando"); return; }
 
     let settled = false;
-
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         if (settled) return;
         settled = true;
-        setGpsCoords({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          precision: Math.round(pos.coords.accuracy),
-        });
+        setGpsCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude, precision: Math.round(pos.coords.accuracy) });
         setEstado("enviando");
       },
       (err) => {
         if (settled) return;
         settled = true;
-        if (err.code === 1) {
-          // PERMISSION_DENIED — el sistema bloqueó el acceso a la ubicación
-          setEstado("gps_denegado");
-        } else {
-          // TIMEOUT (3) o POSITION_UNAVAILABLE (2) — registrar sin GPS
-          setEstado("enviando");
-        }
+        if (err.code === 1) setEstado("gps_denegado");
+        else setEstado("enviando");
       },
-      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 30000 }
     );
+  }, [estado]);
+
+  // 2b. Escuchar cambios de permiso (Permissions API) — si el usuario activa GPS
+  //     en Ajustes y vuelve a la app, se reintenta automáticamente.
+  useEffect(() => {
+    if (estado !== "gps_denegado") return;
+    if (!navigator.permissions) return;
+    let removed = false;
+    navigator.permissions.query({ name: "geolocation" as PermissionName })
+      .then(status => {
+        const handleChange = () => {
+          if (!removed && status.state !== "denied") setEstado("esperando_gps");
+        };
+        status.addEventListener("change", handleChange);
+        return () => { removed = true; status.removeEventListener("change", handleChange); };
+      })
+      .catch(() => {});
   }, [estado]);
 
   // 3. Enviar escaneo solo cuando el estado cambia a "enviando"
@@ -171,30 +173,37 @@ export default function RondaGuardia() {
             </div>
             <p className="text-orange-400 font-bold text-xl mb-2">Ubicación bloqueada</p>
             <p className="text-white/60 text-sm mt-2 leading-relaxed">
-              Tu dispositivo no compartió la ubicación. Sigue los pasos según tu teléfono:
+              Safari no compartió la ubicación. Sigue los pasos:
             </p>
 
             {/* iOS */}
-            <div className="mt-4 bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 text-left">
-              <p className="text-xs text-orange-300 font-semibold uppercase tracking-wide mb-2">📱 iPhone / iPad</p>
-              <p className="text-xs text-white/70 font-semibold mb-1">Paso 1 — Permiso general de Safari:</p>
-              <p className="text-xs text-white/55 leading-relaxed mb-3">
-                <strong className="text-white/80">Ajustes</strong> → <strong className="text-white/80">Privacidad y Seguridad</strong> → <strong className="text-white/80">Localización</strong> → <strong className="text-white/80">Safari</strong> → elige <strong className="text-orange-300">Al usar la app</strong>
-              </p>
-              <p className="text-xs text-white/70 font-semibold mb-1">Paso 2 — Permiso del sitio web:</p>
-              <p className="text-xs text-white/55 leading-relaxed">
-                En esa misma pantalla toca <strong className="text-white/80">Acceso a Sitios Web</strong> → busca <strong className="text-white/80">ispsa.net</strong> → elige <strong className="text-orange-300">Permitir</strong>
-              </p>
-              <p className="text-xs text-white/25 mt-2 border-t border-white/10 pt-2">
-                ⚠️ Ambos pasos son necesarios. El permiso del botón AA en Safari no es suficiente.
-              </p>
+            <div className="mt-4 bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 text-left space-y-3">
+              <p className="text-xs text-orange-300 font-semibold uppercase tracking-wide">📱 iPhone — Ajustes de iOS</p>
+              <div>
+                <p className="text-xs text-white/70 font-semibold mb-0.5">Paso 1 — Permiso de Safari:</p>
+                <p className="text-xs text-white/55 leading-relaxed">
+                  <strong className="text-white/80">Ajustes → Privacidad y Seguridad → Localización → Safari</strong> → elige <strong className="text-orange-300">Al usar la app</strong>
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-white/70 font-semibold mb-0.5">Paso 2 — Permiso del sitio:</p>
+                <p className="text-xs text-white/55 leading-relaxed">
+                  En esa pantalla toca <strong className="text-white/80">Acceso a Sitios Web → ispsa.net → Permitir</strong>
+                </p>
+              </div>
+              <div className="bg-amber-500/8 border border-amber-500/20 rounded-lg p-2.5">
+                <p className="text-xs text-amber-300/80 font-semibold mb-0.5">⚠️ ¿Ya hiciste ambos pasos y sigue bloqueado?</p>
+                <p className="text-xs text-white/45 leading-relaxed">
+                  Safari guarda el rechazo aunque cambies los Ajustes. Cierra Safari completamente (desliza la app hacia arriba), vuelve a escanear el QR y acepta la ubicación cuando pregunte.
+                </p>
+              </div>
             </div>
 
             {/* Android */}
             <div className="mt-2 bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 text-left">
               <p className="text-xs text-orange-300 font-semibold uppercase tracking-wide mb-2">🤖 Android</p>
               <p className="text-xs text-white/55 leading-relaxed">
-                <strong className="text-white/80">Ajustes</strong> → <strong className="text-white/80">Aplicaciones</strong> → <strong className="text-white/80">Chrome</strong> → <strong className="text-white/80">Permisos</strong> → <strong className="text-white/80">Ubicación</strong> → <strong className="text-orange-300">Permitir todo el tiempo</strong>
+                <strong className="text-white/80">Ajustes → Aplicaciones → Chrome → Permisos → Ubicación → Permitir todo el tiempo</strong>
               </p>
             </div>
 
@@ -202,15 +211,16 @@ export default function RondaGuardia() {
               onClick={() => setEstado("esperando_gps")}
               className="mt-4 w-full py-3 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 rounded-xl text-sm text-orange-300 hover:text-orange-200 font-semibold transition-colors"
             >
-              Ya la activé — Intentar de nuevo
+              Ya lo hice — Intentar de nuevo
             </button>
 
             <button
               onClick={() => setEstado("enviando")}
-              className="mt-2 w-full py-2.5 bg-white/5 hover:bg-white/8 border border-white/10 rounded-xl text-xs text-white/35 hover:text-white/55 transition-colors"
+              className="mt-3 w-full py-3 bg-white/8 hover:bg-white/12 border border-white/15 rounded-xl text-sm text-white/60 hover:text-white/80 font-medium transition-colors"
             >
-              Continuar sin GPS (la marcación quedará sin validar)
+              Registrar sin GPS
             </button>
+            <p className="text-xs text-white/20 mt-1.5 text-center">La marcación queda sin validación de distancia</p>
           </div>
         )}
 
