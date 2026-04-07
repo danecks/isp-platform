@@ -1,4 +1,5 @@
-import { useState, useEffect, type ElementType } from "react";
+import { useState, useEffect, useRef, type ElementType } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "../layout/AdminLayout";
@@ -12,7 +13,7 @@ import {
   Link2, Unlink, Lock, Save, Banknote, MessageCircle, XCircle,
   TrendingDown, Minus, ShieldAlert, ShieldCheck, ShieldOff,
   ArrowUpRight, ArrowDownRight, Repeat2, ArrowLeftRight, MapPinned, Map, History,
-  UserCog, Sun, Umbrella, CheckCircle2, Info, ChevronRight,
+  UserCog, Sun, Umbrella, CheckCircle2, Info, ChevronRight, QrCode, Download,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
@@ -3031,7 +3032,7 @@ function FichaModal({
   onEdit: (e: Empleado) => void;
   onEstado: (e: Empleado, estado: string) => void;
 }) {
-  const [tab, setTab] = useState<"perfil" | "asignacion-op" | "asignaciones" | "sistema" | "operacion" | "kpi" | "anticipos" | "vacaciones">("perfil");
+  const [tab, setTab] = useState<"perfil" | "asignacion-op" | "asignaciones" | "sistema" | "operacion" | "kpi" | "anticipos" | "vacaciones" | "qr">("perfil");
   const [showEstado, setShowEstado] = useState(false);
   const [bajaModal, setBajaModal]   = useState(false);
   const est = ESTADO_LAB[emp.estadoLaboral] ?? { label: emp.estadoLaboral, color: "text-white/40 bg-white/5 border-white/10", dot: "bg-white/40" };
@@ -3041,11 +3042,55 @@ function FichaModal({
     { key: "asignacion-op", label: "Asignación",     icon: MapPinned },
     { key: "vacaciones",    label: "Vacaciones",     icon: Sun },
     { key: "asignaciones",  label: "Portal",         icon: Briefcase },
+    { key: "qr",            label: "Carnet QR",      icon: QrCode },
     { key: "sistema",       label: "Sistema",        icon: Lock },
     { key: "operacion",     label: "Operación",      icon: Activity },
     { key: "kpi",           label: "KPI",            icon: BarChart2 },
     { key: "anticipos",     label: "Anticipos",      icon: Wallet },
   ] as const;
+
+  // ── QR token state ─────────────────────────────────────────────────────────
+  const [qrTokenData, setQrTokenData] = useState<{ id: number; qr_token: string } | null | "loading">("loading");
+  const [generandoQr, setGenerandoQr] = useState(false);
+  const qrRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (tab !== "qr") return;
+    setQrTokenData("loading");
+    fetch(`/api/agente/tokens`)
+      .then(r => r.ok ? r.json() : [])
+      .then((lista: Array<{ employee_id: number; qr_token: string | null; token_id: number | null }>) => {
+        const found = lista.find(a => a.employee_id === emp.id);
+        setQrTokenData(found?.token_id && found.qr_token ? { id: found.token_id, qr_token: found.qr_token } : null);
+      })
+      .catch(() => setQrTokenData(null));
+  }, [tab, emp.id]);
+
+  async function generarQr() {
+    setGenerandoQr(true);
+    try {
+      const res = await fetch("/api/agente/tokens/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employee_id: emp.id }),
+      });
+      const data = await res.json();
+      if (data.ok && data.token) setQrTokenData({ id: data.token.id, qr_token: data.token.qr_token });
+    } finally { setGenerandoQr(false); }
+  }
+
+  function descargarQr() {
+    if (!qrRef.current) return;
+    const svg = qrRef.current.querySelector("svg");
+    if (!svg) return;
+    const canvas = document.createElement("canvas");
+    const sz = 300;
+    canvas.width = sz; canvas.height = sz;
+    const ctx = canvas.getContext("2d")!;
+    const img = new Image();
+    img.onload = () => { ctx.drawImage(img, 0, 0, sz, sz); const a = document.createElement("a"); a.download = `qr-${emp.nombreCompleto}.png`; a.href = canvas.toDataURL(); a.click(); };
+    img.src = "data:image/svg+xml;base64," + btoa(new XMLSerializer().serializeToString(svg));
+  }
 
   const ESTADOS_CAMBIO = ["activo", "suspendido", "baja", "licencia"].filter((e) => e !== emp.estadoLaboral);
 
@@ -3144,6 +3189,69 @@ function FichaModal({
           {tab === "asignacion-op" && <TabAsignacionOperativa empId={emp.id} />}
           {tab === "vacaciones" && <TabVacaciones emp={emp} />}
           {tab === "asignaciones" && <TabAsignaciones empId={emp.id} />}
+          {tab === "qr" && (
+            <div className="space-y-5">
+              <div className="flex items-center gap-2 mb-1">
+                <QrCode className="w-4 h-4 text-blue-400" />
+                <p className="text-white/60 text-sm font-semibold uppercase tracking-wide">Carnet QR del colaborador</p>
+              </div>
+
+              {qrTokenData === "loading" ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
+                </div>
+              ) : qrTokenData ? (
+                <>
+                  <div className="flex flex-col items-center gap-4">
+                    <div ref={qrRef} className="bg-white p-4 rounded-2xl shadow-xl">
+                      <QRCodeSVG
+                        value={`${window.location.origin}/agente?token=${qrTokenData.qr_token}`}
+                        size={180}
+                        level="H"
+                        includeMargin={false}
+                      />
+                    </div>
+                    <p className="text-white/40 text-xs text-center max-w-xs leading-relaxed">
+                      El agente escanea este código con cualquier cámara para fichar.
+                    </p>
+                  </div>
+
+                  <div className="bg-white/3 border border-white/8 rounded-xl p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-white/40 text-xs">Token activo</span>
+                      <span className="text-green-400 text-xs font-semibold">● Activo</span>
+                    </div>
+                    <p className="text-white/30 text-xs font-mono break-all">{qrTokenData.qr_token}</p>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button onClick={descargarQr}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/20 rounded-xl text-xs text-blue-300 font-semibold transition-colors">
+                      <Download className="w-3.5 h-3.5" /> Descargar QR
+                    </button>
+                    <button onClick={generarQr} disabled={generandoQr}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-amber-600/10 hover:bg-amber-600/20 border border-amber-500/20 rounded-xl text-xs text-amber-300 font-semibold transition-colors disabled:opacity-50">
+                      {generandoQr ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <QrCode className="w-3.5 h-3.5" />}
+                      Regenerar QR
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-6">
+                  <div className="w-16 h-16 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <QrCode className="w-8 h-8 text-white/20" />
+                  </div>
+                  <p className="text-white/50 text-sm mb-1 font-semibold">Sin código QR</p>
+                  <p className="text-white/30 text-xs mb-5">Este colaborador no tiene un código QR activo.</p>
+                  <button onClick={generarQr} disabled={generandoQr}
+                    className="px-6 py-2.5 bg-blue-600/15 hover:bg-blue-600/25 border border-blue-500/25 rounded-xl text-sm text-blue-300 font-semibold flex items-center gap-2 mx-auto disabled:opacity-50 transition-colors">
+                    {generandoQr ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
+                    Generar código QR
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           {tab === "sistema" && <TabSistema emp={emp} />}
           {tab === "operacion" && <TabOperacion empId={emp.id} />}
           {tab === "kpi" && <TabKPI empId={emp.id} />}

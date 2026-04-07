@@ -67,8 +67,7 @@ export const SYSTEM_MODULOS = [
   { clave: "armeria",             label: "Armería",                    seccion: "Bodega e Inventario" },
   // Migración
   { clave: "importacion",         label: "Importar Datos",             seccion: "Migración" },
-  { clave: "rondas_qr",           label: "Rondas QR",                  seccion: "Control Operativo" },
-  { clave: "fichaje_qr",          label: "QR Fichaje de Agentes",      seccion: "Control Operativo" },
+  { clave: "control_qr",          label: "Control Operativo QR",       seccion: "Control Operativo" },
 ];
 
 // GET /roles — listar todos los roles con conteo de permisos

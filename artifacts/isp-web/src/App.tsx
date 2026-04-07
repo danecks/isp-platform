@@ -61,8 +61,7 @@ import AdminPlanillasEspeciales from "@/admin/pages/PlanillasEspeciales";
 import AdminLibroSalarios from "@/admin/pages/LibroSalarios";
 import AdminBodega from "@/admin/pages/Bodega";
 import AdminImportacion from "@/admin/pages/Importacion";
-import AdminRondasQR from "@/admin/pages/RondasQR";
-import AdminFichajeQR from "@/admin/pages/FichajeQR";
+import AdminControlOperativoQR from "@/admin/pages/ControlOperativoQR";
 import AdminVacaciones from "@/admin/pages/AdminVacaciones";
 import RondaGuardia from "@/pages/RondaGuardia";
 import AgenteEscaneo from "@/pages/AgenteEscaneo";
@@ -248,11 +247,8 @@ function Router() {
       <Route path="/admin/importacion">
         {() => <AuthGuard requiredRoles={["admin"]}><AdminImportacion /></AuthGuard>}
       </Route>
-      <Route path="/admin/rondas-qr">
-        {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminRondasQR /></AuthGuard>}
-      </Route>
-      <Route path="/admin/fichaje-qr">
-        {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminFichajeQR /></AuthGuard>}
+      <Route path="/admin/control-operativo-qr">
+        {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminControlOperativoQR /></AuthGuard>}
       </Route>
       <Route path="/ronda" component={RondaGuardia} />
       <Route path="/agente" component={AgenteEscaneo} />

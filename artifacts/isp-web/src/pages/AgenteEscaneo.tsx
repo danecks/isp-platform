@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   CheckCircle, XCircle, Loader2, MapPin, AlertTriangle,
   QrCode, ShieldAlert, Star, ClipboardCheck, UserCheck, Smartphone,
-  Footprints, ChevronRight, RotateCcw, Clock, Bell, Users,
+  Footprints, ChevronRight, RotateCcw, Clock, Bell, Users, Package,
 } from "lucide-react";
 
 const API = "/api";
@@ -283,6 +283,14 @@ export default function AgenteEscaneo() {
   // Uniforme
   const [uniformeOk, setUniformeOk] = useState<boolean>(true);
   const [uniformeItems, setUniformeItems] = useState<{ tipo: string; talla: string }[]>([]);
+  // Llegada tarde
+  const [llegadaTarde, setLlegadaTarde] = useState<{ minutos: number } | null>(null);
+  const [tardanzaAck, setTardanzaAck] = useState(false);
+  // Equipo del puesto
+  const [equipoPuesto, setEquipoPuesto] = useState<Array<{ id: number; codigo: string; descripcion: string; tipo: string }>>([]);
+  const [equipoNovedades, setEquipoNovedades] = useState<Record<number, { estado: string; obs: string }>>({});
+  const [enviandoEquipo, setEnviandoEquipo] = useState(false);
+  const [equipoEnviado, setEquipoEnviado] = useState(false);
 
   const hora = new Date().toLocaleTimeString("es-HN", { hour: "2-digit", minute: "2-digit" });
   const fecha = new Date().toLocaleDateString("es-HN", { weekday: "long", day: "numeric", month: "long" });
@@ -410,6 +418,23 @@ export default function AgenteEscaneo() {
         if (data.ok) {
           setDistanciaRes(data.distancia_metros);
           if (data.fichaje_id) setFichajeIdParaReporte(data.fichaje_id);
+          // Detección de llegada tarde
+          const horaEntrada = agenteInfo?.puesto?.hora_entrada;
+          if (horaEntrada) {
+            const ahora = new Date();
+            const [hh, mm] = horaEntrada.split(":").map(Number);
+            const programada = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate(), hh, mm);
+            const diffMin = Math.round((ahora.getTime() - programada.getTime()) / 60000);
+            if (diffMin > 5) setLlegadaTarde({ minutos: diffMin });
+          }
+          // Cargar equipo del puesto si hay puesto asignado
+          const puestoId = agenteInfo?.puesto?.id;
+          if (puestoId) {
+            fetch(`${API}/agente/puesto/${puestoId}/equipo-asignado`)
+              .then(r => r.ok ? r.json() : null)
+              .then(eq => { if (eq?.equipo) setEquipoPuesto(eq.equipo); })
+              .catch(() => {});
+          }
           setEstado(data.resultado === "sin_gps" ? "sin_gps" : "ok");
         } else { setMensajeError(data.error || "Error desconocido"); setEstado("error"); }
       })
@@ -478,9 +503,33 @@ export default function AgenteEscaneo() {
       if (data.ok) {
         setReporteEnviado(true);
         if (data.responsable_anterior_nombre) setReporteResponsable(data.responsable_anterior_nombre);
+        // Enviar novedades de equipo del puesto si las hay
+        if (data.reporte_id && equipoPuesto.length > 0) {
+          await enviarEquipoNovedades(data.reporte_id);
+        }
       } else { setReporteError(data.error || "Error guardando reporte"); }
     } catch { setReporteError("Error de conexión"); }
     finally { setEnviandoReporte(false); }
+  }
+
+  // ── Enviar novedades de equipo del puesto ─────────────────────────────────
+  async function enviarEquipoNovedades(reporteId: number) {
+    if (equipoPuesto.length === 0) return;
+    setEnviandoEquipo(true);
+    try {
+      const novedades = equipoPuesto.map(item => ({
+        unidad_id: item.id,
+        estado: equipoNovedades[item.id]?.estado ?? "bueno",
+        observacion: equipoNovedades[item.id]?.obs ?? null,
+      }));
+      await fetch(`${API}/agente/reporte-turno/${reporteId}/equipo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ novedades }),
+      });
+      setEquipoEnviado(true);
+    } catch { /* no-op */ }
+    finally { setEnviandoEquipo(false); }
   }
 
   // ── ReporteTurnoForm: formulario de estado de arma/munición/uniforme ────────
@@ -688,6 +737,50 @@ export default function AgenteEscaneo() {
             </div>
           )}
         </div>
+
+        {/* ── Equipo del puesto (bodega) ── */}
+        {equipoPuesto.length > 0 && (
+          <div>
+            <p className="text-teal-300/70 text-xs font-semibold uppercase tracking-wide mb-2 flex items-center gap-1.5">
+              <Package className="w-3.5 h-3.5" /> Equipo del puesto ({equipoPuesto.length} {equipoPuesto.length === 1 ? "artículo" : "artículos"})
+            </p>
+            <div className="space-y-2">
+              {equipoPuesto.map(item => {
+                const nov = equipoNovedades[item.id];
+                return (
+                  <div key={item.id} className="bg-white/3 border border-white/8 rounded-xl p-3">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="min-w-0">
+                        <p className="text-xs text-white/70 font-semibold font-mono">{item.codigo}</p>
+                        <p className="text-xs text-white/40 truncate">{item.descripcion}</p>
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        {(["bueno", "novedad"] as const).map(opt => (
+                          <button key={opt} onClick={() =>
+                            setEquipoNovedades(prev => ({ ...prev, [item.id]: { ...prev[item.id], estado: opt, obs: prev[item.id]?.obs ?? "" } }))
+                          } className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                            (nov?.estado ?? "bueno") === opt
+                              ? opt === "bueno"
+                                ? "bg-green-500/15 border-green-500/30 text-green-300"
+                                : "bg-red-500/15 border-red-500/30 text-red-300"
+                              : "bg-white/3 border-white/10 text-white/35 hover:text-white/60"
+                          }`}>
+                            {opt === "bueno" ? "✓ OK" : "⚠ Novedad"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {nov?.estado === "novedad" && (
+                      <input value={nov.obs} onChange={e =>
+                        setEquipoNovedades(prev => ({ ...prev, [item.id]: { ...prev[item.id], obs: e.target.value } }))
+                      } placeholder="Descripción de la novedad..." className="w-full bg-white/5 border border-red-500/20 rounded-lg px-2.5 py-1.5 text-xs text-white/80 placeholder-white/20 outline-none" />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {reporteError && <p className="text-red-400 text-xs">{reporteError}</p>}
 
@@ -1155,6 +1248,33 @@ export default function AgenteEscaneo() {
                 <p className="text-white text-base font-semibold mt-1">{agenteInfo.nombre_completo}</p>
                 <p className="text-white/40 text-sm mt-1">{hora} — {fecha}</p>
 
+                {/* ── Llegada tarde — aviso OBLIGATORIO antes de continuar ── */}
+                {llegadaTarde && !tardanzaAck && (
+                  <div className="mt-5 bg-red-500/10 border border-red-500/30 rounded-2xl p-5 text-left">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-7 h-7 bg-red-500/20 border border-red-500/40 rounded-lg flex items-center justify-center shrink-0">
+                        <Clock className="w-4 h-4 text-red-400" />
+                      </div>
+                      <p className="text-red-300 font-bold text-sm uppercase tracking-wide">Registro de tardanza</p>
+                    </div>
+                    <p className="text-white/80 text-sm leading-relaxed mb-3">
+                      Su llegada se registró con <strong className="text-red-300">{llegadaTarde.minutos} minutos de retraso</strong> respecto a la hora programada de entrada al puesto.
+                    </p>
+                    <p className="text-white/60 text-sm leading-relaxed mb-4">
+                      Este registro queda asentado en el <strong className="text-white/90">expediente de asistencia</strong> con fecha y hora exactas. La tardanza es reportada conforme a las disposiciones del <strong className="text-white/90">Ministerio de Trabajo y Previsión Social</strong> de la República de Guatemala.
+                    </p>
+                    <p className="text-red-300/80 text-xs font-semibold mb-4">
+                      Al presionar el botón declara estar enterado de este registro.
+                    </p>
+                    <button onClick={() => setTardanzaAck(true)}
+                      className="w-full py-3 bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 rounded-xl text-sm text-red-300 font-bold transition-colors">
+                      Entendido — continuar
+                    </button>
+                  </div>
+                )}
+
+                {/* Resto del contenido solo se muestra si no hay tardanza pendiente de ack */}
+                {(!llegadaTarde || tardanzaAck) && (<>
                 <div className="mt-4 space-y-3 text-left">
 
                   {/* Puesto y horario */}
@@ -1192,16 +1312,17 @@ export default function AgenteEscaneo() {
                 </div>
 
                 {/* Reporte de turno (paso 2) */}
-                {(agenteInfo.armamento || agenteInfo.municion) && !reporteAbierto && !reporteEnviado && (
+                {(agenteInfo.armamento || agenteInfo.municion || equipoPuesto.length > 0) && !reporteAbierto && !reporteEnviado && (
                   <button onClick={() => setReporteAbierto(true)}
                     className="mt-4 w-full py-3 bg-slate-500/8 hover:bg-slate-500/15 border border-slate-500/20 rounded-xl text-sm text-white/50 hover:text-white/80 font-semibold transition-colors flex items-center justify-center gap-2">
                     <ClipboardCheck className="w-4 h-4" />
-                    Reportar estado de arma / munición / uniforme
+                    Completar relevo — arma / munición / equipo / uniforme
                   </button>
                 )}
                 {reporteAbierto && fichajeIdParaReporte && (
                   <ReporteTurnoForm fichajeId={fichajeIdParaReporte} tipo="fichaje" />
                 )}
+                </>)}
 
                 <p className="text-white/20 text-xs mt-5">Puedes cerrar esta ventana</p>
                 {esMaestro && (

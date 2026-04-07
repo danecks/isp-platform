@@ -386,17 +386,10 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Control Operativo",
     items: [
       {
-        path: "/admin/rondas-qr",
-        label: "Rondas QR",
-        icon: ScanLine,
-        clave: "rondas_qr",
-        roles: ["admin", "operaciones", "supervisor"],
-      },
-      {
-        path: "/admin/fichaje-qr",
-        label: "QR Fichaje de Agentes",
+        path: "/admin/control-operativo-qr",
+        label: "Control Operativo QR",
         icon: BadgeCheck,
-        clave: "fichaje_qr",
+        clave: "control_qr",
         roles: ["admin", "operaciones", "supervisor"],
       },
     ],

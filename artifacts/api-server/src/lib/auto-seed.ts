@@ -3525,12 +3525,12 @@ Por favor ingresa al sistema o responde para continuar.',
         ('admin','libro_salarios'),('admin','solicitudes_eliminacion'),('admin','usuarios'),
         ('admin','config_whatsapp'),('admin','cms'),('admin','simulador_wa'),
         ('admin','bodega'),('admin','vehiculos'),('admin','armeria'),
-        ('admin','importacion'),('admin','rondas_qr'),
+        ('admin','importacion'),('admin','control_qr'),
         ('operaciones','dashboard'),('operaciones','pizarron'),('operaciones','seguimiento_ssa'),
         ('operaciones','pipeline_ssa'),('operaciones','tareas'),('operaciones','incidencias'),
         ('operaciones','custodias'),('operaciones','cambios_estructurales'),('operaciones','clientes'),
         ('operaciones','reportes'),('operaciones','empleados'),('operaciones','eventos_rrhh'),
-        ('operaciones','bodega'),('operaciones','vehiculos'),('operaciones','armeria'),('operaciones','rondas_qr'),
+        ('operaciones','bodega'),('operaciones','vehiculos'),('operaciones','armeria'),('operaciones','control_qr'),
         ('rrhh','dashboard'),('rrhh','seguimiento_ssa'),('rrhh','pipeline_ssa'),('rrhh','cambios_estructurales'),
         ('rrhh','reportes'),('rrhh','empleados'),('rrhh','reclutamiento'),('rrhh','anticipos'),
         ('rrhh','eventos_rrhh'),('rrhh','alertas_rrhh'),('rrhh','nomina'),('rrhh','pre_planilla'),
@@ -3541,7 +3541,7 @@ Por favor ingresa al sistema o responde para continuar.',
         ('supervisor','dashboard'),('supervisor','pizarron'),('supervisor','seguimiento_ssa'),
         ('supervisor','pipeline_ssa'),('supervisor','tareas'),('supervisor','incidencias'),
         ('supervisor','custodias'),('supervisor','reportes'),('supervisor','empleados'),
-        ('supervisor','eventos_rrhh'),('supervisor','vehiculos'),('supervisor','armeria'),('supervisor','rondas_qr')
+        ('supervisor','eventos_rrhh'),('supervisor','vehiculos'),('supervisor','armeria'),('supervisor','control_qr')
       ON CONFLICT DO NOTHING
     `);
     logger.info("Auto-migrate: PERM-02 tabla rol_permisos creada/verificada con seed inicial");
@@ -3830,6 +3830,88 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.info("Auto-migrate: RT-01 tabla reporte_turno verificada/creada");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: RT-01 — error (no bloqueante)");
+  }
+
+  // ── RELEVO-01: novedades de equipo por relevo ─────────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS relevo_equipo_novedades (
+        id             SERIAL PRIMARY KEY,
+        reporte_id     INTEGER NOT NULL REFERENCES reporte_turno(id) ON DELETE CASCADE,
+        fichaje_id     INTEGER REFERENCES agente_fichajes(id) ON DELETE SET NULL,
+        puesto_id      INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        employee_id    INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        item_tipo      VARCHAR(40) NOT NULL,
+        item_nombre    VARCHAR(200) NOT NULL,
+        item_ref_id    INTEGER,
+        estado         VARCHAR(20) NOT NULL DEFAULT 'ok',
+        descripcion    TEXT,
+        registrado_en  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ren_reporte  ON relevo_equipo_novedades(reporte_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ren_puesto   ON relevo_equipo_novedades(puesto_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ren_fecha    ON relevo_equipo_novedades(registrado_en DESC)`);
+    logger.info("Auto-migrate: RELEVO-01 tabla relevo_equipo_novedades creada/verificada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: RELEVO-01 — error (no bloqueante)");
+  }
+
+  // ── BSOL-01: solicitudes generadas desde reportes de turno → bodega ───────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS bodega_solicitudes (
+        id              SERIAL PRIMARY KEY,
+        origen          VARCHAR(30) NOT NULL DEFAULT 'reporte_turno',
+        origen_id       INTEGER,
+        puesto_id       INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        employee_id     INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        tipo            VARCHAR(40) NOT NULL,
+        descripcion     TEXT NOT NULL,
+        articulo_id     INTEGER REFERENCES bodega_articulos(id) ON DELETE SET NULL,
+        talla           VARCHAR(20),
+        cantidad        INTEGER NOT NULL DEFAULT 1,
+        estado          VARCHAR(20) NOT NULL DEFAULT 'pendiente',
+        atendida_por    VARCHAR(120),
+        atendida_en     TIMESTAMPTZ,
+        notas           TEXT,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS bsol_estado   ON bodega_solicitudes(estado)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS bsol_puesto   ON bodega_solicitudes(puesto_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS bsol_tipo     ON bodega_solicitudes(tipo)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS bsol_fecha    ON bodega_solicitudes(created_at DESC)`);
+    logger.info("Auto-migrate: BSOL-01 tabla bodega_solicitudes creada/verificada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: BSOL-01 — error (no bloqueante)");
+  }
+
+  // ── ARMA-ORD-01: órdenes de servicio de armería ────────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS arma_ordenes_servicio (
+        id              SERIAL PRIMARY KEY,
+        arma_id         INTEGER REFERENCES armas(id) ON DELETE SET NULL,
+        origen          VARCHAR(30) NOT NULL DEFAULT 'reporte_turno',
+        origen_id       INTEGER,
+        puesto_id       INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        reportado_por   INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        descripcion     TEXT NOT NULL,
+        estado          VARCHAR(20) NOT NULL DEFAULT 'pendiente',
+        atendida_por    VARCHAR(120),
+        atendida_en     TIMESTAMPTZ,
+        notas_cierre    TEXT,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS aord_arma    ON arma_ordenes_servicio(arma_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS aord_estado  ON arma_ordenes_servicio(estado)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS aord_puesto  ON arma_ordenes_servicio(puesto_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS aord_fecha   ON arma_ordenes_servicio(created_at DESC)`);
+    logger.info("Auto-migrate: ARMA-ORD-01 tabla arma_ordenes_servicio creada/verificada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: ARMA-ORD-01 — error (no bloqueante)");
   }
 
   logger.info("Auto-seed completado");

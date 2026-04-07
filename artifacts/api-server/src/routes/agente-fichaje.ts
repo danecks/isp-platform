@@ -793,6 +793,8 @@ agenteFichajeRouter.post("/agente/reporte-turno", async (req, res) => {
       ]
     );
 
+    const reporteId = rows[0].id;
+
     // Nombre del responsable anterior (para responder al frontend)
     let responsable_anterior_nombre: string | null = null;
     if (municion_responsable_anterior) {
@@ -803,9 +805,47 @@ agenteFichajeRouter.post("/agente/reporte-turno", async (req, res) => {
       responsable_anterior_nombre = respRows[0]?.nombre_completo ?? null;
     }
 
+    // ── Auto-generar órdenes y solicitudes desde el reporte ──
+    try {
+      // Arma con novedad → orden de servicio en armería
+      if (arma_id && arma_estado === "necesita_reparacion") {
+        await pool.query(`
+          INSERT INTO arma_ordenes_servicio
+            (arma_id, origen, origen_id, puesto_id, reportado_por, descripcion, estado)
+          VALUES ($1,'reporte_turno',$2,$3,$4,$5,'pendiente')
+        `, [arma_id, reporteId, puesto_id ?? null, employee_id,
+            arma_observacion ?? "Novedad reportada en relevo"]);
+      }
+
+      // Munición faltante → solicitud a bodega (discrepancia)
+      if (municion_ok === false && municion_faltante > 0) {
+        await pool.query(`
+          INSERT INTO bodega_solicitudes
+            (origen, origen_id, puesto_id, employee_id, tipo, descripcion, cantidad, estado)
+          VALUES ('reporte_turno',$1,$2,$3,'discrepancia_municion',$4,$5,'pendiente')
+        `, [reporteId, puesto_id ?? null, employee_id,
+            `Discrepancia de munición reportada en relevo — ${municion_faltante} cartucho(s) faltante(s)`,
+            municion_faltante]);
+      }
+
+      // Uniforme faltante → solicitud por cada ítem
+      if (uniforme_ok === false && Array.isArray(uniforme_items_faltantes)) {
+        for (const item of uniforme_items_faltantes as Array<{ tipo: string; talla: string }>) {
+          await pool.query(`
+            INSERT INTO bodega_solicitudes
+              (origen, origen_id, puesto_id, employee_id, tipo, descripcion, talla, estado)
+            VALUES ('reporte_turno',$1,$2,$3,'dotacion_uniforme',$4,$5,'pendiente')
+          `, [reporteId, puesto_id ?? null, employee_id,
+              `Solicitud de dotación: ${item.tipo}`, item.talla ?? null]);
+        }
+      }
+    } catch (autoErr) {
+      logger.error({ err: autoErr }, "reporte-turno: error auto-generando solicitudes (no bloqueante)");
+    }
+
     res.json({
       ok: true,
-      reporte_id: rows[0].id,
+      reporte_id: reporteId,
       municion_responsable_anterior,
       responsable_anterior_nombre,
     });
@@ -901,5 +941,151 @@ agenteFichajeRouter.delete("/municion-puestos/:id", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: "Error eliminando munición" });
+  }
+});
+
+// GET /api/agente/puesto/:puestoId/equipo-asignado
+// Retorna todo el equipo asignado al puesto para el formulario de relevo
+agenteFichajeRouter.get("/agente/puesto/:puestoId/equipo-asignado", async (req, res) => {
+  const puestoId = Number(req.params.puestoId);
+  if (!puestoId) return res.status(400).json({ error: "puesto_id requerido" });
+  try {
+    // Arma
+    const { rows: armaRows } = await pool.query(`
+      SELECT id, codigo, CONCAT(COALESCE(marca,''), ' ', COALESCE(modelo,''), ' ', COALESCE(calibre,'')) AS nombre
+      FROM armas WHERE puesto_id = $1 AND activo = TRUE ORDER BY id LIMIT 1
+    `, [puestoId]);
+
+    // Munición
+    const { rows: munRows } = await pool.query(`
+      SELECT id, descripcion, cantidad_asignada FROM puesto_municion WHERE puesto_id = $1 AND activo = TRUE LIMIT 1
+    `, [puestoId]);
+
+    // Equipo de bodega asignado al puesto
+    const { rows: equipoRows } = await pool.query(`
+      SELECT bu.id, ba.nombre, ba.tipo_equipo, ba.categoria, bu.serie, bu.condicion
+      FROM bodega_unidades bu
+      JOIN bodega_articulos ba ON ba.id = bu.articulo_id
+      WHERE bu.puesto_id = $1
+        AND bu.estado = 'asignado_puesto'
+      ORDER BY ba.categoria, ba.nombre
+    `, [puestoId]);
+
+    res.json({
+      arma: armaRows[0] ?? null,
+      municion: munRows[0] ?? null,
+      equipo: equipoRows,
+    });
+  } catch (err) {
+    logger.error({ err }, "equipo-asignado GET: error");
+    res.status(500).json({ error: "Error obteniendo equipo del puesto" });
+  }
+});
+
+// POST /api/agente/reporte-turno/equipo — registrar novedades de equipo de relevo
+// Se llama DESPUÉS de crear el reporte-turno principal
+agenteFichajeRouter.post("/agente/reporte-turno/:reporteId/equipo", async (req, res) => {
+  const reporteId = Number(req.params.reporteId);
+  const { puesto_id, employee_id, fichaje_id, items } = req.body as {
+    puesto_id: number; employee_id: number; fichaje_id: number;
+    items: Array<{ item_tipo: string; item_nombre: string; item_ref_id?: number; estado: "ok" | "novedad"; descripcion?: string }>;
+  };
+
+  if (!reporteId || !Array.isArray(items)) return res.status(400).json({ error: "reporteId e items requeridos" });
+
+  try {
+    const insertedIds: number[] = [];
+
+    for (const item of items) {
+      const { rows } = await pool.query(`
+        INSERT INTO relevo_equipo_novedades
+          (reporte_id, fichaje_id, puesto_id, employee_id, item_tipo, item_nombre, item_ref_id, estado, descripcion)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        RETURNING id
+      `, [reporteId, fichaje_id ?? null, puesto_id ?? null, employee_id ?? null,
+          item.item_tipo, item.item_nombre, item.item_ref_id ?? null,
+          item.estado, item.descripcion ?? null]);
+      insertedIds.push(rows[0].id);
+
+      // Auto-generar solicitudes y órdenes cuando hay novedad
+      if (item.estado === "novedad") {
+        if (item.item_tipo === "arma") {
+          // Orden de servicio en armería
+          await pool.query(`
+            INSERT INTO arma_ordenes_servicio
+              (arma_id, origen, origen_id, puesto_id, reportado_por, descripcion, estado)
+            VALUES ($1,'reporte_turno',$2,$3,$4,$5,'pendiente')
+          `, [item.item_ref_id ?? null, reporteId, puesto_id ?? null, employee_id ?? null,
+              item.descripcion ?? `Novedad reportada en relevo: ${item.item_nombre}`]);
+        } else {
+          // Solicitud a bodega (equipo, uniforme, etc.)
+          await pool.query(`
+            INSERT INTO bodega_solicitudes
+              (origen, origen_id, puesto_id, employee_id, tipo, descripcion, estado)
+            VALUES ('reporte_turno',$1,$2,$3,$4,$5,'pendiente')
+          `, [reporteId, puesto_id ?? null, employee_id ?? null,
+              item.item_tipo,
+              item.descripcion ?? `Novedad en relevo — ${item.item_nombre}`]);
+        }
+      }
+    }
+
+    res.json({ ok: true, insertados: insertedIds.length });
+  } catch (err) {
+    logger.error({ err }, "reporte-turno/equipo POST: error");
+    res.status(500).json({ error: "Error registrando novedades de equipo" });
+  }
+});
+
+// Solicitudes de bodega generadas por reportes — para el panel de bodega
+agenteFichajeRouter.get("/bodega-solicitudes", async (req, res) => {
+  const { estado = "pendiente", tipo, limit = "100" } = req.query as Record<string, string>;
+  try {
+    const params: (string | number)[] = [];
+    const conds: string[] = [];
+    if (estado !== "todas") { params.push(estado); conds.push(`bs.estado = $${params.length}`); }
+    if (tipo) { params.push(tipo); conds.push(`bs.tipo = $${params.length}`); }
+    params.push(Number(limit));
+    const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    const { rows } = await pool.query(`
+      SELECT bs.*, po.nombre AS puesto_nombre, po.cliente_nombre,
+             e.nombre_completo AS agente_nombre
+      FROM bodega_solicitudes bs
+      LEFT JOIN puestos_operativos po ON po.id = bs.puesto_id
+      LEFT JOIN employees e ON e.id = bs.employee_id
+      ${where}
+      ORDER BY bs.created_at DESC
+      LIMIT $${params.length}
+    `, params);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Error obteniendo solicitudes de bodega" });
+  }
+});
+
+// Órdenes de servicio de armería — para el panel de armería
+agenteFichajeRouter.get("/arma-ordenes-servicio", async (req, res) => {
+  const { estado = "pendiente", limit = "100" } = req.query as Record<string, string>;
+  try {
+    const params: (string | number)[] = [];
+    const conds: string[] = [];
+    if (estado !== "todas") { params.push(estado); conds.push(`ao.estado = $${params.length}`); }
+    params.push(Number(limit));
+    const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    const { rows } = await pool.query(`
+      SELECT ao.*, a.codigo AS arma_codigo, a.marca, a.modelo, a.calibre,
+             po.nombre AS puesto_nombre, po.cliente_nombre,
+             e.nombre_completo AS reportado_por_nombre
+      FROM arma_ordenes_servicio ao
+      LEFT JOIN armas a ON a.id = ao.arma_id
+      LEFT JOIN puestos_operativos po ON po.id = ao.puesto_id
+      LEFT JOIN employees e ON e.id = ao.reportado_por
+      ${where}
+      ORDER BY ao.created_at DESC
+      LIMIT $${params.length}
+    `, params);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Error obteniendo órdenes de servicio" });
   }
 });
