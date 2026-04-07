@@ -118,9 +118,9 @@ function DashboardAdmin({
       <div>
         <p className="text-[10px] text-white/30 uppercase tracking-widest font-semibold mb-3">Operaciones</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard icon={AlertTriangle} label="Incidencias Activas"  value={s?.operaciones.incidencias_activas ?? "—"} sub="Abiertas o en proceso" color="red" />
-          <StatCard icon={Siren}         label="Emergencias Activas"  value={s?.operaciones.emergencias_activas ?? "—"} sub="Atención inmediata"   color="red" />
-          <StatCard icon={CheckSquare}   label="Tareas Pendientes"    value={s?.operaciones.tareas_pendientes ?? "—"}   sub="Por atender"          color="purple" />
+          <StatCard icon={AlertTriangle} label="Incidencias Activas"  value={s?.operaciones.incidencias_activas ?? "—"} sub="Abiertas o en proceso" color="red"    href="/admin/incidencias" />
+          <StatCard icon={Siren}         label="Emergencias Activas"  value={s?.operaciones.emergencias_activas ?? "—"} sub="Atención inmediata"   color="red"    href="/admin/incidencias" />
+          <StatCard icon={CheckSquare}   label="Tareas Pendientes"    value={s?.operaciones.tareas_pendientes ?? "—"}   sub="Por atender"          color="purple" href="/admin/tareas" />
           <StatCard icon={ShieldCheck}   label="SLA Cumplido"         value="98%"                                       sub="Mes actual"           color="green" />
         </div>
       </div>
@@ -129,10 +129,10 @@ function DashboardAdmin({
       <div>
         <p className="text-[10px] text-white/30 uppercase tracking-widest font-semibold mb-3">RRHH & Personal</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard icon={HardHat}     label="Colaboradores Activos"     value={s?.rrhh.empleados_activos ?? "—"}        sub="En plantilla activa"     color="blue" />
-          <StatCard icon={TrendingDown} label="Bajas Este Mes"           value={s?.rrhh.bajas_este_mes ?? "—"}           sub="Colaboradores dados de baja" color="red" />
-          <StatCard icon={BellRing}    label="Alertas RRHH Activas"      value={s?.rrhh.alertas_activas ?? "—"}          sub="Requieren atención"     color="gold" />
-          <StatCard icon={Wallet}      label="Anticipos Pendientes"       value={s?.rrhh.anticipos_pendientes ?? "—"}     sub="Por aprobar"            color="purple" />
+          <StatCard icon={HardHat}      label="Colaboradores Activos"  value={s?.rrhh.empleados_activos ?? "—"}        sub="En plantilla activa"         color="blue"   href="/admin/empleados" />
+          <StatCard icon={TrendingDown} label="Bajas Este Mes"         value={s?.rrhh.bajas_este_mes ?? "—"}           sub="Colaboradores dados de baja"  color="red"    href="/admin/empleados" />
+          <StatCard icon={BellRing}     label="Alertas RRHH Activas"   value={s?.rrhh.alertas_activas ?? "—"}          sub="Requieren atención"           color="gold"   href="/admin/rrhh/alertas" />
+          <StatCard icon={Wallet}       label="Anticipos Pendientes"   value={s?.rrhh.anticipos_pendientes ?? "—"}     sub="Por aprobar"                  color="purple" href="/admin/anticipos" />
         </div>
       </div>
 
@@ -140,10 +140,10 @@ function DashboardAdmin({
       <div>
         <p className="text-[10px] text-white/30 uppercase tracking-widest font-semibold mb-3">Comercial & Reclutamiento</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard icon={Briefcase}   label="Leads Nuevos"             value={s?.comercial.leads_nuevos ?? "—"}         sub="Sin asignar"            color="gold" />
-          <StatCard icon={Users}       label="Postulaciones Nuevas"      value={s?.comercial.postulaciones_nuevas ?? "—"} sub="Sin revisar"            color="blue" />
-          <StatCard icon={Timer}       label="Resp. Promedio"            value="12 min"                                   sub="Tiempo de respuesta"    color="gold" />
-          <StatCard icon={Landmark}    label="Liquidaciones Activas"     value={s?.rrhh.liquidaciones_confirmadas ?? "—"} sub="Confirmadas / pendientes" color="purple" />
+          <StatCard icon={Briefcase}   label="Leads Nuevos"            value={s?.comercial.leads_nuevos ?? "—"}         sub="Sin asignar"              color="gold"   href="/admin/comercial" />
+          <StatCard icon={Users}       label="Postulaciones Nuevas"    value={s?.comercial.postulaciones_nuevas ?? "—"} sub="Sin revisar"              color="blue"   href="/admin/reclutamiento" />
+          <StatCard icon={Timer}       label="Resp. Promedio"          value="12 min"                                   sub="Tiempo de respuesta"      color="gold" />
+          <StatCard icon={Landmark}    label="Liquidaciones Activas"   value={s?.rrhh.liquidaciones_confirmadas ?? "—"} sub="Confirmadas / pendientes"  color="purple" href="/admin/rrhh/prestaciones" />
         </div>
       </div>
 
@@ -268,12 +268,12 @@ function DashboardRRHH({
     <div className="space-y-8 max-w-[1400px]">
       {/* STATS */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-        <StatCard icon={HardHat}      label="Colaboradores Activos"  value={s?.empleados_activos ?? "—"}        sub="En plantilla activa"      color="blue"   />
-        <StatCard icon={TrendingDown} label="Bajas Este Mes"         value={s?.bajas_este_mes ?? "—"}           sub="Dados de baja este mes"  color="red"    />
-        <StatCard icon={BellRing}     label="Alertas Activas"        value={s?.alertas_activas ?? "—"}          sub="Requieren atención"       color="gold"   />
-        <StatCard icon={Wallet}       label="Anticipos Pendientes"   value={s?.anticipos_pendientes ?? "—"}     sub="Por aprobar"              color="purple" />
-        <StatCard icon={Users}        label="Postulaciones Nuevas"   value={s?.postulaciones_nuevas ?? "—"}     sub="Sin revisar"              color="blue"   />
-        <StatCard icon={Landmark}     label="Liquidaciones Activas"  value={s?.liquidaciones_confirmadas ?? "—"} sub="Confirmadas pendientes"  color="gold" />
+        <StatCard icon={HardHat}      label="Colaboradores Activos"  value={s?.empleados_activos ?? "—"}         sub="En plantilla activa"     color="blue"   href="/admin/empleados" />
+        <StatCard icon={TrendingDown} label="Bajas Este Mes"         value={s?.bajas_este_mes ?? "—"}            sub="Dados de baja este mes"  color="red"    href="/admin/empleados" />
+        <StatCard icon={BellRing}     label="Alertas Activas"        value={s?.alertas_activas ?? "—"}           sub="Requieren atención"      color="gold"   href="/admin/rrhh/alertas" />
+        <StatCard icon={Wallet}       label="Anticipos Pendientes"   value={s?.anticipos_pendientes ?? "—"}      sub="Por aprobar"             color="purple" href="/admin/anticipos" />
+        <StatCard icon={Users}        label="Postulaciones Nuevas"   value={s?.postulaciones_nuevas ?? "—"}      sub="Sin revisar"             color="blue"   href="/admin/reclutamiento" />
+        <StatCard icon={Landmark}     label="Liquidaciones Activas"  value={s?.liquidaciones_confirmadas ?? "—"} sub="Confirmadas pendientes"  color="gold"   href="/admin/rrhh/prestaciones" />
       </div>
 
       {/* QUICK LINKS */}
@@ -406,10 +406,10 @@ function DashboardOperaciones({
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard icon={AlertTriangle} label="Incidencias Activas"  value={s?.incidencias_activas ?? "—"} sub="Abiertas o en proceso" color="red"    />
-        <StatCard icon={Siren}         label="Emergencias Activas"  value={s?.emergencias_activas ?? "—"} sub="Atención inmediata"    color="red"    />
-        <StatCard icon={CheckSquare}   label="Tareas Pendientes"    value={s?.tareas_pendientes ?? "—"}   sub="Por atender"           color="purple" />
-        <StatCard icon={Truck}         label="Custodias Activas"    value="—"                             sub="En ruta o planificadas" color="blue"  />
+        <StatCard icon={AlertTriangle} label="Incidencias Activas"  value={s?.incidencias_activas ?? "—"} sub="Abiertas o en proceso"  color="red"    href="/admin/incidencias" />
+        <StatCard icon={Siren}         label="Emergencias Activas"  value={s?.emergencias_activas ?? "—"} sub="Atención inmediata"     color="red"    href="/admin/incidencias" />
+        <StatCard icon={CheckSquare}   label="Tareas Pendientes"    value={s?.tareas_pendientes ?? "—"}   sub="Por atender"            color="purple" href="/admin/tareas" />
+        <StatCard icon={Truck}         label="Custodias Activas"    value="—"                             sub="En ruta o planificadas" color="blue"   href="/admin/custodias" />
       </div>
 
       {/* QUICK LINKS */}
@@ -476,10 +476,10 @@ function DashboardComercial({
   return (
     <div className="space-y-8 max-w-[1400px]">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard icon={Briefcase}   label="Leads Nuevos"          value={s?.leads_nuevos ?? "—"}         sub="Sin asignar"        color="gold"   />
-        <StatCard icon={Users}       label="Postulaciones Nuevas"  value={s?.postulaciones_nuevas ?? "—"} sub="Sin revisar"        color="blue"   />
-        <StatCard icon={ShieldCheck} label="SLA Cumplido"          value="98%"                            sub="Mes actual"         color="green"  />
-        <StatCard icon={Timer}       label="Resp. Promedio"        value="12 min"                         sub="Tiempo de respuesta" color="gold"  />
+        <StatCard icon={Briefcase}   label="Leads Nuevos"          value={s?.leads_nuevos ?? "—"}         sub="Sin asignar"         color="gold"   href="/admin/comercial" />
+        <StatCard icon={Users}       label="Postulaciones Nuevas"  value={s?.postulaciones_nuevas ?? "—"} sub="Sin revisar"         color="blue"   href="/admin/reclutamiento" />
+        <StatCard icon={ShieldCheck} label="SLA Cumplido"          value="98%"                            sub="Mes actual"          color="green" />
+        <StatCard icon={Timer}       label="Resp. Promedio"        value="12 min"                         sub="Tiempo de respuesta" color="gold" />
       </div>
 
       <div>
