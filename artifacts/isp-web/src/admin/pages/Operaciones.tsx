@@ -2033,8 +2033,9 @@ interface SlotItem {
   empleado_estado: string | null;
 }
 
-// Ciclo de 14 días para el modal del Pizarrón
-const DIAS_C14 = Array.from({ length: 14 }, (_, i) => ({ n: i + 1, label: `D${i + 1}` }));
+// Ciclo de 14 días para el modal del Pizarrón — etiquetas Lun–Dom
+const DIAS_SEM_OP = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+const DIAS_C14 = Array.from({ length: 14 }, (_, i) => ({ n: i + 1, label: DIAS_SEM_OP[i % 7] }));
 const S1_14 = DIAS_C14.slice(0, 7);
 const S2_14 = DIAS_C14.slice(7, 14);
 
@@ -2050,30 +2051,34 @@ function ModalConfigTurno({
   const { toast } = useToast();
 
   // ── Ciclo de nómina ──────────────────────────────────────────────────────────
-  const [turnoId, setTurnoId]       = useState<string>(String(puesto.tipo_turno_id ?? ""));
+  const [turnoId, setTurnoId]         = useState<string>(String(puesto.tipo_turno_id ?? ""));
   const [fechaInicio, setFechaInicio] = useState<string>(puesto.fecha_inicio_ciclo ?? new Date().toISOString().slice(0, 10));
-  const [guardando, setGuardando]   = useState(false);
+  const [guardando, setGuardando]     = useState(false);
 
   // ── Slots ────────────────────────────────────────────────────────────────────
-  const [slots, setSlots]             = useState<SlotItem[]>([]);
+  const [slots, setSlots]               = useState<SlotItem[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(true);
   const [savingSlotId, setSavingSlotId] = useState<number | null>(null);
 
-  // ── Nuevo slot (form inline) ─────────────────────────────────────────────────
-  const [showAddSlot, setShowAddSlot]   = useState(false);
-  const [newHorasTurno, setNewHorasTurno] = useState<12 | 24>(24);
+  // ── Edición inline de agente en slot existente ────────────────────────────────
+  const [editAgentSlotId, setEditAgentSlotId] = useState<number | null>(null);
+  const [agentBusqueda, setAgentBusqueda]     = useState("");
+  const [agentResultados, setAgentResultados] = useState<any[]>([]);
+
+  // ── Nuevo titular (form inline) ───────────────────────────────────────────────
+  const [showAddSlot, setShowAddSlot]     = useState(false);
   const [newHoraEntrada, setNewHoraEntrada] = useState("07:00");
   const [newDiasTrabajo, setNewDiasTrabajo] = useState<number[]>([]);
   const [newFechaInicio, setNewFechaInicio] = useState(new Date().toISOString().slice(0, 10));
-  const [newBusqueda, setNewBusqueda]     = useState("");
-  const [newEmpleadoId, setNewEmpleadoId] = useState<number | null>(null);
+  const [newBusqueda, setNewBusqueda]       = useState("");
+  const [newEmpleadoId, setNewEmpleadoId]   = useState<number | null>(null);
   const [newEmpleadoNombre, setNewEmpleadoNombre] = useState("");
   const [newEmpleadoResultados, setNewEmpleadoResultados] = useState<any[]>([]);
-  const [creatingSlot, setCreatingSlot] = useState(false);
+  const [creatingSlot, setCreatingSlot]   = useState(false);
 
   const hd = () => ({ "Content-Type": "application/json", "x-isp-session": getSession() });
 
-  // Catálogo de turnos (para nómina)
+  // Catálogo de turnos
   const { data: turnos = [], isLoading: cargandoTurnos } = useQuery<TurnoApiItem[]>({
     queryKey: ["turnos-catalogo"],
     queryFn: async () => {
@@ -2083,6 +2088,21 @@ function ModalConfigTurno({
     },
     staleTime: 5 * 60_000,
   });
+
+  const turnoSel  = turnos.find(t => String(t.id) === turnoId) ?? null;
+  const maxSlots  = turnoSel?.num_titulares ?? 2;
+  const horasTurnoDefault = turnoSel ? Math.round(turnoSel.horas_trabajo) : 24;
+
+  // Hora de salida calculada
+  function calcSalida(horaEntrada: string, horasTurno: number): string {
+    const [hh, mm] = (horaEntrada || "00:00").split(":").map(Number);
+    if (isNaN(hh) || isNaN(mm)) return "—";
+    const totalMin = hh * 60 + mm + horasTurno * 60;
+    const sh = Math.floor(totalMin / 60) % 24;
+    const sm = totalMin % 60;
+    const overflow = totalMin >= 24 * 60;
+    return `${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}${overflow ? " +1d" : ""}`;
+  }
 
   async function loadSlots(silent = false) {
     if (!silent) setLoadingSlots(true);
@@ -2095,7 +2115,20 @@ function ModalConfigTurno({
 
   useEffect(() => { loadSlots(); }, [puesto.id]);
 
-  // Búsqueda de empleados para el nuevo slot
+  // Búsqueda de agentes para slot existente (inline)
+  useEffect(() => {
+    if (!editAgentSlotId || agentBusqueda.length < 2) { setAgentResultados([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`${API_BASE}/employees?q=${encodeURIComponent(agentBusqueda)}&limit=8`, { headers: hd() });
+        const data = await r.json();
+        setAgentResultados(Array.isArray(data) ? data : (data.employees || []));
+      } catch { setAgentResultados([]); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [editAgentSlotId, agentBusqueda]);
+
+  // Búsqueda de agentes para nuevo slot
   useEffect(() => {
     if (newBusqueda.length < 2) { setNewEmpleadoResultados([]); return; }
     const t = setTimeout(async () => {
@@ -2108,6 +2141,29 @@ function ModalConfigTurno({
     return () => clearTimeout(t);
   }, [newBusqueda]);
 
+  // Guardar campo individual de slot existente
+  async function updateSlotField(slotId: number, field: string, value: any) {
+    setSavingSlotId(slotId);
+    try {
+      await fetch(`${API_BASE}/slots/${slotId}`, {
+        method: "PUT", headers: hd(),
+        body: JSON.stringify({ [field]: value }),
+      });
+    } catch {}
+    setSavingSlotId(null);
+  }
+
+  // Asignar agente a slot existente
+  async function assignAgent(slotId: number, empleadoId: number | null, nombre: string) {
+    setSlots(prev => prev.map(s => s.id === slotId ? { ...s, empleado_id: empleadoId, empleado_nombre: nombre || null } : s));
+    setEditAgentSlotId(null);
+    setAgentBusqueda("");
+    setAgentResultados([]);
+    await updateSlotField(slotId, "empleado_id", empleadoId);
+    onSaved();
+  }
+
+  // Toggle día en slot existente
   async function toggleDia(slot: SlotItem, day: number) {
     const nuevos = slot.dias_trabajo.includes(day)
       ? slot.dias_trabajo.filter(d => d !== day)
@@ -2124,7 +2180,7 @@ function ModalConfigTurno({
   }
 
   async function deleteSlot(id: number) {
-    if (!confirm("¿Eliminar este slot de turno?")) return;
+    if (!confirm("¿Eliminar este titular del puesto?")) return;
     await fetch(`${API_BASE}/slots/${id}`, { method: "DELETE", headers: hd() });
     loadSlots(true);
     onSaved();
@@ -2140,15 +2196,15 @@ function ModalConfigTurno({
       const r = await fetch(`${API_BASE}/puestos/${puesto.id}/slots`, {
         method: "POST", headers: hd(),
         body: JSON.stringify({
-          horas_turno: newHorasTurno,
+          horas_turno: horasTurnoDefault,
           hora_entrada: newHoraEntrada,
           dias_trabajo: newDiasTrabajo,
           fecha_inicio_ciclo: newFechaInicio || null,
           empleado_id: newEmpleadoId || null,
         }),
       });
-      if (!r.ok) { const e = await r.json(); throw new Error(e.error ?? "Error al crear slot"); }
-      toast({ title: "✅ Slot creado" });
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error ?? "Error al crear titular"); }
+      toast({ title: "✅ Titular agregado" });
       setShowAddSlot(false);
       setNewDiasTrabajo([]);
       setNewBusqueda("");
@@ -2163,7 +2219,7 @@ function ModalConfigTurno({
   }
 
   async function guardarTurno() {
-    if (!turnoId) { toast({ title: "Seleccioná un ciclo de nómina", variant: "destructive" }); return; }
+    if (!turnoId) { toast({ title: "Seleccioná un tipo de turno", variant: "destructive" }); return; }
     setGuardando(true);
     try {
       const r = await fetch(`${API_BASE}/operaciones/puestos/${puesto.id}/turno`, {
@@ -2171,7 +2227,7 @@ function ModalConfigTurno({
         body: JSON.stringify({ tipo_turno_id: parseInt(turnoId), fecha_inicio_ciclo: fechaInicio }),
       });
       if (!r.ok) { const e = await r.json(); throw new Error(e.error ?? "Error al guardar"); }
-      toast({ title: "✅ Ciclo de nómina actualizado" });
+      toast({ title: "✅ Turno actualizado" });
       onSaved();
     } catch (err: unknown) {
       toast({ title: (err as Error).message, variant: "destructive" });
@@ -2184,6 +2240,8 @@ function ModalConfigTurno({
       prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort((a, b) => a - b)
     );
   }
+
+  const canAddMore = turnoId && slots.length < maxSlots;
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
@@ -2210,9 +2268,9 @@ function ModalConfigTurno({
         <div className="overflow-y-auto flex-1">
           <div className="p-5 space-y-5">
 
-            {/* ── Ciclo de nómina (compacto) ── */}
+            {/* ── Tipo de turno ── */}
             <div className="p-3.5 bg-white/2 border border-white/8 rounded-xl space-y-2">
-              <p className="text-[9px] font-semibold text-white/30 uppercase tracking-widest">Ciclo de nómina (para planilla)</p>
+              <p className="text-[9px] font-semibold text-white/30 uppercase tracking-widest">Tipo de turno</p>
               <div className="flex items-center gap-2">
                 {cargandoTurnos ? (
                   <div className="flex items-center gap-2 text-white/30 text-xs flex-1">
@@ -2224,10 +2282,10 @@ function ModalConfigTurno({
                     onChange={e => setTurnoId(e.target.value)}
                     className="flex-1 bg-[#0d1e38] border border-white/12 text-white/70 text-xs rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500/50"
                   >
-                    <option value="">— Seleccionar ciclo —</option>
+                    <option value="">— Seleccionar turno —</option>
                     {turnos.filter(t => t.id).map(t => (
                       <option key={t.id} value={String(t.id)}>
-                        {t.nombre} — {t.tipo_ciclo === "diario" ? `${t.horas_trabajo}h/día` : `${Math.ceil(t.horas_trabajo / 24)}d / ${Math.ceil(t.horas_descanso / 24)}d`}
+                        {t.nombre} · {t.horas_trabajo}h · {t.num_titulares} titular{t.num_titulares !== 1 ? "es" : ""}
                       </option>
                     ))}
                   </select>
@@ -2236,7 +2294,7 @@ function ModalConfigTurno({
                   type="date"
                   value={fechaInicio}
                   onChange={e => setFechaInicio(e.target.value)}
-                  className="bg-[#0d1e38] border border-white/12 text-white/60 text-xs rounded-lg px-2 py-2 focus:outline-none focus:border-indigo-500/50 w-34 shrink-0"
+                  className="bg-[#0d1e38] border border-white/12 text-white/60 text-xs rounded-lg px-2 py-2 focus:outline-none focus:border-indigo-500/50 w-36 shrink-0"
                 />
                 <button
                   onClick={guardarTurno}
@@ -2247,69 +2305,141 @@ function ModalConfigTurno({
                   Guardar
                 </button>
               </div>
+              {turnoSel && (
+                <p className="text-[9px] text-white/25">
+                  {turnoSel.tipo_ciclo === "diario"
+                    ? `Turno diario de ${turnoSel.horas_trabajo}h. 1 titular cubre el puesto todos los días.`
+                    : `Turno alternado ${turnoSel.nombre}. ${turnoSel.num_titulares} titulares se relevan en ciclo de 14 días.`
+                  }
+                </p>
+              )}
             </div>
 
-            {/* ── Plantilla de turnos — cuadrícula 14 días ── */}
+            {/* ── Titulares (slots de turnos) ── */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <p className="text-[9px] font-semibold text-white/30 uppercase tracking-widest">
-                  Plantilla de turnos — ciclo 14 días
+                  Titulares del puesto — ciclo 2 semanas
                 </p>
-                <span className="text-[9px] text-white/20">{slots.length} slot{slots.length !== 1 ? "s" : ""} · Los cambios se guardan al instante</span>
+                <span className="text-[9px] text-white/20">
+                  {slots.length}/{turnoId ? maxSlots : "?"} titular{maxSlots !== 1 ? "es" : ""} · cambios al instante
+                </span>
               </div>
 
-              {loadingSlots ? (
-                <div className="flex items-center justify-center py-10">
+              {!turnoId && (
+                <div className="py-6 text-center border border-dashed border-white/8 rounded-xl">
+                  <p className="text-[10px] text-white/25 italic">Seleccioná primero el tipo de turno</p>
+                </div>
+              )}
+
+              {turnoId && loadingSlots && (
+                <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-4 h-4 text-white/20 animate-spin" />
                 </div>
-              ) : slots.length === 0 && !showAddSlot ? (
-                <div className="text-center py-8 border border-dashed border-white/10 rounded-xl">
-                  <p className="text-xs text-white/25 italic mb-2">Sin slots definidos aún</p>
-                  <button
-                    onClick={() => setShowAddSlot(true)}
-                    className="text-[10px] text-indigo-400 hover:text-indigo-300 underline"
-                  >
-                    Agregar primer slot
-                  </button>
-                </div>
-              ) : (
+              )}
+
+              {turnoId && !loadingSlots && (
                 <div className="space-y-2">
                   {slots.map(slot => {
                     const saving = savingSlotId === slot.id;
+                    const isEditingAgent = editAgentSlotId === slot.id;
+                    const salida = calcSalida(slot.hora_entrada, slot.horas_turno);
                     return (
                       <div key={slot.id} className="bg-[#080f1e] border border-white/8 rounded-xl p-3 space-y-2">
-                        {/* Slot header */}
+                        {/* Fila superior: T1/T2 | Agente | Hora entrada → salida | Delete */}
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[9px] text-white/30 font-mono">#{slot.slot_numero}</span>
-                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${slot.horas_turno === 24 ? "text-blue-300 bg-blue-500/10 border-blue-500/20" : "text-purple-300 bg-purple-500/10 border-purple-500/20"}`}>
-                            {slot.horas_turno}h
+                          {/* Badge titular */}
+                          <span className="text-[9px] font-bold text-indigo-300/70 bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.5 rounded-full shrink-0">
+                            T{slot.slot_numero}
                           </span>
-                          <span className="text-[9px] text-white/30">{slot.hora_entrada}</span>
-                          {slot.fecha_inicio_ciclo && (
-                            <span className="text-[8px] text-white/20">D1={slot.fecha_inicio_ciclo}</span>
-                          )}
-                          <div className="flex-1" />
-                          {slot.empleado_nombre ? (
-                            <span className="text-[9px] text-emerald-400/70 bg-emerald-400/8 border border-emerald-400/15 px-2 py-0.5 rounded-full truncate max-w-[160px]">
-                              {slot.empleado_nombre}
-                            </span>
+
+                          {/* Agente inline */}
+                          {isEditingAgent ? (
+                            <div className="relative flex-1 min-w-0">
+                              <input
+                                autoFocus
+                                type="text"
+                                value={agentBusqueda}
+                                onChange={e => setAgentBusqueda(e.target.value)}
+                                placeholder="Buscar agente por nombre…"
+                                className="w-full bg-[#0d1e38] border border-indigo-500/40 text-white/80 text-[10px] rounded-lg px-2.5 py-1.5 focus:outline-none placeholder-white/20"
+                              />
+                              {agentResultados.length > 0 && (
+                                <div className="absolute top-full left-0 right-0 mt-1 bg-[#0a1628] border border-white/10 rounded-lg divide-y divide-white/5 max-h-28 overflow-y-auto z-30">
+                                  {agentResultados.map((emp: any) => {
+                                    const nombre = emp.nombre_completo || emp.nombreCompleto || "";
+                                    return (
+                                      <button
+                                        key={emp.id}
+                                        onClick={() => assignAgent(slot.id, emp.id, nombre)}
+                                        className="w-full text-left px-2.5 py-1.5 text-[10px] text-white/70 hover:bg-white/5 transition-colors"
+                                      >
+                                        {nombre}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
                           ) : (
-                            <span className="text-[9px] text-white/20 italic">Sin agente</span>
+                            <button
+                              onClick={() => { setEditAgentSlotId(slot.id); setAgentBusqueda(""); setAgentResultados([]); }}
+                              className="flex items-center gap-1.5 text-[10px] rounded-lg px-2 py-1 hover:bg-white/5 transition-colors group"
+                            >
+                              {slot.empleado_nombre ? (
+                                <span className="text-emerald-400/80 group-hover:text-emerald-300">{slot.empleado_nombre}</span>
+                              ) : (
+                                <span className="text-white/25 italic group-hover:text-white/50">Sin agente · asignar</span>
+                              )}
+                              <UserPlus className="w-2.5 h-2.5 text-white/20 group-hover:text-white/50" />
+                            </button>
                           )}
+
+                          {isEditingAgent && (
+                            <button
+                              onClick={() => { setEditAgentSlotId(null); setAgentBusqueda(""); setAgentResultados([]); }}
+                              className="text-[9px] text-white/30 hover:text-white/60 underline shrink-0"
+                            >
+                              cancelar
+                            </button>
+                          )}
+
+                          <div className="flex-1" />
+
+                          {/* Hora entrada editable + salida calculada */}
+                          <div className="flex items-center gap-1 shrink-0">
+                            <input
+                              type="time"
+                              defaultValue={slot.hora_entrada}
+                              onBlur={e => {
+                                const newHora = e.target.value;
+                                if (newHora !== slot.hora_entrada) {
+                                  setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, hora_entrada: newHora } : s));
+                                  updateSlotField(slot.id, "hora_entrada", newHora);
+                                }
+                              }}
+                              className="bg-[#0d1e38] border border-white/10 text-white/60 text-[10px] rounded px-1.5 py-1 focus:outline-none focus:border-indigo-500/40 w-[72px]"
+                              title="Hora de inicio del turno"
+                            />
+                            <span className="text-[9px] text-white/20">→</span>
+                            <span className="text-[10px] text-white/40 font-mono w-16">{salida}</span>
+                          </div>
+
+                          {/* Delete */}
                           <button
                             onClick={() => deleteSlot(slot.id)}
                             className="p-1 text-red-400/20 hover:text-red-400 transition-colors shrink-0"
-                            title="Eliminar slot"
+                            title="Quitar titular"
                           >
                             <X className="w-3 h-3" />
                           </button>
                         </div>
 
-                        {/* 14-day grid: 2 filas de 7 */}
+                        {/* Cuadrícula 2 semanas: Lun-Dom */}
                         <div className="space-y-1">
                           {[S1_14, S2_14].map((semana, si) => (
                             <div key={si} className="flex items-center gap-0.5">
-                              <span className="text-[8px] text-white/20 w-5 shrink-0">S{si + 1}</span>
+                              <span className="text-[8px] text-white/20 w-6 shrink-0 font-medium">S{si + 1}</span>
                               {semana.map(({ n, label }) => {
                                 const trabaja = slot.dias_trabajo.includes(n);
                                 return (
@@ -2317,134 +2447,150 @@ function ModalConfigTurno({
                                     key={n}
                                     disabled={saving}
                                     onClick={() => toggleDia(slot, n)}
-                                    title={trabaja ? `${label} trabaja → clic para descanso` : `${label} descansa → clic para trabajo`}
-                                    className={`flex-1 h-7 rounded text-[9px] font-bold border transition-all ${
+                                    title={trabaja ? `${label} (S${si+1}) trabaja` : `${label} (S${si+1}) descansa`}
+                                    className={`flex-1 h-8 rounded text-[9px] font-semibold border transition-all ${
                                       trabaja
-                                        ? "bg-indigo-500/20 border-indigo-500/50 text-indigo-300 hover:bg-indigo-500/10"
-                                        : "bg-white/3 border-white/8 text-white/15 hover:border-white/20 hover:text-white/30"
+                                        ? "bg-indigo-500/20 border-indigo-500/50 text-indigo-200 hover:bg-indigo-500/10"
+                                        : "bg-white/3 border-white/8 text-white/20 hover:border-white/20 hover:text-white/40"
                                     } ${saving ? "opacity-40 cursor-wait" : "cursor-pointer"}`}
                                   >
-                                    {trabaja ? label : "·"}
+                                    {label}
                                   </button>
                                 );
                               })}
                             </div>
                           ))}
                         </div>
+                        <p className="text-[8px] text-white/15">
+                          {slot.dias_trabajo.length} día{slot.dias_trabajo.length !== 1 ? "s" : ""} trabaja · {14 - slot.dias_trabajo.length} descansa · turno de {slot.horas_turno}h
+                        </p>
                       </div>
                     );
                   })}
-                </div>
-              )}
 
-              {/* Formulario inline: agregar slot */}
-              {showAddSlot ? (
-                <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-xl p-4 space-y-3">
-                  <p className="text-[9px] font-semibold text-indigo-300/60 uppercase tracking-wide">Nuevo slot de turno</p>
+                  {/* Formulario: nuevo titular */}
+                  {showAddSlot ? (
+                    <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-xl p-4 space-y-3">
+                      <p className="text-[9px] font-semibold text-indigo-300/60 uppercase tracking-wide">
+                        Titular {slots.length + 1} — turno de {horasTurnoDefault}h
+                      </p>
 
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <div className="flex gap-1">
-                      {([12, 24] as const).map(h => (
-                        <button
-                          key={h}
-                          onClick={() => setNewHorasTurno(h)}
-                          className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${newHorasTurno === h ? "bg-indigo-500/20 border-indigo-500/50 text-indigo-300" : "bg-white/4 border-white/10 text-white/35 hover:text-white/60"}`}
-                        >
-                          {h}h
-                        </button>
-                      ))}
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <label className="text-[9px] text-white/30">Hora</label>
-                      <input type="time" value={newHoraEntrada} onChange={e => setNewHoraEntrada(e.target.value)}
-                        className="bg-[#0d1e38] border border-white/12 text-white/70 text-[10px] rounded px-2 py-1.5 focus:outline-none focus:border-indigo-500/50" />
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <label className="text-[9px] text-white/30">D1</label>
-                      <input type="date" value={newFechaInicio} onChange={e => setNewFechaInicio(e.target.value)}
-                        className="bg-[#0d1e38] border border-white/12 text-white/60 text-[10px] rounded px-2 py-1.5 focus:outline-none focus:border-indigo-500/50 w-32" />
-                    </div>
-                  </div>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-[9px] text-white/30">Hora inicio</label>
+                          <input
+                            type="time"
+                            value={newHoraEntrada}
+                            onChange={e => setNewHoraEntrada(e.target.value)}
+                            className="bg-[#0d1e38] border border-white/12 text-white/70 text-[10px] rounded px-2 py-1.5 focus:outline-none focus:border-indigo-500/50"
+                          />
+                        </div>
+                        {newHoraEntrada && (
+                          <span className="text-[9px] text-white/30">
+                            → sale: <strong className="text-white/50">{calcSalida(newHoraEntrada, horasTurnoDefault)}</strong>
+                          </span>
+                        )}
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-[9px] text-white/30">Lun S1 =</label>
+                          <input
+                            type="date"
+                            value={newFechaInicio}
+                            onChange={e => setNewFechaInicio(e.target.value)}
+                            className="bg-[#0d1e38] border border-white/12 text-white/60 text-[10px] rounded px-2 py-1.5 focus:outline-none focus:border-indigo-500/50 w-32"
+                          />
+                        </div>
+                      </div>
 
-                  <div className="space-y-1">
-                    {[S1_14, S2_14].map((semana, si) => (
-                      <div key={si} className="flex items-center gap-0.5">
-                        <span className="text-[8px] text-white/20 w-5 shrink-0">S{si + 1}</span>
-                        {semana.map(({ n, label }) => (
-                          <button
-                            key={n}
-                            onClick={() => toggleNewDia(n)}
-                            className={`flex-1 h-7 rounded text-[9px] font-bold border transition-all ${
-                              newDiasTrabajo.includes(n)
-                                ? "bg-indigo-500/20 border-indigo-500/50 text-indigo-300"
-                                : "bg-white/3 border-white/8 text-white/20 hover:border-white/20 hover:text-white/40"
-                            }`}
-                          >
-                            {newDiasTrabajo.includes(n) ? label : "·"}
-                          </button>
+                      {/* Grid días: Lun-Dom x2 */}
+                      <div className="space-y-1">
+                        {[S1_14, S2_14].map((semana, si) => (
+                          <div key={si} className="flex items-center gap-0.5">
+                            <span className="text-[8px] text-white/20 w-6 shrink-0">S{si + 1}</span>
+                            {semana.map(({ n, label }) => (
+                              <button
+                                key={n}
+                                onClick={() => toggleNewDia(n)}
+                                className={`flex-1 h-8 rounded text-[9px] font-semibold border transition-all ${
+                                  newDiasTrabajo.includes(n)
+                                    ? "bg-indigo-500/20 border-indigo-500/50 text-indigo-200"
+                                    : "bg-white/3 border-white/8 text-white/20 hover:border-white/20 hover:text-white/40"
+                                }`}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
                         ))}
                       </div>
-                    ))}
-                  </div>
-                  <p className="text-[9px] text-white/25">{newDiasTrabajo.length} días trabaja · {14 - newDiasTrabajo.length} días descansa</p>
+                      <p className="text-[9px] text-white/25">{newDiasTrabajo.length} días trabaja · {14 - newDiasTrabajo.length} días descansa</p>
 
-                  <div className="relative">
-                    <label className="text-[9px] text-white/30 block mb-1">Agente (opcional)</label>
-                    <input
-                      type="text"
-                      value={newBusqueda}
-                      onChange={e => { setNewBusqueda(e.target.value); if (!e.target.value) { setNewEmpleadoId(null); setNewEmpleadoNombre(""); } }}
-                      placeholder="Buscar por nombre…"
-                      className="w-full bg-[#0d1e38] border border-white/12 text-white/70 text-[10px] rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500/50 placeholder-white/20"
-                    />
-                    {newEmpleadoResultados.length > 0 && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-[#0a1628] border border-white/10 rounded-lg divide-y divide-white/5 max-h-32 overflow-y-auto z-20">
-                        {newEmpleadoResultados.map((emp: any) => {
-                          const nombre = emp.nombre_completo || emp.nombreCompleto || "";
-                          return (
-                            <button
-                              key={emp.id}
-                              onClick={() => { setNewEmpleadoId(emp.id); setNewBusqueda(nombre); setNewEmpleadoNombre(nombre); setNewEmpleadoResultados([]); }}
-                              className="w-full text-left px-3 py-1.5 text-[10px] text-white/70 hover:bg-white/5 transition-colors"
-                            >
-                              {nombre}
-                            </button>
-                          );
-                        })}
+                      {/* Búsqueda de agente */}
+                      <div className="relative">
+                        <label className="text-[9px] text-white/30 block mb-1">Agente (opcional)</label>
+                        <input
+                          type="text"
+                          value={newBusqueda}
+                          onChange={e => { setNewBusqueda(e.target.value); if (!e.target.value) { setNewEmpleadoId(null); setNewEmpleadoNombre(""); } }}
+                          placeholder="Buscar por nombre…"
+                          className="w-full bg-[#0d1e38] border border-white/12 text-white/70 text-[10px] rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500/50 placeholder-white/20"
+                        />
+                        {newEmpleadoResultados.length > 0 && (
+                          <div className="absolute top-full left-0 right-0 mt-1 bg-[#0a1628] border border-white/10 rounded-lg divide-y divide-white/5 max-h-32 overflow-y-auto z-20">
+                            {newEmpleadoResultados.map((emp: any) => {
+                              const nombre = emp.nombre_completo || emp.nombreCompleto || "";
+                              return (
+                                <button
+                                  key={emp.id}
+                                  onClick={() => { setNewEmpleadoId(emp.id); setNewBusqueda(nombre); setNewEmpleadoNombre(nombre); setNewEmpleadoResultados([]); }}
+                                  className="w-full text-left px-3 py-1.5 text-[10px] text-white/70 hover:bg-white/5 transition-colors"
+                                >
+                                  {nombre}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
 
-                  <div className="flex gap-2 pt-1">
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          onClick={() => { setShowAddSlot(false); setNewDiasTrabajo([]); setNewBusqueda(""); setNewEmpleadoId(null); setNewEmpleadoNombre(""); }}
+                          className="flex-1 py-2 border border-white/10 text-white/40 rounded-lg text-[10px] hover:text-white/70 transition-colors"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          onClick={createSlot}
+                          disabled={creatingSlot || newDiasTrabajo.length === 0}
+                          className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-[10px] font-semibold rounded-lg transition-colors flex items-center justify-center gap-1"
+                        >
+                          {creatingSlot ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                          Agregar titular
+                        </button>
+                      </div>
+                    </div>
+                  ) : canAddMore ? (
                     <button
-                      onClick={() => { setShowAddSlot(false); setNewDiasTrabajo([]); setNewBusqueda(""); setNewEmpleadoId(null); }}
-                      className="flex-1 py-2 border border-white/10 text-white/40 rounded-lg text-[10px] hover:text-white/70 transition-colors"
+                      onClick={() => setShowAddSlot(true)}
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-3 border border-dashed border-indigo-500/20 hover:border-indigo-500/40 hover:bg-indigo-500/5 text-indigo-400/40 hover:text-indigo-400/70 text-[10px] rounded-xl transition-colors"
                     >
-                      Cancelar
+                      <span className="text-sm leading-none">+</span>
+                      Agregar Titular {slots.length + 1} de {maxSlots}
                     </button>
-                    <button
-                      onClick={createSlot}
-                      disabled={creatingSlot || newDiasTrabajo.length === 0}
-                      className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-[10px] font-semibold rounded-lg transition-colors flex items-center justify-center gap-1"
-                    >
-                      {creatingSlot ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
-                      Crear slot
-                    </button>
-                  </div>
+                  ) : slots.length >= maxSlots && slots.length > 0 ? (
+                    <div className="text-center py-2">
+                      <span className="text-[9px] text-emerald-400/50 bg-emerald-400/8 border border-emerald-400/15 px-2.5 py-1 rounded-full">
+                        ✓ {maxSlots} titular{maxSlots !== 1 ? "es" : ""} asignado{maxSlots !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
-              ) : (
-                <button
-                  onClick={() => setShowAddSlot(true)}
-                  className="w-full flex items-center justify-center gap-1.5 px-3 py-3 border border-dashed border-indigo-500/20 hover:border-indigo-500/40 hover:bg-indigo-500/5 text-indigo-400/40 hover:text-indigo-400/70 text-[10px] rounded-xl transition-colors"
-                >
-                  <span className="text-sm leading-none">+</span> Agregar slot de agente
-                </button>
               )}
             </div>
 
-            {/* Nota informativa */}
+            {/* Nota */}
             <div className="bg-blue-950/20 border border-blue-500/15 rounded-xl px-3 py-2.5 text-[9px] text-blue-300/50 leading-relaxed">
-              <p>Esta misma plantilla es visible y editable desde la <strong>Ficha del Cliente</strong> → pestaña "Plantilla de Turnos". Ambos accesos leen y escriben el mismo registro.</p>
+              <p>Clic en un día para alternar trabaja/descansa. La hora de entrada es editable por titular. Esta misma plantilla es visible en la <strong>Ficha del Cliente</strong>.</p>
             </div>
           </div>
         </div>

@@ -85,8 +85,8 @@ puestoSlotsRouter.post("/puestos/:puestoId/slots", async (req, res) => {
 
   const { slot_numero, horas_turno, hora_entrada, dias_trabajo, fecha_inicio_ciclo, empleado_id, notas } = req.body;
 
-  if (!horas_turno || ![12, 24].includes(Number(horas_turno))) {
-    return res.status(400).json({ error: "horas_turno debe ser 12 o 24" });
+  if (!horas_turno || ![8, 12, 24].includes(Number(horas_turno))) {
+    return res.status(400).json({ error: "horas_turno debe ser 8, 12 o 24" });
   }
   if (!hora_entrada) return res.status(400).json({ error: "hora_entrada requerida" });
   if (!Array.isArray(dias_trabajo) || dias_trabajo.length === 0) {

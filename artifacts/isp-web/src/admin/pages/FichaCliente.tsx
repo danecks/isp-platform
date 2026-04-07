@@ -101,7 +101,8 @@ interface PuestoSlot {
 }
 
 // Ciclo de 14 días: D1..D14
-const DIAS_CICLO = Array.from({ length: 14 }, (_, i) => ({ n: i + 1, label: `D${i + 1}` }));
+const DIAS_SEM_FC = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+const DIAS_CICLO = Array.from({ length: 14 }, (_, i) => ({ n: i + 1, label: DIAS_SEM_FC[i % 7] }));
 const SEMANA1 = DIAS_CICLO.slice(0, 7);
 const SEMANA2 = DIAS_CICLO.slice(7, 14);
 
