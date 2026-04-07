@@ -3910,5 +3910,33 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-seed: FICHAJE-QR-01 permisos — error (no bloqueante)");
   }
 
+  // ── SUPERVISOR-DEV-01: dispositivos autenticados (teléfonos de puesto y supervisor) ──
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS supervisor_devices (
+        id                SERIAL PRIMARY KEY,
+        device_uuid       UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+        device_token_hash VARCHAR(64),
+        supervisor_nombre VARCHAR(150) NOT NULL,
+        descripcion       VARCHAR(200),
+        tipo              VARCHAR(20) NOT NULL DEFAULT 'supervisor',
+        puesto_id         INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        activo            BOOLEAN NOT NULL DEFAULT TRUE,
+        ultimo_uso        TIMESTAMPTZ,
+        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS sd_uuid ON supervisor_devices(device_uuid)`);
+    await pool.query(`ALTER TABLE supervisor_devices ADD COLUMN IF NOT EXISTS tipo VARCHAR(20) NOT NULL DEFAULT 'supervisor'`);
+    await pool.query(`ALTER TABLE supervisor_devices ADD COLUMN IF NOT EXISTS puesto_id INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL`);
+    await pool.query(`
+      ALTER TABLE agente_fichajes
+      ADD COLUMN IF NOT EXISTS supervisor_device_id INTEGER REFERENCES supervisor_devices(id) ON DELETE SET NULL
+    `);
+    logger.info("Auto-migrate: SUPERVISOR-DEV-01 tabla supervisor_devices creada/verificada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SUPERVISOR-DEV-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

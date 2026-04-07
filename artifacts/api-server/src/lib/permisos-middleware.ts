@@ -45,6 +45,7 @@ const ROUTE_MODULO_MAP: Record<string, string> = {
   "/turnos":                 "turnos",
   "/agente":                 "fichaje_qr",
   "/puestos-gps":            "fichaje_qr",
+  "/supervisor-devices":     "fichaje_qr",
 };
 
 // Caché en memoria: rol → Set de modulo_claves permitidos (TTL 60s)

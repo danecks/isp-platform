@@ -67,6 +67,7 @@ import AdminFichajeQR from "@/admin/pages/FichajeQR";
 import KioskoPublico from "@/pages/kiosko";
 import RondaGuardia from "@/pages/RondaGuardia";
 import AgenteEscaneo from "@/pages/AgenteEscaneo";
+import SupervisorActivar from "@/pages/SupervisorActivar";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
@@ -260,6 +261,7 @@ function Router() {
       <Route path="/kiosko" component={KioskoPublico} />
       <Route path="/ronda" component={RondaGuardia} />
       <Route path="/agente" component={AgenteEscaneo} />
+      <Route path="/supervisor/activar" component={SupervisorActivar} />
 
       <Route component={NotFound} />
     </Switch>

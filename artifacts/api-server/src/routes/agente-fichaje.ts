@@ -1,11 +1,16 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { v4 as uuidv4 } from "uuid";
+import { createHash, randomBytes } from "node:crypto";
 import { logger } from "../lib/logger";
 
 export const agenteFichajeRouter = Router();
 
-// ── Haversine ────────────────────────────────────────────────────────────────
+// ── Utilidades ────────────────────────────────────────────────────────────────
+function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
 function haversineMetros(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -19,14 +24,114 @@ function haversineMetros(lat1: number, lon1: number, lat2: number, lon2: number)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// PÚBLICO — no requiere sesión
+// DISPOSITIVOS AUTENTICADOS — gestión (admin) y validación (público)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// POST /api/supervisor-devices/validate — el teléfono se identifica al cargar la página
+agenteFichajeRouter.post("/supervisor-devices/validate", async (req, res) => {
+  const { device_uuid, device_token } = req.body;
+  if (!device_uuid || !device_token) {
+    return res.status(400).json({ ok: false, error: "device_uuid y device_token requeridos" });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT sd.id, sd.supervisor_nombre, sd.descripcion, sd.tipo, sd.puesto_id,
+              po.nombre AS puesto_nombre, po.cliente_nombre
+       FROM supervisor_devices sd
+       LEFT JOIN puestos_operativos po ON po.id = sd.puesto_id
+       WHERE sd.device_uuid = $1 AND sd.activo = TRUE`,
+      [device_uuid]
+    );
+    if (!rows[0]) return res.status(403).json({ ok: false, error: "Dispositivo no registrado o revocado" });
+    const dev = rows[0];
+    if (!dev.device_token_hash) return res.status(403).json({ ok: false, error: "Dispositivo sin token configurado" });
+    if (dev.device_token_hash !== hashToken(device_token)) {
+      return res.status(403).json({ ok: false, error: "Token de dispositivo incorrecto" });
+    }
+    await pool.query(`UPDATE supervisor_devices SET ultimo_uso = NOW() WHERE id = $1`, [dev.id]);
+    res.json({
+      ok: true,
+      device_id: dev.id,
+      tipo: dev.tipo,
+      supervisor_nombre: dev.supervisor_nombre,
+      descripcion: dev.descripcion,
+      puesto_id: dev.puesto_id,
+      puesto_nombre: dev.puesto_nombre,
+      cliente_nombre: dev.cliente_nombre,
+    });
+  } catch (err) {
+    logger.error({ err }, "supervisor-devices/validate: error");
+    res.status(500).json({ ok: false, error: "Error al validar dispositivo" });
+  }
+});
+
+// GET /api/supervisor-devices — lista de dispositivos (admin)
+agenteFichajeRouter.get("/supervisor-devices", async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT sd.id, sd.device_uuid, sd.supervisor_nombre, sd.descripcion,
+             sd.tipo, sd.puesto_id, sd.activo, sd.ultimo_uso, sd.created_at,
+             (sd.device_token_hash IS NOT NULL) AS tiene_token,
+             po.nombre AS puesto_nombre, po.cliente_nombre
+      FROM supervisor_devices sd
+      LEFT JOIN puestos_operativos po ON po.id = sd.puesto_id
+      ORDER BY sd.tipo, sd.supervisor_nombre
+    `);
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "supervisor-devices GET: error");
+    res.status(500).json({ error: "Error obteniendo dispositivos" });
+  }
+});
+
+// POST /api/supervisor-devices — registrar nuevo dispositivo (admin)
+agenteFichajeRouter.post("/supervisor-devices", async (req, res) => {
+  const { supervisor_nombre, descripcion, tipo = "supervisor", puesto_id } = req.body;
+  if (!supervisor_nombre) return res.status(400).json({ error: "supervisor_nombre requerido" });
+  if (!["supervisor", "puesto"].includes(tipo)) return res.status(400).json({ error: "tipo debe ser 'supervisor' o 'puesto'" });
+
+  try {
+    const plainToken = randomBytes(32).toString("hex");
+    const tokenHash = hashToken(plainToken);
+    const { rows } = await pool.query(
+      `INSERT INTO supervisor_devices
+         (supervisor_nombre, descripcion, tipo, puesto_id, device_token_hash)
+       VALUES ($1,$2,$3,$4,$5)
+       RETURNING id, device_uuid, supervisor_nombre, descripcion, tipo, puesto_id, created_at`,
+      [supervisor_nombre, descripcion ?? null, tipo, puesto_id ?? null, tokenHash]
+    );
+    res.json({
+      ok: true,
+      device: rows[0],
+      device_token: plainToken,   // Solo se devuelve una vez — no se almacena en texto plano
+    });
+  } catch (err) {
+    logger.error({ err }, "supervisor-devices POST: error");
+    res.status(500).json({ error: "Error registrando dispositivo" });
+  }
+});
+
+// DELETE /api/supervisor-devices/:id — revocar dispositivo (admin)
+agenteFichajeRouter.delete("/supervisor-devices/:id", async (req, res) => {
+  try {
+    await pool.query(
+      `UPDATE supervisor_devices SET activo = FALSE, device_token_hash = NULL WHERE id = $1`,
+      [req.params.id]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Error revocando dispositivo" });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PÚBLICO — escaneo de QR del agente
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // GET /api/agente/scan/:token — info del agente al escanear el QR
 agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
   const { token } = req.params;
   try {
-    // 1) Obtener empleado desde el token
     const { rows: tkRows } = await pool.query(
       `SELECT aqt.employee_id, aqt.activo,
               e.nombre_completo, e.puesto AS cargo, e.tipo_personal, e.dpi
@@ -40,19 +145,16 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
 
     const emp = tkRows[0];
 
-    // 2) Puesto operativo actual del agente
     const { rows: poRows } = await pool.query(
       `SELECT po.id, po.nombre, po.cliente_nombre, po.horario,
               po.hora_entrada, po.hora_salida, po.turno, po.jornada
        FROM puestos_operativos po
-       WHERE po.agente_id = $1
-         AND po.estado = 'cubierto'
+       WHERE po.agente_id = $1 AND po.estado = 'cubierto'
        LIMIT 1`,
       [emp.employee_id]
     );
     const puesto = poRows[0] ?? null;
 
-    // 3) GPS del puesto (si existe)
     let gps: { latitud: number; longitud: number; radio_metros: number } | null = null;
     if (puesto?.id) {
       const { rows: gpsRows } = await pool.query(
@@ -68,7 +170,6 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
       }
     }
 
-    // 4) Armamento asignado al puesto
     let armamento: { codigo: string; descripcion: string } | null = null;
     if (puesto?.id) {
       const { rows: armaRows } = await pool.query(
@@ -81,7 +182,6 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
       if (armaRows[0]) armamento = armaRows[0];
     }
 
-    // 5) ¿Ya fichó hoy?
     const { rows: dupRows } = await pool.query(
       `SELECT id FROM agente_fichajes
        WHERE employee_id = $1
@@ -108,25 +208,38 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
   }
 });
 
-// POST /api/agente/fichaje — registrar fichaje (llegada al puesto)
+// POST /api/agente/fichaje — registrar fichaje (requiere dispositivo tipo 'puesto')
 agenteFichajeRouter.post("/agente/fichaje", async (req, res) => {
-  const { token, latitud, longitud, precision_metros } = req.body;
+  const { token, latitud, longitud, precision_metros, device_uuid, device_token } = req.body;
   if (!token) return res.status(400).json({ error: "token requerido" });
 
+  // 1. Validar dispositivo de puesto
+  if (!device_uuid || !device_token) {
+    return res.status(401).json({ error: "dispositivo_no_autorizado", mensaje: "Este teléfono no está registrado como dispositivo de puesto" });
+  }
   try {
-    // Obtener empleado y puesto
+    const { rows: devRows } = await pool.query(
+      `SELECT id, tipo, device_token_hash, activo FROM supervisor_devices
+       WHERE device_uuid = $1 AND activo = TRUE`,
+      [device_uuid]
+    );
+    if (!devRows[0] || devRows[0].device_token_hash !== hashToken(device_token)) {
+      return res.status(403).json({ error: "dispositivo_no_autorizado", mensaje: "Dispositivo no autorizado o token incorrecto" });
+    }
+    if (devRows[0].tipo !== "puesto") {
+      return res.status(403).json({ error: "tipo_incorrecto", mensaje: "Este dispositivo no está configurado para registrar fichajes" });
+    }
+    const deviceId = devRows[0].id;
+    await pool.query(`UPDATE supervisor_devices SET ultimo_uso = NOW() WHERE id = $1`, [deviceId]);
+
+    // 2. Obtener empleado y puesto
     const { rows: tkRows } = await pool.query(
-      `SELECT aqt.employee_id, aqt.activo
-       FROM agente_qr_tokens aqt
-       WHERE aqt.qr_token = $1`,
+      `SELECT aqt.employee_id, aqt.activo FROM agente_qr_tokens aqt WHERE aqt.qr_token = $1`,
       [token]
     );
-    if (!tkRows[0] || !tkRows[0].activo) {
-      return res.status(404).json({ error: "QR no válido" });
-    }
+    if (!tkRows[0] || !tkRows[0].activo) return res.status(404).json({ error: "QR no válido" });
     const employeeId = tkRows[0].employee_id;
 
-    // Puesto del agente
     const { rows: poRows } = await pool.query(
       `SELECT po.id FROM puestos_operativos po
        WHERE po.agente_id = $1 AND po.estado = 'cubierto' LIMIT 1`,
@@ -134,7 +247,7 @@ agenteFichajeRouter.post("/agente/fichaje", async (req, res) => {
     );
     const puestoId = poRows[0]?.id ?? null;
 
-    // Verificar duplicado del día
+    // 3. Verificar duplicado del día
     const { rows: dupRows } = await pool.query(
       `SELECT id FROM agente_fichajes
        WHERE employee_id = $1
@@ -146,7 +259,7 @@ agenteFichajeRouter.post("/agente/fichaje", async (req, res) => {
       return res.status(409).json({ error: "ya_registrado", mensaje: "Ya existe un fichaje para hoy" });
     }
 
-    // Validar GPS vs puesto
+    // 4. Validar GPS
     let resultado = "sin_gps";
     let distanciaMetros: number | null = null;
 
@@ -162,10 +275,10 @@ agenteFichajeRouter.post("/agente/fichaje", async (req, res) => {
         );
         resultado = distanciaMetros <= gpsRows[0].radio_metros ? "ok" : "fuera_de_zona";
       } else {
-        resultado = "ok"; // No hay GPS configurado → se permite
+        resultado = "ok";
       }
     } else if (latitud != null && longitud != null) {
-      resultado = "ok"; // Hay GPS pero no hay puesto configurado → se permite
+      resultado = "ok";
     }
 
     if (resultado === "fuera_de_zona") {
@@ -176,14 +289,14 @@ agenteFichajeRouter.post("/agente/fichaje", async (req, res) => {
       });
     }
 
-    // Registrar fichaje
+    // 5. Registrar fichaje
     const { rows: inserted } = await pool.query(
       `INSERT INTO agente_fichajes
-         (employee_id, puesto_id, qr_token, latitud, longitud, distancia_metros, resultado, tipo)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'fichaje')
+         (employee_id, puesto_id, qr_token, latitud, longitud, distancia_metros, resultado, tipo, supervisor_device_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'fichaje',$8)
        RETURNING id, registrado_en`,
       [employeeId, puestoId, token,
-       latitud ?? null, longitud ?? null, distanciaMetros, resultado]
+       latitud ?? null, longitud ?? null, distanciaMetros, resultado, deviceId]
     );
 
     res.json({
@@ -199,51 +312,46 @@ agenteFichajeRouter.post("/agente/fichaje", async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// SUPERVISIÓN — requiere sesión activa de supervisor/admin
-// ═══════════════════════════════════════════════════════════════════════════════
-
-// POST /api/agente/supervision
+// POST /api/agente/supervision — registrar supervisión (requiere dispositivo tipo 'supervisor')
 agenteFichajeRouter.post("/agente/supervision", async (req, res) => {
-  const session = (req as any).session;
-  if (!session?.userId) {
-    return res.status(401).json({ error: "Sesión de supervisor requerida" });
-  }
-
-  const { token, checks, calificacion, observaciones, latitud, longitud } = req.body;
+  const { token, checks, calificacion, observaciones, latitud, longitud, device_uuid, device_token } = req.body;
   if (!token) return res.status(400).json({ error: "token requerido" });
 
+  // Validar dispositivo de supervisor
+  if (!device_uuid || !device_token) {
+    return res.status(401).json({ error: "dispositivo_no_autorizado", mensaje: "Este teléfono no está registrado como dispositivo de supervisor" });
+  }
+
   try {
-    // Verificar que el usuario es supervisor/admin
-    const { rows: userRows } = await pool.query(
-      `SELECT u.id, u.nombre, u.rol FROM users u WHERE u.id = $1`,
-      [session.userId]
+    const { rows: devRows } = await pool.query(
+      `SELECT id, tipo, device_token_hash, supervisor_nombre, activo
+       FROM supervisor_devices WHERE device_uuid = $1 AND activo = TRUE`,
+      [device_uuid]
     );
-    if (!userRows[0]) return res.status(403).json({ error: "Usuario no encontrado" });
-    const user = userRows[0];
-    const rolesPermitidos = ["admin", "supervisor", "operaciones"];
-    if (!rolesPermitidos.includes(user.rol)) {
-      return res.status(403).json({ error: "No tienes permiso para registrar supervisiones" });
+    if (!devRows[0] || devRows[0].device_token_hash !== hashToken(device_token)) {
+      return res.status(403).json({ error: "dispositivo_no_autorizado", mensaje: "Dispositivo no autorizado o token incorrecto" });
     }
+    if (devRows[0].tipo !== "supervisor") {
+      return res.status(403).json({ error: "tipo_incorrecto", mensaje: "Este dispositivo no está configurado para supervisiones" });
+    }
+    const deviceId = devRows[0].id;
+    const supervisorNombre = devRows[0].supervisor_nombre;
+    await pool.query(`UPDATE supervisor_devices SET ultimo_uso = NOW() WHERE id = $1`, [deviceId]);
 
     // Obtener empleado
     const { rows: tkRows } = await pool.query(
       `SELECT aqt.employee_id, aqt.activo FROM agente_qr_tokens aqt WHERE aqt.qr_token = $1`,
       [token]
     );
-    if (!tkRows[0] || !tkRows[0].activo) {
-      return res.status(404).json({ error: "QR no válido" });
-    }
+    if (!tkRows[0] || !tkRows[0].activo) return res.status(404).json({ error: "QR no válido" });
     const employeeId = tkRows[0].employee_id;
 
-    // Puesto del agente
     const { rows: poRows } = await pool.query(
       `SELECT id FROM puestos_operativos WHERE agente_id = $1 AND estado = 'cubierto' LIMIT 1`,
       [employeeId]
     );
     const puestoId = poRows[0]?.id ?? null;
 
-    // GPS validation (optional — supervisors may be mobile)
     let distanciaMetros: number | null = null;
     if (latitud != null && longitud != null && puestoId) {
       const { rows: gpsRows } = await pool.query(
@@ -261,13 +369,13 @@ agenteFichajeRouter.post("/agente/supervision", async (req, res) => {
     const { rows: inserted } = await pool.query(
       `INSERT INTO agente_fichajes
          (employee_id, puesto_id, qr_token, latitud, longitud, distancia_metros,
-          resultado, tipo, supervisor_id, supervisor_nombre, checks, calificacion, observaciones)
+          resultado, tipo, supervisor_nombre, supervisor_device_id, checks, calificacion, observaciones)
        VALUES ($1,$2,$3,$4,$5,$6,'ok','supervision',$7,$8,$9,$10,$11)
        RETURNING id, registrado_en`,
       [
         employeeId, puestoId, token,
         latitud ?? null, longitud ?? null, distanciaMetros,
-        user.id, user.nombre,
+        supervisorNombre, deviceId,
         checks ? JSON.stringify(checks) : null,
         calificacion ?? null, observaciones ?? null,
       ]
@@ -285,10 +393,10 @@ agenteFichajeRouter.post("/agente/supervision", async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ADMIN — gestión de tokens y consulta de fichajes
+// ADMIN — gestión de tokens de agentes y consulta de fichajes
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// GET /api/agente/tokens — lista de empleados con su token QR
+// GET /api/agente/tokens
 agenteFichajeRouter.get("/agente/tokens", async (req, res) => {
   try {
     const { rows } = await pool.query(`
@@ -310,18 +418,15 @@ agenteFichajeRouter.get("/agente/tokens", async (req, res) => {
   }
 });
 
-// POST /api/agente/tokens/generate — generar token para un empleado
+// POST /api/agente/tokens/generate
 agenteFichajeRouter.post("/agente/tokens/generate", async (req, res) => {
   const { employee_id } = req.body;
   if (!employee_id) return res.status(400).json({ error: "employee_id requerido" });
-
   try {
-    // Desactivar token anterior si existe
     await pool.query(
       `UPDATE agente_qr_tokens SET activo = FALSE WHERE employee_id = $1`,
       [employee_id]
     );
-    // Insertar nuevo token
     const token = uuidv4();
     const { rows } = await pool.query(
       `INSERT INTO agente_qr_tokens (employee_id, qr_token, activo)
@@ -335,20 +440,17 @@ agenteFichajeRouter.post("/agente/tokens/generate", async (req, res) => {
   }
 });
 
-// DELETE /api/agente/tokens/:id — revocar token
+// DELETE /api/agente/tokens/:id
 agenteFichajeRouter.delete("/agente/tokens/:id", async (req, res) => {
   try {
-    await pool.query(
-      `UPDATE agente_qr_tokens SET activo = FALSE WHERE id = $1`,
-      [req.params.id]
-    );
+    await pool.query(`UPDATE agente_qr_tokens SET activo = FALSE WHERE id = $1`, [req.params.id]);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: "Error revocando token" });
   }
 });
 
-// GET /api/agente/fichajes — historial de fichajes y supervisiones
+// GET /api/agente/fichajes
 agenteFichajeRouter.get("/agente/fichajes", async (req, res) => {
   const { tipo, employee_id, fecha_desde, fecha_hasta, limit = "50" } = req.query as Record<string, string>;
   try {
@@ -368,10 +470,12 @@ agenteFichajeRouter.get("/agente/fichajes", async (req, res) => {
              af.calificacion, af.checks, af.observaciones,
              af.registrado_en, af.supervisor_nombre,
              e.nombre_completo, e.puesto AS cargo,
-             po.nombre AS puesto_nombre, po.cliente_nombre
+             po.nombre AS puesto_nombre, po.cliente_nombre,
+             sd.tipo AS device_tipo, sd.descripcion AS device_descripcion
       FROM agente_fichajes af
       JOIN employees e ON e.id = af.employee_id
       LEFT JOIN puestos_operativos po ON po.id = af.puesto_id
+      LEFT JOIN supervisor_devices sd ON sd.id = af.supervisor_device_id
       ${where}
       ORDER BY af.registrado_en DESC
       LIMIT $${params.length}
@@ -383,7 +487,7 @@ agenteFichajeRouter.get("/agente/fichajes", async (req, res) => {
   }
 });
 
-// GET /api/puestos-gps — puestos con y sin GPS configurado
+// GET /api/puestos-gps
 agenteFichajeRouter.get("/puestos-gps", async (req, res) => {
   try {
     const { rows } = await pool.query(`
@@ -400,12 +504,11 @@ agenteFichajeRouter.get("/puestos-gps", async (req, res) => {
   }
 });
 
-// PUT /api/puestos-gps/:puesto_id — configurar GPS de un puesto
+// PUT /api/puestos-gps/:puesto_id
 agenteFichajeRouter.put("/puestos-gps/:puesto_id", async (req, res) => {
   const { latitud, longitud, radio_metros = 50 } = req.body;
   const puestoId = Number(req.params.puesto_id);
   if (!latitud || !longitud) return res.status(400).json({ error: "latitud y longitud requeridos" });
-
   try {
     await pool.query(`
       INSERT INTO puestos_gps (puesto_id, latitud, longitud, radio_metros, updated_at)
