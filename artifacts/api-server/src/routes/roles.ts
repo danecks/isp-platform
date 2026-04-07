@@ -69,6 +69,7 @@ export const SYSTEM_MODULOS = [
   // NFC
   { clave: "nfc_piloto",          label: "Control Operativo NFC",      seccion: "Control Operativo" },
   { clave: "rondas_qr",           label: "Rondas QR",                  seccion: "Control Operativo" },
+  { clave: "fichaje_qr",          label: "QR Fichaje de Agentes",      seccion: "Control Operativo" },
 ];
 
 // GET /roles — listar todos los roles con conteo de permisos

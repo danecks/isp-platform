@@ -43,6 +43,8 @@ const ROUTE_MODULO_MAP: Record<string, string> = {
   "/leads":                  "reclutamiento",
   "/applications":           "reclutamiento",
   "/turnos":                 "turnos",
+  "/agente":                 "fichaje_qr",
+  "/puestos-gps":            "fichaje_qr",
 };
 
 // Caché en memoria: rol → Set de modulo_claves permitidos (TTL 60s)

@@ -37,6 +37,7 @@ import {
   FileUp,
   Cpu,
   ScanLine,
+  BadgeCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -389,6 +390,13 @@ export const NAV_SECTIONS: NavSection[] = [
         label: "Control NFC 🧪",
         icon: Cpu,
         clave: "nfc_piloto",
+        roles: ["admin", "operaciones", "supervisor"],
+      },
+      {
+        path: "/admin/fichaje-qr",
+        label: "QR Fichaje de Agentes",
+        icon: BadgeCheck,
+        clave: "fichaje_qr",
         roles: ["admin", "operaciones", "supervisor"],
       },
     ],

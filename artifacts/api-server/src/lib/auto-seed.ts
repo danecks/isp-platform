@@ -3842,5 +3842,73 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: QR-RONDAS-01 — error (no bloqueante)");
   }
 
+  // ── FICHAJE-QR-01: tokens QR de agentes, GPS de puestos, fichajes y supervisiones ──
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS agente_qr_tokens (
+        id          SERIAL PRIMARY KEY,
+        employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        qr_token    TEXT NOT NULL UNIQUE DEFAULT gen_random_uuid()::TEXT,
+        activo      BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS aqt_emp_activo ON agente_qr_tokens(employee_id) WHERE activo = TRUE`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS aqt_token ON agente_qr_tokens(qr_token)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS puestos_gps (
+        id           SERIAL PRIMARY KEY,
+        puesto_id    INTEGER NOT NULL UNIQUE REFERENCES puestos_operativos(id) ON DELETE CASCADE,
+        latitud      NUMERIC(10,7) NOT NULL,
+        longitud     NUMERIC(10,7) NOT NULL,
+        radio_metros INTEGER NOT NULL DEFAULT 50,
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS agente_fichajes (
+        id               SERIAL PRIMARY KEY,
+        employee_id      INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        puesto_id        INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        qr_token         TEXT NOT NULL,
+        latitud          NUMERIC(10,7),
+        longitud         NUMERIC(10,7),
+        distancia_metros INTEGER,
+        resultado        VARCHAR(20) NOT NULL DEFAULT 'ok',
+        tipo             VARCHAR(20) NOT NULL DEFAULT 'fichaje',
+        supervisor_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        supervisor_nombre VARCHAR(255),
+        checks           JSONB,
+        calificacion     SMALLINT,
+        observaciones    TEXT,
+        registrado_en    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS af_employee  ON agente_fichajes(employee_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS af_puesto    ON agente_fichajes(puesto_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS af_tipo      ON agente_fichajes(tipo)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS af_fecha     ON agente_fichajes(registrado_en DESC)`);
+
+    logger.info("Auto-migrate: FICHAJE-QR-01 tablas de fichaje QR creadas/verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: FICHAJE-QR-01 — error (no bloqueante)");
+  }
+
+  // ── FICHAJE-QR-01: permisos ───────────────────────────────────────────────────
+  try {
+    await pool.query(`
+      INSERT INTO rol_permisos (rol_clave, modulo_clave) VALUES
+        ('admin',      'fichaje_qr'),
+        ('operaciones','fichaje_qr'),
+        ('supervisor', 'fichaje_qr')
+      ON CONFLICT DO NOTHING
+    `);
+    logger.info("Auto-seed: FICHAJE-QR-01 permisos insertados");
+  } catch (err) {
+    logger.error({ err }, "Auto-seed: FICHAJE-QR-01 permisos — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }
