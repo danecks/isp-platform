@@ -476,7 +476,12 @@ export function CmsLogoManager({
                       onError={(e) => {
                         const el = e.target as HTMLImageElement;
                         el.style.display = "none";
-                        (el.parentElement as HTMLElement).innerHTML = `<span class="text-xs text-white/40">${logo.name}</span>`;
+                        const parent = el.parentElement as HTMLElement;
+                        parent.innerHTML = "";
+                        const span = document.createElement("span");
+                        span.className = "text-xs text-white/40";
+                        span.textContent = logo.name;
+                        parent.appendChild(span);
                       }}
                     />
                   </div>
