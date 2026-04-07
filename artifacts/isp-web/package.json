@@ -79,6 +79,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "jspdf": "^4.2.1",
-    "jspdf-autotable": "^5.0.7"
+    "jspdf-autotable": "^5.0.7",
+    "read-excel-file": "^8.0.3"
   }
 }

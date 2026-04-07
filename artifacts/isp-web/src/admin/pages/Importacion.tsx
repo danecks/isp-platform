@@ -595,17 +595,23 @@ function LegacyImporterTab() {
 
   const handleFile = useCallback(async (file: File) => {
     const ext = file.name.toLowerCase();
-    if (!ext.endsWith(".xlsx") && !ext.endsWith(".xls")) {
-      alert("Solo se aceptan archivos .xlsx o .xls del sistema antiguo");
+    if (!ext.endsWith(".xlsx")) {
+      alert("Solo se aceptan archivos .xlsx del sistema antiguo");
       return;
     }
-    const buf = await file.arrayBuffer();
-    const XLSX = await import("xlsx");
-    const wb = XLSX.read(buf, { type: "array" });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const data: Record<string, any>[] = XLSX.utils.sheet_to_json(ws, { defval: null });
+    const readXlsxFile = (await import("read-excel-file/browser")).default;
+    const rawRows = await readXlsxFile(file);
+    if (!rawRows || rawRows.length < 2) { alert("El archivo no tiene datos válidos"); return; }
+    const headers = rawRows[0].map(String);
+    const data: Record<string, any>[] = rawRows.slice(1).map(row => {
+      const obj: Record<string, any> = {};
+      headers.forEach((h, i) => {
+        const val = row[i];
+        obj[h] = val instanceof Date ? val.toISOString().slice(0, 10) : (val ?? null);
+      });
+      return obj;
+    });
     if (data.length === 0) { alert("El archivo no tiene datos válidos"); return; }
-    // Detectar que tiene columnas del sistema antiguo
     const keys = Object.keys(data[0]);
     if (!keys.includes("empl_papellido") && !keys.includes("empl_pnombre")) {
       alert("Este archivo no parece ser del sistema antiguo. Se esperan columnas como empl_pnombre, empl_papellido, etc.");
@@ -689,11 +695,11 @@ function LegacyImporterTab() {
       >
         <Database className="w-10 h-10 text-white/20 mx-auto mb-3" />
         <p className="text-sm text-white/60">Arrastra el archivo Excel del sistema antiguo aquí</p>
-        <p className="text-xs text-white/30 mt-1">o haz clic para seleccionarlo · Acepta .xlsx y .xls</p>
+        <p className="text-xs text-white/30 mt-1">o haz clic para seleccionarlo · Acepta .xlsx</p>
         <input
           ref={fileRef}
           type="file"
-          accept=".xlsx,.xls"
+          accept=".xlsx"
           className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
         />
@@ -1065,14 +1071,21 @@ function LegacyClientesTab() {
 
   const handleFile = useCallback(async (file: File) => {
     const ext = file.name.toLowerCase();
-    if (!ext.endsWith(".xlsx") && !ext.endsWith(".xls")) {
-      alert("Solo se aceptan archivos .xlsx o .xls"); return;
+    if (!ext.endsWith(".xlsx")) {
+      alert("Solo se aceptan archivos .xlsx"); return;
     }
-    const buf = await file.arrayBuffer();
-    const XLSX = await import("xlsx");
-    const wb = XLSX.read(buf, { type: "array" });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const data: Record<string, any>[] = XLSX.utils.sheet_to_json(ws, { defval: null });
+    const readXlsxFile = (await import("read-excel-file/browser")).default;
+    const rawRows = await readXlsxFile(file);
+    if (!rawRows || rawRows.length < 2) { alert("El archivo no tiene datos válidos"); return; }
+    const headers = rawRows[0].map(String);
+    const data: Record<string, any>[] = rawRows.slice(1).map(row => {
+      const obj: Record<string, any> = {};
+      headers.forEach((h, i) => {
+        const val = row[i];
+        obj[h] = val instanceof Date ? val.toISOString().slice(0, 10) : (val ?? null);
+      });
+      return obj;
+    });
     if (data.length === 0) { alert("El archivo no tiene datos válidos"); return; }
     const keys = Object.keys(data[0]);
     if (!keys.includes("depto_nombre") && !keys.includes("depto_codigo")) {
@@ -1128,8 +1141,8 @@ function LegacyClientesTab() {
       >
         <Database className="w-10 h-10 text-white/20 mx-auto mb-3" />
         <p className="text-sm text-white/60">Arrastra el archivo de clientes aquí</p>
-        <p className="text-xs text-white/30 mt-1">o haz clic · Acepta .xlsx y .xls</p>
-        <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
+        <p className="text-xs text-white/30 mt-1">o haz clic · Acepta .xlsx</p>
+        <input ref={fileRef} type="file" accept=".xlsx" className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
       </div>
     </div>

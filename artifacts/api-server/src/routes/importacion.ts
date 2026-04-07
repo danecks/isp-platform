@@ -405,8 +405,11 @@ importacionRouter.post("/importacion/sistema-antiguo", async (req: any, res: any
     B010: "Banco Reformador",
   };
 
-  // Convierte número serial de Excel a fecha ISO (YYYY-MM-DD)
+  // Convierte fecha a ISO (YYYY-MM-DD).
+  // Acepta: string ISO (de read-excel-file), número serial de Excel (legado)
   function excelSerial(v: any): string | null {
+    if (!v) return null;
+    if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
     const n = Number(v);
     if (!n || isNaN(n) || n < 1) return null;
     const ms = Date.UTC(1899, 11, 30) + n * 86400000;
