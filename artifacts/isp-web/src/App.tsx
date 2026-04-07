@@ -62,7 +62,9 @@ import AdminLibroSalarios from "@/admin/pages/LibroSalarios";
 import AdminBodega from "@/admin/pages/Bodega";
 import AdminImportacion from "@/admin/pages/Importacion";
 import AdminNfcPiloto from "@/admin/pages/NfcPiloto";
+import AdminRondasQR from "@/admin/pages/RondasQR";
 import KioskoPublico from "@/pages/kiosko";
+import RondaGuardia from "@/pages/RondaGuardia";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
@@ -241,6 +243,9 @@ function Router() {
       <Route path="/admin/importacion">
         {() => <AuthGuard requiredRoles={["admin"]}><AdminImportacion /></AuthGuard>}
       </Route>
+      <Route path="/admin/rondas-qr">
+        {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminRondasQR /></AuthGuard>}
+      </Route>
       <Route path="/admin/nfc-piloto">
         {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminNfcPiloto /></AuthGuard>}
       </Route>
@@ -248,6 +253,7 @@ function Router() {
         {() => <AdminNfcPiloto kioskMode />}
       </Route>
       <Route path="/kiosko" component={KioskoPublico} />
+      <Route path="/ronda" component={RondaGuardia} />
 
       <Route component={NotFound} />
     </Switch>

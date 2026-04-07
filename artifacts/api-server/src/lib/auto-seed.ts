@@ -3786,5 +3786,61 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: TIPOS-PERS-01 — error (no bloqueante)");
   }
 
+  // ── QR-RONDAS-01: Módulo de rondas por código QR ─────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS qr_rondas (
+        id          SERIAL PRIMARY KEY,
+        cliente_id  INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+        nombre      TEXT NOT NULL,
+        descripcion TEXT,
+        activo      BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS qr_rondas_cliente ON qr_rondas(cliente_id)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS qr_ronda_puntos (
+        id           SERIAL PRIMARY KEY,
+        ronda_id     INTEGER NOT NULL REFERENCES qr_rondas(id) ON DELETE CASCADE,
+        nombre       TEXT NOT NULL,
+        descripcion  TEXT,
+        qr_token     TEXT NOT NULL UNIQUE,
+        latitud_ref  NUMERIC(10,7) NOT NULL,
+        longitud_ref NUMERIC(10,7) NOT NULL,
+        radio_metros INTEGER NOT NULL DEFAULT 30,
+        orden        INTEGER NOT NULL DEFAULT 1,
+        activo       BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS qr_rp_ronda  ON qr_ronda_puntos(ronda_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS qr_rp_token  ON qr_ronda_puntos(qr_token)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS qr_ronda_eventos (
+        id               SERIAL PRIMARY KEY,
+        punto_id         INTEGER NOT NULL REFERENCES qr_ronda_puntos(id) ON DELETE CASCADE,
+        user_id          INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        escaneado_en     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        latitud          NUMERIC(10,7),
+        longitud         NUMERIC(10,7),
+        precision_metros INTEGER,
+        distancia_metros INTEGER,
+        resultado        VARCHAR(20) NOT NULL DEFAULT 'ok',
+        notas            TEXT
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS qr_re_punto ON qr_ronda_eventos(punto_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS qr_re_user  ON qr_ronda_eventos(user_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS qr_re_at    ON qr_ronda_eventos(escaneado_en DESC)`);
+
+    logger.info("Auto-migrate: QR-RONDAS-01 tablas de rondas QR creadas/verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: QR-RONDAS-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

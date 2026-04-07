@@ -36,6 +36,7 @@ import {
   Package,
   FileUp,
   Cpu,
+  ScanLine,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -371,14 +372,21 @@ export const NAV_SECTIONS: NavSection[] = [
     ],
   },
 
-  // ── 9. PILOTO NFC ─────────────────────────────────────────────────────────
+  // ── 9. CONTROL OPERATIVO ──────────────────────────────────────────────────
   {
-    id: "nfc_piloto",
-    label: "Piloto NFC 🧪",
+    id: "control_operativo",
+    label: "Control Operativo",
     items: [
       {
+        path: "/admin/rondas-qr",
+        label: "Rondas QR",
+        icon: ScanLine,
+        clave: "rondas_qr",
+        roles: ["admin", "operaciones", "supervisor"],
+      },
+      {
         path: "/admin/nfc-piloto",
-        label: "Control Operativo NFC",
+        label: "Control NFC 🧪",
         icon: Cpu,
         clave: "nfc_piloto",
         roles: ["admin", "operaciones", "supervisor"],
