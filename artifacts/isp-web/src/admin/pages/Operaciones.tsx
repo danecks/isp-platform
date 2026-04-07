@@ -3516,10 +3516,15 @@ function DroppablePuesto({
   if (puesto.es_par_24x24 && puesto.par_trabajando && puesto.par_descansando) {
     const activo      = puesto.par_trabajando;   // TitularCiclo — trabaja hoy
     const descansando = puesto.par_descansando;  // TitularCiclo — descansa hoy
-    // Cobertura:
-    // cubiertoManual  = alguien fue asignado explícitamente vía agente_id (relevo/pool)
-    // cubiertoTitular = el titular configurado para hoy cubre el puesto (sin override)
-    const cubiertoManual  = puesto.estado === "cubierto" && !!puesto.agente_id;
+
+    // Si agente_id es uno de los dos titulares del ciclo (T1 o T2) → rotación normal, NO relevo externo.
+    // Solo es relevo real cuando hay alguien del pool cubriendo (ajeno al par de titulares).
+    const esTitularCiclo = !!puesto.agente_id &&
+      (puesto.agente_id === activo.employee_id || puesto.agente_id === descansando.employee_id);
+
+    // cubiertoManual  = alguien EXTERNO al ciclo fue asignado vía agente_id (relevo/pool)
+    // cubiertoTitular = el titular configurado para hoy cubre el puesto según el ciclo
+    const cubiertoManual  = puesto.estado === "cubierto" && !!puesto.agente_id && !esTitularCiclo;
     const cubiertoTitular = !cubiertoManual && activo.trabaja_hoy && !!activo.employee_id;
     const activoCubierto  = cubiertoManual || cubiertoTitular;
     const activoRelevo    = cubiertoManual && !!activo.employee_id &&
