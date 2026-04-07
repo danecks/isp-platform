@@ -15,6 +15,7 @@ import {
   ShieldCheck, Timer, Siren, BellRing, Wallet, UserCheck,
   TrendingDown, HardHat, Landmark, FileSpreadsheet,
   ChevronRight, BarChart3, UserSearch,
+  QrCode, Package, Wrench, CalendarDays, Trash2, LogIn,
 } from "lucide-react";
 
 function fmtTime(iso: string) {
@@ -147,6 +148,38 @@ function DashboardAdmin({
         </div>
       </div>
 
+      {/* STATS — CONTROL QR & LOGÍSTICA */}
+      <div>
+        <p className="text-[10px] text-white/30 uppercase tracking-widest font-semibold mb-3">Control Operativo QR & Logística</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <StatCard icon={LogIn}         label="Fichajes Hoy"             value={s?.control_qr?.fichajes_hoy ?? "—"}          sub="Entradas registradas"         color="green"  href="/admin/control-operativo-qr" />
+          <StatCard icon={QrCode}        label="Agentes en Turno"         value={s?.control_qr?.agentes_en_turno ?? "—"}      sub="Activos en este momento"      color="blue"   href="/admin/control-operativo-qr" />
+          <StatCard icon={Package}       label="Solicitudes Bodega"       value={s?.bodega?.solicitudes_pendientes ?? "—"}    sub="Pendientes de despacho"       color="orange" href="/admin/bodega" />
+          <StatCard icon={Wrench}        label="Armas en Reparación"      value={s?.bodega?.armas_en_reparacion ?? "—"}       sub="Órdenes de servicio abiertas" color="red"    href="/admin/armeria" />
+          <StatCard icon={CalendarDays}  label="Vacaciones Pendientes"    value={s?.rrhh?.vacaciones_pendientes ?? "—"}       sub="Por aprobar"                  color="purple" href="/admin/rrhh/vacaciones" />
+          <StatCard icon={Trash2}        label="Eliminaciones Pendientes" value={s?.sistema?.eliminaciones_pendientes ?? "—"} sub="Por revisar"                  color="red"    href="/admin/sistema/eliminaciones" />
+        </div>
+      </div>
+
+      {/* QUICK LINKS — TODOS LOS MÓDULOS */}
+      <div>
+        <p className="text-[10px] text-white/30 uppercase tracking-widest font-semibold mb-3">Accesos Rápidos — Todos los Módulos</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          <QuickLink href="/admin/control-operativo-qr"  icon={QrCode}         label="Control QR"          sub="Fichajes y rondas"       color="green"  />
+          <QuickLink href="/admin/operaciones"           icon={BarChart3}      label="Pizarrón Operativo"  sub="Estado del servicio"     color="blue"   />
+          <QuickLink href="/admin/incidencias"           icon={AlertTriangle}  label="Incidencias"         sub="Gestionar activas"       color="red"    />
+          <QuickLink href="/admin/bodega"                icon={Package}        label="Bodega"              sub="Stock y solicitudes"     color="orange" />
+          <QuickLink href="/admin/armeria"               icon={Wrench}         label="Armería"             sub="Armas y munición"        color="red"    />
+          <QuickLink href="/admin/rrhh/vacaciones"       icon={CalendarDays}   label="Vacaciones"          sub="Aprobar solicitudes"     color="purple" />
+          <QuickLink href="/admin/comercial"             icon={Briefcase}      label="Comercial"           sub="Leads y propuestas"      color="gold"   />
+          <QuickLink href="/admin/reclutamiento"         icon={UserSearch}     label="Reclutamiento"       sub="Postulaciones"           color="green"  />
+          <QuickLink href="/admin/anticipos"             icon={Wallet}         label="Anticipos"           sub="Aprobar / rechazar"      color="purple" />
+          <QuickLink href="/admin/tareas"                icon={CheckSquare}    label="Tareas"              sub="Ver pendientes"          color="purple" />
+          <QuickLink href="/admin/empleados"             icon={HardHat}        label="Colaboradores"       sub="Ficha y gestión"         color="blue"   />
+          <QuickLink href="/admin/sistema/eliminaciones" icon={Trash2}         label="Solicitudes Elim."   sub="Revisar y aprobar"       color="red"    />
+        </div>
+      </div>
+
       {/* EVENTOS RECIENTES */}
       <div className="bg-[#0c1829] border border-white/5 rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between">
@@ -267,25 +300,27 @@ function DashboardRRHH({
   return (
     <div className="space-y-8 max-w-[1400px]">
       {/* STATS */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4">
         <StatCard icon={HardHat}      label="Colaboradores Activos"  value={s?.empleados_activos ?? "—"}         sub="En plantilla activa"     color="blue"   href="/admin/empleados" />
         <StatCard icon={TrendingDown} label="Bajas Este Mes"         value={s?.bajas_este_mes ?? "—"}            sub="Dados de baja este mes"  color="red"    href="/admin/empleados" />
         <StatCard icon={BellRing}     label="Alertas Activas"        value={s?.alertas_activas ?? "—"}           sub="Requieren atención"      color="gold"   href="/admin/rrhh/alertas" />
         <StatCard icon={Wallet}       label="Anticipos Pendientes"   value={s?.anticipos_pendientes ?? "—"}      sub="Por aprobar"             color="purple" href="/admin/anticipos" />
         <StatCard icon={Users}        label="Postulaciones Nuevas"   value={s?.postulaciones_nuevas ?? "—"}      sub="Sin revisar"             color="blue"   href="/admin/reclutamiento" />
+        <StatCard icon={CalendarDays} label="Vacaciones Pendientes"  value={s?.vacaciones_pendientes ?? "—"}     sub="Por aprobar"             color="orange" href="/admin/rrhh/vacaciones" />
         <StatCard icon={Landmark}     label="Liquidaciones Activas"  value={s?.liquidaciones_confirmadas ?? "—"} sub="Confirmadas pendientes"  color="gold"   href="/admin/rrhh/prestaciones" />
       </div>
 
       {/* QUICK LINKS */}
       <div>
         <p className="text-[10px] text-white/30 uppercase tracking-widest font-semibold mb-3">Accesos Rápidos</p>
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-          <QuickLink href="/admin/empleados"            icon={HardHat}        label="Colaboradores"       sub="Ficha y gestión"       color="blue"   />
-          <QuickLink href="/admin/rrhh/alertas"         icon={BellRing}       label="Alertas RRHH"        sub="Revisar activas"       color="gold"   />
-          <QuickLink href="/admin/anticipos"            icon={Wallet}         label="Anticipos"           sub="Aprobar / rechazar"    color="purple" />
-          <QuickLink href="/admin/reclutamiento"        icon={UserSearch}     label="Reclutamiento"       sub="Postulaciones"         color="green"  />
-          <QuickLink href="/admin/rrhh/prestaciones"    icon={Landmark}       label="Prestaciones"        sub="Liquidaciones"         color="orange" />
-          <QuickLink href="/admin/rrhh/pre-planilla"    icon={FileSpreadsheet} label="Pre-Planilla"       sub="Revisión nómina"       color="blue"   />
+        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+          <QuickLink href="/admin/empleados"            icon={HardHat}         label="Colaboradores"       sub="Ficha y gestión"       color="blue"   />
+          <QuickLink href="/admin/rrhh/alertas"         icon={BellRing}        label="Alertas RRHH"        sub="Revisar activas"       color="gold"   />
+          <QuickLink href="/admin/anticipos"            icon={Wallet}          label="Anticipos"           sub="Aprobar / rechazar"    color="purple" />
+          <QuickLink href="/admin/reclutamiento"        icon={UserSearch}      label="Reclutamiento"       sub="Postulaciones"         color="green"  />
+          <QuickLink href="/admin/rrhh/prestaciones"    icon={Landmark}        label="Prestaciones"        sub="Liquidaciones"         color="orange" />
+          <QuickLink href="/admin/rrhh/vacaciones"      icon={CalendarDays}    label="Vacaciones"          sub="Solicitudes"           color="orange" />
+          <QuickLink href="/admin/rrhh/pre-planilla"    icon={FileSpreadsheet} label="Pre-Planilla"        sub="Revisión nómina"       color="blue"   />
         </div>
       </div>
 
@@ -405,21 +440,26 @@ function DashboardOperaciones({
         </Link>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard icon={AlertTriangle} label="Incidencias Activas"  value={s?.incidencias_activas ?? "—"} sub="Abiertas o en proceso"  color="red"    href="/admin/incidencias" />
-        <StatCard icon={Siren}         label="Emergencias Activas"  value={s?.emergencias_activas ?? "—"} sub="Atención inmediata"     color="red"    href="/admin/incidencias" />
-        <StatCard icon={CheckSquare}   label="Tareas Pendientes"    value={s?.tareas_pendientes ?? "—"}   sub="Por atender"            color="purple" href="/admin/tareas" />
-        <StatCard icon={Truck}         label="Custodias Activas"    value="—"                             sub="En ruta o planificadas" color="blue"   href="/admin/custodias" />
+      {/* STATS OPERATIVAS */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <StatCard icon={AlertTriangle} label="Incidencias Activas"  value={s?.incidencias_activas ?? "—"}                        sub="Abiertas o en proceso"   color="red"    href="/admin/incidencias" />
+        <StatCard icon={Siren}         label="Emergencias Activas"  value={s?.emergencias_activas ?? "—"}                        sub="Atención inmediata"      color="red"    href="/admin/incidencias" />
+        <StatCard icon={CheckSquare}   label="Tareas Pendientes"    value={s?.tareas_pendientes ?? "—"}                          sub="Por atender"             color="purple" href="/admin/tareas" />
+        <StatCard icon={Truck}         label="Custodias Activas"    value="—"                                                    sub="En ruta o planificadas"  color="blue"   href="/admin/custodias" />
+        <StatCard icon={LogIn}         label="Fichajes Hoy"         value={summary?.control_qr?.fichajes_hoy ?? "—"}             sub="Entradas registradas"    color="green"  href="/admin/control-operativo-qr" />
+        <StatCard icon={QrCode}        label="Agentes en Turno"     value={summary?.control_qr?.agentes_en_turno ?? "—"}         sub="Activos ahora"           color="blue"   href="/admin/control-operativo-qr" />
       </div>
 
       {/* QUICK LINKS */}
       <div>
         <p className="text-[10px] text-white/30 uppercase tracking-widest font-semibold mb-3">Módulos Operativos</p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <QuickLink href="/admin/incidencias"   icon={AlertTriangle} label="Incidencias"        sub="Gestionar activas"  color="red"    />
-          <QuickLink href="/admin/tareas"        icon={CheckSquare}   label="Tareas"             sub="Ver pendientes"     color="purple" />
-          <QuickLink href="/admin/operaciones"   icon={BarChart3}     label="Pizarrón Operativo" sub="Estado del servicio" color="blue"  />
-          <QuickLink href="/admin/custodias"     icon={Truck}         label="Custodias"          sub="En ruta"            color="blue"   />
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <QuickLink href="/admin/control-operativo-qr" icon={QrCode}        label="Control QR"         sub="Fichajes y rondas"    color="green"  />
+          <QuickLink href="/admin/incidencias"          icon={AlertTriangle}  label="Incidencias"        sub="Gestionar activas"   color="red"    />
+          <QuickLink href="/admin/tareas"               icon={CheckSquare}    label="Tareas"             sub="Ver pendientes"      color="purple" />
+          <QuickLink href="/admin/operaciones"          icon={BarChart3}      label="Pizarrón Operativo" sub="Estado del servicio" color="blue"   />
+          <QuickLink href="/admin/custodias"            icon={Truck}          label="Custodias"          sub="En ruta"             color="blue"   />
+          <QuickLink href="/admin/bodega"               icon={Package}        label="Bodega"             sub="Stock y solicitudes" color="orange" />
         </div>
       </div>
 

@@ -285,10 +285,22 @@ export interface DashboardSummary {
     anticipos_pendientes: number;
     liquidaciones_confirmadas: number;
     postulaciones_nuevas: number;
+    vacaciones_pendientes: number;
   };
   comercial: {
     leads_nuevos: number;
     postulaciones_nuevas: number;
+  };
+  control_qr: {
+    fichajes_hoy: number;
+    agentes_en_turno: number;
+  };
+  bodega: {
+    solicitudes_pendientes: number;
+    armas_en_reparacion: number;
+  };
+  sistema: {
+    eliminaciones_pendientes: number;
   };
 }
 
