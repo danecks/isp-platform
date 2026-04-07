@@ -837,13 +837,16 @@ agenteFichajeRouter.get("/agente/reportes-turno", async (req, res) => {
              e.nombre_completo AS agente_nombre,
              e.puesto AS agente_cargo,
              po.nombre AS puesto_nombre, po.cliente_nombre,
+             po.zona_operativa_id AS zona_id,
+             oz.nombre AS zona_nombre,
              resp.nombre_completo AS responsable_anterior_nombre
       FROM reporte_turno rt
       LEFT JOIN employees e ON e.id = rt.employee_id
       LEFT JOIN puestos_operativos po ON po.id = rt.puesto_id
+      LEFT JOIN operational_zones oz ON oz.id = po.zona_operativa_id
       LEFT JOIN employees resp ON resp.id = rt.municion_responsable_anterior
       ${where}
-      ORDER BY rt.registrado_en DESC
+      ORDER BY po.cliente_nombre ASC, oz.nombre ASC NULLS LAST, rt.registrado_en DESC
       LIMIT $${params.length}
     `, params);
 

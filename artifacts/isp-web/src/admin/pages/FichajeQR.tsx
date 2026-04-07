@@ -384,6 +384,7 @@ export default function FichajeQR() {
   }
   interface ReporteTurno {
     id: number; puesto_nombre: string; cliente_nombre: string;
+    zona_id: number | null; zona_nombre: string | null;
     agente_nombre: string; agente_cargo: string;
     tipo: string; arma_estado: string | null; arma_observacion: string | null;
     municion_ok: boolean | null; municion_faltante: number;
@@ -909,130 +910,203 @@ export default function FichajeQR() {
           )}
 
           {cargando && <p className="text-white/30 text-sm text-center py-8">Cargando...</p>}
-          <div className="space-y-2">
-            {municiones.map(m => (
-              <div key={m.id} className="bg-white/3 border border-amber-500/10 rounded-xl p-4 flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-amber-200/80 text-sm font-semibold">{m.puesto_nombre}</p>
-                  <p className="text-white/30 text-xs mt-0.5">{m.cliente_nombre}</p>
-                  <div className="flex items-center gap-3 mt-2">
-                    <span className="text-white/70 text-sm font-mono font-semibold">{m.cantidad_asignada}</span>
-                    <span className="text-white/30 text-xs">cartuchos</span>
-                    <span className="text-white/40 text-xs">{m.descripcion}</span>
+          {!cargando && municiones.length === 0 && (
+            <p className="text-white/20 text-sm text-center py-8">Sin puestos con munición asignada. Usa el botón de arriba para asignar.</p>
+          )}
+          {/* Agrupado por cliente */}
+          {(() => {
+            const porCliente = new Map<string, typeof municiones>();
+            for (const m of municiones) {
+              const cli = m.cliente_nombre || "Sin cliente";
+              if (!porCliente.has(cli)) porCliente.set(cli, []);
+              porCliente.get(cli)!.push(m);
+            }
+            return (
+              <div className="space-y-5">
+                {Array.from(porCliente.entries()).map(([cliente, items]) => (
+                  <div key={cliente}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="h-px flex-1 bg-white/8" />
+                      <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20">
+                        <span className="text-amber-300/80 text-xs font-bold tracking-wide uppercase">{cliente}</span>
+                        <span className="text-white/30 text-xs">{items.length} puesto{items.length !== 1 ? "s" : ""}</span>
+                      </div>
+                      <div className="h-px flex-1 bg-white/8" />
+                    </div>
+                    <div className="space-y-2 pl-3 border-l border-amber-500/10">
+                      {items.map(m => (
+                        <div key={m.id} className="bg-white/3 border border-amber-500/10 rounded-xl p-4 flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-amber-200/80 text-sm font-semibold">{m.puesto_nombre}</p>
+                            <div className="flex items-center gap-3 mt-2">
+                              <span className="text-white/70 text-sm font-mono font-semibold">{m.cantidad_asignada}</span>
+                              <span className="text-white/30 text-xs">cartuchos</span>
+                              <span className="text-white/40 text-xs">{m.descripcion}</span>
+                            </div>
+                          </div>
+                          <div className="flex gap-2 shrink-0">
+                            <button onClick={() => setMunicionForm({ puesto_id: String(m.puesto_id), descripcion: m.descripcion, cantidad: String(m.cantidad_asignada) })}
+                              className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors text-white/40 hover:text-white/60">
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => eliminarMunicion(m.id)}
+                              className="p-1.5 bg-red-500/5 hover:bg-red-500/15 border border-red-500/10 rounded-lg transition-colors text-red-400/50 hover:text-red-400">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-                <div className="flex gap-2 shrink-0">
-                  <button onClick={() => setMunicionForm({ puesto_id: String(m.puesto_id), descripcion: m.descripcion, cantidad: String(m.cantidad_asignada) })}
-                    className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors text-white/40 hover:text-white/60">
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
-                  <button onClick={() => eliminarMunicion(m.id)}
-                    className="p-1.5 bg-red-500/5 hover:bg-red-500/15 border border-red-500/10 rounded-lg transition-colors text-red-400/50 hover:text-red-400">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                ))}
               </div>
-            ))}
-            {!cargando && municiones.length === 0 && (
-              <p className="text-white/20 text-sm text-center py-8">Sin puestos con munición asignada. Usa el botón de arriba para asignar.</p>
-            )}
-          </div>
+            );
+          })()}
         </div>
       )}
 
       {/* ── TAB REPORTES DE TURNO ───────────────────────────────────────────── */}
-      {tab === "reportes" && (
-        <div>
-          <div className="flex items-center gap-3 mb-4">
-            <button onClick={() => setSoloAlertas(false)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${!soloAlertas ? "bg-blue-600/20 border-blue-500/30 text-blue-300" : "bg-white/5 border-white/10 text-white/40"}`}>
-              Todos
-            </button>
-            <button onClick={() => setSoloAlertas(true)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors flex items-center gap-1.5 ${soloAlertas ? "bg-red-500/20 border-red-500/30 text-red-300" : "bg-white/5 border-white/10 text-white/40"}`}>
-              <AlertTriangle className="w-3 h-3" /> Solo alertas
-            </button>
-            <span className="text-white/30 text-xs ml-auto">{reportes.length} registros</span>
-          </div>
-
-          {cargando && <p className="text-white/30 text-sm text-center py-8">Cargando...</p>}
-          <div className="space-y-3">
-            {reportes.map(r => {
-              const tieneAlerta = r.municion_ok === false || r.arma_estado === "necesita_reparacion" || r.uniforme_ok === false;
-              return (
-                <div key={r.id} className={`rounded-xl border p-4 space-y-3 ${tieneAlerta ? "bg-red-500/3 border-red-500/15" : "bg-white/3 border-white/8"}`}>
-                  {/* Cabecera */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-white/80 text-sm font-semibold">{r.agente_nombre}</p>
-                      <p className="text-white/30 text-xs">{r.puesto_nombre} · {r.cliente_nombre}</p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-white/30 text-xs">{new Date(r.registrado_en).toLocaleString("es-HN", { dateStyle: "short", timeStyle: "short" })}</p>
-                      <span className={`text-xs font-semibold ${r.tipo === "supervision" ? "text-purple-400/60" : "text-blue-400/60"}`}>{r.tipo}</span>
-                    </div>
-                  </div>
-
-                  {/* Estado arma */}
-                  {r.arma_estado && (
-                    <div className={`flex items-start gap-2 rounded-lg p-2.5 ${r.arma_estado === "necesita_reparacion" ? "bg-red-500/8 border border-red-500/15" : "bg-green-500/5 border border-green-500/10"}`}>
-                      <ShieldAlert className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${r.arma_estado === "necesita_reparacion" ? "text-red-400" : "text-green-400"}`} />
-                      <div>
-                        <p className={`text-xs font-semibold ${r.arma_estado === "necesita_reparacion" ? "text-red-300" : "text-green-300"}`}>
-                          Arma: {r.arma_estado === "bueno" ? "Buen estado" : "Necesita reparación"}
-                        </p>
-                        {r.arma_observacion && <p className="text-white/50 text-xs mt-0.5">{r.arma_observacion}</p>}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Munición */}
-                  {r.municion_ok !== null && (
-                    <div className={`flex items-start gap-2 rounded-lg p-2.5 ${r.municion_ok === false ? "bg-red-500/8 border border-red-500/15" : "bg-green-500/5 border border-green-500/10"}`}>
-                      <AlertTriangle className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${r.municion_ok === false ? "text-red-400" : "text-green-400"}`} />
-                      <div className="flex-1">
-                        <p className={`text-xs font-semibold ${r.municion_ok === false ? "text-red-300" : "text-green-300"}`}>
-                          Munición: {r.municion_ok ? "Completa" : `Faltan ${r.municion_faltante} cartuchos`}
-                        </p>
-                        {r.municion_ok === false && r.responsable_anterior_nombre && (
-                          <p className="text-white/50 text-xs mt-1">
-                            <span className="text-red-300/80 font-semibold">Responsable anterior: </span>
-                            {r.responsable_anterior_nombre}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Uniforme */}
-                  {r.uniforme_ok !== null && (
-                    <div className={`flex items-start gap-2 rounded-lg p-2.5 ${r.uniforme_ok === false ? "bg-amber-500/8 border border-amber-500/15" : "bg-green-500/5 border border-green-500/10"}`}>
-                      <Users className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${r.uniforme_ok === false ? "text-amber-400" : "text-green-400"}`} />
-                      <div>
-                        <p className={`text-xs font-semibold ${r.uniforme_ok === false ? "text-amber-300" : "text-green-300"}`}>
-                          Uniforme: {r.uniforme_ok ? "Completo" : "Necesita dotación"}
-                        </p>
-                        {r.uniforme_ok === false && r.uniforme_items_faltantes && r.uniforme_items_faltantes.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mt-1">
-                            {r.uniforme_items_faltantes.map((item, i) => (
-                              <span key={i} className="text-xs bg-amber-500/10 border border-amber-500/20 rounded-lg px-2 py-0.5 text-amber-200/60">
-                                {item.tipo}{item.talla ? ` · T${item.talla}` : ""}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
+      {tab === "reportes" && (() => {
+        // Build nested map: cliente → zona → reportes[]
+        const porCliente = new Map<string, Map<string, ReporteTurno[]>>();
+        for (const r of reportes) {
+          const cli = r.cliente_nombre || "Sin cliente";
+          const zona = r.zona_nombre || "Sin zona asignada";
+          if (!porCliente.has(cli)) porCliente.set(cli, new Map());
+          const porZona = porCliente.get(cli)!;
+          if (!porZona.has(zona)) porZona.set(zona, []);
+          porZona.get(zona)!.push(r);
+        }
+        const renderReporte = (r: ReporteTurno) => {
+          const tieneAlerta = r.municion_ok === false || r.arma_estado === "necesita_reparacion" || r.uniforme_ok === false;
+          return (
+            <div key={r.id} className={`rounded-xl border p-4 space-y-3 ${tieneAlerta ? "bg-red-500/3 border-red-500/15" : "bg-white/3 border-white/8"}`}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-white/80 text-sm font-semibold">{r.agente_nombre}</p>
+                  <p className="text-white/30 text-xs">{r.puesto_nombre}</p>
                 </div>
-              );
-            })}
+                <div className="text-right shrink-0">
+                  <p className="text-white/30 text-xs">{new Date(r.registrado_en).toLocaleString("es-HN", { dateStyle: "short", timeStyle: "short" })}</p>
+                  <span className={`text-xs font-semibold ${r.tipo === "supervision" ? "text-purple-400/60" : "text-blue-400/60"}`}>{r.tipo}</span>
+                </div>
+              </div>
+              {r.arma_estado && (
+                <div className={`flex items-start gap-2 rounded-lg p-2.5 ${r.arma_estado === "necesita_reparacion" ? "bg-red-500/8 border border-red-500/15" : "bg-green-500/5 border border-green-500/10"}`}>
+                  <ShieldAlert className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${r.arma_estado === "necesita_reparacion" ? "text-red-400" : "text-green-400"}`} />
+                  <div>
+                    <p className={`text-xs font-semibold ${r.arma_estado === "necesita_reparacion" ? "text-red-300" : "text-green-300"}`}>
+                      Arma: {r.arma_estado === "bueno" ? "Buen estado" : "Necesita reparación"}
+                    </p>
+                    {r.arma_observacion && <p className="text-white/50 text-xs mt-0.5">{r.arma_observacion}</p>}
+                  </div>
+                </div>
+              )}
+              {r.municion_ok !== null && (
+                <div className={`flex items-start gap-2 rounded-lg p-2.5 ${r.municion_ok === false ? "bg-red-500/8 border border-red-500/15" : "bg-green-500/5 border border-green-500/10"}`}>
+                  <AlertTriangle className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${r.municion_ok === false ? "text-red-400" : "text-green-400"}`} />
+                  <div className="flex-1">
+                    <p className={`text-xs font-semibold ${r.municion_ok === false ? "text-red-300" : "text-green-300"}`}>
+                      Munición: {r.municion_ok ? "Completa" : `Faltan ${r.municion_faltante} cartuchos`}
+                    </p>
+                    {r.municion_ok === false && r.responsable_anterior_nombre && (
+                      <p className="text-white/50 text-xs mt-1">
+                        <span className="text-red-300/80 font-semibold">Responsable anterior: </span>
+                        {r.responsable_anterior_nombre}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+              {r.uniforme_ok !== null && (
+                <div className={`flex items-start gap-2 rounded-lg p-2.5 ${r.uniforme_ok === false ? "bg-amber-500/8 border border-amber-500/15" : "bg-green-500/5 border border-green-500/10"}`}>
+                  <Users className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${r.uniforme_ok === false ? "text-amber-400" : "text-green-400"}`} />
+                  <div>
+                    <p className={`text-xs font-semibold ${r.uniforme_ok === false ? "text-amber-300" : "text-green-300"}`}>
+                      Uniforme: {r.uniforme_ok ? "Completo" : "Necesita dotación"}
+                    </p>
+                    {r.uniforme_ok === false && r.uniforme_items_faltantes && r.uniforme_items_faltantes.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {r.uniforme_items_faltantes.map((item, i) => (
+                          <span key={i} className="text-xs bg-amber-500/10 border border-amber-500/20 rounded-lg px-2 py-0.5 text-amber-200/60">
+                            {item.tipo}{item.talla ? ` · T${item.talla}` : ""}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        };
+        return (
+          <div>
+            <div className="flex items-center gap-3 mb-4">
+              <button onClick={() => setSoloAlertas(false)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${!soloAlertas ? "bg-blue-600/20 border-blue-500/30 text-blue-300" : "bg-white/5 border-white/10 text-white/40"}`}>
+                Todos
+              </button>
+              <button onClick={() => setSoloAlertas(true)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors flex items-center gap-1.5 ${soloAlertas ? "bg-red-500/20 border-red-500/30 text-red-300" : "bg-white/5 border-white/10 text-white/40"}`}>
+                <AlertTriangle className="w-3 h-3" /> Solo alertas
+              </button>
+              <span className="text-white/30 text-xs ml-auto">{reportes.length} registros</span>
+            </div>
+            {cargando && <p className="text-white/30 text-sm text-center py-8">Cargando...</p>}
             {!cargando && reportes.length === 0 && (
               <p className="text-white/20 text-sm text-center py-8">Sin reportes de turno{soloAlertas ? " con alertas" : ""} aún.</p>
             )}
+            <div className="space-y-6">
+              {Array.from(porCliente.entries()).map(([cliente, zonas]) => {
+                const totalCliente = Array.from(zonas.values()).reduce((s, a) => s + a.length, 0);
+                const alertasCliente = Array.from(zonas.values()).flat().filter(r =>
+                  r.municion_ok === false || r.arma_estado === "necesita_reparacion" || r.uniforme_ok === false).length;
+                return (
+                  <div key={cliente}>
+                    {/* ── Cabecera de cliente ── */}
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="h-px flex-1 bg-white/8" />
+                      <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20">
+                        <span className="text-blue-300/80 text-xs font-bold tracking-wide uppercase">{cliente}</span>
+                        <span className="text-white/30 text-xs">{totalCliente}</span>
+                        {alertasCliente > 0 && (
+                          <span className="flex items-center gap-1 text-red-400 text-xs font-semibold">
+                            <AlertTriangle className="w-3 h-3" />{alertasCliente}
+                          </span>
+                        )}
+                      </div>
+                      <div className="h-px flex-1 bg-white/8" />
+                    </div>
+                    {/* ── Zonas dentro del cliente ── */}
+                    <div className="space-y-4">
+                      {Array.from(zonas.entries()).map(([zona, items]) => {
+                        const alertasZona = items.filter(r =>
+                          r.municion_ok === false || r.arma_estado === "necesita_reparacion" || r.uniforme_ok === false).length;
+                        return (
+                          <div key={zona}>
+                            <div className="flex items-center gap-2 mb-2 pl-1">
+                              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${alertasZona > 0 ? "bg-red-400" : "bg-white/20"}`} />
+                              <span className="text-white/50 text-xs font-semibold uppercase tracking-wider">{zona}</span>
+                              <span className="text-white/20 text-xs">{items.length} reporte{items.length !== 1 ? "s" : ""}</span>
+                              {alertasZona > 0 && (
+                                <span className="text-red-400/70 text-xs">{alertasZona} alerta{alertasZona !== 1 ? "s" : ""}</span>
+                              )}
+                            </div>
+                            <div className="space-y-2 pl-3 border-l border-white/6">
+                              {items.map(r => renderReporte(r))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Modales */}
       {printAgente && <PrintView agente={printAgente} onClose={() => setPrintAgente(null)} />}
