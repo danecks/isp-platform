@@ -1,9 +1,18 @@
 import { useEffect, useState } from "react";
-import { CheckCircle, XCircle, Loader2, MapPin, AlertTriangle, QrCode } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, MapPin, AlertTriangle, QrCode, ShieldAlert } from "lucide-react";
 
 const API = "/api";
 
-type EstadoScan = "cargando" | "esperando_gps" | "enviando" | "ok" | "fuera_de_rango" | "sin_gps" | "error" | "token_invalido";
+type EstadoScan =
+  | "cargando"
+  | "esperando_gps"
+  | "gps_denegado"
+  | "enviando"
+  | "ok"
+  | "fuera_de_rango"
+  | "sin_gps"
+  | "error"
+  | "token_invalido";
 
 interface PuntoInfo {
   id: number;
@@ -25,7 +34,6 @@ export default function RondaGuardia() {
   const [puntoInfo, setPuntoInfo] = useState<PuntoInfo | null>(null);
   const [resultado, setResultado] = useState<ResultadoScan | null>(null);
   const [mensajeError, setMensajeError] = useState("");
-  const [gpsListo, setGpsListo] = useState(false);
   const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number; precision: number } | null>(null);
 
   const token = new URLSearchParams(window.location.search).get("token");
@@ -43,38 +51,46 @@ export default function RondaGuardia() {
       .catch(e => { setMensajeError(e.message); setEstado("token_invalido"); });
   }, [token]);
 
-  // 2. Capturar GPS cuando el token es válido
+  // 2. Solicitar GPS — obligatorio para registrar la ronda
   useEffect(() => {
     if (estado !== "esperando_gps") return;
 
     if (!navigator.geolocation) {
-      setGpsListo(true);
+      // Dispositivo sin GPS — registrar igualmente con advertencia
+      setEstado("enviando");
       return;
     }
 
-    const id = navigator.geolocation.watchPosition(
+    const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         setGpsCoords({
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
           precision: Math.round(pos.coords.accuracy),
         });
-        setGpsListo(true);
+        // GPS obtenido: proceder a enviar
+        setEstado("enviando");
       },
-      () => { setGpsListo(true); },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      (err) => {
+        // El guardia negó el permiso o hay un error
+        if (err.code === err.PERMISSION_DENIED) {
+          setEstado("gps_denegado");
+        } else {
+          // Timeout u otro error de hardware — registrar sin GPS con advertencia
+          setEstado("enviando");
+        }
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
 
-    const timer = setTimeout(() => setGpsListo(true), 8000);
-    return () => { navigator.geolocation.clearWatch(id); clearTimeout(timer); };
+    return () => { navigator.geolocation.clearWatch(watchId); };
   }, [estado]);
 
-  // 3. Enviar escaneo cuando GPS esté listo (o timeout)
+  // 3. Enviar escaneo solo cuando el estado cambia a "enviando"
   useEffect(() => {
-    if (!gpsListo || estado !== "esperando_gps") return;
-    setEstado("enviando");
+    if (estado !== "enviando") return;
 
-    const body: any = { token };
+    const body: Record<string, unknown> = { token };
     if (gpsCoords) {
       body.latitud = gpsCoords.lat;
       body.longitud = gpsCoords.lng;
@@ -94,14 +110,14 @@ export default function RondaGuardia() {
         else setEstado("sin_gps");
       })
       .catch(() => { setMensajeError("Error al conectar con el servidor"); setEstado("error"); });
-  }, [gpsListo, estado, gpsCoords, token]);
+  }, [estado, gpsCoords, token]);
 
   const hora = new Date().toLocaleTimeString("es-HN", { hour: "2-digit", minute: "2-digit" });
   const fecha = new Date().toLocaleDateString("es-HN", { weekday: "long", day: "numeric", month: "long" });
 
   return (
     <div className="min-h-screen bg-[#0d1117] flex flex-col items-center justify-center p-4">
-      {/* Logo/Header */}
+      {/* Header */}
       <div className="text-center mb-8">
         <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-600/20 border border-blue-500/30 mb-3">
           <QrCode className="w-6 h-6 text-blue-400" />
@@ -112,7 +128,7 @@ export default function RondaGuardia() {
       {/* Tarjeta principal */}
       <div className="w-full max-w-sm bg-white/5 border border-white/10 rounded-2xl p-6 text-center">
 
-        {/* ── CARGANDO ── */}
+        {/* ── CARGANDO / OBTENIENDO GPS / ENVIANDO ── */}
         {(estado === "cargando" || estado === "enviando" || estado === "esperando_gps") && (
           <div>
             <Loader2 className="w-12 h-12 mx-auto mb-4 text-blue-400 animate-spin" />
@@ -125,11 +141,40 @@ export default function RondaGuardia() {
               <p className="text-white/50 text-sm mt-2">{puntoInfo.ronda_nombre} — {puntoInfo.nombre}</p>
             )}
             {estado === "esperando_gps" && (
-              <div className="mt-4 flex items-center justify-center gap-2 text-xs text-white/30">
-                <MapPin className="w-3.5 h-3.5" />
-                <span>Asegúrate de tener el GPS activado</span>
+              <div className="mt-4 bg-blue-500/5 border border-blue-500/15 rounded-xl p-3">
+                <div className="flex items-center justify-center gap-2 text-xs text-blue-300">
+                  <MapPin className="w-3.5 h-3.5 shrink-0" />
+                  <span>Acepta el permiso de ubicación cuando tu navegador lo solicite</span>
+                </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── GPS DENEGADO — el guardia presionó "No permitir" ── */}
+        {estado === "gps_denegado" && (
+          <div>
+            <div className="w-16 h-16 bg-orange-500/10 border border-orange-500/30 rounded-full flex items-center justify-center mx-auto mb-4">
+              <ShieldAlert className="w-8 h-8 text-orange-400" />
+            </div>
+            <p className="text-orange-400 font-bold text-xl mb-2">Ubicación requerida</p>
+            <p className="text-white/60 text-sm mt-2 leading-relaxed">
+              La ronda <strong className="text-white">no fue registrada</strong> porque no se obtuvo tu ubicación.
+            </p>
+            <div className="mt-4 bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 text-left space-y-2">
+              <p className="text-xs text-orange-300 font-semibold uppercase tracking-wide">¿Cómo resolverlo?</p>
+              <p className="text-xs text-white/60 leading-relaxed">
+                1. Vuelve a escanear el código QR.<br />
+                2. Cuando el navegador te pregunte si deseas compartir la ubicación, presiona <strong className="text-white">Permitir</strong>.<br />
+                3. Si ya la bloqueaste, ve a <strong className="text-white">Configuración del navegador → Privacidad → Permisos del sitio</strong> y permite la ubicación para este sitio.
+              </p>
+            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-5 w-full py-3 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 rounded-xl text-sm text-orange-300 hover:text-orange-200 font-medium transition-colors"
+            >
+              Intentar de nuevo
+            </button>
           </div>
         )}
 
@@ -168,9 +213,7 @@ export default function RondaGuardia() {
             <p className="text-white text-base font-semibold mt-4">{resultado.nombre_punto}</p>
             <p className="text-white/40 text-sm">{hora} — {fecha}</p>
             <div className="mt-4 bg-red-500/5 border border-red-500/15 rounded-xl p-3">
-              <p className="text-xs text-red-400/80">
-                Acércate más al punto de control e intenta de nuevo.
-              </p>
+              <p className="text-xs text-red-400/80">Acércate más al punto de control e intenta de nuevo.</p>
             </div>
             <button
               onClick={() => window.location.reload()}
@@ -181,7 +224,7 @@ export default function RondaGuardia() {
           </div>
         )}
 
-        {/* ── SIN GPS ── */}
+        {/* ── SIN GPS (dispositivo sin geolocalización) ── */}
         {estado === "sin_gps" && (
           <div>
             <div className="w-16 h-16 bg-yellow-500/10 border border-yellow-500/30 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -190,7 +233,7 @@ export default function RondaGuardia() {
             <p className="text-yellow-400 font-bold text-xl mb-1">Marcación sin GPS</p>
             <p className="text-white/60 text-sm mt-2">
               La marcación fue registrada pero <strong className="text-white">sin datos de ubicación</strong>.
-              Activa el GPS para que se valide la proximidad.
+              Activa el GPS del dispositivo para que se valide la proximidad.
             </p>
             <p className="text-white text-base font-semibold mt-4">{puntoInfo?.nombre}</p>
             <p className="text-white/40 text-sm">{hora} — {fecha}</p>
