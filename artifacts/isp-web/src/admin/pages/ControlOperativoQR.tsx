@@ -2,11 +2,12 @@ import { useState, useRef } from "react";
 import { AdminLayout } from "../layout/AdminLayout";
 import {
   QrCode, MapPin, CreditCard, Users, Printer, Download,
-  ChevronLeft, Shield, Activity, Search, CheckCircle,
+  ChevronLeft, Shield, Activity, Search, CheckCircle, BarChart2,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import FichajeQR from "./FichajeQR";
 import RondasQR from "./RondasQR";
+import EstadisticasRondas from "./EstadisticasRondas";
 
 function getSession() {
   return sessionStorage.getItem("isp_admin_session_v2") || "";
@@ -296,15 +297,16 @@ function TabCarnets() {
 
 // ── Página principal ──────────────────────────────────────────────────────────
 
-type Tab = "fichaje" | "rondas" | "carnets";
+type Tab = "fichaje" | "rondas" | "estadisticas" | "carnets";
 
 export default function ControlOperativoQR() {
   const [tab, setTab] = useState<Tab>("fichaje");
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
-    { key: "fichaje",  label: "Fichaje & Control",  icon: <QrCode className="w-4 h-4" /> },
-    { key: "rondas",   label: "Rondas de Patrullaje", icon: <MapPin className="w-4 h-4" /> },
-    { key: "carnets",  label: "Carnets",             icon: <CreditCard className="w-4 h-4" /> },
+    { key: "fichaje",      label: "Fichaje & Control",    icon: <QrCode className="w-4 h-4" /> },
+    { key: "rondas",       label: "Rondas de Patrullaje", icon: <MapPin className="w-4 h-4" /> },
+    { key: "estadisticas", label: "Estadísticas",         icon: <BarChart2 className="w-4 h-4" /> },
+    { key: "carnets",      label: "Carnets",              icon: <CreditCard className="w-4 h-4" /> },
   ];
 
   return (
@@ -336,9 +338,10 @@ export default function ControlOperativoQR() {
         </div>
 
         {/* Contenido */}
-        {tab === "fichaje" && <FichajeQR />}
-        {tab === "rondas"  && <RondasQR />}
-        {tab === "carnets" && <TabCarnets />}
+        {tab === "fichaje"      && <FichajeQR />}
+        {tab === "rondas"       && <RondasQR />}
+        {tab === "estadisticas" && <EstadisticasRondas />}
+        {tab === "carnets"      && <TabCarnets />}
       </div>
     </AdminLayout>
   );

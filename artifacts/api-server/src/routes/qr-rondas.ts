@@ -253,8 +253,117 @@ qrRondasRouter.delete("/qr-rondas/:id/puntos/:puntoId", async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// REPORTES
+// ESTADÍSTICAS GLOBALES
 // ══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/qr-rondas/estadisticas?dias=7&ronda_id=
+qrRondasRouter.get("/qr-rondas/estadisticas", async (req, res) => {
+  const dias   = Math.min(Math.max(parseInt(String(req.query.dias  || "7")), 1), 365);
+  const rondaId = req.query.ronda_id ? parseInt(String(req.query.ronda_id)) : null;
+
+  const filtroRonda = rondaId ? `AND p.ronda_id = ${rondaId}` : "";
+  const filtroRondaE = rondaId ? `AND p2.ronda_id = ${rondaId}` : "";
+
+  try {
+    const [frecPunto, distribHora, tendDiaria, rankAgentes, puntosSinAct, resumen] =
+      await Promise.all([
+
+        // 1. Frecuencia por punto
+        pool.query(`
+          SELECT p.id AS punto_id, p.nombre AS punto_nombre,
+                 r.nombre AS ronda_nombre, r.id AS ronda_id,
+                 COUNT(e.id)::int                                                   AS total,
+                 COUNT(e.id) FILTER (WHERE e.resultado = 'ok')::int                AS ok,
+                 COUNT(e.id) FILTER (WHERE e.resultado = 'fuera_de_rango')::int    AS fuera_de_rango,
+                 COUNT(e.id) FILTER (WHERE e.resultado = 'sin_gps')::int           AS sin_gps,
+                 MAX(e.escaneado_en)                                                AS ultimo_escaneo
+          FROM qr_ronda_puntos p
+          JOIN qr_rondas r ON r.id = p.ronda_id
+          LEFT JOIN qr_ronda_eventos e ON e.punto_id = p.id
+            AND e.escaneado_en >= NOW() - INTERVAL '${dias} days'
+          WHERE p.activo = true ${filtroRonda}
+          GROUP BY p.id, p.nombre, r.nombre, r.id
+          ORDER BY total DESC
+        `),
+
+        // 2. Distribución horaria (hora local UTC-6)
+        pool.query(`
+          SELECT EXTRACT(HOUR FROM (e.escaneado_en AT TIME ZONE 'America/Guatemala'))::int AS hora,
+                 COUNT(*)::int AS total
+          FROM qr_ronda_eventos e
+          JOIN qr_ronda_puntos p ON p.id = e.punto_id
+          WHERE e.escaneado_en >= NOW() - INTERVAL '${dias} days'
+            ${filtroRondaE.replace(/p\./g,'p.')}
+          GROUP BY hora ORDER BY hora
+        `),
+
+        // 3. Tendencia diaria
+        pool.query(`
+          SELECT (e.escaneado_en AT TIME ZONE 'America/Guatemala')::date AS fecha,
+                 COUNT(*)::int AS total
+          FROM qr_ronda_eventos e
+          JOIN qr_ronda_puntos p ON p.id = e.punto_id
+          WHERE e.escaneado_en >= NOW() - INTERVAL '${dias} days'
+            ${filtroRonda}
+          GROUP BY fecha ORDER BY fecha
+        `),
+
+        // 4. Ranking de agentes
+        pool.query(`
+          SELECT COALESCE(u.nombre, 'Sin identificar') AS guardia_nombre,
+                 COUNT(*)::int AS total
+          FROM qr_ronda_eventos e
+          LEFT JOIN users u ON u.id = e.user_id
+          JOIN qr_ronda_puntos p ON p.id = e.punto_id
+          WHERE e.escaneado_en >= NOW() - INTERVAL '${dias} days'
+            ${filtroRonda}
+          GROUP BY u.nombre ORDER BY total DESC LIMIT 15
+        `),
+
+        // 5. Puntos sin actividad reciente (más de 12h sin escaneo)
+        pool.query(`
+          SELECT p.id AS punto_id, p.nombre AS punto_nombre, r.nombre AS ronda_nombre,
+                 MAX(e.escaneado_en) AS ultimo_escaneo,
+                 ROUND(EXTRACT(EPOCH FROM (NOW() - MAX(e.escaneado_en)))/3600)::int AS horas_sin_actividad
+          FROM qr_ronda_puntos p
+          JOIN qr_rondas r ON r.id = p.ronda_id
+          LEFT JOIN qr_ronda_eventos e ON e.punto_id = p.id
+          WHERE p.activo = true AND r.activo = true ${filtroRonda}
+          GROUP BY p.id, p.nombre, r.nombre
+          HAVING MAX(e.escaneado_en) < NOW() - INTERVAL '12 hours'
+              OR MAX(e.escaneado_en) IS NULL
+          ORDER BY ultimo_escaneo ASC NULLS FIRST
+          LIMIT 20
+        `),
+
+        // 6. Resumen global
+        pool.query(`
+          SELECT
+            (SELECT COUNT(*)::int FROM qr_ronda_eventos e
+             JOIN qr_ronda_puntos p ON p.id = e.punto_id
+             WHERE e.escaneado_en >= NOW() - INTERVAL '${dias} days' ${filtroRondaE.replace(/p2\./g,'p.')}) AS total_escaneos,
+            (SELECT COUNT(*)::int FROM qr_ronda_puntos WHERE activo = true ${rondaId ? `AND ronda_id = ${rondaId}` : ''}) AS total_puntos_activos,
+            (SELECT COUNT(*)::int FROM qr_rondas WHERE activo = true ${rondaId ? `AND id = ${rondaId}` : ''}) AS total_rondas_activas,
+            (SELECT COUNT(DISTINCT e.punto_id)::int FROM qr_ronda_eventos e
+             JOIN qr_ronda_puntos p ON p.id = e.punto_id
+             WHERE e.escaneado_en >= NOW() - INTERVAL '${dias} days' ${filtroRondaE.replace(/p2\./g,'p.')}) AS puntos_con_actividad
+        `),
+      ]);
+
+    res.json({
+      frecuencia_por_punto: frecPunto.rows,
+      distribucion_horaria: distribHora.rows,
+      tendencia_diaria:     tendDiaria.rows,
+      ranking_agentes:      rankAgentes.rows,
+      puntos_sin_actividad: puntosSinAct.rows,
+      resumen:              resumen.rows[0],
+      parametros:           { dias, ronda_id: rondaId },
+    });
+  } catch (err) {
+    console.error("Error estadisticas rondas:", err);
+    res.status(500).json({ error: "Error calculando estadísticas" });
+  }
+});
 
 // GET /api/qr-rondas/:id/eventos — historial de escaneos
 qrRondasRouter.get("/qr-rondas/:id/eventos", async (req, res) => {
