@@ -36,6 +36,7 @@ interface AgenteInfo {
   } | null;
   gps: { latitud: number; longitud: number; radio_metros: number } | null;
   armamento: {
+    arma_id?: number | null;
     codigo: string;
     descripcion: string;
     serie?: string | null;
@@ -47,6 +48,9 @@ interface AgenteInfo {
   } | null;
   relevo: { nombre: string; registrado_en: string } | null;
   proximo_relevo: { nombre: string; cargo: string } | null;
+  municion: { id: number; descripcion: string; cantidad_asignada: number } | null;
+  bodega_tallas_botas: string[];
+  bodega_tallas_uniforme: string[];
   ya_ficho_hoy: boolean;
 }
 
@@ -262,6 +266,23 @@ export default function AgenteEscaneo() {
   const [rondaOk, setRondaOk] = useState(false);
   const [rondaError, setRondaError] = useState("");
 
+  // Reporte de turno (paso 2 después del fichaje / parte de supervisión)
+  const [reporteAbierto, setReporteAbierto] = useState(false);
+  const [fichajeIdParaReporte, setFichajeIdParaReporte] = useState<number | null>(null);
+  const [reporteEnviado, setReporteEnviado] = useState(false);
+  const [enviandoReporte, setEnviandoReporte] = useState(false);
+  const [reporteError, setReporteError] = useState("");
+  const [reporteResponsable, setReporteResponsable] = useState<string | null>(null);
+  // Arma
+  const [armaEstado, setArmaEstado] = useState<"bueno" | "necesita_reparacion">("bueno");
+  const [armaObservacion, setArmaObservacion] = useState("");
+  // Munición
+  const [municionOk, setMunicionOk] = useState<boolean>(true);
+  const [municionFaltante, setMunicionFaltante] = useState<number>(0);
+  // Uniforme
+  const [uniformeOk, setUniformeOk] = useState<boolean>(true);
+  const [uniformeItems, setUniformeItems] = useState<{ tipo: string; talla: string }[]>([]);
+
   const hora = new Date().toLocaleTimeString("es-HN", { hour: "2-digit", minute: "2-digit" });
   const fecha = new Date().toLocaleDateString("es-HN", { weekday: "long", day: "numeric", month: "long" });
 
@@ -387,8 +408,11 @@ export default function AgenteEscaneo() {
         if (data.error === "ya_registrado") { setEstado("ya_fichado"); return; }
         if (data.error === "fuera_de_zona") { setDistanciaRes(data.distancia_metros); setEstado("fuera_de_zona"); return; }
         if (data.error === "dispositivo_no_autorizado" || data.error === "tipo_incorrecto") { setMensajeError(data.mensaje || data.error); setEstado("device_invalido"); return; }
-        if (data.ok) { setDistanciaRes(data.distancia_metros); setEstado(data.resultado === "sin_gps" ? "sin_gps" : "ok"); }
-        else { setMensajeError(data.error || "Error desconocido"); setEstado("error"); }
+        if (data.ok) {
+          setDistanciaRes(data.distancia_metros);
+          if (data.fichaje_id) setFichajeIdParaReporte(data.fichaje_id);
+          setEstado(data.resultado === "sin_gps" ? "sin_gps" : "ok");
+        } else { setMensajeError(data.error || "Error desconocido"); setEstado("error"); }
       })
       .catch(() => { setMensajeError("Error al conectar con el servidor"); setEstado("error"); });
   }, [estado, gpsCoords, token, tipoEfectivo]);
@@ -404,7 +428,10 @@ export default function AgenteEscaneo() {
         body: JSON.stringify({ token, device_uuid: stored.uuid, device_token: stored.token, checks, calificacion: calificacion || null, observaciones, latitud: gpsCoords?.lat ?? null, longitud: gpsCoords?.lng ?? null }),
       });
       const data = await res.json();
-      if (data.ok) { setSupervisionOk(true); } else { setSupervisionError(data.mensaje || data.error || "Error guardando supervisión"); }
+      if (data.ok) {
+        setSupervisionOk(true);
+        if (data.supervision_id) setFichajeIdParaReporte(data.supervision_id);
+      } else { setSupervisionError(data.mensaje || data.error || "Error guardando supervisión"); }
     } catch { setSupervisionError("Error de conexión"); }
     finally { setEnviandoSupervision(false); }
   }
@@ -423,6 +450,236 @@ export default function AgenteEscaneo() {
       if (data.ok) { setRondaOk(true); } else { setRondaError(data.mensaje || data.error || "Error marcando ronda"); }
     } catch { setRondaError("Error de conexión"); }
     finally { setEnviandoRonda(false); }
+  }
+
+  // ── Enviar reporte de turno ────────────────────────────────────────────────
+  async function enviarReporteTurno(fichajeId: number, tipo: "fichaje" | "supervision" = "fichaje") {
+    const stored = getStoredDevice();
+    if (!stored || !agenteInfo) return;
+    setEnviandoReporte(true); setReporteError("");
+    try {
+      const payload = {
+        fichaje_id: fichajeId,
+        puesto_id: agenteInfo.puesto?.id ?? null,
+        employee_id: agenteInfo.employee_id,
+        tipo,
+        arma_id: agenteInfo.armamento?.arma_id ?? null,
+        arma_estado: agenteInfo.armamento ? armaEstado : null,
+        arma_observacion: armaEstado === "necesita_reparacion" ? armaObservacion : null,
+        municion_ok: agenteInfo.municion ? municionOk : null,
+        municion_faltante: agenteInfo.municion && !municionOk ? municionFaltante : 0,
+        uniforme_ok: uniformeOk,
+        uniforme_items_faltantes: !uniformeOk ? uniformeItems : [],
+        device_uuid: stored.uuid, device_token: stored.token,
+      };
+      const res = await fetch(`${API}/agente/reporte-turno`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setReporteEnviado(true);
+        if (data.responsable_anterior_nombre) setReporteResponsable(data.responsable_anterior_nombre);
+      } else { setReporteError(data.error || "Error guardando reporte"); }
+    } catch { setReporteError("Error de conexión"); }
+    finally { setEnviandoReporte(false); }
+  }
+
+  // ── ReporteTurnoForm: formulario de estado de arma/munición/uniforme ────────
+  function ReporteTurnoForm({ fichajeId, tipo = "fichaje" }: { fichajeId: number; tipo?: "fichaje" | "supervision" }) {
+    if (!agenteInfo) return null;
+    const { armamento, municion, bodega_tallas_botas, bodega_tallas_uniforme } = agenteInfo;
+    const TIPOS_UNIFORME = ["Camisa", "Pantalón", "Chaleco", "Gorra", "Cinturón", "Calcetines"];
+
+    function toggleUniformeItem(tipo: string, talla: string) {
+      setUniformeItems(prev => {
+        const exists = prev.find(i => i.tipo === tipo);
+        if (exists) return prev.filter(i => i.tipo !== tipo);
+        return [...prev, { tipo, talla }];
+      });
+    }
+    function getItemTalla(tipoItem: string) {
+      return uniformeItems.find(i => i.tipo === tipoItem)?.talla ?? "";
+    }
+    function setItemTalla(tipoItem: string, talla: string) {
+      setUniformeItems(prev => prev.map(i => i.tipo === tipoItem ? { ...i, talla } : i));
+    }
+
+    if (reporteEnviado) {
+      return (
+        <div className="mt-4 bg-green-500/5 border border-green-500/20 rounded-2xl p-5 text-center">
+          <CheckCircle className="w-10 h-10 text-green-400 mx-auto mb-3" />
+          <p className="text-green-400 font-bold text-lg">Reporte enviado</p>
+          {reporteResponsable && (
+            <div className="mt-3 bg-red-500/10 border border-red-500/20 rounded-xl p-3">
+              <p className="text-red-400 text-xs font-semibold uppercase tracking-wide mb-1">⚠️ Alerta de munición</p>
+              <p className="text-white/70 text-sm">
+                Según registros, <strong className="text-white">{reporteResponsable}</strong> fue el último agente en confirmar la munición completa en este puesto. Queda notificado como responsable de la falta.
+              </p>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="mt-4 bg-white/3 border border-white/8 rounded-2xl p-4 space-y-5">
+        <p className="text-white/60 text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5">
+          <ClipboardCheck className="w-3.5 h-3.5" /> Estado del turno
+        </p>
+
+        {/* ── Armamento ── */}
+        {armamento && (
+          <div>
+            <p className="text-amber-300/70 text-xs font-semibold uppercase tracking-wide mb-2 flex items-center gap-1.5">
+              <ShieldAlert className="w-3.5 h-3.5" /> Arma {armamento.codigo}
+            </p>
+            <div className="flex gap-2 mb-2">
+              {(["bueno", "necesita_reparacion"] as const).map(opt => (
+                <button key={opt} onClick={() => setArmaEstado(opt)}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${
+                    armaEstado === opt
+                      ? opt === "bueno"
+                        ? "bg-green-500/15 border-green-500/30 text-green-300"
+                        : "bg-red-500/15 border-red-500/30 text-red-300"
+                      : "bg-white/3 border-white/10 text-white/40 hover:text-white/60"
+                  }`}>
+                  {opt === "bueno" ? "✓ Buen estado" : "⚠ Necesita reparación"}
+                </button>
+              ))}
+            </div>
+            {armaEstado === "necesita_reparacion" && (
+              <textarea value={armaObservacion} onChange={e => setArmaObservacion(e.target.value)}
+                placeholder="Describe el problema o tipo de servicio que necesita..."
+                rows={2}
+                className="w-full bg-white/5 border border-red-500/20 rounded-xl px-3 py-2 text-xs text-white/80 placeholder-white/20 resize-none outline-none focus:border-red-500/40" />
+            )}
+          </div>
+        )}
+
+        {/* ── Munición ── */}
+        {municion && (
+          <div>
+            <p className="text-orange-300/70 text-xs font-semibold uppercase tracking-wide mb-2 flex items-center gap-1.5">
+              <ShieldAlert className="w-3.5 h-3.5" /> Munición — {municion.cantidad_asignada} cartuchos {municion.descripcion}
+            </p>
+            <div className="flex gap-2 mb-2">
+              {([true, false] as const).map(opt => (
+                <button key={String(opt)} onClick={() => { setMunicionOk(opt); if (opt) setMunicionFaltante(0); }}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${
+                    municionOk === opt
+                      ? opt
+                        ? "bg-green-500/15 border-green-500/30 text-green-300"
+                        : "bg-red-500/15 border-red-500/30 text-red-300"
+                      : "bg-white/3 border-white/10 text-white/40 hover:text-white/60"
+                  }`}>
+                  {opt ? "✓ Completa" : "⚠ Falta munición"}
+                </button>
+              ))}
+            </div>
+            {!municionOk && (
+              <div className="flex items-center gap-2 mt-2">
+                <p className="text-white/50 text-xs shrink-0">¿Cuántos faltan?</p>
+                <input type="number" min={1} max={municion.cantidad_asignada}
+                  value={municionFaltante || ""}
+                  onChange={e => setMunicionFaltante(Number(e.target.value))}
+                  className="flex-1 bg-white/5 border border-red-500/20 rounded-lg px-3 py-1.5 text-sm text-white outline-none focus:border-red-500/40 text-center" />
+                <p className="text-white/30 text-xs shrink-0">cartucho(s)</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Uniforme ── */}
+        <div>
+          <p className="text-blue-300/70 text-xs font-semibold uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <Users className="w-3.5 h-3.5" /> Uniforme y equipo
+          </p>
+          <div className="flex gap-2 mb-3">
+            {([true, false] as const).map(opt => (
+              <button key={String(opt)} onClick={() => { setUniformeOk(opt); if (opt) setUniformeItems([]); }}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${
+                  uniformeOk === opt
+                    ? opt
+                      ? "bg-green-500/15 border-green-500/30 text-green-300"
+                      : "bg-amber-500/15 border-amber-500/30 text-amber-300"
+                    : "bg-white/3 border-white/10 text-white/40 hover:text-white/60"
+                }`}>
+                {opt ? "✓ Todo completo" : "Necesita dotación"}
+              </button>
+            ))}
+          </div>
+
+          {!uniformeOk && (
+            <div className="space-y-2">
+              {/* Botas (con tallas de bodega) */}
+              <div className="bg-white/3 border border-white/8 rounded-xl p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <div onClick={() => toggleUniformeItem("Botas", bodega_tallas_botas[0] ?? "")}
+                      className={`w-4 h-4 rounded border transition-colors ${
+                        uniformeItems.find(i => i.tipo === "Botas")
+                          ? "bg-amber-500/30 border-amber-500/50" : "border-white/20"
+                      }`}>
+                      {uniformeItems.find(i => i.tipo === "Botas") && <CheckCircle className="w-4 h-4 text-amber-400" />}
+                    </div>
+                    <span className="text-xs text-white/70">Botas</span>
+                  </label>
+                  {uniformeItems.find(i => i.tipo === "Botas") && (
+                    <select value={getItemTalla("Botas")} onChange={e => setItemTalla("Botas", e.target.value)}
+                      className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white/70 outline-none">
+                      <option value="">Talla…</option>
+                      {bodega_tallas_botas.length > 0
+                        ? bodega_tallas_botas.map(t => <option key={t} value={t}>{t}</option>)
+                        : ["35","36","37","38","39","40","41","42","43","44","45"].map(t => <option key={t} value={t}>{t}</option>)
+                      }
+                    </select>
+                  )}
+                </div>
+                {bodega_tallas_botas.length === 0 && (
+                  <p className="text-white/25 text-xs">Sin tallas registradas en bodega</p>
+                )}
+              </div>
+
+              {/* Prendas de uniforme */}
+              <div className="bg-white/3 border border-white/8 rounded-xl p-3 space-y-2">
+                {TIPOS_UNIFORME.map(tipoItem => (
+                  <div key={tipoItem} className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <div onClick={() => toggleUniformeItem(tipoItem, bodega_tallas_uniforme[0] ?? "")}
+                        className={`w-4 h-4 rounded border transition-colors ${
+                          uniformeItems.find(i => i.tipo === tipoItem)
+                            ? "bg-amber-500/30 border-amber-500/50" : "border-white/20"
+                        }`}>
+                        {uniformeItems.find(i => i.tipo === tipoItem) && <CheckCircle className="w-4 h-4 text-amber-400" />}
+                      </div>
+                      <span className="text-xs text-white/70">{tipoItem}</span>
+                    </label>
+                    {uniformeItems.find(i => i.tipo === tipoItem) && (
+                      <select value={getItemTalla(tipoItem)} onChange={e => setItemTalla(tipoItem, e.target.value)}
+                        className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white/70 outline-none">
+                        <option value="">Talla…</option>
+                        {bodega_tallas_uniforme.length > 0
+                          ? bodega_tallas_uniforme.map(t => <option key={t} value={t}>{t}</option>)
+                          : ["XS","S","M","L","XL","XXL"].map(t => <option key={t} value={t}>{t}</option>)
+                        }
+                      </select>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {reporteError && <p className="text-red-400 text-xs">{reporteError}</p>}
+
+        <button onClick={() => enviarReporteTurno(fichajeId, tipo)} disabled={enviandoReporte}
+          className="w-full py-3 bg-blue-600/15 hover:bg-blue-600/25 border border-blue-500/25 rounded-xl text-sm text-blue-300 font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+          {enviandoReporte ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardCheck className="w-4 h-4" />}
+          {enviandoReporte ? "Enviando..." : "Enviar reporte de turno"}
+        </button>
+      </div>
+    );
   }
 
   // ── Subcomponentes ─────────────────────────────────────────────────────────
@@ -672,6 +929,10 @@ export default function AgenteEscaneo() {
                 <p className="text-purple-400 font-bold text-xl mb-1">Supervisión Guardada</p>
                 <p className="text-white/40 text-sm mt-2">{hora} — {fecha}</p>
                 {agenteInfo && <p className="text-white text-sm mt-3 font-semibold">{agenteInfo.nombre_completo}</p>}
+                {/* Reporte de turno del supervisor */}
+                {agenteInfo && (agenteInfo.armamento || agenteInfo.municion) && fichajeIdParaReporte && (
+                  <ReporteTurnoForm fichajeId={fichajeIdParaReporte} tipo="supervision" />
+                )}
                 <p className="text-white/20 text-xs mt-4">Puedes cerrar esta ventana</p>
               </div>
             ) : (
@@ -880,6 +1141,18 @@ export default function AgenteEscaneo() {
                   <BriefingPanel info={agenteInfo} />
 
                 </div>
+
+                {/* Reporte de turno (paso 2) */}
+                {(agenteInfo.armamento || agenteInfo.municion) && !reporteAbierto && !reporteEnviado && (
+                  <button onClick={() => setReporteAbierto(true)}
+                    className="mt-4 w-full py-3 bg-slate-500/8 hover:bg-slate-500/15 border border-slate-500/20 rounded-xl text-sm text-white/50 hover:text-white/80 font-semibold transition-colors flex items-center justify-center gap-2">
+                    <ClipboardCheck className="w-4 h-4" />
+                    Reportar estado de arma / munición / uniforme
+                  </button>
+                )}
+                {reporteAbierto && fichajeIdParaReporte && (
+                  <ReporteTurnoForm fichajeId={fichajeIdParaReporte} tipo="fichaje" />
+                )}
 
                 <p className="text-white/20 text-xs mt-5">Puedes cerrar esta ventana</p>
                 {esMaestro && (

@@ -210,13 +210,15 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
     }
 
     let armamento: {
+      arma_id: number | null;
       codigo: string; descripcion: string; serie: string | null; activo: boolean;
       numero_portacion: string | null; fecha_vencimiento_portacion: string | null;
       numero_tenencia: string | null; fecha_vencimiento_tenencia: string | null;
     } | null = null;
     if (puesto?.id) {
       const { rows: armaRows } = await pool.query(
-        `SELECT codigo,
+        `SELECT id AS arma_id,
+                codigo,
                 CONCAT(COALESCE(marca,''), ' ', COALESCE(modelo,''), ' ', COALESCE(calibre,'')) AS descripcion,
                 serie, activo,
                 numero_portacion, fecha_vencimiento_portacion,
@@ -272,6 +274,43 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
       if (proxRows[0]) proximo_relevo = proxRows[0];
     }
 
+    // Munición asignada al puesto
+    let municion: { id: number; descripcion: string; cantidad_asignada: number } | null = null;
+    if (puesto?.id) {
+      const { rows: munRows } = await pool.query(
+        `SELECT id, descripcion, cantidad_asignada FROM puesto_municion WHERE puesto_id = $1 AND activo = TRUE LIMIT 1`,
+        [puesto.id]
+      );
+      if (munRows[0]) municion = munRows[0];
+    }
+
+    // Tallas disponibles en bodega para botas y uniformes
+    let bodega_tallas_botas: string[] = [];
+    let bodega_tallas_uniforme: string[] = [];
+    try {
+      const { rows: tallasBotas } = await pool.query(
+        `SELECT DISTINCT bu.talla
+         FROM bodega_unidades bu
+         JOIN bodega_articulos ba ON ba.id = bu.articulo_id
+         WHERE ba.tipo_equipo = 'botas'
+           AND bu.estado = 'disponible'
+           AND bu.talla IS NOT NULL
+         ORDER BY bu.talla`
+      );
+      bodega_tallas_botas = tallasBotas.map((r: any) => r.talla);
+
+      const { rows: tallasUnif } = await pool.query(
+        `SELECT DISTINCT bu.talla
+         FROM bodega_unidades bu
+         JOIN bodega_articulos ba ON ba.id = bu.articulo_id
+         WHERE ba.tipo_equipo = 'uniforme'
+           AND bu.estado = 'disponible'
+           AND bu.talla IS NOT NULL
+         ORDER BY bu.talla`
+      );
+      bodega_tallas_uniforme = tallasUnif.map((r: any) => r.talla);
+    } catch (_) { /* tabla puede no existir aún */ }
+
     const { rows: dupRows } = await pool.query(
       `SELECT id FROM agente_fichajes
        WHERE employee_id = $1
@@ -292,6 +331,9 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
       armamento,
       relevo,
       proximo_relevo,
+      municion,
+      bodega_tallas_botas,
+      bodega_tallas_uniforme,
       ya_ficho_hoy: dupRows.length > 0,
     });
   } catch (err) {
@@ -679,5 +721,182 @@ agenteFichajeRouter.put("/puestos-gps/:puesto_id", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: "Error guardando GPS del puesto" });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// REPORTE DE TURNO — agente/supervisor reportan arma, munición y uniforme
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// POST /api/agente/reporte-turno
+agenteFichajeRouter.post("/agente/reporte-turno", async (req, res) => {
+  const {
+    fichaje_id, puesto_id, employee_id, tipo = "fichaje",
+    arma_id, arma_estado, arma_observacion,
+    municion_ok, municion_faltante = 0,
+    uniforme_ok, uniforme_items_faltantes,
+    device_uuid, device_token,
+  } = req.body;
+
+  if (!fichaje_id || !employee_id) {
+    return res.status(400).json({ error: "fichaje_id y employee_id requeridos" });
+  }
+
+  try {
+    // Validar dispositivo (reutiliza lógica existente)
+    if (device_uuid && device_token) {
+      const { rows: devRows } = await pool.query(
+        `SELECT id FROM supervisor_devices WHERE device_uuid = $1 AND activo = TRUE`,
+        [device_uuid]
+      );
+      if (!devRows[0]) return res.status(403).json({ error: "Dispositivo no autorizado" });
+      const dev = devRows[0];
+      const { rows: devFull } = await pool.query(
+        `SELECT device_token_hash FROM supervisor_devices WHERE id = $1`,
+        [dev.id]
+      );
+      if (devFull[0]?.device_token_hash !== hashToken(device_token)) {
+        return res.status(403).json({ error: "Token de dispositivo incorrecto" });
+      }
+    }
+
+    // Identificar responsable anterior de munición (último que reportó municion_ok=true en este puesto)
+    let municion_responsable_anterior: number | null = null;
+    if (municion_ok === false && puesto_id) {
+      const { rows: prevRows } = await pool.query(
+        `SELECT rt.employee_id
+         FROM reporte_turno rt
+         WHERE rt.puesto_id = $1
+           AND rt.municion_ok = TRUE
+         ORDER BY rt.registrado_en DESC
+         LIMIT 1`,
+        [puesto_id]
+      );
+      if (prevRows[0]) municion_responsable_anterior = prevRows[0].employee_id;
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO reporte_turno
+         (fichaje_id, puesto_id, employee_id, tipo,
+          arma_id, arma_estado, arma_observacion,
+          municion_ok, municion_faltante, municion_responsable_anterior,
+          uniforme_ok, uniforme_items_faltantes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       RETURNING id`,
+      [
+        fichaje_id, puesto_id ?? null, employee_id, tipo,
+        arma_id ?? null, arma_estado ?? null, arma_observacion ?? null,
+        municion_ok ?? null, Number(municion_faltante),
+        municion_responsable_anterior,
+        uniforme_ok ?? null,
+        uniforme_items_faltantes ? JSON.stringify(uniforme_items_faltantes) : null,
+      ]
+    );
+
+    // Nombre del responsable anterior (para responder al frontend)
+    let responsable_anterior_nombre: string | null = null;
+    if (municion_responsable_anterior) {
+      const { rows: respRows } = await pool.query(
+        `SELECT nombre_completo FROM employees WHERE id = $1`,
+        [municion_responsable_anterior]
+      );
+      responsable_anterior_nombre = respRows[0]?.nombre_completo ?? null;
+    }
+
+    res.json({
+      ok: true,
+      reporte_id: rows[0].id,
+      municion_responsable_anterior,
+      responsable_anterior_nombre,
+    });
+  } catch (err) {
+    logger.error({ err }, "reporte-turno POST: error");
+    res.status(500).json({ error: "Error guardando reporte de turno" });
+  }
+});
+
+// GET /api/agente/reportes-turno — listado para el panel admin
+agenteFichajeRouter.get("/agente/reportes-turno", async (req, res) => {
+  const { puesto_id, fecha_desde, fecha_hasta, solo_alertas, limit = "100" } = req.query as Record<string, string>;
+  try {
+    const params: (string | number)[] = [];
+    const clauses: string[] = [];
+
+    if (puesto_id) { params.push(Number(puesto_id)); clauses.push(`rt.puesto_id = $${params.length}`); }
+    if (fecha_desde) { params.push(fecha_desde); clauses.push(`rt.registrado_en >= $${params.length}`); }
+    if (fecha_hasta) { params.push(fecha_hasta); clauses.push(`rt.registrado_en <= $${params.length}`); }
+    if (solo_alertas === "true") {
+      clauses.push(`(rt.municion_ok = FALSE OR rt.arma_estado = 'necesita_reparacion' OR rt.uniforme_ok = FALSE)`);
+    }
+
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    params.push(Number(limit));
+
+    const { rows } = await pool.query(`
+      SELECT rt.*,
+             e.nombre_completo AS agente_nombre,
+             e.puesto AS agente_cargo,
+             po.nombre AS puesto_nombre, po.cliente_nombre,
+             resp.nombre_completo AS responsable_anterior_nombre
+      FROM reporte_turno rt
+      LEFT JOIN employees e ON e.id = rt.employee_id
+      LEFT JOIN puestos_operativos po ON po.id = rt.puesto_id
+      LEFT JOIN employees resp ON resp.id = rt.municion_responsable_anterior
+      ${where}
+      ORDER BY rt.registrado_en DESC
+      LIMIT $${params.length}
+    `, params);
+
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "reportes-turno GET: error");
+    res.status(500).json({ error: "Error obteniendo reportes" });
+  }
+});
+
+// ── Munición por puesto (gestión admin) ───────────────────────────────────────
+
+// GET /api/municion-puestos
+agenteFichajeRouter.get("/municion-puestos", async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT pm.id, pm.puesto_id, pm.descripcion, pm.cantidad_asignada, pm.activo, pm.updated_at,
+             po.nombre AS puesto_nombre, po.cliente_nombre
+      FROM puesto_municion pm
+      JOIN puestos_operativos po ON po.id = pm.puesto_id
+      ORDER BY po.cliente_nombre, po.nombre
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Error obteniendo munición por puesto" });
+  }
+});
+
+// POST /api/municion-puestos
+agenteFichajeRouter.post("/municion-puestos", async (req, res) => {
+  const { puesto_id, descripcion = "9mm Luger", cantidad_asignada } = req.body;
+  if (!puesto_id || cantidad_asignada == null) return res.status(400).json({ error: "puesto_id y cantidad_asignada requeridos" });
+  try {
+    const { rows } = await pool.query(`
+      INSERT INTO puesto_municion (puesto_id, descripcion, cantidad_asignada)
+      VALUES ($1,$2,$3)
+      ON CONFLICT ON CONSTRAINT pm_puesto_activo
+      DO UPDATE SET descripcion=$2, cantidad_asignada=$3, updated_at=NOW()
+      RETURNING *
+    `, [puesto_id, descripcion, cantidad_asignada]);
+    res.json({ ok: true, municion: rows[0] });
+  } catch (err) {
+    logger.error({ err }, "municion-puestos POST: error");
+    res.status(500).json({ error: "Error guardando munición" });
+  }
+});
+
+// DELETE /api/municion-puestos/:id
+agenteFichajeRouter.delete("/municion-puestos/:id", async (req, res) => {
+  try {
+    await pool.query(`UPDATE puesto_municion SET activo = FALSE WHERE id = $1`, [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Error eliminando munición" });
   }
 });

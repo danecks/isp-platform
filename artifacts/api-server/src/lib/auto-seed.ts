@@ -3983,5 +3983,62 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: PO-NOVEDAD-01 — error (no bloqueante)");
   }
 
+  // ── BDG-TALLA-01: columna talla en bodega_unidades + tipo_equipo en bodega_articulos ──
+  try {
+    await pool.query(`ALTER TABLE bodega_unidades  ADD COLUMN IF NOT EXISTS talla        VARCHAR(20)`);
+    await pool.query(`ALTER TABLE bodega_articulos ADD COLUMN IF NOT EXISTS tipo_equipo  VARCHAR(30)`);
+    logger.info("Auto-migrate: BDG-TALLA-01 columnas talla/tipo_equipo verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: BDG-TALLA-01 — error (no bloqueante)");
+  }
+
+  // ── MUN-01: munición asignada por puesto ─────────────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS puesto_municion (
+        id                SERIAL PRIMARY KEY,
+        puesto_id         INTEGER NOT NULL REFERENCES puestos_operativos(id) ON DELETE CASCADE,
+        descripcion       VARCHAR(120) NOT NULL DEFAULT '9mm Luger',
+        cantidad_asignada INTEGER NOT NULL DEFAULT 0,
+        activo            BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS pm_puesto_activo ON puesto_municion(puesto_id) WHERE activo = TRUE`);
+    logger.info("Auto-migrate: MUN-01 tabla puesto_municion verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: MUN-01 — error (no bloqueante)");
+  }
+
+  // ── RT-01: reporte de turno por fichaje / supervisión ────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS reporte_turno (
+        id                            SERIAL PRIMARY KEY,
+        fichaje_id                    INTEGER NOT NULL REFERENCES agente_fichajes(id) ON DELETE CASCADE,
+        puesto_id                     INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        employee_id                   INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        tipo                          VARCHAR(20) NOT NULL DEFAULT 'fichaje',
+        arma_id                       INTEGER REFERENCES armas(id) ON DELETE SET NULL,
+        arma_estado                   VARCHAR(30),
+        arma_observacion              TEXT,
+        municion_ok                   BOOLEAN,
+        municion_faltante             INTEGER NOT NULL DEFAULT 0,
+        municion_responsable_anterior INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        uniforme_ok                   BOOLEAN,
+        uniforme_items_faltantes      JSONB,
+        registrado_en                 TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS rt_fichaje ON reporte_turno(fichaje_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS rt_puesto  ON reporte_turno(puesto_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS rt_emp     ON reporte_turno(employee_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS rt_fecha   ON reporte_turno(registrado_en DESC)`);
+    logger.info("Auto-migrate: RT-01 tabla reporte_turno verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: RT-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }
