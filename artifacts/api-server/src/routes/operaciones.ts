@@ -206,26 +206,52 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         ORDER BY er.created_at DESC
         LIMIT 1
       ) titular_vac ON TRUE
-      -- PT: JSON array de titulares (multi-titular para 24x24 / 24x48 / etc.)
-      -- Incluye datos de puesto_slots para cálculo de ciclo basado en dias_trabajo
+      -- PT: JSON array de titulares — fuente dual:
+      --   A) Si el puesto tiene puesto_slots con empleado_id asignado → usarlos (24x24, 24x48, etc.)
+      --   B) Si no → usar puesto_titulares con datos del slot para cálculo de ciclo (fallback)
       LEFT JOIN LATERAL (
         SELECT json_agg(
           json_build_object(
-            'employee_id',       pt.employee_id,
-            'nombre',            COALESCE(e_pt.nombre_completo, '—'),
-            'orden',             pt.orden,
-            'fecha_inicio_ciclo', pt.fecha_inicio_ciclo,
-            'slot_dias_trabajo', ps.dias_trabajo,
-            'slot_fecha_inicio', COALESCE(ps.fecha_inicio_ciclo, po.fecha_inicio_ciclo)
-          ) ORDER BY pt.orden
+            'employee_id',        src.employee_id,
+            'nombre',             COALESCE(e_src.nombre_completo, '—'),
+            'orden',              src.orden,
+            'fecha_inicio_ciclo', src.pt_fic,
+            'slot_dias_trabajo',  src.slot_dias,
+            'slot_fecha_inicio',  src.slot_fic
+          ) ORDER BY src.orden
         ) AS titulares_json
-        FROM puesto_titulares pt
-        LEFT JOIN employees e_pt ON e_pt.id = pt.employee_id
-        LEFT JOIN puesto_slots ps
-          ON  ps.puesto_id   = po.id
-          AND ps.slot_numero  = pt.orden
-          AND ps.activo      = TRUE
-        WHERE pt.puesto_id = po.id AND pt.activo = TRUE
+        FROM (
+          -- Opción A: slots con empleado asignado (sistema nuevo, multi-titular)
+          SELECT
+            ps.empleado_id        AS employee_id,
+            ps.slot_numero        AS orden,
+            NULL::date            AS pt_fic,
+            ps.dias_trabajo       AS slot_dias,
+            COALESCE(ps.fecha_inicio_ciclo, po.fecha_inicio_ciclo) AS slot_fic
+          FROM puesto_slots ps
+          WHERE ps.puesto_id = po.id AND ps.activo = TRUE AND ps.empleado_id IS NOT NULL
+
+          UNION ALL
+
+          -- Opción B: puesto_titulares cuando no hay slots con empleado (sistema legacy)
+          SELECT
+            pt.employee_id        AS employee_id,
+            pt.orden              AS orden,
+            pt.fecha_inicio_ciclo AS pt_fic,
+            ps2.dias_trabajo      AS slot_dias,
+            COALESCE(ps2.fecha_inicio_ciclo, po.fecha_inicio_ciclo) AS slot_fic
+          FROM puesto_titulares pt
+          LEFT JOIN puesto_slots ps2
+            ON  ps2.puesto_id   = po.id
+            AND ps2.slot_numero = pt.orden
+            AND ps2.activo      = TRUE
+          WHERE pt.puesto_id = po.id AND pt.activo = TRUE
+            AND NOT EXISTS (
+              SELECT 1 FROM puesto_slots ps3
+              WHERE ps3.puesto_id = po.id AND ps3.activo = TRUE AND ps3.empleado_id IS NOT NULL
+            )
+        ) src
+        LEFT JOIN employees e_src ON e_src.id = src.employee_id
       ) pt_tab ON TRUE
       LEFT JOIN employees e  ON e.id  = po.agente_id
       LEFT JOIN client_sedes cs ON cs.id = po.sede_id
