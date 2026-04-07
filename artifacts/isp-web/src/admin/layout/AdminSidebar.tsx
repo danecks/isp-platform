@@ -11,7 +11,7 @@ import type { NavSection } from "@/config/permissions";
 const logoImg = "/images/logo-isp.png";
 
 // Secciones que empiezan expandidas por defecto
-const EXPANDED_BY_DEFAULT = new Set(["general", "operaciones"]);
+const EXPANDED_BY_DEFAULT = new Set(["general", "operaciones", "control_operativo"]);
 
 interface AdminSidebarProps {
   open: boolean;

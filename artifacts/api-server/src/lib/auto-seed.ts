@@ -3910,6 +3910,20 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-seed: FICHAJE-QR-01 permisos — error (no bloqueante)");
   }
 
+  // ── RONDAS-QR-PERM-01: permisos garantizados (por si PERM-02 ya existía) ─────
+  try {
+    await pool.query(`
+      INSERT INTO rol_permisos (rol_clave, modulo_clave) VALUES
+        ('admin',      'rondas_qr'),
+        ('operaciones','rondas_qr'),
+        ('supervisor', 'rondas_qr')
+      ON CONFLICT DO NOTHING
+    `);
+    logger.info("Auto-seed: RONDAS-QR-PERM-01 permisos insertados");
+  } catch (err) {
+    logger.error({ err }, "Auto-seed: RONDAS-QR-PERM-01 permisos — error (no bloqueante)");
+  }
+
   // ── SUPERVISOR-DEV-01: dispositivos autenticados (teléfonos de puesto y supervisor) ──
   try {
     await pool.query(`
