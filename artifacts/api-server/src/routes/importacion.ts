@@ -485,13 +485,20 @@ importacionRouter.post("/importacion/sistema-antiguo", async (req: any, res: any
     // Depto código legacy → resolver cliente_id si ya existe en clients
     const depto_codigo_legacy = trim(row.depto_codigo) || null;
     let cliente_id: number | null = null;
+    let cliente_nombre_match: string | null = null;
     if (depto_codigo_legacy) {
       const { rows: cliRows } = await pool.query(
-        `SELECT id FROM clients WHERE depto_codigo = $1 LIMIT 1`,
+        `SELECT id, nombre FROM clients WHERE depto_codigo = $1 LIMIT 1`,
         [depto_codigo_legacy]
       );
-      if (cliRows.length > 0) cliente_id = cliRows[0].id;
+      if (cliRows.length > 0) {
+        cliente_id = cliRows[0].id;
+        cliente_nombre_match = cliRows[0].nombre;
+      }
     }
+
+    // Sin cliente (ej. código 004 = administración interna) → disponible para asignación
+    const tipo_personal = cliente_id ? "guardia" : "disponible";
 
     const datos: Record<string, any> = {
       nombre_completo, dpi, telefono, correo, direccion, nit,
@@ -499,7 +506,8 @@ importacionRouter.post("/importacion/sistema-antiguo", async (req: any, res: any
       sexo, estado_civil, forma_pago, banco, cuenta_bancaria,
       num_dependencias, nivel_educativo, condicion_laboral,
       empl_numero, estado_laboral, depto_codigo_legacy,
-      cliente: cliente_id ? `ID ${cliente_id}` : depto_codigo_legacy ?? "—",
+      tipo_personal,
+      cliente: cliente_nombre_match ?? (cliente_id ? `ID ${cliente_id}` : depto_codigo_legacy ?? "—"),
     };
 
     // ── Detección DPI duplicado ─────────────────────────────────────────────────
@@ -545,6 +553,7 @@ importacionRouter.post("/importacion/sistema-antiguo", async (req: any, res: any
                 igss_numero          = COALESCE($19, igss_numero),
                 depto_codigo_legacy  = COALESCE($20, depto_codigo_legacy),
                 cliente_id           = COALESCE($21, cliente_id),
+                tipo_personal        = $22,
                 source_system        = 'importacion_legacy',
                 updated_at           = NOW()
                WHERE dpi = $1`,
@@ -555,6 +564,7 @@ importacionRouter.post("/importacion/sistema-antiguo", async (req: any, res: any
                 nivel_educativo, condicion_laboral, empl_numero,
                 estado_laboral, igss_numero,
                 depto_codigo_legacy, cliente_id,
+                tipo_personal,
               ]
             );
           } catch (e: any) {
@@ -585,6 +595,7 @@ importacionRouter.post("/importacion/sistema-antiguo", async (req: any, res: any
            nivel_educativo, condicion_laboral, empl_numero,
            estado_laboral, igss_numero,
            depto_codigo_legacy, cliente_id,
+           tipo_personal,
            aplica_igss_general, estado_igss,
            source_system, sync_status
          ) VALUES (
@@ -594,6 +605,7 @@ importacionRouter.post("/importacion/sistema-antiguo", async (req: any, res: any
            $16,$17,$18,
            $19,$20,
            $21,$22,
+           $23,
            FALSE,'no_activo',
            'importacion_legacy','manual'
          )`,
@@ -604,6 +616,7 @@ importacionRouter.post("/importacion/sistema-antiguo", async (req: any, res: any
           nivel_educativo, condicion_laboral, empl_numero,
           estado_laboral, igss_numero,
           depto_codigo_legacy, cliente_id,
+          tipo_personal,
         ]
       );
       results.push({ fila, estado: "ok", datos: { nombre_completo, dpi } });
