@@ -3,7 +3,7 @@ import { AdminLayout } from "../layout/AdminLayout";
 import {
   FileUp, Download, CheckCircle2, XCircle, AlertCircle,
   Loader2, ChevronRight, RotateCcw, Users, MapPin, Package,
-  Wand2, HelpCircle, Shield,
+  Wand2, HelpCircle, Shield, Database, RefreshCw, ToggleLeft, ToggleRight,
 } from "lucide-react";
 
 const API_BASE = "/api";
@@ -553,6 +553,360 @@ function ImporterTab({
   return null;
 }
 
+// ─── LegacyImporterTab — importación desde sistema antiguo (Excel empl_*) ─────
+type LegacyResult = {
+  preview: boolean;
+  exitosos: number;
+  actualizados: number;
+  errores: number;
+  omitidos: number;
+  total: number;
+  resultados: RowResult[];
+};
+
+const PREVIEW_COLS = [
+  { key: "nombre_completo",  label: "Nombre" },
+  { key: "dpi",              label: "DPI" },
+  { key: "fecha_nacimiento", label: "F. Nac." },
+  { key: "sexo",             label: "Sexo" },
+  { key: "estado_civil",     label: "E. Civil" },
+  { key: "forma_pago",       label: "Pago" },
+  { key: "banco",            label: "Banco" },
+  { key: "cuenta_bancaria",  label: "Cuenta" },
+  { key: "estado_laboral",   label: "Estado" },
+];
+
+function LegacyImporterTab() {
+  const [step, setStep]           = useState<Step>("upload");
+  const [rows, setRows]           = useState<Record<string, any>[]>([]);
+  const [previewResult, setPreviewResult] = useState<LegacyResult | null>(null);
+  const [importResult, setImportResult]   = useState<LegacyResult | null>(null);
+  const [loading, setLoading]     = useState(false);
+  const [dragOver, setDragOver]   = useState(false);
+  const [actualizar, setActualizar] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const reset = () => {
+    setStep("upload"); setRows([]); setPreviewResult(null); setImportResult(null);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const handleFile = useCallback(async (file: File) => {
+    const ext = file.name.toLowerCase();
+    if (!ext.endsWith(".xlsx") && !ext.endsWith(".xls")) {
+      alert("Solo se aceptan archivos .xlsx o .xls del sistema antiguo");
+      return;
+    }
+    const buf = await file.arrayBuffer();
+    const XLSX = await import("xlsx");
+    const wb = XLSX.read(buf, { type: "array" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const data: Record<string, any>[] = XLSX.utils.sheet_to_json(ws, { defval: null });
+    if (data.length === 0) { alert("El archivo no tiene datos válidos"); return; }
+    // Detectar que tiene columnas del sistema antiguo
+    const keys = Object.keys(data[0]);
+    if (!keys.includes("empl_papellido") && !keys.includes("empl_pnombre")) {
+      alert("Este archivo no parece ser del sistema antiguo. Se esperan columnas como empl_pnombre, empl_papellido, etc.");
+      return;
+    }
+    setRows(data);
+    setStep("preview");
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  }, [handleFile]);
+
+  const callEndpoint = async (preview: boolean): Promise<LegacyResult> => {
+    const r = await fetch(`${API_BASE}/importacion/sistema-antiguo`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
+      body: JSON.stringify({ rows, preview, actualizar_existentes: actualizar }),
+    });
+    return r.json();
+  };
+
+  const runPreview = async () => {
+    setLoading(true);
+    try { setPreviewResult(await callEndpoint(true)); }
+    finally { setLoading(false); }
+  };
+
+  const runImport = async () => {
+    const accion = actualizar
+      ? "importar y actualizar colaboradores existentes"
+      : "importar colaboradores nuevos (los existentes se omiten)";
+    if (!confirm(`¿Confirmar ${accion}? (${rows.length} registros del sistema antiguo)`)) return;
+    setLoading(true);
+    try {
+      const data = await callEndpoint(false);
+      setImportResult(data);
+      setStep("result");
+    } finally { setLoading(false); }
+  };
+
+  // Construir nombre para preview
+  const getPreviewName = (row: Record<string, any>) => {
+    const t = (v: any) => String(v ?? "").trim();
+    return [t(row.empl_pnombre), t(row.empl_snombre), t(row.empl_papellido), t(row.empl_sapellido)]
+      .filter(Boolean).join(" ");
+  };
+
+  // ── Step: Upload ───────────────────────────────────────────────────────────
+  if (step === "upload") return (
+    <div className="space-y-6">
+      <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 space-y-2">
+        <div className="flex items-center gap-2">
+          <Database className="w-4 h-4 text-amber-400" />
+          <span className="text-sm font-semibold text-amber-200">Importación desde Sistema Antiguo</span>
+        </div>
+        <p className="text-xs text-amber-200/70">
+          Sube el archivo <code className="font-mono bg-amber-400/10 px-1 rounded">.xlsx</code> exportado del sistema anterior.
+          El sistema mapea automáticamente los campos <code className="font-mono bg-amber-400/10 px-1 rounded">empl_*</code> a la nueva estructura
+          e importa: nombre, DPI, datos personales, pago bancario, nivel educativo y más.
+        </p>
+        <div className="flex flex-wrap gap-2 pt-1">
+          {["nombre_completo", "dpi", "fecha_nacimiento", "sexo", "estado_civil",
+            "forma_pago", "banco", "cuenta_bancaria", "nit", "nivel_educativo",
+            "condicion_laboral", "igss_numero", "direccion"].map(f => (
+            <span key={f} className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/5 text-white/40 border border-white/10">{f}</span>
+          ))}
+        </div>
+      </div>
+
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        onClick={() => fileRef.current?.click()}
+        className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors ${
+          dragOver ? "border-amber-400 bg-amber-400/5" : "border-white/15 hover:border-white/30 hover:bg-white/[0.02]"
+        }`}
+      >
+        <Database className="w-10 h-10 text-white/20 mx-auto mb-3" />
+        <p className="text-sm text-white/60">Arrastra el archivo Excel del sistema antiguo aquí</p>
+        <p className="text-xs text-white/30 mt-1">o haz clic para seleccionarlo · Acepta .xlsx y .xls</p>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".xlsx,.xls"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+        />
+      </div>
+    </div>
+  );
+
+  // ── Step: Preview ──────────────────────────────────────────────────────────
+  if (step === "preview") return (
+    <div className="space-y-4">
+      {/* Toggle actualizar existentes */}
+      <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 flex items-center justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-white/90">Actualizar colaboradores existentes (DPI duplicado)</p>
+          <p className="text-xs text-white/40 mt-0.5">
+            {actualizar
+              ? "Los colaboradores con DPI ya registrado serán actualizados con los datos del sistema antiguo."
+              : "Los colaboradores con DPI ya registrado serán omitidos (no se modificará nada)."}
+          </p>
+        </div>
+        <button
+          onClick={() => { setActualizar(!actualizar); setPreviewResult(null); }}
+          className="flex-shrink-0"
+        >
+          {actualizar
+            ? <ToggleRight className="w-8 h-8 text-primary" />
+            : <ToggleLeft  className="w-8 h-8 text-white/30" />}
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm text-white/70">
+            <span className="text-white font-medium">{rows.length}</span> registros detectados en el archivo
+          </p>
+          {previewResult && (
+            <p className="text-xs text-white/40 mt-0.5">
+              {previewResult.exitosos} nuevos · {previewResult.actualizados} actualizarán ·{" "}
+              {previewResult.omitidos} se omitirán · {previewResult.errores} con errores
+            </p>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <button onClick={reset} className="text-xs text-white/40 hover:text-white/70 flex items-center gap-1">
+            <RotateCcw className="w-3.5 h-3.5" /> Nuevo archivo
+          </button>
+          {!previewResult && (
+            <button
+              onClick={runPreview}
+              disabled={loading}
+              className="flex items-center gap-1.5 text-xs bg-white/10 hover:bg-white/15 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              Validar mapeo
+            </button>
+          )}
+          {previewResult && (previewResult.exitosos + previewResult.actualizados) > 0 && (
+            <button
+              onClick={runImport}
+              disabled={loading}
+              className="flex items-center gap-1.5 text-xs bg-amber-500 text-black font-semibold px-3 py-1.5 rounded-lg hover:bg-amber-400 transition-colors disabled:opacity-50"
+            >
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileUp className="w-3.5 h-3.5" />}
+              Importar {previewResult.exitosos + previewResult.actualizados} registros
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="overflow-auto max-h-[450px] rounded-xl border border-white/10">
+        <table className="w-full text-[11px]">
+          <thead className="sticky top-0 bg-[#0f1117] z-10">
+            <tr>
+              <th className="text-left px-3 py-2 text-white/40 font-medium w-10">#</th>
+              {previewResult && <th className="text-left px-3 py-2 text-white/40 font-medium w-20">Estado</th>}
+              {PREVIEW_COLS.map(c => (
+                <th key={c.key} className="text-left px-3 py-2 text-white/40 font-medium whitespace-nowrap">{c.label}</th>
+              ))}
+              {previewResult && <th className="text-left px-3 py-2 text-white/40 font-medium">Nota</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.slice(0, 200).map((row, i) => {
+              const res = previewResult?.resultados.find(r => r.fila === i + 2);
+              const nombre = getPreviewName(row);
+              return (
+                <tr key={i} className={`border-t border-white/5 ${
+                  res?.estado === "error"   ? "bg-red-500/5" :
+                  res?.estado === "omitido" ? "bg-yellow-500/5" :
+                  res?.mensaje?.includes("Actualizado") ? "bg-blue-500/5" : ""
+                }`}>
+                  <td className="px-3 py-1.5 text-white/30">{i + 2}</td>
+                  {previewResult && (
+                    <td className="px-3 py-1.5">
+                      {res?.estado === "ok" && !res?.mensaje?.includes("Actualizado") &&
+                        <span className="text-green-400 flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/>nuevo</span>}
+                      {res?.estado === "ok" && res?.mensaje?.includes("Actualizado") &&
+                        <span className="text-blue-400 flex items-center gap-1"><RefreshCw className="w-3 h-3"/>upd</span>}
+                      {res?.estado === "error" &&
+                        <span className="text-red-400 flex items-center gap-1"><XCircle className="w-3 h-3"/>error</span>}
+                      {res?.estado === "omitido" &&
+                        <span className="text-yellow-400 flex items-center gap-1"><AlertCircle className="w-3 h-3"/>omit</span>}
+                    </td>
+                  )}
+                  {PREVIEW_COLS.map(c => {
+                    const val = res?.datos?.[c.key] ?? (c.key === "nombre_completo" ? nombre : null);
+                    return (
+                      <td key={c.key} className="px-3 py-1.5 text-white/70 max-w-[140px] truncate">
+                        {val ? String(val) : <span className="text-white/20">—</span>}
+                      </td>
+                    );
+                  })}
+                  {previewResult && (
+                    <td className="px-3 py-1.5 text-white/40 text-[10px] max-w-[180px] truncate"
+                        title={res?.mensaje ?? ""}>
+                      {res?.mensaje ?? ""}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {rows.length > 200 && (
+          <p className="text-xs text-white/30 text-center py-2">Mostrando primeras 200 de {rows.length} filas</p>
+        )}
+      </div>
+    </div>
+  );
+
+  // ── Step: Result ───────────────────────────────────────────────────────────
+  if (step === "result" && importResult) {
+    const errRows    = importResult.resultados.filter(r => r.estado === "error");
+    const omitRows   = importResult.resultados.filter(r => r.estado === "omitido");
+    const updRows    = importResult.resultados.filter(r => r.mensaje?.includes("Actualizado"));
+    return (
+      <div className="space-y-5">
+        <div className="grid grid-cols-4 gap-3">
+          {[
+            { label: "Nuevos",       value: importResult.exitosos,    color: "text-green-400 bg-green-400/10 border-green-400/20" },
+            { label: "Actualizados", value: importResult.actualizados, color: "text-blue-400 bg-blue-400/10 border-blue-400/20" },
+            { label: "Omitidos",     value: importResult.omitidos,    color: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20" },
+            { label: "Errores",      value: importResult.errores,     color: "text-red-400 bg-red-400/10 border-red-400/20" },
+          ].map(c => (
+            <div key={c.label} className={`rounded-xl border p-4 text-center ${c.color}`}>
+              <div className="text-2xl font-bold">{c.value}</div>
+              <div className="text-xs mt-0.5 opacity-70">{c.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {(importResult.exitosos + importResult.actualizados) > 0 && (
+          <div className="flex items-center gap-2 bg-green-400/10 border border-green-400/20 rounded-xl p-4">
+            <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0" />
+            <p className="text-sm text-green-300">
+              {importResult.exitosos} colaboradores nuevos importados y {importResult.actualizados} actualizados.
+              Ya están disponibles en el módulo de colaboradores.
+            </p>
+          </div>
+        )}
+
+        {updRows.length > 0 && (
+          <div>
+            <h4 className="text-xs font-semibold text-blue-400 mb-2">Colaboradores actualizados (DPI ya existía)</h4>
+            <div className="space-y-1 max-h-48 overflow-auto">
+              {updRows.map(r => (
+                <div key={r.fila} className="flex items-start gap-2 text-xs bg-blue-500/10 border border-blue-500/20 rounded-lg px-3 py-1.5">
+                  <RefreshCw className="w-3.5 h-3.5 text-blue-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-white/50">Fila {r.fila}:</span>
+                  <span className="text-blue-300">{r.datos?.nombre_completo ?? ""}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {omitRows.length > 0 && (
+          <div>
+            <h4 className="text-xs font-semibold text-yellow-400 mb-2">Omitidos (DPI ya existe, no se actualizaron)</h4>
+            <div className="space-y-1 max-h-48 overflow-auto">
+              {omitRows.map(r => (
+                <div key={r.fila} className="flex items-start gap-2 text-xs bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-3 py-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-white/50">Fila {r.fila}:</span>
+                  <span className="text-yellow-300 text-[10px]">{r.mensaje}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {errRows.length > 0 && (
+          <div>
+            <h4 className="text-xs font-semibold text-red-400 mb-2">Errores</h4>
+            <div className="space-y-1 max-h-48 overflow-auto">
+              {errRows.map(r => (
+                <div key={r.fila} className="flex items-start gap-2 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-1.5">
+                  <XCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-white/50">Fila {r.fila}:</span>
+                  <span className="text-red-300">{r.mensaje}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <button onClick={reset} className="flex items-center gap-2 text-sm text-white/50 hover:text-white transition-colors">
+          <RotateCcw className="w-4 h-4" /> Importar otro archivo
+        </button>
+      </div>
+    );
+  }
+  return null;
+}
+
 // ─── Definición de importadores ───────────────────────────────────────────────
 const TABS = [
   {
@@ -679,44 +1033,48 @@ const TABS = [
   },
 ] as const;
 
+const LEGACY_TAB_ID = "sistema-antiguo";
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function Importacion() {
   const [activeTab, setActiveTab] = useState<string>(TABS[0].id);
-  const tab = TABS.find((t) => t.id === activeTab)!;
+  const tab = TABS.find((t) => t.id === activeTab);
+  const isLegacy = activeTab === LEGACY_TAB_ID;
 
   return (
     <AdminLayout title="Importar Datos">
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-5xl mx-auto space-y-6">
 
         <div>
           <h1 className="text-xl font-semibold text-white">Importación Masiva de Datos</h1>
           <p className="text-sm text-white/50 mt-1">
-            Carga tus datos desde archivos CSV exportados de tu sistema actual.
-            El sistema valida cada fila antes de importar y reporta errores detalladamente.
+            Carga datos desde CSV para el sistema nuevo, o importa directamente desde el archivo Excel del sistema anterior.
           </p>
         </div>
 
-        <div className="flex items-center gap-0 bg-white/[0.02] border border-white/10 rounded-xl p-4">
-          {[
-            { n: 1, label: "Descarga la plantilla" },
-            { n: 2, label: "Llena con tus datos" },
-            { n: 3, label: "Sube el CSV" },
-            { n: 4, label: "Valida y confirma" },
-          ].map((s, i) => (
-            <div key={s.n} className="flex items-center flex-1">
-              <div className="flex items-center gap-2 flex-1">
-                <div className="w-6 h-6 rounded-full bg-primary/20 text-primary text-[11px] font-bold flex items-center justify-center flex-shrink-0">
-                  {s.n}
+        {!isLegacy && (
+          <div className="flex items-center gap-0 bg-white/[0.02] border border-white/10 rounded-xl p-4">
+            {[
+              { n: 1, label: "Descarga la plantilla" },
+              { n: 2, label: "Llena con tus datos" },
+              { n: 3, label: "Sube el CSV" },
+              { n: 4, label: "Valida y confirma" },
+            ].map((s, i) => (
+              <div key={s.n} className="flex items-center flex-1">
+                <div className="flex items-center gap-2 flex-1">
+                  <div className="w-6 h-6 rounded-full bg-primary/20 text-primary text-[11px] font-bold flex items-center justify-center flex-shrink-0">
+                    {s.n}
+                  </div>
+                  <span className="text-xs text-white/50">{s.label}</span>
                 </div>
-                <span className="text-xs text-white/50">{s.label}</span>
+                {i < 3 && <ChevronRight className="w-3.5 h-3.5 text-white/20 flex-shrink-0" />}
               </div>
-              {i < 3 && <ChevronRight className="w-3.5 h-3.5 text-white/20 flex-shrink-0" />}
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
         <div className="bg-white/[0.03] border border-white/10 rounded-xl overflow-hidden">
-          <div className="flex border-b border-white/10">
+          <div className="flex border-b border-white/10 overflow-x-auto">
             {TABS.map((t) => {
               const Icon = t.icon;
               const active = t.id === activeTab;
@@ -724,7 +1082,7 @@ export default function Importacion() {
                 <button
                   key={t.id}
                   onClick={() => setActiveTab(t.id)}
-                  className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                     active
                       ? "border-primary text-primary"
                       : "border-transparent text-white/40 hover:text-white/70"
@@ -735,19 +1093,35 @@ export default function Importacion() {
                 </button>
               );
             })}
+            {/* Pestaña especial: Sistema Antiguo */}
+            <button
+              onClick={() => setActiveTab(LEGACY_TAB_ID)}
+              className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                isLegacy
+                  ? "border-amber-400 text-amber-400"
+                  : "border-transparent text-white/40 hover:text-white/70"
+              }`}
+            >
+              <Database className="w-4 h-4" />
+              Sistema Antiguo
+            </button>
           </div>
 
           <div className="p-6">
-            <ImporterTab
-              key={activeTab}
-              endpoint={tab.endpoint}
-              templateHeaders={[...tab.templateHeaders]}
-              templateExample={[...tab.templateExample]}
-              templateFilename={tab.templateFilename}
-              columns={[...tab.columns]}
-              entityLabel={tab.entityLabel}
-              autoPrefix={tab.autoPrefix}
-            />
+            {isLegacy ? (
+              <LegacyImporterTab key={LEGACY_TAB_ID} />
+            ) : tab ? (
+              <ImporterTab
+                key={activeTab}
+                endpoint={tab.endpoint}
+                templateHeaders={[...tab.templateHeaders]}
+                templateExample={[...tab.templateExample]}
+                templateFilename={tab.templateFilename}
+                columns={[...tab.columns]}
+                entityLabel={tab.entityLabel}
+                autoPrefix={tab.autoPrefix}
+              />
+            ) : null}
           </div>
         </div>
 

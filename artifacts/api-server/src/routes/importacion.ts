@@ -374,6 +374,239 @@ importacionRouter.post("/importacion/articulos", async (req, res) => {
   res.json({ preview, exitosos, errores, omitidos, total: rows.length, resultados: results });
 });
 
+// ─── POST /api/importacion/sistema-antiguo ────────────────────────────────────
+// Importa empleados desde el Excel del sistema anterior (columnas empl_*)
+// Mapeo automático + detección DPI duplicado con opción de actualizar
+importacionRouter.post("/importacion/sistema-antiguo", async (req: any, res: any) => {
+  const session = requireAdmin(req, res);
+  if (!session) return;
+
+  const {
+    rows,
+    preview = false,
+    actualizar_existentes = false,
+  }: { rows: Record<string, any>[]; preview: boolean; actualizar_existentes: boolean } = req.body;
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ error: "No hay filas para importar" });
+  }
+
+  // Mapa de bancos del sistema antiguo
+  const BANCOS: Record<string, string> = {
+    B001: "Banco de Guatemala",
+    B002: "BAM (Banco Agromercantil)",
+    B003: "Banrural",
+    B004: "Banco de Crédito",
+    B005: "Banco Promerica",
+    B006: "Banco Industrial",
+    B007: "G&T Continental",
+    B008: "Banco Azteca",
+    B009: "Banpaís",
+    B010: "Banco Reformador",
+  };
+
+  // Convierte número serial de Excel a fecha ISO (YYYY-MM-DD)
+  function excelSerial(v: any): string | null {
+    const n = Number(v);
+    if (!n || isNaN(n) || n < 1) return null;
+    const ms = Date.UTC(1899, 11, 30) + n * 86400000;
+    return new Date(ms).toISOString().slice(0, 10);
+  }
+
+  // Nivel educativo más alto
+  function nivelEducativo(row: Record<string, any>): string | null {
+    const yn = (v: any) => String(v ?? "").trim().toUpperCase() === "S";
+    if (yn(row.empl_universitario))  return "universitario";
+    if (yn(row.empl_diversificado))  return "diversificado";
+    if (yn(row.empl_secundaria))     return "secundaria";
+    if (yn(row.empl_primaria))       return "primaria";
+    return null;
+  }
+
+  const results: RowResult[] = [];
+  let exitosos = 0, errores = 0, omitidos = 0, actualizados = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const fila = i + 2;
+
+    // ── Construir nombre completo ───────────────────────────────────────────────
+    const partes = [
+      trim(row.empl_pnombre),
+      trim(row.empl_snombre),
+      trim(row.empl_papellido),
+      trim(row.empl_sapellido),
+      trim(row.empl_apecasada),
+    ].filter(Boolean);
+    const nombre_completo = partes.join(" ");
+
+    if (!nombre_completo) {
+      results.push({ fila, estado: "error", mensaje: "No se pudo construir nombre_completo" });
+      errores++;
+      continue;
+    }
+
+    // ── Mapear campos ───────────────────────────────────────────────────────────
+    const dpi             = trim(row.empl_dpi)    || null;
+    const telefono        = trim(row.empl_telefono) || null;
+    const correo          = trim(row.empl_correo)   || null;
+    const direccion       = trim(row.empl_direccion) || null;
+    const nit             = trim(row.empl_nonit) === "CF" ? null : (trim(row.empl_nonit) || null);
+    const igss_numero     = trim(row.empl_noigss)  || null;
+    const fecha_nacimiento = excelSerial(row.empl_fechanac);
+    const fecha_ingreso   = excelSerial(row.empl_fechaalta);
+    const fecha_baja      = row.empl_fechabaja ? excelSerial(row.empl_fechabaja) : null;
+
+    const sexo = (String(row.empl_sexo ?? "").trim().toUpperCase() === "M") ? "M"
+               : (String(row.empl_sexo ?? "").trim().toUpperCase() === "F") ? "F" : null;
+
+    const CIVIL_MAP: Record<string, string> = {
+      S: "soltero", C: "casado", D: "divorciado", V: "viudo", U: "union_libre",
+    };
+    const estado_civil = CIVIL_MAP[String(row.empl_estcivil ?? "").trim().toUpperCase()] ?? null;
+
+    const forma_pago = String(row.empl_formapago ?? "").trim().toUpperCase() === "D" ? "deposito"
+                     : String(row.empl_formapago ?? "").trim().toUpperCase() === "C" ? "cheque" : null;
+    const banco          = (BANCOS[String(row.ban_codigo ?? "").trim()] ?? trim(row.ban_codigo)) || null;
+    const cuenta_bancaria = trim(row.empl_ctaban) || null;
+
+    const num_dependencias = parseInt(String(row.empl_dependencias ?? "0"), 10) || 0;
+    const nivel_educativo  = nivelEducativo(row);
+
+    const CONDICION_MAP: Record<string, string> = { P: "permanente", T: "temporal" };
+    const condicion_laboral = CONDICION_MAP[String(row.empl_condlaboral ?? "P").trim().toUpperCase()] ?? "permanente";
+
+    const empl_numero = parseInt(String(row.empl_numero ?? ""), 10) || null;
+
+    // Estado laboral
+    const rawEstatus = String(row.empl_estatus ?? "").trim().toUpperCase();
+    const estado_laboral = rawEstatus === "A" ? "activo" : "baja";
+
+    const datos: Record<string, any> = {
+      nombre_completo, dpi, telefono, correo, direccion, nit,
+      igss_numero, fecha_nacimiento, fecha_ingreso, fecha_baja,
+      sexo, estado_civil, forma_pago, banco, cuenta_bancaria,
+      num_dependencias, nivel_educativo, condicion_laboral,
+      empl_numero, estado_laboral,
+    };
+
+    // ── Detección DPI duplicado ─────────────────────────────────────────────────
+    if (dpi) {
+      const { rows: dup } = await pool.query(
+        `SELECT id, nombre_completo, estado_laboral FROM employees WHERE dpi = $1 LIMIT 1`,
+        [dpi]
+      );
+      if (dup.length > 0) {
+        if (!actualizar_existentes) {
+          results.push({
+            fila,
+            estado: "omitido",
+            mensaje: `DPI ${dpi} ya existe → ${dup[0].nombre_completo} (ID ${dup[0].id}, estado: ${dup[0].estado_laboral}). Activa "actualizar existentes" para reactivar.`,
+            datos,
+          });
+          omitidos++;
+          continue;
+        }
+
+        // Actualizar (reactivar) colaborador existente
+        if (!preview) {
+          try {
+            await pool.query(
+              `UPDATE employees SET
+                nombre_completo   = $2,
+                telefono          = COALESCE($3, telefono),
+                correo            = COALESCE($4, correo),
+                direccion         = COALESCE($5, direccion),
+                nit               = COALESCE($6, nit),
+                fecha_nacimiento  = COALESCE($7, fecha_nacimiento),
+                fecha_ingreso     = COALESCE($8, fecha_ingreso),
+                sexo              = COALESCE($9, sexo),
+                estado_civil      = COALESCE($10, estado_civil),
+                forma_pago        = COALESCE($11, forma_pago),
+                banco             = COALESCE($12, banco),
+                cuenta_bancaria   = COALESCE($13, cuenta_bancaria),
+                num_dependencias  = $14,
+                nivel_educativo   = COALESCE($15, nivel_educativo),
+                condicion_laboral = $16,
+                empl_numero       = COALESCE($17, empl_numero),
+                estado_laboral    = $18,
+                igss_numero       = COALESCE($19, igss_numero),
+                source_system     = 'importacion_legacy',
+                updated_at        = NOW()
+               WHERE dpi = $1`,
+              [
+                dpi, nombre_completo, telefono, correo, direccion, nit,
+                fecha_nacimiento, fecha_ingreso, sexo, estado_civil,
+                forma_pago, banco, cuenta_bancaria, num_dependencias,
+                nivel_educativo, condicion_laboral, empl_numero,
+                estado_laboral, igss_numero,
+              ]
+            );
+          } catch (e: any) {
+            results.push({ fila, estado: "error", mensaje: e.message, datos });
+            errores++;
+            continue;
+          }
+        }
+        results.push({ fila, estado: "ok", mensaje: `Actualizado: ${nombre_completo} (DPI ya existía)`, datos });
+        actualizados++;
+        continue;
+      }
+    }
+
+    if (preview) {
+      results.push({ fila, estado: "ok", datos });
+      exitosos++;
+      continue;
+    }
+
+    // ── Insertar nuevo ──────────────────────────────────────────────────────────
+    try {
+      await pool.query(
+        `INSERT INTO employees (
+           nombre_completo, dpi, telefono, correo, direccion, nit,
+           fecha_nacimiento, fecha_ingreso, fecha_baja, sexo, estado_civil,
+           forma_pago, banco, cuenta_bancaria, num_dependencias,
+           nivel_educativo, condicion_laboral, empl_numero,
+           estado_laboral, igss_numero,
+           aplica_igss_general, estado_igss,
+           source_system, sync_status
+         ) VALUES (
+           $1,$2,$3,$4,$5,$6,
+           $7,$8,$9,$10,$11,
+           $12,$13,$14,$15,
+           $16,$17,$18,
+           $19,$20,
+           FALSE,'no_activo',
+           'importacion_legacy','manual'
+         )`,
+        [
+          nombre_completo, dpi, telefono, correo, direccion, nit,
+          fecha_nacimiento, fecha_ingreso, fecha_baja, sexo, estado_civil,
+          forma_pago, banco, cuenta_bancaria, num_dependencias,
+          nivel_educativo, condicion_laboral, empl_numero,
+          estado_laboral, igss_numero,
+        ]
+      );
+      results.push({ fila, estado: "ok", datos: { nombre_completo, dpi } });
+      exitosos++;
+    } catch (e: any) {
+      results.push({ fila, estado: "error", mensaje: e.message, datos });
+      errores++;
+    }
+  }
+
+  res.json({
+    preview,
+    exitosos,
+    actualizados,
+    errores,
+    omitidos,
+    total: rows.length,
+    resultados: results,
+  });
+});
+
 // ── POST /importacion/armas ────────────────────────────────────────────────────
 importacionRouter.post("/importacion/armas", async (req: any, res: any) => {
   const session = requireAdmin(req, res);

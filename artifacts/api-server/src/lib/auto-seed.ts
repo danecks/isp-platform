@@ -3648,5 +3648,26 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SCT-01 solicitudes_cambio_turno — error (no bloqueante)");
   }
 
+  // ── EMP-EXT-01: campos extendidos de colaboradores ───────────────────────────
+  // Datos personales, pago bancario y nivel educativo del sistema antiguo
+  try {
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS fecha_nacimiento  DATE`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS sexo              CHAR(1)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS estado_civil      VARCHAR(30)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS nit               VARCHAR(30)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS direccion         VARCHAR(500)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS num_dependencias  SMALLINT NOT NULL DEFAULT 0`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS forma_pago        VARCHAR(20)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS banco             VARCHAR(60)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS cuenta_bancaria   VARCHAR(60)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS nivel_educativo   VARCHAR(30)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS condicion_laboral VARCHAR(20) NOT NULL DEFAULT 'permanente'`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS empl_numero       INTEGER`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS igss_numero       VARCHAR(30)`);
+    logger.info("Auto-migrate: EMP-EXT-01 campos extendidos de colaboradores verificados/creados");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: EMP-EXT-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }
