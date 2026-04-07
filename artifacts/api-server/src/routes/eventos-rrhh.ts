@@ -119,9 +119,6 @@ eventosRrhhRouter.post("/rrhh/eventos", async (req, res) => {
     if (!empRows.length) return res.status(404).json({ error: "Empleado no encontrado" });
     const emp = empRows[0];
 
-    // fecha: usar fechaInicio si se provee, de lo contrario NOW()
-    const fechaValor = fechaInicio ? `'${fechaInicio}'::date` : "NOW()";
-
     const { rows } = await pool.query(
       `INSERT INTO eventos_rrhh
          (employee_id, employee_nombre, employee_dpi,
@@ -129,7 +126,7 @@ eventosRrhhRouter.post("/rrhh/eventos", async (req, res) => {
           supervisor_nombre, generado_desde, movimiento_id,
           estado, observaciones, notas, usuario_generador,
           documentos_generados, fecha, fecha_fin)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pendiente',$10,$11,$12,'[]',${fechaValor},$13)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pendiente',$10,$11,$12,'[]',COALESCE($13::date, NOW()),$14)
        RETURNING *`,
       [
         emp.id,
@@ -144,6 +141,7 @@ eventosRrhhRouter.post("/rrhh/eventos", async (req, res) => {
         observaciones || null,
         notas         || null,
         usuarioGenerador || "sistema",
+        fechaInicio || null,
         fechaFin || null,
       ],
     );
