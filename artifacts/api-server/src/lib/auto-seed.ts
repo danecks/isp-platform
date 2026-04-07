@@ -3924,6 +3924,20 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-seed: RONDAS-QR-PERM-01 permisos — error (no bloqueante)");
   }
 
+  // ── VAC-SOL-PERM-01: permisos de solicitudes_vacaciones ─────────────────────
+  try {
+    await pool.query(`
+      INSERT INTO rol_permisos (rol_clave, modulo_clave) VALUES
+        ('admin',      'solicitudes_vacaciones'),
+        ('rrhh',       'solicitudes_vacaciones'),
+        ('operaciones','solicitudes_vacaciones')
+      ON CONFLICT DO NOTHING
+    `);
+    logger.info("Auto-seed: VAC-SOL-PERM-01 permisos insertados");
+  } catch (err) {
+    logger.error({ err }, "Auto-seed: VAC-SOL-PERM-01 permisos — error (no bloqueante)");
+  }
+
   // ── SUPERVISOR-DEV-01: dispositivos autenticados (teléfonos de puesto y supervisor) ──
   try {
     await pool.query(`

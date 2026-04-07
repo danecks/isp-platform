@@ -23,7 +23,16 @@ interface AgenteInfo {
   cargo: string;
   tipo_personal: string;
   dpi: string;
-  puesto: { id: number; nombre: string; cliente_nombre: string; horario?: string } | null;
+  puesto: {
+    id: number;
+    nombre: string;
+    cliente_nombre: string;
+    horario?: string;
+    hora_entrada?: string;
+    hora_salida?: string;
+    turno?: string;
+    jornada?: string;
+  } | null;
   gps: { latitud: number; longitud: number; radio_metros: number } | null;
   armamento: { codigo: string; descripcion: string } | null;
   ya_ficho_hoy: boolean;
@@ -269,22 +278,62 @@ export default function AgenteEscaneo() {
   // ── Subcomponentes ─────────────────────────────────────────────────────────
   function AgenteCard({ compact = false }: { compact?: boolean }) {
     if (!agenteInfo) return null;
+    const p = agenteInfo.puesto;
+    const horaLabel = p?.hora_entrada && p?.hora_salida
+      ? `${p.hora_entrada} – ${p.hora_salida}`
+      : p?.horario ?? null;
+    const turnoLabel = [p?.turno, p?.jornada].filter(Boolean).join(" · ") || null;
+
     return (
       <div className={`bg-white/5 border border-white/10 rounded-xl p-4 text-left ${compact ? "mb-3" : "mb-4"}`}>
+        {/* Cabecera agente */}
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center shrink-0">
             <UserCheck className="w-5 h-5 text-blue-400" />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-white font-semibold text-sm leading-tight">{agenteInfo.nombre_completo}</p>
             <p className="text-white/50 text-xs mt-0.5">{agenteInfo.cargo || agenteInfo.tipo_personal}</p>
-            {agenteInfo.puesto && <p className="text-blue-300/80 text-xs mt-1">{agenteInfo.puesto.nombre} — {agenteInfo.puesto.cliente_nombre}</p>}
+            {p && <p className="text-blue-300/80 text-xs mt-1 font-medium">{p.nombre}</p>}
+            {p && <p className="text-white/35 text-xs">{p.cliente_nombre}</p>}
           </div>
         </div>
+
+        {/* Horario del puesto */}
+        {!compact && p && (horaLabel || turnoLabel) && (
+          <div className="mt-3 pt-3 border-t border-white/5 grid grid-cols-2 gap-x-3 gap-y-1">
+            {horaLabel && (
+              <div className="flex items-center gap-1.5 col-span-1">
+                <svg className="w-3 h-3 text-white/30 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+                </svg>
+                <span className="text-xs text-white/60 font-medium">{horaLabel}</span>
+              </div>
+            )}
+            {turnoLabel && (
+              <div className="flex items-center gap-1.5 col-span-1">
+                <svg className="w-3 h-3 text-white/30 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
+                </svg>
+                <span className="text-xs text-white/60">{turnoLabel}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Armamento */}
         {!compact && agenteInfo.armamento && (
-          <div className="mt-2 pt-2 border-t border-white/5 text-xs text-white/40 flex items-center gap-1.5">
-            <ShieldAlert className="w-3 h-3 text-amber-400" />
-            <span>Arma: <span className="text-amber-300/80">{agenteInfo.armamento.codigo}</span> — {agenteInfo.armamento.descripcion}</span>
+          <div className="mt-2.5 pt-2.5 border-t border-white/5">
+            <div className="flex items-start gap-2 bg-amber-500/5 border border-amber-500/15 rounded-lg px-3 py-2">
+              <ShieldAlert className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs text-amber-300/80 font-semibold">Arma asignada al puesto</p>
+                <p className="text-xs text-white/50 mt-0.5">
+                  <span className="text-amber-200/70 font-mono">{agenteInfo.armamento.codigo}</span>
+                  {" — "}{agenteInfo.armamento.descripcion}
+                </p>
+              </div>
+            </div>
           </div>
         )}
       </div>

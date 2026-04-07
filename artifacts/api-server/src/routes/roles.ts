@@ -52,6 +52,7 @@ export const SYSTEM_MODULOS = [
   { clave: "turnos",              label: "Tipos de Turno",             seccion: "Personal & RRHH" },
   { clave: "cambios_salariales",  label: "Cambios Salariales",         seccion: "Personal & RRHH" },
   { clave: "prestaciones",        label: "Prestaciones Laborales",     seccion: "Personal & RRHH" },
+  { clave: "solicitudes_vacaciones", label: "Solicitudes de Vacaciones", seccion: "Personal & RRHH" },
   { clave: "planillas_especiales",label: "Bono 14 & Aguinaldo",        seccion: "Personal & RRHH" },
   { clave: "libro_salarios",      label: "Libro de Salarios",          seccion: "Personal & RRHH" },
   // Sistema

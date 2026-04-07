@@ -38,6 +38,7 @@ import {
   Cpu,
   ScanLine,
   BadgeCheck,
+  Palmtree,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -268,6 +269,13 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: Landmark,
         clave: "prestaciones",
         roles: ["admin", "rrhh"],
+      },
+      {
+        path: "/admin/rrhh/vacaciones",
+        label: "Solicitudes de Vacaciones",
+        icon: Palmtree,
+        clave: "solicitudes_vacaciones",
+        roles: ["admin", "rrhh", "operaciones"],
       },
       {
         path: "/admin/rrhh/planillas-especiales",

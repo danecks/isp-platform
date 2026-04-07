@@ -64,6 +64,7 @@ import AdminImportacion from "@/admin/pages/Importacion";
 import AdminNfcPiloto from "@/admin/pages/NfcPiloto";
 import AdminRondasQR from "@/admin/pages/RondasQR";
 import AdminFichajeQR from "@/admin/pages/FichajeQR";
+import AdminVacaciones from "@/admin/pages/AdminVacaciones";
 import KioskoPublico from "@/pages/kiosko";
 import RondaGuardia from "@/pages/RondaGuardia";
 import AgenteEscaneo from "@/pages/AgenteEscaneo";
@@ -239,6 +240,9 @@ function Router() {
       </Route>
       <Route path="/admin/rrhh/libro-salarios">
         {() => <AuthGuard requiredRoles={["admin", "rrhh"]}><AdminLibroSalarios /></AuthGuard>}
+      </Route>
+      <Route path="/admin/rrhh/vacaciones">
+        {() => <AuthGuard requiredRoles={["admin", "rrhh", "operaciones"]}><AdminVacaciones /></AuthGuard>}
       </Route>
       <Route path="/admin/bodega">
         {() => <AuthGuard requiredRoles={["admin", "operaciones"]}><AdminBodega /></AuthGuard>}
