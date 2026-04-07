@@ -56,6 +56,8 @@ interface Empleado {
   frecuenciaPago: string;
   // Tipo de personal operativo
   tipoPersonal: string;
+  // Cliente asignado
+  clienteNombre: string | null;
   // Seguridad social — IGSS
   aplicaIgssGeneral: boolean;
   estadoIgss: string;
@@ -3443,6 +3445,7 @@ export default function Empleados() {
   const [filtroEstado, setFiltroEstado] = useState<string>("todos");
   const [filtroArea, setFiltroArea] = useState<string>("todos");
   const [filtroTipoPersonal, setFiltroTipoPersonal] = useState<string>("todos");
+  const [filtroCliente, setFiltroCliente] = useState<string>("todos");
   const [vista, setVista] = useState<"tabla" | "tarjetas">("tabla");
   const [fichaAbierta, setFichaAbierta] = useState<Empleado | null>(null);
   const [formModal, setFormModal] = useState<{ modo: "crear" | "editar"; emp?: Empleado } | null>(null);
@@ -3496,11 +3499,19 @@ export default function Empleados() {
   // ─── Filtros ─────────────────────────────────────────────────────────────────
 
   const areas = Array.from(new Set(empleados.map((e) => e.area).filter(Boolean))) as string[];
+  const clientes = Array.from(new Set(empleados.map((e) => e.clienteNombre).filter(Boolean))).sort() as string[];
 
   const filtrados = empleados.filter((e) => {
     if (filtroEstado !== "todos" && e.estadoLaboral !== filtroEstado) return false;
     if (filtroArea !== "todos" && e.area !== filtroArea) return false;
     if (filtroTipoPersonal !== "todos" && (e.tipoPersonal ?? "guardia") !== filtroTipoPersonal) return false;
+    if (filtroCliente !== "todos") {
+      if (filtroCliente === "__sin_cliente__") {
+        if (e.clienteNombre) return false;
+      } else {
+        if (e.clienteNombre !== filtroCliente) return false;
+      }
+    }
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase();
       return (
@@ -3602,6 +3613,18 @@ export default function Empleados() {
             <option value="administrativo_rrhh">RRHH</option>
             <option value="gerencia">Gerencia</option>
           </select>
+
+          {clientes.length > 0 && (
+            <select
+              value={filtroCliente}
+              onChange={(e) => setFiltroCliente(e.target.value)}
+              className="bg-[#0c1929] border border-white/8 rounded-lg px-3 py-2 text-sm text-white/70 outline-none focus:border-primary/40 appearance-none cursor-pointer max-w-[220px]"
+            >
+              <option value="todos">Todos los clientes</option>
+              <option value="__sin_cliente__">— Sin cliente (disponible)</option>
+              {clientes.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          )}
 
           {/* Toggle vista */}
           <div className="flex items-center bg-[#0c1929] border border-white/8 rounded-lg overflow-hidden">

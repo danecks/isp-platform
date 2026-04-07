@@ -54,8 +54,10 @@ employeesRouter.get("/employees", async (req, res) => {
              COALESCE(e.estado_igss, 'no_activo') AS estado_igss,
              e.fecha_inicio_igss,
              e.observaciones_igss,
-             COALESCE(e.frecuencia_pago, 'quincenal') AS frecuencia_pago
+             COALESCE(e.frecuencia_pago, 'quincenal') AS frecuencia_pago,
+             c.nombre AS cliente_nombre
       FROM employees e
+      LEFT JOIN clients c ON c.id = e.cliente_id
       ${where}
       ORDER BY e.tipo_personal, e.nombre_completo
     `, params);
