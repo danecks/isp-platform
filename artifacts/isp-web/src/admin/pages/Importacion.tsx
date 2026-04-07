@@ -1033,13 +1033,321 @@ const TABS = [
   },
 ] as const;
 
-const LEGACY_TAB_ID = "sistema-antiguo";
+// ─── LegacyClientesTab — importación de clientes desde sistema antiguo ────────
+function LegacyClientesTab() {
+  const [step, setStep]           = useState<Step>("upload");
+  const [rows, setRows]           = useState<Record<string, any>[]>([]);
+  const [previewResult, setPreviewResult] = useState<LegacyResult | null>(null);
+  const [importResult, setImportResult]   = useState<LegacyResult | null>(null);
+  const [loading, setLoading]     = useState(false);
+  const [dragOver, setDragOver]   = useState(false);
+  const [actualizar, setActualizar] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const reset = () => {
+    setStep("upload"); setRows([]); setPreviewResult(null); setImportResult(null);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const handleFile = useCallback(async (file: File) => {
+    const ext = file.name.toLowerCase();
+    if (!ext.endsWith(".xlsx") && !ext.endsWith(".xls")) {
+      alert("Solo se aceptan archivos .xlsx o .xls"); return;
+    }
+    const buf = await file.arrayBuffer();
+    const XLSX = await import("xlsx");
+    const wb = XLSX.read(buf, { type: "array" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const data: Record<string, any>[] = XLSX.utils.sheet_to_json(ws, { defval: null });
+    if (data.length === 0) { alert("El archivo no tiene datos válidos"); return; }
+    const keys = Object.keys(data[0]);
+    if (!keys.includes("depto_nombre") && !keys.includes("depto_codigo")) {
+      alert("Este archivo no parece ser el catálogo de clientes. Se esperan columnas depto_nombre y depto_codigo."); return;
+    }
+    setRows(data); setStep("preview");
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); setDragOver(false);
+    const file = e.dataTransfer.files[0]; if (file) handleFile(file);
+  }, [handleFile]);
+
+  const call = async (preview: boolean): Promise<LegacyResult> => {
+    const r = await fetch(`${API_BASE}/importacion/sistema-antiguo-clientes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
+      body: JSON.stringify({ rows, preview, actualizar_existentes: actualizar }),
+    });
+    return r.json();
+  };
+
+  const runPreview = async () => { setLoading(true); try { setPreviewResult(await call(true)); } finally { setLoading(false); } };
+  const runImport  = async () => {
+    if (!confirm(`¿Confirmar importación de ${rows.length} clientes?`)) return;
+    setLoading(true);
+    try { setImportResult(await call(false)); setStep("result"); } finally { setLoading(false); }
+  };
+
+  if (step === "upload") return (
+    <div className="space-y-6">
+      <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 space-y-2">
+        <div className="flex items-center gap-2">
+          <Database className="w-4 h-4 text-amber-400" />
+          <span className="text-sm font-semibold text-amber-200">Importar Clientes — Sistema Antiguo</span>
+        </div>
+        <p className="text-xs text-amber-200/70">
+          Sube el archivo <code className="font-mono bg-amber-400/10 px-1 rounded">dbo_Deptos.xlsx</code>.
+          El sistema importa cada departamento como un cliente, guardando su código para enlazar automáticamente los colaboradores.
+        </p>
+        <p className="text-[11px] text-amber-300/50 mt-1">
+          Importa los clientes <strong>ANTES</strong> de los colaboradores para que el enlace sea automático.
+        </p>
+      </div>
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        onClick={() => fileRef.current?.click()}
+        className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors ${
+          dragOver ? "border-amber-400 bg-amber-400/5" : "border-white/15 hover:border-white/30 hover:bg-white/[0.02]"
+        }`}
+      >
+        <Database className="w-10 h-10 text-white/20 mx-auto mb-3" />
+        <p className="text-sm text-white/60">Arrastra el archivo de clientes aquí</p>
+        <p className="text-xs text-white/30 mt-1">o haz clic · Acepta .xlsx y .xls</p>
+        <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+      </div>
+    </div>
+  );
+
+  if (step === "preview") return (
+    <div className="space-y-4">
+      <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 flex items-center justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-white/90">Actualizar clientes existentes</p>
+          <p className="text-xs text-white/40 mt-0.5">
+            {actualizar ? "Los clientes con mismo nombre recibirán el código del sistema antiguo." : "Los clientes con mismo nombre serán omitidos."}
+          </p>
+        </div>
+        <button onClick={() => { setActualizar(!actualizar); setPreviewResult(null); }} className="flex-shrink-0">
+          {actualizar ? <ToggleRight className="w-8 h-8 text-primary" /> : <ToggleLeft className="w-8 h-8 text-white/30" />}
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm text-white/70"><span className="text-white font-medium">{rows.length}</span> clientes detectados</p>
+          {previewResult && (
+            <p className="text-xs text-white/40 mt-0.5">
+              {previewResult.exitosos} nuevos · {previewResult.actualizados} actualizarán · {previewResult.omitidos} se omitirán · {previewResult.errores} errores
+            </p>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <button onClick={reset} className="text-xs text-white/40 hover:text-white/70 flex items-center gap-1">
+            <RotateCcw className="w-3.5 h-3.5" /> Nuevo archivo
+          </button>
+          {!previewResult && (
+            <button onClick={runPreview} disabled={loading}
+              className="flex items-center gap-1.5 text-xs bg-white/10 hover:bg-white/15 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              Validar
+            </button>
+          )}
+          {previewResult && (previewResult.exitosos + previewResult.actualizados) > 0 && (
+            <button onClick={runImport} disabled={loading}
+              className="flex items-center gap-1.5 text-xs bg-amber-500 text-black font-semibold px-3 py-1.5 rounded-lg hover:bg-amber-400 transition-colors disabled:opacity-50">
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileUp className="w-3.5 h-3.5" />}
+              Importar {previewResult.exitosos + previewResult.actualizados}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="overflow-auto max-h-[400px] rounded-xl border border-white/10">
+        <table className="w-full text-[12px]">
+          <thead className="sticky top-0 bg-[#0f1117] z-10">
+            <tr>
+              <th className="text-left px-3 py-2 text-white/40 font-medium w-10">#</th>
+              {previewResult && <th className="text-left px-3 py-2 text-white/40 font-medium w-20">Estado</th>}
+              <th className="text-left px-3 py-2 text-white/40 font-medium">Código</th>
+              <th className="text-left px-3 py-2 text-white/40 font-medium">Nombre del cliente</th>
+              {previewResult && <th className="text-left px-3 py-2 text-white/40 font-medium">Nota</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => {
+              const res = previewResult?.resultados.find(r => r.fila === i + 2);
+              return (
+                <tr key={i} className={`border-t border-white/5 ${
+                  res?.estado === "error" ? "bg-red-500/5" :
+                  res?.estado === "omitido" ? "bg-yellow-500/5" :
+                  res?.mensaje?.includes("Actualizado") ? "bg-blue-500/5" : ""
+                }`}>
+                  <td className="px-3 py-1.5 text-white/30">{i + 2}</td>
+                  {previewResult && (
+                    <td className="px-3 py-1.5">
+                      {res?.estado === "ok" && !res?.mensaje?.includes("Actualizado") && <span className="text-green-400 flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/>nuevo</span>}
+                      {res?.estado === "ok" && res?.mensaje?.includes("Actualizado") && <span className="text-blue-400 flex items-center gap-1"><RefreshCw className="w-3 h-3"/>upd</span>}
+                      {res?.estado === "error" && <span className="text-red-400 flex items-center gap-1"><XCircle className="w-3 h-3"/>error</span>}
+                      {res?.estado === "omitido" && <span className="text-yellow-400 flex items-center gap-1"><AlertCircle className="w-3 h-3"/>omit</span>}
+                    </td>
+                  )}
+                  <td className="px-3 py-1.5 text-primary/70 font-mono">{String(row.depto_codigo ?? "")}</td>
+                  <td className="px-3 py-1.5 text-white/80">{String(row.depto_nombre ?? "")}</td>
+                  {previewResult && <td className="px-3 py-1.5 text-white/40 text-[10px]" title={res?.mensaje ?? ""}>{res?.mensaje ?? ""}</td>}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  if (step === "result" && importResult) return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-4 gap-3">
+        {[
+          { label: "Nuevos",       value: importResult.exitosos,    color: "text-green-400 bg-green-400/10 border-green-400/20" },
+          { label: "Actualizados", value: importResult.actualizados, color: "text-blue-400 bg-blue-400/10 border-blue-400/20" },
+          { label: "Omitidos",     value: importResult.omitidos,    color: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20" },
+          { label: "Errores",      value: importResult.errores,     color: "text-red-400 bg-red-400/10 border-red-400/20" },
+        ].map(c => (
+          <div key={c.label} className={`rounded-xl border p-4 text-center ${c.color}`}>
+            <div className="text-2xl font-bold">{c.value}</div>
+            <div className="text-xs mt-0.5 opacity-70">{c.label}</div>
+          </div>
+        ))}
+      </div>
+      {(importResult.exitosos + importResult.actualizados) > 0 && (
+        <div className="flex items-center gap-2 bg-green-400/10 border border-green-400/20 rounded-xl p-4">
+          <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0" />
+          <p className="text-sm text-green-300">
+            {importResult.exitosos} clientes nuevos y {importResult.actualizados} actualizados.
+            Ahora puedes importar los colaboradores — el enlace será automático.
+          </p>
+        </div>
+      )}
+      <button onClick={reset} className="flex items-center gap-2 text-sm text-white/50 hover:text-white transition-colors">
+        <RotateCcw className="w-4 h-4" /> Importar otro archivo
+      </button>
+    </div>
+  );
+  return null;
+}
+
+// ─── VincularPanel — enlaza empleados con clientes después de importar ─────────
+function VincularPanel() {
+  const [loading, setLoading]   = useState(false);
+  const [result, setResult]     = useState<any>(null);
+  const [previewed, setPreviewed] = useState(false);
+
+  const run = async (preview: boolean) => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${API_BASE}/importacion/sistema-antiguo-vincular`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
+        body: JSON.stringify({ preview }),
+      });
+      const data = await r.json();
+      setResult(data);
+      if (preview) setPreviewed(true);
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5 space-y-4">
+      <div className="flex items-start gap-3">
+        <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+          <ChevronRight className="w-4 h-4 text-primary" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-white/90">Paso final: Vincular colaboradores con clientes</p>
+          <p className="text-xs text-white/40 mt-0.5">
+            Conecta automáticamente cada colaborador importado con su cliente usando el código del sistema antiguo.
+            Ejecuta esto después de haber importado tanto los clientes como los colaboradores.
+          </p>
+        </div>
+      </div>
+
+      {result && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-green-400/10 border border-green-400/20 rounded-xl p-3 text-center">
+              <div className="text-xl font-bold text-green-400">{result.vinculados}</div>
+              <div className="text-xs text-green-400/70 mt-0.5">{result.preview ? "se vincularán" : "vinculados"}</div>
+            </div>
+            <div className="bg-yellow-400/10 border border-yellow-400/20 rounded-xl p-3 text-center">
+              <div className="text-xl font-bold text-yellow-400">{result.sin_match}</div>
+              <div className="text-xs text-yellow-400/70 mt-0.5">sin match de cliente</div>
+            </div>
+          </div>
+          {result.muestra?.length > 0 && (
+            <div>
+              <p className="text-[11px] text-white/40 mb-1">Muestra de vínculos{result.preview ? " (previsualización)" : " creados"}:</p>
+              <div className="space-y-1 max-h-40 overflow-auto">
+                {result.muestra.map((m: any, i: number) => (
+                  <div key={i} className="flex items-center gap-2 text-[11px] text-white/60 bg-white/[0.02] rounded px-2 py-1">
+                    <span className="text-white/80 truncate flex-1">{m.empleado}</span>
+                    <ChevronRight className="w-3 h-3 text-white/20 flex-shrink-0" />
+                    <span className="text-primary/80 truncate flex-1">{m.cliente}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {Object.keys(result.sin_match_codigos ?? {}).length > 0 && (
+            <div>
+              <p className="text-[11px] text-yellow-400/60 mb-1">Códigos sin cliente en el sistema:</p>
+              <div className="flex flex-wrap gap-1">
+                {Object.entries(result.sin_match_codigos).map(([k, v]) => (
+                  <span key={k} className="text-[10px] font-mono bg-yellow-400/10 text-yellow-400/70 border border-yellow-400/20 px-2 py-0.5 rounded-full">
+                    {k} ({v as number})
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <button
+          onClick={() => run(true)}
+          disabled={loading}
+          className="flex items-center gap-1.5 text-xs bg-white/10 hover:bg-white/15 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+        >
+          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+          Previsualizar vínculos
+        </button>
+        {previewed && result?.vinculados > 0 && (
+          <button
+            onClick={() => { if (confirm(`¿Vincular ${result.vinculados} colaboradores con sus clientes?`)) run(false); }}
+            disabled={loading}
+            className="flex items-center gap-1.5 text-xs bg-primary text-black font-semibold px-3 py-1.5 rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+            Ejecutar vinculación
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const LEGACY_TAB_ID          = "sistema-antiguo";
+const LEGACY_CLIENTES_TAB_ID = "sistema-antiguo-clientes";
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function Importacion() {
   const [activeTab, setActiveTab] = useState<string>(TABS[0].id);
   const tab = TABS.find((t) => t.id === activeTab);
-  const isLegacy = activeTab === LEGACY_TAB_ID;
+  const isLegacyEmpl    = activeTab === LEGACY_TAB_ID;
+  const isLegacyClients = activeTab === LEGACY_CLIENTES_TAB_ID;
+  const isAnySA         = isLegacyEmpl || isLegacyClients;
 
   return (
     <AdminLayout title="Importar Datos">
@@ -1048,11 +1356,11 @@ export default function Importacion() {
         <div>
           <h1 className="text-xl font-semibold text-white">Importación Masiva de Datos</h1>
           <p className="text-sm text-white/50 mt-1">
-            Carga datos desde CSV para el sistema nuevo, o importa directamente desde el archivo Excel del sistema anterior.
+            Carga datos desde CSV para el sistema nuevo, o importa directamente desde los archivos Excel del sistema anterior.
           </p>
         </div>
 
-        {!isLegacy && (
+        {!isAnySA && (
           <div className="flex items-center gap-0 bg-white/[0.02] border border-white/10 rounded-xl p-4">
             {[
               { n: 1, label: "Descarga la plantilla" },
@@ -1068,6 +1376,27 @@ export default function Importacion() {
                   <span className="text-xs text-white/50">{s.label}</span>
                 </div>
                 {i < 3 && <ChevronRight className="w-3.5 h-3.5 text-white/20 flex-shrink-0" />}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Guía del flujo para migración del sistema antiguo */}
+        {isAnySA && (
+          <div className="flex items-center gap-0 bg-amber-500/[0.07] border border-amber-500/20 rounded-xl p-4">
+            {[
+              { n: 1, label: "Importar Clientes", tab: LEGACY_CLIENTES_TAB_ID },
+              { n: 2, label: "Importar Colaboradores", tab: LEGACY_TAB_ID },
+              { n: 3, label: "Vincular (auto)", tab: null },
+            ].map((s, i) => (
+              <div key={s.n} className="flex items-center flex-1">
+                <div className="flex items-center gap-2 flex-1">
+                  <div className={`w-6 h-6 rounded-full text-[11px] font-bold flex items-center justify-center flex-shrink-0 ${
+                    activeTab === s.tab ? "bg-amber-400 text-black" : "bg-amber-400/20 text-amber-400"
+                  }`}>{s.n}</div>
+                  <span className={`text-xs ${activeTab === s.tab ? "text-amber-300" : "text-white/40"}`}>{s.label}</span>
+                </div>
+                {i < 2 && <ChevronRight className="w-3.5 h-3.5 text-amber-400/30 flex-shrink-0" />}
               </div>
             ))}
           </div>
@@ -1093,24 +1422,38 @@ export default function Importacion() {
                 </button>
               );
             })}
-            {/* Pestaña especial: Sistema Antiguo */}
+            {/* Separador visual */}
+            <div className="w-px bg-white/10 self-stretch mx-1" />
+            {/* SA — Clientes */}
             <button
-              onClick={() => setActiveTab(LEGACY_TAB_ID)}
-              className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                isLegacy
+              onClick={() => setActiveTab(LEGACY_CLIENTES_TAB_ID)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                isLegacyClients
                   ? "border-amber-400 text-amber-400"
-                  : "border-transparent text-white/40 hover:text-white/70"
+                  : "border-transparent text-white/40 hover:text-amber-400/60"
               }`}
             >
               <Database className="w-4 h-4" />
-              Sistema Antiguo
+              SA · Clientes
+            </button>
+            {/* SA — Colaboradores */}
+            <button
+              onClick={() => setActiveTab(LEGACY_TAB_ID)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                isLegacyEmpl
+                  ? "border-amber-400 text-amber-400"
+                  : "border-transparent text-white/40 hover:text-amber-400/60"
+              }`}
+            >
+              <Database className="w-4 h-4" />
+              SA · Colaboradores
             </button>
           </div>
 
-          <div className="p-6">
-            {isLegacy ? (
-              <LegacyImporterTab key={LEGACY_TAB_ID} />
-            ) : tab ? (
+          <div className="p-6 space-y-6">
+            {isLegacyEmpl    ? <LegacyImporterTab  key={LEGACY_TAB_ID} />          :
+             isLegacyClients ? <LegacyClientesTab  key={LEGACY_CLIENTES_TAB_ID} /> :
+             tab             ? (
               <ImporterTab
                 key={activeTab}
                 endpoint={tab.endpoint}
@@ -1122,6 +1465,18 @@ export default function Importacion() {
                 autoPrefix={tab.autoPrefix}
               />
             ) : null}
+
+            {/* Panel de vinculación — solo visible en pestañas SA */}
+            {isAnySA && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="h-px flex-1 bg-white/10" />
+                  <span className="text-[11px] text-white/30 font-medium px-2">PASO 3 · VINCULACIÓN</span>
+                  <div className="h-px flex-1 bg-white/10" />
+                </div>
+                <VincularPanel />
+              </div>
+            )}
           </div>
         </div>
 

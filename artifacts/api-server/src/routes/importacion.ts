@@ -482,12 +482,24 @@ importacionRouter.post("/importacion/sistema-antiguo", async (req: any, res: any
     const rawEstatus = String(row.empl_estatus ?? "").trim().toUpperCase();
     const estado_laboral = rawEstatus === "A" ? "activo" : "baja";
 
+    // Depto código legacy → resolver cliente_id si ya existe en clients
+    const depto_codigo_legacy = trim(row.depto_codigo) || null;
+    let cliente_id: number | null = null;
+    if (depto_codigo_legacy) {
+      const { rows: cliRows } = await pool.query(
+        `SELECT id FROM clients WHERE depto_codigo = $1 LIMIT 1`,
+        [depto_codigo_legacy]
+      );
+      if (cliRows.length > 0) cliente_id = cliRows[0].id;
+    }
+
     const datos: Record<string, any> = {
       nombre_completo, dpi, telefono, correo, direccion, nit,
       igss_numero, fecha_nacimiento, fecha_ingreso, fecha_baja,
       sexo, estado_civil, forma_pago, banco, cuenta_bancaria,
       num_dependencias, nivel_educativo, condicion_laboral,
-      empl_numero, estado_laboral,
+      empl_numero, estado_laboral, depto_codigo_legacy,
+      cliente: cliente_id ? `ID ${cliente_id}` : depto_codigo_legacy ?? "—",
     };
 
     // ── Detección DPI duplicado ─────────────────────────────────────────────────
@@ -513,26 +525,28 @@ importacionRouter.post("/importacion/sistema-antiguo", async (req: any, res: any
           try {
             await pool.query(
               `UPDATE employees SET
-                nombre_completo   = $2,
-                telefono          = COALESCE($3, telefono),
-                correo            = COALESCE($4, correo),
-                direccion         = COALESCE($5, direccion),
-                nit               = COALESCE($6, nit),
-                fecha_nacimiento  = COALESCE($7, fecha_nacimiento),
-                fecha_ingreso     = COALESCE($8, fecha_ingreso),
-                sexo              = COALESCE($9, sexo),
-                estado_civil      = COALESCE($10, estado_civil),
-                forma_pago        = COALESCE($11, forma_pago),
-                banco             = COALESCE($12, banco),
-                cuenta_bancaria   = COALESCE($13, cuenta_bancaria),
-                num_dependencias  = $14,
-                nivel_educativo   = COALESCE($15, nivel_educativo),
-                condicion_laboral = $16,
-                empl_numero       = COALESCE($17, empl_numero),
-                estado_laboral    = $18,
-                igss_numero       = COALESCE($19, igss_numero),
-                source_system     = 'importacion_legacy',
-                updated_at        = NOW()
+                nombre_completo      = $2,
+                telefono             = COALESCE($3, telefono),
+                correo               = COALESCE($4, correo),
+                direccion            = COALESCE($5, direccion),
+                nit                  = COALESCE($6, nit),
+                fecha_nacimiento     = COALESCE($7, fecha_nacimiento),
+                fecha_ingreso        = COALESCE($8, fecha_ingreso),
+                sexo                 = COALESCE($9, sexo),
+                estado_civil         = COALESCE($10, estado_civil),
+                forma_pago           = COALESCE($11, forma_pago),
+                banco                = COALESCE($12, banco),
+                cuenta_bancaria      = COALESCE($13, cuenta_bancaria),
+                num_dependencias     = $14,
+                nivel_educativo      = COALESCE($15, nivel_educativo),
+                condicion_laboral    = $16,
+                empl_numero          = COALESCE($17, empl_numero),
+                estado_laboral       = $18,
+                igss_numero          = COALESCE($19, igss_numero),
+                depto_codigo_legacy  = COALESCE($20, depto_codigo_legacy),
+                cliente_id           = COALESCE($21, cliente_id),
+                source_system        = 'importacion_legacy',
+                updated_at           = NOW()
                WHERE dpi = $1`,
               [
                 dpi, nombre_completo, telefono, correo, direccion, nit,
@@ -540,6 +554,7 @@ importacionRouter.post("/importacion/sistema-antiguo", async (req: any, res: any
                 forma_pago, banco, cuenta_bancaria, num_dependencias,
                 nivel_educativo, condicion_laboral, empl_numero,
                 estado_laboral, igss_numero,
+                depto_codigo_legacy, cliente_id,
               ]
             );
           } catch (e: any) {
@@ -569,6 +584,7 @@ importacionRouter.post("/importacion/sistema-antiguo", async (req: any, res: any
            forma_pago, banco, cuenta_bancaria, num_dependencias,
            nivel_educativo, condicion_laboral, empl_numero,
            estado_laboral, igss_numero,
+           depto_codigo_legacy, cliente_id,
            aplica_igss_general, estado_igss,
            source_system, sync_status
          ) VALUES (
@@ -577,6 +593,7 @@ importacionRouter.post("/importacion/sistema-antiguo", async (req: any, res: any
            $12,$13,$14,$15,
            $16,$17,$18,
            $19,$20,
+           $21,$22,
            FALSE,'no_activo',
            'importacion_legacy','manual'
          )`,
@@ -586,6 +603,7 @@ importacionRouter.post("/importacion/sistema-antiguo", async (req: any, res: any
           forma_pago, banco, cuenta_bancaria, num_dependencias,
           nivel_educativo, condicion_laboral, empl_numero,
           estado_laboral, igss_numero,
+          depto_codigo_legacy, cliente_id,
         ]
       );
       results.push({ fila, estado: "ok", datos: { nombre_completo, dpi } });
@@ -709,4 +727,148 @@ importacionRouter.post("/importacion/armas", async (req: any, res: any) => {
   }
 
   res.json({ preview, exitosos, errores, omitidos, total: rows.length, resultados: results });
+});
+
+// ─── POST /api/importacion/sistema-antiguo-clientes ───────────────────────────
+// Importa clientes desde dbo_Deptos.xlsx
+// depto_nombre → clients.nombre | depto_codigo guardado para linking con empleados
+importacionRouter.post("/importacion/sistema-antiguo-clientes", async (req: any, res: any) => {
+  const session = requireAdmin(req, res);
+  if (!session) return;
+
+  const { rows, preview = false, actualizar_existentes = false }
+    : { rows: Record<string,any>[]; preview: boolean; actualizar_existentes: boolean } = req.body;
+
+  if (!Array.isArray(rows) || rows.length === 0)
+    return res.status(400).json({ error: "No hay filas para importar" });
+
+  const results: RowResult[] = [];
+  let exitosos = 0, errores = 0, omitidos = 0, actualizados = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row  = rows[i];
+    const fila = i + 2;
+
+    const nombre       = trim(row.depto_nombre).toUpperCase();
+    const depto_codigo = trim(row.depto_codigo);
+
+    if (!nombre || !depto_codigo) {
+      results.push({ fila, estado: "error", mensaje: "depto_nombre y depto_codigo son obligatorios" });
+      errores++; continue;
+    }
+
+    const datos = { nombre, depto_codigo };
+
+    // Detección duplicado: primero por depto_codigo exacto, luego por nombre
+    const { rows: dupCodigo } = await pool.query(
+      `SELECT id, nombre FROM clients WHERE depto_codigo = $1 LIMIT 1`, [depto_codigo]
+    );
+    const { rows: dupNombre } = await pool.query(
+      `SELECT id, nombre FROM clients WHERE UPPER(nombre) = $1 LIMIT 1`, [nombre]
+    );
+    const dup = dupCodigo[0] ?? dupNombre[0] ?? null;
+
+    if (dup) {
+      if (!actualizar_existentes) {
+        results.push({ fila, estado: "omitido",
+          mensaje: `"${nombre}" ya existe (ID ${dup.id}). Activa "actualizar existentes" para vincular el código.`,
+          datos });
+        omitidos++; continue;
+      }
+      if (!preview) {
+        try {
+          await pool.query(
+            `UPDATE clients SET depto_codigo = $2, updated_at = NOW() WHERE id = $1`,
+            [dup.id, depto_codigo]
+          );
+        } catch (e: any) {
+          results.push({ fila, estado: "error", mensaje: e.message, datos });
+          errores++; continue;
+        }
+      }
+      results.push({ fila, estado: "ok",
+        mensaje: `Actualizado: "${nombre}" → código ${depto_codigo} vinculado`, datos });
+      actualizados++; continue;
+    }
+
+    if (preview) {
+      results.push({ fila, estado: "ok", datos });
+      exitosos++; continue;
+    }
+
+    try {
+      await pool.query(
+        `INSERT INTO clients (nombre, nombre_comercial, depto_codigo, estado)
+         VALUES ($1, $1, $2, 'activo')`,
+        [nombre, depto_codigo]
+      );
+      results.push({ fila, estado: "ok", datos: { nombre, depto_codigo } });
+      exitosos++;
+    } catch (e: any) {
+      results.push({ fila, estado: "error", mensaje: e.message, datos });
+      errores++;
+    }
+  }
+
+  res.json({ preview, exitosos, actualizados, errores, omitidos, total: rows.length, resultados: results });
+});
+
+// ─── POST /api/importacion/sistema-antiguo-vincular ───────────────────────────
+// Paso 2: después de importar clientes y empleados por separado,
+// vincula employees.cliente_id usando el depto_codigo_legacy de cada empleado.
+importacionRouter.post("/importacion/sistema-antiguo-vincular", async (req: any, res: any) => {
+  const session = requireAdmin(req, res);
+  if (!session) return;
+
+  const { preview = false } = req.body as { preview: boolean };
+
+  // Buscar todos los empleados que tienen depto_codigo_legacy pero no tienen cliente_id
+  const { rows: empRows } = await pool.query(`
+    SELECT e.id, e.nombre_completo, e.depto_codigo_legacy,
+           c.id AS cliente_id, c.nombre AS cliente_nombre
+    FROM employees e
+    JOIN clients c ON c.depto_codigo = e.depto_codigo_legacy
+    WHERE e.depto_codigo_legacy IS NOT NULL
+      AND e.cliente_id IS NULL
+    ORDER BY e.id
+  `);
+
+  // También reportar los que no tienen match
+  const { rows: sinMatch } = await pool.query(`
+    SELECT e.id, e.nombre_completo, e.depto_codigo_legacy
+    FROM employees e
+    WHERE e.depto_codigo_legacy IS NOT NULL
+      AND e.cliente_id IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM clients c WHERE c.depto_codigo = e.depto_codigo_legacy
+      )
+  `);
+
+  if (!preview) {
+    for (const emp of empRows) {
+      await pool.query(
+        `UPDATE employees SET cliente_id = $1, updated_at = NOW() WHERE id = $2`,
+        [emp.cliente_id, emp.id]
+      );
+    }
+  }
+
+  // Agrupar sin match por codigo para el reporte
+  const sinMatchAgrupado: Record<string, number> = {};
+  sinMatch.forEach(r => {
+    const k = r.depto_codigo_legacy || "(sin código)";
+    sinMatchAgrupado[k] = (sinMatchAgrupado[k] || 0) + 1;
+  });
+
+  res.json({
+    preview,
+    vinculados: empRows.length,
+    sin_match: sinMatch.length,
+    sin_match_codigos: sinMatchAgrupado,
+    muestra: empRows.slice(0, 10).map(r => ({
+      empleado: r.nombre_completo,
+      depto_codigo: r.depto_codigo_legacy,
+      cliente: r.cliente_nombre,
+    })),
+  });
 });

@@ -3664,9 +3664,19 @@ Por favor ingresa al sistema o responde para continuar.',
     await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS condicion_laboral VARCHAR(20) NOT NULL DEFAULT 'permanente'`);
     await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS empl_numero       INTEGER`);
     await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS igss_numero       VARCHAR(30)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS depto_codigo_legacy VARCHAR(30)`);
     logger.info("Auto-migrate: EMP-EXT-01 campos extendidos de colaboradores verificados/creados");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: EMP-EXT-01 — error (no bloqueante)");
+  }
+
+  // ── CLI-01: código legacy en tabla clients ────────────────────────────────────
+  try {
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS depto_codigo VARCHAR(30)`);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_depto_codigo ON clients(depto_codigo) WHERE depto_codigo IS NOT NULL`);
+    logger.info("Auto-migrate: CLI-01 columna depto_codigo en clients verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: CLI-01 — error (no bloqueante)");
   }
 
   logger.info("Auto-seed completado");
