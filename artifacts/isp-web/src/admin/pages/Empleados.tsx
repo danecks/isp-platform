@@ -313,7 +313,10 @@ const TIPO_PERSONAL_CFG = {
   administrativo_rrhh:   { label: "RRHH",            color: "text-teal-300 bg-teal-500/10 border-teal-500/20"     },
   gerencia:              { label: "Gerencia",        color: "text-rose-300 bg-rose-500/10 border-rose-500/20"     },
   administrativo:        { label: "Administrativo",  color: "text-amber-300 bg-amber-500/10 border-amber-500/20"  },
+  disponible:            { label: "Disponible (ISP)", color: "text-white/50 bg-white/5 border-white/10"           },
 } as const;
+
+const VALID_TIPOS_PERSONAL = ["guardia", "supervisor", "jefe_servicio", "administrativo_bodega", "administrativo_rrhh", "gerencia", "administrativo"] as const;
 
 function TipoPersonalBadge({ tipo }: { tipo: string }) {
   const cfg = TIPO_PERSONAL_CFG[tipo as keyof typeof TIPO_PERSONAL_CFG]
@@ -1175,6 +1178,33 @@ function IgssSection({ emp }: { emp: Empleado }) {
 }
 
 function TabPerfil({ emp }: { emp: Empleado }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [tipoEditing, setTipoEditing] = useState(false);
+  const [tipoValue, setTipoValue] = useState(
+    (VALID_TIPOS_PERSONAL as readonly string[]).includes(emp.tipoPersonal ?? "") ? emp.tipoPersonal : "guardia"
+  );
+  const [tipoSaving, setTipoSaving] = useState(false);
+
+  async function saveTipo() {
+    setTipoSaving(true);
+    try {
+      const r = await fetch(`${API_BASE}/employees/${emp.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tipoPersonal: tipoValue }),
+      });
+      if (!r.ok) throw new Error("Error al guardar");
+      toast({ title: "Tipo actualizado", description: `${emp.nombreCompleto} → ${tipoValue}` });
+      qc.invalidateQueries({ queryKey: ["empleados"] });
+      setTipoEditing(false);
+    } catch {
+      toast({ title: "Error", description: "No se pudo actualizar el tipo", variant: "destructive" });
+    } finally {
+      setTipoSaving(false);
+    }
+  }
+
   function Row({ icon: Icon, label, value }: { icon: ElementType; label: string; value: string | null | undefined }) {
     if (!value || value === "—") return null;
     return (
@@ -1205,6 +1235,51 @@ function TabPerfil({ emp }: { emp: Empleado }) {
       {/* B — Datos laborales */}
       <div>
         <p className="text-[10px] text-white/25 uppercase tracking-widest mb-2">Datos laborales</p>
+
+        {/* Tipo de personal — edición inline */}
+        <div className="bg-[#0c1929] border border-white/6 rounded-lg p-3 mb-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] text-white/30">Tipo de colaborador</p>
+            {!tipoEditing && (
+              <button onClick={() => setTipoEditing(true)} className="flex items-center gap-1 text-[10px] text-white/30 hover:text-primary transition-colors">
+                <Pencil className="w-3 h-3" /> Cambiar
+              </button>
+            )}
+          </div>
+          {!tipoEditing ? (
+            <div className="mt-1">
+              <TipoPersonalBadge tipo={emp.tipoPersonal ?? "guardia"} />
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 mt-2">
+              <select
+                value={tipoValue}
+                onChange={(e) => setTipoValue(e.target.value)}
+                className="flex-1 bg-[#060e1c] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-primary/40 appearance-none"
+              >
+                <option value="guardia">Guardia</option>
+                <option value="supervisor">Supervisor</option>
+                <option value="jefe_servicio">Jefe de Servicio</option>
+                <option value="administrativo_bodega">Bodega</option>
+                <option value="administrativo_rrhh">RRHH</option>
+                <option value="administrativo">Administrativo</option>
+                <option value="gerencia">Gerencia</option>
+              </select>
+              <button
+                onClick={saveTipo}
+                disabled={tipoSaving}
+                className="flex items-center gap-1 text-xs bg-primary text-black font-semibold px-2.5 py-1.5 rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              >
+                {tipoSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                Guardar
+              </button>
+              <button onClick={() => setTipoEditing(false)} className="text-white/30 hover:text-white transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
+
         <div className="grid grid-cols-2 gap-2">
           {emp.sueldoBase && (
             <div className="bg-[#0c1929] border border-white/6 rounded-lg p-3">
@@ -3122,7 +3197,7 @@ function FormModal({
     frecuenciaPago: emp?.frecuenciaPago ?? "quincenal",
     limiteAnticipo: emp?.limiteAnticipo != null ? String(emp.limiteAnticipo) : "",
     tipoLimitePeriodo: emp?.tipoLimitePeriodo ?? "quincenal",
-    tipoPersonal: emp?.tipoPersonal ?? "guardia",
+    tipoPersonal: (VALID_TIPOS_PERSONAL as readonly string[]).includes(emp?.tipoPersonal ?? "") ? emp!.tipoPersonal : "guardia",
   }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
