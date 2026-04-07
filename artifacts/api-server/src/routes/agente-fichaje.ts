@@ -124,6 +124,26 @@ agenteFichajeRouter.delete("/supervisor-devices/:id", async (req, res) => {
   }
 });
 
+// POST /api/supervisor-devices/:id/regenerate-token — genera nuevo token para un dispositivo existente (admin)
+agenteFichajeRouter.post("/supervisor-devices/:id/regenerate-token", async (req, res) => {
+  try {
+    const plainToken = randomBytes(32).toString("hex");
+    const tokenHash = hashToken(plainToken);
+    const { rows } = await pool.query(
+      `UPDATE supervisor_devices
+       SET device_token_hash = $1, activo = TRUE
+       WHERE id = $2
+       RETURNING id, device_uuid, supervisor_nombre, descripcion, tipo, puesto_id, activo, created_at, ultimo_uso`,
+      [tokenHash, req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Dispositivo no encontrado" });
+    res.json({ ok: true, device: rows[0], device_token: plainToken });
+  } catch (err) {
+    logger.error({ err }, "supervisor-devices/regenerate-token: error");
+    res.status(500).json({ error: "Error regenerando token" });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // PÚBLICO — escaneo de QR del agente
 // ═══════════════════════════════════════════════════════════════════════════════

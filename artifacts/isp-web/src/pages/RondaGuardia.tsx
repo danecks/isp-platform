@@ -120,8 +120,17 @@ export default function RondaGuardia() {
 
   return (
     <div className="min-h-screen bg-[#0d1117] flex flex-col items-center justify-center p-4">
+      {/* Back nav */}
+      <div className="fixed top-0 left-0 right-0 flex items-center gap-2 px-4 py-3 bg-[#0d1117]/80 backdrop-blur-sm border-b border-white/5 z-10">
+        <button onClick={() => window.history.back()} className="flex items-center gap-1.5 text-white/40 hover:text-white/70 text-xs transition-colors">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/></svg>
+          Volver
+        </button>
+        <span className="text-white/15 text-xs ml-auto">ISP</span>
+      </div>
+
       {/* Header */}
-      <div className="text-center mb-8">
+      <div className="text-center mb-8 mt-12">
         <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-600/20 border border-blue-500/30 mb-3">
           <QrCode className="w-6 h-6 text-blue-400" />
         </div>

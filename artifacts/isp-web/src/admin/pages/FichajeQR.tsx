@@ -54,7 +54,7 @@ interface Dispositivo {
   device_uuid: string;
   supervisor_nombre: string;
   descripcion: string | null;
-  tipo: "supervisor" | "puesto";
+  tipo: "supervisor" | "puesto" | "maestro";
   puesto_id: number | null;
   puesto_nombre: string | null;
   cliente_nombre: string | null;
@@ -409,6 +409,19 @@ export default function FichajeQR() {
     await cargarDispositivos();
   }
 
+  async function regenerarDispositivo(id: number) {
+    if (!confirm("¿Generar un nuevo enlace de activación? El enlace anterior quedará inválido y el teléfono deberá ser re-activado.")) return;
+    try {
+      const r = await f(`/supervisor-devices/${id}/regenerate-token`, { method: "POST" });
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data.ok && data.device && data.device_token) {
+        await cargarDispositivos();
+        setActivacionModal({ device: data.device as Dispositivo, token: data.device_token });
+      }
+    } catch { /* silent */ }
+  }
+
   function handleDispositivoCreado(device: Dispositivo, token: string) {
     setNuevoDispositivoOpen(false);
     setDispositivos(prev => [device as Dispositivo, ...prev]);
@@ -591,7 +604,14 @@ export default function FichajeQR() {
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">
-                  {!dev.activo ? null : (
+                  <button
+                    onClick={() => regenerarDispositivo(dev.id)}
+                    title="Generar nuevo enlace de activación"
+                    className="p-2 rounded-lg bg-white/5 hover:bg-green-600/20 border border-white/10 hover:border-green-500/30 transition-colors"
+                  >
+                    <QrCode className="w-4 h-4 text-white/50 hover:text-green-300" />
+                  </button>
+                  {dev.activo && (
                     <button onClick={() => revocarDispositivo(dev.id)} title="Revocar dispositivo"
                       className="p-2 rounded-lg bg-white/5 hover:bg-red-600/20 border border-white/10 hover:border-red-500/30 transition-colors">
                       <Trash2 className="w-4 h-4 text-white/50 hover:text-red-300" />

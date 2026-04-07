@@ -45,7 +45,16 @@ export default function SupervisorActivar() {
 
   return (
     <div className="min-h-screen bg-[#0d1117] flex flex-col items-center justify-center p-6">
-      <div className="text-center mb-8">
+      {/* Back nav */}
+      <div className="fixed top-0 left-0 right-0 flex items-center gap-2 px-4 py-3 bg-[#0d1117]/80 backdrop-blur-sm border-b border-white/5 z-10">
+        <button onClick={() => window.history.back()} className="flex items-center gap-1.5 text-white/40 hover:text-white/70 text-xs transition-colors">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/></svg>
+          Volver
+        </button>
+        <span className="text-white/15 text-xs ml-auto">ISP</span>
+      </div>
+
+      <div className="text-center mb-8 mt-12">
         <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-slate-700/50 border border-white/10 mb-4">
           <Smartphone className="w-7 h-7 text-white/60" />
         </div>
