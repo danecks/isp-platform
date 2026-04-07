@@ -151,29 +151,42 @@ export default function RondaGuardia() {
           </div>
         )}
 
-        {/* ── GPS DENEGADO — el guardia presionó "No permitir" ── */}
+        {/* ── GPS DENEGADO — el guardia presionó "No permitir" o está bloqueado en sistema ── */}
         {estado === "gps_denegado" && (
           <div>
             <div className="w-16 h-16 bg-orange-500/10 border border-orange-500/30 rounded-full flex items-center justify-center mx-auto mb-4">
               <ShieldAlert className="w-8 h-8 text-orange-400" />
             </div>
-            <p className="text-orange-400 font-bold text-xl mb-2">Ubicación requerida</p>
+            <p className="text-orange-400 font-bold text-xl mb-2">Ubicación bloqueada</p>
             <p className="text-white/60 text-sm mt-2 leading-relaxed">
-              La ronda <strong className="text-white">no fue registrada</strong> porque no se obtuvo tu ubicación.
+              La ronda <strong className="text-white">no fue registrada</strong>. Tu dispositivo no compartió la ubicación.
             </p>
-            <div className="mt-4 bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 text-left space-y-2">
-              <p className="text-xs text-orange-300 font-semibold uppercase tracking-wide">¿Cómo resolverlo?</p>
+
+            {/* iOS */}
+            <div className="mt-4 bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 text-left">
+              <p className="text-xs text-orange-300 font-semibold uppercase tracking-wide mb-2">📱 iPhone / iPad</p>
               <p className="text-xs text-white/60 leading-relaxed">
-                1. Vuelve a escanear el código QR.<br />
-                2. Cuando el navegador te pregunte si deseas compartir la ubicación, presiona <strong className="text-white">Permitir</strong>.<br />
-                3. Si ya la bloqueaste, ve a <strong className="text-white">Configuración del navegador → Privacidad → Permisos del sitio</strong> y permite la ubicación para este sitio.
+                <strong className="text-white/80">Ajustes</strong> → <strong className="text-white/80">Privacidad y Seguridad</strong> → <strong className="text-white/80">Localización</strong> → <strong className="text-white/80">Safari</strong> → selecciona <strong className="text-white">Al usar la app</strong>
               </p>
             </div>
+
+            {/* Android */}
+            <div className="mt-2 bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 text-left">
+              <p className="text-xs text-orange-300 font-semibold uppercase tracking-wide mb-2">🤖 Android</p>
+              <p className="text-xs text-white/60 leading-relaxed">
+                <strong className="text-white/80">Ajustes</strong> → <strong className="text-white/80">Aplicaciones</strong> → <strong className="text-white/80">Chrome</strong> (o tu navegador) → <strong className="text-white/80">Permisos</strong> → <strong className="text-white/80">Ubicación</strong> → selecciona <strong className="text-white">Permitir</strong>
+              </p>
+            </div>
+
+            <p className="text-xs text-white/30 mt-3 text-center">
+              Después de habilitarla, escanea el QR nuevamente.
+            </p>
+
             <button
               onClick={() => window.location.reload()}
-              className="mt-5 w-full py-3 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 rounded-xl text-sm text-orange-300 hover:text-orange-200 font-medium transition-colors"
+              className="mt-4 w-full py-3 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 rounded-xl text-sm text-orange-300 hover:text-orange-200 font-medium transition-colors"
             >
-              Intentar de nuevo
+              Ya la activé — Intentar de nuevo
             </button>
           </div>
         )}
