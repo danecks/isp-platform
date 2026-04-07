@@ -223,7 +223,7 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         LEFT JOIN employees e_pt ON e_pt.id = pt.employee_id
         LEFT JOIN puesto_slots ps
           ON  ps.puesto_id   = po.id
-          AND ps.empleado_id = pt.employee_id
+          AND ps.slot_numero  = pt.orden
           AND ps.activo      = TRUE
         WHERE pt.puesto_id = po.id AND pt.activo = TRUE
       ) pt_tab ON TRUE

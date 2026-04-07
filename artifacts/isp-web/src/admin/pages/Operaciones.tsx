@@ -2036,6 +2036,16 @@ interface SlotItem {
 // Ciclo de 14 días para el modal del Pizarrón — etiquetas Lun–Dom
 const DIAS_SEM_OP = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const DIAS_C14 = Array.from({ length: 14 }, (_, i) => ({ n: i + 1, label: DIAS_SEM_OP[i % 7] }));
+
+// Devuelve el lunes más cercano hacia atrás (o la fecha actual si ya es lunes).
+// Garantiza que D1=Lun, D2=Mar, ... D7=Dom en el ciclo de 14 días.
+function lastMondayDate(fromDate?: string): string {
+  const d = fromDate ? new Date(fromDate + "T12:00:00") : new Date();
+  const day = d.getDay(); // 0=Dom, 1=Lun, 2=Mar...
+  const diff = day === 0 ? 6 : day - 1; // cuántos días hacia atrás al lunes
+  d.setDate(d.getDate() - diff);
+  return d.toISOString().slice(0, 10);
+}
 const S1_14 = DIAS_C14.slice(0, 7);
 const S2_14 = DIAS_C14.slice(7, 14);
 
@@ -2052,7 +2062,13 @@ function ModalConfigTurno({
 
   // ── Ciclo de nómina ──────────────────────────────────────────────────────────
   const [turnoId, setTurnoId]         = useState<string>(String(puesto.tipo_turno_id ?? ""));
-  const [fechaInicio, setFechaInicio] = useState<string>(puesto.fecha_inicio_ciclo ?? new Date().toISOString().slice(0, 10));
+  // Ancla del ciclo: si ya tiene fecha asignada, re-anclar al lunes más cercano hacia atrás
+  // para que D1=Lun, D2=Mar, ... D7=Dom queden alineados con el calendario.
+  const [fechaInicio, setFechaInicio] = useState<string>(
+    puesto.fecha_inicio_ciclo
+      ? lastMondayDate(puesto.fecha_inicio_ciclo)
+      : lastMondayDate()
+  );
   const [guardando, setGuardando]     = useState(false);
 
   // ── Solicitud de cambio de turno ─────────────────────────────────────────────
