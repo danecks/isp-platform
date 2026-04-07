@@ -30,7 +30,7 @@ async function requirePortalAuth(req: Request, res: Response, next: NextFunction
   const cid = clienteId.trim();
 
   try {
-    // C-02: Verificar que exista un usuario activo con ese clienteId en la DB
+    // C-02: Verificar usuario activo + resolver el ID entero de clients
     const { rows } = await pool.query<{ id: number }>(
       `SELECT id FROM users WHERE cliente_id = $1 AND estado = 'activo' AND rol = 'cliente' LIMIT 1`,
       [cid]
@@ -38,8 +38,15 @@ async function requirePortalAuth(req: Request, res: Response, next: NextFunction
     if (rows.length === 0) {
       return res.status(403).json({ error: "Credenciales de portal inválidas o cuenta inactiva" });
     }
+
+    // Resolver el ID entero en la tabla clients (via portal_cliente_id)
+    const { rows: clientRows } = await pool.query<{ id: number }>(
+      `SELECT id FROM clients WHERE portal_cliente_id = $1 LIMIT 1`,
+      [cid]
+    );
+    (req as any).portalClienteIntId = clientRows[0]?.id ?? null;
   } catch {
-    // Si falla la consulta (ej. columna no existe), seguir con validación básica
+    // Si falla la consulta, seguir con validación básica
   }
 
   (req as any).portalClienteId = cid;
@@ -297,6 +304,87 @@ portalRouter.get("/portal/agentes", requirePortalAuth, async (req, res) => {
   } catch (err) {
     console.error("[portal/agentes]", err);
     res.status(500).json({ error: "Error al obtener agentes asignados" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/portal/cobertura — puestos contratados y estado de cobertura
+// ─────────────────────────────────────────────────────────────────────────────
+portalRouter.get("/portal/cobertura", requirePortalAuth, async (req, res) => {
+  const clienteIntId: number | null = (req as any).portalClienteIntId;
+
+  if (!clienteIntId) {
+    return res.json({ puestos: [], resumen: { total: 0, cubiertos: 0, vacantes: 0, tasa: 0 } });
+  }
+
+  try {
+    const { rows } = await pool.query<{
+      puesto_id: number;
+      puesto_nombre: string;
+      turno: string | null;
+      jornada: string | null;
+      horario: string | null;
+      estado: string | null;
+      sede_nombre: string | null;
+      sede_direccion: string | null;
+      zona_nombre: string | null;
+      titular_nombre: string | null;
+      titular_area: string | null;
+    }>(`
+      SELECT
+        po.id                                     AS puesto_id,
+        po.nombre                                 AS puesto_nombre,
+        po.turno,
+        po.jornada,
+        po.horario,
+        po.estado,
+        cs.nombre                                 AS sede_nombre,
+        cs.direccion                              AS sede_direccion,
+        oz.nombre                                 AS zona_nombre,
+        COALESCE(e.nombre_completo, po.titular_nombre) AS titular_nombre,
+        e.area                                    AS titular_area
+      FROM puestos_operativos po
+      LEFT JOIN client_sedes      cs ON cs.id  = po.sede_id
+      LEFT JOIN employees         e  ON e.id   = COALESCE(po.titular_employee_id, po.agente_id)
+      LEFT JOIN operational_zones oz ON oz.id  = po.zona_operativa_id
+      WHERE po.cliente_id = $1
+        AND po.activo = TRUE
+      ORDER BY cs.nombre NULLS LAST, po.turno, po.nombre
+    `, [clienteIntId]);
+
+    const total    = rows.length;
+    const cubiertos = rows.filter(r => r.titular_nombre && r.estado === "cubierto").length;
+    const vacantes  = total - cubiertos;
+    const tasa      = total > 0 ? Math.round((cubiertos / total) * 100) : 0;
+
+    res.json({
+      puestos: rows,
+      resumen: { total, cubiertos, vacantes, tasa },
+    });
+  } catch (err) {
+    console.error("[portal/cobertura]", err);
+    res.status(500).json({ error: "Error al obtener cobertura de puestos" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/portal/info — nombre comercial del cliente para el portal
+// ─────────────────────────────────────────────────────────────────────────────
+portalRouter.get("/portal/info", requirePortalAuth, async (req, res) => {
+  const clienteIntId: number | null = (req as any).portalClienteIntId;
+  const clienteId: string = (req as any).portalClienteId;
+
+  try {
+    if (clienteIntId) {
+      const { rows } = await pool.query<{ nombre_comercial: string; estado_contrato: string | null; fecha_inicio_contrato: string | null }>(
+        `SELECT nombre_comercial, estado_contrato, fecha_inicio_contrato FROM clients WHERE id = $1 LIMIT 1`,
+        [clienteIntId]
+      );
+      if (rows[0]) return res.json(rows[0]);
+    }
+    res.json({ nombre_comercial: clienteId, estado_contrato: null, fecha_inicio_contrato: null });
+  } catch {
+    res.json({ nombre_comercial: clienteId, estado_contrato: null, fecha_inicio_contrato: null });
   }
 });
 
