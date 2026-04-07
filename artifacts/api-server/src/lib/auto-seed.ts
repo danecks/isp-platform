@@ -3966,5 +3966,13 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SUPERVISOR-DEV-01 — error (no bloqueante)");
   }
 
+  // ── PO-NOVEDAD-01: columna novedad en puestos_operativos (mensajes visibles al agente al fichar) ──
+  try {
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS novedad TEXT`);
+    logger.info("Auto-migrate: PO-NOVEDAD-01 columna novedad agregada a puestos_operativos");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PO-NOVEDAD-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

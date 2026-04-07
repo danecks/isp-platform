@@ -3,7 +3,7 @@ import { QRCodeSVG } from "qrcode.react";
 import {
   QrCode, RefreshCw, Printer, Trash2, CheckCircle, XCircle,
   Search, Users, ClipboardList, MapPin, Star, Shield,
-  Smartphone, Plus, Copy, Check, MapPinned, ShieldCheck, Footprints,
+  Smartphone, Plus, Copy, Check, MapPinned, ShieldCheck, Footprints, Bell, X,
 } from "lucide-react";
 
 const API = "/api";
@@ -66,6 +66,7 @@ interface Dispositivo {
   puesto_id: number | null;
   puesto_nombre: string | null;
   cliente_nombre: string | null;
+  novedad: string | null;
   activo: boolean;
   tiene_token: boolean;
   ultimo_uso: string | null;
@@ -372,6 +373,8 @@ export default function FichajeQR() {
   const [filtroTipo, setFiltroTipo] = useState<"" | "fichaje" | "supervision" | "ronda">("");
   const [nuevoDispositivoOpen, setNuevoDispositivoOpen] = useState(false);
   const [activacionModal, setActivacionModal] = useState<{ device: Dispositivo; token: string } | null>(null);
+  const [novedadEdit, setNovedadEdit] = useState<{ puesto_id: number; texto: string } | null>(null);
+  const [guardandoNovedad, setGuardandoNovedad] = useState(false);
 
   async function cargarTokens() {
     setCargando(true);
@@ -434,6 +437,22 @@ export default function FichajeQR() {
     setNuevoDispositivoOpen(false);
     setDispositivos(prev => [device as Dispositivo, ...prev]);
     setActivacionModal({ device, token });
+  }
+
+  async function guardarNovedad(puestoId: number, texto: string) {
+    setGuardandoNovedad(true);
+    try {
+      const r = await f(`/agente/puesto-novedad/${puestoId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ novedad: texto.trim() || null }),
+      });
+      if (r.ok) {
+        setDispositivos(ds => ds.map(d =>
+          d.puesto_id === puestoId ? { ...d, novedad: texto.trim() || null } : d
+        ));
+        setNovedadEdit(null);
+      }
+    } finally { setGuardandoNovedad(false); }
   }
 
   const agentesFiltrados = agentes.filter(a =>
@@ -604,6 +623,36 @@ export default function FichajeQR() {
                       <MapPin className="w-3 h-3" />{dev.puesto_nombre} · {dev.cliente_nombre}
                     </p>
                   )}
+                  {dev.tipo === "puesto" && dev.novedad && novedadEdit?.puesto_id !== (dev.puesto_id ?? undefined) && (
+                    <p className="text-yellow-300/50 text-xs flex items-start gap-1 mt-1">
+                      <Bell className="w-3 h-3 shrink-0 mt-0.5" />
+                      <span className="line-clamp-2 leading-relaxed">{dev.novedad}</span>
+                    </p>
+                  )}
+                  {dev.tipo === "puesto" && novedadEdit?.puesto_id === dev.puesto_id && (
+                    <div className="mt-2">
+                      <textarea
+                        value={novedadEdit.texto}
+                        onChange={e => setNovedadEdit({ ...novedadEdit, texto: e.target.value })}
+                        rows={3}
+                        placeholder="Escribe la novedad del puesto (visible al agente al fichar)..."
+                        className="w-full text-xs bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-2 text-white/70 placeholder-white/20 outline-none resize-none"
+                      />
+                      <div className="flex gap-1.5 mt-1.5">
+                        <button
+                          onClick={() => guardarNovedad(dev.puesto_id!, novedadEdit.texto)}
+                          disabled={guardandoNovedad}
+                          className="flex-1 py-1.5 bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/30 rounded-lg text-xs text-yellow-300 font-semibold transition-colors disabled:opacity-50"
+                        >
+                          {guardandoNovedad ? "Guardando..." : "Guardar novedad"}
+                        </button>
+                        <button onClick={() => setNovedadEdit(null)}
+                          className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg">
+                          <X className="w-3.5 h-3.5 text-white/40" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {dev.ultimo_uso ? (
                     <p className="text-white/20 text-xs mt-1">Último uso: {new Date(dev.ultimo_uso).toLocaleString("es-HN")}</p>
                   ) : (
@@ -612,6 +661,22 @@ export default function FichajeQR() {
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">
+                  {dev.tipo === "puesto" && dev.puesto_id && (
+                    <button
+                      onClick={() => novedadEdit?.puesto_id === dev.puesto_id
+                        ? setNovedadEdit(null)
+                        : setNovedadEdit({ puesto_id: dev.puesto_id!, texto: dev.novedad ?? "" })
+                      }
+                      title={dev.novedad ? "Editar novedad del puesto" : "Agregar novedad al puesto"}
+                      className={`p-2 rounded-lg border transition-colors ${
+                        dev.novedad
+                          ? "bg-yellow-500/10 border-yellow-500/20 text-yellow-400"
+                          : "bg-white/5 border-white/10 text-white/50 hover:bg-yellow-600/20 hover:border-yellow-500/30"
+                      }`}
+                    >
+                      <Bell className="w-4 h-4" />
+                    </button>
+                  )}
                   <button
                     onClick={() => regenerarDispositivo(dev.id)}
                     title="Generar nuevo enlace de activación"

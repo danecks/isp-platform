@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import {
   CheckCircle, XCircle, Loader2, MapPin, AlertTriangle,
   QrCode, ShieldAlert, Star, ClipboardCheck, UserCheck, Smartphone,
-  Footprints, ChevronRight, RotateCcw,
+  Footprints, ChevronRight, RotateCcw, Clock, Bell, Users,
 } from "lucide-react";
 
 const API = "/api";
@@ -32,9 +32,11 @@ interface AgenteInfo {
     hora_salida?: string;
     turno?: string;
     jornada?: string;
+    novedad?: string | null;
   } | null;
   gps: { latitud: number; longitud: number; radio_metros: number } | null;
-  armamento: { codigo: string; descripcion: string } | null;
+  armamento: { codigo: string; descripcion: string; serie?: string | null; activo?: boolean } | null;
+  relevo: { nombre: string; registrado_en: string } | null;
   ya_ficho_hoy: boolean;
 }
 
@@ -671,21 +673,105 @@ export default function AgenteEscaneo() {
               </div>
             )}
 
-            {estado === "ok" && agenteInfo && (
-              <div>
-                <div className="w-16 h-16 bg-green-500/10 border border-green-500/30 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle className="w-8 h-8 text-green-400" />
+            {(estado === "ok" || estado === "sin_gps") && agenteInfo && (
+              <div className="text-center">
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${
+                  estado === "ok"
+                    ? "bg-green-500/10 border border-green-500/30"
+                    : "bg-yellow-500/10 border border-yellow-500/30"
+                }`}>
+                  {estado === "ok"
+                    ? <CheckCircle className="w-8 h-8 text-green-400" />
+                    : <AlertTriangle className="w-8 h-8 text-yellow-400" />}
                 </div>
-                <p className="text-green-400 font-bold text-xl mb-1">Fichaje Registrado</p>
-                <p className="text-white text-base font-semibold mt-3">{agenteInfo.nombre_completo}</p>
-                {agenteInfo.puesto && <p className="text-white/50 text-sm">{agenteInfo.puesto.nombre} — {agenteInfo.puesto.cliente_nombre}</p>}
-                <p className="text-white/40 text-sm mt-2">{hora} — {fecha}</p>
-                {distanciaRes != null && agenteInfo.gps && (
-                  <div className="mt-4 bg-green-500/5 border border-green-500/15 rounded-xl p-3">
-                    <p className="text-xs text-green-400/80">Distancia al puesto: <strong>{distanciaRes}m</strong> (radio: {agenteInfo.gps.radio_metros}m)</p>
-                  </div>
-                )}
-                <p className="text-white/20 text-xs mt-4">Puedes cerrar esta ventana</p>
+                <p className={`font-bold text-xl mb-1 ${estado === "ok" ? "text-green-400" : "text-yellow-400"}`}>
+                  {estado === "ok" ? "Fichaje Registrado" : "Fichaje sin GPS"}
+                </p>
+                <p className="text-white text-base font-semibold mt-1">{agenteInfo.nombre_completo}</p>
+                <p className="text-white/40 text-sm mt-1">{hora} — {fecha}</p>
+
+                <div className="mt-4 space-y-3 text-left">
+
+                  {/* Puesto y horario */}
+                  {agenteInfo.puesto && (
+                    <div className="bg-blue-500/5 border border-blue-500/15 rounded-xl p-4">
+                      <p className="text-xs text-blue-300/60 font-semibold uppercase tracking-wide mb-2">Puesto asignado</p>
+                      <p className="text-blue-200 font-semibold text-sm">{agenteInfo.puesto.nombre}</p>
+                      <p className="text-white/40 text-xs mt-0.5">{agenteInfo.puesto.cliente_nombre}</p>
+                      {(agenteInfo.puesto.hora_entrada || agenteInfo.puesto.hora_salida) && (
+                        <div className="flex items-center gap-1.5 mt-2">
+                          <Clock className="w-3.5 h-3.5 text-blue-400/60 shrink-0" />
+                          <span className="text-xs text-white/60">
+                            {agenteInfo.puesto.hora_entrada ?? "—"} – {agenteInfo.puesto.hora_salida ?? "—"}
+                            {agenteInfo.puesto.turno ? ` · ${agenteInfo.puesto.turno}` : ""}
+                            {agenteInfo.puesto.jornada ? ` (${agenteInfo.puesto.jornada})` : ""}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* GPS */}
+                  {distanciaRes != null && agenteInfo.gps && (
+                    <div className="bg-green-500/5 border border-green-500/15 rounded-xl p-3 flex items-center gap-2">
+                      <MapPin className="w-3.5 h-3.5 text-green-400/70 shrink-0" />
+                      <p className="text-xs text-green-400/80">
+                        Distancia al puesto: <strong>{distanciaRes}m</strong> · radio permitido: {agenteInfo.gps.radio_metros}m
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Relevo de turno */}
+                  {agenteInfo.relevo && (
+                    <div className="bg-slate-500/5 border border-slate-500/15 rounded-xl p-4">
+                      <p className="text-xs text-slate-300/60 font-semibold uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5" /> Turno anterior
+                      </p>
+                      <p className="text-white/80 text-sm font-medium">{agenteInfo.relevo.nombre}</p>
+                      <p className="text-white/30 text-xs mt-0.5">
+                        Fichó el {new Date(agenteInfo.relevo.registrado_en).toLocaleString("es-HN", { dateStyle: "short", timeStyle: "short" })}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Armamento del puesto */}
+                  {agenteInfo.armamento && (
+                    <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4">
+                      <p className="text-xs text-amber-300/60 font-semibold uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                        <ShieldAlert className="w-3.5 h-3.5" /> Armamento del puesto
+                      </p>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-amber-200/90 text-sm font-mono font-semibold">{agenteInfo.armamento.codigo}</p>
+                          <p className="text-white/50 text-xs mt-0.5">{agenteInfo.armamento.descripcion}</p>
+                          {agenteInfo.armamento.serie && (
+                            <p className="text-white/25 text-xs mt-0.5 font-mono">Serie: {agenteInfo.armamento.serie}</p>
+                          )}
+                        </div>
+                        <span className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border ${
+                          agenteInfo.armamento.activo !== false
+                            ? "text-green-400 bg-green-400/10 border-green-400/20"
+                            : "text-red-400 bg-red-400/10 border-red-400/20"
+                        }`}>
+                          {agenteInfo.armamento.activo !== false ? "✓ Operativa" : "✗ Reportada"}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Novedades del puesto */}
+                  {agenteInfo.puesto?.novedad && (
+                    <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4">
+                      <p className="text-xs text-yellow-300/70 font-semibold uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                        <Bell className="w-3.5 h-3.5" /> Novedades del puesto
+                      </p>
+                      <p className="text-white/75 text-sm leading-relaxed whitespace-pre-line">{agenteInfo.puesto.novedad}</p>
+                    </div>
+                  )}
+
+                </div>
+
+                <p className="text-white/20 text-xs mt-5">Puedes cerrar esta ventana</p>
                 {esMaestro && (
                   <button onClick={() => setModoMaestro(null)} className="mt-3 flex items-center gap-1 text-white/30 hover:text-white/60 text-xs mx-auto">
                     <RotateCcw className="w-3 h-3" /> Elegir otra acción
@@ -708,18 +794,6 @@ export default function AgenteEscaneo() {
                 <button onClick={() => { setEstado("esperando_gps"); setGpsCoords(null); }} className="mt-4 w-full py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm text-white/70 transition-colors">
                   Intentar de nuevo
                 </button>
-              </div>
-            )}
-
-            {estado === "sin_gps" && agenteInfo && (
-              <div>
-                <div className="w-16 h-16 bg-yellow-500/10 border border-yellow-500/30 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <AlertTriangle className="w-8 h-8 text-yellow-400" />
-                </div>
-                <p className="text-yellow-400 font-bold text-xl mb-1">Fichaje sin GPS</p>
-                <p className="text-white/60 text-sm mt-2">Registrado sin datos de ubicación.</p>
-                <p className="text-white font-semibold mt-4">{agenteInfo.nombre_completo}</p>
-                <p className="text-white/40 text-sm">{hora} — {fecha}</p>
               </div>
             )}
 

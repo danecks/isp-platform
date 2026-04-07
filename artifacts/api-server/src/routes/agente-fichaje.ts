@@ -73,7 +73,7 @@ agenteFichajeRouter.get("/supervisor-devices", async (req, res) => {
       SELECT sd.id, sd.device_uuid, sd.supervisor_nombre, sd.descripcion,
              sd.tipo, sd.puesto_id, sd.activo, sd.ultimo_uso, sd.created_at,
              (sd.device_token_hash IS NOT NULL) AS tiene_token,
-             po.nombre AS puesto_nombre, po.cliente_nombre
+             po.nombre AS puesto_nombre, po.cliente_nombre, po.novedad
       FROM supervisor_devices sd
       LEFT JOIN puestos_operativos po ON po.id = sd.puesto_id
       ORDER BY sd.tipo, sd.supervisor_nombre
@@ -82,6 +82,24 @@ agenteFichajeRouter.get("/supervisor-devices", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "supervisor-devices GET: error");
     res.status(500).json({ error: "Error obteniendo dispositivos" });
+  }
+});
+
+// PATCH /api/agente/puesto-novedad/:puestoId — actualizar novedad visible al agente (admin)
+agenteFichajeRouter.patch("/agente/puesto-novedad/:puestoId", async (req, res) => {
+  const puestoId = parseInt(req.params.puestoId, 10);
+  if (isNaN(puestoId)) return res.status(400).json({ error: "puestoId inválido" });
+  const { novedad } = req.body;
+  try {
+    const { rowCount } = await pool.query(
+      `UPDATE puestos_operativos SET novedad = $1 WHERE id = $2`,
+      [novedad ?? null, puestoId]
+    );
+    if (rowCount === 0) return res.status(404).json({ error: "Puesto no encontrado" });
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "puesto-novedad PATCH: error");
+    res.status(500).json({ error: "Error actualizando novedad" });
   }
 });
 
@@ -168,7 +186,7 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
 
     const { rows: poRows } = await pool.query(
       `SELECT po.id, po.nombre, po.cliente_nombre, po.horario,
-              po.hora_entrada, po.hora_salida, po.turno, po.jornada
+              po.hora_entrada, po.hora_salida, po.turno, po.jornada, po.novedad
        FROM puestos_operativos po
        WHERE po.agente_id = $1 AND po.estado = 'cubierto'
        LIMIT 1`,
@@ -191,16 +209,34 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
       }
     }
 
-    let armamento: { codigo: string; descripcion: string } | null = null;
+    let armamento: { codigo: string; descripcion: string; serie: string | null; activo: boolean } | null = null;
     if (puesto?.id) {
       const { rows: armaRows } = await pool.query(
-        `SELECT codigo, CONCAT(marca, ' ', modelo, ' ', calibre) AS descripcion
+        `SELECT codigo, CONCAT(marca, ' ', modelo, ' ', calibre) AS descripcion, serie, activo
          FROM armas
-         WHERE puesto_id = $1 AND activo = TRUE
+         WHERE puesto_id = $1
+         ORDER BY activo DESC
          LIMIT 1`,
         [puesto.id]
       );
-      if (armaRows[0]) armamento = armaRows[0];
+      if (armaRows[0]) armamento = { ...armaRows[0], activo: armaRows[0].activo === true };
+    }
+
+    // Relevo: último fichaje en este puesto que no sea del agente actual
+    let relevo: { nombre: string; registrado_en: string } | null = null;
+    if (puesto?.id) {
+      const { rows: releRows } = await pool.query(
+        `SELECT e.nombre_completo AS nombre, af.registrado_en
+         FROM agente_fichajes af
+         JOIN employees e ON e.id = af.employee_id
+         WHERE af.puesto_id = $1
+           AND af.employee_id != $2
+           AND af.tipo = 'fichaje'
+         ORDER BY af.registrado_en DESC
+         LIMIT 1`,
+        [puesto.id, emp.employee_id]
+      );
+      if (releRows[0]) relevo = { nombre: releRows[0].nombre, registrado_en: releRows[0].registrado_en };
     }
 
     const { rows: dupRows } = await pool.query(
@@ -221,6 +257,7 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
       puesto,
       gps,
       armamento,
+      relevo,
       ya_ficho_hoy: dupRows.length > 0,
     });
   } catch (err) {
