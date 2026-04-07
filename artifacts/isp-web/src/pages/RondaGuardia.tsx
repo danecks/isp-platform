@@ -199,7 +199,7 @@ export default function RondaGuardia() {
             </div>
 
             <button
-              onClick={() => window.location.reload()}
+              onClick={() => setEstado("esperando_gps")}
               className="mt-4 w-full py-3 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 rounded-xl text-sm text-orange-300 hover:text-orange-200 font-semibold transition-colors"
             >
               Ya la activé — Intentar de nuevo

@@ -590,7 +590,7 @@ export default function AgenteEscaneo() {
                   </p>
                 </div>
 
-                <button onClick={() => window.location.reload()} className="mt-4 w-full py-3 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 rounded-xl text-sm text-orange-300 font-semibold transition-colors">
+                <button onClick={() => { setGpsCoords(null); setEstado("esperando_gps"); }} className="mt-4 w-full py-3 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 rounded-xl text-sm text-orange-300 font-semibold transition-colors">
                   Ya la activé — Intentar de nuevo
                 </button>
               </div>

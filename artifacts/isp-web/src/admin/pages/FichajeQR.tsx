@@ -10,6 +10,14 @@ const API = "/api";
 const getSession = () => {
   try { return sessionStorage.getItem("isp_admin_session_v2") ?? ""; } catch { return ""; }
 };
+
+const CHECK_LABELS: Record<string, string> = {
+  uniforme_completo: "Uniforme completo",
+  equipo_en_orden: "Equipo de comunicación",
+  armamento_ok: "Armamento correcto",
+  puesto_limpio: "Área limpia y ordenada",
+  bitacora_actualizada: "Bitácora actualizada",
+};
 const f = (path: string, opts?: RequestInit) =>
   fetch(`${API}${path}`, {
     headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
@@ -672,27 +680,43 @@ export default function FichajeQR() {
                 </div>
 
                 {fich.tipo === "supervision" && (
-                  <div className="mt-3 pt-3 border-t border-white/5 grid grid-cols-2 gap-2 text-xs">
-                    {fich.supervisor_nombre && (
-                      <p className="text-white/50">Supervisor: <span className="text-white/80">{fich.supervisor_nombre}</span></p>
-                    )}
-                    {fich.calificacion && (
-                      <div className="flex items-center gap-1">
-                        <span className="text-white/50">Cal.:</span>
-                        <div className="flex">
-                          {[1,2,3,4,5].map(n => (
-                            <Star key={n} className={`w-3 h-3 ${n <= fich.calificacion! ? "text-amber-400 fill-amber-400" : "text-white/15"}`} />
-                          ))}
+                  <div className="mt-3 pt-3 border-t border-white/5 space-y-2 text-xs">
+                    <div className="grid grid-cols-2 gap-2">
+                      {fich.supervisor_nombre && (
+                        <p className="text-white/50">Supervisor: <span className="text-white/80">{fich.supervisor_nombre}</span></p>
+                      )}
+                      {fich.calificacion && (
+                        <div className="flex items-center gap-1">
+                          <span className="text-white/50">Cal.:</span>
+                          <div className="flex">
+                            {[1,2,3,4,5].map(n => (
+                              <Star key={n} className={`w-3 h-3 ${n <= fich.calificacion! ? "text-amber-400 fill-amber-400" : "text-white/15"}`} />
+                            ))}
+                          </div>
                         </div>
+                      )}
+                      {fich.distancia_metros != null && (
+                        <p className="text-white/50 flex items-center gap-1">
+                          <MapPin className="w-3 h-3" /> {fich.distancia_metros}m del puesto
+                        </p>
+                      )}
+                    </div>
+
+                    {fich.checks && Object.keys(fich.checks).length > 0 && (
+                      <div className="flex flex-wrap gap-1 pt-1">
+                        {Object.entries(fich.checks).map(([k, v]) => (
+                          <span key={k} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium ${
+                            v ? "text-green-400/80 bg-green-500/5 border-green-500/20"
+                              : "text-red-400/60 bg-red-500/5 border-red-500/15 line-through opacity-60"
+                          }`}>
+                            {v ? "✓" : "✗"} {CHECK_LABELS[k] ?? k}
+                          </span>
+                        ))}
                       </div>
                     )}
-                    {fich.distancia_metros != null && (
-                      <p className="text-white/50 flex items-center gap-1">
-                        <MapPin className="w-3 h-3" /> {fich.distancia_metros}m del puesto
-                      </p>
-                    )}
+
                     {fich.observaciones && (
-                      <p className="col-span-2 text-white/50">Obs: <span className="text-white/70">{fich.observaciones}</span></p>
+                      <p className="text-white/50 pt-1 border-t border-white/5">Obs: <span className="text-white/70">{fich.observaciones}</span></p>
                     )}
                   </div>
                 )}
