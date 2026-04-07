@@ -503,6 +503,25 @@ export default function AgenteEscaneo() {
       setUniformeItems(prev => prev.map(i => i.tipo === tipoItem ? { ...i, talla } : i));
     }
 
+    // ── Validación — todos los campos son obligatorios ──
+    const puedeEnviar = (
+      (!armamento || armaEstado !== null) &&
+      (armaEstado !== "necesita_reparacion" || armaObservacion.trim().length > 0) &&
+      (!municion || municionOk !== null) &&
+      (municionOk !== false || municionFaltante > 0) &&
+      uniformeOk !== null &&
+      (uniformeOk !== false || (uniformeItems.length > 0 && uniformeItems.every(i => i.talla)))
+    );
+
+    const camposFaltantes: string[] = [];
+    if (armamento && armaEstado === null) camposFaltantes.push("estado del arma");
+    if (armaEstado === "necesita_reparacion" && !armaObservacion.trim()) camposFaltantes.push("descripción del problema del arma");
+    if (municion && municionOk === null) camposFaltantes.push("estado de la munición");
+    if (municionOk === false && !municionFaltante) camposFaltantes.push("cantidad de cartuchos faltantes");
+    if (uniformeOk === null) camposFaltantes.push("estado del uniforme");
+    if (uniformeOk === false && uniformeItems.length === 0) camposFaltantes.push("artículos de dotación requeridos");
+    if (uniformeOk === false && uniformeItems.some(i => !i.talla)) camposFaltantes.push("talla de todos los artículos seleccionados");
+
     if (reporteEnviado) {
       return (
         <div className="mt-4 bg-green-500/5 border border-green-500/20 rounded-2xl p-5 text-center">
@@ -672,8 +691,22 @@ export default function AgenteEscaneo() {
 
         {reporteError && <p className="text-red-400 text-xs">{reporteError}</p>}
 
-        <button onClick={() => enviarReporteTurno(fichajeId, tipo)} disabled={enviandoReporte}
-          className="w-full py-3 bg-blue-600/15 hover:bg-blue-600/25 border border-blue-500/25 rounded-xl text-sm text-blue-300 font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+        {!puedeEnviar && camposFaltantes.length > 0 && (
+          <div className="bg-amber-500/8 border border-amber-500/20 rounded-xl p-3">
+            <p className="text-amber-300/80 text-xs font-semibold mb-1.5">Faltan completar:</p>
+            <ul className="space-y-0.5">
+              {camposFaltantes.map((c, i) => (
+                <li key={i} className="text-amber-200/50 text-xs flex items-center gap-1.5">
+                  <span className="w-1 h-1 rounded-full bg-amber-500/60 shrink-0" />
+                  {c}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <button onClick={() => enviarReporteTurno(fichajeId, tipo)} disabled={enviandoReporte || !puedeEnviar}
+          className="w-full py-3 bg-blue-600/15 hover:bg-blue-600/25 border border-blue-500/25 rounded-xl text-sm text-blue-300 font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
           {enviandoReporte ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardCheck className="w-4 h-4" />}
           {enviandoReporte ? "Enviando..." : "Enviar reporte de turno"}
         </button>
