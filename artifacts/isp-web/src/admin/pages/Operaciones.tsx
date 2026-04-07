@@ -2055,6 +2055,10 @@ function ModalConfigTurno({
   const [fechaInicio, setFechaInicio] = useState<string>(puesto.fecha_inicio_ciclo ?? new Date().toISOString().slice(0, 10));
   const [guardando, setGuardando]     = useState(false);
 
+  // ── Solicitud de cambio de turno ─────────────────────────────────────────────
+  const [solicitudPendiente, setSolicitudPendiente] = useState<any | null>(null);
+  const [procesandoSol, setProcesandoSol]           = useState(false);
+
   // ── Slots ────────────────────────────────────────────────────────────────────
   const [slots, setSlots]               = useState<SlotItem[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(true);
@@ -2113,7 +2117,14 @@ function ModalConfigTurno({
     if (!silent) setLoadingSlots(false);
   }
 
-  useEffect(() => { loadSlots(); }, [puesto.id]);
+  async function loadSolicitud() {
+    try {
+      const r = await fetch(`${API_BASE}/puestos/${puesto.id}/solicitud-turno`, { headers: hd() });
+      if (r.ok) { setSolicitudPendiente(await r.json()); }
+    } catch {}
+  }
+
+  useEffect(() => { loadSlots(); loadSolicitud(); }, [puesto.id]);
 
   // Búsqueda de agentes para slot existente (inline)
   useEffect(() => {
@@ -2218,8 +2229,37 @@ function ModalConfigTurno({
     setCreatingSlot(false);
   }
 
+  const isFirstSetup = !puesto.tipo_turno_id;
+  const isSameTurno  = !!puesto.tipo_turno_id && String(puesto.tipo_turno_id) === turnoId;
+  const isChangeTurno = !!puesto.tipo_turno_id && !!turnoId && !isSameTurno;
+
   async function guardarTurno() {
     if (!turnoId) { toast({ title: "Seleccioná un tipo de turno", variant: "destructive" }); return; }
+
+    if (isChangeTurno) {
+      // Si ya hay solicitud pendiente para este puesto no se puede crear otra
+      if (solicitudPendiente) {
+        toast({ title: "Ya hay una solicitud pendiente — autorizala o rechazala primero", variant: "destructive" });
+        return;
+      }
+      setGuardando(true);
+      try {
+        const r = await fetch(`${API_BASE}/puestos/${puesto.id}/solicitar-turno`, {
+          method: "POST", headers: hd(),
+          body: JSON.stringify({ turno_nuevo_id: parseInt(turnoId) }),
+        });
+        if (!r.ok) { const e = await r.json(); throw new Error(e.error ?? "Error al crear solicitud"); }
+        toast({ title: "📋 Solicitud de cambio creada — pendiente de autorización" });
+        await loadSolicitud();
+        onSaved();
+      } catch (err: unknown) {
+        toast({ title: (err as Error).message, variant: "destructive" });
+      }
+      setGuardando(false);
+      return;
+    }
+
+    // Primera configuración o misma fecha: guardar y auto-crear slots si es primera vez
     setGuardando(true);
     try {
       const r = await fetch(`${API_BASE}/operaciones/puestos/${puesto.id}/turno`, {
@@ -2227,12 +2267,70 @@ function ModalConfigTurno({
         body: JSON.stringify({ tipo_turno_id: parseInt(turnoId), fecha_inicio_ciclo: fechaInicio }),
       });
       if (!r.ok) { const e = await r.json(); throw new Error(e.error ?? "Error al guardar"); }
-      toast({ title: "✅ Turno actualizado" });
+
+      if (isFirstSetup && turnoSel) {
+        // Auto-crear titulares con días por defecto
+        const horasT  = Math.round(turnoSel.horas_trabajo);
+        const needed  = turnoSel.num_titulares;
+        for (let i = 0; i < needed; i++) {
+          const diasDefault: number[] = turnoSel.tipo_ciclo === "diario"
+            ? [1,2,3,4,5,6,7,8,9,10,11,12,13,14]
+            : i === 0 ? [1,3,5,7,9,11,13] : [2,4,6,8,10,12,14];
+          await fetch(`${API_BASE}/puestos/${puesto.id}/slots`, {
+            method: "POST", headers: hd(),
+            body: JSON.stringify({ horas_turno: horasT, hora_entrada: "07:00", dias_trabajo: diasDefault, fecha_inicio_ciclo: fechaInicio || null }),
+          });
+        }
+        toast({ title: `✅ Turno configurado · ${needed} titular${needed !== 1 ? "es" : ""} creado${needed !== 1 ? "s" : ""} automáticamente` });
+        loadSlots(true);
+      } else {
+        toast({ title: "✅ Fecha de inicio actualizada" });
+      }
       onSaved();
     } catch (err: unknown) {
       toast({ title: (err as Error).message, variant: "destructive" });
     }
     setGuardando(false);
+  }
+
+  async function autorizarSolicitud() {
+    if (!solicitudPendiente) return;
+    setProcesandoSol(true);
+    try {
+      const r = await fetch(`${API_BASE}/solicitudes-turno/${solicitudPendiente.id}/autorizar`, {
+        method: "POST", headers: hd(), body: JSON.stringify({}),
+      });
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error ?? "Error al autorizar"); }
+      const result = await r.json();
+      const partes: string[] = ["✅ Cambio de turno autorizado"];
+      if (result.slots_eliminados > 0) partes.push(`${result.slots_eliminados} titular${result.slots_eliminados !== 1 ? "es" : ""} liberado${result.slots_eliminados !== 1 ? "s" : ""} al pool`);
+      if (result.slots_creados > 0) partes.push(`${result.slots_creados} titular${result.slots_creados !== 1 ? "es" : ""} creado${result.slots_creados !== 1 ? "s" : ""} automáticamente`);
+      toast({ title: partes.join(" · ") });
+      setSolicitudPendiente(null);
+      loadSlots(true);
+      onSaved();
+    } catch (err: unknown) {
+      toast({ title: (err as Error).message, variant: "destructive" });
+    }
+    setProcesandoSol(false);
+  }
+
+  async function rechazarSolicitud() {
+    if (!solicitudPendiente) return;
+    setProcesandoSol(true);
+    try {
+      const r = await fetch(`${API_BASE}/solicitudes-turno/${solicitudPendiente.id}/rechazar`, {
+        method: "POST", headers: hd(), body: JSON.stringify({}),
+      });
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error ?? "Error al rechazar"); }
+      toast({ title: "🚫 Solicitud rechazada — turno sin cambios" });
+      setSolicitudPendiente(null);
+      setTurnoId(String(puesto.tipo_turno_id ?? ""));
+      onSaved();
+    } catch (err: unknown) {
+      toast({ title: (err as Error).message, variant: "destructive" });
+    }
+    setProcesandoSol(false);
   }
 
   function toggleNewDia(d: number) {
@@ -2298,22 +2396,73 @@ function ModalConfigTurno({
                 />
                 <button
                   onClick={guardarTurno}
-                  disabled={guardando || !turnoId}
-                  className="px-3 py-2 bg-indigo-600/70 hover:bg-indigo-600 disabled:opacity-40 text-white text-[10px] font-semibold rounded-lg transition-colors shrink-0 flex items-center gap-1"
+                  disabled={guardando || !turnoId || (isChangeTurno && !!solicitudPendiente)}
+                  className={`px-3 py-2 disabled:opacity-40 text-white text-[10px] font-semibold rounded-lg transition-colors shrink-0 flex items-center gap-1 ${
+                    isChangeTurno
+                      ? "bg-amber-600/80 hover:bg-amber-600"
+                      : "bg-indigo-600/70 hover:bg-indigo-600"
+                  }`}
                 >
                   {guardando ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
-                  Guardar
+                  {isChangeTurno ? "Solicitar cambio" : isFirstSetup ? "Configurar" : "Guardar fecha"}
                 </button>
               </div>
               {turnoSel && (
                 <p className="text-[9px] text-white/25">
-                  {turnoSel.tipo_ciclo === "diario"
-                    ? `Turno diario de ${turnoSel.horas_trabajo}h. 1 titular cubre el puesto todos los días.`
-                    : `Turno alternado ${turnoSel.nombre}. ${turnoSel.num_titulares} titulares se relevan en ciclo de 14 días.`
+                  {isFirstSetup
+                    ? `Al configurar se crearán automáticamente ${turnoSel.num_titulares} titular${turnoSel.num_titulares !== 1 ? "es" : ""} con días por defecto.`
+                    : isChangeTurno
+                      ? "Cambiar el tipo de turno requiere autorización. Se creará una solicitud pendiente."
+                      : turnoSel.tipo_ciclo === "diario"
+                        ? `Turno diario de ${turnoSel.horas_trabajo}h. 1 titular cubre el puesto todos los días.`
+                        : `Turno alternado ${turnoSel.nombre}. ${turnoSel.num_titulares} titulares se relevan en ciclo de 14 días.`
                   }
                 </p>
               )}
             </div>
+
+            {/* ── Solicitud pendiente de cambio de turno ── */}
+            {solicitudPendiente && (
+              <div className="p-3.5 bg-amber-500/6 border border-amber-500/30 rounded-xl space-y-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-amber-400 text-[11px]">⏳</span>
+                  <p className="text-[9px] font-bold text-amber-300/90 uppercase tracking-widest">Cambio de turno pendiente de autorización</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[9px]">
+                  <div className="space-y-0.5">
+                    <p className="text-white/30">Turno actual</p>
+                    <p className="text-white/60 font-medium">{solicitudPendiente.turno_actual_nombre ?? "Sin turno"}</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-white/30">Turno solicitado</p>
+                    <p className="text-amber-300/80 font-semibold">{solicitudPendiente.turno_nuevo_nombre} · {solicitudPendiente.turno_nuevo_titulares} titular{solicitudPendiente.turno_nuevo_titulares !== 1 ? "es" : ""}</p>
+                  </div>
+                </div>
+                {solicitudPendiente.turno_nuevo_titulares < slots.length && (
+                  <p className="text-[9px] text-amber-200/60 leading-relaxed">
+                    Al autorizar: {slots.length - solicitudPendiente.turno_nuevo_titulares} agente{slots.length - solicitudPendiente.turno_nuevo_titulares !== 1 ? "s" : ""} sobrante{slots.length - solicitudPendiente.turno_nuevo_titulares !== 1 ? "s" : ""} pasará{slots.length - solicitudPendiente.turno_nuevo_titulares !== 1 ? "n" : ""} automáticamente al pool de disponibles.
+                  </p>
+                )}
+                <div className="flex gap-2 pt-0.5">
+                  <button
+                    onClick={autorizarSolicitud}
+                    disabled={procesandoSol}
+                    className="flex-1 py-1.5 bg-green-600/70 hover:bg-green-600 disabled:opacity-40 text-white text-[9px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1"
+                  >
+                    {procesandoSol ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                    ✓ Autorizar
+                  </button>
+                  <button
+                    onClick={rechazarSolicitud}
+                    disabled={procesandoSol}
+                    className="flex-1 py-1.5 bg-red-600/50 hover:bg-red-600/70 disabled:opacity-40 text-white text-[9px] font-bold rounded-lg transition-colors"
+                  >
+                    ✕ Rechazar
+                  </button>
+                </div>
+                <p className="text-[8px] text-white/20">Solicitado por {solicitudPendiente.creado_por} · {new Date(solicitudPendiente.created_at).toLocaleDateString("es-GT")}</p>
+              </div>
+            )}
 
             {/* ── Titulares (slots de turnos) ── */}
             <div className="space-y-2">
@@ -2322,7 +2471,7 @@ function ModalConfigTurno({
                   Titulares del puesto — ciclo 2 semanas
                 </p>
                 <span className="text-[9px] text-white/20">
-                  {slots.length}/{turnoId ? maxSlots : "?"} titular{maxSlots !== 1 ? "es" : ""} · cambios al instante
+                  {slots.length}/{turnoId ? maxSlots : "?"} titular{maxSlots !== 1 ? "es" : ""}
                 </span>
               </div>
 
@@ -2340,13 +2489,13 @@ function ModalConfigTurno({
 
               {turnoId && !loadingSlots && (
                 <div className="space-y-2">
-                  {/* Aviso: slots sobrantes para el turno seleccionado */}
-                  {turnoSel && slots.length > maxSlots && (
+                  {/* Aviso: slots sobrantes — se ajustan al autorizar el cambio */}
+                  {turnoSel && slots.length > maxSlots && !solicitudPendiente && (
                     <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-500/8 border border-amber-500/25 rounded-xl">
                       <span className="text-amber-400/80 text-[11px] shrink-0 mt-0.5">⚠</span>
                       <p className="text-[9px] text-amber-300/80 leading-relaxed">
-                        El turno <strong>{turnoSel.nombre}</strong> solo requiere <strong>{maxSlots} titular{maxSlots !== 1 ? "es" : ""}</strong>.
-                        Hay {slots.length - maxSlots} titular{(slots.length - maxSlots) !== 1 ? "es" : ""} sobrante{(slots.length - maxSlots) !== 1 ? "s" : ""} — eliminalo{(slots.length - maxSlots) !== 1 ? "s" : ""} con el botón ×.
+                        El turno <strong>{turnoSel.nombre}</strong> requiere {maxSlots} titular{maxSlots !== 1 ? "es" : ""}.
+                        {" "}Hay {slots.length - maxSlots} sobrante{(slots.length - maxSlots) !== 1 ? "s" : ""} — solicitá un cambio de turno para ajustar automáticamente.
                       </p>
                     </div>
                   )}

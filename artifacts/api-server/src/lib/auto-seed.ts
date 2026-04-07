@@ -3623,5 +3623,30 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: TURNOS-02 — error (no bloqueante)");
   }
 
+  // ── SCT-01: tabla solicitudes_cambio_turno ───────────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS solicitudes_cambio_turno (
+        id                   SERIAL PRIMARY KEY,
+        puesto_id            INTEGER NOT NULL REFERENCES puestos_operativos(id) ON DELETE CASCADE,
+        turno_actual_id      INTEGER REFERENCES turnos(id) ON DELETE SET NULL,
+        turno_nuevo_id       INTEGER NOT NULL REFERENCES turnos(id) ON DELETE RESTRICT,
+        estado               VARCHAR(30) NOT NULL DEFAULT 'pendiente',
+        motivo               TEXT,
+        creado_por           VARCHAR(100),
+        autorizado_por       VARCHAR(100),
+        notas                TEXT,
+        fecha_autorizacion   TIMESTAMPTZ,
+        created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_sct_puesto ON solicitudes_cambio_turno(puesto_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_sct_estado ON solicitudes_cambio_turno(estado)`);
+    logger.info("Auto-migrate: SCT-01 tabla solicitudes_cambio_turno creada/verificada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SCT-01 solicitudes_cambio_turno — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }
