@@ -35,7 +35,6 @@ import {
   BookOpen,
   Package,
   FileUp,
-  Cpu,
   ScanLine,
   BadgeCheck,
   Palmtree,
@@ -391,13 +390,6 @@ export const NAV_SECTIONS: NavSection[] = [
         label: "Rondas QR",
         icon: ScanLine,
         clave: "rondas_qr",
-        roles: ["admin", "operaciones", "supervisor"],
-      },
-      {
-        path: "/admin/nfc-piloto",
-        label: "Control NFC 🧪",
-        icon: Cpu,
-        clave: "nfc_piloto",
         roles: ["admin", "operaciones", "supervisor"],
       },
       {

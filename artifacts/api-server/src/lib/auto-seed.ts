@@ -3374,214 +3374,6 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: UNIF-01 — error (no bloqueante)");
   }
 
-  // ── NFC-PILOT-01: Módulo Piloto de Control Operativo NFC ─────────────────────
-  // SANDBOX: sandbox_mode=TRUE | produccion=FALSE | no_side_effects=TRUE
-  // REGLA: Este bloque NO modifica ninguna tabla productiva. Solo crea tablas nfc_*.
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS nfc_devices (
-        id             SERIAL PRIMARY KEY,
-        device_code    VARCHAR(60)  UNIQUE NOT NULL,
-        device_name    VARCHAR(150) NOT NULL,
-        puesto_id_ref  INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
-        cliente_id_ref INTEGER REFERENCES clients(id) ON DELETE SET NULL,
-        sede_id_ref    INTEGER REFERENCES client_sedes(id) ON DELETE SET NULL,
-        status         VARCHAR(20) NOT NULL DEFAULT 'active',
-        sandbox_mode   BOOLEAN NOT NULL DEFAULT TRUE,
-        last_seen_at   TIMESTAMPTZ,
-        notes          TEXT,
-        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_dev_status ON nfc_devices(status)`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_dev_puesto ON nfc_devices(puesto_id_ref)`);
-
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS nfc_tags (
-        id              SERIAL PRIMARY KEY,
-        tag_uid         VARCHAR(100) UNIQUE NOT NULL,
-        profile_type    VARCHAR(20) NOT NULL DEFAULT 'AGENTE',
-        empleado_id_ref INTEGER REFERENCES employees(id) ON DELETE SET NULL,
-        alias           VARCHAR(100),
-        status          VARCHAR(20) NOT NULL DEFAULT 'active',
-        sandbox_mode    BOOLEAN NOT NULL DEFAULT TRUE,
-        issued_at       DATE,
-        revoked_at      TIMESTAMPTZ,
-        notes           TEXT,
-        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_tag_status ON nfc_tags(status)`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_tag_emp    ON nfc_tags(empleado_id_ref)`);
-
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS nfc_shift_events (
-        id               SERIAL PRIMARY KEY,
-        tag_id           INTEGER REFERENCES nfc_tags(id) ON DELETE SET NULL,
-        empleado_id_ref  INTEGER REFERENCES employees(id) ON DELETE SET NULL,
-        device_id        INTEGER REFERENCES nfc_devices(id) ON DELETE SET NULL,
-        puesto_id_ref    INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
-        event_type       VARCHAR(30) NOT NULL DEFAULT 'INICIO_TURNO',
-        scheduled_status VARCHAR(30) NOT NULL DEFAULT 'pendiente',
-        validation_status VARCHAR(30) NOT NULL DEFAULT 'pendiente',
-        photo_path       VARCHAR(500),
-        notes            TEXT,
-        sandbox_mode     BOOLEAN NOT NULL DEFAULT TRUE,
-        event_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        validated_by     VARCHAR(100),
-        validated_at     TIMESTAMPTZ,
-        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_ev_tag    ON nfc_shift_events(tag_id)`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_ev_val    ON nfc_shift_events(validation_status)`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_ev_at     ON nfc_shift_events(event_at DESC)`);
-
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS nfc_supervisor_forms (
-        id                 SERIAL PRIMARY KEY,
-        supervisor_tag_id  INTEGER REFERENCES nfc_tags(id) ON DELETE SET NULL,
-        supervisor_id_ref  INTEGER REFERENCES employees(id) ON DELETE SET NULL,
-        device_id          INTEGER REFERENCES nfc_devices(id) ON DELETE SET NULL,
-        puesto_id_ref      INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
-        agente_id_ref      INTEGER REFERENCES employees(id) ON DELETE SET NULL,
-        arma_estado        VARCHAR(30) NOT NULL DEFAULT 'sin_novedad',
-        uniforme_estado    VARCHAR(30) NOT NULL DEFAULT 'completo',
-        puesto_estado      VARCHAR(30) NOT NULL DEFAULT 'sin_novedad',
-        agente_estado      VARCHAR(30) NOT NULL DEFAULT 'presente',
-        observaciones      TEXT,
-        photo_path         VARCHAR(500),
-        form_status        VARCHAR(20) NOT NULL DEFAULT 'borrador',
-        sandbox_mode       BOOLEAN NOT NULL DEFAULT TRUE,
-        created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_sf_puesto ON nfc_supervisor_forms(puesto_id_ref)`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_sf_at     ON nfc_supervisor_forms(created_at DESC)`);
-
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS nfc_supervisor_form_items (
-        id          SERIAL PRIMARY KEY,
-        form_id     INTEGER NOT NULL REFERENCES nfc_supervisor_forms(id) ON DELETE CASCADE,
-        item_type   VARCHAR(30) NOT NULL,
-        item_name   VARCHAR(100) NOT NULL,
-        item_status VARCHAR(20) NOT NULL DEFAULT 'ok',
-        item_notes  TEXT,
-        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_sfi_form ON nfc_supervisor_form_items(form_id)`);
-
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS nfc_sandbox_schedules (
-        id              SERIAL PRIMARY KEY,
-        device_id       INTEGER REFERENCES nfc_devices(id) ON DELETE CASCADE,
-        puesto_id_ref   INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
-        empleado_id_ref INTEGER REFERENCES employees(id) ON DELETE SET NULL,
-        dia_semana      INTEGER,
-        hora_inicio     TIME NOT NULL,
-        hora_fin        TIME NOT NULL,
-        activo          BOOLEAN NOT NULL DEFAULT TRUE,
-        notes           TEXT,
-        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS nfc_audit_log (
-        id          SERIAL PRIMARY KEY,
-        entity_type VARCHAR(50) NOT NULL,
-        entity_id   INTEGER,
-        action      VARCHAR(50) NOT NULL,
-        actor       VARCHAR(100),
-        meta        JSONB,
-        sandbox_mode BOOLEAN NOT NULL DEFAULT TRUE,
-        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_al_at ON nfc_audit_log(created_at DESC)`);
-
-    logger.info("Auto-migrate: NFC-PILOT-01 tablas módulo piloto NFC creadas/verificadas (6 tablas)");
-  } catch (err) {
-    logger.error({ err }, "Auto-migrate: NFC-PILOT-01 — error (no bloqueante)");
-  }
-
-  // ── NFC-PILOT-02: Sistema de enrolamiento de dispositivos ─────────────────────
-  // Agrega identity segura (device_uuid + device_token_hash) sin romper la tabla existente
-  try {
-    await pool.query(`ALTER TABLE nfc_devices ADD COLUMN IF NOT EXISTS device_uuid TEXT UNIQUE`);
-    await pool.query(`ALTER TABLE nfc_devices ADD COLUMN IF NOT EXISTS device_token_hash TEXT`);
-    await pool.query(`ALTER TABLE nfc_devices ADD COLUMN IF NOT EXISTS enrolled_at TIMESTAMPTZ`);
-    await pool.query(`ALTER TABLE nfc_devices ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ`);
-    // Backfill device_uuid para dispositivos ya creados (no crea token — quedan en "pendiente de enrolamiento")
-    await pool.query(`
-      UPDATE nfc_devices
-      SET device_uuid = gen_random_uuid()::text
-      WHERE device_uuid IS NULL
-    `);
-    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_dev_uuid ON nfc_devices(device_uuid)`);
-    logger.info("Auto-migrate: NFC-PILOT-02 columnas de enrolamiento en nfc_devices verificadas/creadas");
-  } catch (err) {
-    logger.error({ err }, "Auto-migrate: NFC-PILOT-02 — error (no bloqueante)");
-  }
-
-  // ── NFC-PILOT-03: GPS + Rondas de Patrullaje ──────────────────────────────────
-  try {
-    // GPS en registros existentes
-    await pool.query(`ALTER TABLE nfc_shift_events     ADD COLUMN IF NOT EXISTS latitud           NUMERIC(10,7)`);
-    await pool.query(`ALTER TABLE nfc_shift_events     ADD COLUMN IF NOT EXISTS longitud          NUMERIC(10,7)`);
-    await pool.query(`ALTER TABLE nfc_shift_events     ADD COLUMN IF NOT EXISTS precision_metros  INTEGER`);
-    await pool.query(`ALTER TABLE nfc_supervisor_forms ADD COLUMN IF NOT EXISTS latitud           NUMERIC(10,7)`);
-    await pool.query(`ALTER TABLE nfc_supervisor_forms ADD COLUMN IF NOT EXISTS longitud          NUMERIC(10,7)`);
-    await pool.query(`ALTER TABLE nfc_supervisor_forms ADD COLUMN IF NOT EXISTS precision_metros  INTEGER`);
-
-    // Catálogo de puntos de ronda (chips NFC fijos en ubicaciones físicas)
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS nfc_ronda_puntos (
-        id            SERIAL PRIMARY KEY,
-        cliente_id    INTEGER,
-        puesto_id     INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
-        nombre        TEXT NOT NULL,
-        descripcion   TEXT,
-        tag_uid       TEXT NOT NULL,
-        orden         INTEGER NOT NULL DEFAULT 1,
-        latitud_ref   NUMERIC(10,7),
-        longitud_ref  NUMERIC(10,7),
-        activo        BOOLEAN NOT NULL DEFAULT TRUE,
-        sandbox_mode  BOOLEAN NOT NULL DEFAULT TRUE,
-        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS nfc_rp_uid ON nfc_ronda_puntos(tag_uid) WHERE activo = TRUE`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_rp_puesto   ON nfc_ronda_puntos(puesto_id)`);
-
-    // Eventos de ronda (cada vez que el dispositivo escanea un punto)
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS nfc_ronda_eventos (
-        id               SERIAL PRIMARY KEY,
-        ronda_punto_id   INTEGER NOT NULL REFERENCES nfc_ronda_puntos(id) ON DELETE CASCADE,
-        device_id        INTEGER REFERENCES nfc_devices(id) ON DELETE SET NULL,
-        escaneado_en     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        numero_ronda     INTEGER NOT NULL DEFAULT 1,
-        latitud          NUMERIC(10,7),
-        longitud         NUMERIC(10,7),
-        precision_metros INTEGER,
-        sandbox_mode     BOOLEAN NOT NULL DEFAULT TRUE
-      )
-    `);
-    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_re_punto  ON nfc_ronda_eventos(ronda_punto_id)`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_re_device ON nfc_ronda_eventos(device_id)`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS nfc_re_at     ON nfc_ronda_eventos(escaneado_en DESC)`);
-
-    logger.info("Auto-migrate: NFC-PILOT-03 GPS + tablas de rondas verificadas/creadas");
-  } catch (err) {
-    logger.error({ err }, "Auto-migrate: NFC-PILOT-03 — error (no bloqueante)");
-  }
-
   // ── TURNOS-01: Plantilla de turnos por puesto (puesto_slots) ──────────────
   // Define qué días trabaja/descansa cada slot de agente en un puesto.
   // Es la base para calcular disponibilidad de cobertura (horas extra).
@@ -3733,12 +3525,12 @@ Por favor ingresa al sistema o responde para continuar.',
         ('admin','libro_salarios'),('admin','solicitudes_eliminacion'),('admin','usuarios'),
         ('admin','config_whatsapp'),('admin','cms'),('admin','simulador_wa'),
         ('admin','bodega'),('admin','vehiculos'),('admin','armeria'),
-        ('admin','importacion'),('admin','nfc_piloto'),('admin','rondas_qr'),
+        ('admin','importacion'),('admin','rondas_qr'),
         ('operaciones','dashboard'),('operaciones','pizarron'),('operaciones','seguimiento_ssa'),
         ('operaciones','pipeline_ssa'),('operaciones','tareas'),('operaciones','incidencias'),
         ('operaciones','custodias'),('operaciones','cambios_estructurales'),('operaciones','clientes'),
         ('operaciones','reportes'),('operaciones','empleados'),('operaciones','eventos_rrhh'),
-        ('operaciones','bodega'),('operaciones','vehiculos'),('operaciones','armeria'),('operaciones','nfc_piloto'),('operaciones','rondas_qr'),
+        ('operaciones','bodega'),('operaciones','vehiculos'),('operaciones','armeria'),('operaciones','rondas_qr'),
         ('rrhh','dashboard'),('rrhh','seguimiento_ssa'),('rrhh','pipeline_ssa'),('rrhh','cambios_estructurales'),
         ('rrhh','reportes'),('rrhh','empleados'),('rrhh','reclutamiento'),('rrhh','anticipos'),
         ('rrhh','eventos_rrhh'),('rrhh','alertas_rrhh'),('rrhh','nomina'),('rrhh','pre_planilla'),
@@ -3749,7 +3541,7 @@ Por favor ingresa al sistema o responde para continuar.',
         ('supervisor','dashboard'),('supervisor','pizarron'),('supervisor','seguimiento_ssa'),
         ('supervisor','pipeline_ssa'),('supervisor','tareas'),('supervisor','incidencias'),
         ('supervisor','custodias'),('supervisor','reportes'),('supervisor','empleados'),
-        ('supervisor','eventos_rrhh'),('supervisor','vehiculos'),('supervisor','armeria'),('supervisor','nfc_piloto'),('supervisor','rondas_qr')
+        ('supervisor','eventos_rrhh'),('supervisor','vehiculos'),('supervisor','armeria'),('supervisor','rondas_qr')
       ON CONFLICT DO NOTHING
     `);
     logger.info("Auto-migrate: PERM-02 tabla rol_permisos creada/verificada con seed inicial");

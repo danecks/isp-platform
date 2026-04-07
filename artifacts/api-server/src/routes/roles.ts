@@ -67,8 +67,6 @@ export const SYSTEM_MODULOS = [
   { clave: "armeria",             label: "Armería",                    seccion: "Bodega e Inventario" },
   // Migración
   { clave: "importacion",         label: "Importar Datos",             seccion: "Migración" },
-  // NFC
-  { clave: "nfc_piloto",          label: "Control Operativo NFC",      seccion: "Control Operativo" },
   { clave: "rondas_qr",           label: "Rondas QR",                  seccion: "Control Operativo" },
   { clave: "fichaje_qr",          label: "QR Fichaje de Agentes",      seccion: "Control Operativo" },
 ];

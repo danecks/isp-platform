@@ -26,7 +26,6 @@ const ROUTE_MODULO_MAP: Record<string, string> = {
   "/puesto-slots":           "pizarron",
   "/solicitudes-turno":      "pizarron",
   "/planificacion-futura":   "pizarron",
-  "/nfc-piloto":             "nfc_piloto",
   "/qr-rondas":              "rondas_qr",
   "/importacion":            "importacion",
   "/dashboard":              "dashboard",

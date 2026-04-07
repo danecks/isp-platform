@@ -61,11 +61,9 @@ import AdminPlanillasEspeciales from "@/admin/pages/PlanillasEspeciales";
 import AdminLibroSalarios from "@/admin/pages/LibroSalarios";
 import AdminBodega from "@/admin/pages/Bodega";
 import AdminImportacion from "@/admin/pages/Importacion";
-import AdminNfcPiloto from "@/admin/pages/NfcPiloto";
 import AdminRondasQR from "@/admin/pages/RondasQR";
 import AdminFichajeQR from "@/admin/pages/FichajeQR";
 import AdminVacaciones from "@/admin/pages/AdminVacaciones";
-import KioskoPublico from "@/pages/kiosko";
 import RondaGuardia from "@/pages/RondaGuardia";
 import AgenteEscaneo from "@/pages/AgenteEscaneo";
 import SupervisorActivar from "@/pages/SupervisorActivar";
@@ -253,16 +251,9 @@ function Router() {
       <Route path="/admin/rondas-qr">
         {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminRondasQR /></AuthGuard>}
       </Route>
-      <Route path="/admin/nfc-piloto">
-        {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminNfcPiloto /></AuthGuard>}
-      </Route>
-      <Route path="/admin/nfc-piloto/kiosko/:deviceCode">
-        {() => <AdminNfcPiloto kioskMode />}
-      </Route>
       <Route path="/admin/fichaje-qr">
         {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminFichajeQR /></AuthGuard>}
       </Route>
-      <Route path="/kiosko" component={KioskoPublico} />
       <Route path="/ronda" component={RondaGuardia} />
       <Route path="/agente" component={AgenteEscaneo} />
       <Route path="/supervisor/activar" component={SupervisorActivar} />
