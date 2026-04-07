@@ -2039,8 +2039,10 @@ const DIAS_C14 = Array.from({ length: 14 }, (_, i) => ({ n: i + 1, label: DIAS_S
 
 // Devuelve el lunes más cercano hacia atrás (o la fecha actual si ya es lunes).
 // Garantiza que D1=Lun, D2=Mar, ... D7=Dom en el ciclo de 14 días.
-function lastMondayDate(fromDate?: string): string {
-  const d = fromDate ? new Date(fromDate + "T12:00:00") : new Date();
+function lastMondayDate(fromDate?: string | null): string {
+  // Extraer solo YYYY-MM-DD — el API puede devolver ISO completo ("2026-01-01T00:00:00.000Z")
+  const dateStr = fromDate ? String(fromDate).slice(0, 10) : null;
+  const d = dateStr ? new Date(dateStr + "T12:00:00") : new Date();
   const day = d.getDay(); // 0=Dom, 1=Lun, 2=Mar...
   const diff = day === 0 ? 6 : day - 1; // cuántos días hacia atrás al lunes
   d.setDate(d.getDate() - diff);
