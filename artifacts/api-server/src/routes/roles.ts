@@ -67,7 +67,8 @@ export const SYSTEM_MODULOS = [
   // Migración
   { clave: "importacion",         label: "Importar Datos",             seccion: "Migración" },
   // NFC
-  { clave: "nfc_piloto",          label: "Control Operativo NFC",      seccion: "Piloto NFC" },
+  { clave: "nfc_piloto",          label: "Control Operativo NFC",      seccion: "Control Operativo" },
+  { clave: "rondas_qr",           label: "Rondas QR",                  seccion: "Control Operativo" },
 ];
 
 // GET /roles — listar todos los roles con conteo de permisos

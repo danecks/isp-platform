@@ -3733,12 +3733,12 @@ Por favor ingresa al sistema o responde para continuar.',
         ('admin','libro_salarios'),('admin','solicitudes_eliminacion'),('admin','usuarios'),
         ('admin','config_whatsapp'),('admin','cms'),('admin','simulador_wa'),
         ('admin','bodega'),('admin','vehiculos'),('admin','armeria'),
-        ('admin','importacion'),('admin','nfc_piloto'),
+        ('admin','importacion'),('admin','nfc_piloto'),('admin','rondas_qr'),
         ('operaciones','dashboard'),('operaciones','pizarron'),('operaciones','seguimiento_ssa'),
         ('operaciones','pipeline_ssa'),('operaciones','tareas'),('operaciones','incidencias'),
         ('operaciones','custodias'),('operaciones','cambios_estructurales'),('operaciones','clientes'),
         ('operaciones','reportes'),('operaciones','empleados'),('operaciones','eventos_rrhh'),
-        ('operaciones','bodega'),('operaciones','vehiculos'),('operaciones','armeria'),('operaciones','nfc_piloto'),
+        ('operaciones','bodega'),('operaciones','vehiculos'),('operaciones','armeria'),('operaciones','nfc_piloto'),('operaciones','rondas_qr'),
         ('rrhh','dashboard'),('rrhh','seguimiento_ssa'),('rrhh','pipeline_ssa'),('rrhh','cambios_estructurales'),
         ('rrhh','reportes'),('rrhh','empleados'),('rrhh','reclutamiento'),('rrhh','anticipos'),
         ('rrhh','eventos_rrhh'),('rrhh','alertas_rrhh'),('rrhh','nomina'),('rrhh','pre_planilla'),
@@ -3749,7 +3749,7 @@ Por favor ingresa al sistema o responde para continuar.',
         ('supervisor','dashboard'),('supervisor','pizarron'),('supervisor','seguimiento_ssa'),
         ('supervisor','pipeline_ssa'),('supervisor','tareas'),('supervisor','incidencias'),
         ('supervisor','custodias'),('supervisor','reportes'),('supervisor','empleados'),
-        ('supervisor','eventos_rrhh'),('supervisor','vehiculos'),('supervisor','armeria'),('supervisor','nfc_piloto')
+        ('supervisor','eventos_rrhh'),('supervisor','vehiculos'),('supervisor','armeria'),('supervisor','nfc_piloto'),('supervisor','rondas_qr')
       ON CONFLICT DO NOTHING
     `);
     logger.info("Auto-migrate: PERM-02 tabla rol_permisos creada/verificada con seed inicial");
