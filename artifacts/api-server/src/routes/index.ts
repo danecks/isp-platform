@@ -50,6 +50,8 @@ import { uniformesRouter } from "./uniformes";
 import { nfcPilotoRouter } from "./nfc-piloto";
 import { puestoSlotsRouter } from "./puesto-slots";
 import { solicitudesTurnoRouter } from "./solicitudes-turno";
+import { rolesRouter } from "./roles";
+import { tiposPersonalConfigRouter } from "./tipos-personal-config";
 
 const router: IRouter = Router();
 
@@ -104,5 +106,7 @@ router.use(uniformesRouter);
 router.use(nfcPilotoRouter);
 router.use(puestoSlotsRouter);
 router.use(solicitudesTurnoRouter);
+router.use(rolesRouter);
+router.use(tiposPersonalConfigRouter);
 
 export default router;

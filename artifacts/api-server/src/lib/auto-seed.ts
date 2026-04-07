@@ -3681,5 +3681,110 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: CLI-01 — error (no bloqueante)");
   }
 
+  // ── PERM-01: Roles del sistema (configurables) ────────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS system_roles (
+        clave       VARCHAR(60)  PRIMARY KEY,
+        label       VARCHAR(120) NOT NULL,
+        descripcion VARCHAR(300),
+        color       VARCHAR(120) NOT NULL DEFAULT 'text-white/50 bg-white/5 border-white/10',
+        activo      BOOLEAN      NOT NULL DEFAULT TRUE,
+        es_sistema  BOOLEAN      NOT NULL DEFAULT FALSE,
+        created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      INSERT INTO system_roles (clave, label, descripcion, color, es_sistema) VALUES
+        ('admin',      'Administrador',  'Acceso total al sistema',                          'text-red-400 bg-red-400/10 border-red-400/20',       TRUE),
+        ('operaciones','Operaciones',    'Gestión operativa y seguimiento de servicios',      'text-blue-400 bg-blue-400/10 border-blue-400/20',    TRUE),
+        ('rrhh',       'RRHH',           'Recursos humanos, planilla y personal',             'text-purple-400 bg-purple-400/10 border-purple-400/20',TRUE),
+        ('comercial',  'Comercial',      'Área comercial y relaciones con clientes',          'text-green-400 bg-green-400/10 border-green-400/20', TRUE),
+        ('supervisor', 'Supervisor',     'Supervisión de operaciones en campo',               'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',TRUE),
+        ('guardia',    'Guardia',        'Personal de seguridad (solo portal WhatsApp)',      'text-orange-400 bg-orange-400/10 border-orange-400/20',TRUE),
+        ('cliente',    'Cliente',        'Acceso al portal de clientes',                      'text-cyan-400 bg-cyan-400/10 border-cyan-400/20',    TRUE)
+      ON CONFLICT (clave) DO NOTHING
+    `);
+    logger.info("Auto-migrate: PERM-01 tabla system_roles creada/verificada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PERM-01 — error (no bloqueante)");
+  }
+
+  // ── PERM-02: Permisos de módulos por rol ──────────────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS rol_permisos (
+        rol_clave    VARCHAR(60) NOT NULL REFERENCES system_roles(clave) ON DELETE CASCADE,
+        modulo_clave VARCHAR(80) NOT NULL,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (rol_clave, modulo_clave)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_rol_permisos_rol ON rol_permisos(rol_clave)`);
+    // Seed de permisos iniciales basados en la configuración actual del sidebar
+    await pool.query(`
+      INSERT INTO rol_permisos (rol_clave, modulo_clave) VALUES
+        ('admin','dashboard'),('admin','pizarron'),('admin','seguimiento_ssa'),('admin','pipeline_ssa'),
+        ('admin','tareas'),('admin','incidencias'),('admin','custodias'),('admin','cambios_estructurales'),
+        ('admin','clientes'),('admin','comercial'),('admin','reportes'),('admin','kpi'),
+        ('admin','empleados'),('admin','reclutamiento'),('admin','anticipos'),('admin','eventos_rrhh'),
+        ('admin','alertas_rrhh'),('admin','nomina'),('admin','pre_planilla'),('admin','planilla'),
+        ('admin','turnos'),('admin','cambios_salariales'),('admin','prestaciones'),('admin','planillas_especiales'),
+        ('admin','libro_salarios'),('admin','solicitudes_eliminacion'),('admin','usuarios'),
+        ('admin','config_whatsapp'),('admin','cms'),('admin','simulador_wa'),
+        ('admin','bodega'),('admin','vehiculos'),('admin','armeria'),
+        ('admin','importacion'),('admin','nfc_piloto'),
+        ('operaciones','dashboard'),('operaciones','pizarron'),('operaciones','seguimiento_ssa'),
+        ('operaciones','pipeline_ssa'),('operaciones','tareas'),('operaciones','incidencias'),
+        ('operaciones','custodias'),('operaciones','cambios_estructurales'),('operaciones','clientes'),
+        ('operaciones','reportes'),('operaciones','empleados'),('operaciones','eventos_rrhh'),
+        ('operaciones','bodega'),('operaciones','vehiculos'),('operaciones','armeria'),('operaciones','nfc_piloto'),
+        ('rrhh','dashboard'),('rrhh','seguimiento_ssa'),('rrhh','pipeline_ssa'),('rrhh','cambios_estructurales'),
+        ('rrhh','reportes'),('rrhh','empleados'),('rrhh','reclutamiento'),('rrhh','anticipos'),
+        ('rrhh','eventos_rrhh'),('rrhh','alertas_rrhh'),('rrhh','nomina'),('rrhh','pre_planilla'),
+        ('rrhh','planilla'),('rrhh','turnos'),('rrhh','cambios_salariales'),('rrhh','prestaciones'),
+        ('rrhh','planillas_especiales'),('rrhh','libro_salarios'),
+        ('comercial','dashboard'),('comercial','seguimiento_ssa'),('comercial','pipeline_ssa'),
+        ('comercial','clientes'),('comercial','comercial'),('comercial','reportes'),
+        ('supervisor','dashboard'),('supervisor','pizarron'),('supervisor','seguimiento_ssa'),
+        ('supervisor','pipeline_ssa'),('supervisor','tareas'),('supervisor','incidencias'),
+        ('supervisor','custodias'),('supervisor','reportes'),('supervisor','empleados'),
+        ('supervisor','eventos_rrhh'),('supervisor','vehiculos'),('supervisor','armeria'),('supervisor','nfc_piloto')
+      ON CONFLICT DO NOTHING
+    `);
+    logger.info("Auto-migrate: PERM-02 tabla rol_permisos creada/verificada con seed inicial");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PERM-02 — error (no bloqueante)");
+  }
+
+  // ── TIPOS-PERS-01: Tipos de personal configurables ────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS tipos_personal_config (
+        clave       VARCHAR(60)  PRIMARY KEY,
+        label       VARCHAR(120) NOT NULL,
+        color       VARCHAR(120) NOT NULL DEFAULT 'text-white/50 bg-white/5 border-white/10',
+        descripcion VARCHAR(300),
+        activo      BOOLEAN      NOT NULL DEFAULT TRUE,
+        es_sistema  BOOLEAN      NOT NULL DEFAULT FALSE,
+        orden       SMALLINT     NOT NULL DEFAULT 99,
+        created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      INSERT INTO tipos_personal_config (clave, label, color, descripcion, es_sistema, orden) VALUES
+        ('guardia',        'Guardia de Seguridad',    'text-blue-400 bg-blue-400/10 border-blue-400/20',    'Personal operativo de seguridad en campo',           TRUE, 1),
+        ('supervisor',     'Supervisor',              'text-yellow-400 bg-yellow-400/10 border-yellow-400/20','Supervisión de puestos y personal',                TRUE, 2),
+        ('inspector',      'Inspector',               'text-orange-400 bg-orange-400/10 border-orange-400/20','Inspección y control de calidad',                 TRUE, 3),
+        ('jefe_servicio',  'Jefe de Servicio',        'text-purple-400 bg-purple-400/10 border-purple-400/20','Jefatura de servicio con múltiples clientes',      TRUE, 4),
+        ('administrativo', 'Administrativo',          'text-green-400 bg-green-400/10 border-green-400/20', 'Personal de oficina y administración',              TRUE, 5),
+        ('disponible',     'Disponible (sin asignar)','text-white/50 bg-white/5 border-white/10',           'Personal sin asignación de puesto activa',          TRUE, 6)
+      ON CONFLICT (clave) DO NOTHING
+    `);
+    logger.info("Auto-migrate: TIPOS-PERS-01 tabla tipos_personal_config creada/verificada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: TIPOS-PERS-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

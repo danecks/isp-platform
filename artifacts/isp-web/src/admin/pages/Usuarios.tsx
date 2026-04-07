@@ -5,16 +5,19 @@ import {
   UserCog, Plus, Search, Pencil, KeyRound, Power, PowerOff,
   X, Check, AlertCircle, Loader2, ShieldCheck, Mail, Phone,
   User, Lock, ChevronDown, MessageSquare, Zap, Wallet, Shield,
-  Info, Building, UserCheck,
+  Info, Building, UserCheck, ShieldAlert, HardHat,
 } from "lucide-react";
 import { AdminLayout } from "@/admin/layout/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { usersApi, type UserSafe } from "@/lib/api";
-import { ROL_LABELS, ROL_COLORES, type Rol } from "@/config/permissions";
+import { ROL_LABELS, ROL_COLORES } from "@/config/permissions";
 import { useToast } from "@/hooks/use-toast";
+import { RolesTab } from "./tabs/RolesTab";
+import { TiposPersonalTab } from "./tabs/TiposPersonalTab";
 
+type Rol = "admin" | "operaciones" | "rrhh" | "comercial" | "supervisor" | "guardia" | "cliente";
 const ROLES: Rol[] = ["admin", "operaciones", "rrhh", "comercial", "supervisor", "guardia", "cliente"];
 
 // Roles que pueden usar el panel admin (no solo WhatsApp)
@@ -743,9 +746,12 @@ interface Inconsistencia {
   totalInconsistencias: number;
 }
 
+type TabId = "usuarios" | "roles" | "tipos_personal";
+
 export default function AdminUsuarios() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const [tab, setTab] = useState<TabId>("usuarios");
   const [search, setSearch] = useState("");
   const [rolFiltro, setRolFiltro] = useState<string>("todos");
   const [estadoFiltro, setEstadoFiltro] = useState<string>("todos");
@@ -802,6 +808,12 @@ export default function AdminUsuarios() {
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["users"] });
 
+  const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
+    { id: "usuarios",       label: "Usuarios",         icon: UserCog },
+    { id: "roles",          label: "Roles & Módulos",  icon: ShieldAlert },
+    { id: "tipos_personal", label: "Tipos de Personal",icon: HardHat },
+  ];
+
   return (
     <AdminLayout title="Usuarios del Sistema">
       <div className="space-y-6">
@@ -814,17 +826,49 @@ export default function AdminUsuarios() {
               <h1 className="text-xl font-bold text-white">Gestión de Usuarios</h1>
             </div>
             <p className="text-sm text-muted-foreground">
-              Control de acceso, roles y permisos WhatsApp por usuario
+              Control de acceso, roles, módulos y tipos de personal
             </p>
           </div>
-          <Button
-            onClick={() => setShowNuevo(true)}
-            className="bg-primary text-[#050d1a] font-bold hover:bg-primary/90 h-10 px-5 gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Nuevo Usuario
-          </Button>
+          {tab === "usuarios" && (
+            <Button
+              onClick={() => setShowNuevo(true)}
+              className="bg-primary text-[#050d1a] font-bold hover:bg-primary/90 h-10 px-5 gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Nuevo Usuario
+            </Button>
+          )}
         </div>
+
+        {/* Tab navigation */}
+        <div className="flex gap-1 bg-[#060e1c] border border-white/8 rounded-xl p-1 w-fit">
+          {TABS.map(t => {
+            const Icon = t.icon;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  tab === t.id
+                    ? "bg-primary text-[#050d1a]"
+                    : "text-white/50 hover:text-white hover:bg-white/5"
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ─── Tab: Roles & Módulos ────────────────────────────────────────────── */}
+        {tab === "roles" && <RolesTab />}
+
+        {/* ─── Tab: Tipos de Personal ──────────────────────────────────────────── */}
+        {tab === "tipos_personal" && <TiposPersonalTab />}
+
+        {/* ─── Tab: Usuarios ───────────────────────────────────────────────────── */}
+        {tab === "usuarios" && <>
 
         {/* Stat cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -1122,6 +1166,8 @@ export default function AdminUsuarios() {
             <strong className="text-white/40">PERM</strong> = Requiere habilitación explícita desde el tab "Permisos WA" de este módulo.
           </p>
         </div>
+
+        </>}
 
       </div>
 

@@ -2,10 +2,11 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { X, ExternalLink, ChevronDown, Trash2 } from "lucide-react";
 import { brand } from "@/config/branding";
-import { seccionesParaRol, ROL_LABELS, ROL_COLORES } from "@/config/permissions";
+import { seccionesParaPermisos, ROL_LABELS, ROL_COLORES } from "@/config/permissions";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
-import type { Rol, NavSection } from "@/config/permissions";
+import { usePermisos } from "@/hooks/usePermisos";
+import type { NavSection } from "@/config/permissions";
 
 const logoImg = "/images/logo-isp.png";
 
@@ -21,8 +22,8 @@ export function AdminSidebar({ open, onClose }: AdminSidebarProps) {
   const [location] = useLocation();
   const { currentUser } = useAuth();
   const { active: deleteModeActive, toggle: toggleDeleteMode } = useDeleteMode();
-  const rol = currentUser?.rol as Rol | undefined;
-  const secciones = seccionesParaRol(rol);
+  const { modulos } = usePermisos();
+  const secciones = seccionesParaPermisos(modulos);
 
   // Determinar qué sección está activa basándonos en la ruta actual
   const activeSectionId = secciones.find((s) =>
@@ -89,10 +90,10 @@ export function AdminSidebar({ open, onClose }: AdminSidebarProps) {
             <div className="flex items-center gap-2">
               <span
                 className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${
-                  ROL_COLORES[currentUser.rol as Rol] ?? "text-white/50 bg-white/5 border-white/10"
+                  ROL_COLORES[currentUser.rol] ?? "text-white/50 bg-white/5 border-white/10"
                 }`}
               >
-                {ROL_LABELS[currentUser.rol as Rol] ?? currentUser.rol}
+                {ROL_LABELS[currentUser.rol] ?? currentUser.rol}
               </span>
               <span className="text-[10px] text-white/30 truncate">{currentUser.username}</span>
             </div>

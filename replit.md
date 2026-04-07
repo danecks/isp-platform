@@ -5,6 +5,7 @@ This project is a pnpm monorepo for "Investigaciones y Seguridad Profesional S.A
 
 Key capabilities include:
 - **Comprehensive Admin Modules:** Covering Commercial (leads CRM), Recruitment (job applications), Incidents Management, HR Advances, HR Disciplinary KPI, Operational Rotation KPI, RRHH Automatic Alerts, CMS, Novedades Nómina, and Pre-Planilla Operativa.
+- **Dynamic Roles & Permissions:** Configurable role-based access control managed from the Usuarios module. Roles, module permissions, and employee types are stored in the database (`system_roles`, `rol_permisos`, `tipos_personal_config`). Includes server-side route blocking middleware (403 if unauthorized module). Admin role always bypasses all restrictions.
 - **Robust Authentication & RBAC:** Granular role-based access control for various user roles.
 - **Client Portal:** Secure access for clients to view incidents and KPIs.
 - **Trello Integration:** Seamless integration for Incidencias, Leads, and Postulaciones.
