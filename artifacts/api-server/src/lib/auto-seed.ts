@@ -3522,7 +3522,7 @@ Por favor ingresa al sistema o responde para continuar.',
         ('admin','empleados'),('admin','reclutamiento'),('admin','anticipos'),('admin','eventos_rrhh'),
         ('admin','alertas_rrhh'),('admin','nomina'),('admin','pre_planilla'),('admin','planilla'),
         ('admin','turnos'),('admin','cambios_salariales'),('admin','prestaciones'),('admin','planillas_especiales'),
-        ('admin','libro_salarios'),('admin','solicitudes_eliminacion'),('admin','usuarios'),
+        ('admin','libro_salarios'),('admin','igss_planilla'),('admin','solicitudes_eliminacion'),('admin','usuarios'),
         ('admin','config_whatsapp'),('admin','cms'),('admin','simulador_wa'),
         ('admin','bodega'),('admin','vehiculos'),('admin','armeria'),
         ('admin','importacion'),('admin','control_qr'),
@@ -3535,7 +3535,7 @@ Por favor ingresa al sistema o responde para continuar.',
         ('rrhh','reportes'),('rrhh','empleados'),('rrhh','reclutamiento'),('rrhh','anticipos'),
         ('rrhh','eventos_rrhh'),('rrhh','alertas_rrhh'),('rrhh','nomina'),('rrhh','pre_planilla'),
         ('rrhh','planilla'),('rrhh','turnos'),('rrhh','cambios_salariales'),('rrhh','prestaciones'),
-        ('rrhh','planillas_especiales'),('rrhh','libro_salarios'),
+        ('rrhh','planillas_especiales'),('rrhh','libro_salarios'),('rrhh','igss_planilla'),
         ('comercial','dashboard'),('comercial','seguimiento_ssa'),('comercial','pipeline_ssa'),
         ('comercial','clientes'),('comercial','comercial'),('comercial','reportes'),
         ('supervisor','dashboard'),('supervisor','pizarron'),('supervisor','seguimiento_ssa'),
@@ -3714,6 +3714,19 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.info("Auto-seed: VAC-SOL-PERM-01 permisos insertados");
   } catch (err) {
     logger.error({ err }, "Auto-seed: VAC-SOL-PERM-01 permisos — error (no bloqueante)");
+  }
+
+  // ── IGSS-PERM-01: permisos garantizados para módulo IGSS ────────────────────
+  try {
+    await pool.query(`
+      INSERT INTO rol_permisos (rol_clave, modulo_clave) VALUES
+        ('admin', 'igss_planilla'),
+        ('rrhh',  'igss_planilla')
+      ON CONFLICT DO NOTHING
+    `);
+    logger.info("Auto-seed: IGSS-PERM-01 permisos igss_planilla insertados");
+  } catch (err) {
+    logger.error({ err }, "Auto-seed: IGSS-PERM-01 permisos — error (no bloqueante)");
   }
 
   // ── SUPERVISOR-DEV-01: dispositivos autenticados (teléfonos de puesto y supervisor) ──

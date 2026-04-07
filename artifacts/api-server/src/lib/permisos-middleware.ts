@@ -11,6 +11,7 @@ const ROUTE_MODULO_MAP: Record<string, string> = {
   "/planilla":               "planilla",
   "/planillas-especiales":   "planillas_especiales",
   "/libro-salarios":         "libro_salarios",
+  "/igss":                   "igss_planilla",
   "/kpi":                    "kpi",
   "/tareas":                 "tareas",
   "/reportes":               "reportes",
