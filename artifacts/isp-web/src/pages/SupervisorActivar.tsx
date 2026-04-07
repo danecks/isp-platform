@@ -19,25 +19,45 @@ export default function SupervisorActivar() {
   } | null>(null);
   const [error, setError] = useState("");
 
+  // ── DEBUG LOG (temporal) ──────────────────────────────────────────────────
+  const [debugLog, setDebugLog] = useState<{ t: string; msg: string; ok?: boolean }[]>([]);
+  const addLog = (msg: string, ok?: boolean) =>
+    setDebugLog(prev => [...prev, { t: new Date().toLocaleTimeString("es-HN"), msg, ok }]);
+  // ─────────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (!device_uuid || !device_token) {
       setEstado("params_invalidos");
+      addLog("❌ Faltan parámetros en la URL (uuid o token)", false);
       return;
     }
+
+    addLog(`uuid: ${device_uuid}`);
+    addLog(`token: ${device_token.slice(0, 6)}…${device_token.slice(-4)}`);
+    addLog(`API: ${API}/supervisor-devices/validate`);
 
     fetch(`${API}/supervisor-devices/validate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ device_uuid, device_token }),
     })
-      .then(r => r.json())
+      .then(async r => {
+        const data = await r.json();
+        addLog(`HTTP ${r.status} → ${JSON.stringify(data)}`, data.ok);
+        return data;
+      })
       .then(data => {
         if (!data.ok) { setError(data.error || "Dispositivo no válido"); setEstado("error"); return; }
         localStorage.setItem(DEVICE_KEY, JSON.stringify({ uuid: device_uuid, token: device_token }));
         setInfo(data);
         setEstado("ok");
+        addLog("✓ Guardado en localStorage", true);
       })
-      .catch(() => { setError("Error de conexión al validar el dispositivo"); setEstado("error"); });
+      .catch(err => {
+        addLog(`⚠ fetch error: ${err}`, false);
+        setError("Error de conexión al validar el dispositivo");
+        setEstado("error");
+      });
   }, []);
 
   const tipoLabel = info?.tipo === "puesto" ? "Teléfono de Puesto" : "Teléfono de Supervisor";
@@ -145,6 +165,25 @@ export default function SupervisorActivar() {
             </div>
           )}
         </div>
+
+        {/* ── DEBUG LOG PANEL (temporal) ─────────────────────────────────── */}
+        {debugLog.length > 0 && (
+          <div className="mt-4 bg-black/60 border border-yellow-500/20 rounded-xl p-4">
+            <p className="text-yellow-400/60 text-xs font-mono uppercase tracking-widest mb-2">🛠 Debug log (temporal)</p>
+            <div className="space-y-1">
+              {debugLog.map((entry, i) => (
+                <p key={i} className={`font-mono text-xs break-all ${
+                  entry.ok === true ? "text-green-400/70"
+                  : entry.ok === false ? "text-red-400/70"
+                  : "text-white/30"
+                }`}>
+                  <span className="text-white/15">[{entry.t}]</span> {entry.msg}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* ────────────────────────────────────────────────────────────────── */}
       </div>
 
       <p className="text-white/15 text-xs mt-8 text-center">ISP — Investigaciones y Seguridad Profesional S.A.</p>

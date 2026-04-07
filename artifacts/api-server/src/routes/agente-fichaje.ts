@@ -36,6 +36,7 @@ agenteFichajeRouter.post("/supervisor-devices/validate", async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT sd.id, sd.supervisor_nombre, sd.descripcion, sd.tipo, sd.puesto_id,
+              sd.device_token_hash,
               po.nombre AS puesto_nombre, po.cliente_nombre
        FROM supervisor_devices sd
        LEFT JOIN puestos_operativos po ON po.id = sd.puesto_id
