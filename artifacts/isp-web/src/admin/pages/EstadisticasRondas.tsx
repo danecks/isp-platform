@@ -90,12 +90,12 @@ export default function EstadisticasRondas() {
 
   // Rellenar horas sin datos con 0 para el gráfico horario
   const horasCompletas = Array.from({ length: 24 }, (_, h) => {
-    const found = data?.distribucion_horaria.find(x => x.hora === h);
+    const found = data?.distribucion_horaria?.find(x => x.hora === h);
     return { hora: `${String(h).padStart(2, "0")}:00`, total: found?.total ?? 0 };
   });
 
   // Calcular max para barra de frecuencia
-  const maxFrec = data?.frecuencia_por_punto[0]?.total ?? 1;
+  const maxFrec = data?.frecuencia_por_punto?.[0]?.total ?? 1;
 
   return (
     <div className="space-y-6">
@@ -148,16 +148,16 @@ export default function EstadisticasRondas() {
       </div>
 
       {/* Alerta puntos sin actividad */}
-      {(data?.puntos_sin_actividad.length ?? 0) > 0 && (
+      {(data?.puntos_sin_actividad?.length ?? 0) > 0 && (
         <div className="bg-amber-500/8 border border-amber-500/20 rounded-2xl p-4">
           <div className="flex items-center gap-2 mb-3">
             <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
             <p className="text-amber-300 font-semibold text-sm">
-              {data!.puntos_sin_actividad.length} punto{data!.puntos_sin_actividad.length > 1 ? "s" : ""} sin actividad reciente
+              {data?.puntos_sin_actividad?.length} punto{(data?.puntos_sin_actividad?.length ?? 0) > 1 ? "s" : ""} sin actividad reciente
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {data!.puntos_sin_actividad.map(p => (
+            {data?.puntos_sin_actividad?.map(p => (
               <div key={p.punto_id} className="flex items-center gap-2 text-xs bg-white/3 rounded-xl px-3 py-2">
                 <Clock className="w-3.5 h-3.5 text-amber-400/70 shrink-0" />
                 <div className="min-w-0">
@@ -178,11 +178,11 @@ export default function EstadisticasRondas() {
           <h3 className="text-white font-semibold text-sm mb-4 flex items-center gap-2">
             <MapPin className="w-4 h-4 text-blue-400" /> Frecuencia por punto
           </h3>
-          {(data?.frecuencia_por_punto.length ?? 0) === 0 ? (
+          {(data?.frecuencia_por_punto?.length ?? 0) === 0 ? (
             <p className="text-white/25 text-sm text-center py-8">Sin datos en este período</p>
           ) : (
             <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
-              {data!.frecuencia_por_punto.map(p => {
+              {data?.frecuencia_por_punto?.map(p => {
                 const pct = maxFrec > 0 ? Math.round((p.total / maxFrec) * 100) : 0;
                 return (
                   <div key={p.punto_id}>
@@ -212,12 +212,12 @@ export default function EstadisticasRondas() {
           <h3 className="text-white font-semibold text-sm mb-4 flex items-center gap-2">
             <Users className="w-4 h-4 text-violet-400" /> Actividad por agente
           </h3>
-          {(data?.ranking_agentes.length ?? 0) === 0 ? (
+          {(data?.ranking_agentes?.length ?? 0) === 0 ? (
             <p className="text-white/25 text-sm text-center py-8">Sin datos en este período</p>
           ) : (
             <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
-              {data!.ranking_agentes.map((a, i) => {
-                const maxA = data!.ranking_agentes[0]?.total ?? 1;
+              {data?.ranking_agentes?.map((a, i) => {
+                const maxA = data?.ranking_agentes?.[0]?.total ?? 1;
                 const pct  = Math.round((a.total / maxA) * 100);
                 return (
                   <div key={a.guardia_nombre}>
@@ -267,12 +267,12 @@ export default function EstadisticasRondas() {
           <h3 className="text-white font-semibold text-sm mb-4 flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-emerald-400" /> Tendencia de escaneos
           </h3>
-          {(data?.tendencia_diaria.length ?? 0) === 0 ? (
+          {(data?.tendencia_diaria?.length ?? 0) === 0 ? (
             <p className="text-white/25 text-sm text-center py-8">Sin datos en este período</p>
           ) : (
             <ResponsiveContainer width="100%" height={180}>
               <LineChart
-                data={data!.tendencia_diaria.map(d => ({ ...d, fecha: fechaCorta(d.fecha) }))}
+                data={data?.tendencia_diaria?.map(d => ({ ...d, fecha: fechaCorta(d.fecha) })) ?? []}
                 margin={{ top: 0, right: 0, left: -28, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                 <XAxis dataKey="fecha" tick={{ fill: "#475569", fontSize: 10 }} />
@@ -287,7 +287,7 @@ export default function EstadisticasRondas() {
       )}
 
       {/* Detalle por punto: resultados OK/Fuera/SinGPS */}
-      {(data?.frecuencia_por_punto.some(p => p.total > 0)) && (
+      {(data?.frecuencia_por_punto?.some(p => p.total > 0)) && (
         <div className="bg-white/5 border border-white/8 rounded-2xl p-5">
           <h3 className="text-white font-semibold text-sm mb-4 flex items-center gap-2">
             <CheckCircle className="w-4 h-4 text-green-400" /> Calidad de escaneos por punto
@@ -305,7 +305,7 @@ export default function EstadisticasRondas() {
                 </tr>
               </thead>
               <tbody>
-                {data!.frecuencia_por_punto.filter(p => p.total > 0).map(p => (
+                {data?.frecuencia_por_punto?.filter(p => p.total > 0).map(p => (
                   <tr key={p.punto_id} className="border-b border-white/5 hover:bg-white/3">
                     <td className="py-2 text-white/80 font-medium">{p.punto_nombre}</td>
                     <td className="py-2 text-white/30">{p.ronda_nombre}</td>
