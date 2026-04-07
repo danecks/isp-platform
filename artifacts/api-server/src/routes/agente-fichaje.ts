@@ -209,21 +209,40 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
       }
     }
 
-    let armamento: { codigo: string; descripcion: string; serie: string | null; activo: boolean } | null = null;
+    let armamento: {
+      codigo: string; descripcion: string; serie: string | null; activo: boolean;
+      numero_portacion: string | null; fecha_vencimiento_portacion: string | null;
+      numero_tenencia: string | null; fecha_vencimiento_tenencia: string | null;
+    } | null = null;
     if (puesto?.id) {
       const { rows: armaRows } = await pool.query(
-        `SELECT codigo, CONCAT(marca, ' ', modelo, ' ', calibre) AS descripcion, serie, activo
+        `SELECT codigo,
+                CONCAT(COALESCE(marca,''), ' ', COALESCE(modelo,''), ' ', COALESCE(calibre,'')) AS descripcion,
+                serie, activo,
+                numero_portacion, fecha_vencimiento_portacion,
+                numero_tenencia, fecha_vencimiento_tenencia
          FROM armas
          WHERE puesto_id = $1
          ORDER BY activo DESC
          LIMIT 1`,
         [puesto.id]
       );
-      if (armaRows[0]) armamento = { ...armaRows[0], activo: armaRows[0].activo === true };
+      if (armaRows[0]) {
+        armamento = {
+          ...armaRows[0],
+          activo: armaRows[0].activo === true,
+          fecha_vencimiento_portacion: armaRows[0].fecha_vencimiento_portacion
+            ? new Date(armaRows[0].fecha_vencimiento_portacion).toISOString().split("T")[0] : null,
+          fecha_vencimiento_tenencia: armaRows[0].fecha_vencimiento_tenencia
+            ? new Date(armaRows[0].fecha_vencimiento_tenencia).toISOString().split("T")[0] : null,
+        };
+      }
     }
 
-    // Relevo: último fichaje en este puesto que no sea del agente actual
+    // Relevo anterior: último fichaje en este puesto de un agente diferente
     let relevo: { nombre: string; registrado_en: string } | null = null;
+    // Próximo relevo: otro titular activo del mismo puesto
+    let proximo_relevo: { nombre: string; cargo: string } | null = null;
     if (puesto?.id) {
       const { rows: releRows } = await pool.query(
         `SELECT e.nombre_completo AS nombre, af.registrado_en
@@ -237,6 +256,20 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
         [puesto.id, emp.employee_id]
       );
       if (releRows[0]) relevo = { nombre: releRows[0].nombre, registrado_en: releRows[0].registrado_en };
+
+      // Próximo relevo desde puesto_titulares (el otro titular del puesto)
+      const { rows: proxRows } = await pool.query(
+        `SELECT e.nombre_completo AS nombre, e.puesto AS cargo
+         FROM puesto_titulares pt
+         JOIN employees e ON e.id = pt.employee_id
+         WHERE pt.puesto_id = $1
+           AND pt.employee_id != $2
+           AND pt.activo = TRUE
+         ORDER BY pt.orden
+         LIMIT 1`,
+        [puesto.id, emp.employee_id]
+      );
+      if (proxRows[0]) proximo_relevo = proxRows[0];
     }
 
     const { rows: dupRows } = await pool.query(
@@ -258,6 +291,7 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
       gps,
       armamento,
       relevo,
+      proximo_relevo,
       ya_ficho_hoy: dupRows.length > 0,
     });
   } catch (err) {

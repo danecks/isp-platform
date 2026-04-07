@@ -3966,6 +3966,15 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SUPERVISOR-DEV-01 — error (no bloqueante)");
   }
 
+  // ── ARM-03: campos de portación en armas (complementa ARM-02 que agregó tenencia) ──
+  try {
+    await pool.query(`ALTER TABLE armas ADD COLUMN IF NOT EXISTS numero_portacion TEXT`);
+    await pool.query(`ALTER TABLE armas ADD COLUMN IF NOT EXISTS fecha_vencimiento_portacion DATE`);
+    logger.info("Auto-migrate: ARM-03 campos de portación en armas verificados/creados");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: ARM-03 — error (no bloqueante)");
+  }
+
   // ── PO-NOVEDAD-01: columna novedad en puestos_operativos (mensajes visibles al agente al fichar) ──
   try {
     await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS novedad TEXT`);

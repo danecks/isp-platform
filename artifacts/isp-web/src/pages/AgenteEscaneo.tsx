@@ -35,8 +35,18 @@ interface AgenteInfo {
     novedad?: string | null;
   } | null;
   gps: { latitud: number; longitud: number; radio_metros: number } | null;
-  armamento: { codigo: string; descripcion: string; serie?: string | null; activo?: boolean } | null;
+  armamento: {
+    codigo: string;
+    descripcion: string;
+    serie?: string | null;
+    activo?: boolean;
+    numero_portacion?: string | null;
+    fecha_vencimiento_portacion?: string | null;
+    numero_tenencia?: string | null;
+    fecha_vencimiento_tenencia?: string | null;
+  } | null;
   relevo: { nombre: string; registrado_en: string } | null;
+  proximo_relevo: { nombre: string; cargo: string } | null;
   ya_ficho_hoy: boolean;
 }
 
@@ -87,6 +97,144 @@ const CHECK_LABELS: Record<keyof SupervisionChecks, string> = {
   puesto_limpio: "Área del puesto limpia y ordenada",
   bitacora_actualizada: "Bitácora actualizada",
 };
+
+// ── Helpers de vencimiento ──────────────────────────────────────────────────
+function diasHastaVencer(dateStr: string | null | undefined): number | null {
+  if (!dateStr) return null;
+  return Math.floor((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+}
+function colorVencimiento(dateStr: string | null | undefined): string {
+  const d = diasHastaVencer(dateStr);
+  if (d === null) return "text-white/25";
+  if (d < 0) return "text-red-400";
+  if (d <= 30) return "text-red-400";
+  if (d <= 60) return "text-amber-400";
+  return "text-green-400";
+}
+function bgVencimiento(dateStr: string | null | undefined): string {
+  const d = diasHastaVencer(dateStr);
+  if (d === null) return "bg-white/5 border-white/10";
+  if (d < 0) return "bg-red-500/10 border-red-500/20";
+  if (d <= 30) return "bg-red-500/8 border-red-500/15";
+  if (d <= 60) return "bg-amber-500/8 border-amber-500/15";
+  return "bg-green-500/5 border-green-500/15";
+}
+function labelVencimiento(dateStr: string | null | undefined): string {
+  const d = diasHastaVencer(dateStr);
+  if (d === null) return "Sin fecha";
+  const formatted = new Date(dateStr!).toLocaleDateString("es-HN", { day: "numeric", month: "short", year: "numeric" });
+  if (d < 0) return `${formatted} · VENCIDA`;
+  if (d === 0) return `${formatted} · Vence HOY`;
+  if (d <= 30) return `${formatted} · ${d}d`;
+  return formatted;
+}
+
+// ── BriefingPanel: panel compartido de info operativa ─────────────────────
+function BriefingPanel({ info }: { info: AgenteInfo }) {
+  const { relevo, proximo_relevo, armamento, puesto } = info;
+  return (
+    <div className="space-y-3 text-left">
+
+      {/* Relevo anterior */}
+      {relevo ? (
+        <div className="bg-slate-500/5 border border-slate-500/15 rounded-xl p-4">
+          <p className="text-xs text-slate-300/60 font-semibold uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <Users className="w-3.5 h-3.5" /> Turno anterior
+          </p>
+          <p className="text-white/80 text-sm font-medium">{relevo.nombre}</p>
+          <p className="text-white/30 text-xs mt-0.5">
+            Fichó el {new Date(relevo.registrado_en).toLocaleString("es-HN", { dateStyle: "short", timeStyle: "short" })}
+          </p>
+        </div>
+      ) : (
+        <div className="bg-slate-500/5 border border-slate-500/10 rounded-xl p-3">
+          <p className="text-xs text-slate-300/40 flex items-center gap-1.5">
+            <Users className="w-3.5 h-3.5" /> Sin relevo anterior registrado hoy
+          </p>
+        </div>
+      )}
+
+      {/* Próximo relevo */}
+      {proximo_relevo && (
+        <div className="bg-blue-500/5 border border-blue-500/15 rounded-xl p-4">
+          <p className="text-xs text-blue-300/60 font-semibold uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <ChevronRight className="w-3.5 h-3.5" /> Próximo relevo
+          </p>
+          <p className="text-white/80 text-sm font-medium">{proximo_relevo.nombre}</p>
+          {proximo_relevo.cargo && <p className="text-white/30 text-xs mt-0.5">{proximo_relevo.cargo}</p>}
+        </div>
+      )}
+
+      {/* Armamento */}
+      {armamento ? (
+        <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4">
+          <p className="text-xs text-amber-300/60 font-semibold uppercase tracking-wide mb-3 flex items-center gap-1.5">
+            <ShieldAlert className="w-3.5 h-3.5" /> Armamento del puesto
+          </p>
+          <div className="flex items-start justify-between gap-2 mb-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-amber-200/90 text-sm font-mono font-semibold">{armamento.codigo}</p>
+              <p className="text-white/50 text-xs mt-0.5">{armamento.descripcion.trim() || "—"}</p>
+              {armamento.serie && <p className="text-white/25 text-xs mt-0.5 font-mono">Serie: {armamento.serie}</p>}
+            </div>
+            <span className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border ${
+              armamento.activo !== false
+                ? "text-green-400 bg-green-400/10 border-green-400/20"
+                : "text-red-400 bg-red-400/10 border-red-400/20"
+            }`}>
+              {armamento.activo !== false ? "✓ Operativa" : "✗ Reportada"}
+            </span>
+          </div>
+          {/* Portación */}
+          <div className={`rounded-lg border p-2.5 mb-2 ${bgVencimiento(armamento.fecha_vencimiento_portacion)}`}>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-white/40 text-xs font-semibold">Portación</p>
+                {armamento.numero_portacion && (
+                  <p className="text-white/30 text-xs font-mono mt-0.5">{armamento.numero_portacion}</p>
+                )}
+              </div>
+              <p className={`text-xs font-semibold shrink-0 ${colorVencimiento(armamento.fecha_vencimiento_portacion)}`}>
+                {labelVencimiento(armamento.fecha_vencimiento_portacion)}
+              </p>
+            </div>
+          </div>
+          {/* Tenencia */}
+          <div className={`rounded-lg border p-2.5 ${bgVencimiento(armamento.fecha_vencimiento_tenencia)}`}>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-white/40 text-xs font-semibold">Tenencia</p>
+                {armamento.numero_tenencia && (
+                  <p className="text-white/30 text-xs font-mono mt-0.5">{armamento.numero_tenencia}</p>
+                )}
+              </div>
+              <p className={`text-xs font-semibold shrink-0 ${colorVencimiento(armamento.fecha_vencimiento_tenencia)}`}>
+                {labelVencimiento(armamento.fecha_vencimiento_tenencia)}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-amber-500/5 border border-amber-500/10 rounded-xl p-3">
+          <p className="text-xs text-amber-300/30 flex items-center gap-1.5">
+            <ShieldAlert className="w-3.5 h-3.5" /> Sin armamento asignado a este puesto
+          </p>
+        </div>
+      )}
+
+      {/* Novedades del puesto */}
+      {puesto?.novedad && (
+        <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4">
+          <p className="text-xs text-yellow-300/70 font-semibold uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <Bell className="w-3.5 h-3.5" /> Novedades del puesto
+          </p>
+          <p className="text-white/75 text-sm leading-relaxed whitespace-pre-line">{puesto.novedad}</p>
+        </div>
+      )}
+
+    </div>
+  );
+}
 
 // ── Componente principal ───────────────────────────────────────────────────────
 export default function AgenteEscaneo() {
@@ -542,6 +690,13 @@ export default function AgenteEscaneo() {
 
                 {agenteInfo && <AgenteCard />}
 
+                {/* Briefing operativo para el supervisor: arma, relevo, novedades */}
+                {agenteInfo && (
+                  <div className="mb-4">
+                    <BriefingPanel info={agenteInfo} />
+                  </div>
+                )}
+
                 <p className="text-white/50 text-xs font-semibold uppercase tracking-wide mb-3">Lista de verificación</p>
                 <div className="space-y-2 mb-4">
                   {(Object.keys(DEFAULT_CHECKS) as Array<keyof SupervisionChecks>).map(key => (
@@ -721,53 +876,8 @@ export default function AgenteEscaneo() {
                     </div>
                   )}
 
-                  {/* Relevo de turno */}
-                  {agenteInfo.relevo && (
-                    <div className="bg-slate-500/5 border border-slate-500/15 rounded-xl p-4">
-                      <p className="text-xs text-slate-300/60 font-semibold uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                        <Users className="w-3.5 h-3.5" /> Turno anterior
-                      </p>
-                      <p className="text-white/80 text-sm font-medium">{agenteInfo.relevo.nombre}</p>
-                      <p className="text-white/30 text-xs mt-0.5">
-                        Fichó el {new Date(agenteInfo.relevo.registrado_en).toLocaleString("es-HN", { dateStyle: "short", timeStyle: "short" })}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Armamento del puesto */}
-                  {agenteInfo.armamento && (
-                    <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4">
-                      <p className="text-xs text-amber-300/60 font-semibold uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                        <ShieldAlert className="w-3.5 h-3.5" /> Armamento del puesto
-                      </p>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-amber-200/90 text-sm font-mono font-semibold">{agenteInfo.armamento.codigo}</p>
-                          <p className="text-white/50 text-xs mt-0.5">{agenteInfo.armamento.descripcion}</p>
-                          {agenteInfo.armamento.serie && (
-                            <p className="text-white/25 text-xs mt-0.5 font-mono">Serie: {agenteInfo.armamento.serie}</p>
-                          )}
-                        </div>
-                        <span className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border ${
-                          agenteInfo.armamento.activo !== false
-                            ? "text-green-400 bg-green-400/10 border-green-400/20"
-                            : "text-red-400 bg-red-400/10 border-red-400/20"
-                        }`}>
-                          {agenteInfo.armamento.activo !== false ? "✓ Operativa" : "✗ Reportada"}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Novedades del puesto */}
-                  {agenteInfo.puesto?.novedad && (
-                    <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4">
-                      <p className="text-xs text-yellow-300/70 font-semibold uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                        <Bell className="w-3.5 h-3.5" /> Novedades del puesto
-                      </p>
-                      <p className="text-white/75 text-sm leading-relaxed whitespace-pre-line">{agenteInfo.puesto.novedad}</p>
-                    </div>
-                  )}
+                  {/* Briefing operativo: relevo, próximo relevo, arma + documentos, novedades */}
+                  <BriefingPanel info={agenteInfo} />
 
                 </div>
 
