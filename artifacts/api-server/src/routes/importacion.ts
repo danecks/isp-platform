@@ -885,3 +885,87 @@ importacionRouter.post("/importacion/sistema-antiguo-vincular", async (req: any,
     })),
   });
 });
+
+// ─── POST /api/importacion/crear-puestos-legacy ───────────────────────────────
+// Paso 4: por cada colaborador con cliente_id asignado, crea un puesto operativo
+// numerado ("Puesto 1", "Puesto 2"…) por cliente. Omite si ya existe un puesto
+// con ese titular_employee_id para ese cliente.
+importacionRouter.post("/importacion/crear-puestos-legacy", async (req: any, res: any) => {
+  const session = requireAdmin(req, res);
+  if (!session) return;
+
+  const { preview = false } = req.body as { preview: boolean };
+
+  // Todos los colaboradores con cliente asignado, ordenados por cliente y nombre
+  const { rows: empRows } = await pool.query(`
+    SELECT e.id AS emp_id, e.nombre_completo, e.cliente_id, c.nombre AS cliente_nombre
+    FROM employees e
+    JOIN clients c ON c.id = e.cliente_id
+    WHERE e.cliente_id IS NOT NULL
+      AND e.estado_laboral = 'activo'
+    ORDER BY c.nombre, e.nombre_completo
+  `);
+
+  // Puestos que ya tienen titular asignado de la importación anterior
+  const { rows: existentes } = await pool.query(`
+    SELECT titular_employee_id, cliente_id
+    FROM puestos_operativos
+    WHERE titular_employee_id IS NOT NULL
+  `);
+  const yaExiste = new Set(existentes.map(r => `${r.cliente_id}-${r.titular_employee_id}`));
+
+  // Contador secuencial por cliente para numerar puestos
+  const contadorCliente: Record<number, number> = {};
+  // Contar puestos ya existentes por cliente para continuar la numeración
+  const { rows: puestosExist } = await pool.query(`
+    SELECT cliente_id, COUNT(*) AS cnt
+    FROM puestos_operativos
+    WHERE cliente_id IS NOT NULL
+    GROUP BY cliente_id
+  `);
+  puestosExist.forEach(r => { contadorCliente[r.cliente_id] = parseInt(r.cnt, 10); });
+
+  const puestosACrear: { nombre: string; cliente_nombre: string; empleado: string }[] = [];
+  const omitidos: { empleado: string; razon: string }[] = [];
+
+  for (const emp of empRows) {
+    const key = `${emp.cliente_id}-${emp.emp_id}`;
+    if (yaExiste.has(key)) {
+      omitidos.push({ empleado: emp.nombre_completo, razon: "ya tiene puesto asignado" });
+      continue;
+    }
+    contadorCliente[emp.cliente_id] = (contadorCliente[emp.cliente_id] ?? 0) + 1;
+    const numPuesto = contadorCliente[emp.cliente_id];
+    const nombrePuesto = `Puesto ${numPuesto}`;
+    puestosACrear.push({ nombre: nombrePuesto, cliente_nombre: emp.cliente_nombre, empleado: emp.nombre_completo });
+
+    if (!preview) {
+      const { rows: inserted } = await pool.query(
+        `INSERT INTO puestos_operativos (
+           cliente_id, cliente_nombre, nombre, orden,
+           titular_employee_id, titular_nombre,
+           estado, activo
+         ) VALUES ($1, $2, $3, $4, $5, $6, 'cubierto', true)
+         RETURNING id`,
+        [emp.cliente_id, emp.cliente_nombre, nombrePuesto, numPuesto,
+         emp.emp_id, emp.nombre_completo]
+      );
+      // Registrar en puesto_titulares para el sistema de ciclo
+      const puestoId = inserted[0].id;
+      await pool.query(
+        `INSERT INTO puesto_titulares (puesto_id, employee_id, orden, activo)
+         VALUES ($1, $2, 1, true)
+         ON CONFLICT (puesto_id, employee_id) DO NOTHING`,
+        [puestoId, emp.emp_id]
+      );
+    }
+  }
+
+  res.json({
+    preview,
+    creados: puestosACrear.length,
+    omitidos: omitidos.length,
+    muestra: puestosACrear.slice(0, 15),
+    omitidos_detalle: omitidos.slice(0, 10),
+  });
+});
