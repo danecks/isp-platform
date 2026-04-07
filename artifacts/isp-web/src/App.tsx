@@ -48,6 +48,7 @@ import AdminPrePlanilla from "@/admin/pages/PrePlanilla";
 import AdminPlanilla from "@/admin/pages/Planilla";
 import AdminTurnos from "@/admin/pages/Turnos";
 import AdminFichaCliente from "@/admin/pages/FichaCliente";
+import AdminIGSS from "@/admin/pages/IGSS";
 import AdminReporteCoberturaZonas from "@/admin/pages/ReporteCoberturaZonas";
 import AdminCambiosEstructurales from "@/admin/pages/CambiosEstructurales";
 import AdminPipelineServicios from "@/admin/pages/PipelineServicios";
@@ -150,6 +151,9 @@ function Router() {
       </Route>
       <Route path="/admin/clientes">
         {() => <AuthGuard><AdminClientes /></AuthGuard>}
+      </Route>
+      <Route path="/admin/rrhh/igss">
+        {() => <AuthGuard requiredRoles={["admin", "rrhh"]}><AdminIGSS /></AuthGuard>}
       </Route>
       <Route path="/admin/usuarios">
         {() => <AuthGuard requiredRoles={["admin"]}><AdminUsuarios /></AuthGuard>}

@@ -16,7 +16,10 @@ fichaRouter.get("/clientes/:id/ficha", async (req, res) => {
     const { rows: clientRows } = await pool.query(
       `SELECT id, nombre, nombre_comercial AS "nombreComercial", nit, sector, estado,
               observaciones_contractuales, fecha_inicio_contrato,
-              tarifa_base_mensual, estado_contrato, notas, created_at AS "createdAt"
+              tarifa_base_mensual, estado_contrato, notas, created_at AS "createdAt",
+              igss_aplica, igss_codigo_centro, igss_direccion, igss_zona,
+              igss_departamento, igss_municipio, igss_codigo_actividad,
+              igss_contacto, igss_fax, igss_email, igss_telefono
        FROM clients WHERE id = $1`,
       [clientId]
     );

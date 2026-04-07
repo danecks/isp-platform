@@ -290,6 +290,13 @@ export const NAV_SECTIONS: NavSection[] = [
         clave: "libro_salarios",
         roles: ["admin", "rrhh"],
       },
+      {
+        path: "/admin/rrhh/igss",
+        label: "Planilla IGSS",
+        icon: Landmark,
+        clave: "igss_planilla",
+        roles: ["admin", "rrhh"],
+      },
     ],
   },
 

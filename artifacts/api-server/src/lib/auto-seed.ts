@@ -3900,5 +3900,42 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: ARMA-ORD-01 — error (no bloqueante)");
   }
 
+  // ── IGSS-01: Campos de centro de trabajo IGSS en clients ─────────────────────
+  try {
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS igss_aplica           BOOLEAN      NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS igss_codigo_centro    VARCHAR(10)`);
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS igss_direccion        TEXT`);
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS igss_zona             VARCHAR(10)`);
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS igss_departamento     SMALLINT`);
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS igss_municipio        SMALLINT`);
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS igss_codigo_actividad VARCHAR(20)`);
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS igss_contacto         VARCHAR(200)`);
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS igss_fax              VARCHAR(50)`);
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS igss_email            VARCHAR(200)`);
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS igss_telefono         VARCHAR(100)`);
+    logger.info("Auto-migrate: IGSS-01 campos de centro de trabajo en clients verificados/creados");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: IGSS-01 — error (no bloqueante)");
+  }
+
+  // ── IGSS-02: Tabla de configuración del patrono ───────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS igss_config_patrono (
+        id                       SERIAL PRIMARY KEY,
+        numero_patronal          VARCHAR(30),
+        nit_patrono              VARCHAR(50),
+        nombre_comercial         VARCHAR(255),
+        correo_igss              VARCHAR(255),
+        codigo_actividad_principal VARCHAR(20),
+        created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: IGSS-02 tabla igss_config_patrono verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: IGSS-02 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

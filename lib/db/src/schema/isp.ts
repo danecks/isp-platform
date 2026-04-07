@@ -198,8 +198,20 @@ export const clientsTable = pgTable("clients", {
   portalClienteId: varchar("portal_cliente_id", { length: 100 }), // → users.clienteId (ej: "CLI-001")
   notas: text("notas"),
   // Fecha en que inicia operaciones el contrato/proyecto del cliente.
-  // Permite mostrar un "Arranque Programado" en el Pizarrón Futuro de Operaciones.
   fechaInicioContrato: date("fecha_inicio_contrato"),
+  // ── Campos IGSS (centro de trabajo) ────────────────────────────────────────
+  igssAplica: boolean("igss_aplica").default(false),               // ¿Este cliente es un centro de trabajo IGSS?
+  igssCodigoCentro: varchar("igss_codigo_centro", { length: 10 }), // Código secuencial del centro (ej: "1", "2")
+  igssDireccion: text("igss_direccion"),                            // Dirección física para el IGSS
+  igssZona: varchar("igss_zona", { length: 10 }),                   // Zona (ej: "10")
+  igssDepartamento: smallint("igss_departamento"),                  // Código departamento Guatemala 1-22
+  igssMunicipio: smallint("igss_municipio"),                        // Código municipio
+  igssCodigoActividad: varchar("igss_codigo_actividad", { length: 20 }), // Ej: "803011"
+  igssContacto: varchar("igss_contacto", { length: 200 }),          // Persona de contacto IGSS
+  igssFax: varchar("igss_fax", { length: 50 }),
+  igssEmail: varchar("igss_email", { length: 200 }),
+  igssTelefono: varchar("igss_telefono", { length: 100 }),
+  // ───────────────────────────────────────────────────────────────────────────
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
