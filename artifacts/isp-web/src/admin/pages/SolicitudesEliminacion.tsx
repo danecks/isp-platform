@@ -240,11 +240,11 @@ export default function SolicitudesEliminacion() {
         </div>
 
         {/* Aviso informativo */}
-        <div className="flex items-start gap-3 bg-amber-500/8 border border-amber-500/20 rounded-xl px-4 py-3">
-          <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-amber-300/80">
+        <div className="flex items-start gap-3 bg-red-500/8 border border-red-500/20 rounded-xl px-4 py-3">
+          <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-red-300/80">
             Estas solicitudes son generadas por usuarios con modo eliminación activo.
-            Aprobar una solicitud <strong>no elimina</strong> el registro automáticamente — es un registro de intención para revisión administrativa.
+            <strong> Aprobar una solicitud elimina el registro de forma permanente e irreversible.</strong> Rechazarla lo mantiene intacto.
           </p>
         </div>
 

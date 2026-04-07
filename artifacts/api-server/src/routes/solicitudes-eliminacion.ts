@@ -3,6 +3,15 @@ import { pool } from "@workspace/db";
 
 export const solicitudesEliminacionRouter = Router();
 
+// Mapa entidad → tabla real en la BD
+const ENTIDAD_TABLA: Record<string, string> = {
+  arma:      "armas",
+  vehiculo:  "vehiculos",
+  empleado:  "employees",
+  cliente:   "clients",
+  puesto:    "puestos_operativos",
+};
+
 // ── POST /api/solicitudes-eliminacion ─────────────────────────────────────────
 solicitudesEliminacionRouter.post("/solicitudes-eliminacion", async (req, res) => {
   const { entidad, entidad_id, entidad_descripcion, motivo, solicitante_username } = req.body;
@@ -52,16 +61,57 @@ solicitudesEliminacionRouter.patch("/solicitudes-eliminacion/:id", async (req, r
   if (!["aprobada", "rechazada"].includes(estado)) {
     return res.status(400).json({ error: "Estado inválido" });
   }
+
+  const client = await pool.connect();
   try {
-    const { rows } = await pool.query(`
+    await client.query("BEGIN");
+
+    // 1. Obtener la solicitud
+    const { rows: solRows } = await client.query(
+      `SELECT * FROM solicitudes_eliminacion WHERE id = $1`,
+      [id]
+    );
+    if (!solRows[0]) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Solicitud no encontrada" });
+    }
+    const sol = solRows[0];
+
+    if (sol.estado !== "pendiente") {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "Esta solicitud ya fue procesada" });
+    }
+
+    // 2. Actualizar estado de la solicitud
+    const { rows } = await client.query(`
       UPDATE solicitudes_eliminacion
       SET estado = $1, revisado_por = $2, revisado_at = NOW()
       WHERE id = $3
       RETURNING *
     `, [estado, revisado_por || null, id]);
-    if (!rows[0]) return res.status(404).json({ error: "Solicitud no encontrada" });
+
+    // 3. Si aprobada → eliminar el registro real
+    if (estado === "aprobada") {
+      const tabla = ENTIDAD_TABLA[sol.entidad];
+      if (!tabla) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: `Entidad desconocida: ${sol.entidad}` });
+      }
+
+      // Columna PK según tabla
+      const pkCol = sol.entidad === "empleado" ? "id" : "id";
+      await client.query(
+        `DELETE FROM ${tabla} WHERE id = $1`,
+        [sol.entidad_id]
+      );
+    }
+
+    await client.query("COMMIT");
     res.json(rows[0]);
   } catch (err: any) {
+    await client.query("ROLLBACK");
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
