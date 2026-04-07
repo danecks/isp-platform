@@ -564,16 +564,18 @@ type LegacyResult = {
   resultados: RowResult[];
 };
 
+// rawKey = columna real del Excel del sistema antiguo (empl_*)
+// Se usa como fallback antes de correr "Validar"
 const PREVIEW_COLS = [
-  { key: "nombre_completo",  label: "Nombre" },
-  { key: "dpi",              label: "DPI" },
-  { key: "fecha_nacimiento", label: "F. Nac." },
-  { key: "sexo",             label: "Sexo" },
-  { key: "estado_civil",     label: "E. Civil" },
-  { key: "forma_pago",       label: "Pago" },
-  { key: "banco",            label: "Banco" },
-  { key: "cuenta_bancaria",  label: "Cuenta" },
-  { key: "estado_laboral",   label: "Estado" },
+  { key: "nombre_completo",  rawKey: null,              label: "Nombre"   }, // via getPreviewName
+  { key: "dpi",              rawKey: "empl_dpi",        label: "DPI"      },
+  { key: "fecha_nacimiento", rawKey: "empl_fechanac",   label: "F. Nac.", isSerial: true },
+  { key: "sexo",             rawKey: "empl_sexo",       label: "Sexo"     },
+  { key: "estado_civil",     rawKey: "empl_estcivil",   label: "E. Civil" },
+  { key: "forma_pago",       rawKey: "empl_formapago",  label: "Pago"     },
+  { key: "banco",            rawKey: "ban_codigo",      label: "Banco"    },
+  { key: "cuenta_bancaria",  rawKey: "empl_ctaban",     label: "Cuenta"   },
+  { key: "estado_laboral",   rawKey: "empl_estatus",    label: "Estado"   },
 ];
 
 function LegacyImporterTab() {
@@ -797,10 +799,22 @@ function LegacyImporterTab() {
                     </td>
                   )}
                   {PREVIEW_COLS.map(c => {
-                    const val = res?.datos?.[c.key] ?? (c.key === "nombre_completo" ? nombre : null);
+                    // 1) datos del servidor (post-Validar) → 2) raw Excel → 3) nombre construido
+                    let raw = res?.datos?.[c.key]
+                      ?? (c.rawKey ? row[c.rawKey] : null)
+                      ?? (c.key === "nombre_completo" ? nombre : null);
+                    // Convertir serial de Excel a fecha legible para mostrar en bruto
+                    if (c.isSerial && raw && !String(raw).includes("-")) {
+                      const n = Number(raw);
+                      if (n > 1) {
+                        const ms = Date.UTC(1899, 11, 30) + n * 86400000;
+                        raw = new Date(ms).toISOString().slice(0, 10);
+                      }
+                    }
+                    const val = raw != null && String(raw).trim() !== "" ? String(raw) : null;
                     return (
                       <td key={c.key} className="px-3 py-1.5 text-white/70 max-w-[140px] truncate">
-                        {val ? String(val) : <span className="text-white/20">—</span>}
+                        {val ? val : <span className="text-white/20">—</span>}
                       </td>
                     );
                   })}
