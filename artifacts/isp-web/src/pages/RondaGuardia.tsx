@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CheckCircle, XCircle, Loader2, MapPin, AlertTriangle, QrCode, ShieldAlert } from "lucide-react";
 
 const API = "/api";
 
 type EstadoScan =
   | "cargando"
+  | "listo_para_gps"
   | "esperando_gps"
   | "gps_denegado"
   | "enviando"
@@ -38,7 +39,7 @@ export default function RondaGuardia() {
 
   const token = new URLSearchParams(window.location.search).get("token");
 
-  // 1. Verificar que el token es válido
+  // 1. Verificar que el token es válido — luego esperar gesto del usuario para GPS
   useEffect(() => {
     if (!token) { setEstado("token_invalido"); return; }
 
@@ -47,15 +48,14 @@ export default function RondaGuardia() {
         if (!r.ok) return r.json().then(d => { throw new Error(d.error || "Token inválido"); });
         return r.json();
       })
-      .then(data => { setPuntoInfo(data); setEstado("esperando_gps"); })
+      .then(data => { setPuntoInfo(data); setEstado("listo_para_gps"); })
       .catch(e => { setMensajeError(e.message); setEstado("token_invalido"); });
   }, [token]);
 
-  // 2. Solicitar GPS
-  useEffect(() => {
-    if (estado !== "esperando_gps") return;
+  // 2. Solicitar GPS — siempre llamado desde un tap del usuario (iOS requiere gesto)
+  const solicitarGPS = useCallback(() => {
     if (!navigator.geolocation) { setEstado("enviando"); return; }
-
+    setEstado("esperando_gps");
     let settled = false;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -72,10 +72,10 @@ export default function RondaGuardia() {
       },
       { enableHighAccuracy: false, timeout: 15000, maximumAge: 30000 }
     );
-  }, [estado]);
+  }, []);
 
-  // 2b. Escuchar cambios de permiso (Permissions API) — si el usuario activa GPS
-  //     en Ajustes y vuelve a la app, se reintenta automáticamente.
+  // 2b. Escuchar cambios de permiso — si el usuario activa GPS en Ajustes y vuelve,
+  //     volvemos a "listo_para_gps" para que el botón vuelva a aparecer.
   useEffect(() => {
     if (estado !== "gps_denegado") return;
     if (!navigator.permissions) return;
@@ -83,7 +83,7 @@ export default function RondaGuardia() {
     navigator.permissions.query({ name: "geolocation" as PermissionName })
       .then(status => {
         const handleChange = () => {
-          if (!removed && status.state !== "denied") setEstado("esperando_gps");
+          if (!removed && status.state !== "denied") setEstado("listo_para_gps");
         };
         status.addEventListener("change", handleChange);
         return () => { removed = true; status.removeEventListener("change", handleChange); };
@@ -91,7 +91,7 @@ export default function RondaGuardia() {
       .catch(() => {});
   }, [estado]);
 
-  // 3. Enviar escaneo solo cuando el estado cambia a "enviando"
+  // 3. Enviar escaneo cuando el estado cambia a "enviando"
   useEffect(() => {
     if (estado !== "enviando") return;
 
@@ -142,7 +142,7 @@ export default function RondaGuardia() {
       {/* Tarjeta principal */}
       <div className="w-full max-w-sm bg-white/5 border border-white/10 rounded-2xl p-6 text-center">
 
-        {/* ── CARGANDO / OBTENIENDO GPS / ENVIANDO ── */}
+        {/* ── CARGANDO / ENVIANDO ── */}
         {(estado === "cargando" || estado === "enviando" || estado === "esperando_gps") && (
           <div>
             <Loader2 className="w-12 h-12 mx-auto mb-4 text-blue-400 animate-spin" />
@@ -154,18 +154,39 @@ export default function RondaGuardia() {
             {puntoInfo && (
               <p className="text-white/50 text-sm mt-2">{puntoInfo.ronda_nombre} — {puntoInfo.nombre}</p>
             )}
-            {estado === "esperando_gps" && (
-              <div className="mt-4 bg-blue-500/5 border border-blue-500/15 rounded-xl p-3">
-                <div className="flex items-center justify-center gap-2 text-xs text-blue-300">
-                  <MapPin className="w-3.5 h-3.5 shrink-0" />
-                  <span>Acepta el permiso de ubicación cuando tu navegador lo solicite</span>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
-        {/* ── GPS DENEGADO — el guardia presionó "No permitir" o está bloqueado en sistema ── */}
+        {/* ── LISTO PARA GPS — botón explícito (necesario para iOS Safari) ── */}
+        {estado === "listo_para_gps" && puntoInfo && (
+          <div>
+            <div className="w-16 h-16 bg-blue-500/10 border border-blue-500/30 rounded-full flex items-center justify-center mx-auto mb-4">
+              <MapPin className="w-8 h-8 text-blue-400" />
+            </div>
+            <p className="text-white font-semibold text-lg mb-1">{puntoInfo.nombre}</p>
+            <p className="text-white/40 text-sm mb-1">{puntoInfo.ronda_nombre}</p>
+            <p className="text-white/25 text-xs mb-6">{hora} · {fecha}</p>
+
+            <button
+              onClick={solicitarGPS}
+              className="w-full py-4 bg-blue-600/20 hover:bg-blue-600/30 active:bg-blue-600/40 border border-blue-500/40 rounded-2xl text-base text-blue-300 font-bold transition-colors flex items-center justify-center gap-2"
+            >
+              <MapPin className="w-5 h-5" />
+              Compartir mi ubicación
+            </button>
+            <p className="text-white/20 text-xs mt-3">El sistema verificará que estás en el punto de control</p>
+
+            <button
+              onClick={() => setEstado("enviando")}
+              className="mt-3 w-full py-3 bg-white/4 hover:bg-white/8 border border-white/10 rounded-xl text-sm text-white/35 hover:text-white/55 font-medium transition-colors"
+            >
+              Registrar sin ubicación
+            </button>
+            <p className="text-white/15 text-xs mt-1">La marcación queda sin validación de distancia</p>
+          </div>
+        )}
+
+        {/* ── GPS DENEGADO ── */}
         {estado === "gps_denegado" && (
           <div>
             <div className="w-16 h-16 bg-orange-500/10 border border-orange-500/30 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -173,12 +194,12 @@ export default function RondaGuardia() {
             </div>
             <p className="text-orange-400 font-bold text-xl mb-2">Ubicación bloqueada</p>
             <p className="text-white/60 text-sm mt-2 leading-relaxed">
-              Safari no compartió la ubicación. Sigue los pasos:
+              El dispositivo no compartió la ubicación. Sigue los pasos:
             </p>
 
             {/* iOS */}
             <div className="mt-4 bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 text-left space-y-3">
-              <p className="text-xs text-orange-300 font-semibold uppercase tracking-wide">📱 iPhone — Ajustes de iOS</p>
+              <p className="text-xs text-orange-300 font-semibold uppercase tracking-wide">📱 iPhone — Safari</p>
               <div>
                 <p className="text-xs text-white/70 font-semibold mb-0.5">Paso 1 — Permiso de Safari:</p>
                 <p className="text-xs text-white/55 leading-relaxed">
@@ -188,39 +209,39 @@ export default function RondaGuardia() {
               <div>
                 <p className="text-xs text-white/70 font-semibold mb-0.5">Paso 2 — Permiso del sitio:</p>
                 <p className="text-xs text-white/55 leading-relaxed">
-                  En esa pantalla toca <strong className="text-white/80">Acceso a Sitios Web → ispsa.net → Permitir</strong>
+                  En esa pantalla toca <strong className="text-white/80">Acceso a Sitios Web</strong> → busca la dirección de la app → <strong className="text-orange-300">Permitir</strong>
                 </p>
               </div>
               <div className="bg-amber-500/8 border border-amber-500/20 rounded-lg p-2.5">
-                <p className="text-xs text-amber-300/80 font-semibold mb-0.5">⚠️ ¿Ya hiciste ambos pasos y sigue bloqueado?</p>
+                <p className="text-xs text-amber-300/80 font-semibold mb-0.5">¿Ya hiciste los pasos y sigue sin funcionar?</p>
                 <p className="text-xs text-white/45 leading-relaxed">
-                  Safari guarda el rechazo aunque cambies los Ajustes. Cierra Safari completamente (desliza la app hacia arriba), vuelve a escanear el QR y acepta la ubicación cuando pregunte.
+                  Cierra Safari completamente (desliza la app hacia arriba en el multitarea), vuelve a escanear el QR y toca el botón azul.
                 </p>
               </div>
             </div>
 
             {/* Android */}
             <div className="mt-2 bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 text-left">
-              <p className="text-xs text-orange-300 font-semibold uppercase tracking-wide mb-2">🤖 Android</p>
+              <p className="text-xs text-orange-300 font-semibold uppercase tracking-wide mb-2">🤖 Android — Chrome</p>
               <p className="text-xs text-white/55 leading-relaxed">
-                <strong className="text-white/80">Ajustes → Aplicaciones → Chrome → Permisos → Ubicación → Permitir todo el tiempo</strong>
+                Toca el ícono de candado en la barra de direcciones → <strong className="text-white/80">Permisos → Ubicación → Permitir</strong>
               </p>
             </div>
 
             <button
-              onClick={() => setEstado("esperando_gps")}
-              className="mt-4 w-full py-3 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 rounded-xl text-sm text-orange-300 hover:text-orange-200 font-semibold transition-colors"
+              onClick={solicitarGPS}
+              className="mt-4 w-full py-3 bg-blue-600/15 hover:bg-blue-600/25 border border-blue-500/30 rounded-xl text-sm text-blue-300 font-semibold transition-colors flex items-center justify-center gap-2"
             >
-              Ya lo hice — Intentar de nuevo
+              <MapPin className="w-4 h-4" /> Ya lo hice — Intentar de nuevo
             </button>
 
             <button
               onClick={() => setEstado("enviando")}
-              className="mt-3 w-full py-3 bg-white/8 hover:bg-white/12 border border-white/15 rounded-xl text-sm text-white/60 hover:text-white/80 font-medium transition-colors"
+              className="mt-3 w-full py-3 bg-white/4 hover:bg-white/8 border border-white/10 rounded-xl text-sm text-white/40 hover:text-white/60 font-medium transition-colors"
             >
               Registrar sin GPS
             </button>
-            <p className="text-xs text-white/20 mt-1.5 text-center">La marcación queda sin validación de distancia</p>
+            <p className="text-xs text-white/15 mt-1.5 text-center">La marcación queda sin validación de distancia</p>
           </div>
         )}
 
@@ -270,7 +291,7 @@ export default function RondaGuardia() {
           </div>
         )}
 
-        {/* ── SIN GPS (dispositivo sin geolocalización) ── */}
+        {/* ── SIN GPS ── */}
         {estado === "sin_gps" && (
           <div>
             <div className="w-16 h-16 bg-yellow-500/10 border border-yellow-500/30 rounded-full flex items-center justify-center mx-auto mb-4">

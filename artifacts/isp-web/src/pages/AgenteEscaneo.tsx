@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   CheckCircle, XCircle, Loader2, MapPin, AlertTriangle,
   QrCode, ShieldAlert, Star, ClipboardCheck, UserCheck, Smartphone,
@@ -68,6 +68,7 @@ type EstadoFichaje =
   | "validando_device"
   | "device_invalido"
   | "cargando_info"
+  | "listo_para_gps"
   | "esperando_gps"
   | "gps_denegado"
   | "enviando"
@@ -326,7 +327,7 @@ export default function AgenteEscaneo() {
         if (deviceInfo?.tipo === "maestro") return;
         if (deviceInfo?.tipo === "supervisor") { setEstado("esperando_gps"); }
         else if (data.ya_ficho_hoy) { setEstado("ya_fichado"); }
-        else { setEstado("esperando_gps"); }
+        else { setEstado("listo_para_gps"); }
       })
       .catch(e => { setMensajeError(e.message); setEstado("token_invalido"); });
   }, [estado, token, deviceInfo]);
@@ -337,7 +338,7 @@ export default function AgenteEscaneo() {
     if (!agenteInfo) return;
     if (modo === "fichaje") {
       if (agenteInfo.ya_ficho_hoy) { setEstado("ya_fichado"); }
-      else { setEstado("esperando_gps"); }
+      else { setEstado("listo_para_gps"); }
     } else if (modo === "supervision") {
       setEstado("esperando_gps");
     } else {
@@ -352,35 +353,33 @@ export default function AgenteEscaneo() {
     }
   }
 
-  // 4. GPS — solo para fichaje/supervisión
+  // 4. GPS para supervisor/ronda — opcional, se intenta en background cuando llega a "esperando_gps"
   useEffect(() => {
     if (estado !== "esperando_gps") return;
-    const esRonda = tipoEfectivo === "ronda";
     const esSup = tipoEfectivo === "supervisor";
+    const esRonda = tipoEfectivo === "ronda";
+    if (!esSup && !esRonda) return; // puesto: GPS requerido, se dispara desde botón
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      pos => setGpsCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude, precision: Math.round(pos.coords.accuracy) }),
+      () => {},
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+    );
+  }, [estado, tipoEfectivo]);
 
-    if (esSup || esRonda) {
-      // GPS opcional: intentar pero no bloquear
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          pos => setGpsCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude, precision: Math.round(pos.coords.accuracy) }),
-          () => {},
-          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-        );
-      }
-      return;
-    }
-
-    // Puesto: GPS requerido
+  // 4b. GPS para puesto — DEBE ser llamado desde un tap del usuario (iOS requiere gesto)
+  const solicitarGPS = useCallback(() => {
     if (!navigator.geolocation) { setEstado("enviando"); return; }
+    setEstado("esperando_gps");
     let settled = false;
     navigator.geolocation.getCurrentPosition(
       pos => { if (settled) return; settled = true; setGpsCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude, precision: Math.round(pos.coords.accuracy) }); setEstado("enviando"); },
       err => { if (settled) return; settled = true; if (err.code === 1) setEstado("gps_denegado"); else setEstado("enviando"); },
       { enableHighAccuracy: false, timeout: 15000, maximumAge: 30000 }
     );
-  }, [estado, tipoEfectivo]);
+  }, []);
 
-  // Escuchar cambios de permiso GPS — si el usuario activa en Ajustes y vuelve, reintenta
+  // Escuchar cambios de permiso GPS — si el usuario activa en Ajustes y vuelve, volvemos a "listo_para_gps"
   useEffect(() => {
     if (estado !== "gps_denegado") return;
     if (!navigator.permissions) return;
@@ -388,7 +387,7 @@ export default function AgenteEscaneo() {
     navigator.permissions.query({ name: "geolocation" as PermissionName })
       .then(status => {
         const handleChange = () => {
-          if (!removed && status.state !== "denied") { setGpsCoords(null); setEstado("esperando_gps"); }
+          if (!removed && status.state !== "denied") { setGpsCoords(null); setEstado("listo_para_gps"); }
         };
         status.addEventListener("change", handleChange);
         return () => { removed = true; status.removeEventListener("change", handleChange); };
@@ -1002,11 +1001,36 @@ export default function AgenteEscaneo() {
         {/* ── MODO FICHAJE (puesto o maestro en modo fichaje) ───────────────── */}
         {esPuesto && (
           <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-center">
-            {esMaestro && (estado === "esperando_gps" || estado === "enviando") && (
+            {esMaestro && (estado === "listo_para_gps" || estado === "esperando_gps" || estado === "enviando") && (
               <button onClick={() => { setModoMaestro(null); setEstado("cargando_info"); setGpsCoords(null); }}
                 className="absolute top-3 right-3 flex items-center gap-1 text-white/30 hover:text-white/60 text-xs">
                 <RotateCcw className="w-3 h-3" /> Cambiar
               </button>
+            )}
+
+            {/* ── BOTÓN GPS (iOS requiere tap del usuario para mostrar el prompt) ── */}
+            {estado === "listo_para_gps" && agenteInfo && (
+              <div>
+                <div className="w-16 h-16 bg-blue-500/10 border border-blue-500/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <MapPin className="w-8 h-8 text-blue-400" />
+                </div>
+                <p className="text-white font-semibold text-lg mb-1">{agenteInfo.nombre_completo}</p>
+                <p className="text-white/30 text-xs mb-6">{hora} · {fecha}</p>
+                <button
+                  onClick={solicitarGPS}
+                  className="w-full py-4 bg-blue-600/20 hover:bg-blue-600/30 active:bg-blue-600/40 border border-blue-500/40 rounded-2xl text-base text-blue-300 font-bold transition-colors flex items-center justify-center gap-2"
+                >
+                  <MapPin className="w-5 h-5" />
+                  Registrar fichaje
+                </button>
+                <p className="text-white/20 text-xs mt-3">Se verificará tu ubicación al fichar</p>
+                <button
+                  onClick={() => setEstado("enviando")}
+                  className="mt-3 w-full py-3 bg-white/4 hover:bg-white/8 border border-white/10 rounded-xl text-sm text-white/30 hover:text-white/50 font-medium transition-colors"
+                >
+                  Continuar sin ubicación
+                </button>
+              </div>
             )}
 
             {(estado === "esperando_gps" || estado === "enviando") && (
@@ -1016,14 +1040,6 @@ export default function AgenteEscaneo() {
                   {estado === "esperando_gps" ? "Obteniendo ubicación..." : "Registrando fichaje..."}
                 </p>
                 {agenteInfo && <p className="text-white/50 text-sm mt-2">{agenteInfo.nombre_completo}</p>}
-                {estado === "esperando_gps" && (
-                  <div className="mt-4 bg-blue-500/5 border border-blue-500/15 rounded-xl p-3">
-                    <div className="flex items-center justify-center gap-2 text-xs text-blue-300">
-                      <MapPin className="w-3.5 h-3.5 shrink-0" />
-                      <span>Acepta el permiso de ubicación cuando tu navegador lo solicite</span>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
 
@@ -1083,8 +1099,8 @@ export default function AgenteEscaneo() {
                   </p>
                 </div>
 
-                <button onClick={() => { setGpsCoords(null); setEstado("esperando_gps"); }} className="mt-4 w-full py-3 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 rounded-xl text-sm text-orange-300 font-semibold transition-colors">
-                  Ya lo hice — Intentar de nuevo
+                <button onClick={() => { setGpsCoords(null); solicitarGPS(); }} className="mt-4 w-full py-3 bg-blue-600/15 hover:bg-blue-600/25 border border-blue-500/30 rounded-xl text-sm text-blue-300 font-semibold transition-colors flex items-center justify-center gap-2">
+                  <MapPin className="w-4 h-4" /> Ya lo hice — Intentar de nuevo
                 </button>
               </div>
             )}
@@ -1174,7 +1190,7 @@ export default function AgenteEscaneo() {
                   Radio permitido: <strong className="text-white">{agenteInfo.gps?.radio_metros}m</strong>.
                 </p>
                 <p className="text-white font-semibold mt-4">{agenteInfo.nombre_completo}</p>
-                <button onClick={() => { setEstado("esperando_gps"); setGpsCoords(null); }} className="mt-4 w-full py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm text-white/70 transition-colors">
+                <button onClick={() => { setGpsCoords(null); solicitarGPS(); }} className="mt-4 w-full py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm text-white/70 transition-colors">
                   Intentar de nuevo
                 </button>
               </div>
