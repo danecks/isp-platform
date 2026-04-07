@@ -24,7 +24,7 @@ export function usePermisos() {
       return r.json();
     },
     enabled: !!currentUser,
-    staleTime: 30_000,
+    staleTime: 0,
     gcTime: 60_000,
   });
 
