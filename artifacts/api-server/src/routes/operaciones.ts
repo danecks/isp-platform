@@ -207,17 +207,24 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         LIMIT 1
       ) titular_vac ON TRUE
       -- PT: JSON array de titulares (multi-titular para 24x24 / 24x48 / etc.)
+      -- Incluye datos de puesto_slots para cálculo de ciclo basado en dias_trabajo
       LEFT JOIN LATERAL (
         SELECT json_agg(
           json_build_object(
             'employee_id',       pt.employee_id,
             'nombre',            COALESCE(e_pt.nombre_completo, '—'),
             'orden',             pt.orden,
-            'fecha_inicio_ciclo', pt.fecha_inicio_ciclo
+            'fecha_inicio_ciclo', pt.fecha_inicio_ciclo,
+            'slot_dias_trabajo', ps.dias_trabajo,
+            'slot_fecha_inicio', COALESCE(ps.fecha_inicio_ciclo, po.fecha_inicio_ciclo)
           ) ORDER BY pt.orden
         ) AS titulares_json
         FROM puesto_titulares pt
         LEFT JOIN employees e_pt ON e_pt.id = pt.employee_id
+        LEFT JOIN puesto_slots ps
+          ON  ps.puesto_id   = po.id
+          AND ps.empleado_id = pt.employee_id
+          AND ps.activo      = TRUE
         WHERE pt.puesto_id = po.id AND pt.activo = TRUE
       ) pt_tab ON TRUE
       LEFT JOIN employees e  ON e.id  = po.agente_id
@@ -241,9 +248,23 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       nombre: string;
       orden: number;
       fecha_inicio_ciclo: string | null;
+      slot_dias_trabajo: number[] | null;
+      slot_fecha_inicio: string | null;
       trabaja_hoy: boolean;
       descanso_por_ciclo: boolean;
     };
+
+    // Calcula si un titular trabaja en una fecha dada usando su puesto_slot.dias_trabajo.
+    // cycleDay = (diasDesdeInicio % 14) + 1  (1..14)
+    function calcTrabajaPorSlot(diasTrabajo: number[], fechaInicioStr: string, fechaConsulta: string): boolean {
+      const [iy, im, id] = fechaInicioStr.split("-").map(Number);
+      const [cy, cm, cd] = fechaConsulta.split("-").map(Number);
+      const inicio   = Date.UTC(iy, im - 1, id);
+      const consulta = Date.UTC(cy, cm - 1, cd);
+      const daysElapsed = Math.floor((consulta - inicio) / 86400000);
+      const cycleDay = ((daysElapsed % 14) + 14) % 14 + 1; // 1-based, handles negative offsets
+      return diasTrabajo.includes(cycleDay);
+    }
     type PuestoFinal = PuestoRaw & {
       titulares: TitularEnriquecido[];
       es_par_24x24: boolean;
@@ -285,6 +306,21 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       }> = Array.isArray(p.titulares_json) ? p.titulares_json : [];
 
       const titulares: TitularEnriquecido[] = rawTitulares.map((t) => {
+        // Prioridad 1: slot.dias_trabajo — fuente de verdad cuando está configurado
+        if (
+          t.slot_dias_trabajo &&
+          Array.isArray(t.slot_dias_trabajo) &&
+          t.slot_dias_trabajo.length > 0 &&
+          t.slot_fecha_inicio
+        ) {
+          const trabaja = calcTrabajaPorSlot(
+            t.slot_dias_trabajo,
+            String(t.slot_fecha_inicio).slice(0, 10),
+            fechaConsultada,
+          );
+          return { ...t, trabaja_hoy: trabaja, descanso_por_ciclo: !trabaja };
+        }
+        // Fallback: motor de ciclo genérico (12x12, 24x24, etc.)
         let trabaja_hoy = true;
         let desc = false;
         if (turnoObj && t.fecha_inicio_ciclo) {
