@@ -365,7 +365,9 @@ export async function runAutoSeed(): Promise<void> {
   // ── 2. Empleados ─────────────────────────────────────────────────────
   try {
     const [{ total: empCount }] = await db.select({ total: count() }).from(employeesTable);
-    if (Number(empCount) === 0 && !isProduction && !demoSeedDisabled) {
+    // No crear demo si ya hay clientes en BD (indica importación legacy en curso)
+    const [{ total: cliCountForSeed }] = await db.select({ total: count() }).from(clientsTable);
+    if (Number(empCount) === 0 && !isProduction && !demoSeedDisabled && Number(cliCountForSeed) === 0) {
       logger.info("Auto-seed: creando empleados de muestra...");
       for (const e of SEED_EMPLOYEES) {
         await db.insert(employeesTable).values({
