@@ -305,20 +305,6 @@ router.patch("/tareas/:id", async (req, res) => {
       if (uRows[0]) patch.asignado = uRows[0].nombre;
     }
 
-    // No permitir cambio a "completada" sin evidencia
-    if (patch.estado === "completada") {
-      const ev = await db
-        .select({ id: taskEvidenciasTable.id })
-        .from(taskEvidenciasTable)
-        .where(eq(taskEvidenciasTable.tareaId, id))
-        .limit(1);
-      if (ev.length === 0) {
-        return res.status(400).json({
-          error: "Para completar una tarea se requiere evidencia. Use POST /api/tareas/:id/cerrar",
-        });
-      }
-    }
-
     const [updated] = await db
       .update(tareasTable)
       .set(patch)
