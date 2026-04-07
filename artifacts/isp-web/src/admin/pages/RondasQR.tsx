@@ -74,9 +74,32 @@ function PrintView({ punto, rondaNombre, onClose }: { punto: Punto; rondaNombre:
   const origin = window.location.origin;
   const url = `${origin}/ronda?token=${punto.qr_token}`;
 
+  // Inyectar CSS de impresión: oculta todo excepto la tarjeta QR
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.id = "qr-print-style";
+    style.textContent = `
+      @media print {
+        body * { visibility: hidden !important; }
+        #qr-print-card, #qr-print-card * { visibility: visible !important; }
+        #qr-print-card {
+          position: fixed !important;
+          top: 0 !important; left: 0 !important;
+          width: 100vw !important;
+          display: flex !important;
+          justify-content: center !important;
+          padding-top: 20px !important;
+          background: white !important;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+    return () => { document.getElementById("qr-print-style")?.remove(); };
+  }, []);
+
   return (
     <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-black">
+      <div id="qr-print-card" className="bg-white rounded-2xl p-8 max-w-sm w-full text-black">
         <div className="text-center mb-6">
           <p className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">
             ISP — Ronda de Seguridad
