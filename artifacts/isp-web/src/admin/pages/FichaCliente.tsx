@@ -2089,6 +2089,9 @@ function TabTitulares({ puestos, clienteId }: { puestos: Puesto[]; clienteId: nu
 }
 
 // ─── ModalCrearSlot ────────────────────────────────────────────────────────────
+// El número de titulares y los días de trabajo se configuran automáticamente
+// según el turno del puesto. El usuario solo define hora de entrada, fecha de
+// inicio del ciclo y el agente a asignar.
 function ModalCrearSlot({
   puestos,
   defaultPuestoId,
@@ -2101,24 +2104,14 @@ function ModalCrearSlot({
   onSaved: () => void;
 }) {
   const [puestoId, setPuestoId] = useState<number>(defaultPuestoId || puestos[0]?.id || 0);
-  const [horasTurno, setHorasTurno] = useState<12 | 24>(24);
   const [horaEntrada, setHoraEntrada] = useState("07:00");
-  const [diasTrabajo, setDiasTrabajo] = useState<number[]>([]);
-  const [fechaInicioCiclo, setFechaInicioCiclo] = useState<string>(() => {
-    const hoy = new Date();
-    return hoy.toISOString().split("T")[0];
-  });
+  const [fechaInicioCiclo, setFechaInicioCiclo] = useState<string>("");
   const [empleadoBusqueda, setEmpleadoBusqueda] = useState("");
   const [empleadoId, setEmpleadoId] = useState<number | null>(null);
   const [empleadoResultados, setEmpleadoResultados] = useState<any[]>([]);
   const [notas, setNotas] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
-
-  const toggleDia = (d: number) =>
-    setDiasTrabajo(prev =>
-      prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort((a, b) => a - b)
-    );
 
   useEffect(() => {
     if (empleadoBusqueda.length < 2) { setEmpleadoResultados([]); return; }
@@ -2134,25 +2127,22 @@ function ModalCrearSlot({
 
   async function save() {
     if (!puestoId) { setErr("Selecciona un puesto"); return; }
-    if (diasTrabajo.length === 0) { setErr("Marca al menos un día de trabajo"); return; }
+    if (!fechaInicioCiclo) { setErr("Ingresa la fecha de inicio del ciclo"); return; }
     setSaving(true); setErr("");
     try {
       const r = await fetch(`${API}/puestos/${puestoId}/slots`, {
         method: "POST",
         headers: h(),
         body: JSON.stringify({
-          horas_turno: horasTurno,
           hora_entrada: horaEntrada,
-          dias_trabajo: diasTrabajo,
-          fecha_inicio_ciclo: fechaInicioCiclo || null,
+          fecha_inicio_ciclo: fechaInicioCiclo,
           empleado_id: empleadoId || null,
           notas: notas || null,
         }),
       });
-      if (!r.ok) { const e = await r.json(); setErr(e.error || "Error al guardar"); return; }
+      if (!r.ok) { const e = await r.json(); setErr(e.error || "Error al guardar"); setSaving(false); return; }
       onSaved();
-    } catch { setErr("Error de red"); }
-    setSaving(false);
+    } catch { setErr("Error de red"); setSaving(false); }
   }
 
   return createPortal(
@@ -2160,9 +2150,16 @@ function ModalCrearSlot({
       <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-md p-6 space-y-4 overflow-y-auto max-h-[90vh]">
         <div className="flex items-center justify-between">
           <p className="text-sm font-bold text-white flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-primary" /> Nuevo slot de turno
+            <Calendar className="w-4 h-4 text-primary" /> Agregar titular
           </p>
           <button onClick={onClose} className="text-white/40 hover:text-white"><X className="w-4 h-4" /></button>
+        </div>
+
+        {/* Info automática */}
+        <div className="bg-primary/8 border border-primary/20 rounded-xl px-3 py-2.5">
+          <p className="text-[11px] text-primary/80 leading-relaxed">
+            El número de titulares y los días de trabajo se determinan automáticamente según el turno asignado al puesto. El sistema bloqueará la operación si el puesto ya tiene todos sus titulares configurados.
+          </p>
         </div>
 
         <div className="space-y-3">
@@ -2180,37 +2177,22 @@ function ModalCrearSlot({
             </select>
           </div>
 
-          {/* Tipo y hora */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[10px] text-white/40 uppercase tracking-wide block mb-1">Tipo de turno</label>
-              <div className="flex gap-2">
-                {([12, 24] as const).map(hrs => (
-                  <button
-                    key={hrs}
-                    onClick={() => setHorasTurno(hrs)}
-                    className={`flex-1 h-9 rounded-lg text-sm font-bold border transition-all ${horasTurno === hrs ? "bg-primary/15 border-primary/40 text-primary" : "bg-white/4 border-white/10 text-white/50 hover:text-white/80"}`}
-                  >
-                    {hrs}h
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className="text-[10px] text-white/40 uppercase tracking-wide block mb-1">Hora de entrada</label>
-              <input
-                type="time"
-                value={horaEntrada}
-                onChange={e => setHoraEntrada(e.target.value)}
-                className="w-full h-9 bg-[#060e1c] border border-white/10 text-white text-sm rounded-lg px-3 outline-none focus:border-primary/50"
-              />
-            </div>
+          {/* Hora de entrada */}
+          <div>
+            <label className="text-[10px] text-white/40 uppercase tracking-wide block mb-1">Hora de entrada</label>
+            <input
+              type="time"
+              value={horaEntrada}
+              onChange={e => setHoraEntrada(e.target.value)}
+              className="w-full h-9 bg-[#060e1c] border border-white/10 text-white text-sm rounded-lg px-3 outline-none focus:border-primary/50"
+            />
           </div>
 
           {/* Fecha de inicio del ciclo */}
           <div>
             <label className="text-[10px] text-white/40 uppercase tracking-wide block mb-1">
-              Fecha de inicio del ciclo <span className="text-white/20">(el Día 1 del ciclo corresponde a esta fecha)</span>
+              Fecha de inicio del ciclo <span className="text-red-400/60">*</span>
+              <span className="text-white/20 ml-1">(el Día 1 del ciclo corresponde a esta fecha)</span>
             </label>
             <input
               type="date"
@@ -2218,40 +2200,6 @@ function ModalCrearSlot({
               onChange={e => setFechaInicioCiclo(e.target.value)}
               className="w-full h-9 bg-[#060e1c] border border-white/10 text-white text-sm rounded-lg px-3 outline-none focus:border-primary/50"
             />
-          </div>
-
-          {/* Días que trabaja — cuadrícula 14 días */}
-          <div>
-            <label className="text-[10px] text-white/40 uppercase tracking-wide block mb-2">
-              Días que trabaja en el ciclo de 14 días
-            </label>
-            <div className="space-y-1.5">
-              {[SEMANA1, SEMANA2].map((semana, si) => (
-                <div key={si} className="flex items-center gap-1.5">
-                  <span className="text-[9px] text-white/25 w-6 shrink-0">S{si + 1}</span>
-                  <div className="flex gap-1 flex-1">
-                    {semana.map(({ n, label }) => (
-                      <button
-                        key={n}
-                        onClick={() => toggleDia(n)}
-                        className={`flex-1 h-8 rounded-lg text-[10px] font-bold border transition-all ${diasTrabajo.includes(n) ? "bg-primary/20 border-primary/50 text-primary" : "bg-white/4 border-white/8 text-white/30 hover:text-white/60"}`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="flex items-center justify-between mt-1.5">
-              <p className="text-[10px] text-white/25">
-                {diasTrabajo.length} días trabaja · {14 - diasTrabajo.length} días descansa
-              </p>
-              <div className="flex gap-2">
-                <button onClick={() => setDiasTrabajo(DIAS_CICLO.map(d => d.n))} className="text-[9px] text-white/30 hover:text-white/60 underline">todos</button>
-                <button onClick={() => setDiasTrabajo([])} className="text-[9px] text-white/30 hover:text-white/60 underline">ninguno</button>
-              </div>
-            </div>
           </div>
 
           {/* Agente */}
@@ -2305,7 +2253,7 @@ function ModalCrearSlot({
             disabled={saving}
             className="flex-1 h-9 bg-primary text-black font-bold rounded-lg text-xs hover:bg-primary/90 disabled:opacity-40 flex items-center justify-center gap-1"
           >
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5" /> Guardar slot</>}
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5" /> Guardar titular</>}
           </button>
         </div>
       </div>

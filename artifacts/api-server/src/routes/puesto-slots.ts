@@ -78,33 +78,61 @@ puestoSlotsRouter.get("/clientes/:clienteId/slots", async (req, res) => {
 });
 
 // ─── POST /api/puestos/:puestoId/slots ───────────────────────────────────────
+// El número de titulares y los días de trabajo se determinan AUTOMÁTICAMENTE
+// desde la definición del turno asignado al puesto.
+// El usuario solo proporciona: hora_entrada, fecha_inicio_ciclo, empleado_id, notas.
 puestoSlotsRouter.post("/puestos/:puestoId/slots", async (req, res) => {
   if (!authCheck(req, res)) return;
   const puestoId = Number(req.params.puestoId);
   if (!puestoId) return res.status(400).json({ error: "puestoId inválido" });
 
-  const { slot_numero, horas_turno, hora_entrada, dias_trabajo, fecha_inicio_ciclo, empleado_id, notas } = req.body;
+  const { hora_entrada, fecha_inicio_ciclo, empleado_id, notas } = req.body;
 
-  if (!horas_turno || ![8, 12, 24].includes(Number(horas_turno))) {
-    return res.status(400).json({ error: "horas_turno debe ser 8, 12 o 24" });
-  }
   if (!hora_entrada) return res.status(400).json({ error: "hora_entrada requerida" });
-  if (!Array.isArray(dias_trabajo) || dias_trabajo.length === 0) {
-    return res.status(400).json({ error: "dias_trabajo debe ser un arreglo no vacío" });
-  }
-  // Ciclo fijo de 14 días: valores 1–14
-  const diasValidos = dias_trabajo.every((d: any) => Number.isInteger(d) && d >= 1 && d <= 14);
-  if (!diasValidos) return res.status(400).json({ error: "dias_trabajo debe contener números del 1 al 14" });
 
   try {
-    let slotNum = Number(slot_numero) || null;
-    if (!slotNum) {
-      const { rows } = await pool.query(
-        `SELECT COALESCE(MAX(slot_numero), 0) + 1 AS next_slot FROM puesto_slots WHERE puesto_id = $1`,
-        [puestoId]
-      );
-      slotNum = rows[0].next_slot;
+    // 1. Obtener la definición del turno asignado al puesto
+    const { rows: [puesto] } = await pool.query(
+      `SELECT po.tipo_turno_id, t.num_titulares, t.tipo_ciclo, t.horas_trabajo
+       FROM puestos_operativos po
+       LEFT JOIN turnos t ON t.id = po.tipo_turno_id
+       WHERE po.id = $1`,
+      [puestoId]
+    );
+
+    if (!puesto) return res.status(404).json({ error: "Puesto no encontrado" });
+    if (!puesto.tipo_turno_id) {
+      return res.status(400).json({
+        error: "El puesto no tiene turno asignado. Asigna un turno antes de configurar titulares."
+      });
     }
+
+    // 2. Contar slots activos actuales
+    const { rows: [countRow] } = await pool.query(
+      `SELECT COUNT(*)::int AS cnt FROM puesto_slots WHERE puesto_id = $1 AND activo = TRUE`,
+      [puestoId]
+    );
+    const activeCount = countRow.cnt;
+
+    if (activeCount >= puesto.num_titulares) {
+      return res.status(409).json({
+        error: `Este puesto ya tiene ${puesto.num_titulares} titular(es) configurado(s) según el turno "${puesto.tipo_ciclo}". No se pueden agregar más.`
+      });
+    }
+
+    // 3. Determinar slot_numero y dias_trabajo automáticamente según el turno
+    const newSlotNum = activeCount + 1;
+    const horasTurno = Math.round(Number(puesto.horas_trabajo));
+    const cicloTotal = horasTurno + 0; // se usa horas_trabajo del turno
+
+    // Para turnos de ciclo largo (>24h): días alternados por slot
+    // Slot 1 → días impares {1,3,5,7,9,11,13}
+    // Slot 2 → días pares   {2,4,6,8,10,12,14}
+    // Para turnos diarios (≤24h): trabaja todos los días
+    const esRotativo = horasTurno >= 24 && puesto.tipo_ciclo !== "diario";
+    const diasAuto: number[] = !esRotativo
+      ? [1,2,3,4,5,6,7,8,9,10,11,12,13,14]
+      : (newSlotNum % 2 === 1) ? [1,3,5,7,9,11,13] : [2,4,6,8,10,12,14];
 
     const { rows } = await pool.query(
       `INSERT INTO puesto_slots
@@ -115,8 +143,8 @@ puestoSlotsRouter.post("/puestos/:puestoId/slots", async (req, res) => {
                  dias_trabajo, longitud_ciclo,
                  to_char(fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
                  empleado_id, notas, activo, created_at`,
-      [puestoId, slotNum, Number(horas_turno), hora_entrada,
-       dias_trabajo, fecha_inicio_ciclo || null, empleado_id || null, notas || null]
+      [puestoId, newSlotNum, horasTurno, hora_entrada,
+       diasAuto, fecha_inicio_ciclo || null, empleado_id || null, notas || null]
     );
     res.status(201).json({ slot: rows[0] });
   } catch (err) {
