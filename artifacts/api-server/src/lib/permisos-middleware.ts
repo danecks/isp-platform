@@ -31,6 +31,8 @@ const ROUTE_MODULO_MAP: Record<string, string> = {
   "/municion-puestos":       "control_qr",
   "/bodega-solicitudes":     "control_qr",
   "/arma-ordenes-servicio":  "control_qr",
+  "/puestos-gps":            "control_qr",
+  "/supervisor-devices":     "control_qr",
   "/importacion":            "importacion",
   "/dashboard":              "dashboard",
   "/cms":                    "cms",
@@ -46,9 +48,6 @@ const ROUTE_MODULO_MAP: Record<string, string> = {
   "/leads":                  "reclutamiento",
   "/applications":           "reclutamiento",
   "/turnos":                 "turnos",
-  "/agente":                 "fichaje_qr",
-  "/puestos-gps":            "fichaje_qr",
-  "/supervisor-devices":     "fichaje_qr",
 };
 
 // Caché en memoria: rol → Set de modulo_claves permitidos (TTL 60s)
