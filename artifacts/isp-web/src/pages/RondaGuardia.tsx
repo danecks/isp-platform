@@ -162,38 +162,45 @@ export default function RondaGuardia() {
             </div>
             <p className="text-orange-400 font-bold text-xl mb-2">Ubicación bloqueada</p>
             <p className="text-white/60 text-sm mt-2 leading-relaxed">
-              La ronda <strong className="text-white">no fue registrada</strong>. Tu dispositivo no compartió la ubicación.
+              Tu dispositivo no compartió la ubicación. Sigue los pasos según tu teléfono:
             </p>
 
             {/* iOS */}
             <div className="mt-4 bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 text-left">
               <p className="text-xs text-orange-300 font-semibold uppercase tracking-wide mb-2">📱 iPhone / iPad</p>
-              <p className="text-xs text-white/60 leading-relaxed">
-                Ve a la app de <strong className="text-white">Ajustes</strong> del iPhone (no Safari):<br />
-                <strong className="text-white/80">Privacidad y Seguridad</strong> → <strong className="text-white/80">Localización</strong> → <strong className="text-white/80">Safari</strong> → elige <strong className="text-white">Al usar la app</strong>
+              <p className="text-xs text-white/70 font-semibold mb-1">Paso 1 — Permiso general de Safari:</p>
+              <p className="text-xs text-white/55 leading-relaxed mb-3">
+                <strong className="text-white/80">Ajustes</strong> → <strong className="text-white/80">Privacidad y Seguridad</strong> → <strong className="text-white/80">Localización</strong> → <strong className="text-white/80">Safari</strong> → elige <strong className="text-orange-300">Al usar la app</strong>
               </p>
-              <p className="text-xs text-white/30 mt-2">
-                ⚠️ El permiso del menú de Safari (AA) no es suficiente — debes habilitarlo en Ajustes del sistema.
+              <p className="text-xs text-white/70 font-semibold mb-1">Paso 2 — Permiso del sitio web:</p>
+              <p className="text-xs text-white/55 leading-relaxed">
+                En esa misma pantalla toca <strong className="text-white/80">Acceso a Sitios Web</strong> → busca <strong className="text-white/80">ispsa.net</strong> → elige <strong className="text-orange-300">Permitir</strong>
+              </p>
+              <p className="text-xs text-white/25 mt-2 border-t border-white/10 pt-2">
+                ⚠️ Ambos pasos son necesarios. El permiso del botón AA en Safari no es suficiente.
               </p>
             </div>
 
             {/* Android */}
             <div className="mt-2 bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 text-left">
               <p className="text-xs text-orange-300 font-semibold uppercase tracking-wide mb-2">🤖 Android</p>
-              <p className="text-xs text-white/60 leading-relaxed">
-                <strong className="text-white/80">Ajustes</strong> → <strong className="text-white/80">Aplicaciones</strong> → <strong className="text-white/80">Chrome</strong> → <strong className="text-white/80">Permisos</strong> → <strong className="text-white/80">Ubicación</strong> → <strong className="text-white">Permitir</strong>
+              <p className="text-xs text-white/55 leading-relaxed">
+                <strong className="text-white/80">Ajustes</strong> → <strong className="text-white/80">Aplicaciones</strong> → <strong className="text-white/80">Chrome</strong> → <strong className="text-white/80">Permisos</strong> → <strong className="text-white/80">Ubicación</strong> → <strong className="text-orange-300">Permitir todo el tiempo</strong>
               </p>
             </div>
 
-            <p className="text-xs text-white/30 mt-3 text-center">
-              Después de habilitarla en Ajustes, escanea el QR nuevamente.
-            </p>
-
             <button
               onClick={() => window.location.reload()}
-              className="mt-4 w-full py-3 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 rounded-xl text-sm text-orange-300 hover:text-orange-200 font-medium transition-colors"
+              className="mt-4 w-full py-3 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 rounded-xl text-sm text-orange-300 hover:text-orange-200 font-semibold transition-colors"
             >
               Ya la activé — Intentar de nuevo
+            </button>
+
+            <button
+              onClick={() => setEstado("enviando")}
+              className="mt-2 w-full py-2.5 bg-white/5 hover:bg-white/8 border border-white/10 rounded-xl text-xs text-white/35 hover:text-white/55 transition-colors"
+            >
+              Continuar sin GPS (la marcación quedará sin validar)
             </button>
           </div>
         )}

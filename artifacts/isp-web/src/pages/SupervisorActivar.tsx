@@ -119,11 +119,20 @@ export default function SupervisorActivar() {
                 <XCircle className="w-8 h-8 text-red-400" />
               </div>
               <p className="text-red-400 font-bold text-xl mb-2">Activación fallida</p>
-              <p className="text-white/50 text-sm">
+              <p className="text-white/50 text-sm leading-relaxed">
                 {estado === "params_invalidos"
-                  ? "El enlace de activación es inválido o incompleto. Pide al administrador que genere uno nuevo."
-                  : error}
+                  ? "El enlace de activación es inválido o incompleto."
+                  : error === "Dispositivo sin token configurado" || error === "Dispositivo inactivo"
+                    ? "Este enlace ya no es válido. El dispositivo fue desactivado o el enlace venció."
+                  : error === "Dispositivo no válido" || error.includes("token")
+                    ? "El token del enlace es incorrecto o ya fue utilizado."
+                  : error || "No se pudo validar el dispositivo."}
               </p>
+              <div className="mt-5 bg-white/5 border border-white/10 rounded-xl p-4 text-left text-xs text-white/30 space-y-1.5">
+                <p>→ Pide al administrador que cree un nuevo enlace de activación</p>
+                <p>→ El enlace de activación es de un solo uso — no lo compartas</p>
+                <p>→ Si el dispositivo fue revocado, debe registrarse nuevamente</p>
+              </div>
             </div>
           )}
         </div>

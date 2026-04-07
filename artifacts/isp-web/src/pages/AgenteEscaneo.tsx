@@ -559,13 +559,29 @@ export default function AgenteEscaneo() {
                 </div>
                 <p className="text-orange-400 font-bold text-xl mb-2">Ubicación bloqueada</p>
                 <p className="text-white/60 text-sm mt-2 leading-relaxed">
-                  El fichaje <strong className="text-white">no fue registrado</strong>. Se necesita tu ubicación.
+                  El fichaje <strong className="text-white">no fue registrado</strong>. Sigue los pasos según tu teléfono:
                 </p>
+
                 <div className="mt-3 bg-orange-500/5 border border-orange-500/20 rounded-xl p-3 text-left">
-                  <p className="text-xs text-orange-300/80 mb-1">iPhone/iPad: Ajustes → Safari → Localización → Al usar la app</p>
-                  <p className="text-xs text-orange-300/80">Android: Ajustes → Chrome → Permisos → Ubicación → Permitir</p>
+                  <p className="text-xs text-orange-300 font-semibold uppercase tracking-wide mb-2">📱 iPhone / iPad</p>
+                  <p className="text-xs text-white/70 font-semibold mb-0.5">Paso 1:</p>
+                  <p className="text-xs text-white/50 leading-relaxed mb-2">
+                    <strong className="text-white/75">Ajustes</strong> → <strong className="text-white/75">Privacidad y Seguridad</strong> → <strong className="text-white/75">Localización</strong> → <strong className="text-white/75">Safari</strong> → elige <strong className="text-orange-300">Al usar la app</strong>
+                  </p>
+                  <p className="text-xs text-white/70 font-semibold mb-0.5">Paso 2:</p>
+                  <p className="text-xs text-white/50 leading-relaxed">
+                    En esa misma pantalla → <strong className="text-white/75">Acceso a Sitios Web</strong> → <strong className="text-white/75">ispsa.net</strong> → <strong className="text-orange-300">Permitir</strong>
+                  </p>
                 </div>
-                <button onClick={() => window.location.reload()} className="mt-4 w-full py-3 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 rounded-xl text-sm text-orange-300 font-medium transition-colors">
+
+                <div className="mt-2 bg-orange-500/5 border border-orange-500/20 rounded-xl p-3 text-left">
+                  <p className="text-xs text-orange-300 font-semibold uppercase tracking-wide mb-1">🤖 Android</p>
+                  <p className="text-xs text-white/50 leading-relaxed">
+                    <strong className="text-white/75">Ajustes</strong> → <strong className="text-white/75">Aplicaciones</strong> → <strong className="text-white/75">Chrome</strong> → <strong className="text-white/75">Permisos</strong> → <strong className="text-white/75">Ubicación</strong> → <strong className="text-orange-300">Permitir todo el tiempo</strong>
+                  </p>
+                </div>
+
+                <button onClick={() => window.location.reload()} className="mt-4 w-full py-3 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 rounded-xl text-sm text-orange-300 font-semibold transition-colors">
                   Ya la activé — Intentar de nuevo
                 </button>
               </div>
