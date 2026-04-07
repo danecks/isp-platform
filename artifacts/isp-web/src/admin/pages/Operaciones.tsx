@@ -2340,17 +2340,29 @@ function ModalConfigTurno({
 
               {turnoId && !loadingSlots && (
                 <div className="space-y-2">
-                  {slots.map(slot => {
+                  {/* Aviso: slots sobrantes para el turno seleccionado */}
+                  {turnoSel && slots.length > maxSlots && (
+                    <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-500/8 border border-amber-500/25 rounded-xl">
+                      <span className="text-amber-400/80 text-[11px] shrink-0 mt-0.5">⚠</span>
+                      <p className="text-[9px] text-amber-300/80 leading-relaxed">
+                        El turno <strong>{turnoSel.nombre}</strong> solo requiere <strong>{maxSlots} titular{maxSlots !== 1 ? "es" : ""}</strong>.
+                        Hay {slots.length - maxSlots} titular{(slots.length - maxSlots) !== 1 ? "es" : ""} sobrante{(slots.length - maxSlots) !== 1 ? "s" : ""} — eliminalo{(slots.length - maxSlots) !== 1 ? "s" : ""} con el botón ×.
+                      </p>
+                    </div>
+                  )}
+
+                  {slots.map((slot, idx) => {
                     const saving = savingSlotId === slot.id;
                     const isEditingAgent = editAgentSlotId === slot.id;
                     const salida = calcSalida(slot.hora_entrada, slot.horas_turno);
+                    const esExcedente = turnoSel ? idx >= maxSlots : false;
                     return (
-                      <div key={slot.id} className="bg-[#080f1e] border border-white/8 rounded-xl p-3 space-y-2">
+                      <div key={slot.id} className={`bg-[#080f1e] border rounded-xl p-3 space-y-2 ${esExcedente ? "border-amber-500/40 bg-amber-500/4" : "border-white/8"}`}>
                         {/* Fila superior: T1/T2 | Agente | Hora entrada → salida | Delete */}
                         <div className="flex items-center gap-2 flex-wrap">
                           {/* Badge titular */}
-                          <span className="text-[9px] font-bold text-indigo-300/70 bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.5 rounded-full shrink-0">
-                            T{slot.slot_numero}
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 ${esExcedente ? "text-amber-300/80 bg-amber-500/15 border-amber-500/30" : "text-indigo-300/70 bg-indigo-500/10 border-indigo-500/20"}`}>
+                            {esExcedente ? "Sobrante" : `T${slot.slot_numero}`}
                           </span>
 
                           {/* Agente inline */}
