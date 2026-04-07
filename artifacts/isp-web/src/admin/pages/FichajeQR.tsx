@@ -3,7 +3,7 @@ import { QRCodeSVG } from "qrcode.react";
 import {
   QrCode, RefreshCw, Printer, Trash2, CheckCircle, XCircle,
   Search, Users, ClipboardList, MapPin, Star, Shield,
-  Smartphone, Plus, Copy, Check, MapPinned, ShieldCheck,
+  Smartphone, Plus, Copy, Check, MapPinned, ShieldCheck, Footprints,
 } from "lucide-react";
 
 const API = "/api";
@@ -218,7 +218,7 @@ function NuevoDispositivoModal({
 }) {
   const [nombre, setNombre] = useState("");
   const [descripcion, setDescripcion] = useState("");
-  const [tipo, setTipo] = useState<"supervisor" | "puesto">("supervisor");
+  const [tipo, setTipo] = useState<"supervisor" | "puesto" | "maestro">("supervisor");
   const [puestos, setPuestos] = useState<{ id: number; nombre: string; cliente_nombre: string }[]>([]);
   const [puestoId, setPuestoId] = useState<number | "">("");
   const [guardando, setGuardando] = useState(false);
@@ -265,22 +265,30 @@ function NuevoDispositivoModal({
         {/* Tipo */}
         <div>
           <p className="text-white/50 text-xs font-semibold uppercase tracking-wide mb-2">Tipo de dispositivo</p>
-          <div className="flex gap-2">
+          <div className="flex gap-1.5 flex-wrap">
             <button type="button" onClick={() => setTipo("supervisor")}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold border transition-colors min-w-[80px] ${
                 tipo === "supervisor" ? "bg-purple-600/20 border-purple-500/40 text-purple-300" : "bg-white/5 border-white/10 text-white/40"
               }`}>
-              <ShieldCheck className="w-4 h-4" /> Supervisor
+              <ShieldCheck className="w-3.5 h-3.5" /> Supervisor
             </button>
             <button type="button" onClick={() => setTipo("puesto")}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold border transition-colors min-w-[80px] ${
                 tipo === "puesto" ? "bg-blue-600/20 border-blue-500/40 text-blue-300" : "bg-white/5 border-white/10 text-white/40"
               }`}>
-              <MapPinned className="w-4 h-4" /> Puesto
+              <MapPinned className="w-3.5 h-3.5" /> Puesto
+            </button>
+            <button type="button" onClick={() => setTipo("maestro")}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold border transition-colors min-w-[80px] ${
+                tipo === "maestro" ? "bg-amber-600/20 border-amber-500/40 text-amber-300" : "bg-white/5 border-white/10 text-white/40"
+              }`}>
+              <span className="text-sm">🧪</span> Maestro
             </button>
           </div>
           <p className="text-white/25 text-xs mt-1.5">
-            {tipo === "supervisor" ? "Puede registrar supervisiones en cualquier puesto" : "Solo puede registrar fichajes de llegada"}
+            {tipo === "supervisor" ? "Puede registrar supervisiones en cualquier puesto"
+             : tipo === "maestro" ? "Para pruebas: puede fichar, supervisar y marcar rondas"
+             : "Solo puede registrar fichajes de llegada"}
           </p>
         </div>
 
@@ -353,7 +361,7 @@ export default function FichajeQR() {
   const [busqueda, setBusqueda] = useState("");
   const [printAgente, setPrintAgente] = useState<AgenteToken | null>(null);
   const [generando, setGenerando] = useState<number | null>(null);
-  const [filtroTipo, setFiltroTipo] = useState<"" | "fichaje" | "supervision">("");
+  const [filtroTipo, setFiltroTipo] = useState<"" | "fichaje" | "supervision" | "ronda">("");
   const [nuevoDispositivoOpen, setNuevoDispositivoOpen] = useState(false);
   const [activacionModal, setActivacionModal] = useState<{ device: Dispositivo; token: string } | null>(null);
 
@@ -548,25 +556,24 @@ export default function FichajeQR() {
                 dev.activo ? "border-white/8" : "border-white/5 opacity-50"
               }`}>
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                  dev.tipo === "supervisor"
-                    ? "bg-purple-600/20 border border-purple-500/30"
-                    : "bg-blue-600/20 border border-blue-500/30"
+                  dev.tipo === "supervisor" ? "bg-purple-600/20 border border-purple-500/30"
+                  : dev.tipo === "maestro" ? "bg-amber-600/20 border border-amber-500/30"
+                  : "bg-blue-600/20 border border-blue-500/30"
                 }`}>
-                  {dev.tipo === "supervisor"
-                    ? <ShieldCheck className="w-5 h-5 text-purple-400" />
-                    : <MapPinned className="w-5 h-5 text-blue-400" />
-                  }
+                  {dev.tipo === "supervisor" ? <ShieldCheck className="w-5 h-5 text-purple-400" />
+                   : dev.tipo === "maestro" ? <span className="text-base">🧪</span>
+                   : <MapPinned className="w-5 h-5 text-blue-400" />}
                 </div>
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="text-white text-sm font-semibold">{dev.supervisor_nombre}</p>
                     <span className={`text-xs px-2 py-0.5 rounded-full ${
-                      dev.tipo === "supervisor"
-                        ? "bg-purple-500/10 text-purple-300"
-                        : "bg-blue-500/10 text-blue-300"
+                      dev.tipo === "supervisor" ? "bg-purple-500/10 text-purple-300"
+                      : dev.tipo === "maestro" ? "bg-amber-500/10 text-amber-300"
+                      : "bg-blue-500/10 text-blue-300"
                     }`}>
-                      {dev.tipo === "supervisor" ? "Supervisor" : "Puesto"}
+                      {dev.tipo === "supervisor" ? "Supervisor" : dev.tipo === "maestro" ? "Maestro" : "Puesto"}
                     </span>
                     {!dev.activo && <span className="text-xs bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full">Revocado</span>}
                   </div>
@@ -601,15 +608,15 @@ export default function FichajeQR() {
       {tab === "fichajes" && (
         <div>
           <div className="flex items-center gap-2 mb-4">
-            <div className="flex gap-1">
-              {(["", "fichaje", "supervision"] as const).map(tipo => (
+            <div className="flex gap-1 flex-wrap">
+              {(["", "fichaje", "supervision", "ronda"] as const).map(tipo => (
                 <button key={tipo} onClick={() => setFiltroTipo(tipo)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
                     filtroTipo === tipo
                       ? "bg-blue-600/20 border-blue-500/30 text-blue-300"
                       : "bg-white/5 border-white/10 text-white/40 hover:text-white/60"
                   }`}>
-                  {tipo === "" ? "Todos" : tipo === "fichaje" ? "Fichajes" : "Supervisiones"}
+                  {tipo === "" ? "Todos" : tipo === "fichaje" ? "Fichajes" : tipo === "supervision" ? "Supervisiones" : "🧪 Rondas"}
                 </button>
               ))}
             </div>
@@ -625,9 +632,13 @@ export default function FichajeQR() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                      fich.tipo === "supervision" ? "bg-purple-600/20 border border-purple-500/30" : "bg-blue-600/20 border border-blue-500/30"
+                      fich.tipo === "supervision" ? "bg-purple-600/20 border border-purple-500/30"
+                      : fich.tipo === "ronda" ? "bg-green-600/20 border border-green-500/30"
+                      : "bg-blue-600/20 border border-blue-500/30"
                     }`}>
-                      {fich.tipo === "supervision" ? <Shield className="w-4 h-4 text-purple-400" /> : <CheckCircle className="w-4 h-4 text-blue-400" />}
+                      {fich.tipo === "supervision" ? <Shield className="w-4 h-4 text-purple-400" />
+                       : fich.tipo === "ronda" ? <Footprints className="w-4 h-4 text-green-400" />
+                       : <CheckCircle className="w-4 h-4 text-blue-400" />}
                     </div>
                     <div>
                       <p className="text-white text-sm font-semibold">{fich.nombre_completo}</p>

@@ -88,7 +88,7 @@ agenteFichajeRouter.get("/supervisor-devices", async (req, res) => {
 agenteFichajeRouter.post("/supervisor-devices", async (req, res) => {
   const { supervisor_nombre, descripcion, tipo = "supervisor", puesto_id } = req.body;
   if (!supervisor_nombre) return res.status(400).json({ error: "supervisor_nombre requerido" });
-  if (!["supervisor", "puesto"].includes(tipo)) return res.status(400).json({ error: "tipo debe ser 'supervisor' o 'puesto'" });
+  if (!["supervisor", "puesto", "maestro"].includes(tipo)) return res.status(400).json({ error: "tipo debe ser 'supervisor', 'puesto' o 'maestro'" });
 
   try {
     const plainToken = randomBytes(32).toString("hex");
@@ -226,7 +226,7 @@ agenteFichajeRouter.post("/agente/fichaje", async (req, res) => {
     if (!devRows[0] || devRows[0].device_token_hash !== hashToken(device_token)) {
       return res.status(403).json({ error: "dispositivo_no_autorizado", mensaje: "Dispositivo no autorizado o token incorrecto" });
     }
-    if (devRows[0].tipo !== "puesto") {
+    if (!["puesto", "maestro"].includes(devRows[0].tipo)) {
       return res.status(403).json({ error: "tipo_incorrecto", mensaje: "Este dispositivo no está configurado para registrar fichajes" });
     }
     const deviceId = devRows[0].id;
@@ -331,7 +331,7 @@ agenteFichajeRouter.post("/agente/supervision", async (req, res) => {
     if (!devRows[0] || devRows[0].device_token_hash !== hashToken(device_token)) {
       return res.status(403).json({ error: "dispositivo_no_autorizado", mensaje: "Dispositivo no autorizado o token incorrecto" });
     }
-    if (devRows[0].tipo !== "supervisor") {
+    if (!["supervisor", "maestro"].includes(devRows[0].tipo)) {
       return res.status(403).json({ error: "tipo_incorrecto", mensaje: "Este dispositivo no está configurado para supervisiones" });
     }
     const deviceId = devRows[0].id;
@@ -389,6 +389,74 @@ agenteFichajeRouter.post("/agente/supervision", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "agente/supervision: error");
     res.status(500).json({ error: "Error registrando supervisión" });
+  }
+});
+
+// POST /api/agente/ronda-check — marcar ronda en puesto (solo dispositivo maestro)
+agenteFichajeRouter.post("/agente/ronda-check", async (req, res) => {
+  const { token, latitud, longitud, device_uuid, device_token, observaciones } = req.body;
+  if (!token) return res.status(400).json({ error: "token requerido" });
+  if (!device_uuid || !device_token) {
+    return res.status(401).json({ error: "dispositivo_no_autorizado" });
+  }
+  try {
+    const { rows: devRows } = await pool.query(
+      `SELECT id, tipo, device_token_hash, supervisor_nombre, activo
+       FROM supervisor_devices WHERE device_uuid = $1 AND activo = TRUE`,
+      [device_uuid]
+    );
+    if (!devRows[0] || devRows[0].device_token_hash !== hashToken(device_token)) {
+      return res.status(403).json({ error: "dispositivo_no_autorizado" });
+    }
+    if (devRows[0].tipo !== "maestro") {
+      return res.status(403).json({ error: "tipo_incorrecto", mensaje: "Solo el dispositivo maestro puede marcar rondas desde una credencial de agente" });
+    }
+    const deviceId = devRows[0].id;
+    const supervisorNombre = devRows[0].supervisor_nombre;
+    await pool.query(`UPDATE supervisor_devices SET ultimo_uso = NOW() WHERE id = $1`, [deviceId]);
+
+    const { rows: tkRows } = await pool.query(
+      `SELECT aqt.employee_id, aqt.activo FROM agente_qr_tokens aqt WHERE aqt.qr_token = $1`,
+      [token]
+    );
+    if (!tkRows[0] || !tkRows[0].activo) return res.status(404).json({ error: "QR no válido" });
+    const employeeId = tkRows[0].employee_id;
+
+    const { rows: poRows } = await pool.query(
+      `SELECT id FROM puestos_operativos WHERE agente_id = $1 AND estado = 'cubierto' LIMIT 1`,
+      [employeeId]
+    );
+    const puestoId = poRows[0]?.id ?? null;
+
+    let distanciaMetros: number | null = null;
+    if (latitud != null && longitud != null && puestoId) {
+      const { rows: gpsRows } = await pool.query(
+        `SELECT latitud, longitud FROM puestos_gps WHERE puesto_id = $1`,
+        [puestoId]
+      );
+      if (gpsRows[0]) {
+        distanciaMetros = Math.round(
+          haversineMetros(Number(latitud), Number(longitud),
+            Number(gpsRows[0].latitud), Number(gpsRows[0].longitud))
+        );
+      }
+    }
+
+    const { rows: inserted } = await pool.query(
+      `INSERT INTO agente_fichajes
+         (employee_id, puesto_id, qr_token, latitud, longitud, distancia_metros,
+          resultado, tipo, supervisor_nombre, supervisor_device_id, observaciones)
+       VALUES ($1,$2,$3,$4,$5,$6,'ok','ronda',$7,$8,$9)
+       RETURNING id, registrado_en`,
+      [employeeId, puestoId, token,
+       latitud ?? null, longitud ?? null, distanciaMetros,
+       supervisorNombre, deviceId, observaciones ?? null]
+    );
+
+    res.json({ ok: true, ronda_id: inserted[0].id, registrado_en: inserted[0].registrado_en });
+  } catch (err) {
+    logger.error({ err }, "agente/ronda-check: error");
+    res.status(500).json({ error: "Error registrando ronda" });
   }
 });
 
