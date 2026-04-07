@@ -51,39 +51,42 @@ export default function RondaGuardia() {
       .catch(e => { setMensajeError(e.message); setEstado("token_invalido"); });
   }, [token]);
 
-  // 2. Solicitar GPS — obligatorio para registrar la ronda
+  // 2. Solicitar GPS — intenta obtener ubicación; si el permiso está denegado lo informa.
+  //    Si hay timeout u otro error de hardware, envía igual (sin GPS).
   useEffect(() => {
     if (estado !== "esperando_gps") return;
 
     if (!navigator.geolocation) {
-      // Dispositivo sin GPS — registrar igualmente con advertencia
       setEstado("enviando");
       return;
     }
 
-    const watchId = navigator.geolocation.watchPosition(
+    let settled = false;
+
+    navigator.geolocation.getCurrentPosition(
       (pos) => {
+        if (settled) return;
+        settled = true;
         setGpsCoords({
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
           precision: Math.round(pos.coords.accuracy),
         });
-        // GPS obtenido: proceder a enviar
         setEstado("enviando");
       },
       (err) => {
-        // El guardia negó el permiso o hay un error
-        if (err.code === err.PERMISSION_DENIED) {
+        if (settled) return;
+        settled = true;
+        if (err.code === 1) {
+          // PERMISSION_DENIED — el sistema bloqueó el acceso a la ubicación
           setEstado("gps_denegado");
         } else {
-          // Timeout u otro error de hardware — registrar sin GPS con advertencia
+          // TIMEOUT (3) o POSITION_UNAVAILABLE (2) — registrar sin GPS
           setEstado("enviando");
         }
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
     );
-
-    return () => { navigator.geolocation.clearWatch(watchId); };
   }, [estado]);
 
   // 3. Enviar escaneo solo cuando el estado cambia a "enviando"
@@ -166,7 +169,11 @@ export default function RondaGuardia() {
             <div className="mt-4 bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 text-left">
               <p className="text-xs text-orange-300 font-semibold uppercase tracking-wide mb-2">📱 iPhone / iPad</p>
               <p className="text-xs text-white/60 leading-relaxed">
-                <strong className="text-white/80">Ajustes</strong> → <strong className="text-white/80">Privacidad y Seguridad</strong> → <strong className="text-white/80">Localización</strong> → <strong className="text-white/80">Safari</strong> → selecciona <strong className="text-white">Al usar la app</strong>
+                Ve a la app de <strong className="text-white">Ajustes</strong> del iPhone (no Safari):<br />
+                <strong className="text-white/80">Privacidad y Seguridad</strong> → <strong className="text-white/80">Localización</strong> → <strong className="text-white/80">Safari</strong> → elige <strong className="text-white">Al usar la app</strong>
+              </p>
+              <p className="text-xs text-white/30 mt-2">
+                ⚠️ El permiso del menú de Safari (AA) no es suficiente — debes habilitarlo en Ajustes del sistema.
               </p>
             </div>
 
@@ -174,12 +181,12 @@ export default function RondaGuardia() {
             <div className="mt-2 bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 text-left">
               <p className="text-xs text-orange-300 font-semibold uppercase tracking-wide mb-2">🤖 Android</p>
               <p className="text-xs text-white/60 leading-relaxed">
-                <strong className="text-white/80">Ajustes</strong> → <strong className="text-white/80">Aplicaciones</strong> → <strong className="text-white/80">Chrome</strong> (o tu navegador) → <strong className="text-white/80">Permisos</strong> → <strong className="text-white/80">Ubicación</strong> → selecciona <strong className="text-white">Permitir</strong>
+                <strong className="text-white/80">Ajustes</strong> → <strong className="text-white/80">Aplicaciones</strong> → <strong className="text-white/80">Chrome</strong> → <strong className="text-white/80">Permisos</strong> → <strong className="text-white/80">Ubicación</strong> → <strong className="text-white">Permitir</strong>
               </p>
             </div>
 
             <p className="text-xs text-white/30 mt-3 text-center">
-              Después de habilitarla, escanea el QR nuevamente.
+              Después de habilitarla en Ajustes, escanea el QR nuevamente.
             </p>
 
             <button
