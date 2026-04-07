@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, Fragment } from "react";
+import { useState, useEffect, useCallback, Fragment, useRef } from "react";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents, Popup } from "react-leaflet";
@@ -73,33 +73,104 @@ function MapClickHandler({ onPlace }: { onPlace: (lat: number, lng: number) => v
 function PrintView({ punto, rondaNombre, onClose }: { punto: Punto; rondaNombre: string; onClose: () => void }) {
   const origin = window.location.origin;
   const url = `${origin}/ronda?token=${punto.qr_token}`;
+  const svgRef = useRef<HTMLDivElement>(null);
 
-  // Inyectar CSS de impresión: oculta todo excepto la tarjeta QR
-  useEffect(() => {
-    const style = document.createElement("style");
-    style.id = "qr-print-style";
-    style.textContent = `
-      @media print {
-        body * { visibility: hidden !important; }
-        #qr-print-card, #qr-print-card * { visibility: visible !important; }
-        #qr-print-card {
-          position: fixed !important;
-          top: 0 !important; left: 0 !important;
-          width: 100vw !important;
-          display: flex !important;
-          justify-content: center !important;
-          padding-top: 20px !important;
-          background: white !important;
-        }
-      }
-    `;
-    document.head.appendChild(style);
-    return () => { document.getElementById("qr-print-style")?.remove(); };
-  }, []);
+  function handlePrint() {
+    // Serializar el SVG del QR para incluirlo en la ventana de impresión
+    const svgEl = svgRef.current?.querySelector("svg");
+    const svgHtml = svgEl ? new XMLSerializer().serializeToString(svgEl) : "";
+
+    const win = window.open("", "_blank", "width=480,height=620");
+    if (!win) return;
+
+    win.document.write(`<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>QR · ${rondaNombre} – ${punto.nombre}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #fff;
+      display: flex;
+      justify-content: center;
+      padding: 32px 24px;
+    }
+    .card {
+      width: 340px;
+      text-align: center;
+    }
+    .label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #6b7280;
+      margin-bottom: 4px;
+    }
+    .ronda-name {
+      font-size: 20px;
+      font-weight: 800;
+      color: #111827;
+      margin-bottom: 2px;
+    }
+    .punto-name {
+      font-size: 14px;
+      color: #4b5563;
+      margin-bottom: 2px;
+    }
+    .descripcion {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-bottom: 16px;
+    }
+    .qr-wrap {
+      display: flex;
+      justify-content: center;
+      margin: 16px 0;
+    }
+    .orden {
+      font-size: 11px;
+      color: #9ca3af;
+      margin-top: 10px;
+    }
+    .url {
+      font-size: 9px;
+      color: #d1d5db;
+      word-break: break-all;
+      margin-top: 4px;
+    }
+    .divider {
+      border: none;
+      border-top: 1px solid #e5e7eb;
+      margin: 16px 0;
+    }
+    @media print {
+      body { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <p class="label">ISP — Ronda de Seguridad</p>
+    <p class="ronda-name">${rondaNombre}</p>
+    <p class="punto-name">${punto.nombre}</p>
+    ${punto.descripcion ? `<p class="descripcion">${punto.descripcion}</p>` : ""}
+    <hr class="divider">
+    <div class="qr-wrap">${svgHtml}</div>
+    <p class="orden">Punto #${punto.orden}</p>
+    <p class="url">${url}</p>
+  </div>
+  <script>window.onload = function(){ window.print(); };<\/script>
+</body>
+</html>`);
+    win.document.close();
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-      <div id="qr-print-card" className="bg-white rounded-2xl p-8 max-w-sm w-full text-black">
+      <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-black">
         <div className="text-center mb-6">
           <p className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">
             ISP — Ronda de Seguridad
@@ -109,16 +180,16 @@ function PrintView({ punto, rondaNombre, onClose }: { punto: Punto; rondaNombre:
           {punto.descripcion && <p className="text-xs text-gray-400 mt-1">{punto.descripcion}</p>}
         </div>
 
-        <div className="flex justify-center mb-4">
+        <div ref={svgRef} className="flex justify-center mb-4">
           <QRCodeSVG value={url} size={220} level="H" includeMargin />
         </div>
 
-        <p className="text-center text-xs text-gray-400 break-all mb-1">Punto #{punto.orden}</p>
+        <p className="text-center text-xs text-gray-400 mb-1">Punto #{punto.orden}</p>
         <p className="text-center text-xs text-gray-300 break-all">{url}</p>
 
         <div className="flex gap-3 mt-6">
           <button
-            onClick={() => window.print()}
+            onClick={handlePrint}
             className="flex-1 flex items-center justify-center gap-2 bg-black text-white py-2 rounded-lg text-sm font-medium"
           >
             <Printer className="w-4 h-4" /> Imprimir
