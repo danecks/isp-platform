@@ -165,14 +165,8 @@ const QUERY_CONSOLIDADO = `
         AND ic.estado != 'cancelado'
     ), 0)                                                                       AS incentivos_cash_count,
 
-    -- Cliente principal (primera asignación activa)
-    (
-      SELECT c.nombre
-      FROM agent_assignments aa
-      JOIN clients c ON c.portal_cliente_id = aa.cliente_id
-      WHERE aa.employee_id = e.id AND aa.estado = 'activo'
-      LIMIT 1
-    )                                                                           AS cliente_principal,
+    -- Cliente principal (puesto operativo del empleado — fuente de verdad)
+    po.cliente_nombre                                                           AS cliente_principal,
 
     -- IGSS — elegibilidad del colaborador
     COALESCE(e.aplica_igss_general, FALSE)                                      AS aplica_igss_general,
@@ -226,7 +220,8 @@ const QUERY_CONSOLIDADO = `
   -- TH: buscar el puesto del que fue titular durante el período ($1=desde, $2=hasta)
   -- Primero busca en puesto_titular_historico; fallback a titular_employee_id actual
   LEFT JOIN LATERAL (
-    SELECT po2.aplica_igss, po2.regimen_igss, po2.fecha_inicio_ciclo, po2.tipo_turno_id
+    SELECT po2.aplica_igss, po2.regimen_igss, po2.fecha_inicio_ciclo, po2.tipo_turno_id,
+           po2.cliente_nombre
     FROM puestos_operativos po2
     WHERE po2.activo = TRUE
       AND (
@@ -254,7 +249,7 @@ const QUERY_CONSOLIDADO = `
     e.dia_descanso, e.horas_contrato, e.estado_laboral, e.puesto,
     e.area, e.sede, e.supervisor_nombre, e.frecuencia_pago,
     e.aplica_igss_general, e.estado_igss, e.fecha_inicio_igss,
-    po.aplica_igss, po.regimen_igss,
+    po.aplica_igss, po.regimen_igss, po.cliente_nombre,
     pr.estado, pr.observaciones, pr.revisado_por, pr.updated_at,
     pr.aprobado_por, pr.aprobado_at
   ORDER BY e.nombre_completo
@@ -846,11 +841,12 @@ prePlanillaRouter.get("/nomina/pre-planilla/anexo/horas-extra", async (req, res)
         e.id                                                              AS employee_id,
         e.nombre_completo,
         e.sede,
-        (SELECT c.nombre
-         FROM agent_assignments aa
-         JOIN clients c ON c.portal_cliente_id = aa.cliente_id
-         WHERE aa.employee_id = e.id AND aa.estado = 'activo'
-         LIMIT 1)                                                         AS cliente_nombre
+        COALESCE(
+          (SELECT po.cliente_nombre FROM puestos_operativos po
+           WHERE po.id = n.puesto_titular_id LIMIT 1),
+          (SELECT po.cliente_nombre FROM puestos_operativos po
+           WHERE po.titular_employee_id = e.id AND po.activo = TRUE LIMIT 1)
+        )                                                                 AS cliente_nombre
       FROM novedades_nomina_diarias n
       JOIN employees e ON e.id = n.employee_id
       WHERE n.fecha BETWEEN $1 AND $2
@@ -957,11 +953,12 @@ prePlanillaRouter.get("/nomina/pre-planilla/anexo/coberturas", async (req, res) 
         e.id    AS employee_id,
         e.nombre_completo,
         e.sede,
-        (SELECT c.nombre
-         FROM agent_assignments aa
-         JOIN clients c ON c.portal_cliente_id = aa.cliente_id
-         WHERE aa.employee_id = e.id AND aa.estado = 'activo'
-         LIMIT 1)                                                         AS cliente_nombre
+        COALESCE(
+          (SELECT po.cliente_nombre FROM puestos_operativos po
+           WHERE po.id = n.puesto_cubierto_id LIMIT 1),
+          (SELECT po.cliente_nombre FROM puestos_operativos po
+           WHERE po.titular_employee_id = e.id AND po.activo = TRUE LIMIT 1)
+        )                                                                 AS cliente_nombre
       FROM novedades_nomina_diarias n
       JOIN employees e ON e.id = n.employee_id
       WHERE n.fecha BETWEEN $1 AND $2
