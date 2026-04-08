@@ -604,6 +604,7 @@ agenteFichajeRouter.get("/agente/tokens", async (req, res) => {
     const { rows } = await pool.query(`
       SELECT e.id AS employee_id, e.nombre_completo, e.puesto AS cargo,
              e.tipo_personal, e.estado_laboral,
+             e.dpi, e.empl_numero,
              aqt.id AS token_id, aqt.qr_token, aqt.activo, aqt.created_at,
              po.nombre AS puesto_nombre, po.cliente_nombre
       FROM employees e
