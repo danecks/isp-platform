@@ -93,7 +93,7 @@ function ReversoModerno() {
     <div style={{ width: W, height: H, borderRadius: 7, overflow: "hidden", display: "flex", flexDirection: "column", fontFamily: "'Inter', -apple-system, sans-serif", background: "#ffffff", boxShadow: "0 8px 32px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.08)" }}>
       {/* TOP blanco con logo en colores reales */}
       <div style={{ background: "#ffffff", padding: "12px 14px 8px", display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, borderBottom: "none" }}>
-        <img src="/logo-isp.png" alt="ISP" style={{ height: 60, objectFit: "contain", marginBottom: 4 }} />
+        <img src="/logo-isp.png" alt="ISP" style={{ height: 80, objectFit: "contain", marginBottom: 4 }} />
         <div style={{ fontSize: 4.5, color: "#0f2044", letterSpacing: "0.1em", fontWeight: 700, textAlign: "center" }}>INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A.</div>
       </div>
 
