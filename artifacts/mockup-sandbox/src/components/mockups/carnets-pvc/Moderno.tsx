@@ -20,7 +20,7 @@ function FrenteModerno() {
 
         {/* Logo en franja */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-          <img src="/logo-isp.png" alt="ISP" style={{ width: 20, objectFit: "contain", filter: "brightness(0) invert(1) sepia(1) saturate(3) hue-rotate(10deg) brightness(1.1)" }} />
+          <img src="/logo-isp.png" alt="ISP" style={{ width: 24, objectFit: "contain", filter: "brightness(0) invert(1) sepia(1) saturate(3) hue-rotate(10deg) brightness(1.1)" }} />
           <div style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", fontSize: 4.5, fontWeight: 700, color: "rgba(245,200,66,0.7)", letterSpacing: "0.12em", textTransform: "uppercase" }}>
             SEGURIDAD · GT
           </div>
@@ -101,7 +101,7 @@ function ReversoModerno() {
     <div style={{ width: W, height: H, borderRadius: 7, overflow: "hidden", display: "flex", flexDirection: "column", fontFamily: "'Inter', -apple-system, sans-serif", background: "#ffffff", boxShadow: "0 8px 32px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.08)" }}>
       {/* TOP navy banda */}
       <div style={{ background: "#0f2044", padding: "12px 14px 10px", display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
-        <img src="/logo-isp.png" alt="ISP" style={{ height: 28, objectFit: "contain", filter: "brightness(0) invert(1) sepia(1) saturate(3) hue-rotate(10deg) brightness(1.1)", marginBottom: 4 }} />
+        <img src="/logo-isp.png" alt="ISP" style={{ height: 44, objectFit: "contain", filter: "brightness(0) invert(1) sepia(1) saturate(3) hue-rotate(10deg) brightness(1.1)", marginBottom: 4 }} />
         <div style={{ fontSize: 4.5, color: "rgba(245,200,66,0.7)", letterSpacing: "0.1em", fontWeight: 700, textAlign: "center" }}>INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A.</div>
       </div>
 
