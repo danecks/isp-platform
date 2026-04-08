@@ -5682,11 +5682,13 @@ export default function Operaciones() {
   const fechaDesdeURL = (() => {
     const params = new URLSearchParams(window.location.search);
     const f = params.get("pizarronFecha");
-    return f && /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= hoyISO ? f : null;
+    return f && /^\d{4}-\d{2}-\d{2}$/.test(f) ? f : null;
   })();
 
   const [fechaVista, setFechaVista]           = useState<string>(fechaDesdeURL ?? hoyISO);
-  const esFuturo = fechaVista > hoyISO;
+  const esFuturo  = fechaVista > hoyISO;
+  const esPasado  = fechaVista < hoyISO;
+  const esOtraFecha = fechaVista !== hoyISO;
   const [modalPlanFuturo, setModalPlanFuturo] = useState<{ puesto: Puesto; plan: PlanFuturo | null } | null>(null);
   const [modalPlanSSA, setModalPlanSSA]       = useState<InicioProyecto | null>(null);
   const [puestoParaTurno, setPuestoParaTurno] = useState<Puesto | null>(null);
@@ -5710,22 +5712,19 @@ export default function Operaciones() {
 
   // Función para navegar al pizarrón en una fecha específica y resaltar un cliente
   function irAFecha(fecha: string, clienteId?: number) {
-    if (fecha >= hoyISO) {
-      setFechaVista(fecha);
-      if (clienteId) setClienteResaltado(clienteId);
-      // Actualizar URL sin recargar para que sea compartible
-      const params = new URLSearchParams(window.location.search);
-      params.set("pizarronFecha", fecha);
-      if (clienteId) params.set("clienteId", String(clienteId));
-      window.history.replaceState({}, "", `${window.location.pathname}?${params}`);
-    }
+    setFechaVista(fecha);
+    if (clienteId) setClienteResaltado(clienteId);
+    // Actualizar URL sin recargar para que sea compartible
+    const params = new URLSearchParams(window.location.search);
+    params.set("pizarronFecha", fecha);
+    if (clienteId) params.set("clienteId", String(clienteId));
+    window.history.replaceState({}, "", `${window.location.pathname}?${params}`);
   }
 
   function navFecha(delta: number) {
     const d = new Date(fechaVista + "T00:00:00");
     d.setDate(d.getDate() + delta);
     const nuevo = toISODate(d);
-    if (nuevo < hoyISO) return;
     setFechaVista(nuevo);
     // Limpiar params de URL al navegar manualmente
     window.history.replaceState({}, "", window.location.pathname);
@@ -5748,14 +5747,14 @@ export default function Operaciones() {
 
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: tablero = [], isLoading: loadingTablero, refetch: refetchTablero } = useQuery<ClienteBoard[]>({
-    queryKey: ["operaciones-tablero", esFuturo ? fechaVista : "hoy"],
+    queryKey: ["operaciones-tablero", esOtraFecha ? fechaVista : "hoy"],
     queryFn: () => {
-      const url = esFuturo
+      const url = esOtraFecha
         ? `${API_BASE}/operaciones/tablero?fecha=${fechaVista}`
         : `${API_BASE}/operaciones/tablero`;
       return fetch(url).then((r) => r.json());
     },
-    refetchInterval: esFuturo ? false : 30_000,
+    refetchInterval: esOtraFecha ? false : 30_000,
   });
 
   const { data: pool, isLoading: loadingPool, refetch: refetchPool } = useQuery<Pool>({
@@ -5785,14 +5784,14 @@ export default function Operaciones() {
     };
   }
   const { data: adminTablero } = useQuery<AdminTablero>({
-    queryKey: ["operaciones-admin", esFuturo ? fechaVista : "hoy"],
+    queryKey: ["operaciones-admin", esOtraFecha ? fechaVista : "hoy"],
     queryFn: () => {
-      const url = esFuturo
+      const url = esOtraFecha
         ? `${API_BASE}/operaciones/tablero/administracion?fecha=${fechaVista}`
         : `${API_BASE}/operaciones/tablero/administracion`;
       return fetch(url).then((r) => r.json());
     },
-    refetchInterval: esFuturo ? false : 60_000,
+    refetchInterval: esOtraFecha ? false : 60_000,
   });
 
   const { data: historial = [], isLoading: loadingHistorial } = useQuery<Movimiento[]>({
@@ -5850,7 +5849,7 @@ export default function Operaciones() {
   // Lookup para la vista futura: puestoId → plan del día
   const planFuturoPorPuesto: Record<number, PlanFuturo> = {};
   for (const p of planFuturoDia) {
-    planFuturoPorPuesto[p.puesto_id] = p;
+    if (p.puesto_id !== null) planFuturoPorPuesto[p.puesto_id] = p;
   }
 
   const { data: poolFuturo, isLoading: loadingPoolFuturo } = useQuery<PoolFuturoData>({
@@ -6016,7 +6015,8 @@ export default function Operaciones() {
 
   // ── DnD: inicio ───────────────────────────────────────────────────────────
   function handleDragStart(event: DragStartEvent) {
-    if (isCerrado || hayDiasPendientes) return;
+    const enModoCuadre = esPasado && diasPendientesCierre.some(d => d.fecha === fechaVista);
+    if (!enModoCuadre && (isCerrado || hayDiasPendientes)) return;
     const agenteId = parseInt(event.active.id.toString().replace("agent-", ""));
     const agente = [
       ...(pool?.disponibles ?? []),
@@ -6034,8 +6034,8 @@ export default function Operaciones() {
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     setDraggingAgente(null);
-
-    if (isCerrado || hayDiasPendientes) return;
+    const enModoCuadre = esPasado && diasPendientesCierre.some(d => d.fecha === fechaVista);
+    if (!enModoCuadre && (isCerrado || hayDiasPendientes)) return;
     if (!over) return;
 
     const agenteId = parseInt(active.id.toString().replace("agent-", ""));
@@ -6211,7 +6211,9 @@ export default function Operaciones() {
 
   // ── Click en puesto: asignar agente seleccionado ──────────────────────────
   async function handlePuestoClick(puesto: Puesto) {
-    if (isCerrado || hayDiasPendientes) return;
+    // En modo cuadre (viendo un día pasado pendiente): permitir interacción con ese día
+    const enModoCuadre = esPasado && diasPendientesCierre.some(d => d.fecha === fechaVista);
+    if (!enModoCuadre && (isCerrado || hayDiasPendientes)) return;
     // En modo planificación: click en puesto abre el modal de plan futuro
     if (esFuturo) {
       if (agenteSeleccionado) {
@@ -6370,22 +6372,32 @@ export default function Operaciones() {
   // ── Cerrar día pendiente (fecha pasada sin cierre) ─────────────────────────
   async function cerrarDiaPendiente(comentario: string, sincronizarCustodias: boolean) {
     if (!primerDiaPendiente) return;
+    await cerrarDiaPorFecha(primerDiaPendiente, comentario, sincronizarCustodias);
+    setModalCierrePendiente(false);
+  }
+
+  // ── Cerrar cualquier día pendiente por fecha ────────────────────────────────
+  const [diaPendienteSeleccionado, setDiaPendienteSeleccionado] = useState<DiaPendienteCierre | null>(null);
+
+  async function cerrarDiaPorFecha(dia: DiaPendienteCierre, comentario: string, sincronizarCustodias: boolean) {
     try {
       const resp: any = await apiPost(`${API_BASE}/operaciones/cierre`, {
-        confirmacion: `CERRAR ${primerDiaPendiente.fechaStr}`,
+        confirmacion: `CERRAR ${dia.fechaStr}`,
         comentario,
         usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
         usuarioId: currentUser?.id,
         rol: currentUser?.rol,
         sincronizarCustodias,
-        fecha: primerDiaPendiente.fecha,
+        fecha: dia.fecha,
       });
       const syncMsg = resp?.syncCustodias?.totalCambios
         ? ` • ${resp.syncCustodias.totalCambios} custodia(s) actualizada(s).`
         : "";
-      toast({ title: "Día anterior cerrado", description: `Cierre de ${primerDiaPendiente.fechaStr} registrado.${syncMsg}` });
-      setModalCierrePendiente(false);
+      toast({ title: "Día cerrado", description: `Cierre de ${dia.fechaStr} registrado.${syncMsg}` });
+      setDiaPendienteSeleccionado(null);
       refetchCierre();
+      // Si estábamos viendo esa fecha, volver a hoy
+      if (fechaVista === dia.fecha) volverHoy();
     } catch (e: any) {
       toast({ title: "Error al cerrar", description: e.error ?? "Error desconocido", variant: "destructive" });
       throw e;
@@ -6527,33 +6539,62 @@ export default function Operaciones() {
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="flex flex-col h-full gap-4" style={{ minHeight: 0 }}>
 
-          {/* ── ALERTA: día anterior sin cerrar ──────────────────────────── */}
-          {hayDiasPendientes && primerDiaPendiente && (
-            <div className="shrink-0 rounded-xl border border-red-500/60 bg-red-950/40 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                <div className="shrink-0 w-9 h-9 rounded-lg bg-red-500/20 flex items-center justify-center">
-                  <Lock className="w-4.5 h-4.5 text-red-400" />
+          {/* ── ALERTA: días sin cerrar ──────────────────────────────────── */}
+          {hayDiasPendientes && (
+            <div className="shrink-0 rounded-xl border border-amber-500/40 bg-amber-950/30 px-4 py-3 flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <div className="shrink-0 w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                  <AlertTriangle className="w-4 h-4 text-amber-400" />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-red-300 leading-tight">
-                    Pizarrón bloqueado — día anterior sin cerrar
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-amber-300 leading-tight">
+                    {diasPendientesCierre.length === 1
+                      ? `1 día sin cerrar — ${primerDiaPendiente!.fechaStr}`
+                      : `${diasPendientesCierre.length} días sin cerrar`}
                   </p>
-                  <p className="text-xs text-red-400/80 mt-0.5">
-                    El día <span className="font-bold text-red-300">{primerDiaPendiente.fechaStr}</span> no fue cerrado.
-                    {diasPendientesCierre.length > 1 && (
-                      <span> Hay <span className="font-bold">{diasPendientesCierre.length}</span> días pendientes en total.</span>
-                    )}
-                    {" "}Debes cerrarlo antes de trabajar en el día actual.
+                  <p className="text-xs text-amber-400/70 mt-0.5">
+                    Selecciona un día para revisar su pizarrón y cerrarlo cuando esté cuadrado.
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => setModalCierrePendiente(true)}
-                className="shrink-0 flex items-center gap-2 bg-red-500 hover:bg-red-400 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-              >
-                <AlertTriangle className="w-4 h-4" />
-                Cerrar {primerDiaPendiente.fechaStr}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                {diasPendientesCierre.map((dia) => {
+                  const esViendo = fechaVista === dia.fecha;
+                  return (
+                    <div key={dia.fecha} className={`flex items-center gap-1 rounded-lg border text-xs font-medium overflow-hidden ${esViendo ? "border-amber-400/60 bg-amber-500/20" : "border-white/10 bg-white/5"}`}>
+                      <button
+                        onClick={() => irAFecha(dia.fecha)}
+                        className={`px-3 py-1.5 transition-colors ${esViendo ? "text-amber-200" : "text-white/70 hover:text-white"}`}
+                      >
+                        {esViendo && <span className="mr-1 text-amber-400">▶</span>}
+                        {dia.fechaStr}
+                      </button>
+                      <button
+                        onClick={() => { setDiaPendienteSeleccionado(dia); }}
+                        title={`Cerrar ${dia.fechaStr}`}
+                        className="px-2 py-1.5 border-l border-white/10 text-amber-400/70 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
+                      >
+                        <Lock className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              {esPasado && diasPendientesCierre.some(d => d.fecha === fechaVista) && (
+                <div className="flex items-center gap-2 pt-1 border-t border-amber-500/20">
+                  <p className="text-xs text-amber-400/80 flex-1">
+                    Estás viendo el pizarrón del <span className="font-bold text-amber-300">{formatFechaVista(fechaVista)}</span>.
+                    Cuadra la cobertura y ciérralo cuando esté listo.
+                  </p>
+                  <button
+                    onClick={() => setDiaPendienteSeleccionado(diasPendientesCierre.find(d => d.fecha === fechaVista) ?? null)}
+                    className="shrink-0 flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    Cerrar {formatFechaVista(fechaVista)}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -6714,45 +6755,51 @@ export default function Operaciones() {
             </button>
           </div>
 
-          {/* ── Barra de planificación futura ───────────────────────── */}
+          {/* ── Barra de navegación de fecha ─────────────────────────── */}
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => navFecha(-1)}
-              disabled={fechaVista <= hoyISO}
+              disabled={fechaVista <= "2026-04-01"}
               className="text-white/30 hover:text-white disabled:opacity-20 border border-white/8 rounded-xl px-2 py-1.5 bg-[#0c1929] transition-colors"
               title="Día anterior"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
             </button>
 
-            <div className={`flex items-center gap-2 rounded-xl px-3 py-1.5 border text-xs font-medium transition-colors ${esFuturo ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-300" : "bg-[#0c1929] border-white/8 text-white/60"}`}>
+            <div className={`flex items-center gap-2 rounded-xl px-3 py-1.5 border text-xs font-medium transition-colors ${
+              esFuturo  ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-300"  :
+              esPasado  ? "bg-amber-500/10  border-amber-500/30  text-amber-300"   :
+                          "bg-[#0c1929] border-white/8 text-white/60"
+            }`}>
               <Calendar className="w-3 h-3" />
               <input
                 type="date"
                 value={fechaVista}
-                min={hoyISO}
+                min="2026-04-01"
                 onChange={(e) => {
-                  if (e.target.value >= hoyISO) {
-                    setFechaVista(e.target.value);
-                    window.history.replaceState({}, "", window.location.pathname);
-                  }
+                  setFechaVista(e.target.value);
+                  window.history.replaceState({}, "", window.location.pathname);
                 }}
                 className="bg-transparent outline-none cursor-pointer text-inherit font-mono"
               />
               {esFuturo && (
                 <span className="text-indigo-400/70 text-[10px] font-semibold ml-1">PLANIFICACIÓN</span>
               )}
+              {esPasado && diasPendientesCierre.some(d => d.fecha === fechaVista) && (
+                <span className="text-amber-400/70 text-[10px] font-semibold ml-1">CUADRE</span>
+              )}
             </div>
 
             <button
               onClick={() => navFecha(1)}
-              className="text-white/30 hover:text-white border border-white/8 rounded-xl px-2 py-1.5 bg-[#0c1929] transition-colors"
+              disabled={fechaVista >= hoyISO}
+              className="text-white/30 hover:text-white disabled:opacity-20 border border-white/8 rounded-xl px-2 py-1.5 bg-[#0c1929] transition-colors"
               title="Día siguiente"
             >
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
 
-            {esFuturo && (
+            {esOtraFecha && (
               <button
                 onClick={volverHoy}
                 className="flex items-center gap-1.5 text-xs font-semibold text-white/50 hover:text-white bg-[#0c1929] border border-white/8 hover:border-white/20 rounded-xl px-3 py-1.5 transition-colors"
@@ -7124,7 +7171,8 @@ export default function Operaciones() {
                         agente={agente}
                         isSelected={agenteSeleccionado?.id === agente.id}
                         onClick={() => {
-                          if (isCerrado || hayDiasPendientes) return;
+                          const enModoCuadre = esPasado && diasPendientesCierre.some(d => d.fecha === fechaVista);
+                          if (!enModoCuadre && (isCerrado || hayDiasPendientes)) return;
                           setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente);
                         }}
                         disabled={
@@ -7790,7 +7838,7 @@ export default function Operaciones() {
         />
       )}
 
-      {/* Modal de cierre para día pendiente (pasado sin cerrar) */}
+      {/* Modal de cierre para día pendiente (pasado sin cerrar) — flujo antiguo */}
       {modalCierrePendiente && primerDiaPendiente && (
         <ModalCierre
           resumen={{ totalPuestos: 0, cubiertos: 0, descubiertos: 0, cubiertosPorTitular: 0, cubiertosPorRelevo: 0, ausencias: 0, horasExtra: 0 }}
@@ -7799,6 +7847,18 @@ export default function Operaciones() {
           fechaIso={primerDiaPendiente.fecha}
           onConfirm={cerrarDiaPendiente}
           onClose={() => setModalCierrePendiente(false)}
+        />
+      )}
+
+      {/* Modal de cierre para cualquier día pendiente seleccionado */}
+      {diaPendienteSeleccionado && (
+        <ModalCierre
+          resumen={{ totalPuestos: 0, cubiertos: 0, descubiertos: 0, cubiertosPorTitular: 0, cubiertosPorRelevo: 0, ausencias: 0, horasExtra: 0 }}
+          advertencias={[`Cierre retroactivo del día ${diaPendienteSeleccionado.fechaStr}`]}
+          fechaActivaStr={diaPendienteSeleccionado.fechaStr}
+          fechaIso={diaPendienteSeleccionado.fecha}
+          onConfirm={(comentario, syncCustodias) => cerrarDiaPorFecha(diaPendienteSeleccionado, comentario, syncCustodias)}
+          onClose={() => setDiaPendienteSeleccionado(null)}
         />
       )}
 
@@ -7818,10 +7878,10 @@ export default function Operaciones() {
         />
       )}
 
-      {modalSegmentos && cierreHoy && (
+      {modalSegmentos && (
         <ModalSegmentos
           puesto={modalSegmentos}
-          fecha={cierreHoy.fechaActiva}
+          fecha={esOtraFecha ? fechaVista : (cierreHoy?.fechaActiva ?? hoyISO)}
           onClose={() => setModalSegmentos(null)}
         />
       )}
