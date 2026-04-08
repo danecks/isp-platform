@@ -1,0 +1,74 @@
+Quiero que el sistema de carnets tenga un módulo de impresión para tarjetas PVC desde el navegador.
+
+Contexto:
+- El sistema está alojado en una página web.
+- La impresora es Canon PIXMA compatible con bandeja PVC para inkjet.
+- La bandeja tiene posiciones físicas fijas donde van las tarjetas PVC.
+- Necesito que el sistema imprima exactamente sobre esas posiciones.
+- No quiero una hoja normal centrada; quiero una plantilla milimétrica alineada con la bandeja.
+- La impresión debe salir a escala real 100%, sin ajustes automáticos del navegador.
+
+Objetivo técnico:
+1. Crear una vista de impresión HTML y también opción PDF.
+2. Permitir configurar un “layout de bandeja” con:
+   - ancho de hoja
+   - alto de hoja
+   - márgenes
+   - coordenadas X/Y de cada tarjeta
+   - ancho y alto de cada tarjeta
+   - separación entre tarjetas
+3. Cada carnet debe renderizarse en posición absoluta usando milímetros, no porcentajes.
+4. La salida debe usar CSS de impresión con @media print y @page.
+5. Debe existir un botón “Imprimir carnet” y otro “Descargar PDF”.
+6. El diseño de cada carnet debe poder incluir:
+   - foto
+   - nombres
+   - apellidos
+   - puesto
+   - empresa
+   - código QR o código de barras
+   - colores y fondo
+7. El sistema debe soportar imprimir:
+   - un carnet
+   - varios carnets en una sola bandeja
+8. Debe incluir un modo de calibración:
+   - imprimir plantilla de prueba
+   - mover offset X/Y global
+   - guardar configuración por impresora o por plantilla
+9. Debe guardar perfiles de impresión, por ejemplo:
+   - Canon TS8220 PVC Tray
+   - Canon TS8320 PVC Tray
+   - Canon TS9520 PVC Tray
+10. En la vista de impresión no deben aparecer botones, menús ni elementos de la web.
+11. La impresión debe forzar:
+   - tamaño exacto de página
+   - orientación correcta
+   - sin escalado visual interno
+12. Crear una arquitectura limpia:
+   - componente de diseño del carnet
+   - componente de layout de impresión
+   - configuración editable de posiciones
+   - servicio para exportar a PDF
+
+Importante:
+- Usa unidades en mm para todo lo relacionado con impresión.
+- Usa position:absolute para colocar cada tarjeta en la hoja.
+- No centres automáticamente nada.
+- No uses transform: scale para ajustar.
+- La página debe quedar lista para window.print().
+- Agrega una pantalla de calibración visual con guías.
+- Agrega valores de ejemplo para 2, 3 o 4 tarjetas por bandeja.
+- Separa claramente:
+  a) vista normal del sistema
+  b) vista imprimible
+  c) configuración de calibración
+
+Además:
+- Quiero que me expliques en comentarios del código qué parte controla:
+  - tamaño de hoja
+  - posiciones X/Y
+  - tamaño de tarjeta
+  - offset global de calibración
+  - impresión del navegador
+
+Si ves que la impresión directa del navegador tiene limitaciones para elegir impresora o hacer impresión silenciosa, deja preparada una segunda integración opcional con QZ Tray para impresión local directa.

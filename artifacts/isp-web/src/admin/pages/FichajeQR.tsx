@@ -7,6 +7,7 @@ import {
   ShieldAlert, AlertTriangle,
 } from "lucide-react";
 import CarnetesTab from "./CarnetesTab";
+import ImpresionAvanzadaTab from "./ImpresionAvanzadaTab";
 
 const API = "/api";
 const getSession = () => {
@@ -290,7 +291,7 @@ function NuevoDispositivoModal({
 
 // ── Página principal ──────────────────────────────────────────────────────────
 export default function FichajeQR() {
-  const [tab, setTab] = useState<"tokens" | "dispositivos" | "fichajes" | "municion" | "reportes" | "carnets">("tokens");
+  const [tab, setTab] = useState<"tokens" | "dispositivos" | "fichajes" | "municion" | "reportes" | "carnets" | "impresion">("tokens");
   const [agentes, setAgentes] = useState<AgenteToken[]>([]);
   const [fichajes, setFichajes] = useState<Fichaje[]>([]);
   const [dispositivos, setDispositivos] = useState<Dispositivo[]>([]);
@@ -474,7 +475,7 @@ export default function FichajeQR() {
 
       {/* Tabs */}
       <div className="flex gap-2 mb-6 flex-wrap">
-        {(["tokens", "dispositivos", "fichajes", "municion", "reportes", "carnets"] as const).map(t => (
+        {(["tokens", "dispositivos", "fichajes", "municion", "reportes", "carnets", "impresion"] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-colors flex items-center gap-2 ${
               tab === t
@@ -487,6 +488,7 @@ export default function FichajeQR() {
             {t === "municion" && <><ShieldAlert className="w-4 h-4" /> Munición</>}
             {t === "reportes" && <><AlertTriangle className="w-4 h-4" /> Reportes de turno</>}
             {t === "carnets" && <><CreditCard className="w-4 h-4" /> Carnets PVC</>}
+            {t === "impresion" && <><Printer className="w-4 h-4" /> Impresión avanzada</>}
           </button>
         ))}
       </div>
@@ -1031,6 +1033,13 @@ export default function FichajeQR() {
 
       {/* ── TAB CARNETS ──────────────────────────────────────────────────────── */}
       {tab === "carnets" && <CarnetesTab />}
+
+      {/* ── TAB IMPRESIÓN AVANZADA ────────────────────────────────────────────── */}
+      {tab === "impresion" && (
+        <div className="max-w-sm mx-auto">
+          <ImpresionAvanzadaTab />
+        </div>
+      )}
 
       {/* Modales */}
       {nuevoDispositivoOpen && (
