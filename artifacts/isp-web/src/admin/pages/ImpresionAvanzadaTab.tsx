@@ -471,42 +471,142 @@ function openPrintPage(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// COMPONENTES UI
+// COMPONENTES UI — Mini cards del diseño Moderno para la vista previa
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Vista escalada de la bandeja — muestra la hoja con slots pintados. */
+/** Mini-card FRENTE del diseño Moderno, escalada al ancho/alto dado */
+function MiniCardFrente({ agent, w, h }: { agent: AgenteCarnet; w: number; h: number }) {
+  const BASE_W = 96; // px base del mini card (proporcional a CR-80 portrait)
+  const BASE_H = 152;
+  const sx = w / BASE_W;
+  const sy = h / BASE_H;
+  const s  = Math.min(sx, sy);
+  const initials = getInitials(agent.nombre_completo);
+  const cargo    = getCargoLabel(agent.tipo_personal, agent.cargo);
+  const num      = agent.empl_numero ? `#${String(agent.empl_numero).padStart(4, "0")}` : "";
+
+  return (
+    <div style={{ width: w, height: h, overflow: "hidden", position: "relative", background: "#fff" }}>
+      <div style={{
+        width: BASE_W, height: BASE_H,
+        transform: `scale(${s})`, transformOrigin: "top left",
+        display: "flex", flexDirection: "row", background: "#fff",
+        fontFamily: "Arial,sans-serif", overflow: "hidden",
+      }}>
+        {/* Franja navy */}
+        <div style={{ width: 19, background: "linear-gradient(180deg,#0f2044,#132a5a)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between", padding: "5px 0", position: "relative", flexShrink: 0 }}>
+          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: "#f5c842" }} />
+          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: "#f5c842" }} />
+          <img src="/images/logo-icon.png" style={{ width: 13, objectFit: "contain", filter: "brightness(0) invert(1)" }} />
+          <span style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", fontSize: 5, color: "rgba(255,255,255,.4)", fontFamily: "monospace", fontWeight: 700 }}>{num}</span>
+        </div>
+        {/* Contenido */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#fff" }}>
+          {/* Header */}
+          <div style={{ padding: "5px 4px 3px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+            <div style={{ width: 22, height: 22, borderRadius: "50%", background: "linear-gradient(135deg,#0f2044,#1e4a9a)", border: "1px solid #f5c842", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 3 }}>
+              <span style={{ color: "#f5c842", fontSize: 8, fontWeight: 900 }}>{initials}</span>
+            </div>
+            <div style={{ fontSize: 5, fontWeight: 900, color: "#0f2044", textAlign: "center", lineHeight: 1.2, textTransform: "uppercase", marginBottom: 1 }}>{agent.nombre_completo}</div>
+            <div style={{ fontSize: 3.5, fontWeight: 700, color: "#b8860b", letterSpacing: "0.05em" }}>{cargo}</div>
+          </div>
+          {/* Gold line */}
+          <div style={{ height: 1, background: "linear-gradient(90deg,#d4a017,#f5c842,#e8b820)" }} />
+          {/* Datos */}
+          <div style={{ padding: "3px 4px", flex: 1 }}>
+            {agent.dpi && <>
+              <div style={{ fontSize: 3, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", marginBottom: 1 }}>DPI</div>
+              <div style={{ fontSize: 4, color: "#0f2044", fontWeight: 800, fontFamily: "monospace", marginBottom: 2 }}>{agent.dpi}</div>
+            </>}
+            <div style={{ height: 0.5, background: "#f1f5f9", marginBottom: 3 }} />
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <QRCodeSVG value={`/agente?token=${agent.qr_token ?? ""}`} size={28} />
+            </div>
+            <div style={{ fontSize: 3, color: "#94a3b8", textAlign: "center", marginTop: 2 }}>Escanea para verificar</div>
+          </div>
+          {/* Footer */}
+          <div style={{ background: "#0f2044", padding: "1.5px 4px", display: "flex", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 3, color: "rgba(255,255,255,.3)" }}>2026</span>
+            <span style={{ fontSize: 3, color: "#f5c842", fontWeight: 800 }}>CARNET ISP</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Mini-card REVERSO del diseño Moderno */
+function MiniCardReverso({ w, h }: { w: number; h: number }) {
+  const BASE_W = 96;
+  const BASE_H = 152;
+  const s = Math.min(w / BASE_W, h / BASE_H);
+
+  return (
+    <div style={{ width: w, height: h, overflow: "hidden", background: "#fff" }}>
+      <div style={{
+        width: BASE_W, height: BASE_H,
+        transform: `scale(${s})`, transformOrigin: "top left",
+        display: "flex", flexDirection: "column", background: "#fff",
+        fontFamily: "Arial,sans-serif", overflow: "hidden",
+      }}>
+        <div style={{ padding: "7px 6px 4px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+          <img src="/images/logo-isp.png" style={{ height: 28, objectFit: "contain" }} />
+          <div style={{ fontSize: 3.5, color: "#0f2044", fontWeight: 700, textAlign: "center", marginTop: 3, letterSpacing: "0.06em" }}>
+            INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A.
+          </div>
+        </div>
+        <div style={{ height: 1.5, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)" }} />
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "4px 6px" }}>
+          <div style={{ fontSize: 5, color: "#1e3a5f", textAlign: "center", lineHeight: 1.55 }}>
+            El presente acredita como colaborador de <strong style={{ color: "#0f2044" }}>ISP S.A.</strong> Se solicita a las Autoridades <strong>Civiles y Militares</strong> la colaboración en caso de ser requerida.
+          </div>
+        </div>
+        <div style={{ height: 0.5, background: "linear-gradient(90deg,transparent,#f5c84270,#f5c842,#f5c84270,transparent)", margin: "0 8px" }} />
+        <div style={{ padding: "3px 6px 5px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+          <div style={{ fontSize: 6, fontWeight: 900, color: "#0f2044" }}>www.ispsa.net</div>
+          <div style={{ fontSize: 3.5, color: "#94a3b8", marginTop: 1 }}>contacto@isp-guatemala.com</div>
+        </div>
+        <div style={{ height: 4, background: "#0f2044" }} />
+      </div>
+    </div>
+  );
+}
+
+/** Vista escalada de la bandeja con mini-cards del diseño Moderno */
 function TrayPreview({
   profile,
   offset,
   queue,
+  fase = "frente",
   isCalib = false,
 }: {
   profile: PrinterProfile;
   offset: CalibrationOffset;
   queue: (AgenteCarnet | null)[];
+  fase?: "frente" | "reverso";
   isCalib?: boolean;
 }) {
-  const MAX_W = 240; // px de ancho máximo del preview
+  const MAX_W = 240;
   const scale = MAX_W / profile.pageWidth;
   const previewH = profile.pageHeight * scale;
 
   return (
     <div className="flex flex-col items-center gap-1">
       <span className="text-white/30 text-[9px] uppercase tracking-wider">
-        Vista previa — {profile.pageWidth}×{profile.pageHeight}mm
+        Vista previa · {profile.pageWidth}×{profile.pageHeight}mm
       </span>
-      <div
-        style={{
-          width: MAX_W,
-          height: previewH,
-          background: "#fff",
-          position: "relative",
-          border: "1px solid rgba(255,255,255,0.15)",
-          borderRadius: 4,
-          overflow: "hidden",
-          flexShrink: 0,
-        }}
-      >
+      <div style={{
+        width: MAX_W, height: previewH,
+        background: "#f0f0f0",
+        position: "relative",
+        border: "1px solid rgba(255,255,255,0.15)",
+        borderRadius: 4,
+        overflow: "hidden",
+        flexShrink: 0,
+        boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+      }}>
+        {/* Fondo papel */}
+        <div style={{ position: "absolute", inset: 0, background: "#fff" }} />
         {profile.slots.map((slot, i) => {
           const agent = queue[i];
           const left = (slot.x + offset.x) * scale;
@@ -519,38 +619,34 @@ function TrayPreview({
               style={{
                 position: "absolute",
                 left, top, width: w, height: h,
-                border: isCalib ? "1px dashed #0f2044" : "1px solid rgba(15,32,68,0.4)",
                 borderRadius: 2,
-                background: isCalib ? "#f8fafc" : agent ? "#fff" : "rgba(15,32,68,0.05)",
                 overflow: "hidden",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
+                boxShadow: agent ? "0 1px 6px rgba(0,0,0,0.18)" : undefined,
+                border: isCalib ? "1px dashed #0f2044"
+                       : agent ? "none"
+                       : "1px dashed rgba(15,32,68,0.2)",
+                background: agent ? "#fff" : "rgba(15,32,68,0.03)",
               }}
             >
               {isCalib ? (
                 <>
                   <div style={{ position: "absolute", left: 0, right: 0, height: 0.5, background: "#0f2044", top: "50%" }} />
                   <div style={{ position: "absolute", top: 0, bottom: 0, width: 0.5, background: "#0f2044", left: "50%" }} />
-                  <span style={{ fontSize: 6, color: "#0f2044", fontFamily: "monospace", fontWeight: 700, zIndex: 1, background: "rgba(255,255,255,0.7)", padding: "0 2px" }}>
-                    Slot {i + 1}
-                  </span>
-                  <span style={{ fontSize: 5, color: "#94a3b8", fontFamily: "monospace", marginTop: 2, zIndex: 1 }}>
-                    {slot.width}×{slot.height}mm @ ({slot.x + offset.x},{slot.y + offset.y})
-                  </span>
+                  <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
+                    <span style={{ fontSize: 7, color: "#0f2044", fontFamily: "monospace", fontWeight: 700, background: "rgba(255,255,255,.8)", padding: "0 2px" }}>Slot {i + 1}</span>
+                    <span style={{ fontSize: 5.5, color: "#64748b", fontFamily: "monospace" }}>{slot.width}×{slot.height}mm</span>
+                    <span style={{ fontSize: 5, color: "#94a3b8", fontFamily: "monospace" }}>({(slot.x + offset.x).toFixed(1)}, {(slot.y + offset.y).toFixed(1)})</span>
+                  </div>
                 </>
               ) : agent ? (
-                <>
-                  <div style={{ fontSize: 5, fontWeight: 900, color: "#0f2044", textAlign: "center", padding: "0 3px", lineHeight: 1.2, textTransform: "uppercase" }}>
-                    {agent.nombre_completo}
-                  </div>
-                  <div style={{ fontSize: 4, color: "#b8860b", marginTop: 1 }}>
-                    {getCargoLabel(agent.tipo_personal, agent.cargo)}
-                  </div>
-                </>
+                fase === "frente"
+                  ? <MiniCardFrente agent={agent} w={w} h={h} />
+                  : <MiniCardReverso w={w} h={h} />
               ) : (
-                <span style={{ fontSize: 6, color: "rgba(15,32,68,0.3)" }}>Slot {i + 1} vacío</span>
+                <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
+                  <span style={{ fontSize: 7, color: "rgba(15,32,68,0.25)", fontWeight: 700 }}>Slot {i + 1}</span>
+                  <span style={{ fontSize: 5.5, color: "rgba(15,32,68,0.15)" }}>vacío</span>
+                </div>
               )}
             </div>
           );
@@ -788,96 +884,144 @@ export default function ImpresionAvanzadaTab() {
       {/* ── TAB: IMPRIMIR ─────────────────────────────────────────────────── */}
       {tab === "imprimir" && (
         <div className="space-y-4">
-          <TrayPreview profile={activeProfile} offset={offset} queue={queue} />
 
-          {/* Slots */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-white/50 text-xs font-semibold uppercase tracking-wider">
-                Slots ({queue.filter(Boolean).length}/{activeProfile.slots.length} asignados)
-              </p>
-              <button onClick={autoFill} className="text-[10px] text-[#f5c842]/70 hover:text-[#f5c842] transition-colors">
-                Autocompletar
-              </button>
-            </div>
-            {activeProfile.slots.map((_, i) => (
-              <div key={i} className="flex items-center gap-2 bg-white/3 border border-white/8 rounded-xl p-2.5">
-                <div className="w-5 h-5 rounded-md bg-[#0f2044]/60 border border-[#f5c842]/20 flex items-center justify-center flex-shrink-0">
-                  <span className="text-[#f5c842] text-[9px] font-black">{i + 1}</span>
-                </div>
-                {queue[i] ? (
-                  <>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white text-xs font-semibold truncate">{queue[i]!.nombre_completo}</p>
-                      <p className="text-white/40 text-[10px]">{getCargoLabel(queue[i]!.tipo_personal, queue[i]!.cargo)}</p>
-                    </div>
-                    <button onClick={() => assignToSlot(i, null)} className="p-1 rounded hover:bg-white/10 transition-colors text-white/30 hover:text-white/60">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </>
-                ) : (
-                  <div className="flex-1">
-                    <div className="relative">
-                      <select
-                        value=""
-                        onChange={e => {
-                          const a = agentes.find(ag => ag.employee_id === Number(e.target.value));
-                          if (a) assignToSlot(i, a);
-                        }}
-                        className="w-full appearance-none bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white/50 outline-none"
-                      >
-                        <option value="">— Seleccionar agente —</option>
-                        {filtrados
-                          .filter(a => !queue.some(q => q?.employee_id === a.employee_id))
-                          .map(a => (
-                            <option key={a.employee_id} value={a.employee_id}>
-                              {a.nombre_completo}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-                  </div>
-                )}
+          {/* Indicador de paso */}
+          <div className="flex items-center gap-0">
+            {/* Paso 1 */}
+            <div className={`flex-1 flex flex-col items-center gap-1 py-2.5 rounded-l-xl border ${
+              fase === "frente"
+                ? "bg-[#f5c842]/10 border-[#f5c842]/30"
+                : "bg-white/5 border-white/10"
+            }`}>
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black ${
+                fase === "frente" ? "bg-[#f5c842] text-[#0f2044]" : "bg-emerald-500 text-white"
+              }`}>
+                {fase === "frente" ? "1" : "✓"}
               </div>
-            ))}
+              <span className={`text-[10px] font-bold ${fase === "frente" ? "text-[#f5c842]" : "text-emerald-400"}`}>
+                Lado frente
+              </span>
+            </div>
+            {/* Flecha */}
+            <div className="w-6 h-[1px] bg-white/15 flex-shrink-0" />
+            {/* Paso 2 */}
+            <div className={`flex-1 flex flex-col items-center gap-1 py-2.5 rounded-r-xl border ${
+              fase === "reverso"
+                ? "bg-amber-500/10 border-amber-500/30"
+                : "bg-white/3 border-white/8"
+            }`}>
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black ${
+                fase === "reverso" ? "bg-amber-400 text-[#0f2044]" : "bg-white/10 text-white/30"
+              }`}>
+                2
+              </div>
+              <span className={`text-[10px] font-bold ${fase === "reverso" ? "text-amber-300" : "text-white/25"}`}>
+                Lado reverso
+              </span>
+            </div>
           </div>
 
-          {/* Búsqueda rápida */}
-          <input
-            value={busqueda}
-            onChange={e => setBusqueda(e.target.value)}
-            placeholder="Buscar agente por nombre o DPI..."
-            className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 outline-none"
-          />
+          {/* Vista previa de bandeja con diseño Moderno */}
+          <TrayPreview profile={activeProfile} offset={offset} queue={queue} fase={fase} />
 
-          {/* Fase y botones */}
-          {fase === "frente" ? (
-            <button
-              onClick={handlePrintFrente}
-              disabled={queue.every(q => !q) || printing}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-[#f5c842]/10 hover:bg-[#f5c842]/20 border border-[#f5c842]/30 rounded-xl text-sm text-[#f5c842] font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              <Printer className="w-4 h-4" />
-              {printing ? "Preparando..." : `Imprimir frentes (${queue.filter(Boolean).length} tarjeta${queue.filter(Boolean).length !== 1 ? "s" : ""})`}
-            </button>
-          ) : (
-            <div className="space-y-2">
-              <div className="flex items-start gap-2 bg-amber-500/8 border border-amber-500/20 rounded-xl px-3 py-2.5">
-                <RefreshCw className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
-                <p className="text-amber-300/70 text-[11px] leading-relaxed">
-                  Dale la vuelta a las tarjetas, insértalas de nuevo en la bandeja y luego imprime el reverso.
-                </p>
+          {/* Asignación de slots — solo visible en paso 1 */}
+          {fase === "frente" && (
+            <>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-white/50 text-xs font-semibold uppercase tracking-wider">
+                    Slots ({queue.filter(Boolean).length}/{activeProfile.slots.length} asignados)
+                  </p>
+                  <button onClick={autoFill} className="text-[10px] text-[#f5c842]/70 hover:text-[#f5c842] transition-colors">
+                    Autocompletar
+                  </button>
+                </div>
+                {activeProfile.slots.map((_, i) => (
+                  <div key={i} className="flex items-center gap-2 bg-white/3 border border-white/8 rounded-xl p-2.5">
+                    <div className="w-5 h-5 rounded-md bg-[#0f2044]/60 border border-[#f5c842]/20 flex items-center justify-center flex-shrink-0">
+                      <span className="text-[#f5c842] text-[9px] font-black">{i + 1}</span>
+                    </div>
+                    {queue[i] ? (
+                      <>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-xs font-semibold truncate">{queue[i]!.nombre_completo}</p>
+                          <p className="text-white/40 text-[10px]">{getCargoLabel(queue[i]!.tipo_personal, queue[i]!.cargo)}</p>
+                        </div>
+                        <button onClick={() => assignToSlot(i, null)} className="p-1 rounded hover:bg-white/10 transition-colors text-white/30 hover:text-white/60">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    ) : (
+                      <div className="flex-1">
+                        <select
+                          value=""
+                          onChange={e => {
+                            const a = agentes.find(ag => ag.employee_id === Number(e.target.value));
+                            if (a) assignToSlot(i, a);
+                          }}
+                          className="w-full appearance-none bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white/50 outline-none"
+                        >
+                          <option value="">— Seleccionar agente —</option>
+                          {filtrados
+                            .filter(a => !queue.some(q => q?.employee_id === a.employee_id))
+                            .map(a => (
+                              <option key={a.employee_id} value={a.employee_id}>
+                                {a.nombre_completo}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                <input
+                  value={busqueda}
+                  onChange={e => setBusqueda(e.target.value)}
+                  placeholder="Buscar por nombre o DPI..."
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white placeholder-white/30 outline-none"
+                />
               </div>
+
+              <button
+                onClick={handlePrintFrente}
+                disabled={queue.every(q => !q) || printing}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-[#f5c842]/10 hover:bg-[#f5c842]/20 border border-[#f5c842]/30 rounded-xl text-sm text-[#f5c842] font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <Printer className="w-4 h-4" />
+                {printing ? "Preparando..." : `Imprimir frentes (${queue.filter(Boolean).length} tarjeta${queue.filter(Boolean).length !== 1 ? "s" : ""})`}
+              </button>
+            </>
+          )}
+
+          {/* Paso 2 — reverso */}
+          {fase === "reverso" && (
+            <div className="space-y-3">
+              {/* Instrucción flip */}
+              <div className="bg-amber-500/8 border border-amber-500/25 rounded-2xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <RefreshCw className="w-5 h-5 text-amber-400 flex-shrink-0" />
+                  <p className="text-amber-300 text-sm font-bold">Dale vuelta a las tarjetas</p>
+                </div>
+                <ol className="text-amber-300/60 text-[11px] leading-relaxed space-y-1 ml-7">
+                  <li>1. Saca las tarjetas de la bandeja</li>
+                  <li>2. Dales vuelta (lado reverso hacia arriba)</li>
+                  <li>3. Insértalas de nuevo en los mismos slots</li>
+                  <li>4. Presiona "Imprimir reversos"</li>
+                </ol>
+              </div>
+
               <button
                 onClick={handlePrintReverso}
                 disabled={printing}
-                className="w-full flex items-center justify-center gap-2 py-3 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl text-sm text-amber-300 font-semibold disabled:opacity-40 transition-colors"
+                className="w-full flex items-center justify-center gap-2 py-3 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 rounded-xl text-sm text-amber-300 font-bold disabled:opacity-40 transition-colors"
               >
                 <Printer className="w-4 h-4" />
                 {printing ? "Preparando..." : "Imprimir reversos"}
               </button>
-              <button onClick={clearQueue} className="w-full py-2 text-xs text-white/30 hover:text-white/50 transition-colors">
-                Cancelar y limpiar cola
+
+              <button onClick={clearQueue} className="w-full py-2 text-xs text-white/25 hover:text-white/50 transition-colors">
+                Cancelar y empezar de nuevo
               </button>
             </div>
           )}
