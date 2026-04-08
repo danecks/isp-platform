@@ -3,7 +3,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  Printer, Search, CheckCircle, X, Shield, BadgeCheck, Users, CreditCard,
+  Printer, Search, CheckCircle, X, BadgeCheck, Users, CreditCard, RefreshCw,
 } from "lucide-react";
 
 const API = "/api";
@@ -52,76 +52,145 @@ function getCargoLabel(tipo_personal: string, cargo: string | null) {
   return map[(tipo_personal || "").toLowerCase()] ?? (cargo || tipo_personal || "AGENTE").toUpperCase();
 }
 
-// ── CSS compartido para la tarjeta impresa ─────────────────────────────────────
-const CARD_CSS = `
+// ── CSS impresión FRENTE (Moderno) ────────────────────────────────────────────
+const FRENTE_CSS = `
   @page { size: 53.98mm 85.6mm portrait; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { width: 53.98mm; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; background: #ffffff; }
-  .card { width: 53.98mm; height: 85.6mm; display: flex; flex-direction: column; page-break-after: always; overflow: hidden; }
-  .header { background: #0f2044; padding: 3.5mm 3mm 2.5mm; text-align: center; flex-shrink: 0; }
-  .header-top { display: flex; align-items: center; justify-content: center; gap: 1.5mm; margin-bottom: 1mm; }
-  .shield { width: 5mm; height: 5mm; flex-shrink: 0; }
-  .org-sigla { font-size: 6.5pt; font-weight: 900; color: #f5c842; letter-spacing: 0.15em; }
-  .org-nombre { font-size: 4pt; color: rgba(255,255,255,0.65); letter-spacing: 0.04em; line-height: 1.2; }
-  .tipo-badge { display: inline-block; background: #f5c842; color: #0f2044; font-size: 4.5pt; font-weight: 900; letter-spacing: 0.12em; padding: 0.6mm 2mm; border-radius: 1mm; margin-top: 1.5mm; }
-  .avatar-wrap { display: flex; justify-content: center; margin: 3mm 0 1.5mm; flex-shrink: 0; }
-  .avatar { width: 14mm; height: 14mm; border-radius: 50%; background: #0f2044; display: flex; align-items: center; justify-content: center; border: 1.2pt solid #f5c842; }
-  .avatar-initials { font-size: 9pt; font-weight: 900; color: #f5c842; letter-spacing: 0.05em; }
-  .datos { flex: 1; padding: 0 3mm; text-align: center; }
-  .nombre { font-size: 7pt; font-weight: 900; color: #0f2044; line-height: 1.2; margin-bottom: 1mm; text-transform: uppercase; }
-  .cargo-label { font-size: 5pt; font-weight: 700; color: #1e5fad; letter-spacing: 0.1em; margin-bottom: 2mm; }
-  .info-row { display: flex; align-items: center; justify-content: center; gap: 1mm; margin-bottom: 1mm; }
-  .info-label { font-size: 4pt; color: #9ca3af; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
-  .info-value { font-size: 5pt; color: #111827; font-weight: 700; font-family: "Courier New", monospace; }
-  .divider { border: none; border-top: 0.3pt solid #e5e7eb; margin: 1.5mm 3mm; }
-  .qr-section { display: flex; flex-direction: column; align-items: center; padding: 0 3mm 1.5mm; flex-shrink: 0; }
-  .qr-wrap { background: #fff; border: 0.5pt solid #e5e7eb; border-radius: 1.5mm; padding: 1mm; display: inline-flex; }
-  .qr-wrap svg { width: 16mm; height: 16mm; display: block; }
-  .qr-hint { font-size: 3.5pt; color: #9ca3af; margin-top: 1mm; text-align: center; }
-  .footer { background: #0f2044; padding: 1.2mm 3mm; text-align: center; flex-shrink: 0; }
-  .footer-text { font-size: 3.5pt; color: rgba(255,255,255,0.5); }
-  .footer-emision { font-size: 3.5pt; color: #f5c842; font-weight: 700; }
+  body { width: 53.98mm; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; background: #fff; }
+  .card { width: 53.98mm; height: 85.6mm; display: flex; flex-direction: row; overflow: hidden; }
+  .stripe { width: 10.5mm; background: linear-gradient(180deg, #0f2044 0%, #132a5a 100%); display: flex; flex-direction: column; align-items: center; flex-shrink: 0; position: relative; }
+  .stripe-bar-t { position: absolute; top: 0; left: 0; right: 0; height: 1mm; background: #f5c842; }
+  .stripe-bar-b { position: absolute; bottom: 0; left: 0; right: 0; height: 1mm; background: #f5c842; }
+  .stripe-inner { display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 3mm 0; width: 100%; height: 100%; }
+  .stripe-logo { width: 7mm; object-fit: contain; filter: brightness(0) invert(1); }
+  .stripe-num { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 4pt; color: rgba(255,255,255,0.4); font-family: "Courier New", monospace; font-weight: 700; letter-spacing: 0.1em; }
+  .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .c-header { background: #fff; padding: 2.5mm 2mm 2mm; border-bottom: 0.3pt solid #f1f5f9; display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+  .avatar { width: 13mm; height: 13mm; border-radius: 50%; background: linear-gradient(135deg, #0f2044, #1e4a9a); border: 0.8pt solid #f5c842; display: flex; align-items: center; justify-content: center; margin-bottom: 1.5mm; }
+  .avatar-i { font-size: 8pt; font-weight: 900; color: #f5c842; }
+  .nombre { font-size: 6pt; font-weight: 900; color: #0f2044; text-align: center; line-height: 1.2; text-transform: uppercase; margin-bottom: 0.8mm; }
+  .cargo { font-size: 4pt; font-weight: 700; color: #b8860b; text-align: center; letter-spacing: 0.1em; text-transform: uppercase; }
+  .gold-line { height: 0.6pt; background: linear-gradient(90deg, #d4a017, #f5c842, #e8b820); flex-shrink: 0; }
+  .datos { padding: 1.5mm 2mm; flex: 1; }
+  .d-label { font-size: 3.5pt; color: #94a3b8; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.5mm; }
+  .d-value { font-size: 5.5pt; color: #0f2044; font-weight: 800; font-family: "Courier New", monospace; margin-bottom: 1.5mm; }
+  .hdivider { height: 0.3pt; background: #f1f5f9; margin-bottom: 1.5mm; }
+  .qr-row { display: flex; align-items: flex-end; gap: 1.5mm; }
+  .qr-txt { flex: 1; }
+  .qr-lbl { font-size: 3pt; color: #94a3b8; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.8mm; }
+  .qr-hint { font-size: 3pt; color: #64748b; line-height: 1.4; }
+  .qr-box { background: #fff; border: 0.4pt solid #e2e8f0; border-radius: 1mm; padding: 0.5mm; flex-shrink: 0; }
+  .qr-box svg { width: 14mm; height: 14mm; display: block; }
+  .c-footer { background: #0f2044; padding: 1mm 2mm; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .f-date { font-size: 3pt; color: rgba(255,255,255,0.35); }
+  .f-label { font-size: 3pt; font-weight: 800; color: #f5c842; letter-spacing: 0.08em; }
 `;
 
-function buildCarnetBlock(a: {
-  nombre_completo: string;
-  dpi?: string | null;
-  empl_numero?: number | null;
-}, initials: string, cargoLabel: string, fechaEmision: string, svgHtml: string) {
-  const dpiRow = a.dpi
-    ? `<div class="info-row"><span class="info-label">DPI</span><span class="info-value">${a.dpi}</span></div>`
-    : "";
-  const emplRow = a.empl_numero
-    ? `<div class="info-row"><span class="info-label">No. Empleado</span><span class="info-value">${String(a.empl_numero).padStart(4, "0")}</span></div>`
+// ── CSS impresión REVERSO (Moderno) ───────────────────────────────────────────
+const REVERSO_CSS = `
+  @page { size: 53.98mm 85.6mm portrait; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 53.98mm; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; background: #fff; }
+  .card { width: 53.98mm; height: 85.6mm; display: flex; flex-direction: column; overflow: hidden; }
+  .r-top { background: #fff; padding: 4mm 3mm 2mm; display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+  .r-logo { height: 18mm; object-fit: contain; }
+  .r-org { font-size: 3.8pt; color: #0f2044; letter-spacing: 0.1em; font-weight: 700; text-align: center; margin-top: 1.5mm; }
+  .r-gold { height: 0.8pt; background: linear-gradient(90deg, #d4a017, #f5c842, #d4a017); flex-shrink: 0; }
+  .r-body { flex: 1; background: #fff; display: flex; align-items: center; justify-content: center; padding: 2.5mm 4mm; }
+  .r-legal { font-size: 5.5pt; color: #1e3a5f; text-align: center; line-height: 1.65; }
+  .r-legal strong { font-weight: 800; color: #0f2044; }
+  .r-divider { height: 0.5pt; background: linear-gradient(90deg, transparent, rgba(245,200,66,0.5), #f5c842, rgba(245,200,66,0.5), transparent); margin: 0 4mm; flex-shrink: 0; }
+  .r-footer { background: #fff; padding: 1.5mm 3mm 2mm; display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+  .r-web { font-size: 6.5pt; font-weight: 900; color: #0f2044; letter-spacing: 0.06em; }
+  .r-email { font-size: 3.8pt; color: #94a3b8; letter-spacing: 0.04em; margin-top: 0.5mm; }
+  .r-bottom { background: #0f2044; height: 2mm; flex-shrink: 0; }
+`;
+
+// ── Generadores HTML ───────────────────────────────────────────────────────────
+function buildFrenteBlock(
+  a: { nombre_completo: string; dpi?: string | null; empl_numero?: number | null },
+  initials: string,
+  cargoLabel: string,
+  fechaEmision: string,
+  svgHtml: string,
+  logoIconUrl: string,
+) {
+  const emplNum = a.empl_numero ? `#${String(a.empl_numero).padStart(4, "0")}` : "";
+  const dpiSection = a.dpi
+    ? `<div class="d-label">DPI</div><div class="d-value">${a.dpi}</div>`
     : "";
 
   return `<div class="card">
-  <div class="header">
-    <div class="header-top">
-      <svg class="shield" viewBox="0 0 24 24"><path d="M12 2L3 6v6c0 5.25 3.75 10.15 9 11.35C17.25 22.15 21 17.25 21 12V6L12 2z" fill="#f5c842"/></svg>
-      <span class="org-sigla">I·S·P</span>
+  <div class="stripe">
+    <div class="stripe-bar-t"></div>
+    <div class="stripe-inner">
+      <img class="stripe-logo" src="${logoIconUrl}" />
+      <span class="stripe-num">${emplNum}</span>
     </div>
-    <div class="org-nombre">Investigaciones y Seguridad<br>Profesional S.A.</div>
-    <div class="tipo-badge">CARNET DE IDENTIFICACIÓN</div>
+    <div class="stripe-bar-b"></div>
   </div>
-  <div class="avatar-wrap"><div class="avatar"><span class="avatar-initials">${initials}</span></div></div>
-  <div class="datos">
-    <div class="nombre">${a.nombre_completo}</div>
-    <div class="cargo-label">${cargoLabel}</div>
-    ${dpiRow}${emplRow}
-  </div>
-  <hr class="divider">
-  <div class="qr-section">
-    <div class="qr-wrap">${svgHtml}</div>
-    <div class="qr-hint">Escanea para verificar identidad y estado</div>
-  </div>
-  <div class="footer">
-    <span class="footer-text">Emitido: </span><span class="footer-emision">${fechaEmision}</span>
+  <div class="content">
+    <div class="c-header">
+      <div class="avatar"><span class="avatar-i">${initials}</span></div>
+      <div class="nombre">${a.nombre_completo}</div>
+      <div class="cargo">${cargoLabel}</div>
+    </div>
+    <div class="gold-line"></div>
+    <div class="datos">
+      ${dpiSection}
+      <div class="hdivider"></div>
+      <div class="qr-row">
+        <div class="qr-txt">
+          <div class="qr-lbl">Verificación</div>
+          <div class="qr-hint">Escanea el QR para verificar identidad</div>
+        </div>
+        <div class="qr-box">${svgHtml}</div>
+      </div>
+    </div>
+    <div class="c-footer">
+      <span class="f-date">${fechaEmision}</span>
+      <span class="f-label">CARNET DE IDENTIFICACIÓN</span>
+    </div>
   </div>
 </div>`;
 }
 
-// ── CarnetView: modal de previsualización + impresión individual ──────────────
+function buildReversoBlock(logoFullUrl: string) {
+  return `<div class="card">
+  <div class="r-top">
+    <img class="r-logo" src="${logoFullUrl}" />
+    <div class="r-org">INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A.</div>
+  </div>
+  <div class="r-gold"></div>
+  <div class="r-body">
+    <div class="r-legal">
+      El presente acredita como colaborador de <strong>ISP S.A.</strong>
+      Se solicita a las Autoridades <strong>Civiles y Militares</strong>
+      la colaboración en caso de ser requerida. Válido en el cumplimiento
+      de sus funciones en el puesto.
+    </div>
+  </div>
+  <div class="r-divider"></div>
+  <div class="r-footer">
+    <div class="r-web">www.ispsa.net</div>
+    <div class="r-email">contacto@isp-guatemala.com</div>
+  </div>
+  <div class="r-bottom"></div>
+</div>`;
+}
+
+function openPrintWindow(title: string, css: string, body: string) {
+  const win = window.open("", "_blank", "width=400,height=600");
+  if (!win) return;
+  win.document.write(
+    `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>${title}</title><style>${css}</style></head><body>${body}</body></html>`
+  );
+  win.document.close();
+  win.focus();
+  setTimeout(() => { win.print(); }, 500);
+}
+
+// ── CarnetView: modal individual con flujo FRENTE → REVERSO ──────────────────
 function CarnetView({
   agente,
   onClose,
@@ -134,21 +203,26 @@ function CarnetView({
   const origin = window.location.origin;
   const url = `${origin}/agente?token=${agente.qr_token}`;
   const svgRef = useRef<HTMLDivElement>(null);
+  const [fase, setFase] = useState<"frente" | "reverso">("frente");
 
   const initials = getInitials(agente.nombre_completo);
   const cargoLabel = getCargoLabel(agente.tipo_personal, agente.cargo);
   const fechaEmision = new Date().toLocaleDateString("es-GT", { month: "long", year: "numeric" });
 
-  function handlePrint() {
+  const logoIconUrl = `${origin}/images/logo-icon.png`;
+  const logoFullUrl = `${origin}/images/logo-isp.png`;
+
+  function handlePrintFrente() {
     const svgEl = svgRef.current?.querySelector("svg");
     const svgHtml = svgEl ? new XMLSerializer().serializeToString(svgEl) : "<span>QR</span>";
-    const carnetBlock = buildCarnetBlock(agente, initials, cargoLabel, fechaEmision, svgHtml);
-    const win = window.open("", "_blank", "width=300,height=480");
-    if (!win) return;
-    win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Carnet · ${agente.nombre_completo}</title><style>${CARD_CSS}</style></head><body>${carnetBlock}</body></html>`);
-    win.document.close();
-    win.focus();
-    setTimeout(() => { win.print(); }, 500);
+    const block = buildFrenteBlock(agente, initials, cargoLabel, fechaEmision, svgHtml, logoIconUrl);
+    openPrintWindow(`Frente · ${agente.nombre_completo}`, FRENTE_CSS, block);
+    setFase("reverso");
+  }
+
+  function handlePrintReverso() {
+    const block = buildReversoBlock(logoFullUrl);
+    openPrintWindow(`Reverso · ${agente.nombre_completo}`, REVERSO_CSS, block);
     onPrinted();
     onClose();
   }
@@ -166,62 +240,104 @@ function CarnetView({
           </button>
         </div>
 
-        {/* Vista previa */}
-        <div className="flex justify-center mb-4">
-          <div className="rounded-xl overflow-hidden shadow-2xl shadow-black/60" style={{ width: 160, border: "1px solid rgba(255,255,255,0.08)" }}>
-            <div className="bg-[#0f2044] px-3 py-2 text-center">
-              <div className="flex items-center justify-center gap-1 mb-0.5">
-                <Shield className="w-3 h-3 text-[#f5c842]" />
-                <span className="text-[#f5c842] text-[8px] font-black tracking-widest">I·S·P</span>
+        {/* Vista previa Moderno */}
+        <div className="flex justify-center mb-4 gap-3">
+          {/* Frente mini */}
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-white/30 text-[9px] uppercase tracking-wider">Frente</span>
+            <div style={{ width: 100, height: 158, borderRadius: 5, overflow: "hidden", display: "flex", flexDirection: "row", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}>
+              {/* Stripe */}
+              <div style={{ width: 16, background: "linear-gradient(180deg,#0f2044,#132a5a)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between", padding: "5px 0", position: "relative", flexShrink: 0 }}>
+                <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: "#f5c842" }} />
+                <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: "#f5c842" }} />
+                <img src="/images/logo-icon.png" style={{ width: 12, filter: "brightness(0) invert(1)" }} />
+                <span style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", fontSize: 5, color: "rgba(255,255,255,0.35)", fontFamily: "monospace" }}>
+                  #{agente.empl_numero ? String(agente.empl_numero).padStart(4, "0") : "—"}
+                </span>
               </div>
-              <div className="text-white/50 text-[6px] leading-tight">Investigaciones y Seguridad<br />Profesional S.A.</div>
-              <div className="inline-block bg-[#f5c842] text-[#0f2044] text-[5px] font-black tracking-wider px-1.5 py-0.5 rounded mt-1">CARNET DE IDENTIFICACIÓN</div>
-            </div>
-            <div className="bg-white flex justify-center py-2">
-              <div className="w-10 h-10 rounded-full bg-[#0f2044] border border-[#f5c842] flex items-center justify-center">
-                <span className="text-[#f5c842] text-xs font-black">{initials}</span>
+              {/* Content */}
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#fff" }}>
+                <div style={{ padding: "5px 4px 4px", borderBottom: "0.5px solid #f1f5f9", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                  <div style={{ width: 22, height: 22, borderRadius: "50%", background: "linear-gradient(135deg,#0f2044,#1e4a9a)", border: "1px solid #f5c842", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 3 }}>
+                    <span style={{ color: "#f5c842", fontSize: 7, fontWeight: 900 }}>{initials}</span>
+                  </div>
+                  <div style={{ fontSize: 5, fontWeight: 900, color: "#0f2044", textAlign: "center", lineHeight: 1.2, textTransform: "uppercase", marginBottom: 1 }}>{agente.nombre_completo}</div>
+                  <div style={{ fontSize: 4, fontWeight: 700, color: "#b8860b", letterSpacing: "0.05em" }}>{cargoLabel}</div>
+                </div>
+                <div style={{ height: 1, background: "linear-gradient(90deg,#d4a017,#f5c842,#e8b820)" }} />
+                <div style={{ padding: "4px", flex: 1 }}>
+                  {agente.dpi && <><div style={{ fontSize: 3, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 1 }}>DPI</div><div style={{ fontSize: 5, color: "#0f2044", fontWeight: 800, fontFamily: "monospace", marginBottom: 3 }}>{agente.dpi}</div></>}
+                  <div style={{ height: 0.5, background: "#f1f5f9", marginBottom: 3 }} />
+                  <div ref={svgRef} style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <div style={{ background: "#fff", border: "0.5px solid #e2e8f0", borderRadius: 2, padding: 1 }}>
+                      <QRCodeSVG value={url} size={30} />
+                    </div>
+                  </div>
+                </div>
+                <div style={{ background: "#0f2044", padding: "2px 4px", display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 3, color: "rgba(255,255,255,0.3)" }}>{fechaEmision.split(" ").slice(-1)[0]}</span>
+                  <span style={{ fontSize: 3, color: "#f5c842", fontWeight: 800 }}>ISP</span>
+                </div>
               </div>
             </div>
-            <div className="bg-white px-2 pb-1.5 text-center">
-              <div className="text-[#0f2044] text-[7px] font-black uppercase leading-tight">{agente.nombre_completo}</div>
-              <div className="text-[#1e5fad] text-[5px] font-bold tracking-wider mt-0.5">{cargoLabel}</div>
-              {agente.dpi && <div className="text-gray-400 text-[5px] mt-1">DPI <span className="text-gray-800 font-bold font-mono">{agente.dpi}</span></div>}
-              {agente.empl_numero && <div className="text-gray-400 text-[5px]">No. <span className="text-gray-800 font-bold font-mono">{String(agente.empl_numero).padStart(4, "0")}</span></div>}
-            </div>
-            <div className="bg-white border-t border-gray-100 flex flex-col items-center py-1.5">
-              <div ref={svgRef} className="bg-white border border-gray-200 rounded p-0.5">
-                <QRCodeSVG value={url} size={48} />
+          </div>
+
+          {/* Reverso mini */}
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-white/30 text-[9px] uppercase tracking-wider">Reverso</span>
+            <div style={{ width: 100, height: 158, borderRadius: 5, overflow: "hidden", display: "flex", flexDirection: "column", background: "#fff", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}>
+              <div style={{ padding: "8px 6px 4px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <img src="/images/logo-isp.png" style={{ height: 32, objectFit: "contain" }} />
+                <div style={{ fontSize: 3.5, color: "#0f2044", fontWeight: 700, textAlign: "center", marginTop: 3, letterSpacing: "0.05em" }}>INVESTIGACIONES Y SEGURIDAD<br />PROFESIONAL S.A.</div>
               </div>
-              <div className="text-[5px] text-gray-400 mt-0.5">Escanea para verificar</div>
-            </div>
-            <div className="bg-[#0f2044] py-1 text-center">
-              <span className="text-white/40 text-[5px]">Emitido: </span>
-              <span className="text-[#f5c842] text-[5px] font-bold">{fechaEmision}</span>
+              <div style={{ height: 1, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)" }} />
+              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "4px 6px" }}>
+                <div style={{ fontSize: 4, color: "#1e3a5f", textAlign: "center", lineHeight: 1.5 }}>
+                  El presente acredita como colaborador de <strong style={{ color: "#0f2044" }}>ISP S.A.</strong> Se solicita a las Autoridades Civiles y Militares la colaboración en caso de ser requerida.
+                </div>
+              </div>
+              <div style={{ padding: "3px 6px 5px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <div style={{ fontSize: 5.5, fontWeight: 900, color: "#0f2044" }}>www.ispsa.net</div>
+              </div>
+              <div style={{ height: 3, background: "#0f2044" }} />
             </div>
           </div>
         </div>
 
-        {/* Instrucciones bandeja */}
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2.5 mb-4 space-y-1.5">
-          <p className="text-amber-300/80 text-[10px] font-bold uppercase tracking-wide">Canon TS702a — Bandeja A61I</p>
-          <ol className="text-amber-300/70 text-[10px] leading-relaxed space-y-0.5 list-decimal list-inside">
-            <li>Coloca la tarjeta PVC en la bandeja A61I</li>
-            <li>Inserta la bandeja en la ranura frontal</li>
-            <li>En el diálogo selecciona:<br />
-              &nbsp;&nbsp;• Fuente: <span className="font-bold text-amber-300">Bandeja trasera</span><br />
-              &nbsp;&nbsp;• Tipo: <span className="font-bold text-amber-300">Tarjeta de presentación</span>
-            </li>
-          </ol>
-        </div>
+        {/* Instrucciones según fase */}
+        {fase === "frente" ? (
+          <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg px-3 py-2.5 mb-4 space-y-1">
+            <p className="text-blue-300/80 text-[10px] font-bold uppercase tracking-wide">Canon TS702a — Paso 1 de 2</p>
+            <p className="text-blue-300/60 text-[10px] leading-relaxed">Coloca el PVC en la bandeja A61I e imprime el frente. Luego dale la vuelta para imprimir el reverso.</p>
+          </div>
+        ) : (
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2.5 mb-4 space-y-1">
+            <div className="flex items-center gap-1.5 mb-1">
+              <RefreshCw className="w-3 h-3 text-amber-400" />
+              <p className="text-amber-300/90 text-[10px] font-bold uppercase tracking-wide">Dale la vuelta al PVC — Paso 2 de 2</p>
+            </div>
+            <p className="text-amber-300/60 text-[10px] leading-relaxed">Retira la tarjeta, dale vuelta e insértala de nuevo en la bandeja. Luego imprime el reverso.</p>
+          </div>
+        )}
 
+        {/* Botones */}
         <div className="flex gap-2">
-          <button
-            onClick={handlePrint}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#f5c842]/10 hover:bg-[#f5c842]/20 border border-[#f5c842]/30 rounded-xl text-sm text-[#f5c842] font-semibold transition-colors"
-          >
-            <Printer className="w-4 h-4" /> Imprimir Carnet
-          </button>
-          <button onClick={onClose} className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm text-white/50 transition-colors">
+          {fase === "frente" ? (
+            <button
+              onClick={handlePrintFrente}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#f5c842]/10 hover:bg-[#f5c842]/20 border border-[#f5c842]/30 rounded-xl text-sm text-[#f5c842] font-semibold transition-colors"
+            >
+              <Printer className="w-4 h-4" /> Imprimir Frente
+            </button>
+          ) : (
+            <button
+              onClick={handlePrintReverso}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl text-sm text-amber-300 font-semibold transition-colors"
+            >
+              <Printer className="w-4 h-4" /> Imprimir Reverso
+            </button>
+          )}
+          <button onClick={onClose} className="px-4 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm text-white/50 transition-colors">
             Cerrar
           </button>
         </div>
@@ -235,6 +351,8 @@ export default function CarnetesTab() {
   const [busqueda, setBusqueda] = useState("");
   const [seleccionados, setSeleccionados] = useState<Set<number>>(new Set());
   const [printAgente, setPrintAgente] = useState<AgenteCarnet | null>(null);
+  const [faseLote, setFaseLote] = useState<"idle" | "reverso">("idle");
+  const [listaLote, setListaLote] = useState<AgenteCarnet[]>([]);
   const [imprimiendo, setImprimiendo] = useState(false);
   const qrContainerRef = useRef<HTMLDivElement>(null);
   const { currentUser } = useAuth();
@@ -280,18 +398,18 @@ export default function CarnetesTab() {
 
   const conQR = filtrados.filter(a => a.qr_token);
 
-  function seleccionarTodos() {
-    setSeleccionados(new Set(conQR.map(a => a.employee_id)));
-  }
+  function seleccionarTodos() { setSeleccionados(new Set(conQR.map(a => a.employee_id))); }
+  function deseleccionarTodos() { setSeleccionados(new Set()); }
 
-  function deseleccionarTodos() {
-    setSeleccionados(new Set());
-  }
-
-  async function imprimirSeleccionados() {
+  // ── Lote: Paso 1 — imprimir frentes ──────────────────────────────────────
+  async function imprimirFrentesLote() {
     const lista = agentes.filter(a => seleccionados.has(a.employee_id) && a.qr_token);
     if (lista.length === 0) return;
     setImprimiendo(true);
+
+    const origin = window.location.origin;
+    const logoIconUrl = `${origin}/images/logo-icon.png`;
+    const fechaEmision = new Date().toLocaleDateString("es-GT", { month: "long", year: "numeric" });
 
     const qrMap: Record<number, string> = {};
     if (qrContainerRef.current) {
@@ -302,27 +420,31 @@ export default function CarnetesTab() {
       });
     }
 
-    const fechaEmision = new Date().toLocaleDateString("es-GT", { month: "long", year: "numeric" });
-
-    const carnetBlocks = lista.map(a => {
+    const blocks = lista.map(a => {
       const initials = getInitials(a.nombre_completo);
       const cargoLabel = getCargoLabel(a.tipo_personal, a.cargo);
       const svgHtml = qrMap[a.employee_id] || "<span style='font-size:8pt;color:#999'>QR</span>";
-      return buildCarnetBlock(a, initials, cargoLabel, fechaEmision, svgHtml);
+      return buildFrenteBlock(a, initials, cargoLabel, fechaEmision, svgHtml, logoIconUrl);
     }).join("\n");
 
-    const win = window.open("", "_blank", "width=400,height=600");
-    if (win) {
-      win.document.write(
-        `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Carnets ISP (${lista.length})</title><style>${CARD_CSS}</style></head><body>${carnetBlocks}</body></html>`
-      );
-      win.document.close();
-      win.onload = () => { win.print(); };
-    }
+    openPrintWindow(`Frentes ISP (${lista.length})`, FRENTE_CSS, blocks);
 
-    await registrarImpresion(lista.map(a => a.employee_id));
-    setSeleccionados(new Set());
+    setListaLote(lista);
+    setFaseLote("reverso");
     setImprimiendo(false);
+  }
+
+  // ── Lote: Paso 2 — imprimir reversos ─────────────────────────────────────
+  async function imprimirReversosLote() {
+    const origin = window.location.origin;
+    const logoFullUrl = `${origin}/images/logo-isp.png`;
+    const blocks = listaLote.map(() => buildReversoBlock(logoFullUrl)).join("\n");
+    openPrintWindow(`Reversos ISP (${listaLote.length})`, REVERSO_CSS, blocks);
+
+    await registrarImpresion(listaLote.map(a => a.employee_id));
+    setSeleccionados(new Set());
+    setFaseLote("idle");
+    setListaLote([]);
   }
 
   const totalConQR = agentes.filter(a => a.qr_token).length;
@@ -366,38 +488,53 @@ export default function CarnetesTab() {
             className="w-full pl-9 pr-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 outline-none"
           />
         </div>
-        <button
-          onClick={seleccionarTodos}
-          className="px-3 py-2 text-xs bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-white/60 transition-colors whitespace-nowrap"
-        >
+        <button onClick={seleccionarTodos} className="px-3 py-2 text-xs bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-white/60 transition-colors whitespace-nowrap">
           Todos ({conQR.length})
         </button>
-        <button
-          onClick={deseleccionarTodos}
-          className="px-3 py-2 text-xs bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-white/60 transition-colors"
-        >
+        <button onClick={deseleccionarTodos} className="px-3 py-2 text-xs bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-white/60 transition-colors">
           Ninguno
         </button>
-        <button
-          onClick={imprimirSeleccionados}
-          disabled={seleccionados.size === 0 || imprimiendo}
-          className="flex items-center gap-1.5 px-4 py-2 text-xs bg-[#f5c842]/10 hover:bg-[#f5c842]/20 border border-[#f5c842]/20 text-[#f5c842] rounded-xl font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-        >
-          <Printer className="w-3.5 h-3.5" />
-          {imprimiendo
-            ? "Preparando..."
-            : seleccionados.size > 0
-              ? `Imprimir seleccionados (${seleccionados.size})`
-              : "Imprimir seleccionados"
-          }
-        </button>
+
+        {/* Botón lote — cambia según fase */}
+        {faseLote === "idle" ? (
+          <button
+            onClick={imprimirFrentesLote}
+            disabled={seleccionados.size === 0 || imprimiendo}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs bg-[#f5c842]/10 hover:bg-[#f5c842]/20 border border-[#f5c842]/20 text-[#f5c842] rounded-xl font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            {seleccionados.size > 0 ? `Imprimir frentes (${seleccionados.size})` : "Imprimir seleccionados"}
+          </button>
+        ) : (
+          <button
+            onClick={imprimirReversosLote}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 rounded-xl font-semibold transition-colors whitespace-nowrap animate-pulse"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Dale vuelta al PVC → Imprimir reversos ({listaLote.length})
+          </button>
+        )}
       </div>
+
+      {/* Banner de aviso si está en fase reverso */}
+      {faseLote === "reverso" && (
+        <div className="flex items-start gap-3 bg-amber-500/8 border border-amber-500/20 rounded-xl px-4 py-3 mb-4">
+          <RefreshCw className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-amber-300 text-xs font-bold mb-0.5">Paso 2 de 2 — Dale la vuelta a los PVC</p>
+            <p className="text-amber-300/60 text-[11px] leading-relaxed">
+              Retira las {listaLote.length} tarjeta{listaLote.length !== 1 ? "s" : ""} impresas, dales vuelta e insértalas de nuevo en la bandeja A61I.
+              Cuando estén listas, haz clic en <span className="text-amber-300 font-semibold">"Dale vuelta al PVC → Imprimir reversos"</span>.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Lista */}
       {isLoading ? (
         <p className="text-white/30 text-sm text-center py-10">Cargando colaboradores...</p>
       ) : (
-        <div className="space-y-1.5 max-h-[60vh] overflow-y-auto pr-1">
+        <div className="space-y-1.5 max-h-[55vh] overflow-y-auto pr-1">
           {filtrados.map(a => {
             const seleccionado = seleccionados.has(a.employee_id);
             const tieneQR = !!a.qr_token;
@@ -417,29 +554,25 @@ export default function CarnetesTab() {
                       : "bg-white/2 border-white/5"
                 }`}
               >
-                {/* Checkbox */}
                 <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
                   seleccionado ? "bg-[#f5c842]/30 border-[#f5c842]/60" : "border-white/20"
                 }`}>
                   {seleccionado && <CheckCircle className="w-4 h-4 text-[#f5c842]" />}
                 </div>
 
-                {/* Avatar */}
                 <div className="w-8 h-8 rounded-full bg-[#0f2044] border border-[#f5c842]/30 flex items-center justify-center flex-shrink-0">
                   <span className="text-[#f5c842] text-xs font-bold">{initials}</span>
                 </div>
 
-                {/* Datos */}
                 <div className="flex-1 min-w-0">
                   <p className="text-white text-sm font-semibold truncate">{a.nombre_completo}</p>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-white/40 text-xs truncate">{a.cargo || a.tipo_personal || "—"}</p>
+                    <p className="text-white/40 text-xs truncate">{getCargoLabel(a.tipo_personal, a.cargo)}</p>
                     {a.dpi && <span className="text-white/25 text-[10px] font-mono">{a.dpi}</span>}
                     {a.empl_numero && <span className="text-white/20 text-[10px]">#{String(a.empl_numero).padStart(4, "0")}</span>}
                   </div>
                 </div>
 
-                {/* Badges de estado */}
                 <div className="flex flex-col items-end gap-1 flex-shrink-0">
                   {tieneQR ? (
                     <span className="text-[10px] text-green-400 bg-green-400/10 px-1.5 py-0.5 rounded-full flex items-center gap-1">
@@ -459,14 +592,13 @@ export default function CarnetesTab() {
                   )}
                 </div>
 
-                {/* Botón impresión individual */}
                 {tieneQR && (
                   <button
                     onClick={e => { e.stopPropagation(); setPrintAgente(a); }}
                     title="Imprimir carnet individual"
                     className="p-1.5 rounded-lg bg-white/5 hover:bg-[#f5c842]/20 border border-white/10 hover:border-[#f5c842]/30 transition-colors flex-shrink-0"
                   >
-                    <Printer className="w-3.5 h-3.5 text-white/40 group-hover:text-[#f5c842]" />
+                    <Printer className="w-3.5 h-3.5 text-white/40" />
                   </button>
                 )}
               </div>
@@ -479,7 +611,7 @@ export default function CarnetesTab() {
         </div>
       )}
 
-      {/* Contenedor QR oculto para impresión en lote */}
+      {/* QR ocultos para lote */}
       <div
         ref={qrContainerRef}
         style={{ position: "absolute", visibility: "hidden", top: 0, left: 0, pointerEvents: "none", zIndex: -1 }}
@@ -494,7 +626,7 @@ export default function CarnetesTab() {
         ))}
       </div>
 
-      {/* Modal de carnet individual */}
+      {/* Modal individual */}
       {printAgente && (
         <CarnetView
           agente={printAgente}
