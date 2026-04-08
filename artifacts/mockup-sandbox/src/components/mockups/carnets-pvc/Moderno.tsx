@@ -20,10 +20,7 @@ function FrenteModerno() {
 
         {/* Logo en franja */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-          <img src="/logo-isp.png" alt="ISP" style={{ width: 24, objectFit: "contain", filter: "brightness(0) invert(1) sepia(1) saturate(3) hue-rotate(10deg) brightness(1.1)" }} />
-          <div style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", fontSize: 4.5, fontWeight: 700, color: "rgba(245,200,66,0.7)", letterSpacing: "0.12em", textTransform: "uppercase" }}>
-            SEGURIDAD · GT
-          </div>
+          <img src="/logo-isp.png" alt="ISP" style={{ width: 24, objectFit: "contain", filter: "brightness(0) invert(1)" }} />
         </div>
 
         {/* Número empleado */}
@@ -52,11 +49,6 @@ function FrenteModerno() {
           <div style={{ marginBottom: 4 }}>
             <div style={{ fontSize: 4, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 1 }}>DPI</div>
             <div style={{ fontSize: 6.5, color: "#0f2044", fontWeight: 800, fontFamily: "'Courier New', monospace", letterSpacing: "0.03em" }}>{agente.dpi}</div>
-          </div>
-
-          <div style={{ display: "inline-flex", alignItems: "center", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 2, padding: "2px 5px", marginBottom: 6 }}>
-            <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#22c55e", marginRight: 3 }} />
-            <span style={{ fontSize: 4, color: "#0f2044", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>ACTIVO</span>
           </div>
 
           <div style={{ height: 0.8, background: "#f1f5f9", marginBottom: 6 }} />
@@ -99,10 +91,10 @@ function FrenteModerno() {
 function ReversoModerno() {
   return (
     <div style={{ width: W, height: H, borderRadius: 7, overflow: "hidden", display: "flex", flexDirection: "column", fontFamily: "'Inter', -apple-system, sans-serif", background: "#ffffff", boxShadow: "0 8px 32px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.08)" }}>
-      {/* TOP navy banda */}
-      <div style={{ background: "#0f2044", padding: "12px 14px 10px", display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
-        <img src="/logo-isp.png" alt="ISP" style={{ height: 60, objectFit: "contain", filter: "brightness(0) invert(1) sepia(1) saturate(3) hue-rotate(10deg) brightness(1.1)", marginBottom: 4 }} />
-        <div style={{ fontSize: 4.5, color: "rgba(245,200,66,0.7)", letterSpacing: "0.1em", fontWeight: 700, textAlign: "center" }}>INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A.</div>
+      {/* TOP blanco con logo en colores reales */}
+      <div style={{ background: "#ffffff", padding: "12px 14px 8px", display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, borderBottom: "none" }}>
+        <img src="/logo-isp.png" alt="ISP" style={{ height: 60, objectFit: "contain", marginBottom: 4 }} />
+        <div style={{ fontSize: 4.5, color: "#0f2044", letterSpacing: "0.1em", fontWeight: 700, textAlign: "center" }}>INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A.</div>
       </div>
 
       {/* gold line */}
