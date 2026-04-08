@@ -75,22 +75,25 @@ interface AgenteCarnet {
 // Ajustar X/Y hasta que las tarjetas queden centradas sobre los slots físicos.
 // Canon TS702a con bandeja aftermarket MP (marcada en foto).
 // ─────────────────────────────────────────────────────────────────────────────
-const DEFAULT_CARD_W = 53.98; // CR-80 portrait width (mm)
-const DEFAULT_CARD_H = 85.60; // CR-80 portrait height (mm)
+const DEFAULT_CARD_W = 53.98; // CR-80 ancho portrait (mm)
+const DEFAULT_CARD_H = 85.60; // CR-80 alto portrait (mm)
+// En la bandeja las tarjetas van LANDSCAPE (acostadas): ancho=85.6, alto=53.98
+const CARD_LS_W = DEFAULT_CARD_H; // 85.60 mm
+const CARD_LS_H = DEFAULT_CARD_W; // 53.98 mm
 
 const BUILTIN_PROFILES: PrinterProfile[] = [
   {
     id: "canon-ts702a-2cards",
     name: "Canon TS702a — 2 tarjetas (bandeja MP)",
-    // Hoja carta 216×279 mm
+    // Hoja carta 216×279 mm, tarjetas LANDSCAPE apiladas verticalmente
     pageWidth: 216,
     pageHeight: 279,
     orientation: "portrait",
     slots: [
-      // Slot superior portrait: X centrado = (216 − 53.98) / 2 ≈ 81mm  |  Y ≈ 15mm
-      { x: 81, y: 15,  width: DEFAULT_CARD_W, height: DEFAULT_CARD_H },
-      // Slot inferior portrait: mismo X, Y = 15 + 85.6 + 7 ≈ 108mm
-      { x: 81, y: 108, width: DEFAULT_CARD_W, height: DEFAULT_CARD_H },
+      // Slot superior landscape: X centrado = (216 − 85.6) / 2 ≈ 65mm  |  Y ≈ 25mm
+      { x: 65, y: 25,  width: CARD_LS_W, height: CARD_LS_H },
+      // Slot inferior landscape: mismo X, Y = 25 + 53.98 + 10 ≈ 89mm
+      { x: 65, y: 89,  width: CARD_LS_W, height: CARD_LS_H },
     ],
   },
   {
@@ -175,13 +178,14 @@ async function toBase64Url(url: string): Promise<string> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * CSS del diseño Moderno ISP — PORTRAIT CR-80 (53.98×85.6mm).
- * Franje navy izquierda · avatar centrado · nombre/cargo · gold line
- * · DPI · QR · footer navy   |   Reverso: logo ISP · legal · web
+ * CSS del diseño Moderno ISP — LANDSCAPE CR-80 (85.6×53.98mm).
+ * Las tarjetas van acostadas en la bandeja (landscape).
+ * Franja navy izquierda · avatar · nombre/cargo/DPI · QR lateral
+ * Reverso: franja navy izq. con logo · texto legal · web/email
  */
 function getCardInnerCSS(): string {
   return `
-    /* ── FRENTE portrait (Moderno) ─────────────────────────────────────────── */
+    /* ── FRENTE landscape (85.6×53.98mm) ───────────────────────────────────── */
     .icard {
       width:100%; height:100%;
       display:flex; flex-direction:row; overflow:hidden;
@@ -191,122 +195,109 @@ function getCardInnerCSS(): string {
 
     /* Franja navy izquierda */
     .i-stripe {
-      width:10.5mm;
-      background:linear-gradient(180deg,#0f2044 0%,#132a5a 100%);
+      width:11mm;
+      background:linear-gradient(180deg,#0f2044,#132a5a);
       display:flex; flex-direction:column; align-items:center;
       flex-shrink:0; position:relative;
     }
-    .i-bar-t { position:absolute; top:0; left:0; right:0; height:1mm; background:#f5c842; }
-    .i-bar-b { position:absolute; bottom:0; left:0; right:0; height:1mm; background:#f5c842; }
+    .i-bar-t { position:absolute; top:0; left:0; right:0; height:.8mm; background:#f5c842; }
+    .i-bar-b { position:absolute; bottom:0; left:0; right:0; height:.8mm; background:#f5c842; }
     .i-stripe-in {
       display:flex; flex-direction:column; align-items:center;
-      justify-content:space-between; padding:3mm 0; width:100%; height:100%;
+      justify-content:space-between; padding:2.5mm 0; width:100%; height:100%;
     }
-    .i-slogo { width:7mm; object-fit:contain; filter:brightness(0) invert(1); }
+    .i-slogo { width:7.5mm; object-fit:contain; filter:brightness(0) invert(1); }
     .i-snum {
       writing-mode:vertical-rl; transform:rotate(180deg);
-      font-size:4pt; color:rgba(255,255,255,.4);
-      font-family:"Courier New",monospace; font-weight:700; letter-spacing:.1em;
+      font-size:3.5pt; color:rgba(255,255,255,.4);
+      font-family:"Courier New",monospace; font-weight:700; letter-spacing:.08em;
     }
 
-    /* Columna de contenido */
-    .i-content { flex:1; display:flex; flex-direction:column; overflow:hidden; background:#fff; }
+    /* Cuerpo principal landscape */
+    .i-content { flex:1; display:flex; flex-direction:column; overflow:hidden; }
 
-    /* Header: avatar + nombre + cargo */
-    .i-head {
-      background:#fff; padding:2.5mm 2mm 2mm;
-      display:flex; flex-direction:column; align-items:center; flex-shrink:0;
+    /* Fila central: avatar | info | qr */
+    .i-body {
+      flex:1; display:flex; flex-direction:row; align-items:center;
+      padding:2mm 2.5mm; gap:2mm;
     }
     .i-av {
-      width:13mm; height:13mm; border-radius:50%;
+      width:15mm; height:15mm; border-radius:50%;
       background:linear-gradient(135deg,#0f2044,#1e4a9a);
       border:.8pt solid #f5c842;
-      display:flex; align-items:center; justify-content:center; margin-bottom:1.5mm;
+      display:flex; align-items:center; justify-content:center; flex-shrink:0;
     }
-    .i-av-i { font-size:8pt; font-weight:900; color:#f5c842; }
+    .i-av-i { font-size:9pt; font-weight:900; color:#f5c842; }
+    .i-info { flex:1; display:flex; flex-direction:column; justify-content:center; gap:.8mm; }
     .i-nom {
-      font-size:6pt; font-weight:900; color:#0f2044;
-      text-align:center; line-height:1.2; text-transform:uppercase; margin-bottom:.8mm;
+      font-size:6.5pt; font-weight:900; color:#0f2044;
+      line-height:1.2; text-transform:uppercase;
     }
     .i-cargo {
       font-size:4pt; font-weight:700; color:#b8860b;
-      text-align:center; letter-spacing:.1em; text-transform:uppercase;
+      letter-spacing:.1em; text-transform:uppercase;
     }
-
-    /* Línea dorada */
-    .i-gold { height:.6pt; background:linear-gradient(90deg,#d4a017,#f5c842,#e8b820); flex-shrink:0; }
-
-    /* Área de datos */
-    .i-datos { padding:1.5mm 2mm; flex:1; }
+    .i-gold-sep { height:.5pt; background:linear-gradient(90deg,#d4a017,#f5c842); margin:.5mm 0; }
     .i-dlbl {
-      font-size:3.5pt; color:#94a3b8; font-weight:700;
-      letter-spacing:.1em; text-transform:uppercase; margin-bottom:.5mm;
+      font-size:3pt; color:#94a3b8; font-weight:700;
+      letter-spacing:.1em; text-transform:uppercase; margin-bottom:.3mm;
     }
     .i-dval {
-      font-size:5.5pt; color:#0f2044; font-weight:800;
-      font-family:"Courier New",monospace; margin-bottom:1.5mm;
+      font-size:5pt; color:#0f2044; font-weight:800;
+      font-family:"Courier New",monospace;
     }
-    .i-div { height:.3pt; background:#f1f5f9; margin-bottom:1.5mm; }
 
-    /* QR centrado */
-    .i-qr { display:flex; flex-direction:column; align-items:center; gap:1mm; }
+    /* QR bloque derecho */
+    .i-qrblock {
+      display:flex; flex-direction:column; align-items:center;
+      gap:.8mm; flex-shrink:0;
+    }
     .i-qrbox { background:#fff; border:.4pt solid #e2e8f0; border-radius:1mm; padding:.5mm; }
-    .i-qrbox svg { width:18mm; height:18mm; display:block; }
+    .i-qrbox svg { width:17mm; height:17mm; display:block; }
     .i-qrhint { font-size:3pt; color:#94a3b8; text-align:center; }
 
     /* Footer navy */
     .i-foot {
-      background:#0f2044; padding:1mm 2mm;
+      background:#0f2044; padding:.8mm 2.5mm;
       display:flex; align-items:center; justify-content:space-between; flex-shrink:0;
     }
     .i-fdate { font-size:3pt; color:rgba(255,255,255,.35); }
     .i-flbl { font-size:3pt; font-weight:800; color:#f5c842; letter-spacing:.08em; }
 
-    /* ── REVERSO portrait (Moderno) ─────────────────────────────────────────── */
+    /* ── REVERSO landscape (85.6×53.98mm) ──────────────────────────────────── */
     .rcard {
       width:100%; height:100%;
-      display:flex; flex-direction:column; overflow:hidden;
+      display:flex; flex-direction:row; overflow:hidden; background:#fff;
       font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-      background:#fff;
     }
-    .r-top {
-      background:#fff; padding:4mm 3mm 2mm;
-      display:flex; flex-direction:column; align-items:center; flex-shrink:0;
+    /* Franja izquierda con logo */
+    .r-side {
+      width:20mm;
+      background:linear-gradient(180deg,#0f2044,#132a5a);
+      display:flex; flex-direction:column; align-items:center;
+      justify-content:center; flex-shrink:0; position:relative; padding:3mm 2mm;
     }
-    .r-logo { height:18mm; object-fit:contain; }
-    .r-org {
-      font-size:3.8pt; color:#0f2044; letter-spacing:.1em;
-      font-weight:700; text-align:center; margin-top:1.5mm;
-    }
-    .r-gold {
-      height:.8pt;
-      background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017); flex-shrink:0;
-    }
+    .r-side-bar-t { position:absolute; top:0; left:0; right:0; height:.8mm; background:#f5c842; }
+    .r-side-bar-b { position:absolute; bottom:0; left:0; right:0; height:.8mm; background:#f5c842; }
+    .r-side-logo { width:14mm; object-fit:contain; }
+    /* Contenido reverso */
     .r-body {
-      flex:1; display:flex; align-items:center; justify-content:center;
-      padding:2.5mm 4mm;
+      flex:1; display:flex; flex-direction:column;
+      align-items:center; justify-content:center; padding:2mm 4mm; gap:1.5mm;
     }
-    .r-legal { font-size:5.5pt; color:#1e3a5f; text-align:center; line-height:1.65; }
+    .r-gold { height:.8pt; background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017); width:100%; flex-shrink:0; }
+    .r-org { font-size:3.8pt; color:#0f2044; font-weight:700; letter-spacing:.08em; text-align:center; }
+    .r-legal { font-size:5pt; color:#1e3a5f; text-align:center; line-height:1.55; }
     .r-legal strong { font-weight:800; color:#0f2044; }
-    .r-divider {
-      height:.5pt;
-      background:linear-gradient(90deg,transparent,rgba(245,200,66,.5),#f5c842,rgba(245,200,66,.5),transparent);
-      margin:0 4mm; flex-shrink:0;
-    }
-    .r-footer {
-      background:#fff; padding:1.5mm 3mm 2mm;
-      display:flex; flex-direction:column; align-items:center; flex-shrink:0;
-    }
-    .r-web { font-size:6.5pt; font-weight:900; color:#0f2044; letter-spacing:.06em; }
-    .r-email { font-size:3.8pt; color:#94a3b8; letter-spacing:.04em; margin-top:.5mm; }
-    .r-bottom { background:#0f2044; height:2mm; flex-shrink:0; }
+    .r-footer { display:flex; flex-direction:column; align-items:center; gap:.3mm; }
+    .r-web { font-size:6pt; font-weight:900; color:#0f2044; letter-spacing:.06em; }
+    .r-email { font-size:3.5pt; color:#94a3b8; }
   `;
 }
 
 /**
- * Genera el HTML del FRENTE — diseño Moderno portrait (53.98×85.6mm).
- * Franja navy izq. · avatar centrado · nombre · cargo · gold line
- * · DPI · separador · QR centrado · footer navy
+ * Genera el HTML del FRENTE — diseño Moderno LANDSCAPE (85.6×53.98mm).
+ * Franja navy izq. · avatar · nombre/cargo/DPI en info · QR bloque derecho · footer navy
  */
 function buildCardFrenteHTML(
   a: AgenteCarnet,
@@ -330,18 +321,17 @@ function buildCardFrenteHTML(
     <div class="i-bar-b"></div>
   </div>
   <div class="i-content">
-    <div class="i-head">
+    <div class="i-body">
       <div class="i-av"><span class="i-av-i">${initials}</span></div>
-      <div class="i-nom">${a.nombre_completo}</div>
-      <div class="i-cargo">${cargo}</div>
-    </div>
-    <div class="i-gold"></div>
-    <div class="i-datos">
-      ${dpiRow}
-      <div class="i-div"></div>
-      <div class="i-qr">
+      <div class="i-info">
+        <div class="i-nom">${a.nombre_completo}</div>
+        <div class="i-cargo">${cargo}</div>
+        <div class="i-gold-sep"></div>
+        ${dpiRow}
+      </div>
+      <div class="i-qrblock">
         <div class="i-qrbox">${svgHtml}</div>
-        <div class="i-qrhint">Escanea para verificar identidad</div>
+        <div class="i-qrhint">Verificar identidad</div>
       </div>
     </div>
     <div class="i-foot">
@@ -353,30 +343,31 @@ function buildCardFrenteHTML(
 }
 
 /**
- * Genera el HTML del REVERSO — diseño Moderno portrait (53.98×85.6mm).
- * Logo ISP en colores reales · gold line · texto legal · divider · web/email · banda navy
+ * Genera el HTML del REVERSO — diseño Moderno LANDSCAPE (85.6×53.98mm).
+ * Franja navy izq. con logo · texto legal centrado · web/email
  */
 function buildCardReversoHTML(logoFullB64: string): string {
   return `<div class="rcard">
-  <div class="r-top">
-    <img class="r-logo" src="${logoFullB64}" />
-    <div class="r-org">INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A.</div>
+  <div class="r-side">
+    <div class="r-side-bar-t"></div>
+    <img class="r-side-logo" src="${logoFullB64}" />
+    <div class="r-side-bar-b"></div>
   </div>
-  <div class="r-gold"></div>
   <div class="r-body">
+    <div class="r-org">INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A.</div>
+    <div class="r-gold"></div>
     <div class="r-legal">
       El presente acredita como colaborador de <strong>ISP S.A.</strong>
       Se solicita a las Autoridades <strong>Civiles y Militares</strong>
       la colaboración en caso de ser requerida. Válido en el cumplimiento
-      de sus funciones en el puesto.
+      de sus funciones en el puesto asignado.
+    </div>
+    <div class="r-gold"></div>
+    <div class="r-footer">
+      <div class="r-web">www.ispsa.net</div>
+      <div class="r-email">contacto@isp-guatemala.com</div>
     </div>
   </div>
-  <div class="r-divider"></div>
-  <div class="r-footer">
-    <div class="r-web">www.ispsa.net</div>
-    <div class="r-email">contacto@isp-guatemala.com</div>
-  </div>
-  <div class="r-bottom"></div>
 </div>`;
 }
 
@@ -474,60 +465,61 @@ function openPrintPage(
 // COMPONENTES UI — Mini cards del diseño Moderno para la vista previa
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Mini-card FRENTE del diseño Moderno, escalada al ancho/alto dado */
+/**
+ * Mini-card FRENTE landscape (85.6×53.98mm).
+ * Renderiza en 152×96px base y escala al espacio del slot.
+ */
 function MiniCardFrente({ agent, w, h }: { agent: AgenteCarnet; w: number; h: number }) {
-  const BASE_W = 96; // px base del mini card (proporcional a CR-80 portrait)
-  const BASE_H = 152;
-  const sx = w / BASE_W;
-  const sy = h / BASE_H;
-  const s  = Math.min(sx, sy);
+  const BASE_W = 152; // proporcional a 85.6mm
+  const BASE_H = 96;  // proporcional a 53.98mm
+  const s = Math.min(w / BASE_W, h / BASE_H);
   const initials = getInitials(agent.nombre_completo);
   const cargo    = getCargoLabel(agent.tipo_personal, agent.cargo);
   const num      = agent.empl_numero ? `#${String(agent.empl_numero).padStart(4, "0")}` : "";
 
   return (
-    <div style={{ width: w, height: h, overflow: "hidden", position: "relative", background: "#fff" }}>
+    <div style={{ width: w, height: h, overflow: "hidden", background: "#fff" }}>
       <div style={{
         width: BASE_W, height: BASE_H,
         transform: `scale(${s})`, transformOrigin: "top left",
         display: "flex", flexDirection: "row", background: "#fff",
         fontFamily: "Arial,sans-serif", overflow: "hidden",
       }}>
-        {/* Franja navy */}
-        <div style={{ width: 19, background: "linear-gradient(180deg,#0f2044,#132a5a)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between", padding: "5px 0", position: "relative", flexShrink: 0 }}>
-          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: "#f5c842" }} />
-          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: "#f5c842" }} />
+        {/* Franja navy izquierda */}
+        <div style={{ width: 20, background: "linear-gradient(180deg,#0f2044,#132a5a)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between", padding: "5px 0", position: "relative", flexShrink: 0 }}>
+          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1.5, background: "#f5c842" }} />
+          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 1.5, background: "#f5c842" }} />
           <img src="/images/logo-icon.png" style={{ width: 13, objectFit: "contain", filter: "brightness(0) invert(1)" }} />
           <span style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", fontSize: 5, color: "rgba(255,255,255,.4)", fontFamily: "monospace", fontWeight: 700 }}>{num}</span>
         </div>
-        {/* Contenido */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#fff" }}>
-          {/* Header */}
-          <div style={{ padding: "5px 4px 3px", display: "flex", flexDirection: "column", alignItems: "center" }}>
-            <div style={{ width: 22, height: 22, borderRadius: "50%", background: "linear-gradient(135deg,#0f2044,#1e4a9a)", border: "1px solid #f5c842", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 3 }}>
-              <span style={{ color: "#f5c842", fontSize: 8, fontWeight: 900 }}>{initials}</span>
+        {/* Cuerpo landscape */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          {/* Fila central: avatar | info | qr */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "row", alignItems: "center", padding: "4px 5px", gap: 4 }}>
+            {/* Avatar */}
+            <div style={{ width: 28, height: 28, borderRadius: "50%", background: "linear-gradient(135deg,#0f2044,#1e4a9a)", border: "1px solid #f5c842", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <span style={{ color: "#f5c842", fontSize: 10, fontWeight: 900 }}>{initials}</span>
             </div>
-            <div style={{ fontSize: 5, fontWeight: 900, color: "#0f2044", textAlign: "center", lineHeight: 1.2, textTransform: "uppercase", marginBottom: 1 }}>{agent.nombre_completo}</div>
-            <div style={{ fontSize: 3.5, fontWeight: 700, color: "#b8860b", letterSpacing: "0.05em" }}>{cargo}</div>
-          </div>
-          {/* Gold line */}
-          <div style={{ height: 1, background: "linear-gradient(90deg,#d4a017,#f5c842,#e8b820)" }} />
-          {/* Datos */}
-          <div style={{ padding: "3px 4px", flex: 1 }}>
-            {agent.dpi && <>
-              <div style={{ fontSize: 3, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", marginBottom: 1 }}>DPI</div>
-              <div style={{ fontSize: 4, color: "#0f2044", fontWeight: 800, fontFamily: "monospace", marginBottom: 2 }}>{agent.dpi}</div>
-            </>}
-            <div style={{ height: 0.5, background: "#f1f5f9", marginBottom: 3 }} />
-            <div style={{ display: "flex", justifyContent: "center" }}>
-              <QRCodeSVG value={`/agente?token=${agent.qr_token ?? ""}`} size={28} />
+            {/* Info */}
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 1.5 }}>
+              <div style={{ fontSize: 6, fontWeight: 900, color: "#0f2044", lineHeight: 1.2, textTransform: "uppercase" }}>{agent.nombre_completo}</div>
+              <div style={{ fontSize: 4, fontWeight: 700, color: "#b8860b", letterSpacing: "0.05em" }}>{cargo}</div>
+              <div style={{ height: 0.5, background: "linear-gradient(90deg,#d4a017,#f5c842)", margin: "1px 0" }} />
+              {agent.dpi && <>
+                <div style={{ fontSize: 3, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>DPI</div>
+                <div style={{ fontSize: 4.5, color: "#0f2044", fontWeight: 800, fontFamily: "monospace" }}>{agent.dpi}</div>
+              </>}
             </div>
-            <div style={{ fontSize: 3, color: "#94a3b8", textAlign: "center", marginTop: 2 }}>Escanea para verificar</div>
+            {/* QR */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, flexShrink: 0 }}>
+              <QRCodeSVG value={`/agente?token=${agent.qr_token ?? ""}`} size={30} />
+              <span style={{ fontSize: 3, color: "#94a3b8" }}>Verificar</span>
+            </div>
           </div>
-          {/* Footer */}
-          <div style={{ background: "#0f2044", padding: "1.5px 4px", display: "flex", justifyContent: "space-between" }}>
+          {/* Footer navy */}
+          <div style={{ background: "#0f2044", padding: "1.5px 5px", display: "flex", justifyContent: "space-between" }}>
             <span style={{ fontSize: 3, color: "rgba(255,255,255,.3)" }}>2026</span>
-            <span style={{ fontSize: 3, color: "#f5c842", fontWeight: 800 }}>CARNET ISP</span>
+            <span style={{ fontSize: 3, color: "#f5c842", fontWeight: 800 }}>CARNET DE IDENTIFICACIÓN</span>
           </div>
         </div>
       </div>
@@ -535,10 +527,13 @@ function MiniCardFrente({ agent, w, h }: { agent: AgenteCarnet; w: number; h: nu
   );
 }
 
-/** Mini-card REVERSO del diseño Moderno */
+/**
+ * Mini-card REVERSO landscape (85.6×53.98mm).
+ * Franja navy izq. con logo · texto legal · web/email
+ */
 function MiniCardReverso({ w, h }: { w: number; h: number }) {
-  const BASE_W = 96;
-  const BASE_H = 152;
+  const BASE_W = 152;
+  const BASE_H = 96;
   const s = Math.min(w / BASE_W, h / BASE_H);
 
   return (
@@ -546,27 +541,28 @@ function MiniCardReverso({ w, h }: { w: number; h: number }) {
       <div style={{
         width: BASE_W, height: BASE_H,
         transform: `scale(${s})`, transformOrigin: "top left",
-        display: "flex", flexDirection: "column", background: "#fff",
+        display: "flex", flexDirection: "row", background: "#fff",
         fontFamily: "Arial,sans-serif", overflow: "hidden",
       }}>
-        <div style={{ padding: "7px 6px 4px", display: "flex", flexDirection: "column", alignItems: "center" }}>
-          <img src="/images/logo-isp.png" style={{ height: 28, objectFit: "contain" }} />
-          <div style={{ fontSize: 3.5, color: "#0f2044", fontWeight: 700, textAlign: "center", marginTop: 3, letterSpacing: "0.06em" }}>
-            INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A.
+        {/* Franja navy izq. con logo */}
+        <div style={{ width: 34, background: "linear-gradient(180deg,#0f2044,#132a5a)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0, position: "relative", padding: "5px 3px" }}>
+          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1.5, background: "#f5c842" }} />
+          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 1.5, background: "#f5c842" }} />
+          <img src="/images/logo-isp.png" style={{ width: 26, objectFit: "contain" }} />
+        </div>
+        {/* Cuerpo */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "4px 8px", gap: 3 }}>
+          <div style={{ fontSize: 3.5, color: "#0f2044", fontWeight: 700, textAlign: "center", letterSpacing: "0.04em" }}>INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A.</div>
+          <div style={{ height: 1, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)", width: "100%" }} />
+          <div style={{ fontSize: 5, color: "#1e3a5f", textAlign: "center", lineHeight: 1.5 }}>
+            El presente acredita como colaborador de <strong style={{ color: "#0f2044" }}>ISP S.A.</strong> Se solicita a las Autoridades <strong>Civiles y Militares</strong> su colaboración.
+          </div>
+          <div style={{ height: 0.5, background: "linear-gradient(90deg,transparent,#f5c84270,#f5c842,#f5c84270,transparent)", width: "100%" }} />
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
+            <div style={{ fontSize: 6, fontWeight: 900, color: "#0f2044" }}>www.ispsa.net</div>
+            <div style={{ fontSize: 3.5, color: "#94a3b8" }}>contacto@isp-guatemala.com</div>
           </div>
         </div>
-        <div style={{ height: 1.5, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)" }} />
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "4px 6px" }}>
-          <div style={{ fontSize: 5, color: "#1e3a5f", textAlign: "center", lineHeight: 1.55 }}>
-            El presente acredita como colaborador de <strong style={{ color: "#0f2044" }}>ISP S.A.</strong> Se solicita a las Autoridades <strong>Civiles y Militares</strong> la colaboración en caso de ser requerida.
-          </div>
-        </div>
-        <div style={{ height: 0.5, background: "linear-gradient(90deg,transparent,#f5c84270,#f5c842,#f5c84270,transparent)", margin: "0 8px" }} />
-        <div style={{ padding: "3px 6px 5px", display: "flex", flexDirection: "column", alignItems: "center" }}>
-          <div style={{ fontSize: 6, fontWeight: 900, color: "#0f2044" }}>www.ispsa.net</div>
-          <div style={{ fontSize: 3.5, color: "#94a3b8", marginTop: 1 }}>contacto@isp-guatemala.com</div>
-        </div>
-        <div style={{ height: 4, background: "#0f2044" }} />
       </div>
     </div>
   );
