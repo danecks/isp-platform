@@ -53,6 +53,10 @@ interface Empleado {
   horasContrato: number | null;
   limiteAnticipo: number | null;
   tipoLimitePeriodo: string | null;
+  bonificacionIncentivo: string | null;
+  bonificacion1: string | null;
+  bonificacion2: string | null;
+  bonificacion3: string | null;
   // Nómina — frecuencia de pago
   frecuenciaPago: string;
   // Tipo de personal operativo
@@ -215,6 +219,10 @@ interface FormState {
   limiteAnticipo: string;
   tipoLimitePeriodo: string;
   tipoPersonal: string;
+  bonificacionIncentivo: string;
+  bonificacion1: string;
+  bonificacion2: string;
+  bonificacion3: string;
 }
 
 interface AsignacionOperativa {
@@ -304,6 +312,7 @@ const FORM_EMPTY: FormState = {
   frecuenciaPago: "quincenal",
   limiteAnticipo: "", tipoLimitePeriodo: "quincenal",
   tipoPersonal: "guardia",
+  bonificacionIncentivo: "", bonificacion1: "", bonificacion2: "", bonificacion3: "",
 };
 
 const TIPO_PERSONAL_CFG = {
@@ -1285,13 +1294,37 @@ function TabPerfil({ emp }: { emp: Empleado }) {
           {emp.sueldoBase && (
             <div className="bg-[#0c1929] border border-white/6 rounded-lg p-3">
               <p className="text-[10px] text-white/30 mb-0.5">Sueldo base</p>
-              <p className="text-sm font-semibold text-white">Q{Number(emp.sueldoBase).toLocaleString("es-GT")}</p>
+              <p className="text-sm font-semibold text-white">Q{Number(emp.sueldoBase).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</p>
             </div>
           )}
           {emp.horasContrato && (
             <div className="bg-[#0c1929] border border-white/6 rounded-lg p-3">
               <p className="text-[10px] text-white/30 mb-0.5">Horas / semana</p>
               <p className="text-sm font-semibold text-white">{emp.horasContrato} h</p>
+            </div>
+          )}
+          {emp.bonificacionIncentivo && Number(emp.bonificacionIncentivo) > 0 && (
+            <div className="bg-[#0c1929] border border-white/6 rounded-lg p-3">
+              <p className="text-[10px] text-white/30 mb-0.5">Bon. Incentivo</p>
+              <p className="text-sm font-semibold text-emerald-400">Q{Number(emp.bonificacionIncentivo).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</p>
+            </div>
+          )}
+          {emp.bonificacion1 && Number(emp.bonificacion1) > 0 && (
+            <div className="bg-[#0c1929] border border-white/6 rounded-lg p-3">
+              <p className="text-[10px] text-white/30 mb-0.5">Bonificación 1</p>
+              <p className="text-sm font-semibold text-emerald-400">Q{Number(emp.bonificacion1).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</p>
+            </div>
+          )}
+          {emp.bonificacion2 && Number(emp.bonificacion2) > 0 && (
+            <div className="bg-[#0c1929] border border-white/6 rounded-lg p-3">
+              <p className="text-[10px] text-white/30 mb-0.5">Bonificación 2</p>
+              <p className="text-sm font-semibold text-emerald-400">Q{Number(emp.bonificacion2).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</p>
+            </div>
+          )}
+          {emp.bonificacion3 && Number(emp.bonificacion3) > 0 && (
+            <div className="bg-[#0c1929] border border-white/6 rounded-lg p-3">
+              <p className="text-[10px] text-white/30 mb-0.5">Bonificación 3</p>
+              <p className="text-sm font-semibold text-emerald-400">Q{Number(emp.bonificacion3).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</p>
             </div>
           )}
           {emp.tipoJornada && (
@@ -3306,6 +3339,10 @@ function FormModal({
     limiteAnticipo: emp?.limiteAnticipo != null ? String(emp.limiteAnticipo) : "",
     tipoLimitePeriodo: emp?.tipoLimitePeriodo ?? "quincenal",
     tipoPersonal: (VALID_TIPOS_PERSONAL as readonly string[]).includes(emp?.tipoPersonal ?? "") ? emp!.tipoPersonal : "guardia",
+    bonificacionIncentivo: emp?.bonificacionIncentivo ?? "",
+    bonificacion1:         emp?.bonificacion1 ?? "",
+    bonificacion2:         emp?.bonificacion2 ?? "",
+    bonificacion3:         emp?.bonificacion3 ?? "",
   }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -3434,6 +3471,52 @@ function FormModal({
                 placeholder="48"
                 className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50 transition-colors"
               />
+            </div>
+          </div>
+          {/* Bonificaciones */}
+          <div>
+            <p className="text-xs text-white/40 font-medium mb-2">Bonificaciones (Q / mes)</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[11px] text-white/40">Bon. Incentivo (Dto. 78-89)</label>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={form.bonificacionIncentivo}
+                  onChange={(e) => set("bonificacionIncentivo", e.target.value)}
+                  placeholder="250.00"
+                  className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50 transition-colors"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] text-white/40">Bonificación 1</label>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={form.bonificacion1}
+                  onChange={(e) => set("bonificacion1", e.target.value)}
+                  placeholder="0.00"
+                  className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50 transition-colors"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] text-white/40">Bonificación 2</label>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={form.bonificacion2}
+                  onChange={(e) => set("bonificacion2", e.target.value)}
+                  placeholder="0.00"
+                  className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50 transition-colors"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] text-white/40">Bonificación 3</label>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={form.bonificacion3}
+                  onChange={(e) => set("bonificacion3", e.target.value)}
+                  placeholder="0.00"
+                  className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50 transition-colors"
+                />
+              </div>
             </div>
           </div>
           <div className="space-y-1">

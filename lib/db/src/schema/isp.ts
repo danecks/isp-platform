@@ -112,6 +112,11 @@ export const employeesTable = pgTable("employees", {
   tipoJornada: varchar("tipo_jornada", { length: 20 }),             // "completa" | "parcial" | "mixta"
   diaDescanso: varchar("dia_descanso", { length: 20 }),             // "domingo" | "sabado" | "lunes" etc.
   horasContrato: smallint("horas_contrato"),                        // horas semanales contratadas
+  // ── Bonificaciones ───────────────────────────────────────────────────────────
+  bonificacionIncentivo: numeric("bonificacion_incentivo", { precision: 10, scale: 2 }), // Dto. 78-89 (Q250/mes)
+  bonificacion1: numeric("bonificacion_1", { precision: 10, scale: 2 }),                 // Bonificación adicional 1
+  bonificacion2: numeric("bonificacion_2", { precision: 10, scale: 2 }),                 // Bonificación adicional 2
+  bonificacion3: numeric("bonificacion_3", { precision: 10, scale: 2 }),                 // Bonificación adicional 3
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

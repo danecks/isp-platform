@@ -204,6 +204,92 @@ igssRouter.post("/igss/importar-lib-sal", async (req, res) => {
   }
 });
 
+// ─── POST /igss/importar-devengados ──────────────────────────────────────────
+// Recibe filas de dbo_DevPlaEmp: { empl_numero, dev_codigo, dev_monto, pla_numero }
+// Mapeo: ORD→sueldo_base, BON→bonificacion_incentivo, BON1→bonificacion_1, OTROSING→bonificacion_2
+igssRouter.post("/igss/importar-devengados", async (req, res) => {
+  try {
+    const { rows: filas, preview = false } = req.body as {
+      rows: { empl_numero: number; dev_codigo: string; dev_monto: number; pla_numero: number }[];
+      preview?: boolean;
+    };
+    if (!filas?.length) return res.status(400).json({ error: "Sin filas para importar" });
+
+    // Agrupar por empleado y código
+    const empMap: Record<number, Record<string, number>> = {};
+    for (const f of filas) {
+      if (!empMap[f.empl_numero]) empMap[f.empl_numero] = {};
+      const prev = empMap[f.empl_numero][f.dev_codigo] ?? 0;
+      empMap[f.empl_numero][f.dev_codigo] = Math.max(prev, f.dev_monto ?? 0);
+    }
+
+    const empNumeros = Object.keys(empMap).map(Number);
+
+    if (preview) {
+      const muestra = empNumeros.slice(0, 8).map((en) => {
+        const m = empMap[en];
+        return {
+          empl_numero: en,
+          sueldo_base:            m["ORD"]      ?? null,
+          bonificacion_incentivo: m["BON"]      ?? null,
+          bonificacion_1:         m["BON1"]     ?? null,
+          bonificacion_2:         m["OTROSING"] ?? null,
+        };
+      });
+      return res.json({ preview: true, total: empNumeros.length, muestra });
+    }
+
+    // Upsert por empl_numero
+    let actualizados = 0;
+    let sinVinculo   = 0;
+    for (const en of empNumeros) {
+      const m = empMap[en];
+      const sueldo   = m["ORD"]      ?? null;
+      const bonInc   = m["BON"]      ?? null;
+      const bon1     = m["BON1"]     ?? null;
+      const bon2     = m["OTROSING"] ?? null;
+
+      const { rowCount } = await pool.query(`
+        UPDATE employees SET
+          sueldo_base            = COALESCE($2, sueldo_base),
+          bonificacion_incentivo = COALESCE($3, bonificacion_incentivo),
+          bonificacion_1         = COALESCE($4, bonificacion_1),
+          bonificacion_2         = COALESCE($5, bonificacion_2),
+          updated_at             = NOW()
+        WHERE empl_numero = $1
+      `, [en, sueldo, bonInc, bon1, bon2]);
+
+      if ((rowCount ?? 0) > 0) actualizados++;
+      else sinVinculo++;
+    }
+
+    res.json({ ok: true, actualizados, sinVinculo, total: empNumeros.length });
+  } catch (err) {
+    logger.error({ err }, "POST /igss/importar-devengados error");
+    res.status(500).json({ error: "Error al importar devengados" });
+  }
+});
+
+// ─── GET /igss/devengados/resumen ────────────────────────────────────────────
+igssRouter.get("/igss/devengados/resumen", async (_req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        COUNT(*)                                                      AS total_empleados,
+        COUNT(*) FILTER (WHERE sueldo_base > 0)                       AS con_sueldo,
+        COUNT(*) FILTER (WHERE bonificacion_incentivo IS NOT NULL)     AS con_bon_incentivo,
+        COUNT(*) FILTER (WHERE bonificacion_1 IS NOT NULL)             AS con_bon1,
+        COUNT(*) FILTER (WHERE bonificacion_2 IS NOT NULL)             AS con_bon2,
+        ROUND(AVG(sueldo_base) FILTER (WHERE sueldo_base > 0), 2)     AS avg_sueldo
+      FROM employees
+    `);
+    res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "GET /igss/devengados/resumen error");
+    res.status(500).json({ error: "Error" });
+  }
+});
+
 // ─── GET /igss/lib-sal/resumen ────────────────────────────────────────────────
 igssRouter.get("/igss/lib-sal/resumen", async (_req, res) => {
   try {

@@ -1473,6 +1473,7 @@ function CrearPuestosPanel() {
 const LEGACY_TAB_ID          = "sistema-antiguo";
 const LEGACY_CLIENTES_TAB_ID = "sistema-antiguo-clientes";
 const LIBRO_SAL_TAB_ID       = "libro-salarios";
+const DEV_EMP_TAB_ID         = "devengados-empleado";
 
 // ─── LibroSalariosTab ─────────────────────────────────────────────────────────
 const MESES_LS = ["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
@@ -1711,6 +1712,198 @@ function LibroSalariosTab() {
   );
 }
 
+// ─── DevengadosEmpleadoTab ────────────────────────────────────────────────────
+interface DevPlaRow { emp_nit?: string; empl_numero: number; pla_numero: number; dev_codigo: string; dev_monto: number; }
+interface DevResumen { total_empleados: string; con_sueldo: string; con_bon_incentivo: string; con_bon1: string; con_bon2: string; avg_sueldo: string; }
+
+function DevengadosEmpleadoTab() {
+  const fileRef  = useRef<HTMLInputElement>(null);
+  const [rows, setRows]       = useState<DevPlaRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult]   = useState<{ actualizados?: number; sinVinculo?: number; total?: number; preview?: boolean; muestra?: any[] } | null>(null);
+  const [previewed, setPreviewed] = useState(false);
+
+  const { data: resumen, refetch: refetchResumen } = useQuery<DevResumen>({
+    queryKey: ["igss-devengados-resumen"],
+    queryFn: () => fetch(`${API_BASE}/igss/devengados/resumen`).then((r) => r.json()),
+  });
+
+  const parseFile = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const wb = XLSX.read(e.target?.result, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json<DevPlaRow>(ws, { defval: 0 });
+      setRows(data);
+      setResult(null);
+      setPreviewed(false);
+    };
+    reader.readAsArrayBuffer(file);
+  }, []);
+
+  const onDrop = useCallback((ev: React.DragEvent) => {
+    ev.preventDefault();
+    const f = ev.dataTransfer.files[0];
+    if (f) parseFile(f);
+  }, [parseFile]);
+
+  async function run(preview: boolean) {
+    if (!rows.length) return;
+    setLoading(true);
+    try {
+      const r = await fetch(`${API_BASE}/igss/importar-devengados`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows, preview }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? "Error");
+      setResult(d);
+      if (preview) setPreviewed(true);
+      else { setPreviewed(false); refetchResumen(); }
+    } catch (e: any) {
+      setResult({ actualizados: -1 });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const fmtQ = (n: string | null) => n ? "Q" + Number(n).toLocaleString("es-GT", { minimumFractionDigits: 2 }) : "—";
+
+  return (
+    <div className="space-y-6">
+      <div className="space-y-1">
+        <p className="text-sm font-semibold text-white">Salarios y Bonificaciones por Empleado</p>
+        <p className="text-xs text-white/40">
+          Importa el archivo <span className="text-white/60 font-mono">dbo_DevPlaEmp.xlsx</span> del sistema anterior.
+          Actualiza <strong className="text-white/70">sueldo base</strong>, <strong className="text-white/70">bonificación incentivo</strong> y bonificaciones adicionales en la ficha de cada colaborador.
+          También alimenta el cálculo de planillas.
+        </p>
+      </div>
+
+      {/* Estado actual en el sistema */}
+      {resumen && (
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: "Con sueldo base", value: resumen.con_sueldo + " / " + resumen.total_empleados, color: "text-white" },
+            { label: "Con bon. incentivo", value: resumen.con_bon_incentivo, color: "text-emerald-400" },
+            { label: "Sueldo promedio", value: fmtQ(resumen.avg_sueldo), color: "text-primary" },
+          ].map((k) => (
+            <div key={k.label} className="bg-white/[0.03] border border-white/8 rounded-xl p-3 text-center">
+              <p className="text-[10px] text-white/30 mb-0.5">{k.label}</p>
+              <p className={`text-sm font-bold ${k.color}`}>{k.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Upload */}
+      <div
+        onDrop={onDrop} onDragOver={(e) => e.preventDefault()}
+        onClick={() => fileRef.current?.click()}
+        className="border-2 border-dashed border-white/15 hover:border-emerald-400/40 rounded-xl p-8 text-center cursor-pointer transition-colors group"
+      >
+        <Upload className="w-8 h-8 text-white/20 group-hover:text-emerald-400/60 mx-auto mb-2 transition-colors" />
+        <p className="text-sm text-white/40 group-hover:text-white/60 transition-colors">
+          {rows.length > 0 ? `${rows.length} filas cargadas — haz clic para cambiar el archivo` : "Arrastra el archivo dbo_DevPlaEmp.xlsx aquí o haz clic"}
+        </p>
+        <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) parseFile(f); }} />
+      </div>
+
+      {/* Preview */}
+      {rows.length > 0 && (
+        <div>
+          <p className="text-xs text-white/40 mb-2">Vista previa — primeras 6 filas cargadas:</p>
+          <div className="overflow-x-auto rounded-xl border border-white/8">
+            <table className="w-full text-[11px]">
+              <thead className="bg-white/[0.04] text-white/40">
+                <tr>
+                  {["empl_numero","pla_numero","dev_codigo","dev_monto"].map((h) => (
+                    <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.slice(0, 6).map((r, i) => (
+                  <tr key={i} className="border-t border-white/5">
+                    <td className="px-3 py-1.5 text-white/70">{r.empl_numero}</td>
+                    <td className="px-3 py-1.5 text-white/50">Q{r.pla_numero}</td>
+                    <td className="px-3 py-1.5 font-mono text-primary/70">{r.dev_codigo}</td>
+                    <td className="px-3 py-1.5 text-right text-white/70">Q{Number(r.dev_monto).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Resultado */}
+      {result && !result.preview && (
+        <div className={`flex items-start gap-2.5 rounded-xl p-3 border text-xs ${
+          (result.actualizados ?? 0) >= 0
+            ? "bg-emerald-400/10 border-emerald-400/20 text-emerald-300"
+            : "bg-red-400/10 border-red-400/20 text-red-300"
+        }`}>
+          <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+          <div>
+            <strong>{result.actualizados}</strong> colaboradores actualizados · <strong>{result.sinVinculo}</strong> sin vínculo en el sistema (de {result.total} en el archivo).
+          </div>
+        </div>
+      )}
+      {result?.preview && result.muestra && (
+        <div className="space-y-2">
+          <p className="text-xs text-white/40">Previsualización — muestra de {result.total} empleados:</p>
+          <div className="overflow-x-auto rounded-xl border border-white/8">
+            <table className="w-full text-[11px]">
+              <thead className="bg-white/[0.04] text-white/40">
+                <tr>
+                  {["empl_numero","Sueldo base","Bon. Incentivo","Bon. 1","Bon. 2"].map((h) => (
+                    <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {result.muestra.map((m: any, i: number) => (
+                  <tr key={i} className="border-t border-white/5">
+                    <td className="px-3 py-1.5 text-white/70">{m.empl_numero}</td>
+                    <td className="px-3 py-1.5">{m.sueldo_base ? "Q"+Number(m.sueldo_base).toLocaleString("es-GT",{minimumFractionDigits:2}) : "—"}</td>
+                    <td className="px-3 py-1.5 text-emerald-400">{m.bonificacion_incentivo ? "Q"+Number(m.bonificacion_incentivo).toLocaleString("es-GT",{minimumFractionDigits:2}) : "—"}</td>
+                    <td className="px-3 py-1.5">{m.bonificacion_1 ? "Q"+m.bonificacion_1 : "—"}</td>
+                    <td className="px-3 py-1.5">{m.bonificacion_2 ? "Q"+m.bonificacion_2 : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Botones */}
+      {rows.length > 0 && (
+        <div className="flex gap-2">
+          <button
+            onClick={() => run(true)} disabled={loading}
+            className="flex items-center gap-1.5 text-xs bg-white/10 hover:bg-white/15 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Previsualizar
+          </button>
+          {previewed && (
+            <button
+              onClick={() => run(false)} disabled={loading}
+              className="flex items-center gap-1.5 text-xs bg-emerald-500 hover:bg-emerald-400 text-white px-4 py-1.5 rounded-lg font-semibold transition-colors disabled:opacity-50"
+            >
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+              Importar a fichas de empleados
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function Importacion() {
   const [activeTab, setActiveTab] = useState<string>(TABS[0].id);
@@ -1718,6 +1911,7 @@ export default function Importacion() {
   const isLegacyEmpl    = activeTab === LEGACY_TAB_ID;
   const isLegacyClients = activeTab === LEGACY_CLIENTES_TAB_ID;
   const isLibroSal      = activeTab === LIBRO_SAL_TAB_ID;
+  const isDevEmp        = activeTab === DEV_EMP_TAB_ID;
   const isAnySA         = isLegacyEmpl || isLegacyClients;
 
   return (
@@ -1731,7 +1925,7 @@ export default function Importacion() {
           </p>
         </div>
 
-        {!isAnySA && !isLibroSal && (
+        {!isAnySA && !isLibroSal && !isDevEmp && (
           <div className="flex items-center gap-0 bg-white/[0.02] border border-white/10 rounded-xl p-4">
             {[
               { n: 1, label: "Descarga la plantilla" },
@@ -1806,6 +2000,18 @@ export default function Importacion() {
               <FileSpreadsheet className="w-4 h-4" />
               Libro de Salarios
             </button>
+            {/* Salarios y Bonificaciones */}
+            <button
+              onClick={() => setActiveTab(DEV_EMP_TAB_ID)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                isDevEmp
+                  ? "border-emerald-400 text-emerald-400"
+                  : "border-transparent text-white/40 hover:text-emerald-400/60"
+              }`}
+            >
+              <BarChart3 className="w-4 h-4" />
+              Salarios y Bonificaciones
+            </button>
             {/* Separador visual */}
             <div className="w-px bg-white/10 self-stretch mx-1" />
             {/* SA — Clientes */}
@@ -1835,9 +2041,10 @@ export default function Importacion() {
           </div>
 
           <div className="p-6 space-y-6">
-            {isLibroSal      ? <LibroSalariosTab   key={LIBRO_SAL_TAB_ID} />        :
-             isLegacyEmpl    ? <LegacyImporterTab  key={LEGACY_TAB_ID} />          :
-             isLegacyClients ? <LegacyClientesTab  key={LEGACY_CLIENTES_TAB_ID} /> :
+            {isLibroSal      ? <LibroSalariosTab       key={LIBRO_SAL_TAB_ID} />   :
+             isDevEmp        ? <DevengadosEmpleadoTab key={DEV_EMP_TAB_ID} />      :
+             isLegacyEmpl    ? <LegacyImporterTab     key={LEGACY_TAB_ID} />       :
+             isLegacyClients ? <LegacyClientesTab     key={LEGACY_CLIENTES_TAB_ID} /> :
              tab             ? (
               <ImporterTab
                 key={activeTab}

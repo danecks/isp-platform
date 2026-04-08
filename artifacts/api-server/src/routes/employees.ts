@@ -742,6 +742,7 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
     limiteAnticipo, tipoLimitePeriodo,
     sueldoBase, tipoJornada, diaDescanso, horasContrato,
     frecuenciaPago, tipoPersonal,
+    bonificacionIncentivo, bonificacion1, bonificacion2, bonificacion3,
     // IGSS — elegibilidad por colaborador
     aplicaIgssGeneral, estadoIgss, fechaInicioIgss, observacionesIgss,
   } = req.body ?? {};
@@ -793,6 +794,11 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
   if (tipoJornada !== undefined) updates.tipoJornada = tipoJornada || null;
   if (diaDescanso !== undefined) updates.diaDescanso = diaDescanso || null;
   if (horasContrato !== undefined) updates.horasContrato = horasContrato === null || horasContrato === "" ? null : parseInt(horasContrato);
+  const toNum = (v: unknown) => v === null || v === "" || v === undefined ? null : parseFloat(String(v));
+  if (bonificacionIncentivo !== undefined) updates.bonificacionIncentivo = toNum(bonificacionIncentivo);
+  if (bonificacion1        !== undefined) updates.bonificacion1         = toNum(bonificacion1);
+  if (bonificacion2        !== undefined) updates.bonificacion2         = toNum(bonificacion2);
+  if (bonificacion3        !== undefined) updates.bonificacion3         = toNum(bonificacion3);
   const VALID_TIPOS = ["guardia", "supervisor", "jefe_servicio", "administrativo_bodega", "administrativo_rrhh", "gerencia", "administrativo"];
   if (tipoPersonal !== undefined && VALID_TIPOS.includes(tipoPersonal)) {
     updates.tipoPersonal = tipoPersonal;

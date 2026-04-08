@@ -3993,5 +3993,16 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: IGSS-LIB-01 — error (no bloqueante)");
   }
 
+  // ── EMPL-BON-01: Bonificaciones en ficha del empleado ───────────────────────
+  try {
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS bonificacion_incentivo NUMERIC(10,2)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS bonificacion_1         NUMERIC(10,2)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS bonificacion_2         NUMERIC(10,2)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS bonificacion_3         NUMERIC(10,2)`);
+    logger.info("Auto-migrate: EMPL-BON-01 columnas de bonificación verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: EMPL-BON-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }
