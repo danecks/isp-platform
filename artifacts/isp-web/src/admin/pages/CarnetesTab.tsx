@@ -75,11 +75,9 @@ const FRENTE_CSS = `
   .d-label { font-size: 3.5pt; color: #94a3b8; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.5mm; }
   .d-value { font-size: 5.5pt; color: #0f2044; font-weight: 800; font-family: "Courier New", monospace; margin-bottom: 1.5mm; }
   .hdivider { height: 0.3pt; background: #f1f5f9; margin-bottom: 1.5mm; }
-  .qr-row { display: flex; align-items: flex-end; gap: 1.5mm; }
-  .qr-txt { flex: 1; }
-  .qr-lbl { font-size: 3pt; color: #94a3b8; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.8mm; }
-  .qr-hint { font-size: 3pt; color: #64748b; line-height: 1.4; }
-  .qr-box { background: #fff; border: 0.4pt solid #e2e8f0; border-radius: 1mm; padding: 0.5mm; flex-shrink: 0; }
+  .qr-row { display: flex; flex-direction: column; align-items: center; gap: 1mm; }
+  .qr-hint { font-size: 3pt; color: #94a3b8; text-align: center; }
+  .qr-box { background: #fff; border: 0.4pt solid #e2e8f0; border-radius: 1mm; padding: 0.5mm; }
   .qr-box svg { width: 14mm; height: 14mm; display: block; }
   .c-footer { background: #0f2044; padding: 1mm 2mm; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
   .f-date { font-size: 3pt; color: rgba(255,255,255,0.35); }
@@ -140,11 +138,8 @@ function buildFrenteBlock(
       ${dpiSection}
       <div class="hdivider"></div>
       <div class="qr-row">
-        <div class="qr-txt">
-          <div class="qr-lbl">Verificación</div>
-          <div class="qr-hint">Escanea el QR para verificar identidad</div>
-        </div>
         <div class="qr-box">${svgHtml}</div>
+        <div class="qr-hint">Escanea para verificar identidad</div>
       </div>
     </div>
     <div class="c-footer">
@@ -268,7 +263,7 @@ function CarnetView({
                 <div style={{ padding: "4px", flex: 1 }}>
                   {agente.dpi && <><div style={{ fontSize: 3, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 1 }}>DPI</div><div style={{ fontSize: 5, color: "#0f2044", fontWeight: 800, fontFamily: "monospace", marginBottom: 3 }}>{agente.dpi}</div></>}
                   <div style={{ height: 0.5, background: "#f1f5f9", marginBottom: 3 }} />
-                  <div ref={svgRef} style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <div ref={svgRef} style={{ display: "flex", justifyContent: "center" }}>
                     <div style={{ background: "#fff", border: "0.5px solid #e2e8f0", borderRadius: 2, padding: 1 }}>
                       <QRCodeSVG value={url} size={30} />
                     </div>
