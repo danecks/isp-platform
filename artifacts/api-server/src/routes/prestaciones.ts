@@ -822,7 +822,7 @@ prestacionesRouter.post("/prestaciones/calcular", async (req, res) => {
 });
 
 // ─── Importar dbo_DetallePrestaciones (ODBC histórico por empleado) ──────────
-prestacionesRouter.post("/importar-detalle-odbc", async (req, res) => {
+prestacionesRouter.post("/prestaciones/importar-detalle-odbc", async (req, res) => {
   try {
     interface DPRow {
       empl_numero: number; pre_ano: number; pre_mes: number; pla_numero?: number;
@@ -870,7 +870,7 @@ prestacionesRouter.post("/importar-detalle-odbc", async (req, res) => {
 });
 
 // ─── Resumen acumulado por empleado desde detalle_prestaciones_odbc ──────────
-prestacionesRouter.get("/resumen-odbc", async (req, res) => {
+prestacionesRouter.get("/prestaciones/resumen-odbc", async (req, res) => {
   try {
     // Totales en BD
     const totRow = await pool.query(`
