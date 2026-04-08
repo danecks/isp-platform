@@ -2910,7 +2910,7 @@ interface ArmaDigecam {
   ubicacion: string; observaciones: string; estado: string;
 }
 interface DiGECAMResult {
-  insertadas: number; actualizadas: number; total_errores: number;
+  insertadas: number; actualizadas: number; con_puesto: number; total_errores: number;
   errores: string[]; categorias: Record<string, number>; preview: boolean;
 }
 
@@ -3212,7 +3212,7 @@ function DiGECAMTab() {
             : <AlertCircle className="w-5 h-5 text-orange-400" />}
           <span className="font-semibold text-white">Importación completada</span>
         </div>
-        <div className="grid grid-cols-3 gap-4 text-center">
+        <div className="grid grid-cols-4 gap-4 text-center">
           <div>
             <p className="text-2xl font-bold text-emerald-400">{importResult.insertadas}</p>
             <p className="text-xs text-white/40 mt-0.5">Armas nuevas</p>
@@ -3220,6 +3220,10 @@ function DiGECAMTab() {
           <div>
             <p className="text-2xl font-bold text-blue-400">{importResult.actualizadas}</p>
             <p className="text-xs text-white/40 mt-0.5">Actualizadas</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-purple-400">{importResult.con_puesto ?? 0}</p>
+            <p className="text-xs text-white/40 mt-0.5">Con puesto asignado</p>
           </div>
           <div>
             <p className="text-2xl font-bold text-red-400">{importResult.total_errores}</p>

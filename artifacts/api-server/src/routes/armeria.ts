@@ -733,8 +733,29 @@ armeriaRouter.post("/armeria/importar-digecam", async (req: any, res: any) => {
     return null;
   }
 
+  // Cargar puestos por cliente para reparto round-robin
+  const { rows: puestosRows } = await pool.query(
+    `SELECT id, cliente_id FROM puestos_operativos WHERE cliente_id IS NOT NULL ORDER BY id`
+  );
+  const puestosMap = new Map<number, number[]>(); // cliente_id → [puesto_id, ...]
+  for (const p of puestosRows) {
+    const cid = Number(p.cliente_id);
+    if (!puestosMap.has(cid)) puestosMap.set(cid, []);
+    puestosMap.get(cid)!.push(Number(p.id));
+  }
+  const puestoRR = new Map<number, number>(); // cliente_id → índice actual
+
+  function nextPuesto(clientId: number | null): number | null {
+    if (!clientId) return null;
+    const puestos = puestosMap.get(clientId);
+    if (!puestos || puestos.length === 0) return null;
+    const idx = puestoRR.get(clientId) ?? 0;
+    puestoRR.set(clientId, idx + 1);
+    return puestos[idx % puestos.length];
+  }
+
   const categorias: Record<string, number> = {};
-  let insertadas = 0, actualizadas = 0;
+  let insertadas = 0, actualizadas = 0, conPuesto = 0;
   const errores: string[] = [];
 
   // Prefijos de código por tipo de arma
@@ -766,7 +787,8 @@ armeriaRouter.post("/armeria/importar-digecam", async (req: any, res: any) => {
 
       if (preview) { insertadas++; continue; }
 
-      const clientId = matchClient(row.ubicacion || "");
+      const clientId  = matchClient(row.ubicacion || "");
+      const puestoId  = nextPuesto(clientId);
 
       // Buscar arma existente por serie, luego por tenencia
       let existingId: number | null = null;
@@ -797,11 +819,12 @@ armeriaRouter.post("/armeria/importar-digecam", async (req: any, res: any) => {
             numero_tenencia = $8, fecha_vencimiento_tenencia = $9,
             numero_carnet = $10, fecha_emision_tenencia = $11,
             ubicacion = $12, client_id = $13, observaciones = $14,
+            puesto_id = COALESCE($15, puesto_id),
             updated_at = NOW()
-          WHERE id = $15
+          WHERE id = $16
         `, [tipo, marca, modelo, calibre, serie || null, estado, activo,
             numTen || null, fVenc, carnet, fEmis,
-            ubicacion, clientId, obs, existingId]);
+            ubicacion, clientId, obs, puestoId, existingId]);
         actualizadas++;
       } else {
         const tipoKey = tipo;
@@ -821,16 +844,17 @@ armeriaRouter.post("/armeria/importar-digecam", async (req: any, res: any) => {
             codigo, tipo, marca, modelo, calibre, serie, estado, activo,
             numero_tenencia, fecha_vencimiento_tenencia,
             numero_carnet, fecha_emision_tenencia,
-            ubicacion, client_id, observaciones
-          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+            ubicacion, client_id, puesto_id, observaciones
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
         `, [codigo, tipo, marca, modelo, calibre, serie || null, estado, activo,
-            numTen || null, fVenc, carnet, fEmis, ubicacion, clientId, obs]);
+            numTen || null, fVenc, carnet, fEmis, ubicacion, clientId, puestoId, obs]);
         insertadas++;
       }
+      if (puestoId) conPuesto++;
     } catch (err: any) {
       errores.push(`${row.serie || row.numero_tenencia || "?"}: ${err.message}`);
     }
   }
 
-  res.json({ insertadas, actualizadas, errores: errores.slice(0, 30), total_errores: errores.length, categorias, preview });
+  res.json({ insertadas, actualizadas, con_puesto: conPuesto, errores: errores.slice(0, 30), total_errores: errores.length, categorias, preview });
 });
