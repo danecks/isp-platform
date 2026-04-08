@@ -4148,5 +4148,14 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: OPER-RRHH-03 — error (no bloqueante)");
   }
 
+  // ── CARNET-01: columnas de trazabilidad de impresión en agente_qr_tokens ────
+  try {
+    await pool.query(`ALTER TABLE agente_qr_tokens ADD COLUMN IF NOT EXISTS carnet_impreso_at  TIMESTAMPTZ`);
+    await pool.query(`ALTER TABLE agente_qr_tokens ADD COLUMN IF NOT EXISTS carnet_impreso_por VARCHAR(100)`);
+    logger.info("Auto-migrate: CARNET-01 tracking de carnet en agente_qr_tokens verificado/creado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: CARNET-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

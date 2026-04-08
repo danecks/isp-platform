@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import {
-  QrCode, RefreshCw, Printer, Trash2, CheckCircle, XCircle,
+  QrCode, RefreshCw, Printer, Trash2, CheckCircle, XCircle, CreditCard,
   Search, Users, ClipboardList, MapPin, Star, Shield,
   Smartphone, Plus, Copy, Check, MapPinned, ShieldCheck, Footprints, Bell, X,
   ShieldAlert, AlertTriangle,
 } from "lucide-react";
+import CarnetesTab from "./CarnetesTab";
 
 const API = "/api";
 const getSession = () => {
@@ -74,300 +75,6 @@ interface Dispositivo {
   tiene_token: boolean;
   ultimo_uso: string | null;
   created_at: string;
-}
-
-// ── CarnetView (carnet PVC vertical CR-80) ────────────────────────────────────
-function CarnetView({ agente, onClose }: { agente: AgenteToken; onClose: () => void }) {
-  const origin = window.location.origin;
-  const url = `${origin}/agente?token=${agente.qr_token}`;
-  const svgRef = useRef<HTMLDivElement>(null);
-
-  const initials = agente.nombre_completo
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0].toUpperCase())
-    .join("");
-
-  const cargoLabel = (() => {
-    const tp = agente.tipo_personal || "";
-    const map: Record<string, string> = {
-      guardia: "GUARDIA DE SEGURIDAD",
-      supervisor: "SUPERVISOR",
-      coordinador: "COORDINADOR",
-      agente: "AGENTE DE SEGURIDAD",
-      inspector: "INSPECTOR",
-    };
-    return map[tp.toLowerCase()] ?? (agente.cargo || tp || "AGENTE").toUpperCase();
-  })();
-
-  const fechaEmision = new Date().toLocaleDateString("es-GT", {
-    month: "long",
-    year: "numeric",
-  });
-
-  function handlePrint() {
-    const svgEl = svgRef.current?.querySelector("svg");
-    const svgHtml = svgEl ? new XMLSerializer().serializeToString(svgEl) : "";
-    // CR-80 portrait: 53.98mm × 85.6mm
-    const win = window.open("", "_blank", "width=300,height=480");
-    if (!win) return;
-    win.document.write(`<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <title>Carnet · ${agente.nombre_completo}</title>
-  <style>
-    @page { size: 53.98mm 85.6mm portrait; margin: 0; }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      width: 53.98mm; height: 85.6mm;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-      background: #ffffff;
-      overflow: hidden;
-    }
-    .card { width: 53.98mm; height: 85.6mm; display: flex; flex-direction: column; }
-
-    /* ─── Encabezado navy ─── */
-    .header {
-      background: #0f2044;
-      padding: 3.5mm 3mm 2.5mm;
-      text-align: center;
-      flex-shrink: 0;
-    }
-    .header-top {
-      display: flex; align-items: center; justify-content: center; gap: 1.5mm;
-      margin-bottom: 1mm;
-    }
-    .shield {
-      width: 5mm; height: 5mm; flex-shrink: 0;
-    }
-    .org-sigla {
-      font-size: 6.5pt; font-weight: 900; color: #f5c842;
-      letter-spacing: 0.15em;
-    }
-    .org-nombre {
-      font-size: 4pt; color: rgba(255,255,255,0.65);
-      letter-spacing: 0.04em; line-height: 1.2;
-    }
-    .tipo-badge {
-      display: inline-block;
-      background: #f5c842; color: #0f2044;
-      font-size: 4.5pt; font-weight: 900;
-      letter-spacing: 0.12em;
-      padding: 0.6mm 2mm;
-      border-radius: 1mm;
-      margin-top: 1.5mm;
-    }
-
-    /* ─── Foto / Avatar ─── */
-    .avatar-wrap {
-      display: flex; justify-content: center;
-      margin: 3mm 0 1.5mm;
-      flex-shrink: 0;
-    }
-    .avatar {
-      width: 14mm; height: 14mm; border-radius: 50%;
-      background: #0f2044;
-      display: flex; align-items: center; justify-content: center;
-      border: 1.2pt solid #f5c842;
-    }
-    .avatar-initials {
-      font-size: 9pt; font-weight: 900; color: #f5c842;
-      letter-spacing: 0.05em;
-    }
-
-    /* ─── Datos personales ─── */
-    .datos { flex: 1; padding: 0 3mm; text-align: center; }
-    .nombre {
-      font-size: 7pt; font-weight: 900; color: #0f2044;
-      line-height: 1.2; margin-bottom: 1mm;
-      text-transform: uppercase;
-    }
-    .cargo-label {
-      font-size: 5pt; font-weight: 700; color: #1e5fad;
-      letter-spacing: 0.1em; margin-bottom: 2mm;
-    }
-    .info-row {
-      display: flex; align-items: center; justify-content: center;
-      gap: 1mm; margin-bottom: 1mm;
-    }
-    .info-label {
-      font-size: 4pt; color: #9ca3af; font-weight: 700;
-      letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap;
-    }
-    .info-value {
-      font-size: 5pt; color: #111827; font-weight: 700;
-      font-family: "Courier New", monospace;
-    }
-    .divider { border: none; border-top: 0.3pt solid #e5e7eb; margin: 1.5mm 3mm; }
-
-    /* ─── QR ─── */
-    .qr-section {
-      display: flex; flex-direction: column; align-items: center;
-      padding: 0 3mm 1.5mm;
-      flex-shrink: 0;
-    }
-    .qr-wrap {
-      background: #fff;
-      border: 0.5pt solid #e5e7eb;
-      border-radius: 1.5mm;
-      padding: 1mm;
-      display: inline-flex;
-    }
-    .qr-wrap svg { width: 16mm; height: 16mm; display: block; }
-    .qr-hint { font-size: 3.5pt; color: #9ca3af; margin-top: 1mm; text-align: center; }
-
-    /* ─── Footer ─── */
-    .footer {
-      background: #0f2044;
-      padding: 1.2mm 3mm;
-      text-align: center;
-      flex-shrink: 0;
-    }
-    .footer-text { font-size: 3.5pt; color: rgba(255,255,255,0.5); }
-    .footer-emision { font-size: 3.5pt; color: #f5c842; font-weight: 700; }
-  </style>
-</head>
-<body>
-<div class="card">
-  <div class="header">
-    <div class="header-top">
-      <svg class="shield" viewBox="0 0 24 24" fill="none">
-        <path d="M12 2L3 6v6c0 5.25 3.75 10.15 9 11.35C17.25 22.15 21 17.25 21 12V6L12 2z" fill="#f5c842"/>
-        <path d="M12 2L3 6v6c0 5.25 3.75 10.15 9 11.35C17.25 22.15 21 17.25 21 12V6L12 2z" fill="none" stroke="#0f2044" stroke-width="0.5"/>
-      </svg>
-      <span class="org-sigla">I·S·P</span>
-    </div>
-    <div class="org-nombre">Investigaciones y Seguridad<br>Profesional S.A.</div>
-    <div class="tipo-badge">CARNET DE IDENTIFICACIÓN</div>
-  </div>
-
-  <div class="avatar-wrap">
-    <div class="avatar">
-      <span class="avatar-initials">${initials}</span>
-    </div>
-  </div>
-
-  <div class="datos">
-    <div class="nombre">${agente.nombre_completo}</div>
-    <div class="cargo-label">${cargoLabel}</div>
-    ${agente.dpi ? `
-    <div class="info-row">
-      <span class="info-label">DPI</span>
-      <span class="info-value">${agente.dpi}</span>
-    </div>` : ""}
-    ${agente.empl_numero ? `
-    <div class="info-row">
-      <span class="info-label">No. Empleado</span>
-      <span class="info-value">${String(agente.empl_numero).padStart(4, "0")}</span>
-    </div>` : ""}
-  </div>
-
-  <hr class="divider">
-
-  <div class="qr-section">
-    <div class="qr-wrap">${svgHtml}</div>
-    <div class="qr-hint">Escanea para verificar identidad y estado</div>
-  </div>
-
-  <div class="footer">
-    <span class="footer-text">Emitido: </span>
-    <span class="footer-emision">${fechaEmision}</span>
-  </div>
-</div>
-</body>
-</html>`);
-    win.document.close();
-    win.focus();
-    setTimeout(() => { win.print(); }, 500);
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-      <div className="bg-[#0f1724] border border-white/10 rounded-2xl p-5 w-full max-w-xs">
-
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <p className="text-white font-semibold text-sm">{agente.nombre_completo}</p>
-            <p className="text-white/40 text-xs">{cargoLabel}</p>
-          </div>
-          <button onClick={onClose} className="text-white/30 hover:text-white/60 transition-colors">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Preview del carnet */}
-        <div className="flex justify-center mb-4">
-          <div className="rounded-xl overflow-hidden shadow-2xl shadow-black/60" style={{ width: 160, border: "1px solid rgba(255,255,255,0.08)" }}>
-            {/* Header preview */}
-            <div className="bg-[#0f2044] px-3 py-2 text-center">
-              <div className="flex items-center justify-center gap-1 mb-0.5">
-                <Shield className="w-3 h-3 text-[#f5c842]" />
-                <span className="text-[#f5c842] text-[8px] font-black tracking-widest">I·S·P</span>
-              </div>
-              <div className="text-white/50 text-[6px] leading-tight">Investigaciones y Seguridad<br />Profesional S.A.</div>
-              <div className="inline-block bg-[#f5c842] text-[#0f2044] text-[5px] font-black tracking-wider px-1.5 py-0.5 rounded mt-1">CARNET DE IDENTIFICACIÓN</div>
-            </div>
-
-            {/* Avatar */}
-            <div className="bg-white flex justify-center py-2">
-              <div className="w-10 h-10 rounded-full bg-[#0f2044] border border-[#f5c842] flex items-center justify-center">
-                <span className="text-[#f5c842] text-xs font-black">{initials}</span>
-              </div>
-            </div>
-
-            {/* Datos */}
-            <div className="bg-white px-2 pb-1.5 text-center">
-              <div className="text-[#0f2044] text-[7px] font-black uppercase leading-tight">{agente.nombre_completo}</div>
-              <div className="text-[#1e5fad] text-[5px] font-bold tracking-wider mt-0.5">{cargoLabel}</div>
-              {agente.dpi && <div className="text-gray-400 text-[5px] mt-1">DPI <span className="text-gray-800 font-bold font-mono">{agente.dpi}</span></div>}
-              {agente.empl_numero && <div className="text-gray-400 text-[5px]">No. <span className="text-gray-800 font-bold font-mono">{String(agente.empl_numero).padStart(4,"0")}</span></div>}
-            </div>
-
-            {/* QR */}
-            <div className="bg-white border-t border-gray-100 flex flex-col items-center py-1.5">
-              <div ref={svgRef} className="bg-white border border-gray-200 rounded p-0.5">
-                <QRCodeSVG value={url} size={48} />
-              </div>
-              <div className="text-[5px] text-gray-400 mt-0.5">Escanea para verificar</div>
-            </div>
-
-            {/* Footer */}
-            <div className="bg-[#0f2044] py-1 text-center">
-              <span className="text-white/40 text-[5px]">Emitido: </span>
-              <span className="text-[#f5c842] text-[5px] font-bold">{fechaEmision}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2.5 mb-4 space-y-1.5">
-          <p className="text-amber-300/80 text-[10px] font-bold uppercase tracking-wide">Canon TS702a — Bandeja A61I</p>
-          <ol className="text-amber-300/70 text-[10px] leading-relaxed space-y-0.5 list-decimal list-inside">
-            <li>Coloca la tarjeta PVC en la bandeja A61I</li>
-            <li>Inserta la bandeja en la ranura frontal</li>
-            <li>En el diálogo de impresión selecciona:<br />
-              &nbsp;&nbsp;• Impresora: <span className="font-bold text-amber-300">Canon TS702a</span><br />
-              &nbsp;&nbsp;• Fuente de papel: <span className="font-bold text-amber-300">Bandeja trasera</span><br />
-              &nbsp;&nbsp;• Tipo de papel: <span className="font-bold text-amber-300">Tarjeta de presentación</span>
-            </li>
-          </ol>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            onClick={handlePrint}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#f5c842]/10 hover:bg-[#f5c842]/20 border border-[#f5c842]/30 rounded-xl text-sm text-[#f5c842] font-semibold transition-colors"
-          >
-            <Printer className="w-4 h-4" /> Imprimir Carnet
-          </button>
-          <button onClick={onClose} className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm text-white/50 transition-colors">
-            Cerrar
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 // ── Modal: Activación de dispositivo ─────────────────────────────────────────
@@ -583,13 +290,12 @@ function NuevoDispositivoModal({
 
 // ── Página principal ──────────────────────────────────────────────────────────
 export default function FichajeQR() {
-  const [tab, setTab] = useState<"tokens" | "dispositivos" | "fichajes" | "municion" | "reportes">("tokens");
+  const [tab, setTab] = useState<"tokens" | "dispositivos" | "fichajes" | "municion" | "reportes" | "carnets">("tokens");
   const [agentes, setAgentes] = useState<AgenteToken[]>([]);
   const [fichajes, setFichajes] = useState<Fichaje[]>([]);
   const [dispositivos, setDispositivos] = useState<Dispositivo[]>([]);
   const [cargando, setCargando] = useState(false);
   const [busqueda, setBusqueda] = useState("");
-  const [printAgente, setPrintAgente] = useState<AgenteToken | null>(null);
   const [generando, setGenerando] = useState<number | null>(null);
   const [filtroTipo, setFiltroTipo] = useState<"" | "fichaje" | "supervision" | "ronda">("");
   const [nuevoDispositivoOpen, setNuevoDispositivoOpen] = useState(false);
@@ -768,7 +474,7 @@ export default function FichajeQR() {
 
       {/* Tabs */}
       <div className="flex gap-2 mb-6 flex-wrap">
-        {(["tokens", "dispositivos", "fichajes", "municion", "reportes"] as const).map(t => (
+        {(["tokens", "dispositivos", "fichajes", "municion", "reportes", "carnets"] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-colors flex items-center gap-2 ${
               tab === t
@@ -780,6 +486,7 @@ export default function FichajeQR() {
             {t === "fichajes" && <><ClipboardList className="w-4 h-4" /> Historial</>}
             {t === "municion" && <><ShieldAlert className="w-4 h-4" /> Munición</>}
             {t === "reportes" && <><AlertTriangle className="w-4 h-4" /> Reportes de turno</>}
+            {t === "carnets" && <><CreditCard className="w-4 h-4" /> Carnets PVC</>}
           </button>
         ))}
       </div>
@@ -826,12 +533,6 @@ export default function FichajeQR() {
                   {ag.created_at && <p className="text-white/20 text-xs">{new Date(ag.created_at).toLocaleDateString("es-HN")}</p>}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  {ag.qr_token && (
-                    <button onClick={() => setPrintAgente(ag)} title="Imprimir carnet PVC"
-                      className="p-2 rounded-lg bg-white/5 hover:bg-amber-500/20 border border-white/10 hover:border-amber-500/30 transition-colors">
-                      <Printer className="w-4 h-4 text-white/50 hover:text-amber-300" />
-                    </button>
-                  )}
                   <button onClick={() => generarToken(ag.employee_id)} disabled={generando === ag.employee_id}
                     title={ag.qr_token ? "Regenerar token" : "Generar token"}
                     className="p-2 rounded-lg bg-white/5 hover:bg-green-600/20 border border-white/10 hover:border-green-500/30 transition-colors disabled:opacity-40">
@@ -1328,8 +1029,10 @@ export default function FichajeQR() {
         );
       })()}
 
+      {/* ── TAB CARNETS ──────────────────────────────────────────────────────── */}
+      {tab === "carnets" && <CarnetesTab />}
+
       {/* Modales */}
-      {printAgente && <CarnetView agente={printAgente} onClose={() => setPrintAgente(null)} />}
       {nuevoDispositivoOpen && (
         <NuevoDispositivoModal onCreado={handleDispositivoCreado} onClose={() => setNuevoDispositivoOpen(false)} />
       )}

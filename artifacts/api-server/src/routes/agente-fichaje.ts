@@ -606,6 +606,7 @@ agenteFichajeRouter.get("/agente/tokens", async (req, res) => {
              e.tipo_personal, e.estado_laboral,
              e.dpi, e.empl_numero,
              aqt.id AS token_id, aqt.qr_token, aqt.activo, aqt.created_at,
+             aqt.carnet_impreso_at, aqt.carnet_impreso_por,
              po.nombre AS puesto_nombre, po.cliente_nombre
       FROM employees e
       LEFT JOIN agente_qr_tokens aqt ON aqt.employee_id = e.id AND aqt.activo = TRUE
@@ -650,6 +651,25 @@ agenteFichajeRouter.delete("/agente/tokens/:id", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: "Error revocando token" });
+  }
+});
+
+// POST /api/agente/tokens/:employee_id/registrar-impresion
+agenteFichajeRouter.post("/agente/tokens/:employee_id/registrar-impresion", async (req, res) => {
+  const employeeId = parseInt(req.params.employee_id);
+  const { impresoPor } = req.body ?? {};
+  if (!employeeId || isNaN(employeeId)) return res.status(400).json({ error: "employee_id inválido" });
+  try {
+    await pool.query(
+      `UPDATE agente_qr_tokens
+       SET carnet_impreso_at = NOW(), carnet_impreso_por = $1
+       WHERE employee_id = $2 AND activo = TRUE`,
+      [impresoPor || "Sistema", employeeId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "registrar-impresion: error");
+    res.status(500).json({ error: "Error registrando impresión" });
   }
 });
 
