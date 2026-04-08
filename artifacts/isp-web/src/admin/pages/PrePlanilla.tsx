@@ -163,6 +163,9 @@ interface AnexoHE {
   puesto_cubierto_nombre: string | null;
   observaciones: string | null;
   fuente: string | null;
+  horas_extra_estado: string | null;
+  horas_extra_aprobadas_por: string | null;
+  horas_extra_aprobadas_at: string | null;
   employee_id: number;
   nombre_completo: string;
   sede: string | null;
@@ -175,6 +178,7 @@ interface AnexoFalta {
   falta: boolean;
   suspension: boolean;
   descuento_dia: boolean;
+  dias_descuento: number | null;
   puesto_titular_nombre: string | null;
   puesto_cubierto_nombre: string | null;
   observaciones: string | null;
@@ -820,14 +824,22 @@ function AnexoHorasExtra({ desde, hasta }: { desde: string; hasta: string }) {
         <table className="w-full text-xs border-collapse">
           <thead className="bg-[#060e1c] border-b border-white/6">
             <tr>
-              {["Fecha", "Colaborador", "Cliente / Sede", "Puesto cubierto", "H. Extra", "H. Trab.", "Tipo", "Contexto"].map((h) => (
+              {["Fecha", "Colaborador", "Cliente / Sede", "Puesto cubierto", "H. Extra", "H. Trab.", "Estado RRHH", "Tipo"].map((h) => (
                 <th key={h} className="text-left text-[10px] text-white/40 font-semibold uppercase tracking-wider px-3 py-2 whitespace-nowrap">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-white/4">
-            {rows.map((r) => (
-              <tr key={r.id} className="hover:bg-white/3 transition-colors">
+            {rows.map((r) => {
+              const estadoHE = r.horas_extra_estado ?? "pendiente";
+              const estadoClass = estadoHE === "aprobado"
+                ? "bg-green-400/10 text-green-400 border-green-400/20"
+                : estadoHE === "rechazado"
+                ? "bg-red-400/10 text-red-400 border-red-400/20"
+                : "bg-amber-400/10 text-amber-400 border-amber-400/20";
+              const estadoLabel = estadoHE === "aprobado" ? "Aprobado" : estadoHE === "rechazado" ? "Rechazado" : "Pendiente";
+              return (
+              <tr key={r.id} className={`hover:bg-white/3 transition-colors ${estadoHE === "rechazado" ? "opacity-40" : ""}`}>
                 <td className="px-3 py-2.5 text-white/50 whitespace-nowrap">{fmtFecha(r.fecha)}</td>
                 <td className="px-3 py-2.5">
                   <p className="font-semibold text-white">{r.nombre_completo}</p>
@@ -841,13 +853,19 @@ function AnexoHorasExtra({ desde, hasta }: { desde: string; hasta: string }) {
                   )}
                 </td>
                 <td className="px-3 py-2.5 text-right">
-                  <span className="text-orange-400 font-bold">{Number(r.horas_extra).toFixed(1)} h</span>
+                  <span className={`font-bold ${estadoHE === "rechazado" ? "line-through text-white/30" : "text-orange-400"}`}>{Number(r.horas_extra).toFixed(1)} h</span>
                 </td>
                 <td className="px-3 py-2.5 text-right text-white/50">{Number(r.horas_trabajadas).toFixed(1)} h</td>
+                <td className="px-3 py-2.5">
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${estadoClass}`}>{estadoLabel}</span>
+                  {r.horas_extra_aprobadas_por && (
+                    <p className="text-[9px] text-white/25 mt-0.5">{r.horas_extra_aprobadas_por}</p>
+                  )}
+                </td>
                 <td className="px-3 py-2.5"><TipoCobBadge tipo={r.tipo} /></td>
-                <td className="px-3 py-2.5 text-white/30 max-w-[150px] truncate">{r.observaciones ?? "—"}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -926,9 +944,18 @@ function AnexoFaltas({ desde, hasta }: { desde: string; hasta: string }) {
                   </div>
                 </td>
                 <td className="px-3 py-2.5 text-center">
-                  {r.descuento_dia
-                    ? <MinusCircle className="w-3.5 h-3.5 text-red-400 mx-auto" />
-                    : <span className="text-white/20">—</span>}
+                  {r.descuento_dia ? (
+                    <div className="flex flex-col items-center gap-0.5">
+                      <MinusCircle className="w-3.5 h-3.5 text-red-400" />
+                      {r.dias_descuento && (
+                        <span className="text-[9px] font-bold text-red-400 bg-red-400/10 border border-red-400/20 rounded px-1">
+                          {r.dias_descuento}x
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-white/20">—</span>
+                  )}
                 </td>
                 <td className="px-3 py-2.5 text-white/50">{r.puesto_cubierto_nombre ?? <span className="text-white/20">No cubierto</span>}</td>
                 <td className="px-3 py-2.5 text-white/30 max-w-[160px] truncate">{r.observaciones ?? "—"}</td>

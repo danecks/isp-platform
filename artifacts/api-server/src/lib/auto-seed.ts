@@ -4114,5 +4114,39 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: ARM-SUGERENCIA-01 — error (no bloqueante)");
   }
 
+  // ── OPER-RRHH-01: trazabilidad bidireccional en cobertura_segmentos ──────────
+  try {
+    await pool.query(`ALTER TABLE cobertura_segmentos ADD COLUMN IF NOT EXISTS cubriendo_a_employee_id INTEGER`);
+    await pool.query(`ALTER TABLE cobertura_segmentos ADD COLUMN IF NOT EXISTS cubriendo_a_nombre      VARCHAR(255)`);
+    logger.info("Auto-migrate: OPER-RRHH-01 trazabilidad relevo en cobertura_segmentos verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: OPER-RRHH-01 — error (no bloqueante)");
+  }
+
+  // ── OPER-RRHH-02: descuento y aprobación HE en novedades_nomina_diarias ─────
+  try {
+    await pool.query(`ALTER TABLE novedades_nomina_diarias ADD COLUMN IF NOT EXISTS dias_descuento           NUMERIC(5,2)`);
+    await pool.query(`ALTER TABLE novedades_nomina_diarias ADD COLUMN IF NOT EXISTS horas_extra_estado       VARCHAR(20)  DEFAULT 'pendiente'`);
+    await pool.query(`ALTER TABLE novedades_nomina_diarias ADD COLUMN IF NOT EXISTS horas_extra_aprobadas_por VARCHAR(100)`);
+    await pool.query(`ALTER TABLE novedades_nomina_diarias ADD COLUMN IF NOT EXISTS horas_extra_aprobadas_at  TIMESTAMPTZ`);
+    logger.info("Auto-migrate: OPER-RRHH-02 descuento/aprobacion HE en novedades verificados/creados");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: OPER-RRHH-02 — error (no bloqueante)");
+  }
+
+  // ── OPER-RRHH-03: campos extra en rrhh_alertas para trazabilidad pizarrón ───
+  try {
+    await pool.query(`ALTER TABLE rrhh_alertas ADD COLUMN IF NOT EXISTS puesto_id              INTEGER`);
+    await pool.query(`ALTER TABLE rrhh_alertas ADD COLUMN IF NOT EXISTS puesto_nombre           VARCHAR(255)`);
+    await pool.query(`ALTER TABLE rrhh_alertas ADD COLUMN IF NOT EXISTS fecha_evento            DATE`);
+    await pool.query(`ALTER TABLE rrhh_alertas ADD COLUMN IF NOT EXISTS cubierto_por_employee_id INTEGER`);
+    await pool.query(`ALTER TABLE rrhh_alertas ADD COLUMN IF NOT EXISTS cubierto_por_nombre      VARCHAR(255)`);
+    await pool.query(`ALTER TABLE rrhh_alertas ADD COLUMN IF NOT EXISTS cubierto_at              TIMESTAMPTZ`);
+    await pool.query(`ALTER TABLE rrhh_alertas ADD COLUMN IF NOT EXISTS novedad_id               INTEGER`);
+    logger.info("Auto-migrate: OPER-RRHH-03 campos trazabilidad en rrhh_alertas verificados/creados");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: OPER-RRHH-03 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

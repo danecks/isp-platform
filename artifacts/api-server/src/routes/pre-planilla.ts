@@ -832,6 +832,9 @@ prePlanillaRouter.get("/nomina/pre-planilla/anexo/horas-extra", async (req, res)
         n.descanso_trabajado,
         n.observaciones,
         n.fuente,
+        n.horas_extra_estado,
+        n.horas_extra_aprobadas_por,
+        n.horas_extra_aprobadas_at,
         CASE
           WHEN n.puesto_cubierto_id IS NOT NULL
             AND n.puesto_cubierto_id IS DISTINCT FROM n.puesto_titular_id THEN 'relevo'
@@ -873,6 +876,7 @@ prePlanillaRouter.get("/nomina/pre-planilla/anexo/faltas", async (req, res) => {
         n.falta,
         n.suspension,
         n.descuento_dia,
+        n.dias_descuento,
         n.puesto_titular_nombre,
         n.puesto_cubierto_nombre,
         n.observaciones,

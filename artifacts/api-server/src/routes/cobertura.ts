@@ -325,8 +325,13 @@ coberturaRouter.post("/cobertura/segmentos", async (req, res) => {
   try {
     // Obtener datos del puesto para validaciones
     const { rows: puestos } = await pool.query(
-      `SELECT descanso_inicio, descanso_fin, elegible_horas_extra, hora_entrada, hora_salida
-       FROM puestos_operativos WHERE id = $1`,
+      `SELECT po.descanso_inicio, po.descanso_fin, po.elegible_horas_extra,
+              po.hora_entrada, po.hora_salida, po.titular_employee_id, po.cliente_nombre,
+              po.nombre AS puesto_nombre,
+              COALESCE(t.num_titulares, 1) AS num_titulares
+       FROM puestos_operativos po
+       LEFT JOIN turnos t ON t.id = po.tipo_turno_id
+       WHERE po.id = $1`,
       [puestoId]
     );
     const puesto = puestos[0];
@@ -384,6 +389,127 @@ coberturaRouter.post("/cobertura/segmentos", async (req, res) => {
       await syncCoberturaDesdeSegmentos(fecha, Number(puestoId));
     } catch (syncErr) {
       logger.warn({ syncErr }, "POST /cobertura/segmentos — sync cobertura_diaria falló (no bloqueante)");
+    }
+
+    // ── OPER-RRHH: lógica de alertas y descuentos ────────────────────────────
+    const segTipo = tipoCobertura || "relevo";
+    const numTitulares = Number(puesto?.num_titulares ?? 1);
+    // Descuento: 2x si 1 titular (12h), 3x si 2 titulares (24h)
+    const factorDescuento = numTitulares >= 2 ? 3 : 2;
+
+    try {
+      if (segTipo === "ausencia_sin_cubrir") {
+        // Verificar si el empleado tiene evento activo que justifique la ausencia
+        let tieneEventoActivo = false;
+        if (employeeId) {
+          const { rows: eventosActivos } = await pool.query(
+            `SELECT id FROM eventos_rrhh
+             WHERE employee_id = $1
+               AND estado NOT IN ('anulado','cerrado')
+               AND tipo_evento IN ('vacaciones','incapacidad','suspension','permiso_goce_sueldo','suspension_legal')
+               AND DATE(fecha) <= $2
+               AND (fecha_fin IS NULL OR DATE(fecha_fin) >= $2)
+             LIMIT 1`,
+            [employeeId, fecha]
+          );
+          tieneEventoActivo = eventosActivos.length > 0;
+        }
+
+        if (!tieneEventoActivo) {
+          // Generar alerta a RRHH — faltante sin justificación
+          await pool.query(
+            `INSERT INTO rrhh_alertas
+               (employee_id, employee_nombre, tipo, prioridad, estado,
+                datos_clave, sugerencia, puesto_id, puesto_nombre, fecha_evento)
+             VALUES ($1,$2,'faltante_sin_cubrir','alta','pendiente',$3,
+                     'Verificar si el agente justifica la ausencia y generar acta correspondiente.',
+                     $4,$5,$6)
+             ON CONFLICT DO NOTHING`,
+            [
+              employeeId ?? null,
+              empleadoNombre ?? "Agente desconocido",
+              JSON.stringify({ segmento_id: rows[0].id, puesto_id: puestoId, cliente: puesto?.cliente_nombre }),
+              puestoId ?? null,
+              puesto?.puesto_nombre ?? null,
+              fecha,
+            ]
+          );
+
+          // Calcular días de descuento en novedades_nomina_diarias
+          if (employeeId) {
+            await pool.query(
+              `UPDATE novedades_nomina_diarias
+               SET dias_descuento = $1, descuento_dia = TRUE, updated_at = NOW()
+               WHERE fecha = $2 AND employee_id = $3`,
+              [factorDescuento, fecha, employeeId]
+            );
+          }
+        }
+
+      } else if (segTipo === "relevo" || segTipo === "horas_extra_puras") {
+        // Marcar alertas de faltante del mismo puesto y fecha como cubiertas
+        await pool.query(
+          `UPDATE rrhh_alertas
+           SET estado              = 'cubierto',
+               cubierto_por_employee_id = $1,
+               cubierto_por_nombre      = $2,
+               cubierto_at              = NOW(),
+               resuelta_at              = NOW()
+           WHERE tipo        = 'faltante_sin_cubrir'
+             AND estado      = 'pendiente'
+             AND puesto_id   = $3
+             AND fecha_evento = $4`,
+          [employeeId ?? null, empleadoNombre ?? null, puestoId, fecha]
+        );
+
+        // Si generó horas extra → alerta RRHH para aprobación
+        if (generaHorasExtra && employeeId) {
+          // Obtener el titular del puesto para trazabilidad
+          const titularId   = puesto?.titular_employee_id ?? null;
+
+          // Actualizar novedades con HE pendiente de aprobación
+          await pool.query(
+            `UPDATE novedades_nomina_diarias
+             SET horas_extra_estado = 'pendiente', updated_at = NOW()
+             WHERE fecha = $1 AND employee_id = $2 AND horas_extra > 0`,
+            [fecha, employeeId]
+          );
+
+          // Alerta a RRHH para que apruebe las HE
+          await pool.query(
+            `INSERT INTO rrhh_alertas
+               (employee_id, employee_nombre, tipo, prioridad, estado,
+                datos_clave, sugerencia, puesto_id, puesto_nombre, fecha_evento)
+             VALUES ($1,$2,'horas_extra_pendiente','media','pendiente',$3,
+                     'Aprobar o rechazar horas extra del colaborador que cubrió desde descanso.',
+                     $4,$5,$6)`,
+            [
+              employeeId,
+              empleadoNombre ?? "Agente",
+              JSON.stringify({
+                segmento_id: rows[0].id,
+                horas_extra: horasExtraCalculadas,
+                cubriendo_a_employee_id: titularId,
+                puesto_id: puestoId,
+                cliente: puesto?.cliente_nombre,
+              }),
+              puestoId ?? null,
+              puesto?.puesto_nombre ?? null,
+              fecha,
+            ]
+          );
+
+          // Guardar trazabilidad en el segmento recién creado
+          await pool.query(
+            `UPDATE cobertura_segmentos
+             SET cubriendo_a_employee_id = $1, cubriendo_a_nombre = $2
+             WHERE id = $3`,
+            [titularId, puesto ? `Titular de ${puesto.puesto_nombre}` : null, rows[0].id]
+          );
+        }
+      }
+    } catch (rrhhErr) {
+      logger.warn({ rrhhErr }, "POST /cobertura/segmentos — lógica RRHH falló (no bloqueante)");
     }
 
     res.status(201).json(rows[0]);

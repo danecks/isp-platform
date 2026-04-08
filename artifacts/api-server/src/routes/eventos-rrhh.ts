@@ -518,3 +518,303 @@ eventosRrhhRouter.get("/rrhh/disciplinario", async (_req, res) => {
     res.status(500).json({ error: "Error al obtener dashboard disciplinario" });
   }
 });
+
+// ─── GET /api/rrhh/alertas-pizarron ──────────────────────────────────────────
+// Faltantes sin cubrir y HE pendientes de aprobación
+eventosRrhhRouter.get("/rrhh/alertas-pizarron", async (req, res) => {
+  try {
+    const { tipo, estado = "pendiente" } = req.query as Record<string, string>;
+    const params: any[] = [estado];
+    let whereExtra = "";
+    if (tipo) { whereExtra = ` AND tipo = $2`; params.push(tipo); }
+
+    const { rows } = await pool.query(
+      `SELECT
+         id, employee_id, employee_nombre, tipo, prioridad, estado,
+         datos_clave, sugerencia,
+         puesto_id, puesto_nombre, fecha_evento,
+         cubierto_por_employee_id, cubierto_por_nombre, cubierto_at,
+         novedad_id, generada_at, vista_at, resuelta_at, resuelta_por
+       FROM rrhh_alertas
+       WHERE estado = $1 ${whereExtra}
+       ORDER BY
+         CASE prioridad WHEN 'critica' THEN 1 WHEN 'alta' THEN 2 WHEN 'media' THEN 3 ELSE 4 END,
+         generada_at DESC
+       LIMIT 100`,
+      params
+    );
+
+    const alertas = rows.map((r: any) => ({
+      ...r,
+      datos_clave: (() => { try { return JSON.parse(r.datos_clave || "{}"); } catch { return {}; } })(),
+    }));
+
+    const totales = {
+      faltantes : alertas.filter((a: any) => a.tipo === "faltante_sin_cubrir").length,
+      horasExtra: alertas.filter((a: any) => a.tipo === "horas_extra_pendiente").length,
+    };
+
+    res.json({ alertas, totales });
+  } catch (err) {
+    logger.error({ err }, "GET /rrhh/alertas-pizarron error");
+    res.status(500).json({ error: "Error al obtener alertas del pizarrón" });
+  }
+});
+
+// ─── PATCH /api/rrhh/alertas/:id/resolver ────────────────────────────────────
+eventosRrhhRouter.patch("/rrhh/alertas/:id/resolver", async (req, res) => {
+  try {
+    const { resuelto_por } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE rrhh_alertas
+       SET estado = 'resuelta', resuelta_at = NOW(), resuelta_por = $1
+       WHERE id = $2 RETURNING *`,
+      [resuelto_por ?? "RRHH", req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Alerta no encontrada" });
+    res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "PATCH /rrhh/alertas/:id/resolver error");
+    res.status(500).json({ error: "Error al resolver alerta" });
+  }
+});
+
+// ─── GET /api/rrhh/horas-extra-pendientes ────────────────────────────────────
+eventosRrhhRouter.get("/rrhh/horas-extra-pendientes", async (req, res) => {
+  try {
+    const { desde, hasta } = req.query as Record<string, string>;
+
+    let sql = `
+      SELECT
+        n.id, n.fecha, n.employee_id, n.empleado_nombre,
+        n.horas_extra, n.horas_extra_estado,
+        n.horas_extra_aprobadas_por, n.horas_extra_aprobadas_at,
+        n.puesto_cubierto_nombre, n.fue_en_dia_descanso,
+        n.puesto_titular_nombre
+      FROM novedades_nomina_diarias n
+      WHERE n.horas_extra > 0
+        AND (n.horas_extra_estado = 'pendiente' OR n.horas_extra_estado IS NULL)
+    `;
+    const params: any[] = [];
+    if (desde) { sql += ` AND n.fecha >= $${params.length + 1}`; params.push(desde); }
+    if (hasta) { sql += ` AND n.fecha <= $${params.length + 1}`; params.push(hasta); }
+    sql += ` ORDER BY n.fecha DESC LIMIT 200`;
+
+    const { rows } = await pool.query(sql, params);
+    res.json({ pendientes: rows, total: rows.length });
+  } catch (err) {
+    logger.error({ err }, "GET /rrhh/horas-extra-pendientes error");
+    res.status(500).json({ error: "Error al obtener HE pendientes" });
+  }
+});
+
+// ─── PATCH /api/rrhh/horas-extra/:novedadId/aprobar ──────────────────────────
+eventosRrhhRouter.patch("/rrhh/horas-extra/:novedadId/aprobar", async (req, res) => {
+  try {
+    const { aprobado_por } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE novedades_nomina_diarias
+       SET horas_extra_estado       = 'aprobado',
+           horas_extra_aprobadas_por = $1,
+           horas_extra_aprobadas_at  = NOW(),
+           updated_at               = NOW()
+       WHERE id = $2 RETURNING id, horas_extra_estado, horas_extra_aprobadas_por`,
+      [aprobado_por ?? "RRHH", req.params.novedadId]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Novedad no encontrada" });
+
+    // Cerrar la alerta relacionada
+    await pool.query(
+      `UPDATE rrhh_alertas
+       SET estado = 'resuelta', resuelta_at = NOW(), resuelta_por = $1
+       WHERE tipo = 'horas_extra_pendiente' AND novedad_id = $2 AND estado = 'pendiente'`,
+      [aprobado_por ?? "RRHH", req.params.novedadId]
+    );
+
+    res.json({ ok: true, novedad: rows[0] });
+  } catch (err) {
+    logger.error({ err }, "PATCH /rrhh/horas-extra/:id/aprobar error");
+    res.status(500).json({ error: "Error al aprobar HE" });
+  }
+});
+
+// ─── PATCH /api/rrhh/horas-extra/:novedadId/rechazar ─────────────────────────
+eventosRrhhRouter.patch("/rrhh/horas-extra/:novedadId/rechazar", async (req, res) => {
+  try {
+    const { rechazado_por, motivo } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE novedades_nomina_diarias
+       SET horas_extra_estado        = 'rechazado',
+           horas_extra_aprobadas_por  = $1,
+           horas_extra_aprobadas_at   = NOW(),
+           horas_extra               = 0,
+           updated_at                = NOW()
+       WHERE id = $2 RETURNING id, horas_extra_estado`,
+      [rechazado_por ?? "RRHH", req.params.novedadId]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Novedad no encontrada" });
+
+    await pool.query(
+      `UPDATE rrhh_alertas
+       SET estado = 'resuelta', resuelta_at = NOW(), resuelta_por = $1
+       WHERE tipo = 'horas_extra_pendiente' AND novedad_id = $2 AND estado = 'pendiente'`,
+      [rechazado_por ?? "RRHH", req.params.novedadId]
+    );
+
+    res.json({ ok: true, motivo });
+  } catch (err) {
+    logger.error({ err }, "PATCH /rrhh/horas-extra/:id/rechazar error");
+    res.status(500).json({ error: "Error al rechazar HE" });
+  }
+});
+
+// ─── GET /api/rrhh/empleado/:id/kpi ──────────────────────────────────────────
+// KPI individual del empleado: faltas, actas, suspensiones, HE aprobadas, semáforo Art.77
+eventosRrhhRouter.get("/rrhh/empleado/:id/kpi", async (req, res) => {
+  try {
+    const employeeId = req.params.id;
+    const hoy = new Date().toISOString().split("T")[0];
+
+    // ── Conteos de eventos (últimos 12 meses) ────────────────────────────────
+    const { rows: eventRows } = await pool.query(
+      `SELECT tipo_evento, COUNT(*) AS total
+       FROM eventos_rrhh
+       WHERE employee_id = $1
+         AND anulado_por IS NULL
+         AND fecha >= NOW() - INTERVAL '12 months'
+       GROUP BY tipo_evento`,
+      [employeeId]
+    );
+
+    const counts: Record<string, number> = {};
+    for (const r of eventRows as any[]) counts[r.tipo_evento] = Number(r.total);
+
+    // ── Art.77: faltas consecutivas e inasistencias en mes actual ────────────
+    const { rows: art77Rows } = await pool.query(
+      `SELECT fecha, tipo_evento
+       FROM eventos_rrhh
+       WHERE employee_id = $1
+         AND anulado_por IS NULL
+         AND tipo_evento = 'falta'
+         AND DATE_TRUNC('month', fecha) = DATE_TRUNC('month', NOW()::date)
+       ORDER BY fecha DESC`,
+      [employeeId]
+    );
+
+    const faltasEstesMes   = art77Rows.length;
+    let consecutivas = 0;
+    let maxConsecutivas = 0;
+    let prevFecha: Date | null = null;
+    for (const r of art77Rows as any[]) {
+      const d = new Date(r.fecha);
+      if (prevFecha) {
+        const diff = Math.round((prevFecha.getTime() - d.getTime()) / 86400000);
+        if (diff <= 1) consecutivas++;
+        else consecutivas = 1;
+      } else {
+        consecutivas = 1;
+      }
+      if (consecutivas > maxConsecutivas) maxConsecutivas = consecutivas;
+      prevFecha = d;
+    }
+
+    // Art.77: 2 días laborales consecutivos ausente → alerta
+    const art77ConsecutivaAlerta  = maxConsecutivas >= 2;
+    // 6 medias jornadas en el mes = 3 días; usamos 3 faltas como umbral práctico
+    const art77MesAlerta = faltasEstesMes >= 3;
+    const art77Nivel     = art77ConsecutivaAlerta || art77MesAlerta ? "rojo"
+                         : faltasEstesMes >= 2                      ? "amarillo"
+                                                                     : "verde";
+
+    // ── HE aprobadas en el período ──────────────────────────────────────────
+    const { rows: heRows } = await pool.query(
+      `SELECT COALESCE(SUM(horas_extra), 0) AS total_he
+       FROM novedades_nomina_diarias
+       WHERE employee_id = $1
+         AND horas_extra_estado = 'aprobado'
+         AND fecha >= NOW() - INTERVAL '12 months'`,
+      [employeeId]
+    );
+
+    // ── Historial coberturas (últimas 10) ────────────────────────────────────
+    const { rows: cobRows } = await pool.query(
+      `SELECT fecha, tipo_cobertura, motivo, puesto_nombre, empleado_nombre AS nombre
+       FROM cobertura_segmentos
+       WHERE employee_id = $1
+       ORDER BY fecha DESC LIMIT 10`,
+      [employeeId]
+    );
+
+    // ── Historial actas y eventos recientes ──────────────────────────────────
+    const { rows: eventosRecientes } = await pool.query(
+      `SELECT id, tipo_evento, estado, fecha, cliente_nombre, puesto_nombre, observaciones
+       FROM eventos_rrhh
+       WHERE employee_id = $1
+         AND anulado_por IS NULL
+       ORDER BY fecha DESC LIMIT 20`,
+      [employeeId]
+    );
+
+    res.json({
+      employeeId,
+      faltas12m          : counts["falta"]        ?? 0,
+      suspensiones12m    : counts["suspension"]   ?? 0,
+      actas12m           : (counts["falta"] ?? 0) + (counts["suspension"] ?? 0) + (counts["amonestacion"] ?? 0),
+      vacaciones12m      : counts["vacaciones"]   ?? 0,
+      incapacidades12m   : counts["incapacidad"]  ?? 0,
+      horasExtraAprobadas: parseFloat(String(heRows[0]?.total_he ?? 0)),
+      faltasEsteMes      : faltasEstesMes,
+      consecutivasMax    : maxConsecutivas,
+      art77              : {
+        nivel                    : art77Nivel,
+        alertaConsecutiva        : art77ConsecutivaAlerta,
+        alertaMes                : art77MesAlerta,
+        faltasEsteMes,
+      },
+      historialCobertura : cobRows,
+      eventosRecientes   : eventosRecientes,
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /rrhh/empleado/:id/kpi error");
+    res.status(500).json({ error: "Error al obtener KPI del empleado" });
+  }
+});
+
+// ─── GET /api/rrhh/eventos/actas ─────────────────────────────────────────────
+// Datos para impresión batch de actas — filtros: desde, hasta, tipo, verificado
+eventosRrhhRouter.get("/rrhh/eventos/actas", async (req, res) => {
+  try {
+    const { desde, hasta, tipo, verificado } = req.query as Record<string, string>;
+    const params: any[] = [];
+    const conds: string[] = ["anulado_por IS NULL"];
+
+    if (desde)      { conds.push(`fecha >= $${params.length + 1}`);      params.push(desde); }
+    if (hasta)      { conds.push(`fecha <= $${params.length + 1}`);      params.push(hasta); }
+    if (tipo)       { conds.push(`tipo_evento = $${params.length + 1}`); params.push(tipo); }
+    if (verificado === "true") {
+      conds.push(`rrhh_resuelto_por IS NOT NULL`);
+    }
+
+    const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+
+    const { rows } = await pool.query(
+      `SELECT
+         id, employee_id, employee_nombre, employee_dpi,
+         tipo_evento, estado, fecha, fecha_fin,
+         cliente_nombre, puesto_nombre, supervisor_nombre,
+         observaciones, notas, cantidad_dias, cantidad_horas,
+         afecta_nomina, rrhh_resuelto_por, rrhh_resuelto_at,
+         created_at
+       FROM eventos_rrhh
+       ${where}
+       ORDER BY fecha DESC
+       LIMIT 500`,
+      params
+    );
+
+    res.json({ actas: rows, total: rows.length });
+  } catch (err) {
+    logger.error({ err }, "GET /rrhh/eventos/actas error");
+    res.status(500).json({ error: "Error al obtener actas" });
+  }
+});
