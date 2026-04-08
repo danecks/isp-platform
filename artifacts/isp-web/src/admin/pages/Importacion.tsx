@@ -1897,8 +1897,16 @@ function LibroSalariosTab() {
         const data = new Uint8Array(e.target!.result as ArrayBuffer);
         const wb = XLSX.read(data, { type: "array" });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const parsed = XLSX.utils.sheet_to_json<LibSalRow>(ws, { defval: 0 });
-        setRows(parsed);
+        // sheet_to_json sin header → obtenemos arrays y normalizamos a lowercase
+        const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: 0 });
+        const normalized = rawRows.map((row) => {
+          const out: Record<string, unknown> = {};
+          for (const key of Object.keys(row)) {
+            out[key.trim().toLowerCase()] = row[key];
+          }
+          return out as unknown as LibSalRow;
+        });
+        setRows(normalized);
         setFileName(file.name);
       } catch {
         alert("No se pudo leer el archivo. Verifica que sea un Excel .xlsx válido.");
@@ -1936,6 +1944,15 @@ function LibroSalariosTab() {
   const periodoMin = rows.length > 0 ? rows.reduce((m, r) => r.lbl_ano * 100 + r.lbl_mes < m ? r.lbl_ano * 100 + r.lbl_mes : m, 999999) : null;
   const periodoMax = rows.length > 0 ? rows.reduce((m, r) => r.lbl_ano * 100 + r.lbl_mes > m ? r.lbl_ano * 100 + r.lbl_mes : m, 0) : null;
   const fmtP = (n: number | null) => n ? `${MESES_LS[n % 100] ?? n % 100} ${Math.floor(n / 100)}` : "";
+
+  // Diagnóstico: ¿tienen valores reales los campos clave?
+  const primeraFila = rows[0] as any;
+  const camposOk = rows.length > 0 && (
+    Number(primeraFila?.lbl_liquido) > 0 ||
+    Number(primeraFila?.lbl_tdev) > 0 ||
+    Number(primeraFila?.lbl_ordinario) > 0
+  );
+  const algunoConLiquido = rows.length > 0 && rows.some(r => Number((r as any).lbl_liquido) > 0);
 
   return (
     <div className="space-y-6">
@@ -1985,6 +2002,21 @@ function LibroSalariosTab() {
               <X className="w-3 h-3" /> Quitar
             </button>
           </div>
+
+          {/* Diagnóstico de columnas */}
+          {algunoConLiquido ? (
+            <div className="flex items-center gap-2 bg-emerald-500/8 border border-emerald-500/20 rounded-lg px-3 py-2">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <p className="text-xs text-emerald-300">Columnas detectadas correctamente — los montos tienen valores reales.</p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 bg-red-500/8 border border-red-500/20 rounded-lg px-3 py-2">
+              <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+              <p className="text-xs text-red-300">
+                Los montos aparecen en cero — verifica que el Excel tenga columnas como <code className="text-red-200/80">LBL_LIQUIDO</code>, <code className="text-red-200/80">LBL_ORDINARIO</code>, etc.
+              </p>
+            </div>
+          )}
 
           <div className="overflow-x-auto rounded-lg border border-white/8">
             <table className="w-full text-[10px]">

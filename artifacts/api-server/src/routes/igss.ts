@@ -139,7 +139,11 @@ igssRouter.post("/igss/importar-lib-sal", async (req, res) => {
     let insertadas = 0, actualizadas = 0, errores = 0;
     const errDetail: string[] = [];
 
-    for (const r of rows) {
+    for (const rawR of rows) {
+      // Normalizar claves a minúsculas (el Excel puede exportar en MAYÚSCULAS)
+      const r: Record<string, unknown> = {};
+      for (const k of Object.keys(rawR)) r[k.trim().toLowerCase()] = (rawR as any)[k];
+
       try {
         const empl = Number(r.empl_numero);
         const ano  = Number(r.lbl_ano);
