@@ -52,57 +52,71 @@ function getCargoLabel(tipo_personal: string, cargo: string | null) {
   return map[(tipo_personal || "").toLowerCase()] ?? (cargo || tipo_personal || "AGENTE").toUpperCase();
 }
 
-// ── CSS impresión FRENTE (Moderno) ────────────────────────────────────────────
+// ── CSS impresión FRENTE (Moderno — landscape CR-80) ──────────────────────────
 const FRENTE_CSS = `
-  @page { size: 53.98mm 85.6mm portrait; margin: 0; }
+  @page { size: 85.6mm 53.98mm landscape; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { width: 53.98mm; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; background: #fff; }
-  .card { width: 53.98mm; height: 85.6mm; display: flex; flex-direction: row; overflow: hidden; }
-  .stripe { width: 10.5mm; background: linear-gradient(180deg, #0f2044 0%, #132a5a 100%); display: flex; flex-direction: column; align-items: center; flex-shrink: 0; position: relative; }
-  .stripe-bar-t { position: absolute; top: 0; left: 0; right: 0; height: 1mm; background: #f5c842; }
-  .stripe-bar-b { position: absolute; bottom: 0; left: 0; right: 0; height: 1mm; background: #f5c842; }
-  .stripe-inner { display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 3mm 0; width: 100%; height: 100%; }
-  .stripe-logo { width: 7mm; object-fit: contain; filter: brightness(0) invert(1); }
-  .stripe-num { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 4pt; color: rgba(255,255,255,0.4); font-family: "Courier New", monospace; font-weight: 700; letter-spacing: 0.1em; }
+  body { width: 85.6mm; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; background: #fff; }
+  .card { width: 85.6mm; height: 53.98mm; display: flex; flex-direction: row; overflow: hidden; }
+  .stripe { width: 11mm; background: linear-gradient(180deg, #0f2044 0%, #132a5a 100%); display: flex; flex-direction: column; align-items: center; flex-shrink: 0; position: relative; }
+  .stripe-bar-t { position: absolute; top: 0; left: 0; right: 0; height: 0.8mm; background: #f5c842; }
+  .stripe-bar-b { position: absolute; bottom: 0; left: 0; right: 0; height: 0.8mm; background: #f5c842; }
+  .stripe-inner { display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 2.5mm 0; width: 100%; height: 100%; }
+  .stripe-logo { width: 7.5mm; object-fit: contain; filter: brightness(0) invert(1); }
+  .stripe-num { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 3.5pt; color: rgba(255,255,255,0.4); font-family: "Courier New", monospace; font-weight: 700; letter-spacing: 0.08em; }
   .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-  .c-header { background: #fff; padding: 2.5mm 2mm 2mm; border-bottom: 0.3pt solid #f1f5f9; display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
-  .avatar { width: 13mm; height: 13mm; border-radius: 50%; background: linear-gradient(135deg, #0f2044, #1e4a9a); border: 0.8pt solid #f5c842; display: flex; align-items: center; justify-content: center; margin-bottom: 1.5mm; }
-  .avatar-i { font-size: 8pt; font-weight: 900; color: #f5c842; }
-  .nombre { font-size: 6pt; font-weight: 900; color: #0f2044; text-align: center; line-height: 1.2; text-transform: uppercase; margin-bottom: 0.8mm; }
-  .cargo { font-size: 4pt; font-weight: 700; color: #b8860b; text-align: center; letter-spacing: 0.1em; text-transform: uppercase; }
-  .gold-line { height: 0.6pt; background: linear-gradient(90deg, #d4a017, #f5c842, #e8b820); flex-shrink: 0; }
-  .datos { padding: 1.5mm 2mm; flex: 1; }
-  .d-label { font-size: 3.5pt; color: #94a3b8; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.5mm; }
-  .d-value { font-size: 5.5pt; color: #0f2044; font-weight: 800; font-family: "Courier New", monospace; margin-bottom: 1.5mm; }
-  .hdivider { height: 0.3pt; background: #f1f5f9; margin-bottom: 1.5mm; }
-  .qr-row { display: flex; flex-direction: column; align-items: center; gap: 1mm; }
-  .qr-hint { font-size: 3pt; color: #94a3b8; text-align: center; }
+  .c-body { flex: 1; display: flex; flex-direction: row; align-items: center; padding: 2mm 2.5mm; gap: 2mm; }
+  .avatar { width: 15mm; height: 15mm; border-radius: 50%; background: linear-gradient(135deg, #0f2044, #1e4a9a); border: 0.8pt solid #f5c842; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .avatar-i { font-size: 9pt; font-weight: 900; color: #f5c842; }
+  .info { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 1mm; }
+  .nombre { font-size: 6.5pt; font-weight: 900; color: #0f2044; line-height: 1.2; text-transform: uppercase; }
+  .cargo { font-size: 4pt; font-weight: 700; color: #b8860b; letter-spacing: 0.1em; text-transform: uppercase; }
+  .gold-sep { height: 0.5pt; background: linear-gradient(90deg, #d4a017, #f5c842); margin: 1mm 0; }
+  .d-label { font-size: 3pt; color: #94a3b8; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.4mm; }
+  .d-value { font-size: 5pt; color: #0f2044; font-weight: 800; font-family: "Courier New", monospace; }
+  .qr-block { display: flex; flex-direction: column; align-items: center; gap: 1mm; flex-shrink: 0; }
   .qr-box { background: #fff; border: 0.4pt solid #e2e8f0; border-radius: 1mm; padding: 0.5mm; }
-  .qr-box svg { width: 18mm; height: 18mm; display: block; }
-  .c-footer { background: #0f2044; padding: 1mm 2mm; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .qr-box svg { width: 17mm; height: 17mm; display: block; }
+  .qr-hint { font-size: 3pt; color: #94a3b8; text-align: center; }
+  .c-footer { background: #0f2044; padding: 1mm 2.5mm; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
   .f-date { font-size: 3pt; color: rgba(255,255,255,0.35); }
   .f-label { font-size: 3pt; font-weight: 800; color: #f5c842; letter-spacing: 0.08em; }
 `;
 
-// ── CSS impresión REVERSO (Moderno) ───────────────────────────────────────────
+// ── CSS impresión REVERSO (Moderno — landscape CR-80) ─────────────────────────
 const REVERSO_CSS = `
-  @page { size: 53.98mm 85.6mm portrait; margin: 0; }
+  @page { size: 85.6mm 53.98mm landscape; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { width: 53.98mm; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; background: #fff; }
-  .card { width: 53.98mm; height: 85.6mm; display: flex; flex-direction: column; overflow: hidden; }
-  .r-top { background: #fff; padding: 4mm 3mm 2mm; display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
-  .r-logo { height: 18mm; object-fit: contain; }
-  .r-org { font-size: 3.8pt; color: #0f2044; letter-spacing: 0.1em; font-weight: 700; text-align: center; margin-top: 1.5mm; }
+  body { width: 85.6mm; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; background: #fff; }
+  .card { width: 85.6mm; height: 53.98mm; display: flex; flex-direction: column; overflow: hidden; }
+  .r-top { background: #fff; padding: 3mm 3mm 1.5mm; display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+  .r-logo { height: 12mm; object-fit: contain; }
+  .r-org { font-size: 3.5pt; color: #0f2044; letter-spacing: 0.08em; font-weight: 700; text-align: center; margin-top: 1mm; }
   .r-gold { height: 0.8pt; background: linear-gradient(90deg, #d4a017, #f5c842, #d4a017); flex-shrink: 0; }
-  .r-body { flex: 1; background: #fff; display: flex; align-items: center; justify-content: center; padding: 2.5mm 4mm; }
-  .r-legal { font-size: 5.5pt; color: #1e3a5f; text-align: center; line-height: 1.65; }
+  .r-body { flex: 1; background: #fff; display: flex; align-items: center; justify-content: center; padding: 2mm 8mm; }
+  .r-legal { font-size: 5pt; color: #1e3a5f; text-align: center; line-height: 1.55; }
   .r-legal strong { font-weight: 800; color: #0f2044; }
-  .r-divider { height: 0.5pt; background: linear-gradient(90deg, transparent, rgba(245,200,66,0.5), #f5c842, rgba(245,200,66,0.5), transparent); margin: 0 4mm; flex-shrink: 0; }
-  .r-footer { background: #fff; padding: 1.5mm 3mm 2mm; display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
-  .r-web { font-size: 6.5pt; font-weight: 900; color: #0f2044; letter-spacing: 0.06em; }
-  .r-email { font-size: 3.8pt; color: #94a3b8; letter-spacing: 0.04em; margin-top: 0.5mm; }
-  .r-bottom { background: #0f2044; height: 2mm; flex-shrink: 0; }
+  .r-divider { height: 0.5pt; background: linear-gradient(90deg, transparent, rgba(245,200,66,0.5), #f5c842, rgba(245,200,66,0.5), transparent); margin: 0 6mm; flex-shrink: 0; }
+  .r-footer { background: #fff; padding: 1.5mm 3mm; display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+  .r-web { font-size: 6pt; font-weight: 900; color: #0f2044; letter-spacing: 0.06em; }
+  .r-email { font-size: 3.5pt; color: #94a3b8; letter-spacing: 0.04em; margin-top: 0.4mm; }
+  .r-bottom { background: #0f2044; height: 2.5mm; flex-shrink: 0; }
 `;
+
+// ── Helper: convierte imagen a base64 para popups ─────────────────────────────
+async function toBase64Url(url: string): Promise<string> {
+  try {
+    const resp = await fetch(url);
+    const blob = await resp.blob();
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return url;
+  }
+}
 
 // ── Generadores HTML ───────────────────────────────────────────────────────────
 function buildFrenteBlock(
@@ -128,18 +142,17 @@ function buildFrenteBlock(
     <div class="stripe-bar-b"></div>
   </div>
   <div class="content">
-    <div class="c-header">
+    <div class="c-body">
       <div class="avatar"><span class="avatar-i">${initials}</span></div>
-      <div class="nombre">${a.nombre_completo}</div>
-      <div class="cargo">${cargoLabel}</div>
-    </div>
-    <div class="gold-line"></div>
-    <div class="datos">
-      ${dpiSection}
-      <div class="hdivider"></div>
-      <div class="qr-row">
+      <div class="info">
+        <div class="nombre">${a.nombre_completo}</div>
+        <div class="cargo">${cargoLabel}</div>
+        <div class="gold-sep"></div>
+        ${dpiSection}
+      </div>
+      <div class="qr-block">
         <div class="qr-box">${svgHtml}</div>
-        <div class="qr-hint">Escanea para verificar identidad</div>
+        <div class="qr-hint">Escanea para verificar</div>
       </div>
     </div>
     <div class="c-footer">
@@ -207,16 +220,18 @@ function CarnetView({
   const logoIconUrl = `${origin}/images/logo-icon.png`;
   const logoFullUrl = `${origin}/images/logo-isp.png`;
 
-  function handlePrintFrente() {
+  async function handlePrintFrente() {
     const svgEl = svgRef.current?.querySelector("svg");
     const svgHtml = svgEl ? new XMLSerializer().serializeToString(svgEl) : "<span>QR</span>";
-    const block = buildFrenteBlock(agente, initials, cargoLabel, fechaEmision, svgHtml, logoIconUrl);
+    const logoB64 = await toBase64Url(logoIconUrl);
+    const block = buildFrenteBlock(agente, initials, cargoLabel, fechaEmision, svgHtml, logoB64);
     openPrintWindow(`Frente · ${agente.nombre_completo}`, FRENTE_CSS, block);
     setFase("reverso");
   }
 
-  function handlePrintReverso() {
-    const block = buildReversoBlock(logoFullUrl);
+  async function handlePrintReverso() {
+    const logoB64 = await toBase64Url(logoFullUrl);
+    const block = buildReversoBlock(logoB64);
     openPrintWindow(`Reverso · ${agente.nombre_completo}`, REVERSO_CSS, block);
     onPrinted();
     onClose();
@@ -235,66 +250,65 @@ function CarnetView({
           </button>
         </div>
 
-        {/* Vista previa Moderno */}
-        <div className="flex justify-center mb-4 gap-3">
-          {/* Frente mini */}
-          <div className="flex flex-col items-center gap-1">
+        {/* Vista previa Moderno — landscape */}
+        <div className="flex flex-col items-center mb-4 gap-2">
+          {/* Frente mini landscape */}
+          <div className="flex flex-col items-center gap-1 w-full">
             <span className="text-white/30 text-[9px] uppercase tracking-wider">Frente</span>
-            <div style={{ width: 100, height: 158, borderRadius: 5, overflow: "hidden", display: "flex", flexDirection: "row", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}>
+            <div style={{ width: "100%", height: 80, borderRadius: 5, overflow: "hidden", display: "flex", flexDirection: "row", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}>
               {/* Stripe */}
-              <div style={{ width: 16, background: "linear-gradient(180deg,#0f2044,#132a5a)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between", padding: "5px 0", position: "relative", flexShrink: 0 }}>
+              <div style={{ width: 14, background: "linear-gradient(180deg,#0f2044,#132a5a)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between", padding: "4px 0", position: "relative", flexShrink: 0 }}>
                 <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: "#f5c842" }} />
                 <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: "#f5c842" }} />
-                <img src="/images/logo-icon.png" style={{ width: 12, filter: "brightness(0) invert(1)" }} />
-                <span style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", fontSize: 5, color: "rgba(255,255,255,0.35)", fontFamily: "monospace" }}>
-                  #{agente.empl_numero ? String(agente.empl_numero).padStart(4, "0") : "—"}
+                <img src="/images/logo-icon.png" style={{ width: 10, filter: "brightness(0) invert(1)" }} />
+                <span style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", fontSize: 4, color: "rgba(255,255,255,0.35)", fontFamily: "monospace" }}>
+                  {agente.empl_numero ? `#${String(agente.empl_numero).padStart(4, "0")}` : ""}
                 </span>
               </div>
-              {/* Content */}
+              {/* Content landscape */}
               <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#fff" }}>
-                <div style={{ padding: "5px 4px 4px", borderBottom: "0.5px solid #f1f5f9", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                  <div style={{ width: 22, height: 22, borderRadius: "50%", background: "linear-gradient(135deg,#0f2044,#1e4a9a)", border: "1px solid #f5c842", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 3 }}>
-                    <span style={{ color: "#f5c842", fontSize: 7, fontWeight: 900 }}>{initials}</span>
+                <div style={{ flex: 1, display: "flex", flexDirection: "row", alignItems: "center", padding: "5px 6px", gap: 6 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: "50%", background: "linear-gradient(135deg,#0f2044,#1e4a9a)", border: "1px solid #f5c842", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <span style={{ color: "#f5c842", fontSize: 8, fontWeight: 900 }}>{initials}</span>
                   </div>
-                  <div style={{ fontSize: 5, fontWeight: 900, color: "#0f2044", textAlign: "center", lineHeight: 1.2, textTransform: "uppercase", marginBottom: 1 }}>{agente.nombre_completo}</div>
-                  <div style={{ fontSize: 4, fontWeight: 700, color: "#b8860b", letterSpacing: "0.05em" }}>{cargoLabel}</div>
-                </div>
-                <div style={{ height: 1, background: "linear-gradient(90deg,#d4a017,#f5c842,#e8b820)" }} />
-                <div style={{ padding: "4px", flex: 1 }}>
-                  {agente.dpi && <><div style={{ fontSize: 3, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 1 }}>DPI</div><div style={{ fontSize: 5, color: "#0f2044", fontWeight: 800, fontFamily: "monospace", marginBottom: 3 }}>{agente.dpi}</div></>}
-                  <div style={{ height: 0.5, background: "#f1f5f9", marginBottom: 3 }} />
-                  <div ref={svgRef} style={{ display: "flex", justifyContent: "center" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 5.5, fontWeight: 900, color: "#0f2044", lineHeight: 1.2, textTransform: "uppercase" }}>{agente.nombre_completo}</div>
+                    <div style={{ fontSize: 4, fontWeight: 700, color: "#b8860b", letterSpacing: "0.05em", marginTop: 1 }}>{cargoLabel}</div>
+                    <div style={{ height: 0.5, background: "linear-gradient(90deg,#d4a017,#f5c842)", margin: "3px 0" }} />
+                    {agente.dpi && <div style={{ fontSize: 4, color: "#0f2044", fontFamily: "monospace", fontWeight: 800 }}>{agente.dpi}</div>}
+                  </div>
+                  <div ref={svgRef} style={{ flexShrink: 0 }}>
                     <div style={{ background: "#fff", border: "0.5px solid #e2e8f0", borderRadius: 2, padding: 1 }}>
-                      <QRCodeSVG value={url} size={38} />
+                      <QRCodeSVG value={url} size={34} />
                     </div>
                   </div>
                 </div>
-                <div style={{ background: "#0f2044", padding: "2px 4px", display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 3, color: "rgba(255,255,255,0.3)" }}>{fechaEmision.split(" ").slice(-1)[0]}</span>
-                  <span style={{ fontSize: 3, color: "#f5c842", fontWeight: 800 }}>ISP</span>
+                <div style={{ background: "#0f2044", padding: "2px 6px", display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 3, color: "rgba(255,255,255,0.3)" }}>{fechaEmision}</span>
+                  <span style={{ fontSize: 3, color: "#f5c842", fontWeight: 800 }}>CARNET DE IDENTIFICACIÓN</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Reverso mini */}
-          <div className="flex flex-col items-center gap-1">
+          {/* Reverso mini landscape */}
+          <div className="flex flex-col items-center gap-1 w-full">
             <span className="text-white/30 text-[9px] uppercase tracking-wider">Reverso</span>
-            <div style={{ width: 100, height: 158, borderRadius: 5, overflow: "hidden", display: "flex", flexDirection: "column", background: "#fff", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}>
-              <div style={{ padding: "8px 6px 4px", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <img src="/images/logo-isp.png" style={{ height: 32, objectFit: "contain" }} />
-                <div style={{ fontSize: 3.5, color: "#0f2044", fontWeight: 700, textAlign: "center", marginTop: 3, letterSpacing: "0.05em" }}>INVESTIGACIONES Y SEGURIDAD<br />PROFESIONAL S.A.</div>
+            <div style={{ width: "100%", height: 80, borderRadius: 5, overflow: "hidden", display: "flex", flexDirection: "column", background: "#fff", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}>
+              <div style={{ padding: "5px 8px 3px", display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+                <img src="/images/logo-isp.png" style={{ height: 20, objectFit: "contain" }} />
+                <div style={{ fontSize: 3, color: "#0f2044", fontWeight: 700, textAlign: "center", marginTop: 2 }}>INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A.</div>
               </div>
-              <div style={{ height: 1, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)" }} />
-              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "4px 6px" }}>
-                <div style={{ fontSize: 4, color: "#1e3a5f", textAlign: "center", lineHeight: 1.5 }}>
-                  El presente acredita como colaborador de <strong style={{ color: "#0f2044" }}>ISP S.A.</strong> Se solicita a las Autoridades Civiles y Militares la colaboración en caso de ser requerida.
+              <div style={{ height: 1, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)", flexShrink: 0 }} />
+              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "2px 10px" }}>
+                <div style={{ fontSize: 3.5, color: "#1e3a5f", textAlign: "center", lineHeight: 1.45 }}>
+                  El presente acredita como colaborador de <strong style={{ color: "#0f2044" }}>ISP S.A.</strong> Se solicita a las Autoridades Civiles y Militares la colaboración en caso de ser requerida. Válido en el cumplimiento de sus funciones en el puesto.
                 </div>
               </div>
-              <div style={{ padding: "3px 6px 5px", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <div style={{ fontSize: 5.5, fontWeight: 900, color: "#0f2044" }}>www.ispsa.net</div>
+              <div style={{ padding: "2px 8px", display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+                <div style={{ fontSize: 5, fontWeight: 900, color: "#0f2044" }}>www.ispsa.net</div>
               </div>
-              <div style={{ height: 3, background: "#0f2044" }} />
+              <div style={{ height: 4, background: "#0f2044", flexShrink: 0 }} />
             </div>
           </div>
         </div>
@@ -403,7 +417,7 @@ export default function CarnetesTab() {
     setImprimiendo(true);
 
     const origin = window.location.origin;
-    const logoIconUrl = `${origin}/images/logo-icon.png`;
+    const logoIconUrl = await toBase64Url(`${origin}/images/logo-icon.png`);
     const fechaEmision = new Date().toLocaleDateString("es-GT", { month: "long", year: "numeric" });
 
     const qrMap: Record<number, string> = {};
@@ -432,7 +446,7 @@ export default function CarnetesTab() {
   // ── Lote: Paso 2 — imprimir reversos ─────────────────────────────────────
   async function imprimirReversosLote() {
     const origin = window.location.origin;
-    const logoFullUrl = `${origin}/images/logo-isp.png`;
+    const logoFullUrl = await toBase64Url(`${origin}/images/logo-isp.png`);
     const blocks = listaLote.map(() => buildReversoBlock(logoFullUrl)).join("\n");
     openPrintWindow(`Reversos ISP (${listaLote.length})`, REVERSO_CSS, blocks);
 
