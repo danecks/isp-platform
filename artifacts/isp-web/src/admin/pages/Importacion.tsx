@@ -1470,10 +1470,315 @@ function CrearPuestosPanel() {
   );
 }
 
+// ─── DetalleLibSalTab ────────────────────────────────────────────────────────
+// Importa dbo_DETALLELIBROSALARIOS → detalle_lib_sal (BONI desglosado)
+interface DetalleLibSalRow {
+  emp_nit?: string; pla_numero?: number; empl_numero: number;
+  lbl_tpla?: string; lbl_ano: number; lbl_mes: number; lbl_pla: number;
+  ORD?: number; EXT?: number; OTROS?: number; BONI?: number;
+  IGSS?: number; OTROS_DESC?: number;
+}
+
+interface DetalleResumenPeriodo {
+  lbl_ano: number; lbl_mes: number; lbl_pla: number;
+  empleados: number; total_ordinario: number; total_bonificacion: number;
+  total_devengado: number; total_liquido: number;
+}
+
+const MESES_DLS = ["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+const fmtQDLS = (n: number | string) => `Q${Number(n).toLocaleString("es-GT", { minimumFractionDigits: 2 })}`;
+
+function DetalleLibSalTab() {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [rows, setRows]       = useState<DetalleLibSalRow[]>([]);
+  const [fileName, setFileName] = useState("");
+  const [dragging, setDragging] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [preview, setPreview] = useState<{
+    total: number; empleados: number;
+    periodos: { periodo: string; filas: number }[];
+    muestra: { empl_numero: number; periodo: string; ordinario: number; bonificacion: number; igss: number; neto: number }[];
+  } | null>(null);
+  const [result, setResult] = useState<{ ok: boolean; insertadas: number; actualizadas: number; errores: number; total: number } | null>(null);
+
+  const { data: resumenData, refetch: refetchResumen } = useQuery<{ periodos: DetalleResumenPeriodo[] }>({
+    queryKey: ["detalle-lib-sal-resumen"],
+    queryFn: () => fetch(`${API_BASE}/libro-salarios/detalle/resumen`, { headers: { "x-isp-session": getSession() } }).then(r => r.json()),
+  });
+  const periodos = resumenData?.periodos ?? [];
+
+  const parseFile = useCallback((file: File) => {
+    setResult(null); setPreview(null);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer);
+        const wb = XLSX.read(data, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const parsed = XLSX.utils.sheet_to_json<DetalleLibSalRow>(ws, { defval: 0 });
+        setRows(parsed);
+        setFileName(file.name);
+      } catch {
+        alert("No se pudo leer el archivo. Verifica que sea un Excel .xlsx válido.");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }, []);
+
+  const onDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); setDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) parseFile(file);
+  }, [parseFile]);
+
+  const doPreview = async () => {
+    if (!rows.length) return;
+    setImporting(true);
+    try {
+      const res = await fetch(`${API_BASE}/libro-salarios/importar-detalle`, {
+        method: "POST",
+        headers: { "x-isp-session": getSession(), "Content-Type": "application/json" },
+        body: JSON.stringify({ rows, preview: true }),
+      });
+      const d = await res.json();
+      setPreview(d);
+    } catch { alert("Error de red"); }
+    finally { setImporting(false); }
+  };
+
+  const doImport = async () => {
+    if (!rows.length) return;
+    setImporting(true);
+    try {
+      const res = await fetch(`${API_BASE}/libro-salarios/importar-detalle`, {
+        method: "POST",
+        headers: { "x-isp-session": getSession(), "Content-Type": "application/json" },
+        body: JSON.stringify({ rows, preview: false }),
+      });
+      const d = await res.json();
+      setResult(d);
+      setRows([]); setFileName(""); setPreview(null);
+      refetchResumen();
+    } catch { alert("Error de red"); }
+    finally { setImporting(false); }
+  };
+
+  const empsCnt = rows.length > 0 ? new Set(rows.map(r => r.empl_numero)).size : 0;
+
+  return (
+    <div className="space-y-6">
+      {/* Encabezado */}
+      <div className="flex items-center gap-2">
+        <FileSpreadsheet className="w-4 h-4 text-blue-400" />
+        <div>
+          <p className="text-sm font-bold text-white">Detalle Nómina ODBC</p>
+          <p className="text-[11px] text-white/40 mt-0.5">
+            Importa <code className="text-blue-300/70">dbo_DETALLELIBROSALARIOS</code> — incluye bonificación incentivo desglosada por separado
+          </p>
+        </div>
+        {periodos.length > 0 && (
+          <span className="ml-auto text-[10px] text-blue-400/60 bg-blue-400/8 border border-blue-400/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+            <Database className="w-2.5 h-2.5" />
+            {periodos.reduce((s,p) => s + Number(p.empleados), 0).toLocaleString()} registros en BD
+          </span>
+        )}
+      </div>
+
+      {/* Drop zone */}
+      {rows.length === 0 && !result && (
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={onDrop}
+          onClick={() => fileRef.current?.click()}
+          className={`border-2 border-dashed rounded-xl p-10 flex flex-col items-center gap-3 cursor-pointer transition-colors ${
+            dragging ? "border-blue-400 bg-blue-400/5" : "border-white/10 hover:border-blue-400/40"
+          }`}
+        >
+          <Upload className="w-8 h-8 text-white/20" />
+          <p className="text-sm text-white/40">Arrastra el archivo <strong className="text-white/60">dbo_DETALLELIBROSALARIOS_*.xlsx</strong> aquí</p>
+          <p className="text-xs text-white/25">o haz clic para buscar</p>
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { if (e.target.files?.[0]) parseFile(e.target.files[0]); }} />
+        </div>
+      )}
+
+      {/* Archivo cargado — preview */}
+      {rows.length > 0 && !result && (
+        <div className="space-y-4">
+          <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl px-4 py-3 flex items-center gap-3">
+            <FileSpreadsheet className="w-4 h-4 text-blue-400 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-white font-medium truncate">{fileName}</p>
+              <p className="text-xs text-white/40">{rows.length.toLocaleString()} filas · {empsCnt.toLocaleString()} empleados únicos</p>
+            </div>
+            <button onClick={() => { setRows([]); setFileName(""); setPreview(null); }}
+              className="text-white/30 hover:text-white/60 transition-colors ml-2">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Vista previa de columnas */}
+          <div className="bg-[#0f1623] border border-white/10 rounded-xl p-4 space-y-2">
+            <p className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-3">Columnas detectadas</p>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              {[
+                ["empl_numero", "Número de empleado"],
+                ["lbl_ano / lbl_mes / lbl_pla", "Año / Mes / Quincena"],
+                ["ORD", "Salario ordinario"],
+                ["EXT", "Horas extra"],
+                ["OTROS", "Otros devengados"],
+                ["BONI", "Bonificación incentivo ✓"],
+                ["IGSS", "IGSS trabajador"],
+                ["OTROS_DESC", "Otras deducciones"],
+              ].map(([col, desc]) => (
+                <div key={col} className="flex items-center gap-2">
+                  <code className="text-blue-300/70 bg-blue-500/10 px-1.5 py-0.5 rounded text-[10px]">{col}</code>
+                  <span className="text-white/40">{desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Preview resultado */}
+          {preview && (
+            <div className="bg-[#0f1623] border border-blue-500/20 rounded-xl p-4 space-y-3">
+              <p className="text-xs font-semibold text-blue-300/70 uppercase tracking-wider">Vista previa</p>
+              <div className="flex gap-4 text-sm flex-wrap">
+                <span className="text-gray-400">Filas: <span className="text-white font-bold">{preview.total.toLocaleString()}</span></span>
+                <span className="text-gray-400">Empleados: <span className="text-white font-bold">{preview.empleados.toLocaleString()}</span></span>
+                <span className="text-gray-400">Períodos: <span className="text-white font-bold">{preview.periodos.length}</span></span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {preview.periodos.map(p => (
+                  <span key={p.periodo} className="text-[10px] bg-blue-500/10 border border-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full">
+                    {p.periodo} ({p.filas})
+                  </span>
+                ))}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-white/30 text-left border-b border-white/10">
+                      <th className="pb-1.5 pr-4">Empl.</th>
+                      <th className="pb-1.5 pr-4">Período</th>
+                      <th className="pb-1.5 pr-4 text-right">Ordinario</th>
+                      <th className="pb-1.5 pr-4 text-right">BONI</th>
+                      <th className="pb-1.5 pr-4 text-right">IGSS</th>
+                      <th className="pb-1.5 text-right">Neto</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {preview.muestra.map((m, i) => (
+                      <tr key={i} className="text-white/60">
+                        <td className="py-1 pr-4">{m.empl_numero}</td>
+                        <td className="py-1 pr-4">{m.periodo}</td>
+                        <td className="py-1 pr-4 text-right">{fmtQDLS(m.ordinario)}</td>
+                        <td className="py-1 pr-4 text-right text-blue-300">{fmtQDLS(m.bonificacion)}</td>
+                        <td className="py-1 pr-4 text-right text-red-300">{fmtQDLS(m.igss)}</td>
+                        <td className="py-1 text-right text-yellow-300 font-semibold">{fmtQDLS(m.neto)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-3 flex-wrap">
+            <button
+              onClick={doPreview}
+              disabled={importing}
+              className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white/70 hover:text-white hover:border-white/20 transition-colors disabled:opacity-50"
+            >
+              {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              Vista previa
+            </button>
+            <button
+              onClick={doImport}
+              disabled={importing}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-semibold text-white transition-colors disabled:opacity-50"
+            >
+              {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              Importar {rows.length.toLocaleString()} filas
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Resultado */}
+      {result && (
+        <div className={`flex items-start gap-3 rounded-xl px-4 py-3 border ${result.ok ? "bg-emerald-500/8 border-emerald-500/20" : "bg-red-500/8 border-red-500/20"}`}>
+          {result.ok ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" /> : <XCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />}
+          <div className="text-sm space-y-0.5">
+            <p className="text-white font-medium">{result.ok ? "Importación completada" : "Error en importación"}</p>
+            <p className="text-white/50 text-xs">
+              {result.insertadas} nuevas · {result.actualizadas} actualizadas · {result.errores} errores · {result.total} total
+            </p>
+          </div>
+          <button onClick={() => setResult(null)} className="ml-auto text-white/30 hover:text-white/60"><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
+      {/* Resumen de BD */}
+      {periodos.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="h-px flex-1 bg-white/10" />
+            <span className="text-[11px] text-white/30 font-medium px-2">DATOS EN BASE DE DATOS</span>
+            <div className="h-px flex-1 bg-white/10" />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-white/30 text-left border-b border-white/10">
+                  <th className="pb-2 pr-4">Período</th>
+                  <th className="pb-2 pr-4 text-right">Empleados</th>
+                  <th className="pb-2 pr-4 text-right">Ordinario</th>
+                  <th className="pb-2 pr-4 text-right">Bonificación</th>
+                  <th className="pb-2 pr-4 text-right">Total Dev.</th>
+                  <th className="pb-2 text-right">Total Líquido</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {periodos.map((p, i) => (
+                  <tr key={i} className="text-white/60">
+                    <td className="py-1.5 pr-4 font-medium text-white/80">
+                      {MESES_DLS[p.lbl_mes]} {p.lbl_ano} Q{p.lbl_pla}
+                    </td>
+                    <td className="py-1.5 pr-4 text-right">{Number(p.empleados).toLocaleString()}</td>
+                    <td className="py-1.5 pr-4 text-right">{fmtQDLS(p.total_ordinario)}</td>
+                    <td className="py-1.5 pr-4 text-right text-blue-300">{fmtQDLS(p.total_bonificacion)}</td>
+                    <td className="py-1.5 pr-4 text-right">{fmtQDLS(p.total_devengado)}</td>
+                    <td className="py-1.5 text-right text-yellow-300 font-semibold">{fmtQDLS(p.total_liquido)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Ayuda */}
+      {periodos.length === 0 && rows.length === 0 && !result && (
+        <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 space-y-1.5">
+          <p className="text-xs font-semibold text-white/50">¿Por qué usar este archivo?</p>
+          <ul className="space-y-1 text-xs text-white/35 list-disc list-inside">
+            <li>Tiene la bonificación incentivo (<code className="text-blue-300/70">BONI</code>) separada del salario ordinario</li>
+            <li>Cubre desde Mayo 2025 — más historial que el archivo anterior</li>
+            <li>Una vez importado, el Libro de Salarios lo usará automáticamente</li>
+            <li>Las filas duplicadas se actualizan sin error</li>
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const LEGACY_TAB_ID          = "sistema-antiguo";
 const LEGACY_CLIENTES_TAB_ID = "sistema-antiguo-clientes";
 const LIBRO_SAL_TAB_ID       = "libro-salarios";
 const DEV_EMP_TAB_ID         = "devengados-empleado";
+const DETALLE_LIB_SAL_TAB_ID = "detalle-lib-sal";
 
 // ─── LibroSalariosTab ─────────────────────────────────────────────────────────
 const MESES_LS = ["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
@@ -1910,8 +2215,9 @@ export default function Importacion() {
   const tab = TABS.find((t) => t.id === activeTab);
   const isLegacyEmpl    = activeTab === LEGACY_TAB_ID;
   const isLegacyClients = activeTab === LEGACY_CLIENTES_TAB_ID;
-  const isLibroSal      = activeTab === LIBRO_SAL_TAB_ID;
-  const isDevEmp        = activeTab === DEV_EMP_TAB_ID;
+  const isLibroSal        = activeTab === LIBRO_SAL_TAB_ID;
+  const isDevEmp          = activeTab === DEV_EMP_TAB_ID;
+  const isDetalleLibSal   = activeTab === DETALLE_LIB_SAL_TAB_ID;
   const isAnySA         = isLegacyEmpl || isLegacyClients;
 
   return (
@@ -2012,6 +2318,18 @@ export default function Importacion() {
               <BarChart3 className="w-4 h-4" />
               Salarios y Bonificaciones
             </button>
+            {/* Detalle Libro de Salarios (nuevo archivo ODBC con BONI separado) */}
+            <button
+              onClick={() => setActiveTab(DETALLE_LIB_SAL_TAB_ID)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                isDetalleLibSal
+                  ? "border-blue-400 text-blue-400"
+                  : "border-transparent text-white/40 hover:text-blue-400/60"
+              }`}
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              Detalle Nómina ODBC
+            </button>
             {/* Separador visual */}
             <div className="w-px bg-white/10 self-stretch mx-1" />
             {/* SA — Clientes */}
@@ -2041,8 +2359,9 @@ export default function Importacion() {
           </div>
 
           <div className="p-6 space-y-6">
-            {isLibroSal      ? <LibroSalariosTab       key={LIBRO_SAL_TAB_ID} />   :
-             isDevEmp        ? <DevengadosEmpleadoTab key={DEV_EMP_TAB_ID} />      :
+            {isLibroSal      ? <LibroSalariosTab       key={LIBRO_SAL_TAB_ID} />        :
+             isDevEmp        ? <DevengadosEmpleadoTab key={DEV_EMP_TAB_ID} />         :
+             isDetalleLibSal ? <DetalleLibSalTab      key={DETALLE_LIB_SAL_TAB_ID} /> :
              isLegacyEmpl    ? <LegacyImporterTab     key={LEGACY_TAB_ID} />       :
              isLegacyClients ? <LegacyClientesTab     key={LEGACY_CLIENTES_TAB_ID} /> :
              tab             ? (

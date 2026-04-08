@@ -3993,6 +3993,35 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: IGSS-LIB-01 — error (no bloqueante)");
   }
 
+  // ── DETALLE-LIB-01: Detalle libro de salarios ODBC (con BONI separado) ──────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS detalle_lib_sal (
+        id               SERIAL PRIMARY KEY,
+        emp_nit          VARCHAR(30),
+        pla_numero       INTEGER,
+        empl_numero      INTEGER NOT NULL,
+        lbl_tpla         VARCHAR(10),
+        lbl_ano          INTEGER NOT NULL,
+        lbl_mes          INTEGER NOT NULL,
+        lbl_pla          INTEGER NOT NULL,
+        ordinario        NUMERIC(12,2) NOT NULL DEFAULT 0,
+        horas_extra      NUMERIC(12,2) NOT NULL DEFAULT 0,
+        otros_devengados NUMERIC(12,2) NOT NULL DEFAULT 0,
+        bonificacion     NUMERIC(12,2) NOT NULL DEFAULT 0,
+        igss_trabajador  NUMERIC(12,2) NOT NULL DEFAULT 0,
+        otras_deducciones NUMERIC(12,2) NOT NULL DEFAULT 0,
+        importado_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (empl_numero, lbl_ano, lbl_mes, lbl_pla)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS dls_emp    ON detalle_lib_sal(empl_numero)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS dls_periodo ON detalle_lib_sal(lbl_ano, lbl_mes)`);
+    logger.info("Auto-migrate: DETALLE-LIB-01 tabla detalle_lib_sal verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: DETALLE-LIB-01 — error (no bloqueante)");
+  }
+
   // ── EMPL-BON-01: Bonificaciones en ficha del empleado ───────────────────────
   try {
     await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS bonificacion_incentivo NUMERIC(10,2)`);
