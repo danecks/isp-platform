@@ -87,12 +87,10 @@ const BUILTIN_PROFILES: PrinterProfile[] = [
     pageHeight: 279,
     orientation: "portrait",
     slots: [
-      // Slot superior: tarjeta centrada horizontalmente, cerca del borde superior.
-      // X ≈ (216 − 53.98) / 2 ≈ 81mm  |  Y ≈ 15mm  (ajustar con calibración)
-      { x: 81, y: 15,  width: DEFAULT_CARD_W, height: DEFAULT_CARD_H },
-      // Slot inferior: mismo X, desplazado verticalmente por el alto de la tarjeta + separación.
-      // Y ≈ 15 + 85.6 + 7 ≈ 108mm  (ajustar con calibración)
-      { x: 81, y: 108, width: DEFAULT_CARD_W, height: DEFAULT_CARD_H },
+      // Slot izquierdo: X = (216 − 53.98×2 − 10) / 2 ≈ 49mm  |  Y ≈ 25mm  (ajustar con calibración)
+      { x: 49,  y: 25, width: DEFAULT_CARD_W, height: DEFAULT_CARD_H },
+      // Slot derecho: mismo Y, desplazado horizontalmente por ancho de tarjeta + separación (≈10mm)
+      { x: 113, y: 25, width: DEFAULT_CARD_W, height: DEFAULT_CARD_H },
     ],
   },
   {
