@@ -101,6 +101,7 @@ interface PreviewLinea {
   dias_laborados: number;
   salario_referencia: number;
   monto_total: number;
+  fuente_dias: "odbc" | "planilla" | "calendario";
 }
 
 interface PreviewCuota {
@@ -118,6 +119,7 @@ interface PreviewResult {
   total_colaboradores: number;
   total_bruto: number;
   cuotas: PreviewCuota[];
+  fuente_resumen: Record<string, number>;
   lineas: PreviewLinea[];
 }
 
@@ -554,6 +556,36 @@ export default function PlanillasEspeciales() {
                     ))}
                   </div>
 
+                  {/* Resumen de fuentes de días */}
+                  {preview.fuente_resumen && (
+                    <div className="flex gap-2 flex-wrap">
+                      {preview.fuente_resumen.odbc != null && (
+                        <div className="flex items-center gap-1.5 bg-teal-500/10 border border-teal-500/20 rounded-lg px-3 py-1.5">
+                          <span className="w-2 h-2 rounded-full bg-teal-400 shrink-0" />
+                          <span className="text-xs text-teal-300">
+                            <span className="font-semibold">{preview.fuente_resumen.odbc}</span> colaboradores — días reales (ODBC)
+                          </span>
+                        </div>
+                      )}
+                      {preview.fuente_resumen.planilla != null && (
+                        <div className="flex items-center gap-1.5 bg-blue-500/10 border border-blue-500/20 rounded-lg px-3 py-1.5">
+                          <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+                          <span className="text-xs text-blue-300">
+                            <span className="font-semibold">{preview.fuente_resumen.planilla}</span> colaboradores — días reales (Sistema ISP)
+                          </span>
+                        </div>
+                      )}
+                      {preview.fuente_resumen.calendario != null && (
+                        <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-1.5">
+                          <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                          <span className="text-xs text-amber-300">
+                            <span className="font-semibold">{preview.fuente_resumen.calendario}</span> colaboradores — estimado por calendario
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Tabla de empleados */}
                   <div className="max-h-60 overflow-y-auto rounded-lg border border-white/10">
                     <Table>
@@ -564,6 +596,7 @@ export default function PlanillasEspeciales() {
                           <TableHead className="text-gray-400 text-xs text-right">Días</TableHead>
                           <TableHead className="text-gray-400 text-xs text-right">Salario Ref.</TableHead>
                           <TableHead className="text-gray-400 text-xs text-right">Monto</TableHead>
+                          <TableHead className="text-gray-400 text-xs text-center">Fuente</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -584,6 +617,15 @@ export default function PlanillasEspeciales() {
                             </TableCell>
                             <TableCell className="text-right text-yellow-300 text-xs font-semibold">
                               {fmtNum(l.monto_total)}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                                l.fuente_dias === "odbc"      ? "bg-teal-500/20 text-teal-300" :
+                                l.fuente_dias === "planilla"  ? "bg-blue-500/20 text-blue-300" :
+                                                                "bg-amber-500/20 text-amber-300"
+                              }`}>
+                                {l.fuente_dias === "odbc" ? "ODBC" : l.fuente_dias === "planilla" ? "ISP" : "Cal."}
+                              </span>
                             </TableCell>
                           </TableRow>
                         ))}

@@ -3147,6 +3147,12 @@ Por favor ingresa al sistema o responde para continuar.',
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_planillas_esp_tipo_anio_activa
       ON planillas_especiales(tipo, anio) WHERE estado != 'anulada'`);
 
+    // PESP-02: columna fuente_dias (odbc | planilla | calendario) en planillas_especiales_lineas
+    await pool.query(`
+      ALTER TABLE planillas_especiales_lineas
+        ADD COLUMN IF NOT EXISTS fuente_dias VARCHAR(20) NOT NULL DEFAULT 'calendario'
+    `);
+
     logger.info("Auto-migrate: PESP-01 tablas planillas_especiales creadas/verificadas");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: PESP-01 — error (no bloqueante)");

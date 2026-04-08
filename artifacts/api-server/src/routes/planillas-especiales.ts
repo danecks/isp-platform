@@ -29,7 +29,7 @@ function getUsuario(session: string): string {
 async function getEmpleadosDelPeriodo(periodoInicio: string, periodoFin: string) {
   const { rows } = await pool.query(
     `SELECT DISTINCT ON (e.id)
-        e.id, e.nombre_completo,
+        e.id, e.empl_numero, e.nombre_completo,
         e.sueldo_base::numeric AS sueldo_base,
         e.fecha_ingreso::text AS fecha_ingreso,
         e.fecha_baja::text    AS fecha_baja,
@@ -57,8 +57,77 @@ async function getEmpleadosDelPeriodo(periodoInicio: string, periodoFin: string)
   return rows;
 }
 
+/**
+ * Obtiene días reales laborados por empleado dentro del período.
+ * Prioridad:
+ *   1. detalle_prestaciones_odbc (datos históricos importados del ODBC — ciclos donde hay datos)
+ *   2. planilla_lineas del sistema ISP (ciclos futuros generados por el sistema)
+ *   3. Fallback: cálculo por calendario (fecha_ingreso → fecha_baja)
+ * Retorna un Map<employee_id, { dias: number; fuente: "odbc"|"planilla"|"calendario" }>
+ */
+async function getDiasRealesPorEmpleado(
+  periodoInicio: string,
+  periodoFin: string
+): Promise<Map<number, { dias: number; fuente: "odbc" | "planilla" | "calendario" }>> {
+  const result = new Map<number, { dias: number; fuente: "odbc" | "planilla" | "calendario" }>();
+
+  // Convertir fechas a año-mes integer para filtrar en detalle_prestaciones_odbc
+  const d1 = new Date(periodoInicio);
+  const d2 = new Date(periodoFin);
+  const mesMin = d1.getUTCFullYear() * 100 + (d1.getUTCMonth() + 1);
+  const mesMax = d2.getUTCFullYear() * 100 + (d2.getUTCMonth() + 1);
+
+  // 1. Intentar con datos ODBC
+  const { rows: odbcRows } = await pool.query<{
+    employee_id: number;
+    dias_reales: string;
+  }>(
+    `SELECT e.id AS employee_id, SUM(dp.dias_lab)::numeric AS dias_reales
+     FROM detalle_prestaciones_odbc dp
+     JOIN employees e ON e.empl_numero = dp.empl_numero
+     WHERE (dp.pre_ano * 100 + dp.pre_mes) >= $1
+       AND (dp.pre_ano * 100 + dp.pre_mes) <= $2
+     GROUP BY e.id`,
+    [mesMin, mesMax]
+  );
+
+  for (const row of odbcRows) {
+    const dias = parseFloat(row.dias_reales ?? "0");
+    if (dias > 0) {
+      result.set(row.employee_id, { dias, fuente: "odbc" });
+    }
+  }
+
+  // 2. Complementar con planilla_lineas del sistema ISP para empleados sin dato ODBC
+  const { rows: planRows } = await pool.query<{
+    employee_id: number;
+    dias_reales: string;
+  }>(
+    `SELECT pl.employee_id, SUM(pl.dias_trabajados)::numeric AS dias_reales
+     FROM planilla_lineas pl
+     JOIN planillas p ON p.id = pl.planilla_id
+     WHERE p.periodo_desde >= $1::date
+       AND p.periodo_hasta <= $2::date
+       AND p.estado NOT IN ('anulada')
+       AND pl.employee_id IS NOT NULL
+     GROUP BY pl.employee_id`,
+    [periodoInicio, periodoFin]
+  );
+
+  for (const row of planRows) {
+    if (!result.has(row.employee_id)) {
+      const dias = parseFloat(row.dias_reales ?? "0");
+      if (dias > 0) {
+        result.set(row.employee_id, { dias, fuente: "planilla" });
+      }
+    }
+  }
+
+  return result;
+}
+
 /** Core calculation: returns lineas for a given tipo/anio */
-function calcularLineas(
+async function calcularLineas(
   empleados: Record<string, unknown>[],
   tipo: "bono14" | "aguinaldo",
   anio: number
@@ -68,30 +137,67 @@ function calcularLineas(
       ? periodoBono14Guatemala(anio)
       : periodoAguinaldoGuatemala(anio);
 
+  // Obtener días reales de ODBC / planilla
+  const diasRealesMap = await getDiasRealesPorEmpleado(periodoInicio, periodoFin);
+
+  // Días totales del ciclo para usar como denominador
+  const d1 = new Date(periodoInicio);
+  const d2 = new Date(periodoFin);
+  const diasCicloTotal = Math.round((d2.getTime() - d1.getTime()) / 86_400_000) + 1;
+
   return empleados
     .map((e) => {
       const sueldo = parseFloat(String(e.sueldo_base ?? 0));
-      const calcResult =
-        tipo === "bono14"
-          ? calcularBono14({
-              sueldoMensual: sueldo,
-              fechaIngreso:  String(e.fecha_ingreso),
-              periodoInicio,
-              periodoFin,
-              fechaEgreso:   e.fecha_baja ? String(e.fecha_baja) : undefined,
-            })
-          : calcularAguinaldo({
-              sueldoMensual: sueldo,
-              fechaIngreso:  String(e.fecha_ingreso),
-              periodoInicio,
-              periodoFin,
-              fechaEgreso:   e.fecha_baja ? String(e.fecha_baja) : undefined,
-            });
+      const empId  = e.id as number;
 
-      if (calcResult.diasLaborados <= 0) return null;
+      const realData = diasRealesMap.get(empId);
+
+      let diasLaborados: number;
+      let diasPeriodoTotal: number;
+      let salarioRef: number;
+      let montoTotal: number;
+      let fuente: "odbc" | "planilla" | "calendario";
+
+      if (realData && realData.dias > 0) {
+        // Usar días reales (ODBC o planilla ISP)
+        diasLaborados   = realData.dias;
+        diasPeriodoTotal = diasCicloTotal;
+        salarioRef      = sueldo;
+        const fraccion  = Math.min(diasLaborados / diasCicloTotal, 1);
+        montoTotal      = parseFloat((sueldo * fraccion).toFixed(2));
+        fuente          = realData.fuente;
+      } else {
+        // Fallback: cálculo por calendario (fecha_ingreso / fecha_baja)
+        const calcResult =
+          tipo === "bono14"
+            ? calcularBono14({
+                sueldoMensual: sueldo,
+                fechaIngreso:  String(e.fecha_ingreso),
+                periodoInicio,
+                periodoFin,
+                fechaEgreso:   e.fecha_baja ? String(e.fecha_baja) : undefined,
+              })
+            : calcularAguinaldo({
+                sueldoMensual: sueldo,
+                fechaIngreso:  String(e.fecha_ingreso),
+                periodoInicio,
+                periodoFin,
+                fechaEgreso:   e.fecha_baja ? String(e.fecha_baja) : undefined,
+              });
+
+        if (calcResult.diasLaborados <= 0) return null;
+
+        diasLaborados    = calcResult.diasLaborados;
+        diasPeriodoTotal = calcResult.diasPeriodo;
+        salarioRef       = calcResult.salarioReferencia;
+        montoTotal       = calcResult.montoTotal;
+        fuente           = "calendario";
+      }
+
+      if (montoTotal <= 0) return null;
 
       return {
-        employee_id:       e.id as number,
+        employee_id:       empId,
         nombre_completo:   String(e.nombre_completo),
         puesto:            String(e.puesto ?? ""),
         sede:              String(e.sede ?? ""),
@@ -99,13 +205,14 @@ function calcularLineas(
         fecha_ingreso:     String(e.fecha_ingreso),
         fecha_egreso_emp:  e.fecha_baja ? String(e.fecha_baja) : null,
         estado_laboral:    String(e.estado_laboral),
-        dias_periodo_total: calcResult.diasPeriodo,
-        dias_laborados:    calcResult.diasLaborados,
-        salario_referencia: calcResult.salarioReferencia,
-        monto_total:       calcResult.montoTotal,
+        dias_periodo_total: diasPeriodoTotal,
+        dias_laborados:    diasLaborados,
+        salario_referencia: salarioRef,
+        monto_total:       montoTotal,
+        fuente_dias:       fuente,
       };
     })
-    .filter(Boolean) as NonNullable<ReturnType<typeof calcularLineas>[number]>[];
+    .filter(Boolean) as NonNullable<Awaited<ReturnType<typeof calcularLineas>>[number]>[];
 }
 
 /** Split monto_total into N installments; last cuota absorbs rounding */
@@ -188,9 +295,15 @@ planillasEspecialesRouter.post("/nomina/planillas-especiales/preview", async (re
         : periodoAguinaldoGuatemala(anio);
 
     const empleados = await getEmpleadosDelPeriodo(periodoInicio, periodoFin);
-    const lineas    = calcularLineas(empleados, tipo, anio);
+    const lineas    = await calcularLineas(empleados, tipo, anio);
     const totalBruto = lineas.reduce((s, l) => s + l.monto_total, 0);
     const cuotas    = calcularCuotas(totalBruto, numPagos);
+
+    // Resumen de fuentes de datos
+    const fuenteResumen = lineas.reduce((acc, l) => {
+      acc[l.fuente_dias] = (acc[l.fuente_dias] ?? 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
 
     return res.json({
       tipo,
@@ -201,6 +314,7 @@ planillasEspecialesRouter.post("/nomina/planillas-especiales/preview", async (re
       total_colaboradores:  lineas.length,
       total_bruto:          parseFloat(totalBruto.toFixed(2)),
       cuotas,
+      fuente_resumen:       fuenteResumen,
       lineas,
     });
   } catch (err) {
@@ -247,7 +361,7 @@ planillasEspecialesRouter.post("/nomina/planillas-especiales", async (req, res) 
     }
 
     const empleados  = await getEmpleadosDelPeriodo(periodoInicio, periodoFin);
-    const lineas     = calcularLineas(empleados, tipo, anio);
+    const lineas     = await calcularLineas(empleados, tipo, anio);
     const totalBruto = parseFloat(lineas.reduce((s, l) => s + l.monto_total, 0).toFixed(2));
     const cuotas     = calcularCuotas(totalBruto, numPagos);
 
@@ -268,11 +382,12 @@ planillasEspecialesRouter.post("/nomina/planillas-especiales", async (req, res) 
         `INSERT INTO planillas_especiales_lineas
            (planilla_especial_id, employee_id, nombre_completo, puesto, sede, cliente,
             fecha_ingreso, fecha_egreso_emp, dias_periodo_total, dias_laborados,
-            salario_referencia, monto_total)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+            salario_referencia, monto_total, fuente_dias)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
         [pe.id, l.employee_id, l.nombre_completo, l.puesto, l.sede, l.cliente,
          l.fecha_ingreso, l.fecha_egreso_emp,
-         l.dias_periodo_total, l.dias_laborados, l.salario_referencia, l.monto_total]
+         l.dias_periodo_total, l.dias_laborados, l.salario_referencia, l.monto_total,
+         l.fuente_dias]
       );
     }
 
