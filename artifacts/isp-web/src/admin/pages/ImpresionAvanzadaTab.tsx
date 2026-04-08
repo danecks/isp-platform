@@ -87,10 +87,10 @@ const BUILTIN_PROFILES: PrinterProfile[] = [
     pageHeight: 279,
     orientation: "portrait",
     slots: [
-      // Slot superior (landscape): X centrado = (216 − 85.6) / 2 ≈ 65mm  |  Y ≈ 25mm
-      { x: 65, y: 25,  width: DEFAULT_CARD_H, height: DEFAULT_CARD_W },
-      // Slot inferior (landscape): mismo X, Y = 25 + 53.98 + 10 ≈ 89mm
-      { x: 65, y: 89,  width: DEFAULT_CARD_H, height: DEFAULT_CARD_W },
+      // Slot superior portrait: X centrado = (216 − 53.98) / 2 ≈ 81mm  |  Y ≈ 15mm
+      { x: 81, y: 15,  width: DEFAULT_CARD_W, height: DEFAULT_CARD_H },
+      // Slot inferior portrait: mismo X, Y = 15 + 85.6 + 7 ≈ 108mm
+      { x: 81, y: 108, width: DEFAULT_CARD_W, height: DEFAULT_CARD_H },
     ],
   },
   {
@@ -175,127 +175,138 @@ async function toBase64Url(url: string): Promise<string> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * CSS del diseño interior del carnet (Moderno ISP — LANDSCAPE CR-80).
- * El slot mide 85.6mm × 53.98mm (tarjeta acostada horizontalmente en la bandeja).
+ * CSS del diseño Moderno ISP — PORTRAIT CR-80 (53.98×85.6mm).
+ * Franje navy izquierda · avatar centrado · nombre/cargo · gold line
+ * · DPI · QR · footer navy   |   Reverso: logo ISP · legal · web
  */
 function getCardInnerCSS(): string {
   return `
-    /* ── FRENTE landscape ───────────────────────────────────────────────────── */
+    /* ── FRENTE portrait (Moderno) ─────────────────────────────────────────── */
     .icard {
-      width: 100%; height: 100%;
-      display: flex; flex-direction: row;
-      overflow: hidden;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      width:100%; height:100%;
+      display:flex; flex-direction:row; overflow:hidden;
+      font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      background:#fff;
     }
-    /* Franja navy vertical izquierda */
+
+    /* Franja navy izquierda */
     .i-stripe {
-      width: 11mm;
-      background: linear-gradient(180deg,#0f2044,#132a5a);
-      display: flex; flex-direction: column; align-items: center;
-      flex-shrink: 0; position: relative;
+      width:10.5mm;
+      background:linear-gradient(180deg,#0f2044 0%,#132a5a 100%);
+      display:flex; flex-direction:column; align-items:center;
+      flex-shrink:0; position:relative;
     }
-    .i-bar-t { position:absolute; top:0; left:0; right:0; height:.8mm; background:#f5c842; }
-    .i-bar-b { position:absolute; bottom:0; left:0; right:0; height:.8mm; background:#f5c842; }
+    .i-bar-t { position:absolute; top:0; left:0; right:0; height:1mm; background:#f5c842; }
+    .i-bar-b { position:absolute; bottom:0; left:0; right:0; height:1mm; background:#f5c842; }
     .i-stripe-in {
       display:flex; flex-direction:column; align-items:center;
-      justify-content:space-between; padding:2.5mm 0; width:100%; height:100%;
+      justify-content:space-between; padding:3mm 0; width:100%; height:100%;
     }
-    .i-slogo { width:7.5mm; object-fit:contain; filter:brightness(0) invert(1); }
+    .i-slogo { width:7mm; object-fit:contain; filter:brightness(0) invert(1); }
     .i-snum {
       writing-mode:vertical-rl; transform:rotate(180deg);
-      font-size:3.5pt; color:rgba(255,255,255,.4);
-      font-family:"Courier New",monospace; font-weight:700; letter-spacing:.08em;
+      font-size:4pt; color:rgba(255,255,255,.4);
+      font-family:"Courier New",monospace; font-weight:700; letter-spacing:.1em;
     }
-    /* Cuerpo principal landscape */
-    .i-content {
-      flex:1; display:flex; flex-direction:column; background:#fff; overflow:hidden;
-    }
-    /* Fila central: avatar | info | qr */
-    .i-body {
-      flex:1; display:flex; flex-direction:row; align-items:center;
-      padding:2mm 2.5mm; gap:2mm;
+
+    /* Columna de contenido */
+    .i-content { flex:1; display:flex; flex-direction:column; overflow:hidden; background:#fff; }
+
+    /* Header: avatar + nombre + cargo */
+    .i-head {
+      background:#fff; padding:2.5mm 2mm 2mm;
+      display:flex; flex-direction:column; align-items:center; flex-shrink:0;
     }
     .i-av {
-      width:15mm; height:15mm; border-radius:50%;
+      width:13mm; height:13mm; border-radius:50%;
       background:linear-gradient(135deg,#0f2044,#1e4a9a);
       border:.8pt solid #f5c842;
-      display:flex; align-items:center; justify-content:center; flex-shrink:0;
+      display:flex; align-items:center; justify-content:center; margin-bottom:1.5mm;
     }
-    .i-av-i { font-size:9pt; font-weight:900; color:#f5c842; }
-    .i-info { flex:1; display:flex; flex-direction:column; justify-content:center; gap:.8mm; }
+    .i-av-i { font-size:8pt; font-weight:900; color:#f5c842; }
     .i-nom {
-      font-size:6.5pt; font-weight:900; color:#0f2044;
-      line-height:1.2; text-transform:uppercase;
+      font-size:6pt; font-weight:900; color:#0f2044;
+      text-align:center; line-height:1.2; text-transform:uppercase; margin-bottom:.8mm;
     }
     .i-cargo {
       font-size:4pt; font-weight:700; color:#b8860b;
-      letter-spacing:.1em; text-transform:uppercase;
+      text-align:center; letter-spacing:.1em; text-transform:uppercase;
     }
-    .i-gold-sep { height:.5pt; background:linear-gradient(90deg,#d4a017,#f5c842); }
+
+    /* Línea dorada */
+    .i-gold { height:.6pt; background:linear-gradient(90deg,#d4a017,#f5c842,#e8b820); flex-shrink:0; }
+
+    /* Área de datos */
+    .i-datos { padding:1.5mm 2mm; flex:1; }
     .i-dlbl {
-      font-size:3pt; color:#94a3b8; font-weight:700;
-      letter-spacing:.1em; text-transform:uppercase; margin-bottom:.3mm;
+      font-size:3.5pt; color:#94a3b8; font-weight:700;
+      letter-spacing:.1em; text-transform:uppercase; margin-bottom:.5mm;
     }
     .i-dval {
-      font-size:5pt; color:#0f2044; font-weight:800;
-      font-family:"Courier New",monospace;
+      font-size:5.5pt; color:#0f2044; font-weight:800;
+      font-family:"Courier New",monospace; margin-bottom:1.5mm;
     }
-    /* QR block derecha */
-    .i-qrblock {
-      display:flex; flex-direction:column; align-items:center;
-      gap:.8mm; flex-shrink:0;
-    }
+    .i-div { height:.3pt; background:#f1f5f9; margin-bottom:1.5mm; }
+
+    /* QR centrado */
+    .i-qr { display:flex; flex-direction:column; align-items:center; gap:1mm; }
     .i-qrbox { background:#fff; border:.4pt solid #e2e8f0; border-radius:1mm; padding:.5mm; }
-    .i-qrbox svg { width:17mm; height:17mm; display:block; }
+    .i-qrbox svg { width:18mm; height:18mm; display:block; }
     .i-qrhint { font-size:3pt; color:#94a3b8; text-align:center; }
-    /* Pie de página */
+
+    /* Footer navy */
     .i-foot {
-      background:#0f2044; padding:.8mm 2.5mm;
+      background:#0f2044; padding:1mm 2mm;
       display:flex; align-items:center; justify-content:space-between; flex-shrink:0;
     }
     .i-fdate { font-size:3pt; color:rgba(255,255,255,.35); }
     .i-flbl { font-size:3pt; font-weight:800; color:#f5c842; letter-spacing:.08em; }
 
-    /* ── REVERSO landscape ──────────────────────────────────────────────────── */
+    /* ── REVERSO portrait (Moderno) ─────────────────────────────────────────── */
     .rcard {
       width:100%; height:100%;
-      display:flex; flex-direction:row;
-      overflow:hidden; background:#fff;
+      display:flex; flex-direction:column; overflow:hidden;
       font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      background:#fff;
     }
-    /* Franja izquierda reverso */
-    .r-side {
-      width:20mm;
-      background:linear-gradient(180deg,#0f2044,#132a5a);
-      display:flex; flex-direction:column; align-items:center;
-      justify-content:center; flex-shrink:0; position:relative; padding:3mm 2mm;
+    .r-top {
+      background:#fff; padding:4mm 3mm 2mm;
+      display:flex; flex-direction:column; align-items:center; flex-shrink:0;
     }
-    .r-side-bar-t { position:absolute; top:0; left:0; right:0; height:.8mm; background:#f5c842; }
-    .r-side-bar-b { position:absolute; bottom:0; left:0; right:0; height:.8mm; background:#f5c842; }
-    .r-side-logo { width:14mm; object-fit:contain; }
-    /* Contenido reverso */
+    .r-logo { height:18mm; object-fit:contain; }
+    .r-org {
+      font-size:3.8pt; color:#0f2044; letter-spacing:.1em;
+      font-weight:700; text-align:center; margin-top:1.5mm;
+    }
+    .r-gold {
+      height:.8pt;
+      background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017); flex-shrink:0;
+    }
     .r-body {
-      flex:1; display:flex; flex-direction:column;
-      align-items:center; justify-content:center; padding:2mm 4mm; gap:1.5mm;
+      flex:1; display:flex; align-items:center; justify-content:center;
+      padding:2.5mm 4mm;
     }
-    .r-gold { height:.8pt; background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017); width:100%; flex-shrink:0; }
-    .r-org { font-size:3.8pt; color:#0f2044; font-weight:700; letter-spacing:.08em; text-align:center; }
-    .r-legal { font-size:5pt; color:#1e3a5f; text-align:center; line-height:1.55; }
+    .r-legal { font-size:5.5pt; color:#1e3a5f; text-align:center; line-height:1.65; }
     .r-legal strong { font-weight:800; color:#0f2044; }
-    .r-footer { display:flex; flex-direction:column; align-items:center; gap:.3mm; }
-    .r-web { font-size:6pt; font-weight:900; color:#0f2044; letter-spacing:.06em; }
-    .r-email { font-size:3.5pt; color:#94a3b8; }
-    /* Barra inferior navy */
-    .r-bottom-bar {
-      height:2mm; background:#0f2044; flex-shrink:0;
-      position:absolute; bottom:0; left:0; right:0;
+    .r-divider {
+      height:.5pt;
+      background:linear-gradient(90deg,transparent,rgba(245,200,66,.5),#f5c842,rgba(245,200,66,.5),transparent);
+      margin:0 4mm; flex-shrink:0;
     }
+    .r-footer {
+      background:#fff; padding:1.5mm 3mm 2mm;
+      display:flex; flex-direction:column; align-items:center; flex-shrink:0;
+    }
+    .r-web { font-size:6.5pt; font-weight:900; color:#0f2044; letter-spacing:.06em; }
+    .r-email { font-size:3.8pt; color:#94a3b8; letter-spacing:.04em; margin-top:.5mm; }
+    .r-bottom { background:#0f2044; height:2mm; flex-shrink:0; }
   `;
 }
 
 /**
- * Genera el HTML interior del FRENTE — layout landscape CR-80 (85.6×53.98mm).
- * Franja navy izquierda | avatar | nombre/cargo/DPI | QR
+ * Genera el HTML del FRENTE — diseño Moderno portrait (53.98×85.6mm).
+ * Franja navy izq. · avatar centrado · nombre · cargo · gold line
+ * · DPI · separador · QR centrado · footer navy
  */
 function buildCardFrenteHTML(
   a: AgenteCarnet,
@@ -319,17 +330,18 @@ function buildCardFrenteHTML(
     <div class="i-bar-b"></div>
   </div>
   <div class="i-content">
-    <div class="i-body">
+    <div class="i-head">
       <div class="i-av"><span class="i-av-i">${initials}</span></div>
-      <div class="i-info">
-        <div class="i-nom">${a.nombre_completo}</div>
-        <div class="i-cargo">${cargo}</div>
-        <div class="i-gold-sep"></div>
-        ${dpiRow}
-      </div>
-      <div class="i-qrblock">
+      <div class="i-nom">${a.nombre_completo}</div>
+      <div class="i-cargo">${cargo}</div>
+    </div>
+    <div class="i-gold"></div>
+    <div class="i-datos">
+      ${dpiRow}
+      <div class="i-div"></div>
+      <div class="i-qr">
         <div class="i-qrbox">${svgHtml}</div>
-        <div class="i-qrhint">Verificar identidad</div>
+        <div class="i-qrhint">Escanea para verificar identidad</div>
       </div>
     </div>
     <div class="i-foot">
@@ -341,31 +353,30 @@ function buildCardFrenteHTML(
 }
 
 /**
- * Genera el HTML interior del REVERSO — layout landscape CR-80 (85.6×53.98mm).
- * Franja navy izquierda con logo | texto legal + web
+ * Genera el HTML del REVERSO — diseño Moderno portrait (53.98×85.6mm).
+ * Logo ISP en colores reales · gold line · texto legal · divider · web/email · banda navy
  */
 function buildCardReversoHTML(logoFullB64: string): string {
   return `<div class="rcard">
-  <div class="r-side">
-    <div class="r-side-bar-t"></div>
-    <img class="r-side-logo" src="${logoFullB64}" />
-    <div class="r-side-bar-b"></div>
-  </div>
-  <div class="r-body">
+  <div class="r-top">
+    <img class="r-logo" src="${logoFullB64}" />
     <div class="r-org">INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A.</div>
-    <div class="r-gold"></div>
+  </div>
+  <div class="r-gold"></div>
+  <div class="r-body">
     <div class="r-legal">
       El presente acredita como colaborador de <strong>ISP S.A.</strong>
       Se solicita a las Autoridades <strong>Civiles y Militares</strong>
       la colaboración en caso de ser requerida. Válido en el cumplimiento
-      de sus funciones en el puesto asignado.
-    </div>
-    <div class="r-gold"></div>
-    <div class="r-footer">
-      <div class="r-web">www.ispsa.net</div>
-      <div class="r-email">contacto@isp-guatemala.com</div>
+      de sus funciones en el puesto.
     </div>
   </div>
+  <div class="r-divider"></div>
+  <div class="r-footer">
+    <div class="r-web">www.ispsa.net</div>
+    <div class="r-email">contacto@isp-guatemala.com</div>
+  </div>
+  <div class="r-bottom"></div>
 </div>`;
 }
 
