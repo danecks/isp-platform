@@ -4033,5 +4033,34 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: EMPL-BON-01 — error (no bloqueante)");
   }
 
+  // ── DPREST-01: Detalle Prestaciones ODBC (por empleado, por período) ─────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS detalle_prestaciones_odbc (
+        id                SERIAL PRIMARY KEY,
+        empl_numero       INTEGER      NOT NULL,
+        pre_ano           INTEGER      NOT NULL,
+        pre_mes           INTEGER      NOT NULL,
+        pla_numero        INTEGER      NOT NULL DEFAULT 1,
+        dias_lab          NUMERIC(6,2) DEFAULT 0,
+        pro_bono14        NUMERIC(12,4) DEFAULT 0,
+        pro_aguinaldo     NUMERIC(12,4) DEFAULT 0,
+        pro_vacaciones    NUMERIC(12,4) DEFAULT 0,
+        pro_indemnizacion NUMERIC(12,4) DEFAULT 0,
+        base_bono14       NUMERIC(12,2) DEFAULT 0,
+        base_aguinaldo    NUMERIC(12,2) DEFAULT 0,
+        base_vacas        NUMERIC(12,2) DEFAULT 0,
+        base_indem        NUMERIC(12,2) DEFAULT 0,
+        importado_at      TIMESTAMPTZ  DEFAULT NOW(),
+        UNIQUE (empl_numero, pre_ano, pre_mes, pla_numero)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS dprest_emp     ON detalle_prestaciones_odbc(empl_numero)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS dprest_periodo ON detalle_prestaciones_odbc(pre_ano, pre_mes)`);
+    logger.info("Auto-migrate: DPREST-01 tabla detalle_prestaciones_odbc verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: DPREST-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

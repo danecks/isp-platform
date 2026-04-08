@@ -820,3 +820,96 @@ prestacionesRouter.post("/prestaciones/calcular", async (req, res) => {
     return res.status(500).json({ error: String(err) });
   }
 });
+
+// ─── Importar dbo_DetallePrestaciones (ODBC histórico por empleado) ──────────
+prestacionesRouter.post("/importar-detalle-odbc", async (req, res) => {
+  try {
+    interface DPRow {
+      empl_numero: number; pre_ano: number; pre_mes: number; pla_numero?: number;
+      dias_lab?: number; pro_bono14?: number; pro_aguinaldo?: number;
+      pro_vacaciones?: number; pro_indemnizacion?: number;
+      base_bono14?: number; base_aguinaldo?: number; base_vacas?: number; base_indem?: number;
+    }
+    const rows: DPRow[] = req.body.rows ?? [];
+    if (!rows.length) return res.status(400).json({ error: "Sin filas" });
+
+    let insertadas = 0; let actualizadas = 0; let errores = 0;
+    for (const r of rows) {
+      if (!r.empl_numero || !r.pre_ano || !r.pre_mes) { errores++; continue; }
+      try {
+        const result = await pool.query(`
+          INSERT INTO detalle_prestaciones_odbc
+            (empl_numero, pre_ano, pre_mes, pla_numero, dias_lab,
+             pro_bono14, pro_aguinaldo, pro_vacaciones, pro_indemnizacion,
+             base_bono14, base_aguinaldo, base_vacas, base_indem)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+          ON CONFLICT (empl_numero, pre_ano, pre_mes, pla_numero) DO UPDATE SET
+            dias_lab          = EXCLUDED.dias_lab,
+            pro_bono14        = EXCLUDED.pro_bono14,
+            pro_aguinaldo     = EXCLUDED.pro_aguinaldo,
+            pro_vacaciones    = EXCLUDED.pro_vacaciones,
+            pro_indemnizacion = EXCLUDED.pro_indemnizacion,
+            base_bono14       = EXCLUDED.base_bono14,
+            base_aguinaldo    = EXCLUDED.base_aguinaldo,
+            base_vacas        = EXCLUDED.base_vacas,
+            base_indem        = EXCLUDED.base_indem,
+            importado_at      = NOW()
+          RETURNING (xmax = 0) as inserted
+        `, [
+          r.empl_numero, r.pre_ano, r.pre_mes, r.pla_numero ?? 1, r.dias_lab ?? 0,
+          r.pro_bono14 ?? 0, r.pro_aguinaldo ?? 0, r.pro_vacaciones ?? 0, r.pro_indemnizacion ?? 0,
+          r.base_bono14 ?? 0, r.base_aguinaldo ?? 0, r.base_vacas ?? 0, r.base_indem ?? 0,
+        ]);
+        if (result.rows[0]?.inserted) insertadas++; else actualizadas++;
+      } catch { errores++; }
+    }
+    return res.json({ ok: true, total: rows.length, insertadas, actualizadas, errores });
+  } catch (err) {
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
+// ─── Resumen acumulado por empleado desde detalle_prestaciones_odbc ──────────
+prestacionesRouter.get("/resumen-odbc", async (req, res) => {
+  try {
+    // Totales en BD
+    const totRow = await pool.query(`
+      SELECT COUNT(DISTINCT empl_numero) as empleados,
+        SUM(pro_bono14) as bono14, SUM(pro_aguinaldo) as aguinaldo,
+        SUM(pro_vacaciones) as vacaciones, SUM(pro_indemnizacion) as indem,
+        MIN(pre_ano*100+pre_mes) as periodo_min, MAX(pre_ano*100+pre_mes) as periodo_max,
+        COUNT(*) as filas
+      FROM detalle_prestaciones_odbc
+    `);
+
+    // Por empleado — join con employees para nombre
+    const rows = await pool.query(`
+      SELECT
+        d.empl_numero,
+        e.nombre_completo,
+        e.fecha_ingreso,
+        e.fecha_baja,
+        e.sueldo_base,
+        SUM(d.pro_bono14)        AS total_bono14,
+        SUM(d.pro_aguinaldo)     AS total_aguinaldo,
+        SUM(d.pro_vacaciones)    AS total_vacaciones,
+        SUM(d.pro_indemnizacion) AS total_indem,
+        SUM(d.dias_lab)          AS dias_laborados,
+        MAX(d.base_bono14)       AS base_bono14_ult,
+        MAX(d.base_vacas)        AS base_vacas_ult,
+        COUNT(DISTINCT d.pre_ano*100+d.pre_mes) AS periodos_con_data
+      FROM detalle_prestaciones_odbc d
+      LEFT JOIN employees e ON e.empl_numero = d.empl_numero
+      GROUP BY d.empl_numero, e.nombre_completo, e.fecha_ingreso, e.fecha_baja, e.sueldo_base
+      ORDER BY e.nombre_completo NULLS LAST
+    `);
+
+    return res.json({
+      ok: true,
+      resumen: totRow.rows[0],
+      empleados: rows.rows,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: String(err) });
+  }
+});
