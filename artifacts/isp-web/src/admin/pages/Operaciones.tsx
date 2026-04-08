@@ -6792,8 +6792,7 @@ export default function Operaciones() {
 
             <button
               onClick={() => navFecha(1)}
-              disabled={fechaVista >= hoyISO}
-              className="text-white/30 hover:text-white disabled:opacity-20 border border-white/8 rounded-xl px-2 py-1.5 bg-[#0c1929] transition-colors"
+              className="text-white/30 hover:text-white border border-white/8 rounded-xl px-2 py-1.5 bg-[#0c1929] transition-colors"
               title="Día siguiente"
             >
               <ChevronRight className="w-3.5 h-3.5" />
