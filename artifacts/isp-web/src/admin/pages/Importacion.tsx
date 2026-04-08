@@ -1855,6 +1855,7 @@ const LIBRO_SAL_TAB_ID          = "libro-salarios";
 const DEV_EMP_TAB_ID            = "devengados-empleado";
 const DETALLE_LIB_SAL_TAB_ID    = "detalle-lib-sal";
 const DETALLE_PREST_TAB_ID      = "detalle-prestaciones";
+const DIGECAM_TAB_ID            = "digecam-armas";
 
 // ─── LibroSalariosTab ─────────────────────────────────────────────────────────
 const MESES_LS = ["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
@@ -2585,6 +2586,357 @@ function DetallePrestacionesTab() {
   );
 }
 
+// ─── DiGECAMTab — importación de armas desde archivo DIGECAM (.xls) ───────────
+interface ArmaDigecam {
+  tipo: string; marca: string; modelo: string; calibre: string; serie: string;
+  numero_tenencia: string; numero_carnet: string;
+  fecha_emision: string | null; fecha_vencimiento: string | null;
+  ubicacion: string; observaciones: string; estado: string;
+}
+interface DiGECAMResult {
+  insertadas: number; actualizadas: number; total_errores: number;
+  errores: string[]; categorias: Record<string, number>; preview: boolean;
+}
+
+function excelDateToISO(v: any): string | null {
+  if (!v) return null;
+  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const n = Number(v);
+  if (!isFinite(n) || n < 1) return null;
+  const ms = Math.round((n - 25569) * 86400 * 1000);
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function parseDigecamSheet(
+  data: any[][], headerRow: number, estado: string,
+  opts: { hasCarnet?: boolean; hasEmision?: boolean; hasVencimiento?: boolean;
+          hasUbicacion?: boolean; hasDireccion?: boolean;
+          extraFn?: (row: any[]) => string }
+): ArmaDigecam[] {
+  const results: ArmaDigecam[] = [];
+  for (let i = headerRow + 1; i < data.length; i++) {
+    const row = data[i];
+    const tipo = typeof row[1] === "string" ? row[1].trim() : "";
+    if (!tipo || tipo.length < 2) continue;
+    if (typeof row[0] !== "number") continue;
+
+    const serie     = String(row[5] ?? "").trim();
+    const tenencia  = String(row[6] ?? "").trim();
+    const carnet    = opts.hasCarnet    ? String(row[7]  ?? "").trim() : "";
+    const fEmision  = opts.hasEmision   ? excelDateToISO(row[opts.hasCarnet ? 8 : 7]) : null;
+    const fVenc     = opts.hasVencimiento ? excelDateToISO(row[opts.hasCarnet ? 9 : (opts.hasEmision ? 8 : 7)]) : null;
+    const ubicacion = opts.hasUbicacion ? String(row[opts.hasCarnet ? 10 : 7] ?? "").trim() : "";
+    const obs       = opts.extraFn ? opts.extraFn(row) : (opts.hasDireccion ? String(row[11] ?? "").trim() : "");
+
+    results.push({
+      tipo: tipo.toLowerCase(), marca: String(row[2] ?? "").trim(),
+      modelo: String(row[3] ?? "").trim(), calibre: String(row[4] ?? "").trim(),
+      serie, numero_tenencia: tenencia, numero_carnet: carnet,
+      fecha_emision: fEmision, fecha_vencimiento: fVenc,
+      ubicacion, observaciones: obs, estado,
+    });
+  }
+  return results;
+}
+
+const ESTADO_LABEL: Record<string, string> = {
+  activo: "En Servicio", bodega: "En Bodega", mal_estado: "Mal Estado",
+  robado: "Robadas", consignado: "Consignadas", reparacion: "Reparación",
+};
+const ESTADO_COLOR: Record<string, string> = {
+  activo: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+  bodega: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+  mal_estado: "bg-orange-500/20 text-orange-300 border-orange-500/30",
+  robado: "bg-red-500/20 text-red-300 border-red-500/30",
+  consignado: "bg-purple-500/20 text-purple-300 border-purple-500/30",
+  reparacion: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
+};
+
+function DiGECAMTab() {
+  const [step, setStep]             = useState<"upload" | "preview" | "result">("upload");
+  const [armas, setArmas]           = useState<ArmaDigecam[]>([]);
+  const [fileName, setFileName]     = useState("");
+  const [loading, setLoading]       = useState(false);
+  const [dragOver, setDragOver]     = useState(false);
+  const [previewResult, setPreviewResult] = useState<DiGECAMResult | null>(null);
+  const [importResult, setImportResult]   = useState<DiGECAMResult | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const reset = () => {
+    setStep("upload"); setArmas([]); setFileName("");
+    setPreviewResult(null); setImportResult(null);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const handleFile = useCallback(async (file: File) => {
+    const ext = file.name.toLowerCase();
+    if (!ext.endsWith(".xls") && !ext.endsWith(".xlsx")) {
+      alert("Solo se aceptan archivos .xls o .xlsx del DIGECAM"); return;
+    }
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array", cellDates: false });
+
+      const SHEET_CONFIG = [
+        { name: "ARMAS EN SERVICIO",  headerRow: 12, estado: "activo",
+          opts: { hasCarnet: true, hasEmision: true, hasVencimiento: true, hasUbicacion: true, hasDireccion: true } },
+        { name: "ARMAS EN BODEGA",    headerRow: 12, estado: "bodega",
+          opts: { hasCarnet: true, hasEmision: true, hasVencimiento: true, hasUbicacion: true } },
+        { name: "ARMAS EN MAL ESTADO", headerRow: 17, estado: "mal_estado",
+          opts: { hasUbicacion: true } },
+        { name: "ARMAS ROBADAS",      headerRow: 14, estado: "robado",
+          opts: { extraFn: (row: any[]) => [
+            row[7] ? `Fecha robo: ${excelDateToISO(row[7]) ?? row[7]}` : "",
+            row[8] ? `Denuncia PNC: ${row[8]}`      : "",
+            row[9] ? `Fecha denuncia: ${excelDateToISO(row[9]) ?? row[9]}` : "",
+            row[10] ? `Expediente: ${row[10]}`      : "",
+          ].filter(Boolean).join(" | ") } },
+        { name: "ARMAS CONSIGNADAS",  headerRow: 11, estado: "consignado",
+          opts: { extraFn: (row: any[]) => [
+            row[7] ? `Consignada: ${excelDateToISO(row[7]) ?? row[7]}` : "",
+            row[8] ? `Causa: ${row[8]}` : "",
+          ].filter(Boolean).join(" | ") } },
+        { name: "ARMAS REPARACION",   headerRow: 14, estado: "reparacion", opts: {} },
+      ];
+
+      const all: ArmaDigecam[] = [];
+      for (const sc of SHEET_CONFIG) {
+        const ws = wb.Sheets[sc.name];
+        if (!ws) continue;
+        const data = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: "" });
+        const parsed = parseDigecamSheet(data, sc.headerRow, sc.estado, sc.opts);
+        all.push(...parsed);
+      }
+
+      if (all.length === 0) {
+        alert("No se encontraron armas válidas en el archivo. ¿Es el archivo correcto del DIGECAM?");
+        return;
+      }
+      setArmas(all); setFileName(file.name); setStep("preview");
+    } catch (e: any) {
+      alert(`Error al leer el archivo: ${e.message}`);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); setDragOver(false);
+    const file = e.dataTransfer.files[0]; if (file) handleFile(file);
+  }, [handleFile]);
+
+  const call = async (preview: boolean): Promise<DiGECAMResult> => {
+    const r = await fetch(`${API_BASE}/armeria/importar-digecam`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
+      body: JSON.stringify({ armas, preview }),
+    });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error || "Error"); }
+    return r.json();
+  };
+
+  const runPreview = async () => {
+    setLoading(true);
+    try { setPreviewResult(await call(true)); }
+    catch (e: any) { alert(e.message); }
+    finally { setLoading(false); }
+  };
+  const runImport = async () => {
+    if (!confirm(`¿Confirmar importación de ${armas.length} armas desde DIGECAM?`)) return;
+    setLoading(true);
+    try { setImportResult(await call(false)); setStep("result"); }
+    catch (e: any) { alert(e.message); }
+    finally { setLoading(false); }
+  };
+
+  // Conteo por estado
+  const byEstado = armas.reduce<Record<string, number>>((acc, a) => {
+    acc[a.estado] = (acc[a.estado] || 0) + 1; return acc;
+  }, {});
+
+  if (step === "upload") return (
+    <div className="space-y-6">
+      <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 space-y-2">
+        <div className="flex items-center gap-2">
+          <Shield className="w-4 h-4 text-red-400" />
+          <span className="text-sm font-semibold text-red-200">Importar Inventario DIGECAM</span>
+        </div>
+        <p className="text-xs text-red-200/70">
+          Sube el archivo <code className="font-mono bg-red-400/10 px-1 rounded">.xls</code> del DIGECAM (Registro de Armas de Fuego).
+          El sistema procesa las 6 hojas automáticamente y clasifica cada arma según su estado.
+        </p>
+        <p className="text-[11px] text-red-300/50">
+          Las armas se identifican por número de serie o tenencia. Las existentes se actualizan, las nuevas se insertan.
+        </p>
+      </div>
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        onClick={() => fileRef.current?.click()}
+        className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors ${
+          dragOver ? "border-red-400 bg-red-400/5" : "border-white/15 hover:border-red-400/40 hover:bg-white/[0.02]"
+        }`}
+      >
+        <Shield className="w-10 h-10 text-white/20 mx-auto mb-3" />
+        <p className="text-sm text-white/60">Arrastra el archivo DIGECAM aquí</p>
+        <p className="text-xs text-white/30 mt-1">o haz clic · Acepta .xls y .xlsx</p>
+        <input ref={fileRef} type="file" accept=".xls,.xlsx" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+      </div>
+    </div>
+  );
+
+  if (step === "preview") return (
+    <div className="space-y-4">
+      <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-white/90 flex items-center gap-2">
+              <Shield className="w-4 h-4 text-red-400" />
+              {armas.length} armas detectadas en <code className="text-xs bg-white/10 px-1.5 py-0.5 rounded font-mono">{fileName}</code>
+            </p>
+          </div>
+          <button onClick={reset} className="text-xs text-white/30 hover:text-white/60 flex items-center gap-1">
+            <RotateCcw className="w-3 h-3" /> Cambiar archivo
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2 mt-3">
+          {Object.entries(byEstado).map(([estado, cnt]) => (
+            <span key={estado} className={`text-xs px-2 py-0.5 rounded border font-medium ${ESTADO_COLOR[estado] || "bg-white/10 text-white/50 border-white/20"}`}>
+              {cnt} {ESTADO_LABEL[estado] || estado}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {previewResult && (
+        <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 space-y-2">
+          <p className="text-xs font-semibold text-white/60 uppercase tracking-wide">Resultado de validación</p>
+          <div className="flex flex-wrap gap-3 text-sm">
+            <span className="text-emerald-400"><span className="font-bold">{previewResult.insertadas}</span> nuevas</span>
+            <span className="text-blue-400"><span className="font-bold">{previewResult.actualizadas}</span> actualizarán</span>
+            {previewResult.total_errores > 0 && (
+              <span className="text-red-400"><span className="font-bold">{previewResult.total_errores}</span> errores</span>
+            )}
+          </div>
+          {previewResult.errores.length > 0 && (
+            <div className="mt-2 text-[11px] text-red-300/70 space-y-0.5 max-h-24 overflow-y-auto">
+              {previewResult.errores.map((e, i) => <p key={i}>{e}</p>)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Preview table (first 10 rows) */}
+      <div className="bg-white/[0.02] border border-white/10 rounded-xl overflow-hidden">
+        <div className="px-4 py-2 border-b border-white/10">
+          <p className="text-xs text-white/40">Muestra — primeras 10 armas</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="border-b border-white/10 text-white/40">
+                <th className="px-3 py-2 text-left">Estado</th>
+                <th className="px-3 py-2 text-left">Tipo</th>
+                <th className="px-3 py-2 text-left">Marca / Modelo</th>
+                <th className="px-3 py-2 text-left">Calibre</th>
+                <th className="px-3 py-2 text-left">Serie</th>
+                <th className="px-3 py-2 text-left">No. Tenencia</th>
+                <th className="px-3 py-2 text-left">Ubicación</th>
+                <th className="px-3 py-2 text-left">Venc.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {armas.slice(0, 10).map((a, i) => (
+                <tr key={i} className="border-b border-white/5 hover:bg-white/[0.02]">
+                  <td className="px-3 py-1.5">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${ESTADO_COLOR[a.estado] || "bg-white/10 text-white/50 border-white/20"}`}>
+                      {ESTADO_LABEL[a.estado] || a.estado}
+                    </span>
+                  </td>
+                  <td className="px-3 py-1.5 capitalize text-white/80">{a.tipo}</td>
+                  <td className="px-3 py-1.5 text-white/60">{a.marca} {a.modelo}</td>
+                  <td className="px-3 py-1.5 text-white/50">{a.calibre}</td>
+                  <td className="px-3 py-1.5 font-mono text-white/70">{a.serie || "—"}</td>
+                  <td className="px-3 py-1.5 font-mono text-white/50">{a.numero_tenencia || "—"}</td>
+                  <td className="px-3 py-1.5 text-white/50 max-w-[160px] truncate">{a.ubicacion || "—"}</td>
+                  <td className="px-3 py-1.5 text-white/40">{a.fecha_vencimiento || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {armas.length > 10 && (
+          <p className="px-4 py-2 text-[11px] text-white/30 border-t border-white/10">
+            ... y {armas.length - 10} armas más
+          </p>
+        )}
+      </div>
+
+      <div className="flex gap-3 justify-end">
+        <button onClick={runPreview} disabled={loading}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-white/10 hover:bg-white/15 text-white/80 disabled:opacity-50">
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+          Validar (sin guardar)
+        </button>
+        <button onClick={runImport} disabled={loading}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-red-500/80 hover:bg-red-500 text-white disabled:opacity-50">
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+          Importar {armas.length} armas
+        </button>
+      </div>
+    </div>
+  );
+
+  if (step === "result" && importResult) return (
+    <div className="space-y-4">
+      <div className={`rounded-xl p-4 border ${importResult.total_errores === 0 ? "bg-emerald-500/10 border-emerald-500/30" : "bg-orange-500/10 border-orange-500/30"}`}>
+        <div className="flex items-center gap-2 mb-3">
+          {importResult.total_errores === 0
+            ? <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+            : <AlertCircle className="w-5 h-5 text-orange-400" />}
+          <span className="font-semibold text-white">Importación completada</span>
+        </div>
+        <div className="grid grid-cols-3 gap-4 text-center">
+          <div>
+            <p className="text-2xl font-bold text-emerald-400">{importResult.insertadas}</p>
+            <p className="text-xs text-white/40 mt-0.5">Armas nuevas</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-blue-400">{importResult.actualizadas}</p>
+            <p className="text-xs text-white/40 mt-0.5">Actualizadas</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-red-400">{importResult.total_errores}</p>
+            <p className="text-xs text-white/40 mt-0.5">Errores</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2 mt-3">
+          {Object.entries(importResult.categorias).map(([estado, cnt]) => (
+            <span key={estado} className={`text-xs px-2 py-0.5 rounded border ${ESTADO_COLOR[estado] || "bg-white/10 text-white/50 border-white/20"}`}>
+              {cnt} {ESTADO_LABEL[estado] || estado}
+            </span>
+          ))}
+        </div>
+      </div>
+      {importResult.errores.length > 0 && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4">
+          <p className="text-xs font-semibold text-red-300 mb-2">Errores ({importResult.total_errores})</p>
+          <div className="space-y-0.5 max-h-40 overflow-y-auto text-[11px] text-red-300/70">
+            {importResult.errores.map((e, i) => <p key={i}>{e}</p>)}
+          </div>
+        </div>
+      )}
+      <div className="flex justify-end">
+        <button onClick={reset} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-white/10 hover:bg-white/15 text-white/60">
+          <RotateCcw className="w-4 h-4" /> Nueva importación
+        </button>
+      </div>
+    </div>
+  );
+
+  return null;
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function Importacion() {
   const [activeTab, setActiveTab] = useState<string>(TABS[0].id);
@@ -2595,6 +2947,7 @@ export default function Importacion() {
   const isDevEmp             = activeTab === DEV_EMP_TAB_ID;
   const isDetalleLibSal      = activeTab === DETALLE_LIB_SAL_TAB_ID;
   const isDetallePrestaciones = activeTab === DETALLE_PREST_TAB_ID;
+  const isDigecam            = activeTab === DIGECAM_TAB_ID;
   const isAnySA              = isLegacyEmpl || isLegacyClients;
 
   return (
@@ -2608,7 +2961,7 @@ export default function Importacion() {
           </p>
         </div>
 
-        {!isAnySA && !isLibroSal && !isDevEmp && !isDetallePrestaciones && (
+        {!isAnySA && !isLibroSal && !isDevEmp && !isDetallePrestaciones && !isDigecam && (
           <div className="flex items-center gap-0 bg-white/[0.02] border border-white/10 rounded-xl p-4">
             {[
               { n: 1, label: "Descarga la plantilla" },
@@ -2719,6 +3072,19 @@ export default function Importacion() {
               <FileSpreadsheet className="w-4 h-4" />
               Prestaciones ODBC
             </button>
+            {/* DIGECAM — Armería */}
+            <div className="w-px bg-white/10 self-stretch mx-1" />
+            <button
+              onClick={() => setActiveTab(DIGECAM_TAB_ID)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                isDigecam
+                  ? "border-red-400 text-red-400"
+                  : "border-transparent text-white/40 hover:text-red-400/60"
+              }`}
+            >
+              <Shield className="w-4 h-4" />
+              DIGECAM · Armas
+            </button>
             {/* Separador visual */}
             <div className="w-px bg-white/10 self-stretch mx-1" />
             {/* SA — Clientes */}
@@ -2752,6 +3118,7 @@ export default function Importacion() {
              isDevEmp              ? <DevengadosEmpleadoTab   key={DEV_EMP_TAB_ID} />           :
              isDetalleLibSal       ? <DetalleLibSalTab        key={DETALLE_LIB_SAL_TAB_ID} />   :
              isDetallePrestaciones ? <DetallePrestacionesTab  key={DETALLE_PREST_TAB_ID} />      :
+             isDigecam             ? <DiGECAMTab              key={DIGECAM_TAB_ID} />            :
              isLegacyEmpl    ? <LegacyImporterTab     key={LEGACY_TAB_ID} />       :
              isLegacyClients ? <LegacyClientesTab     key={LEGACY_CLIENTES_TAB_ID} /> :
              tab             ? (

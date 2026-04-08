@@ -3772,6 +3772,17 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: ARM-03 — error (no bloqueante)");
   }
 
+  // ── ARM-04: campos DIGECAM — ubicacion, client_id, carnet, fecha_emision ─────
+  try {
+    await pool.query(`ALTER TABLE armas ADD COLUMN IF NOT EXISTS ubicacion             TEXT`);
+    await pool.query(`ALTER TABLE armas ADD COLUMN IF NOT EXISTS client_id             INTEGER REFERENCES clients(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE armas ADD COLUMN IF NOT EXISTS numero_carnet         TEXT`);
+    await pool.query(`ALTER TABLE armas ADD COLUMN IF NOT EXISTS fecha_emision_tenencia DATE`);
+    logger.info("Auto-migrate: ARM-04 columnas DIGECAM en armas verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: ARM-04 — error (no bloqueante)");
+  }
+
   // ── PO-NOVEDAD-01: columna novedad en puestos_operativos (mensajes visibles al agente al fichar) ──
   try {
     await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS novedad TEXT`);
