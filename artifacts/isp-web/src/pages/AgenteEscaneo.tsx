@@ -277,6 +277,9 @@ export default function AgenteEscaneo() {
   // Arma
   const [armaEstado, setArmaEstado] = useState<"bueno" | "necesita_reparacion">("bueno");
   const [armaObservacion, setArmaObservacion] = useState("");
+  // Sugerencia de cambio de estado del arma (solo supervisores)
+  const [armaSugerencia, setArmaSugerencia] = useState<"bodega" | "mal_estado" | null>(null);
+  const [armaSugerenciaObs, setArmaSugerenciaObs] = useState("");
   // Munición
   const [municionOk, setMunicionOk] = useState<boolean>(true);
   const [municionFaltante, setMunicionFaltante] = useState<number>(0);
@@ -507,6 +510,19 @@ export default function AgenteEscaneo() {
         if (data.reporte_id && equipoPuesto.length > 0) {
           await enviarEquipoNovedades(data.reporte_id);
         }
+        // Enviar sugerencia de cambio de estado del arma (solo supervisores)
+        if (armaSugerencia && agenteInfo?.armamento?.arma_id && tipo === "supervision") {
+          await fetch(`${API}/armeria/armas/${agenteInfo.armamento.arma_id}/sugerir-cambio`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              supervisor_nombre: agenteInfo.relevo?.nombre_completo ?? stored.uuid,
+              puesto_id: agenteInfo.puesto?.id ?? null,
+              estado_sugerido: armaSugerencia,
+              observacion: armaSugerenciaObs || null,
+            }),
+          });
+        }
       } else { setReporteError(data.error || "Error guardando reporte"); }
     } catch { setReporteError("Error de conexión"); }
     finally { setEnviandoReporte(false); }
@@ -619,6 +635,37 @@ export default function AgenteEscaneo() {
                 placeholder="Describe el problema o tipo de servicio que necesita..."
                 rows={2}
                 className="w-full bg-white/5 border border-red-500/20 rounded-xl px-3 py-2 text-xs text-white/80 placeholder-white/20 resize-none outline-none focus:border-red-500/40" />
+            )}
+
+            {/* ── Sección exclusiva para supervisores: sugerir cambio de estado ── */}
+            {tipoEfectivo === "supervisor" && (
+              <div className="mt-3 pt-3 border-t border-amber-500/10">
+                <p className="text-amber-400/50 text-xs font-semibold uppercase tracking-wide mb-2">
+                  Sugerir cambio de estado (supervisor)
+                </p>
+                <div className="flex gap-2 mb-2">
+                  {([
+                    { key: null,       label: "Sin cambio",     color: "border-white/10 text-white/30" },
+                    { key: "bodega",   label: "Enviar a bodega", color: "border-blue-500/30 text-blue-300 bg-blue-500/10" },
+                    { key: "mal_estado", label: "Mal estado",   color: "border-orange-500/30 text-orange-300 bg-orange-500/10" },
+                  ] as const).map(opt => (
+                    <button key={String(opt.key)} onClick={() => setArmaSugerencia(opt.key)}
+                      className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-colors ${
+                        armaSugerencia === opt.key
+                          ? opt.color
+                          : "bg-white/3 border-white/10 text-white/30 hover:text-white/50"
+                      }`}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                {armaSugerencia && (
+                  <textarea value={armaSugerenciaObs} onChange={e => setArmaSugerenciaObs(e.target.value)}
+                    placeholder="Observación de la sugerencia (opcional)..."
+                    rows={2}
+                    className="w-full bg-white/5 border border-amber-500/20 rounded-xl px-3 py-2 text-xs text-white/80 placeholder-white/20 resize-none outline-none focus:border-amber-500/40" />
+                )}
+              </div>
             )}
           </div>
         )}

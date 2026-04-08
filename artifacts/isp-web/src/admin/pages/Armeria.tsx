@@ -81,6 +81,7 @@ interface Arma {
   fecha_vencimiento_tenencia: string | null;
   estado_documental: EstadoDocumental;
   dias_restantes: number | null;
+  sugerencias_pendientes: number;
 }
 interface EstadoArma extends Arma {
   zona_nombre: string | null;
@@ -735,6 +736,11 @@ function TabEstado({ fecha, onFicha }: { fecha: string; onFicha: (a: EstadoArma)
                     {arma.calibre && <span className="text-[10px] text-gray-500 bg-gray-700/50 px-1.5 py-0.5 rounded">{arma.calibre}</span>}
                     <EstadoBadge estado={arma.estado} />
                     <TenenciaBadge arma={arma} showDays />
+                    {arma.sugerencias_pendientes > 0 && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30 animate-pulse">
+                        ⚠ {arma.sugerencias_pendientes} sugerencia{arma.sugerencias_pendientes > 1 ? "s" : ""}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-1.5 mt-1 text-xs text-gray-400">
                     <MapPin className="w-3 h-3 flex-shrink-0" />
@@ -1022,6 +1028,24 @@ export default function Armeria() {
     queryFn: () => apiFetch(`${API}/armas/puestos/disponibles`),
   });
 
+  interface Sugerencia {
+    id: number; arma_id: number; supervisor_nombre: string; estado_sugerido: string;
+    observacion: string | null; created_at: string;
+    arma_codigo: string; arma_tipo: string; puesto_nombre: string | null; cliente_nombre: string | null;
+  }
+  const { data: sugerencias = [], refetch: refetchSugerencias } = useQuery<Sugerencia[]>({
+    queryKey: ["arma-sugerencias"],
+    queryFn: () => apiFetch(`${API}/armeria/sugerencias`),
+    refetchInterval: 30_000,
+  });
+
+  async function atenderSugerencia(id: number) {
+    await apiPatch(`${API}/armeria/sugerencias/${id}/atender`, { atendido_por: (user as any)?.username ?? "admin" });
+    refetchSugerencias();
+    qc.invalidateQueries({ queryKey: ["armas"] });
+    qc.invalidateQueries({ queryKey: ["armas-estado"] });
+  }
+
   function handleSaved() {
     setModalArma(null);
     qc.invalidateQueries({ queryKey: ["armas"] });
@@ -1077,6 +1101,38 @@ export default function Armeria() {
           ))}
         </div>
       </div>
+
+      {/* ── Banner sugerencias pendientes de supervisores ── */}
+      {sugerencias.length > 0 && (
+        <div className="mx-4 md:mx-6 mt-4 bg-orange-500/10 border border-orange-500/30 rounded-xl p-4 space-y-2">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-orange-400 font-semibold text-sm">⚠ {sugerencias.length} sugerencia{sugerencias.length > 1 ? "s" : ""} de supervisor pendiente{sugerencias.length > 1 ? "s" : ""}</span>
+          </div>
+          {sugerencias.map(s => (
+            <div key={s.id} className="flex items-start gap-3 bg-orange-500/5 border border-orange-500/20 rounded-lg p-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-white font-semibold text-xs font-mono">{s.arma_codigo}</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded font-semibold border ${
+                    s.estado_sugerido === "bodega" ? "bg-blue-500/15 text-blue-300 border-blue-500/30" : "bg-orange-500/15 text-orange-300 border-orange-500/30"
+                  }`}>
+                    {s.estado_sugerido === "bodega" ? "Enviar a bodega" : "Mal estado"}
+                  </span>
+                  {s.puesto_nombre && <span className="text-xs text-gray-400">{s.puesto_nombre}</span>}
+                </div>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Supervisor: {s.supervisor_nombre}
+                  {s.observacion && <span className="text-gray-500"> — {s.observacion}</span>}
+                </p>
+              </div>
+              <button onClick={() => atenderSugerencia(s.id)}
+                className="px-3 py-1.5 bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/30 text-orange-300 rounded-lg text-xs font-medium transition-colors flex-shrink-0">
+                Atender
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Content */}
       {tab === "estado"    && <TabEstado fecha={fechaConsulta} onFicha={a => setModalFicha(a)} />}

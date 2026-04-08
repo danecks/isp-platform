@@ -1856,6 +1856,7 @@ const DEV_EMP_TAB_ID            = "devengados-empleado";
 const DETALLE_LIB_SAL_TAB_ID    = "detalle-lib-sal";
 const DETALLE_PREST_TAB_ID      = "detalle-prestaciones";
 const DIGECAM_TAB_ID            = "digecam-armas";
+const ALMACEN_TAB_ID            = "almacen-inventario";
 
 // ─── LibroSalariosTab ─────────────────────────────────────────────────────────
 const MESES_LS = ["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
@@ -2586,6 +2587,321 @@ function DetallePrestacionesTab() {
   );
 }
 
+// ─── AlmacenTab — importación de inventario de almacén desde Excel ────────────
+interface ItemAlmacen {
+  categoria: string;
+  descripcion: string;
+  talla: string | null;
+  stock_bodega: number;
+  stock_lavanderia: number;
+  precio: number;
+}
+interface AlmacenResult {
+  insertados: number; actualizados: number; total_errores: number;
+  errores: string[]; categorias: Record<string, number>; preview: boolean;
+}
+
+function parseAlmacenSheet(sheet: any[][]): ItemAlmacen[] {
+  const items: ItemAlmacen[] = [];
+  let categoriaActual = "GENERAL";
+
+  for (let i = 0; i < sheet.length; i++) {
+    const row = sheet[i];
+    if (!row || row.length === 0) continue;
+
+    const celA = String(row[0] ?? "").trim();
+    const celB = String(row[1] ?? "").trim();
+    const celC = String(row[2] ?? "").trim();
+    const celD = String(row[3] ?? "").trim();
+    const celE = String(row[4] ?? "").trim();
+
+    // Detectar cabecera de categoría: fila donde col A tiene texto pero col B/C/D están vacíos o también texto
+    // y no tiene números en D/E
+    const dNum = parseFloat(celD.replace(/,/g, ""));
+    const eNum = parseFloat(celE.replace(/,/g, ""));
+    const dIsNum = !isNaN(dNum) && celD !== "";
+    const eIsNum = !isNaN(eNum) && celE !== "";
+
+    // Si la fila tiene texto largo en col A y las columnas numéricas están vacías → categoría
+    if (celA.length > 2 && !celB && !dIsNum && !eIsNum && celA === celA.toUpperCase()) {
+      categoriaActual = celA;
+      continue;
+    }
+    // Otro indicador de categoría: col A vacía, col B es texto mayúscula sin números
+    if (!celA && celB.length > 3 && celB === celB.toUpperCase() && !dIsNum) {
+      categoriaActual = celB;
+      continue;
+    }
+
+    // Fila de item: necesita al menos descripción + cantidad en bodega
+    let descripcion = "";
+    let talla: string | null = null;
+    let stockBodega = 0;
+    let stockLav = 0;
+    let precio = 0;
+
+    // Detectar si col A es número de orden (fila de item numerada)
+    const aNum = parseFloat(celA);
+    if (!isNaN(aNum) && celA !== "") {
+      descripcion = celB;
+      // Check if celC is a talla (text like S, M, L, XL, XXL, XXXL, or number 37-43)
+      const tallaPattern = /^(XS|S|M|L|XL|XXL|XXXL|3X|4X|\d{2})$/i;
+      if (celC && tallaPattern.test(celC)) {
+        talla = celC.toUpperCase();
+        stockBodega = parseInt(celD.replace(/,/g, "")) || 0;
+        stockLav    = parseInt(celE.replace(/,/g, "")) || 0;
+        const celF  = String(row[5] ?? "").trim();
+        precio = parseFloat(celF.replace(/[^0-9.]/g, "")) || 0;
+      } else {
+        stockBodega = parseInt(celC.replace(/,/g, "")) || 0;
+        stockLav    = parseInt(celD.replace(/,/g, "")) || 0;
+        precio      = parseFloat(celE.replace(/[^0-9.]/g, "")) || 0;
+      }
+    } else if (celA.length > 1 && (dIsNum || eIsNum)) {
+      // Col A es descripción directamente
+      descripcion = celA;
+      const tallaPattern = /^(XS|S|M|L|XL|XXL|XXXL|3X|4X|\d{2})$/i;
+      if (celB && tallaPattern.test(celB)) {
+        talla = celB.toUpperCase();
+        stockBodega = parseInt(celC.replace(/,/g, "")) || 0;
+        stockLav    = parseInt(celD.replace(/,/g, "")) || 0;
+        precio      = parseFloat(celE.replace(/[^0-9.]/g, "")) || 0;
+      } else {
+        stockBodega = parseInt(celC.replace(/,/g, "")) || parseInt(celD.replace(/,/g, "")) || 0;
+        stockLav    = parseInt(celE.replace(/,/g, "")) || 0;
+      }
+    } else if (celB.length > 1 && (dIsNum || eIsNum)) {
+      descripcion = celB;
+      const tallaPattern = /^(XS|S|M|L|XL|XXL|XXXL|3X|4X|\d{2})$/i;
+      if (celC && tallaPattern.test(celC)) {
+        talla = celC.toUpperCase();
+        stockBodega = parseInt(celD.replace(/,/g, "")) || 0;
+        stockLav    = parseInt(celE.replace(/,/g, "")) || 0;
+        const celF  = String(row[5] ?? "").trim();
+        precio = parseFloat(celF.replace(/[^0-9.]/g, "")) || 0;
+      } else {
+        stockBodega = parseInt(celD.replace(/,/g, "")) || 0;
+        stockLav    = parseInt(celE.replace(/,/g, "")) || 0;
+      }
+    }
+
+    if (!descripcion || descripcion.length < 2) continue;
+    if (stockBodega === 0 && stockLav === 0) continue;
+
+    items.push({ categoria: categoriaActual, descripcion, talla, stock_bodega: stockBodega, stock_lavanderia: stockLav, precio });
+  }
+
+  return items;
+}
+
+function AlmacenTab() {
+  const [step, setStep]         = useState<"upload" | "preview" | "result">("upload");
+  const [items, setItems]       = useState<ItemAlmacen[]>([]);
+  const [fileName, setFileName] = useState("");
+  const [dragging, setDragging] = useState(false);
+  const [loading, setLoading]   = useState(false);
+  const [result, setResult]     = useState<AlmacenResult | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const API = `${API_BASE}`;
+
+  const reset = () => { setStep("upload"); setItems([]); setFileName(""); setResult(null); };
+
+  const processFile = (file: File) => {
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer);
+        const wb   = XLSX.read(data, { type: "array" });
+        // Tomar la primera hoja del libro
+        const ws   = wb.Sheets[wb.SheetNames[0]];
+        const raw  = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: "" });
+        const parsed = parseAlmacenSheet(raw as any[][]);
+        setItems(parsed);
+        setStep("preview");
+      } catch (err) {
+        alert("Error al leer el archivo. Asegúrate de que sea un .xlsx o .xls válido.");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) processFile(file);
+  };
+
+  const handleImport = async (previewOnly: boolean) => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${API}/bodega/importar-inventario`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items, preview: previewOnly }),
+      });
+      const data = await r.json();
+      setResult({ ...data, preview: previewOnly });
+      if (!previewOnly) setStep("result");
+    } catch (err) {
+      alert("Error al comunicarse con el servidor.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const categorias = items.reduce((acc, it) => {
+    acc[it.categoria] = (acc[it.categoria] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  if (step === "upload") return (
+    <div className="space-y-6">
+      <div className="bg-teal-500/10 border border-teal-500/20 rounded-xl p-4">
+        <p className="text-sm text-teal-300 font-medium mb-1">Inventario de Almacén · Excel</p>
+        <p className="text-xs text-white/50">
+          Sube el archivo <code className="font-mono bg-white/5 px-1 rounded">.xlsx</code> del inventario mensual.
+          El sistema detecta categorías, artículos, tallas y stock (bodega + lavandería).
+        </p>
+      </div>
+
+      <div
+        onDragOver={e => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={handleDrop}
+        onClick={() => fileRef.current?.click()}
+        className={`border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-all ${
+          dragging ? "border-teal-500/60 bg-teal-500/10" : "border-white/10 hover:border-teal-500/30 hover:bg-white/2"
+        }`}
+      >
+        <Package className="w-12 h-12 mx-auto mb-4 text-white/20" />
+        <p className="text-white/50 text-sm">Arrastra el archivo de inventario o haz clic para seleccionarlo</p>
+        <p className="text-white/25 text-xs mt-1">INVENTARIO_DE_ALMACEN_*.xlsx</p>
+        <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
+          onChange={e => e.target.files?.[0] && processFile(e.target.files[0])} />
+      </div>
+    </div>
+  );
+
+  if (step === "preview") return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-white">{fileName}</h3>
+          <p className="text-xs text-white/40 mt-0.5">{items.length} artículos detectados en {Object.keys(categorias).length} categorías</p>
+        </div>
+        <button onClick={reset} className="text-xs text-white/40 hover:text-white/60 flex items-center gap-1">
+          <RotateCcw className="w-3.5 h-3.5" /> Cambiar archivo
+        </button>
+      </div>
+
+      {/* Resumen por categoría */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+        {Object.entries(categorias).map(([cat, count]) => (
+          <div key={cat} className="bg-teal-500/8 border border-teal-500/20 rounded-lg px-3 py-2">
+            <p className="text-teal-300 text-xs font-semibold truncate">{cat}</p>
+            <p className="text-white/50 text-xs mt-0.5">{count} artículo{count !== 1 ? "s" : ""}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Tabla de preview */}
+      <div className="bg-white/3 border border-white/8 rounded-xl overflow-hidden">
+        <div className="overflow-x-auto max-h-80">
+          <table className="w-full text-xs">
+            <thead className="bg-white/5 sticky top-0">
+              <tr>
+                <th className="text-left px-3 py-2 text-white/50">Categoría</th>
+                <th className="text-left px-3 py-2 text-white/50">Descripción</th>
+                <th className="text-left px-3 py-2 text-white/50">Talla</th>
+                <th className="text-right px-3 py-2 text-white/50">Bodega</th>
+                <th className="text-right px-3 py-2 text-white/50">Lavandería</th>
+                <th className="text-right px-3 py-2 text-white/50">Precio</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {items.map((it, i) => (
+                <tr key={i} className="hover:bg-white/3 transition-colors">
+                  <td className="px-3 py-1.5 text-teal-400/70 font-medium">{it.categoria}</td>
+                  <td className="px-3 py-1.5 text-white/80">{it.descripcion}</td>
+                  <td className="px-3 py-1.5 text-white/50">{it.talla || "—"}</td>
+                  <td className="px-3 py-1.5 text-right text-blue-300 font-mono">{it.stock_bodega}</td>
+                  <td className="px-3 py-1.5 text-right text-purple-300 font-mono">{it.stock_lavanderia}</td>
+                  <td className="px-3 py-1.5 text-right text-white/30 font-mono">{it.precio ? `Q${it.precio}` : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="flex gap-3">
+        <button onClick={() => handleImport(true)} disabled={loading}
+          className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 rounded-lg text-sm transition-colors disabled:opacity-50">
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <BarChart3 className="w-4 h-4" />}
+          Validar (sin guardar)
+        </button>
+        <button onClick={() => handleImport(false)} disabled={loading || items.length === 0}
+          className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+          Importar {items.length} artículos
+        </button>
+      </div>
+
+      {result?.preview && (
+        <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 text-sm text-blue-300">
+          Vista previa: {result.total_errores === 0
+            ? `Todo correcto. ${items.length} artículos listos para importar.`
+            : `${result.total_errores} errores detectados.`}
+          {result.errores.slice(0, 3).map((e, i) => <p key={i} className="text-xs text-red-400 mt-1">{e}</p>)}
+        </div>
+      )}
+    </div>
+  );
+
+  if (step === "result" && result) return (
+    <div className="space-y-6">
+      <div className={`rounded-xl p-5 border ${result.total_errores === 0 ? "bg-emerald-500/10 border-emerald-500/20" : "bg-amber-500/10 border-amber-500/20"}`}>
+        <div className="flex items-center gap-3 mb-3">
+          {result.total_errores === 0
+            ? <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+            : <AlertCircle className="w-5 h-5 text-amber-400" />}
+          <p className="font-semibold text-white">Importación completada</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="bg-white/5 rounded-lg p-3">
+            <p className="text-white/40 text-xs">Nuevos</p>
+            <p className="text-2xl font-bold text-emerald-400">{result.insertados}</p>
+          </div>
+          <div className="bg-white/5 rounded-lg p-3">
+            <p className="text-white/40 text-xs">Actualizados</p>
+            <p className="text-2xl font-bold text-blue-400">{result.actualizados}</p>
+          </div>
+        </div>
+        {result.errores.length > 0 && (
+          <div className="mt-3 space-y-1">
+            {result.errores.map((e, i) => <p key={i} className="text-xs text-red-400">{e}</p>)}
+          </div>
+        )}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+        {Object.entries(result.categorias).map(([cat, count]) => (
+          <div key={cat} className="bg-teal-500/8 border border-teal-500/20 rounded-lg px-3 py-2">
+            <p className="text-teal-300 text-xs font-semibold truncate">{cat}</p>
+            <p className="text-white/50 text-xs">{count} importados</p>
+          </div>
+        ))}
+      </div>
+      <button onClick={reset} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-white/10 hover:bg-white/15 text-white/60">
+        <RotateCcw className="w-4 h-4" /> Nueva importación
+      </button>
+    </div>
+  );
+
+  return null;
+}
+
 // ─── DiGECAMTab — importación de armas desde archivo DIGECAM (.xls) ───────────
 interface ArmaDigecam {
   tipo: string; marca: string; modelo: string; calibre: string; serie: string;
@@ -2948,6 +3264,7 @@ export default function Importacion() {
   const isDetalleLibSal      = activeTab === DETALLE_LIB_SAL_TAB_ID;
   const isDetallePrestaciones = activeTab === DETALLE_PREST_TAB_ID;
   const isDigecam            = activeTab === DIGECAM_TAB_ID;
+  const isAlmacen            = activeTab === ALMACEN_TAB_ID;
   const isAnySA              = isLegacyEmpl || isLegacyClients;
 
   return (
@@ -2961,7 +3278,7 @@ export default function Importacion() {
           </p>
         </div>
 
-        {!isAnySA && !isLibroSal && !isDevEmp && !isDetallePrestaciones && !isDigecam && (
+        {!isAnySA && !isLibroSal && !isDevEmp && !isDetallePrestaciones && !isDigecam && !isAlmacen && (
           <div className="flex items-center gap-0 bg-white/[0.02] border border-white/10 rounded-xl p-4">
             {[
               { n: 1, label: "Descarga la plantilla" },
@@ -3085,6 +3402,18 @@ export default function Importacion() {
               <Shield className="w-4 h-4" />
               DIGECAM · Armas
             </button>
+            {/* Almacén · Inventario */}
+            <button
+              onClick={() => setActiveTab(ALMACEN_TAB_ID)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                isAlmacen
+                  ? "border-teal-400 text-teal-400"
+                  : "border-transparent text-white/40 hover:text-teal-400/60"
+              }`}
+            >
+              <Package className="w-4 h-4" />
+              Almacén · Stock
+            </button>
             {/* Separador visual */}
             <div className="w-px bg-white/10 self-stretch mx-1" />
             {/* SA — Clientes */}
@@ -3119,6 +3448,7 @@ export default function Importacion() {
              isDetalleLibSal       ? <DetalleLibSalTab        key={DETALLE_LIB_SAL_TAB_ID} />   :
              isDetallePrestaciones ? <DetallePrestacionesTab  key={DETALLE_PREST_TAB_ID} />      :
              isDigecam             ? <DiGECAMTab              key={DIGECAM_TAB_ID} />            :
+             isAlmacen             ? <AlmacenTab              key={ALMACEN_TAB_ID} />            :
              isLegacyEmpl    ? <LegacyImporterTab     key={LEGACY_TAB_ID} />       :
              isLegacyClients ? <LegacyClientesTab     key={LEGACY_CLIENTES_TAB_ID} /> :
              tab             ? (

@@ -572,6 +572,47 @@ function RondaDetalle({
   );
 }
 
+// ── Tarjeta de ronda reutilizable ─────────────────────────────────────────────
+function RondaCard({ r, onSelect, onToggle, onDelete }: {
+  r: Ronda;
+  onSelect: (r: Ronda) => void;
+  onToggle: (r: Ronda) => void;
+  onDelete: (r: Ronda) => void;
+}) {
+  return (
+    <div className="bg-white/5 border border-white/8 rounded-xl p-5 hover:border-white/15 transition-colors group">
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex-1 min-w-0">
+          <h3 className="text-base font-semibold text-white truncate">{r.nombre}</h3>
+          {r.cliente_nombre && <p className="text-xs text-white/40 mt-0.5">{r.cliente_nombre}</p>}
+        </div>
+        <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${r.activo ? "bg-green-500/10 text-green-400 border border-green-500/20" : "bg-gray-500/10 text-gray-400 border border-gray-500/20"}`}>
+          {r.activo ? "Activa" : "Inactiva"}
+        </span>
+      </div>
+      {r.descripcion && <p className="text-xs text-white/40 mb-3 line-clamp-2">{r.descripcion}</p>}
+      <div className="flex items-center gap-2 mb-4">
+        <MapPin className="w-3.5 h-3.5 text-white/30" />
+        <span className="text-xs text-white/40">{r.total_puntos} punto{Number(r.total_puntos) !== 1 ? "s" : ""} de control</span>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={() => onSelect(r)}
+          className="flex-1 py-2 bg-white/5 hover:bg-white/10 border border-white/8 rounded-lg text-sm text-white/70 hover:text-white transition-colors font-medium">
+          Administrar
+        </button>
+        <button onClick={() => onToggle(r)} title={r.activo ? "Desactivar" : "Activar"}
+          className="p-2 bg-white/5 hover:bg-white/10 border border-white/8 rounded-lg text-white/50 hover:text-white transition-colors">
+          {r.activo ? <ToggleRight className="w-4 h-4 text-green-400" /> : <ToggleLeft className="w-4 h-4" />}
+        </button>
+        <button onClick={() => onDelete(r)} title="Eliminar"
+          className="p-2 bg-white/5 hover:bg-red-500/10 border border-white/8 hover:border-red-500/20 rounded-lg text-white/50 hover:text-red-400 transition-colors">
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ══════════════════════════════════════════════════════════════════════════════
@@ -584,6 +625,8 @@ export default function RondasQR() {
   const [clients, setClients] = useState<{ id: number; nombre: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [vistaClientes, setVistaClientes] = useState(true);
+  const [clienteFiltro, setClienteFiltro] = useState<number | null>(null);
 
   const loadRondas = useCallback(async () => {
     const r = await f("/qr-rondas");
@@ -631,20 +674,59 @@ export default function RondasQR() {
     );
   }
 
+  // Calcular rondas por cliente
+  const rondasPorCliente = rondas.reduce((acc, r) => {
+    const key = r.cliente_id ?? 0;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(r);
+    return acc;
+  }, {} as Record<number, Ronda[]>);
+
+  // Clientes con y sin rondas
+  const clientesConRondas = clients.map(c => ({
+    ...c,
+    rondas: rondasPorCliente[c.id] ?? [],
+    totalRondas: (rondasPorCliente[c.id] ?? []).length,
+  }));
+
+  // Rondas del filtro activo (en vista clientes)
+  const rondasFiltradas = clienteFiltro !== null
+    ? rondas.filter(r => (r.cliente_id ?? 0) === clienteFiltro)
+    : rondas;
+
+  // Cliente actualmente seleccionado en filtro
+  const clienteActivo = clienteFiltro !== null ? clients.find(c => c.id === clienteFiltro) : null;
+
   return (
     <div className="p-6 max-w-5xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-white">Rondas QR</h1>
-          <p className="text-sm text-white/40 mt-1">Gestión de rutas de patrullaje con verificación por código QR y GPS</p>
+          <p className="text-sm text-white/40 mt-1">Patrullaje con verificación QR y GPS</p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors"
-        >
-          <Plus className="w-4 h-4" /> Nueva Ronda
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Toggle vista */}
+          <div className="flex bg-white/5 border border-white/10 rounded-lg overflow-hidden text-xs">
+            <button onClick={() => { setVistaClientes(true); setClienteFiltro(null); }}
+              className={`px-3 py-2 transition-colors ${vistaClientes ? "bg-blue-600 text-white" : "text-white/40 hover:text-white/70"}`}>
+              Por Cliente
+            </button>
+            <button onClick={() => setVistaClientes(false)}
+              className={`px-3 py-2 transition-colors ${!vistaClientes ? "bg-blue-600 text-white" : "text-white/40 hover:text-white/70"}`}>
+              Todas
+            </button>
+          </div>
+          <button
+            onClick={() => {
+              setForm(clienteFiltro ? { ...DEFAULT_RONDA, cliente_id: String(clienteFiltro) } : DEFAULT_RONDA);
+              setShowCreate(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Nueva Ronda
+          </button>
+        </div>
       </div>
 
       {/* Modal crear ronda */}
@@ -687,53 +769,105 @@ export default function RondasQR() {
         </div>
       )}
 
-      {/* Lista de rondas */}
-      {loading ? (
-        <div className="text-center py-20 text-white/30">Cargando...</div>
-      ) : rondas.length === 0 ? (
-        <div className="text-center py-20">
-          <MapPin className="w-16 h-16 mx-auto mb-4 text-white/10" />
-          <p className="text-white/30 text-lg">No hay rondas creadas aún</p>
-          <p className="text-white/20 text-sm mt-1">Crea una ronda y agrega los puntos de control con sus ubicaciones</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {rondas.map(r => (
-            <div key={r.id} className="bg-white/5 border border-white/8 rounded-xl p-5 hover:border-white/15 transition-colors group">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-base font-semibold text-white truncate">{r.nombre}</h3>
-                  {r.cliente_nombre && <p className="text-xs text-white/40 mt-0.5">{r.cliente_nombre}</p>}
-                </div>
-                <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${r.activo ? "bg-green-500/10 text-green-400 border border-green-500/20" : "bg-gray-500/10 text-gray-400 border border-gray-500/20"}`}>
-                  {r.activo ? "Activa" : "Inactiva"}
-                </span>
-              </div>
-
-              {r.descripcion && <p className="text-xs text-white/40 mb-3 line-clamp-2">{r.descripcion}</p>}
-
-              <div className="flex items-center gap-2 mb-4">
-                <MapPin className="w-3.5 h-3.5 text-white/30" />
-                <span className="text-xs text-white/40">{r.total_puntos} punto{Number(r.total_puntos) !== 1 ? "s" : ""} de control</span>
-              </div>
-
-              <div className="flex gap-2">
-                <button onClick={() => setSelected(r)}
-                  className="flex-1 py-2 bg-white/5 hover:bg-white/10 border border-white/8 rounded-lg text-sm text-white/70 hover:text-white transition-colors font-medium">
-                  Administrar
-                </button>
-                <button onClick={() => handleToggleActivo(r)} title={r.activo ? "Desactivar" : "Activar"}
-                  className="p-2 bg-white/5 hover:bg-white/10 border border-white/8 rounded-lg text-white/50 hover:text-white transition-colors">
-                  {r.activo ? <ToggleRight className="w-4 h-4 text-green-400" /> : <ToggleLeft className="w-4 h-4" />}
-                </button>
-                <button onClick={() => handleDelete(r)} title="Eliminar"
-                  className="p-2 bg-white/5 hover:bg-red-500/10 border border-white/8 hover:border-red-500/20 rounded-lg text-white/50 hover:text-red-400 transition-colors">
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
+      {/* ── VISTA POR CLIENTE ──────────────────────────────────────────────── */}
+      {vistaClientes && clienteFiltro === null && (
+        <div>
+          {loading ? (
+            <div className="text-center py-20 text-white/30">Cargando...</div>
+          ) : clients.length === 0 ? (
+            <div className="text-center py-20">
+              <MapPin className="w-16 h-16 mx-auto mb-4 text-white/10" />
+              <p className="text-white/30 text-lg">No hay clientes registrados</p>
             </div>
-          ))}
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {clientesConRondas.map(c => (
+                <div key={c.id}
+                  className="bg-white/5 border border-white/8 hover:border-blue-500/30 rounded-xl p-5 cursor-pointer transition-colors group"
+                  onClick={() => setClienteFiltro(c.id)}>
+                  <div className="flex items-start justify-between mb-3">
+                    <h3 className="text-base font-semibold text-white group-hover:text-blue-300 transition-colors truncate flex-1">{c.nombre}</h3>
+                    <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 border ${
+                      c.totalRondas > 0
+                        ? "bg-green-500/10 text-green-400 border-green-500/20"
+                        : "bg-white/5 text-white/30 border-white/10"
+                    }`}>
+                      {c.totalRondas} ronda{c.totalRondas !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                  {c.totalRondas === 0 ? (
+                    <p className="text-xs text-white/25 italic">Sin rondas asignadas — clic para agregar</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {c.rondas.slice(0, 3).map(r => (
+                        <div key={r.id} className="flex items-center gap-2">
+                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${r.activo ? "bg-green-400" : "bg-gray-500"}`} />
+                          <span className="text-xs text-white/50 truncate">{r.nombre}</span>
+                          <span className="text-xs text-white/25 ml-auto flex-shrink-0">{r.total_puntos}pts</span>
+                        </div>
+                      ))}
+                      {c.totalRondas > 3 && <p className="text-xs text-white/25 pl-3">+{c.totalRondas - 3} más</p>}
+                    </div>
+                  )}
+                  <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between">
+                    <span className="text-xs text-blue-400/60 group-hover:text-blue-400 transition-colors">Ver rondas →</span>
+                    <button
+                      onClick={e => { e.stopPropagation(); setForm({ ...DEFAULT_RONDA, cliente_id: String(c.id) }); setShowCreate(true); }}
+                      className="text-xs text-white/30 hover:text-white/60 flex items-center gap-1 transition-colors">
+                      <Plus className="w-3 h-3" /> Agregar ronda
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
+      )}
+
+      {/* ── VISTA POR CLIENTE — rondas de cliente seleccionado ────────────── */}
+      {vistaClientes && clienteFiltro !== null && (
+        <div>
+          <div className="flex items-center gap-3 mb-6">
+            <button onClick={() => setClienteFiltro(null)}
+              className="flex items-center gap-1.5 text-sm text-white/50 hover:text-white transition-colors">
+              <ChevronLeft className="w-4 h-4" /> Todos los clientes
+            </button>
+            <span className="text-white/20">/</span>
+            <span className="text-white font-medium text-sm">{clienteActivo?.nombre}</span>
+          </div>
+
+          {rondasFiltradas.length === 0 ? (
+            <div className="text-center py-16 bg-white/3 border border-white/8 rounded-xl">
+              <MapPin className="w-12 h-12 mx-auto mb-3 text-white/10" />
+              <p className="text-white/30">Este cliente no tiene rondas aún</p>
+              <button
+                onClick={() => { setForm({ ...DEFAULT_RONDA, cliente_id: String(clienteFiltro) }); setShowCreate(true); }}
+                className="mt-4 flex items-center gap-2 mx-auto px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">
+                <Plus className="w-4 h-4" /> Crear primera ronda
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {rondasFiltradas.map(r => <RondaCard key={r.id} r={r} onSelect={setSelected} onToggle={handleToggleActivo} onDelete={handleDelete} />)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── VISTA TODAS LAS RONDAS ────────────────────────────────────────── */}
+      {!vistaClientes && (
+        loading ? (
+          <div className="text-center py-20 text-white/30">Cargando...</div>
+        ) : rondas.length === 0 ? (
+          <div className="text-center py-20">
+            <MapPin className="w-16 h-16 mx-auto mb-4 text-white/10" />
+            <p className="text-white/30 text-lg">No hay rondas creadas aún</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {rondas.map(r => <RondaCard key={r.id} r={r} onSelect={setSelected} onToggle={handleToggleActivo} onDelete={handleDelete} />)}
+          </div>
+        )
       )}
     </div>
   );

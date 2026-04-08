@@ -4079,5 +4079,40 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: DPREST-01 — error (no bloqueante)");
   }
 
+  // ── BDG-STOCK-01: columnas de stock masivo en bodega_articulos ───────────────
+  try {
+    await pool.query(`ALTER TABLE bodega_articulos ADD COLUMN IF NOT EXISTS talla              VARCHAR(20)`);
+    await pool.query(`ALTER TABLE bodega_articulos ADD COLUMN IF NOT EXISTS stock_bodega       INTEGER NOT NULL DEFAULT 0`);
+    await pool.query(`ALTER TABLE bodega_articulos ADD COLUMN IF NOT EXISTS stock_lavanderia   INTEGER NOT NULL DEFAULT 0`);
+    await pool.query(`ALTER TABLE bodega_articulos ADD COLUMN IF NOT EXISTS stock_servicio     INTEGER NOT NULL DEFAULT 0`);
+    await pool.query(`ALTER TABLE bodega_articulos ADD COLUMN IF NOT EXISTS stock_mal_estado   INTEGER NOT NULL DEFAULT 0`);
+    logger.info("Auto-migrate: BDG-STOCK-01 columnas de stock masivo verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: BDG-STOCK-01 — error (no bloqueante)");
+  }
+
+  // ── ARM-SUGERENCIA-01: tabla de sugerencias de cambio de estado de arma ─────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS arma_sugerencias (
+        id               SERIAL PRIMARY KEY,
+        arma_id          INTEGER NOT NULL REFERENCES armas(id) ON DELETE CASCADE,
+        supervisor_nombre VARCHAR(120) NOT NULL,
+        puesto_id        INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        estado_sugerido  VARCHAR(30)  NOT NULL,
+        observacion      TEXT,
+        atendido         BOOLEAN NOT NULL DEFAULT FALSE,
+        atendido_por     VARCHAR(80),
+        atendido_at      TIMESTAMPTZ,
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ars_arma    ON arma_sugerencias(arma_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ars_atend   ON arma_sugerencias(atendido) WHERE atendido = FALSE`);
+    logger.info("Auto-migrate: ARM-SUGERENCIA-01 tabla arma_sugerencias verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: ARM-SUGERENCIA-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }
