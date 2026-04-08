@@ -566,13 +566,13 @@ libroSalariosRouter.post("/libro-salarios/materializar-planillas", async (req, r
                COALESCE(e.nombre_completo, 'Empleado #' || d.empl_numero) AS nombre,
                e.dpi, e.puesto, e.sede, e.sueldo_base AS emp_sueldo
              FROM detalle_lib_sal d
-             LEFT JOIN employees e ON e.external_id = d.empl_numero::varchar
+             LEFT JOIN employees e ON e.empl_numero = d.empl_numero
              WHERE d.lbl_ano=$1 AND d.lbl_mes=$2 AND d.lbl_pla=$3`
           : `SELECT h.*, e.id AS emp_id,
                COALESCE(e.nombre_completo, 'Empleado #' || h.empl_numero) AS nombre,
                e.dpi, e.puesto, e.sede, e.sueldo_base AS emp_sueldo
              FROM historial_lib_sal h
-             LEFT JOIN employees e ON e.external_id = h.empl_numero::varchar
+             LEFT JOIN employees e ON e.empl_numero = h.empl_numero
              WHERE h.lbl_ano=$1 AND h.lbl_mes=$2 AND h.lbl_pla=$3`;
 
         const { rows: srcRows } = await pool.query(joinQ, [per.lbl_ano, per.lbl_mes, per.lbl_pla]);
