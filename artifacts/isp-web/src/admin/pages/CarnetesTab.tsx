@@ -78,7 +78,7 @@ const FRENTE_CSS = `
   .qr-row { display: flex; flex-direction: column; align-items: center; gap: 1mm; }
   .qr-hint { font-size: 3pt; color: #94a3b8; text-align: center; }
   .qr-box { background: #fff; border: 0.4pt solid #e2e8f0; border-radius: 1mm; padding: 0.5mm; }
-  .qr-box svg { width: 14mm; height: 14mm; display: block; }
+  .qr-box svg { width: 18mm; height: 18mm; display: block; }
   .c-footer { background: #0f2044; padding: 1mm 2mm; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
   .f-date { font-size: 3pt; color: rgba(255,255,255,0.35); }
   .f-label { font-size: 3pt; font-weight: 800; color: #f5c842; letter-spacing: 0.08em; }
@@ -265,7 +265,7 @@ function CarnetView({
                   <div style={{ height: 0.5, background: "#f1f5f9", marginBottom: 3 }} />
                   <div ref={svgRef} style={{ display: "flex", justifyContent: "center" }}>
                     <div style={{ background: "#fff", border: "0.5px solid #e2e8f0", borderRadius: 2, padding: 1 }}>
-                      <QRCodeSVG value={url} size={30} />
+                      <QRCodeSVG value={url} size={38} />
                     </div>
                   </div>
                 </div>
