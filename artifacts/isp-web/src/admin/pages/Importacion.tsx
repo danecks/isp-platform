@@ -1882,6 +1882,7 @@ function LibroSalariosTab() {
   const [dragging, setDragging] = useState(false);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{ preview: boolean; total: number; insertadas: number; actualizadas: number; errores: number } | null>(null);
+  const [formatoDetectado, setFormatoDetectado] = useState<"historial" | "detalle" | "desconocido" | null>(null);
 
   const { data: resumenData, refetch: refetchResumen } = useQuery<{ periodos: ResumenPeriodoLS[] }>({
     queryKey: ["lib-sal-resumen"],
@@ -1891,14 +1892,20 @@ function LibroSalariosTab() {
 
   const parseFile = useCallback((file: File) => {
     setResult(null);
+    setFormatoDetectado(null);
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target!.result as ArrayBuffer);
         const wb = XLSX.read(data, { type: "array" });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        // sheet_to_json sin header → obtenemos arrays y normalizamos a lowercase
         const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: 0 });
+        // Detectar formato por las columnas de la primera fila
+        const firstKeys = rawRows.length > 0 ? Object.keys(rawRows[0]).map(k => k.trim().toLowerCase()) : [];
+        const esDetalle  = firstKeys.includes("ord") || firstKeys.includes("boni");
+        const esHistorial = firstKeys.includes("lbl_ordinario") || firstKeys.includes("lbl_tdev") || firstKeys.includes("lbl_liquido");
+        setFormatoDetectado(esDetalle ? "detalle" : esHistorial ? "historial" : "desconocido");
+        // Normalizar a minúsculas
         const normalized = rawRows.map((row) => {
           const out: Record<string, unknown> = {};
           for (const key of Object.keys(row)) {
@@ -1946,13 +1953,8 @@ function LibroSalariosTab() {
   const fmtP = (n: number | null) => n ? `${MESES_LS[n % 100] ?? n % 100} ${Math.floor(n / 100)}` : "";
 
   // Diagnóstico: ¿tienen valores reales los campos clave?
-  const primeraFila = rows[0] as any;
-  const camposOk = rows.length > 0 && (
-    Number(primeraFila?.lbl_liquido) > 0 ||
-    Number(primeraFila?.lbl_tdev) > 0 ||
-    Number(primeraFila?.lbl_ordinario) > 0
-  );
   const algunoConLiquido = rows.length > 0 && rows.some(r => Number((r as any).lbl_liquido) > 0);
+  const esFormatoDetalle = formatoDetectado === "detalle";
 
   return (
     <div className="space-y-6">
@@ -2003,17 +2005,28 @@ function LibroSalariosTab() {
             </button>
           </div>
 
-          {/* Diagnóstico de columnas */}
-          {algunoConLiquido ? (
+          {/* Diagnóstico de formato */}
+          {esFormatoDetalle ? (
+            <div className="flex items-start gap-2 bg-amber-500/8 border border-amber-500/20 rounded-lg px-3 py-3">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-300 space-y-1">
+                <p className="font-semibold">Este es el archivo de Detalle de Nómina, no el Libro de Salarios.</p>
+                <p className="text-amber-300/70">
+                  Tiene columnas <code className="text-amber-200/80">ORD</code>, <code className="text-amber-200/80">BONI</code>, <code className="text-amber-200/80">IGSS</code>…
+                  Ve a la pestaña <strong>"Detalle Nómina ODBC"</strong> para importarlo correctamente.
+                </p>
+              </div>
+            </div>
+          ) : algunoConLiquido ? (
             <div className="flex items-center gap-2 bg-emerald-500/8 border border-emerald-500/20 rounded-lg px-3 py-2">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <p className="text-xs text-emerald-300">Columnas detectadas correctamente — los montos tienen valores reales.</p>
+              <p className="text-xs text-emerald-300">Formato correcto — columnas <code className="text-emerald-200/80">LBL_LIQUIDO</code>, <code className="text-emerald-200/80">LBL_ORDINARIO</code> detectadas con valores.</p>
             </div>
           ) : (
             <div className="flex items-center gap-2 bg-red-500/8 border border-red-500/20 rounded-lg px-3 py-2">
               <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
               <p className="text-xs text-red-300">
-                Los montos aparecen en cero — verifica que el Excel tenga columnas como <code className="text-red-200/80">LBL_LIQUIDO</code>, <code className="text-red-200/80">LBL_ORDINARIO</code>, etc.
+                Los montos aparecen en cero — verifica que el Excel tenga columnas <code className="text-red-200/80">LBL_LIQUIDO</code>, <code className="text-red-200/80">LBL_ORDINARIO</code>, etc.
               </p>
             </div>
           )}
@@ -2028,20 +2041,26 @@ function LibroSalariosTab() {
                 </tr>
               </thead>
               <tbody>
-                {rows.slice(0, 15).map((r, i) => (
-                  <tr key={i} className="border-b border-white/5 hover:bg-white/3 transition-colors">
-                    <td className="px-2 py-1.5 font-mono text-white/60">{r.empl_numero}</td>
-                    <td className="px-2 py-1.5 text-white/50">{r.lbl_ano}</td>
-                    <td className="px-2 py-1.5 text-white/50">{MESES_LS[r.lbl_mes] ?? r.lbl_mes}</td>
-                    <td className="px-2 py-1.5 text-white/40">Q{r.lbl_pla}</td>
-                    <td className="px-2 py-1.5 text-right text-white/60">{Number(r.lbl_ordinario).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
-                    <td className="px-2 py-1.5 text-right text-white/60">{Number(r.lbl_tdev).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
-                    <td className="px-2 py-1.5 text-right text-red-400/60">{Number(r.lbl_tdes).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
-                    <td className="px-2 py-1.5 text-right text-emerald-400/80 font-semibold">{Number(r.lbl_liquido).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
-                    <td className="px-2 py-1.5 text-right text-blue-300/60">{Number(r.lbl_bono14).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
-                    <td className="px-2 py-1.5 text-right text-purple-300/60">{Number(r.lbl_aguinaldo).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
-                  </tr>
-                ))}
+                {rows.slice(0, 15).map((r, i) => {
+                  const fmtNum = (v: unknown) => {
+                    const n = Number(v);
+                    return isNaN(n) ? <span className="text-white/20">—</span> : n.toLocaleString("es-GT", { minimumFractionDigits: 2 });
+                  };
+                  return (
+                    <tr key={i} className="border-b border-white/5 hover:bg-white/3 transition-colors">
+                      <td className="px-2 py-1.5 font-mono text-white/60">{r.empl_numero}</td>
+                      <td className="px-2 py-1.5 text-white/50">{r.lbl_ano}</td>
+                      <td className="px-2 py-1.5 text-white/50">{MESES_LS[r.lbl_mes] ?? r.lbl_mes}</td>
+                      <td className="px-2 py-1.5 text-white/40">Q{r.lbl_pla}</td>
+                      <td className="px-2 py-1.5 text-right text-white/60">{fmtNum(r.lbl_ordinario)}</td>
+                      <td className="px-2 py-1.5 text-right text-white/60">{fmtNum(r.lbl_tdev)}</td>
+                      <td className="px-2 py-1.5 text-right text-red-400/60">{fmtNum(r.lbl_tdes)}</td>
+                      <td className="px-2 py-1.5 text-right text-emerald-400/80 font-semibold">{fmtNum(r.lbl_liquido)}</td>
+                      <td className="px-2 py-1.5 text-right text-blue-300/60">{fmtNum(r.lbl_bono14)}</td>
+                      <td className="px-2 py-1.5 text-right text-purple-300/60">{fmtNum(r.lbl_aguinaldo)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {rows.length > 15 && (
@@ -2052,13 +2071,15 @@ function LibroSalariosTab() {
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
-            <button onClick={() => doImport(false)} disabled={importing}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white text-xs font-semibold rounded-xl transition-all">
+            <button onClick={() => doImport(false)} disabled={importing || esFormatoDetalle}
+              title={esFormatoDetalle ? "Archivo incorrecto — usa la pestaña Detalle Nómina ODBC" : undefined}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-30 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl transition-all">
               {importing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
               Importar {rows.length.toLocaleString()} registros
             </button>
-            <button onClick={() => doImport(true)} disabled={importing}
-              className="flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-50 text-white/50 hover:text-white text-xs rounded-xl border border-white/10 transition-all">
+            <button onClick={() => doImport(true)} disabled={importing || esFormatoDetalle}
+              title={esFormatoDetalle ? "Archivo incorrecto — usa la pestaña Detalle Nómina ODBC" : undefined}
+              className="flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed text-white/50 hover:text-white text-xs rounded-xl border border-white/10 transition-all">
               <CheckCircle2 className="w-3.5 h-3.5" /> Previsualizar sin guardar
             </button>
           </div>
