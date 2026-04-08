@@ -14,7 +14,7 @@ function FrenteElite() {
   return (
     <div style={{ width: W, height: H, borderRadius: 7, overflow: "hidden", display: "flex", flexDirection: "column", fontFamily: "'Inter', -apple-system, sans-serif", boxShadow: "0 8px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(245,200,66,0.2)" }}>
       {/* HEADER navy */}
-      <div style={{ background: "linear-gradient(160deg,#0a1628 0%,#0e2148 60%,#091630 100%)", padding: "7px 10px 6px", position: "relative", overflow: "hidden", flexShrink: 0 }}>
+      <div style={{ background: "linear-gradient(160deg,#0a1628 0%,#0e2148 60%,#091630 100%)", padding: "4px 10px 4px", position: "relative", overflow: "hidden", flexShrink: 0 }}>
         {/* arc pattern */}
         <svg style={{ position: "absolute", inset: 0, opacity: 0.06 }} width={W} height={82} viewBox={`0 0 ${W} 82`}>
           {[16,32,48,64,80,96].map(r => <circle key={r} cx={W / 2} cy={8} r={r} fill="none" stroke="#f5c842" strokeWidth="0.6" />)}
@@ -24,7 +24,7 @@ function FrenteElite() {
 
         {/* Logo real ISP */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", position: "relative", zIndex: 1 }}>
-          <img src="/logo-isp.png" alt="ISP" style={{ height: 56, objectFit: "contain", filter: "brightness(0) invert(1) sepia(1) saturate(3) hue-rotate(10deg) brightness(1.1)", marginBottom: 5 }} />
+          <img src="/logo-isp.png" alt="ISP" style={{ height: 68, objectFit: "contain", filter: "brightness(0) invert(1) sepia(1) saturate(3) hue-rotate(10deg) brightness(1.1)", marginBottom: 4 }} />
           {/* Badge */}
           <div style={{ marginTop: 2, background: "linear-gradient(135deg,#d4a017,#f5c842,#d4a017)", borderRadius: 2, padding: "1.5px 8px", fontSize: 4.5, fontWeight: 900, color: "#0a1628", letterSpacing: "0.12em" }}>CARNET DE IDENTIFICACIÓN</div>
         </div>
@@ -110,7 +110,7 @@ function ReversoElite() {
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "14px 14px 10px", position: "relative", zIndex: 1 }}>
           {/* Logo */}
-          <img src="/logo-isp.png" alt="ISP" style={{ height: 48, objectFit: "contain", filter: "brightness(0) invert(1) sepia(1) saturate(3) hue-rotate(10deg) brightness(1.1)", marginBottom: 10 }} />
+          <img src="/logo-isp.png" alt="ISP" style={{ height: 64, objectFit: "contain", filter: "brightness(0) invert(1) sepia(1) saturate(3) hue-rotate(10deg) brightness(1.1)", marginBottom: 10 }} />
 
           {/* Gold rule */}
           <div style={{ height: 0.8, width: "70%", background: "linear-gradient(90deg,transparent,#f5c842,transparent)", marginBottom: 12 }} />
