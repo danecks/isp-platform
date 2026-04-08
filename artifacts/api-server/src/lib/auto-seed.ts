@@ -3950,5 +3950,48 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: IGSS-02 — error (no bloqueante)");
   }
 
+  // ── IGSS-LIB-01: Historial libro de salarios (migración desde ODBC) ──────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS historial_lib_sal (
+        id            SERIAL PRIMARY KEY,
+        emp_nit       VARCHAR(30),
+        pla_numero    INTEGER,
+        empl_numero   INTEGER NOT NULL,
+        lbl_tpla      VARCHAR(10),
+        lbl_ano       INTEGER NOT NULL,
+        lbl_mes       INTEGER NOT NULL,
+        lbl_pla       INTEGER NOT NULL,
+        lbl_dt        NUMERIC(10,2) NOT NULL DEFAULT 0,
+        lbl_dsigss    NUMERIC(10,2) NOT NULL DEFAULT 0,
+        lbl_dsemp     NUMERIC(10,2) NOT NULL DEFAULT 0,
+        lbl_faltas    NUMERIC(10,2) NOT NULL DEFAULT 0,
+        lbl_dvac      NUMERIC(10,2) NOT NULL DEFAULT 0,
+        lbl_hrses     NUMERIC(10,2) NOT NULL DEFAULT 0,
+        lbl_hrsed     NUMERIC(10,2) NOT NULL DEFAULT 0,
+        lbl_hrst      NUMERIC(10,2) NOT NULL DEFAULT 0,
+        lbl_tdev      NUMERIC(10,2) NOT NULL DEFAULT 0,
+        lbl_tdes      NUMERIC(10,2) NOT NULL DEFAULT 0,
+        lbl_liquido   NUMERIC(10,2) NOT NULL DEFAULT 0,
+        lbl_bono14    NUMERIC(10,2) NOT NULL DEFAULT 0,
+        lbl_aguinaldo NUMERIC(10,2) NOT NULL DEFAULT 0,
+        lbl_vacaciones NUMERIC(10,2) NOT NULL DEFAULT 0,
+        lbl_indem     NUMERIC(10,2) NOT NULL DEFAULT 0,
+        lbl_ordinario NUMERIC(10,2) NOT NULL DEFAULT 0,
+        depto_codigo  VARCHAR(10),
+        lbl_dsep      NUMERIC(10,2) NOT NULL DEFAULT 0,
+        lbl_dasu      NUMERIC(10,2) NOT NULL DEFAULT 0,
+        lbl_dsigssa   NUMERIC(10,2) NOT NULL DEFAULT 0,
+        importado_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (empl_numero, lbl_ano, lbl_mes, lbl_pla)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS hls_emp ON historial_lib_sal(empl_numero)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS hls_periodo ON historial_lib_sal(lbl_ano, lbl_mes)`);
+    logger.info("Auto-migrate: IGSS-LIB-01 tabla historial_lib_sal verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: IGSS-LIB-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }
