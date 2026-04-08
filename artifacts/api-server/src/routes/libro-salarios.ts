@@ -456,6 +456,207 @@ libroSalariosRouter.post("/libro-salarios/importar-detalle", async (req, res, ne
   }
 });
 
+// ── Helper: último día del mes ──────────────────────────────────────────────
+function lastDayOfMonth(year: number, month: number): string {
+  const d = new Date(year, month, 0);
+  return `${year}-${String(month).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+// ── POST /api/libro-salarios/materializar-planillas ──────────────────────────
+// Convierte historial_lib_sal / detalle_lib_sal en planillas + planilla_lineas
+// cerradas sintéticas, para que "Sistema Nuevo" tenga historial desde hoy.
+// fuente: "auto" (default) | "historial" | "detalle"
+libroSalariosRouter.post("/libro-salarios/materializar-planillas", async (req, res, next) => {
+  try {
+    const fuentePref = (req.body?.fuente as string) || "auto";
+
+    const { rows: dp } = await pool.query(
+      `SELECT DISTINCT lbl_ano, lbl_mes, lbl_pla FROM detalle_lib_sal ORDER BY lbl_ano, lbl_mes, lbl_pla`
+    );
+    const { rows: hp } = await pool.query(
+      `SELECT DISTINCT lbl_ano, lbl_mes, lbl_pla FROM historial_lib_sal ORDER BY lbl_ano, lbl_mes, lbl_pla`
+    );
+
+    const detalleSet = new Set(dp.map((p: any) => `${p.lbl_ano}-${p.lbl_mes}-${p.lbl_pla}`));
+
+    const periodos: { lbl_ano: number; lbl_mes: number; lbl_pla: number; fuente: "detalle" | "historial" }[] = [];
+    if (fuentePref !== "historial") {
+      dp.forEach((p: any) => periodos.push({ lbl_ano: +p.lbl_ano, lbl_mes: +p.lbl_mes, lbl_pla: +p.lbl_pla, fuente: "detalle" }));
+    }
+    if (fuentePref !== "detalle") {
+      hp.forEach((p: any) => {
+        const k = `${p.lbl_ano}-${p.lbl_mes}-${p.lbl_pla}`;
+        if (fuentePref === "auto" && detalleSet.has(k)) return;
+        periodos.push({ lbl_ano: +p.lbl_ano, lbl_mes: +p.lbl_mes, lbl_pla: +p.lbl_pla, fuente: "historial" });
+      });
+    }
+
+    let planillas_creadas     = 0;
+    let planillas_actualizadas = 0;
+    let lineas_creadas        = 0;
+    let periodos_omitidos     = 0;
+    const errores: string[]   = [];
+
+    for (const per of periodos) {
+      try {
+        const periodoDesde = per.lbl_pla === 1
+          ? `${per.lbl_ano}-${String(per.lbl_mes).padStart(2,"0")}-01`
+          : `${per.lbl_ano}-${String(per.lbl_mes).padStart(2,"0")}-16`;
+        const periodoHasta = per.lbl_pla === 1
+          ? `${per.lbl_ano}-${String(per.lbl_mes).padStart(2,"0")}-15`
+          : lastDayOfMonth(per.lbl_ano, per.lbl_mes);
+
+        // ¿Ya existe planilla para este período?
+        const { rows: exP } = await pool.query(
+          `SELECT id, generado_por FROM planillas
+           WHERE periodo_desde = $1::date AND periodo_hasta = $2::date AND NOT anulada`,
+          [periodoDesde, periodoHasta]
+        );
+
+        let planillaId: number;
+
+        if (exP.length > 0) {
+          if (exP[0].generado_por !== "importacion-historica") {
+            periodos_omitidos++;
+            continue;
+          }
+          await pool.query(`DELETE FROM planilla_lineas WHERE planilla_id = $1`, [exP[0].id]);
+          planillaId = exP[0].id;
+          planillas_actualizadas++;
+        } else {
+          // Crear o reusar cierre sintético
+          let cierreId: number;
+          const { rows: exC } = await pool.query(
+            `SELECT id FROM pre_planilla_cierres
+             WHERE periodo_desde = $1::date AND periodo_hasta = $2::date AND NOT anulado`,
+            [periodoDesde, periodoHasta]
+          );
+          if (exC.length > 0) {
+            cierreId = exC[0].id;
+          } else {
+            const { rows: nc } = await pool.query(
+              `INSERT INTO pre_planilla_cierres
+                 (periodo_desde, periodo_hasta, cerrado_por, snapshot, total_colaboradores, total_estimado)
+               VALUES ($1::date, $2::date, 'importacion-historica', '[]', 0, 0)
+               RETURNING id`,
+              [periodoDesde, periodoHasta]
+            );
+            cierreId = nc[0].id;
+          }
+
+          // Crear planilla cerrada sintética
+          const { rows: np } = await pool.query(
+            `INSERT INTO planillas
+               (periodo_desde, periodo_hasta, cierre_id, generado_por, estado,
+                total_colaboradores, total_sueldo_periodo, total_desc_faltas, total_valor_he,
+                total_bruto, total_anticipos, total_neto, total_igss_trabajador,
+                total_igss_patronal, total_bonificacion_incentivo)
+             VALUES ($1::date, $2::date, $3, 'importacion-historica', 'cerrada',
+                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+             RETURNING id`,
+            [periodoDesde, periodoHasta, cierreId]
+          );
+          planillaId = np[0].id;
+          planillas_creadas++;
+        }
+
+        // Obtener filas fuente con join a employees
+        const joinQ = per.fuente === "detalle"
+          ? `SELECT d.*, e.id AS emp_id,
+               COALESCE(e.nombre_completo, 'Empleado #' || d.empl_numero) AS nombre,
+               e.dpi, e.puesto, e.sede, e.sueldo_base AS emp_sueldo
+             FROM detalle_lib_sal d
+             LEFT JOIN employees e ON e.external_id = d.empl_numero::varchar
+             WHERE d.lbl_ano=$1 AND d.lbl_mes=$2 AND d.lbl_pla=$3`
+          : `SELECT h.*, e.id AS emp_id,
+               COALESCE(e.nombre_completo, 'Empleado #' || h.empl_numero) AS nombre,
+               e.dpi, e.puesto, e.sede, e.sueldo_base AS emp_sueldo
+             FROM historial_lib_sal h
+             LEFT JOIN employees e ON e.external_id = h.empl_numero::varchar
+             WHERE h.lbl_ano=$1 AND h.lbl_mes=$2 AND h.lbl_pla=$3`;
+
+        const { rows: srcRows } = await pool.query(joinQ, [per.lbl_ano, per.lbl_mes, per.lbl_pla]);
+        const isDetalle = per.fuente === "detalle";
+
+        for (const row of srcRows) {
+          const sueldo_periodo        = isDetalle ? +(row.ordinario ?? 0) : +(row.lbl_ordinario ?? 0);
+          const bonificacion_incentivo = isDetalle ? +(row.bonificacion ?? 0) : 0;
+          const desc_septimo          = isDetalle ? 0 : +(row.lbl_dsep ?? 0);
+          const desc_faltas           = isDetalle ? 0 : +(row.lbl_faltas ?? 0);
+          const igss_trabajador       = isDetalle ? +(row.igss_trabajador ?? 0) : +(row.lbl_dsigss ?? 0);
+          const otros_descuentos      = isDetalle
+            ? +(row.otras_deducciones ?? 0)
+            : Math.max(0, +(row.lbl_tdes ?? 0) - +(row.lbl_dsigss ?? 0) - +(row.lbl_dsep ?? 0));
+          const total_bruto = isDetalle
+            ? sueldo_periodo + +(row.horas_extra ?? 0) + +(row.otros_devengados ?? 0) + bonificacion_incentivo
+            : +(row.lbl_tdev ?? 0);
+          const total_neto = isDetalle
+            ? total_bruto - igss_trabajador - +(row.otras_deducciones ?? 0)
+            : +(row.lbl_liquido ?? 0);
+
+          await pool.query(
+            `INSERT INTO planilla_lineas
+               (planilla_id, employee_id, nombre_completo, dpi, puesto, sede,
+                sueldo_base, sueldo_periodo, horas_extra, valor_he, desc_faltas,
+                bonificacion_incentivo, desc_septimo, total_bruto,
+                igss_trabajador, igss_patronal, anticipos, otros_descuentos, total_neto,
+                aplica_igss, frecuencia_pago, periodo_dias, dias_trabajados, faltas, suspensiones)
+             VALUES
+               ($1,$2,$3,$4,$5,$6, $7,$8,0,0,$9, $10,$11,$12, $13,0,0,$14,$15, $16,'quincenal',$17,0,0,0)`,
+            [
+              planillaId,
+              row.emp_id ?? null,
+              row.nombre,
+              row.dpi ?? null,
+              row.puesto ?? null,
+              row.sede ?? null,
+              +(row.emp_sueldo ?? sueldo_periodo),
+              sueldo_periodo,
+              desc_faltas,
+              bonificacion_incentivo, desc_septimo, total_bruto,
+              igss_trabajador,
+              otros_descuentos, total_neto,
+              igss_trabajador > 0,
+              per.lbl_pla === 1 ? 15 : 16,
+            ]
+          );
+          lineas_creadas++;
+        }
+
+        // Actualizar totales de la planilla
+        await pool.query(
+          `UPDATE planillas SET
+             total_colaboradores       = (SELECT COUNT(*)           FROM planilla_lineas WHERE planilla_id=$1),
+             total_sueldo_periodo      = (SELECT COALESCE(SUM(sueldo_periodo),0) FROM planilla_lineas WHERE planilla_id=$1),
+             total_desc_faltas         = (SELECT COALESCE(SUM(desc_faltas),0)   FROM planilla_lineas WHERE planilla_id=$1),
+             total_valor_he            = (SELECT COALESCE(SUM(valor_he),0)      FROM planilla_lineas WHERE planilla_id=$1),
+             total_bruto               = (SELECT COALESCE(SUM(total_bruto),0)   FROM planilla_lineas WHERE planilla_id=$1),
+             total_neto                = (SELECT COALESCE(SUM(total_neto),0)    FROM planilla_lineas WHERE planilla_id=$1),
+             total_igss_trabajador     = (SELECT COALESCE(SUM(igss_trabajador),0) FROM planilla_lineas WHERE planilla_id=$1),
+             total_bonificacion_incentivo=(SELECT COALESCE(SUM(bonificacion_incentivo),0) FROM planilla_lineas WHERE planilla_id=$1)
+           WHERE id=$1`,
+          [planillaId]
+        );
+
+      } catch (perr: any) {
+        errores.push(`${per.lbl_ano}/${String(per.lbl_mes).padStart(2,"0")}/Q${per.lbl_pla}: ${perr.message}`);
+      }
+    }
+
+    res.json({
+      ok: true,
+      planillas_creadas,
+      planillas_actualizadas,
+      lineas_creadas,
+      periodos_omitidos,
+      total_periodos: periodos.length,
+      errores,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── GET /api/libro-salarios/detalle/resumen ───────────────────────────────────
 libroSalariosRouter.get("/libro-salarios/detalle/resumen", async (_req, res, next) => {
   try {

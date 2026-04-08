@@ -1500,6 +1500,11 @@ function DetalleLibSalTab() {
     muestra: { empl_numero: number; periodo: string; ordinario: number; bonificacion: number; igss: number; neto: number }[];
   } | null>(null);
   const [result, setResult] = useState<{ ok: boolean; insertadas: number; actualizadas: number; errores: number; total: number } | null>(null);
+  const [materializing, setMaterializing] = useState(false);
+  const [matResult, setMatResult] = useState<{
+    ok: boolean; planillas_creadas: number; planillas_actualizadas: number;
+    lineas_creadas: number; periodos_omitidos: number; total_periodos: number; errores: string[];
+  } | null>(null);
 
   const { data: resumenData, refetch: refetchResumen } = useQuery<{ periodos: DetalleResumenPeriodo[] }>({
     queryKey: ["detalle-lib-sal-resumen"],
@@ -1561,6 +1566,21 @@ function DetalleLibSalTab() {
       refetchResumen();
     } catch { alert("Error de red"); }
     finally { setImporting(false); }
+  };
+
+  const doMaterializar = async () => {
+    setMaterializing(true);
+    setMatResult(null);
+    try {
+      const res = await fetch(`${API_BASE}/libro-salarios/materializar-planillas`, {
+        method: "POST",
+        headers: { "x-isp-session": getSession(), "Content-Type": "application/json" },
+        body: JSON.stringify({ fuente: "auto" }),
+      });
+      const d = await res.json();
+      setMatResult(d);
+    } catch { alert("Error de red al materializar"); }
+    finally { setMaterializing(false); }
   };
 
   const empsCnt = rows.length > 0 ? new Set(rows.map(r => r.empl_numero)).size : 0;
@@ -1754,6 +1774,61 @@ function DetalleLibSalTab() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Materializar en Planillas */}
+      {periodos.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="h-px flex-1 bg-white/10" />
+            <span className="text-[11px] text-white/30 font-medium px-2">MATERIALIZAR EN PLANILLAS</span>
+            <div className="h-px flex-1 bg-white/10" />
+          </div>
+
+          <div className="bg-[#0f1623] border border-yellow-500/20 rounded-xl p-4 space-y-3">
+            <p className="text-xs text-white/50">
+              Convierte los datos importados en planillas cerradas del sistema. Solo se crea una planilla por período — si ya existe una real (generada desde pre-planilla), no se sobreescribe.
+            </p>
+
+            <button
+              onClick={doMaterializar}
+              disabled={materializing}
+              className="flex items-center gap-2 px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-black rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+            >
+              {materializing
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Materializando períodos…</>
+                : <><Wand2 className="w-4 h-4" /> Materializar Histórico en Planillas</>
+              }
+            </button>
+
+            {matResult && (
+              <div className={`flex items-start gap-3 rounded-xl px-4 py-3 border ${matResult.ok ? "bg-emerald-500/8 border-emerald-500/20" : "bg-amber-500/8 border-amber-500/20"}`}>
+                {matResult.ok
+                  ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  : <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                }
+                <div className="text-xs space-y-1 flex-1">
+                  <p className="text-white font-medium">
+                    {matResult.planillas_creadas} planillas creadas · {matResult.planillas_actualizadas} actualizadas · {matResult.lineas_creadas.toLocaleString()} líneas
+                  </p>
+                  <p className="text-white/40">
+                    {matResult.periodos_omitidos} períodos omitidos (planillas reales existentes) · {matResult.total_periodos} períodos procesados en total
+                  </p>
+                  {matResult.errores.length > 0 && (
+                    <div className="mt-1 space-y-0.5">
+                      {matResult.errores.map((e, i) => (
+                        <p key={i} className="text-red-300 font-mono text-[10px]">{e}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button onClick={() => setMatResult(null)} className="text-white/30 hover:text-white/60">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

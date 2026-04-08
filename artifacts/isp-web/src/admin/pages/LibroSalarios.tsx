@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { BookOpen, Users, User, Search, Download, ChevronDown, ChevronUp, FileSpreadsheet, Loader2, AlertCircle, Info, X, Database } from "lucide-react";
+import { BookOpen, Users, User, Search, Download, ChevronDown, ChevronUp, FileSpreadsheet, Loader2, AlertCircle, Info, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AdminLayout } from "../layout/AdminLayout";
@@ -239,7 +239,7 @@ function TablaLineas({ lineas, mostrarPeriodo = false }: { lineas: LineaLibro[];
 }
 
 // ─── Vista General ────────────────────────────────────────────────────────────
-function VistaGeneral({ fuente }: { fuente: "nuevo" | "odbc" }) {
+function VistaGeneral() {
   const hoy    = new Date();
   const [anio, setAnio]   = useState(hoy.getFullYear());
   const [mes,  setMes]    = useState(hoy.getMonth() + 1);
@@ -247,14 +247,8 @@ function VistaGeneral({ fuente }: { fuente: "nuevo" | "odbc" }) {
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
 
-  // Reset al cambiar fuente
-  useEffect(() => { setData(null); setError(null); }, [fuente]);
+  const endpoint = `/api/libro-salarios/general`;
 
-  const endpoint = fuente === "odbc"
-    ? `/api/libro-salarios/historico/general`
-    : `/api/libro-salarios/general`;
-
-  // Agrupar por planilla_id (para odbc: planilla_id sintético = año*10000+mes*100+quincena)
   const planillas = data
     ? Object.values(
         data.rows.reduce<Record<number, { planilla_id: number; periodo_desde: string; periodo_hasta: string; planilla_estado: string; generado_por: string; lineas: LineaLibro[] }>>(
@@ -306,28 +300,12 @@ function VistaGeneral({ fuente }: { fuente: "nuevo" | "odbc" }) {
 
   const anios = Array.from({ length: 6 }, (_, i) => hoy.getFullYear() - i);
 
-  // Para ODBC, el "planilla_id" sintético termina en 1 o 2 (quincena)
   function labelPlanilla(p: typeof planillas[0]) {
-    if (fuente === "odbc") {
-      const q = p.planilla_id % 10; // 1 o 2
-      return `${q === 1 ? "Primera" : "Segunda"} Quincena — ${fmtDate(p.periodo_desde)} al ${fmtDate(p.periodo_hasta)}`;
-    }
     return `Planilla #${p.planilla_id} — ${fmtDate(p.periodo_desde)} al ${fmtDate(p.periodo_hasta)}`;
   }
 
   return (
     <div className="space-y-5">
-      {/* Banner ODBC */}
-      {fuente === "odbc" && (
-        <div className="flex items-center gap-2.5 bg-blue-500/8 border border-blue-500/20 rounded-xl px-4 py-3">
-          <Database className="w-4 h-4 text-blue-400 shrink-0" />
-          <p className="text-xs text-blue-300">
-            Mostrando datos históricos importados del sistema ODBC. Los montos de bonificación incentivo
-            están incluidos en el total devengado, no desglosados por separado.
-          </p>
-        </div>
-      )}
-
       {/* Filtros */}
       <div className="bg-[#0f1623] border border-white/10 rounded-xl p-5">
         <div className="flex flex-wrap items-end gap-4">
@@ -362,7 +340,7 @@ function VistaGeneral({ fuente }: { fuente: "nuevo" | "odbc" }) {
           {data && data.rows.length > 0 && (
             <Button
               variant="outline"
-              onClick={() => exportarCSV(data.rows, `libro-salarios-${fuente}-${anio}-${String(mes).padStart(2, "0")}.csv`)}
+              onClick={() => exportarCSV(data.rows, `libro-salarios-${anio}-${String(mes).padStart(2, "0")}.csv`)}
               className="border-white/15 text-gray-300 hover:text-white gap-2"
             >
               <Download className="w-4 h-4" />
@@ -386,9 +364,7 @@ function VistaGeneral({ fuente }: { fuente: "nuevo" | "odbc" }) {
           <FileSpreadsheet className="w-10 h-10" />
           <p className="text-sm">No hay datos para {MESES[mes - 1]} {anio}.</p>
           <p className="text-xs text-gray-600">
-            {fuente === "odbc"
-              ? "Verifica que se haya importado el Libro de Salarios ODBC para este período."
-              : "Solo aparecen nóminas generadas desde la Pre-Planilla."}
+            Importa el histórico desde la sección de Importación y luego materializa las planillas.
           </p>
         </div>
       )}
@@ -408,10 +384,7 @@ function VistaGeneral({ fuente }: { fuente: "nuevo" | "odbc" }) {
                 <div className="text-left">
                   <div className="flex items-center gap-3">
                     <span className="text-white font-semibold text-sm">{labelPlanilla(p)}</span>
-                    {fuente === "odbc"
-                      ? <Badge variant="outline" className="text-[10px] border border-blue-500/30 text-blue-400 bg-blue-500/10">ODBC</Badge>
-                      : <Badge variant="outline" className={`text-[10px] border ${ESTADO_COLOR[p.planilla_estado] ?? ""}`}>{p.planilla_estado}</Badge>
-                    }
+                    <Badge variant="outline" className={`text-[10px] border ${ESTADO_COLOR[p.planilla_estado] ?? "border-gray-500/30 text-gray-400"}`}>{p.planilla_estado}</Badge>
                   </div>
                   <div className="text-gray-500 text-xs mt-0.5">
                     {p.lineas.length} colaboradores · Líquido total: <span className="text-yellow-300 font-semibold">{fmtQ(tot.total_neto)}</span>
@@ -583,46 +556,32 @@ function ColaboradorCombobox({
 }
 
 // ─── Vista Individual ─────────────────────────────────────────────────────────
-function VistaIndividual({ fuente }: { fuente: "nuevo" | "odbc" }) {
+function VistaIndividual() {
   const hoy = new Date();
   const [empleados,   setEmpleados]   = useState<Empleado[]>([]);
   const [empId,       setEmpId]       = useState<number | "">("");
   const [empNombre,   setEmpNombre]   = useState("");
   const [desde,       setDesde]       = useState(`${hoy.getFullYear()}-01-01`);
   const [hasta,       setHasta]       = useState(`${hoy.getFullYear()}-12-31`);
-  const [desdeAno,    setDesdeAno]    = useState(hoy.getFullYear() - 1);
-  const [hastaAno,    setHastaAno]    = useState(hoy.getFullYear());
   const [data,        setData]        = useState<{ rows: LineaLibro[]; empleado: { id: number; nombre_completo: string; dpi: string } | null } | null>(null);
   const [loading,     setLoading]     = useState(false);
   const [loadingEmp,  setLoadingEmp]  = useState(true);
   const [error,       setError]       = useState<string | null>(null);
 
-  // Reset al cambiar fuente
   useEffect(() => {
-    setData(null);
-    setError(null);
-    setEmpId("");
-    setEmpNombre("");
-    setEmpleados([]);
-    setLoadingEmp(true);
-    const url = fuente === "odbc"
-      ? "/api/libro-salarios/historico/empleados"
-      : "/api/libro-salarios/empleados";
-    fetch(url, { headers: { "x-isp-session": getSession() } })
+    fetch("/api/libro-salarios/empleados", { headers: { "x-isp-session": getSession() } })
       .then((r) => r.json())
       .then((rows) => setEmpleados(rows))
       .catch(() => {})
       .finally(() => setLoadingEmp(false));
-  }, [fuente]);
+  }, []);
 
   async function buscar() {
     if (!empId) return;
     setLoading(true);
     setError(null);
     try {
-      const url = fuente === "odbc"
-        ? `/api/libro-salarios/historico/colaborador/${empId}?desde_ano=${desdeAno}&hasta_ano=${hastaAno}`
-        : `/api/libro-salarios/colaborador/${empId}?desde=${desde}&hasta=${hasta}`;
+      const url = `/api/libro-salarios/colaborador/${empId}?desde=${desde}&hasta=${hasta}`;
       const res = await fetch(url, { headers: { "x-isp-session": getSession() } });
       if (!res.ok) throw new Error(await res.text());
       setData(await res.json());
@@ -653,38 +612,17 @@ function VistaIndividual({ fuente }: { fuente: "nuevo" | "odbc" }) {
             />
           </div>
 
-          {/* Filtro de fechas — diferente para cada fuente */}
-          {fuente === "odbc" ? (
-            <>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1.5">Desde año</label>
-                <select value={desdeAno} onChange={(e) => setDesdeAno(+e.target.value)}
-                  className="bg-[#07111f] border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500/50">
-                  {Array.from({ length: 8 }, (_, i) => hoy.getFullYear() - i).map((a) => <option key={a} value={a}>{a}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1.5">Hasta año</label>
-                <select value={hastaAno} onChange={(e) => setHastaAno(+e.target.value)}
-                  className="bg-[#07111f] border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500/50">
-                  {Array.from({ length: 8 }, (_, i) => hoy.getFullYear() - i).map((a) => <option key={a} value={a}>{a}</option>)}
-                </select>
-              </div>
-            </>
-          ) : (
-            <>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1.5">Desde</label>
-                <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
-                  className="bg-[#07111f] border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500/50" />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1.5">Hasta</label>
-                <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
-                  className="bg-[#07111f] border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500/50" />
-              </div>
-            </>
-          )}
+          {/* Filtro de fechas */}
+          <div>
+            <label className="block text-xs text-gray-400 mb-1.5">Desde</label>
+            <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
+              className="bg-[#07111f] border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500/50" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1.5">Hasta</label>
+            <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
+              className="bg-[#07111f] border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500/50" />
+          </div>
 
           <Button
             onClick={buscar}
@@ -782,8 +720,7 @@ function VistaIndividual({ fuente }: { fuente: "nuevo" | "odbc" }) {
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 export default function LibroSalarios() {
-  const [modo,   setModo]   = useState<"general" | "individual">("general");
-  const [fuente, setFuente] = useState<"nuevo" | "odbc">("odbc");
+  const [modo, setModo] = useState<"general" | "individual">("general");
 
   return (
     <AdminLayout title="Libro de Salarios">
@@ -798,58 +735,31 @@ export default function LibroSalarios() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Toggle fuente */}
-            <div className="flex items-center bg-[#0f1623] border border-white/10 rounded-xl p-1 gap-1">
-              <button
-                onClick={() => setFuente("odbc")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  fuente === "odbc" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"
-                }`}
-              >
-                <Database className="w-3.5 h-3.5" />
-                ODBC Histórico
-              </button>
-              <button
-                onClick={() => setFuente("nuevo")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  fuente === "nuevo" ? "bg-yellow-500 text-black" : "text-gray-400 hover:text-white"
-                }`}
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                Sistema Nuevo
-              </button>
-            </div>
-
-            {/* Toggle modo */}
-            <div className="flex items-center bg-[#0f1623] border border-white/10 rounded-xl p-1 gap-1">
-              <button
-                onClick={() => setModo("general")}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  modo === "general" ? "bg-yellow-500 text-black" : "text-gray-400 hover:text-white"
-                }`}
-              >
-                <Users className="w-4 h-4" />
-                Libro General
-              </button>
-              <button
-                onClick={() => setModo("individual")}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  modo === "individual" ? "bg-yellow-500 text-black" : "text-gray-400 hover:text-white"
-                }`}
-              >
-                <User className="w-4 h-4" />
-                Por Colaborador
-              </button>
-            </div>
+          {/* Toggle modo */}
+          <div className="flex items-center bg-[#0f1623] border border-white/10 rounded-xl p-1 gap-1">
+            <button
+              onClick={() => setModo("general")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                modo === "general" ? "bg-yellow-500 text-black" : "text-gray-400 hover:text-white"
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              Libro General
+            </button>
+            <button
+              onClick={() => setModo("individual")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                modo === "individual" ? "bg-yellow-500 text-black" : "text-gray-400 hover:text-white"
+              }`}
+            >
+              <User className="w-4 h-4" />
+              Por Colaborador
+            </button>
           </div>
         </div>
 
         {/* Contenido según modo */}
-        {modo === "general"
-          ? <VistaGeneral    key={fuente} fuente={fuente} />
-          : <VistaIndividual key={fuente} fuente={fuente} />
-        }
+        {modo === "general" ? <VistaGeneral /> : <VistaIndividual />}
       </div>
     </AdminLayout>
   );
