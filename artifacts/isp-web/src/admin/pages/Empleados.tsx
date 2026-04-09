@@ -3725,6 +3725,19 @@ export default function Empleados() {
     staleTime: 60_000,
   });
 
+  // Abre automáticamente la ficha si la URL tiene ?id=<employeeId>
+  useEffect(() => {
+    if (!empleados.length) return;
+    const params = new URLSearchParams(window.location.search);
+    const idParam = params.get("id");
+    if (!idParam) return;
+    const emp = empleados.find((e) => String(e.id) === idParam);
+    if (emp) {
+      setFichaAbierta(emp);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [empleados]);
+
   // ─── Mutaciones ──────────────────────────────────────────────────────────────
 
   async function apiCall(url: string, method: string, body?: object) {
