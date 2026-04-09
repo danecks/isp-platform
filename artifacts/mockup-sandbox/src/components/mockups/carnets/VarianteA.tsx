@@ -57,7 +57,7 @@ export function VarianteA() {
         {/* QR */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "6px 10px 4px", gap: 5 }}>
           {/* QR placeholder — grid */}
-          <div style={{ width: 110, height: 110, background: "#0f2044", borderRadius: 7, padding: 8, display: "flex", flexWrap: "wrap", gap: 2, boxShadow: "0 3px 12px rgba(15,32,68,0.25)" }}>
+          <div style={{ width: 118, height: 118, background: "#0f2044", borderRadius: 7, padding: 8, display: "flex", flexWrap: "wrap", gap: 2, boxShadow: "0 3px 12px rgba(15,32,68,0.25)" }}>
             {Array.from({ length: 25 }, (_, i) => (
               <div key={i} style={{ width: 15, height: 15, background: [0,1,2,5,6,7,10,14,17,18,19,21,24].includes(i) ? "#fff" : "#0f2044", borderRadius: 2 }} />
             ))}
