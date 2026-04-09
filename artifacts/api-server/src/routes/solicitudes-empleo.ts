@@ -208,6 +208,67 @@ solicitudesEmpleoRouter.patch("/solicitudes-empleo/:id/estado", async (req: Requ
   }
 });
 
+// ── Contratar: convertir solicitud en ficha de empleado ──────────────────────
+solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+  try {
+    const { rows } = await pool.query(`SELECT * FROM solicitudes_empleo WHERE id = $1`, [id]);
+    const sol = rows[0];
+    if (!sol) return res.status(404).json({ error: "Solicitud no encontrada" });
+
+    if (sol.employee_id) {
+      return res.json({ ok: true, employee_id: sol.employee_id });
+    }
+
+    const sexo = sol.genero === "Masculino" ? "M" : sol.genero === "Femenino" ? "F" : null;
+    const notasExtra = [
+      sol.municipio && sol.departamento ? `Domicilio: ${sol.municipio}, ${sol.departamento}` : null,
+      sol.puesto_solicitado ? `Puesto solicitado: ${sol.puesto_solicitado}` : null,
+      sol.pretension_salarial ? `Pretensión salarial: Q${sol.pretension_salarial}` : null,
+      `Creado automáticamente desde solicitud SOL-${String(sol.id).padStart(5, "0")}`,
+    ].filter(Boolean).join(" | ");
+
+    const { rows: empRows } = await pool.query(`
+      INSERT INTO employees (
+        nombre_completo, dpi, telefono, correo,
+        fecha_nacimiento, sexo, estado_civil, nivel_educativo,
+        municipio, departamento,
+        foto_url, estado_laboral, tipo_personal, fecha_ingreso,
+        notas, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'activo','guardia',CURRENT_DATE,$12,NOW(),NOW())
+      RETURNING id
+    `, [
+      sol.nombre_completo,
+      sol.dpi || null,
+      sol.telefono || null,
+      sol.correo || null,
+      sol.fecha_nacimiento || null,
+      sexo,
+      sol.estado_civil || null,
+      sol.grado_estudios || null,
+      sol.municipio || null,
+      sol.departamento || null,
+      sol.foto_url || null,
+      notasExtra || null,
+    ]);
+
+    const empId = empRows[0].id;
+
+    await pool.query(`
+      UPDATE solicitudes_empleo
+      SET employee_id = $1, estado = 'contratada', updated_at = NOW()
+      WHERE id = $2
+    `, [empId, id]);
+
+    logger.info({ solicitudId: id, employeeId: empId }, "kiosco: solicitud convertida en empleado");
+    res.json({ ok: true, employee_id: empId });
+  } catch (err) {
+    logger.error({ err }, "POST /solicitudes-empleo/:id/contratar error");
+    res.status(500).json({ error: "Error al contratar" });
+  }
+});
+
 // ── Borrar foto ───────────────────────────────────────────────────────────────
 solicitudesEmpleoRouter.delete("/solicitudes-empleo/:id/foto", async (req: Request, res: Response) => {
   const id = parseInt(req.params.id);

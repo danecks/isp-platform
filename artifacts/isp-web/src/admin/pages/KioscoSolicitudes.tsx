@@ -9,7 +9,7 @@ import { AdminLayout } from "../layout/AdminLayout";
 import {
   Users, Search, RefreshCw, ChevronDown, Eye, X, CheckCircle2,
   XCircle, Clock, UserCheck, Camera, FileText, Phone, MapPin,
-  GraduationCap, Briefcase, AlertCircle, Tablet,
+  GraduationCap, Briefcase, AlertCircle, Tablet, UserPlus, ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -111,6 +111,8 @@ export default function KioscoSolicitudes() {
   const [seleccionada, setSeleccionada] = useState<number | null>(null);
   const [notas, setNotas] = useState("");
   const [actualizando, setActualizando] = useState(false);
+  const [contratando, setContratando] = useState(false);
+  const [empleadoCreadoId, setEmpleadoCreadoId] = useState<number | null>(null);
 
   const { data: solicitudes = [], isLoading, refetch } = useQuery<Solicitud[]>({
     queryKey: ["kiosco-solicitudes", filtroEstado, busqueda],
@@ -149,6 +151,24 @@ export default function KioscoSolicitudes() {
       setActualizando(false);
     }
   };
+
+  const crearFichaEmpleado = async (id: number) => {
+    setContratando(true);
+    try {
+      const r = await fetch(`${API}/solicitudes-empleo/${id}/contratar`, { method: "POST" });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Error al contratar");
+      setEmpleadoCreadoId(data.employee_id);
+      qc.invalidateQueries({ queryKey: ["kiosco-solicitudes"] });
+      qc.invalidateQueries({ queryKey: ["kiosco-solicitud-detalle", id] });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Error al crear ficha");
+    } finally {
+      setContratando(false);
+    }
+  };
+
+  useEffect(() => { setEmpleadoCreadoId(null); }, [seleccionada]);
 
   const conteoEstados = ESTADOS.reduce((acc, e) => {
     if (e === "todos") acc[e] = solicitudes.length;
@@ -353,7 +373,7 @@ export default function KioscoSolicitudes() {
                   />
                 </Section>
 
-                {/* Acciones */}
+                {/* Acciones de estado */}
                 <div className="flex flex-wrap gap-2 pt-2">
                   {(["en_revision", "entrevista", "aprobada", "rechazada"] as Estado[]).map((e) => (
                     <button key={e} disabled={actualizando || detalle.estado === e}
@@ -366,6 +386,43 @@ export default function KioscoSolicitudes() {
                       {ESTADO_LABEL[e]}
                     </button>
                   ))}
+                </div>
+
+                {/* Sección Contratar */}
+                <div className="border border-emerald-800/60 rounded-xl p-4 bg-emerald-950/20">
+                  <div className="flex items-center gap-2 text-emerald-400 text-xs font-semibold uppercase mb-3">
+                    <UserPlus size={14} /> Contratar Candidato
+                  </div>
+
+                  {(detalle.employee_id || empleadoCreadoId) ? (
+                    <div className="flex items-center gap-3">
+                      <CheckCircle2 size={20} className="text-emerald-400 shrink-0" />
+                      <div>
+                        <p className="text-emerald-300 text-sm font-medium">Ficha de empleado creada exitosamente</p>
+                        <p className="text-gray-400 text-xs">EMP-{String(detalle.employee_id ?? empleadoCreadoId).padStart(5, "0")} — {detalle.nombre_completo}</p>
+                      </div>
+                      <a
+                        href={`/admin/empleados?id=${detalle.employee_id ?? empleadoCreadoId}`}
+                        className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium transition-colors"
+                      >
+                        <ExternalLink size={13} /> Ver Ficha
+                      </a>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <p className="text-gray-400 text-sm flex-1">
+                        Al contratar se creará una ficha de colaborador con los datos del formulario (nombre, DPI, teléfono, foto, nivel educativo, municipio y departamento).
+                      </p>
+                      <button
+                        disabled={contratando || detalle.estado === "rechazada"}
+                        onClick={() => crearFichaEmpleado(detalle.id)}
+                        className="shrink-0 flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-sm font-semibold transition-colors"
+                      >
+                        <UserPlus size={16} />
+                        {contratando ? "Creando..." : "Crear Ficha de Empleado"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

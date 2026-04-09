@@ -3470,6 +3470,15 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: EMP-EXT-01 — error (no bloqueante)");
   }
 
+  // ── EMP-KIOSCO-01: municipio y departamento de residencia del colaborador ─────
+  try {
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS municipio    VARCHAR(100)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS departamento VARCHAR(100)`);
+    logger.info("Auto-migrate: EMP-KIOSCO-01 columnas municipio/departamento en employees verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: EMP-KIOSCO-01 — error (no bloqueante)");
+  }
+
   // ── CLI-01: código legacy en tabla clients ────────────────────────────────────
   try {
     await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS depto_codigo VARCHAR(30)`);
