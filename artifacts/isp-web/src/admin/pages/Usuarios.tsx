@@ -23,6 +23,29 @@ const ROLES: Rol[] = ["admin", "operaciones", "rrhh", "comercial", "supervisor",
 // Roles que pueden usar el panel admin (no solo WhatsApp)
 const ROLES_ADMIN: Rol[] = ["admin", "operaciones", "rrhh", "comercial", "supervisor"];
 
+// Roles disponibles desde la API (sistema + custom)
+interface SystemRoleOption { clave: string; label: string; activo: boolean; }
+
+function getAdminSessionHeader(): Record<string, string> {
+  try {
+    const raw = sessionStorage.getItem("isp_admin_session_v2");
+    return raw ? { "x-isp-session": raw } : {};
+  } catch { return {}; }
+}
+
+function useSystemRoles() {
+  return useQuery<SystemRoleOption[]>({
+    queryKey: ["roles"],
+    queryFn: async () => {
+      const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+      const r = await fetch(`${base}/api/roles`, { headers: getAdminSessionHeader() });
+      if (!r.ok) return [];
+      return r.json();
+    },
+    staleTime: 30_000,
+  });
+}
+
 // ─── RolBadge ──────────────────────────────────────────────────────────────────
 function RolBadge({ rol }: { rol: string }) {
   const color = ROL_COLORES[rol as Rol] ?? "text-white/50 bg-white/5 border-white/10";
@@ -106,6 +129,10 @@ interface NuevoModalProps {
 }
 function NuevoUsuarioModal({ onClose, onCreated }: NuevoModalProps) {
   const { toast } = useToast();
+  const { data: systemRoles = [] } = useSystemRoles();
+  const rolesOpciones = systemRoles.filter(r => r.activo).length > 0
+    ? systemRoles.filter(r => r.activo)
+    : ROLES.map(r => ({ clave: r, label: ROL_LABELS[r] ?? r, activo: true }));
   const [form, setForm] = useState({
     nombre: "", username: "", correo: "", password: "", confirmPassword: "",
     rol: "guardia" as Rol,
@@ -234,8 +261,8 @@ function NuevoUsuarioModal({ onClose, onCreated }: NuevoModalProps) {
                   onChange={e => set("rol", e.target.value)}
                   className="w-full h-10 bg-[#060e1c] border border-white/10 text-white text-sm rounded-md px-3 appearance-none pr-8 focus:outline-none focus:border-primary/50"
                 >
-                  {ROLES.map(r => (
-                    <option key={r} value={r}>{ROL_LABELS[r]}</option>
+                  {rolesOpciones.map(r => (
+                    <option key={r.clave} value={r.clave}>{r.label}</option>
                   ))}
                 </select>
                 <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30 pointer-events-none" />
@@ -396,6 +423,10 @@ interface EditarModalProps {
 }
 function EditarUsuarioModal({ user, onClose, onUpdated }: EditarModalProps) {
   const { toast } = useToast();
+  const { data: systemRoles = [] } = useSystemRoles();
+  const rolesOpciones = systemRoles.filter(r => r.activo).length > 0
+    ? systemRoles.filter(r => r.activo)
+    : ROLES.map(r => ({ clave: r, label: ROL_LABELS[r] ?? r, activo: true }));
   const [tab, setTab] = useState<"datos" | "permisos" | "password">("datos");
   const [form, setForm] = useState({
     nombre: user.nombre,
@@ -541,8 +572,8 @@ function EditarUsuarioModal({ user, onClose, onUpdated }: EditarModalProps) {
                     onChange={e => set("rol", e.target.value)}
                     className="w-full h-10 bg-[#060e1c] border border-white/10 text-white text-sm rounded-md px-3 appearance-none pr-8 focus:outline-none focus:border-primary/50"
                   >
-                    {ROLES.map(r => (
-                      <option key={r} value={r}>{ROL_LABELS[r]}</option>
+                    {rolesOpciones.map(r => (
+                      <option key={r.clave} value={r.clave}>{r.label}</option>
                     ))}
                   </select>
                   <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30 pointer-events-none" />
@@ -765,6 +796,11 @@ export default function AdminUsuarios() {
     refetchInterval: 30_000,
   });
 
+  const { data: systemRolesAll = [] } = useSystemRoles();
+  const rolesFilter = systemRolesAll.filter(r => r.activo).length > 0
+    ? systemRolesAll.filter(r => r.activo)
+    : ROLES.map(r => ({ clave: r, label: ROL_LABELS[r] ?? r, activo: true }));
+
   const { data: inconsistencias } = useQuery<Inconsistencia>({
     queryKey: ["users-inconsistencias"],
     queryFn: async () => {
@@ -964,8 +1000,8 @@ export default function AdminUsuarios() {
               className="h-10 bg-card border border-white/10 text-white text-sm rounded-md px-3 pr-8 appearance-none focus:outline-none focus:border-primary/50 min-w-[140px]"
             >
               <option value="todos">Todos los roles</option>
-              {ROLES.map(r => (
-                <option key={r} value={r}>{ROL_LABELS[r]}</option>
+              {rolesFilter.map(r => (
+                <option key={r.clave} value={r.clave}>{r.label}</option>
               ))}
             </select>
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30 pointer-events-none" />
