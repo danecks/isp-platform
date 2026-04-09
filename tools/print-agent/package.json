@@ -1,0 +1,24 @@
+{
+  "name": "isp-print-agent",
+  "version": "1.0.0",
+  "description": "Agente local de impresión silenciosa para carnets ISP - Canon TS702a",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js",
+    "build-win": "npx pkg agent.js --targets node18-win-x64 --output dist/ISP-PrintAgent.exe --compress GZip",
+    "build-mac": "npx pkg agent.js --targets node18-macos-x64 --output dist/ISP-PrintAgent-mac"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  },
+  "bin": "agent.js",
+  "pkg": {
+    "assets": ["templates/**/*"],
+    "scripts": [],
+    "targets": ["node18-win-x64"]
+  }
+}

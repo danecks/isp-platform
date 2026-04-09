@@ -466,14 +466,70 @@ function buildCalibrationCSS(
   `;
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// AGENTE LOCAL DE IMPRESIÓN  (http://localhost:7821)
+// Cuando el agente está corriendo en la PC del usuario, se usa en lugar
+// del popup del navegador — impresión silenciosa sin diálogos.
+// ────────────────────────────────────────────────────────────────────────────
+
+const AGENT_URL = "http://localhost:7821";
+
+interface AgentStatus {
+  ok: boolean;
+  version?: string;
+  hostname?: string;
+  browser?: string | null;
+  printers?: string[];
+  canon?: string | null;
+}
+
+/** Comprueba si el agente local está corriendo. Timeout 1s para no bloquear la UI. */
+async function checkAgent(): Promise<AgentStatus | null> {
+  try {
+    const ctrl = new AbortController();
+    const id = setTimeout(() => ctrl.abort(), 1500);
+    const r = await fetch(`${AGENT_URL}/status`, { signal: ctrl.signal });
+    clearTimeout(id);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Genera y abre una ventana de impresión con las tarjetas en posición absoluta.
+ * Genera el HTML completo de la página de impresión y lo manda al agente local.
+ * Si el agente no responde, cae al popup del navegador.
  */
-function openPrintPage(
+async function sendToAgent(
   title: string,
   css: string,
   slots: string[],
-): void {
+  agentStatus: AgentStatus | null,
+): Promise<"agent" | "popup"> {
+  if (agentStatus?.ok) {
+    const slotDivs = slots.map((h, i) => `<div class="slot slot-${i}">${h}</div>`).join("\n");
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+<title>${title}</title><style>${css}</style></head>
+<body><div class="print-page">${slotDivs}</div>
+<script>window.onload=function(){window.print();setTimeout(function(){window.close();},3000);};<\/script>
+</body></html>`;
+    try {
+      const r = await fetch(`${AGENT_URL}/print`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ html }),
+      });
+      if (r.ok) return "agent";
+    } catch {}
+  }
+  // Fallback: popup del navegador
+  openPrintPopup(title, css, slots);
+  return "popup";
+}
+
+/** Abre el popup clásico del navegador (fallback cuando no hay agente) */
+function openPrintPopup(title: string, css: string, slots: string[]): void {
   const slotDivs = slots.map((html, i) => `<div class="slot slot-${i}">${html}</div>`).join("\n");
   const win = window.open("", "_blank", "width=500,height=700");
   if (!win) return;
@@ -483,6 +539,11 @@ function openPrintPage(
   win.document.close();
   win.focus();
   setTimeout(() => { win.print(); }, 600);
+}
+
+/** Mantener compatibilidad con código existente */
+function openPrintPage(title: string, css: string, slots: string[]): void {
+  openPrintPopup(title, css, slots);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -724,6 +785,22 @@ export default function ImpresionAvanzadaTab() {
     localStorage.setItem(STORAGE_KEY_CALIB, JSON.stringify(next));
   }
 
+  // ── Agente local de impresión ────────────────────────────────────────────────
+  const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
+  const [agentChecked, setAgentChecked] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    checkAgent().then(s => {
+      if (!cancelled) { setAgentStatus(s); setAgentChecked(true); }
+    });
+    // Re-verificar cada 30 segundos
+    const interval = setInterval(() => {
+      checkAgent().then(s => { if (!cancelled) setAgentStatus(s); });
+    }, 30_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
   // ── Tab activo ───────────────────────────────────────────────────────────────
   const [tab, setTab] = useState<"imprimir" | "config" | "calibracion">("imprimir");
 
@@ -800,7 +877,7 @@ export default function ImpresionAvanzadaTab() {
       if (svg) qrMap[id] = new XMLSerializer().serializeToString(svg);
     });
 
-    // Generar slot HTML: carnet si hay agente, vacío si no
+    // Generar slot HTML
     const slots = queue.map(a => {
       if (!a) return "";
       const svgHtml = qrMap[a.employee_id] ?? "<span style='font-size:8pt;color:#999'>QR</span>";
@@ -808,7 +885,7 @@ export default function ImpresionAvanzadaTab() {
     });
 
     const css = buildPrintPageCSS(activeProfile, offset);
-    openPrintPage(`Frentes ISP (${agentesEnCola.length})`, css, slots);
+    await sendToAgent(`Frentes ISP (${agentesEnCola.length})`, css, slots, agentStatus);
     setFase("reverso");
     setPrinting(false);
   }
@@ -823,7 +900,7 @@ export default function ImpresionAvanzadaTab() {
 
     const slots = queue.map(a => a ? buildCardReversoHTML(logoFullB64) : "");
     const css = buildPrintPageCSS(activeProfile, offset);
-    openPrintPage(`Reversos ISP (${agentesEnCola.length})`, css, slots);
+    await sendToAgent(`Reversos ISP (${agentesEnCola.length})`, css, slots, agentStatus);
 
     // Registrar impresión
     await Promise.all(
@@ -1014,6 +1091,21 @@ export default function ImpresionAvanzadaTab() {
                   className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white placeholder-white/30 outline-none"
                 />
               </div>
+
+              {/* Indicador del agente de impresión */}
+              {agentChecked && (
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs border ${
+                  agentStatus?.ok
+                    ? "bg-emerald-500/8 border-emerald-500/20 text-emerald-400"
+                    : "bg-white/5 border-white/10 text-white/30"
+                }`}>
+                  <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${agentStatus?.ok ? "bg-emerald-400" : "bg-white/20"}`} />
+                  {agentStatus?.ok
+                    ? `Agente activo en ${agentStatus.hostname ?? "esta PC"} — impresión silenciosa`
+                    : "Sin agente local — se usará el diálogo del navegador"
+                  }
+                </div>
+              )}
 
               <button
                 onClick={handlePrintFrente}
