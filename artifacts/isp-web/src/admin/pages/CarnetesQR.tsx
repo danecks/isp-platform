@@ -351,17 +351,15 @@ export default function CarnetesQR() {
     try {
       // 1. Comprimir
       const blob = await comprimirFoto(file);
-      const comprimida = new File([blob], "foto.jpg", { type: "image/jpeg" });
-      // 2. Solicitar URL presignada
-      const urlRes = await apiFetch("/storage/uploads/request-url", {
+      // 2. Subir a través del servidor — env-aware (dev y prod usan su propio bucket)
+      const uploadRes = await fetch(`${API}/storage/uploads/direct`, {
         method: "POST",
-        body: JSON.stringify({ name: comprimida.name, size: comprimida.size, contentType: comprimida.type }),
+        headers: { "Content-Type": "image/jpeg", "x-isp-session": getSession() },
+        body: blob,
       });
-      if (!urlRes.ok) throw new Error("Error obteniendo URL de carga");
-      const { uploadURL, objectPath } = await urlRes.json();
-      // 3. Subir directamente a GCS
-      await fetch(uploadURL, { method: "PUT", body: comprimida, headers: { "Content-Type": "image/jpeg" } });
-      // 4. Guardar objectPath en el empleado
+      if (!uploadRes.ok) throw new Error("Error al subir la foto");
+      const { objectPath } = await uploadRes.json();
+      // 3. Guardar objectPath en el empleado
       const patchRes = await apiFetch(`/employees/${empId}/foto`, {
         method: "PATCH",
         body: JSON.stringify({ foto_url: objectPath }),
