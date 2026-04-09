@@ -21,6 +21,10 @@ const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
 function SecureFoto({ fotoUrl, className }: { fotoUrl: string; className?: string }) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
+    if (fotoUrl.startsWith("data:")) {
+      setSrc(fotoUrl);
+      return;
+    }
     let objUrl: string;
     fetch(`${API}/storage${fotoUrl}`, { headers: { "x-isp-session": getSession() } })
       .then(r => r.ok ? r.blob() : null)

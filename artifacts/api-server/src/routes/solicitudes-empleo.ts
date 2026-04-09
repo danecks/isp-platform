@@ -32,7 +32,7 @@ const pinRateLimit = rateLimit({
 export const solicitudesEmpleoRouter = Router();
 const storageService = new ObjectStorageService();
 
-// ── Subir foto de solicitud directamente al API ───────────────────────────────
+// ── Subir foto de solicitud (almacenada como data URL en DB) ─────────────────
 solicitudesEmpleoRouter.post("/solicitudes-empleo/foto", async (req: Request, res: Response) => {
   try {
     const chunks: Buffer[] = [];
@@ -54,7 +54,7 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/foto", async (req: Request, re
       try {
         const buffer = Buffer.concat(chunks);
         if (buffer.length === 0) return res.status(400).json({ error: "Foto vacía" });
-        const objectPath = await storageService.saveObjectDirectly(buffer, "image/jpeg");
+        const objectPath = `data:image/jpeg;base64,${buffer.toString("base64")}`;
         res.json({ objectPath });
       } catch (err) {
         logger.error({ err }, "solicitudes-empleo/foto upload error");
@@ -217,7 +217,7 @@ solicitudesEmpleoRouter.delete("/solicitudes-empleo/:id/foto", async (req: Reque
       `SELECT foto_url FROM solicitudes_empleo WHERE id = $1`, [id]
     );
     const fotoUrl = rows[0]?.foto_url;
-    if (fotoUrl) {
+    if (fotoUrl && !fotoUrl.startsWith("data:")) {
       try {
         const file = await storageService.getObjectEntityFile(fotoUrl);
         await file.delete();
@@ -247,10 +247,12 @@ export async function limpiarFotosExpiradas() {
     if (rows.length === 0) return;
     logger.info({ count: rows.length }, "kiosco: limpiando fotos expiradas");
     for (const row of rows) {
-      try {
-        const file = await storageService.getObjectEntityFile(row.foto_url);
-        await file.delete();
-      } catch { /* ignorar si ya no existe */ }
+      if (!row.foto_url.startsWith("data:")) {
+        try {
+          const file = await storageService.getObjectEntityFile(row.foto_url);
+          await file.delete();
+        } catch { /* ignorar si ya no existe */ }
+      }
       await pool.query(
         `UPDATE solicitudes_empleo SET foto_url = NULL, foto_expira_at = NULL, updated_at = NOW() WHERE id = $1`,
         [row.id]
