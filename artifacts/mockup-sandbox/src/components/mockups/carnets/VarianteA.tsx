@@ -24,7 +24,7 @@ export function VarianteA() {
           boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
           backgroundImage: "url(https://987b05e8-e17a-40f4-b366-3baeddd84475-00-2jyjpes488ag2.riker.replit.dev/images/logo-isp.png)",
           backgroundSize: "120%",
-          backgroundPosition: "center 60%",
+          backgroundPosition: "center 35%",
           backgroundRepeat: "no-repeat",
           backgroundColor: "#fff",
           mixBlendMode: "normal" as const,
