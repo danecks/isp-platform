@@ -172,7 +172,7 @@ function printWithBrowser(browserPath, htmlFile) {
 app.get("/status", (req, res) => {
   const browser   = findBrowser();
   const printers  = listPrinters();
-  const canonName = printers.find(p => /canon|ts702/i.test(p)) || null;
+  const canonName = printers.find(p => /canon.*ts7|ts700|ts702/i.test(p)) || null;
 
   res.json({
     ok:       true,
@@ -263,7 +263,7 @@ app.options("*", cors());
 app.listen(PORT, "127.0.0.1", () => {
   const browser  = findBrowser();
   const printers = listPrinters();
-  const canon    = printers.find(p => /canon|ts702/i.test(p));
+  const canon    = printers.find(p => /canon.*ts7|ts700|ts702/i.test(p));
 
   console.log("╔══════════════════════════════════════════════════════╗");
   console.log("║           ISP Print Agent  v" + VERSION + "                     ║");
@@ -282,7 +282,10 @@ app.listen(PORT, "127.0.0.1", () => {
     console.error("   Instala Google Chrome o Microsoft Edge en esta PC.\n");
   }
   if (!canon) {
-    console.warn("\n⚠  ADVERTENCIA: No se detectó la Canon TS702a.");
-    console.warn("   Verifica que la impresora esté conectada e instalada.\n");
+    console.warn("\n⚠  ADVERTENCIA: No se detectó la Canon TS700 Series.");
+    console.warn("   Verifica que la impresora esté conectada e instalada en Windows.\n");
+    if (printers.length > 0) {
+      console.warn("   Impresoras disponibles:", printers.join(", "));
+    }
   }
 });
