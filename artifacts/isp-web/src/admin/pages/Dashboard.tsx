@@ -142,7 +142,7 @@ function DashboardAdmin({
         <p className="text-[10px] text-white/30 uppercase tracking-widest font-semibold mb-3">Comercial & Reclutamiento</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard icon={Briefcase}   label="Leads Nuevos"            value={s?.comercial.leads_nuevos ?? "—"}         sub="Sin asignar"              color="gold"   href="/admin/comercial" />
-          <StatCard icon={Users}       label="Postulaciones Nuevas"    value={s?.comercial.postulaciones_nuevas ?? "—"} sub="Sin revisar"              color="blue"   href="/admin/reclutamiento" />
+          <StatCard icon={Users}       label="Postulaciones Nuevas"    value={s?.comercial.postulaciones_nuevas ?? "—"} sub="Sin revisar"              color="blue"   href="/admin/rrhh/kiosco-solicitudes" />
           <StatCard icon={Timer}       label="Resp. Promedio"          value="12 min"                                   sub="Tiempo de respuesta"      color="gold" />
           <StatCard icon={Landmark}    label="Liquidaciones Activas"   value={s?.rrhh.liquidaciones_confirmadas ?? "—"} sub="Confirmadas / pendientes"  color="purple" href="/admin/rrhh/prestaciones" />
         </div>
@@ -172,7 +172,7 @@ function DashboardAdmin({
           <QuickLink href="/admin/armeria"               icon={Wrench}         label="Armería"             sub="Armas y munición"        color="red"    />
           <QuickLink href="/admin/rrhh/vacaciones"       icon={CalendarDays}   label="Vacaciones"          sub="Aprobar solicitudes"     color="purple" />
           <QuickLink href="/admin/comercial"             icon={Briefcase}      label="Comercial"           sub="Leads y propuestas"      color="gold"   />
-          <QuickLink href="/admin/reclutamiento"         icon={UserSearch}     label="Reclutamiento"       sub="Postulaciones"           color="green"  />
+          <QuickLink href="/admin/rrhh/kiosco-solicitudes"         icon={UserSearch}     label="Reclutamiento"       sub="Postulaciones"           color="green"  />
           <QuickLink href="/admin/anticipos"             icon={Wallet}         label="Anticipos"           sub="Aprobar / rechazar"      color="purple" />
           <QuickLink href="/admin/tareas"                icon={CheckSquare}    label="Tareas"              sub="Ver pendientes"          color="purple" />
           <QuickLink href="/admin/empleados"             icon={HardHat}        label="Colaboradores"       sub="Ficha y gestión"         color="blue"   />
@@ -305,7 +305,7 @@ function DashboardRRHH({
         <StatCard icon={TrendingDown} label="Bajas Este Mes"         value={s?.bajas_este_mes ?? "—"}            sub="Dados de baja este mes"  color="red"    href="/admin/empleados" />
         <StatCard icon={BellRing}     label="Alertas Activas"        value={s?.alertas_activas ?? "—"}           sub="Requieren atención"      color="gold"   href="/admin/rrhh/alertas" />
         <StatCard icon={Wallet}       label="Anticipos Pendientes"   value={s?.anticipos_pendientes ?? "—"}      sub="Por aprobar"             color="purple" href="/admin/anticipos" />
-        <StatCard icon={Users}        label="Postulaciones Nuevas"   value={s?.postulaciones_nuevas ?? "—"}      sub="Sin revisar"             color="blue"   href="/admin/reclutamiento" />
+        <StatCard icon={Users}        label="Postulaciones Nuevas"   value={s?.postulaciones_nuevas ?? "—"}      sub="Sin revisar"             color="blue"   href="/admin/rrhh/kiosco-solicitudes" />
         <StatCard icon={CalendarDays} label="Vacaciones Pendientes"  value={s?.vacaciones_pendientes ?? "—"}     sub="Por aprobar"             color="orange" href="/admin/rrhh/vacaciones" />
         <StatCard icon={Landmark}     label="Liquidaciones Activas"  value={s?.liquidaciones_confirmadas ?? "—"} sub="Confirmadas pendientes"  color="gold"   href="/admin/rrhh/prestaciones" />
       </div>
@@ -317,7 +317,7 @@ function DashboardRRHH({
           <QuickLink href="/admin/empleados"            icon={HardHat}         label="Colaboradores"       sub="Ficha y gestión"       color="blue"   />
           <QuickLink href="/admin/rrhh/alertas"         icon={BellRing}        label="Alertas RRHH"        sub="Revisar activas"       color="gold"   />
           <QuickLink href="/admin/anticipos"            icon={Wallet}          label="Anticipos"           sub="Aprobar / rechazar"    color="purple" />
-          <QuickLink href="/admin/reclutamiento"        icon={UserSearch}      label="Reclutamiento"       sub="Postulaciones"         color="green"  />
+          <QuickLink href="/admin/rrhh/kiosco-solicitudes"        icon={UserSearch}      label="Reclutamiento"       sub="Postulaciones"         color="green"  />
           <QuickLink href="/admin/rrhh/prestaciones"    icon={Landmark}        label="Prestaciones"        sub="Liquidaciones"         color="orange" />
           <QuickLink href="/admin/rrhh/vacaciones"      icon={CalendarDays}    label="Vacaciones"          sub="Solicitudes"           color="orange" />
           <QuickLink href="/admin/rrhh/pre-planilla"    icon={FileSpreadsheet} label="Pre-Planilla"        sub="Revisión nómina"       color="blue"   />
@@ -381,7 +381,7 @@ function DashboardRRHH({
       <div className="bg-[#0c1829] border border-white/5 rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between">
           <p className="text-sm font-bold text-white">Postulaciones Recientes</p>
-          <Link href="/admin/reclutamiento">
+          <Link href="/admin/rrhh/kiosco-solicitudes">
             <a className="text-[10px] text-primary/60 hover:text-primary transition-colors">Ver todas →</a>
           </Link>
         </div>
@@ -517,7 +517,7 @@ function DashboardComercial({
     <div className="space-y-8 max-w-[1400px]">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard icon={Briefcase}   label="Leads Nuevos"          value={s?.leads_nuevos ?? "—"}         sub="Sin asignar"         color="gold"   href="/admin/comercial" />
-        <StatCard icon={Users}       label="Postulaciones Nuevas"  value={s?.postulaciones_nuevas ?? "—"} sub="Sin revisar"         color="blue"   href="/admin/reclutamiento" />
+        <StatCard icon={Users}       label="Postulaciones Nuevas"  value={s?.postulaciones_nuevas ?? "—"} sub="Sin revisar"         color="blue"   href="/admin/rrhh/kiosco-solicitudes" />
         <StatCard icon={ShieldCheck} label="SLA Cumplido"          value="98%"                            sub="Mes actual"          color="green" />
         <StatCard icon={Timer}       label="Resp. Promedio"        value="12 min"                         sub="Tiempo de respuesta" color="gold" />
       </div>
@@ -526,7 +526,7 @@ function DashboardComercial({
         <p className="text-[10px] text-white/30 uppercase tracking-widest font-semibold mb-3">Accesos Rápidos</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <QuickLink href="/admin/comercial"     icon={Briefcase}  label="Leads & CRM"       sub="Gestionar oportunidades" color="gold"   />
-          <QuickLink href="/admin/reclutamiento" icon={UserSearch} label="Reclutamiento"      sub="Ver postulaciones"       color="blue"   />
+          <QuickLink href="/admin/rrhh/kiosco-solicitudes" icon={UserSearch} label="Reclutamiento"      sub="Ver postulaciones"       color="blue"   />
           <QuickLink href="/admin/clientes"      icon={HardHat}    label="Clientes"           sub="Base de clientes"        color="green"  />
           <QuickLink href="/admin/reportes"      icon={BarChart3}  label="Reportería"         sub="Indicadores"             color="purple" />
         </div>
@@ -566,7 +566,7 @@ function DashboardComercial({
         <div className="bg-[#0c1829] border border-white/5 rounded-xl overflow-hidden">
           <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between">
             <p className="text-sm font-bold text-white">Postulaciones Recientes</p>
-            <Link href="/admin/reclutamiento">
+            <Link href="/admin/rrhh/kiosco-solicitudes">
               <a className="text-[10px] text-primary/60 hover:text-primary transition-colors">Ver todas →</a>
             </Link>
           </div>

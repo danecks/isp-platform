@@ -34,8 +34,8 @@ router.get("/dashboard/summary", async (_req, res) => {
       pool.query(`SELECT COUNT(*) AS confirmadas FROM prestaciones_liquidaciones WHERE estado = 'confirmada'`),
       // Leads
       pool.query(`SELECT COUNT(*) AS nuevos FROM leads WHERE estado = 'nuevo'`),
-      // Postulaciones
-      pool.query(`SELECT COUNT(*) AS nuevas FROM applications WHERE estado = 'recibido'`),
+      // Postulaciones (nuevo módulo Kiosco)
+      pool.query(`SELECT COUNT(*) AS nuevas FROM solicitudes_empleo WHERE estado = 'pendiente'`),
       // Tareas
       pool.query(`SELECT COUNT(*) AS pendientes FROM tareas WHERE estado IN ('pendiente','en_proceso')`),
 
