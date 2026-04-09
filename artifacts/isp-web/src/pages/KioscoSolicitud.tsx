@@ -44,15 +44,13 @@ async function comprimirFoto(blob: Blob): Promise<Blob> {
 }
 
 async function subirFoto(blob: Blob): Promise<string> {
-  const file = new File([blob], "solicitud-foto.jpg", { type: "image/jpeg" });
-  const urlRes = await fetch(`${API}/storage/uploads/request-url`, {
+  const res = await fetch(`${API}/solicitudes-empleo/foto`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+    headers: { "Content-Type": "image/jpeg" },
+    body: blob,
   });
-  if (!urlRes.ok) throw new Error("Error obteniendo URL de carga");
-  const { uploadURL, objectPath } = await urlRes.json();
-  await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": "image/jpeg" } });
+  if (!res.ok) throw new Error("Error subiendo foto");
+  const { objectPath } = await res.json();
   return objectPath as string;
 }
 

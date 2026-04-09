@@ -21,6 +21,29 @@ import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage"
 export const solicitudesEmpleoRouter = Router();
 const storageService = new ObjectStorageService();
 
+// ── Subir foto de solicitud directamente al API ───────────────────────────────
+solicitudesEmpleoRouter.post("/solicitudes-empleo/foto", async (req: Request, res: Response) => {
+  try {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("end", async () => {
+      try {
+        const buffer = Buffer.concat(chunks);
+        if (buffer.length === 0) return res.status(400).json({ error: "Foto vacía" });
+        const contentType = (req.headers["content-type"] as string) || "image/jpeg";
+        const objectPath = await storageService.saveObjectDirectly(buffer, contentType);
+        res.json({ objectPath });
+      } catch (err) {
+        logger.error({ err }, "solicitudes-empleo/foto upload error");
+        res.status(500).json({ error: "Error subiendo foto" });
+      }
+    });
+  } catch (err) {
+    logger.error({ err }, "solicitudes-empleo/foto error");
+    res.status(500).json({ error: "Error del servidor" });
+  }
+});
+
 // ── Verificar PIN del kiosco ──────────────────────────────────────────────────
 solicitudesEmpleoRouter.post("/solicitudes-empleo/verificar-pin", async (req: Request, res: Response) => {
   const { pin } = req.body ?? {};
