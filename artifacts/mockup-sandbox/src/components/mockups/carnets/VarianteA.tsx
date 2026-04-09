@@ -29,7 +29,7 @@ export function VarianteA() {
           backgroundColor: "#fff",
           mixBlendMode: "normal" as const,
         }} />
-        <span style={{ writingMode: "vertical-rl" as const, transform: "rotate(180deg)", fontSize: 7.5, color: "#f5c842", fontWeight: 800, marginTop: 10, flex: 1, display: "flex", alignItems: "center", justifyContent: "center", letterSpacing: 1.2, textTransform: "uppercase" as const }}>INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A</span>
+        <span style={{ writingMode: "vertical-rl" as const, transform: "rotate(180deg)", fontSize: 7.2, color: "#f5c842", fontWeight: 800, marginTop: 10, flex: 1, display: "flex", alignItems: "center", justifyContent: "center", letterSpacing: 1.2, textTransform: "uppercase" as const }}>INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A</span>
         <span style={{ writingMode: "vertical-rl" as const, transform: "rotate(180deg)", fontSize: 7, color: "rgba(255,255,255,0.3)", fontFamily: "monospace", fontWeight: 700, marginBottom: 14, letterSpacing: 1 }}>{sample.num}</span>
       </div>
 
