@@ -222,20 +222,29 @@ function CarnetFrentePreview({ agent, fotoSrc }: { agent: AgenteCarnet; fotoSrc?
   const initials = getInitials(agent.nombre_completo);
   const W = _M(53.98), H = _M(85.6), SW = _M(10.5);
   const fecha = new Date().toLocaleDateString("es-GT", { month: "long", year: "numeric" });
+  // QR al 67% del ancho del cuerpo — idéntico a VarianteA
+  const qrSize = Math.round((W - SW) * 0.67);
 
   const fotoEl = fotoSrc
     ? <img src={fotoSrc} style={{ width: _M(16), height: _M(16), borderRadius: "50%", objectFit: "cover", border: `${_M(0.7)}px solid #f5c842`, boxShadow: `0 ${_M(1)}px ${_M(3)}px rgba(15,32,68,.35)`, marginBottom: _M(2), display: "block", flexShrink: 0 }} />
     : <div style={{ width: _M(16), height: _M(16), borderRadius: "50%", background: "linear-gradient(135deg,#0f2044,#1e4a9a)", border: `${_M(0.7)}px solid #f5c842`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: _M(2), flexShrink: 0 }}><span style={{ fontSize: _P(10), fontWeight: 900, color: "#f5c842" }}>{initials}</span></div>;
 
   return (
-    <div style={{ width: W, height: H, display: "flex", flexDirection: "row", overflow: "hidden", fontFamily: "Arial,Helvetica,sans-serif", background: "#fff", boxSizing: "border-box", borderRadius: 3, boxShadow: "0 8px 32px rgba(0,0,0,.5)" }}>
+    <div style={{ width: W, height: H, display: "flex", flexDirection: "row", overflow: "hidden", fontFamily: "Arial,Helvetica,sans-serif", background: "#fff", boxSizing: "border-box", borderRadius: 6, boxShadow: "0 8px 32px rgba(0,0,0,.5)" }}>
       {/* STRIPE LATERAL */}
       <div style={{ width: SW, height: H, background: "linear-gradient(180deg,#0a1a3d 0%,#0f2044 60%,#0a1a3d 100%)", display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, position: "relative", boxSizing: "border-box" }}>
-        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: _M(0.8), background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)" }} />
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: _M(0.8), background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)" }} />
-        <div style={{ width: _M(7.5), height: _M(7.5), borderRadius: "50%", background: "#fff", boxShadow: `0 ${_M(0.5)}px ${_M(1.5)}px rgba(0,0,0,.4)`, display: "flex", alignItems: "center", justifyContent: "center", marginTop: _M(3), flexShrink: 0, overflow: "hidden" }}>
-          <img src="/images/logo-icon.png" style={{ width: _M(6), height: _M(6), objectFit: "contain" }} />
-        </div>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)" }} />
+        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)" }} />
+        {/* Medallón: logo-isp.png recortado al 158% — idéntico a VarianteA */}
+        <div style={{
+          width: _M(7.5), height: _M(7.5), borderRadius: "50%", marginTop: _M(3), flexShrink: 0,
+          boxShadow: `0 ${_M(0.5)}px ${_M(1.5)}px rgba(0,0,0,.4)`,
+          backgroundImage: "url(/images/logo-isp.png)",
+          backgroundSize: "158%",
+          backgroundPosition: "center 29%",
+          backgroundRepeat: "no-repeat",
+          backgroundColor: "#fff",
+        }} />
         <span style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", fontSize: _P(3.8), color: "#f5c842", fontWeight: 800, marginTop: _M(2.5), flex: 1, display: "flex", alignItems: "center", justifyContent: "center", letterSpacing: 1.2, textTransform: "uppercase" }}>
           INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A
         </span>
@@ -250,20 +259,21 @@ function CarnetFrentePreview({ agent, fotoSrc }: { agent: AgenteCarnet; fotoSrc?
           <div style={{ fontSize: _P(6), fontWeight: 900, color: "#0f2044", textAlign: "center", lineHeight: 1.2, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: _M(0.8) }}>{agent.nombre_completo}</div>
           <div style={{ fontSize: _P(3.8), fontWeight: 700, color: "#b8860b", textAlign: "center", letterSpacing: "0.12em", textTransform: "uppercase" }}>{cargo}</div>
         </div>
-        <div style={{ height: _M(0.4), background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)", flexShrink: 0 }} />
+        <div style={{ height: 1.5, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)", flexShrink: 0 }} />
         <div style={{ padding: `${_M(2)}px ${_M(2.5)}px ${_M(1)}px`, flexShrink: 0, textAlign: "center" }}>
           <div style={{ fontSize: _P(3.2), color: "#94a3b8", fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: _M(0.5) }}>DPI</div>
           <div style={{ fontSize: _P(6), color: "#0f2044", fontWeight: 800, fontFamily: "monospace" }}>{agent.dpi || "—"}</div>
         </div>
-        <div style={{ height: _M(0.25), background: "#f1f5f9", margin: `0 ${_M(2.5)}px`, flexShrink: 0 }} />
+        <div style={{ height: 1, background: "#f1f5f9", margin: `0 ${_M(2.5)}px`, flexShrink: 0 }} />
         <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: `${_M(1.5)}px ${_M(2.5)}px ${_M(1)}px`, gap: _M(1.2) }}>
-          <div style={{ background: "#0f2044", borderRadius: _M(1.8), padding: _M(2), display: "inline-flex", boxShadow: `0 ${_M(0.8)}px ${_M(3)}px rgba(15,32,68,.25)` }}>
+          {/* QR con caja navy — tamaño proporcional a VarianteA */}
+          <div style={{ background: "#0f2044", borderRadius: 7, padding: _M(1), display: "inline-flex", boxShadow: `0 3px 12px rgba(15,32,68,.25)` }}>
             {agent.qr_token
-              ? <QRCodeSVG value={`${window.location.origin}/agente?token=${agent.qr_token}`} size={_M(20)} fgColor="#ffffff" bgColor="#0f2044" />
-              : <div style={{ width: _M(20), height: _M(20), display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ color: "rgba(255,255,255,.3)", fontSize: _P(4) }}>SIN QR</span></div>
+              ? <QRCodeSVG value={`${window.location.origin}/agente?token=${agent.qr_token}`} size={qrSize} fgColor="#ffffff" bgColor="#0f2044" />
+              : <div style={{ width: qrSize, height: qrSize, display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ color: "rgba(255,255,255,.3)", fontSize: _P(4) }}>SIN QR</span></div>
             }
           </div>
-          <span style={{ fontSize: _P(3), color: "#94a3b8", textAlign: "center" }}>Escanea para verificar identidad</span>
+          <span style={{ fontSize: _P(3), color: "#94a3b8", textAlign: "center", letterSpacing: 0.3 }}>Escanea para verificar identidad</span>
         </div>
         <div style={{ background: "#0f2044", padding: `${_M(1.3)}px ${_M(2.5)}px`, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
           <span style={{ fontSize: _P(3), color: "rgba(255,255,255,.3)" }}>{fecha}</span>
@@ -277,24 +287,39 @@ function CarnetFrentePreview({ agent, fotoSrc }: { agent: AgenteCarnet; fotoSrc?
 function CarnetReversoPreview() {
   const W = _M(53.98), H = _M(85.6);
   return (
-    <div style={{ width: W, height: H, display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: "Arial,Helvetica,sans-serif", background: "#fff", boxSizing: "border-box", borderRadius: 3, boxShadow: "0 8px 32px rgba(0,0,0,.5)" }}>
+    <div style={{ width: W, height: H, display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: "Arial,Helvetica,sans-serif", background: "#fff", boxSizing: "border-box", borderRadius: 6, boxShadow: "0 8px 32px rgba(0,0,0,.5)" }}>
+      {/* Banda navy superior */}
       <div style={{ background: "linear-gradient(180deg,#0a1a3d,#0f2044)", padding: `${_M(2)}px ${_M(4)}px ${_M(1.5)}px`, display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
-        <div style={{ fontSize: _P(8), fontWeight: 900, color: "#fff", letterSpacing: "0.08em" }}>ISP, S.A.</div>
-        <div style={{ fontSize: _P(3.5), color: "rgba(255,255,255,.45)", letterSpacing: "0.15em", marginTop: _M(0.5), textAlign: "center" }}>INVESTIGACIONES Y SEGURIDAD PROFESIONAL, S.A.</div>
+        <div style={{ fontSize: _P(8), fontWeight: 900, color: "#fff", letterSpacing: 0.8 }}>ISP, S.A.</div>
+        <div style={{ fontSize: _P(3.5), color: "rgba(255,255,255,.45)", letterSpacing: 1.5, marginTop: _M(0.5), textAlign: "center" }}>INVESTIGACIONES Y SEGURIDAD PROFESIONAL, S.A.</div>
       </div>
-      <div style={{ height: _M(0.5), background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)", flexShrink: 0 }} />
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: `${_M(2)}px ${_M(3)}px ${_M(1)}px`, flexShrink: 0 }}>
-        <img src="/images/logo-isp.png" style={{ maxHeight: _M(22), maxWidth: "88%", objectFit: "contain", display: "block" }} />
-      </div>
+      <div style={{ height: 2, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)", flexShrink: 0 }} />
+      {/* Logo con scale(1.9) + multiply — idéntico a VarianteA */}
+      <img
+        src="/images/logo-isp.png"
+        style={{ display: "block", width: "auto", height: "auto", maxWidth: "88%", maxHeight: _M(22), margin: `${_M(2)}px auto ${_M(1)}px`, mixBlendMode: "multiply", transform: "scale(1.9)", transformOrigin: "center" }}
+      />
+      {/* Texto */}
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: `${_M(1)}px ${_M(4.5)}px ${_M(3)}px` }}>
         <div style={{ fontSize: _P(5.5), color: "#334155", textAlign: "center", lineHeight: 1.7 }}>
           El presente acredita como colaborador de <strong style={{ fontWeight: 800, color: "#0f2044" }}>ISP S.A.</strong> Se solicita a las Autoridades <strong style={{ fontWeight: 800, color: "#0f2044" }}>Civiles y Militares</strong> su colaboración. Válido en el cumplimiento de sus funciones en el puesto asignado.
         </div>
       </div>
-      <div style={{ height: _M(0.25), background: "linear-gradient(90deg,transparent,#f5c842,transparent)", margin: `0 ${_M(5)}px`, flexShrink: 0 }} />
+      <div style={{ height: 1, background: "linear-gradient(90deg,transparent,#f5c842,transparent)", margin: `0 ${_M(5)}px`, flexShrink: 0 }} />
+      {/* Footer */}
       <div style={{ padding: `${_M(2.5)}px ${_M(4)}px ${_M(3.5)}px`, display: "flex", flexDirection: "column", alignItems: "center", gap: _M(0.8), flexShrink: 0 }}>
-        <div style={{ fontSize: _P(7), fontWeight: 900, color: "#0f2044", letterSpacing: "0.06em" }}>www.ispsa.net</div>
-        <div style={{ fontSize: _P(4), color: "#25D366", fontWeight: 700 }}>+502 2200-0000</div>
+        <div style={{ fontSize: _P(7), fontWeight: 900, color: "#0f2044", letterSpacing: 0.5, display: "flex", alignItems: "center", gap: 4 }}>
+          <svg width={_M(2.5)} height={_M(2.5)} viewBox="0 0 24 24" fill="none" stroke="#0f2044" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+          </svg>
+          www.ispsa.net
+        </div>
+        <div style={{ fontSize: _P(4), color: "#25D366", fontWeight: 700, letterSpacing: 0.3, display: "flex", alignItems: "center", gap: 3 }}>
+          <svg width={_M(2.2)} height={_M(2.2)} viewBox="0 0 24 24" fill="#25D366">
+            <path d="M12 0C5.373 0 0 5.373 0 12c0 2.117.553 4.103 1.518 5.829L0 24l6.335-1.518A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 2c5.514 0 10 4.486 10 10s-4.486 10-10 10a9.945 9.945 0 01-4.906-1.287l-.352-.206-3.652.875.891-3.561-.22-.366A9.945 9.945 0 012 12C2 6.486 6.486 2 12 2zm-1.172 4.5c-.207 0-.435.007-.65.017-.214.01-.476.063-.724.313-.249.249-.948.926-.948 2.259s.97 2.619 1.106 2.8c.136.18 1.884 3.012 4.637 4.104.648.26 1.154.415 1.548.532.65.194 1.242.167 1.71.101.522-.073 1.608-.658 1.835-1.293.228-.635.228-1.18.16-1.293-.069-.114-.249-.181-.522-.318s-1.608-.793-1.858-.884c-.249-.09-.43-.136-.612.137-.181.272-.703.883-.862 1.065-.158.181-.318.204-.59.068-.272-.136-1.148-.423-2.187-1.35-.808-.721-1.354-1.61-1.513-1.882-.158-.272-.017-.419.119-.555.122-.122.272-.318.408-.477.136-.158.181-.272.272-.453.09-.182.045-.34-.023-.477-.068-.137-.612-1.474-.838-2.018-.22-.53-.445-.458-.612-.466z"/>
+          </svg>
+          +502 0000-0000
+        </div>
       </div>
       <div style={{ background: "#0f2044", height: _M(2), flexShrink: 0 }} />
     </div>
