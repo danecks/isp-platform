@@ -235,8 +235,8 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
         fecha_nacimiento, sexo, estado_civil, nivel_educativo,
         municipio, departamento,
         foto_url, estado_laboral, tipo_personal, fecha_ingreso,
-        notas, created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'activo','guardia',CURRENT_DATE,$12,NOW(),NOW())
+        sueldo_base, notas, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'activo','guardia',CURRENT_DATE,$12,$13,NOW(),NOW())
       RETURNING id
     `, [
       sol.nombre_completo,
@@ -250,6 +250,7 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
       sol.municipio || null,
       sol.departamento || null,
       sol.foto_url || null,
+      sol.pretension_salarial ? parseFloat(sol.pretension_salarial) : null,
       notasExtra || null,
     ]);
 
