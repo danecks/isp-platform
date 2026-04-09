@@ -189,7 +189,7 @@ function createReversoElement(logoFullB64: string): HTMLDivElement {
   <div style="height:${_MM(0.5)}px;background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017);flex-shrink:0"></div>
   <!-- LOGO GRANDE — bajado + más grande -->
   <div style="display:flex;align-items:center;justify-content:center;padding:${_MM(5)}px ${_MM(3)}px ${_MM(1)}px;flex-shrink:0">
-    <img src="${logoFullB64}" style="max-height:${_MM(30)}px;max-width:92%;object-fit:contain;display:block" />
+    <img src="${logoFullB64}" style="max-height:${_MM(33)}px;max-width:92%;object-fit:contain;display:block" />
   </div>
   <!-- TEXTO -->
   <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:${_MM(1)}px ${_MM(4.5)}px ${_MM(3)}px">
@@ -297,7 +297,7 @@ function CarnetReversoPreview() {
       {/* Logo: scale 2.28 (1.9 × 1.2) + bajado + multiply */}
       <img
         src="/images/logo-isp.png"
-        style={{ display: "block", width: "auto", height: "auto", maxWidth: "88%", maxHeight: _M(22), margin: `${_M(6)}px auto ${_M(1)}px`, mixBlendMode: "multiply", transform: "scale(2.28)", transformOrigin: "center" }}
+        style={{ display: "block", width: "auto", height: "auto", maxWidth: "88%", maxHeight: _M(22), margin: `${_M(6)}px auto ${_M(1)}px`, mixBlendMode: "multiply", transform: "scale(2.51)", transformOrigin: "center" }}
       />
       {/* Texto */}
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: `${_M(1)}px ${_M(4.5)}px ${_M(3)}px` }}>
