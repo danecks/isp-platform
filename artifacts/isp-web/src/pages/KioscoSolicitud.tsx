@@ -275,13 +275,10 @@ export default function KioscoSolicitud({ skipPin = false }: { skipPin?: boolean
     <div className="min-h-screen bg-[#0a1628] flex flex-col" style={{ fontFamily: "system-ui, sans-serif" }}>
       {/* Header */}
       <div className="bg-[#0d2147] border-b border-[#1e3a6e] px-6 py-4 flex items-center gap-4">
-        <img src="/images/logo-icon.png" alt="ISP" className="h-10 w-10 object-contain" />
-        <div>
-          <div className="text-white font-bold text-lg leading-tight">ISP — Solicitud de Empleo</div>
-          <div className="text-blue-300 text-xs">Investigaciones y Seguridad Profesional S.A.</div>
-        </div>
-        <div className="ml-auto">
-          <ShieldCheck className="text-blue-400" size={28} />
+        <img src={`${import.meta.env.BASE_URL}images/logo-isp.png`} alt="ISP" className="h-14 object-contain" />
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-blue-200 text-sm font-medium">Solicitud de Empleo</span>
+          <ShieldCheck className="text-blue-400" size={24} />
         </div>
       </div>
 
