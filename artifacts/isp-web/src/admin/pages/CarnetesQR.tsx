@@ -121,46 +121,55 @@ function createFrenteElement(
   const initials = getInitials(agent.nombre_completo);
   const cargo    = getCargoLabel(agent.tipo_personal, agent.cargo);
   const num      = agent.empl_numero ? `#${String(agent.empl_numero).padStart(4, "0")}` : "";
+  const qrSize   = _MM(20);
   const qrFixed  = qrSvgStr
-    ? qrSvgStr.replace(/<svg([^>]*)>/, `<svg$1 width="${_MM(18)}" height="${_MM(18)}" style="display:block">`)
+    ? qrSvgStr.replace(/<svg([^>]*)>/, `<svg$1 width="${qrSize}" height="${qrSize}" style="display:block">`)
     : "";
 
+  // Foto circular con borde dorado
   const fotoHtml = fotoB64
-    ? `<img src="${fotoB64}" style="width:${_MM(13)}px;height:${_MM(13)}px;border-radius:50%;object-fit:cover;border:${_MM(0.5)}px solid #f5c842;margin-bottom:${_MM(1.5)}px;display:block" crossorigin="anonymous" />`
-    : `<div style="width:${_MM(13)}px;height:${_MM(13)}px;border-radius:50%;background:linear-gradient(135deg,#0f2044,#1e4a9a);border:1px solid #f5c842;display:flex;align-items:center;justify-content:center;margin-bottom:${_MM(1.5)}px"><span style="font-size:${_PT(8)}px;font-weight:900;color:#f5c842">${initials}</span></div>`;
+    ? `<img src="${fotoB64}" style="width:${_MM(16)}px;height:${_MM(16)}px;border-radius:50%;object-fit:cover;border:${_MM(0.7)}px solid #f5c842;box-shadow:0 ${_MM(1)}px ${_MM(3)}px rgba(15,32,68,.35);margin-bottom:${_MM(2)}px;display:block" crossorigin="anonymous" />`
+    : `<div style="width:${_MM(16)}px;height:${_MM(16)}px;border-radius:50%;background:linear-gradient(135deg,#0f2044,#1e4a9a);border:${_MM(0.7)}px solid #f5c842;box-shadow:0 ${_MM(1)}px ${_MM(3)}px rgba(15,32,68,.35);display:flex;align-items:center;justify-content:center;margin-bottom:${_MM(2)}px"><span style="font-size:${_PT(10)}px;font-weight:900;color:#f5c842">${initials}</span></div>`;
+
+  // Medallón del logo en la stripe (círculo blanco con logo)
+  const logoMedaillon = `<div style="width:${_MM(7.5)}px;height:${_MM(7.5)}px;border-radius:50%;background:#fff;box-shadow:0 ${_MM(0.5)}px ${_MM(1.5)}px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;margin-top:${_MM(3)}px;flex-shrink:0;overflow:hidden"><img src="${logoIconB64}" style="width:${_MM(6)}px;height:${_MM(6)}px;object-fit:contain" /></div>`;
 
   const el = document.createElement("div");
   el.style.cssText = `width:${W}px;height:${H}px;display:flex;flex-direction:row;overflow:hidden;font-family:Arial,Helvetica,sans-serif;background:#fff;box-sizing:border-box`;
   el.innerHTML = `
-  <div style="width:${SW}px;height:${H}px;background:linear-gradient(180deg,#0f2044 0%,#132a5a 100%);display:flex;flex-direction:column;align-items:center;flex-shrink:0;position:relative;box-sizing:border-box">
-    <div style="position:absolute;top:0;left:0;right:0;height:${_MM(1)}px;background:#f5c842"></div>
-    <div style="position:absolute;bottom:0;left:0;right:0;height:${_MM(1)}px;background:#f5c842"></div>
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:${_MM(3)}px 0;width:100%;height:100%;box-sizing:border-box">
-      <img src="${logoIconB64}" style="width:${_MM(7)}px;object-fit:contain;filter:brightness(0) invert(1)" />
-      <span style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:${_PT(4)}px;color:rgba(255,255,255,.4);font-family:monospace;font-weight:700">${num}</span>
-    </div>
+  <!-- STRIPE LATERAL NAVY -->
+  <div style="width:${SW}px;height:${H}px;background:linear-gradient(180deg,#0a1a3d 0%,#0f2044 60%,#0a1a3d 100%);display:flex;flex-direction:column;align-items:center;flex-shrink:0;position:relative;box-sizing:border-box">
+    <div style="position:absolute;top:0;left:0;right:0;height:${_MM(0.8)}px;background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017)"></div>
+    <div style="position:absolute;bottom:0;left:0;right:0;height:${_MM(0.8)}px;background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017)"></div>
+    ${logoMedaillon}
+    <span style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:${_PT(3.8)}px;color:#f5c842;font-weight:800;margin-top:${_MM(2.5)}px;flex:1;display:flex;align-items:center;justify-content:center;letter-spacing:1.2px;text-transform:uppercase">INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A</span>
+    <span style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:${_PT(3.5)}px;color:rgba(255,255,255,.35);font-family:monospace;font-weight:700;margin-bottom:${_MM(3.5)}px;letter-spacing:1px">${num}</span>
   </div>
+  <!-- CUERPO BLANCO -->
   <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;background:#fff">
-    <div style="padding:${_MM(2.5)}px ${_MM(2)}px ${_MM(2)}px;display:flex;flex-direction:column;align-items:center;flex-shrink:0">
+    <!-- SECCIÓN FOTO + NOMBRE: gradiente sutil -->
+    <div style="padding:${_MM(3.5)}px ${_MM(2.5)}px ${_MM(2.5)}px;display:flex;flex-direction:column;align-items:center;flex-shrink:0;background:linear-gradient(180deg,#f8faff 0%,#fff 100%)">
       ${fotoHtml}
-      <div style="font-size:${_PT(6)}px;font-weight:900;color:#0f2044;text-align:center;line-height:1.2;text-transform:uppercase;margin-bottom:${_MM(0.8)}px">${agent.nombre_completo}</div>
-      <div style="font-size:${_PT(4)}px;font-weight:700;color:#b8860b;text-align:center;letter-spacing:.1em;text-transform:uppercase">${cargo}</div>
+      <div style="font-size:${_PT(6)}px;font-weight:900;color:#0f2044;text-align:center;line-height:1.2;text-transform:uppercase;letter-spacing:.3px;margin-bottom:${_MM(0.8)}px">${agent.nombre_completo}</div>
+      <div style="font-size:${_PT(3.8)}px;font-weight:700;color:#b8860b;text-align:center;letter-spacing:.12em;text-transform:uppercase">${cargo}</div>
     </div>
-    <div style="height:1px;background:linear-gradient(90deg,#d4a017,#f5c842,#e8b820);flex-shrink:0"></div>
-    <div style="padding:${_MM(1.5)}px ${_MM(2)}px;flex:1">
-      ${agent.dpi ? `
-      <div style="font-size:${_PT(3.5)}px;color:#94a3b8;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:${_MM(0.5)}px">DPI</div>
-      <div style="font-size:${_PT(5.5)}px;color:#0f2044;font-weight:800;font-family:monospace;margin-bottom:${_MM(1.5)}px">${agent.dpi}</div>
-      ` : ""}
-      <div style="height:1px;background:#f1f5f9;margin-bottom:${_MM(1.5)}px"></div>
-      <div style="display:flex;flex-direction:column;align-items:center;gap:${_MM(1)}px">
-        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:${_MM(1)}px;padding:${_MM(0.5)}px;display:inline-block">${qrFixed}</div>
-        <span style="font-size:${_PT(3)}px;color:#94a3b8;text-align:center">Escanea para verificar identidad</span>
-      </div>
+    <!-- DIVISOR DORADO -->
+    <div style="height:${_MM(0.4)}px;background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017);flex-shrink:0"></div>
+    <!-- DPI -->
+    <div style="padding:${_MM(2)}px ${_MM(2.5)}px ${_MM(1)}px;flex-shrink:0;text-align:center">
+      <div style="font-size:${_PT(3.2)}px;color:#94a3b8;font-weight:700;letter-spacing:.15em;text-transform:uppercase;margin-bottom:${_MM(0.5)}px">DPI</div>
+      <div style="font-size:${_PT(6)}px;color:#0f2044;font-weight:800;font-family:monospace;letter-spacing:.05em">${agent.dpi || "—"}</div>
     </div>
-    <div style="background:#0f2044;padding:${_MM(1)}px ${_MM(2)}px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
-      <span style="font-size:${_PT(3)}px;color:rgba(255,255,255,.35)">${fecha}</span>
-      <span style="font-size:${_PT(3)}px;font-weight:800;color:#f5c842;letter-spacing:.08em">CARNET DE IDENTIFICACIÓN</span>
+    <div style="height:${_MM(0.25)}px;background:#f1f5f9;margin:0 ${_MM(2.5)}px;flex-shrink:0"></div>
+    <!-- QR CENTRADO -->
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:${_MM(1.5)}px ${_MM(2.5)}px ${_MM(1)}px;gap:${_MM(1.2)}px">
+      <div style="background:#0f2044;border-radius:${_MM(1.8)}px;padding:${_MM(2)}px;display:inline-flex;box-shadow:0 ${_MM(0.8)}px ${_MM(3)}px rgba(15,32,68,.25)">${qrFixed}</div>
+      <span style="font-size:${_PT(3)}px;color:#94a3b8;text-align:center;letter-spacing:.03em">Escanea para verificar identidad</span>
+    </div>
+    <!-- FOOTER NAVY -->
+    <div style="background:#0f2044;padding:${_MM(1.3)}px ${_MM(2.5)}px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <span style="font-size:${_PT(3)}px;color:rgba(255,255,255,.3)">${fecha}</span>
+      <span style="font-size:${_PT(3.2)}px;font-weight:800;color:#f5c842;letter-spacing:.08em;text-transform:uppercase">Carnet de Identificación</span>
     </div>
   </div>`;
   return el;
@@ -171,23 +180,31 @@ function createReversoElement(logoFullB64: string): HTMLDivElement {
   const el = document.createElement("div");
   el.style.cssText = `width:${W}px;height:${H}px;display:flex;flex-direction:column;overflow:hidden;font-family:Arial,Helvetica,sans-serif;background:#fff;box-sizing:border-box`;
   el.innerHTML = `
-  <div style="padding:${_MM(4)}px ${_MM(3)}px ${_MM(2)}px;display:flex;flex-direction:column;align-items:center;flex-shrink:0">
-    <img src="${logoFullB64}" style="height:${_MM(18)}px;object-fit:contain" />
-    <div style="font-size:${_PT(3.8)}px;color:#0f2044;letter-spacing:.1em;font-weight:700;text-align:center;margin-top:${_MM(1.5)}px">INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A.</div>
+  <!-- BANDA NAVY SUPERIOR -->
+  <div style="background:linear-gradient(180deg,#0a1a3d,#0f2044);padding:${_MM(2)}px ${_MM(4)}px ${_MM(1.5)}px;display:flex;flex-direction:column;align-items:center;flex-shrink:0">
+    <div style="font-size:${_PT(8)}px;font-weight:900;color:#fff;letter-spacing:.08em">ISP, S.A.</div>
+    <div style="font-size:${_PT(3.5)}px;color:rgba(255,255,255,.45);letter-spacing:.15em;margin-top:${_MM(0.5)}px;text-align:center">INVESTIGACIONES Y SEGURIDAD PROFESIONAL, S.A.</div>
   </div>
-  <div style="height:1px;background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017);flex-shrink:0"></div>
-  <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:${_MM(2.5)}px ${_MM(4)}px">
-    <div style="font-size:${_PT(5.5)}px;color:#1e3a5f;text-align:center;line-height:1.65">
-      El presente acredita como colaborador de <strong style="font-weight:800;color:#0f2044">ISP S.A.</strong>
-      Se solicita a las Autoridades <strong style="font-weight:800;color:#0f2044">Civiles y Militares</strong>
-      la colaboración en caso de ser requerida. Válido en el cumplimiento de sus funciones en el puesto asignado.
+  <!-- DIVISOR DORADO -->
+  <div style="height:${_MM(0.5)}px;background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017);flex-shrink:0"></div>
+  <!-- LOGO GRANDE -->
+  <div style="display:flex;align-items:center;justify-content:center;padding:${_MM(2)}px ${_MM(3)}px ${_MM(1)}px;flex-shrink:0">
+    <img src="${logoFullB64}" style="max-height:${_MM(22)}px;max-width:88%;object-fit:contain;display:block" />
+  </div>
+  <!-- TEXTO -->
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:${_MM(1)}px ${_MM(4.5)}px ${_MM(3)}px">
+    <div style="font-size:${_PT(5.5)}px;color:#334155;text-align:center;line-height:1.7">
+      El presente acredita como colaborador de <strong style="font-weight:800;color:#0f2044">ISP S.A.</strong> Se solicita a las Autoridades <strong style="font-weight:800;color:#0f2044">Civiles y Militares</strong> su colaboración. Válido en el cumplimiento de sus funciones en el puesto asignado.
     </div>
   </div>
-  <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(245,200,66,.5),#f5c842,rgba(245,200,66,.5),transparent);margin:0 ${_MM(4)}px;flex-shrink:0"></div>
-  <div style="padding:${_MM(1.5)}px ${_MM(3)}px ${_MM(2)}px;display:flex;flex-direction:column;align-items:center;flex-shrink:0">
-    <div style="font-size:${_PT(6.5)}px;font-weight:900;color:#0f2044;letter-spacing:.06em">www.ispsa.net</div>
-    <div style="font-size:${_PT(3.8)}px;color:#94a3b8;letter-spacing:.04em;margin-top:${_MM(0.5)}px">contacto@isp-guatemala.com</div>
+  <!-- DIVISOR TENUE DORADO -->
+  <div style="height:${_MM(0.25)}px;background:linear-gradient(90deg,transparent,#f5c842,transparent);margin:0 ${_MM(5)}px;flex-shrink:0"></div>
+  <!-- FOOTER CONTACTO -->
+  <div style="padding:${_MM(2.5)}px ${_MM(4)}px ${_MM(3.5)}px;display:flex;flex-direction:column;align-items:center;gap:${_MM(0.8)}px;flex-shrink:0">
+    <div style="font-size:${_PT(7)}px;font-weight:900;color:#0f2044;letter-spacing:.06em">www.ispsa.net</div>
+    <div style="font-size:${_PT(4)}px;color:#25D366;font-weight:700;letter-spacing:.04em">+502 2200-0000</div>
   </div>
+  <!-- BARRA INFERIOR NAVY -->
   <div style="background:#0f2044;height:${_MM(2)}px;flex-shrink:0"></div>`;
   return el;
 }
@@ -381,7 +398,7 @@ export default function CarnetesQR() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <AdminLayout>
+    <AdminLayout title="Carnets QR">
       <div className="p-6 max-w-5xl mx-auto">
 
         {/* Header */}
@@ -575,13 +592,15 @@ export default function CarnetesQR() {
           onChange={handleFotoUpload}
         />
 
-        {/* Contenedor oculto de QRs para captura */}
+        {/* Contenedor oculto de QRs para captura — blanco sobre navy */}
         <div ref={qrContainerRef} style={{ position: "absolute", top: -9999, left: -9999, pointerEvents: "none" }}>
           {agentes.filter(a => a.qr_token).map(a => (
             <div key={a.employee_id} data-emp-id={a.employee_id}>
               <QRCodeSVG
                 value={`${window.location.origin}/agente?token=${a.qr_token}`}
-                size={_MM(18)}
+                size={_MM(20)}
+                fgColor="#ffffff"
+                bgColor="#0f2044"
               />
             </div>
           ))}
