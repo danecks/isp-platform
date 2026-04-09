@@ -2,6 +2,9 @@
 
 # compiled output
 dist
+# Excepción: el agente de impresión compilado debe ir en git para el deploy
+!tools/print-agent/dist/
+!tools/print-agent/dist/ISP-PrintAgent.exe
 tmp
 out-tsc
 *.tsbuildinfo

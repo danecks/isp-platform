@@ -1,3 +1,8 @@
 node_modules/
-dist/
 *.log
+
+# Ignorar archivos intermedios de compilación pero NO el exe final
+dist/*.js
+dist/*.map
+dist/*.json
+dist/ISP-PrintAgent-mac

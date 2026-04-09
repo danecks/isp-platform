@@ -35,10 +35,14 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 // ── Descarga del agente de impresión para Windows (sin autenticación) ──────
 // Registrada ANTES del middleware de permisos para que no sea interceptada
 app.get("/api/download/print-agent", (_req, res) => {
-  // El servidor compilado queda en artifacts/api-server/dist/
-  // Subir 3 niveles llega al workspace root: workspace/tools/print-agent/dist/
-  const exePath = path.resolve(__dirname, "../../../tools/print-agent/dist/ISP-PrintAgent.exe");
+  // En dev pnpm corre desde artifacts/api-server/ → __dirname = artifacts/api-server/dist/
+  // En prod node corre desde workspace root → process.cwd() = workspace root
+  // Probamos ambas rutas para cubrir los dos entornos.
+  const byDir = path.resolve(__dirname, "../../../tools/print-agent/dist/ISP-PrintAgent.exe");
+  const byCwd = path.resolve(process.cwd(), "tools/print-agent/dist/ISP-PrintAgent.exe");
+  const exePath = fs.existsSync(byDir) ? byDir : byCwd;
   if (!fs.existsSync(exePath)) {
+    console.error("[download] exe no encontrado. byDir:", byDir, "byCwd:", byCwd);
     res.status(404).json({ error: "Archivo no disponible" });
     return;
   }
