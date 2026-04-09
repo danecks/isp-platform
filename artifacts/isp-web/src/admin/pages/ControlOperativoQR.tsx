@@ -1,16 +1,11 @@
 import { useState } from "react";
 import { AdminLayout } from "../layout/AdminLayout";
-import { QrCode, MapPin, CreditCard, Activity, BarChart2 } from "lucide-react";
+import { QrCode, MapPin, Activity, BarChart2 } from "lucide-react";
 import FichajeQR from "./FichajeQR";
 import RondasQR from "./RondasQR";
 import EstadisticasRondas from "./EstadisticasRondas";
-import CarnetesTab from "./CarnetesTab";
 
-// ── (CarnetPreview + TabCarnets consolidados en CarnetesTab compartido) ────────
-
-// ── Página principal ──────────────────────────────────────────────────────────
-
-type Tab = "fichaje" | "rondas" | "estadisticas" | "carnets";
+type Tab = "fichaje" | "rondas" | "estadisticas";
 
 export default function ControlOperativoQR() {
   const [tab, setTab] = useState<Tab>("fichaje");
@@ -19,7 +14,6 @@ export default function ControlOperativoQR() {
     { key: "fichaje",      label: "Fichaje & Control",    icon: <QrCode className="w-4 h-4" /> },
     { key: "rondas",       label: "Rondas de Patrullaje", icon: <MapPin className="w-4 h-4" /> },
     { key: "estadisticas", label: "Estadísticas",         icon: <BarChart2 className="w-4 h-4" /> },
-    { key: "carnets",      label: "Carnets",              icon: <CreditCard className="w-4 h-4" /> },
   ];
 
   return (
@@ -32,7 +26,7 @@ export default function ControlOperativoQR() {
           </div>
           <div>
             <h1 className="text-white font-bold text-xl">Control Operativo QR</h1>
-            <p className="text-white/40 text-sm">Fichaje de agentes, rondas de patrullaje y carnets</p>
+            <p className="text-white/40 text-sm">Fichaje de agentes, rondas de patrullaje y estadísticas</p>
           </div>
         </div>
 
@@ -54,7 +48,6 @@ export default function ControlOperativoQR() {
         {tab === "fichaje"      && <FichajeQR />}
         {tab === "rondas"       && <RondasQR />}
         {tab === "estadisticas" && <EstadisticasRondas />}
-        {tab === "carnets"      && <CarnetesTab />}
       </div>
     </AdminLayout>
   );

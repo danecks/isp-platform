@@ -38,6 +38,7 @@ import {
   ScanLine,
   BadgeCheck,
   Palmtree,
+  CreditCard,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -295,6 +296,13 @@ export const NAV_SECTIONS: NavSection[] = [
         label: "Planilla IGSS",
         icon: Landmark,
         clave: "igss_planilla",
+        roles: ["admin", "rrhh"],
+      },
+      {
+        path: "/admin/rrhh/carnets",
+        label: "Carnets QR",
+        icon: CreditCard,
+        clave: "carnets_qr",
         roles: ["admin", "rrhh"],
       },
     ],

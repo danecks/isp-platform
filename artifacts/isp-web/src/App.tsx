@@ -64,6 +64,7 @@ import AdminBodega from "@/admin/pages/Bodega";
 import AdminImportacion from "@/admin/pages/Importacion";
 import AdminControlOperativoQR from "@/admin/pages/ControlOperativoQR";
 import AdminVacaciones from "@/admin/pages/AdminVacaciones";
+import CarnetesQR from "@/admin/pages/CarnetesQR";
 import RondaGuardia from "@/pages/RondaGuardia";
 import AgenteEscaneo from "@/pages/AgenteEscaneo";
 import SupervisorActivar from "@/pages/SupervisorActivar";
@@ -244,6 +245,9 @@ function Router() {
       </Route>
       <Route path="/admin/rrhh/vacaciones">
         {() => <AuthGuard requiredRoles={["admin", "rrhh", "operaciones"]}><AdminVacaciones /></AuthGuard>}
+      </Route>
+      <Route path="/admin/rrhh/carnets">
+        {() => <AuthGuard requiredRoles={["admin", "rrhh"]}><CarnetesQR /></AuthGuard>}
       </Route>
       <Route path="/admin/bodega">
         {() => <AuthGuard requiredRoles={["admin", "operaciones"]}><AdminBodega /></AuthGuard>}
