@@ -10,14 +10,14 @@
  * Motor:   html2canvas (escala 3×, ~305 DPI) → JPEG 95%
  */
 
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { AdminLayout } from "../layout/AdminLayout";
 import {
   Download, Search, CheckCircle, Users, CreditCard, BadgeCheck,
-  MapPin, X,
+  MapPin, X, Camera, Loader2,
 } from "lucide-react";
 
 // ── API ───────────────────────────────────────────────────────────────────────
@@ -46,6 +46,27 @@ interface AgenteCarnet {
   carnet_impreso_por: string | null;
   puesto_nombre: string | null;
   cliente_nombre: string | null;
+  foto_url: string | null;
+}
+
+// ── Compresión de imagen client-side ─────────────────────────────────────────
+async function comprimirFoto(file: File, maxSize = 300, quality = 0.82): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement("canvas");
+      const ratio = Math.min(maxSize / img.width, maxSize / img.height, 1);
+      canvas.width  = Math.round(img.width  * ratio);
+      canvas.height = Math.round(img.height * ratio);
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("Error al comprimir")), "image/jpeg", quality);
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -94,6 +115,7 @@ function createFrenteElement(
   qrSvgStr: string,
   logoIconB64: string,
   fecha: string,
+  fotoB64: string | null = null,
 ): HTMLDivElement {
   const W = _MM(53.98), H = _MM(85.6), SW = _MM(10.5);
   const initials = getInitials(agent.nombre_completo);
@@ -102,6 +124,10 @@ function createFrenteElement(
   const qrFixed  = qrSvgStr
     ? qrSvgStr.replace(/<svg([^>]*)>/, `<svg$1 width="${_MM(18)}" height="${_MM(18)}" style="display:block">`)
     : "";
+
+  const fotoHtml = fotoB64
+    ? `<img src="${fotoB64}" style="width:${_MM(13)}px;height:${_MM(13)}px;border-radius:50%;object-fit:cover;border:${_MM(0.5)}px solid #f5c842;margin-bottom:${_MM(1.5)}px;display:block" crossorigin="anonymous" />`
+    : `<div style="width:${_MM(13)}px;height:${_MM(13)}px;border-radius:50%;background:linear-gradient(135deg,#0f2044,#1e4a9a);border:1px solid #f5c842;display:flex;align-items:center;justify-content:center;margin-bottom:${_MM(1.5)}px"><span style="font-size:${_PT(8)}px;font-weight:900;color:#f5c842">${initials}</span></div>`;
 
   const el = document.createElement("div");
   el.style.cssText = `width:${W}px;height:${H}px;display:flex;flex-direction:row;overflow:hidden;font-family:Arial,Helvetica,sans-serif;background:#fff;box-sizing:border-box`;
@@ -116,9 +142,7 @@ function createFrenteElement(
   </div>
   <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;background:#fff">
     <div style="padding:${_MM(2.5)}px ${_MM(2)}px ${_MM(2)}px;display:flex;flex-direction:column;align-items:center;flex-shrink:0">
-      <div style="width:${_MM(13)}px;height:${_MM(13)}px;border-radius:50%;background:linear-gradient(135deg,#0f2044,#1e4a9a);border:1px solid #f5c842;display:flex;align-items:center;justify-content:center;margin-bottom:${_MM(1.5)}px">
-        <span style="font-size:${_PT(8)}px;font-weight:900;color:#f5c842">${initials}</span>
-      </div>
+      ${fotoHtml}
       <div style="font-size:${_PT(6)}px;font-weight:900;color:#0f2044;text-align:center;line-height:1.2;text-transform:uppercase;margin-bottom:${_MM(0.8)}px">${agent.nombre_completo}</div>
       <div style="font-size:${_PT(4)}px;font-weight:700;color:#b8860b;text-align:center;letter-spacing:.1em;text-transform:uppercase">${cargo}</div>
     </div>
@@ -174,9 +198,48 @@ export default function CarnetesQR() {
   const [seleccionados, setSeleccionados] = useState<Set<number>>(new Set());
   const [generando, setGenerando]         = useState(false);
   const [progreso, setProgreso]           = useState(0);
+  const [uploadingId, setUploadingId]     = useState<number | null>(null);
   const qrContainerRef                    = useRef<HTMLDivElement>(null);
+  const fileInputRef                      = useRef<HTMLInputElement>(null);
+  const uploadTargetRef                   = useRef<number | null>(null);
   const { currentUser }                   = useAuth();
   const qc                                = useQueryClient();
+
+  // ── Subida de foto ────────────────────────────────────────────────────────
+  const handleFotoUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const empId = uploadTargetRef.current;
+    if (!file || !empId) return;
+    e.target.value = "";
+    setUploadingId(empId);
+    try {
+      // 1. Comprimir
+      const blob = await comprimirFoto(file);
+      const comprimida = new File([blob], "foto.jpg", { type: "image/jpeg" });
+      // 2. Solicitar URL presignada
+      const urlRes = await apiFetch("/storage/uploads/request-url", {
+        method: "POST",
+        body: JSON.stringify({ name: comprimida.name, size: comprimida.size, contentType: comprimida.type }),
+      });
+      if (!urlRes.ok) throw new Error("Error obteniendo URL de carga");
+      const { uploadURL, objectPath } = await urlRes.json();
+      // 3. Subir directamente a GCS
+      await fetch(uploadURL, { method: "PUT", body: comprimida, headers: { "Content-Type": "image/jpeg" } });
+      // 4. Guardar objectPath en el empleado
+      const patchRes = await apiFetch(`/employees/${empId}/foto`, {
+        method: "PATCH",
+        body: JSON.stringify({ foto_url: objectPath }),
+      });
+      if (!patchRes.ok) throw new Error("Error guardando foto");
+      qc.invalidateQueries({ queryKey: ["agentes-carnets"] });
+    } catch (err) {
+      console.error("Error subiendo foto:", err);
+      alert("Error al subir la foto. Intenta de nuevo.");
+    } finally {
+      setUploadingId(null);
+      uploadTargetRef.current = null;
+    }
+  }, [qc]);
 
   const { data: agentes = [], isLoading } = useQuery<AgenteCarnet[]>({
     queryKey: ["agentes-carnets"],
@@ -239,6 +302,18 @@ export default function CarnetesQR() {
       if (svg) qrMap[id] = new XMLSerializer().serializeToString(svg);
     });
 
+    // Cargar fotos de agentes (base64) en paralelo
+    const fotoMap: Record<number, string | null> = {};
+    await Promise.all(lista.map(async a => {
+      if (a.foto_url) {
+        try {
+          fotoMap[a.employee_id] = await toBase64Url(`${API}/storage${a.foto_url}`);
+        } catch { fotoMap[a.employee_id] = null; }
+      } else {
+        fotoMap[a.employee_id] = null;
+      }
+    }));
+
     const [{ default: html2canvas }, { default: JSZip }] = await Promise.all([
       import("html2canvas"),
       import("jszip"),
@@ -256,7 +331,7 @@ export default function CarnetesQR() {
         const folder = zip.folder(`${String(i + 1).padStart(2, "0")}_${nombre}`)!;
 
         // Frente
-        const frenteEl = createFrenteElement(a, qrMap[a.employee_id] ?? "", logoIconB64, fecha);
+        const frenteEl = createFrenteElement(a, qrMap[a.employee_id] ?? "", logoIconB64, fecha, fotoMap[a.employee_id] ?? null);
         container.appendChild(frenteEl);
         const frenteCanvas = await html2canvas(frenteEl, {
           scale: 3, useCORS: true, logging: false, backgroundColor: "#ffffff",
@@ -440,8 +515,25 @@ export default function CarnetesQR() {
                       </svg>
                     )}
                   </div>
-                  <div className="w-9 h-9 rounded-full bg-[#0f2044] border border-[#f5c842]/20 flex items-center justify-center flex-shrink-0">
-                    <span className="text-[#f5c842] text-sm font-bold">{getInitials(a.nombre_completo)}</span>
+                  <div className="relative flex-shrink-0 group/foto">
+                    <div className="w-9 h-9 rounded-full bg-[#0f2044] border border-[#f5c842]/20 flex items-center justify-center overflow-hidden">
+                      {a.foto_url
+                        ? <img src={`${API}/storage${a.foto_url}`} alt="" className="w-full h-full object-cover" />
+                        : <span className="text-[#f5c842] text-sm font-bold">{getInitials(a.nombre_completo)}</span>
+                      }
+                    </div>
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); uploadTargetRef.current = a.employee_id; fileInputRef.current?.click(); }}
+                      disabled={uploadingId === a.employee_id}
+                      className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[#0f2044] border border-white/20 flex items-center justify-center opacity-0 group-hover/foto:opacity-100 transition-opacity hover:border-[#f5c842]/50"
+                      title="Subir foto"
+                    >
+                      {uploadingId === a.employee_id
+                        ? <Loader2 className="w-2.5 h-2.5 text-white/60 animate-spin" />
+                        : <Camera className="w-2.5 h-2.5 text-white/60" />
+                      }
+                    </button>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-white text-sm font-semibold truncate">{a.nombre_completo}</p>
@@ -473,6 +565,15 @@ export default function CarnetesQR() {
             })}
           </div>
         )}
+
+        {/* Input oculto para subir foto */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleFotoUpload}
+        />
 
         {/* Contenedor oculto de QRs para captura */}
         <div ref={qrContainerRef} style={{ position: "absolute", top: -9999, left: -9999, pointerEvents: "none" }}>

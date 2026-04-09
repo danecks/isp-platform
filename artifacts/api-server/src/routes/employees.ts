@@ -1086,4 +1086,24 @@ employeesRouter.post("/employees/:id/contratos", async (req, res) => {
   }
 });
 
+// ─── PATCH /api/employees/:id/foto ───────────────────────────────────────────
+// Actualiza la foto_url del empleado (ruta del objeto en GCS)
+employeesRouter.patch("/employees/:id/foto", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+  const { foto_url } = req.body ?? {};
+  if (!foto_url) return res.status(400).json({ error: "foto_url requerida" });
+  try {
+    const { rowCount } = await pool.query(
+      `UPDATE employees SET foto_url = $1, updated_at = NOW() WHERE id = $2`,
+      [foto_url, id]
+    );
+    if (!rowCount) return res.status(404).json({ error: "Empleado no encontrado" });
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "PATCH /employees/:id/foto error");
+    res.status(500).json({ error: "Error actualizando foto" });
+  }
+});
+
 export default employeesRouter;

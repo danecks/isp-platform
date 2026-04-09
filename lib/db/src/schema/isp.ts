@@ -88,6 +88,7 @@ export const employeesTable = pgTable("employees", {
   telefono: varchar("telefono", { length: 50 }),
   telefonoSecundario: varchar("telefono_secundario", { length: 50 }),
   correo: varchar("correo", { length: 255 }),
+  fotoUrl: text("foto_url"),                                  // URL del objeto en GCS (path relativo /objects/...)
   puesto: varchar("puesto", { length: 255 }),
   tipoServicio: varchar("tipo_servicio", { length: 100 }),
   area: varchar("area", { length: 100 }),
