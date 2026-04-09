@@ -115,6 +115,19 @@ function SecureFoto({ fotoUrl, className, style }: { fotoUrl: string; className?
   return <img src={src} alt="" className={className} style={style} />;
 }
 
+// CR-80 a 300 DPI: 5.4cm × 8.6cm → 638 × 1016 px (portrait)
+const CARNET_W_PX = 638;
+const CARNET_H_PX = 1016;
+
+function canvasToJpeg(src: HTMLCanvasElement): string {
+  const dst = document.createElement("canvas");
+  dst.width  = CARNET_W_PX;
+  dst.height = CARNET_H_PX;
+  const ctx = dst.getContext("2d")!;
+  ctx.drawImage(src, 0, 0, CARNET_W_PX, CARNET_H_PX);
+  return dst.toDataURL("image/jpeg", 0.95).split(",")[1];
+}
+
 function safeFolderName(nombre: string) {
   return nombre
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -493,7 +506,7 @@ export default function CarnetesQR() {
         const frenteCanvas = await html2canvas(frenteEl, {
           scale: 3, useCORS: true, logging: false, backgroundColor: "#ffffff",
         });
-        folder.file("01_frente.jpg", frenteCanvas.toDataURL("image/jpeg", 0.95).split(",")[1], { base64: true });
+        folder.file("01_frente.jpg", canvasToJpeg(frenteCanvas), { base64: true });
         container.removeChild(frenteEl);
 
         // Reverso
@@ -502,7 +515,7 @@ export default function CarnetesQR() {
         const reversoCanvas = await html2canvas(reversoEl, {
           scale: 3, useCORS: true, logging: false, backgroundColor: "#ffffff",
         });
-        folder.file("02_reverso.jpg", reversoCanvas.toDataURL("image/jpeg", 0.95).split(",")[1], { base64: true });
+        folder.file("02_reverso.jpg", canvasToJpeg(reversoCanvas), { base64: true });
         container.removeChild(reversoEl);
 
         setProgreso(Math.round(((i + 1) / lista.length) * 100));
