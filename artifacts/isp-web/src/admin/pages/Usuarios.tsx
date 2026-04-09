@@ -42,7 +42,7 @@ function useSystemRoles() {
       if (!r.ok) return [];
       return r.json();
     },
-    staleTime: 30_000,
+    staleTime: 0,
   });
 }
 
