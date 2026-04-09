@@ -33,7 +33,7 @@ export function VarianteA() {
           <div style={{ width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(145deg,#0f2044,#1e4080)", border: "2px solid #f5c842", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 8, boxShadow: "0 4px 12px rgba(15,32,68,0.3)" }}>
             <span style={{ fontSize: 18, fontWeight: 900, color: "#f5c842", lineHeight: 1 }}>CR</span>
           </div>
-          <div style={{ fontSize: 11, fontWeight: 900, color: "#0f2044", textAlign: "center", lineHeight: 1.2, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 3 }}>{sample.nombre}</div>
+          <div style={{ fontSize: 13, fontWeight: 900, color: "#0f2044", textAlign: "center", lineHeight: 1.2, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 3 }}>{sample.nombre}</div>
           <div style={{ fontSize: 6.5, fontWeight: 700, color: "#b8860b", textAlign: "center", letterSpacing: 1, textTransform: "uppercase" }}>{sample.cargo}</div>
         </div>
 
