@@ -70,7 +70,7 @@ export function VarianteA() {
       {/* Top navy band — solo texto */}
       <div style={{ background: "linear-gradient(180deg,#0a1a3d,#0f2044)", padding: "14px 16px 12px", display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
         <div style={{ fontSize: 9.5, fontWeight: 900, color: "#fff", letterSpacing: 0.8 }}>ISP, S.A.</div>
-        <div style={{ fontSize: 5.5, color: "rgba(255,255,255,0.45)", letterSpacing: 1.5, marginTop: 2 }}>INVESTIGACIONES Y SEGURIDAD PROFESIONAL</div>
+        <div style={{ fontSize: 5.5, color: "rgba(255,255,255,0.45)", letterSpacing: 1.5, marginTop: 2, textAlign: "center" }}>INVESTIGACIONES Y SEGURIDAD PROFESIONAL, S.A.</div>
       </div>
       <div style={{ height: 2, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)", flexShrink: 0 }} />
 
