@@ -19,7 +19,10 @@ const PORT    = 7821;
 const VERSION = "1.0.0";
 const app     = express();
 
-// ── Solo permitir conexiones desde el dominio ISP y localhost ──────────────
+// ── CORS + Private Network Access (PNA) ────────────────────────────────────
+// Chrome 94+ exige Access-Control-Allow-Private-Network: true cuando una
+// página HTTPS (ispsa.net) intenta conectar a localhost. Sin este header el
+// browser bloquea silenciosamente la petición aunque el agente esté corriendo.
 app.use(cors({
   origin: [
     "http://localhost",
@@ -30,8 +33,24 @@ app.use(cors({
     /\.replit\.app$/,
     /ispsa\.net$/,
   ],
-  methods: ["GET", "POST", "OPTIONS"],
+  methods:     ["GET", "POST", "OPTIONS"],
+  credentials: false,
 }));
+
+// Responde el preflight OPTIONS con el header PNA requerido por Chrome/Edge
+app.options("*", (req, res) => {
+  res.setHeader("Access-Control-Allow-Private-Network", "true");
+  res.setHeader("Access-Control-Allow-Origin",  req.headers.origin || "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.status(204).end();
+});
+
+// También en todas las respuestas normales
+app.use((_req, res, next) => {
+  res.setHeader("Access-Control-Allow-Private-Network", "true");
+  next();
+});
 
 app.use(express.json({ limit: "5mb" }));
 
