@@ -108,7 +108,7 @@ export function VarianteA() {
       {/* Footer */}
       <div style={{ padding: "10px 16px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, flexShrink: 0 }}>
         <div style={{ fontSize: 11, fontWeight: 900, color: "#0f2044", letterSpacing: 0.5 }}>www.ispsa.net</div>
-        <div style={{ fontSize: 6, color: "#94a3b8" }}>contacto@isp-guatemala.com</div>
+        <div style={{ fontSize: 6, color: "#25D366", fontWeight: 700, letterSpacing: 0.3 }}>WhatsApp: +502 0000-0000</div>
       </div>
       <div style={{ background: "#0f2044", height: 8, flexShrink: 0 }} />
     </div>
