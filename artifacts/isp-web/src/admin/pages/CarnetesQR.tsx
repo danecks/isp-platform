@@ -17,7 +17,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { AdminLayout } from "../layout/AdminLayout";
 import {
   Download, Search, CheckCircle, Users, CreditCard, BadgeCheck,
-  MapPin, X, Camera, Loader2,
+  MapPin, X, Camera, Loader2, Eye, RotateCcw,
 } from "lucide-react";
 
 // ── API ───────────────────────────────────────────────────────────────────────
@@ -209,6 +209,98 @@ function createReversoElement(logoFullB64: string): HTMLDivElement {
   return el;
 }
 
+// ── Preview JSX del carnet (para modal, no para impresión) ────────────────────
+// Usa la misma escala _MM/_PT pero multiplica por SC=1.8 para pantalla.
+
+const SC = 1.8;
+const _M = (mm: number) => Math.round(mm * 4 * SC);
+const _P = (pt: number) => Math.round((pt * 4 / 3.78) * SC);
+
+function CarnetFrentePreview({ agent, fotoSrc }: { agent: AgenteCarnet; fotoSrc?: string | null }) {
+  const cargo    = getCargoLabel(agent.tipo_personal, agent.cargo);
+  const num      = agent.empl_numero ? `#${String(agent.empl_numero).padStart(4, "0")}` : "";
+  const initials = getInitials(agent.nombre_completo);
+  const W = _M(53.98), H = _M(85.6), SW = _M(10.5);
+  const fecha = new Date().toLocaleDateString("es-GT", { month: "long", year: "numeric" });
+
+  const fotoEl = fotoSrc
+    ? <img src={fotoSrc} style={{ width: _M(16), height: _M(16), borderRadius: "50%", objectFit: "cover", border: `${_M(0.7)}px solid #f5c842`, boxShadow: `0 ${_M(1)}px ${_M(3)}px rgba(15,32,68,.35)`, marginBottom: _M(2), display: "block", flexShrink: 0 }} />
+    : <div style={{ width: _M(16), height: _M(16), borderRadius: "50%", background: "linear-gradient(135deg,#0f2044,#1e4a9a)", border: `${_M(0.7)}px solid #f5c842`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: _M(2), flexShrink: 0 }}><span style={{ fontSize: _P(10), fontWeight: 900, color: "#f5c842" }}>{initials}</span></div>;
+
+  return (
+    <div style={{ width: W, height: H, display: "flex", flexDirection: "row", overflow: "hidden", fontFamily: "Arial,Helvetica,sans-serif", background: "#fff", boxSizing: "border-box", borderRadius: 3, boxShadow: "0 8px 32px rgba(0,0,0,.5)" }}>
+      {/* STRIPE LATERAL */}
+      <div style={{ width: SW, height: H, background: "linear-gradient(180deg,#0a1a3d 0%,#0f2044 60%,#0a1a3d 100%)", display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, position: "relative", boxSizing: "border-box" }}>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: _M(0.8), background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)" }} />
+        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: _M(0.8), background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)" }} />
+        <div style={{ width: _M(7.5), height: _M(7.5), borderRadius: "50%", background: "#fff", boxShadow: `0 ${_M(0.5)}px ${_M(1.5)}px rgba(0,0,0,.4)`, display: "flex", alignItems: "center", justifyContent: "center", marginTop: _M(3), flexShrink: 0, overflow: "hidden" }}>
+          <img src="/images/logo-icon.png" style={{ width: _M(6), height: _M(6), objectFit: "contain" }} />
+        </div>
+        <span style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", fontSize: _P(3.8), color: "#f5c842", fontWeight: 800, marginTop: _M(2.5), flex: 1, display: "flex", alignItems: "center", justifyContent: "center", letterSpacing: 1.2, textTransform: "uppercase" }}>
+          INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A
+        </span>
+        <span style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", fontSize: _P(3.5), color: "rgba(255,255,255,.35)", fontFamily: "monospace", fontWeight: 700, marginBottom: _M(3.5), letterSpacing: 1 }}>
+          {num}
+        </span>
+      </div>
+      {/* CUERPO */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "#fff" }}>
+        <div style={{ padding: `${_M(3.5)}px ${_M(2.5)}px ${_M(2.5)}px`, display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, background: "linear-gradient(180deg,#f8faff 0%,#fff 100%)" }}>
+          {fotoEl}
+          <div style={{ fontSize: _P(6), fontWeight: 900, color: "#0f2044", textAlign: "center", lineHeight: 1.2, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: _M(0.8) }}>{agent.nombre_completo}</div>
+          <div style={{ fontSize: _P(3.8), fontWeight: 700, color: "#b8860b", textAlign: "center", letterSpacing: "0.12em", textTransform: "uppercase" }}>{cargo}</div>
+        </div>
+        <div style={{ height: _M(0.4), background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)", flexShrink: 0 }} />
+        <div style={{ padding: `${_M(2)}px ${_M(2.5)}px ${_M(1)}px`, flexShrink: 0, textAlign: "center" }}>
+          <div style={{ fontSize: _P(3.2), color: "#94a3b8", fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: _M(0.5) }}>DPI</div>
+          <div style={{ fontSize: _P(6), color: "#0f2044", fontWeight: 800, fontFamily: "monospace" }}>{agent.dpi || "—"}</div>
+        </div>
+        <div style={{ height: _M(0.25), background: "#f1f5f9", margin: `0 ${_M(2.5)}px`, flexShrink: 0 }} />
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: `${_M(1.5)}px ${_M(2.5)}px ${_M(1)}px`, gap: _M(1.2) }}>
+          <div style={{ background: "#0f2044", borderRadius: _M(1.8), padding: _M(2), display: "inline-flex", boxShadow: `0 ${_M(0.8)}px ${_M(3)}px rgba(15,32,68,.25)` }}>
+            {agent.qr_token
+              ? <QRCodeSVG value={`${window.location.origin}/agente?token=${agent.qr_token}`} size={_M(20)} fgColor="#ffffff" bgColor="#0f2044" />
+              : <div style={{ width: _M(20), height: _M(20), display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ color: "rgba(255,255,255,.3)", fontSize: _P(4) }}>SIN QR</span></div>
+            }
+          </div>
+          <span style={{ fontSize: _P(3), color: "#94a3b8", textAlign: "center" }}>Escanea para verificar identidad</span>
+        </div>
+        <div style={{ background: "#0f2044", padding: `${_M(1.3)}px ${_M(2.5)}px`, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+          <span style={{ fontSize: _P(3), color: "rgba(255,255,255,.3)" }}>{fecha}</span>
+          <span style={{ fontSize: _P(3.2), fontWeight: 800, color: "#f5c842", letterSpacing: "0.08em", textTransform: "uppercase" }}>Carnet de Identificación</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CarnetReversoPreview() {
+  const W = _M(53.98), H = _M(85.6);
+  return (
+    <div style={{ width: W, height: H, display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: "Arial,Helvetica,sans-serif", background: "#fff", boxSizing: "border-box", borderRadius: 3, boxShadow: "0 8px 32px rgba(0,0,0,.5)" }}>
+      <div style={{ background: "linear-gradient(180deg,#0a1a3d,#0f2044)", padding: `${_M(2)}px ${_M(4)}px ${_M(1.5)}px`, display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+        <div style={{ fontSize: _P(8), fontWeight: 900, color: "#fff", letterSpacing: "0.08em" }}>ISP, S.A.</div>
+        <div style={{ fontSize: _P(3.5), color: "rgba(255,255,255,.45)", letterSpacing: "0.15em", marginTop: _M(0.5), textAlign: "center" }}>INVESTIGACIONES Y SEGURIDAD PROFESIONAL, S.A.</div>
+      </div>
+      <div style={{ height: _M(0.5), background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)", flexShrink: 0 }} />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: `${_M(2)}px ${_M(3)}px ${_M(1)}px`, flexShrink: 0 }}>
+        <img src="/images/logo-isp.png" style={{ maxHeight: _M(22), maxWidth: "88%", objectFit: "contain", display: "block" }} />
+      </div>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: `${_M(1)}px ${_M(4.5)}px ${_M(3)}px` }}>
+        <div style={{ fontSize: _P(5.5), color: "#334155", textAlign: "center", lineHeight: 1.7 }}>
+          El presente acredita como colaborador de <strong style={{ fontWeight: 800, color: "#0f2044" }}>ISP S.A.</strong> Se solicita a las Autoridades <strong style={{ fontWeight: 800, color: "#0f2044" }}>Civiles y Militares</strong> su colaboración. Válido en el cumplimiento de sus funciones en el puesto asignado.
+        </div>
+      </div>
+      <div style={{ height: _M(0.25), background: "linear-gradient(90deg,transparent,#f5c842,transparent)", margin: `0 ${_M(5)}px`, flexShrink: 0 }} />
+      <div style={{ padding: `${_M(2.5)}px ${_M(4)}px ${_M(3.5)}px`, display: "flex", flexDirection: "column", alignItems: "center", gap: _M(0.8), flexShrink: 0 }}>
+        <div style={{ fontSize: _P(7), fontWeight: 900, color: "#0f2044", letterSpacing: "0.06em" }}>www.ispsa.net</div>
+        <div style={{ fontSize: _P(4), color: "#25D366", fontWeight: 700 }}>+502 2200-0000</div>
+      </div>
+      <div style={{ background: "#0f2044", height: _M(2), flexShrink: 0 }} />
+    </div>
+  );
+}
+
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function CarnetesQR() {
   const [busqueda, setBusqueda]           = useState("");
@@ -216,6 +308,8 @@ export default function CarnetesQR() {
   const [generando, setGenerando]         = useState(false);
   const [progreso, setProgreso]           = useState(0);
   const [uploadingId, setUploadingId]     = useState<number | null>(null);
+  const [previewAgente, setPreviewAgente] = useState<AgenteCarnet | null>(null);
+  const [previewCara, setPreviewCara]     = useState<"frente" | "reverso">("frente");
   const qrContainerRef                    = useRef<HTMLDivElement>(null);
   const fileInputRef                      = useRef<HTMLInputElement>(null);
   const uploadTargetRef                   = useRef<number | null>(null);
@@ -562,20 +656,30 @@ export default function CarnetesQR() {
                       </p>
                     )}
                   </div>
-                  <div className="flex-shrink-0 text-right">
-                    {impreso ? (
-                      <>
-                        <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full mb-0.5">
-                          <CheckCircle className="w-2.5 h-2.5" /> Impreso
+                  <div className="flex-shrink-0 flex items-center gap-2">
+                    <div className="text-right">
+                      {impreso ? (
+                        <>
+                          <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full mb-0.5">
+                            <CheckCircle className="w-2.5 h-2.5" /> Impreso
+                          </span>
+                          {fecha && <p className="text-white/25 text-[9px]">{fecha}</p>}
+                          {a.carnet_impreso_por && <p className="text-white/20 text-[9px]">por {a.carnet_impreso_por}</p>}
+                        </>
+                      ) : (
+                        <span className="text-[10px] text-amber-400/70 bg-amber-400/8 px-2 py-0.5 rounded-full">
+                          Pendiente
                         </span>
-                        {fecha && <p className="text-white/25 text-[9px]">{fecha}</p>}
-                        {a.carnet_impreso_por && <p className="text-white/20 text-[9px]">por {a.carnet_impreso_por}</p>}
-                      </>
-                    ) : (
-                      <span className="text-[10px] text-amber-400/70 bg-amber-400/8 px-2 py-0.5 rounded-full">
-                        Pendiente
-                      </span>
-                    )}
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); setPreviewCara("frente"); setPreviewAgente(a); }}
+                      className="w-7 h-7 rounded-lg bg-white/5 hover:bg-[#f5c842]/15 border border-white/10 hover:border-[#f5c842]/30 flex items-center justify-center transition-colors"
+                      title="Ver preview del carnet"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-white/40 hover:text-[#f5c842]" />
+                    </button>
                   </div>
                 </div>
               );
@@ -607,6 +711,56 @@ export default function CarnetesQR() {
         </div>
 
       </div>
+
+      {/* ── MODAL PREVIEW CARNET ─────────────────────────────────────────── */}
+      {previewAgente && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm"
+          onClick={() => setPreviewAgente(null)}
+        >
+          <div
+            className="relative flex flex-col items-center gap-4"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Controles */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPreviewCara(c => c === "frente" ? "reverso" : "frente")}
+                className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/15 border border-white/15 rounded-xl text-sm text-white/70 hover:text-white transition-colors"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                {previewCara === "frente" ? "Ver reverso" : "Ver frente"}
+              </button>
+              <span className="text-white/25 text-xs px-3">{previewCara === "frente" ? "FRENTE" : "REVERSO"}</span>
+              <button
+                type="button"
+                onClick={() => setPreviewAgente(null)}
+                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 border border-white/15 flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4 text-white/60" />
+              </button>
+            </div>
+
+            {/* Nombre del agente */}
+            <p className="text-white/40 text-xs tracking-wider uppercase">{previewAgente.nombre_completo}</p>
+
+            {/* Carnet */}
+            <div style={{ filter: "drop-shadow(0 20px 60px rgba(0,0,0,.7))" }}>
+              {previewCara === "frente"
+                ? <CarnetFrentePreview
+                    agent={previewAgente}
+                    fotoSrc={previewAgente.foto_url ? `${API}/storage${previewAgente.foto_url}` : null}
+                  />
+                : <CarnetReversoPreview />
+              }
+            </div>
+
+            <p className="text-white/20 text-[11px]">Click fuera para cerrar</p>
+          </div>
+        </div>
+      )}
+
     </AdminLayout>
   );
 }
