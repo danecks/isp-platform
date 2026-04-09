@@ -51,44 +51,69 @@ const ROUTE_MODULO_MAP: Record<string, string> = {
   "/turnos":                 "turnos",
 };
 
-// Caché en memoria: rol → Set de modulo_claves permitidos (TTL 60s)
-interface CacheEntry { modulos: Set<string>; expiresAt: number }
+// Caché en memoria: username → { rol, modulos, expiresAt } (TTL 30s)
+// Cacheamos por USERNAME (no por rol) para reflejar cambios de rol sin reiniciar sesión
+interface CacheEntry { rol: string; modulos: Set<string>; expiresAt: number }
 const permCache = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 60_000;
+const CACHE_TTL_MS = 30_000;
 
 export async function getPermisosForRol(rol: string): Promise<Set<string>> {
-  const now = Date.now();
-  const cached = permCache.get(rol);
-  if (cached && cached.expiresAt > now) return cached.modulos;
   try {
     const { rows } = await pool.query(
       `SELECT modulo_clave FROM rol_permisos WHERE rol_clave = $1`,
       [rol]
     );
-    const modulos = new Set<string>(rows.map((r: any) => r.modulo_clave));
-    permCache.set(rol, { modulos, expiresAt: now + CACHE_TTL_MS });
-    return modulos;
+    return new Set<string>(rows.map((r: any) => r.modulo_clave));
   } catch {
     return new Set();
   }
 }
 
-export function invalidatePermCache(rol?: string) {
-  if (rol) {
-    permCache.delete(rol);
+// Nueva función: obtiene permisos por USERNAME (consulta rol actual desde BD)
+async function getPermisosForUsername(username: string): Promise<{ rol: string; modulos: Set<string> }> {
+  const now = Date.now();
+  const cached = permCache.get(username);
+  if (cached && cached.expiresAt > now) return { rol: cached.rol, modulos: cached.modulos };
+  try {
+    const userRow = await pool.query(
+      `SELECT rol FROM users WHERE username = $1 AND estado = 'activo'`,
+      [username]
+    );
+    if (userRow.rows.length === 0) return { rol: "", modulos: new Set() };
+    const rol: string = userRow.rows[0].rol;
+    let modulos: Set<string>;
+    if (rol === "admin") {
+      modulos = new Set(["*"]); // admin: acceso total (marcador especial)
+    } else {
+      const { rows } = await pool.query(
+        `SELECT modulo_clave FROM rol_permisos WHERE rol_clave = $1`,
+        [rol]
+      );
+      modulos = new Set<string>(rows.map((r: any) => r.modulo_clave));
+    }
+    permCache.set(username, { rol, modulos, expiresAt: now + CACHE_TTL_MS });
+    return { rol, modulos };
+  } catch {
+    return { rol: "", modulos: new Set() };
+  }
+}
+
+export function invalidatePermCache(username?: string) {
+  if (username) {
+    permCache.delete(username);
   } else {
     permCache.clear();
   }
 }
 
-// Middleware Express — bloquea rutas según permisos del rol
+// Middleware Express — bloquea rutas según permisos del rol ACTUAL en BD
 export async function permisosMiddleware(req: any, res: any, next: any) {
   // Rutas que no requieren sesión de admin
   const skipPaths = ["/health", "/portal", "/wa", "/whatsapp", "/users/login",
     "/session/permisos", "/roles/modulos", "/roles"];
   if (skipPaths.some(p => req.path.startsWith(p))) return next();
 
-  let session: { rol: string } | null = null;
+  let session: { rol: string; username?: string } | null = null;
   try {
     const raw = req.headers["x-isp-session"] as string;
     if (raw) session = JSON.parse(raw);
@@ -97,8 +122,6 @@ export async function permisosMiddleware(req: any, res: any, next: any) {
   }
 
   if (!session) return next();
-  // Admin siempre tiene acceso total
-  if (session.rol === "admin") return next();
 
   // Determinar qué módulo corresponde a esta ruta
   let moduloClave: string | undefined;
@@ -112,6 +135,19 @@ export async function permisosMiddleware(req: any, res: any, next: any) {
   // Si la ruta no está en el mapa, la dejamos pasar
   if (!moduloClave) return next();
 
+  // Si hay username en la sesión, verificar rol ACTUAL desde BD (evita sesión desactualizada)
+  if (session.username) {
+    const { rol, modulos } = await getPermisosForUsername(session.username);
+    if (rol === "admin" || modulos.has("*") || modulos.has(moduloClave)) return next();
+    return res.status(403).json({
+      error: "Acceso no autorizado a este módulo",
+      modulo: moduloClave,
+      rol,
+    });
+  }
+
+  // Fallback: verificar por rol de sesión (compatibilidad con sesiones sin username)
+  if (session.rol === "admin") return next();
   const permisos = await getPermisosForRol(session.rol);
   if (permisos.has(moduloClave)) return next();
 

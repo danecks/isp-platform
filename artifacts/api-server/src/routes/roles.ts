@@ -101,18 +101,28 @@ router.get("/roles/modulos", (_req, res) => {
 });
 
 // GET /session/permisos — módulos permitidos para el usuario actual
+// IMPORTANTE: lee el rol ACTUAL desde la BD por username, no desde la sesión (que puede estar desactualizada)
 router.get("/session/permisos", async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: "No autenticado" });
-  if (session.rol === "admin") {
-    return res.json({ rol: "admin", modulos: SYSTEM_MODULOS.map(m => m.clave) });
-  }
   try {
+    // Siempre consultar el rol actual desde la BD (evita stale session cuando el admin cambia el rol)
+    const userRow = await pool.query(
+      `SELECT rol FROM users WHERE username = $1 AND estado = 'activo'`,
+      [session.username]
+    );
+    if (userRow.rows.length === 0) {
+      return res.status(401).json({ error: "Usuario inactivo o no encontrado" });
+    }
+    const rolActual: string = userRow.rows[0].rol;
+    if (rolActual === "admin") {
+      return res.json({ rol: "admin", modulos: SYSTEM_MODULOS.map(m => m.clave) });
+    }
     const { rows } = await pool.query(
       `SELECT modulo_clave FROM rol_permisos WHERE rol_clave = $1`,
-      [session.rol]
+      [rolActual]
     );
-    res.json({ rol: session.rol, modulos: rows.map((r: any) => r.modulo_clave) });
+    res.json({ rol: rolActual, modulos: rows.map((r: any) => r.modulo_clave) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Error al cargar permisos" });
@@ -152,7 +162,7 @@ router.put("/roles/:clave/permisos", async (req, res) => {
       );
     }
     await client.query("COMMIT");
-    invalidatePermCache(clave);
+    invalidatePermCache(); // limpiar todo el cache (puede haber N usuarios con este rol)
     res.json({ ok: true, rol: clave, modulos });
   } catch (err) {
     await client.query("ROLLBACK");

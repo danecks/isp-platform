@@ -3,6 +3,7 @@ import { db, usersTable } from "@workspace/db";
 import { pool } from "@workspace/db";
 import { eq, asc } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import { invalidatePermCache } from "../lib/permisos-middleware";
 
 const usersRouter = Router();
 
@@ -262,6 +263,8 @@ usersRouter.patch("/users/:id", async (req, res) => {
       .returning(SAFE_FIELDS);
 
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+    // Invalidar cache de permisos para este usuario (su rol puede haber cambiado)
+    invalidatePermCache(user.username);
     res.json(user);
   } catch (err: any) {
     if (err?.code === "23505") {
