@@ -75,7 +75,7 @@ export function VarianteA() {
       <div style={{ height: 2, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)", flexShrink: 0 }} />
 
       {/* Logo debajo de la línea dorada */}
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", padding: "10px 12px 8px", flexShrink: 0 }}>
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", padding: "2px 12px 8px", flexShrink: 0 }}>
         <img src="https://987b05e8-e17a-40f4-b366-3baeddd84475-00-2jyjpes488ag2.riker.replit.dev/images/logo-isp.png" alt="ISP" style={{ width: "75%", objectFit: "contain" }} />
       </div>
 
