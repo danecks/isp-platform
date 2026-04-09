@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AdminLayout } from "../layout/AdminLayout";
 import { useToast } from "@/hooks/use-toast";
+import { useDeleteMode } from "@/contexts/DeleteModeContext";
 
 function getSession() {
   return sessionStorage.getItem("isp_admin_session_v2") || "";
@@ -375,6 +376,7 @@ function TabCatalogo() {
   const [modalCat, setModalCat] = useState<Categoria | undefined | false>(false);
   const [modalArt, setModalArt] = useState<Articulo | undefined | false>(false);
   const [loading, setLoading] = useState(true);
+  const { active: deleteModeActive, requestDelete } = useDeleteMode();
 
   async function cargar() {
     const [c, a] = await Promise.all([
@@ -387,15 +389,13 @@ function TabCatalogo() {
   }
   useEffect(() => { cargar(); }, []);
 
-  async function eliminarCat(id: number) {
-    if (!confirm("¿Eliminar esta categoría?")) return;
-    await api(`/api/bodega/categorias/${id}`, { method: "DELETE" });
-    cargar();
+  function eliminarCat(cat: Categoria) {
+    if (!deleteModeActive) return;
+    requestDelete({ entidad: "bodega_categoria", entidad_id: cat.id, entidad_descripcion: `Categoría: ${cat.nombre}` });
   }
-  async function eliminarArt(id: number) {
-    if (!confirm("¿Eliminar este artículo del catálogo?")) return;
-    await api(`/api/bodega/articulos/${id}`, { method: "DELETE" });
-    cargar();
+  function eliminarArt(art: Articulo) {
+    if (!deleteModeActive) return;
+    requestDelete({ entidad: "bodega_articulo", entidad_id: art.id, entidad_descripcion: `Artículo: ${art.nombre}` });
   }
 
   const artsFiltrados = catSel === null ? articulos : articulos.filter(a => a.categoria_id === catSel);
@@ -420,7 +420,7 @@ function TabCatalogo() {
             <span className="text-sm flex-1 truncate">{c.nombre} <span className="text-gray-600 text-xs">({c.total_articulos})</span></span>
             <div className="hidden group-hover:flex gap-1">
               <button onClick={e => { e.stopPropagation(); setModalCat(c); }} className="hover:text-yellow-400"><Edit2 className="w-3 h-3" /></button>
-              <button onClick={e => { e.stopPropagation(); eliminarCat(c.id); }} className="hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
+              {deleteModeActive && <button onClick={e => { e.stopPropagation(); eliminarCat(c); }} className="hover:text-red-400"><Trash2 className="w-3 h-3" /></button>}
             </div>
           </div>
         ))}
@@ -460,7 +460,7 @@ function TabCatalogo() {
               </div>
               <div className="flex gap-1 shrink-0">
                 <button onClick={() => setModalArt(a)} className="text-gray-500 hover:text-yellow-400 p-1"><Edit2 className="w-3.5 h-3.5" /></button>
-                <button onClick={() => eliminarArt(a.id)} className="text-gray-500 hover:text-red-400 p-1"><Trash2 className="w-3.5 h-3.5" /></button>
+                {deleteModeActive && <button onClick={() => eliminarArt(a)} className="text-gray-500 hover:text-red-400 p-1"><Trash2 className="w-3.5 h-3.5" /></button>}
               </div>
             </div>
           ))}

@@ -28,8 +28,9 @@ import { AdminLayout } from "@/admin/layout/AdminLayout";
 import { useToast } from "@/hooks/use-toast";
 import {
   Clock, Plus, Edit2, ToggleLeft, ToggleRight, Info,
-  CheckCircle2, Loader2, X, ChevronDown, ChevronUp,
+  CheckCircle2, Loader2, X, ChevronDown, ChevronUp, Trash2,
 } from "lucide-react";
+import { useDeleteMode } from "@/contexts/DeleteModeContext";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
@@ -240,6 +241,7 @@ function TurnoModal({
 
 export default function Turnos() {
   const { toast } = useToast();
+  const { active: deleteModeActive, requestDelete } = useDeleteMode();
   const [turnos, setTurnos] = useState<Turno[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<"nuevo" | Turno | null>(null);
@@ -415,6 +417,15 @@ export default function Turnos() {
                             : <ToggleRight className="w-3.5 h-3.5" />
                           }
                         </button>
+                        {deleteModeActive && (
+                          <button
+                            onClick={() => requestDelete({ entidad: "turno", entidad_id: t.id, entidad_descripcion: `Turno: ${t.nombre}` })}
+                            className="p-1.5 rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                            title="Solicitar eliminación"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );

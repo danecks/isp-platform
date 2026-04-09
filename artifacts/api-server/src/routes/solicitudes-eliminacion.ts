@@ -5,11 +5,15 @@ export const solicitudesEliminacionRouter = Router();
 
 // Mapa entidad → tabla real en la BD
 const ENTIDAD_TABLA: Record<string, string> = {
-  arma:      "armas",
-  vehiculo:  "vehiculos",
-  empleado:  "employees",
-  cliente:   "clients",
-  puesto:    "puestos_operativos",
+  arma:                "armas",
+  vehiculo:            "vehiculos",
+  empleado:            "employees",
+  cliente:             "clients",
+  puesto:              "puestos_operativos",
+  bodega_categoria:    "bodega_categorias",
+  bodega_articulo:     "bodega_articulos",
+  turno:               "turnos",
+  incidencia:          "incidents",
 };
 
 // ── POST /api/solicitudes-eliminacion ─────────────────────────────────────────

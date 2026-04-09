@@ -5622,7 +5622,7 @@ export default function Operaciones() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { currentUser } = useAuth();
-  const { active: isDeleteMode } = useDeleteMode();
+  const { active: isDeleteMode, requestDelete } = useDeleteMode();
 
   // ── Roles ─────────────────────────────────────────────────────────────────
   const esAdmin             = currentUser?.rol === "admin";
@@ -6428,20 +6428,16 @@ export default function Operaciones() {
   }
 
   // ── Eliminar puesto ───────────────────────────────────────────────────────
-  async function eliminarPuesto(puesto: Puesto) {
-    // Guardia: sólo permitido en modo eliminación
+  function eliminarPuesto(puesto: Puesto) {
     if (!isDeleteMode) {
       toast({ title: "Modo eliminación inactivo", description: "Activa el modo de eliminación para poder borrar puestos.", variant: "destructive" });
       return;
     }
-    if (!confirm(`¿Eliminar el puesto "${puesto.nombre}" de ${puesto.cliente_nombre}?`)) return;
-    try {
-      await apiDelete(`${API_BASE}/operaciones/puestos/${puesto.id}`);
-      toast({ title: "Puesto eliminado" });
-      invalidate();
-    } catch {
-      toast({ title: "Error", description: "No se pudo eliminar", variant: "destructive" });
-    }
+    requestDelete({
+      entidad: "puesto",
+      entidad_id: puesto.id,
+      entidad_descripcion: `${puesto.nombre} — ${puesto.cliente_nombre ?? "Sin cliente"}`,
+    });
   }
 
   // ── Pool filtrado ─────────────────────────────────────────────────────────

@@ -21,11 +21,15 @@ const DeleteModeContext = createContext<DeleteModeContextType | null>(null);
 const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
 
 const ENTIDAD_LABELS: Record<string, string> = {
-  arma: "Arma",
-  vehiculo: "Vehículo",
-  empleado: "Colaborador",
-  cliente: "Cliente",
-  puesto: "Puesto operativo",
+  arma:              "Arma",
+  vehiculo:          "Vehículo",
+  empleado:          "Colaborador",
+  cliente:           "Cliente",
+  puesto:            "Puesto operativo",
+  bodega_categoria:  "Categoría de bodega",
+  bodega_articulo:   "Artículo de bodega",
+  turno:             "Tipo de turno",
+  incidencia:        "Incidencia",
 };
 
 const DELETE_MODE_KEY = "isp_delete_mode_active";
@@ -87,7 +91,8 @@ export function DeleteModeProvider({ children }: { children: ReactNode }) {
     setSaving(true);
     setError("");
     try {
-      const r = await fetch("/api/solicitudes-eliminacion", {
+      const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+      const r = await fetch(`${base}/api/solicitudes-eliminacion`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
         body: JSON.stringify({
