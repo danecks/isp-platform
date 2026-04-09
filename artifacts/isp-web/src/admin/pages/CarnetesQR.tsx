@@ -10,7 +10,7 @@
  * Motor:   html2canvas (escala 3×, ~305 DPI) → JPEG 95%
  */
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
@@ -87,7 +87,7 @@ function getCargoLabel(tipo_personal: string, cargo: string | null) {
 
 async function toBase64Url(url: string): Promise<string> {
   try {
-    const resp = await fetch(url);
+    const resp = await fetch(url, { headers: { "x-isp-session": getSession() } });
     const blob = await resp.blob();
     return new Promise(resolve => {
       const reader = new FileReader();
@@ -95,6 +95,20 @@ async function toBase64Url(url: string): Promise<string> {
       reader.readAsDataURL(blob);
     });
   } catch { return url; }
+}
+
+function SecureFoto({ fotoUrl, className, style }: { fotoUrl: string; className?: string; style?: React.CSSProperties }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    fetch(`${API}/storage${fotoUrl}`, { headers: { "x-isp-session": getSession() } })
+      .then(r => r.blob())
+      .then(blob => { if (active) setSrc(URL.createObjectURL(blob)); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [fotoUrl]);
+  if (!src) return null;
+  return <img src={src} alt="" className={className} style={style} />;
 }
 
 function safeFolderName(nombre: string) {
@@ -222,11 +236,11 @@ function CarnetFrentePreview({ agent, fotoSrc }: { agent: AgenteCarnet; fotoSrc?
   const initials = getInitials(agent.nombre_completo);
   const W = _M(53.98), H = _M(85.6), SW = _M(10.5);
   const fecha = new Date().toLocaleDateString("es-GT", { month: "long", year: "numeric" });
-  // QR al 67% del ancho del cuerpo — idéntico a VarianteA
   const qrSize = Math.round((W - SW) * 0.67);
 
+  const fotoStyle: React.CSSProperties = { width: _M(16), height: _M(16), borderRadius: "50%", objectFit: "cover", border: `${_M(0.7)}px solid #f5c842`, boxShadow: `0 ${_M(1)}px ${_M(3)}px rgba(15,32,68,.35)`, marginBottom: _M(2), display: "block", flexShrink: 0 };
   const fotoEl = fotoSrc
-    ? <img src={fotoSrc} style={{ width: _M(16), height: _M(16), borderRadius: "50%", objectFit: "cover", border: `${_M(0.7)}px solid #f5c842`, boxShadow: `0 ${_M(1)}px ${_M(3)}px rgba(15,32,68,.35)`, marginBottom: _M(2), display: "block", flexShrink: 0 }} />
+    ? <SecureFoto fotoUrl={fotoSrc} style={fotoStyle} />
     : <div style={{ width: _M(16), height: _M(16), borderRadius: "50%", background: "linear-gradient(135deg,#0f2044,#1e4a9a)", border: `${_M(0.7)}px solid #f5c842`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: _M(2), flexShrink: 0 }}><span style={{ fontSize: _P(10), fontWeight: 900, color: "#f5c842" }}>{initials}</span></div>;
 
   return (
@@ -652,7 +666,7 @@ export default function CarnetesQR() {
                   <div className="relative flex-shrink-0 group/foto">
                     <div className="w-9 h-9 rounded-full bg-[#0f2044] border border-[#f5c842]/20 flex items-center justify-center overflow-hidden">
                       {a.foto_url
-                        ? <img src={`${API}/storage${a.foto_url}`} alt="" className="w-full h-full object-cover" />
+                        ? <SecureFoto fotoUrl={a.foto_url} className="w-full h-full object-cover" />
                         : <span className="text-[#f5c842] text-sm font-bold">{getInitials(a.nombre_completo)}</span>
                       }
                     </div>
@@ -773,7 +787,7 @@ export default function CarnetesQR() {
               {previewCara === "frente"
                 ? <CarnetFrentePreview
                     agent={previewAgente}
-                    fotoSrc={previewAgente.foto_url ? `${API}/storage${previewAgente.foto_url}` : null}
+                    fotoSrc={previewAgente.foto_url ?? null}
                   />
                 : <CarnetReversoPreview />
               }
