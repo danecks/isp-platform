@@ -57,6 +57,7 @@ export const SYSTEM_MODULOS = [
   { clave: "libro_salarios",      label: "Libro de Salarios",          seccion: "Personal & RRHH" },
   { clave: "igss_planilla",       label: "Planilla IGSS",              seccion: "Personal & RRHH" },
   { clave: "carnets_qr",          label: "Carnets QR",                 seccion: "Personal & RRHH" },
+  { clave: "kiosco_solicitudes",  label: "Solicitudes Kiosco",         seccion: "Personal & RRHH" },
   // Sistema
   { clave: "solicitudes_eliminacion", label: "Solicitudes de Eliminación", seccion: "Sistema" },
   { clave: "usuarios",            label: "Usuarios del Sistema",       seccion: "Sistema" },
