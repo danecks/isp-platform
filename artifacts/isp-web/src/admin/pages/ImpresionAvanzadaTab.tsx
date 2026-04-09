@@ -786,8 +786,17 @@ export default function ImpresionAvanzadaTab() {
   }
 
   // ── Agente local de impresión ────────────────────────────────────────────────
-  const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
+  const [agentStatus, setAgentStatus]   = useState<AgentStatus | null>(null);
   const [agentChecked, setAgentChecked] = useState(false);
+  const [agentChecking, setAgentChecking] = useState(false);
+
+  const refreshAgent = async () => {
+    setAgentChecking(true);
+    const s = await checkAgent();
+    setAgentStatus(s);
+    setAgentChecked(true);
+    setAgentChecking(false);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -1093,27 +1102,40 @@ export default function ImpresionAvanzadaTab() {
               </div>
 
               {/* Indicador del agente de impresión */}
-              {agentChecked && (
-                agentStatus?.ok ? (
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs border bg-emerald-500/8 border-emerald-500/20 text-emerald-400">
-                    <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-emerald-400" />
-                    Agente activo en {agentStatus.hostname ?? "esta PC"} — impresión silenciosa
-                  </div>
-                ) : (
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-2">
+              {!agentChecked && !agentChecking ? null : agentChecking ? (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs border bg-white/5 border-white/10 text-white/40">
+                  <div className="w-1.5 h-1.5 rounded-full bg-white/30 flex-shrink-0 animate-pulse" />
+                  Verificando conexión con el agente...
+                </div>
+              ) : agentStatus?.ok ? (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs border bg-emerald-500/8 border-emerald-500/20 text-emerald-400">
+                  <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-emerald-400" />
+                  Agente activo en {agentStatus.hostname ?? "esta PC"} — impresión silenciosa
+                </div>
+              ) : (
+                <div className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-xs text-white/40">
                       <div className="w-1.5 h-1.5 rounded-full bg-white/20 flex-shrink-0" />
                       Sin agente local — se usará el diálogo del navegador
                     </div>
-                    <a
-                      href="/api/download/print-agent"
-                      className="flex items-center justify-center gap-2 w-full py-1.5 bg-white/5 hover:bg-white/10 border border-white/15 rounded-lg text-xs text-white/50 hover:text-white/70 transition-colors"
+                    <button
+                      onClick={refreshAgent}
+                      disabled={agentChecking}
+                      className="flex items-center gap-1.5 px-2.5 py-1 bg-white/8 hover:bg-white/15 border border-white/15 rounded-lg text-xs text-white/60 hover:text-white/80 transition-colors disabled:opacity-40"
                     >
-                      <Download className="w-3 h-3" />
-                      Descargar agente de impresión para Windows
-                    </a>
+                      <RefreshCw className="w-3 h-3" />
+                      Conectar
+                    </button>
                   </div>
-                )
+                  <a
+                    href="/api/download/print-agent"
+                    className="flex items-center justify-center gap-2 w-full py-1.5 bg-white/5 hover:bg-white/10 border border-white/15 rounded-lg text-xs text-white/50 hover:text-white/70 transition-colors"
+                  >
+                    <Download className="w-3 h-3" />
+                    Descargar agente de impresión para Windows
+                  </a>
+                </div>
               )}
 
               <button
