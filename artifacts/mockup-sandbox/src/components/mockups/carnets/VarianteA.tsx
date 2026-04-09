@@ -107,7 +107,12 @@ export function VarianteA() {
 
       {/* Footer */}
       <div style={{ padding: "10px 16px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, flexShrink: 0 }}>
-        <div style={{ fontSize: 11, fontWeight: 900, color: "#0f2044", letterSpacing: 0.5 }}>www.ispsa.net</div>
+        <div style={{ fontSize: 11, fontWeight: 900, color: "#0f2044", letterSpacing: 0.5, display: "flex", alignItems: "center", gap: 4 }}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#0f2044" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+            </svg>
+            www.ispsa.net
+          </div>
         <div style={{ fontSize: 6, color: "#25D366", fontWeight: 700, letterSpacing: 0.3, display: "flex", alignItems: "center", gap: 3 }}>
             <svg width="9" height="9" viewBox="0 0 24 24" fill="#25D366" xmlns="http://www.w3.org/2000/svg">
               <path d="M12 0C5.373 0 0 5.373 0 12c0 2.117.553 4.103 1.518 5.829L0 24l6.335-1.518A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 2c5.514 0 10 4.486 10 10s-4.486 10-10 10a9.945 9.945 0 01-4.906-1.287l-.352-.206-3.652.875.891-3.561-.22-.366A9.945 9.945 0 012 12C2 6.486 6.486 2 12 2zm-1.172 4.5c-.207 0-.435.007-.65.017-.214.01-.476.063-.724.313-.249.249-.948.926-.948 2.259s.97 2.619 1.106 2.8c.136.18 1.884 3.012 4.637 4.104.648.26 1.154.415 1.548.532.65.194 1.242.167 1.71.101.522-.073 1.608-.658 1.835-1.293.228-.635.228-1.18.16-1.293-.069-.114-.249-.181-.522-.318s-1.608-.793-1.858-.884c-.249-.09-.43-.136-.612.137-.181.272-.703.883-.862 1.065-.158.181-.318.204-.59.068-.272-.136-1.148-.423-2.187-1.35-.808-.721-1.354-1.61-1.513-1.882-.158-.272-.017-.419.119-.555.122-.122.272-.318.408-.477.136-.158.181-.272.272-.453.09-.182.045-.34-.023-.477-.068-.137-.612-1.474-.838-2.018-.22-.53-.445-.458-.612-.466z"/>
