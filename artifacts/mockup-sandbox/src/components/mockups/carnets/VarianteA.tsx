@@ -23,7 +23,7 @@ export function VarianteA() {
           width: 30, height: 30, borderRadius: "50%", marginTop: 12, flexShrink: 0,
           boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
           backgroundImage: "url(https://987b05e8-e17a-40f4-b366-3baeddd84475-00-2jyjpes488ag2.riker.replit.dev/images/logo-isp.png)",
-          backgroundSize: "150%",
+          backgroundSize: "155%",
           backgroundPosition: "center 29%",
           backgroundRepeat: "no-repeat",
           backgroundColor: "#fff",
