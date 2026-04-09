@@ -20,7 +20,7 @@ export function VarianteA() {
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)" }} />
         {/* Logo ISP en medallón dorado */}
         <div style={{ width: 30, height: 30, borderRadius: "50%", background: "linear-gradient(135deg,#f5c842,#d4a017)", marginTop: 12, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 6px rgba(0,0,0,0.4)", flexShrink: 0 }}>
-          <img src="https://987b05e8-e17a-40f4-b366-3baeddd84475-00-2jyjpes488ag2.riker.replit.dev/images/logo-icon.png" alt="ISP" style={{ width: 22, height: 22, objectFit: "contain", mixBlendMode: "multiply" as const }} />
+          <img src="https://987b05e8-e17a-40f4-b366-3baeddd84475-00-2jyjpes488ag2.riker.replit.dev/images/logo-isp.png" alt="ISP" style={{ width: 22, height: 22, objectFit: "contain", mixBlendMode: "multiply" as const }} />
         </div>
         <span style={{ writingMode: "vertical-rl" as const, transform: "rotate(180deg)", fontSize: 7, color: "rgba(255,255,255,0.3)", fontFamily: "monospace", fontWeight: 700, marginTop: "auto", marginBottom: 14, letterSpacing: 1 }}>{sample.num}</span>
       </div>
