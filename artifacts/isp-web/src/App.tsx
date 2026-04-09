@@ -222,10 +222,10 @@ function Router() {
         {() => <AuthGuard requiredRoles={["admin", "operaciones", "rrhh", "comercial", "supervisor"]}><AdminTableroServicios /></AuthGuard>}
       </Route>
       <Route path="/admin/vehiculos">
-        {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminVehiculos /></AuthGuard>}
+        {() => <AuthGuard><AdminVehiculos /></AuthGuard>}
       </Route>
       <Route path="/admin/armeria">
-        {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminArmeria /></AuthGuard>}
+        {() => <AuthGuard><AdminArmeria /></AuthGuard>}
       </Route>
       <Route path="/admin/solicitudes-eliminacion">
         {() => <AuthGuard requiredRoles={["admin"]}><AdminSolicitudesEliminacion /></AuthGuard>}
@@ -249,7 +249,7 @@ function Router() {
         {() => <AuthGuard requiredRoles={["admin", "rrhh"]}><CarnetesQR /></AuthGuard>}
       </Route>
       <Route path="/admin/bodega">
-        {() => <AuthGuard requiredRoles={["admin", "operaciones"]}><AdminBodega /></AuthGuard>}
+        {() => <AuthGuard><AdminBodega /></AuthGuard>}
       </Route>
       <Route path="/admin/importacion">
         {() => <AuthGuard requiredRoles={["admin"]}><AdminImportacion /></AuthGuard>}
