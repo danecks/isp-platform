@@ -189,13 +189,13 @@ function createFrenteElement(
     <!-- DIVISOR DORADO -->
     <div style="height:${_MM(0.4)}px;background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017);flex-shrink:0"></div>
     <!-- DPI -->
-    <div style="padding:${_MM(2)}px ${_MM(2.5)}px ${_MM(1)}px;flex-shrink:0;text-align:center">
-      <div style="font-size:${_PT(3.2)}px;color:#94a3b8;font-weight:700;letter-spacing:.15em;text-transform:uppercase;margin-bottom:${_MM(0.5)}px">DPI</div>
+    <div style="padding:${_MM(0.5)}px ${_MM(2.5)}px ${_MM(0.5)}px;flex-shrink:0;text-align:center">
+      <div style="font-size:${_PT(5)}px;color:#94a3b8;font-weight:700;letter-spacing:.15em;text-transform:uppercase;margin-bottom:${_MM(0.5)}px">DPI</div>
       <div style="font-size:${_PT(6)}px;color:#0f2044;font-weight:800;font-family:monospace;letter-spacing:.05em">${agent.dpi || "—"}</div>
     </div>
     <div style="height:${_MM(0.25)}px;background:#f1f5f9;margin:0 ${_MM(2.5)}px;flex-shrink:0"></div>
-    <!-- QR CENTRADO -->
-    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:${_MM(1.5)}px ${_MM(2.5)}px ${_MM(1)}px;gap:${_MM(1.2)}px">
+    <!-- QR SUBIDO -->
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:${_MM(2)}px ${_MM(2.5)}px ${_MM(1)}px;gap:${_MM(1.2)}px">
       <div style="background:#0f2044;border-radius:${_MM(1.8)}px;padding:${_MM(2)}px;display:inline-flex;box-shadow:0 ${_MM(0.8)}px ${_MM(3)}px rgba(15,32,68,.25)">${qrFixed}</div>
       <span style="font-size:${_PT(3)}px;color:#94a3b8;text-align:center;letter-spacing:.03em">Escanea para verificar identidad</span>
     </div>
@@ -294,12 +294,12 @@ function CarnetFrentePreview({ agent, fotoSrc }: { agent: AgenteCarnet; fotoSrc?
           <div style={{ fontSize: _P(5), fontWeight: 700, color: "#b8860b", textAlign: "center", letterSpacing: "0.12em", textTransform: "uppercase" }}>{cargo}</div>
         </div>
         <div style={{ height: 1.5, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)", flexShrink: 0 }} />
-        <div style={{ padding: `${_M(2)}px ${_M(2.5)}px ${_M(1)}px`, flexShrink: 0, textAlign: "center" }}>
-          <div style={{ fontSize: _P(3.2), color: "#94a3b8", fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: _M(0.5) }}>DPI</div>
+        <div style={{ padding: `${_M(0.5)}px ${_M(2.5)}px ${_M(0.5)}px`, flexShrink: 0, textAlign: "center" }}>
+          <div style={{ fontSize: _P(5), color: "#94a3b8", fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: _M(0.5) }}>DPI</div>
           <div style={{ fontSize: _P(6), color: "#0f2044", fontWeight: 800, fontFamily: "monospace" }}>{agent.dpi || "—"}</div>
         </div>
         <div style={{ height: 1, background: "#f1f5f9", margin: `0 ${_M(2.5)}px`, flexShrink: 0 }} />
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: `${_M(1.5)}px ${_M(2.5)}px ${_M(1)}px`, gap: _M(1.2) }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", padding: `${_M(2)}px ${_M(2.5)}px ${_M(1)}px`, gap: _M(1.2) }}>
           {/* QR con caja navy — tamaño proporcional a VarianteA */}
           <div style={{ background: "#0f2044", borderRadius: 7, padding: _M(1), display: "inline-flex", boxShadow: `0 3px 12px rgba(15,32,68,.25)` }}>
             {agent.qr_token
