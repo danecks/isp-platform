@@ -73,26 +73,41 @@ function listPrinters() {
   }
 }
 
-/** Configura el papel de la impresora vía PowerShell (una sola vez) */
+/**
+ * Configura la fuente de papel de la Canon TS700 Series al cassette PVC
+ * (Multi-Purpose Tray = "Manual" en Windows PrintManagement).
+ *
+ * Intenta Set-PrintConfiguration primero (PowerShell 3+, recomendado).
+ * Si falla, intenta WMI como fallback.
+ * Devuelve una cadena descriptiva del resultado para loguear.
+ */
 function setPaperSource(printerName) {
-  const script = `
-    $printer = Get-WmiObject -Query "SELECT * FROM Win32_Printer WHERE Name='${printerName.replace(/'/g, "\\'")}'"
-    if ($printer) {
-      $printer.PaperSource = 15
-      $printer.Put()
-      Write-Output "OK"
-    } else {
-      Write-Output "PRINTER_NOT_FOUND"
-    }
-  `.trim();
+  const safe = printerName.replace(/'/g, "\\'");
+
+  // Script PowerShell que prueba múltiples enfoques
+  const script = [
+    // ── Enfoque 1: Set-PrintConfiguration (moderno, funciona con Canon TS700) ──
+    `try {`,
+    `  Set-PrintConfiguration -PrinterName '${safe}' -PaperSource Manual -ErrorAction Stop`,
+    `  Write-Output 'OK_SetPrintConfig_Manual'`,
+    `} catch {`,
+    // ── Enfoque 2: WMI con DMBIN_MANUAL (bin=2) como fallback ───────────────
+    `  try {`,
+    `    $p = Get-WmiObject -Query "SELECT * FROM Win32_Printer WHERE Name='${safe}'"`,
+    `    if ($p) { $p.PaperSource=2; $null=$p.Put(); Write-Output 'OK_WMI_bin2' }`,
+    `    else { Write-Output 'PRINTER_NOT_FOUND' }`,
+    `  } catch { Write-Output ('WMI_ERR: ' + $_.Exception.Message) }`,
+    `}`,
+  ].join(" ");
+
   try {
     const result = execSync(
-      `powershell -NoProfile -Command "${script.replace(/\n/g, "; ")}"`,
-      { encoding: "utf8", timeout: 5000 }
+      `powershell -NoProfile -NonInteractive -Command "${script}"`,
+      { encoding: "utf8", timeout: 8000 }
     );
     return result.trim();
   } catch (e) {
-    return "PS_ERROR: " + e.message;
+    return "PS_ERROR: " + (e.stderr || e.message || String(e));
   }
 }
 
@@ -210,9 +225,11 @@ app.post("/print", async (req, res) => {
     });
   }
 
-  // Configurar fuente de papel si se solicita (requiere PowerShell + permisos)
+  // Configurar fuente de papel (Multi-Purpose Tray) si se solicita
+  let paperResult = null;
   if (doSetPaper && printer) {
-    setPaperSource(printer);
+    paperResult = setPaperSource(printer);
+    console.log(`[paper-source] ${printer}: ${paperResult}`);
   }
 
   // Asegura que el HTML tiene el script de auto-impresión
@@ -235,9 +252,10 @@ app.post("/print", async (req, res) => {
     try { fs.unlinkSync(tempFile); } catch {}
 
     return res.json({
-      ok:      true,
-      browser: path.basename(browser),
+      ok:          true,
+      browser:     path.basename(browser),
       code,
+      paperResult,
     });
   } catch (err) {
     if (tempFile) { try { fs.unlinkSync(tempFile); } catch {} }
