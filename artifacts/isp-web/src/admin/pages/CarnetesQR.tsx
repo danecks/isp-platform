@@ -181,7 +181,6 @@ function createFrenteElement(
   <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;background:#fff">
     <!-- SECCIÓN LOGO + FOTO + NOMBRE: gradiente sutil -->
     <div style="padding:${_MM(2)}px ${_MM(2.5)}px ${_MM(2)}px;display:flex;flex-direction:column;align-items:center;flex-shrink:0;background:linear-gradient(180deg,#f8faff 0%,#fff 100%)">
-      <img src="${logoFullB64}" style="height:${_MM(10)}px;max-width:90%;object-fit:contain;display:block;margin-bottom:${_MM(1.5)}px" />
       ${fotoHtml}
       <div style="font-size:${_PT(7.5)}px;font-weight:900;color:#0f2044;text-align:center;line-height:1.2;text-transform:uppercase;letter-spacing:.3px;margin-bottom:${_MM(0.8)}px">${agent.nombre_completo}</div>
       <div style="font-size:${_PT(5)}px;font-weight:700;color:#b8860b;text-align:center;letter-spacing:.12em;text-transform:uppercase">${cargo}</div>
@@ -288,7 +287,6 @@ function CarnetFrentePreview({ agent, fotoSrc }: { agent: AgenteCarnet; fotoSrc?
       {/* CUERPO */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "#fff" }}>
         <div style={{ padding: `${_M(2)}px ${_M(2.5)}px ${_M(2)}px`, display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, background: "linear-gradient(180deg,#f8faff 0%,#fff 100%)" }}>
-          <img src="/images/logo-isp.png" style={{ height: _M(10), maxWidth: "90%", objectFit: "contain", display: "block", marginBottom: _M(1.5) }} />
           {fotoEl}
           <div style={{ fontSize: _P(7.5), fontWeight: 900, color: "#0f2044", textAlign: "center", lineHeight: 1.2, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: _M(0.8) }}>{agent.nombre_completo}</div>
           <div style={{ fontSize: _P(5), fontWeight: 700, color: "#b8860b", textAlign: "center", letterSpacing: "0.12em", textTransform: "uppercase" }}>{cargo}</div>
