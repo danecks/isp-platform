@@ -24,7 +24,6 @@ import NotFound from "@/pages/not-found";
 import AdminLogin from "@/admin/pages/Login";
 import AdminDashboard from "@/admin/pages/Dashboard";
 import AdminIncidencias from "@/admin/pages/Incidencias";
-import AdminReclutamiento from "@/admin/pages/Reclutamiento";
 import AdminComercial from "@/admin/pages/Comercial";
 import AdminTareas from "@/admin/pages/Tareas";
 import AdminKPI from "@/admin/pages/KPI";
@@ -134,9 +133,6 @@ function Router() {
       </Route>
       <Route path="/admin/incidencias">
         {() => <AuthGuard><AdminIncidencias /></AuthGuard>}
-      </Route>
-      <Route path="/admin/reclutamiento">
-        {() => <AuthGuard><AdminReclutamiento /></AuthGuard>}
       </Route>
       <Route path="/admin/comercial">
         {() => <AuthGuard><AdminComercial /></AuthGuard>}

@@ -17,6 +17,10 @@ Key capabilities include:
 ## User Preferences
 I prefer simple language. I want iterative development. Ask before making major changes. Do not make changes to the `lib/api-spec` folder. Do not make changes to the `orval.config.ts` file.
 
+## Critical Business Rules
+- **Todo dato del formulario = dato en la ficha del empleado.** Cuando se crea un registro de empleado a partir de cualquier formulario (Kiosco, solicitud, etc.), TODOS los campos capturados en el formulario deben transferirse a la ficha del empleado. Si un campo del formulario no tiene columna correspondiente en `employees`, hay que agregar la columna. Nunca perder datos del formulario al contratar.
+- **Reclutamiento Web (legacy) fue reemplazado por el sistema de Kiosco Solicitudes.** El módulo admin `/admin/reclutamiento` y su página fueron eliminados. El backend (`/api/applications`, tabla `applications`) se conserva por compatibilidad con WhatsApp. No recrear la pantalla de Reclutamiento Web.
+
 ## System Architecture
 
 ### Monorepo Structure

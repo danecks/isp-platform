@@ -25,7 +25,6 @@ import {
   GitMerge,
   Zap,
   Shield,
-  UserSearch,
   Calendar,
   Kanban,
   Trash2,
@@ -200,13 +199,6 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: HardHat,
         clave: "empleados",
         roles: ["admin", "operaciones", "rrhh", "supervisor"],
-      },
-      {
-        path: "/admin/reclutamiento",
-        label: "Reclutamiento (Web)",
-        icon: UserSearch,
-        clave: "reclutamiento",
-        roles: ["admin", "rrhh"],
       },
       {
         path: "/admin/rrhh/kiosco-solicitudes",
