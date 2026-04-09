@@ -273,8 +273,9 @@ function fmtRelativa(iso: string | null) {
   return `hace ${Math.floor(días / 365)} año(s)`;
 }
 
-function fmtQ(n: number) {
-  return `Q${n.toLocaleString("es-GT")}`;
+function fmtQ(n: number | null | undefined) {
+  if (n === null || n === undefined || isNaN(n as number)) return "Q0.00";
+  return `Q${(n as number).toLocaleString("es-GT", { minimumFractionDigits: 2 })}`;
 }
 
 function maskDpi(dpi: string | null): string {

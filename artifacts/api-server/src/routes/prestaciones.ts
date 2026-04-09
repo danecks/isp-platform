@@ -398,6 +398,11 @@ async function buildLiquidacion(empId: number, body: Record<string, unknown>) {
   );
   if (emp.length === 0) throw new Error("Empleado no encontrado");
 
+  if (!emp[0].fecha_ingreso)
+    throw new Error("El colaborador no tiene fecha de ingreso registrada. Actualice la ficha antes de calcular la liquidación.");
+  if (!emp[0].sueldo_base || isNaN(parseFloat(emp[0].sueldo_base)) || parseFloat(emp[0].sueldo_base) <= 0)
+    throw new Error("El colaborador no tiene sueldo base configurado. Actualice la ficha antes de calcular la liquidación.");
+
   const { rows: vacSaldo } = await pool.query(
     `SELECT dias_disponibles FROM vacaciones_saldos WHERE employee_id = $1`, [empId]
   );
