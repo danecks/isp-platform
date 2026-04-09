@@ -79,7 +79,7 @@ export function VarianteA() {
         <img
           src="https://987b05e8-e17a-40f4-b366-3baeddd84475-00-2jyjpes488ag2.riker.replit.dev/images/logo-isp.png"
           alt="ISP"
-          style={{ height: 110, width: "auto", objectFit: "contain", mixBlendMode: "multiply" as const }}
+          style={{ height: 140, width: "auto", objectFit: "contain", mixBlendMode: "multiply" as const }}
         />
       </div>
 
