@@ -68,7 +68,7 @@ export function VarianteA() {
   const Reverso = () => (
     <div style={{ width: W, height: H, display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: "Arial, sans-serif", background: "#fff", borderRadius: 6, boxShadow: "0 8px 32px rgba(0,0,0,0.35)", flexShrink: 0 }}>
       {/* Top navy band — solo texto */}
-      <div style={{ background: "linear-gradient(180deg,#0a1a3d,#0f2044)", padding: "14px 16px 12px", display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+      <div style={{ background: "linear-gradient(180deg,#0a1a3d,#0f2044)", padding: "8px 16px 6px", display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
         <div style={{ fontSize: 9.5, fontWeight: 900, color: "#fff", letterSpacing: 0.8 }}>ISP, S.A.</div>
         <div style={{ fontSize: 5.5, color: "rgba(255,255,255,0.45)", letterSpacing: 1.5, marginTop: 2, textAlign: "center" }}>INVESTIGACIONES Y SEGURIDAD PROFESIONAL, S.A.</div>
       </div>
