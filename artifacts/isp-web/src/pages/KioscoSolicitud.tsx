@@ -122,8 +122,8 @@ const DEPTOS = [
 ];
 
 // ── Componente principal ──────────────────────────────────────────────────────
-export default function KioscoSolicitud() {
-  const [step, setStep] = useState(0);           // 0=PIN, 1-4=formulario, 5=foto, 6=listo
+export default function KioscoSolicitud({ skipPin = false }: { skipPin?: boolean }) {
+  const [step, setStep] = useState(skipPin ? 1 : 0); // 0=PIN, 1-4=formulario, 5=foto, 6=listo
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState(false);
   const [verificandoPin, setVerificandoPin] = useState(false);
@@ -267,7 +267,7 @@ export default function KioscoSolicitud() {
     setPin("");
     setPinError(false);
     setSolicitudId(null);
-    setStep(0);
+    setStep(skipPin ? 1 : 0);
   };
 
   // ────────────────────────────────────────────────────────────────────────────

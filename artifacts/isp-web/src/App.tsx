@@ -69,6 +69,7 @@ import RondaGuardia from "@/pages/RondaGuardia";
 import AgenteEscaneo from "@/pages/AgenteEscaneo";
 import SupervisorActivar from "@/pages/SupervisorActivar";
 import KioscoSolicitud from "@/pages/KioscoSolicitud";
+import SolicitudEmpleo from "@/pages/SolicitudEmpleo";
 import AdminKioscoSolicitudes from "@/admin/pages/KioscoSolicitudes";
 
 // Portal de clientes
@@ -264,6 +265,7 @@ function Router() {
       <Route path="/agente" component={AgenteEscaneo} />
       <Route path="/supervisor/activar" component={SupervisorActivar} />
       <Route path="/kiosco" component={KioscoSolicitud} />
+      <Route path="/solicitud-empleo" component={SolicitudEmpleo} />
       <Route path="/admin/rrhh/kiosco-solicitudes">
         {() => <AuthGuard><AdminKioscoSolicitudes /></AuthGuard>}
       </Route>
