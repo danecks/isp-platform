@@ -19,7 +19,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Printer, Settings, Target, Plus, Minus, ChevronDown,
-  Save, X, AlertTriangle, CheckCircle, CreditCard, RefreshCw,
+  Save, X, AlertTriangle, CheckCircle, CreditCard, RefreshCw, Download,
 } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1094,17 +1094,27 @@ export default function ImpresionAvanzadaTab() {
 
               {/* Indicador del agente de impresión */}
               {agentChecked && (
-                <div className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs border ${
-                  agentStatus?.ok
-                    ? "bg-emerald-500/8 border-emerald-500/20 text-emerald-400"
-                    : "bg-white/5 border-white/10 text-white/30"
-                }`}>
-                  <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${agentStatus?.ok ? "bg-emerald-400" : "bg-white/20"}`} />
-                  {agentStatus?.ok
-                    ? `Agente activo en ${agentStatus.hostname ?? "esta PC"} — impresión silenciosa`
-                    : "Sin agente local — se usará el diálogo del navegador"
-                  }
-                </div>
+                agentStatus?.ok ? (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs border bg-emerald-500/8 border-emerald-500/20 text-emerald-400">
+                    <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-emerald-400" />
+                    Agente activo en {agentStatus.hostname ?? "esta PC"} — impresión silenciosa
+                  </div>
+                ) : (
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center gap-2 text-xs text-white/40">
+                      <div className="w-1.5 h-1.5 rounded-full bg-white/20 flex-shrink-0" />
+                      Sin agente local — se usará el diálogo del navegador
+                    </div>
+                    <a
+                      href="/ISP-PrintAgent.exe"
+                      download="ISP-PrintAgent.exe"
+                      className="flex items-center justify-center gap-2 w-full py-1.5 bg-white/5 hover:bg-white/10 border border-white/15 rounded-lg text-xs text-white/50 hover:text-white/70 transition-colors"
+                    >
+                      <Download className="w-3 h-3" />
+                      Descargar agente de impresión para Windows
+                    </a>
+                  </div>
+                )
               )}
 
               <button
