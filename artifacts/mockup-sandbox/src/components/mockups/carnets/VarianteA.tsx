@@ -18,10 +18,8 @@ export function VarianteA() {
       <div style={{ width: SW, height: H, background: "linear-gradient(180deg,#0a1a3d 0%,#0f2044 60%,#0a1a3d 100%)", display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, position: "relative", boxSizing: "border-box" }}>
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)" }} />
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)" }} />
-        {/* Diamond logo mark */}
-        <div style={{ marginTop: 14, width: 26, height: 26, background: "rgba(245,200,66,0.12)", border: "1.5px solid rgba(245,200,66,0.4)", borderRadius: 4, transform: "rotate(45deg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <span style={{ transform: "rotate(-45deg)", fontSize: 10, fontWeight: 900, color: "#f5c842", fontFamily: "serif" }}>I</span>
-        </div>
+        {/* Logo ISP */}
+        <img src="https://987b05e8-e17a-40f4-b366-3baeddd84475-00-2jyjpes488ag2.riker.replit.dev/images/logo-icon.png" alt="ISP" style={{ width: 28, height: 28, objectFit: "contain", marginTop: 12 }} />
         <span style={{ writingMode: "vertical-rl" as const, transform: "rotate(180deg)", fontSize: 7, color: "rgba(255,255,255,0.3)", fontFamily: "monospace", fontWeight: 700, marginTop: "auto", marginBottom: 14, letterSpacing: 1 }}>{sample.num}</span>
       </div>
 
@@ -69,23 +67,20 @@ export function VarianteA() {
 
   const Reverso = () => (
     <div style={{ width: W, height: H, display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: "Arial, sans-serif", background: "#fff", borderRadius: 6, boxShadow: "0 8px 32px rgba(0,0,0,0.35)", flexShrink: 0 }}>
-      {/* Top navy band */}
-      <div style={{ background: "linear-gradient(180deg,#0a1a3d,#0f2044)", padding: "20px 16px 16px", display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
-        {/* Logo placeholder */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 36, height: 36, borderRadius: "50%", border: "2px solid #f5c842", background: "rgba(245,200,66,0.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ fontSize: 14, fontWeight: 900, color: "#f5c842", fontFamily: "serif" }}>I</span>
-          </div>
-          <div>
-            <div style={{ fontSize: 9, fontWeight: 900, color: "#fff", letterSpacing: 0.5 }}>ISP, S.A.</div>
-            <div style={{ fontSize: 5.5, color: "rgba(255,255,255,0.5)", letterSpacing: 0.3 }}>SEGURIDAD PROFESIONAL</div>
-          </div>
-        </div>
+      {/* Top navy band — solo texto */}
+      <div style={{ background: "linear-gradient(180deg,#0a1a3d,#0f2044)", padding: "14px 16px 12px", display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+        <div style={{ fontSize: 9.5, fontWeight: 900, color: "#fff", letterSpacing: 0.8 }}>ISP, S.A.</div>
+        <div style={{ fontSize: 5.5, color: "rgba(255,255,255,0.45)", letterSpacing: 1.5, marginTop: 2 }}>INVESTIGACIONES Y SEGURIDAD PROFESIONAL</div>
       </div>
       <div style={{ height: 2, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)", flexShrink: 0 }} />
 
+      {/* Logo debajo de la línea dorada */}
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", padding: "10px 12px 8px", flexShrink: 0 }}>
+        <img src="https://987b05e8-e17a-40f4-b366-3baeddd84475-00-2jyjpes488ag2.riker.replit.dev/images/logo-isp.png" alt="ISP" style={{ width: "75%", objectFit: "contain" }} />
+      </div>
+
       {/* Text */}
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "12px 18px" }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "4px 18px 12px" }}>
         <div style={{ fontSize: 8, color: "#334155", textAlign: "center", lineHeight: 1.7 }}>
           El presente acredita como colaborador de{" "}
           <strong style={{ fontWeight: 800, color: "#0f2044" }}>ISP S.A.</strong>{" "}
