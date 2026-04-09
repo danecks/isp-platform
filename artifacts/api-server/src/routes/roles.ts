@@ -56,6 +56,7 @@ export const SYSTEM_MODULOS = [
   { clave: "planillas_especiales",label: "Bono 14 & Aguinaldo",        seccion: "Personal & RRHH" },
   { clave: "libro_salarios",      label: "Libro de Salarios",          seccion: "Personal & RRHH" },
   { clave: "igss_planilla",       label: "Planilla IGSS",              seccion: "Personal & RRHH" },
+  { clave: "carnets_qr",          label: "Carnets QR",                 seccion: "Personal & RRHH" },
   // Sistema
   { clave: "solicitudes_eliminacion", label: "Solicitudes de Eliminación", seccion: "Sistema" },
   { clave: "usuarios",            label: "Usuarios del Sistema",       seccion: "Sistema" },

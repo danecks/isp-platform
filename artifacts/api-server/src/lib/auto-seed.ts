@@ -3735,6 +3735,19 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-seed: IGSS-PERM-01 permisos — error (no bloqueante)");
   }
 
+  // ── CARNET-PERM-01: permisos garantizados para módulo Carnets QR ─────────────
+  try {
+    await pool.query(`
+      INSERT INTO rol_permisos (rol_clave, modulo_clave) VALUES
+        ('admin', 'carnets_qr'),
+        ('rrhh',  'carnets_qr')
+      ON CONFLICT DO NOTHING
+    `);
+    logger.info("Auto-seed: CARNET-PERM-01 permisos carnets_qr insertados");
+  } catch (err) {
+    logger.error({ err }, "Auto-seed: CARNET-PERM-01 permisos — error (no bloqueante)");
+  }
+
   // ── SUPERVISOR-DEV-01: dispositivos autenticados (teléfonos de puesto y supervisor) ──
   try {
     await pool.query(`
