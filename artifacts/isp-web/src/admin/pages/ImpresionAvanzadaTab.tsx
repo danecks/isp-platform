@@ -1106,8 +1106,7 @@ export default function ImpresionAvanzadaTab() {
                       Sin agente local — se usará el diálogo del navegador
                     </div>
                     <a
-                      href="/ISP-PrintAgent.exe"
-                      download="ISP-PrintAgent.exe"
+                      href="/api/download/print-agent"
                       className="flex items-center justify-center gap-2 w-full py-1.5 bg-white/5 hover:bg-white/10 border border-white/15 rounded-lg text-xs text-white/50 hover:text-white/70 transition-colors"
                     >
                       <Download className="w-3 h-3" />
