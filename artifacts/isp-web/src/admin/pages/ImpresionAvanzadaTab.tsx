@@ -367,6 +367,95 @@ function buildCardFrenteHTML(
 </div>`;
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// GENERADOR DE IMÁGENES — para descarga y carga en software de bandeja
+// Renderiza las tarjetas como elementos DOM con estilos inline (sin CSS externo)
+// para que html2canvas pueda capturarlos fielmente.
+// ────────────────────────────────────────────────────────────────────────────
+
+const _MM = (mm: number) => Math.round(mm * 4);          // mm → px (96 DPI base)
+const _PT = (pt: number) => Math.round(pt * 4 / 3.78);  // pt → px
+
+function createFrenteElement(
+  agent: AgenteCarnet,
+  qrSvgStr: string,
+  logoIconB64: string,
+  fecha: string,
+): HTMLDivElement {
+  const W = _MM(53.98), H = _MM(85.6), SW = _MM(10.5);
+  const initials = getInitials(agent.nombre_completo);
+  const cargo    = getCargoLabel(agent.tipo_personal, agent.cargo);
+  const num      = agent.empl_numero ? `#${String(agent.empl_numero).padStart(4, "0")}` : "";
+
+  const qrFixed = qrSvgStr
+    ? qrSvgStr.replace(/<svg([^>]*)>/, `<svg$1 width="${_MM(18)}" height="${_MM(18)}" style="display:block">`)
+    : "";
+
+  const el = document.createElement("div");
+  el.style.cssText = `width:${W}px;height:${H}px;display:flex;flex-direction:row;overflow:hidden;font-family:Arial,Helvetica,sans-serif;background:#fff;box-sizing:border-box`;
+  el.innerHTML = `
+  <div style="width:${SW}px;height:${H}px;background:linear-gradient(180deg,#0f2044 0%,#132a5a 100%);display:flex;flex-direction:column;align-items:center;flex-shrink:0;position:relative;box-sizing:border-box">
+    <div style="position:absolute;top:0;left:0;right:0;height:${_MM(1)}px;background:#f5c842"></div>
+    <div style="position:absolute;bottom:0;left:0;right:0;height:${_MM(1)}px;background:#f5c842"></div>
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:${_MM(3)}px 0;width:100%;height:100%;box-sizing:border-box">
+      <img src="${logoIconB64}" style="width:${_MM(7)}px;object-fit:contain;filter:brightness(0) invert(1)" />
+      <span style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:${_PT(4)}px;color:rgba(255,255,255,.4);font-family:monospace;font-weight:700">${num}</span>
+    </div>
+  </div>
+  <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;background:#fff">
+    <div style="padding:${_MM(2.5)}px ${_MM(2)}px ${_MM(2)}px;display:flex;flex-direction:column;align-items:center;flex-shrink:0">
+      <div style="width:${_MM(13)}px;height:${_MM(13)}px;border-radius:50%;background:linear-gradient(135deg,#0f2044,#1e4a9a);border:1px solid #f5c842;display:flex;align-items:center;justify-content:center;margin-bottom:${_MM(1.5)}px">
+        <span style="font-size:${_PT(8)}px;font-weight:900;color:#f5c842">${initials}</span>
+      </div>
+      <div style="font-size:${_PT(6)}px;font-weight:900;color:#0f2044;text-align:center;line-height:1.2;text-transform:uppercase;margin-bottom:${_MM(0.8)}px">${agent.nombre_completo}</div>
+      <div style="font-size:${_PT(4)}px;font-weight:700;color:#b8860b;text-align:center;letter-spacing:.1em;text-transform:uppercase">${cargo}</div>
+    </div>
+    <div style="height:1px;background:linear-gradient(90deg,#d4a017,#f5c842,#e8b820);flex-shrink:0"></div>
+    <div style="padding:${_MM(1.5)}px ${_MM(2)}px;flex:1">
+      ${agent.dpi ? `
+      <div style="font-size:${_PT(3.5)}px;color:#94a3b8;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:${_MM(0.5)}px">DPI</div>
+      <div style="font-size:${_PT(5.5)}px;color:#0f2044;font-weight:800;font-family:monospace;margin-bottom:${_MM(1.5)}px">${agent.dpi}</div>
+      ` : ""}
+      <div style="height:1px;background:#f1f5f9;margin-bottom:${_MM(1.5)}px"></div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:${_MM(1)}px">
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:${_MM(1)}px;padding:${_MM(0.5)}px;display:inline-block">${qrFixed}</div>
+        <span style="font-size:${_PT(3)}px;color:#94a3b8;text-align:center">Escanea para verificar identidad</span>
+      </div>
+    </div>
+    <div style="background:#0f2044;padding:${_MM(1)}px ${_MM(2)}px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <span style="font-size:${_PT(3)}px;color:rgba(255,255,255,.35)">${fecha}</span>
+      <span style="font-size:${_PT(3)}px;font-weight:800;color:#f5c842;letter-spacing:.08em">CARNET DE IDENTIFICACIÓN</span>
+    </div>
+  </div>`;
+  return el;
+}
+
+function createReversoElement(logoFullB64: string): HTMLDivElement {
+  const W = _MM(53.98), H = _MM(85.6);
+  const el = document.createElement("div");
+  el.style.cssText = `width:${W}px;height:${H}px;display:flex;flex-direction:column;overflow:hidden;font-family:Arial,Helvetica,sans-serif;background:#fff;box-sizing:border-box`;
+  el.innerHTML = `
+  <div style="padding:${_MM(4)}px ${_MM(3)}px ${_MM(2)}px;display:flex;flex-direction:column;align-items:center;flex-shrink:0">
+    <img src="${logoFullB64}" style="height:${_MM(18)}px;object-fit:contain" />
+    <div style="font-size:${_PT(3.8)}px;color:#0f2044;letter-spacing:.1em;font-weight:700;text-align:center;margin-top:${_MM(1.5)}px">INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A.</div>
+  </div>
+  <div style="height:1px;background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017);flex-shrink:0"></div>
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:${_MM(2.5)}px ${_MM(4)}px">
+    <div style="font-size:${_PT(5.5)}px;color:#1e3a5f;text-align:center;line-height:1.65">
+      El presente acredita como colaborador de <strong style="font-weight:800;color:#0f2044">ISP S.A.</strong>
+      Se solicita a las Autoridades <strong style="font-weight:800;color:#0f2044">Civiles y Militares</strong>
+      la colaboración en caso de ser requerida. Válido en el cumplimiento de sus funciones en el puesto asignado.
+    </div>
+  </div>
+  <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(245,200,66,.5),#f5c842,rgba(245,200,66,.5),transparent);margin:0 ${_MM(4)}px;flex-shrink:0"></div>
+  <div style="padding:${_MM(1.5)}px ${_MM(3)}px ${_MM(2)}px;display:flex;flex-direction:column;align-items:center;flex-shrink:0">
+    <div style="font-size:${_PT(6.5)}px;font-weight:900;color:#0f2044;letter-spacing:.06em">www.ispsa.net</div>
+    <div style="font-size:${_PT(3.8)}px;color:#94a3b8;letter-spacing:.04em;margin-top:${_MM(0.5)}px">contacto@isp-guatemala.com</div>
+  </div>
+  <div style="background:#0f2044;height:${_MM(2)}px;flex-shrink:0"></div>`;
+  return el;
+}
+
 /**
  * Genera el HTML del REVERSO — diseño Moderno PORTRAIT (53.98×85.6mm).
  * Logo ISP centrado · texto legal · web/email · banda navy inferior.
@@ -670,13 +759,11 @@ function TrayPreview({
   profile,
   offset,
   queue,
-  fase = "frente",
   isCalib = false,
 }: {
   profile: PrinterProfile;
   offset: CalibrationOffset;
   queue: (AgenteCarnet | null)[];
-  fase?: "frente" | "reverso";
   isCalib?: boolean;
 }) {
   const MAX_W = 240;
@@ -732,9 +819,7 @@ function TrayPreview({
                   </div>
                 </>
               ) : agent ? (
-                fase === "frente"
-                  ? <MiniCardFrente agent={agent} w={w} h={h} />
-                  : <MiniCardReverso w={w} h={h} />
+                <MiniCardFrente agent={agent} w={w} h={h} />
               ) : (
                 <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
                   <span style={{ fontSize: 7, color: "rgba(15,32,68,0.25)", fontWeight: 700 }}>Slot {i + 1}</span>
@@ -785,36 +870,11 @@ export default function ImpresionAvanzadaTab() {
     localStorage.setItem(STORAGE_KEY_CALIB, JSON.stringify(next));
   }
 
-  // ── Agente local de impresión ────────────────────────────────────────────────
-  const [agentStatus, setAgentStatus]   = useState<AgentStatus | null>(null);
-  const [agentChecked, setAgentChecked] = useState(false);
-  const [agentChecking, setAgentChecking] = useState(false);
-
-  const refreshAgent = async () => {
-    setAgentChecking(true);
-    const s = await checkAgent();
-    setAgentStatus(s);
-    setAgentChecked(true);
-    setAgentChecking(false);
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    checkAgent().then(s => {
-      if (!cancelled) { setAgentStatus(s); setAgentChecked(true); }
-    });
-    // Re-verificar cada 30 segundos
-    const interval = setInterval(() => {
-      checkAgent().then(s => { if (!cancelled) setAgentStatus(s); });
-    }, 30_000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, []);
+  // ── Progreso de descarga ZIP ─────────────────────────────────────────────────
+  const [downloadProgress, setDownloadProgress] = useState(0);
 
   // ── Tab activo ───────────────────────────────────────────────────────────────
   const [tab, setTab] = useState<"imprimir" | "config" | "calibracion">("imprimir");
-
-  // ── Fase (frente/reverso) ───────────────────────────────────────────────────
-  const [fase, setFase] = useState<"frente" | "reverso">("frente");
 
   // ── Cola de agentes ─────────────────────────────────────────────────────────
   // queue[i] = agente asignado al slot i (null = vacío)
@@ -825,7 +885,6 @@ export default function ImpresionAvanzadaTab() {
   // Reiniciar cola cuando cambia perfil
   useEffect(() => {
     setQueue(new Array(activeProfile.slots.length).fill(null));
-    setFase("frente");
     localStorage.setItem(STORAGE_KEY_ACTIVE, activeProfileId);
   }, [activeProfileId, activeProfile.slots.length]);
 
@@ -864,18 +923,22 @@ export default function ImpresionAvanzadaTab() {
     setQueue(siguiente);
   }
 
-  function clearQueue() { setQueue(new Array(activeProfile.slots.length).fill(null)); setFase("frente"); }
+  function clearQueue() { setQueue(new Array(activeProfile.slots.length).fill(null)); }
 
-  // ── Impresión ────────────────────────────────────────────────────────────────
+  // ── Descarga de imágenes ZIP ─────────────────────────────────────────────────
   const [printing, setPrinting] = useState(false);
 
-  async function handlePrintFrente() {
+  async function handleDownloadImages() {
     const agentesEnCola = queue.filter(Boolean) as AgenteCarnet[];
     if (agentesEnCola.length === 0) return;
     setPrinting(true);
+    setDownloadProgress(0);
 
     const origin = window.location.origin;
-    const logoIconB64 = await toBase64Url(`${origin}/images/logo-icon.png`);
+    const [logoIconB64, logoFullB64] = await Promise.all([
+      toBase64Url(`${origin}/images/logo-icon.png`),
+      toBase64Url(`${origin}/images/logo-isp.png`),
+    ]);
     const fecha = new Date().toLocaleDateString("es-GT", { month: "long", year: "numeric" });
 
     // Capturar QRs del contenedor oculto
@@ -886,42 +949,71 @@ export default function ImpresionAvanzadaTab() {
       if (svg) qrMap[id] = new XMLSerializer().serializeToString(svg);
     });
 
-    // Generar slot HTML
-    const slots = queue.map(a => {
-      if (!a) return "";
-      const svgHtml = qrMap[a.employee_id] ?? "<span style='font-size:8pt;color:#999'>QR</span>";
-      return buildCardFrenteHTML(a, svgHtml, logoIconB64, fecha);
-    });
+    // Cargar librerías dinámicamente
+    const [{ default: html2canvas }, { default: JSZip }] = await Promise.all([
+      import("html2canvas"),
+      import("jszip"),
+    ]);
 
-    const css = buildPrintPageCSS(activeProfile, offset);
-    await sendToAgent(`Frentes ISP (${agentesEnCola.length})`, css, slots, agentStatus);
-    setFase("reverso");
-    setPrinting(false);
-  }
+    const zip = new JSZip();
+    const container = document.createElement("div");
+    container.style.cssText = "position:fixed;top:-9999px;left:-9999px;pointer-events:none;z-index:-1";
+    document.body.appendChild(container);
 
-  async function handlePrintReverso() {
-    const agentesEnCola = queue.filter(Boolean) as AgenteCarnet[];
-    if (agentesEnCola.length === 0) return;
-    setPrinting(true);
+    try {
+      for (let i = 0; i < agentesEnCola.length; i++) {
+        const a = agentesEnCola[i];
+        const safeName = a.nombre_completo
+          .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-zA-Z0-9\s]/g, "").trim().replace(/\s+/g, "_");
+        const prefix = `${String(i + 1).padStart(2, "0")}_${safeName}`;
 
-    const origin = window.location.origin;
-    const logoFullB64 = await toBase64Url(`${origin}/images/logo-isp.png`);
+        // Frente
+        const frenteEl = createFrenteElement(a, qrMap[a.employee_id] ?? "", logoIconB64, fecha);
+        container.appendChild(frenteEl);
+        const frenteCanvas = await html2canvas(frenteEl, {
+          scale: 3, useCORS: true, logging: false, backgroundColor: "#ffffff",
+        });
+        zip.file(`${prefix}_frente.png`, frenteCanvas.toDataURL("image/png").split(",")[1], { base64: true });
+        container.removeChild(frenteEl);
 
-    const slots = queue.map(a => a ? buildCardReversoHTML(logoFullB64) : "");
-    const css = buildPrintPageCSS(activeProfile, offset);
-    await sendToAgent(`Reversos ISP (${agentesEnCola.length})`, css, slots, agentStatus);
+        // Reverso
+        const reversoEl = createReversoElement(logoFullB64);
+        container.appendChild(reversoEl);
+        const reversoCanvas = await html2canvas(reversoEl, {
+          scale: 3, useCORS: true, logging: false, backgroundColor: "#ffffff",
+        });
+        zip.file(`${prefix}_reverso.png`, reversoCanvas.toDataURL("image/png").split(",")[1], { base64: true });
+        container.removeChild(reversoEl);
 
-    // Registrar impresión
-    await Promise.all(
-      agentesEnCola.map(a =>
-        apiFetch(`/agente/tokens/${a.employee_id}/registrar-impresion`, {
-          method: "POST", body: JSON.stringify({ impresoPor }),
-        })
-      )
-    );
+        setDownloadProgress(Math.round(((i + 1) / agentesEnCola.length) * 100));
+      }
 
-    clearQueue();
-    setPrinting(false);
+      const blob = await zip.generateAsync({ type: "blob" });
+      const url  = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href     = url;
+      link.download = `carnets_ISP_${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      // Registrar impresión
+      await Promise.all(
+        agentesEnCola.map(a =>
+          apiFetch(`/agente/tokens/${a.employee_id}/registrar-impresion`, {
+            method: "POST", body: JSON.stringify({ impresoPor }),
+          })
+        )
+      );
+
+      clearQueue();
+    } finally {
+      document.body.removeChild(container);
+      setPrinting(false);
+      setDownloadProgress(0);
+    }
   }
 
   // ── Calibración test print ───────────────────────────────────────────────────
@@ -1003,49 +1095,12 @@ export default function ImpresionAvanzadaTab() {
       {tab === "imprimir" && (
         <div className="space-y-4">
 
-          {/* Indicador de paso */}
-          <div className="flex items-center gap-0">
-            {/* Paso 1 */}
-            <div className={`flex-1 flex flex-col items-center gap-1 py-2.5 rounded-l-xl border ${
-              fase === "frente"
-                ? "bg-[#f5c842]/10 border-[#f5c842]/30"
-                : "bg-white/5 border-white/10"
-            }`}>
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black ${
-                fase === "frente" ? "bg-[#f5c842] text-[#0f2044]" : "bg-emerald-500 text-white"
-              }`}>
-                {fase === "frente" ? "1" : "✓"}
-              </div>
-              <span className={`text-[10px] font-bold ${fase === "frente" ? "text-[#f5c842]" : "text-emerald-400"}`}>
-                Lado frente
-              </span>
-            </div>
-            {/* Flecha */}
-            <div className="w-6 h-[1px] bg-white/15 flex-shrink-0" />
-            {/* Paso 2 */}
-            <div className={`flex-1 flex flex-col items-center gap-1 py-2.5 rounded-r-xl border ${
-              fase === "reverso"
-                ? "bg-amber-500/10 border-amber-500/30"
-                : "bg-white/3 border-white/8"
-            }`}>
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black ${
-                fase === "reverso" ? "bg-amber-400 text-[#0f2044]" : "bg-white/10 text-white/30"
-              }`}>
-                2
-              </div>
-              <span className={`text-[10px] font-bold ${fase === "reverso" ? "text-amber-300" : "text-white/25"}`}>
-                Lado reverso
-              </span>
-            </div>
-          </div>
-
           {/* Vista previa de bandeja con diseño Moderno */}
-          <TrayPreview profile={activeProfile} offset={offset} queue={queue} fase={fase} />
+          <TrayPreview profile={activeProfile} offset={offset} queue={queue} />
 
-          {/* Asignación de slots — solo visible en paso 1 */}
-          {fase === "frente" && (
-            <>
-              <div className="space-y-2">
+          {/* Asignación de slots */}
+          <>
+            <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="text-white/50 text-xs font-semibold uppercase tracking-wider">
                     Slots ({queue.filter(Boolean).length}/{activeProfile.slots.length} asignados)
@@ -1101,87 +1156,50 @@ export default function ImpresionAvanzadaTab() {
                 />
               </div>
 
-              {/* Indicador del agente de impresión */}
-              {!agentChecked && !agentChecking ? null : agentChecking ? (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs border bg-white/5 border-white/10 text-white/40">
-                  <div className="w-1.5 h-1.5 rounded-full bg-white/30 flex-shrink-0 animate-pulse" />
-                  Verificando conexión con el agente...
-                </div>
-              ) : agentStatus?.ok ? (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs border bg-emerald-500/8 border-emerald-500/20 text-emerald-400">
-                  <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-emerald-400" />
-                  Agente activo en {agentStatus.hostname ?? "esta PC"} — impresión silenciosa
-                </div>
-              ) : (
-                <div className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-xs text-white/40">
-                      <div className="w-1.5 h-1.5 rounded-full bg-white/20 flex-shrink-0" />
-                      Sin agente local — se usará el diálogo del navegador
-                    </div>
-                    <button
-                      type="button"
-                      onClick={e => { e.stopPropagation(); refreshAgent(); }}
-                      disabled={agentChecking}
-                      className="flex items-center gap-1.5 px-2.5 py-1 bg-white/8 hover:bg-white/15 border border-white/15 rounded-lg text-xs text-white/60 hover:text-white/80 transition-colors disabled:opacity-40"
-                    >
-                      <RefreshCw className="w-3 h-3" />
-                      Conectar
-                    </button>
+              {/* Instrucción para el software de bandeja */}
+              <div className="bg-blue-500/8 border border-blue-500/20 rounded-xl px-3 py-2.5 text-[11px] text-blue-300/70 leading-relaxed">
+                Se generará un ZIP con <strong className="text-blue-300">frente</strong> y <strong className="text-blue-300">reverso</strong> de cada tarjeta. Ábrelos en el programa de la bandeja para imprimir.
+              </div>
+
+              {/* Barra de progreso */}
+              {printing && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[10px] text-white/40">
+                    <span>Generando imágenes...</span>
+                    <span>{downloadProgress}%</span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={e => { e.stopPropagation(); window.location.href = "/api/download/print-agent"; }}
-                    className="flex items-center justify-center gap-2 w-full py-1.5 bg-white/5 hover:bg-white/10 border border-white/15 rounded-lg text-xs text-white/50 hover:text-white/70 transition-colors"
-                  >
-                    <Download className="w-3 h-3" />
-                    Descargar agente de impresión para Windows
-                  </button>
+                  <div className="w-full h-1.5 bg-white/8 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#f5c842] rounded-full transition-all duration-300"
+                      style={{ width: `${downloadProgress}%` }}
+                    />
+                  </div>
                 </div>
               )}
 
+              {/* Botón principal de descarga */}
               <button
-                onClick={handlePrintFrente}
+                type="button"
+                onClick={handleDownloadImages}
                 disabled={queue.every(q => !q) || printing}
                 className="w-full flex items-center justify-center gap-2 py-3 bg-[#f5c842]/10 hover:bg-[#f5c842]/20 border border-[#f5c842]/30 rounded-xl text-sm text-[#f5c842] font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
-                <Printer className="w-4 h-4" />
-                {printing ? "Preparando..." : `Imprimir frentes (${queue.filter(Boolean).length} tarjeta${queue.filter(Boolean).length !== 1 ? "s" : ""})`}
-              </button>
-            </>
-          )}
-
-          {/* Paso 2 — reverso */}
-          {fase === "reverso" && (
-            <div className="space-y-3">
-              {/* Instrucción flip */}
-              <div className="bg-amber-500/8 border border-amber-500/25 rounded-2xl p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <RefreshCw className="w-5 h-5 text-amber-400 flex-shrink-0" />
-                  <p className="text-amber-300 text-sm font-bold">Dale vuelta a las tarjetas</p>
-                </div>
-                <ol className="text-amber-300/60 text-[11px] leading-relaxed space-y-1 ml-7">
-                  <li>1. Saca las tarjetas de la bandeja</li>
-                  <li>2. Dales vuelta (lado reverso hacia arriba)</li>
-                  <li>3. Insértalas de nuevo en los mismos slots</li>
-                  <li>4. Presiona "Imprimir reversos"</li>
-                </ol>
-              </div>
-
-              <button
-                onClick={handlePrintReverso}
-                disabled={printing}
-                className="w-full flex items-center justify-center gap-2 py-3 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 rounded-xl text-sm text-amber-300 font-bold disabled:opacity-40 transition-colors"
-              >
-                <Printer className="w-4 h-4" />
-                {printing ? "Preparando..." : "Imprimir reversos"}
+                <Download className="w-4 h-4" />
+                {printing
+                  ? `Procesando... ${downloadProgress}%`
+                  : `Descargar imágenes ZIP (${queue.filter(Boolean).length} tarjeta${queue.filter(Boolean).length !== 1 ? "s" : ""})`}
               </button>
 
-              <button onClick={clearQueue} className="w-full py-2 text-xs text-white/25 hover:text-white/50 transition-colors">
-                Cancelar y empezar de nuevo
-              </button>
-            </div>
-          )}
+              {queue.some(Boolean) && !printing && (
+                <button
+                  type="button"
+                  onClick={clearQueue}
+                  className="w-full py-2 text-xs text-white/25 hover:text-white/50 transition-colors"
+                >
+                  Limpiar cola
+                </button>
+              )}
+          </>
         </div>
       )}
 
