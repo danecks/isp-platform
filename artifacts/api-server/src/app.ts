@@ -1,6 +1,8 @@
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
+import path from "path";
+import fs from "fs";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { permisosMiddleware } from "./lib/permisos-middleware";
@@ -30,12 +32,27 @@ app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-// ── Descarga del agente de impresión para Windows (sin autenticación) ──────
-// Registrada ANTES del middleware de permisos para que no sea interceptada
-// El archivo .exe se sirve como estático desde el frontend (evita límites del proxy de API).
-// Este endpoint redirige a esa URL estática para mantener compatibilidad con links antiguos.
-app.get("/api/download/print-agent", (_req, res) => {
-  res.redirect(302, "/downloads/ISP-PrintAgent.exe");
+// ── Descarga del agente de impresión para Windows ──────────────────────────
+// Sirve el exe desde artifacts/isp-web/public/downloads/ que SÍ está en git.
+// Usa sendFile() para transferencia correcta de archivos grandes.
+app.get("/api/download/print-agent", (req, res) => {
+  // En producción process.cwd() = workspace root.
+  // En dev (pnpm --filter desde artifacts/api-server) = artifacts/api-server/.
+  // Intentamos ambas rutas.
+  const candidates = [
+    path.resolve(process.cwd(), "artifacts/isp-web/public/downloads/ISP-PrintAgent.exe"),
+    path.resolve(__dirname, "../../../artifacts/isp-web/public/downloads/ISP-PrintAgent.exe"),
+  ];
+  const exePath = candidates.find(p => fs.existsSync(p));
+  if (!exePath) {
+    console.error("[download] exe no encontrado en:", candidates);
+    res.status(404).json({ error: "Archivo no disponible" });
+    return;
+  }
+  res.setHeader("Content-Disposition", 'attachment; filename="ISP-PrintAgent.exe"');
+  res.sendFile(exePath, (err) => {
+    if (err) console.error("[download] sendFile error:", err.message);
+  });
 });
 
 app.use("/api", permisosMiddleware as any);
