@@ -1120,7 +1120,8 @@ export default function ImpresionAvanzadaTab() {
                       Sin agente local — se usará el diálogo del navegador
                     </div>
                     <button
-                      onClick={refreshAgent}
+                      type="button"
+                      onClick={e => { e.stopPropagation(); refreshAgent(); }}
                       disabled={agentChecking}
                       className="flex items-center gap-1.5 px-2.5 py-1 bg-white/8 hover:bg-white/15 border border-white/15 rounded-lg text-xs text-white/60 hover:text-white/80 transition-colors disabled:opacity-40"
                     >
@@ -1128,13 +1129,14 @@ export default function ImpresionAvanzadaTab() {
                       Conectar
                     </button>
                   </div>
-                  <a
-                    href="/api/download/print-agent"
+                  <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); window.location.href = "/api/download/print-agent"; }}
                     className="flex items-center justify-center gap-2 w-full py-1.5 bg-white/5 hover:bg-white/10 border border-white/15 rounded-lg text-xs text-white/50 hover:text-white/70 transition-colors"
                   >
                     <Download className="w-3 h-3" />
                     Descargar agente de impresión para Windows
-                  </a>
+                  </button>
                 </div>
               )}
 
