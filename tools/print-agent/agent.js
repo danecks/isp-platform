@@ -84,7 +84,7 @@ function listPrinters() {
   try {
     const out = execSync(
       'powershell -NoProfile -Command "Get-Printer | Select-Object -ExpandProperty Name"',
-      { encoding: "utf8", timeout: 5000 }
+      { encoding: "utf8", timeout: 5000, windowsHide: true }
     );
     return out.trim().split(/\r?\n/).filter(Boolean);
   } catch {
@@ -122,7 +122,7 @@ function setPaperSource(printerName) {
   try {
     const result = execSync(
       `powershell -NoProfile -NonInteractive -Command "${script}"`,
-      { encoding: "utf8", timeout: 8000 }
+      { encoding: "utf8", timeout: 8000, windowsHide: true }
     );
     return result.trim();
   } catch (e) {
