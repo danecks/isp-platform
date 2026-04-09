@@ -19,7 +19,7 @@ const API = "/api";
 const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
 
 function SecureFoto({ fotoUrl, className }: { fotoUrl: string; className?: string }) {
-  const [src, setSrc] = useState<string | null>(null);
+  const [src, setSrc] = useState<string | null>(fotoUrl.startsWith("data:") ? fotoUrl : null);
   useEffect(() => {
     if (fotoUrl.startsWith("data:")) {
       setSrc(fotoUrl);
