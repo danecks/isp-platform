@@ -10,6 +10,7 @@ import {
   Users, Search, RefreshCw, ChevronDown, Eye, X, CheckCircle2,
   XCircle, Clock, UserCheck, Camera, FileText, Phone, MapPin,
   GraduationCap, Briefcase, AlertCircle, Tablet, UserPlus, ExternalLink,
+  PhoneCall, MonitorSmartphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +39,27 @@ function SecureFoto({ fotoUrl, className }: { fotoUrl: string; className?: strin
 
 type Estado = "pendiente" | "en_revision" | "entrevista" | "aprobada" | "rechazada" | "contratada";
 
+type Canal = "kiosco" | "externo" | "whatsapp" | "referido";
+
+const CANAL_LABEL: Record<Canal, string> = {
+  kiosco: "Kiosco", externo: "Externo", whatsapp: "WhatsApp", referido: "Referido",
+};
+const CANAL_COLOR: Record<Canal, string> = {
+  kiosco:   "bg-blue-500/20 text-blue-300 border-blue-700",
+  externo:  "bg-amber-500/20 text-amber-300 border-amber-700",
+  whatsapp: "bg-green-500/20 text-green-300 border-green-700",
+  referido: "bg-purple-500/20 text-purple-300 border-purple-700",
+};
+
+const TIPOS_PERSONAL = [
+  { value: "guardia",        label: "Guardia de Seguridad" },
+  { value: "supervisor",     label: "Supervisor" },
+  { value: "administrativo", label: "Administrativo" },
+  { value: "motorista",      label: "Motorista / Conductor" },
+  { value: "recepcionista",  label: "Recepcionista" },
+  { value: "tecnico",        label: "Técnico" },
+];
+
 interface Solicitud {
   id: number;
   nombre_completo: string;
@@ -49,6 +71,7 @@ interface Solicitud {
   experiencia_seguridad: boolean;
   foto_url: string | null;
   estado: Estado;
+  canal: Canal;
   created_at: string;
   revisado_por: string | null;
   revisado_at: string | null;
@@ -113,6 +136,8 @@ export default function KioscoSolicitudes() {
   const [actualizando, setActualizando] = useState(false);
   const [contratando, setContratando] = useState(false);
   const [empleadoCreadoId, setEmpleadoCreadoId] = useState<number | null>(null);
+  const [mostrarFormContratar, setMostrarFormContratar] = useState(false);
+  const [asignacion, setAsignacion] = useState({ puesto: "", tipo_personal: "guardia", sueldo_base: "" });
 
   const { data: solicitudes = [], isLoading, refetch } = useQuery<Solicitud[]>({
     queryKey: ["kiosco-solicitudes", filtroEstado, busqueda],
@@ -155,10 +180,20 @@ export default function KioscoSolicitudes() {
   const crearFichaEmpleado = async (id: number) => {
     setContratando(true);
     try {
-      const r = await fetch(`${API}/solicitudes-empleo/${id}/contratar`, { method: "POST" });
+      const body = {
+        puesto_asignado:  asignacion.puesto.trim() || undefined,
+        tipo_personal:    asignacion.tipo_personal || "guardia",
+        sueldo_base:      asignacion.sueldo_base ? parseFloat(asignacion.sueldo_base) : undefined,
+      };
+      const r = await fetch(`${API}/solicitudes-empleo/${id}/contratar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || "Error al contratar");
       setEmpleadoCreadoId(data.employee_id);
+      setMostrarFormContratar(false);
       qc.invalidateQueries({ queryKey: ["kiosco-solicitudes"] });
       qc.invalidateQueries({ queryKey: ["kiosco-solicitud-detalle", id] });
     } catch (err) {
@@ -168,7 +203,11 @@ export default function KioscoSolicitudes() {
     }
   };
 
-  useEffect(() => { setEmpleadoCreadoId(null); }, [seleccionada]);
+  useEffect(() => {
+    setEmpleadoCreadoId(null);
+    setMostrarFormContratar(false);
+    setAsignacion({ puesto: "", tipo_personal: "guardia", sueldo_base: "" });
+  }, [seleccionada]);
 
   const conteoEstados = ESTADOS.reduce((acc, e) => {
     if (e === "todos") acc[e] = solicitudes.length;
@@ -261,9 +300,16 @@ export default function KioscoSolicitudes() {
                       }
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${ESTADO_COLOR[s.estado]}`}>
-                        {ESTADO_LABEL[s.estado]}
-                      </span>
+                      <div className="flex flex-col gap-1">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium border w-fit ${ESTADO_COLOR[s.estado]}`}>
+                          {ESTADO_LABEL[s.estado]}
+                        </span>
+                        {s.canal && s.canal !== "kiosco" && (
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium border w-fit ${CANAL_COLOR[s.canal] || CANAL_COLOR.externo}`}>
+                            {CANAL_LABEL[s.canal] ?? s.canal}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-gray-400 text-xs">{fmtDate(s.created_at)}</td>
                     <td className="px-4 py-3">
@@ -293,9 +339,13 @@ export default function KioscoSolicitudes() {
                   }
                   <div>
                     <h2 className="text-white font-bold text-lg">{detalle.nombre_completo}</h2>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${ESTADO_COLOR[detalle.estado]}`}>
                         {ESTADO_LABEL[detalle.estado]}
+                      </span>
+                      <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${CANAL_COLOR[detalle.canal] ?? CANAL_COLOR.externo}`}>
+                        {detalle.canal === "kiosco" ? <MonitorSmartphone size={11} /> : <PhoneCall size={11} />}
+                        {CANAL_LABEL[detalle.canal] ?? detalle.canal}
                       </span>
                       <span className="text-gray-500 text-xs">SOL-{String(detalle.id).padStart(5, "0")} — {fmtDateTime(detalle.created_at)}</span>
                     </div>
@@ -308,6 +358,25 @@ export default function KioscoSolicitudes() {
 
               {/* Contenido */}
               <div className="p-5 space-y-6">
+
+                {/* Alerta canal externo */}
+                {detalle.canal && detalle.canal !== "kiosco" && (
+                  <div className="flex items-start gap-3 bg-amber-950/30 border border-amber-700/60 rounded-xl px-4 py-3">
+                    <PhoneCall size={18} className="text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-amber-300 text-sm font-semibold">Solicitud externa — requiere contacto</p>
+                      <p className="text-amber-400/70 text-xs mt-0.5">
+                        Esta solicitud llegó por canal <strong>{CANAL_LABEL[detalle.canal] ?? detalle.canal}</strong>. El candidato no se ha presentado físicamente — coordina una llamada para citarlo a entrevista.
+                      </p>
+                      {detalle.telefono && (
+                        <a href={`tel:${detalle.telefono}`} className="inline-flex items-center gap-1 mt-1.5 text-amber-300 text-xs font-medium hover:underline">
+                          <Phone size={12} /> {detalle.telefono}
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Datos personales */}
                 <Section titulo="Datos Personales" icono={<Users size={16} />}>
                   <Grid2>
@@ -408,19 +477,81 @@ export default function KioscoSolicitudes() {
                         <ExternalLink size={13} /> Ver Ficha
                       </a>
                     </div>
-                  ) : (
+                  ) : !mostrarFormContratar ? (
                     <div className="flex items-center gap-3">
                       <p className="text-gray-400 text-sm flex-1">
-                        Al contratar se creará una ficha de colaborador con los datos del formulario (nombre, DPI, teléfono, foto, nivel educativo, municipio y departamento).
+                        Al contratar se creará una ficha de colaborador. Podrá asignar el puesto, tipo de personal y salario antes de confirmar.
                       </p>
                       <button
-                        disabled={contratando || detalle.estado === "rechazada"}
-                        onClick={() => crearFichaEmpleado(detalle.id)}
+                        disabled={detalle.estado === "rechazada"}
+                        onClick={() => {
+                          setAsignacion({
+                            puesto: detalle.puesto_solicitado || "",
+                            tipo_personal: "guardia",
+                            sueldo_base: detalle.pretension_salarial || "",
+                          });
+                          setMostrarFormContratar(true);
+                        }}
                         className="shrink-0 flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-sm font-semibold transition-colors"
                       >
-                        <UserPlus size={16} />
-                        {contratando ? "Creando..." : "Crear Ficha de Empleado"}
+                        <UserPlus size={16} /> Contratar
                       </button>
+                    </div>
+                  ) : (
+                    /* Formulario de asignación */
+                    <div className="space-y-3">
+                      <p className="text-gray-300 text-xs font-medium uppercase tracking-wide">Confirmar datos de contratación</p>
+                      <div className="grid grid-cols-1 gap-3">
+                        <div>
+                          <label className="text-gray-400 text-xs mb-1 block">Puesto a asignar</label>
+                          <input
+                            value={asignacion.puesto}
+                            onChange={e => setAsignacion(a => ({ ...a, puesto: e.target.value }))}
+                            placeholder={detalle.puesto_solicitado || "Ej: Guardia de Seguridad"}
+                            className="w-full bg-gray-800 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-gray-400 text-xs mb-1 block">Tipo de personal</label>
+                            <select
+                              value={asignacion.tipo_personal}
+                              onChange={e => setAsignacion(a => ({ ...a, tipo_personal: e.target.value }))}
+                              className="w-full bg-gray-800 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            >
+                              {TIPOS_PERSONAL.map(t => (
+                                <option key={t.value} value={t.value}>{t.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-gray-400 text-xs mb-1 block">Salario a asignar (Q)</label>
+                            <input
+                              type="number"
+                              value={asignacion.sueldo_base}
+                              onChange={e => setAsignacion(a => ({ ...a, sueldo_base: e.target.value }))}
+                              placeholder={detalle.pretension_salarial || "0.00"}
+                              className="w-full bg-gray-800 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          onClick={() => setMostrarFormContratar(false)}
+                          className="flex-1 px-3 py-2 border border-gray-600 text-gray-300 hover:bg-gray-700 rounded-lg text-sm transition-colors"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          disabled={contratando}
+                          onClick={() => crearFichaEmpleado(detalle.id)}
+                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-sm font-semibold transition-colors"
+                        >
+                          <UserPlus size={15} />
+                          {contratando ? "Creando ficha..." : "Confirmar y Crear Ficha"}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

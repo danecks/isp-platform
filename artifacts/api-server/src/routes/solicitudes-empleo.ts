@@ -158,7 +158,7 @@ solicitudesEmpleoRouter.get("/solicitudes-empleo", async (req: Request, res: Res
     const { rows } = await pool.query(`
       SELECT id, nombre_completo, dpi, telefono, puesto_solicitado,
              disponibilidad_horario, grado_estudios, experiencia_seguridad,
-             foto_url, estado, created_at, revisado_por, revisado_at,
+             foto_url, estado, canal, created_at, revisado_por, revisado_at,
              employee_id, municipio, departamento
       FROM solicitudes_empleo
       ${where}
@@ -221,6 +221,13 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
       return res.json({ ok: true, employee_id: sol.employee_id });
     }
 
+    // Parámetros de asignación enviados por RRHH (o defaults del formulario)
+    const puestoAsignado   = req.body?.puesto_asignado   || sol.puesto_solicitado || null;
+    const tipoPersonal     = req.body?.tipo_personal     || "guardia";
+    const sueldoAsignado   = req.body?.sueldo_base != null
+      ? parseFloat(req.body.sueldo_base)
+      : (sol.pretension_salarial ? parseFloat(sol.pretension_salarial) : null);
+
     const sexo = sol.genero === "Masculino" ? "M" : sol.genero === "Femenino" ? "F" : null;
     const notasExtra = [
       sol.municipio && sol.departamento ? `Domicilio: ${sol.municipio}, ${sol.departamento}` : null,
@@ -235,8 +242,8 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
         fecha_nacimiento, sexo, estado_civil, nivel_educativo,
         municipio, departamento,
         foto_url, estado_laboral, tipo_personal, fecha_ingreso,
-        sueldo_base, notas, created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'activo','guardia',CURRENT_DATE,$12,$13,NOW(),NOW())
+        puesto, sueldo_base, notas, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'activo',$12,CURRENT_DATE,$13,$14,$15,NOW(),NOW())
       RETURNING id
     `, [
       sol.nombre_completo,
@@ -250,7 +257,9 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
       sol.municipio || null,
       sol.departamento || null,
       sol.foto_url || null,
-      sol.pretension_salarial ? parseFloat(sol.pretension_salarial) : null,
+      tipoPersonal,
+      puestoAsignado,
+      sueldoAsignado,
       notasExtra || null,
     ]);
 

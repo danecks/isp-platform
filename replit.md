@@ -20,6 +20,8 @@ I prefer simple language. I want iterative development. Ask before making major 
 ## Critical Business Rules
 - **Todo dato del formulario = dato en la ficha del empleado.** Cuando se crea un registro de empleado a partir de cualquier formulario (Kiosco, solicitud, etc.), TODOS los campos capturados en el formulario deben transferirse a la ficha del empleado. Si un campo del formulario no tiene columna correspondiente en `employees`, hay que agregar la columna. Nunca perder datos del formulario al contratar.
 - **Reclutamiento Web (legacy) fue reemplazado por el sistema de Kiosco Solicitudes.** El módulo admin `/admin/reclutamiento` y su página fueron eliminados. El backend (`/api/applications`, tabla `applications`) se conserva por compatibilidad con WhatsApp. No recrear la pantalla de Reclutamiento Web.
+- **Canal de origen (solicitudes_empleo.canal):** Valores válidos: `kiosco` (default), `externo`, `whatsapp`, `referido`. Las solicitudes externas muestran alerta ámbar en el modal con recordatorio de llamar al candidato para citarlo.
+- **Flujo contratar:** El botón "Contratar" despliega un formulario inline en el modal (no un diálogo separado) con 3 campos: puesto a asignar, tipo de personal (guardia/supervisor/administrativo/motorista/recepcionista/tecnico), y salario (Q). El endpoint `/contratar` acepta `puesto_asignado`, `tipo_personal`, `sueldo_base` en el body.
 
 ## System Architecture
 

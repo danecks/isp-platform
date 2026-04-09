@@ -3470,6 +3470,14 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: EMP-EXT-01 — error (no bloqueante)");
   }
 
+  // ── SOL-CANAL-01: canal de origen en solicitudes_empleo ──────────────────────
+  try {
+    await pool.query(`ALTER TABLE solicitudes_empleo ADD COLUMN IF NOT EXISTS canal VARCHAR(30) NOT NULL DEFAULT 'kiosco'`);
+    logger.info("Auto-migrate: SOL-CANAL-01 columna canal en solicitudes_empleo verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SOL-CANAL-01 — error (no bloqueante)");
+  }
+
   // ── EMP-KIOSCO-01: municipio y departamento de residencia del colaborador ─────
   try {
     await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS municipio    VARCHAR(100)`);
