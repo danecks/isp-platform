@@ -115,9 +115,9 @@ function SecureFoto({ fotoUrl, className, style }: { fotoUrl: string; className?
   return <img src={src} alt="" className={className} style={style} />;
 }
 
-// CR-80 a 300 DPI: 5.4cm × 8.6cm → 638 × 1016 px (portrait)
-const CARNET_W_PX = 638;
-const CARNET_H_PX = 1016;
+// CR-80 a 300 DPI: 5.4cm × 8.6cm → 648 × 1026 px (portrait)
+const CARNET_W_PX = 648;
+const CARNET_H_PX = 1026;
 
 function canvasToJpeg(src: HTMLCanvasElement): string {
   const dst = document.createElement("canvas");
@@ -145,6 +145,7 @@ function createFrenteElement(
   agent: AgenteCarnet,
   qrSvgStr: string,
   logoIconB64: string,
+  logoFullB64: string,
   fecha: string,
   fotoB64: string | null = null,
 ): HTMLDivElement {
@@ -157,10 +158,10 @@ function createFrenteElement(
     ? qrSvgStr.replace(/<svg([^>]*)>/, `<svg$1 width="${qrSize}" height="${qrSize}" style="display:block">`)
     : "";
 
-  // Foto circular con borde dorado
+  // Foto circular con borde dorado — tamaño aumentado
   const fotoHtml = fotoB64
-    ? `<img src="${fotoB64}" style="width:${_MM(16)}px;height:${_MM(16)}px;border-radius:50%;object-fit:cover;border:${_MM(0.7)}px solid #f5c842;box-shadow:0 ${_MM(1)}px ${_MM(3)}px rgba(15,32,68,.35);margin-bottom:${_MM(2)}px;display:block" crossorigin="anonymous" />`
-    : `<div style="width:${_MM(16)}px;height:${_MM(16)}px;border-radius:50%;background:linear-gradient(135deg,#0f2044,#1e4a9a);border:${_MM(0.7)}px solid #f5c842;box-shadow:0 ${_MM(1)}px ${_MM(3)}px rgba(15,32,68,.35);display:flex;align-items:center;justify-content:center;margin-bottom:${_MM(2)}px"><span style="font-size:${_PT(10)}px;font-weight:900;color:#f5c842">${initials}</span></div>`;
+    ? `<img src="${fotoB64}" style="width:${_MM(21)}px;height:${_MM(21)}px;border-radius:50%;object-fit:cover;border:${_MM(0.8)}px solid #f5c842;box-shadow:0 ${_MM(1)}px ${_MM(3)}px rgba(15,32,68,.35);margin-bottom:${_MM(1.5)}px;display:block" crossorigin="anonymous" />`
+    : `<div style="width:${_MM(21)}px;height:${_MM(21)}px;border-radius:50%;background:linear-gradient(135deg,#0f2044,#1e4a9a);border:${_MM(0.8)}px solid #f5c842;box-shadow:0 ${_MM(1)}px ${_MM(3)}px rgba(15,32,68,.35);display:flex;align-items:center;justify-content:center;margin-bottom:${_MM(1.5)}px"><span style="font-size:${_PT(12)}px;font-weight:900;color:#f5c842">${initials}</span></div>`;
 
   // Medallón del logo en la stripe (círculo blanco con logo)
   const logoMedaillon = `<div style="width:${_MM(7.5)}px;height:${_MM(7.5)}px;border-radius:50%;background:#fff;box-shadow:0 ${_MM(0.5)}px ${_MM(1.5)}px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;margin-top:${_MM(3)}px;flex-shrink:0;overflow:hidden"><img src="${logoIconB64}" style="width:${_MM(6)}px;height:${_MM(6)}px;object-fit:contain" /></div>`;
@@ -178,11 +179,12 @@ function createFrenteElement(
   </div>
   <!-- CUERPO BLANCO -->
   <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;background:#fff">
-    <!-- SECCIÓN FOTO + NOMBRE: gradiente sutil -->
-    <div style="padding:${_MM(3.5)}px ${_MM(2.5)}px ${_MM(2.5)}px;display:flex;flex-direction:column;align-items:center;flex-shrink:0;background:linear-gradient(180deg,#f8faff 0%,#fff 100%)">
+    <!-- SECCIÓN LOGO + FOTO + NOMBRE: gradiente sutil -->
+    <div style="padding:${_MM(2)}px ${_MM(2.5)}px ${_MM(2)}px;display:flex;flex-direction:column;align-items:center;flex-shrink:0;background:linear-gradient(180deg,#f8faff 0%,#fff 100%)">
+      <img src="${logoFullB64}" style="height:${_MM(10)}px;max-width:90%;object-fit:contain;display:block;margin-bottom:${_MM(1.5)}px" />
       ${fotoHtml}
-      <div style="font-size:${_PT(6)}px;font-weight:900;color:#0f2044;text-align:center;line-height:1.2;text-transform:uppercase;letter-spacing:.3px;margin-bottom:${_MM(0.8)}px">${agent.nombre_completo}</div>
-      <div style="font-size:${_PT(3.8)}px;font-weight:700;color:#b8860b;text-align:center;letter-spacing:.12em;text-transform:uppercase">${cargo}</div>
+      <div style="font-size:${_PT(7.5)}px;font-weight:900;color:#0f2044;text-align:center;line-height:1.2;text-transform:uppercase;letter-spacing:.3px;margin-bottom:${_MM(0.8)}px">${agent.nombre_completo}</div>
+      <div style="font-size:${_PT(5)}px;font-weight:700;color:#b8860b;text-align:center;letter-spacing:.12em;text-transform:uppercase">${cargo}</div>
     </div>
     <!-- DIVISOR DORADO -->
     <div style="height:${_MM(0.4)}px;background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017);flex-shrink:0"></div>
@@ -218,13 +220,13 @@ function createReversoElement(logoFullB64: string): HTMLDivElement {
   </div>
   <!-- DIVISOR DORADO -->
   <div style="height:${_MM(0.5)}px;background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017);flex-shrink:0"></div>
-  <!-- LOGO GRANDE — bajado + más grande -->
-  <div style="display:flex;align-items:center;justify-content:center;padding:${_MM(5)}px ${_MM(3)}px ${_MM(1)}px;flex-shrink:0">
-    <img src="${logoFullB64}" style="max-height:${_MM(33)}px;max-width:92%;object-fit:contain;display:block" />
+  <!-- LOGO GRANDE — más arriba y más grande -->
+  <div style="display:flex;align-items:center;justify-content:center;padding:${_MM(2)}px ${_MM(3)}px ${_MM(0.5)}px;flex-shrink:0">
+    <img src="${logoFullB64}" style="max-height:${_MM(48)}px;max-width:94%;object-fit:contain;display:block" />
   </div>
   <!-- TEXTO -->
-  <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:${_MM(1)}px ${_MM(4.5)}px ${_MM(3)}px">
-    <div style="font-size:${_PT(7)}px;color:#334155;text-align:center;line-height:1.7">
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:${_MM(0.5)}px ${_MM(4)}px ${_MM(2)}px">
+    <div style="font-size:${_PT(9)}px;color:#334155;text-align:center;line-height:1.6">
       El presente acredita como colaborador de <strong style="font-weight:800;color:#0f2044">ISP S.A.</strong> Se solicita a las Autoridades <strong style="font-weight:800;color:#0f2044">Civiles y Militares</strong> su colaboración. Válido en el cumplimiento de sus funciones en el puesto asignado.
     </div>
   </div>
@@ -255,10 +257,10 @@ function CarnetFrentePreview({ agent, fotoSrc }: { agent: AgenteCarnet; fotoSrc?
   const fecha = new Date().toLocaleDateString("es-GT", { month: "long", year: "numeric" });
   const qrSize = Math.round((W - SW) * 0.67);
 
-  const fotoStyle: React.CSSProperties = { width: _M(16), height: _M(16), borderRadius: "50%", objectFit: "cover", border: `${_M(0.7)}px solid #f5c842`, boxShadow: `0 ${_M(1)}px ${_M(3)}px rgba(15,32,68,.35)`, marginBottom: _M(2), display: "block", flexShrink: 0 };
+  const fotoStyle: React.CSSProperties = { width: _M(21), height: _M(21), borderRadius: "50%", objectFit: "cover", border: `${_M(0.8)}px solid #f5c842`, boxShadow: `0 ${_M(1)}px ${_M(3)}px rgba(15,32,68,.35)`, marginBottom: _M(1.5), display: "block", flexShrink: 0 };
   const fotoEl = fotoSrc
     ? <SecureFoto fotoUrl={fotoSrc} style={fotoStyle} />
-    : <div style={{ width: _M(16), height: _M(16), borderRadius: "50%", background: "linear-gradient(135deg,#0f2044,#1e4a9a)", border: `${_M(0.7)}px solid #f5c842`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: _M(2), flexShrink: 0 }}><span style={{ fontSize: _P(10), fontWeight: 900, color: "#f5c842" }}>{initials}</span></div>;
+    : <div style={{ width: _M(21), height: _M(21), borderRadius: "50%", background: "linear-gradient(135deg,#0f2044,#1e4a9a)", border: `${_M(0.8)}px solid #f5c842`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: _M(1.5), flexShrink: 0 }}><span style={{ fontSize: _P(12), fontWeight: 900, color: "#f5c842" }}>{initials}</span></div>;
 
   return (
     <div style={{ width: W, height: H, display: "flex", flexDirection: "row", overflow: "hidden", fontFamily: "Arial,Helvetica,sans-serif", background: "#fff", boxSizing: "border-box", borderRadius: 6, boxShadow: "0 8px 32px rgba(0,0,0,.5)" }}>
@@ -285,10 +287,11 @@ function CarnetFrentePreview({ agent, fotoSrc }: { agent: AgenteCarnet; fotoSrc?
       </div>
       {/* CUERPO */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "#fff" }}>
-        <div style={{ padding: `${_M(3.5)}px ${_M(2.5)}px ${_M(2.5)}px`, display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, background: "linear-gradient(180deg,#f8faff 0%,#fff 100%)" }}>
+        <div style={{ padding: `${_M(2)}px ${_M(2.5)}px ${_M(2)}px`, display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, background: "linear-gradient(180deg,#f8faff 0%,#fff 100%)" }}>
+          <img src="/images/logo-isp.png" style={{ height: _M(10), maxWidth: "90%", objectFit: "contain", display: "block", marginBottom: _M(1.5) }} />
           {fotoEl}
-          <div style={{ fontSize: _P(6), fontWeight: 900, color: "#0f2044", textAlign: "center", lineHeight: 1.2, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: _M(0.8) }}>{agent.nombre_completo}</div>
-          <div style={{ fontSize: _P(3.8), fontWeight: 700, color: "#b8860b", textAlign: "center", letterSpacing: "0.12em", textTransform: "uppercase" }}>{cargo}</div>
+          <div style={{ fontSize: _P(7.5), fontWeight: 900, color: "#0f2044", textAlign: "center", lineHeight: 1.2, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: _M(0.8) }}>{agent.nombre_completo}</div>
+          <div style={{ fontSize: _P(5), fontWeight: 700, color: "#b8860b", textAlign: "center", letterSpacing: "0.12em", textTransform: "uppercase" }}>{cargo}</div>
         </div>
         <div style={{ height: 1.5, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)", flexShrink: 0 }} />
         <div style={{ padding: `${_M(2)}px ${_M(2.5)}px ${_M(1)}px`, flexShrink: 0, textAlign: "center" }}>
@@ -325,14 +328,13 @@ function CarnetReversoPreview() {
         <div style={{ fontSize: _P(3.5), color: "rgba(255,255,255,.45)", letterSpacing: 1.5, marginTop: _M(0.5), textAlign: "center" }}>INVESTIGACIONES Y SEGURIDAD PROFESIONAL, S.A.</div>
       </div>
       <div style={{ height: 2, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)", flexShrink: 0 }} />
-      {/* Logo: scale 2.28 (1.9 × 1.2) + bajado + multiply */}
-      <img
-        src="/images/logo-isp.png"
-        style={{ display: "block", width: "auto", height: "auto", maxWidth: "88%", maxHeight: _M(22), margin: `${_M(6)}px auto ${_M(1)}px`, mixBlendMode: "multiply", transform: "scale(2.51)", transformOrigin: "center" }}
-      />
+      {/* Logo grande y más arriba */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: `${_M(2)}px ${_M(3)}px ${_M(0.5)}px`, flexShrink: 0 }}>
+        <img src="/images/logo-isp.png" style={{ display: "block", maxWidth: "94%", maxHeight: _M(48), objectFit: "contain" }} />
+      </div>
       {/* Texto */}
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: `${_M(1)}px ${_M(4.5)}px ${_M(3)}px` }}>
-        <div style={{ fontSize: _P(7.5), color: "#334155", textAlign: "center", lineHeight: 1.7 }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: `${_M(0.5)}px ${_M(4)}px ${_M(2)}px` }}>
+        <div style={{ fontSize: _P(9), color: "#334155", textAlign: "center", lineHeight: 1.6 }}>
           El presente acredita como colaborador de <strong style={{ fontWeight: 800, color: "#0f2044" }}>ISP S.A.</strong> Se solicita a las Autoridades <strong style={{ fontWeight: 800, color: "#0f2044" }}>Civiles y Militares</strong> su colaboración. Válido en el cumplimiento de sus funciones en el puesto asignado.
         </div>
       </div>
@@ -501,7 +503,7 @@ export default function CarnetesQR() {
         const folder = zip.folder(`${String(i + 1).padStart(2, "0")}_${nombre}`)!;
 
         // Frente
-        const frenteEl = createFrenteElement(a, qrMap[a.employee_id] ?? "", logoIconB64, fecha, fotoMap[a.employee_id] ?? null);
+        const frenteEl = createFrenteElement(a, qrMap[a.employee_id] ?? "", logoIconB64, logoFullB64, fecha, fotoMap[a.employee_id] ?? null);
         container.appendChild(frenteEl);
         const frenteCanvas = await html2canvas(frenteEl, {
           scale: 3, useCORS: true, logging: false, backgroundColor: "#ffffff",
