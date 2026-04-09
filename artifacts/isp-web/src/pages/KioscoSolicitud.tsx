@@ -129,6 +129,7 @@ export default function KioscoSolicitud({ skipPin = false }: { skipPin?: boolean
   const [fotoBlobUrl, setFotoBlobUrl] = useState<string | null>(null);
   const [fotoBlob, setFotoBlob] = useState<Blob | null>(null);
   const [camActiva, setCamActiva] = useState(false);
+  const [camError, setCamError] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [solicitudId, setSolicitudId] = useState<number | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -174,6 +175,7 @@ export default function KioscoSolicitud({ skipPin = false }: { skipPin?: boolean
 
   // ── Cámara ───────────────────────────────────────────────────────────────────
   const iniciarCamara = useCallback(async () => {
+    setCamError(false);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 640 } },
@@ -182,7 +184,7 @@ export default function KioscoSolicitud({ skipPin = false }: { skipPin?: boolean
       if (videoRef.current) videoRef.current.srcObject = stream;
       setCamActiva(true);
     } catch {
-      alert("No se pudo acceder a la cámara. Verifique los permisos.");
+      setCamError(true);
     }
   }, []);
 
@@ -195,12 +197,24 @@ export default function KioscoSolicitud({ skipPin = false }: { skipPin?: boolean
   const capturarFoto = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
+    const SIZE = 400;
     const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext("2d")!.drawImage(video, 0, 0);
+    canvas.width = SIZE;
+    canvas.height = SIZE;
+    const ctx = canvas.getContext("2d")!;
+    const vw = video.videoWidth || SIZE;
+    const vh = video.videoHeight || SIZE;
+    const scale = Math.max(SIZE / vw, SIZE / vh);
+    const sw = SIZE / scale;
+    const sh = SIZE / scale;
+    const sx = (vw - sw) / 2;
+    const sy = (vh - sh) / 2;
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, SIZE, SIZE);
     canvas.toBlob((b) => {
-      if (!b) return;
+      if (!b) {
+        setCamError(true);
+        return;
+      }
       setFotoBlob(b);
       setFotoBlobUrl(URL.createObjectURL(b));
       detenerCamara();
@@ -211,6 +225,7 @@ export default function KioscoSolicitud({ skipPin = false }: { skipPin?: boolean
     if (fotoBlobUrl) URL.revokeObjectURL(fotoBlobUrl);
     setFotoBlob(null);
     setFotoBlobUrl(null);
+    setCamError(false);
     iniciarCamara();
   };
 
@@ -289,8 +304,10 @@ export default function KioscoSolicitud({ skipPin = false }: { skipPin?: boolean
         {step === 4 && <Paso4Puesto form={form} setEv={setEv} set={set} onNext={() => setStep(5)} onBack={() => setStep(3)} />}
         {step === 5 && (
           <Paso5Foto
-            videoRef={videoRef} camActiva={camActiva} fotoBlobUrl={fotoBlobUrl}
+            videoRef={videoRef} camActiva={camActiva} camError={camError}
+            fotoBlobUrl={fotoBlobUrl}
             onCapturar={capturarFoto} onRehacer={rehacerFoto}
+            onReintentar={iniciarCamara}
             onBack={() => setStep(4)} onNext={enviarSolicitud} enviando={enviando}
           />
         )}
@@ -568,9 +585,9 @@ function Paso4Puesto({ form, setEv, set, onNext, onBack }: {
 }
 
 // ── Paso 5: Foto ──────────────────────────────────────────────────────────────
-function Paso5Foto({ videoRef, camActiva, fotoBlobUrl, onCapturar, onRehacer, onBack, onNext, enviando }: {
-  videoRef: React.RefObject<HTMLVideoElement>; camActiva: boolean; fotoBlobUrl: string | null;
-  onCapturar: () => void; onRehacer: () => void; onBack: () => void;
+function Paso5Foto({ videoRef, camActiva, camError, fotoBlobUrl, onCapturar, onRehacer, onReintentar, onBack, onNext, enviando }: {
+  videoRef: React.RefObject<HTMLVideoElement>; camActiva: boolean; camError: boolean; fotoBlobUrl: string | null;
+  onCapturar: () => void; onRehacer: () => void; onReintentar: () => void; onBack: () => void;
   onNext: () => void; enviando: boolean;
 }) {
   return (
@@ -580,18 +597,33 @@ function Paso5Foto({ videoRef, camActiva, fotoBlobUrl, onCapturar, onRehacer, on
       <div className="flex flex-col items-center gap-4">
         {!fotoBlobUrl ? (
           <>
-            <div className="relative w-64 h-64 rounded-full overflow-hidden border-4 border-blue-500 bg-[#0a1628]">
-              <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-              {!camActiva && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Camera size={40} className="text-blue-700" />
+            {camError ? (
+              <div className="flex flex-col items-center gap-4">
+                <div className="w-64 h-64 rounded-full border-4 border-red-500 bg-[#0a1628] flex flex-col items-center justify-center gap-3 p-6 text-center">
+                  <Camera size={40} className="text-red-500" />
+                  <p className="text-red-400 text-sm">No se pudo acceder a la cámara.</p>
+                  <p className="text-blue-400 text-xs">Verifique que el navegador tenga permiso para usar la cámara y que no esté siendo usada por otra aplicación.</p>
                 </div>
-              )}
-            </div>
-            {camActiva && (
-              <Button onClick={onCapturar} className="bg-blue-600 hover:bg-blue-700 text-white px-10 py-3 text-lg rounded-xl">
-                <Camera size={20} className="mr-2" /> Tomar Foto
-              </Button>
+                <Button onClick={onReintentar} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-xl">
+                  <RotateCcw size={16} className="mr-2" /> Reintentar cámara
+                </Button>
+              </div>
+            ) : (
+              <>
+                <div className="relative w-64 h-64 rounded-full overflow-hidden border-4 border-blue-500 bg-[#0a1628]">
+                  <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                  {!camActiva && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Camera size={40} className="text-blue-700" />
+                    </div>
+                  )}
+                </div>
+                {camActiva && (
+                  <Button onClick={onCapturar} className="bg-blue-600 hover:bg-blue-700 text-white px-10 py-3 text-lg rounded-xl">
+                    <Camera size={20} className="mr-2" /> Tomar Foto
+                  </Button>
+                )}
+              </>
             )}
           </>
         ) : (
@@ -601,23 +633,31 @@ function Paso5Foto({ videoRef, camActiva, fotoBlobUrl, onCapturar, onRehacer, on
             </div>
             <div className="flex gap-3">
               <Button variant="outline" onClick={onRehacer} className="border-blue-700 text-blue-300 hover:bg-[#1e3a6e]">
-                <RotateCcw size={16} className="mr-2" /> Repetir
+                <RotateCcw size={16} className="mr-2" /> Repetir foto
               </Button>
             </div>
           </>
         )}
       </div>
 
-      <p className="text-blue-500 text-xs text-center mt-4">
-        La foto se eliminará automáticamente si no es contratado en 30 días.
-      </p>
+      {!fotoBlobUrl && !camError && (
+        <p className="text-blue-500 text-xs text-center mt-4">
+          La foto se eliminará automáticamente si no es contratado en 30 días.
+        </p>
+      )}
 
       <NavButtons
         onBack={onBack}
         onNext={onNext}
-        nextLabel={enviando ? "Enviando..." : fotoBlobUrl ? "Enviar Solicitud" : "Enviar sin foto"}
-        nextDisabled={enviando}
+        nextLabel={enviando ? "Enviando..." : "Enviar Solicitud"}
+        nextDisabled={enviando || !fotoBlobUrl}
       />
+
+      {!fotoBlobUrl && (
+        <p className="text-blue-600 text-xs text-center mt-2">
+          Es necesario tomar una foto para enviar la solicitud.
+        </p>
+      )}
     </PasoContainer>
   );
 }
