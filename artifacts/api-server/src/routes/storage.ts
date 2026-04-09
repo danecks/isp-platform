@@ -93,12 +93,22 @@ router.get("/storage/public-objects/*path", async (req: Request, res: Response) 
 
 /**
  * GET /storage/objects/*
- * Sirve objetos privados (sin ACL por ahora — protegido por sesión ISP en el futuro).
+ * Sirve objetos privados — requiere sesión ISP válida.
  */
 router.get("/storage/objects/*path", async (req: Request, res: Response) => {
   try {
-    const raw = (req.params as any).path as string;
-    const objectPath = `/objects/${raw}`;
+    const raw = req.headers["x-isp-session"] as string | undefined;
+    if (!raw) {
+      res.status(401).json({ error: "Sesión requerida" });
+      return;
+    }
+    let session: { rol?: string } | null = null;
+    try { session = JSON.parse(raw); } catch { /* invalid */ }
+    if (!session?.rol) {
+      res.status(401).json({ error: "Sesión inválida" });
+      return;
+    }
+    const objectPath = `/objects/${(req.params as any).path as string}`;
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
     const response = await objectStorageService.downloadObject(objectFile);
 

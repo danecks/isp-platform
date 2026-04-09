@@ -14,9 +14,20 @@
  *   DELETE /solicitudes-empleo/:id/foto      → borrar foto manualmente
  */
 import { Router, type Request, type Response } from "express";
+import rateLimit from "express-rate-limit";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+
+const MAX_FOTO_BYTES = 5 * 1024 * 1024; // 5 MB
+
+const pinRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Demasiados intentos. Intente nuevamente en 15 minutos." },
+});
 
 export const solicitudesEmpleoRouter = Router();
 const storageService = new ObjectStorageService();
@@ -25,13 +36,25 @@ const storageService = new ObjectStorageService();
 solicitudesEmpleoRouter.post("/solicitudes-empleo/foto", async (req: Request, res: Response) => {
   try {
     const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    let totalBytes = 0;
+    let aborted = false;
+    req.on("data", (chunk: Buffer) => {
+      if (aborted) return;
+      totalBytes += chunk.length;
+      if (totalBytes > MAX_FOTO_BYTES) {
+        aborted = true;
+        req.destroy();
+        res.status(413).json({ error: "La foto supera el tamaño máximo de 5 MB" });
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on("end", async () => {
+      if (aborted) return;
       try {
         const buffer = Buffer.concat(chunks);
         if (buffer.length === 0) return res.status(400).json({ error: "Foto vacía" });
-        const contentType = (req.headers["content-type"] as string) || "image/jpeg";
-        const objectPath = await storageService.saveObjectDirectly(buffer, contentType);
+        const objectPath = await storageService.saveObjectDirectly(buffer, "image/jpeg");
         res.json({ objectPath });
       } catch (err) {
         logger.error({ err }, "solicitudes-empleo/foto upload error");
@@ -45,7 +68,7 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/foto", async (req: Request, re
 });
 
 // ── Verificar PIN del kiosco ──────────────────────────────────────────────────
-solicitudesEmpleoRouter.post("/solicitudes-empleo/verificar-pin", async (req: Request, res: Response) => {
+solicitudesEmpleoRouter.post("/solicitudes-empleo/verificar-pin", pinRateLimit, async (req: Request, res: Response) => {
   const { pin } = req.body ?? {};
   if (!pin) return res.status(400).json({ error: "PIN requerido" });
   try {

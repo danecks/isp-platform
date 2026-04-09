@@ -3,7 +3,7 @@
  * Panel de administración para revisar solicitudes de empleo del kiosco.
  * Ruta: /admin/rrhh/kiosco-solicitudes
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "../layout/AdminLayout";
 import {
@@ -16,6 +16,21 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 
 const API = "/api";
+const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+
+function SecureFoto({ fotoUrl, className }: { fotoUrl: string; className?: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let objUrl: string;
+    fetch(`${API}/storage${fotoUrl}`, { headers: { "x-isp-session": getSession() } })
+      .then(r => r.ok ? r.blob() : null)
+      .then(blob => { if (blob) { objUrl = URL.createObjectURL(blob); setSrc(objUrl); } })
+      .catch(() => {});
+    return () => { if (objUrl) URL.revokeObjectURL(objUrl); };
+  }, [fotoUrl]);
+  if (!src) return <div className={`${className} bg-[#1e3a6e] flex items-center justify-center`}><Camera size={14} className="text-blue-400" /></div>;
+  return <img src={src} alt="Foto" className={className} />;
+}
 
 type Estado = "pendiente" | "en_revision" | "entrevista" | "aprobada" | "rechazada" | "contratada";
 
@@ -217,7 +232,7 @@ export default function KioscoSolicitudes() {
                     </td>
                     <td className="px-4 py-3">
                       {s.foto_url
-                        ? <img src={`${API}/storage${s.foto_url}`} alt="" className="w-9 h-9 rounded-full object-cover border-2 border-blue-600" />
+                        ? <SecureFoto fotoUrl={s.foto_url} className="w-9 h-9 rounded-full object-cover border-2 border-blue-600" />
                         : <div className="w-9 h-9 rounded-full bg-gray-700 flex items-center justify-center"><Camera size={14} className="text-gray-500" /></div>
                       }
                     </td>
@@ -249,7 +264,7 @@ export default function KioscoSolicitudes() {
               <div className="flex items-center justify-between p-5 border-b border-gray-700 sticky top-0 bg-gray-900 z-10">
                 <div className="flex items-center gap-4">
                   {detalle.foto_url
-                    ? <img src={`${API}/storage${detalle.foto_url}`} alt="" className="w-14 h-14 rounded-full object-cover border-2 border-blue-500" />
+                    ? <SecureFoto fotoUrl={detalle.foto_url} className="w-14 h-14 rounded-full object-cover border-2 border-blue-500" />
                     : <div className="w-14 h-14 rounded-full bg-gray-700 flex items-center justify-center"><Camera size={20} className="text-gray-500" /></div>
                   }
                   <div>
