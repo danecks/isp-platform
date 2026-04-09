@@ -3748,6 +3748,19 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-seed: CARNET-PERM-01 permisos — error (no bloqueante)");
   }
 
+  // ── KIOSCO-PERM-01: permisos garantizados para módulo Kiosco Solicitudes ─────
+  try {
+    await pool.query(`
+      INSERT INTO rol_permisos (rol_clave, modulo_clave) VALUES
+        ('admin', 'kiosco_solicitudes'),
+        ('rrhh',  'kiosco_solicitudes')
+      ON CONFLICT DO NOTHING
+    `);
+    logger.info("Auto-seed: KIOSCO-PERM-01 permisos kiosco_solicitudes insertados");
+  } catch (err) {
+    logger.error({ err }, "Auto-seed: KIOSCO-PERM-01 permisos — error (no bloqueante)");
+  }
+
   // ── SUPERVISOR-DEV-01: dispositivos autenticados (teléfonos de puesto y supervisor) ──
   try {
     await pool.query(`

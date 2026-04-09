@@ -54,6 +54,7 @@ import { solicitudesTurnoRouter } from "./solicitudes-turno";
 import { rolesRouter } from "./roles";
 import { tiposPersonalConfigRouter } from "./tipos-personal-config";
 import { igssRouter } from "./igss";
+import { solicitudesEmpleoRouter } from "./solicitudes-empleo";
 
 const router: IRouter = Router();
 
@@ -112,5 +113,6 @@ router.use(solicitudesTurnoRouter);
 router.use(rolesRouter);
 router.use(tiposPersonalConfigRouter);
 router.use(igssRouter);
+router.use(solicitudesEmpleoRouter);
 
 export default router;

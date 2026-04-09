@@ -68,6 +68,8 @@ import CarnetesQR from "@/admin/pages/CarnetesQR";
 import RondaGuardia from "@/pages/RondaGuardia";
 import AgenteEscaneo from "@/pages/AgenteEscaneo";
 import SupervisorActivar from "@/pages/SupervisorActivar";
+import KioscoSolicitud from "@/pages/KioscoSolicitud";
+import AdminKioscoSolicitudes from "@/admin/pages/KioscoSolicitudes";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
@@ -261,6 +263,10 @@ function Router() {
       <Route path="/ronda" component={RondaGuardia} />
       <Route path="/agente" component={AgenteEscaneo} />
       <Route path="/supervisor/activar" component={SupervisorActivar} />
+      <Route path="/kiosco" component={KioscoSolicitud} />
+      <Route path="/admin/rrhh/kiosco-solicitudes">
+        {() => <AuthGuard><AdminKioscoSolicitudes /></AuthGuard>}
+      </Route>
 
       <Route component={NotFound} />
     </Switch>

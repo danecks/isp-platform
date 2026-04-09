@@ -39,6 +39,7 @@ import {
   BadgeCheck,
   Palmtree,
   CreditCard,
+  Tablet,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -202,9 +203,16 @@ export const NAV_SECTIONS: NavSection[] = [
       },
       {
         path: "/admin/reclutamiento",
-        label: "Reclutamiento",
+        label: "Reclutamiento (Web)",
         icon: UserSearch,
         clave: "reclutamiento",
+        roles: ["admin", "rrhh"],
+      },
+      {
+        path: "/admin/rrhh/kiosco-solicitudes",
+        label: "Solicitudes Kiosco",
+        icon: Tablet,
+        clave: "kiosco_solicitudes",
         roles: ["admin", "rrhh"],
       },
       {
