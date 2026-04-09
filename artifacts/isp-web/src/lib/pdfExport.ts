@@ -80,7 +80,7 @@ export class IspPdf {
   // ─── Carga de logo ──────────────────────────────────────────────────────────
   async loadLogo(): Promise<void> {
     try {
-      const response = await fetch("/images/logo-isp.jpg");
+      const response = await fetch(`${import.meta.env.BASE_URL}images/logo-isp.jpg`);
       const blob = await response.blob();
       return new Promise((resolve) => {
         const reader = new FileReader();

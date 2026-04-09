@@ -55,7 +55,7 @@ export default function AdminLogin() {
         {/* Logo / Brand */}
         <div className="text-center mb-10">
           <div className="h-32 mx-auto mb-4 flex items-center justify-center">
-            <img src="/images/logo-isp.png" alt="ISP, S.A." className="h-full w-auto object-contain" />
+            <img src={`${import.meta.env.BASE_URL}images/logo-isp.png`} alt="ISP, S.A." className="h-full w-auto object-contain" />
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">{brand.shortName}</h1>
           <p className="text-sm text-muted-foreground mt-1">{brand.systemName}</p>

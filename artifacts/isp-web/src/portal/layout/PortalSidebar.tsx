@@ -3,7 +3,7 @@ import { X, LayoutDashboard, AlertTriangle, BarChart3, Users, LogOut, ExternalLi
 import { brand } from "@/config/branding";
 import { useAuth } from "@/contexts/AuthContext";
 
-const logoImg = "/images/logo-isp.png";
+const logoImg = `${import.meta.env.BASE_URL}images/logo-isp.png`;
 
 const portalNav = [
   { path: "/portal/dashboard",   label: "Panel General",        icon: LayoutDashboard },

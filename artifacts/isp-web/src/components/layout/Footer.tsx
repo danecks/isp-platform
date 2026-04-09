@@ -2,7 +2,7 @@ import { Link } from "wouter";
 import { Phone, Mail, MapPin, ChevronRight, MessageSquare } from "lucide-react";
 import { brand } from "@/config/branding";
 
-const logoImg = "/images/logo-isp.png";
+const logoImg = `${import.meta.env.BASE_URL}images/logo-isp.png`;
 
 export function Footer() {
   const currentYear = new Date().getFullYear();

@@ -271,7 +271,7 @@ function CarnetFrentePreview({ agent, fotoSrc }: { agent: AgenteCarnet; fotoSrc?
         <div style={{
           width: _M(7.5), height: _M(7.5), borderRadius: "50%", marginTop: _M(3), flexShrink: 0,
           boxShadow: `0 ${_M(0.5)}px ${_M(1.5)}px rgba(0,0,0,.4)`,
-          backgroundImage: "url(/images/logo-isp.png)",
+          backgroundImage: `url(${import.meta.env.BASE_URL}images/logo-isp.png)`,
           backgroundSize: "158%",
           backgroundPosition: "center 29%",
           backgroundRepeat: "no-repeat",
@@ -328,7 +328,7 @@ function CarnetReversoPreview() {
       <div style={{ height: 2, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)", flexShrink: 0 }} />
       {/* Logo grande y más arriba */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: `${_M(2)}px ${_M(3)}px ${_M(0.5)}px`, flexShrink: 0 }}>
-        <img src="/images/logo-isp.png" style={{ display: "block", maxWidth: "94%", maxHeight: _M(48), objectFit: "contain" }} />
+        <img src={`${import.meta.env.BASE_URL}images/logo-isp.png`} style={{ display: "block", maxWidth: "94%", maxHeight: _M(48), objectFit: "contain" }} />
       </div>
       {/* Texto */}
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: `${_M(0.5)}px ${_M(4)}px ${_M(2)}px` }}>
@@ -454,8 +454,8 @@ export default function CarnetesQR() {
 
     const origin = window.location.origin;
     const [logoIconB64, logoFullB64] = await Promise.all([
-      toBase64Url(`${origin}/images/logo-icon.png`),
-      toBase64Url(`${origin}/images/logo-isp.png`),
+      toBase64Url(`${origin}${import.meta.env.BASE_URL}images/logo-icon.png`),
+      toBase64Url(`${origin}${import.meta.env.BASE_URL}images/logo-isp.png`),
     ]);
     const fecha = new Date().toLocaleDateString("es-GT", { month: "long", year: "numeric" });
 
