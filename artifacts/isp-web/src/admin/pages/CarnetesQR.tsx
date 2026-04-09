@@ -14,6 +14,7 @@ import { useState, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
+import { AdminLayout } from "../layout/AdminLayout";
 import {
   Download, Search, CheckCircle, Users, CreditCard, BadgeCheck,
   MapPin, X,
@@ -305,180 +306,187 @@ export default function CarnetesQR() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div>
-      {/* KPIs */}
-      <div className="grid grid-cols-3 gap-3 mb-5">
-        <div className="bg-white/4 border border-white/8 rounded-xl p-3">
-          <div className="flex items-center gap-2 mb-1">
-            <Users className="w-3.5 h-3.5 text-blue-400" />
-            <span className="text-white/40 text-[10px] uppercase tracking-wider">Con credencial</span>
-          </div>
-          <p className="text-white text-xl font-bold">{totalConQR}</p>
-        </div>
-        <div className="bg-white/4 border border-white/8 rounded-xl p-3">
-          <div className="flex items-center gap-2 mb-1">
-            <BadgeCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-white/40 text-[10px] uppercase tracking-wider">Impresos</span>
-          </div>
-          <p className="text-emerald-400 text-xl font-bold">{totalImpresos}</p>
-        </div>
-        <div className="bg-white/4 border border-white/8 rounded-xl p-3">
-          <div className="flex items-center gap-2 mb-1">
-            <CreditCard className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-white/40 text-[10px] uppercase tracking-wider">Pendientes</span>
-          </div>
-          <p className="text-amber-400 text-xl font-bold">{totalConQR - totalImpresos}</p>
-        </div>
-      </div>
+    <AdminLayout>
+      <div className="p-6 max-w-5xl mx-auto">
 
-      {/* Barra de acciones */}
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
-        {/* Buscador */}
-        <div className="relative flex-1 min-w-48">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-          <input
-            value={busqueda}
-            onChange={e => setBusqueda(e.target.value)}
-            placeholder="Buscar agente, cargo o DPI..."
-            className="w-full pl-9 pr-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 outline-none"
-          />
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-xl bg-[#f5c842]/10 border border-[#f5c842]/20 flex items-center justify-center shrink-0">
+            <CreditCard className="w-5 h-5 text-[#f5c842]" />
+          </div>
+          <div>
+            <h1 className="text-white font-bold text-xl">Carnets QR</h1>
+            <p className="text-white/40 text-sm">Generación e impresión de credenciales PVC de agentes</p>
+          </div>
         </div>
 
-        {/* Seleccionar todos */}
-        <button
-          type="button"
-          onClick={todosSeleccionados ? deseleccionarTodos : seleccionarTodos}
-          className="flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs text-white/60 hover:text-white transition-colors"
-        >
-          {todosSeleccionados
-            ? <><X className="w-3.5 h-3.5" /> Deseleccionar todos</>
-            : <><CheckCircle className="w-3.5 h-3.5" /> Seleccionar todos</>
-          }
-        </button>
-
-        {/* Botón descargar */}
-        <button
-          type="button"
-          onClick={handleDescargar}
-          disabled={selCount === 0 || generando}
-          className="flex items-center gap-2 px-4 py-2 bg-[#f5c842]/10 hover:bg-[#f5c842]/20 border border-[#f5c842]/30 rounded-xl text-sm font-semibold text-[#f5c842] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          <Download className="w-4 h-4" />
-          {generando
-            ? `Generando... ${progreso}%`
-            : selCount > 0
-              ? `Descargar ZIP (${selCount} carnet${selCount !== 1 ? "s" : ""})`
-              : "Descargar ZIP"}
-        </button>
-      </div>
-
-      {/* Barra de progreso */}
-      {generando && (
-        <div className="mb-4 space-y-1.5">
-          <div className="flex items-center justify-between text-[10px] text-white/40">
-            <span>Generando imágenes JPG · frente y reverso por agente...</span>
-            <span>{progreso}%</span>
+        {/* KPIs */}
+        <div className="grid grid-cols-3 gap-3 mb-5">
+          <div className="bg-white/4 border border-white/8 rounded-xl p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <Users className="w-3.5 h-3.5 text-blue-400" />
+              <span className="text-white/40 text-[10px] uppercase tracking-wider">Con credencial</span>
+            </div>
+            <p className="text-white text-xl font-bold">{totalConQR}</p>
           </div>
-          <div className="w-full h-1.5 bg-white/8 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-[#f5c842] rounded-full transition-all duration-300"
-              style={{ width: `${progreso}%` }}
+          <div className="bg-white/4 border border-white/8 rounded-xl p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <BadgeCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-white/40 text-[10px] uppercase tracking-wider">Impresos</span>
+            </div>
+            <p className="text-emerald-400 text-xl font-bold">{totalImpresos}</p>
+          </div>
+          <div className="bg-white/4 border border-white/8 rounded-xl p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <CreditCard className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-white/40 text-[10px] uppercase tracking-wider">Pendientes</span>
+            </div>
+            <p className="text-amber-400 text-xl font-bold">{totalConQR - totalImpresos}</p>
+          </div>
+        </div>
+
+        {/* Barra de acciones */}
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
+          <div className="relative flex-1 min-w-48">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+            <input
+              value={busqueda}
+              onChange={e => setBusqueda(e.target.value)}
+              placeholder="Buscar agente, cargo o DPI..."
+              className="w-full pl-9 pr-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 outline-none"
             />
           </div>
+          <button
+            type="button"
+            onClick={todosSeleccionados ? deseleccionarTodos : seleccionarTodos}
+            className="flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs text-white/60 hover:text-white transition-colors"
+          >
+            {todosSeleccionados
+              ? <><X className="w-3.5 h-3.5" /> Deseleccionar todos</>
+              : <><CheckCircle className="w-3.5 h-3.5" /> Seleccionar todos</>
+            }
+          </button>
+          <button
+            type="button"
+            onClick={handleDescargar}
+            disabled={selCount === 0 || generando}
+            className="flex items-center gap-2 px-4 py-2 bg-[#f5c842]/10 hover:bg-[#f5c842]/20 border border-[#f5c842]/30 rounded-xl text-sm font-semibold text-[#f5c842] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            {generando
+              ? `Generando... ${progreso}%`
+              : selCount > 0
+                ? `Descargar ZIP (${selCount} carnet${selCount !== 1 ? "s" : ""})`
+                : "Descargar ZIP"}
+          </button>
         </div>
-      )}
 
-      {/* Info ZIP */}
-      {selCount > 0 && !generando && (
-        <div className="mb-4 bg-blue-500/8 border border-blue-500/20 rounded-xl px-3 py-2 text-[11px] text-blue-300/70">
-          El ZIP incluirá una carpeta por agente con <strong className="text-blue-300">01_frente.jpg</strong> y <strong className="text-blue-300">02_reverso.jpg</strong> listos para importar en el software de bandeja.
-        </div>
-      )}
-
-      {/* Lista de agentes */}
-      {isLoading ? (
-        <p className="text-white/30 text-sm text-center py-10">Cargando agentes...</p>
-      ) : conQR.length === 0 ? (
-        <p className="text-white/30 text-sm text-center py-10">
-          {busqueda ? "Sin resultados para la búsqueda." : "No hay agentes con credencial QR activa."}
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {conQR.map(a => {
-            const sel       = seleccionados.has(a.employee_id);
-            const cargo     = getCargoLabel(a.tipo_personal, a.cargo);
-            const impreso   = !!a.carnet_impreso_at;
-            const fecha     = a.carnet_impreso_at
-              ? new Date(a.carnet_impreso_at).toLocaleDateString("es-GT", { day: "2-digit", month: "short", year: "numeric" })
-              : null;
-
-            return (
+        {/* Barra de progreso */}
+        {generando && (
+          <div className="mb-4 space-y-1.5">
+            <div className="flex items-center justify-between text-[10px] text-white/40">
+              <span>Generando imágenes JPG · frente y reverso por agente...</span>
+              <span>{progreso}%</span>
+            </div>
+            <div className="w-full h-1.5 bg-white/8 rounded-full overflow-hidden">
               <div
-                key={a.employee_id}
-                onClick={() => toggle(a.employee_id)}
-                className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all select-none ${
-                  sel
-                    ? "bg-[#f5c842]/8 border-[#f5c842]/30"
-                    : "bg-white/3 border-white/8 hover:border-white/15 hover:bg-white/5"
-                }`}
-              >
-                {/* Checkbox visual */}
-                <div className={`w-5 h-5 rounded-md border flex-shrink-0 flex items-center justify-center transition-colors ${
-                  sel ? "bg-[#f5c842] border-[#f5c842]" : "border-white/20 bg-white/5"
-                }`}>
-                  {sel && <svg viewBox="0 0 10 8" className="w-3 h-3 fill-[#0f2044]"><path d="M1 4l3 3 5-6" stroke="#0f2044" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                </div>
-
-                {/* Avatar */}
-                <div className="w-9 h-9 rounded-full bg-[#0f2044] border border-[#f5c842]/20 flex items-center justify-center flex-shrink-0">
-                  <span className="text-[#f5c842] text-sm font-bold">{getInitials(a.nombre_completo)}</span>
-                </div>
-
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-semibold truncate">{a.nombre_completo}</p>
-                  <p className="text-white/40 text-xs">{cargo}</p>
-                  {a.puesto_nombre && (
-                    <p className="text-blue-300/50 text-[10px] flex items-center gap-1 mt-0.5">
-                      <MapPin className="w-2.5 h-2.5" />
-                      {a.puesto_nombre} · {a.cliente_nombre}
-                    </p>
-                  )}
-                </div>
-
-                {/* Estado */}
-                <div className="flex-shrink-0 text-right">
-                  {impreso ? (
-                    <>
-                      <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full mb-0.5">
-                        <CheckCircle className="w-2.5 h-2.5" /> Impreso
-                      </span>
-                      {fecha && <p className="text-white/25 text-[9px]">{fecha}</p>}
-                      {a.carnet_impreso_por && <p className="text-white/20 text-[9px]">por {a.carnet_impreso_por}</p>}
-                    </>
-                  ) : (
-                    <span className="text-[10px] text-amber-400/70 bg-amber-400/8 px-2 py-0.5 rounded-full">
-                      Pendiente
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Contenedor oculto de QRs para captura */}
-      <div ref={qrContainerRef} style={{ position: "absolute", top: -9999, left: -9999, pointerEvents: "none" }}>
-        {agentes.filter(a => a.qr_token).map(a => (
-          <div key={a.employee_id} data-emp-id={a.employee_id}>
-            <QRCodeSVG
-              value={`${window.location.origin}/agente?token=${a.qr_token}`}
-              size={_MM(18)}
-            />
+                className="h-full bg-[#f5c842] rounded-full transition-all duration-300"
+                style={{ width: `${progreso}%` }}
+              />
+            </div>
           </div>
-        ))}
+        )}
+
+        {/* Info ZIP */}
+        {selCount > 0 && !generando && (
+          <div className="mb-4 bg-blue-500/8 border border-blue-500/20 rounded-xl px-3 py-2 text-[11px] text-blue-300/70">
+            El ZIP incluirá una carpeta por agente con <strong className="text-blue-300">01_frente.jpg</strong> y{" "}
+            <strong className="text-blue-300">02_reverso.jpg</strong> listos para importar en el software de bandeja.
+          </div>
+        )}
+
+        {/* Lista de agentes */}
+        {isLoading ? (
+          <p className="text-white/30 text-sm text-center py-10">Cargando agentes...</p>
+        ) : conQR.length === 0 ? (
+          <p className="text-white/30 text-sm text-center py-10">
+            {busqueda ? "Sin resultados para la búsqueda." : "No hay agentes con credencial QR activa."}
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {conQR.map(a => {
+              const sel     = seleccionados.has(a.employee_id);
+              const cargo   = getCargoLabel(a.tipo_personal, a.cargo);
+              const impreso = !!a.carnet_impreso_at;
+              const fecha   = a.carnet_impreso_at
+                ? new Date(a.carnet_impreso_at).toLocaleDateString("es-GT", { day: "2-digit", month: "short", year: "numeric" })
+                : null;
+              return (
+                <div
+                  key={a.employee_id}
+                  onClick={() => toggle(a.employee_id)}
+                  className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all select-none ${
+                    sel
+                      ? "bg-[#f5c842]/8 border-[#f5c842]/30"
+                      : "bg-white/3 border-white/8 hover:border-white/15 hover:bg-white/5"
+                  }`}
+                >
+                  <div className={`w-5 h-5 rounded-md border flex-shrink-0 flex items-center justify-center transition-colors ${
+                    sel ? "bg-[#f5c842] border-[#f5c842]" : "border-white/20 bg-white/5"
+                  }`}>
+                    {sel && (
+                      <svg viewBox="0 0 10 8" className="w-3 h-3">
+                        <path d="M1 4l3 3 5-6" stroke="#0f2044" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </div>
+                  <div className="w-9 h-9 rounded-full bg-[#0f2044] border border-[#f5c842]/20 flex items-center justify-center flex-shrink-0">
+                    <span className="text-[#f5c842] text-sm font-bold">{getInitials(a.nombre_completo)}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm font-semibold truncate">{a.nombre_completo}</p>
+                    <p className="text-white/40 text-xs">{cargo}</p>
+                    {a.puesto_nombre && (
+                      <p className="text-blue-300/50 text-[10px] flex items-center gap-1 mt-0.5">
+                        <MapPin className="w-2.5 h-2.5" />
+                        {a.puesto_nombre} · {a.cliente_nombre}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex-shrink-0 text-right">
+                    {impreso ? (
+                      <>
+                        <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full mb-0.5">
+                          <CheckCircle className="w-2.5 h-2.5" /> Impreso
+                        </span>
+                        {fecha && <p className="text-white/25 text-[9px]">{fecha}</p>}
+                        {a.carnet_impreso_por && <p className="text-white/20 text-[9px]">por {a.carnet_impreso_por}</p>}
+                      </>
+                    ) : (
+                      <span className="text-[10px] text-amber-400/70 bg-amber-400/8 px-2 py-0.5 rounded-full">
+                        Pendiente
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Contenedor oculto de QRs para captura */}
+        <div ref={qrContainerRef} style={{ position: "absolute", top: -9999, left: -9999, pointerEvents: "none" }}>
+          {agentes.filter(a => a.qr_token).map(a => (
+            <div key={a.employee_id} data-emp-id={a.employee_id}>
+              <QRCodeSVG
+                value={`${window.location.origin}/agente?token=${a.qr_token}`}
+                size={_MM(18)}
+              />
+            </div>
+          ))}
+        </div>
+
       </div>
-    </div>
+    </AdminLayout>
   );
 }
