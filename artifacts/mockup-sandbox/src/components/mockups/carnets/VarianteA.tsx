@@ -78,7 +78,7 @@ export function VarianteA() {
       <img
         src="https://987b05e8-e17a-40f4-b366-3baeddd84475-00-2jyjpes488ag2.riker.replit.dev/images/logo-isp.png"
         alt="ISP"
-        style={{ display: "block", width: "auto", height: "auto", maxWidth: "88%", maxHeight: 130, margin: "8px auto 4px", mixBlendMode: "multiply" as const }}
+        style={{ display: "block", width: "auto", height: "auto", maxWidth: "88%", maxHeight: 140, margin: "8px auto 4px", mixBlendMode: "multiply" as const, transform: "scale(1.45)", transformOrigin: "center" }}
       />
 
       {/* Text */}
