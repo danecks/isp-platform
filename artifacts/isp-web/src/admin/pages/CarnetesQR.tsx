@@ -98,8 +98,12 @@ async function toBase64Url(url: string): Promise<string> {
 }
 
 function SecureFoto({ fotoUrl, className, style }: { fotoUrl: string; className?: string; style?: React.CSSProperties }) {
-  const [src, setSrc] = useState<string | null>(null);
+  const [src, setSrc] = useState<string | null>(fotoUrl.startsWith("data:") ? fotoUrl : null);
   useEffect(() => {
+    if (fotoUrl.startsWith("data:")) {
+      setSrc(fotoUrl);
+      return;
+    }
     let active = true;
     fetch(`${API}/storage${fotoUrl}`, { headers: { "x-isp-session": getSession() } })
       .then(r => r.blob())
@@ -455,7 +459,12 @@ export default function CarnetesQR() {
     await Promise.all(lista.map(async a => {
       if (a.foto_url) {
         try {
-          fotoMap[a.employee_id] = await toBase64Url(`${API}/storage${a.foto_url}`);
+          // Si ya es data URL (heredada de solicitud), usarla directamente
+          if (a.foto_url.startsWith("data:")) {
+            fotoMap[a.employee_id] = a.foto_url;
+          } else {
+            fotoMap[a.employee_id] = await toBase64Url(`${API}/storage${a.foto_url}`);
+          }
         } catch { fotoMap[a.employee_id] = null; }
       } else {
         fotoMap[a.employee_id] = null;
