@@ -187,13 +187,13 @@ function createReversoElement(logoFullB64: string): HTMLDivElement {
   </div>
   <!-- DIVISOR DORADO -->
   <div style="height:${_MM(0.5)}px;background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017);flex-shrink:0"></div>
-  <!-- LOGO GRANDE -->
-  <div style="display:flex;align-items:center;justify-content:center;padding:${_MM(2)}px ${_MM(3)}px ${_MM(1)}px;flex-shrink:0">
-    <img src="${logoFullB64}" style="max-height:${_MM(22)}px;max-width:88%;object-fit:contain;display:block" />
+  <!-- LOGO GRANDE — bajado + más grande -->
+  <div style="display:flex;align-items:center;justify-content:center;padding:${_MM(5)}px ${_MM(3)}px ${_MM(1)}px;flex-shrink:0">
+    <img src="${logoFullB64}" style="max-height:${_MM(30)}px;max-width:92%;object-fit:contain;display:block" />
   </div>
   <!-- TEXTO -->
   <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:${_MM(1)}px ${_MM(4.5)}px ${_MM(3)}px">
-    <div style="font-size:${_PT(5.5)}px;color:#334155;text-align:center;line-height:1.7">
+    <div style="font-size:${_PT(7)}px;color:#334155;text-align:center;line-height:1.7">
       El presente acredita como colaborador de <strong style="font-weight:800;color:#0f2044">ISP S.A.</strong> Se solicita a las Autoridades <strong style="font-weight:800;color:#0f2044">Civiles y Militares</strong> su colaboración. Válido en el cumplimiento de sus funciones en el puesto asignado.
     </div>
   </div>
@@ -294,14 +294,14 @@ function CarnetReversoPreview() {
         <div style={{ fontSize: _P(3.5), color: "rgba(255,255,255,.45)", letterSpacing: 1.5, marginTop: _M(0.5), textAlign: "center" }}>INVESTIGACIONES Y SEGURIDAD PROFESIONAL, S.A.</div>
       </div>
       <div style={{ height: 2, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)", flexShrink: 0 }} />
-      {/* Logo con scale(1.9) + multiply — idéntico a VarianteA */}
+      {/* Logo: scale 2.28 (1.9 × 1.2) + bajado + multiply */}
       <img
         src="/images/logo-isp.png"
-        style={{ display: "block", width: "auto", height: "auto", maxWidth: "88%", maxHeight: _M(22), margin: `${_M(2)}px auto ${_M(1)}px`, mixBlendMode: "multiply", transform: "scale(1.9)", transformOrigin: "center" }}
+        style={{ display: "block", width: "auto", height: "auto", maxWidth: "88%", maxHeight: _M(22), margin: `${_M(6)}px auto ${_M(1)}px`, mixBlendMode: "multiply", transform: "scale(2.28)", transformOrigin: "center" }}
       />
       {/* Texto */}
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: `${_M(1)}px ${_M(4.5)}px ${_M(3)}px` }}>
-        <div style={{ fontSize: _P(5.5), color: "#334155", textAlign: "center", lineHeight: 1.7 }}>
+        <div style={{ fontSize: _P(7.5), color: "#334155", textAlign: "center", lineHeight: 1.7 }}>
           El presente acredita como colaborador de <strong style={{ fontWeight: 800, color: "#0f2044" }}>ISP S.A.</strong> Se solicita a las Autoridades <strong style={{ fontWeight: 800, color: "#0f2044" }}>Civiles y Militares</strong> su colaboración. Válido en el cumplimiento de sus funciones en el puesto asignado.
         </div>
       </div>
