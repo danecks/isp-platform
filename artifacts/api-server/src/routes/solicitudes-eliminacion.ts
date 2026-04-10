@@ -14,6 +14,7 @@ const ENTIDAD_TABLA: Record<string, string> = {
   bodega_articulo:     "bodega_articulos",
   turno:               "turnos",
   incidencia:          "incidents",
+  solicitud_empleo:    "solicitudes_empleo",
 };
 
 // ── POST /api/solicitudes-eliminacion ─────────────────────────────────────────

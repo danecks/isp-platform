@@ -35,11 +35,12 @@ interface Solicitud {
 }
 
 const ENTIDAD_LABELS: Record<string, string> = {
-  arma: "Arma",
-  vehiculo: "Vehículo",
-  empleado: "Colaborador",
-  cliente: "Cliente",
-  puesto: "Puesto operativo",
+  arma:             "Arma",
+  vehiculo:         "Vehículo",
+  empleado:         "Colaborador",
+  cliente:          "Cliente",
+  puesto:           "Puesto operativo",
+  solicitud_empleo: "Solicitud de empleo",
 };
 
 const ESTADO_CONFIG = {

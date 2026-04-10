@@ -10,11 +10,12 @@ import {
   Users, Search, RefreshCw, ChevronDown, Eye, X, CheckCircle2,
   XCircle, Clock, UserCheck, Camera, FileText, Phone, MapPin,
   GraduationCap, Briefcase, AlertCircle, Tablet, UserPlus, ExternalLink,
-  PhoneCall, MonitorSmartphone,
+  PhoneCall, MonitorSmartphone, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDeleteMode } from "@/contexts/DeleteModeContext";
 
 const API = "/api";
 const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
@@ -128,6 +129,7 @@ function fmtDateTime(iso: string) {
 
 export default function KioscoSolicitudes() {
   const { currentUser } = useAuth();
+  const { active: deleteModeActive, requestDelete } = useDeleteMode();
   const qc = useQueryClient();
   const [filtroEstado, setFiltroEstado] = useState<Estado | "todos">("todos");
   const [busqueda, setBusqueda] = useState("");
@@ -313,11 +315,26 @@ export default function KioscoSolicitudes() {
                     </td>
                     <td className="px-4 py-3 text-gray-400 text-xs">{fmtDate(s.created_at)}</td>
                     <td className="px-4 py-3">
-                      <Button size="sm" variant="outline"
-                        onClick={() => { setSeleccionada(s.id); setNotas(""); }}
-                        className="border-gray-600 text-gray-300 hover:bg-gray-700 text-xs">
-                        <Eye size={14} className="mr-1" /> Ver
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="outline"
+                          onClick={() => { setSeleccionada(s.id); setNotas(""); }}
+                          className="border-gray-600 text-gray-300 hover:bg-gray-700 text-xs">
+                          <Eye size={14} className="mr-1" /> Ver
+                        </Button>
+                        {deleteModeActive && (
+                          <button
+                            title="Solicitar eliminación"
+                            onClick={() => requestDelete({
+                              entidad: "solicitud_empleo",
+                              entidad_id: s.id,
+                              entidad_descripcion: `SOL-${String(s.id).padStart(5, "0")} — ${s.nombre_completo}`,
+                            })}
+                            className="p-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-colors"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

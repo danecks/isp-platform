@@ -30,6 +30,7 @@ const ENTIDAD_LABELS: Record<string, string> = {
   bodega_articulo:   "Artículo de bodega",
   turno:             "Tipo de turno",
   incidencia:        "Incidencia",
+  solicitud_empleo:  "Solicitud de empleo",
 };
 
 const DELETE_MODE_KEY = "isp_delete_mode_active";
