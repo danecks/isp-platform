@@ -3317,11 +3317,12 @@ operacionesRouter.put("/operaciones/puestos/:id/titulares", async (req, res) => 
     await pool.query(`DELETE FROM puesto_titulares WHERE puesto_id = $1`, [puestoId]);
 
     if (titulares.length > 0) {
-      const values = titulares.map((t: any, i: number) =>
-        `($1, $${i * 2 + 2}, $${i * 2 + 3}, ${i + 1})`
-      ).join(", ");
       const params: any[] = [puestoId];
-      titulares.forEach((t: any) => params.push(t.employee_id, t.fecha_inicio_ciclo));
+      const values = titulares.map((t: any, i: number) => {
+        params.push(t.employee_id, t.fecha_inicio_ciclo, i + 1);
+        const base = i * 3 + 2;
+        return `($1, $${base}, $${base + 1}, $${base + 2})`;
+      }).join(", ");
 
       await pool.query(
         `INSERT INTO puesto_titulares (puesto_id, employee_id, fecha_inicio_ciclo, orden)
