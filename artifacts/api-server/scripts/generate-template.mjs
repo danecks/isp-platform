@@ -91,6 +91,11 @@ const instrRows = [
   [],
   ["FORMATO DE FECHAS: dd/mm/aaaa   Ejemplo: 15/01/2024"],
   [],
+  ["TURNOS — columnas: nombre | horas_trabajo | horas_descanso | num_titulares | descripcion"],
+  ["  Turno 24x24: horas_trabajo=24, horas_descanso=24, descripcion=\"07:00 a 07:00 del día siguiente\""],
+  ["  Turno 12x12: horas_trabajo=12, horas_descanso=12"],
+  ["  Turno 8h   : horas_trabajo=8,  horas_descanso=16"],
+  [],
   ["MÓDULOS VÁLIDOS (columnas modulos en ROLES / modulo_clave en MODULOS):"],
   ...MODULOS.map(([clave, label, seccion]) => [`  ${clave}  →  ${label}  (${seccion})`]),
 ];
@@ -109,9 +114,14 @@ const wsClientes = makeSheet(
 );
 
 const wsTurnos = makeSheet(
-  ["nombre","horas_trabajo","tipo","hora_inicio","hora_fin","descripcion"],
-  [["Turno Diurno 8h","8","diurno","07:00","15:00","Turno normal diurno"]],
-  [25,14,15,12,12,35]
+  ["nombre","horas_trabajo","horas_descanso","num_titulares","descripcion"],
+  [
+    ["Turno Diurno 8h",   "8",  "16", "2", "Turno diurno 07:00 a 15:00"],
+    ["Turno Nocturno 8h", "8",  "16", "2", "Turno nocturno 23:00 a 07:00"],
+    ["Turno 12h Diurno",  "12", "12", "2", "Jornada 12 horas diurna 06:00 a 18:00"],
+    ["Turno 24x24",       "24", "24", "2", "Jornada 24 horas — 07:00 a 07:00 del día siguiente"],
+  ],
+  [28,14,16,16,45]
 );
 
 const wsPuestos = makeSheet(
