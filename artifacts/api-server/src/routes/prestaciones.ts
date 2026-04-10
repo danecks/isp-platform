@@ -590,7 +590,7 @@ async function buildLiquidacion(empId: number, body: Record<string, unknown>) {
   if (saldoAnticipo > 0) {
     result.rubros.push({
       rubro:             "descuento_anticipo_pendiente",
-      descripcion:       `Anticipo(s) pendiente(s) de cobro: ${anticiposPendientes} solicitud(es) — saldo con cargo (+10%)`,
+      descripcion:       `Anticipo(s) pendiente(s) de cobro: ${anticiposPendientes} solicitud(es) — cuotas no descontadas`,
       salarioReferencia: sueldo,
       monto:             parseFloat((-saldoAnticipo).toFixed(2)),
       baseCalculo:       JSON.stringify({ anticipos_pendientes: anticiposPendientes, saldo_anticipo: saldoAnticipo }),
