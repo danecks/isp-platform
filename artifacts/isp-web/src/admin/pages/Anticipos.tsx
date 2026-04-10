@@ -57,6 +57,7 @@ export default function Anticipos() {
   const [editando, setEditando] = useState<Anticipo | null>(null);
   const [nuevoEstado, setNuevoEstado] = useState<string>("");
   const [observacion, setObservacion] = useState<string>("");
+  const [numCuotas, setNumCuotas] = useState<number>(1);
 
   const [modalNuevo, setModalNuevo] = useState(false);
   const [formEmpleadoId, setFormEmpleadoId] = useState<number | null>(null);
@@ -131,8 +132,8 @@ export default function Anticipos() {
   }
 
   const { mutate: actualizarEstado, isPending: guardando } = useMutation({
-    mutationFn: ({ id, estado, observaciones }: { id: number; estado: string; observaciones?: string }) =>
-      anticiposApi.update(id, { estado, observaciones }),
+    mutationFn: ({ id, estado, observaciones, num_cuotas }: { id: number; estado: string; observaciones?: string; num_cuotas?: number }) =>
+      anticiposApi.update(id, { estado, observaciones, num_cuotas }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["anticipos"] });
       setEditando(null);
@@ -189,11 +190,17 @@ export default function Anticipos() {
     setEditando(a);
     setNuevoEstado(a.estado);
     setObservacion(a.observaciones ?? "");
+    setNumCuotas(a.numCuotas ?? 1);
   }
 
   function guardarCambio() {
     if (!editando) return;
-    actualizarEstado({ id: editando.id, estado: nuevoEstado, observaciones: observacion });
+    actualizarEstado({
+      id: editando.id,
+      estado: nuevoEstado,
+      observaciones: observacion,
+      ...(nuevoEstado === "aprobada" ? { num_cuotas: numCuotas } : {}),
+    });
   }
 
   const urlExport = anticiposApi.exportCsv(
@@ -489,6 +496,17 @@ export default function Anticipos() {
                   {editando.montoCobro ? fmtQ(Number(editando.montoCobro)) : fmtQ(editando.cantidad * 1.1)}
                 </span>
               </div>
+              {editando.numCuotas && editando.numCuotas > 1 && (
+                <div className="flex justify-between">
+                  <span className="text-white/40">Cuotas de planilla</span>
+                  <span className="text-amber-300 font-semibold">
+                    {editando.numCuotas} pagos × {editando.cuotaMonto ? fmtQ(Number(editando.cuotaMonto)) : "—"}
+                    <span className="text-white/30 font-normal ml-1">
+                      ({editando.cuotasPagadas ?? 0}/{editando.numCuotas} pagadas)
+                    </span>
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-white/40">Período</span>
                 <span className="text-white/70 font-mono">{editando.periodo?.replace("-dia", " día") ?? "—"}</span>
@@ -523,6 +541,52 @@ export default function Anticipos() {
                 ))}
               </div>
             </div>
+
+            {/* Selector de cuotas — visible solo al aprobar */}
+            {nuevoEstado === "aprobada" && editando && (() => {
+              const base = editando.cantidad;
+              const cuotaBase = base / numCuotas;
+              const cuotaCobro = Math.round(cuotaBase * 1.1 * 100) / 100;
+              const totalCobro = Math.round(cuotaCobro * numCuotas * 100) / 100;
+              return (
+                <div className="bg-amber-950/30 border border-amber-500/30 rounded-xl p-4 space-y-3">
+                  <p className="text-amber-300 text-xs font-bold uppercase tracking-wider">Descuento en planilla</p>
+                  {/* Selector de cuotas */}
+                  <div className="flex items-center gap-3">
+                    <span className="text-white/50 text-sm shrink-0">Número de cuotas:</span>
+                    <div className="flex gap-2">
+                      {[1, 2, 3, 4].map(n => (
+                        <button key={n} onClick={() => setNumCuotas(n)}
+                          className={`w-9 h-9 rounded-lg text-sm font-bold border transition-all ${
+                            numCuotas === n
+                              ? "bg-amber-500 border-amber-400 text-black"
+                              : "bg-white/5 border-white/10 text-white/50 hover:bg-white/10"
+                          }`}>{n}</button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Desglose */}
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between text-white/50">
+                      <span>Monto solicitado</span>
+                      <span className="font-mono">Q{base.toLocaleString("es-GT")}</span>
+                    </div>
+                    <div className="flex justify-between text-white/50">
+                      <span>Base por cuota ({numCuotas} {numCuotas === 1 ? "pago" : "pagos"})</span>
+                      <span className="font-mono">Q{cuotaBase.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex justify-between text-amber-300 border-t border-amber-500/20 pt-1 mt-1">
+                      <span className="font-semibold">Descuento por cuota (+10%)</span>
+                      <span className="font-mono font-bold">Q{cuotaCobro.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex justify-between text-amber-200 font-bold text-base">
+                      <span>Total a descontar</span>
+                      <span className="font-mono">Q{totalCobro.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Observaciones */}
             <div>

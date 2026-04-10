@@ -4308,5 +4308,15 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: ANT-COBRO-01 — error (no bloqueante)");
   }
 
+  // ── ANT-CUOTAS-01: columnas de cuotas en anticipos ───────────────────────────
+  try {
+    await pool.query(`ALTER TABLE anticipos ADD COLUMN IF NOT EXISTS num_cuotas    INTEGER       DEFAULT 1`);
+    await pool.query(`ALTER TABLE anticipos ADD COLUMN IF NOT EXISTS cuota_monto   NUMERIC(10,2)`);
+    await pool.query(`ALTER TABLE anticipos ADD COLUMN IF NOT EXISTS cuotas_pagadas INTEGER      DEFAULT 0`);
+    logger.info("Auto-migrate: ANT-CUOTAS-01 columnas de cuotas verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: ANT-CUOTAS-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

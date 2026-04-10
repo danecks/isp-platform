@@ -182,7 +182,10 @@ export interface Anticipo {
   dpi: string | null;
   telefono: string | null;
   cantidad: number;
-  montoCobro: string | null;   // cantidad + 10% de comisión
+  montoCobro: string | null;     // total a descontar (cantidad + 10%)
+  numCuotas: number | null;      // cuántos pagos de planilla
+  cuotaMonto: string | null;     // monto por cuota ((cantidad/n) * 1.1)
+  cuotasPagadas: number | null;  // cuántas cuotas ya descontadas
   origen: string;
   estado: string;
   periodo: string | null;
@@ -216,7 +219,7 @@ export const anticiposApi = {
     return apiFetch<{ anticipos: Anticipo[]; totales: AnticipoTotales }>(`/anticipos${qs ? "?" + qs : ""}`);
   },
   getConfig: () => apiFetch<AnticipoPeriodoConfig>("/anticipos/config"),
-  update: (id: number, data: { estado?: string; observaciones?: string }) =>
+  update: (id: number, data: { estado?: string; observaciones?: string; num_cuotas?: number }) =>
     apiFetch<Anticipo>(`/anticipos/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   create: (data: {
     nombre: string;

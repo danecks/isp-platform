@@ -189,7 +189,7 @@ anticiposRouter.patch("/anticipos/:id", async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
 
-  const { estado, observaciones } = req.body ?? {};
+  const { estado, observaciones, num_cuotas } = req.body ?? {};
   const ESTADOS_VALIDOS = ["pendiente", "aprobada", "rechazada", "pagada"];
   if (estado && !ESTADOS_VALIDOS.includes(estado)) {
     return res.status(400).json({ error: "Estado inválido", validos: ESTADOS_VALIDOS });
@@ -210,6 +210,17 @@ anticiposRouter.patch("/anticipos/:id", async (req, res) => {
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (estado) updates.estado = estado;
     if (observaciones !== undefined) updates.observaciones = observaciones;
+
+    // Cuando se aprueba: calcular cuotas si se indicó num_cuotas
+    if (estado === "aprobada" && num_cuotas) {
+      const cuotas = Math.max(1, parseInt(num_cuotas, 10) || 1);
+      const base = existing[0].cantidad;
+      const cuotaMonto = Math.round((base / cuotas) * 1.1 * 100) / 100;
+      const montoCobro = Math.round(cuotaMonto * cuotas * 100) / 100;
+      updates.numCuotas = cuotas;
+      updates.cuotaMonto = String(cuotaMonto);
+      updates.montoCobro = String(montoCobro);
+    }
 
     const [updated] = await db
       .update(anticiposTable)
