@@ -91,6 +91,16 @@ const instrRows = [
   [],
   ["FORMATO DE FECHAS: dd/mm/aaaa   Ejemplo: 15/01/2024"],
   [],
+  ["COLABORADORES — columnas clave:"],
+  ["  puesto_operativo : nombre EXACTO del puesto (igual que en hoja PUESTOS)"],
+  ["  sueldo_base      : salario mensual en quetzales (ej: 3500)"],
+  ["  bonificacion_incentivo : bonificación mensual (ej: 250)"],
+  ["  forma_pago       : mensual | quincenal | semanal | transferencia | cheque | efectivo"],
+  ["  tipo_personal    : guardia | supervisor | jefe_servicio | administrativo_bodega | administrativo_rrhh | gerencia"],
+  ["  estado_laboral   : activo | suspendido | baja | licencia"],
+  ["  aplica_igss      : si | no"],
+  ["  estado_igss      : activo | no_activo | pendiente_regularizacion"],
+  [],
   ["ARMAS — El arma se asigna al PUESTO (puesto_nombre), NO al empleado."],
   ["  El campo custodio_dpi es opcional: solo si quieres registrar quién la tiene HOY."],
   ["  Los agentes que trabajan el puesto son responsables del arma durante su turno."],
@@ -138,15 +148,33 @@ const wsPuestos = makeSheet(
 );
 
 const wsColaboradores = makeSheet(
+  // NOMBRES DE COLUMNA EXACTOS — el sistema los lee con estos nombres:
+  // tipo_personal: guardia | supervisor | jefe_servicio | administrativo_bodega | administrativo_rrhh | gerencia
+  // estado_laboral: activo | suspendido | baja | licencia
+  // forma_pago: mensual | quincenal | semanal | transferencia | cheque | efectivo
+  // aplica_igss: si | no
+  // estado_igss: activo | no_activo | pendiente_regularizacion
+  // puesto_operativo: debe coincidir EXACTAMENTE con el nombre en hoja PUESTOS
   ["dpi","nombre_completo","fecha_nacimiento","genero","estado_civil",
-   "numero_igss","nit","telefono","correo","direccion",
-   "departamento","municipio","fecha_ingreso","puesto_nombre",
-   "turno_nombre","salario","bonificacion","tipo_pago","activo"],
+   "igss_numero","nit","telefono","correo","sede",
+   "fecha_ingreso","tipo_personal","estado_laboral",
+   "puesto_operativo",
+   "sueldo_base","bonificacion_incentivo","forma_pago",
+   "aplica_igss","estado_igss",
+   "banco","cuenta_bancaria","notas"],
   [["1234567890101","Juan García López","20/05/1990","masculino","soltero",
-    "12345678","9876543-2","55551234","jgarcia@isp.gt","5a Avenida 1-23 Zona 1",
-    "Guatemala","Guatemala Ciudad","15/01/2024","Puesto Central",
-    "Turno Diurno 8h","3500","250","mensual","si"]],
-  [16,30,16,12,14,16,12,14,25,35,18,22,16,28,25,10,12,12,8]
+    "12345678","9876543-2","55551234","jgarcia@isp.gt","Guatemala",
+    "15/01/2024","guardia","activo",
+    "Puesto Central",
+    "3500","250","mensual",
+    "si","activo",
+    "","",""]],
+  [16,30,16,12,14,16,12,14,25,25,
+   16,20,15,
+   30,
+   12,22,14,
+   12,28,
+   20,20,30]
 );
 
 const wsArmas = makeSheet(
