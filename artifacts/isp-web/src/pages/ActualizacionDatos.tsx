@@ -3,7 +3,7 @@
  * Ruta pública: /actualizacion-datos
  *
  * Pasos:
- *  0 → PIN de acceso
+ *  0 → Bienvenida (tenga su DPI a mano)
  *  1 → Escaneo DPI (frente + reverso, IA extrae el número — NO es editable)
  *  2 → Confirmar identidad (muestra nombre encontrado)
  *  3 → Actualizar datos de contacto
@@ -11,7 +11,8 @@
  *  5 → Éxito
  */
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Lock, CheckCircle2, Camera, ChevronLeft, RefreshCw, Loader2, ShieldCheck, AlertTriangle, UserCheck } from "lucide-react";
+import type React from "react";
+import { CreditCard, CheckCircle2, Camera, ChevronLeft, RefreshCw, Loader2, ShieldCheck, AlertTriangle, UserCheck } from "lucide-react";
 
 const API = `${import.meta.env.BASE_URL}api`;
 
@@ -80,63 +81,36 @@ interface Contacto {
   parentesco_emergencia: string;
 }
 
-// ── Pantalla PIN ──────────────────────────────────────────────────────────────
-function PantallaPin({ onOk }: { onOk: () => void }) {
-  const [pin, setPin] = useState("");
-  const [error, setError] = useState(false);
-  const [verificando, setVerificando] = useState(false);
-
-  const onDigito = async (d: string) => {
-    if (verificando) return;
-    const next = pin + d;
-    setPin(next);
-    setError(false);
-    if (next.length === 4) {
-      setVerificando(true);
-      try {
-        const r = await fetch(`${API}/solicitudes-empleo/verificar-pin`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pin: next }),
-        });
-        if (r.ok) { onOk(); }
-        else { setError(true); setPin(""); }
-      } catch { setError(true); setPin(""); }
-      finally { setVerificando(false); }
-    }
-  };
-
+// ── Pantalla de bienvenida ────────────────────────────────────────────────────
+function PantallaBienvenida({ onComenzar }: { onComenzar: () => void }) {
   return (
     <div className="bg-[#0d2147] rounded-2xl p-8 w-full max-w-sm text-center shadow-2xl border border-[#1e3a6e]">
-      <div className="w-14 h-14 rounded-2xl bg-[#0f2a5e] border border-[#1e3a6e] mx-auto mb-4 flex items-center justify-center">
-        <Lock className="text-blue-300" size={28} />
+      <div className="w-20 h-20 rounded-2xl bg-[#0f2a5e] border border-[#1e3a6e] mx-auto mb-5 flex items-center justify-center">
+        <CreditCard className="text-blue-300" size={38} />
       </div>
-      <h2 className="text-white text-2xl font-bold mb-1">Actualización de Datos</h2>
-      <p className="text-blue-300 text-sm mb-6">Ingrese el PIN de acceso</p>
-      <div className="flex justify-center gap-4 mb-6">
-        {[0,1,2,3].map(i => (
-          <div key={i} className={`w-5 h-5 rounded-full border-2 transition-all ${i < pin.length ? "bg-blue-400 border-blue-400" : "border-[#1e3a6e]"}`} />
+      <h2 className="text-white text-2xl font-bold mb-2">Actualización de Datos</h2>
+      <p className="text-blue-300 text-sm mb-6">Portal de autoservicio para colaboradores</p>
+
+      <div className="bg-[#060f1e] border border-[#1e3a6e] rounded-xl p-5 mb-6 text-left flex flex-col gap-3">
+        <p className="text-yellow-400 text-sm font-bold mb-1">Antes de comenzar:</p>
+        {[
+          "Tenga su DPI vigente a la mano",
+          "Necesitará escanear el frente y el reverso",
+          "La IA leerá los datos automáticamente — no se ingresa nada a mano",
+        ].map((t, i) => (
+          <div key={i} className="flex items-start gap-3">
+            <div className="w-5 h-5 rounded-full bg-blue-600/30 border border-blue-500/40 flex items-center justify-center shrink-0 mt-0.5">
+              <span className="text-blue-300 text-xs font-bold">{i + 1}</span>
+            </div>
+            <span className="text-[#cbd5e1] text-sm leading-snug">{t}</span>
+          </div>
         ))}
       </div>
-      {error && <p className="text-red-400 text-sm mb-3">PIN incorrecto. Intente de nuevo.</p>}
-      {verificando && <p className="text-blue-300 text-sm mb-3 animate-pulse">Verificando...</p>}
-      <div className="grid grid-cols-3 gap-3">
-        {["1","2","3","4","5","6","7","8","9"].map(d => (
-          <button key={d} onClick={() => onDigito(d)}
-            className="bg-[#1a3660] hover:bg-[#1e4080] active:scale-95 text-white text-2xl font-bold py-4 rounded-xl transition-all">
-            {d}
-          </button>
-        ))}
-        <div />
-        <button onClick={() => onDigito("0")}
-          className="bg-[#1a3660] hover:bg-[#1e4080] active:scale-95 text-white text-2xl font-bold py-4 rounded-xl transition-all">
-          0
-        </button>
-        <button onClick={() => { setPin(p => p.slice(0,-1)); setError(false); }}
-          className="bg-[#2d1a1a] hover:bg-[#3d2020] active:scale-95 text-red-400 font-bold py-4 rounded-xl transition-all text-sm">
-          Borrar
-        </button>
-      </div>
+
+      <button onClick={onComenzar}
+        className="w-full py-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-lg font-bold rounded-xl transition-all">
+        Comenzar
+      </button>
     </div>
   );
 }
@@ -514,52 +488,13 @@ function PasoContacto({ contacto, onChange, onNext, onBack }: {
   );
 }
 
-// ── Paso 4: Foto ──────────────────────────────────────────────────────────────
-function PasoFoto({ onFotoDone, fotoUrl, onNext, onBack, enviando }: {
-  onFotoDone: (url: string) => void;
-  fotoUrl: string | null;
-  onNext: () => void;
-  onBack: () => void;
-  enviando: boolean;
+// ── Paso 4: Foto (mismo patrón que KioscoSolicitud — videoRef desde el padre) ──
+function PasoFoto({ videoRef, camActiva, camError, fotoUrl, onCapturar, onRehacer, onReintentar, onBack, onNext, enviando }: {
+  videoRef: React.RefObject<HTMLVideoElement>;
+  camActiva: boolean; camError: boolean; fotoUrl: string | null;
+  onCapturar: () => void; onRehacer: () => void; onReintentar: () => void;
+  onBack: () => void; onNext: () => void; enviando: boolean;
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const [camActiva, setCamActiva] = useState(false);
-  const [camError, setCamError] = useState(false);
-
-  const abrirCamara = useCallback(async () => {
-    setCamError(false);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } });
-      streamRef.current = stream;
-      if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play(); }
-      setCamActiva(true);
-    } catch { setCamError(true); }
-  }, []);
-
-  const cerrarCamara = useCallback(() => {
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    streamRef.current = null;
-    setCamActiva(false);
-  }, []);
-
-  useEffect(() => () => { cerrarCamara(); }, [cerrarCamara]);
-
-  const capturar = useCallback(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    const cv = document.createElement("canvas");
-    cv.width = video.videoWidth; cv.height = video.videoHeight;
-    cv.getContext("2d")!.drawImage(video, 0, 0);
-    cv.toBlob(async (blob) => {
-      if (!blob) return;
-      cerrarCamara();
-      const comp = await comprimirFoto(blob);
-      const url = await subirFoto(comp).catch(() => URL.createObjectURL(comp));
-      onFotoDone(url);
-    }, "image/jpeg", 0.9);
-  }, [cerrarCamara, onFotoDone]);
-
   return (
     <div className="bg-[#0d2147] rounded-2xl border border-[#1e3a6e] w-full max-w-md shadow-2xl flex flex-col overflow-hidden">
       <div className="bg-[#091a3d] px-5 py-4">
@@ -567,39 +502,58 @@ function PasoFoto({ onFotoDone, fotoUrl, onNext, onBack, enviando }: {
         <p className="text-blue-300 text-xs mt-1">Opcional — actualice su foto de perfil</p>
       </div>
       <div className="p-5 flex flex-col items-center gap-4">
-        {!camActiva && !fotoUrl && (
-          <>
-            {camError && <p className="text-red-400 text-sm">No se pudo acceder a la cámara.</p>}
-            <div className="w-40 h-40 rounded-full bg-[#060f1e] border-2 border-dashed border-[#1e3a6e] flex items-center justify-center">
-              <Camera size={36} className="text-[#475569]" />
+        {!fotoUrl ? (
+          camError ? (
+            <div className="flex flex-col items-center gap-4 text-center">
+              <div className="w-48 h-48 rounded-full border-4 border-red-500 bg-[#0a1628] flex flex-col items-center justify-center gap-2 p-4">
+                <p className="text-red-400 text-sm font-bold">Sin acceso a cámara</p>
+                <p className="text-[#64748b] text-xs">Verifique que el navegador tiene permiso para usar la cámara.</p>
+              </div>
+              <button onClick={onReintentar} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl text-sm font-bold">
+                Reintentar cámara
+              </button>
             </div>
-            <button onClick={abrirCamara}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold transition-all">
-              <Camera size={16} className="inline mr-2" /> Abrir cámara
+          ) : (
+            <div className="flex flex-col items-center gap-4">
+              <div className="relative w-56 h-56 rounded-full overflow-hidden border-4 border-blue-500 bg-[#0a1628]">
+                <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                {!camActiva && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-blue-700 text-center">
+                      <Camera size={32} className="mx-auto mb-1 opacity-50" />
+                      <p className="text-xs">Cargando cámara...</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {camActiva && (
+                <button onClick={onCapturar}
+                  className="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white px-10 py-3 text-base rounded-xl font-bold transition-all">
+                  Tomar Foto
+                </button>
+              )}
+            </div>
+          )
+        ) : (
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-56 h-56 rounded-full overflow-hidden border-4 border-green-500" style={{ boxShadow: "0 0 20px rgba(34,197,94,0.3)" }}>
+              <img src={fotoUrl} alt="Foto capturada" className="w-full h-full object-cover" />
+            </div>
+            <button onClick={onRehacer} className="border border-[#1e3a6e] text-[#64748b] px-6 py-2 rounded-xl text-sm font-semibold">
+              Repetir foto
             </button>
-          </>
+          </div>
         )}
 
-        {camActiva && (
-          <>
-            <div className="relative w-52 h-52 rounded-full overflow-hidden border-4 border-blue-500/60 shadow-lg">
-              <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover scale-x-[-1]" />
-            </div>
-            <button onClick={capturar}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold transition-all">
-              Tomar foto
-            </button>
-            <button onClick={cerrarCamara} className="text-[#64748b] text-sm hover:text-white">Cancelar</button>
-          </>
-        )}
-
-        {fotoUrl && !camActiva && (
-          <>
-            <img src={fotoUrl.startsWith("data:") ? fotoUrl : `/api/storage${fotoUrl}`}
-              alt="Foto" className="w-40 h-40 rounded-full object-cover border-4 border-emerald-500/50 shadow-lg" />
-            <p className="text-emerald-400 text-sm font-semibold">✓ Foto capturada</p>
-            <button onClick={abrirCamara} className="text-blue-400 text-sm hover:text-blue-300 underline">Tomar otra foto</button>
-          </>
+        {!fotoUrl && (
+          <div className="w-full bg-[#071630] border border-[#1d3a6e] rounded-xl px-4 py-3">
+            <p className="text-blue-300 text-xs font-bold mb-1">Consejos:</p>
+            <ul className="text-[#64748b] text-xs space-y-1 pl-3">
+              <li>Mire directo a la cámara</li>
+              <li>Buena iluminación, no contra la luz</li>
+              <li>Sin gorra ni lentes oscuros</li>
+            </ul>
+          </div>
         )}
       </div>
       <div className="px-5 py-4 border-t border-[#1e3a6e] flex justify-between items-center gap-3">
@@ -662,16 +616,64 @@ export default function ActualizacionDatos() {
     nombre_contacto_emergencia: "", telefono_emergencia: "", parentesco_emergencia: "",
   });
 
-  // Foto
+  // Foto — cámara manejada en el padre (mismo patrón que KioscoSolicitud)
   const [fotoUrl, setFotoUrl]           = useState<string | null>(null);
+  const [fotoBlob, setFotoBlob]         = useState<Blob | null>(null);
+  const [camActiva, setCamActiva]       = useState(false);
+  const [camError, setCamError]         = useState(false);
+  const fotoVideoRef                    = useRef<HTMLVideoElement>(null);
+  const fotoStreamRef                   = useRef<MediaStream | null>(null);
   const [enviando, setEnviando]         = useState(false);
+
+  const iniciarCamara = useCallback(async () => {
+    setCamError(false);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 640 } },
+      });
+      fotoStreamRef.current = stream;
+      if (fotoVideoRef.current) fotoVideoRef.current.srcObject = stream;
+      setCamActiva(true);
+    } catch { setCamError(true); }
+  }, []);
+
+  const detenerCamara = useCallback(() => {
+    fotoStreamRef.current?.getTracks().forEach(t => t.stop());
+    fotoStreamRef.current = null;
+    setCamActiva(false);
+  }, []);
+
+  const capturarFoto = useCallback(() => {
+    const video = fotoVideoRef.current;
+    if (!video) return;
+    const SIZE = 400;
+    const canvas = document.createElement("canvas");
+    canvas.width = SIZE; canvas.height = SIZE;
+    const ctx = canvas.getContext("2d")!;
+    const vw = video.videoWidth || SIZE, vh = video.videoHeight || SIZE;
+    const scale = Math.max(SIZE / vw, SIZE / vh);
+    const sw = SIZE / scale, sh = SIZE / scale;
+    ctx.drawImage(video, (vw - sw) / 2, (vh - sh) / 2, sw, sh, 0, 0, SIZE, SIZE);
+    canvas.toBlob(b => {
+      if (!b) { setCamError(true); return; }
+      setFotoBlob(b);
+      setFotoUrl(URL.createObjectURL(b));
+      detenerCamara();
+    }, "image/jpeg", 0.9);
+  }, [detenerCamara]);
+
+  useEffect(() => {
+    if (paso === 4) iniciarCamara();
+    else if (camActiva) detenerCamara();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paso]);
 
   const reiniciar = () => {
     setPaso(0);
     setFrenteUrl(null); setReversoUrl(null);
     setDpiExtraido(null); setExtrayendo(false); setErrorExtraccion(null);
     setEmpleado(null); setBuscando(false); setNoEncontrado(false);
-    setFotoUrl(null); setEnviando(false);
+    setFotoUrl(null); setFotoBlob(null); detenerCamara(); setEnviando(false);
     setContacto({ telefono: "", telefono_secundario: "", correo: "",
       direccion: "", municipio: "", departamento: "",
       banco: "", forma_pago: "", cuenta_bancaria: "",
@@ -765,6 +767,12 @@ export default function ActualizacionDatos() {
         dpiReversoGuardado = await subirFoto(blob);
       }
 
+      let fotoGuardada: string | null = null;
+      if (fotoBlob) {
+        const comp = await comprimirFoto(fotoBlob);
+        fotoGuardada = await subirFoto(comp);
+      }
+
       await fetch(`${API}/employees/${empleado.id}/self-update`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -772,7 +780,7 @@ export default function ActualizacionDatos() {
           ...contacto,
           dpi_frente_url: dpiFrenteGuardado,
           dpi_reverso_url: dpiReversoGuardado,
-          foto_url: fotoUrl && !fotoUrl.startsWith("data:") ? fotoUrl : (fotoUrl ? fotoUrl : undefined),
+          ...(fotoGuardada ? { foto_url: fotoGuardada } : {}),
         }),
       });
       setPaso(5);
@@ -795,8 +803,8 @@ export default function ActualizacionDatos() {
         <p className="text-blue-300 text-sm">Actualización de datos de colaboradores</p>
       </div>
 
-      {/* Paso 0: PIN */}
-      {paso === 0 && <PantallaPin onOk={() => setPaso(1)} />}
+      {/* Paso 0: Bienvenida */}
+      {paso === 0 && <PantallaBienvenida onComenzar={() => setPaso(1)} />}
 
       {/* Paso 1: DPI Scan */}
       {paso === 1 && (
@@ -854,8 +862,13 @@ export default function ActualizacionDatos() {
       {/* Paso 4: Foto */}
       {paso === 4 && (
         <PasoFoto
+          videoRef={fotoVideoRef}
+          camActiva={camActiva}
+          camError={camError}
           fotoUrl={fotoUrl}
-          onFotoDone={setFotoUrl}
+          onCapturar={capturarFoto}
+          onRehacer={() => { setFotoUrl(null); setFotoBlob(null); iniciarCamara(); }}
+          onReintentar={iniciarCamara}
           onNext={enviar}
           onBack={() => setPaso(3)}
           enviando={enviando}

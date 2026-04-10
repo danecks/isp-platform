@@ -71,6 +71,7 @@ import SupervisorActivar from "@/pages/SupervisorActivar";
 import KioscoSolicitud from "@/pages/KioscoSolicitud";
 import SolicitudEmpleo from "@/pages/SolicitudEmpleo";
 import ActualizacionDatos from "@/pages/ActualizacionDatos";
+import SolicitarAnticipo from "@/pages/SolicitarAnticipo";
 import AdminKioscoSolicitudes from "@/admin/pages/KioscoSolicitudes";
 import AdminMergeRequests from "@/admin/pages/MergeRequests";
 
@@ -266,6 +267,7 @@ function Router() {
       <Route path="/kiosco" component={KioscoSolicitud} />
       <Route path="/solicitud-empleo" component={SolicitudEmpleo} />
       <Route path="/actualizacion-datos" component={ActualizacionDatos} />
+      <Route path="/solicitar-anticipo" component={SolicitarAnticipo} />
       <Route path="/plazas-disponibles" component={AnuncioPlazas} />
       <Route path="/admin/rrhh/kiosco-solicitudes">
         {() => <AuthGuard><AdminKioscoSolicitudes /></AuthGuard>}
