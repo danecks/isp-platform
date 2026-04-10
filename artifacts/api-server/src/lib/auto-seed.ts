@@ -4318,5 +4318,27 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: ANT-CUOTAS-01 — error (no bloqueante)");
   }
 
+  // ── HIST-PREST-01: tabla de historial de prestaciones pagadas fuera del sistema ──
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS historial_prestaciones_externas (
+        id           SERIAL PRIMARY KEY,
+        employee_id  INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        tipo         VARCHAR(20) NOT NULL CHECK (tipo IN ('bono14','aguinaldo','vacaciones')),
+        anio         SMALLINT NOT NULL,
+        monto        NUMERIC(12,2),
+        dias         NUMERIC(6,2),
+        periodo_completo BOOLEAN NOT NULL DEFAULT FALSE,
+        notas        TEXT,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (employee_id, tipo, anio)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS hpe_emp ON historial_prestaciones_externas(employee_id)`);
+    logger.info("Auto-migrate: HIST-PREST-01 tabla historial_prestaciones_externas verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: HIST-PREST-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

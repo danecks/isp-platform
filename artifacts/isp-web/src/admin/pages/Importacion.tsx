@@ -1857,6 +1857,7 @@ const DETALLE_LIB_SAL_TAB_ID    = "detalle-lib-sal";
 const DETALLE_PREST_TAB_ID      = "detalle-prestaciones";
 const DIGECAM_TAB_ID            = "digecam-armas";
 const ALMACEN_TAB_ID            = "almacen-inventario";
+const CARGA_MAESTRA_TAB_ID      = "carga-maestra";
 
 // ─── LibroSalariosTab ─────────────────────────────────────────────────────────
 const MESES_LS = ["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
@@ -3258,6 +3259,305 @@ function DiGECAMTab() {
   return null;
 }
 
+// ─── CargaMaestraTab ──────────────────────────────────────────────────────────
+type CargaMaestraStep = "upload" | "previewing" | "preview_result" | "importing" | "done";
+
+interface SheetResult {
+  hoja: string;
+  total: number;
+  exitosos: number;
+  errores: number;
+  omitidos: number;
+  detalle: { fila: number; estado: "ok" | "error" | "omitido"; mensaje?: string }[];
+}
+
+interface MaestroResult {
+  preview: boolean;
+  total: number;
+  exitosos: number;
+  errores: number;
+  omitidos: number;
+  hojas: SheetResult[];
+}
+
+const TEMPLATE_FILENAME = "ISP_PlantillaMaestra_CargaInicial.xlsx";
+
+function SheetResultRow({ r }: { r: SheetResult }) {
+  const [open, setOpen] = useState(false);
+  const errores = r.detalle.filter(d => d.estado === "error");
+  const color = r.errores > 0 ? "text-orange-400" : r.exitosos === 0 ? "text-white/30" : "text-emerald-400";
+  return (
+    <div className="border border-white/10 rounded-lg overflow-hidden">
+      <button
+        onClick={() => errores.length > 0 && setOpen(!open)}
+        className={`w-full flex items-center gap-3 px-4 py-3 text-left text-sm hover:bg-white/5 ${errores.length > 0 ? "cursor-pointer" : "cursor-default"}`}
+      >
+        <span className="flex-1 font-medium text-white/80">{r.hoja}</span>
+        <span className="text-emerald-400 text-xs w-20 text-right">{r.exitosos} ok</span>
+        <span className="text-orange-400 text-xs w-20 text-right">{r.errores > 0 ? `${r.errores} errores` : ""}</span>
+        <span className="text-white/30 text-xs w-24 text-right">{r.omitidos > 0 ? `${r.omitidos} omitidos` : ""}</span>
+        <span className={`text-xs w-16 text-right ${color}`}>{r.total} total</span>
+        {errores.length > 0 && <span className="text-white/30 text-xs">{open ? "▲" : "▼"}</span>}
+      </button>
+      {open && errores.length > 0 && (
+        <div className="px-4 pb-3 space-y-1 bg-orange-500/5 border-t border-white/10">
+          {errores.map((e, i) => (
+            <p key={i} className="text-[11px] text-orange-300/80">Fila {e.fila}: {e.mensaje}</p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CargaMaestraTab() {
+  const [step, setStep] = useState<CargaMaestraStep>("upload");
+  const [sheets, setSheets] = useState<Record<string, Record<string, any>[]>>({});
+  const [sheetNames, setSheetNames] = useState<string[]>([]);
+  const [previewResult, setPreviewResult] = useState<MaestroResult | null>(null);
+  const [importResult, setImportResult] = useState<MaestroResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const reset = () => {
+    setStep("upload"); setSheets({}); setSheetNames([]);
+    setPreviewResult(null); setImportResult(null);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const handleFile = useCallback(async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      alert("Solo se aceptan archivos .xlsx"); return;
+    }
+    const buf = await file.arrayBuffer();
+    const wb = await XLSX.read(buf, { type: "array" });
+    const parsedSheets: Record<string, Record<string, any>[]> = {};
+    wb.SheetNames.forEach(name => {
+      if (name === "INSTRUCCIONES") return;
+      const json = XLSX.utils.sheet_to_json<Record<string, any>>(
+        wb.Sheets[name], { defval: "" }
+      );
+      const nonEmpty = json.filter(row =>
+        Object.values(row).some(v => String(v ?? "").trim() !== "")
+      );
+      if (nonEmpty.length > 0) parsedSheets[name] = nonEmpty;
+    });
+    setSheets(parsedSheets);
+    setSheetNames(Object.keys(parsedSheets));
+    setStep("previewing");
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  }, [handleFile]);
+
+  const callEndpoint = async (preview: boolean): Promise<MaestroResult> => {
+    const r = await fetch(`${API_BASE}/importacion/maestro`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
+      body: JSON.stringify({ sheets, preview }),
+    });
+    if (!r.ok) {
+      const msg = await r.text();
+      throw new Error(msg || `Error ${r.status}`);
+    }
+    return r.json();
+  };
+
+  const runPreview = async () => {
+    setLoading(true);
+    try {
+      const res = await callEndpoint(true);
+      setPreviewResult(res);
+      setStep("preview_result");
+    } catch (e: any) {
+      alert(`Error al validar: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const runImport = async () => {
+    if (!confirm("¿Confirmar la importación definitiva? Esta acción no se puede deshacer.")) return;
+    setStep("importing"); setLoading(true);
+    try {
+      const res = await callEndpoint(false);
+      setImportResult(res);
+      setStep("done");
+    } catch (e: any) {
+      alert(`Error en la importación: ${e.message}`);
+      setStep("preview_result");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Upload ──────────────────────────────────────────────────────────────────
+  if (step === "upload") return (
+    <div className="space-y-6">
+      <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-5 space-y-3">
+        <div className="flex items-start gap-3">
+          <Database className="w-5 h-5 text-indigo-400 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-indigo-300">Carga Maestra Inicial</p>
+            <p className="text-xs text-white/50 mt-1">
+              Carga todos los datos históricos de la empresa en una sola operación: clientes, puestos,
+              colaboradores, armería, vehículos, bodega, anticipos, historial de prestaciones, usuarios e IGSS.
+              El sistema detecta duplicados automáticamente.
+            </p>
+          </div>
+        </div>
+        <ol className="text-xs text-white/40 list-decimal list-inside space-y-1 pl-2">
+          <li>Descarga la plantilla maestra y llena las hojas con los datos de tu empresa</li>
+          <li>Respeta el orden indicado en la hoja INSTRUCCIONES</li>
+          <li>Sube el archivo aquí, valida y luego confirma la importación definitiva</li>
+        </ol>
+        <a
+          href={`/ISP_PlantillaMaestra_CargaInicial.xlsx`}
+          download={TEMPLATE_FILENAME}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-indigo-600/80 hover:bg-indigo-600 text-white font-medium transition-colors"
+        >
+          <Download className="w-4 h-4" />
+          Descargar Plantilla Maestra (.xlsx)
+        </a>
+      </div>
+
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        onClick={() => fileRef.current?.click()}
+        className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-colors ${
+          dragOver ? "border-indigo-400 bg-indigo-500/10" : "border-white/20 hover:border-indigo-400/50"
+        }`}
+      >
+        <FileUp className="w-10 h-10 text-indigo-400/60 mx-auto mb-3" />
+        <p className="text-sm text-white/60">Arrastra la Plantilla Maestra aquí o haz clic para seleccionar</p>
+        <p className="text-xs text-white/30 mt-1">Formato: .xlsx</p>
+        <input ref={fileRef} type="file" accept=".xlsx" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+      </div>
+    </div>
+  );
+
+  // ── Previewing ──────────────────────────────────────────────────────────────
+  if (step === "previewing") return (
+    <div className="space-y-4">
+      <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
+        <p className="text-sm font-semibold text-blue-300 mb-1">Archivo cargado correctamente</p>
+        <p className="text-xs text-white/40">Se detectaron <strong className="text-white/70">{sheetNames.length} hojas</strong> con datos.</p>
+        <div className="flex flex-wrap gap-2 mt-3">
+          {sheetNames.map(n => (
+            <span key={n} className="text-xs px-2 py-0.5 rounded border bg-blue-500/10 text-blue-300/80 border-blue-500/20">
+              {n} ({(sheets[n] ?? []).length} filas)
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="flex gap-3">
+        <button onClick={reset} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-white/10 hover:bg-white/15 text-white/60">
+          <RotateCcw className="w-4 h-4" /> Cambiar archivo
+        </button>
+        <button
+          onClick={runPreview}
+          disabled={loading}
+          className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm bg-blue-600/80 hover:bg-blue-600 text-white font-medium disabled:opacity-50"
+        >
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+          Validar datos (sin importar)
+        </button>
+      </div>
+    </div>
+  );
+
+  // ── Preview Result ──────────────────────────────────────────────────────────
+  if (step === "preview_result" && previewResult) return (
+    <div className="space-y-5">
+      <div className={`rounded-xl p-4 border ${previewResult.errores === 0
+        ? "bg-emerald-500/10 border-emerald-500/30"
+        : "bg-orange-500/10 border-orange-500/30"}`}>
+        <div className="flex items-center gap-2 mb-3">
+          {previewResult.errores === 0
+            ? <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+            : <AlertCircle className="w-5 h-5 text-orange-400" />}
+          <span className="font-semibold text-white">
+            {previewResult.errores === 0 ? "Todo listo para importar" : "Hay errores — revisa antes de importar"}
+          </span>
+        </div>
+        <div className="grid grid-cols-4 gap-4 text-center">
+          <div><p className="text-2xl font-bold text-white/80">{previewResult.total}</p><p className="text-xs text-white/40">Registros</p></div>
+          <div><p className="text-2xl font-bold text-emerald-400">{previewResult.exitosos}</p><p className="text-xs text-white/40">Se importarán</p></div>
+          <div><p className="text-2xl font-bold text-orange-400">{previewResult.errores}</p><p className="text-xs text-white/40">Con error</p></div>
+          <div><p className="text-2xl font-bold text-white/30">{previewResult.omitidos}</p><p className="text-xs text-white/40">Ya existen</p></div>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {previewResult.hojas.filter(h => h.total > 0).map(h => (
+          <SheetResultRow key={h.hoja} r={h} />
+        ))}
+      </div>
+
+      <div className="flex gap-3">
+        <button onClick={reset} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-white/10 hover:bg-white/15 text-white/60">
+          <RotateCcw className="w-4 h-4" /> Cambiar archivo
+        </button>
+        <button
+          onClick={runImport}
+          disabled={loading || previewResult.exitosos === 0}
+          className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm bg-indigo-600/80 hover:bg-indigo-600 text-white font-medium disabled:opacity-50"
+        >
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+          Importar {previewResult.exitosos} registros definitivamente
+        </button>
+      </div>
+    </div>
+  );
+
+  // ── Importing spinner ───────────────────────────────────────────────────────
+  if (step === "importing") return (
+    <div className="flex flex-col items-center justify-center py-16 gap-4">
+      <Loader2 className="w-10 h-10 text-indigo-400 animate-spin" />
+      <p className="text-sm text-white/50">Importando datos... esto puede tardar unos segundos.</p>
+    </div>
+  );
+
+  // ── Done ────────────────────────────────────────────────────────────────────
+  if (step === "done" && importResult) return (
+    <div className="space-y-5">
+      <div className={`rounded-xl p-4 border ${importResult.errores === 0
+        ? "bg-emerald-500/10 border-emerald-500/30"
+        : "bg-orange-500/10 border-orange-500/30"}`}>
+        <div className="flex items-center gap-2 mb-3">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+          <span className="font-semibold text-white">Importación completada</span>
+        </div>
+        <div className="grid grid-cols-4 gap-4 text-center">
+          <div><p className="text-2xl font-bold text-white/80">{importResult.total}</p><p className="text-xs text-white/40">Registros</p></div>
+          <div><p className="text-2xl font-bold text-emerald-400">{importResult.exitosos}</p><p className="text-xs text-white/40">Importados</p></div>
+          <div><p className="text-2xl font-bold text-orange-400">{importResult.errores}</p><p className="text-xs text-white/40">Con error</p></div>
+          <div><p className="text-2xl font-bold text-white/30">{importResult.omitidos}</p><p className="text-xs text-white/40">Omitidos</p></div>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {importResult.hojas.filter(h => h.total > 0).map(h => (
+          <SheetResultRow key={h.hoja} r={h} />
+        ))}
+      </div>
+
+      <button onClick={reset} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-white/10 hover:bg-white/15 text-white/60">
+        <RotateCcw className="w-4 h-4" /> Nueva importación
+      </button>
+    </div>
+  );
+
+  return null;
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function Importacion() {
   const [activeTab, setActiveTab] = useState<string>(TABS[0].id);
@@ -3270,6 +3570,7 @@ export default function Importacion() {
   const isDetallePrestaciones = activeTab === DETALLE_PREST_TAB_ID;
   const isDigecam            = activeTab === DIGECAM_TAB_ID;
   const isAlmacen            = activeTab === ALMACEN_TAB_ID;
+  const isCargaMaestra       = activeTab === CARGA_MAESTRA_TAB_ID;
   const isAnySA              = isLegacyEmpl || isLegacyClients;
 
   return (
@@ -3283,7 +3584,7 @@ export default function Importacion() {
           </p>
         </div>
 
-        {!isAnySA && !isLibroSal && !isDevEmp && !isDetallePrestaciones && !isDigecam && !isAlmacen && (
+        {!isAnySA && !isLibroSal && !isDevEmp && !isDetallePrestaciones && !isDigecam && !isAlmacen && !isCargaMaestra && (
           <div className="flex items-center gap-0 bg-white/[0.02] border border-white/10 rounded-xl p-4">
             {[
               { n: 1, label: "Descarga la plantilla" },
@@ -3421,6 +3722,20 @@ export default function Importacion() {
             </button>
             {/* Separador visual */}
             <div className="w-px bg-white/10 self-stretch mx-1" />
+            {/* Carga Maestra */}
+            <button
+              onClick={() => setActiveTab(CARGA_MAESTRA_TAB_ID)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                isCargaMaestra
+                  ? "border-indigo-400 text-indigo-400"
+                  : "border-transparent text-white/40 hover:text-indigo-400/60"
+              }`}
+            >
+              <Database className="w-4 h-4" />
+              Carga Maestra
+            </button>
+            {/* Separador visual */}
+            <div className="w-px bg-white/10 self-stretch mx-1" />
             {/* SA — Clientes */}
             <button
               onClick={() => setActiveTab(LEGACY_CLIENTES_TAB_ID)}
@@ -3454,6 +3769,7 @@ export default function Importacion() {
              isDetallePrestaciones ? <DetallePrestacionesTab  key={DETALLE_PREST_TAB_ID} />      :
              isDigecam             ? <DiGECAMTab              key={DIGECAM_TAB_ID} />            :
              isAlmacen             ? <AlmacenTab              key={ALMACEN_TAB_ID} />            :
+             isCargaMaestra        ? <CargaMaestraTab         key={CARGA_MAESTRA_TAB_ID} />      :
              isLegacyEmpl    ? <LegacyImporterTab     key={LEGACY_TAB_ID} />       :
              isLegacyClients ? <LegacyClientesTab     key={LEGACY_CLIENTES_TAB_ID} /> :
              tab             ? (
