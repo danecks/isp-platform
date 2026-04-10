@@ -70,6 +70,7 @@ import AgenteEscaneo from "@/pages/AgenteEscaneo";
 import SupervisorActivar from "@/pages/SupervisorActivar";
 import KioscoSolicitud from "@/pages/KioscoSolicitud";
 import SolicitudEmpleo from "@/pages/SolicitudEmpleo";
+import ActualizacionDatos from "@/pages/ActualizacionDatos";
 import AdminKioscoSolicitudes from "@/admin/pages/KioscoSolicitudes";
 import AdminMergeRequests from "@/admin/pages/MergeRequests";
 
@@ -264,6 +265,7 @@ function Router() {
       <Route path="/supervisor/activar" component={SupervisorActivar} />
       <Route path="/kiosco" component={KioscoSolicitud} />
       <Route path="/solicitud-empleo" component={SolicitudEmpleo} />
+      <Route path="/actualizacion-datos" component={ActualizacionDatos} />
       <Route path="/plazas-disponibles" component={AnuncioPlazas} />
       <Route path="/admin/rrhh/kiosco-solicitudes">
         {() => <AuthGuard><AdminKioscoSolicitudes /></AuthGuard>}

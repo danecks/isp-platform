@@ -462,6 +462,83 @@ employeesRouter.get("/employees/:id/operacion", async (req, res) => {
   }
 });
 
+// ── GET /api/employees/by-dpi/:dpi — búsqueda pública por DPI (kiosco actualización) ──
+employeesRouter.get("/employees/by-dpi/:dpi", async (req, res) => {
+  const dpi = req.params.dpi?.trim();
+  if (!dpi) return res.status(400).json({ error: "DPI requerido" });
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, nombre_completo, dpi, telefono, telefono_secundario, correo,
+              direccion, municipio, departamento, foto_url,
+              banco, cuenta_bancaria, forma_pago,
+              nombre_contacto_emergencia, telefono_emergencia, parentesco_emergencia,
+              dpi_frente_url, dpi_reverso_url, estado_laboral, puesto, tipo_personal
+       FROM employees WHERE dpi = $1 LIMIT 1`,
+      [dpi]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "No encontrado en el sistema" });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Error al buscar empleado" });
+  }
+});
+
+// ── PATCH /api/employees/:id/self-update — actualización pública de datos (kiosco) ──
+employeesRouter.patch("/employees/:id/self-update", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+  const {
+    telefono, telefono_secundario, correo,
+    direccion, municipio, departamento,
+    banco, forma_pago, cuenta_bancaria,
+    nombre_contacto_emergencia, telefono_emergencia, parentesco_emergencia,
+    dpi_frente_url, dpi_reverso_url, foto_url,
+  } = req.body ?? {};
+  try {
+    await pool.query(
+      `UPDATE employees SET
+        telefono                    = COALESCE($1,  telefono),
+        telefono_secundario         = COALESCE($2,  telefono_secundario),
+        correo                      = COALESCE($3,  correo),
+        direccion                   = COALESCE($4,  direccion),
+        municipio                   = COALESCE($5,  municipio),
+        departamento                = COALESCE($6,  departamento),
+        banco                       = COALESCE($7,  banco),
+        forma_pago                  = COALESCE($8,  forma_pago),
+        cuenta_bancaria             = COALESCE($9,  cuenta_bancaria),
+        nombre_contacto_emergencia  = COALESCE($10, nombre_contacto_emergencia),
+        telefono_emergencia         = COALESCE($11, telefono_emergencia),
+        parentesco_emergencia       = COALESCE($12, parentesco_emergencia),
+        dpi_frente_url              = COALESCE($13, dpi_frente_url),
+        dpi_reverso_url             = COALESCE($14, dpi_reverso_url),
+        foto_url                    = COALESCE($15, foto_url),
+        updated_at                  = NOW()
+       WHERE id = $16`,
+      [
+        telefono || null,
+        telefono_secundario || null,
+        correo || null,
+        direccion || null,
+        municipio || null,
+        departamento || null,
+        banco || null,
+        forma_pago || null,
+        cuenta_bancaria || null,
+        nombre_contacto_emergencia || null,
+        telefono_emergencia || null,
+        parentesco_emergencia || null,
+        dpi_frente_url || null,
+        dpi_reverso_url || null,
+        foto_url || null,
+        id,
+      ]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Error al actualizar datos" });
+  }
+});
+
 // PATCH /api/employees/:id/estado — cambio rápido de estado laboral
 employeesRouter.patch("/employees/:id/estado", async (req, res) => {
   const id = parseInt(req.params.id);
