@@ -2,10 +2,11 @@
  * importacion-maestro.ts
  *
  * Carga masiva desde la Plantilla Maestra Excel (.xlsx)
- * Procesa 12 hojas en orden de dependencias:
+ * Procesa 14 hojas en orden de dependencias:
  *   1. clientes → 2. turnos → 3. puestos → 4. colaboradores
  *   5. armas → 6. vehiculos → 7. bodega_categorias → 8. bodega_articulos
- *   9. anticipos → 10. historial_prestaciones → 11. usuarios → 12. igss_patrono
+ *   9. anticipos → 10. historial_prestaciones → 11. usuarios → 12. roles
+ *   13. modulos → 14. igss_patrono
  *
  * El frontend parsea el Excel y envía:
  *   POST /api/importacion/maestro
@@ -802,7 +803,71 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
   }
   resultados.push(rRoles);
 
-  // ── 13. IGSS PATRONO ───────────────────────────────────────────────────────
+  // ── 13. MODULOS (asignación rol → módulo para roles existentes) ────────────
+  const modulosRows = sheets["MODULOS"] ?? sheets["modulos"] ?? [];
+  const rModulos = emptyResult("Permisos de Módulos");
+  rModulos.total = modulosRows.length;
+
+  // Precarga roles existentes en BD para validar
+  const rolesEnBd = new Set<string>();
+  if (!preview) {
+    try {
+      const { rows: rbRows } = await pool.query(`SELECT clave FROM system_roles`);
+      rbRows.forEach((r: any) => rolesEnBd.add(r.clave));
+    } catch { /* no bloqueante */ }
+  }
+
+  for (let i = 0; i < modulosRows.length; i++) {
+    const row = modulosRows[i];
+    const fila = i + 2;
+    const rolClave   = trim(row["rol_clave"]).toLowerCase();
+    const modClave   = trim(row["modulo_clave"]).toLowerCase();
+    // accion: "agregar" (default) o "quitar"
+    const accion = trim(row["accion"]).toLowerCase() || "agregar";
+
+    if (!rolClave || !modClave) {
+      rModulos.detalle.push({ fila, estado: "error", mensaje: "rol_clave y modulo_clave son obligatorios" });
+      rModulos.errores++; continue;
+    }
+    if (!MODULOS_VALIDOS.has(modClave)) {
+      rModulos.detalle.push({ fila, estado: "error", mensaje: `módulo "${modClave}" no es válido` });
+      rModulos.errores++; continue;
+    }
+    if (preview) { rModulos.detalle.push({ fila, estado: "ok" }); rModulos.exitosos++; continue; }
+
+    // Verificar que el rol existe (en BD o recién creado en esta misma carga)
+    const rolExisteEnBd = rolesEnBd.has(rolClave);
+    // También puede ser un rol creado en la hoja ROLES de esta misma carga
+    const rolRecienCreado = rolesRows.some((r: any) =>
+      trim(r["clave"]).toLowerCase() === rolClave
+    );
+    if (!rolExisteEnBd && !rolRecienCreado) {
+      rModulos.detalle.push({ fila, estado: "error", mensaje: `rol "${rolClave}" no existe en el sistema` });
+      rModulos.errores++; continue;
+    }
+
+    try {
+      if (accion === "quitar") {
+        await pool.query(
+          `DELETE FROM rol_permisos WHERE rol_clave = $1 AND modulo_clave = $2`,
+          [rolClave, modClave]
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO rol_permisos (rol_clave, modulo_clave) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+          [rolClave, modClave]
+        );
+      }
+      rModulos.detalle.push({ fila, estado: "ok", mensaje: `${accion}: ${rolClave} → ${modClave}` });
+      rModulos.exitosos++;
+    } catch (e: any) {
+      rModulos.detalle.push({ fila, estado: "error", mensaje: e.message });
+      rModulos.errores++;
+    }
+  }
+  resultados.push(rModulos);
+
+  // ── 14. IGSS PATRONO ───────────────────────────────────────────────────────
   const igssRows = sheets["IGSS_PATRONO"] ?? sheets["igss_patrono"] ?? sheets["IGSS PATRONO"] ?? [];
   const rIgss = emptyResult("IGSS — Patrono");
   rIgss.total = igssRows.length;
