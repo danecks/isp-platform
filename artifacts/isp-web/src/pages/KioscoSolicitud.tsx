@@ -1050,7 +1050,7 @@ function PasoPersonal({ form, setEv, set, onNext, onBack }: {
   form: FormData; setEv: (k: keyof FormData) => (e: React.ChangeEvent<HTMLInputElement>) => void;
   set: (k: keyof FormData) => (v: string) => void; onNext: () => void; onBack: () => void;
 }) {
-  const ok = form.nombre_completo.trim().length >= 4 && form.dpi.length >= 13 && form.telefono.length >= 8;
+  const ok = form.nombre_completo.trim().length >= 4 && form.dpi.length >= 13 && form.telefono.length >= 8 && form.igss.trim().length >= 6;
   return (
     <StepCard title="Paso 2 — Sus Datos Personales" onBack={onBack} onNext={onNext} nextDisabled={!ok}>
       <Field label="Plaza que solicita" required hint="Cargo al que desea aplicar en ISP." wide>
