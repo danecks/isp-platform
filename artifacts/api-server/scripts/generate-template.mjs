@@ -91,6 +91,11 @@ const instrRows = [
   [],
   ["FORMATO DE FECHAS: dd/mm/aaaa   Ejemplo: 15/01/2024"],
   [],
+  ["ARMAS — El arma se asigna al PUESTO (puesto_nombre), NO al empleado."],
+  ["  El campo custodio_dpi es opcional: solo si quieres registrar quién la tiene HOY."],
+  ["  Los agentes que trabajan el puesto son responsables del arma durante su turno."],
+  ["  codigo: si se deja vacío, el sistema genera uno automático (PIST-001, ESCO-001...)."],
+  [],
   ["TURNOS — columnas: nombre | horas_trabajo | horas_descanso | num_titulares | descripcion"],
   ["  Turno 24x24: horas_trabajo=24, horas_descanso=24, descripcion=\"07:00 a 07:00 del día siguiente\""],
   ["  Turno 12x12: horas_trabajo=12, horas_descanso=12"],
@@ -145,11 +150,31 @@ const wsColaboradores = makeSheet(
 );
 
 const wsArmas = makeSheet(
-  ["tipo","marca","modelo","serie","calibre","estado","propietario",
-   "fecha_registro","notas","asignado_a_dpi"],
-  [["pistola","Glock","17","ABC123","9mm","activo","empresa",
-    "01/01/2024","","1234567890101"]],
-  [15,15,15,20,12,12,18,16,30,18]
+  // puesto_nombre = puesto al que pertenece el arma (los agentes del puesto son responsables)
+  // custodio_dpi  = DPI del agente que la tiene en este momento (opcional)
+  // codigo        = si se omite, el sistema genera uno automático (ej: PIST-001)
+  ["tipo","marca","modelo","calibre","serie","estado","codigo",
+   "puesto_nombre",
+   "numero_tenencia","fecha_vencimiento_tenencia",
+   "numero_portacion","fecha_vencimiento_portacion",
+   "custodio_dpi","observaciones"],
+  [
+    ["pistola","Glock","17","9mm","ABC123456","activo","PIST-001",
+     "Puesto Central",
+     "TEN-001","31/12/2025",
+     "PORT-001","31/12/2025",
+     "","Arma asignada a puesto permanente"],
+    ["escopeta","Mossberg","500","12","XYZ789012","activo","ESCO-001",
+     "Puesto Central",
+     "TEN-002","30/06/2026",
+     "","",
+     "",""],
+  ],
+  [12,15,15,10,16,12,14,
+   28,
+   16,24,
+   16,24,
+   18,35]
 );
 
 const wsVehiculos = makeSheet(
