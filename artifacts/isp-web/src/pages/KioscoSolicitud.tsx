@@ -720,54 +720,39 @@ function PasoDpi({ onFrenteDone, onReversoDone, frenteUrl, reversoUrl, onNext, o
 
   const openCamera = async () => {
     clearTimers();
-    setPhase("scanning");
-    setStability(0);
     setCapturedUrl(null);
+    setStability(0);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
       });
       streamRef.current = stream;
       if (videoRef.current) videoRef.current.srcObject = stream;
-
-      // Simulate auto-detection flow
-      timerRef.current = setTimeout(() => {
-        setPhase("aligning");
-        stabRef.current = setInterval(() => {
-          setStability(prev => {
-            if (prev >= 100) { clearInterval(stabRef.current!); return 100; }
-            return prev + 3;
-          });
-        }, 60);
-        timerRef.current = setTimeout(() => {
-          setPhase("stable");
-          timerRef.current = setTimeout(() => {
-            // Capture frame
-            const video = videoRef.current;
-            if (video) {
-              const W = 640, H = 400;
-              const canvas = document.createElement("canvas");
-              canvas.width = W; canvas.height = H;
-              const ctx = canvas.getContext("2d")!;
-              const vw = video.videoWidth || W;
-              const vh = video.videoHeight || H;
-              const scale = Math.max(W / vw, H / vh);
-              const sw = W / scale; const sh = H / scale;
-              const sx = (vw - sw) / 2; const sy = (vh - sh) / 2;
-              ctx.drawImage(video, sx, sy, sw, sh, 0, 0, W, H);
-              const url = canvas.toDataURL("image/jpeg", 0.9);
-              setCapturedUrl(url);
-            }
-            setPhase("flash");
-            stopCamera();
-            timerRef.current = setTimeout(() => setPhase("captured"), 400);
-          }, 600);
-        }, 2000);
-      }, 1200);
+      setPhase("scanning");
     } catch {
       setPhase("guide");
       alert("No se pudo acceder a la cámara. Verifique los permisos del navegador.");
     }
+  };
+
+  const tomarFoto = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    const W = 1280, H = 800;
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext("2d")!;
+    const vw = video.videoWidth || W;
+    const vh = video.videoHeight || H;
+    const scale = Math.max(W / vw, H / vh);
+    const sw = W / scale; const sh = H / scale;
+    const sx = (vw - sw) / 2; const sy = (vh - sh) / 2;
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, W, H);
+    const url = canvas.toDataURL("image/jpeg", 0.92);
+    setCapturedUrl(url);
+    setPhase("flash");
+    stopCamera();
+    timerRef.current = setTimeout(() => setPhase("captured"), 350);
   };
 
   const confirmCapture = async () => {
@@ -863,10 +848,10 @@ function PasoDpi({ onFrenteDone, onReversoDone, frenteUrl, reversoUrl, onNext, o
           </p>
           <div className="flex flex-col gap-2">
             {[
-              { dot: "#facc15", txt: "Busque buena luz, evite sombras" },
-              { dot: "#3b82f6", txt: "Centre el DPI dentro del marco" },
-              { dot: "#3b82f6", txt: "Sostenga el dispositivo quieto" },
-              { dot: "#22c55e", txt: "La foto se toma sola automaticamente" },
+              { dot: "#facc15", txt: "Busque buena luz, evite sombras y reflejos" },
+              { dot: "#3b82f6", txt: "Acerquese hasta que el DPI llene el marco" },
+              { dot: "#3b82f6", txt: "Mantenga el dispositivo quieto" },
+              { dot: "#22c55e", txt: "Presione el boton grande para tomar la foto" },
             ].map((t, i) => (
               <div key={i} className="flex items-center gap-3">
                 <div className="w-2 h-2 rounded-full shrink-0" style={{ background: t.dot }} />
@@ -957,97 +942,66 @@ function PasoDpi({ onFrenteDone, onReversoDone, frenteUrl, reversoUrl, onNext, o
   );
 
   // ── Camera viewfinder ──
-  const cornerColor =
-    phase === "stable"   ? "#22c55e" :
-    phase === "aligning" ? "#facc15" :
-    phase === "scanning" ? "#ef4444" : "#ffffff50";
-
   return (
     <div className="bg-[#0d2147] rounded-2xl border border-[#1e3a6e] w-full max-w-lg shadow-2xl flex flex-col items-center p-4 gap-4">
-      <div className="flex gap-3">
-        <div className="px-4 py-1.5 rounded-full text-sm font-bold bg-[#0f2a5e] border-2 border-blue-500 text-white">
-          {side === "front" ? "Frente del DPI" : "Reverso del DPI"}
-        </div>
+      <div className="px-4 py-1.5 rounded-full text-sm font-bold bg-[#0f2a5e] border-2 border-blue-500 text-white">
+        {side === "front" ? "Frente del DPI" : "Reverso del DPI"}
       </div>
 
       {/* Camera viewfinder */}
-      <div className="relative rounded-xl overflow-hidden w-full" style={{ aspectRatio: "16/10", background: "#111820" }}>
+      <div className="relative rounded-xl overflow-hidden w-full" style={{ aspectRatio: "4/3", background: "#060f1e" }}>
         <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-        {phase === "flash" && <div className="absolute inset-0 bg-white opacity-90" />}
+        {phase === "flash" && <div className="absolute inset-0 bg-white opacity-95" />}
 
-        {/* DPI frame overlay - centered 80% width */}
-        <div className="absolute" style={{ left: "10%", right: "10%", top: "15%", bottom: "15%", position: "absolute" }}>
-          <div className="w-full h-full relative">
-            <div className="absolute inset-0 rounded-lg" style={{ border: `2px dashed ${cornerColor}`, opacity: 0.5, transition: "border-color 0.4s" }} />
-            {/* Corners */}
+        {/* Overlay oscuro alrededor del marco — para que el usuario sepa dónde poner el DPI */}
+        {phase === "scanning" && <>
+          <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.45)" }} />
+          {/* Marco transparente en el centro — 88% ancho, 55% alto */}
+          <div className="absolute" style={{ left: "6%", right: "6%", top: "20%", bottom: "20%" }}>
+            {/* Fondo transparente que "corta" el overlay oscuro */}
+            <div className="absolute inset-0 rounded-xl" style={{ boxShadow: "0 0 0 9999px rgba(0,0,0,0.45)", background: "transparent" }} />
+            {/* Borde punteado */}
+            <div className="absolute inset-0 rounded-xl" style={{ border: "2px dashed rgba(96,165,250,0.7)" }} />
+            {/* Esquinas */}
             {["tl","tr","bl","br"].map(pos => (
-              <div key={pos} className="absolute w-7 h-7" style={{
-                top: pos.startsWith("t") ? 0 : undefined,
-                bottom: pos.startsWith("b") ? 0 : undefined,
-                left: pos.endsWith("l") ? 0 : undefined,
-                right: pos.endsWith("r") ? 0 : undefined,
-                borderTop: pos.startsWith("t") ? `4px solid ${cornerColor}` : undefined,
-                borderBottom: pos.startsWith("b") ? `4px solid ${cornerColor}` : undefined,
-                borderLeft: pos.endsWith("l") ? `4px solid ${cornerColor}` : undefined,
-                borderRight: pos.endsWith("r") ? `4px solid ${cornerColor}` : undefined,
-                transition: "border-color 0.4s",
+              <div key={pos} className="absolute w-8 h-8" style={{
+                top: pos.startsWith("t") ? -1 : undefined,
+                bottom: pos.startsWith("b") ? -1 : undefined,
+                left: pos.endsWith("l") ? -1 : undefined,
+                right: pos.endsWith("r") ? -1 : undefined,
+                borderTop: pos.startsWith("t") ? "4px solid #60a5fa" : undefined,
+                borderBottom: pos.startsWith("b") ? "4px solid #60a5fa" : undefined,
+                borderLeft: pos.endsWith("l") ? "4px solid #60a5fa" : undefined,
+                borderRight: pos.endsWith("r") ? "4px solid #60a5fa" : undefined,
+                borderRadius: pos === "tl" ? "8px 0 0 0" : pos === "tr" ? "0 8px 0 0" : pos === "bl" ? "0 0 0 8px" : "0 0 8px 0",
               }} />
             ))}
-            {phase === "scanning" && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="bg-black/60 rounded-lg px-3 py-1.5">
-                  <p className="text-white text-xs font-bold">Centre el DPI aqui</p>
-                </div>
-              </div>
-            )}
+            {/* Texto dentro del marco */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <span className="bg-black/50 rounded-lg px-3 py-1 text-blue-200 text-xs font-bold">
+                Centre el DPI aqui — acerquese mas
+              </span>
+            </div>
           </div>
-        </div>
-
-        {/* Status badge */}
-        {phase !== "flash" && phase !== "guide" && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-black/70 rounded-full px-4 py-1.5 border"
-            style={{ borderColor: cornerColor }}>
-            <p className="text-xs font-bold" style={{ color: cornerColor }}>
-              {phase === "scanning" ? "Buscando DPI..." :
-               phase === "aligning" ? "Ajustando posicion..." :
-               phase === "stable"   ? "Perfecto — no se mueva..." : "Capturado"}
-            </p>
-          </div>
-        )}
+        </>}
       </div>
 
-      {/* Stability bar */}
-      {(phase === "aligning" || phase === "stable") && (
-        <div className="w-full">
-          <div className="flex justify-between text-xs mb-1">
-            <span className="text-[#64748b]">Estabilidad</span>
-            <span className="font-bold" style={{ color: stability >= 100 ? "#4ade80" : "#facc15" }}>
-              {stability >= 100 ? "Listo" : `${stability}%`}
-            </span>
-          </div>
-          <div className="bg-[#0a1628] rounded-full h-2 border border-[#1e3a6e] overflow-hidden">
-            <div className="h-full rounded-full transition-all" style={{
-              width: `${stability}%`,
-              background: stability >= 100 ? "linear-gradient(90deg, #16a34a, #22c55e)" : "linear-gradient(90deg, #d97706, #facc15)",
-            }} />
-          </div>
-        </div>
-      )}
-
-      {/* Hint */}
-      <div className="bg-[#071630] border border-[#1e3a6e] rounded-xl px-4 py-3 w-full text-center text-sm">
-        {phase === "scanning" && <p className="text-[#64748b]">Coloque el DPI <strong className="text-white">dentro del marco</strong> — se detectara automaticamente</p>}
-        {phase === "aligning" && <p className="text-amber-400 font-bold">Casi perfecto — ajuste un poco mas y no mueva el dispositivo</p>}
-        {phase === "stable"   && <p className="text-green-400 font-bold">Excelente — tomando foto...</p>}
+      {/* Instrucción */}
+      <div className="bg-[#071630] border border-[#1e3a6e] rounded-xl px-4 py-3 w-full text-center">
+        <p className="text-white text-sm font-semibold mb-1">Acerque el DPI hasta que llene el marco</p>
+        <p className="text-[#64748b] text-xs">Buena luz, sin sombras, sin reflejos — luego presione el boton</p>
       </div>
 
-      {phase !== "flash" && phase !== "stable" && (
-        <button onClick={retry} className="text-[#64748b] text-sm border border-[#1e3a6e] rounded-lg px-5 py-2">
-          Cancelar
-        </button>
-      )}
+      {/* Botón tomar foto */}
+      <button onClick={tomarFoto}
+        className="w-full py-5 rounded-2xl font-black text-xl text-white active:scale-95 transition-all shadow-xl"
+        style={{ background: "linear-gradient(135deg, #1d4ed8, #2563eb)", boxShadow: "0 6px 24px rgba(37,99,235,0.5)" }}>
+        Tomar foto
+      </button>
 
-      <style>{`@keyframes scanline{0%{top:5%;opacity:0}10%{opacity:1}90%{opacity:1}100%{top:90%;opacity:0}}`}</style>
+      <button onClick={retry} className="text-[#64748b] text-sm border border-[#1e3a6e] rounded-lg px-5 py-2">
+        Cancelar
+      </button>
     </div>
   );
 }
