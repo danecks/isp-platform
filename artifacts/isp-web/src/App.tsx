@@ -18,6 +18,7 @@ import Reclutamiento from "@/pages/reclutamiento";
 import SolicitarServicio from "@/pages/solicitar-servicio";
 import Contacto from "@/pages/contacto";
 import AccesoClientes from "@/pages/acceso-clientes";
+import AnuncioPlazas from "@/pages/AnuncioPlazas";
 import NotFound from "@/pages/not-found";
 
 // Admin pages
@@ -262,6 +263,7 @@ function Router() {
       <Route path="/supervisor/activar" component={SupervisorActivar} />
       <Route path="/kiosco" component={KioscoSolicitud} />
       <Route path="/solicitud-empleo" component={SolicitudEmpleo} />
+      <Route path="/plazas-disponibles" component={AnuncioPlazas} />
       <Route path="/admin/rrhh/kiosco-solicitudes">
         {() => <AuthGuard><AdminKioscoSolicitudes /></AuthGuard>}
       </Route>
