@@ -564,8 +564,42 @@ async function buildLiquidacion(empId: number, body: Record<string, unknown>) {
     result.totalGeneral = parseFloat((result.totalGeneral - saldoUniforme).toFixed(2));
   }
 
+  // ── Saldo pendiente de anticipos ──────────────────────────────────────────
+  // Anticipos aprobados con cuotas de planilla aún no descontadas → rubro negativo.
+  const { rows: anticRows } = await pool.query<{ saldo_total: string; anticipos_count: string }>(`
+    SELECT
+      COALESCE(SUM(
+        CASE
+          WHEN cuota_monto IS NOT NULL
+            THEN (COALESCE(num_cuotas,1) - COALESCE(cuotas_pagadas,0))::numeric * cuota_monto
+          ELSE
+            GREATEST(0, COALESCE(monto_cobro, cantidad * 1.1)
+              - COALESCE(cuotas_pagadas,0) * COALESCE(cuota_monto, monto_cobro, cantidad * 1.1))
+        END
+      ), 0)::float AS saldo_total,
+      COUNT(*)::int AS anticipos_count
+    FROM anticipos
+    WHERE employee_id = $1
+      AND estado = 'aprobada'
+      AND COALESCE(cuotas_pagadas, 0) < COALESCE(num_cuotas, 1)
+  `, [empId]);
+
+  const saldoAnticipo = parseFloat(anticRows[0]?.saldo_total ?? "0");
+  const anticiposPendientes = parseInt(String(anticRows[0]?.anticipos_count ?? "0"));
+
+  if (saldoAnticipo > 0) {
+    result.rubros.push({
+      rubro:             "descuento_anticipo_pendiente",
+      descripcion:       `Anticipo(s) pendiente(s) de cobro: ${anticiposPendientes} solicitud(es) — saldo con cargo (+10%)`,
+      salarioReferencia: sueldo,
+      monto:             parseFloat((-saldoAnticipo).toFixed(2)),
+      baseCalculo:       JSON.stringify({ anticipos_pendientes: anticiposPendientes, saldo_anticipo: saldoAnticipo }),
+    });
+    result.totalGeneral = parseFloat((result.totalGeneral - saldoAnticipo).toFixed(2));
+  }
+
   return { emp: emp[0], result, fechaEgreso, causal, diasVac, aguinaldoYaPagado, bono14YaPagado,
-           diasGanadosProporcional, diasAutorizadosTotal, saldoUniforme };
+           diasGanadosProporcional, diasAutorizadosTotal, saldoUniforme, saldoAnticipo, anticiposPendientes };
 }
 
 // ─── POST /api/prestaciones/simular-liquidacion ───────────────────────────────
@@ -657,6 +691,18 @@ prestacionesRouter.post("/prestaciones/liquidaciones", async (req, res) => {
           [diasVac, empId]
         );
       }
+
+      // Marcar anticipos pendientes como saldados por liquidación
+      await db.query(
+        `UPDATE anticipos
+         SET estado       = 'pagada',
+             observaciones = COALESCE(observaciones || ' | ', '') ||
+                             'Saldo descontado de liquidación — baja ' || $1
+         WHERE employee_id = $2
+           AND estado = 'aprobada'
+           AND COALESCE(cuotas_pagadas, 0) < COALESCE(num_cuotas, 1)`,
+        [fechaEgreso, empId]
+      );
 
       // Marcar al empleado como dado de baja
       await db.query(
