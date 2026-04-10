@@ -182,7 +182,7 @@ export default function AnuncioPlazas() {
             display: "flex", justifyContent: "space-between", alignItems: "center",
           }}>
             <div style={{ color: "#475569", fontSize: 9 }}>
-              Prestaciones de ley · Sueldo competitivo
+              Prestaciones de ley · Sueldo competitivo · Contratación inmediata
             </div>
             <div style={{ color: "#475569", fontSize: 9 }}>
               www.ispsa.net
