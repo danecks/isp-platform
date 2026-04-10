@@ -291,6 +291,23 @@ solicitudesEmpleoRouter.get("/solicitudes-empleo", async (req: Request, res: Res
   }
 });
 
+// ── Solicitud por DPI (para ficha del agente) ─────────────────────────────────
+solicitudesEmpleoRouter.get("/solicitudes-empleo/by-dpi/:dpi", async (req: Request, res: Response) => {
+  const { dpi } = req.params;
+  if (!dpi) return res.status(400).json({ error: "DPI requerido" });
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM solicitudes_empleo WHERE dpi = $1 ORDER BY created_at DESC LIMIT 1`,
+      [dpi]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "No encontrada" });
+    res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "GET /solicitudes-empleo/by-dpi/:dpi error");
+    res.status(500).json({ error: "Error obteniendo solicitud" });
+  }
+});
+
 // ── Detalle de solicitud ──────────────────────────────────────────────────────
 solicitudesEmpleoRouter.get("/solicitudes-empleo/:id", async (req: Request, res: Response) => {
   const id = parseInt(req.params.id);
