@@ -72,7 +72,7 @@ interface Arma {
   id: number; codigo: string; tipo: string; marca: string | null; modelo: string | null;
   calibre: string | null; serie: string | null; estado: string; activo: boolean;
   observaciones: string | null; puesto_id: number | null;
-  puesto_nombre: string | null; cliente_nombre: string | null;
+  puesto_nombre: string | null; cliente_nombre: string | null; puesto_direccion: string | null;
   titular_id: number | null; titular_nombre: string | null;
   custodia_id: number | null; custodio_id: number | null;
   custodio_nombre: string | null; custodio_tipo: string | null;
@@ -81,6 +81,11 @@ interface Arma {
   fecha_vencimiento_tenencia: string | null;
   estado_documental: EstadoDocumental;
   dias_restantes: number | null;
+  numero_portacion: string | null;
+  fecha_emision_portacion: string | null;
+  fecha_vencimiento_portacion: string | null;
+  estado_documental_portacion: EstadoDocumental;
+  dias_restantes_portacion: number | null;
   sugerencias_pendientes: number;
 }
 interface EstadoArma extends Arma {
@@ -88,7 +93,7 @@ interface EstadoArma extends Arma {
   responsable_turno: { id: number; nombre_completo: string; tipo_personal: string; tipo_origen: string } | null;
   descanso_por_ciclo: boolean;
 }
-interface Puesto { id: number; nombre: string; cliente_nombre: string; agente_id: number | null; agente_nombre: string | null; zona_nombre: string | null; }
+interface Puesto { id: number; nombre: string; cliente_nombre: string; agente_id: number | null; agente_nombre: string | null; zona_nombre: string | null; direccion: string | null; }
 interface CustodiaEntry {
   id: number; arma_id: number; employee_id: number | null; puesto_id: number | null;
   fecha_inicio: string; fecha_fin: string | null; tipo_origen: string; notas: string | null;
@@ -117,6 +122,28 @@ function TenenciaBadge({ arma, showDays = true }: { arma: Pick<Arma, "estado_doc
     ? `Vence en ${arma.dias_restantes}d`
     : (ed === "vencida" && showDays && arma.dias_restantes != null)
       ? `Vencida hace ${Math.abs(arma.dias_restantes)}d`
+      : cfg.label;
+  return (
+    <span className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${cfg.cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
+      {label}
+    </span>
+  );
+}
+
+const PORTACION_CONFIG: Record<EstadoDocumental, { label: string; cls: string; dot: string }> = {
+  vigente:          { label: "Portación vigente",   cls: "text-violet-400 bg-violet-400/10 border-violet-400/20", dot: "bg-violet-400" },
+  proximo_a_vencer: { label: "Por vencer",           cls: "text-amber-400 bg-amber-400/10 border-amber-400/20",    dot: "bg-amber-400"  },
+  vencida:          { label: "Portación vencida",   cls: "text-red-400 bg-red-400/10 border-red-400/20",          dot: "bg-red-400"    },
+  sin_registro:     { label: "Sin portación",        cls: "text-gray-500 bg-gray-700/40 border-gray-600",          dot: "bg-gray-600"   },
+};
+function PortacionBadge({ arma, showDays = true }: { arma: Pick<Arma, "estado_documental_portacion" | "dias_restantes_portacion">; showDays?: boolean }) {
+  const ed = arma.estado_documental_portacion ?? "sin_registro";
+  const cfg = PORTACION_CONFIG[ed];
+  const label = (ed === "proximo_a_vencer" && showDays && arma.dias_restantes_portacion != null)
+    ? `Vence en ${arma.dias_restantes_portacion}d`
+    : (ed === "vencida" && showDays && arma.dias_restantes_portacion != null)
+      ? `Vencida hace ${Math.abs(arma.dias_restantes_portacion)}d`
       : cfg.label;
   return (
     <span className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${cfg.cls}`}>
@@ -182,6 +209,10 @@ function ModalArma({
     numero_tenencia:            arma?.numero_tenencia ?? "",
     fecha_vencimiento_tenencia: arma?.fecha_vencimiento_tenencia
       ? arma.fecha_vencimiento_tenencia.slice(0, 10)
+      : "",
+    numero_portacion:           arma?.numero_portacion ?? "",
+    fecha_emision_portacion:    arma?.fecha_emision_portacion
+      ? arma.fecha_emision_portacion.slice(0, 10)
       : "",
   });
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
@@ -333,11 +364,42 @@ function ModalArma({
                   placeholder="Ej. T-12345-2024" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Vencimiento</label>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Vencimiento tenencia</label>
                 <input type="date" value={form.fecha_vencimiento_tenencia} onChange={e => set("fecha_vencimiento_tenencia", e.target.value)}
                   className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
               </div>
             </div>
+          </div>
+
+          {/* Portación de arma */}
+          <div className="border-t border-gray-700/60 pt-4">
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <Hash className="w-3.5 h-3.5" />Portación de arma
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">N° de portación</label>
+                <input value={form.numero_portacion} onChange={e => set("numero_portacion", e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 font-mono"
+                  placeholder="Ej. P-12345-2024" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Fecha de emisión</label>
+                <input type="date" value={form.fecha_emision_portacion} onChange={e => set("fecha_emision_portacion", e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+            </div>
+            {form.fecha_emision_portacion && (
+              <p className="text-xs text-blue-400/80 mt-2 flex items-center gap-1">
+                <span className="opacity-60">Vencimiento auto-calculado:</span>
+                {(() => {
+                  const d = new Date(form.fecha_emision_portacion + "T00:00:00");
+                  d.setFullYear(d.getFullYear() + 1);
+                  return d.toLocaleDateString("es-GT", { day: "2-digit", month: "short", year: "numeric" });
+                })()}
+                {arma?.fecha_vencimiento_portacion && !form.fecha_emision_portacion.startsWith(arma.fecha_emision_portacion?.slice(0, 10) ?? "") ? null : null}
+              </p>
+            )}
           </div>
 
           {/* Observaciones */}
@@ -479,6 +541,31 @@ function ModalFichaArma({ arma, onClose, onEdit }: {
             )}
           </div>
 
+          {/* ── Portación ── */}
+          <div className="px-5 pb-3">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Hash className="w-3.5 h-3.5 text-gray-500" />
+                <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Portación de arma</h3>
+              </div>
+              {a.numero_portacion && (
+                <PortacionBadge arma={a} showDays />
+              )}
+            </div>
+            {a.numero_portacion ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <FichaCampo label="N° de portación" value={a.numero_portacion} mono />
+                <FichaCampo label="Emisión" value={a.fecha_emision_portacion ? fmtFecha(a.fecha_emision_portacion) : null} />
+                <FichaCampo label="Vencimiento" value={a.fecha_vencimiento_portacion ? fmtFecha(a.fecha_vencimiento_portacion) : null} />
+              </div>
+            ) : (
+              <div className="bg-gray-800/30 border border-gray-700/30 rounded-lg px-3 py-2.5 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                <p className="text-xs text-gray-500">Sin datos de portación registrados — edita el arma para agregar número y fecha de emisión.</p>
+              </div>
+            )}
+          </div>
+
           {/* ── Puesto asignado ── */}
           <div className="px-5 pb-3">
             <div className="flex items-center gap-2 mb-3">
@@ -490,6 +577,11 @@ function ModalFichaArma({ arma, onClose, onEdit }: {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-white font-medium truncate">{a.puesto_nombre}</p>
                   {a.cliente_nombre && <p className="text-xs text-gray-400 truncate">{a.cliente_nombre}</p>}
+                  {a.puesto_direccion && (
+                    <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+                      <MapPin className="w-3 h-3 flex-shrink-0" />{a.puesto_direccion}
+                    </p>
+                  )}
                 </div>
                 {a.custodio_nombre && (
                   <div className="text-right flex-shrink-0">

@@ -4200,5 +4200,21 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: CARNET-01 — error (no bloqueante)");
   }
 
+  // ── ARM-05: fecha_emision_portacion para auto-calcular vencimiento ────────
+  try {
+    await pool.query(`ALTER TABLE armas ADD COLUMN IF NOT EXISTS fecha_emision_portacion DATE`);
+    logger.info("Auto-migrate: ARM-05 fecha_emision_portacion en armas verificado/creado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: ARM-05 — error (no bloqueante)");
+  }
+
+  // ── PO-DIR-01: direccion en puestos_operativos para reportería ────────────
+  try {
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS direccion TEXT`);
+    logger.info("Auto-migrate: PO-DIR-01 columna direccion agregada a puestos_operativos");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PO-DIR-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

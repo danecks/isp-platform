@@ -168,11 +168,26 @@ armeriaRouter.get("/armas", async (req, res) => {
           WHEN a.fecha_vencimiento_tenencia IS NULL THEN NULL
           ELSE (a.fecha_vencimiento_tenencia - CURRENT_DATE)::INTEGER
         END AS dias_restantes,
+        a.numero_portacion,
+        a.fecha_emision_portacion,
+        a.fecha_vencimiento_portacion,
+        CASE
+          WHEN a.numero_portacion IS NULL THEN 'sin_registro'
+          WHEN a.fecha_vencimiento_portacion IS NULL THEN 'sin_registro'
+          WHEN a.fecha_vencimiento_portacion < CURRENT_DATE THEN 'vencida'
+          WHEN a.fecha_vencimiento_portacion <= CURRENT_DATE + INTERVAL '180 days' THEN 'proximo_a_vencer'
+          ELSE 'vigente'
+        END AS estado_documental_portacion,
+        CASE
+          WHEN a.fecha_vencimiento_portacion IS NULL THEN NULL
+          ELSE (a.fecha_vencimiento_portacion - CURRENT_DATE)::INTEGER
+        END AS dias_restantes_portacion,
         a.puesto_id,
         po.nombre   AS puesto_nombre,
         po.agente_id AS titular_id,
         te.nombre_completo AS titular_nombre,
         po.cliente_nombre,
+        po.direccion AS puesto_direccion,
         -- Custodio actual registrado
         ac.id           AS custodia_id,
         ac.employee_id  AS custodio_id,
@@ -445,10 +460,21 @@ armeriaRouter.get("/armas/:id", async (req, res) => {
           WHEN a.fecha_vencimiento_tenencia IS NULL THEN NULL
           ELSE (a.fecha_vencimiento_tenencia - CURRENT_DATE)::INTEGER
         END AS dias_restantes,
-        po.nombre AS puesto_nombre, po.cliente_nombre,
+        po.nombre AS puesto_nombre, po.cliente_nombre, po.direccion AS puesto_direccion,
         ac.id AS custodia_id, ac.employee_id AS custodio_id,
         e.nombre_completo AS custodio_nombre,
-        ac.fecha_inicio AS custodia_desde, ac.tipo_origen AS custodia_tipo_origen
+        ac.fecha_inicio AS custodia_desde, ac.tipo_origen AS custodia_tipo_origen,
+        CASE
+          WHEN a.numero_portacion IS NULL THEN 'sin_registro'
+          WHEN a.fecha_vencimiento_portacion IS NULL THEN 'sin_registro'
+          WHEN a.fecha_vencimiento_portacion < CURRENT_DATE THEN 'vencida'
+          WHEN a.fecha_vencimiento_portacion <= CURRENT_DATE + INTERVAL '180 days' THEN 'proximo_a_vencer'
+          ELSE 'vigente'
+        END AS estado_documental_portacion,
+        CASE
+          WHEN a.fecha_vencimiento_portacion IS NULL THEN NULL
+          ELSE (a.fecha_vencimiento_portacion - CURRENT_DATE)::INTEGER
+        END AS dias_restantes_portacion
       FROM armas a
       LEFT JOIN puestos_operativos po ON po.id = a.puesto_id
       LEFT JOIN arma_custodia ac      ON ac.arma_id = a.id AND ac.fecha_fin IS NULL
@@ -493,7 +519,8 @@ armeriaRouter.get("/armas/puestos/disponibles", async (req, res) => {
         po.cliente_nombre,
         po.agente_id,
         e.nombre_completo AS agente_nombre,
-        oz.nombre AS zona_nombre
+        oz.nombre AS zona_nombre,
+        po.direccion
       FROM puestos_operativos po
       LEFT JOIN employees e        ON e.id  = po.agente_id
       LEFT JOIN operational_zones oz ON oz.id = po.zona_operativa_id
@@ -509,7 +536,8 @@ armeriaRouter.get("/armas/puestos/disponibles", async (req, res) => {
 // ── POST /api/armas ───────────────────────────────────────────────────────────
 armeriaRouter.post("/armas", async (req, res) => {
   const { codigo, tipo, marca, modelo, calibre, serie, estado, activo, puesto_id, observaciones,
-          numero_tenencia, fecha_vencimiento_tenencia, usuario } = req.body;
+          numero_tenencia, fecha_vencimiento_tenencia,
+          numero_portacion, fecha_emision_portacion, usuario } = req.body;
   if (!codigo || !tipo) return res.status(400).json({ error: "codigo y tipo son requeridos" });
 
   const client = await pool.connect();
@@ -517,8 +545,10 @@ armeriaRouter.post("/armas", async (req, res) => {
     await client.query("BEGIN");
     const { rows } = await client.query(`
       INSERT INTO armas (codigo, tipo, marca, modelo, calibre, serie, estado, activo, puesto_id, observaciones,
-                         numero_tenencia, fecha_vencimiento_tenencia)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                         numero_tenencia, fecha_vencimiento_tenencia,
+                         numero_portacion, fecha_emision_portacion, fecha_vencimiento_portacion)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
+              CASE WHEN $14::date IS NOT NULL THEN ($14::date + INTERVAL '1 year')::date ELSE NULL END)
       RETURNING *
     `, [
       codigo.toUpperCase().trim(), tipo,
@@ -528,6 +558,8 @@ armeriaRouter.post("/armas", async (req, res) => {
       observaciones || null,
       numero_tenencia || null,
       fecha_vencimiento_tenencia || null,
+      numero_portacion || null,
+      fecha_emision_portacion || null,
     ]);
     const arma = rows[0];
 
@@ -558,7 +590,8 @@ armeriaRouter.post("/armas", async (req, res) => {
 armeriaRouter.patch("/armas/:id", async (req, res) => {
   const id = Number(req.params.id);
   const { codigo, tipo, marca, modelo, calibre, serie, estado, activo, puesto_id, observaciones,
-          numero_tenencia, fecha_vencimiento_tenencia, usuario } = req.body;
+          numero_tenencia, fecha_vencimiento_tenencia,
+          numero_portacion, fecha_emision_portacion, usuario } = req.body;
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -573,17 +606,30 @@ armeriaRouter.patch("/armas/:id", async (req, res) => {
       estado ?? null, activo !== undefined ? activo : null,
       puestoNuevo, observaciones ?? null,
     ];
-    const tenenciaFields: string[] = [];
+    const extraFields: string[] = [];
     if ('numero_tenencia' in req.body) {
       params.push(numero_tenencia || null);
-      tenenciaFields.push(`numero_tenencia = $${params.length}`);
+      extraFields.push(`numero_tenencia = $${params.length}`);
     }
     if ('fecha_vencimiento_tenencia' in req.body) {
       params.push(fecha_vencimiento_tenencia || null);
-      tenenciaFields.push(`fecha_vencimiento_tenencia = $${params.length}`);
+      extraFields.push(`fecha_vencimiento_tenencia = $${params.length}`);
+    }
+    if ('numero_portacion' in req.body) {
+      params.push(numero_portacion || null);
+      extraFields.push(`numero_portacion = $${params.length}`);
+    }
+    if ('fecha_emision_portacion' in req.body) {
+      const emision = fecha_emision_portacion || null;
+      params.push(emision);
+      const emisionIdx = params.length;
+      extraFields.push(`fecha_emision_portacion = $${emisionIdx}`);
+      extraFields.push(
+        `fecha_vencimiento_portacion = CASE WHEN $${emisionIdx}::date IS NOT NULL THEN ($${emisionIdx}::date + INTERVAL '1 year')::date ELSE NULL END`
+      );
     }
     params.push(id);
-    const tenenciaSQL = tenenciaFields.length > 0 ? `, ${tenenciaFields.join(", ")}` : "";
+    const tenenciaSQL = extraFields.length > 0 ? `, ${extraFields.join(", ")}` : "";
 
     const { rows } = await client.query(`
       UPDATE armas SET

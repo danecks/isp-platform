@@ -90,6 +90,7 @@ interface Puesto {
   tipo_turno_id: number | null;
   tipo_turno_nombre: string | null;
   fecha_inicio_ciclo: string | null;
+  direccion: string | null;
 }
 
 interface PuestoSlot {
@@ -215,6 +216,7 @@ function ModalPuesto({
     notas: puesto?.notas ?? "",
     tipo_turno_id: puesto?.tipo_turno_id ? String(puesto.tipo_turno_id) : "",
     fecha_inicio_ciclo: puesto?.fecha_inicio_ciclo ?? "",
+    direccion: puesto?.direccion ?? "",
   });
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -262,6 +264,7 @@ function ModalPuesto({
           notas: d.notas ?? "",
           tipo_turno_id: d.tipo_turno_id ? String(d.tipo_turno_id) : "",
           fecha_inicio_ciclo: d.fecha_inicio_ciclo ?? "",
+          direccion: d.direccion ?? "",
         });
         setBusquedaTitular(d.titular_nombre_completo ?? d.titular_nombre ?? "");
         setTitularId(d.titular_employee_id ?? null);
@@ -322,6 +325,7 @@ function ModalPuesto({
         tipo_turno_id: form.tipo_turno_id ? Number(form.tipo_turno_id) : null,
         fecha_inicio_ciclo: form.fecha_inicio_ciclo || null,
         elegible_horas_extra: form.elegible_horas_extra,
+        direccion: form.direccion || null,
       };
       const url = isEdit ? `${API}/puestos/${puesto!.id}` : `${API}/clientes/${clientId}/puestos`;
       const method = isEdit ? "PATCH" : "POST";
@@ -533,6 +537,9 @@ function ModalPuesto({
               </div>
             </div>
           </div>
+
+          {/* Dirección */}
+          <Field label="Dirección del puesto" k="direccion" placeholder="Ej. 5a Av. 10-25 Zona 1, Ciudad de Guatemala" />
 
           {/* Notas */}
           <div className="space-y-1">
@@ -1932,6 +1939,9 @@ function PuestoRow({ puesto, onEdit, onDelete }: { puesto: Puesto; onEdit: () =>
           <p className="text-[10px] text-white/30 mt-0.5">
             {puesto.tipo_turno_nombre ? `Nómina: ${puesto.tipo_turno_nombre}` : "Sin ciclo de nómina"}
           </p>
+          {puesto.direccion && (
+            <p className="text-[10px] text-white/20 mt-0.5 truncate">{puesto.direccion}</p>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {puesto.tarifa_puesto && (

@@ -166,7 +166,7 @@ fichaRouter.post("/clientes/:id/puestos", async (req, res) => {
     elegible_horas_extra, costo_hora,
     sede_id, notas, orden,
     zona_operativa_id, titular_employee_id,
-    tipo_turno_id, fecha_inicio_ciclo,
+    tipo_turno_id, fecha_inicio_ciclo, direccion,
   } = req.body;
 
   if (!nombre) return res.status(400).json({ error: "nombre es requerido" });
@@ -197,8 +197,8 @@ fichaRouter.post("/clientes/:id/puestos", async (req, res) => {
           cantidad_contratada, tarifa_puesto, tipo_servicio, elegible_horas_extra,
           costo_hora, sede_id, notas, orden, zona_operativa_id,
           titular_employee_id, titular_nombre, tipo_turno_id, fecha_inicio_ciclo,
-          estado, activo)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,'disponible',TRUE)
+          direccion, estado, activo)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,'disponible',TRUE)
        RETURNING *`,
       [
         clientId, clienteNombre, nombre,
@@ -218,6 +218,7 @@ fichaRouter.post("/clientes/:id/puestos", async (req, res) => {
         titularNombre,
         tipo_turno_id || null,
         fecha_inicio_ciclo || null,
+        direccion || null,
       ]
     );
     res.status(201).json(rows[0]);
@@ -237,7 +238,7 @@ fichaRouter.patch("/puestos/:id", async (req, res) => {
     elegible_horas_extra, costo_hora,
     sede_id, notas, orden, activo,
     zona_operativa_id, titular_employee_id,
-    tipo_turno_id, fecha_inicio_ciclo,
+    tipo_turno_id, fecha_inicio_ciclo, direccion,
   } = req.body;
 
   try {
@@ -279,8 +280,9 @@ fichaRouter.patch("/puestos/:id", async (req, res) => {
            titular_nombre       = COALESCE($20, titular_nombre),
            tipo_turno_id        = COALESCE($21, tipo_turno_id),
            fecha_inicio_ciclo   = COALESCE($22, fecha_inicio_ciclo),
+           direccion            = COALESCE($23, direccion),
            updated_at           = NOW()
-       WHERE id = $23
+       WHERE id = $24
        RETURNING *`,
       [
         nombre ?? null, turno ?? null, jornada ?? null, horario ?? null,
@@ -294,6 +296,7 @@ fichaRouter.patch("/puestos/:id", async (req, res) => {
         titularNombre !== undefined ? titularNombre : null,
         tipo_turno_id !== undefined ? (tipo_turno_id || null) : null,
         fecha_inicio_ciclo !== undefined ? (fecha_inicio_ciclo || null) : null,
+        direccion !== undefined ? (direccion || null) : null,
         req.params.id,
       ]
     );
