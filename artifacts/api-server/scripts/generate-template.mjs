@@ -76,18 +76,20 @@ const instrRows = [
   ["ORDEN DE CARGA (respeta este orden — hay dependencias entre hojas):"],
   ["1. CLIENTES"],
   ["2. TURNOS"],
-  ["3. PUESTOS"],
-  ["4. COLABORADORES"],
-  ["5. ARMAS"],
-  ["6. VEHICULOS"],
-  ["7. BODEGA_CATEGORIAS"],
-  ["8. BODEGA_ARTICULOS"],
-  ["9. ANTICIPOS"],
-  ["10. HISTORIAL_PRESTACIONES"],
-  ["11. USUARIOS"],
-  ["12. ROLES"],
-  ["13. MODULOS"],
-  ["14. IGSS_PATRONO"],
+  ["3. SEDES        (sucursales de clientes — depende de CLIENTES)"],
+  ["4. PUESTOS      (depende de CLIENTES, TURNOS y SEDES)"],
+  ["5. COLABORADORES (depende de PUESTOS)"],
+  ["6. ZONAS        (áreas de supervisión — depende de COLABORADORES para el supervisor)"],
+  ["7. ARMAS"],
+  ["8. VEHICULOS"],
+  ["9. BODEGA_CATEGORIAS"],
+  ["10. BODEGA_ARTICULOS"],
+  ["11. ANTICIPOS"],
+  ["12. HISTORIAL_PRESTACIONES"],
+  ["13. USUARIOS"],
+  ["14. ROLES"],
+  ["15. MODULOS"],
+  ["16. IGSS_PATRONO"],
   [],
   ["FORMATO DE FECHAS: dd/mm/aaaa   Ejemplo: 15/01/2024"],
   [],
@@ -116,6 +118,18 @@ const instrRows = [
   [],
   ["CLIENTES — columna nueva:"],
   ["  tarifa_base_mensual : monto mensual que paga el cliente en Q (para módulo comercial)"],
+  [],
+  ["SEDES — columnas clave:"],
+  ["  cliente_nombre : nombre EXACTO del cliente (igual que en hoja CLIENTES)"],
+  ["  nombre         : nombre de la sede/sucursal (ej: Sede Central, Bodega Norte)"],
+  ["  ciudad         : ciudad donde está la sede"],
+  [],
+  ["ZONAS — columnas clave:"],
+  ["  nombre          : nombre del área de supervisión (ej: Zona Norte, Zona Sur)"],
+  ["  descripcion     : descripción breve del área"],
+  ["  supervisor_dpi  : DPI del colaborador supervisor de la zona (de hoja COLABORADORES)"],
+  ["  NOTA: el pizarrón agrupa los puestos por zona. Si un puesto no tiene zona,"],
+  ["  aparecerá en 'Sin zona' en el pizarrón."],
   [],
   ["ARMAS — El arma se asigna al PUESTO (puesto_nombre), NO al empleado."],
   ["  El campo custodio_dpi es opcional: solo si quieres registrar quién la tiene HOY."],
@@ -158,20 +172,35 @@ const wsTurnos = makeSheet(
   [28,14,16,16,45]
 );
 
+const wsSedes = makeSheet(
+  // sede = sucursal/ubicación del cliente (ej: Almaguate tiene sede Ciudad Capital y sede Petén)
+  // cliente_nombre : debe coincidir EXACTAMENTE con nombre en hoja CLIENTES
+  ["cliente_nombre","nombre","direccion","ciudad","contacto","telefono","notas"],
+  [
+    ["Comercializadora Ejemplo","Sede Central","5a Calle 5-50 Zona 10","Guatemala","Carlos López","55551234",""],
+    ["Comercializadora Ejemplo","Bodega Norte","12 Av. 8-20 Zona 2","Guatemala","Ana Pérez","55559876",""],
+  ],
+  [30,28,35,20,25,16,30]
+);
+
 const wsPuestos = makeSheet(
   // aplica_igss  : si | no  — CRÍTICO: si es 'no' el empleado no tendrá IGSS aunque él lo tenga activo
   // regimen_igss : IVS | EPS | EPS_IVS | no_aplica  (si aplica_igss=si, usar IVS como mínimo)
+  // zona_nombre  : nombre EXACTO de la zona (hoja ZONAS) — agrupa puestos en el pizarrón
+  // sede_nombre  : nombre EXACTO de la sede (hoja SEDES) — sucursal del cliente
   // salario_puesto : referencia salarial del puesto (opcional, para reportes)
   // tarifa_puesto  : tarifa de facturación al cliente por este puesto (opcional)
   ["nombre","cliente_nombre","turno_nombre","ubicacion",
    "aplica_igss","regimen_igss",
+   "zona_nombre","sede_nombre",
    "salario_puesto","tarifa_puesto",
    "descripcion"],
   [["Puesto Central","Comercializadora Ejemplo","Turno Diurno 8h","Zona 10 Recepción",
     "si","IVS",
+    "Zona Sur","Sede Central",
     "3200","5500",
     "Recepción principal"]],
-  [28,30,25,25,12,14,16,16,35]
+  [28,30,25,25,12,14,22,22,16,16,35]
 );
 
 const wsColaboradores = makeSheet(
@@ -220,6 +249,19 @@ const wsColaboradores = makeSheet(
    16,14,
    12,28,
    20,20,30]
+);
+
+const wsZonas = makeSheet(
+  // zona = área geográfica/operativa supervisada por un responsable
+  // supervisor_dpi : DPI del colaborador que supervisa la zona (de hoja COLABORADORES)
+  //                  Puede dejarse vacío si aún no tiene supervisor asignado
+  ["nombre","descripcion","supervisor_dpi"],
+  [
+    ["Zona Norte","Puestos en zona norte de la ciudad — clientes industriales",""],
+    ["Zona Sur","Puestos en zona sur — centros comerciales y oficinas","9876543210101"],
+    ["Zona Oriente","Clientes en carretera al atlántico",""],
+  ],
+  [28,50,18]
 );
 
 const wsArmas = makeSheet(
@@ -326,8 +368,10 @@ const wb = XLSX.utils.book_new();
 XLSX.utils.book_append_sheet(wb, wsInstr,          "INSTRUCCIONES");
 XLSX.utils.book_append_sheet(wb, wsClientes,       "CLIENTES");
 XLSX.utils.book_append_sheet(wb, wsTurnos,         "TURNOS");
+XLSX.utils.book_append_sheet(wb, wsSedes,          "SEDES");
 XLSX.utils.book_append_sheet(wb, wsPuestos,        "PUESTOS");
 XLSX.utils.book_append_sheet(wb, wsColaboradores,  "COLABORADORES");
+XLSX.utils.book_append_sheet(wb, wsZonas,          "ZONAS");
 XLSX.utils.book_append_sheet(wb, wsArmas,          "ARMAS");
 XLSX.utils.book_append_sheet(wb, wsVehiculos,      "VEHICULOS");
 XLSX.utils.book_append_sheet(wb, wsBodCat,         "BODEGA_CATEGORIAS");

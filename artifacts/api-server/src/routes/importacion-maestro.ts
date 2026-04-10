@@ -2,11 +2,11 @@
  * importacion-maestro.ts
  *
  * Carga masiva desde la Plantilla Maestra Excel (.xlsx)
- * Procesa 14 hojas en orden de dependencias:
- *   1. clientes → 2. turnos → 3. puestos → 4. colaboradores
- *   5. armas → 6. vehiculos → 7. bodega_categorias → 8. bodega_articulos
- *   9. anticipos → 10. historial_prestaciones → 11. usuarios → 12. roles
- *   13. modulos → 14. igss_patrono
+ * Procesa 16 hojas en orden de dependencias:
+ *   1. clientes → 2. turnos → 3. sedes → 4. puestos → 5. colaboradores
+ *   6. zonas → 7. armas → 8. vehiculos → 9. bodega_categorias → 10. bodega_articulos
+ *   11. anticipos → 12. historial_prestaciones → 13. usuarios → 14. roles
+ *   15. modulos → 16. igss_patrono
  *
  * El frontend parsea el Excel y envía:
  *   POST /api/importacion/maestro
@@ -95,9 +95,13 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
   // Caches en memoria para resolución de referencias cruzadas
   const clienteIdByNombre: Record<string, number> = {};
   const turnoIdByNombre: Record<string, number> = {};
+  const sedeIdByNombre: Record<string, number> = {};
+  const zonaIdByNombre: Record<string, number> = {};
   const empleadoIdByDpi: Record<string, number> = {};
   const empleadoIdByNombre: Record<string, number> = {};
   const puestoIdByNombre: Record<string, number> = {};
+  // zona_nombre pendiente de asignar a puestos: puestoId -> zona_nombre_lower
+  const puestoZonaPending: Record<number, string> = {};
 
   // Pre-cargar datos existentes en la BD
   try {
@@ -106,6 +110,12 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
 
     const { rows: turns } = await pool.query(`SELECT id, LOWER(nombre) AS n FROM turnos`);
     turns.forEach((r: any) => { turnoIdByNombre[r.n] = r.id; });
+
+    const { rows: sedes } = await pool.query(`SELECT id, LOWER(nombre) AS n FROM client_sedes WHERE activo = TRUE`);
+    sedes.forEach((r: any) => { sedeIdByNombre[r.n] = r.id; });
+
+    const { rows: zonas } = await pool.query(`SELECT id, LOWER(nombre) AS n FROM operational_zones`);
+    zonas.forEach((r: any) => { zonaIdByNombre[r.n] = r.id; });
 
     const { rows: emps } = await pool.query(`SELECT id, dpi, LOWER(nombre_completo) AS n FROM employees WHERE dpi IS NOT NULL`);
     emps.forEach((r: any) => {
@@ -226,7 +236,55 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
   }
   resultados.push(rTurnos);
 
-  // ── 3. PUESTOS OPERATIVOS ──────────────────────────────────────────────────
+  // ── 3. SEDES DE CLIENTES ────────────────────────────────────────────────────
+  const sedeRows = sheets["SEDES"] ?? sheets["sedes"] ?? [];
+  const rSedes = emptyResult("Sedes de Clientes");
+  rSedes.total = sedeRows.length;
+
+  for (let i = 0; i < sedeRows.length; i++) {
+    const row = sedeRows[i];
+    const fila = i + 2;
+    const nombre = trim(row["nombre"]);
+    const clienteNombre = trim(row["cliente_nombre"]);
+    if (!nombre || !clienteNombre) {
+      rSedes.detalle.push({ fila, estado: "error", mensaje: "nombre y cliente_nombre son obligatorios" });
+      rSedes.errores++; continue;
+    }
+    const key = nombre.toLowerCase();
+    if (sedeIdByNombre[key]) {
+      rSedes.detalle.push({ fila, estado: "omitido", mensaje: `"${nombre}" ya existe` });
+      rSedes.omitidos++; continue;
+    }
+    if (preview) {
+      rSedes.detalle.push({ fila, estado: "ok" });
+      rSedes.exitosos++; continue;
+    }
+    try {
+      const clienteId = clienteIdByNombre[clienteNombre.toLowerCase()] ?? null;
+      const { rows: ins } = await pool.query(
+        `INSERT INTO client_sedes (client_id, nombre, direccion, ciudad, contacto, telefono, notas)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+        [
+          clienteId,
+          nombre,
+          trim(row["direccion"]) || null,
+          trim(row["ciudad"]) || null,
+          trim(row["contacto"]) || null,
+          trim(row["telefono"]) || null,
+          trim(row["notas"]) || null,
+        ]
+      );
+      sedeIdByNombre[key] = ins[0].id;
+      rSedes.detalle.push({ fila, estado: "ok" });
+      rSedes.exitosos++;
+    } catch (e: any) {
+      rSedes.detalle.push({ fila, estado: "error", mensaje: e.message });
+      rSedes.errores++;
+    }
+  }
+  resultados.push(rSedes);
+
+  // ── 4. PUESTOS OPERATIVOS ──────────────────────────────────────────────────
   const puestoRows = sheets["PUESTOS"] ?? sheets["puestos"] ?? [];
   const rPuestos = emptyResult("Puestos Operativos");
   rPuestos.total = puestoRows.length;
@@ -264,12 +322,15 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
       };
       const regimenPuesto = regimenMap[rawRegimenPuesto] ?? (apIgssPuesto ? "IVS" : "no_aplica");
 
+      const sedeName = trim(row["sede_nombre"]).toLowerCase();
+      const sedeId = sedeName ? (sedeIdByNombre[sedeName] ?? null) : null;
+
       const { rows: ins } = await pool.query(
         `INSERT INTO puestos_operativos
            (nombre, cliente_id, cliente_nombre, ubicacion, tipo, tipo_turno_id,
             aplica_igss, regimen_igss, salario_puesto, tarifa_puesto,
-            estado, activo, orden)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'activo',TRUE,0) RETURNING id`,
+            sede_id, estado, activo, orden)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'activo',TRUE,0) RETURNING id`,
         [
           nombre,
           clienteId,
@@ -281,9 +342,15 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
           regimenPuesto,
           parseNum(row["salario_puesto"]),
           parseNum(row["tarifa_puesto"]),
+          sedeId,
         ]
       );
       puestoIdByNombre[key] = ins[0].id;
+
+      // Guardar zona_nombre para asignar después de que ZONAS sea procesado
+      const zonaNombreRow = trim(row["zona_nombre"]).toLowerCase();
+      if (zonaNombreRow) puestoZonaPending[ins[0].id] = zonaNombreRow;
+
       rPuestos.detalle.push({ fila, estado: "ok" });
       rPuestos.exitosos++;
     } catch (e: any) {
@@ -414,7 +481,70 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
   }
   resultados.push(rColab);
 
-  // ── 5. ARMERÍA ─────────────────────────────────────────────────────────────
+  // ── 6. ZONAS OPERATIVAS ─────────────────────────────────────────────────────
+  // ZONAS va después de COLABORADORES para que el supervisor_dpi ya exista en la BD.
+  // Tras crear cada zona, actualiza los puestos que tienen esa zona en puestoZonaPending.
+  const zonaRows = sheets["ZONAS"] ?? sheets["zonas"] ?? [];
+  const rZonas = emptyResult("Zonas Operativas");
+  rZonas.total = zonaRows.length;
+
+  for (let i = 0; i < zonaRows.length; i++) {
+    const row = zonaRows[i];
+    const fila = i + 2;
+    const nombre = trim(row["nombre"]);
+    if (!nombre) {
+      rZonas.detalle.push({ fila, estado: "error", mensaje: "nombre es obligatorio" });
+      rZonas.errores++; continue;
+    }
+    const key = nombre.toLowerCase();
+    if (zonaIdByNombre[key]) {
+      // Ya existe — igual resolvemos los puestos pendientes
+      const zonaId = zonaIdByNombre[key];
+      for (const [pid, zn] of Object.entries(puestoZonaPending)) {
+        if (zn === key) {
+          await pool.query(`UPDATE puestos_operativos SET zona_operativa_id=$1 WHERE id=$2`, [zonaId, parseInt(pid)]);
+        }
+      }
+      rZonas.detalle.push({ fila, estado: "omitido", mensaje: `"${nombre}" ya existe` });
+      rZonas.omitidos++; continue;
+    }
+    if (preview) {
+      rZonas.detalle.push({ fila, estado: "ok" });
+      rZonas.exitosos++; continue;
+    }
+    try {
+      const supervisorDpi = trim(row["supervisor_dpi"]);
+      const supervisorEmpId = supervisorDpi ? (empleadoIdByDpi[supervisorDpi] ?? null) : null;
+
+      const { rows: ins } = await pool.query(
+        `INSERT INTO operational_zones (nombre, descripcion, supervisor_employee_id)
+         VALUES ($1,$2,$3) RETURNING id`,
+        [
+          nombre,
+          trim(row["descripcion"]) || null,
+          supervisorEmpId,
+        ]
+      );
+      const newZonaId = ins[0].id;
+      zonaIdByNombre[key] = newZonaId;
+
+      // Asignar zona a puestos pendientes
+      for (const [pid, zn] of Object.entries(puestoZonaPending)) {
+        if (zn === key) {
+          await pool.query(`UPDATE puestos_operativos SET zona_operativa_id=$1 WHERE id=$2`, [newZonaId, parseInt(pid)]);
+        }
+      }
+
+      rZonas.detalle.push({ fila, estado: "ok" });
+      rZonas.exitosos++;
+    } catch (e: any) {
+      rZonas.detalle.push({ fila, estado: "error", mensaje: e.message });
+      rZonas.errores++;
+    }
+  }
+  resultados.push(rZonas);
+
+  // ── 7. ARMERÍA ─────────────────────────────────────────────────────────────
   const armaRows = sheets["ARMERIA"] ?? sheets["armeria"] ?? sheets["ARMERÍA"] ?? [];
   const rArmas = emptyResult("Armería");
   rArmas.total = armaRows.length;
