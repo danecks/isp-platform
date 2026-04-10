@@ -3478,6 +3478,15 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SOL-CANAL-01 — error (no bloqueante)");
   }
 
+  // ── SOL-DPI-01: fotos del DPI (anverso y reverso) en solicitudes_empleo ──────
+  try {
+    await pool.query(`ALTER TABLE solicitudes_empleo ADD COLUMN IF NOT EXISTS dpi_frente_url  TEXT`);
+    await pool.query(`ALTER TABLE solicitudes_empleo ADD COLUMN IF NOT EXISTS dpi_reverso_url TEXT`);
+    logger.info("Auto-migrate: SOL-DPI-01 columnas dpi_frente_url/dpi_reverso_url en solicitudes_empleo verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SOL-DPI-01 — error (no bloqueante)");
+  }
+
   // ── EMP-KIOSCO-01: municipio y departamento de residencia del colaborador ─────
   try {
     await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS municipio    VARCHAR(100)`);

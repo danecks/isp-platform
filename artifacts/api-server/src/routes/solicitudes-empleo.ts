@@ -176,7 +176,7 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo", async (req: Request, res: Re
     grado_estudios, experiencia_seguridad, anios_experiencia,
     empresa_anterior, licencia_armas, tiene_vehiculo,
     puesto_solicitado, disponibilidad_horario, disponible_exterior,
-    pretension_salarial, foto_url,
+    pretension_salarial, foto_url, dpi_frente_url, dpi_reverso_url, canal,
   } = req.body ?? {};
 
   if (!nombre_completo?.trim()) {
@@ -198,8 +198,9 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo", async (req: Request, res: Re
         grado_estudios, experiencia_seguridad, anios_experiencia,
         empresa_anterior, licencia_armas, tiene_vehiculo,
         puesto_solicitado, disponibilidad_horario, disponible_exterior,
-        pretension_salarial, foto_url, foto_expira_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
+        pretension_salarial, foto_url, foto_expira_at,
+        dpi_frente_url, dpi_reverso_url, canal
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
       RETURNING id, created_at
     `, [
       nombre_completo.trim(), fecha_nacimiento || null, dpi || null, genero || null, estado_civil || null,
@@ -211,6 +212,7 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo", async (req: Request, res: Re
       empresa_anterior || null, licencia_armas || false, tiene_vehiculo || false,
       puesto_solicitado || null, disponibilidad_horario || null, disponible_exterior || false,
       pretension_salarial || null, foto_url || null, fotoExpira,
+      dpi_frente_url || null, dpi_reverso_url || null, canal || "kiosco",
     ]);
     res.status(201).json({ ok: true, id: rows[0].id });
   } catch (err) {
