@@ -417,7 +417,17 @@ export default function KioscoSolicitud({ skipPin = false }: { skipPin?: boolean
       {/* Body */}
       <div className="flex-1 flex items-start justify-center p-4 overflow-y-auto">
         {step === 0  && <PantallaPin pin={pin} error={pinError} verificando={verificando} onDigito={presionarDigito} onBorrar={() => setPin(p => p.slice(0, -1))} />}
-        {step === 1  && <PasoDpi onFrenteDone={url => setDpiFrenteUrl(url)} onReversoDone={url => setDpiReversoUrl(url)} frenteUrl={dpiFrenteUrl} reversoUrl={dpiReversoUrl} onNext={next} onBack={back} />}
+        {step === 1  && <PasoDpi onFrenteDone={url => setDpiFrenteUrl(url)} onReversoDone={url => setDpiReversoUrl(url)} frenteUrl={dpiFrenteUrl} reversoUrl={dpiReversoUrl} onNext={next} onBack={back} onDatosExtraidos={(datos) => {
+          setForm(f => ({
+            ...f,
+            nombre_completo: datos.nombre_completo || f.nombre_completo,
+            dpi: datos.dpi || f.dpi,
+            fecha_nacimiento: datos.fecha_nacimiento || f.fecha_nacimiento,
+            genero: datos.genero || f.genero,
+            municipio: datos.municipio || f.municipio,
+            departamento: datos.departamento || f.departamento,
+          }));
+        }} />}
         {step === 2  && <PasoPersonal form={form} setEv={setEv} set={set} onNext={next} onBack={back} />}
         {step === 3  && <PasoDomicilio form={form} setEv={setEv} set={set} onNext={next} onBack={back} />}
         {step === 4  && <PasoFamilia form={form} setEv={setEv} set={set} onNext={next} onBack={back} />}
@@ -674,18 +684,23 @@ function PantallaPin({ pin, error, verificando, onDigito, onBorrar }: {
 // ══════════════════════════════════════════════════════════════════════════════
 type DpiPhase = "guide" | "scanning" | "aligning" | "stable" | "flash" | "captured";
 
-function PasoDpi({ onFrenteDone, onReversoDone, frenteUrl, reversoUrl, onNext, onBack }: {
+interface DatosExtraidos { nombre_completo: string; dpi: string; fecha_nacimiento: string; genero: string; municipio: string; departamento: string; }
+
+function PasoDpi({ onFrenteDone, onReversoDone, frenteUrl, reversoUrl, onNext, onBack, onDatosExtraidos }: {
   onFrenteDone: (url: string) => void;
   onReversoDone: (url: string) => void;
   frenteUrl: string | null;
   reversoUrl: string | null;
   onNext: () => void;
   onBack: () => void;
+  onDatosExtraidos: (datos: DatosExtraidos) => void;
 }) {
   const [side, setSide]           = useState<"front" | "back">("front");
   const [phase, setPhase]         = useState<DpiPhase>("guide");
   const [stability, setStability] = useState(0);
   const [capturedUrl, setCapturedUrl] = useState<string | null>(null);
+  const [extrayendo, setExtrayendo]   = useState(false);
+  const [datosExtraidos, setDatosExtraidos] = useState<DatosExtraidos | null>(null);
   const videoRef  = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -755,10 +770,30 @@ function PasoDpi({ onFrenteDone, onReversoDone, frenteUrl, reversoUrl, onNext, o
     }
   };
 
-  const confirmCapture = () => {
+  const confirmCapture = async () => {
     if (!capturedUrl) return;
     if (side === "front") {
       onFrenteDone(capturedUrl);
+      // Extraer datos del DPI con IA
+      setExtrayendo(true);
+      try {
+        const r = await fetch(`${API}/solicitudes-empleo/extraer-dpi`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imagen: capturedUrl }),
+        });
+        if (r.ok) {
+          const { datos } = await r.json();
+          if (datos && typeof datos === "object") {
+            setDatosExtraidos(datos as DatosExtraidos);
+            onDatosExtraidos(datos as DatosExtraidos);
+          }
+        }
+      } catch {
+        // Si falla la extracción, no bloqueamos el flujo
+      } finally {
+        setExtrayendo(false);
+      }
       setSide("back");
       setPhase("guide");
       setStability(0);
@@ -841,6 +876,26 @@ function PasoDpi({ onFrenteDone, onReversoDone, frenteUrl, reversoUrl, onNext, o
           </div>
         </div>
 
+        {datosExtraidos && !bothDone && (
+          <div className="w-full max-w-sm bg-[#071630] border border-[#1d4ed8] rounded-xl p-4">
+            <p className="text-blue-300 text-xs font-bold uppercase tracking-wider mb-2">Datos leidos del DPI:</p>
+            <div className="grid grid-cols-1 gap-1.5">
+              {[
+                { l: "Nombre", v: datosExtraidos.nombre_completo },
+                { l: "DPI/CUI", v: datosExtraidos.dpi },
+                { l: "Nacimiento", v: datosExtraidos.fecha_nacimiento },
+                { l: "Municipio", v: datosExtraidos.municipio },
+                { l: "Depto.", v: datosExtraidos.departamento },
+              ].filter(r => r.v).map(r => (
+                <div key={r.l} className="flex gap-2 items-baseline">
+                  <span className="text-[#64748b] text-xs w-20 shrink-0">{r.l}:</span>
+                  <span className="text-white text-xs font-medium">{r.v}</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-[#64748b] text-xs mt-2">Puede corregir estos datos en el siguiente paso.</p>
+          </div>
+        )}
         {bothDone ? (
           <div className="w-full flex flex-col gap-3">
             <div className="bg-[#052e16] border-2 border-[#16a34a] rounded-xl p-4 text-center">
@@ -877,27 +932,27 @@ function PasoDpi({ onFrenteDone, onReversoDone, frenteUrl, reversoUrl, onNext, o
     <div className="bg-[#0d2147] rounded-2xl border border-[#1e3a6e] w-full max-w-lg shadow-2xl p-6 flex flex-col items-center gap-5">
       <p className="text-green-400 font-bold text-lg">{side === "front" ? "Frente" : "Reverso"} capturado</p>
       {capturedUrl && (
-        <div className="border-3 border-green-500 rounded-xl overflow-hidden w-full max-w-xs" style={{ border: "3px solid #22c55e", boxShadow: "0 0 24px rgba(34,197,94,0.3)" }}>
+        <div className="rounded-xl overflow-hidden w-full max-w-xs" style={{ border: "3px solid #22c55e", boxShadow: "0 0 24px rgba(34,197,94,0.3)" }}>
           <img src={capturedUrl} alt="DPI capturado" className="w-full h-auto" />
         </div>
       )}
-      <div className="grid grid-cols-3 gap-3 w-full max-w-xs">
-        {[{ l: "Iluminacion", ok: true }, { l: "Nitidez", ok: true }, { l: "Encuadre", ok: true }].map(q => (
-          <div key={q.l} className="rounded-lg py-2 px-1 text-center text-xs font-bold border"
-            style={{ background: "#052e16", borderColor: "#16a34a", color: "#4ade80" }}>
-            ✓ {q.l}
-          </div>
-        ))}
-      </div>
       <p className="text-[#64748b] text-sm">Se ve bien el DPI?</p>
       <div className="flex gap-3 w-full max-w-xs">
         <button onClick={retry} className="flex-1 py-3 rounded-xl border-2 border-red-500 bg-[#2d0a0a] text-red-400 font-bold">
           Repetir
         </button>
-        <button onClick={confirmCapture} className="flex-2 py-3 px-6 rounded-xl border-2 border-green-500 bg-[#052e16] text-green-400 font-bold">
-          {side === "front" ? "Continuar con reverso" : "Listo"}
+        <button onClick={confirmCapture} disabled={extrayendo}
+          className="flex-1 py-3 px-4 rounded-xl border-2 font-bold transition-all"
+          style={{ borderColor: extrayendo ? "#1e3a6e" : "#22c55e", background: extrayendo ? "#060f1e" : "#052e16", color: extrayendo ? "#64748b" : "#4ade80" }}>
+          {extrayendo ? "Analizando..." : (side === "front" ? "Si, continuar" : "Listo")}
         </button>
       </div>
+      {extrayendo && (
+        <div className="flex items-center gap-3 bg-[#071630] border border-[#1e3a6e] rounded-xl px-4 py-3 w-full max-w-xs">
+          <div className="w-4 h-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin shrink-0" />
+          <p className="text-blue-300 text-sm">Leyendo datos del DPI con IA...</p>
+        </div>
+      )}
     </div>
   );
 

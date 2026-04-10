@@ -67,6 +67,84 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/foto", async (req: Request, re
   }
 });
 
+// ── Extraer datos del DPI usando IA (visión) ──────────────────────────────────
+solicitudesEmpleoRouter.post("/solicitudes-empleo/extraer-dpi", async (req: Request, res: Response) => {
+  try {
+    const { imagen } = req.body ?? {};
+    if (!imagen || typeof imagen !== "string") {
+      return res.status(400).json({ error: "imagen requerida (base64 data URL)" });
+    }
+
+    const baseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+    const apiKey  = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+    if (!baseUrl || !apiKey) {
+      return res.status(503).json({ error: "Integración de IA no configurada" });
+    }
+
+    const imageUrl = imagen.startsWith("data:") ? imagen : `data:image/jpeg;base64,${imagen}`;
+
+    const aiRes = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        max_tokens: 400,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Eres un asistente que extrae datos del Documento Personal de Identificación (DPI/CUI) de Guatemala.
+Analiza la imagen y extrae estos campos EXACTAMENTE como aparecen en el documento.
+Responde SOLO con un JSON válido con estas claves (deja vacío "" si no puedes leer el campo):
+{
+  "nombre_completo": "apellidos y nombres como aparecen",
+  "dpi": "los 13 dígitos del CUI sin espacios",
+  "fecha_nacimiento": "YYYY-MM-DD",
+  "genero": "Masculino o Femenino",
+  "municipio": "municipio de vecindad",
+  "departamento": "departamento de vecindad"
+}
+No incluyas explicaciones, solo el JSON.`,
+              },
+              {
+                type: "image_url",
+                image_url: { url: imageUrl, detail: "high" },
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!aiRes.ok) {
+      const errText = await aiRes.text();
+      logger.error({ status: aiRes.status, errText }, "extraer-dpi: AI error");
+      return res.status(502).json({ error: "Error del servicio de IA", detalle: errText });
+    }
+
+    const aiData = await aiRes.json() as { choices?: { message?: { content?: string } }[] };
+    const content = aiData.choices?.[0]?.message?.content ?? "";
+
+    let datos: Record<string, string> = {};
+    try {
+      const match = content.match(/\{[\s\S]*\}/);
+      if (match) datos = JSON.parse(match[0]);
+    } catch {
+      logger.warn({ content }, "extraer-dpi: no se pudo parsear JSON de IA");
+    }
+
+    res.json({ datos });
+  } catch (err) {
+    logger.error({ err }, "solicitudes-empleo/extraer-dpi error");
+    res.status(500).json({ error: "Error del servidor" });
+  }
+});
+
 // ── Verificar PIN del kiosco ──────────────────────────────────────────────────
 solicitudesEmpleoRouter.post("/solicitudes-empleo/verificar-pin", pinRateLimit, async (req: Request, res: Response) => {
   const { pin } = req.body ?? {};
