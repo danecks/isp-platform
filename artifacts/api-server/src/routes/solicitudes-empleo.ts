@@ -214,7 +214,33 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo", async (req: Request, res: Re
       pretension_salarial || null, foto_url || null, fotoExpira,
       dpi_frente_url || null, dpi_reverso_url || null, canal || "kiosco",
     ]);
-    res.status(201).json({ ok: true, id: rows[0].id });
+
+    const solicitudId = rows[0].id;
+    let esReingreso = false;
+
+    // ── Detección de reingreso: ¿el DPI ya existe en employees? ─────────────
+    if (dpi) {
+      try {
+        const { rows: empRows } = await pool.query(
+          `SELECT id FROM employees WHERE dpi = $1 LIMIT 1`, [dpi.trim()]
+        );
+        if (empRows.length > 0) {
+          esReingreso = true;
+          await pool.query(
+            `UPDATE solicitudes_empleo SET es_reingreso = TRUE WHERE id = $1`, [solicitudId]
+          );
+          await pool.query(
+            `INSERT INTO solicitudes_merge_requests (solicitud_id, employee_id) VALUES ($1, $2)`,
+            [solicitudId, empRows[0].id]
+          );
+          logger.info({ solicitudId, employeeId: empRows[0].id }, "Reingreso detectado — merge request creado");
+        }
+      } catch (mergeErr) {
+        logger.error({ mergeErr }, "Error al verificar reingreso (no bloqueante)");
+      }
+    }
+
+    res.status(201).json({ ok: true, id: solicitudId, es_reingreso: esReingreso });
   } catch (err) {
     logger.error({ err }, "POST /solicitudes-empleo error");
     res.status(500).json({ error: "Error al guardar solicitud" });
@@ -383,6 +409,101 @@ solicitudesEmpleoRouter.delete("/solicitudes-empleo/:id/foto", async (req: Reque
   } catch (err) {
     logger.error({ err }, "DELETE /solicitudes-empleo/:id/foto error");
     res.status(500).json({ error: "Error borrando foto" });
+  }
+});
+
+// ── Merge requests — listar ───────────────────────────────────────────────────
+solicitudesEmpleoRouter.get("/solicitudes-empleo/merge-requests", async (req: Request, res: Response) => {
+  const { estado } = req.query as Record<string, string>;
+  try {
+    const params: unknown[] = [];
+    let where = "WHERE 1=1";
+    if (estado && estado !== "todos") {
+      params.push(estado);
+      where += ` AND mr.estado = $${params.length}`;
+    }
+    const { rows } = await pool.query(`
+      SELECT
+        mr.id, mr.estado, mr.created_at, mr.revisado_por, mr.revisado_at, mr.notas,
+        sol.id          AS solicitud_id,
+        sol.nombre_completo AS sol_nombre,
+        sol.dpi         AS sol_dpi,
+        sol.foto_url    AS sol_foto,
+        sol.telefono    AS sol_telefono,
+        sol.municipio   AS sol_municipio,
+        sol.departamento AS sol_departamento,
+        sol.created_at  AS sol_created_at,
+        emp.id          AS employee_id,
+        emp.nombre_completo AS emp_nombre,
+        emp.dpi         AS emp_dpi,
+        emp.foto_url    AS emp_foto,
+        emp.puesto      AS emp_puesto,
+        emp.estado_laboral AS emp_estado,
+        emp.fecha_ingreso  AS emp_fecha_ingreso
+      FROM solicitudes_merge_requests mr
+      JOIN solicitudes_empleo sol ON sol.id = mr.solicitud_id
+      JOIN employees          emp ON emp.id = mr.employee_id
+      ${where}
+      ORDER BY mr.created_at DESC
+      LIMIT 200
+    `, params);
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "GET /solicitudes-empleo/merge-requests error");
+    res.status(500).json({ error: "Error obteniendo merge requests" });
+  }
+});
+
+// ── Merge requests — aprobar (es la misma persona) ───────────────────────────
+solicitudesEmpleoRouter.post("/solicitudes-empleo/merge-requests/:id/aprobar", async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+  const { revisado_por, notas } = req.body ?? {};
+  try {
+    const { rows: mr } = await pool.query(
+      `SELECT solicitud_id, employee_id FROM solicitudes_merge_requests WHERE id = $1`, [id]
+    );
+    if (!mr[0]) return res.status(404).json({ error: "No encontrado" });
+    const { solicitud_id, employee_id } = mr[0];
+
+    // Vincular la solicitud con el empleado existente
+    await pool.query(
+      `UPDATE solicitudes_empleo SET employee_id = $1, estado = 'aprobada' WHERE id = $2`,
+      [employee_id, solicitud_id]
+    );
+    // Marcar merge como aprobado
+    await pool.query(`
+      UPDATE solicitudes_merge_requests
+      SET estado = 'aprobado', revisado_por = $1, revisado_at = NOW(), notas = $2
+      WHERE id = $3
+    `, [revisado_por || null, notas || null, id]);
+
+    logger.info({ id, solicitud_id, employee_id }, "Merge aprobado — reingreso vinculado");
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "POST /merge-requests/:id/aprobar error");
+    res.status(500).json({ error: "Error aprobando merge" });
+  }
+});
+
+// ── Merge requests — rechazar (DPI incorrecto) ────────────────────────────────
+solicitudesEmpleoRouter.post("/solicitudes-empleo/merge-requests/:id/rechazar", async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+  const { revisado_por, notas, motivo } = req.body ?? {};
+  try {
+    const estado = motivo === "dpi_erroneo" ? "dpi_erroneo" : "rechazado";
+    await pool.query(`
+      UPDATE solicitudes_merge_requests
+      SET estado = $1, revisado_por = $2, revisado_at = NOW(), notas = $3
+      WHERE id = $4
+    `, [estado, revisado_por || null, notas || null, id]);
+
+    logger.info({ id, estado }, "Merge rechazado");
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "POST /merge-requests/:id/rechazar error");
+    res.status(500).json({ error: "Error rechazando merge" });
   }
 });
 

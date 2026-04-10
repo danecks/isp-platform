@@ -4225,5 +4225,27 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: PO-DIR-01 — error (no bloqueante)");
   }
 
+  // ── SOL-MERGE-01: sistema de merge de reingresos ──────────────────────────
+  try {
+    await pool.query(`ALTER TABLE solicitudes_empleo ADD COLUMN IF NOT EXISTS es_reingreso BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS solicitudes_merge_requests (
+        id           SERIAL PRIMARY KEY,
+        solicitud_id INTEGER NOT NULL REFERENCES solicitudes_empleo(id) ON DELETE CASCADE,
+        employee_id  INTEGER NOT NULL REFERENCES employees(id),
+        estado       VARCHAR(30) NOT NULL DEFAULT 'pendiente',
+        revisado_por VARCHAR(100),
+        revisado_at  TIMESTAMPTZ,
+        notas        TEXT,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_merge_solicitud ON solicitudes_merge_requests(solicitud_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_merge_estado    ON solicitudes_merge_requests(estado)`);
+    logger.info("Auto-migrate: SOL-MERGE-01 tabla solicitudes_merge_requests y columna es_reingreso verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SOL-MERGE-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

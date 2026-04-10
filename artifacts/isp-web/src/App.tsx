@@ -71,6 +71,7 @@ import SupervisorActivar from "@/pages/SupervisorActivar";
 import KioscoSolicitud from "@/pages/KioscoSolicitud";
 import SolicitudEmpleo from "@/pages/SolicitudEmpleo";
 import AdminKioscoSolicitudes from "@/admin/pages/KioscoSolicitudes";
+import AdminMergeRequests from "@/admin/pages/MergeRequests";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
@@ -266,6 +267,9 @@ function Router() {
       <Route path="/plazas-disponibles" component={AnuncioPlazas} />
       <Route path="/admin/rrhh/kiosco-solicitudes">
         {() => <AuthGuard><AdminKioscoSolicitudes /></AuthGuard>}
+      </Route>
+      <Route path="/admin/rrhh/reingresos">
+        {() => <AuthGuard><AdminMergeRequests /></AuthGuard>}
       </Route>
 
       <Route component={NotFound} />
