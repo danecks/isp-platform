@@ -145,11 +145,11 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
       const { rows: ins } = await pool.query(
         `INSERT INTO clients
            (nombre, nombre_comercial, nit, sector, estado,
-            fecha_inicio_contrato,
+            fecha_inicio_contrato, tarifa_base_mensual,
             igss_aplica, igss_codigo_centro, igss_direccion, igss_zona,
             igss_departamento, igss_municipio, igss_codigo_actividad,
             igss_contacto, igss_telefono, igss_email, notas)
-         VALUES ($1,$2,$3,$4,'activo',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+         VALUES ($1,$2,$3,$4,'activo',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
          RETURNING id`,
         [
           nombre,
@@ -157,6 +157,7 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
           trim(row["nit"]) || null,
           trim(row["sector"]) || null,
           parseDate(row["fecha_inicio_contrato"]),
+          parseNum(row["tarifa_base_mensual"]),
           parseBool(row["igss_aplica"]),
           trim(row["igss_codigo_centro"]) || null,
           trim(row["igss_direccion"]) || null,
@@ -256,10 +257,19 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
       const turnoNombre = trim(row["turno_nombre"]);
       const turnoId = turnoNombre ? (turnoIdByNombre[turnoNombre.toLowerCase()] ?? null) : null;
 
+      const apIgssPuesto = parseBool(row["aplica_igss"]);
+      const rawRegimenPuesto = trim(row["regimen_igss"]).toUpperCase();
+      const regimenMap: Record<string, string> = {
+        "IVS": "IVS", "EPS": "EPS", "EPS_IVS": "EPS_IVS", "NO_APLICA": "no_aplica",
+      };
+      const regimenPuesto = regimenMap[rawRegimenPuesto] ?? (apIgssPuesto ? "IVS" : "no_aplica");
+
       const { rows: ins } = await pool.query(
         `INSERT INTO puestos_operativos
-           (nombre, cliente_id, cliente_nombre, ubicacion, tipo, tipo_turno_id, estado, activo, orden)
-         VALUES ($1,$2,$3,$4,$5,$6,'activo',TRUE,0) RETURNING id`,
+           (nombre, cliente_id, cliente_nombre, ubicacion, tipo, tipo_turno_id,
+            aplica_igss, regimen_igss, salario_puesto, tarifa_puesto,
+            estado, activo, orden)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'activo',TRUE,0) RETURNING id`,
         [
           nombre,
           clienteId,
@@ -267,6 +277,10 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
           trim(row["ubicacion"]) || null,
           tipo,
           turnoId,
+          apIgssPuesto,
+          regimenPuesto,
+          parseNum(row["salario_puesto"]),
+          parseNum(row["tarifa_puesto"]),
         ]
       );
       puestoIdByNombre[key] = ins[0].id;

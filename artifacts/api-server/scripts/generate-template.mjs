@@ -93,14 +93,29 @@ const instrRows = [
   [],
   ["COLABORADORES — columnas clave:"],
   ["  puesto_operativo : nombre EXACTO del puesto (igual que en hoja PUESTOS)"],
+  ["  tipo_jornada     : completa | parcial | mixta  — IMPORTANTE para cálculo de planilla"],
+  ["  dia_descanso     : lunes | martes | miercoles | jueves | viernes | sabado | domingo"],
+  ["  horas_contrato   : horas diarias según contrato (ej: 8, 12, 24)"],
   ["  sueldo_base      : salario mensual en quetzales (ej: 3500)"],
-  ["  bonificacion_incentivo : bonificación mensual (ej: 250)"],
+  ["  bonificacion_incentivo : bonificación incentivo mensual (ej: 250)"],
+  ["  bonificacion_1/2/3 : bonificaciones adicionales en Q — dejar vacío si no aplica"],
+  ["  limite_anticipo  : monto máximo de anticipo en Q — dejar vacío para sin límite"],
   ["  forma_pago       : transferencia | cheque | efectivo   (cómo recibe su pago)"],
   ["  tipo_cuenta      : Monetaria | Ahorro   (tipo de cuenta bancaria, puede quedar vacío)"],
   ["  tipo_personal    : guardia | supervisor | jefe_servicio | administrativo_bodega | administrativo_rrhh | gerencia"],
   ["  estado_laboral   : activo | suspendido | baja | licencia"],
-  ["  aplica_igss      : si | no"],
+  ["  aplica_igss      : si | no   — CRÍTICO: el puesto también debe tener aplica_igss=si"],
   ["  estado_igss      : activo | no_activo | pendiente_regularizacion"],
+  [],
+  ["PUESTOS — columnas clave:"],
+  ["  aplica_igss  : si | no  — CRÍTICO PARA PLANILLA: si es 'no' el empleado NO tendrá IGSS"],
+  ["                 aunque el empleado lo tenga activo. AMBOS deben ser 'si'."],
+  ["  regimen_igss : IVS | EPS | EPS_IVS | no_aplica  (si aplica_igss=si, usar IVS)"],
+  ["  salario_puesto : referencia salarial del puesto (opcional, para reportes y comparativas)"],
+  ["  tarifa_puesto  : tarifa de facturación mensual al cliente por este puesto (para comercial)"],
+  [],
+  ["CLIENTES — columna nueva:"],
+  ["  tarifa_base_mensual : monto mensual que paga el cliente en Q (para módulo comercial)"],
   [],
   ["ARMAS — El arma se asigna al PUESTO (puesto_nombre), NO al empleado."],
   ["  El campo custodio_dpi es opcional: solo si quieres registrar quién la tiene HOY."],
@@ -120,13 +135,16 @@ wsInstr["!cols"] = [{ wch: 70 }];
 
 // ── Sheets de datos ────────────────────────────────────────────────────────
 const wsClientes = makeSheet(
+  // tarifa_base_mensual : monto mensual que paga el cliente (para facturación)
   ["nombre","nombre_comercial","nit","sector","fecha_inicio_contrato",
+   "tarifa_base_mensual",
    "igss_aplica","igss_codigo_centro","igss_direccion","igss_zona",
    "igss_departamento","igss_municipio","igss_codigo_actividad",
    "igss_contacto","igss_telefono","igss_email","notas"],
   [["Comercializadora Ejemplo","Ejemplo S.A.","1234567-8","Comercio","15/01/2024",
+    "15000",
     "si","01","5a Calle 5-50","1","1","1","0851","Juan Pérez","55551234","igss@ejemplo.com",""]],
-  [30,25,15,15,20,12,20,30,8,15,15,20,20,15,25,30]
+  [30,25,15,15,20,18,12,20,30,8,15,15,20,20,15,25,30]
 );
 
 const wsTurnos = makeSheet(
@@ -141,40 +159,65 @@ const wsTurnos = makeSheet(
 );
 
 const wsPuestos = makeSheet(
-  ["nombre","cliente_nombre","turno_nombre","codigo","ubicacion","descripcion",
-   "salario_base","num_guardias_requeridos","activo"],
-  [["Puesto Central","Comercializadora Ejemplo","Turno Diurno 8h","P-001",
-    "Zona 10","Recepción principal","3500","2","si"]],
-  [28,30,25,12,20,30,14,22,8]
+  // aplica_igss  : si | no  — CRÍTICO: si es 'no' el empleado no tendrá IGSS aunque él lo tenga activo
+  // regimen_igss : IVS | EPS | EPS_IVS | no_aplica  (si aplica_igss=si, usar IVS como mínimo)
+  // salario_puesto : referencia salarial del puesto (opcional, para reportes)
+  // tarifa_puesto  : tarifa de facturación al cliente por este puesto (opcional)
+  ["nombre","cliente_nombre","turno_nombre","ubicacion",
+   "aplica_igss","regimen_igss",
+   "salario_puesto","tarifa_puesto",
+   "descripcion"],
+  [["Puesto Central","Comercializadora Ejemplo","Turno Diurno 8h","Zona 10 Recepción",
+    "si","IVS",
+    "3200","5500",
+    "Recepción principal"]],
+  [28,30,25,25,12,14,16,16,35]
 );
 
 const wsColaboradores = makeSheet(
   // NOMBRES DE COLUMNA EXACTOS — el sistema los lee con estos nombres:
-  // tipo_personal: guardia | supervisor | jefe_servicio | administrativo_bodega | administrativo_rrhh | gerencia
-  // estado_laboral: activo | suspendido | baja | licencia
-  // forma_pago: transferencia | cheque | efectivo   (cómo recibe su pago)
-  // tipo_cuenta: Monetaria | Ahorro                 (tipo de cuenta bancaria — puede dejarse vacío)
-  // aplica_igss: si | no
-  // estado_igss: activo | no_activo | pendiente_regularizacion
+  // tipo_personal  : guardia | supervisor | jefe_servicio | administrativo_bodega | administrativo_rrhh | gerencia
+  // estado_laboral : activo | suspendido | baja | licencia
+  // tipo_jornada   : completa | parcial | mixta  (IMPORTANTE para cálculo de horas y planilla)
+  // dia_descanso   : lunes | martes | miercoles | jueves | viernes | sabado | domingo
+  // horas_contrato : número de horas diarias según contrato (ej: 8, 12, 24)
+  // forma_pago     : transferencia | cheque | efectivo   (cómo recibe su pago)
+  // tipo_cuenta    : Monetaria | Ahorro                  (tipo de cuenta bancaria — puede dejarse vacío)
+  // aplica_igss    : si | no   (CRÍTICO: el puesto también debe tener aplica_igss=si)
+  // estado_igss    : activo | no_activo | pendiente_regularizacion
   // puesto_operativo: debe coincidir EXACTAMENTE con el nombre en hoja PUESTOS
+  // bonificacion_1/2/3 : bonificaciones adicionales en Q (dejar vacío si no aplica)
+  // limite_anticipo : monto máximo de anticipo permitido en Q (dejar vacío para sin límite)
   ["dpi","nombre_completo","fecha_nacimiento","genero","estado_civil",
-   "igss_numero","nit","telefono","correo","sede",
+   "igss_numero","nit","telefono","telefono_secundario","correo","sede",
    "fecha_ingreso","tipo_personal","estado_laboral",
    "puesto_operativo",
-   "sueldo_base","bonificacion_incentivo","forma_pago","tipo_cuenta",
+   "tipo_jornada","dia_descanso","horas_contrato",
+   "sueldo_base","bonificacion_incentivo",
+   "bonificacion_1","bonificacion_2","bonificacion_3",
+   "limite_anticipo",
+   "forma_pago","tipo_cuenta",
    "aplica_igss","estado_igss",
    "banco","cuenta_bancaria","notas"],
   [["1234567890101","Juan García López","20/05/1990","masculino","soltero",
-    "12345678","9876543-2","55551234","jgarcia@isp.gt","Guatemala",
+    "12345678","9876543-2","55551234","","jgarcia@isp.gt","Guatemala",
     "15/01/2024","guardia","activo",
     "Puesto Central",
-    "3500","250","transferencia","Monetaria",
+    "completa","domingo","8",
+    "3500","250",
+    "","","",
+    "",
+    "transferencia","Monetaria",
     "si","activo",
     "Banrural","000-123456-0",""]],
-  [16,30,16,12,14,16,12,14,25,25,
+  [16,30,16,12,14,16,12,14,16,25,25,
    16,20,15,
    30,
-   12,22,16,14,
+   14,14,14,
+   12,22,
+   12,12,12,
+   16,
+   16,14,
    12,28,
    20,20,30]
 );
