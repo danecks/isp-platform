@@ -470,7 +470,7 @@ employeesRouter.get("/employees/by-dpi/:dpi", async (req, res) => {
     const { rows } = await pool.query(
       `SELECT id, nombre_completo, dpi, telefono, telefono_secundario, correo,
               direccion, municipio, departamento, foto_url,
-              banco, cuenta_bancaria, forma_pago,
+              banco, cuenta_bancaria, forma_pago, tipo_cuenta,
               nombre_contacto_emergencia, telefono_emergencia, parentesco_emergencia,
               dpi_frente_url, dpi_reverso_url, estado_laboral, puesto, tipo_personal
        FROM employees WHERE dpi = $1 LIMIT 1`,
@@ -490,7 +490,7 @@ employeesRouter.patch("/employees/:id/self-update", async (req, res) => {
   const {
     telefono, telefono_secundario, correo,
     direccion, municipio, departamento,
-    banco, forma_pago, cuenta_bancaria,
+    banco, forma_pago, tipo_cuenta, cuenta_bancaria,
     nombre_contacto_emergencia, telefono_emergencia, parentesco_emergencia,
     dpi_frente_url, dpi_reverso_url, foto_url,
   } = req.body ?? {};
@@ -505,15 +505,16 @@ employeesRouter.patch("/employees/:id/self-update", async (req, res) => {
         departamento                = COALESCE($6,  departamento),
         banco                       = COALESCE($7,  banco),
         forma_pago                  = COALESCE($8,  forma_pago),
-        cuenta_bancaria             = COALESCE($9,  cuenta_bancaria),
-        nombre_contacto_emergencia  = COALESCE($10, nombre_contacto_emergencia),
-        telefono_emergencia         = COALESCE($11, telefono_emergencia),
-        parentesco_emergencia       = COALESCE($12, parentesco_emergencia),
-        dpi_frente_url              = COALESCE($13, dpi_frente_url),
-        dpi_reverso_url             = COALESCE($14, dpi_reverso_url),
-        foto_url                    = COALESCE($15, foto_url),
+        tipo_cuenta                 = COALESCE($9,  tipo_cuenta),
+        cuenta_bancaria             = COALESCE($10, cuenta_bancaria),
+        nombre_contacto_emergencia  = COALESCE($11, nombre_contacto_emergencia),
+        telefono_emergencia         = COALESCE($12, telefono_emergencia),
+        parentesco_emergencia       = COALESCE($13, parentesco_emergencia),
+        dpi_frente_url              = COALESCE($14, dpi_frente_url),
+        dpi_reverso_url             = COALESCE($15, dpi_reverso_url),
+        foto_url                    = COALESCE($16, foto_url),
         updated_at                  = NOW()
-       WHERE id = $16`,
+       WHERE id = $17`,
       [
         telefono || null,
         telefono_secundario || null,
@@ -523,6 +524,7 @@ employeesRouter.patch("/employees/:id/self-update", async (req, res) => {
         departamento || null,
         banco || null,
         forma_pago || null,
+        tipo_cuenta || null,
         cuenta_bancaria || null,
         nombre_contacto_emergencia || null,
         telefono_emergencia || null,

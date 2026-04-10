@@ -325,7 +325,7 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
            sueldo_base, tipo_jornada, dia_descanso, horas_contrato,
            bonificacion_incentivo, bonificacion_1, bonificacion_2, bonificacion_3,
            limite_anticipo, aplica_igss_general, estado_igss, igss_numero,
-           banco, cuenta_bancaria, forma_pago,
+           banco, cuenta_bancaria, forma_pago, tipo_cuenta,
            cliente_id, notas,
            source_system, sync_status
          ) VALUES (
@@ -334,8 +334,8 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
            $11,$12,$13,$14,
            $15,$16,$17,$18,
            $19,$20,$21,$22,
-           $23,$24,$25,
-           $26,$27,
+           $23,$24,$25,$26,
+           $27,$28,
            'importacion_maestra','manual'
          ) RETURNING id`,
         [
@@ -364,6 +364,7 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
           trim(row["banco"]) || null,
           trim(row["cuenta_bancaria"]) || null,
           trim(row["forma_pago"]).toLowerCase() || null,
+          trim(row["tipo_cuenta"]) || null,
           clienteId,
           trim(row["notas"]) || null,
         ]

@@ -58,6 +58,7 @@ interface Empleado {
   banco: string | null;
   cuenta_bancaria: string | null;
   forma_pago: string | null;
+  tipo_cuenta: string | null;
   nombre_contacto_emergencia: string | null;
   telefono_emergencia: string | null;
   parentesco_emergencia: string | null;
@@ -75,6 +76,7 @@ interface Contacto {
   departamento: string;
   banco: string;
   forma_pago: string;
+  tipo_cuenta: string;
   cuenta_bancaria: string;
   nombre_contacto_emergencia: string;
   telefono_emergencia: string;
@@ -452,8 +454,17 @@ function PasoContacto({ contacto, onChange, onNext, onBack }: {
             <p className="text-[#64748b] text-xs uppercase tracking-wider mb-3 font-semibold">Datos bancarios (opcional)</p>
           </div>
           <F label="Banco"><ISPInput value={contacto.banco} onChange={set("banco")} placeholder="Banrural, Banco Industrial..." /></F>
-          <F label="Tipo de cuenta">
+          <F label="Forma de pago">
             <select value={contacto.forma_pago} onChange={set("forma_pago")}
+              className="w-full bg-[#060f1e] border border-[#1e3a6e] rounded-xl px-4 py-3 text-white text-base focus:outline-none focus:border-blue-500/60">
+              <option value="">Seleccione...</option>
+              <option value="transferencia">Transferencia bancaria</option>
+              <option value="cheque">Cheque</option>
+              <option value="efectivo">Efectivo</option>
+            </select>
+          </F>
+          <F label="Tipo de cuenta">
+            <select value={contacto.tipo_cuenta} onChange={set("tipo_cuenta")}
               className="w-full bg-[#060f1e] border border-[#1e3a6e] rounded-xl px-4 py-3 text-white text-base focus:outline-none focus:border-blue-500/60">
               <option value="">Seleccione...</option>
               <option value="Monetaria">Monetaria</option>
@@ -612,7 +623,7 @@ export default function ActualizacionDatos() {
   const [contacto, setContacto]         = useState<Contacto>({
     telefono: "", telefono_secundario: "", correo: "",
     direccion: "", municipio: "", departamento: "",
-    banco: "", forma_pago: "", cuenta_bancaria: "",
+    banco: "", forma_pago: "", tipo_cuenta: "", cuenta_bancaria: "",
     nombre_contacto_emergencia: "", telefono_emergencia: "", parentesco_emergencia: "",
   });
 
@@ -676,7 +687,7 @@ export default function ActualizacionDatos() {
     setFotoUrl(null); setFotoBlob(null); detenerCamara(); setEnviando(false);
     setContacto({ telefono: "", telefono_secundario: "", correo: "",
       direccion: "", municipio: "", departamento: "",
-      banco: "", forma_pago: "", cuenta_bancaria: "",
+      banco: "", forma_pago: "", tipo_cuenta: "", cuenta_bancaria: "",
       nombre_contacto_emergencia: "", telefono_emergencia: "", parentesco_emergencia: "" });
   };
 
@@ -728,6 +739,7 @@ export default function ActualizacionDatos() {
           departamento:               emp.departamento ?? "",
           banco:                      emp.banco ?? "",
           forma_pago:                 emp.forma_pago ?? "",
+          tipo_cuenta:                emp.tipo_cuenta ?? "",
           cuenta_bancaria:            emp.cuenta_bancaria ?? "",
           nombre_contacto_emergencia: emp.nombre_contacto_emergencia ?? "",
           telefono_emergencia:        emp.telefono_emergencia ?? "",

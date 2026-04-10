@@ -4340,5 +4340,13 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: HIST-PREST-01 — error (no bloqueante)");
   }
 
+  // ── EMPL-TIPOCUENTA-01: separar forma_pago (método) de tipo_cuenta (banco) ───
+  try {
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS tipo_cuenta VARCHAR(20)`);
+    logger.info("Auto-migrate: EMPL-TIPOCUENTA-01 columna tipo_cuenta en employees verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: EMPL-TIPOCUENTA-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

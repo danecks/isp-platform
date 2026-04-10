@@ -95,7 +95,8 @@ const instrRows = [
   ["  puesto_operativo : nombre EXACTO del puesto (igual que en hoja PUESTOS)"],
   ["  sueldo_base      : salario mensual en quetzales (ej: 3500)"],
   ["  bonificacion_incentivo : bonificación mensual (ej: 250)"],
-  ["  forma_pago       : Monetaria | Ahorro   (tipo de cuenta bancaria, puede quedar vacío)"],
+  ["  forma_pago       : transferencia | cheque | efectivo   (cómo recibe su pago)"],
+  ["  tipo_cuenta      : Monetaria | Ahorro   (tipo de cuenta bancaria, puede quedar vacío)"],
   ["  tipo_personal    : guardia | supervisor | jefe_servicio | administrativo_bodega | administrativo_rrhh | gerencia"],
   ["  estado_laboral   : activo | suspendido | baja | licencia"],
   ["  aplica_igss      : si | no"],
@@ -151,7 +152,8 @@ const wsColaboradores = makeSheet(
   // NOMBRES DE COLUMNA EXACTOS — el sistema los lee con estos nombres:
   // tipo_personal: guardia | supervisor | jefe_servicio | administrativo_bodega | administrativo_rrhh | gerencia
   // estado_laboral: activo | suspendido | baja | licencia
-  // forma_pago: Monetaria | Ahorro   (tipo de cuenta bancaria — puede dejarse vacío)
+  // forma_pago: transferencia | cheque | efectivo   (cómo recibe su pago)
+  // tipo_cuenta: Monetaria | Ahorro                 (tipo de cuenta bancaria — puede dejarse vacío)
   // aplica_igss: si | no
   // estado_igss: activo | no_activo | pendiente_regularizacion
   // puesto_operativo: debe coincidir EXACTAMENTE con el nombre en hoja PUESTOS
@@ -159,20 +161,20 @@ const wsColaboradores = makeSheet(
    "igss_numero","nit","telefono","correo","sede",
    "fecha_ingreso","tipo_personal","estado_laboral",
    "puesto_operativo",
-   "sueldo_base","bonificacion_incentivo","forma_pago",
+   "sueldo_base","bonificacion_incentivo","forma_pago","tipo_cuenta",
    "aplica_igss","estado_igss",
    "banco","cuenta_bancaria","notas"],
   [["1234567890101","Juan García López","20/05/1990","masculino","soltero",
     "12345678","9876543-2","55551234","jgarcia@isp.gt","Guatemala",
     "15/01/2024","guardia","activo",
     "Puesto Central",
-    "3500","250","Monetaria",
+    "3500","250","transferencia","Monetaria",
     "si","activo",
-    "","",""]],
+    "Banrural","000-123456-0",""]],
   [16,30,16,12,14,16,12,14,25,25,
    16,20,15,
    30,
-   12,22,14,
+   12,22,16,14,
    12,28,
    20,20,30]
 );
