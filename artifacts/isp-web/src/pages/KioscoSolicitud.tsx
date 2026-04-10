@@ -230,8 +230,8 @@ const PUESTOS = ["Guardia de Seguridad","Supervisor de Seguridad","Agente de Por
 const BANCOS = ["Banrural","Banco Industrial","G&T Continental","BAC Credomatic","Bantrab","Ficohsa","BAM","Vivibanco","Otro"];
 const MOTIVOS_SALIDA = ["Terminó el contrato","Renuncié voluntariamente","Mejor oferta de trabajo","La empresa cerró","Motivos personales o familiares","Otro motivo"];
 
-const TOTAL_STEPS = 10; // pasos 1–10, paso 0 = PIN, paso 11 = listo
-const STEP_NAMES = ["","Escaneo DPI","Datos Personales","Domicilio y Banco","Familia","Salud","Antecedentes","Educación y Experiencia","Seguridad","Referencias","Fotografía",""];
+const TOTAL_STEPS = 11; // pasos 1–11, paso 0 = PIN, paso 12 = listo
+const STEP_NAMES = ["","Escaneo DPI","Datos Personales","Domicilio y Banco","Familia","Salud","Antecedentes","Educación y Experiencia","Seguridad","Referencias","Fotografía","Confirmación",""];
 
 // ══════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
@@ -365,7 +365,7 @@ export default function KioscoSolicitud({ skipPin = false }: { skipPin?: boolean
       if (!r.ok) throw new Error("Error al enviar");
       const data = await r.json();
       setSolicitudId(data.id);
-      setStep(11);
+      setStep(12);
     } catch {
       alert("Error al enviar su solicitud. Por favor intente de nuevo.");
     } finally { setEnviando(false); }
@@ -399,7 +399,7 @@ export default function KioscoSolicitud({ skipPin = false }: { skipPin?: boolean
       </div>
 
       {/* Progress bar */}
-      {step >= 1 && step <= 10 && (
+      {step >= 1 && step <= 11 && (
         <div className="bg-[#091a3d] border-b border-[#1e3a6e] px-4 py-2 shrink-0">
           <div className="flex justify-between text-xs mb-1">
             <span className="text-blue-300 font-semibold">{STEP_NAMES[step]}</span>
@@ -436,8 +436,9 @@ export default function KioscoSolicitud({ skipPin = false }: { skipPin?: boolean
         {step === 7  && <PasoEducacion form={form} setEv={setEv} set={set} onNext={next} onBack={back} />}
         {step === 8  && <PasoSeguridad form={form} setEv={setEv} set={set} habilidades={habilidadesArr} setHabilidades={setHabilidadesArr} tiposSeg={tiposSegArr} setTiposSeg={setTiposSegArr} onNext={next} onBack={back} />}
         {step === 9  && <PasoReferencias form={form} setEv={setEv} onNext={next} onBack={back} />}
-        {step === 10 && <PasoFoto videoRef={videoRef} camActiva={camActiva} camError={camError} fotoUrl={fotoUrl} onCapturar={capturarFoto} onRehacer={() => { if (fotoUrl) URL.revokeObjectURL(fotoUrl); setFotoBlob(null); setFotoUrl(null); setCamError(false); iniciarCamara(); }} onReintentar={iniciarCamara} onBack={back} onNext={enviarSolicitud} enviando={enviando} />}
-        {step === 11 && <PantallaExito solicitudId={solicitudId} telefono={form.telefono} onReiniciar={reiniciar} />}
+        {step === 10 && <PasoFoto videoRef={videoRef} camActiva={camActiva} camError={camError} fotoUrl={fotoUrl} onCapturar={capturarFoto} onRehacer={() => { if (fotoUrl) URL.revokeObjectURL(fotoUrl); setFotoBlob(null); setFotoUrl(null); setCamError(false); iniciarCamara(); }} onReintentar={iniciarCamara} onBack={back} onNext={next} enviando={false} />}
+        {step === 11 && <PasoResumen form={form} fotoUrl={fotoUrl} onBack={back} onNext={enviarSolicitud} enviando={enviando} />}
+        {step === 12 && <PantallaExito solicitudId={solicitudId} telefono={form.telefono} onReiniciar={reiniciar} />}
       </div>
     </div>
   );
@@ -1547,7 +1548,157 @@ function PasoFoto({ videoRef, camActiva, camError, fotoUrl, onCapturar, onRehace
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// PASO 11: EXITO
+// PASO 11: RESUMEN / CONFIRMACIÓN
+// ══════════════════════════════════════════════════════════════════════════════
+function ResumenFila({ label, value }: { label: string; value: string }) {
+  if (!value || value === "no" || value === "0") return null;
+  return (
+    <div className="flex gap-2 py-1 border-b border-[#0d1f45] last:border-0">
+      <span className="text-[#64748b] text-xs w-36 shrink-0">{label}</span>
+      <span className="text-white text-xs font-medium break-words flex-1">{value}</span>
+    </div>
+  );
+}
+
+function ResumenSeccion({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+  const hasContent = React.Children.toArray(children).some(c => c !== null && c !== false && c !== undefined);
+  if (!hasContent) return null;
+  return (
+    <div className="col-span-2 bg-[#060f1e] border border-[#1e3a6e] rounded-xl p-4 mb-1">
+      <h3 className="text-blue-400 text-xs font-bold uppercase tracking-wider mb-3">{titulo}</h3>
+      {children}
+    </div>
+  );
+}
+
+function PasoResumen({ form, fotoUrl, onBack, onNext, enviando }: {
+  form: FormData; fotoUrl: string | null; onBack: () => void; onNext: () => void; enviando: boolean;
+}) {
+  return (
+    <StepCard title="Paso 11 — Revise su Solicitud" onBack={onBack} onNext={onNext}
+      nextLabel={enviando ? "Enviando..." : "Confirmar y Enviar"} nextDisabled={enviando}>
+      <p className="col-span-2 text-blue-300 text-sm mb-2">
+        Por favor revise que toda su informacion sea correcta antes de enviar.
+      </p>
+
+      {/* Foto */}
+      {fotoUrl && (
+        <div className="col-span-2 flex items-center gap-4 bg-[#060f1e] border border-[#1e3a6e] rounded-xl p-4 mb-1">
+          <img src={fotoUrl} alt="Foto" className="w-16 h-16 rounded-full object-cover border-2 border-blue-500" />
+          <div>
+            <p className="text-[#64748b] text-xs">Fotografia de rostro</p>
+            <p className="text-green-400 text-xs font-semibold mt-1">✓ Capturada</p>
+          </div>
+        </div>
+      )}
+
+      <ResumenSeccion titulo="Datos Personales">
+        <ResumenFila label="Plaza solicitada" value={form.puesto_solicitado} />
+        <ResumenFila label="Nombre completo" value={form.nombre_completo} />
+        <ResumenFila label="DPI" value={form.dpi} />
+        <ResumenFila label="Fecha de nacimiento" value={form.fecha_nacimiento} />
+        <ResumenFila label="Genero" value={form.genero} />
+        <ResumenFila label="Estado civil" value={form.estado_civil} />
+        <ResumenFila label="Nacionalidad" value={form.nacionalidad} />
+        <ResumenFila label="Lugar de nacimiento" value={form.lugar_nacimiento} />
+        <ResumenFila label="Profesion" value={form.profesion} />
+        <ResumenFila label="Telefono" value={form.telefono} />
+        <ResumenFila label="Telefono fijo" value={form.telefono_fijo} />
+        <ResumenFila label="Correo" value={form.correo} />
+        <ResumenFila label="NIT" value={form.nit} />
+        <ResumenFila label="IGSS" value={form.igss} />
+      </ResumenSeccion>
+
+      <ResumenSeccion titulo="Domicilio y Banco">
+        <ResumenFila label="Direccion" value={form.direccion} />
+        <ResumenFila label="Municipio" value={form.municipio} />
+        <ResumenFila label="Departamento" value={form.departamento} />
+        <ResumenFila label="Tiempo residencia" value={form.tiempo_residencia} />
+        <ResumenFila label="Tipo vivienda" value={form.tipo_vivienda} />
+        <ResumenFila label="Renta mensual" value={form.renta_mensual} />
+        <ResumenFila label="Banco" value={form.banco} />
+        <ResumenFila label="Tipo cuenta" value={form.tipo_cuenta} />
+        <ResumenFila label="Num. cuenta" value={form.num_cuenta} />
+        <ResumenFila label="Licencia conducir" value={form.tiene_licencia === "si" ? `Si — ${form.tipo_licencia} (vence: ${form.vigencia_licencia})` : ""} />
+      </ResumenSeccion>
+
+      <ResumenSeccion titulo="Familia">
+        <ResumenFila label="Padre" value={form.nombre_padre} />
+        <ResumenFila label="Tel. padre" value={form.tel_padre} />
+        <ResumenFila label="Madre" value={form.nombre_madre} />
+        <ResumenFila label="Tel. madre" value={form.tel_madre} />
+        <ResumenFila label="Conyuge" value={form.nombre_conyuge} />
+        <ResumenFila label="Ocupacion conyuge" value={form.ocup_conyuge} />
+        <ResumenFila label="Tel. conyuge" value={form.tel_conyuge} />
+        <ResumenFila label="Dependientes" value={form.num_dependientes !== "0" ? form.num_dependientes : ""} />
+        <ResumenFila label="Hermano 1" value={form.hermano1_nombre} />
+        <ResumenFila label="Hermano 2" value={form.hermano2_nombre} />
+        <ResumenFila label="Facebook" value={form.facebook} />
+        <ResumenFila label="Instagram" value={form.instagram} />
+      </ResumenSeccion>
+
+      <ResumenSeccion titulo="Salud">
+        <ResumenFila label="Estatura" value={form.estatura ? `${form.estatura} m` : ""} />
+        <ResumenFila label="Peso" value={form.peso ? `${form.peso} kg` : ""} />
+        <ResumenFila label="Enfermedad cronica" value={form.enfermedad_cronica === "si" ? `Si — ${form.enfermedad_det}` : ""} />
+        <ResumenFila label="Medicamentos" value={form.medicamento === "si" ? `Si — ${form.medicamento_det}` : ""} />
+        <ResumenFila label="Impedimento fisico" value={form.impedimento_fisico === "si" ? `Si — ${form.impedimento_det}` : ""} />
+        <ResumenFila label="Consume alcohol" value={form.consume_alcohol === "si" ? "Si" : ""} />
+        <ResumenFila label="Consume drogas" value={form.consume_drogas === "si" ? "Si" : ""} />
+        <ResumenFila label="Tatuajes" value={form.tiene_tatuajes === "si" ? `Si — ${form.tatuajes_det}` : ""} />
+        <ResumenFila label="Contacto emergencia" value={form.nombre_contacto_emergencia} />
+        <ResumenFila label="Tel. emergencia" value={form.telefono_emergencia} />
+        <ResumenFila label="Parentesco" value={form.parentesco_emergencia} />
+      </ResumenSeccion>
+
+      <ResumenSeccion titulo="Antecedentes y Finanzas">
+        <ResumenFila label="Proceso judicial" value={form.proceso_judicial === "si" ? `Si — ${form.proceso_det}` : ""} />
+        <ResumenFila label="Detenido antes" value={form.detenido === "si" ? `Si — ${form.detencion_det}` : ""} />
+        <ResumenFila label="Tiene deudas" value={form.tiene_deudas === "si" ? `Si — ${form.estado_deuda}` : ""} />
+        <ResumenFila label="Gastos mensuales" value={form.gastos_mensuales ? `Q${form.gastos_mensuales}` : ""} />
+        <ResumenFila label="Prestamo" value={form.tiene_prestamo === "si" ? `Si — Q${form.monto_prestamo}` : ""} />
+      </ResumenSeccion>
+
+      <ResumenSeccion titulo="Educacion">
+        <ResumenFila label="Primaria" value={form.prim_escuela ? `${form.prim_escuela} (${form.prim_lugar}) — ${form.prim_titulo}` : ""} />
+        <ResumenFila label="Basicos" value={form.bas_escuela ? `${form.bas_escuela} (${form.bas_lugar}) — ${form.bas_titulo}` : ""} />
+        <ResumenFila label="Diversificado" value={form.div_escuela ? `${form.div_escuela} (${form.div_lugar}) — ${form.div_titulo}` : ""} />
+        <ResumenFila label="Universidad" value={form.uni_escuela ? `${form.uni_escuela} (${form.uni_lugar}) — ${form.uni_titulo}` : ""} />
+      </ResumenSeccion>
+
+      <ResumenSeccion titulo="Experiencia Laboral">
+        <ResumenFila label="Empresa 1" value={form.emp1_nombre ? `${form.emp1_nombre} — ${form.emp1_puesto} (${form.emp1_inicio} a ${form.emp1_fin})` : ""} />
+        <ResumenFila label="Empresa 2" value={form.emp2_nombre ? `${form.emp2_nombre} — ${form.emp2_puesto} (${form.emp2_inicio} a ${form.emp2_fin})` : ""} />
+        <ResumenFila label="Empresa 3" value={form.emp3_nombre ? `${form.emp3_nombre} — ${form.emp3_puesto} (${form.emp3_inicio} a ${form.emp3_fin})` : ""} />
+      </ResumenSeccion>
+
+      <ResumenSeccion titulo="Seguridad y Habilidades">
+        <ResumenFila label="Exp. seguridad" value={form.experiencia_seguridad === "si" ? `Si — ${form.anios_experiencia} anos` : ""} />
+        <ResumenFila label="Empresa anterior" value={form.empresa_anterior} />
+        <ResumenFila label="Tipos de seguridad" value={form.tipos_seguridad} />
+        <ResumenFila label="Servicio militar" value={form.servicio_militar === "si" ? `Si — ${form.rango_militar}, ${form.unidad_militar}` : ""} />
+        <ResumenFila label="Fue policia" value={form.fue_policia === "si" ? `Si — ${form.motivo_baja_policial}` : ""} />
+        <ResumenFila label="Habilidades" value={form.habilidades} />
+        <ResumenFila label="Disponible rotativo" value={form.disp_rotativo === "si" ? "Si" : ""} />
+        <ResumenFila label="Disponible nocturno" value={form.disp_nocturno === "si" ? "Si" : ""} />
+        <ResumenFila label="Disponible fines semana" value={form.disp_fds === "si" ? "Si" : ""} />
+        <ResumenFila label="Tiene vehiculo" value={form.tiene_vehiculo === "si" ? "Si" : ""} />
+        <ResumenFila label="Licencia armas" value={form.licencia_armas === "si" ? "Si" : ""} />
+        <ResumenFila label="Pretension salarial" value={form.pretension_salarial ? `Q${form.pretension_salarial}` : ""} />
+        <ResumenFila label="Familiar en empresa" value={form.familiar_en_empresa === "si" ? `Si — ${form.nombre_familiar_empresa}` : ""} />
+      </ResumenSeccion>
+
+      <ResumenSeccion titulo="Referencias Personales">
+        <ResumenFila label="Referencia 1" value={form.ref1_nombre ? `${form.ref1_nombre} — ${form.ref1_ocupacion} — ${form.ref1_tel}` : ""} />
+        <ResumenFila label="Referencia 2" value={form.ref2_nombre ? `${form.ref2_nombre} — ${form.ref2_ocupacion} — ${form.ref2_tel}` : ""} />
+        <ResumenFila label="Referencia 3" value={form.ref3_nombre ? `${form.ref3_nombre} — ${form.ref3_ocupacion} — ${form.ref3_tel}` : ""} />
+      </ResumenSeccion>
+    </StepCard>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PASO 12: EXITO
 // ══════════════════════════════════════════════════════════════════════════════
 function PantallaExito({ solicitudId, telefono, onReiniciar }: {
   solicitudId: number | null; telefono: string; onReiniciar: () => void;
