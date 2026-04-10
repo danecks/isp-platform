@@ -5,7 +5,6 @@ import html2canvas from "html2canvas";
 const PLAZAS = [
   "Agente de Seguridad",
   "Supervisor de Seguridad",
-  "Agente de Portacion de Armas",
   "Agente de Custodia y Transporte",
   "Agente de Seguridad Industrial",
 ];
