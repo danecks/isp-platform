@@ -99,10 +99,10 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/extraer-dpi", async (req: Requ
               {
                 type: "text",
                 text: `Eres un asistente que extrae datos del Documento Personal de Identificación (DPI/CUI) de Guatemala.
-Analiza la imagen y extrae estos campos EXACTAMENTE como aparecen en el documento.
+Analiza la imagen y extrae estos campos. El DPI muestra los apellidos antes que los nombres, pero debes devolverlos en orden NOMBRE APELLIDO (primero el nombre de pila, luego los apellidos).
 Responde SOLO con un JSON válido con estas claves (deja vacío "" si no puedes leer el campo):
 {
-  "nombre_completo": "apellidos y nombres como aparecen",
+  "nombre_completo": "nombres de pila seguidos de los apellidos (ej: Juan Carlos Pérez García)",
   "dpi": "los 13 dígitos del CUI sin espacios",
   "fecha_nacimiento": "YYYY-MM-DD",
   "genero": "Masculino o Femenino",
