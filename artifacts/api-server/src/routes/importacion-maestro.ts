@@ -324,13 +324,15 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
 
       const sedeName = trim(row["sede_nombre"]).toLowerCase();
       const sedeId = sedeName ? (sedeIdByNombre[sedeName] ?? null) : null;
+      const fechaInicioCiclo = parseDate(row["fecha_inicio_ciclo"]);
+      const horaEntrada = trim(row["hora_entrada"]) || "07:00";
 
       const { rows: ins } = await pool.query(
         `INSERT INTO puestos_operativos
            (nombre, cliente_id, cliente_nombre, ubicacion, tipo, tipo_turno_id,
             aplica_igss, regimen_igss, salario_puesto, tarifa_puesto,
-            sede_id, estado, activo, orden)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'activo',TRUE,0) RETURNING id`,
+            sede_id, fecha_inicio_ciclo, hora_entrada, estado, activo, orden)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'activo',TRUE,0) RETURNING id`,
         [
           nombre,
           clienteId,
@@ -343,6 +345,8 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
           parseNum(row["salario_puesto"]),
           parseNum(row["tarifa_puesto"]),
           sedeId,
+          fechaInicioCiclo,
+          horaEntrada,
         ]
       );
       puestoIdByNombre[key] = ins[0].id;
@@ -458,16 +462,21 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
       const puestoNombre = trim(row["puesto_operativo"]);
       if (puestoNombre) {
         const pId = puestoIdByNombre[puestoNombre.toLowerCase()] ?? null;
+        const ordenTitular = parseInt(trim(row["orden_titular"]) || "1") || 1;
         if (pId && !preview) {
-          await pool.query(
-            `UPDATE puestos_operativos SET titular_employee_id = $1, titular_nombre = $2,
-             estado = 'cubierto' WHERE id = $3`,
-            [empId, nombre, pId]
-          ).catch(() => {});
+          // Solo el orden=1 actualiza titular_employee_id en puestos_operativos
+          if (ordenTitular === 1) {
+            await pool.query(
+              `UPDATE puestos_operativos SET titular_employee_id = $1, titular_nombre = $2,
+               estado = 'cubierto' WHERE id = $3`,
+              [empId, nombre, pId]
+            ).catch(() => {});
+          }
           await pool.query(
             `INSERT INTO puesto_titulares (puesto_id, employee_id, orden, activo)
-             VALUES ($1, $2, 1, true) ON CONFLICT (puesto_id, employee_id) DO NOTHING`,
-            [pId, empId]
+             VALUES ($1, $2, $3, true) ON CONFLICT (puesto_id, employee_id)
+             DO UPDATE SET orden = $3, activo = true`,
+            [pId, empId, ordenTitular]
           ).catch(() => {});
         }
       }
@@ -480,6 +489,76 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
     }
   }
   resultados.push(rColab);
+
+  // ── POST-COLABORADORES: Auto-generar puesto_slots ──────────────────────────
+  // Una vez que todos los titulares están asignados, crear los slots de trabajo/descanso
+  // basándose en el tipo de turno de cada puesto. Sólo crea slots si el puesto no los tiene.
+  if (!preview) {
+    try {
+      // Puestos con titulares y turno asignado que aún no tienen slots
+      const { rows: puestosParaSlots } = await pool.query(`
+        SELECT DISTINCT
+          po.id AS puesto_id,
+          po.fecha_inicio_ciclo,
+          po.hora_entrada,
+          t.horas_trabajo,
+          t.horas_descanso
+        FROM puesto_titulares pt
+        JOIN puestos_operativos po ON po.id = pt.puesto_id AND po.activo = TRUE
+        LEFT JOIN turnos t ON t.id = po.tipo_turno_id
+        WHERE pt.activo = TRUE
+          AND NOT EXISTS (
+            SELECT 1 FROM puesto_slots ps WHERE ps.puesto_id = po.id AND ps.activo = TRUE
+          )
+      `);
+
+      for (const p of puestosParaSlots) {
+        const horasTrabajo = p.horas_trabajo ?? 24;
+        const horasDescanso = p.horas_descanso ?? 24;
+        const esAlternante = horasTrabajo === horasDescanso;
+        const horaEntrada = p.hora_entrada ?? "07:00";
+
+        // Obtener titulares ordenados
+        const { rows: titulares } = await pool.query(
+          `SELECT employee_id, orden FROM puesto_titulares
+           WHERE puesto_id = $1 AND activo = TRUE ORDER BY orden`,
+          [p.puesto_id]
+        );
+
+        for (const titular of titulares) {
+          let diasTrabajo: number[];
+          if (esAlternante && horasTrabajo >= 12) {
+            // Patrón alternante: titular impar trabaja días 1,3,5... ; par trabaja 2,4,6...
+            diasTrabajo = titular.orden % 2 === 1
+              ? [1, 3, 5, 7, 9, 11, 13]
+              : [2, 4, 6, 8, 10, 12, 14];
+          } else {
+            // Patrón diario (8h, etc.): trabaja todos los días del ciclo
+            diasTrabajo = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+          }
+
+          await pool.query(
+            `INSERT INTO puesto_slots
+               (puesto_id, slot_numero, horas_turno, hora_entrada, dias_trabajo,
+                longitud_ciclo, fecha_inicio_ciclo, empleado_id, activo)
+             VALUES ($1,$2,$3,$4,$5,14,$6,$7,true)
+             ON CONFLICT DO NOTHING`,
+            [
+              p.puesto_id,
+              titular.orden,
+              horasTrabajo,
+              horaEntrada,
+              diasTrabajo,
+              p.fecha_inicio_ciclo,
+              titular.employee_id,
+            ]
+          ).catch(() => {});
+        }
+      }
+    } catch {
+      // No bloqueante — el usuario puede configurar slots manualmente en el pizarrón
+    }
+  }
 
   // ── 6. ZONAS OPERATIVAS ─────────────────────────────────────────────────────
   // ZONAS va después de COLABORADORES para que el supervisor_dpi ya exista en la BD.

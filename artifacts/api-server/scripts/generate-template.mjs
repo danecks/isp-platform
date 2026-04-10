@@ -108,13 +108,21 @@ const instrRows = [
   ["  estado_laboral   : activo | suspendido | baja | licencia"],
   ["  aplica_igss      : si | no   — CRÍTICO: el puesto también debe tener aplica_igss=si"],
   ["  estado_igss      : activo | no_activo | pendiente_regularizacion"],
+  ["  orden_titular    : 1 o 2 — CRÍTICO PIZARRÓN para turnos 24x24"],
+  ["                     orden 1 = trabaja días impares del ciclo (1,3,5,7,9,11,13)"],
+  ["                     orden 2 = trabaja días pares del ciclo (2,4,6,8,10,12,14)"],
+  ["                     Si hay un solo guardia por puesto, dejar en 1"],
   [],
   ["PUESTOS — columnas clave:"],
-  ["  aplica_igss  : si | no  — CRÍTICO PARA PLANILLA: si es 'no' el empleado NO tendrá IGSS"],
-  ["                 aunque el empleado lo tenga activo. AMBOS deben ser 'si'."],
-  ["  regimen_igss : IVS | EPS | EPS_IVS | no_aplica  (si aplica_igss=si, usar IVS)"],
-  ["  salario_puesto : referencia salarial del puesto (opcional, para reportes y comparativas)"],
-  ["  tarifa_puesto  : tarifa de facturación mensual al cliente por este puesto (para comercial)"],
+  ["  aplica_igss      : si | no  — CRÍTICO PARA PLANILLA: si es 'no' el empleado NO tendrá IGSS"],
+  ["                     aunque el empleado lo tenga activo. AMBOS deben ser 'si'."],
+  ["  regimen_igss     : IVS | EPS | EPS_IVS | no_aplica  (si aplica_igss=si, usar IVS)"],
+  ["  fecha_inicio_ciclo : CRÍTICO PIZARRÓN: fecha ancla del ciclo de turnos (dd/mm/aaaa)"],
+  ["                     Usa el primer día que ese puesto arrancó con el turno actual."],
+  ["                     Sin esta fecha el pizarrón no sabe qué día del ciclo es hoy."],
+  ["  hora_entrada     : hora de inicio de turno en formato HH:MM (ej: 07:00, 19:00, 06:00)"],
+  ["  salario_puesto   : referencia salarial del puesto (opcional, para reportes y comparativas)"],
+  ["  tarifa_puesto    : tarifa de facturación mensual al cliente por este puesto (para comercial)"],
   [],
   ["CLIENTES — columna nueva:"],
   ["  tarifa_base_mensual : monto mensual que paga el cliente en Q (para módulo comercial)"],
@@ -184,23 +192,29 @@ const wsSedes = makeSheet(
 );
 
 const wsPuestos = makeSheet(
-  // aplica_igss  : si | no  — CRÍTICO: si es 'no' el empleado no tendrá IGSS aunque él lo tenga activo
-  // regimen_igss : IVS | EPS | EPS_IVS | no_aplica  (si aplica_igss=si, usar IVS como mínimo)
-  // zona_nombre  : nombre EXACTO de la zona (hoja ZONAS) — agrupa puestos en el pizarrón
-  // sede_nombre  : nombre EXACTO de la sede (hoja SEDES) — sucursal del cliente
-  // salario_puesto : referencia salarial del puesto (opcional, para reportes)
-  // tarifa_puesto  : tarifa de facturación al cliente por este puesto (opcional)
+  // aplica_igss      : si | no  — CRÍTICO: si es 'no' el empleado no tendrá IGSS aunque él lo tenga activo
+  // regimen_igss     : IVS | EPS | EPS_IVS | no_aplica  (si aplica_igss=si, usar IVS como mínimo)
+  // zona_nombre      : nombre EXACTO de la zona (hoja ZONAS) — agrupa puestos en el pizarrón
+  // sede_nombre      : nombre EXACTO de la sede (hoja SEDES) — sucursal del cliente
+  // fecha_inicio_ciclo : fecha ancla del ciclo de 14 días en formato dd/mm/aaaa
+  //                   CRÍTICO PIZARRÓN: sin esta fecha el sistema no sabe qué día del ciclo es hoy
+  //                   Usa el primer lunes de un turno activo como referencia
+  // hora_entrada     : hora de inicio del turno (formato HH:MM, ej: 07:00, 19:00)
+  // salario_puesto   : referencia salarial del puesto (opcional, para reportes)
+  // tarifa_puesto    : tarifa de facturación al cliente por este puesto (opcional)
   ["nombre","cliente_nombre","turno_nombre","ubicacion",
    "aplica_igss","regimen_igss",
    "zona_nombre","sede_nombre",
+   "fecha_inicio_ciclo","hora_entrada",
    "salario_puesto","tarifa_puesto",
    "descripcion"],
-  [["Puesto Central","Comercializadora Ejemplo","Turno Diurno 8h","Zona 10 Recepción",
+  [["Puesto Central","Comercializadora Ejemplo","Turno 24x24","Zona 10 Recepción",
     "si","IVS",
     "Zona Sur","Sede Central",
+    "07/04/2025","07:00",
     "3200","5500",
     "Recepción principal"]],
-  [28,30,25,25,12,14,22,22,16,16,35]
+  [28,30,25,25,12,14,22,22,18,12,16,16,35]
 );
 
 const wsColaboradores = makeSheet(
@@ -216,11 +230,15 @@ const wsColaboradores = makeSheet(
   // estado_igss    : activo | no_activo | pendiente_regularizacion
   // puesto_operativo: debe coincidir EXACTAMENTE con el nombre en hoja PUESTOS
   // bonificacion_1/2/3 : bonificaciones adicionales en Q (dejar vacío si no aplica)
-  // limite_anticipo : monto máximo de anticipo permitido en Q (dejar vacío para sin límite)
+  // limite_anticipo   : monto máximo de anticipo permitido en Q (dejar vacío para sin límite)
+  // orden_titular     : 1 = Titular A (trabaja días impares del ciclo en 24x24)
+  //                     2 = Titular B (trabaja días pares del ciclo en 24x24)
+  //                     Si un puesto 24x24 tiene 2 guardias, uno lleva orden 1 y el otro orden 2
+  //                     El sistema genera automáticamente el patrón de días trabajo/descanso
   ["dpi","nombre_completo","fecha_nacimiento","genero","estado_civil",
    "igss_numero","nit","telefono","telefono_secundario","correo","sede",
    "fecha_ingreso","tipo_personal","estado_laboral",
-   "puesto_operativo",
+   "puesto_operativo","orden_titular",
    "tipo_jornada","dia_descanso","horas_contrato",
    "sueldo_base","bonificacion_incentivo",
    "bonificacion_1","bonificacion_2","bonificacion_3",
@@ -228,20 +246,33 @@ const wsColaboradores = makeSheet(
    "forma_pago","tipo_cuenta",
    "aplica_igss","estado_igss",
    "banco","cuenta_bancaria","notas"],
-  [["1234567890101","Juan García López","20/05/1990","masculino","soltero",
-    "12345678","9876543-2","55551234","","jgarcia@isp.gt","Guatemala",
-    "15/01/2024","guardia","activo",
-    "Puesto Central",
-    "completa","domingo","8",
-    "3500","250",
-    "","","",
-    "",
-    "transferencia","Monetaria",
-    "si","activo",
-    "Banrural","000-123456-0",""]],
+  [
+    ["1234567890101","Juan García López","20/05/1990","masculino","soltero",
+     "12345678","9876543-2","55551234","","jgarcia@isp.gt","Guatemala",
+     "15/01/2024","guardia","activo",
+     "Puesto Central","1",
+     "completa","domingo","24",
+     "3500","250",
+     "","","",
+     "",
+     "transferencia","Monetaria",
+     "si","activo",
+     "Banrural","000-123456-0",""],
+    ["9876543210101","Pedro Ajú Choc","10/11/1988","masculino","casado",
+     "87654321","7654321-0","55559876","","paju@isp.gt","Guatemala",
+     "15/01/2024","guardia","activo",
+     "Puesto Central","2",
+     "completa","sabado","24",
+     "3500","250",
+     "","","",
+     "",
+     "transferencia","Monetaria",
+     "si","activo",
+     "Banrural","000-654321-0",""],
+  ],
   [16,30,16,12,14,16,12,14,16,25,25,
    16,20,15,
-   30,
+   30,14,
    14,14,14,
    12,22,
    12,12,12,
