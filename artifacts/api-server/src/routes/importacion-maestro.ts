@@ -748,7 +748,61 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
   }
   resultados.push(rUsuarios);
 
-  // ── 12. IGSS PATRONO ───────────────────────────────────────────────────────
+  // ── 12. ROLES DEL SISTEMA ─────────────────────────────────────────────────
+  const rolesRows = sheets["ROLES"] ?? sheets["roles"] ?? [];
+  const rRoles = emptyResult("Roles del Sistema");
+  rRoles.total = rolesRows.length;
+
+  const MODULOS_VALIDOS = new Set([
+    "dashboard","pizarron","seguimiento_ssa","pipeline_ssa","tareas","incidencias",
+    "custodias","cambios_estructurales","clientes","comercial","reportes","kpi",
+    "empleados","reclutamiento","anticipos","eventos_rrhh","alertas_rrhh","nomina",
+    "pre_planilla","planilla","turnos","cambios_salariales","prestaciones",
+    "solicitudes_vacaciones","planillas_especiales","libro_salarios","igss_planilla",
+    "carnets_qr","kiosco_solicitudes","solicitudes_eliminacion","usuarios",
+    "config_whatsapp","cms","simulador_wa","bodega","vehiculos","armeria",
+    "importacion","control_qr",
+  ]);
+
+  for (let i = 0; i < rolesRows.length; i++) {
+    const row = rolesRows[i];
+    const fila = i + 2;
+    const clave = trim(row["clave"]).toLowerCase().replace(/[^a-z0-9_]/g, "_");
+    const label = trim(row["label"]);
+    if (!clave || !label) {
+      rRoles.detalle.push({ fila, estado: "error", mensaje: "clave y label son obligatorios" });
+      rRoles.errores++; continue;
+    }
+    if (preview) { rRoles.detalle.push({ fila, estado: "ok" }); rRoles.exitosos++; continue; }
+    try {
+      const { rows: dup } = await pool.query(`SELECT clave FROM system_roles WHERE clave = $1`, [clave]);
+      if (dup.length) {
+        rRoles.detalle.push({ fila, estado: "omitido", mensaje: `Rol "${clave}" ya existe` });
+        rRoles.omitidos++; continue;
+      }
+      const color = trim(row["color"]) || "#6366F1";
+      await pool.query(
+        `INSERT INTO system_roles (clave, label, descripcion, color, es_sistema, activo)
+         VALUES ($1,$2,$3,$4,FALSE,TRUE)`,
+        [clave, label, trim(row["descripcion"]) || null, color]
+      );
+      // Asignar módulos indicados en la columna "modulos" (separados por coma)
+      const modStr = trim(row["modulos"]);
+      if (modStr) {
+        const mods = modStr.split(",").map((m: string) => m.trim().toLowerCase()).filter((m: string) => MODULOS_VALIDOS.has(m));
+        for (const mod of mods) {
+          await pool.query(
+            `INSERT INTO rol_permisos (rol_clave, modulo_clave) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+            [clave, mod]
+          ).catch(() => {});
+        }
+      }
+      rRoles.detalle.push({ fila, estado: "ok" }); rRoles.exitosos++;
+    } catch (e: any) { rRoles.detalle.push({ fila, estado: "error", mensaje: e.message }); rRoles.errores++; }
+  }
+  resultados.push(rRoles);
+
+  // ── 13. IGSS PATRONO ───────────────────────────────────────────────────────
   const igssRows = sheets["IGSS_PATRONO"] ?? sheets["igss_patrono"] ?? sheets["IGSS PATRONO"] ?? [];
   const rIgss = emptyResult("IGSS — Patrono");
   rIgss.total = igssRows.length;
