@@ -366,8 +366,7 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
 
     const sexo = sol.genero === "Masculino" ? "M" : sol.genero === "Femenino" ? "F" : null;
     const notasExtra = [
-      sol.municipio && sol.departamento ? `Domicilio: ${sol.municipio}, ${sol.departamento}` : null,
-      sol.puesto_solicitado ? `Puesto solicitado: ${sol.puesto_solicitado}` : null,
+      sol.puesto_solicitado ? `Plaza solicitada: ${sol.puesto_solicitado}` : null,
       sol.pretension_salarial ? `Pretensión salarial: Q${sol.pretension_salarial}` : null,
       `Creado automáticamente desde solicitud SOL-${String(sol.id).padStart(5, "0")}`,
     ].filter(Boolean).join(" | ");
@@ -376,12 +375,36 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
       INSERT INTO employees (
         nombre_completo, dpi, telefono, correo,
         fecha_nacimiento, sexo, estado_civil, nivel_educativo,
-        municipio, departamento,
+        municipio, departamento, direccion,
         foto_url, estado_laboral, tipo_personal, fecha_ingreso,
-        puesto, sueldo_base, notas, created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'activo',$12,CURRENT_DATE,$13,$14,$15,NOW(),NOW())
+        puesto, sueldo_base, notas, created_at, updated_at,
+        -- EMP-EXT-01
+        nit, igss_numero, banco, cuenta_bancaria, forma_pago,
+        num_dependencias, telefono_secundario,
+        -- SOL-EMP-FIELDS-01
+        nombre_contacto_emergencia, telefono_emergencia, parentesco_emergencia,
+        estatura, peso,
+        tiene_licencia, tipo_licencia, vigencia_licencia,
+        dpi_frente_url, dpi_reverso_url,
+        habilidades, tiene_vehiculo, licencia_armas,
+        disp_rotativo, disp_nocturno, disp_fds,
+        disponible_exterior, disponibilidad_horario,
+        lugar_nacimiento, profesion, tipo_vivienda, tiempo_residencia, renta_mensual,
+        nombre_padre, nombre_madre, nombre_conyuge,
+        facebook, instagram,
+        experiencia_seguridad, anios_experiencia_seg, empresa_anterior_seg,
+        tipos_seguridad, servicio_militar, rango_militar, unidad_militar, fue_policia
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'activo',$13,CURRENT_DATE,
+        $14,$15,$16,NOW(),NOW(),
+        $17,$18,$19,$20,$21,$22,$23,
+        $24,$25,$26,$27,$28,$29,$30,$31,$32,$33,
+        $34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,
+        $47,$48,$49,$50,$51,$52,$53,$54,$55,$56,$57,$58,$59
+      )
       RETURNING id
     `, [
+      /* $1-$12 básicos */
       sol.nombre_completo,
       sol.dpi || null,
       sol.telefono || null,
@@ -392,11 +415,67 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
       sol.grado_estudios || null,
       sol.municipio || null,
       sol.departamento || null,
+      sol.direccion || null,
       sol.foto_url || null,
+      /* $13-$16 laborales */
       tipoPersonal,
       puestoAsignado,
       sueldoAsignado,
       notasExtra || null,
+      /* $17-$23 EMP-EXT-01 */
+      sol.nit || null,
+      sol.igss || null,
+      sol.banco || null,
+      sol.num_cuenta || null,
+      sol.tipo_cuenta || null,
+      sol.num_dependientes ? parseInt(sol.num_dependientes) || 0 : 0,
+      sol.telefono_fijo || null,
+      /* $24-$26 contacto emergencia */
+      sol.nombre_contacto_emergencia || null,
+      sol.telefono_emergencia || null,
+      sol.parentesco_emergencia || null,
+      /* $27-$28 físicos */
+      sol.estatura || null,
+      sol.peso || null,
+      /* $29-$31 licencia conducir */
+      sol.tiene_licencia || null,
+      sol.tipo_licencia || null,
+      sol.vigencia_licencia || null,
+      /* $32-$33 DPI imágenes */
+      sol.dpi_frente_url || null,
+      sol.dpi_reverso_url || null,
+      /* $34-$42 habilidades y disponibilidad */
+      sol.habilidades || null,
+      sol.tiene_vehiculo || null,
+      sol.licencia_armas || null,
+      sol.disp_rotativo || null,
+      sol.disp_nocturno || null,
+      sol.disp_fds || null,
+      sol.disponible_exterior || null,
+      sol.disponibilidad_horario || null,
+      /* $43-$46 datos personales extendidos */
+      sol.lugar_nacimiento || null,
+      sol.profesion || null,
+      sol.tipo_vivienda || null,
+      sol.tiempo_residencia || null,
+      /* $47 */
+      sol.renta_mensual || null,
+      /* $48-$50 familia */
+      sol.nombre_padre || null,
+      sol.nombre_madre || null,
+      sol.nombre_conyuge || null,
+      /* $51-$52 redes */
+      sol.facebook || null,
+      sol.instagram || null,
+      /* $53-$59 seguridad previa */
+      sol.experiencia_seguridad || null,
+      sol.anios_experiencia || null,
+      sol.empresa_anterior || null,
+      sol.tipos_seguridad || null,
+      sol.servicio_militar || null,
+      sol.rango_militar || null,
+      sol.unidad_militar || null,
+      sol.fue_policia || null,
     ]);
 
     const empId = empRows[0].id;

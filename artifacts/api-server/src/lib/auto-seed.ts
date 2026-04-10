@@ -4247,5 +4247,58 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SOL-MERGE-01 — error (no bloqueante)");
   }
 
+  // ── SOL-EMP-FIELDS-01: columnas del formulario de solicitud en employees ──────
+  // Migra los campos del kiosco que no tenían columna en employees
+  try {
+    // Contacto de emergencia
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS nombre_contacto_emergencia VARCHAR(200)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS telefono_emergencia        VARCHAR(30)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS parentesco_emergencia      VARCHAR(60)`);
+    // Datos físicos
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS estatura                  VARCHAR(10)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS peso                      VARCHAR(10)`);
+    // Licencia de conducir
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS tiene_licencia            VARCHAR(3)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS tipo_licencia             VARCHAR(30)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS vigencia_licencia         VARCHAR(30)`);
+    // DPI imágenes
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS dpi_frente_url            VARCHAR(500)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS dpi_reverso_url           VARCHAR(500)`);
+    // Habilidades y disponibilidad
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS habilidades               TEXT`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS tiene_vehiculo            VARCHAR(3)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS licencia_armas            VARCHAR(3)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS disp_rotativo             VARCHAR(3)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS disp_nocturno             VARCHAR(3)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS disp_fds                  VARCHAR(3)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS disponible_exterior       VARCHAR(3)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS disponibilidad_horario    VARCHAR(100)`);
+    // Datos personales extendidos
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS lugar_nacimiento          VARCHAR(200)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS profesion                 VARCHAR(100)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS tipo_vivienda             VARCHAR(60)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS tiempo_residencia         VARCHAR(60)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS renta_mensual             VARCHAR(30)`);
+    // Familia principal
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS nombre_padre              VARCHAR(200)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS nombre_madre              VARCHAR(200)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS nombre_conyuge            VARCHAR(200)`);
+    // Redes sociales
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS facebook                  VARCHAR(200)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS instagram                 VARCHAR(200)`);
+    // Seguridad previa
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS experiencia_seguridad     VARCHAR(3)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS anios_experiencia_seg     VARCHAR(10)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS empresa_anterior_seg      VARCHAR(200)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS tipos_seguridad           VARCHAR(500)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS servicio_militar          VARCHAR(3)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS rango_militar             VARCHAR(60)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS unidad_militar            VARCHAR(100)`);
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS fue_policia               VARCHAR(3)`);
+    logger.info("Auto-migrate: SOL-EMP-FIELDS-01 columnas del formulario de solicitud en employees verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SOL-EMP-FIELDS-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }
