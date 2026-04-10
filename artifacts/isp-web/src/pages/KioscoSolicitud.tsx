@@ -578,14 +578,14 @@ function WarnBox({ children }: { children: React.ReactNode }) {
 function IgssField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [noTiene, setNoTiene] = useState(false);
   return (
-    <Field label="Afiliacion IGSS" required
-      hint="Es el numero que le asigna el Instituto Guatemalteco de Seguridad Social al afiliarse. Es obligatorio para ser contratado legalmente. Ejemplo: 1234567890">
+    <Field label="Afiliacion IGSS"
+      hint="Si ya tiene numero de IGSS, ingreseolo aqui. Si aun no tiene, puede continuar y presentarlo mas adelante. Ejemplo: 1234567890">
       {noTiene ? (
         <div className="bg-[#1c0a00] border-2 border-[#92400e] rounded-xl p-4">
-          <p className="text-amber-400 font-bold mb-2">Aviso: el numero de IGSS es obligatorio para ser contratado</p>
+          <p className="text-amber-400 font-bold mb-2">Recuerde tramitar su IGSS pronto</p>
           <p className="text-amber-300 text-sm leading-relaxed mb-3">
-            Sin numero de IGSS <strong>no puede ser contratado legalmente</strong>. Dirigase al IGSS mas cercano
-            antes de iniciar labores. El tramite es gratuito.
+            Puede continuar sin el numero de IGSS por ahora, pero debera presentarlo antes de iniciar labores.
+            El tramite es gratuito y rapido.
           </p>
           <div className="bg-[#0f0500] rounded-lg p-3 mb-3 text-sm">
             <p className="text-amber-400 font-semibold mb-1">IGSS Central:</p>
