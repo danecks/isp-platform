@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import * as XLSX from "xlsx";
+import { xlsxCompat as XLSX } from "@/lib/xlsxCompat";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "../layout/AdminLayout";
 import {
@@ -603,12 +603,12 @@ function LegacyImporterTab() {
       return;
     }
     const readXlsxFile = (await import("read-excel-file/browser")).default;
-    const rawRows = await readXlsxFile(file);
+    const rawRows = (await readXlsxFile(file) as unknown) as any[][];
     if (!rawRows || rawRows.length < 2) { alert("El archivo no tiene datos válidos"); return; }
     const headers = rawRows[0].map(String);
     const data: Record<string, any>[] = rawRows.slice(1).map(row => {
       const obj: Record<string, any> = {};
-      headers.forEach((h, i) => {
+      headers.forEach((h: string, i: number) => {
         const val = row[i];
         obj[h] = val instanceof Date ? val.toISOString().slice(0, 10) : (val ?? null);
       });
@@ -1078,12 +1078,12 @@ function LegacyClientesTab() {
       alert("Solo se aceptan archivos .xlsx"); return;
     }
     const readXlsxFile = (await import("read-excel-file/browser")).default;
-    const rawRows = await readXlsxFile(file);
+    const rawRows = (await readXlsxFile(file) as unknown) as any[][];
     if (!rawRows || rawRows.length < 2) { alert("El archivo no tiene datos válidos"); return; }
     const headers = rawRows[0].map(String);
     const data: Record<string, any>[] = rawRows.slice(1).map(row => {
       const obj: Record<string, any> = {};
-      headers.forEach((h, i) => {
+      headers.forEach((h: string, i: number) => {
         const val = row[i];
         obj[h] = val instanceof Date ? val.toISOString().slice(0, 10) : (val ?? null);
       });
@@ -1515,10 +1515,10 @@ function DetalleLibSalTab() {
   const parseFile = useCallback((file: File) => {
     setResult(null); setPreview(null);
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const data = new Uint8Array(e.target!.result as ArrayBuffer);
-        const wb = XLSX.read(data, { type: "array" });
+        const wb = await XLSX.read(data, { type: "array" });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const parsed = XLSX.utils.sheet_to_json<DetalleLibSalRow>(ws, { defval: 0 });
         setRows(parsed);
@@ -1897,10 +1897,10 @@ function LibroSalariosTab() {
     setResult(null);
     setFormatoDetectado(null);
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const data = new Uint8Array(e.target!.result as ArrayBuffer);
-        const wb = XLSX.read(data, { type: "array" });
+        const wb = await XLSX.read(data, { type: "array" });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: 0 });
         // Detectar formato por las columnas de la primera fila
@@ -2166,8 +2166,9 @@ function DevengadosEmpleadoTab() {
 
   const parseFile = useCallback((file: File) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const wb = XLSX.read(e.target?.result, { type: "array" });
+    reader.onload = async (e) => {
+      const buf = new Uint8Array(e.target?.result as ArrayBuffer);
+      const wb = await XLSX.read(buf, { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const data = XLSX.utils.sheet_to_json<DevPlaRow>(ws, { defval: 0 });
       setRows(data);
@@ -2365,10 +2366,10 @@ function DetallePrestacionesTab() {
   const parseFile = useCallback((file: File) => {
     setResult(null);
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const data = new Uint8Array(e.target!.result as ArrayBuffer);
-        const wb = XLSX.read(data, { type: "array" });
+        const wb = await XLSX.read(data, { type: "array" });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: 0 });
         const parsed: DPRow[] = raw.map((r) => ({
@@ -2710,10 +2711,10 @@ function AlmacenTab() {
   const processFile = (file: File) => {
     setFileName(file.name);
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const data = new Uint8Array(e.target!.result as ArrayBuffer);
-        const wb   = XLSX.read(data, { type: "array" });
+        const wb   = await XLSX.read(data, { type: "array" });
         // Tomar la primera hoja del libro
         const ws   = wb.Sheets[wb.SheetNames[0]];
         const raw  = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: "" });
@@ -2986,12 +2987,12 @@ function DiGECAMTab() {
 
   const handleFile = useCallback(async (file: File) => {
     const ext = file.name.toLowerCase();
-    if (!ext.endsWith(".xls") && !ext.endsWith(".xlsx")) {
-      alert("Solo se aceptan archivos .xls o .xlsx del DIGECAM"); return;
+    if (!ext.endsWith(".xlsx")) {
+      alert("Solo se aceptan archivos .xlsx del DIGECAM"); return;
     }
     try {
       const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array", cellDates: false });
+      const wb = await XLSX.read(buf, { type: "array", cellDates: false });
 
       const SHEET_CONFIG = [
         { name: "ARMAS EN SERVICIO",  headerRow: 12, estado: "activo",
