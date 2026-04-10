@@ -56,6 +56,7 @@ import { rolesRouter } from "./roles";
 import { tiposPersonalConfigRouter } from "./tipos-personal-config";
 import { igssRouter } from "./igss";
 import { solicitudesEmpleoRouter } from "./solicitudes-empleo";
+import { resetDatosRouter } from "./reset-datos";
 
 const router: IRouter = Router();
 
@@ -116,5 +117,6 @@ router.use(rolesRouter);
 router.use(tiposPersonalConfigRouter);
 router.use(igssRouter);
 router.use(solicitudesEmpleoRouter);
+router.use(resetDatosRouter);
 
 export default router;
