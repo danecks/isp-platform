@@ -4300,5 +4300,13 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SOL-EMP-FIELDS-01 — error (no bloqueante)");
   }
 
+  // ── ANT-COBRO-01: campo monto_cobro en anticipos (cantidad + 10%) ────────────
+  try {
+    await pool.query(`ALTER TABLE anticipos ADD COLUMN IF NOT EXISTS monto_cobro NUMERIC(10,2)`);
+    logger.info("Auto-migrate: ANT-COBRO-01 anticipos.monto_cobro verificado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: ANT-COBRO-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

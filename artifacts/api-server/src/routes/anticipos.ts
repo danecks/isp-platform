@@ -107,7 +107,7 @@ anticiposRouter.get("/anticipos", async (req, res) => {
 
 // ── POST /api/anticipos — crear anticipo manual ────────────────────────────
 anticiposRouter.post("/anticipos", async (req, res) => {
-  const { nombre, cantidad, empleadoId, puesto, dpi, telefono, observaciones } = req.body ?? {};
+  const { nombre, cantidad, empleadoId, puesto, dpi, telefono, observaciones, origen: origenBody } = req.body ?? {};
 
   if (!nombre || !cantidad) {
     return res.status(400).json({ error: "nombre y cantidad son requeridos" });
@@ -138,6 +138,8 @@ anticiposRouter.post("/anticipos", async (req, res) => {
       }
     }
 
+    const montoCobro = Math.round(monto * 1.1 * 100) / 100; // +10% de comisión
+
     const [created] = await db
       .insert(anticiposTable)
       .values({
@@ -147,7 +149,8 @@ anticiposRouter.post("/anticipos", async (req, res) => {
         dpi: dpi ? String(dpi).trim() : null,
         telefono: telefono ? String(telefono).trim() : null,
         cantidad: monto,
-        origen: "manual",
+        montoCobro: String(montoCobro),
+        origen: origenBody === "kiosco" || origenBody === "whatsapp" ? origenBody : "manual",
         estado: "pendiente",
         periodo,
         observaciones: observaciones ? String(observaciones).trim() : null,

@@ -352,7 +352,8 @@ export const anticiposTable = pgTable("anticipos", {
   dpi: varchar("dpi", { length: 20 }),
   telefono: varchar("telefono", { length: 50 }),
   // Solicitud
-  cantidad: integer("cantidad").notNull(),               // Monto en Quetzales (entero)
+  cantidad: integer("cantidad").notNull(),               // Monto solicitado en Quetzales
+  montoCobro: numeric("monto_cobro", { precision: 10, scale: 2 }),  // Monto a descontar (cantidad + 10%)
   origen: varchar("origen", { length: 50 }).notNull().default("manual"), // "whatsapp" | "manual"
   estado: varchar("estado", { length: 50 }).notNull().default("pendiente"),
   // "pendiente" | "aprobada" | "rechazada" | "pagada"

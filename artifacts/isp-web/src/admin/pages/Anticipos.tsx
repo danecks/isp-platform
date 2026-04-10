@@ -358,7 +358,8 @@ export default function Anticipos() {
                     <th className="text-left px-4 py-3 font-medium">Colaborador</th>
                     <th className="text-left px-4 py-3 font-medium hidden md:table-cell">Puesto</th>
                     <th className="text-left px-4 py-3 font-medium hidden lg:table-cell">DPI</th>
-                    <th className="text-right px-4 py-3 font-medium">Monto</th>
+                    <th className="text-right px-4 py-3 font-medium">Solicitado</th>
+                    <th className="text-right px-4 py-3 font-medium hidden md:table-cell">A descontar</th>
                     <th className="text-left px-4 py-3 font-medium">Canal</th>
                     <th className="text-left px-4 py-3 font-medium">Estado</th>
                     <th className="text-left px-4 py-3 font-medium hidden xl:table-cell">Período</th>
@@ -396,6 +397,9 @@ export default function Anticipos() {
                       </td>
                       <td className="px-4 py-3 text-right font-bold text-white">
                         {fmtQ(a.cantidad)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-amber-400 hidden md:table-cell">
+                        {a.montoCobro ? fmtQ(Number(a.montoCobro)) : fmtQ(a.cantidad * 1.1)}
                       </td>
                       <td className="px-4 py-3">
                         {a.origen === "whatsapp" ? (
@@ -476,8 +480,14 @@ export default function Anticipos() {
                 <span className="text-white/70">{editando.telefono ?? "—"}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-white/40">Monto</span>
+                <span className="text-white/40">Monto solicitado</span>
                 <span className="text-white font-bold text-lg">{fmtQ(editando.cantidad)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-white/40">Monto a descontar (+10%)</span>
+                <span className="text-amber-400 font-bold text-lg">
+                  {editando.montoCobro ? fmtQ(Number(editando.montoCobro)) : fmtQ(editando.cantidad * 1.1)}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-white/40">Período</span>

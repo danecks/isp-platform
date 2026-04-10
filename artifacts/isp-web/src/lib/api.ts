@@ -182,6 +182,7 @@ export interface Anticipo {
   dpi: string | null;
   telefono: string | null;
   cantidad: number;
+  montoCobro: string | null;   // cantidad + 10% de comisión
   origen: string;
   estado: string;
   periodo: string | null;

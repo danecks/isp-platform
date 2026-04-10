@@ -366,6 +366,13 @@ function PasoMonto({ empleado, limite, monto, setMonto, onNext, onBack, errorMon
               <p className="text-red-400 text-xs">El monto excede el saldo disponible de Q{disponible?.toLocaleString("es-GT")}.</p>
             )}
             {errorMonto && <p className="text-red-400 text-xs">{errorMonto}</p>}
+            {montoNum > 0 && !excede && (
+              <div className="bg-amber-950/30 border border-amber-500/30 rounded-xl px-4 py-3">
+                <p className="text-amber-300 text-xs font-semibold uppercase tracking-wider mb-1">Descuento de planilla</p>
+                <p className="text-amber-200 text-xl font-black">Q{(Math.round(montoNum * 1.1 * 100) / 100).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</p>
+                <p className="text-amber-400/70 text-xs mt-0.5">Incluye 10% de comisión sobre el monto solicitado</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -513,7 +520,13 @@ function PasoConfirmacion({ empleado, monto, fotoUrl, onConfirmar, onBack, envia
           </div>
           <div className="border-t border-[#1e3a6e] pt-3 mt-1 flex justify-between items-center">
             <span className="text-[#64748b] text-sm">Monto solicitado</span>
-            <span className="text-white text-2xl font-black">Q{monto.toLocaleString("es-GT")}</span>
+            <span className="text-white text-xl font-black">Q{monto.toLocaleString("es-GT")}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-amber-400/80 text-sm">Descuento de planilla (+10%)</span>
+            <span className="text-amber-300 text-xl font-black">
+              Q{(Math.round(monto * 1.1 * 100) / 100).toLocaleString("es-GT", { minimumFractionDigits: 2 })}
+            </span>
           </div>
         </div>
         <p className="text-[#64748b] text-xs text-center">
