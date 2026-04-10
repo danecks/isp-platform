@@ -95,7 +95,7 @@ const instrRows = [
   ["  puesto_operativo : nombre EXACTO del puesto (igual que en hoja PUESTOS)"],
   ["  sueldo_base      : salario mensual en quetzales (ej: 3500)"],
   ["  bonificacion_incentivo : bonificación mensual (ej: 250)"],
-  ["  forma_pago       : mensual | quincenal | semanal | transferencia | cheque | efectivo"],
+  ["  forma_pago       : Monetaria | Ahorro   (tipo de cuenta bancaria, puede quedar vacío)"],
   ["  tipo_personal    : guardia | supervisor | jefe_servicio | administrativo_bodega | administrativo_rrhh | gerencia"],
   ["  estado_laboral   : activo | suspendido | baja | licencia"],
   ["  aplica_igss      : si | no"],
@@ -151,7 +151,7 @@ const wsColaboradores = makeSheet(
   // NOMBRES DE COLUMNA EXACTOS — el sistema los lee con estos nombres:
   // tipo_personal: guardia | supervisor | jefe_servicio | administrativo_bodega | administrativo_rrhh | gerencia
   // estado_laboral: activo | suspendido | baja | licencia
-  // forma_pago: mensual | quincenal | semanal | transferencia | cheque | efectivo
+  // forma_pago: Monetaria | Ahorro   (tipo de cuenta bancaria — puede dejarse vacío)
   // aplica_igss: si | no
   // estado_igss: activo | no_activo | pendiente_regularizacion
   // puesto_operativo: debe coincidir EXACTAMENTE con el nombre en hoja PUESTOS
@@ -166,7 +166,7 @@ const wsColaboradores = makeSheet(
     "12345678","9876543-2","55551234","jgarcia@isp.gt","Guatemala",
     "15/01/2024","guardia","activo",
     "Puesto Central",
-    "3500","250","mensual",
+    "3500","250","Monetaria",
     "si","activo",
     "","",""]],
   [16,30,16,12,14,16,12,14,25,25,
