@@ -1,0 +1,298 @@
+Actúa como un **auditor senior de seguridad de aplicaciones web** y revisa mi código actual de forma **crítica, técnica y práctica**.
+
+Quiero que analices específicamente estos 3 módulos públicos, es decir, formularios a los que el usuario puede entrar **desde cualquier lugar en internet**:
+
+1. **Solicitud de anticipo**
+2. **Actualización de datos**
+3. **Formulario de solicitud de empleo**
+
+## Objetivo
+
+Necesito que me digas **qué niveles de seguridad existen actualmente en el código**, qué controles sí están implementados, cuáles faltan, qué tan grave es cada hallazgo y qué riesgo real tenemos hoy.
+
+## Contexto importante
+
+### 1) Solicitud de anticipo
+
+* Este módulo es especialmente sensible porque se trata de un **anticipo de sueldo** y el dinero puede llegar **directamente al colaborador**.
+* En ese flujo puede existir lectura de DPI, OCR, validación contra base de datos, creación de solicitud y revisión/aprobación interna.
+* Evalúa este módulo como un **flujo financiero sensible** con riesgo de fraude y suplantación.
+
+### 2) Actualización de datos
+
+* Este módulo también es **altamente sensible**, porque desde allí el usuario podría modificar información que impacta pagos, especialmente:
+
+  * **cuentas bancarias**
+  * datos personales
+  * teléfonos
+  * correos
+  * direcciones
+  * documentos
+* Si un atacante logra cambiar la cuenta bancaria del colaborador, podría redirigir depósitos o pagos.
+* Evalúa este módulo también como un **flujo financiero sensible** con alto riesgo de fraude, suplantación y secuestro de identidad.
+
+### 3) Solicitud de empleo
+
+* Este módulo también es público y puede recibir datos personales y archivos.
+* Evalúa riesgos de abuso, spam, bots, fuga de datos y subida maliciosa de archivos.
+
+## Supuestos de amenaza
+
+Asume que estos 3 formularios públicos están expuestos a:
+
+* bots
+* spam
+* fuerza bruta
+* suplantación de identidad
+* manipulación de requests
+* enumeración de usuarios
+* abuso de archivos subidos
+* fuga de datos personales
+* fraude
+* cambio no autorizado de cuentas bancarias
+* modificación indebida de datos del colaborador
+
+## Lo que quiero que revises
+
+Haz una auditoría del código y dime si existen o no controles de seguridad en estas áreas:
+
+### 1. Seguridad de acceso y autenticación
+
+* autenticación requerida o no
+* validación de sesión
+* autorización por roles
+* protección de rutas sensibles
+* protección de dashboards internos
+* MFA o ausencia de MFA
+* reautenticación para acciones críticas
+* confirmación extra para cambios sensibles como cuenta bancaria
+
+### 2. Seguridad de formularios públicos
+
+* validación frontend vs backend
+* sanitización de inputs
+* validación estricta de campos
+* protección contra CSRF
+* validación de Origin / Referer
+* rate limiting
+* captcha / anti-bot
+* bloqueo por abuso
+* protección contra replay o reenvío de solicitudes
+* límites por IP, dispositivo o usuario
+* protección contra automatización
+
+### 3. Seguridad de identidad y verificación
+
+* cómo se verifica realmente la identidad del usuario
+* si OCR/DPI se usa como identificación o como autenticación
+* si existe OTP, segundo factor o validación adicional
+* si la foto del DPI por sí sola permite avanzar
+* si hay riesgo de usar imágenes robadas, reenviadas o editadas
+* si hay controles contra suplantación
+* si existe verificación reforzada para cambiar datos financieros
+
+### 4. Seguridad de archivos
+
+* carga de imágenes o documentos
+* validación de tipo MIME real
+* validación por extensión
+* límites de tamaño
+* almacenamiento seguro
+* nombres aleatorios de archivos
+* exposición pública de archivos
+* riesgo de subida maliciosa
+* escaneo o validación de contenido
+
+### 5. Seguridad de datos personales
+
+* manejo de DPI, teléfono, correo, dirección, cuenta bancaria, etc.
+* exposición de PII en logs
+* exposición de datos sensibles en respuestas API
+* cifrado o falta de cifrado
+* protección de datos en tránsito
+* protección de datos en reposo
+* minimización de datos expuestos al frontend
+* enmascaramiento de datos sensibles
+* protección especial para datos financieros
+
+### 6. Seguridad del flujo de solicitud de anticipo
+
+* riesgo de suplantación
+* posibilidad de que alguien solicite un anticipo con datos de otra persona
+* validación del colaborador en backend
+* validación de elegibilidad para anticipo
+* validación de monto máximo
+* validación de frecuencia o límites
+* trazabilidad completa de la solicitud
+* auditoría de aprobación/rechazo
+* riesgo financiero real
+* separación entre identificación, validación y autorización de pago
+
+### 7. Seguridad del flujo de actualización de datos
+
+* posibilidad de cambiar cuenta bancaria sin validación fuerte
+* posibilidad de modificar datos personales de otro colaborador
+* riesgo de secuestro de cuenta o perfil
+* existencia de verificación reforzada para cambios bancarios
+* notificación al colaborador cuando se cambian datos sensibles
+* doble confirmación o aprobación para cambios financieros
+* bitácora de cambio de cuenta bancaria
+* historial de cambios
+* posibilidad de fraude interno o externo
+* validación de titularidad o consistencia de la cuenta bancaria
+* controles para evitar cambios silenciosos de cuenta de depósito
+
+### 8. Seguridad del formulario de solicitud de empleo
+
+* abuso por bots o spam
+* carga insegura de CVs o documentos
+* validación deficiente
+* exposición de datos del postulante
+* almacenamiento seguro de archivos y PII
+* posibilidad de inyección o abuso del formulario
+
+### 9. Seguridad de APIs y backend
+
+* endpoints expuestos
+* validaciones server-side
+* control de errores
+* mensajes que permitan enumeración
+* protección contra IDOR
+* protección contra mass assignment
+* protección contra inyección
+* manejo de CORS
+* seguridad de cookies
+* headers de seguridad
+* manejo de tokens
+* secretos en variables de entorno
+* secretos hardcodeados
+
+### 10. Seguridad de base de datos
+
+* consultas parametrizadas
+* riesgo SQL injection
+* permisos excesivos
+* separación de ambientes
+* trazabilidad de cambios
+* auditoría de registros sensibles
+* protección de campos financieros y personales
+
+### 11. Observabilidad y respuesta
+
+* logs de seguridad
+* auditoría de acciones críticas
+* registro de IP, user-agent, timestamps
+* alertas por abuso
+* trazabilidad de rechazos/aprobaciones
+* trazabilidad de cambios de cuenta bancaria
+* capacidad de investigar fraude o incidente
+
+## Cómo quiero la respuesta
+
+Quiero una respuesta **ordenada, técnica y accionable** con este formato exacto:
+
+### A. Resumen ejecutivo
+
+* Nivel de seguridad general actual: **Muy bajo / Bajo / Medio / Bueno / Alto**
+* Nivel de riesgo por módulo:
+
+  * Solicitud de anticipo:
+  * Actualización de datos:
+  * Solicitud de empleo:
+
+### B. Hallazgos por módulo
+
+Para cada módulo, indícame:
+
+* controles de seguridad encontrados
+* controles ausentes
+* vulnerabilidades probables
+* nivel de riesgo: **Crítico / Alto / Medio / Bajo**
+* explicación clara del impacto real
+
+### C. Hallazgos técnicos detallados
+
+Haz una tabla o lista con:
+
+* hallazgo
+* dónde está en el código
+* evidencia
+* severidad
+* riesgo de negocio
+* recomendación técnica concreta
+
+### D. Hallazgos especialmente críticos
+
+Separa explícitamente los hallazgos que podrían causar:
+
+* fraude
+* suplantación de identidad
+* fuga de datos personales
+* aprobación indebida de anticipo
+* cambio no autorizado de cuenta bancaria
+* redirección de depósitos
+* manipulación de solicitudes
+* acceso indebido a dashboard interno
+
+### E. Controles existentes detectados
+
+Haz una lista clara de los controles que sí existen actualmente, por ejemplo:
+
+* validación backend
+* uso de HTTPS
+* tokens CSRF
+* sesiones seguras
+* rate limiting
+* logs
+* roles
+* MFA
+* etc.
+
+### F. Controles faltantes prioritarios
+
+Ordénalos así:
+
+1. **Críticos**
+2. **Importantes**
+3. **Recomendables**
+
+### G. Plan de remediación
+
+Dame un plan por fases:
+
+* **Fase 1: urgente**
+* **Fase 2: endurecimiento**
+* **Fase 3: mejora operativa**
+
+## Instrucciones de auditoría
+
+* No me digas solo “parece seguro”.
+* Quiero que inspecciones rutas, controllers, middlewares, validadores, APIs, auth, upload handlers, queries, configs y variables de entorno usadas en estos módulos.
+* Si no encuentras algo, dilo claramente: **“no se encontró evidencia de…”**
+* No asumas que una validación frontend protege el backend.
+* Si detectas controles débiles, clasifícalos como débiles aunque existan.
+* Si algo depende solo de Referer, dilo expresamente como **seguridad insuficiente**.
+* Si OCR o foto de DPI se usan como prueba principal de identidad, dilo expresamente como **autenticación insuficiente para operación financiera**.
+* Si el cambio de cuenta bancaria puede hacerse sin verificación reforzada, clasifícalo como **vulnerabilidad crítica**.
+* Señala cualquier flujo que permita fraude por suplantación.
+* Señala cualquier endpoint público que pueda ser automatizado o abusado.
+* Señala cualquier respuesta de API que filtre demasiada información.
+* Si encuentras buenas prácticas, repórtalas también.
+
+## Criterio especial para anticipo y actualización de datos
+
+Quiero que ambos módulos se evalúen como **flujos financieros sensibles**, no como formularios comunes, porque:
+
+* uno puede terminar en desembolso directo al colaborador;
+* el otro puede cambiar la cuenta bancaria a la que se deposita.
+
+Por lo tanto, revisa si el código realmente está al nivel de una operación que puede afectar dinero real y datos sensibles.
+
+## Entregable final
+
+Al final dame estas 4 cosas:
+
+1. **Calificación final de seguridad por módulo**
+2. **Top 10 vulnerabilidades o debilidades más importantes**
+3. **Lista exacta de cambios que debemos implementar primero**
+4. **Qué controles mínimos deberían existir obligatoriamente antes de poner estos módulos en producción**
