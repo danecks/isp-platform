@@ -185,7 +185,7 @@ export default function AnuncioPlazas() {
               Prestaciones de ley · Sueldo competitivo
             </div>
             <div style={{ color: "#475569", fontSize: 9 }}>
-              www.isp-gt.com
+              www.ispsa.net
             </div>
           </div>
         </div>
