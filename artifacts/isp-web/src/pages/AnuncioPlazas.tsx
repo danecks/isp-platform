@@ -133,8 +133,8 @@ export default function AnuncioPlazas() {
                 <div style={{ color: "#cbd5e1", fontSize: 10, lineHeight: 1.6 }}>
                   Mayor de 18 años<br />
                   DPI vigente<br />
-                  Sin antecedentes penales y policiacos<br />
-                  6to primaria
+                  Sin antecedentes penales y policiacos vigentes<br />
+                  3ro básico
                 </div>
               </div>
             </div>
