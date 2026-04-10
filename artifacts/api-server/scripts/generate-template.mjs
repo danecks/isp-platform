@@ -89,6 +89,8 @@ const instrRows = [
   ["13. MODULOS"],
   ["14. IGSS_PATRONO"],
   [],
+  ["FORMATO DE FECHAS: dd/mm/aaaa   Ejemplo: 15/01/2024"],
+  [],
   ["MÓDULOS VÁLIDOS (columnas modulos en ROLES / modulo_clave en MODULOS):"],
   ...MODULOS.map(([clave, label, seccion]) => [`  ${clave}  →  ${label}  (${seccion})`]),
 ];
@@ -101,7 +103,7 @@ const wsClientes = makeSheet(
    "igss_aplica","igss_codigo_centro","igss_direccion","igss_zona",
    "igss_departamento","igss_municipio","igss_codigo_actividad",
    "igss_contacto","igss_telefono","igss_email","notas"],
-  [["Comercializadora Ejemplo","Ejemplo S.A.","1234567-8","Comercio","2024-01-15",
+  [["Comercializadora Ejemplo","Ejemplo S.A.","1234567-8","Comercio","15/01/2024",
     "si","01","5a Calle 5-50","1","1","1","0851","Juan Pérez","55551234","igss@ejemplo.com",""]],
   [30,25,15,15,20,12,20,30,8,15,15,20,20,15,25,30]
 );
@@ -125,9 +127,9 @@ const wsColaboradores = makeSheet(
    "numero_igss","nit","telefono","correo","direccion",
    "departamento","municipio","fecha_ingreso","puesto_nombre",
    "turno_nombre","salario","bonificacion","tipo_pago","activo"],
-  [["1234567890101","Juan García López","1990-05-20","masculino","soltero",
+  [["1234567890101","Juan García López","20/05/1990","masculino","soltero",
     "12345678","9876543-2","55551234","jgarcia@isp.gt","5a Avenida 1-23 Zona 1",
-    "Guatemala","Guatemala Ciudad","2024-01-15","Puesto Central",
+    "Guatemala","Guatemala Ciudad","15/01/2024","Puesto Central",
     "Turno Diurno 8h","3500","250","mensual","si"]],
   [16,30,16,12,14,16,12,14,25,35,18,22,16,28,25,10,12,12,8]
 );
@@ -136,7 +138,7 @@ const wsArmas = makeSheet(
   ["tipo","marca","modelo","serie","calibre","estado","propietario",
    "fecha_registro","notas","asignado_a_dpi"],
   [["pistola","Glock","17","ABC123","9mm","activo","empresa",
-    "2024-01-01","","1234567890101"]],
+    "01/01/2024","","1234567890101"]],
   [15,15,15,20,12,12,18,16,30,18]
 );
 
@@ -163,7 +165,7 @@ const wsBodArt = makeSheet(
 
 const wsAnticipos = makeSheet(
   ["colaborador_dpi","fecha","monto","descripcion","estado"],
-  [["1234567890101","2024-03-01","500","Anticipo quincena","pagado"]],
+  [["1234567890101","01/03/2024","500","Anticipo quincena","pagado"]],
   [18,14,12,35,14]
 );
 
