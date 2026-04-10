@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { Trash2, X, Clock, LogOut } from "lucide-react";
 import { AdminSidebar } from "./AdminSidebar";
@@ -35,20 +35,76 @@ function DeleteModeBanner() {
   );
 }
 
+const WARN_SECONDS = 5 * 60;
+
+function fmt(s: number) {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${String(sec).padStart(2, "0")}`;
+}
+
 function IdleWarningModal({ onStay, onLogout }: { onStay: () => void; onLogout: () => void }) {
+  const [seconds, setSeconds] = useState(WARN_SECONDS);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    setSeconds(WARN_SECONDS);
+    intervalRef.current = setInterval(() => {
+      setSeconds((prev) => {
+        if (prev <= 1) {
+          clearInterval(intervalRef.current!);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, []);
+
+  useEffect(() => {
+    if (seconds === 0) onLogout();
+  }, [seconds, onLogout]);
+
+  const urgent = seconds <= 60;
+  const pct = (seconds / WARN_SECONDS) * 100;
+
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-      <div className="bg-[#0c1628] border border-yellow-500/30 rounded-2xl w-full max-w-sm shadow-2xl p-6 text-center">
-        <div className="flex items-center justify-center w-14 h-14 rounded-full bg-yellow-500/10 border border-yellow-500/20 mx-auto mb-4">
-          <Clock className="w-7 h-7 text-yellow-400 animate-pulse" />
+      <div className={`bg-[#0c1628] border rounded-2xl w-full max-w-sm shadow-2xl p-6 text-center transition-colors duration-500 ${
+        urgent ? "border-red-500/40" : "border-yellow-500/30"
+      }`}>
+        {/* Ícono */}
+        <div className={`flex items-center justify-center w-14 h-14 rounded-full mx-auto mb-4 border transition-colors duration-500 ${
+          urgent
+            ? "bg-red-500/10 border-red-500/25"
+            : "bg-yellow-500/10 border-yellow-500/20"
+        }`}>
+          <Clock className={`w-7 h-7 transition-colors duration-500 ${urgent ? "text-red-400 animate-pulse" : "text-yellow-400"}`} />
         </div>
-        <h2 className="text-base font-bold text-white mb-1">¿Sigues ahí?</h2>
-        <p className="text-sm text-white/50 mb-1">
-          Tu sesión se cerrará en <span className="text-yellow-400 font-semibold">5 minutos</span> por inactividad.
+
+        <h2 className="text-base font-bold text-white mb-2">¿Sigues ahí?</h2>
+
+        {/* Contador grande */}
+        <div className={`text-4xl font-mono font-bold mb-1 tabular-nums transition-colors duration-500 ${
+          urgent ? "text-red-400" : "text-yellow-400"
+        }`}>
+          {fmt(seconds)}
+        </div>
+
+        {/* Barra de progreso */}
+        <div className="w-full h-1.5 bg-white/10 rounded-full mb-3 overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-1000 ${urgent ? "bg-red-400" : "bg-yellow-400"}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+
+        <p className="text-sm text-white/40 mb-6">
+          {urgent
+            ? "La sesión se cerrará en menos de un minuto"
+            : "Tu sesión se cerrará por inactividad. Haz clic en Continuar para seguir."}
         </p>
-        <p className="text-xs text-white/30 mb-6">
-          Por seguridad, el sistema cierra la sesión tras 1 hora sin actividad.
-        </p>
+
         <div className="flex gap-3">
           <button
             onClick={onLogout}
@@ -59,7 +115,11 @@ function IdleWarningModal({ onStay, onLogout }: { onStay: () => void; onLogout: 
           </button>
           <button
             onClick={onStay}
-            className="flex-1 h-9 rounded-lg bg-primary text-[#050d1a] text-sm font-bold hover:bg-primary/90 transition-colors"
+            className={`flex-1 h-9 rounded-lg text-sm font-bold transition-colors ${
+              urgent
+                ? "bg-red-500 hover:bg-red-400 text-white"
+                : "bg-primary hover:bg-primary/90 text-[#050d1a]"
+            }`}
           >
             Continuar
           </button>
