@@ -103,8 +103,9 @@ solicitudesEliminacionRouter.patch("/solicitudes-eliminacion/:id", async (req, r
         return res.status(400).json({ error: `Entidad desconocida: ${sol.entidad}` });
       }
 
-      // Columna PK según tabla
-      const pkCol = sol.entidad === "empleado" ? "id" : "id";
+      // `tabla` proviene exclusivamente del mapa estático ENTIDAD_TABLA (allowlist),
+      // nunca de input directo del usuario, por lo que la interpolación es segura.
+      // El valor de sol.entidad_id se pasa como parámetro para prevenir SQL injection.
       await client.query(
         `DELETE FROM ${tabla} WHERE id = $1`,
         [sol.entidad_id]
