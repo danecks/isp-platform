@@ -21,6 +21,16 @@ import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage"
 
 const MAX_FOTO_BYTES = 5 * 1024 * 1024; // 5 MB
 
+/** Elimina tildes/diacríticos de un nombre y lo deja en mayúsculas */
+function normalizarNombre(str: string): string {
+  if (!str) return str;
+  return str
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .trim();
+}
+
 const pinRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 8,
@@ -138,6 +148,9 @@ No incluyas explicaciones, solo el JSON.`,
       logger.warn({ content }, "extraer-dpi: no se pudo parsear JSON de IA");
     }
 
+    // Normalizar nombre: sin tildes, en mayúsculas
+    if (datos.nombre_completo) datos.nombre_completo = normalizarNombre(datos.nombre_completo);
+
     res.json({ datos });
   } catch (err) {
     logger.error({ err }, "solicitudes-empleo/extraer-dpi error");
@@ -203,7 +216,7 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo", async (req: Request, res: Re
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
       RETURNING id, created_at
     `, [
-      nombre_completo.trim(), fecha_nacimiento || null, dpi || null, genero || null, estado_civil || null,
+      normalizarNombre(nombre_completo), fecha_nacimiento || null, dpi || null, genero || null, estado_civil || null,
       telefono || null, telefono_emergencia || null, nombre_contacto_emergencia || null,
       correo || null, direccion || null, municipio || null, departamento || null,
       nombre_padre || null, nombre_madre || null, num_dependientes || 0,
