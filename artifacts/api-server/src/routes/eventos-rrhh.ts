@@ -404,6 +404,54 @@ eventosRrhhRouter.patch("/rrhh/eventos/:id/estado", async (req, res) => {
       await propagarEstadoANovedades(evento, estado, usuario, client);
     }
 
+    // Si se rechaza un permiso (sin goce o con goce), crear evento de falta automático
+    if (estado === "rechazado" && ["permiso_sin_goce", "permiso_con_goce"].includes(evento.tipo_evento)) {
+      const { rows: evOrig } = await client.query(
+        `SELECT employee_id, employee_nombre, employee_dpi, fecha, fecha_fin,
+                puesto_nombre, cliente_nombre, usuario_generador
+         FROM eventos_rrhh WHERE id = $1`, [id]
+      );
+      if (evOrig.length > 0) {
+        const eo = evOrig[0];
+        const { rows: faltaEv } = await client.query(`
+          INSERT INTO eventos_rrhh
+            (employee_id, employee_nombre, employee_dpi, tipo_evento, fecha, fecha_fin,
+             puesto_nombre, cliente_nombre, generado_desde, estado,
+             observaciones, usuario_generador, documentos_generados)
+          VALUES ($1, $2, $3, 'falta', $4, $5, $6, $7, 'rechazo_permiso',
+                  'pendiente_aprobacion',
+                  $8, $9, '[]')
+          RETURNING id
+        `, [
+          eo.employee_id, eo.employee_nombre, eo.employee_dpi,
+          eo.fecha, eo.fecha_fin,
+          eo.puesto_nombre, eo.cliente_nombre,
+          `Falta generada automáticamente por rechazo de ${evento.tipo_evento === "permiso_sin_goce" ? "permiso sin goce" : "permiso con goce"} (ERH #${id})`,
+          eo.usuario_generador ?? usuario ?? "sistema",
+        ]);
+        const faltaId = faltaEv[0]?.id;
+        if (faltaId) {
+          // Crear/actualizar novedad con falta pendiente de aprobación
+          await client.query(`
+            INSERT INTO novedades_nomina_diarias
+              (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
+               falta, descuento_dia, impacto_nomina, requiere_revision_rrhh,
+               tipo_novedad, evento_rrhh_id, fuente)
+            VALUES ($1::date, $2, $3, FALSE, 0, 0, FALSE, FALSE, 'pendiente', TRUE,
+                    'falta_total', $4, 'rechazo_permiso')
+            ON CONFLICT (fecha, employee_id) DO UPDATE SET
+              tipo_novedad           = 'falta_total',
+              evento_rrhh_id         = $4,
+              impacto_nomina         = 'pendiente',
+              requiere_revision_rrhh = TRUE,
+              updated_at             = NOW()
+          `, [eo.fecha, eo.employee_id, eo.employee_nombre, faltaId]);
+          logger.info({ eventoPermisoId: id, faltaEventoId: faltaId, employeeId: eo.employee_id },
+            "Permiso rechazado → evento de falta creado automáticamente");
+        }
+      }
+    }
+
     await client.query("COMMIT");
     res.json({ ok: true, evento: rows[0] });
   } catch (err) {
