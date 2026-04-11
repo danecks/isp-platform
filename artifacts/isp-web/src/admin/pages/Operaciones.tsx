@@ -6621,6 +6621,8 @@ export default function Operaciones() {
         const resp = await apiPost(`${API_BASE}/operaciones/sustituir`, {
           puestoId: puesto.id,
           agenteEntranteId: agente.id,
+          agenteSalienteId: puesto.agente_id ?? null,
+          agenteSalienteNombre: puesto.agente_nombre ?? null,
           motivo,
           notas,
           forzar,

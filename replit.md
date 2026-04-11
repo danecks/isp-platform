@@ -60,6 +60,7 @@ The project uses a pnpm workspace monorepo, organizing deployable applications (
     - **Flujo Operaciones → RRHH → Planilla (HE Validation):** Complete approval chain for overtime (HE) payments.
     - **Modo de Pago HE (ModalPagoHE):** Payment mode selector for overtime, either "En Planilla" or "En Efectivo".
     - **ModalSustitucion Redesign:** Two-section layout: Section A "¿Por qué sale el titular?" (MOTIVOS_SALIDA: falta_total, abandono_parcial, permiso_sin_goce, incapacidad, permiso_con_goce) and Section B "¿Cómo cubre el entrante?" (Relevo completo / Relevo parcial). Generates 2 RRHH events per substitution (saliente + entrante). Jornada auto-detection from hora_entrada/hora_salida. Partial coverage hours sent as structured fields to backend for accurate cobertura_segmentos.
+    - **Eventos RRHH Pareados (evento_par_id):** Sustituciones generan dos eventos vinculados bidireccionales: falta del titular + HE del cubriente. Columna `evento_par_id` en `eventos_rrhh` enlaza ambos. Frontend los muestra agrupados en una tarjeta con header "Sustitución #N", lado izquierdo "TITULAR — Descuento" y derecho "CUBRIENTE — Horas Extra". Eventos anteriores sin par se muestran individuales.
     - **Integración Custodios ↔ Puestos (CUST-02):** Introduces `tipo_puesto` for 'custodia' positions.
     - **Módulo Prestaciones Laborales (PREST-01):** Comprehensive Guatemala labor benefits module.
     - **Sistema de Dotación de Uniformes (UNIF-01):** Full uniform/boots deduction system.

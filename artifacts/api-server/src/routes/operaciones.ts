@@ -1438,7 +1438,8 @@ operacionesRouter.post("/operaciones/registrar-falta", async (req, res) => {
 operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
   const { puestoId, agenteEntranteId, motivo, usuario, notas, forzar, tipoSustitucion,
           tipoNovedad, coberturaTipo, fechaOperacion,
-          horaInicioParcial, horaFinParcial } = req.body;
+          horaInicioParcial, horaFinParcial,
+          agenteSalienteId: bodySalienteId, agenteSalienteNombre: bodySalienteNombre } = req.body;
   if (!puestoId || !agenteEntranteId) return res.status(400).json({ error: "puestoId y agenteEntranteId son requeridos" });
 
   // tipoSustitucion: 'relevo' = solo cambia agente_id (titular no cambia)
@@ -1499,8 +1500,8 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
       }
     }
 
-    const agenteSalienteId     = puesto.agente_id;
-    const agenteSalienteNombre = puesto.agente_nombre;
+    const agenteSalienteId     = puesto.agente_id ?? bodySalienteId ?? null;
+    const agenteSalienteNombre = puesto.agente_nombre ?? bodySalienteNombre ?? null;
 
     // REGLA FUNDAMENTAL DE RELEVOS:
     // Un relevo es SIEMPRE un evento de un solo día — no importa si es hoy, ayer o retroactivo.
@@ -1563,6 +1564,7 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
       ? tiposRrhhSaliente[tipoNovedad] ?? null
       : (["falta","suspension"].includes((motivo || "").toLowerCase()) ? motivo?.toLowerCase() : null);
 
+    let eventoRrhhSalienteId: number | null = null;
     if (tipoEventoRrhh && agenteSalienteId) {
       try {
         let employeeId: number | null = Number(agenteSalienteId);
@@ -1575,20 +1577,22 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
           employeeNombre = empRows[0].nombre_completo;
           employeeDpi    = empRows[0].dpi || null;
         }
-        const estadoEvento = tipoNovedad === "permiso_sin_goce" ? "pendiente_aprobacion" : "pendiente";
-        await pool.query(
+        const estadoEvento = "pendiente_aprobacion";
+        const { rows: evSalRows } = await pool.query(
           `INSERT INTO eventos_rrhh
              (employee_id, employee_nombre, employee_dpi,
               tipo_evento, fecha, cliente_nombre, puesto_nombre,
               generado_desde, movimiento_id, estado, usuario_generador, documentos_generados)
-           VALUES ($1,$2,$3,$4,NOW(),$5,$6,'operaciones',$7,$9,$8,'[]')`,
+           VALUES ($1,$2,$3,$4,NOW(),$5,$6,'operaciones',$7,'pendiente_aprobacion',$8,'[]')
+           RETURNING id`,
           [employeeId, employeeNombre, employeeDpi, tipoEventoRrhh,
            puesto.cliente_nombre || null, puesto.nombre || null,
-           movimientoId, usuario || "sistema", estadoEvento]
+           movimientoId, usuario || "sistema"]
         );
-        logger.info({ tipoEventoRrhh, empleado: employeeNombre, estadoEvento }, "Evento RRHH auto-generado desde sustitución");
-      } catch (errRrhh) {
-        logger.error({ errRrhh }, "Error al auto-generar evento RRHH (no bloqueante)");
+        eventoRrhhSalienteId = evSalRows[0]?.id ?? null;
+        logger.info({ tipoEventoRrhh, empleado: employeeNombre, estadoEvento, eventoRrhhSalienteId }, "Evento RRHH auto-generado desde sustitución");
+      } catch (errRrhh: any) {
+        logger.error({ err: errRrhh?.message ?? errRrhh }, "Error al auto-generar evento RRHH (no bloqueante)");
       }
     }
 
@@ -1671,17 +1675,21 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
                (employee_id, employee_nombre, employee_dpi,
                 tipo_evento, fecha, cliente_nombre, puesto_nombre,
                 generado_desde, movimiento_id, estado, usuario_generador,
-                observaciones, documentos_generados)
+                observaciones, documentos_generados, evento_par_id)
              VALUES ($1,$2,$3,'horas_extra',$4::date,$5,$6,'operaciones',$7,'pendiente_aprobacion',$8,
-                     $9,'[]')
+                     $9,'[]',$10)
              RETURNING id`,
             [agenteEntranteId, entrante.nombre_completo, entrante.dpi ?? null,
              hoy, puesto.cliente_nombre || null, puesto.nombre || null,
              movimientoId, usuario || "sistema",
-             `Cobertura HE: ${tipoNovedad ?? 'relevo'} en ${puesto.nombre} (${puesto.cliente_nombre})`]
+             `Cobertura HE: ${tipoNovedad ?? 'relevo'} en ${puesto.nombre} (${puesto.cliente_nombre})`,
+             eventoRrhhSalienteId]
           );
           eventoRrhhEntranteId = evEntRows[0]?.id ?? null;
-          logger.info({ agenteEntranteId, eventoRrhhEntranteId, tipoNovedad }, "Evento RRHH HE creado para entrante");
+          if (eventoRrhhSalienteId && eventoRrhhEntranteId) {
+            await pool.query(`UPDATE eventos_rrhh SET evento_par_id = $1 WHERE id = $2`, [eventoRrhhEntranteId, eventoRrhhSalienteId]);
+          }
+          logger.info({ agenteEntranteId, eventoRrhhEntranteId, eventoRrhhSalienteId, tipoNovedad }, "Evento RRHH HE creado para entrante (par vinculado)");
         } catch (errEvEnt) {
           logger.warn({ errEvEnt }, "No se pudo crear evento RRHH para entrante (no bloqueante)");
         }

@@ -465,6 +465,8 @@ function EventoCard({
   onDescargarActa,
   onDescargarAnulacion,
   onAnular,
+  compact,
+  label,
 }: {
   evento: EventoRrhh;
   onEstadoChange: (id: number, estado: string) => Promise<void>;
@@ -472,6 +474,8 @@ function EventoCard({
   onDescargarActa: (evento: EventoRrhh) => void;
   onDescargarAnulacion: (evento: EventoRrhh) => void;
   onAnular: (evento: EventoRrhh) => void;
+  compact?: boolean;
+  label?: string;
 }) {
   const [showEstadoMenu, setShowEstadoMenu] = useState(false);
   const [loadingEstado, setLoadingEstado] = useState(false);
@@ -493,11 +497,18 @@ function EventoCard({
   }
 
   return (
-    <div className={`border rounded-2xl overflow-hidden transition-colors
+    <div className={`${compact ? "rounded-xl" : "border rounded-2xl"} overflow-hidden transition-colors
       ${isAnulado
-        ? "bg-[#0a0a0a] border-red-500/15 opacity-80"
-        : "bg-[#07111f] border-white/8 hover:border-white/15"}`}
+        ? `bg-[#0a0a0a] ${compact ? "" : "border-red-500/15"} opacity-80`
+        : `${compact ? "bg-[#0b1525]" : "bg-[#07111f] border-white/8 hover:border-white/15"}`}`}
     >
+      {label && (
+        <div className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider ${
+          evento.tipo_evento === 'horas_extra' ? "text-emerald-400/70 bg-emerald-500/5" : "text-orange-400/70 bg-orange-500/5"
+        }`}>
+          {label}
+        </div>
+      )}
       {/* Banner ANULADO */}
       {isAnulado && (
         <div className="bg-red-900/30 border-b border-red-500/20 px-5 py-2.5 flex items-center gap-2">
@@ -1654,18 +1665,94 @@ export default function RRHHEventos() {
                   {eventosFiltrados.length} evento{eventosFiltrados.length !== 1 ? "s" : ""}
                   {tabEventos === "historial" && ` · ${eventosFiltrados.filter((e) => e.estado === "anulado").length} anulado${eventosFiltrados.filter((e) => e.estado === "anulado").length !== 1 ? "s" : ""}`}
                 </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {eventosFiltrados.map((ev) => (
-                    <EventoCard
-                      key={ev.id}
-                      evento={ev}
-                      onEstadoChange={handleEstadoChange}
-                      onDescargarBoleta={handleDescargarBoleta}
-                      onDescargarActa={handleDescargarActa}
-                      onDescargarAnulacion={handleDescargarAnulacion}
-                      onAnular={(ev) => setModalAnulacion(ev)}
-                    />
-                  ))}
+                <div className="space-y-4">
+                  {(() => {
+                    const usedIds = new Set<number>();
+                    const paired: Array<{ falta: EventoRrhh; he: EventoRrhh; movId: number | null }> = [];
+                    const evById = new Map<number, EventoRrhh>();
+                    eventosFiltrados.forEach(ev => evById.set(ev.id, ev));
+
+                    eventosFiltrados.forEach(ev => {
+                      if (usedIds.has(ev.id)) return;
+                      if (ev.evento_par_id) {
+                        const par = evById.get(ev.evento_par_id);
+                        if (par && !usedIds.has(par.id)) {
+                          const falta = ev.tipo_evento !== 'horas_extra' ? ev : par;
+                          const he = ev.tipo_evento === 'horas_extra' ? ev : par;
+                          usedIds.add(falta.id);
+                          usedIds.add(he.id);
+                          paired.push({ falta, he, movId: ev.movimiento_id ?? par.movimiento_id ?? null });
+                        }
+                      }
+                    });
+
+                    const solos = eventosFiltrados.filter(ev => !usedIds.has(ev.id));
+
+                    return (
+                      <>
+                        {paired.map(({ falta, he, movId }) => (
+                          <div key={`pair-${movId}`} className="bg-[#060e1c] border border-purple-500/15 rounded-2xl overflow-hidden">
+                            <div className="px-4 py-2 bg-purple-500/5 border-b border-purple-500/10 flex items-center gap-2">
+                              <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider">Sustitución #{movId}</span>
+                              <span className="text-[10px] text-white/25">·</span>
+                              <span className="text-[10px] text-white/30">
+                                {falta?.puesto_nombre} — {falta?.cliente_nombre || he?.cliente_nombre}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-white/5">
+                              <div className="p-2">
+                                {falta ? (
+                                  <EventoCard
+                                    evento={falta}
+                                    onEstadoChange={handleEstadoChange}
+                                    onDescargarBoleta={handleDescargarBoleta}
+                                    onDescargarActa={handleDescargarActa}
+                                    onDescargarAnulacion={handleDescargarAnulacion}
+                                    onAnular={(ev) => setModalAnulacion(ev)}
+                                    compact
+                                    label="TITULAR — Descuento"
+                                  />
+                                ) : (
+                                  <div className="flex items-center justify-center py-6 text-white/15 text-xs">Sin evento titular</div>
+                                )}
+                              </div>
+                              <div className="p-2">
+                                {he ? (
+                                  <EventoCard
+                                    evento={he}
+                                    onEstadoChange={handleEstadoChange}
+                                    onDescargarBoleta={handleDescargarBoleta}
+                                    onDescargarActa={handleDescargarActa}
+                                    onDescargarAnulacion={handleDescargarAnulacion}
+                                    onAnular={(ev) => setModalAnulacion(ev)}
+                                    compact
+                                    label="CUBRIENTE — Horas Extra"
+                                  />
+                                ) : (
+                                  <div className="flex items-center justify-center py-6 text-white/15 text-xs">Sin evento HE</div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        {solos.length > 0 && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                            {solos.map((ev) => (
+                              <EventoCard
+                                key={ev.id}
+                                evento={ev}
+                                onEstadoChange={handleEstadoChange}
+                                onDescargarBoleta={handleDescargarBoleta}
+                                onDescargarActa={handleDescargarActa}
+                                onDescargarAnulacion={handleDescargarAnulacion}
+                                onAnular={(ev) => setModalAnulacion(ev)}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </>
             )}

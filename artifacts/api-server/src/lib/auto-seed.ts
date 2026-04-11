@@ -1124,7 +1124,8 @@ Por favor ingresa al sistema o responde para continuar.',
     await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS anulado_at        TIMESTAMPTZ`);
     await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS motivo_anulacion  TEXT`);
     await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS estado_anterior   VARCHAR(30)`);
-    logger.info("Auto-migrate: columnas de anulación verificadas/creadas");
+    await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS evento_par_id    INTEGER REFERENCES eventos_rrhh(id) ON DELETE SET NULL`);
+    logger.info("Auto-migrate: columnas de anulación y evento_par_id verificadas/creadas");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: error en tabla eventos_rrhh");
   }

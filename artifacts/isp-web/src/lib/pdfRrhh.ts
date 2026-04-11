@@ -33,6 +33,8 @@ export interface EventoRrhh {
   anulado_por?: string;
   anulado_at?: string;
   motivo_anulacion?: string;
+  movimiento_id?: number | null;
+  evento_par_id?: number | null;
 }
 
 const fmtFecha = (iso: string): string => {
