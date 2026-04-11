@@ -6249,11 +6249,6 @@ export default function Operaciones() {
   const diaHoyCerrado = !!(cierreHoy?.esFechaFutura && cierreHoy?.cierreDeHoy);
   // Fecha activa formateada para mostrar en UI (usa la del API si está disponible)
   const fechaActivaStr = cierreHoy?.fechaActivaStr ?? fechaHoyStr();
-  // Fecha del día cerrado (para reabrir cuando diaHoyCerrado)
-  const fechaCierreParaReabrir = diaHoyCerrado
-    ? (cierreHoy!.cierreDeHoy!.fecha_str ?? fechaHoyStr())
-    : fechaHoyStr();
-
   // Días pasados sin cerrar — bloquean el trabajo del día actual
   const diasPendientesCierre: DiaPendienteCierre[] = cierreHoy?.diasPendientesCierre ?? [];
   const hayDiasPendientes = diasPendientesCierre.length > 0;
@@ -6275,6 +6270,17 @@ export default function Operaciones() {
   const fechaVistaCerrada = esPasado
     ? diasCerrados.includes(fechaVista ?? "")
     : (!esFuturo && hoyCerrado);
+
+  const fechaVistaStr = (() => {
+    if (!fechaVista) return fechaHoyStr();
+    const [y, m, d] = fechaVista.split("-");
+    return `${d}-${m}-${y}`;
+  })();
+  const fechaCierreParaReabrir = esPasado && fechaVistaCerrada
+    ? fechaVistaStr
+    : diaHoyCerrado
+      ? (cierreHoy!.cierreDeHoy!.fecha_str ?? fechaHoyStr())
+      : fechaHoyStr();
 
   // ── Invalidar y refrescar ─────────────────────────────────────────────────
   function invalidate() {
@@ -6834,9 +6840,11 @@ export default function Operaciones() {
 
   // ── Reabrir día ────────────────────────────────────────────────────────────
   async function reabrirDia(motivo: string) {
-    const fechaISO = diaHoyCerrado
-      ? cierreHoy!.cierreDeHoy!.fecha.substring(0, 10)
-      : (cierreHoy?.cierre?.fecha?.substring(0, 10) ?? undefined);
+    const fechaISO = esPasado && fechaVistaCerrada
+      ? fechaVista
+      : diaHoyCerrado
+        ? cierreHoy!.cierreDeHoy!.fecha.substring(0, 10)
+        : (cierreHoy?.cierre?.fecha?.substring(0, 10) ?? undefined);
     try {
       await apiPost(`${API_BASE}/operaciones/reabrir`, {
         confirmacion: `REABRIR ${fechaCierreParaReabrir}`,
