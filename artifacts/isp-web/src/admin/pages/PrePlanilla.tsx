@@ -276,6 +276,20 @@ function fmtQ(n: number | string | null) {
   return `Q${num.toLocaleString("es-GT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function calcularISRQuincenal(sueldoMensual: number, igssAnual: number): number {
+  const bonoIncentivoAnual = 250 * 12;
+  const rentaBrutaAnual = sueldoMensual * 12;
+  const rentaImponible = rentaBrutaAnual - bonoIncentivoAnual - igssAnual - 48000;
+  if (rentaImponible <= 0) return 0;
+  let isrAnual = 0;
+  if (rentaImponible <= 300000) {
+    isrAnual = rentaImponible * 0.05;
+  } else {
+    isrAnual = 300000 * 0.05 + (rentaImponible - 300000) * 0.07;
+  }
+  return Math.round((isrAnual / 24) * 100) / 100;
+}
+
 function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: number | null) {
   const sb = parseFloat(String(col.sueldo_base ?? "0"));
   if (!sb || !periodoTotalDias) return null;
@@ -293,14 +307,16 @@ function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: number | n
   const anticipo = Number(col.anticipos_monto);
   const cuotaUniforme = Number(col.cuota_uniforme_monto ?? 0);
   const igssLaboral = col.aplica_igss ? Math.round((sueldoPeriodo - descFaltas) * 0.0483 * 100) / 100 : 0;
-  const total = sueldoPeriodo - descFaltas + valorHE - anticipo - cuotaUniforme - igssLaboral;
+  const igssAnual = col.aplica_igss ? Math.round(sb * 12 * 0.0483 * 100) / 100 : 0;
+  const isrQuincenal = calcularISRQuincenal(sb, igssAnual);
+  const total = sueldoPeriodo - descFaltas + valorHE - anticipo - cuotaUniforme - igssLaboral - isrQuincenal;
 
   const diasCerrados = Number(col.dias_cerrados ?? 0);
   const sueldoReal = sueldoDia * diasCerrados;
   const igssLaboralReal = col.aplica_igss ? Math.round((sueldoReal - descFaltas) * 0.0483 * 100) / 100 : 0;
-  const totalReal = sueldoReal - descFaltas + valorHE - anticipo - cuotaUniforme - igssLaboralReal;
+  const totalReal = sueldoReal - descFaltas + valorHE - anticipo - cuotaUniforme - igssLaboralReal - isrQuincenal;
 
-  return { sueldoPeriodo, descFaltas, valorHE, anticipo, cuotaUniforme, igssLaboral, igssLaboralReal, total, diasDesc, diasCerrados, sueldoReal, totalReal };
+  return { sueldoPeriodo, descFaltas, valorHE, anticipo, cuotaUniforme, igssLaboral, igssLaboralReal, isrQuincenal, total, diasDesc, diasCerrados, sueldoReal, totalReal };
 }
 
 // ─── Badge revisión ───────────────────────────────────────────────────────────
@@ -487,6 +503,18 @@ function DetalleModal({
                           <span className="text-orange-300">–{fmtQ(est.cuotaUniforme)}</span>
                         </div>
                       )}
+                      {est.igssLaboralReal > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-cyan-400/70">— IGSS laboral (4.83%)</span>
+                          <span className="text-cyan-400">–{fmtQ(est.igssLaboralReal)}</span>
+                        </div>
+                      )}
+                      {est.isrQuincenal > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-amber-400/70">— ISR quincenal</span>
+                          <span className="text-amber-400">–{fmtQ(est.isrQuincenal)}</span>
+                        </div>
+                      )}
                     </div>
                     <div className="flex justify-between items-center pt-2 border-t border-emerald-500/20">
                       <span className="text-xs font-semibold text-white/60">Total real ({est.diasCerrados}d)</span>
@@ -517,6 +545,18 @@ function DetalleModal({
                             <span className="text-orange-400">+{fmtQ(est.valorHE)}</span>
                           </div>
                         )}
+                        {est.igssLaboral > 0 && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-cyan-400/70">— IGSS laboral (4.83%)</span>
+                            <span className="text-cyan-400">–{fmtQ(est.igssLaboral)}</span>
+                          </div>
+                        )}
+                        {est.isrQuincenal > 0 && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-amber-400/70">— ISR quincenal</span>
+                            <span className="text-amber-400">–{fmtQ(est.isrQuincenal)}</span>
+                          </div>
+                        )}
                       </div>
                       <div className="flex justify-between items-center pt-2 border-t border-primary/20">
                         <span className="text-xs font-semibold text-white/60">Total estimado ({periodoTotalDias}d)</span>
@@ -525,7 +565,7 @@ function DetalleModal({
                         </span>
                       </div>
                       <p className="text-[9px] text-white/25 mt-2 leading-relaxed">
-                        Proyección asumiendo {(periodoTotalDias ?? 0) - est.diasCerrados} días restantes sin cambios. No incluye IGSS, bonificación incentivo (Dto. 78-89), séptimo día, ni deducciones finales.
+                        Proyección asumiendo {(periodoTotalDias ?? 0) - est.diasCerrados} días restantes sin cambios. No incluye bonificación incentivo (Dto. 78-89), séptimo día, ni deducciones finales.
                       </p>
                     </div>
                   )}
@@ -1576,6 +1616,10 @@ export default function PrePlanilla() {
     const e = calcularTotalEstimado(r, periodoTotalDias);
     return s + (e?.igssLaboral ?? 0);
   }, 0);
+  const totalISR = filtrados.reduce((s, r) => {
+    const e = calcularTotalEstimado(r, periodoTotalDias);
+    return s + (e?.isrQuincenal ?? 0);
+  }, 0);
 
   // Badges de tab
   const badgeHE = rows.filter((r) => parseFloat(r.horas_extra || "0") > 0).length;
@@ -1709,7 +1753,7 @@ export default function PrePlanilla() {
         {loaded && !loading && (
           <>
             {/* ── KPI Cards ───────────────────────────────────────────────── */}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-9 gap-3">
               {[
                 { icon: Users,         label: "Colaboradores",  val: totalColabs,               cls: "text-white" },
                 { icon: AlertTriangle, label: "Faltas / Susp.", val: totalFaltas,               cls: totalFaltas > 0 ? "text-red-400" : "text-white/30" },
@@ -1718,6 +1762,7 @@ export default function PrePlanilla() {
                 { icon: Wallet,        label: "Incentivos Cash",val: fmtQ(totalIncentivos),     cls: totalIncentivos > 0 ? "text-emerald-400" : "text-white/30" },
                 { icon: CreditCard,    label: "Total anticipos",val: fmtQ(totalAnt),            cls: totalAnt > 0 ? "text-amber-400" : "text-white/30" },
                 { icon: ShieldCheck,   label: "IGSS laboral",   val: fmtQ(totalIGSS),           cls: totalIGSS > 0 ? "text-cyan-400" : "text-white/30" },
+                { icon: FileText,      label: "ISR total",      val: fmtQ(totalISR),            cls: totalISR > 0 ? "text-amber-400" : "text-white/30" },
                 { icon: AlertCircle,   label: "Con alertas",    val: conAlertas,                cls: conAlertas > 0 ? "text-rose-400" : "text-white/30" },
               ].map(({ icon: Icon, label, val, cls }) => (
                 <div key={label} className="bg-[#0c1929] border border-white/8 rounded-xl p-3">
@@ -1916,6 +1961,7 @@ export default function PrePlanilla() {
                             {th("Anticipo", "anticipos_monto")}
                             {th("Total Est.", "sueldo_base")}
                             {th("IGSS", "aplica_igss")}
+                            <th className="text-left text-[10px] text-white/40 font-semibold uppercase tracking-wider px-3 py-2 whitespace-nowrap">ISR</th>
                             {th("Freq.", "frecuencia_pago")}
                             {th("Revisión", "revision_estado")}
                             <th className="px-3 py-2" />
@@ -2060,6 +2106,19 @@ export default function PrePlanilla() {
                                     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Sí
                                     </span>
+                                  ) : (
+                                    <span className="text-white/20 text-[10px]">—</span>
+                                  )}
+                                </td>
+                                {/* ISR */}
+                                <td className="px-3 py-2.5 text-right">
+                                  {est2 && est2.isrQuincenal > 0 ? (
+                                    <div>
+                                      <span className="text-xs font-medium text-amber-400">
+                                        {fmtQ(est2.isrQuincenal)}
+                                      </span>
+                                      <p className="text-[9px] text-white/25">quincenal</p>
+                                    </div>
                                   ) : (
                                     <span className="text-white/20 text-[10px]">—</span>
                                   )}
