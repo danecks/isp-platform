@@ -4707,6 +4707,7 @@ const TIPOS_NOVEDAD: {
   genera_rrhh?: boolean;
   requiere_hora_abandono?: boolean;
   requiere_aprobacion_rrhh?: boolean;
+  requiere_horas_parcial?: boolean;
 }[] = [
   { value: "falta_total",        label: "Falta total",            desc: "No se presentó sin justificación. Descuento de 3 días (24h) o 2 días (12h).",                     grupo: "descuento",     genera_rrhh: true },
   { value: "abandono_parcial",   label: "Abandono parcial",       desc: "Se retiró antes de terminar su turno sin autorización. Descuento proporcional.",                  grupo: "descuento",     genera_rrhh: true, requiere_hora_abandono: true },
@@ -4714,7 +4715,7 @@ const TIPOS_NOVEDAD: {
   { value: "incapacidad",        label: "Incapacidad IGSS",       desc: "Suspensión médica del IGSS. Genera evento en RRHH para seguimiento y obtención de suspensión oficial.", grupo: "sin_descuento", genera_rrhh: true },
   { value: "permiso_con_goce",   label: "Permiso c/goce",         desc: "Permiso autorizado con goce de sueldo (duelo, matrimonio, etc.).",                                grupo: "sin_descuento" },
   { value: "relevo_completo",    label: "Relevo completo",        desc: "Cobertura programada del turno completo. No implica falta del titular.",                           grupo: "cobertura" },
-  { value: "relevo_parcial",     label: "Relevo parcial",         desc: "Cobertura de solo una parte del turno.",                                                           grupo: "cobertura" },
+  { value: "relevo_parcial",     label: "Relevo parcial",         desc: "Cobertura de solo una parte del turno. Requiere hora de inicio y fin.",                             grupo: "cobertura", requiere_horas_parcial: true },
   { value: "horas_extra_puras",  label: "Horas extra",            desc: "El agente entrante cubre como horas extra en su día de descanso.",                                 grupo: "especial" },
 ];
 
@@ -4744,6 +4745,8 @@ function ModalSustitucion({
   const [loading, setLoading] = useState(false);
   const [tipoSustitucion, setTipoSustitucion] = useState<"relevo" | "reasignacion">("relevo");
   const [horaAbandono, setHoraAbandono] = useState("");
+  const [horaInicioParcial, setHoraInicioParcial] = useState("");
+  const [horaFinParcial, setHoraFinParcial] = useState("");
   const esSustitucion = !!puesto.agente_id;
 
   const tipoSeleccionado = TIPOS_NOVEDAD.find((t) => t.value === tipoNovedad);
@@ -4752,7 +4755,10 @@ function ModalSustitucion({
   async function handleConfirm() {
     setLoading(true);
     try {
-      await onConfirm(tipoNovedad, notas, !!advertencia, tipoSustitucion, tipoNovedad, coberturaTipo);
+      const notasFinal = tipoSeleccionado?.requiere_horas_parcial && horaInicioParcial && horaFinParcial
+        ? `${notas ? notas + " | " : ""}Cobertura parcial: ${horaInicioParcial} a ${horaFinParcial}`
+        : notas;
+      await onConfirm(tipoNovedad, notasFinal, !!advertencia, tipoSustitucion, tipoNovedad, coberturaTipo);
     } finally {
       setLoading(false);
     }
@@ -4938,7 +4944,33 @@ function ModalSustitucion({
                 </div>
               )}
 
-              {["relevo_parcial","abandono_parcial","permiso_con_goce","permiso_sin_goce"].includes(tipoNovedad) && (
+              {tipoSeleccionado?.requiere_horas_parcial && (
+                <div>
+                  <label className="text-[10px] text-white/40 mb-1 block">Horario de cobertura</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-[9px] text-white/30 block mb-0.5">Inicio</span>
+                      <input
+                        type="time"
+                        value={horaInicioParcial}
+                        onChange={(e) => setHoraInicioParcial(e.target.value)}
+                        className="w-full bg-white/5 border border-white/15 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[9px] text-white/30 block mb-0.5">Fin</span>
+                      <input
+                        type="time"
+                        value={horaFinParcial}
+                        onChange={(e) => setHoraFinParcial(e.target.value)}
+                        className="w-full bg-white/5 border border-white/15 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {["abandono_parcial","permiso_con_goce","permiso_sin_goce"].includes(tipoNovedad) && (
                 <div className="flex items-center gap-2 pt-1">
                   <span className="text-[10px] text-white/35">Alcance:</span>
                   {(["completo","parcial"] as const).map((a) => (
