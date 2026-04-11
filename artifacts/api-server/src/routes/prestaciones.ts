@@ -416,7 +416,18 @@ async function buildLiquidacion(empId: number, body: Record<string, unknown>) {
   const anoPago       = new Date(fechaEgreso).getUTCFullYear();
   const aguPeriodo    = periodoAguinaldoGuatemala(anoPago);
   const b14Periodo    = periodoBono14Guatemala(anoPago);
-  const diasPendiente = parseFloat(String(body.dias_salario_pendiente ?? 0));
+  // Auto-calcular días de salario pendiente si no se proporcionan
+  let diasPendiente = parseFloat(String(body.dias_salario_pendiente ?? 0));
+  if (diasPendiente === 0) {
+    const egresoDate = new Date(fechaEgreso);
+    const dia = egresoDate.getUTCDate();
+    const mes = egresoDate.getUTCMonth();
+    const anio = egresoDate.getUTCFullYear();
+    const inicioQuincena = dia <= 15
+      ? new Date(Date.UTC(anio, mes, 1))
+      : new Date(Date.UTC(anio, mes, 16));
+    diasPendiente = Math.max(0, Math.floor((egresoDate.getTime() - inicioQuincena.getTime()) / 86_400_000) + 1);
+  }
   const diasVac       = parseFloat(String(vacSaldo[0]?.dias_disponibles ?? body.dias_vacaciones_pendientes ?? 0));
 
   const result = calcularLiquidacionFinal({
