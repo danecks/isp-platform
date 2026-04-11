@@ -269,6 +269,10 @@ const QUERY_CONSOLIDADO = `
     AND pr.periodo_desde = $1::date
     AND pr.periodo_hasta = $2::date
   WHERE (e.fecha_baja IS NULL OR e.fecha_baja >= $1::date)
+    AND NOT EXISTS (
+      SELECT 1 FROM prestaciones_liquidaciones pl
+      WHERE pl.employee_id = e.id AND pl.estado = 'confirmada'
+    )
   GROUP BY
     e.id, e.nombre_completo, e.dpi, e.sueldo_base, e.tipo_jornada,
     e.dia_descanso, e.horas_contrato, e.estado_laboral, e.puesto,
@@ -503,6 +507,10 @@ prePlanillaRouter.get("/nomina/pre-planilla/validacion", async (req, res) => {
       SELECT e.id AS employee_id, e.nombre_completo, e.puesto, e.sede
       FROM employees e
       WHERE (e.fecha_baja IS NULL OR e.fecha_baja >= $1::date)
+        AND NOT EXISTS (
+          SELECT 1 FROM prestaciones_liquidaciones pl
+          WHERE pl.employee_id = e.id AND pl.estado = 'confirmada'
+        )
         AND e.id NOT IN (
           SELECT DISTINCT n.employee_id FROM novedades_nomina_diarias n
           WHERE n.fecha BETWEEN $1 AND $2
@@ -806,7 +814,11 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
                 e.fecha_ingreso, e.frecuencia_pago,
                 COALESCE(e.cliente_id, 0) AS client_id
          FROM employees e
-         WHERE (e.fecha_baja IS NULL OR e.fecha_baja >= $1::date)`, [desde]
+         WHERE (e.fecha_baja IS NULL OR e.fecha_baja >= $1::date)
+           AND NOT EXISTS (
+             SELECT 1 FROM prestaciones_liquidaciones pl
+             WHERE pl.employee_id = e.id AND pl.estado = 'confirmada'
+           )`, [desde]
       );
 
       const db = await pool.connect();

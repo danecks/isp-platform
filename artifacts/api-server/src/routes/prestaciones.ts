@@ -714,6 +714,17 @@ prestacionesRouter.post("/prestaciones/liquidaciones", async (req, res) => {
         [fechaEgreso, causal, empId]
       );
 
+      // Desactivar puesto(s) titular(es) del empleado en el pizarrón
+      await db.query(
+        `UPDATE puesto_titulares SET activo = FALSE WHERE employee_id = $1 AND activo = TRUE`,
+        [empId]
+      );
+      await db.query(
+        `UPDATE puestos_operativos SET titular_employee_id = NULL
+         WHERE titular_employee_id = $1`,
+        [empId]
+      );
+
       await db.query("COMMIT");
       return res.status(201).json({ ok: true, liquidacion_id: liq.id, liquidacion: result });
     } catch (err) {
