@@ -457,13 +457,11 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       `, [fechaConsultada]);
 
       const faltaSet = new Set(faltasRows.map((f: any) => Number(f.employee_id)));
-      logger.info({ fechaConsultada, faltaSet: [...faltaSet], faltasCount: faltaSet.size }, "Falta post-process");
 
       if (faltaSet.size > 0) {
         for (const p of puestosFinales) {
           // 24x24: si par_trabajando tiene falta y no hay relevo cubriendo
           if (p.es_par_24x24 && p.par_trabajando && !(p as any).es_relevo_dia) {
-            logger.info({ puesto: p.nombre, parEmpId: p.par_trabajando.employee_id, hasFalta: faltaSet.has(Number(p.par_trabajando.employee_id)), esRelevo: (p as any).es_relevo_dia }, "24x24 falta check");
             if (faltaSet.has(Number(p.par_trabajando.employee_id))) {
               (p as any).agente_id        = null;
               (p as any).agente_nombre    = null;
@@ -526,8 +524,9 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
 //   • disponibles        — sin turno asignado, genuinamente libres
 operacionesRouter.get("/operaciones/pool", async (req, res) => {
   try {
-    const hoy = todayGT();
-    // Fecha de mañana para el panel de jefes y supervisores 24x24
+    const fechaParam = typeof req.query.fecha === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.fecha)
+      ? req.query.fecha : null;
+    const hoy = fechaParam ?? todayGT();
     const mañanaDt = new Date(hoy + "T12:00:00Z");
     mañanaDt.setUTCDate(mañanaDt.getUTCDate() + 1);
     const mañana = mañanaDt.toISOString().slice(0, 10);
@@ -544,51 +543,36 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         titular_po.estado_operativo_puesto AS estado_puesto_titular,
         titular_po.nombre                  AS nombre_puesto_titular,
         titular_po.cliente_nombre          AS cliente_puesto_titular,
-        -- Zona operativa del agente (titular o EOA)
         COALESCE(eoa.zona_operativa_id, titular_po.zona_operativa_id) AS zona_operativa_id,
         oz.nombre AS zona_nombre,
-        -- Datos de turno para el motor de cálculo
         COALESCE(t.tipo_ciclo, CASE WHEN t.horas_trabajo <= 24 THEN 'diario' ELSE 'ciclo_bloques' END) AS tipo_ciclo_turno,
         t.horas_trabajo  AS horas_trabajo_turno,
         t.horas_descanso AS horas_descanso_turno,
         t.nombre         AS turno_nombre,
         titular_po.fecha_inicio_ciclo AS fecha_inicio_ciclo_turno,
-        -- hora_entrada del puesto: necesaria para detectar descanso intra-día en turnos ≤12h
         titular_po.hora_entrada AS hora_entrada_puesto,
-        -- Vacaciones activas hoy
         vac_activa.tipo_evento AS vacacion_activa_tipo,
         vac_activa.fecha::date AS vacacion_inicio,
         vac_activa.fecha_fin   AS vacacion_fin,
-        -- ¿El puesto del titular tiene un relevo HOY por alguien diferente a este empleado?
-        -- Detecta ausencias en puestos 24x24 donde estado_operativo_puesto puede ser 'normal'
-        -- pero ya hay un relevo registrado en cobertura_segmentos.
         cs_faltando.tiene_relevo IS NOT NULL    AS hay_relevo_hoy_faltando,
-        -- ¿Este empleado tiene una cobertura activa HOY? (trabaja en su día de descanso = HE)
         cs_trabajando.trabajando_hoy IS NOT NULL AS cs_trabajando_hoy,
-        -- ¿Su slot de ciclo indica que debe trabajar HOY?
-        -- NULL = no tiene puesto_slots | TRUE = trabaja hoy | FALSE = descansa hoy
         slot_hoy.trabaja_hoy AS slot_trabaja_hoy,
+        ev_falta.tiene_falta IS NOT NULL AS tiene_falta_evento,
         CASE
-          -- Estado laboral no-activo tiene prioridad absoluta
           WHEN e.estado_laboral = 'licencia'   THEN 'en_descanso'
           WHEN e.estado_laboral = 'suspendido' THEN 'suspendido'
-          -- FALTANDO: agente titular cuyo puesto tiene un relevo activo hoy Y el ciclo
-          -- dice que hoy es su día de trabajo. Se evalúa ANTES de en_puesto para que
-          -- agentes 24x24 con agente_id en puestos_operativos sean detectados correctamente.
+          -- FALTANDO: evento de falta registrado en eventos_rrhh para la fecha consultada
+          WHEN e.estado_laboral = 'activo'
+               AND ev_falta.tiene_falta IS NOT NULL
+               AND (po.agente_id IS NOT NULL OR titular_po.id IS NOT NULL)
+               THEN 'faltando'
+          -- FALTANDO: agente titular cuyo puesto tiene un relevo activo hoy
           WHEN e.estado_laboral = 'activo'
                AND cs_faltando.tiene_relevo IS NOT NULL
                AND COALESCE(slot_hoy.trabaja_hoy, TRUE) = TRUE
                AND (po.agente_id IS NOT NULL OR titular_po.id IS NOT NULL)
                THEN 'faltando'
-          -- FALTANDO: estado_operativo_puesto explícito (puestos no-ciclo)
-          WHEN e.estado_laboral = 'activo'
-               AND titular_po.id IS NOT NULL
-               AND COALESCE(titular_po.estado_operativo_puesto, 'normal') != 'normal'
-               THEN 'faltando'
-          -- EN_PUESTO: agente titular (via puestos_operativos.agente_id o puesto_titulares)
-          -- y el ciclo confirma que HOY trabaja.
-          -- Si slot_hoy.trabaja_hoy=FALSE (día de descanso 24x24), cae a ELSE 'disponible'
-          -- para que el motor de turnos JS lo clasifique como descansandoCiclo / haciendoHE.
+          -- EN_PUESTO: agente titular y el ciclo confirma que HOY trabaja.
           WHEN (po.agente_id IS NOT NULL OR titular_po.id IS NOT NULL)
                AND e.estado_laboral = 'activo'
                AND COALESCE(slot_hoy.trabaja_hoy, TRUE) = TRUE
@@ -605,35 +589,29 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         WHERE activo = TRUE AND agente_id IS NOT NULL
       ) po ON po.agente_id = e.id
       LEFT JOIN (
-        -- Campo legacy: agente_id directo en la solicitud (single-agent)
-        -- Solo vigente si CURRENT_DATE cae dentro del rango fecha..fecha_fin del SSA
         SELECT DISTINCT agente_id
         FROM solicitudes_servicio_adicional
         WHERE agente_id IS NOT NULL
           AND estado_general NOT IN ('cancelada', 'cerrada')
-          AND CURRENT_DATE BETWEEN fecha AND COALESCE(fecha_fin, fecha)
+          AND $1::date BETWEEN fecha AND COALESCE(fecha_fin, fecha)
       ) ssa ON ssa.agente_id = e.id
       LEFT JOIN (
-        -- Multi-agentes asignados vía tabla ssa_agentes
-        -- Igual: solo vigentes dentro del rango de fecha del SSA padre
         SELECT DISTINCT sa.employee_id
         FROM ssa_agentes sa
         JOIN solicitudes_servicio_adicional s2
           ON s2.id = sa.ssa_id
          AND s2.estado_general NOT IN ('cancelada', 'cerrada')
-         AND CURRENT_DATE BETWEEN s2.fecha AND COALESCE(s2.fecha_fin, s2.fecha)
+         AND $1::date BETWEEN s2.fecha AND COALESCE(s2.fecha_fin, s2.fecha)
         WHERE sa.estado IN ('asignado', 'confirmado')
       ) ssa_ag ON ssa_ag.employee_id = e.id
       LEFT JOIN employee_operational_assignments eoa
         ON eoa.employee_id = e.id AND eoa.activa = TRUE
       LEFT JOIN LATERAL (
-        -- Busca el puesto del empleado vía puesto_titulares (multi-titular)
-        -- con COALESCE fallback a puestos_operativos.titular_employee_id (legacy)
         SELECT po2.id, po2.estado_operativo_puesto, po2.nombre, po2.cliente_nombre,
                po2.agente_id, po2.tipo_turno_id,
                COALESCE(pt2.fecha_inicio_ciclo, po2.fecha_inicio_ciclo) AS fecha_inicio_ciclo,
                po2.zona_operativa_id,
-               po2.hora_entrada  -- para detección de descanso intra-día (12x12, 8h, etc.)
+               po2.hora_entrada
         FROM puesto_titulares pt2
         JOIN puestos_operativos po2 ON po2.id = pt2.puesto_id AND po2.activo = TRUE
         WHERE pt2.employee_id = e.id AND pt2.activo = TRUE
@@ -642,30 +620,35 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       ) titular_po ON TRUE
       LEFT JOIN turnos t ON t.id = titular_po.tipo_turno_id
       LEFT JOIN operational_zones oz ON oz.id = COALESCE(eoa.zona_operativa_id, titular_po.zona_operativa_id)
-      -- Vacaciones activas hoy (no incluye programadas futuras ni canceladas)
       LEFT JOIN LATERAL (
         SELECT er.tipo_evento, er.fecha, er.fecha_fin
         FROM eventos_rrhh er
         WHERE er.employee_id = e.id
           AND er.tipo_evento IN ('vacaciones', 'vacaciones_trabajadas')
           AND er.estado NOT IN ('anulado', 'cancelado')
-          AND er.fecha::date <= CURRENT_DATE
-          AND (er.fecha_fin IS NULL OR er.fecha_fin >= CURRENT_DATE)
+          AND er.fecha::date <= $1::date
+          AND (er.fecha_fin IS NULL OR er.fecha_fin >= $1::date)
         ORDER BY er.created_at DESC
         LIMIT 1
       ) vac_activa ON TRUE
-      -- ¿El puesto del titular tiene un relevo HOY por alguien distinto al empleado?
-      -- Detecta faltando via AMBAS rutas: puesto_titulares (titular_po.id) Y puestos_operativos.agente_id.
+      -- Evento de falta registrado en eventos_rrhh para la fecha consultada
+      LEFT JOIN LATERAL (
+        SELECT TRUE AS tiene_falta
+        FROM eventos_rrhh er_f
+        WHERE er_f.employee_id = e.id
+          AND er_f.tipo_evento = 'falta'
+          AND er_f.fecha::date = $1::date
+          AND er_f.estado NOT IN ('anulado', 'cancelado')
+        LIMIT 1
+      ) ev_falta ON TRUE
       LEFT JOIN LATERAL (
         SELECT TRUE AS tiene_relevo
         FROM cobertura_segmentos cs_f
-        WHERE cs_f.fecha = CURRENT_DATE
+        WHERE cs_f.fecha = $1::date
           AND cs_f.tipo_cobertura IN ('relevo','cobertura_supervisor','cobertura_jefe_servicio')
           AND cs_f.employee_id IS DISTINCT FROM e.id
           AND (
-            -- Ruta puesto_titulares (puestos 24x24 ciclo)
             cs_f.puesto_id = titular_po.id
-            -- Ruta legacy: puestos_operativos.agente_id
             OR EXISTS (
               SELECT 1 FROM puestos_operativos po_x
               WHERE po_x.id = cs_f.puesto_id
@@ -675,21 +658,17 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
           )
         LIMIT 1
       ) cs_faltando ON TRUE
-      -- ¿Este empleado tiene una cobertura activa HOY en algún puesto?
-      -- Permite detectar agentes de descanso que están haciendo horas extra.
       LEFT JOIN LATERAL (
         SELECT TRUE AS trabajando_hoy
         FROM cobertura_segmentos cs_t
         WHERE cs_t.employee_id = e.id
-          AND cs_t.fecha = CURRENT_DATE
+          AND cs_t.fecha = $1::date
           AND cs_t.tipo_cobertura IN ('relevo','cobertura_supervisor','cobertura_jefe_servicio','titular')
         LIMIT 1
       ) cs_trabajando ON TRUE
-      -- ¿El slot de ciclo del empleado indica que trabaja HOY?
-      -- Se calcula desde puesto_slots: cycleDay = ((daysElapsed % 14) + 14) % 14 + 1
       LEFT JOIN LATERAL (
         SELECT
-          (((CURRENT_DATE - ps.fecha_inicio_ciclo::date) % 14 + 14) % 14 + 1) = ANY(ps.dias_trabajo)
+          ((($1::date - ps.fecha_inicio_ciclo::date) % 14 + 14) % 14 + 1) = ANY(ps.dias_trabajo)
           AS trabaja_hoy
         FROM puesto_slots ps
         WHERE ps.empleado_id = e.id AND ps.activo = TRUE
@@ -700,11 +679,10 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         AND (
           COALESCE(e.elegible_pool, TRUE) = TRUE
           OR (
-            -- Siempre incluir titulares faltando aunque no sean elegibles para pool
             (titular_po.id IS NOT NULL OR po.agente_id IS NOT NULL)
             AND e.estado_laboral = 'activo'
             AND (
-              COALESCE(titular_po.estado_operativo_puesto, 'normal') != 'normal'
+              ev_falta.tiene_falta IS NOT NULL
               OR (
                 cs_faltando.tiene_relevo IS NOT NULL
                 AND COALESCE(slot_hoy.trabaja_hoy, TRUE) = TRUE
@@ -715,7 +693,7 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
           OR ssa_ag.employee_id IS NOT NULL
         )
       ORDER BY e.estado_laboral, e.nombre_completo
-    `);
+    `, [hoy]);
 
     // Supervisores — personal operativo con turno real (12h o 24x24)
     // La zona se resuelve primero por la FK formal (operational_zones.supervisor_employee_id),

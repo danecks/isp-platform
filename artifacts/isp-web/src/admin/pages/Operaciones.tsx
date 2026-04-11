@@ -5880,11 +5880,13 @@ export default function Operaciones() {
   });
 
   const { data: pool, isLoading: loadingPool, refetch: refetchPool } = useQuery<Pool>({
-    queryKey: ["operaciones-pool", puestoContexto?.id ?? null],
+    queryKey: ["operaciones-pool", puestoContexto?.id ?? null, fechaVista],
     queryFn: () => {
-      const url = puestoContexto
-        ? `${API_BASE}/operaciones/pool?puesto_id=${puestoContexto.id}`
-        : `${API_BASE}/operaciones/pool`;
+      const params = new URLSearchParams();
+      if (puestoContexto) params.set("puesto_id", String(puestoContexto.id));
+      if (fechaVista) params.set("fecha", fechaVista);
+      const qs = params.toString();
+      const url = `${API_BASE}/operaciones/pool${qs ? `?${qs}` : ""}`;
       return fetch(url).then((r) => r.json());
     },
     refetchInterval: 30_000,
