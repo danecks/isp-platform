@@ -257,7 +257,9 @@ function getPeriodPresets() {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtFecha(iso: string) {
-  return new Date(iso + "T12:00:00").toLocaleDateString("es-GT", {
+  const clean = typeof iso === "string" ? iso.slice(0, 10) : "";
+  if (!clean || clean.length < 10) return "—";
+  return new Date(clean + "T12:00:00").toLocaleDateString("es-GT", {
     weekday: "short", day: "2-digit", month: "short",
   });
 }
@@ -274,9 +276,10 @@ function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: number | n
   if (!sb || !periodoTotalDias) return null;
   const sueldoDia = sb / 30;
   const sueldoPeriodo = sueldoDia * periodoTotalDias;
+  const diasDescuento = Number((col as any).total_dias_descuento ?? 0);
   const totalFaltas = Number(col.faltas) + Number(col.suspensiones);
-  const descFaltas = sueldoDia * totalFaltas;
-  // Horas día = horas_contrato / 6 días (semana 6 días) — o 8 por defecto
+  const diasDesc = diasDescuento > 0 ? diasDescuento : totalFaltas;
+  const descFaltas = sueldoDia * diasDesc;
   const horasDia = col.horas_contrato ? col.horas_contrato / 6 : 8;
   const valorHora = sueldoDia / horasDia;
   const he = parseFloat(String(col.horas_extra ?? "0"));
@@ -284,7 +287,7 @@ function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: number | n
   const anticipo = Number(col.anticipos_monto);
   const cuotaUniforme = Number(col.cuota_uniforme_monto ?? 0);
   const total = sueldoPeriodo - descFaltas + valorHE - anticipo - cuotaUniforme;
-  return { sueldoPeriodo, descFaltas, valorHE, anticipo, cuotaUniforme, total };
+  return { sueldoPeriodo, descFaltas, valorHE, anticipo, cuotaUniforme, total, diasDesc };
 }
 
 // ─── Badge revisión ───────────────────────────────────────────────────────────
@@ -447,7 +450,7 @@ function DetalleModal({
                     </div>
                     {est.descFaltas > 0 && (
                       <div className="flex justify-between text-xs">
-                        <span className="text-red-400/70">— Desc. faltas / susp. ({Number(col.faltas) + Number(col.suspensiones)}d)</span>
+                        <span className="text-red-400/70">— Desc. faltas / susp. ({est.diasDesc}d descuento)</span>
                         <span className="text-red-400">–{fmtQ(est.descFaltas)}</span>
                       </div>
                     )}
@@ -664,7 +667,7 @@ function DetalleModal({
                       <span className="text-white/40 w-24 shrink-0">{fmtFecha(n.fecha)}</span>
                       <div className="flex items-center gap-1 flex-1 flex-wrap">
                         {n.trabajo_dia && <span className="px-1.5 py-0.5 rounded bg-green-400/10 text-green-400 border border-green-400/20">Trabajó</span>}
-                        {n.falta && <span className="px-1.5 py-0.5 rounded bg-red-400/10 text-red-400 border border-red-400/20">Falta</span>}
+                        {n.falta && <span className="px-1.5 py-0.5 rounded bg-red-400/10 text-red-400 border border-red-400/20">Falta{n.dias_descuento ? ` (–${n.dias_descuento}d)` : ""}</span>}
                         {n.suspension && <span className="px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-400 border border-amber-400/20">Suspensión</span>}
                         {n.descanso_trabajado && <span className="px-1.5 py-0.5 rounded bg-blue-400/10 text-blue-400 border border-blue-400/20">Dsco. Trab.</span>}
                         {n.puesto_cubierto_nombre && n.puesto_cubierto_nombre !== n.puesto_titular_nombre && (
@@ -678,10 +681,10 @@ function DetalleModal({
                             permiso_con_goce: "Permiso c/goce", permiso_sin_goce: "Permiso s/goce",
                             relevo_completo: "Relevo completo", relevo_parcial: "Relevo parcial",
                             horas_extra_puras: "Horas extra", ssa_externo: "Serv. especial",
-                            cambio_titular: "Cambio titular",
+                            cambio_titular: "Cambio titular", descanso_ciclo: "Descanso ciclo",
                           };
                           const isDescuento = ["falta_total","abandono_parcial","suspension","permiso_sin_goce"].includes(n.tipo_novedad);
-                          const isNeutral   = ["vacaciones","incapacidad","relevo_vacaciones","permiso_con_goce"].includes(n.tipo_novedad);
+                          const isNeutral   = ["vacaciones","incapacidad","relevo_vacaciones","permiso_con_goce","descanso_ciclo"].includes(n.tipo_novedad);
                           return (
                             <span className={`px-1.5 py-0.5 rounded border text-[10px] font-semibold ${
                               isDescuento ? "bg-red-500/5 text-red-300/70 border-red-500/15" :
@@ -1934,7 +1937,7 @@ export default function PrePlanilla() {
                                       </span>
                                       {(est2.descFaltas > 0 || est2.valorHE > 0) && (
                                         <p className="text-[9px] text-white/25 mt-0.5">
-                                          {est2.descFaltas > 0 ? `-${fmtQ(est2.descFaltas)} ` : ""}
+                                          {est2.descFaltas > 0 ? `-${fmtQ(est2.descFaltas)} (${est2.diasDesc}d) ` : ""}
                                           {est2.valorHE > 0 ? `+${fmtQ(est2.valorHE)} HE` : ""}
                                         </p>
                                       )}

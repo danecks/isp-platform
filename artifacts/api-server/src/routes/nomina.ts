@@ -531,16 +531,18 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
         );
         if (!trabajaEseDia) {
           // No es una falta: hoy le toca descanso según su ciclo de turno.
-          // Registrar como novedad de descanso (sin falta, sin descuento).
+          // Contrato mensual: descanso de ciclo es día pagado con horas del turno.
+          const turnoHorasDescanso = Number(t.horas_trabajo ?? 24);
           await pool.query(`
             INSERT INTO novedades_nomina_diarias
               (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
                falta, suspension, descanso_trabajado, afecta_septimo, descuento_dia,
                puesto_titular_id, puesto_titular_nombre, tipo_novedad, fuente, updated_at)
-            VALUES ($1,$2,$3,FALSE,0,0, FALSE,FALSE,FALSE,FALSE,FALSE, $4,$5,'descanso_ciclo','auto_auditoria',NOW())
+            VALUES ($1,$2,$3,TRUE,$6,0, FALSE,FALSE,FALSE,FALSE,FALSE, $4,$5,'descanso_ciclo','auto_auditoria',NOW())
             ON CONFLICT (fecha, employee_id) DO NOTHING
           `, [fecha, t.employee_id, t.empleado_nombre ?? "Desconocido",
-              t.puesto_titular_id ?? null, t.puesto_titular_nombre ?? null]);
+              t.puesto_titular_id ?? null, t.puesto_titular_nombre ?? null,
+              turnoHorasDescanso.toFixed(2)]);
           count++;
           continue;
         }
@@ -610,6 +612,169 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
           !sinFaltaT,                        // $8 requiere_revision_rrhh
           cierreId]);                        // $9
       count++;
+    }
+
+    // ── Paso 4.5: Novedades base para TODOS los titulares activos ─────────────
+    // Contrato mensual: TODOS los días cuentan como pagados (turno normal = trabajo,
+    // descanso de ciclo = día pagado con horas del turno). Solo faltas descuentan.
+    // Este paso garantiza que titulares que trabajaron su turno normal
+    // (y no aparecen en pasos anteriores porque no tuvieron incidentes) tengan novedad.
+    try {
+      const { rows: titularesFaltantes } = await pool.query(`
+        SELECT DISTINCT ON (pt.employee_id)
+          pt.employee_id,
+          e.nombre_completo AS empleado_nombre,
+          po.id AS puesto_id,
+          po.nombre AS puesto_nombre,
+          t.id AS turno_id,
+          t.nombre AS turno_nombre,
+          t.horas_trabajo::float AS horas_trabajo,
+          t.horas_descanso::float AS horas_descanso,
+          (t.horas_trabajo + t.horas_descanso)::float AS ciclo_horas,
+          po.fecha_inicio_ciclo::text AS fecha_inicio_ciclo,
+          e.dia_descanso
+        FROM puesto_titulares pt
+        JOIN employees e ON e.id = pt.employee_id
+        JOIN puestos_operativos po ON po.id = pt.puesto_id
+        LEFT JOIN turnos t ON t.id = po.tipo_turno_id
+        WHERE pt.activo = true
+        ORDER BY pt.employee_id, po.id
+      `, []);
+
+      for (const tit of titularesFaltantes) {
+        const turnoHoras = Number(tit.horas_trabajo ?? 24);
+        let esDescanso = false;
+
+        if (tit.turno_id) {
+          const turnoObj = {
+            id: tit.turno_id,
+            nombre: tit.turno_nombre,
+            horas_trabajo: Number(tit.horas_trabajo),
+            horas_descanso: Number(tit.horas_descanso),
+            ciclo_horas: Number(tit.ciclo_horas),
+          };
+          const { trabajaEseDia } = calcularJornadaEsperada(
+            turnoObj,
+            tit.fecha_inicio_ciclo ?? null,
+            fecha,
+            tit.dia_descanso ?? null,
+          );
+          esDescanso = !trabajaEseDia;
+        }
+
+        await pool.query(`
+          INSERT INTO novedades_nomina_diarias
+            (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
+             falta, suspension, descanso_trabajado, afecta_septimo, descuento_dia,
+             puesto_titular_id, puesto_titular_nombre, tipo_novedad, fuente, cierre_id, updated_at)
+          VALUES ($1,$2,$3,TRUE,$4,0, FALSE,FALSE,FALSE,FALSE,FALSE, $5,$6,$7,'cierre_operativo',$8,NOW())
+          ON CONFLICT (fecha, employee_id) DO UPDATE SET
+            trabajo_dia = CASE WHEN EXCLUDED.falta = FALSE AND novedades_nomina_diarias.falta = FALSE
+                               AND COALESCE(novedades_nomina_diarias.impacto_nomina,'pendiente') NOT IN ('aprobado_rrhh','rechazado_rrhh')
+                          THEN TRUE ELSE novedades_nomina_diarias.trabajo_dia END,
+            horas_trabajadas = CASE WHEN EXCLUDED.falta = FALSE AND novedades_nomina_diarias.falta = FALSE
+                                    AND novedades_nomina_diarias.horas_trabajadas::numeric = 0
+                                    AND COALESCE(novedades_nomina_diarias.impacto_nomina,'pendiente') NOT IN ('aprobado_rrhh','rechazado_rrhh')
+                               THEN EXCLUDED.horas_trabajadas ELSE novedades_nomina_diarias.horas_trabajadas END,
+            tipo_novedad = CASE WHEN novedades_nomina_diarias.tipo_novedad IS NULL
+                                AND COALESCE(novedades_nomina_diarias.impacto_nomina,'pendiente') NOT IN ('aprobado_rrhh','rechazado_rrhh')
+                           THEN EXCLUDED.tipo_novedad ELSE novedades_nomina_diarias.tipo_novedad END,
+            updated_at = NOW()
+        `, [
+          fecha, tit.employee_id, tit.empleado_nombre ?? "Desconocido",
+          turnoHoras.toFixed(2),
+          tit.puesto_id, tit.puesto_nombre,
+          esDescanso ? 'descanso_ciclo' : null,
+          cierreId,
+        ]);
+        count++;
+      }
+      if (titularesFaltantes.length > 0) {
+        logger.info({ fecha, total: titularesFaltantes.length }, "Paso 4.5: novedades base generadas para titulares sin registro");
+      }
+    } catch (paso45Err) {
+      logger.warn({ paso45Err, fecha }, "Paso 4.5 novedades base titulares: falló (no bloqueante)");
+    }
+
+    // ── Paso 4.6: Ajustar horas para descanso con cobertura ─────────────────
+    // Si un titular en día de descanso cubrió a alguien (tiene horas_extra > 0),
+    // sus horas_trabajadas deben incluir las horas base del turno (descanso pagado) + las HE.
+    try {
+      const { rows: cobDescanso } = await pool.query(`
+        SELECT n.id, n.employee_id, n.horas_trabajadas, n.horas_extra,
+               po.tipo_turno_id,
+               t.horas_trabajo::float AS turno_horas,
+               t.horas_descanso::float AS turno_descanso,
+               po.fecha_inicio_ciclo::text AS fecha_inicio_ciclo,
+               e.dia_descanso,
+               t.nombre AS turno_nombre
+        FROM novedades_nomina_diarias n
+        JOIN puesto_titulares pt ON pt.employee_id = n.employee_id AND pt.activo = true
+        JOIN puestos_operativos po ON po.id = pt.puesto_id
+        LEFT JOIN turnos t ON t.id = po.tipo_turno_id
+        LEFT JOIN employees e ON e.id = n.employee_id
+        WHERE n.fecha = $1
+          AND n.trabajo_dia = TRUE
+          AND n.horas_extra > 0
+          AND po.tipo_turno_id IS NOT NULL
+      `, [fecha]);
+
+      for (const cd of cobDescanso) {
+        const turnoObj = {
+          id: cd.tipo_turno_id,
+          nombre: cd.turno_nombre,
+          horas_trabajo: Number(cd.turno_horas),
+          horas_descanso: Number(cd.turno_descanso),
+          ciclo_horas: Number(cd.turno_horas) + Number(cd.turno_descanso),
+        };
+        const { trabajaEseDia } = calcularJornadaEsperada(
+          turnoObj,
+          cd.fecha_inicio_ciclo ?? null,
+          fecha,
+          cd.dia_descanso ?? null,
+        );
+
+        if (!trabajaEseDia) {
+          const turnoBase = Number(cd.turno_horas);
+          const heHoras = Number(cd.horas_extra);
+          const newHorasTrab = turnoBase + heHoras;
+          if (Number(cd.horas_trabajadas) < newHorasTrab) {
+            await pool.query(`
+              UPDATE novedades_nomina_diarias
+              SET horas_trabajadas = $1,
+                  descanso_trabajado = TRUE,
+                  updated_at = NOW()
+              WHERE id = $2
+            `, [newHorasTrab.toFixed(2), cd.id]);
+          }
+        }
+      }
+    } catch (paso46Err) {
+      logger.warn({ paso46Err, fecha }, "Paso 4.6 descanso+cobertura: falló (no bloqueante)");
+    }
+
+    // ── Paso 4.7: Establecer dias_descuento para faltas según turno ─────────
+    // Regla de negocio: falta en turno 24h = 3 días descuento, 12h = 2 días descuento
+    try {
+      await pool.query(`
+        UPDATE novedades_nomina_diarias n
+        SET dias_descuento = CASE
+              WHEN t.horas_trabajo >= 24 THEN 3
+              WHEN t.horas_trabajo >= 12 THEN 2
+              ELSE 1
+            END,
+            updated_at = NOW()
+        FROM puesto_titulares pt
+        JOIN puestos_operativos po ON po.id = pt.puesto_id
+        LEFT JOIN turnos t ON t.id = po.tipo_turno_id
+        WHERE n.fecha = $1
+          AND pt.employee_id = n.employee_id
+          AND pt.activo = true
+          AND n.falta = TRUE
+          AND (n.dias_descuento IS NULL OR n.dias_descuento = 0)
+      `, [fecha]);
+    } catch (paso47Err) {
+      logger.warn({ paso47Err, fecha }, "Paso 4.7 dias_descuento faltas: falló (no bloqueante)");
     }
 
     // 3. Suspensiones desde movimientos_operativos (texto) + eventos_rrhh (Fix P-NOM-05)

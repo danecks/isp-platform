@@ -1643,7 +1643,14 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
         if (diff <= 0) diff += 1440;
         return Math.round((diff / 60) * 100) / 100;
       };
-      const horasCalc = usaParcial ? calcHorasCobertura(horaInicio, horaFin) : 10;
+      let turnoHorasPuesto = 10;
+      if (puesto.tipo_turno_id) {
+        try {
+          const { rows: tRows } = await pool.query(`SELECT horas_trabajo::float FROM turnos WHERE id=$1`, [puesto.tipo_turno_id]);
+          if (tRows.length) turnoHorasPuesto = Number(tRows[0].horas_trabajo);
+        } catch {}
+      }
+      const horasCalc = usaParcial ? calcHorasCobertura(horaInicio, horaFin) : turnoHorasPuesto;
       // Marcar cobertura especial cuando el entrante es supervisor o jefe de servicio
       const tipoPersonalEntrante = entrante.tipo_personal ?? 'guardia';
       const tipoSeg = tipoPersonalEntrante === 'supervisor'
@@ -1678,15 +1685,15 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
                (employee_id, employee_nombre, employee_dpi,
                 tipo_evento, fecha, cliente_nombre, puesto_nombre,
                 generado_desde, movimiento_id, estado, usuario_generador,
-                observaciones, documentos_generados, evento_par_id)
+                observaciones, documentos_generados, evento_par_id, cantidad_horas)
              VALUES ($1,$2,$3,'horas_extra',$4::date,$5,$6,'operaciones',$7,'pendiente_aprobacion',$8,
-                     $9,'[]',$10)
+                     $9,'[]',$10,$11)
              RETURNING id`,
             [agenteEntranteId, entrante.nombre_completo, entrante.dpi ?? null,
              hoy, puesto.cliente_nombre || null, puesto.nombre || null,
              movimientoId, usuario || "sistema",
              `Cobertura HE: ${tipoNovedad ?? 'relevo'} en ${puesto.nombre} (${puesto.cliente_nombre})`,
-             eventoRrhhSalienteId]
+             eventoRrhhSalienteId, horasCalc]
           );
           eventoRrhhEntranteId = evEntRows[0]?.id ?? null;
           if (eventoRrhhSalienteId && eventoRrhhEntranteId) {
