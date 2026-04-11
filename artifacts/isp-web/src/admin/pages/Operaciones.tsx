@@ -5901,6 +5901,16 @@ export default function Operaciones() {
   // El más antiguo primero (ya vienen ordenados del backend)
   const primerDiaPendiente: DiaPendienteCierre | null = diasPendientesCierre[0] ?? null;
 
+  // ── Lógica de cierre basada en fechaVista ──────────────────────────────────
+  // El día que se ve en pantalla es el que se cierra — no una "fecha activa" calculada
+  const fechaVistaEnPendiente = diasPendientesCierre.some(d => d.fecha === fechaVista);
+  // Hoy cerrado: esFechaFutura (API avanzó al siguiente) o cierreDeHoy existe
+  const hoyCerrado = !!(cierreHoy?.esFechaFutura || cierreHoy?.cierreDeHoy?.estado === "cerrado");
+  // Viendo hoy pero hay días pasados sin cerrar → bloqueado
+  const bloqueadoPorPendientes = !esPasado && !esFuturo && hayDiasPendientes && !hoyCerrado;
+  // ¿El día actual visto ya está cerrado?
+  const fechaVistaCerrada = esPasado ? !fechaVistaEnPendiente : (!esFuturo && hoyCerrado);
+
   // ── Invalidar y refrescar ─────────────────────────────────────────────────
   function invalidate() {
     qc.invalidateQueries({ queryKey: ["operaciones-tablero"] });
@@ -6019,7 +6029,7 @@ export default function Operaciones() {
   // ── DnD: inicio ───────────────────────────────────────────────────────────
   function handleDragStart(event: DragStartEvent) {
     const enModoCuadre = esPasado && diasPendientesCierre.some(d => d.fecha === fechaVista);
-    if (!enModoCuadre && (isCerrado || hayDiasPendientes)) return;
+    if (!enModoCuadre && (fechaVistaCerrada || hayDiasPendientes)) return;
     const agenteId = parseInt(event.active.id.toString().replace("agent-", ""));
     const agente = [
       ...(pool?.disponibles ?? []),
@@ -6038,7 +6048,7 @@ export default function Operaciones() {
     const { active, over } = event;
     setDraggingAgente(null);
     const enModoCuadre = esPasado && diasPendientesCierre.some(d => d.fecha === fechaVista);
-    if (!enModoCuadre && (isCerrado || hayDiasPendientes)) return;
+    if (!enModoCuadre && (fechaVistaCerrada || hayDiasPendientes)) return;
     if (!over) return;
 
     const agenteId = parseInt(active.id.toString().replace("agent-", ""));
@@ -6216,7 +6226,7 @@ export default function Operaciones() {
   async function handlePuestoClick(puesto: Puesto) {
     // En modo cuadre (viendo un día pasado pendiente): permitir interacción con ese día
     const enModoCuadre = esPasado && diasPendientesCierre.some(d => d.fecha === fechaVista);
-    if (!enModoCuadre && (isCerrado || hayDiasPendientes)) return;
+    if (!enModoCuadre && (fechaVistaCerrada || hayDiasPendientes)) return;
     // En modo planificación: click en puesto abre el modal de plan futuro
     if (esFuturo) {
       if (agenteSeleccionado) {
@@ -6350,22 +6360,27 @@ export default function Operaciones() {
   }
 
   // ── Cerrar día ─────────────────────────────────────────────────────────────
+  // Siempre cierra la fecha que se está viendo en el pizarrón (fechaVista),
+  // ya sea hoy o un día pasado sin cerrar.
   async function cerrarDia(comentario: string, sincronizarCustodias: boolean) {
+    const fechaStr = formatFechaVista(fechaVista);
     try {
       const resp: any = await apiPost(`${API_BASE}/operaciones/cierre`, {
-        confirmacion: `CERRAR ${fechaActivaStr}`,
+        confirmacion: `CERRAR ${fechaStr}`,
         comentario,
         usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
         usuarioId: currentUser?.id,
         rol: currentUser?.rol,
         sincronizarCustodias,
+        fecha: fechaVista,
       });
       const syncMsg = resp?.syncCustodias?.totalCambios
         ? ` • ${resp.syncCustodias.totalCambios} custodia(s) actualizada(s).`
         : "";
-      toast({ title: "Día operativo cerrado", description: `Cierre de ${fechaActivaStr} registrado.${syncMsg}` });
+      toast({ title: "Día cerrado", description: `Cierre de ${fechaStr} registrado.${syncMsg}` });
       setModalCierre(false);
       refetchCierre();
+      if (esPasado) volverHoy();
     } catch (e: any) {
       toast({ title: "Error al cerrar", description: e.error ?? "Error desconocido", variant: "destructive" });
       throw e;
@@ -6637,80 +6652,46 @@ export default function Operaciones() {
               </div>
             )}
 
-            {/* ── Fecha operativa activa ──────────────────────────────── */}
-            <div className="flex items-center gap-1.5 text-[11px] text-white/30 bg-[#0c1929] border border-white/8 rounded-xl px-3 py-2">
-              <Calendar className="w-3 h-3 text-white/20" />
-              <span className="text-white/50 font-mono">{fechaActivaStr}</span>
-              {diaHoyCerrado && (
-                <span className="text-amber-400/60 font-semibold ml-0.5">↑ siguiente</span>
-              )}
-            </div>
-
-            {/* ── Cierre operativo ────────────────────────────────────── */}
-            {isCerrado ? (
-              <>
-                <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/25 rounded-xl px-3 py-2">
-                  <Lock className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="text-xs font-semibold text-amber-300">Día cerrado</span>
-                  <span className="text-[10px] text-amber-400/50">•</span>
-                  <span className="text-[10px] text-amber-400/60">{fechaActivaStr}</span>
-                  {cierreHoy?.cierre?.cerrado_por && (
-                    <span className="text-[10px] text-amber-400/40 hidden sm:inline">por {cierreHoy.cierre.cerrado_por}</span>
+            {/* ── Cierre operativo — siempre sobre fechaVista ─────────── */}
+            {!esFuturo && (
+              fechaVistaCerrada ? (
+                // Día ya cerrado (pasado o hoy)
+                <>
+                  <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/25 rounded-xl px-3 py-2">
+                    <Lock className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="text-xs font-semibold text-amber-300">Cerrado</span>
+                    <span className="text-[10px] text-amber-400/50">·</span>
+                    <span className="text-[10px] text-amber-400/60 font-mono">{formatFechaVista(fechaVista)}</span>
+                  </div>
+                  {esAdmin && (
+                    <button
+                      onClick={() => setModalReabrir(true)}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-xl px-3 py-2 transition-colors"
+                    >
+                      <Unlock className="w-3.5 h-3.5" /> Reabrir
+                    </button>
                   )}
-                </div>
-                {esAdmin && (
-                  <button
-                    onClick={() => setModalReabrir(true)}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-xl px-3 py-2 transition-colors"
-                  >
-                    <Unlock className="w-3.5 h-3.5" /> Reabrir
-                  </button>
-                )}
-              </>
-            ) : diaHoyCerrado ? (
-              <>
-                <div className="flex items-center gap-2 bg-amber-500/8 border border-amber-500/20 rounded-xl px-3 py-2">
-                  <CheckSquare className="w-3.5 h-3.5 text-amber-400/80" />
-                  <span className="text-[11px] font-semibold text-amber-300/80">
-                    {cierreHoy!.cierreDeHoy!.fecha_str ?? "Ayer"} cerrado
+                </>
+              ) : bloqueadoPorPendientes ? (
+                // Intentando ver/cerrar hoy pero hay días pasados sin cerrar
+                <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/25 rounded-xl px-3 py-2" title={`Cierra primero: ${primerDiaPendiente?.fechaStr}`}>
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                  <span className="text-[11px] font-semibold text-red-300">
+                    Cierra primero el <span className="font-bold text-red-200">{primerDiaPendiente?.fechaStr}</span>
                   </span>
-                  {cierreHoy!.cierreDeHoy!.cerrado_por && (
-                    <span className="text-[10px] text-amber-400/40 hidden sm:inline">
-                      por {cierreHoy!.cierreDeHoy!.cerrado_por}
-                    </span>
-                  )}
                 </div>
-                {esAdmin && (
-                  <button
-                    onClick={() => setModalReabrir(true)}
-                    className="flex items-center gap-1.5 text-[11px] font-semibold text-red-300/70 bg-red-500/8 hover:bg-red-500/15 border border-red-500/15 rounded-xl px-2.5 py-2 transition-colors"
-                  >
-                    <Unlock className="w-3 h-3" /> Reabrir
-                  </button>
-                )}
-                {esSupervisorOAdmin && (
-                  <button
-                    onClick={() => setModalCierre(true)}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-amber-300/80 bg-amber-500/8 hover:bg-amber-500/15 border border-amber-500/20 hover:border-amber-500/40 rounded-xl px-3 py-2 transition-colors"
-                  >
-                    <Lock className="w-3.5 h-3.5" /> Cerrar {fechaActivaStr}
-                  </button>
-                )}
-              </>
-            ) : (
-              <>
-                {esSupervisorOAdmin && (
-                  <button
-                    onClick={() => setModalCierre(true)}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-amber-300/80 bg-amber-500/8 hover:bg-amber-500/15 border border-amber-500/20 hover:border-amber-500/40 rounded-xl px-3 py-2 transition-colors"
-                  >
-                    <Lock className="w-3.5 h-3.5" /> Cerrar día
-                  </button>
-                )}
-              </>
+              ) : esSupervisorOAdmin ? (
+                // Día abierto (pasado pendiente o hoy sin bloqueo) → botón de cierre
+                <button
+                  onClick={() => setModalCierre(true)}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-amber-300/80 bg-amber-500/8 hover:bg-amber-500/15 border border-amber-500/20 hover:border-amber-500/40 rounded-xl px-3 py-2 transition-colors"
+                >
+                  <Lock className="w-3.5 h-3.5" /> Cerrar {formatFechaVista(fechaVista)}
+                </button>
+              ) : null
             )}
 
-            {!isCerrado && (
+            {!fechaVistaCerrada && !esFuturo && (
               <button
                 onClick={() => setNuevoPuestoData("nuevo")}
                 className="flex items-center gap-1.5 text-xs font-semibold text-white bg-primary hover:bg-primary/90 rounded-xl px-3 py-2 transition-colors"
@@ -6907,7 +6888,7 @@ export default function Operaciones() {
           </div>
 
           {/* ── Alerta: pool sin disponibles + puestos descubiertos ─────── */}
-          {(pool?.disponibles?.length ?? 0) === 0 && puestosDescubiertos > 0 && !isCerrado && (
+          {(pool?.disponibles?.length ?? 0) === 0 && puestosDescubiertos > 0 && !fechaVistaCerrada && (
             <div className="shrink-0 flex items-center gap-2.5 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-2.5">
               <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
               <p className="text-xs font-semibold text-red-300">
@@ -7083,8 +7064,8 @@ export default function Operaciones() {
                                 agente={agente}
                                 isSelected={agenteSeleccionado?.id === agente.id}
                                 motivos={agente.motivos}
-                                onClick={() => { if (isCerrado || hayDiasPendientes) return; setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente); }}
-                                disabled={isCerrado}
+                                onClick={() => { if (fechaVistaCerrada || hayDiasPendientes) return; setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente); }}
+                                disabled={fechaVistaCerrada}
                               />
                             </div>
                           ))}
@@ -7170,13 +7151,13 @@ export default function Operaciones() {
                         isSelected={agenteSeleccionado?.id === agente.id}
                         onClick={() => {
                           const enModoCuadre = esPasado && diasPendientesCierre.some(d => d.fecha === fechaVista);
-                          if (!enModoCuadre && (isCerrado || hayDiasPendientes)) return;
+                          if (!enModoCuadre && (fechaVistaCerrada || hayDiasPendientes)) return;
                           setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente);
                         }}
                         disabled={
                           seccion
-                            ? seccionDeshabilitada || isCerrado
-                            : poolTab === "enPuesto" || poolTab === "enSSA" || poolTab === "faltando" || poolTab === "enVacaciones" || isCerrado
+                            ? seccionDeshabilitada || fechaVistaCerrada
+                            : poolTab === "enPuesto" || poolTab === "enSSA" || poolTab === "faltando" || poolTab === "enVacaciones" || fechaVistaCerrada
                         }
                       />
                     </div>
@@ -7200,8 +7181,8 @@ export default function Operaciones() {
 
           {/* ── CENTER: Tablero de puestos ─────────────────────────────── */}
           <div className="flex-1 overflow-auto relative" style={{ minHeight: 0 }}>
-            {/* Read-only overlay when active date is closed */}
-            {isCerrado && (
+            {/* Read-only overlay when viewed date is closed */}
+            {fechaVistaCerrada && (
               <div className="absolute inset-0 z-10 pointer-events-none">
                 <div className="absolute inset-0 bg-[#04090f]/60 backdrop-blur-[1px] rounded-xl" />
                 <div className="absolute inset-0 flex items-center justify-center">
@@ -7209,7 +7190,7 @@ export default function Operaciones() {
                     <Lock className="w-5 h-5 text-amber-400" />
                     <div>
                       <p className="text-sm font-bold text-amber-300">Día operativo cerrado</p>
-                      <p className="text-xs text-amber-400/60 mt-0.5">Modo solo lectura · {fechaActivaStr}</p>
+                      <p className="text-xs text-amber-400/60 mt-0.5">Modo solo lectura · {formatFechaVista(fechaVista)}</p>
                     </div>
                     {esAdmin && (
                       <button
@@ -7305,7 +7286,7 @@ export default function Operaciones() {
 
               const esSeleccionado = agenteSeleccionado?.id === sv.id;
               const estaEnDescansoPool = pool!.descansandoCiclo.some(a => a.id === sv.id);
-              const seleccionable = estaEnDescansoPool && !isCerrado;
+              const seleccionable = estaEnDescansoPool && !fechaVistaCerrada;
 
               const handleClick = seleccionable ? () => {
                 const agente = pool!.descansandoCiclo.find(a => a.id === sv.id);
@@ -7367,7 +7348,7 @@ export default function Operaciones() {
 
             const JefeCard = ({ js, variante }: { js: JefeServicioPool; variante: "hoy" | "mañana" | "descanso" | "otro" }) => {
               const esSeleccionado = agenteSeleccionado?.id === js.id;
-              const seleccionable = variante === "descanso" && !isCerrado;
+              const seleccionable = variante === "descanso" && !fechaVistaCerrada;
               const badgeCls = variante === "hoy"
                 ? "text-orange-200/90 bg-orange-500/20 border-orange-400/35"
                 : variante === "mañana"
@@ -7658,7 +7639,7 @@ export default function Operaciones() {
                         key={t.id}
                         t={t}
                         onAsignar={() => setModalAsignarSSA(t)}
-                        onRemover={isCerrado ? undefined : (motivo, notas) => removerAgenteSSA(t, motivo, notas)}
+                        onRemover={fechaVistaCerrada ? undefined : (motivo, notas) => removerAgenteSSA(t, motivo, notas)}
                       />
                     ))
                   )
@@ -7827,10 +7808,14 @@ export default function Operaciones() {
 
       {modalCierre && cierreHoy && (
         <ModalCierre
-          resumen={cierreHoy.resumen}
-          advertencias={cierreHoy.advertencias}
-          fechaActivaStr={fechaActivaStr}
-          fechaIso={cierreHoy.fechaActiva}
+          resumen={esPasado
+            ? { totalPuestos: 0, cubiertos: 0, descubiertos: 0, cubiertosPorTitular: 0, cubiertosPorRelevo: 0, ausencias: 0, horasExtra: 0 }
+            : cierreHoy.resumen}
+          advertencias={esPasado
+            ? [`Cierre retroactivo del día ${formatFechaVista(fechaVista)}`]
+            : cierreHoy.advertencias}
+          fechaActivaStr={formatFechaVista(fechaVista)}
+          fechaIso={fechaVista}
           onConfirm={cerrarDia}
           onClose={() => setModalCierre(false)}
         />
