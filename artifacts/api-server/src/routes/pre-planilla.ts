@@ -103,7 +103,7 @@ const QUERY_CONSOLIDADO = `
       THEN n.horas_extra::numeric ELSE 0 END), 0)                                        AS horas_extra_pendientes,
 
     -- Total días de descuento por faltas (según turno: 3d para 24h, 2d para 12h)
-    COALESCE(SUM(CASE WHEN n.falta = TRUE AND n.impacto_nomina = 'aprobado_rrhh'
+    COALESCE(SUM(CASE WHEN n.falta = TRUE AND COALESCE(n.impacto_nomina,'pendiente') != 'rechazado_rrhh'
                       THEN COALESCE(n.dias_descuento, 1) ELSE 0 END), 0)        AS total_dias_descuento,
 
     -- Relevos: días en que el colaborador cubrió un puesto distinto al suyo titular
