@@ -371,6 +371,49 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
       `Creado automáticamente desde solicitud SOL-${String(sol.id).padStart(5, "0")}`,
     ].filter(Boolean).join(" | ");
 
+    // ── Verificar si el DPI ya existe (agente que regresa de baja) ──────────────
+    let empId: number;
+    if (sol.dpi) {
+      const { rows: existentes } = await pool.query(
+        `SELECT id, estado_laboral FROM employees WHERE dpi = $1 LIMIT 1`,
+        [sol.dpi]
+      );
+      if (existentes.length > 0) {
+        // Reactivar el registro existente en lugar de duplicar
+        empId = existentes[0].id;
+        await pool.query(`
+          UPDATE employees SET
+            estado_laboral  = 'activo',
+            fecha_ingreso   = CURRENT_DATE,
+            tipo_personal   = $2,
+            sueldo_base     = COALESCE($3, sueldo_base),
+            puesto          = COALESCE($4, puesto),
+            foto_url        = COALESCE($5, foto_url),
+            telefono        = COALESCE($6, telefono),
+            correo          = COALESCE($7, correo),
+            notas           = $8,
+            updated_at      = NOW()
+          WHERE id = $1
+        `, [
+          empId, tipoPersonal, sueldoAsignado, puestoAsignado,
+          sol.foto_url || null,
+          sol.telefono || null,
+          sol.correo || null,
+          notasExtra || null,
+        ]);
+
+        await pool.query(`
+          UPDATE solicitudes_empleo
+          SET employee_id = $1, estado = 'contratada', updated_at = NOW()
+          WHERE id = $2
+        `, [empId, id]);
+
+        logger.info({ solicitudId: id, employeeId: empId, reactivado: true },
+          "kiosco: agente reactivado desde solicitud (DPI ya existía)");
+        return res.json({ ok: true, employee_id: empId, reactivado: true });
+      }
+    }
+
     const { rows: empRows } = await pool.query(`
       INSERT INTO employees (
         nombre_completo, dpi, telefono, correo,
@@ -478,7 +521,7 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
       sol.fue_policia || null,
     ]);
 
-    const empId = empRows[0].id;
+    empId = empRows[0].id;
 
     await pool.query(`
       UPDATE solicitudes_empleo
