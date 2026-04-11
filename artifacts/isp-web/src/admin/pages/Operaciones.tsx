@@ -4791,8 +4791,8 @@ function ModalSustitucion({
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-sm shadow-2xl">
-        <div className="px-5 py-4 border-b border-white/8">
+      <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-sm shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="px-5 py-4 border-b border-white/8 shrink-0">
           <div className="flex items-center gap-2">
             {esSustitucion
               ? <ArrowLeftRight className="w-4 h-4 text-yellow-400" />
@@ -4804,7 +4804,7 @@ function ModalSustitucion({
           </div>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 overflow-y-auto flex-1" style={{ scrollbarWidth: "thin" }}>
           {/* Advertencia de conflicto */}
           {advertencia && (
             <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3 flex items-start gap-2">
@@ -5162,25 +5162,26 @@ function ModalSustitucion({
             />
           </div>
 
-          <div className="flex gap-2 pt-1">
-            <button
-              onClick={onCancel}
-              className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleConfirm}
-              disabled={loading || parcialExcede || !!parcialIncompleto}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-colors flex items-center justify-center gap-2
-                ${esSustitucion
-                  ? "bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50"
-                  : "bg-green-600 hover:bg-green-500 disabled:opacity-50"}`}
-            >
-              {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              {advertencia ? "Forzar y confirmar" : esSustitucion ? "Confirmar sustitución" : "Asignar"}
-            </button>
-          </div>
+        </div>
+
+        <div className="px-5 py-4 border-t border-white/8 shrink-0 flex gap-2">
+          <button
+            onClick={onCancel}
+            className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={loading || parcialExcede || !!parcialIncompleto}
+            className={`flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-colors flex items-center justify-center gap-2
+              ${esSustitucion
+                ? "bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50"
+                : "bg-green-600 hover:bg-green-500 disabled:opacity-50"}`}
+          >
+            {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {advertencia ? "Forzar y confirmar" : esSustitucion ? "Confirmar sustitución" : "Asignar"}
+          </button>
         </div>
       </div>
     </div>,
