@@ -1407,24 +1407,23 @@ operacionesRouter.post("/operaciones/registrar-falta", async (req, res) => {
       ? `${motivoNorm} — ${po[0].nombre} (${po[0].cliente_nombre}). ${notas}`
       : `${motivoNorm} — ${po[0].nombre} (${po[0].cliente_nombre})`;
 
-    // Registrar evento de RRHH (falta)
+    // Marcar puesto como 'faltando' con metadata del empleado y motivo.
+    // El evento RRHH se genera al cierre del pizarrón, NO aquí.
+    // Esto permite que si durante el día se cubre con sustitución, la falta
+    // ya no se genera al cerrar (la sustitución genera su propio par de eventos).
     await pool.query(`
-      INSERT INTO eventos_rrhh (employee_id, employee_nombre, tipo_evento, fecha, observaciones, usuario_generador, puesto_nombre, cliente_nombre, generado_desde, estado)
-      VALUES ($1, $2, 'falta', $3::date, $4, $5, $6, $7, 'operaciones', 'pendiente')
-      ON CONFLICT DO NOTHING
-    `, [empleadoId, emp[0].nombre_completo, hoyGT, nota, usuario ?? 'sistema', po[0].nombre, po[0].cliente_nombre]);
+      UPDATE puestos_operativos
+      SET estado_operativo_puesto = 'faltando',
+          falta_employee_id       = $2,
+          falta_motivo            = $3,
+          falta_notas             = $4,
+          falta_usuario           = $5,
+          updated_at              = NOW()
+      WHERE id = $1
+    `, [puestoId, empleadoId, motivoNorm, nota, usuario ?? 'sistema']);
 
-    // Para puestos NO-24x24: marcar el puesto como 'faltando'
-    if (!es_24x24) {
-      await pool.query(`
-        UPDATE puestos_operativos
-        SET estado_operativo_puesto = 'faltando', updated_at = NOW()
-        WHERE id = $1
-      `, [puestoId]);
-    }
-
-    logger.info({ puestoId, empleadoId, motivo: motivoNorm, es_24x24 }, "Falta registrada");
-    res.json({ ok: true, empleado: emp[0].nombre_completo, puesto: po[0].nombre });
+    logger.info({ puestoId, empleadoId, motivo: motivoNorm, es_24x24, diferido: true }, "Falta marcada (evento diferido al cierre)");
+    res.json({ ok: true, empleado: emp[0].nombre_completo, puesto: po[0].nombre, diferido: true });
   } catch (err) {
     logger.error({ err }, "POST /operaciones/registrar-falta error");
     res.status(500).json({ error: "Error al registrar falta" });
@@ -1616,10 +1615,14 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
       }
     })();
 
-    // Actualizar estado_operativo_puesto en puestos_operativos
     await pool.query(
       `UPDATE puestos_operativos
-       SET estado_operativo_puesto = $1, updated_at = NOW()
+       SET estado_operativo_puesto = $1,
+           falta_employee_id = NULL,
+           falta_motivo = NULL,
+           falta_notas = NULL,
+           falta_usuario = NULL,
+           updated_at = NOW()
        WHERE id = $2`,
       [estadoOpPuesto, puestoId]
     );
@@ -3048,6 +3051,56 @@ operacionesRouter.post("/operaciones/cierre", async (req, res) => {
       VALUES ($1, $2, $3, $4, $5)
     `, [cierreRows[0].id, accionAudit, usuarioId ?? null, usuario ?? 'sistema', detalleAudit]);
 
+    // ── Generar eventos RRHH diferidos para puestos que siguen "faltando" ──
+    let faltasDiferidas = 0;
+    try {
+      const { rows: puestosFaltando } = await pool.query(`
+        SELECT id, nombre, cliente_nombre, falta_employee_id, falta_motivo, falta_notas, falta_usuario
+        FROM puestos_operativos
+        WHERE estado_operativo_puesto = 'faltando'
+          AND falta_employee_id IS NOT NULL
+      `);
+
+      for (const pf of puestosFaltando) {
+        const { rows: yaExiste } = await pool.query(`
+          SELECT id FROM eventos_rrhh
+          WHERE employee_id = $1
+            AND DATE(fecha) = $2
+            AND tipo_evento = 'falta'
+            AND estado != 'anulado'
+            AND puesto_nombre = $3
+        `, [pf.falta_employee_id, fechaACerrarISO, pf.nombre]);
+
+        if (yaExiste.length === 0) {
+          const { rows: empRows } = await pool.query(
+            `SELECT nombre_completo FROM employees WHERE id = $1`,
+            [pf.falta_employee_id]
+          );
+          const empNombre = empRows[0]?.nombre_completo ?? "Colaborador";
+
+          await pool.query(`
+            INSERT INTO eventos_rrhh (employee_id, employee_nombre, tipo_evento, fecha, observaciones,
+              usuario_generador, puesto_nombre, cliente_nombre, generado_desde, estado)
+            VALUES ($1, $2, 'falta', $3::date, $4, $5, $6, $7, 'cierre_operativo', 'pendiente_aprobacion')
+          `, [
+            pf.falta_employee_id, empNombre, fechaACerrarISO,
+            pf.falta_notas ?? `${pf.falta_motivo ?? "inasistencia"} — ${pf.nombre} (${pf.cliente_nombre})`,
+            pf.falta_usuario ?? usuario ?? 'sistema',
+            pf.nombre, pf.cliente_nombre,
+          ]);
+          faltasDiferidas++;
+          logger.info({ puestoId: pf.id, employeeId: pf.falta_employee_id, fecha: fechaACerrarISO },
+            "Falta diferida materializada al cierre");
+        }
+      }
+
+      if (faltasDiferidas > 0) {
+        logger.info({ faltasDiferidas }, "Faltas diferidas generadas al cierre del pizarrón");
+      }
+    } catch (faltaErr) {
+      logger.warn({ faltaErr }, "Error al generar faltas diferidas al cierre (no bloqueante)");
+    }
+
     // ── Generar novedades de nómina desde segmentos de cobertura ──────────
     const novedadesGeneradas = await generarNovedades(fechaACerrarISO, cierreRows[0].id);
 
@@ -3065,12 +3118,13 @@ operacionesRouter.post("/operaciones/cierre", async (req, res) => {
       }
     }
 
+    const faltasMsg = faltasDiferidas > 0 ? ` ${faltasDiferidas} falta(s) pendiente(s) generada(s).` : "";
     const mensaje = esRetroactivo
-      ? `Cierre retroactivo de ${fechaACerrarStr} completado. ${novedadesGeneradas} novedad(es) de nómina generada(s).`
-      : `Día ${fechaACerrarStr} cerrado. ${novedadesGeneradas} novedad(es) de nómina generada(s).`;
+      ? `Cierre retroactivo de ${fechaACerrarStr} completado. ${novedadesGeneradas} novedad(es) de nómina generada(s).${faltasMsg}`
+      : `Día ${fechaACerrarStr} cerrado. ${novedadesGeneradas} novedad(es) de nómina generada(s).${faltasMsg}`;
 
-    logger.info({ usuario, fecha: fechaACerrarStr, esRetroactivo, novedadesGeneradas }, "Día operativo cerrado");
-    res.json({ ok: true, cierre: cierreRows[0], resumen, novedadesGeneradas, retroactivo: esRetroactivo, mensaje, syncCustodias });
+    logger.info({ usuario, fecha: fechaACerrarStr, esRetroactivo, novedadesGeneradas, faltasDiferidas }, "Día operativo cerrado");
+    res.json({ ok: true, cierre: cierreRows[0], resumen, novedadesGeneradas, faltasDiferidas, retroactivo: esRetroactivo, mensaje, syncCustodias });
   } catch (err) {
     logger.error({ err }, "POST /operaciones/cierre error");
     res.status(500).json({ error: "Error al cerrar el día" });

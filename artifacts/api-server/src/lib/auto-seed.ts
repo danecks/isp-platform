@@ -4256,6 +4256,17 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: PO-DIR-01 — error (no bloqueante)");
   }
 
+  // ── FALTA-DIF-01: columnas para falta diferida en puestos_operativos ──────
+  try {
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS falta_employee_id INTEGER`);
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS falta_motivo      VARCHAR(100)`);
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS falta_notas       TEXT`);
+    await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS falta_usuario     VARCHAR(100)`);
+    logger.info("Auto-migrate: FALTA-DIF-01 columnas de falta diferida agregadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: FALTA-DIF-01 — error (no bloqueante)");
+  }
+
   // ── SOL-MERGE-01: sistema de merge de reingresos ──────────────────────────
   try {
     await pool.query(`ALTER TABLE solicitudes_empleo ADD COLUMN IF NOT EXISTS es_reingreso BOOLEAN NOT NULL DEFAULT FALSE`);
