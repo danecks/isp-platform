@@ -29,6 +29,7 @@ export interface BrutoParams {
   horasContrato: number | null | undefined;
   faltas: number;
   suspensiones: number;
+  diasDescuento?: number | null;
   horasExtra: number;
   periodoTotalDias: number;
   frecuenciaPago: string;
@@ -94,7 +95,10 @@ export function calcularBruto(p: BrutoParams): BrutoResult {
   const horasDia      = calcularHorasDia(p.horasContrato);
   const esMensualSeg  = p.frecuenciaPago === "mensual" && p.quincenaTipo === "segunda";
   const sueldoPeriodo = esMensualSeg ? p.sueldoBase : sueldoDia * p.periodoTotalDias;
-  const descFaltas    = sueldoDia * (p.faltas + p.suspensiones);
+  const diasDesc      = (p.diasDescuento != null && p.diasDescuento > 0)
+    ? p.diasDescuento + p.suspensiones
+    : p.faltas + p.suspensiones;
+  const descFaltas    = sueldoDia * diasDesc;
   const descSeptimo   = sueldoDia * (p.septimosPerdidos ?? 0);
   const valorHE       = p.horasExtra > 0
     ? (p.tarifaFijaTurnoHE != null && p.tarifaFijaTurnoHE > 0

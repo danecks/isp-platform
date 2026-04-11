@@ -27,13 +27,28 @@ async function propagarEstadoANovedades(
 
   if (estado === "aprobado") {
     if (TIPOS_FALTA.includes(tipo)) {
+      // Calcular dias_descuento según turno del puesto del empleado
+      const { rows: turnoRows } = await q.query(`
+        SELECT COALESCE(t.horas_trabajo, 24) AS turno_horas
+        FROM puesto_titulares pt
+        JOIN puestos_operativos po ON po.id = pt.puesto_id
+        LEFT JOIN turnos t ON t.id = po.tipo_turno_id
+        WHERE pt.employee_id = $1 AND pt.activo = TRUE
+        LIMIT 1
+      `, [evento.employee_id]);
+      const turnoHoras = parseFloat(turnoRows[0]?.turno_horas ?? 24);
+      const diasDesc = turnoHoras >= 24 ? 3 : (turnoHoras >= 12 ? 2 : 1);
+
       await q.query(
         `UPDATE novedades_nomina_diarias
-         SET falta = TRUE, impacto_nomina = 'aprobado_rrhh', updated_at = NOW()
+         SET falta = TRUE, trabajo_dia = FALSE, horas_trabajadas = 0,
+             impacto_nomina = 'aprobado_rrhh',
+             dias_descuento = COALESCE(NULLIF(dias_descuento, 0), $2),
+             updated_at = NOW()
          WHERE evento_rrhh_id = $1`,
-        [eventoId],
+        [eventoId, diasDesc],
       );
-      logger.info({ eventoId, tipo, updated: novedadesDirectas.length }, "Falta aprobada → novedades actualizadas");
+      logger.info({ eventoId, tipo, diasDesc, updated: novedadesDirectas.length }, "Falta aprobada → novedades actualizadas");
     } else if (esSuspension) {
       await q.query(
         `UPDATE novedades_nomina_diarias
@@ -911,6 +926,78 @@ eventosRrhhRouter.patch("/rrhh/horas-extra/:novedadId/rechazar", async (req, res
   } catch (err) {
     logger.error({ err }, "PATCH /rrhh/horas-extra/:id/rechazar error");
     res.status(500).json({ error: "Error al rechazar HE" });
+  }
+});
+
+// ─── PATCH /api/rrhh/horas-extra/:novedadId/cash ─────────────────────────────
+eventosRrhhRouter.patch("/rrhh/horas-extra/:novedadId/cash", async (req, res) => {
+  try {
+    const { aprobado_por, monto_cash } = req.body;
+    const novedadId = req.params.novedadId;
+
+    const { rows } = await pool.query(
+      `UPDATE novedades_nomina_diarias
+       SET horas_extra_estado       = 'pagado_efectivo',
+           horas_extra_aprobadas_por = $1,
+           horas_extra_aprobadas_at  = NOW(),
+           impacto_nomina           = 'pagado_efectivo',
+           updated_at               = NOW()
+       WHERE id = $2 RETURNING id, employee_id, fecha, horas_extra, evento_rrhh_id`,
+      [aprobado_por ?? "RRHH", novedadId]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Novedad no encontrada" });
+
+    const nov = rows[0];
+
+    if (nov.evento_rrhh_id) {
+      await pool.query(
+        `UPDATE eventos_rrhh SET estado = 'resuelto_cash', updated_at = NOW() WHERE id = $1`,
+        [nov.evento_rrhh_id]
+      );
+    }
+
+    await pool.query(
+      `UPDATE rrhh_alertas
+       SET estado = 'resuelta', resuelta_at = NOW(), resuelta_por = $1
+       WHERE tipo = 'horas_extra_pendiente' AND novedad_id = $2 AND estado = 'pendiente'`,
+      [aprobado_por ?? "RRHH", novedadId]
+    );
+
+    logger.info({ novedadId, employeeId: nov.employee_id, horas: nov.horas_extra, monto_cash }, "HE marcada como pagada en efectivo");
+    res.json({ ok: true, novedad: rows[0] });
+  } catch (err) {
+    logger.error({ err }, "PATCH /rrhh/horas-extra/:id/cash error");
+    res.status(500).json({ error: "Error al marcar HE como cash" });
+  }
+});
+
+// ─── GET /api/rrhh/horas-extra-cash ──────────────────────────────────────────
+eventosRrhhRouter.get("/rrhh/horas-extra-cash", async (req, res) => {
+  try {
+    const { desde, hasta } = req.query as Record<string, string>;
+    const whereDate = desde && hasta
+      ? `AND n.fecha BETWEEN $1 AND $2`
+      : "";
+    const params = desde && hasta ? [desde, hasta] : [];
+
+    const { rows } = await pool.query(`
+      SELECT n.id, n.fecha, n.employee_id, n.empleado_nombre,
+             n.horas_extra, n.horas_extra_aprobadas_por, n.horas_extra_aprobadas_at,
+             n.puesto_titular_nombre, n.puesto_cubierto_nombre,
+             e.sueldo_base, e.horas_contrato,
+             er.cantidad_horas AS evento_horas, er.cliente_nombre, er.puesto_nombre AS evento_puesto
+      FROM novedades_nomina_diarias n
+      LEFT JOIN employees e ON e.id = n.employee_id
+      LEFT JOIN eventos_rrhh er ON er.id = n.evento_rrhh_id
+      WHERE n.horas_extra_estado = 'pagado_efectivo'
+        ${whereDate}
+      ORDER BY n.fecha DESC, n.empleado_nombre
+    `, params);
+
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "GET /rrhh/horas-extra-cash error");
+    res.status(500).json({ error: "Error al obtener HE cash" });
   }
 });
 

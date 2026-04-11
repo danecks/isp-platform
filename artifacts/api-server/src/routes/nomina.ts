@@ -410,10 +410,26 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
         ON CONFLICT (fecha, employee_id)
         DO UPDATE SET
           trabajo_dia           = FALSE,
-          falta                 = FALSE,
-          suspension            = FALSE,
-          afecta_septimo        = FALSE,
-          descuento_dia         = FALSE,
+          falta                 = CASE
+            WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+            THEN novedades_nomina_diarias.falta
+            ELSE FALSE
+          END,
+          suspension            = CASE
+            WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+            THEN novedades_nomina_diarias.suspension
+            ELSE FALSE
+          END,
+          afecta_septimo        = CASE
+            WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+            THEN novedades_nomina_diarias.afecta_septimo
+            ELSE FALSE
+          END,
+          descuento_dia         = CASE
+            WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+            THEN novedades_nomina_diarias.descuento_dia
+            ELSE FALSE
+          END,
           impacto_nomina        = CASE
             WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
             THEN novedades_nomina_diarias.impacto_nomina
@@ -584,10 +600,26 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
         VALUES ($1,$2,$3,FALSE,0,0, FALSE,FALSE,FALSE,FALSE,FALSE, $7,$8, $4,$5,$6,'auto_auditoria',$9,NOW())
         ON CONFLICT (fecha, employee_id)
         DO UPDATE SET
-          falta                 = FALSE,
-          suspension            = FALSE,
-          afecta_septimo        = FALSE,
-          descuento_dia         = FALSE,
+          falta                 = CASE
+            WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+            THEN novedades_nomina_diarias.falta
+            ELSE FALSE
+          END,
+          suspension            = CASE
+            WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+            THEN novedades_nomina_diarias.suspension
+            ELSE FALSE
+          END,
+          afecta_septimo        = CASE
+            WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+            THEN novedades_nomina_diarias.afecta_septimo
+            ELSE FALSE
+          END,
+          descuento_dia         = CASE
+            WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+            THEN novedades_nomina_diarias.descuento_dia
+            ELSE FALSE
+          END,
           impacto_nomina        = CASE
             WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
             THEN novedades_nomina_diarias.impacto_nomina

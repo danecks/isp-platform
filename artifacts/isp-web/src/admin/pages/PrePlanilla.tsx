@@ -67,6 +67,7 @@ interface ColaboradorPre {
   supervisor_nombre: string | null;
   cliente_principal: string | null;
   puesto_titular_nombre: string | null;
+  dias_cerrados: number;
   dias_trabajados: number;
   faltas: number;
   faltas_pendientes_rrhh: number;
@@ -110,6 +111,8 @@ interface ColaboradorPre {
   quincena_tipo: string | null;
   // Tipo de personal
   tipo_personal: string | null;
+  // Días descuento total (turno-based: 3d per 24h falta, 2d per 12h)
+  total_dias_descuento: number;
 }
 
 interface DetalleNovedad {
@@ -123,6 +126,7 @@ interface DetalleNovedad {
   descanso_trabajado: boolean;
   afecta_septimo: boolean;
   descuento_dia: boolean;
+  dias_descuento: number | null;
   puesto_titular_nombre: string | null;
   puesto_cubierto_nombre: string | null;
   num_puestos_cubiertos: number;
@@ -130,6 +134,7 @@ interface DetalleNovedad {
   fuente: string | null;
   cierre_id: number | null;
   tipo_novedad: string | null;
+  impacto_nomina: string | null;
 }
 
 interface DetalleAnticipo {
@@ -276,9 +281,10 @@ function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: number | n
   if (!sb || !periodoTotalDias) return null;
   const sueldoDia = sb / 30;
   const sueldoPeriodo = sueldoDia * periodoTotalDias;
-  const diasDescuento = Number((col as any).total_dias_descuento ?? 0);
-  const totalFaltas = Number(col.faltas) + Number(col.suspensiones);
-  const diasDesc = diasDescuento > 0 ? diasDescuento : totalFaltas;
+  const diasDescuento = Number(col.total_dias_descuento ?? 0);
+  const suspensiones = Number(col.suspensiones);
+  const totalFaltas = Number(col.faltas) + suspensiones;
+  const diasDesc = (diasDescuento > 0 ? diasDescuento : Number(col.faltas)) + suspensiones;
   const descFaltas = sueldoDia * diasDesc;
   const horasDia = col.horas_contrato ? col.horas_contrato / 6 : 8;
   const valorHora = sueldoDia / horasDia;
@@ -287,7 +293,12 @@ function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: number | n
   const anticipo = Number(col.anticipos_monto);
   const cuotaUniforme = Number(col.cuota_uniforme_monto ?? 0);
   const total = sueldoPeriodo - descFaltas + valorHE - anticipo - cuotaUniforme;
-  return { sueldoPeriodo, descFaltas, valorHE, anticipo, cuotaUniforme, total, diasDesc };
+
+  const diasCerrados = Number(col.dias_cerrados ?? 0);
+  const sueldoReal = sueldoDia * diasCerrados;
+  const totalReal = sueldoReal - descFaltas + valorHE - anticipo - cuotaUniforme;
+
+  return { sueldoPeriodo, descFaltas, valorHE, anticipo, cuotaUniforme, total, diasDesc, diasCerrados, sueldoReal, totalReal };
 }
 
 // ─── Badge revisión ───────────────────────────────────────────────────────────
@@ -441,47 +452,81 @@ function DetalleModal({
 
               {/* Total estimado destacado */}
               {est ? (
-                <div className="bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/30 rounded-xl p-4">
-                  <p className="text-[10px] text-white/40 uppercase tracking-widest mb-3">Total Estimado Preliminar</p>
-                  <div className="space-y-1.5 mb-3">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-white/50">Sueldo período ({periodoTotalDias}d)</span>
-                      <span className="text-white font-medium">{fmtQ(est.sueldoPeriodo)}</span>
+                <div className="space-y-3">
+                  {/* Total Real (días cerrados) */}
+                  <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/30 rounded-xl p-4">
+                    <p className="text-[10px] text-white/40 uppercase tracking-widest mb-3">Total Real — {est.diasCerrados} días cerrados</p>
+                    <div className="space-y-1.5 mb-3">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-white/50">Sueldo proporcional ({est.diasCerrados}d cerrados)</span>
+                        <span className="text-white font-medium">{fmtQ(est.sueldoReal)}</span>
+                      </div>
+                      {est.descFaltas > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-red-400/70">— Desc. faltas / susp. ({est.diasDesc}d descuento)</span>
+                          <span className="text-red-400">–{fmtQ(est.descFaltas)}</span>
+                        </div>
+                      )}
+                      {est.valorHE > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-orange-400/70">+ H. Extra ({heNum.toFixed(1)} h × 1.5x)</span>
+                          <span className="text-orange-400">+{fmtQ(est.valorHE)}</span>
+                        </div>
+                      )}
+                      {est.anticipo > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-amber-400/70">— Anticipo del período</span>
+                          <span className="text-amber-400">–{fmtQ(est.anticipo)}</span>
+                        </div>
+                      )}
+                      {est.cuotaUniforme > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-orange-300/70">— Cuota uniforme/botas</span>
+                          <span className="text-orange-300">–{fmtQ(est.cuotaUniforme)}</span>
+                        </div>
+                      )}
                     </div>
-                    {est.descFaltas > 0 && (
-                      <div className="flex justify-between text-xs">
-                        <span className="text-red-400/70">— Desc. faltas / susp. ({est.diasDesc}d descuento)</span>
-                        <span className="text-red-400">–{fmtQ(est.descFaltas)}</span>
-                      </div>
-                    )}
-                    {est.valorHE > 0 && (
-                      <div className="flex justify-between text-xs">
-                        <span className="text-orange-400/70">+ H. Extra ({heNum.toFixed(1)} h × 1.5x)</span>
-                        <span className="text-orange-400">+{fmtQ(est.valorHE)}</span>
-                      </div>
-                    )}
-                    {est.anticipo > 0 && (
-                      <div className="flex justify-between text-xs">
-                        <span className="text-amber-400/70">— Anticipo del período</span>
-                        <span className="text-amber-400">–{fmtQ(est.anticipo)}</span>
-                      </div>
-                    )}
-                    {est.cuotaUniforme > 0 && (
-                      <div className="flex justify-between text-xs">
-                        <span className="text-orange-300/70">— Cuota uniforme/botas</span>
-                        <span className="text-orange-300">–{fmtQ(est.cuotaUniforme)}</span>
-                      </div>
-                    )}
+                    <div className="flex justify-between items-center pt-2 border-t border-emerald-500/20">
+                      <span className="text-xs font-semibold text-white/60">Total real ({est.diasCerrados}d)</span>
+                      <span className={`text-lg font-bold ${est.totalReal >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                        {fmtQ(est.totalReal)}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center pt-2 border-t border-primary/20">
-                    <span className="text-xs font-semibold text-white/60">Total estimado</span>
-                    <span className={`text-lg font-bold ${est.total >= 0 ? "text-primary" : "text-red-400"}`}>
-                      {fmtQ(est.total)}
-                    </span>
-                  </div>
-                  <p className="text-[9px] text-white/25 mt-2 leading-relaxed">
-                    Estimación indicativa. No incluye IGSS, bonificación incentivo (Dto. 78-89), séptimo día, ni deducciones finales.
-                  </p>
+
+                  {/* Total Estimado (período completo) */}
+                  {est.diasCerrados < (periodoTotalDias ?? 0) && (
+                    <div className="bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/30 rounded-xl p-4">
+                      <p className="text-[10px] text-white/40 uppercase tracking-widest mb-3">Total Estimado — proyección a {periodoTotalDias}d</p>
+                      <div className="space-y-1.5 mb-3">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-white/50">Sueldo período ({periodoTotalDias}d)</span>
+                          <span className="text-white font-medium">{fmtQ(est.sueldoPeriodo)}</span>
+                        </div>
+                        {est.descFaltas > 0 && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-red-400/70">— Desc. faltas / susp. ({est.diasDesc}d descuento)</span>
+                            <span className="text-red-400">–{fmtQ(est.descFaltas)}</span>
+                          </div>
+                        )}
+                        {est.valorHE > 0 && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-orange-400/70">+ H. Extra ({heNum.toFixed(1)} h × 1.5x)</span>
+                            <span className="text-orange-400">+{fmtQ(est.valorHE)}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex justify-between items-center pt-2 border-t border-primary/20">
+                        <span className="text-xs font-semibold text-white/60">Total estimado ({periodoTotalDias}d)</span>
+                        <span className={`text-lg font-bold ${est.total >= 0 ? "text-primary" : "text-red-400"}`}>
+                          {fmtQ(est.total)}
+                        </span>
+                      </div>
+                      <p className="text-[9px] text-white/25 mt-2 leading-relaxed">
+                        Proyección asumiendo {(periodoTotalDias ?? 0) - est.diasCerrados} días restantes sin cambios. No incluye IGSS, bonificación incentivo (Dto. 78-89), séptimo día, ni deducciones finales.
+                      </p>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="bg-white/3 border border-white/8 rounded-xl p-3 text-center">
@@ -844,8 +889,26 @@ function AnexoHorasExtra({ desde, hasta }: { desde: string; hasta: string }) {
                 ? "bg-green-400/10 text-green-400 border-green-400/20"
                 : estadoHE === "rechazado"
                 ? "bg-red-400/10 text-red-400 border-red-400/20"
+                : estadoHE === "pagado_efectivo"
+                ? "bg-emerald-400/10 text-emerald-400 border-emerald-400/20"
                 : "bg-amber-400/10 text-amber-400 border-amber-400/20";
-              const estadoLabel = estadoHE === "aprobado" ? "Aprobado" : estadoHE === "rechazado" ? "Rechazado" : "Pendiente";
+              const estadoLabel = estadoHE === "aprobado" ? "Aprobado"
+                : estadoHE === "rechazado" ? "Rechazado"
+                : estadoHE === "pagado_efectivo" ? "Cash"
+                : "Pendiente";
+              const handleCash = async () => {
+                try {
+                  await apiFetch(`/api/rrhh/horas-extra/${r.id}/cash`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ aprobado_por: "RRHH" }),
+                  });
+                  toast({ title: "HE marcada como pagada en efectivo" });
+                  setRows(prev => prev?.map(x => x.id === r.id ? { ...x, horas_extra_estado: "pagado_efectivo" } : x) ?? null);
+                } catch (e: any) {
+                  toast({ title: "Error", description: e.message, variant: "destructive" });
+                }
+              };
               return (
               <tr key={r.id} className={`hover:bg-white/3 transition-colors ${estadoHE === "rechazado" ? "opacity-40" : ""}`}>
                 <td className="px-3 py-2.5 text-white/50 whitespace-nowrap">{fmtFecha(r.fecha)}</td>
@@ -861,11 +924,16 @@ function AnexoHorasExtra({ desde, hasta }: { desde: string; hasta: string }) {
                   )}
                 </td>
                 <td className="px-3 py-2.5 text-right">
-                  <span className={`font-bold ${estadoHE === "rechazado" ? "line-through text-white/30" : "text-orange-400"}`}>{Number(r.horas_extra).toFixed(1)} h</span>
+                  <span className={`font-bold ${estadoHE === "rechazado" ? "line-through text-white/30" : estadoHE === "pagado_efectivo" ? "text-emerald-400" : "text-orange-400"}`}>{Number(r.horas_extra).toFixed(1)} h</span>
                 </td>
                 <td className="px-3 py-2.5 text-right text-white/50">{Number(r.horas_trabajadas).toFixed(1)} h</td>
                 <td className="px-3 py-2.5">
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${estadoClass}`}>{estadoLabel}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${estadoClass}`}>{estadoLabel}</span>
+                    {estadoHE === "pendiente" && (
+                      <button onClick={handleCash} className="text-[9px] px-1.5 py-0.5 rounded border border-emerald-400/30 text-emerald-400 hover:bg-emerald-400/10 transition-colors" title="Marcar como pagada en efectivo (no va a planilla)">Cash</button>
+                    )}
+                  </div>
                   {r.horas_extra_aprobadas_por && (
                     <p className="text-[9px] text-white/25 mt-0.5">{r.horas_extra_aprobadas_por}</p>
                   )}
@@ -1892,7 +1960,10 @@ export default function PrePlanilla() {
                                 {/* Días trabajados */}
                                 <td className="px-3 py-2.5 text-center">
                                   <span className="text-green-400 font-semibold">{Number(r.dias_trabajados)}</span>
-                                  {periodoTotalDias != null && <span className="text-white/25 ml-1">/{periodoTotalDias}d</span>}
+                                  <span className="text-white/25 ml-1">/{Number(r.dias_cerrados)}d</span>
+                                  {periodoTotalDias != null && Number(r.dias_cerrados) < periodoTotalDias && (
+                                    <p className="text-[9px] text-white/20">de {periodoTotalDias}d</p>
+                                  )}
                                 </td>
                                 {/* Faltas */}
                                 <td className="px-3 py-2.5 text-center">
@@ -1932,9 +2003,14 @@ export default function PrePlanilla() {
                                 <td className="px-3 py-2.5 text-right">
                                   {est2 != null ? (
                                     <div>
-                                      <span className={`font-bold ${est2.total >= 0 ? "text-primary" : "text-red-400"}`}>
-                                        {fmtQ(est2.total)}
+                                      <span className={`font-bold ${est2.totalReal >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                        {fmtQ(est2.totalReal)}
                                       </span>
+                                      {est2.diasCerrados < (periodoTotalDias ?? 0) && (
+                                        <p className="text-[9px] text-white/30 mt-0.5" title={`Estimado ${periodoTotalDias}d: ${fmtQ(est2.total)}`}>
+                                          est. {fmtQ(est2.total)}
+                                        </p>
+                                      )}
                                       {(est2.descFaltas > 0 || est2.valorHE > 0) && (
                                         <p className="text-[9px] text-white/25 mt-0.5">
                                           {est2.descFaltas > 0 ? `-${fmtQ(est2.descFaltas)} (${est2.diasDesc}d) ` : ""}

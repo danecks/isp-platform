@@ -1574,6 +1574,14 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
       ? tiposRrhhSaliente[tipoNovedad] ?? null
       : (["falta","suspension"].includes((motivo || "").toLowerCase()) ? motivo?.toLowerCase() : null);
 
+    let turnoHorasPuesto = 24;
+    if (puesto.tipo_turno_id) {
+      try {
+        const { rows: tRows } = await pool.query(`SELECT horas_trabajo::float FROM turnos WHERE id=$1`, [puesto.tipo_turno_id]);
+        if (tRows.length) turnoHorasPuesto = Number(tRows[0].horas_trabajo);
+      } catch {}
+    }
+
     let eventoRrhhSalienteId: number | null = null;
     if (tipoEventoRrhh && agenteSalienteId) {
       try {
@@ -1592,12 +1600,13 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
           `INSERT INTO eventos_rrhh
              (employee_id, employee_nombre, employee_dpi,
               tipo_evento, fecha, cliente_nombre, puesto_nombre,
-              generado_desde, movimiento_id, estado, usuario_generador, documentos_generados)
-           VALUES ($1,$2,$3,$4,NOW(),$5,$6,'operaciones',$7,'pendiente_aprobacion',$8,'[]')
+              generado_desde, movimiento_id, estado, usuario_generador, documentos_generados,
+              cantidad_horas)
+           VALUES ($1,$2,$3,$4,NOW(),$5,$6,'operaciones',$7,'pendiente_aprobacion',$8,'[]',$9)
            RETURNING id`,
           [employeeId, employeeNombre, employeeDpi, tipoEventoRrhh,
            puesto.cliente_nombre || null, puesto.nombre || null,
-           movimientoId, usuario || "sistema"]
+           movimientoId, usuario || "sistema", turnoHorasPuesto]
         );
         eventoRrhhSalienteId = evSalRows[0]?.id ?? null;
         logger.info({ tipoEventoRrhh, empleado: employeeNombre, estadoEvento, eventoRrhhSalienteId }, "Evento RRHH auto-generado desde sustitución");
@@ -1654,13 +1663,6 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
         if (diff <= 0) diff += 1440;
         return Math.round((diff / 60) * 100) / 100;
       };
-      let turnoHorasPuesto = 10;
-      if (puesto.tipo_turno_id) {
-        try {
-          const { rows: tRows } = await pool.query(`SELECT horas_trabajo::float FROM turnos WHERE id=$1`, [puesto.tipo_turno_id]);
-          if (tRows.length) turnoHorasPuesto = Number(tRows[0].horas_trabajo);
-        } catch {}
-      }
       const horasCalc = usaParcial ? calcHorasCobertura(horaInicio, horaFin) : turnoHorasPuesto;
       // Marcar cobertura especial cuando el entrante es supervisor o jefe de servicio
       const tipoPersonalEntrante = entrante.tipo_personal ?? 'guardia';
@@ -3073,10 +3075,12 @@ operacionesRouter.post("/operaciones/cierre", async (req, res) => {
     let faltasDiferidas = 0;
     try {
       const { rows: puestosFaltando } = await pool.query(`
-        SELECT id, nombre, cliente_nombre, falta_employee_id, falta_motivo, falta_notas, falta_usuario
-        FROM puestos_operativos
-        WHERE estado_operativo_puesto = 'faltando'
-          AND falta_employee_id IS NOT NULL
+        SELECT po.id, po.nombre, po.cliente_nombre, po.falta_employee_id, po.falta_motivo, po.falta_notas, po.falta_usuario,
+               COALESCE(t.horas_trabajo, 24) AS turno_horas
+        FROM puestos_operativos po
+        LEFT JOIN turnos t ON t.id = po.tipo_turno_id
+        WHERE po.estado_operativo_puesto = 'faltando'
+          AND po.falta_employee_id IS NOT NULL
       `);
 
       for (const pf of puestosFaltando) {
@@ -3124,18 +3128,23 @@ operacionesRouter.post("/operaciones/cierre", async (req, res) => {
           );
           const empNombre2 = empRows2[0]?.nombre_completo ?? "Colaborador";
 
+          const turnoHoras = parseFloat(pf.turno_horas) || 24;
+          const diasDescFalta = turnoHoras >= 24 ? 3 : 2;
+
           await client.query(`
             INSERT INTO novedades_nomina_diarias
               (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
                falta, descuento_dia, impacto_nomina, requiere_revision_rrhh,
-               tipo_novedad, evento_rrhh_id, puesto_titular_id, puesto_titular_nombre, fuente)
+               tipo_novedad, evento_rrhh_id, puesto_titular_id, puesto_titular_nombre, fuente,
+               dias_descuento)
             VALUES ($1, $2, $3, FALSE, 0, 0, FALSE, FALSE, 'pendiente', TRUE,
-                    'falta_total', $6, $4, $5, 'cierre_falta_diferida')
+                    'falta_total', $6, $4, $5, 'cierre_falta_diferida', $7)
             ON CONFLICT (fecha, employee_id) DO UPDATE SET
               trabajo_dia            = FALSE,
               horas_trabajadas       = 0,
               tipo_novedad           = COALESCE(novedades_nomina_diarias.tipo_novedad, 'falta_total'),
               evento_rrhh_id         = COALESCE(novedades_nomina_diarias.evento_rrhh_id, EXCLUDED.evento_rrhh_id),
+              dias_descuento         = EXCLUDED.dias_descuento,
               impacto_nomina         = CASE
                 WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
                 THEN novedades_nomina_diarias.impacto_nomina
@@ -3147,7 +3156,7 @@ operacionesRouter.post("/operaciones/cierre", async (req, res) => {
                 ELSE TRUE
               END,
               updated_at             = NOW()
-          `, [fechaACerrarISO, pf.falta_employee_id, empNombre2, pf.id, pf.nombre, eventoId]);
+          `, [fechaACerrarISO, pf.falta_employee_id, empNombre2, pf.id, pf.nombre, eventoId, diasDescFalta]);
 
           await client.query('COMMIT');
 

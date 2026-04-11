@@ -66,6 +66,7 @@ const QUERY_CONSOLIDADO = `
     COALESCE(e.frecuencia_pago, 'quincenal')                                    AS frecuencia_pago,
 
     -- Métricas del período desde novedades_nomina_diarias
+    COUNT(DISTINCT n.fecha)                                                     AS dias_cerrados,
     COUNT(DISTINCT n.fecha) FILTER (WHERE n.trabajo_dia = TRUE)                 AS dias_trabajados,
     COUNT(DISTINCT n.fecha) FILTER (WHERE n.falta = TRUE)                       AS faltas,
     COUNT(DISTINCT n.fecha) FILTER (WHERE n.suspension = TRUE)                  AS suspensiones,
@@ -91,7 +92,7 @@ const QUERY_CONSOLIDADO = `
       WHEN n.trabajo_dia
        AND (n.requiere_revision_rrhh IS NOT TRUE OR n.impacto_nomina = 'aprobado_rrhh' OR n.horas_extra_estado = 'aprobado')
        AND COALESCE(n.impacto_nomina, '') <> 'pagado_efectivo'
-       AND COALESCE(n.horas_extra_estado, 'pendiente') <> 'rechazado'
+       AND COALESCE(n.horas_extra_estado, 'pendiente') NOT IN ('rechazado', 'pagado_efectivo')
       THEN n.horas_extra::numeric ELSE 0 END), 0)                                        AS horas_extra,
 
     COALESCE(SUM(CASE
@@ -768,6 +769,7 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
         horasContrato:    toNum(row.horas_contrato),
         faltas:           toInt(row.faltas),
         suspensiones:     toInt(row.suspensiones),
+        diasDescuento:    toNum(row.total_dias_descuento),
         horasExtra:       toNum(row.horas_extra),
         periodoTotalDias: periodoDias,
         frecuenciaPago:   String(row.frecuencia_pago ?? "quincenal"),
@@ -1054,7 +1056,7 @@ prePlanillaRouter.get("/nomina/pre-planilla/export", async (req, res) => {
       "ID", "Nombre Completo", "DPI",
       "Puesto", "Área", "Sede", "Cliente Principal",
       "Sueldo Base (Q)", "Tipo Jornada", "Día Descanso", "Hrs/Semana",
-      "Estado Laboral", "Días Trabajados", "Faltas", "Suspensiones",
+      "Estado Laboral", "Días Cerrados", "Días Trabajados", "Faltas", "Días Descuento", "Suspensiones",
       "Descansos Trabajados", "Horas Trabajadas", "Horas Extra", "Relevos",
       "Anticipos (Q)", "# Anticipos",
       "Estado Revisión", "Observaciones RRHH",
@@ -1072,7 +1074,7 @@ prePlanillaRouter.get("/nomina/pre-planilla/export", async (req, res) => {
         r.puesto_empleado ?? "", r.area ?? "", r.sede ?? "", r.cliente_principal ?? "",
         r.sueldo_base ?? "", r.tipo_jornada ?? "", r.dia_descanso ?? "", r.horas_contrato ?? "",
         r.estado_laboral,
-        r.dias_trabajados, r.faltas, r.suspensiones, r.descansos_trabajados,
+        r.dias_cerrados, r.dias_trabajados, r.faltas, r.total_dias_descuento, r.suspensiones, r.descansos_trabajados,
         parseFloat(r.horas_trabajadas || 0).toFixed(2),
         parseFloat(r.horas_extra || 0).toFixed(2),
         r.relevos,
