@@ -78,7 +78,15 @@ const QUERY_CONSOLIDADO = `
     COUNT(DISTINCT n.fecha) FILTER (WHERE n.tipo_novedad = 'permiso_sin_goce')  AS dias_permiso_sin_goce,
     COUNT(DISTINCT n.fecha) FILTER (WHERE n.tipo_novedad = 'permiso_con_goce')  AS dias_permiso_con_goce,
     COALESCE(SUM(CASE WHEN n.trabajo_dia THEN n.horas_trabajadas::numeric ELSE 0 END), 0) AS horas_trabajadas,
-    COALESCE(SUM(CASE WHEN n.trabajo_dia THEN n.horas_extra::numeric ELSE 0 END), 0)      AS horas_extra,
+    COALESCE(SUM(CASE
+      WHEN n.trabajo_dia
+       AND (n.requiere_revision_rrhh IS NOT TRUE OR n.impacto_nomina = 'aprobado_rrhh')
+      THEN n.horas_extra::numeric ELSE 0 END), 0)                                        AS horas_extra,
+
+    COALESCE(SUM(CASE
+      WHEN n.trabajo_dia AND n.requiere_revision_rrhh = TRUE
+       AND n.impacto_nomina = 'pendiente'
+      THEN n.horas_extra::numeric ELSE 0 END), 0)                                        AS horas_extra_pendientes,
 
     -- Relevos: días en que el colaborador cubrió un puesto distinto al suyo titular
     COUNT(DISTINCT n.fecha) FILTER (
@@ -509,6 +517,20 @@ prePlanillaRouter.get("/nomina/pre-planilla/validacion", async (req, res) => {
       ORDER BY e.nombre_completo
     `, [desde, hasta]);
 
+    // Alerta: HE pendientes de aprobación RRHH
+    const { rows: alertasHEPendientes } = await pool.query(`
+      SELECT DISTINCT e.id AS employee_id, e.nombre_completo,
+             SUM(n.horas_extra::numeric) AS horas_pendientes
+      FROM novedades_nomina_diarias n
+      JOIN employees e ON e.id = n.employee_id
+      WHERE n.fecha BETWEEN $1 AND $2
+        AND n.requiere_revision_rrhh = TRUE
+        AND n.impacto_nomina = 'pendiente'
+        AND n.horas_extra > 0
+      GROUP BY e.id, e.nombre_completo
+      ORDER BY e.nombre_completo
+    `, [desde, hasta]);
+
     // Alerta 2: colaboradores pendientes de revisión RRHH (no aprobados)
     const { rows: alertasPendientes } = await pool.query(`
       SELECT e.id AS employee_id, e.nombre_completo,
@@ -573,6 +595,13 @@ prePlanillaRouter.get("/nomina/pre-planilla/validacion", async (req, res) => {
         mensaje: `${r.nombre_completo} — ${r.veces} permiso(s) sin goce de sueldo. Verificar autorización documentada.`,
         employee_id: r.employee_id,
         veces: Number(r.veces),
+      })),
+      ...alertasHEPendientes.map(r => ({
+        tipo: "he_pendiente_rrhh",
+        severidad: "alerta",
+        mensaje: `${r.nombre_completo} — ${Number(r.horas_pendientes).toFixed(1)}h extra pendientes de aprobación RRHH. No se incluirán en planilla hasta validación.`,
+        employee_id: r.employee_id,
+        horas_pendientes: Number(r.horas_pendientes),
       })),
     ];
 

@@ -5042,14 +5042,22 @@ function ModalSustitucion({
           )}
 
           {costoHE != null && esSustitucion && (
-            <div className="bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2 flex items-center justify-between">
-              <div>
-                <p className="text-[10px] text-amber-300/60">Costo estimado de cobertura</p>
-                <p className="text-[9px] text-white/25">
-                  Tarifa: Q{costoPorHora?.toFixed(2)}/hora ({puesto.jornada ?? "12h"})
+            <div className="bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] text-amber-300/60">Costo estimado de cobertura</p>
+                  <p className="text-[9px] text-white/25">
+                    Tarifa: Q{costoPorHora?.toFixed(2)}/hora ({puesto.jornada ?? "12h"})
+                  </p>
+                </div>
+                <span className="text-lg font-bold text-amber-400">Q{costoHE.toFixed(2)}</span>
+              </div>
+              <div className="mt-1.5 flex items-center gap-1.5 border-t border-amber-500/15 pt-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
+                <p className="text-[9px] text-yellow-300/70">
+                  Requiere aprobación RRHH antes de pasar a planilla
                 </p>
               </div>
-              <span className="text-lg font-bold text-amber-400">Q{costoHE.toFixed(2)}</span>
             </div>
           )}
 

@@ -225,6 +225,8 @@ const RESOLUCION_MAP: Record<string, { falta: boolean; suspension: boolean; desc
   descuento_horas:     { falta: false, suspension: false, descuento_dia: false, afecta_septimo: false },
   amonestacion:        { falta: false, suspension: false, descuento_dia: false, afecta_septimo: false },
   sin_impacto:         { falta: false, suspension: false, descuento_dia: false, afecta_septimo: false },
+  horas_extra_aprobadas: { falta: false, suspension: false, descuento_dia: false, afecta_septimo: false },
+  horas_extra_rechazadas:{ falta: false, suspension: false, descuento_dia: false, afecta_septimo: false },
 };
 
 // PATCH /api/rrhh/incidencias/:id/resolver — RRHH clasifica la incidencia
@@ -259,6 +261,9 @@ rrhhAlertasRouter.patch("/rrhh/incidencias/:id/resolver", async (req, res) => {
       });
     }
 
+    const esRechazoHE = tipo_resolucion === 'horas_extra_rechazadas';
+    const estadoNomina = esRechazoHE ? 'rechazado_rrhh' : 'aprobado_rrhh';
+
     // Actualizar novedad con la resolución RRHH
     const { rows: updatedRows } = await pool.query(`
       UPDATE novedades_nomina_diarias SET
@@ -266,13 +271,15 @@ rrhhAlertasRouter.patch("/rrhh/incidencias/:id/resolver", async (req, res) => {
         suspension             = $3,
         descuento_dia          = $4,
         afecta_septimo         = $5,
-        impacto_nomina         = 'aprobado_rrhh',
+        impacto_nomina         = $7,
         requiere_revision_rrhh = FALSE,
         tipo_novedad           = COALESCE(tipo_novedad, $6),
+        horas_extra            = CASE WHEN $8 THEN 0 ELSE horas_extra END,
         updated_at             = NOW()
       WHERE id = $1
       RETURNING *
-    `, [id, efecto.falta, efecto.suspension, efecto.descuento_dia, efecto.afecta_septimo, tipo_resolucion]);
+    `, [id, efecto.falta, efecto.suspension, efecto.descuento_dia, efecto.afecta_septimo,
+        tipo_resolucion, estadoNomina, esRechazoHE]);
 
     // Actualizar evento RRHH vinculado si existe
     if (novedad.evento_rrhh_id) {
@@ -285,7 +292,7 @@ rrhhAlertasRouter.patch("/rrhh/incidencias/:id/resolver", async (req, res) => {
           afecta_septimo_res = $6,
           rrhh_resuelto_por  = $7,
           rrhh_resuelto_at   = NOW(),
-          estado             = 'revisado',
+          estado             = $8,
           updated_at         = NOW()
         WHERE id = $1
       `, [
@@ -296,6 +303,7 @@ rrhhAlertasRouter.patch("/rrhh/incidencias/:id/resolver", async (req, res) => {
         cantidad_dias ?? null,
         efecto.afecta_septimo,
         usuario || 'rrhh',
+        esRechazoHE ? 'rechazado' : 'revisado',
       ]);
     }
 

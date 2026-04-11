@@ -1651,21 +1651,62 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
       );
       logger.info({ puestoId, agenteEntranteId, tipoSeg, tipoNovedad, hoy }, "A-04: segmento auto-creado en sustitución");
 
+      // Crear evento RRHH para el agente ENTRANTE (HE / cobertura) → requiere validación RRHH
+      let eventoRrhhEntranteId: number | null = null;
+      if (esRelevo) {
+        try {
+          const { rows: evEntRows } = await pool.query(
+            `INSERT INTO eventos_rrhh
+               (employee_id, employee_nombre, employee_dpi,
+                tipo_evento, fecha, cliente_nombre, puesto_nombre,
+                generado_desde, movimiento_id, estado, usuario_generador,
+                observaciones, documentos_generados)
+             VALUES ($1,$2,$3,'horas_extra',$4::date,$5,$6,'operaciones',$7,'pendiente_aprobacion',$8,
+                     $9,'[]')
+             RETURNING id`,
+            [agenteEntranteId, entrante.nombre_completo, entrante.dpi ?? null,
+             hoy, puesto.cliente_nombre || null, puesto.nombre || null,
+             movimientoId, usuario || "sistema",
+             `Cobertura HE: ${tipoNovedad ?? 'relevo'} en ${puesto.nombre} (${puesto.cliente_nombre})`]
+          );
+          eventoRrhhEntranteId = evEntRows[0]?.id ?? null;
+          logger.info({ agenteEntranteId, eventoRrhhEntranteId, tipoNovedad }, "Evento RRHH HE creado para entrante");
+        } catch (errEvEnt) {
+          logger.warn({ errEvEnt }, "No se pudo crear evento RRHH para entrante (no bloqueante)");
+        }
+      }
+
       // Registrar novedad de nómina para el agente entrante (limpia cualquier falta previa)
       try {
         await pool.query(
           `INSERT INTO novedades_nomina_diarias
              (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
-              puesto_cubierto_id, puesto_cubierto_nombre, num_puestos_cubiertos, fuente)
-           VALUES ($1, $2, $3, TRUE, $4, 0, $5, $6, 1, 'sustitucion_pizarron')
+              puesto_cubierto_id, puesto_cubierto_nombre, num_puestos_cubiertos, fuente,
+              requiere_revision_rrhh, impacto_nomina, evento_rrhh_id, tipo_novedad)
+           VALUES ($1, $2, $3, TRUE, $4, $11, $5, $6, 1, 'sustitucion_pizarron',
+                   $7, $8, $9, $10)
            ON CONFLICT (fecha, employee_id) DO UPDATE SET
              trabajo_dia           = TRUE,
              falta                 = FALSE,
              descuento_dia         = FALSE,
              horas_trabajadas      = GREATEST(novedades_nomina_diarias.horas_trabajadas, $4),
+             horas_extra           = GREATEST(novedades_nomina_diarias.horas_extra, $11),
              num_puestos_cubiertos = novedades_nomina_diarias.num_puestos_cubiertos + 1,
+             requiere_revision_rrhh = CASE
+               WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+               THEN novedades_nomina_diarias.requiere_revision_rrhh
+               ELSE COALESCE($7, novedades_nomina_diarias.requiere_revision_rrhh)
+             END,
+             impacto_nomina = CASE
+               WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+               THEN novedades_nomina_diarias.impacto_nomina
+               ELSE COALESCE($8, novedades_nomina_diarias.impacto_nomina)
+             END,
+             evento_rrhh_id = COALESCE(novedades_nomina_diarias.evento_rrhh_id, $9),
              updated_at            = NOW()`,
-          [hoy, agenteEntranteId, entrante.nombre_completo, horasCalc, puestoId, puesto.nombre]
+          [hoy, agenteEntranteId, entrante.nombre_completo, horasCalc, puestoId, puesto.nombre,
+           esRelevo ? true : null, esRelevo ? 'pendiente' : null, eventoRrhhEntranteId,
+           tipoNovedad ?? 'relevo_completo', esRelevo ? horasCalc : 0]
         );
       } catch (nomEntranteErr) {
         logger.warn({ nomEntranteErr }, "A-04: no se pudo actualizar novedad nómina del entrante (no bloqueante)");

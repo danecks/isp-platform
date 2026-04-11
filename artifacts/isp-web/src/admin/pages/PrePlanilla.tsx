@@ -1902,6 +1902,11 @@ export default function PrePlanilla() {
                                   <span className={heNum2 > 0 ? "text-orange-400 font-semibold" : "text-white/20"}>
                                     {heNum2.toFixed(1)} h
                                   </span>
+                                  {parseFloat((r as any).horas_extra_pendientes || "0") > 0 && (
+                                    <p className="text-[9px] text-yellow-400/60" title="Pendiente aprobación RRHH">
+                                      +{parseFloat((r as any).horas_extra_pendientes).toFixed(1)}h pend.
+                                    </p>
+                                  )}
                                 </td>
                                 {/* Anticipo */}
                                 <td className="px-3 py-2.5 text-right">

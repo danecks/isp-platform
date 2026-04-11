@@ -95,6 +95,11 @@ const TIPO_CONFIG: Record<string, { label: string; className: string }> = {
   permiso_goce_sueldo:  { label: "Permiso con goce de sueldo",  className: "text-green-400 bg-green-400/10 border-green-400/20" },
   amonestacion:         { label: "Amonestación",                 className: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20" },
   vacaciones:           { label: "Vacaciones",                   className: "text-teal-400 bg-teal-400/10 border-teal-400/20" },
+  horas_extra:          { label: "Horas Extra (cobertura)",      className: "text-amber-400 bg-amber-400/10 border-amber-400/20" },
+  permiso_sin_goce:     { label: "Permiso sin goce de sueldo",   className: "text-purple-400 bg-purple-400/10 border-purple-400/20" },
+  permiso_con_goce:     { label: "Permiso con goce de sueldo",   className: "text-green-400 bg-green-400/10 border-green-400/20" },
+  abandono_parcial:     { label: "Abandono parcial",             className: "text-orange-400 bg-orange-400/10 border-orange-400/20" },
+  suspension_disciplinaria: { label: "Suspensión disciplinaria", className: "text-red-500 bg-red-500/10 border-red-500/20" },
 };
 
 function fmtFecha(iso: string): string {
@@ -725,17 +730,23 @@ const RESOLUCIONES = [
   { value: "descuento_horas",     label: "Descuento por horas", color: "text-yellow-400", descuento: true  },
   { value: "amonestacion",        label: "Amonestación (sin descuento)", color: "text-yellow-300", descuento: false },
   { value: "sin_impacto",         label: "Sin impacto (error / corrección)", color: "text-white/40", descuento: false },
+  { value: "horas_extra_aprobadas",  label: "HE aprobadas — pagar cobertura", color: "text-amber-400", descuento: false },
+  { value: "horas_extra_rechazadas", label: "HE rechazadas — no pagar",       color: "text-red-300",   descuento: false },
 ];
 
 const TIPO_NOVEDAD_LABELS: Record<string, string> = {
-  falta_total:        "Falta total",
-  abandono_parcial:   "Abandono parcial",
-  suspension:         "Suspensión",
-  permiso_sin_goce:   "Permiso sin goce",
-  permiso_con_goce:   "Permiso con goce",
-  vacaciones:         "Vacaciones",
-  incapacidad:        "Incapacidad",
-  relevo_vacaciones:  "Relevo vacaciones",
+  falta_total:         "Falta total",
+  abandono_parcial:    "Abandono parcial",
+  suspension:          "Suspensión",
+  permiso_sin_goce:    "Permiso sin goce",
+  permiso_con_goce:    "Permiso con goce",
+  vacaciones:          "Vacaciones",
+  incapacidad:         "Incapacidad",
+  relevo_vacaciones:   "Relevo vacaciones",
+  relevo_completo:     "Relevo completo",
+  relevo_parcial:      "Relevo parcial",
+  horas_extra_puras:   "Horas extra",
+  cierre_tarde_cliente:"Cierre tarde cliente",
 };
 
 interface Incidencia {
