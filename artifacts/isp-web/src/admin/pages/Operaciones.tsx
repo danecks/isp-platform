@@ -92,6 +92,8 @@ interface Puesto {
   par_descansando?: TitularCiclo;
   /** Hay un relevo activo hoy (agente_id y agente_nombre ya fueron sobreescritos con el relevo) */
   es_relevo_dia?: boolean;
+  /** El titular que trabaja hoy tiene una falta registrada */
+  titular_faltando?: boolean;
 }
 
 /** Titular individual con su propio estado de ciclo */
@@ -3530,7 +3532,7 @@ function DroppablePuesto({
     // cubiertoManual  = alguien EXTERNO al ciclo fue asignado vía agente_id (relevo/pool)
     // cubiertoTitular = el titular configurado para hoy cubre el puesto según el ciclo
     const cubiertoManual  = puesto.estado === "cubierto" && !!puesto.agente_id && !esTitularCiclo;
-    const cubiertoTitular = !cubiertoManual && activo.trabaja_hoy && !!activo.employee_id;
+    const cubiertoTitular = !cubiertoManual && activo.trabaja_hoy && !!activo.employee_id && !puesto.titular_faltando;
     const activoCubierto  = cubiertoManual || cubiertoTitular;
     const activoRelevo    = cubiertoManual && !!activo.employee_id &&
                             puesto.agente_id !== activo.employee_id;
@@ -3640,7 +3642,7 @@ function DroppablePuesto({
                 <button onClick={e => { e.stopPropagation(); onAbrirSegmentos(); }} className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-300/50 bg-indigo-500/5 border border-indigo-500/15 hover:bg-indigo-500/15 hover:text-indigo-300 rounded-md transition-colors" title="Tramos de cobertura">
                   <Layers className="w-2.5 h-2.5" /><span>Tramos</span>
                 </button>
-                {activo.trabaja_hoy && activo.employee_id && onRegistrarFalta && !cubiertoManual && (
+                {activo.trabaja_hoy && activo.employee_id && onRegistrarFalta && !cubiertoManual && !puesto.titular_faltando && (
                   <button
                     onClick={e => { e.stopPropagation(); onRegistrarFalta(puesto, activo.employee_id, activo.nombre); }}
                     className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold text-red-300/80 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 hover:text-red-300 rounded-md transition-colors"
@@ -3987,8 +3989,10 @@ function ClienteColumna({
   });
 
   const esPuestoCubierto = (p: typeof cliente.puestos[0]) =>
-    (p.estado === "cubierto" && p.agente_id) ||
-    (p.es_par_24x24 && (p.par_trabajando as any)?.trabaja_hoy && (p.par_trabajando as any)?.employee_id);
+    !p.titular_faltando && (
+      (p.estado === "cubierto" && p.agente_id) ||
+      (p.es_par_24x24 && (p.par_trabajando as any)?.trabaja_hoy && (p.par_trabajando as any)?.employee_id)
+    );
   const cubiertos      = cliente.puestos.filter(esPuestoCubierto).length;
   const descansoCicloN = cliente.puestos.filter((p) => p.descanso_por_ciclo === true && !esPuestoCubierto(p)).length;
   const descubiertoN   = cliente.puestos.filter((p) => !esPuestoCubierto(p) && !p.descanso_por_ciclo).length;
