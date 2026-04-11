@@ -3960,9 +3960,12 @@ function ClienteColumna({
     return next;
   });
 
-  const cubiertos      = cliente.puestos.filter((p) => p.estado === "cubierto" && p.agente_id).length;
-  const descansoCicloN = cliente.puestos.filter((p) => p.descanso_por_ciclo === true && !(p.estado === "cubierto" && p.agente_id)).length;
-  const descubiertoN   = cliente.puestos.filter((p) => !(p.estado === "cubierto" && p.agente_id) && !p.descanso_por_ciclo).length;
+  const esPuestoCubierto = (p: typeof cliente.puestos[0]) =>
+    (p.estado === "cubierto" && p.agente_id) ||
+    (p.es_par_24x24 && (p.par_trabajando as any)?.trabaja_hoy && (p.par_trabajando as any)?.employee_id);
+  const cubiertos      = cliente.puestos.filter(esPuestoCubierto).length;
+  const descansoCicloN = cliente.puestos.filter((p) => p.descanso_por_ciclo === true && !esPuestoCubierto(p)).length;
+  const descubiertoN   = cliente.puestos.filter((p) => !esPuestoCubierto(p) && !p.descanso_por_ciclo).length;
   const total          = cliente.puestos.length;
   const pct         = total > 0 ? Math.round(((cubiertos + descansoCicloN) / total) * 100) : 0;
   const colorBarra  = descubiertoN > 0 ? "bg-red-500" : pct === 100 ? "bg-green-500" : "bg-indigo-500";

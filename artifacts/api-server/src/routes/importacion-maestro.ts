@@ -482,7 +482,7 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
           if (ordenTitular === 1) {
             await pool.query(
               `UPDATE puestos_operativos SET titular_employee_id = $1, titular_nombre = $2,
-               agente_id = $1, estado = 'cubierto' WHERE id = $3`,
+               agente_id = $1, estado = 'cubierto', estado_operativo_puesto = 'normal' WHERE id = $3`,
               [empId, nombre, pId]
             ).catch(() => {});
           }
