@@ -824,6 +824,25 @@ prestacionesRouter.patch("/prestaciones/liquidaciones/:id/anular", async (req, r
         WHERE id = $1`, [employeeId]
     );
 
+    // Reactivar puesto(s) titular(es) en el pizarrón
+    await client.query(
+      `UPDATE puesto_titulares SET activo = TRUE WHERE employee_id = $1 AND activo = FALSE`,
+      [employeeId]
+    );
+
+    // Restaurar anticipos que fueron saldados por esta liquidación
+    await client.query(
+      `UPDATE anticipos
+         SET estado = 'aprobada',
+             observaciones = REGEXP_REPLACE(
+               COALESCE(observaciones, ''),
+               ' \\| Saldo descontado de liquidación.*$', '')
+       WHERE employee_id = $1
+         AND estado = 'pagada'
+         AND observaciones LIKE '%Saldo descontado de liquidación%'`,
+      [employeeId]
+    );
+
     await client.query("COMMIT");
     return res.json({ ok: true, id, employeeId, reactivado: true });
   } catch (err: unknown) {
