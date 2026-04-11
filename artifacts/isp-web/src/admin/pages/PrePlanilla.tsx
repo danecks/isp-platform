@@ -69,6 +69,7 @@ interface ColaboradorPre {
   puesto_titular_nombre: string | null;
   dias_trabajados: number;
   faltas: number;
+  faltas_pendientes_rrhh: number;
   suspensiones: number;
   descansos_trabajados: number;
   horas_trabajadas: string;
@@ -491,14 +492,18 @@ function DetalleModal({
                 <div className="grid grid-cols-3 gap-2 mb-2">
                   {[
                     { label: "Días trab.", val: Number(col.dias_trabajados), cls: "text-green-400" },
-                    { label: "Faltas", val: Number(col.faltas), cls: Number(col.faltas) > 0 ? "text-red-400" : "text-white/30" },
+                    { label: "Faltas", val: Number(col.faltas), cls: Number(col.faltas) > 0 ? "text-red-400" : "text-white/30",
+                      extra: Number(col.faltas_pendientes_rrhh) > 0 ? `+${col.faltas_pendientes_rrhh} pend.` : undefined },
                     { label: "Suspensiones", val: Number(col.suspensiones), cls: Number(col.suspensiones) > 0 ? "text-amber-400" : "text-white/30" },
                     { label: "Dsco. trab.", val: Number(col.descansos_trabajados), cls: "text-blue-400" },
                     { label: "Relevos", val: Number(col.relevos), cls: Number(col.relevos) > 0 ? "text-purple-400" : "text-white/30" },
                     { label: "Días sin hrs", val: Number(col.dias_sin_horas), cls: Number(col.dias_sin_horas) > 0 ? "text-rose-400" : "text-white/20" },
-                  ].map(({ label, val, cls }) => (
+                  ].map(({ label, val, cls, extra }) => (
                     <div key={label} className="bg-[#0c1929] border border-white/6 rounded-lg p-2.5">
-                      <p className={`text-xl font-bold ${cls}`}>{val}</p>
+                      <p className={`text-xl font-bold ${cls}`}>
+                        {val}
+                        {extra && <span className="text-[10px] font-normal text-amber-400/80 ml-1">{extra}</span>}
+                      </p>
                       <p className="text-[10px] text-white/35 mt-0.5">{label}</p>
                     </div>
                   ))}
@@ -1455,12 +1460,12 @@ export default function PrePlanilla() {
     if (filtroEstado !== "todos") data = data.filter((r) => r.estado_laboral === filtroEstado);
     if (filtroRevision !== "todos") data = data.filter((r) => r.revision_estado === filtroRevision);
     if (filtroTipoPersonal !== "todos") data = data.filter((r) => (r.tipo_personal ?? "guardia") === filtroTipoPersonal);
-    if (soloConFaltas) data = data.filter((r) => Number(r.faltas) > 0 || Number(r.suspensiones) > 0);
+    if (soloConFaltas) data = data.filter((r) => Number(r.faltas) > 0 || Number(r.suspensiones) > 0 || Number(r.faltas_pendientes_rrhh) > 0);
     if (soloConAnticipos) data = data.filter((r) => r.anticipos_count > 0);
     if (soloConIncentivos) data = data.filter((r) => Number(r.incentivos_cash_count) > 0);
     if (soloConHE) data = data.filter((r) => parseFloat(r.horas_extra || "0") > 0);
     if (soloRevisar) data = data.filter((r) =>
-      r.revision_estado === "pendiente" && (Number(r.faltas) > 0 || Number(r.suspensiones) > 0 || Number(r.dias_sin_horas) > 0 || r.anticipos_count > 0)
+      r.revision_estado === "pendiente" && (Number(r.faltas) > 0 || Number(r.suspensiones) > 0 || Number(r.dias_sin_horas) > 0 || r.anticipos_count > 0 || Number(r.faltas_pendientes_rrhh) > 0)
     );
 
     data.sort((a, b) => {
@@ -1475,15 +1480,16 @@ export default function PrePlanilla() {
   // KPIs globales (siempre del consolidado completo)
   const totalColabs = filtrados.length;
   const totalFaltas = filtrados.reduce((s, r) => s + Number(r.faltas) + Number(r.suspensiones), 0);
+  const totalFaltasPend = filtrados.reduce((s, r) => s + Number(r.faltas_pendientes_rrhh ?? 0), 0);
   const totalHE = filtrados.reduce((s, r) => s + parseFloat(r.horas_extra || "0"), 0);
   const totalAnt = filtrados.reduce((s, r) => s + Number(r.anticipos_monto), 0);
   const totalIncentivos = filtrados.reduce((s, r) => s + Number(r.incentivos_cash_monto), 0);
-  const conAlertas = filtrados.filter((r) => Number(r.faltas) > 0 || Number(r.suspensiones) > 0 || Number(r.dias_sin_horas) > 0).length;
+  const conAlertas = filtrados.filter((r) => Number(r.faltas) > 0 || Number(r.suspensiones) > 0 || Number(r.dias_sin_horas) > 0 || Number(r.faltas_pendientes_rrhh) > 0).length;
   const totalRelevos = filtrados.reduce((s, r) => s + Number(r.relevos), 0);
 
   // Badges de tab
   const badgeHE = rows.filter((r) => parseFloat(r.horas_extra || "0") > 0).length;
-  const badgeFaltas = rows.filter((r) => Number(r.faltas) > 0 || Number(r.suspensiones) > 0).length;
+  const badgeFaltas = rows.filter((r) => Number(r.faltas) > 0 || Number(r.suspensiones) > 0 || Number(r.faltas_pendientes_rrhh) > 0).length;
   const badgeAnt = rows.filter((r) => r.anticipos_count > 0).length;
   const badgeCob = rows.filter((r) => Number(r.relevos) > 0 || Number(r.descansos_trabajados) > 0).length;
 
@@ -1827,7 +1833,7 @@ export default function PrePlanilla() {
                         <tbody className="divide-y divide-white/4">
                           {filtrados.map((r) => {
                             const heNum2 = parseFloat(r.horas_extra || "0");
-                            const tieneAlerta = Number(r.faltas) > 0 || Number(r.suspensiones) > 0 || Number(r.dias_sin_horas) > 0;
+                            const tieneAlerta = Number(r.faltas) > 0 || Number(r.suspensiones) > 0 || Number(r.dias_sin_horas) > 0 || Number(r.faltas_pendientes_rrhh) > 0;
                             const needsReview = tieneAlerta && r.revision_estado === "pendiente";
                             const est2 = calcularTotalEstimado(r, periodoTotalDias);
 
@@ -1888,6 +1894,11 @@ export default function PrePlanilla() {
                                 {/* Faltas */}
                                 <td className="px-3 py-2.5 text-center">
                                   <span className={Number(r.faltas) > 0 ? "text-red-400 font-bold" : "text-white/20"}>{Number(r.faltas)}</span>
+                                  {Number(r.faltas_pendientes_rrhh) > 0 && (
+                                    <p className="text-[9px] text-amber-400/70" title="Pendiente resolución RRHH">
+                                      +{Number(r.faltas_pendientes_rrhh)} pend.
+                                    </p>
+                                  )}
                                 </td>
                                 {/* Suspensiones */}
                                 <td className="px-3 py-2.5 text-center">

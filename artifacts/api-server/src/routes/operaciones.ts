@@ -3062,35 +3062,85 @@ operacionesRouter.post("/operaciones/cierre", async (req, res) => {
       `);
 
       for (const pf of puestosFaltando) {
-        const { rows: yaExiste } = await pool.query(`
-          SELECT id FROM eventos_rrhh
-          WHERE employee_id = $1
-            AND DATE(fecha) = $2
-            AND tipo_evento = 'falta'
-            AND estado != 'anulado'
-            AND puesto_nombre = $3
-        `, [pf.falta_employee_id, fechaACerrarISO, pf.nombre]);
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
 
-        if (yaExiste.length === 0) {
-          const { rows: empRows } = await pool.query(
+          const { rows: yaExiste } = await client.query(`
+            SELECT id FROM eventos_rrhh
+            WHERE employee_id = $1
+              AND DATE(fecha) = $2
+              AND tipo_evento = 'falta'
+              AND estado != 'anulado'
+              AND puesto_nombre = $3
+          `, [pf.falta_employee_id, fechaACerrarISO, pf.nombre]);
+
+          let eventoId: number | null = null;
+
+          if (yaExiste.length === 0) {
+            const { rows: empRows } = await client.query(
+              `SELECT nombre_completo FROM employees WHERE id = $1`,
+              [pf.falta_employee_id]
+            );
+            const empNombre = empRows[0]?.nombre_completo ?? "Colaborador";
+
+            const { rows: evRows } = await client.query(`
+              INSERT INTO eventos_rrhh (employee_id, employee_nombre, tipo_evento, fecha, observaciones,
+                usuario_generador, puesto_nombre, cliente_nombre, generado_desde, estado)
+              VALUES ($1, $2, 'falta', $3::date, $4, $5, $6, $7, 'cierre_operativo', 'pendiente_aprobacion')
+              RETURNING id
+            `, [
+              pf.falta_employee_id, empNombre, fechaACerrarISO,
+              pf.falta_notas ?? `${pf.falta_motivo ?? "inasistencia"} — ${pf.nombre} (${pf.cliente_nombre})`,
+              pf.falta_usuario ?? usuario ?? 'sistema',
+              pf.nombre, pf.cliente_nombre,
+            ]);
+            eventoId = evRows[0]?.id ?? null;
+          } else {
+            eventoId = yaExiste[0].id;
+          }
+
+          const { rows: empRows2 } = await client.query(
             `SELECT nombre_completo FROM employees WHERE id = $1`,
             [pf.falta_employee_id]
           );
-          const empNombre = empRows[0]?.nombre_completo ?? "Colaborador";
+          const empNombre2 = empRows2[0]?.nombre_completo ?? "Colaborador";
 
-          await pool.query(`
-            INSERT INTO eventos_rrhh (employee_id, employee_nombre, tipo_evento, fecha, observaciones,
-              usuario_generador, puesto_nombre, cliente_nombre, generado_desde, estado)
-            VALUES ($1, $2, 'falta', $3::date, $4, $5, $6, $7, 'cierre_operativo', 'pendiente_aprobacion')
-          `, [
-            pf.falta_employee_id, empNombre, fechaACerrarISO,
-            pf.falta_notas ?? `${pf.falta_motivo ?? "inasistencia"} — ${pf.nombre} (${pf.cliente_nombre})`,
-            pf.falta_usuario ?? usuario ?? 'sistema',
-            pf.nombre, pf.cliente_nombre,
-          ]);
-          faltasDiferidas++;
+          await client.query(`
+            INSERT INTO novedades_nomina_diarias
+              (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
+               falta, descuento_dia, impacto_nomina, requiere_revision_rrhh,
+               tipo_novedad, evento_rrhh_id, puesto_titular_id, puesto_titular_nombre, fuente)
+            VALUES ($1, $2, $3, FALSE, 0, 0, FALSE, FALSE, 'pendiente', TRUE,
+                    'falta_total', $6, $4, $5, 'cierre_falta_diferida')
+            ON CONFLICT (fecha, employee_id) DO UPDATE SET
+              trabajo_dia            = FALSE,
+              horas_trabajadas       = 0,
+              tipo_novedad           = COALESCE(novedades_nomina_diarias.tipo_novedad, 'falta_total'),
+              evento_rrhh_id         = COALESCE(novedades_nomina_diarias.evento_rrhh_id, EXCLUDED.evento_rrhh_id),
+              impacto_nomina         = CASE
+                WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+                THEN novedades_nomina_diarias.impacto_nomina
+                ELSE 'pendiente'
+              END,
+              requiere_revision_rrhh = CASE
+                WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+                THEN novedades_nomina_diarias.requiere_revision_rrhh
+                ELSE TRUE
+              END,
+              updated_at             = NOW()
+          `, [fechaACerrarISO, pf.falta_employee_id, empNombre2, pf.id, pf.nombre, eventoId]);
+
+          await client.query('COMMIT');
+
+          if (yaExiste.length === 0) faltasDiferidas++;
           logger.info({ puestoId: pf.id, employeeId: pf.falta_employee_id, fecha: fechaACerrarISO },
-            "Falta diferida materializada al cierre");
+            yaExiste.length === 0 ? "Falta diferida materializada al cierre" : "Falta diferida: novedad backfill al cierre");
+        } catch (txErr) {
+          await client.query('ROLLBACK');
+          logger.warn({ txErr, puestoId: pf.id }, "Falta diferida: transacción falló (no bloqueante)");
+        } finally {
+          client.release();
         }
       }
 

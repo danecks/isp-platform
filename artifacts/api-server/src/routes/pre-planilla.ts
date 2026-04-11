@@ -71,6 +71,15 @@ const QUERY_CONSOLIDADO = `
     COUNT(DISTINCT n.fecha) FILTER (WHERE n.suspension = TRUE)                  AS suspensiones,
     COUNT(DISTINCT n.fecha) FILTER (WHERE n.descanso_trabajado = TRUE)          AS descansos_trabajados,
 
+    COUNT(DISTINCT n.fecha) FILTER (
+      WHERE n.trabajo_dia = FALSE
+        AND n.falta = FALSE
+        AND n.suspension = FALSE
+        AND n.requiere_revision_rrhh = TRUE
+        AND COALESCE(n.impacto_nomina, 'pendiente') = 'pendiente'
+        AND COALESCE(n.tipo_novedad, 'falta_total') IN ('falta_total', 'abandono_parcial', 'permiso_sin_goce')
+    )                                                                           AS faltas_pendientes_rrhh,
+
     -- Contadores de novedades especiales (para referencia en pre-planilla y reportes)
     -- Fuente: novedades_nomina_diarias.tipo_novedad
     COUNT(DISTINCT n.fecha) FILTER (WHERE n.tipo_novedad = 'vacaciones')        AS dias_vacaciones,
