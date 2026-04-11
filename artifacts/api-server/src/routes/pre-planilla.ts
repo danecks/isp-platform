@@ -81,6 +81,7 @@ const QUERY_CONSOLIDADO = `
     COALESCE(SUM(CASE
       WHEN n.trabajo_dia
        AND (n.requiere_revision_rrhh IS NOT TRUE OR n.impacto_nomina = 'aprobado_rrhh')
+       AND COALESCE(n.impacto_nomina, '') <> 'pagado_efectivo'
       THEN n.horas_extra::numeric ELSE 0 END), 0)                                        AS horas_extra,
 
     COALESCE(SUM(CASE

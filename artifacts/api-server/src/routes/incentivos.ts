@@ -96,7 +96,7 @@ incentivosRouter.post("/incentivos", async (req, res) => {
     return res.status(400).json({ error: "monto debe ser un número positivo" });
   }
 
-  const TIPOS_VALIDOS = ["relevo_cash", "bono_cobertura", "motivacion_cobertura"];
+  const TIPOS_VALIDOS = ["relevo_cash", "bono_cobertura", "motivacion_cobertura", "he_efectivo"];
   if (!TIPOS_VALIDOS.includes(tipo)) {
     return res.status(400).json({ error: `tipo debe ser: ${TIPOS_VALIDOS.join(" | ")}` });
   }
@@ -106,28 +106,96 @@ incentivosRouter.post("/incentivos", async (req, res) => {
   }
 
   try {
-    const { rows } = await pool.query(`
-      INSERT INTO incentivos_cash_cobertura
-        (employee_id, employee_nombre, fecha,
-         cliente_id, cliente_nombre, sede_id,
-         puesto_id, puesto_nombre, segmento_id,
-         tipo, monto, motivo,
-         autorizado_por, pagado_por, metodo_pago, estado, observaciones)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-      RETURNING *
-    `, [
-      Number(employeeId), employeeNombre, fecha,
-      clienteId ? Number(clienteId) : null, clienteNombre ?? null,
-      sedeId ? Number(sedeId) : null,
-      puestoId ? Number(puestoId) : null, puestoNombre ?? null,
-      segmentoId ? Number(segmentoId) : null,
-      tipo, Number(monto), motivo ?? null,
-      autorizadoPor ?? null, pagadoPor ?? null,
-      metodoPago, estado, observaciones ?? null,
-    ]);
+    if (tipo === "he_efectivo") {
+      const { rows: dup } = await pool.query(`
+        SELECT id FROM incentivos_cash_cobertura
+        WHERE employee_id = $1 AND fecha = $2::date AND tipo = 'he_efectivo'
+          AND puesto_id = $3
+        LIMIT 1
+      `, [Number(employeeId), fecha, puestoId ? Number(puestoId) : null]);
+      if (dup.length > 0) {
+        return res.status(409).json({ error: "Ya existe un pago HE en efectivo para este agente/fecha/puesto" });
+      }
 
-    logger.info({ incentivo: rows[0] }, "Incentivo cash registrado");
-    res.status(201).json({ ok: true, incentivo: rows[0] });
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+
+        const { rows } = await client.query(`
+          INSERT INTO incentivos_cash_cobertura
+            (employee_id, employee_nombre, fecha,
+             cliente_id, cliente_nombre, sede_id,
+             puesto_id, puesto_nombre, segmento_id,
+             tipo, monto, motivo,
+             autorizado_por, pagado_por, metodo_pago, estado, observaciones)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+          RETURNING *
+        `, [
+          Number(employeeId), employeeNombre, fecha,
+          clienteId ? Number(clienteId) : null, clienteNombre ?? null,
+          sedeId ? Number(sedeId) : null,
+          puestoId ? Number(puestoId) : null, puestoNombre ?? null,
+          segmentoId ? Number(segmentoId) : null,
+          tipo, Number(monto), motivo ?? null,
+          autorizadoPor ?? null, pagadoPor ?? null,
+          metodoPago, estado, observaciones ?? null,
+        ]);
+
+        await client.query(`
+          UPDATE novedades_nomina_diarias SET
+            impacto_nomina = 'pagado_efectivo',
+            requiere_revision_rrhh = FALSE,
+            observaciones = COALESCE(observaciones, '') || ' | HE pagadas en efectivo Q' || $3::text,
+            updated_at = NOW()
+          WHERE fecha = $1::date AND employee_id = $2
+            AND impacto_nomina = 'pendiente'
+        `, [fecha, Number(employeeId), Number(monto).toFixed(2)]);
+
+        await client.query(`
+          UPDATE eventos_rrhh SET
+            estado = 'pagado_efectivo',
+            tipo_resolucion = 'he_pagado_efectivo',
+            rrhh_resuelto_por = $3,
+            rrhh_resuelto_at = NOW(),
+            updated_at = NOW()
+          WHERE employee_id = $1
+            AND fecha::date = $2::date
+            AND tipo_evento = 'horas_extra'
+            AND estado = 'pendiente_aprobacion'
+        `, [Number(employeeId), fecha, autorizadoPor ?? 'sistema']);
+
+        await client.query("COMMIT");
+        logger.info({ incentivo: rows[0], employeeId, fecha }, "HE pagado en efectivo (tx completa) — excluido de planilla");
+        res.status(201).json({ ok: true, incentivo: rows[0] });
+      } catch (txErr) {
+        await client.query("ROLLBACK");
+        throw txErr;
+      } finally {
+        client.release();
+      }
+    } else {
+      const { rows } = await pool.query(`
+        INSERT INTO incentivos_cash_cobertura
+          (employee_id, employee_nombre, fecha,
+           cliente_id, cliente_nombre, sede_id,
+           puesto_id, puesto_nombre, segmento_id,
+           tipo, monto, motivo,
+           autorizado_por, pagado_por, metodo_pago, estado, observaciones)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+        RETURNING *
+      `, [
+        Number(employeeId), employeeNombre, fecha,
+        clienteId ? Number(clienteId) : null, clienteNombre ?? null,
+        sedeId ? Number(sedeId) : null,
+        puestoId ? Number(puestoId) : null, puestoNombre ?? null,
+        segmentoId ? Number(segmentoId) : null,
+        tipo, Number(monto), motivo ?? null,
+        autorizadoPor ?? null, pagadoPor ?? null,
+        metodoPago, estado, observaciones ?? null,
+      ]);
+      logger.info({ incentivo: rows[0] }, "Incentivo cash registrado");
+      res.status(201).json({ ok: true, incentivo: rows[0] });
+    }
   } catch (err) {
     logger.error({ err }, "POST /incentivos error");
     res.status(500).json({ error: "Error al registrar incentivo" });

@@ -85,6 +85,21 @@ const ESTADO_CONFIG: Record<string, { label: string; className: string; icon: Re
     className: "text-red-400 bg-red-400/10 border-red-400/20",
     icon: <Ban className="w-3 h-3" />,
   },
+  pendiente_aprobacion: {
+    label: "Pendiente aprobación",
+    className: "text-amber-400 bg-amber-400/10 border-amber-400/20",
+    icon: <Clock className="w-3 h-3" />,
+  },
+  rechazado: {
+    label: "Rechazado",
+    className: "text-red-400 bg-red-400/10 border-red-400/20",
+    icon: <Ban className="w-3 h-3" />,
+  },
+  pagado_efectivo: {
+    label: "Pagado en efectivo",
+    className: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
+    icon: <CheckCircle2 className="w-3 h-3" />,
+  },
 };
 
 const TIPO_CONFIG: Record<string, { label: string; className: string }> = {
@@ -732,6 +747,7 @@ const RESOLUCIONES = [
   { value: "sin_impacto",         label: "Sin impacto (error / corrección)", color: "text-white/40", descuento: false },
   { value: "horas_extra_aprobadas",  label: "HE aprobadas — pagar cobertura", color: "text-amber-400", descuento: false },
   { value: "horas_extra_rechazadas", label: "HE rechazadas — no pagar",       color: "text-red-300",   descuento: false },
+  { value: "he_pagado_efectivo",    label: "HE pagadas en efectivo",          color: "text-emerald-400", descuento: false },
 ];
 
 const TIPO_NOVEDAD_LABELS: Record<string, string> = {

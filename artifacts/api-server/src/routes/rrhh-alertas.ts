@@ -227,6 +227,7 @@ const RESOLUCION_MAP: Record<string, { falta: boolean; suspension: boolean; desc
   sin_impacto:         { falta: false, suspension: false, descuento_dia: false, afecta_septimo: false },
   horas_extra_aprobadas: { falta: false, suspension: false, descuento_dia: false, afecta_septimo: false },
   horas_extra_rechazadas:{ falta: false, suspension: false, descuento_dia: false, afecta_septimo: false },
+  he_pagado_efectivo:    { falta: false, suspension: false, descuento_dia: false, afecta_septimo: false },
 };
 
 // PATCH /api/rrhh/incidencias/:id/resolver — RRHH clasifica la incidencia
