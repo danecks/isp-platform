@@ -454,6 +454,11 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         WHERE tipo_evento = 'falta'
           AND fecha::date = $1::date
           AND estado NOT IN ('anulado', 'cancelado')
+        UNION
+        SELECT falta_employee_id AS employee_id FROM puestos_operativos
+        WHERE estado_operativo_puesto = 'faltando'
+          AND falta_employee_id IS NOT NULL
+          AND activo = TRUE
       `, [fechaConsultada]);
 
       const faltaSet = new Set(faltasRows.map((f: any) => Number(f.employee_id)));
@@ -565,6 +570,11 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
           WHEN e.estado_laboral = 'activo'
                AND ev_falta.tiene_falta IS NOT NULL
                AND (po.agente_id IS NOT NULL OR titular_po.id IS NOT NULL)
+               THEN 'faltando'
+          -- FALTANDO: falta diferida (pre-cierre) marcada en puestos_operativos
+          WHEN e.estado_laboral = 'activo'
+               AND titular_po.estado_operativo_puesto = 'faltando'
+               AND titular_po.falta_employee_id = e.id
                THEN 'faltando'
           -- FALTANDO: agente titular cuyo puesto tiene un relevo activo hoy
           WHEN e.estado_laboral = 'activo'
