@@ -589,7 +589,7 @@ eventosRrhhRouter.get("/rrhh/horas-extra-pendientes", async (req, res) => {
         n.id, n.fecha, n.employee_id, n.empleado_nombre,
         n.horas_extra, n.horas_extra_estado,
         n.horas_extra_aprobadas_por, n.horas_extra_aprobadas_at,
-        n.puesto_cubierto_nombre, n.fue_en_dia_descanso,
+        n.puesto_cubierto_nombre,
         n.puesto_titular_nombre
       FROM novedades_nomina_diarias n
       WHERE n.horas_extra > 0
