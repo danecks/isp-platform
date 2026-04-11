@@ -561,7 +561,7 @@ function EventoCard({
               </button>
               {showEstadoMenu && (
                 <div className="absolute right-0 top-full mt-1 z-20 bg-[#0c1929] border border-white/10 rounded-xl shadow-xl min-w-[140px] overflow-hidden">
-                  {(["pendiente_aprobacion", "aprobado", "rechazado", "pagado_efectivo"] as const)
+                  {(["pendiente_aprobacion", "aprobado", "rechazado"] as const)
                     .map((key) => [key, ESTADO_CONFIG[key]] as const)
                     .map(([key, cfg]) => (
                       <button
@@ -2044,7 +2044,6 @@ export default function RRHHEventos() {
                   <option value="">Todos los estados</option>
                   <option value="aprobado">Aprobado</option>
                   <option value="rechazado">Rechazado</option>
-                  <option value="pagado_efectivo">Pagado en efectivo</option>
                   <option value="anulado">Anulado</option>
                 </select>
               )}
