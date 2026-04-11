@@ -4754,12 +4754,17 @@ function ModalSustitucion({
   const jornadaReal = (() => {
     if (puesto.jornada === "24h") return "24h";
     if (puesto.jornada === "12h") return "12h";
+    if (puesto.horas_trabajo && Number(puesto.horas_trabajo) >= 20) return "24h";
+    if (puesto.horas_trabajo && Number(puesto.horas_trabajo) > 0 && Number(puesto.horas_trabajo) < 20) return "12h";
+    if (puesto.ciclo_horas && Number(puesto.ciclo_horas) >= 20) return "24h";
     if (puesto.hora_entrada && puesto.hora_salida) {
-      const parseMin = (hm: string) => { const [h, m] = hm.split(":").map(Number); return h * 60 + (m || 0); };
-      let d = parseMin(puesto.hora_salida) - parseMin(puesto.hora_entrada);
+      const pm = (hm: string) => { const [h, m] = hm.split(":").map(Number); return h * 60 + (m || 0); };
+      let d = pm(puesto.hora_salida) - pm(puesto.hora_entrada);
       if (d <= 0) d += 1440;
       return d >= 20 * 60 ? "24h" : "12h";
     }
+    if (puesto.turno_nombre && /24/.test(puesto.turno_nombre)) return "24h";
+    if (puesto.es_par_24x24) return "24h";
     return "12h";
   })();
 
@@ -4769,7 +4774,6 @@ function ModalSustitucion({
       if (found) {
         const t = { tarifa: parseFloat(found.tarifa), horas_turno: parseInt(found.horas_turno) };
         setTarifaHE(t);
-        if (!montoEfectivo) setMontoEfectivo(t.tarifa.toFixed(2));
       }
     }).catch(() => {});
   }, [jornadaReal]);
@@ -4791,6 +4795,10 @@ function ModalSustitucion({
   const costoTurnoCompleto = tarifaHE?.tarifa ?? null;
   const costoParcial = costoPorHora && parcialMin > 0 ? costoPorHora * (parcialMin / 60) : null;
   const costoHE = tipoCobertura === "parcial" && costoParcial != null ? costoParcial : costoTurnoCompleto;
+
+  useEffect(() => {
+    if (costoHE != null) setMontoEfectivo(costoHE.toFixed(2));
+  }, [costoHE]);
 
   async function handleConfirm() {
     if (parcialExcede || parcialIncompleto) return;
