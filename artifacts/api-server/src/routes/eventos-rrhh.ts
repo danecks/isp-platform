@@ -5,6 +5,153 @@ import { calcularKPIDisciplinario } from "../services/disciplinary-kpi";
 
 export const eventosRrhhRouter = Router();
 
+const TIPOS_FALTA = ["falta", "falta_total", "falta_injustificada", "abandono_parcial", "permiso_sin_goce"];
+const TIPOS_SUSPENSION = ["suspension"];
+const TIPOS_INCAPACIDAD = ["incapacidad"];
+
+async function propagarEstadoANovedades(
+  evento: { id: number; tipo_evento: string; employee_id: number; evento_par_id: number | null },
+  estado: "aprobado" | "rechazado",
+  usuario?: string,
+  client?: any,
+) {
+  const q = client ?? pool;
+  const eventoId = evento.id;
+  const tipo = evento.tipo_evento;
+  const esSuspension = TIPOS_SUSPENSION.includes(tipo);
+
+  const { rows: novedadesDirectas } = await q.query(
+    `SELECT id FROM novedades_nomina_diarias WHERE evento_rrhh_id = $1`,
+    [eventoId],
+  );
+
+  if (estado === "aprobado") {
+    if (TIPOS_FALTA.includes(tipo)) {
+      await q.query(
+        `UPDATE novedades_nomina_diarias
+         SET falta = TRUE, impacto_nomina = 'aprobado_rrhh', updated_at = NOW()
+         WHERE evento_rrhh_id = $1`,
+        [eventoId],
+      );
+      logger.info({ eventoId, tipo, updated: novedadesDirectas.length }, "Falta aprobada → novedades actualizadas");
+    } else if (esSuspension) {
+      await q.query(
+        `UPDATE novedades_nomina_diarias
+         SET suspension = TRUE, falta = FALSE, impacto_nomina = 'aprobado_rrhh', updated_at = NOW()
+         WHERE evento_rrhh_id = $1`,
+        [eventoId],
+      );
+      logger.info({ eventoId, tipo, updated: novedadesDirectas.length }, "Suspensión aprobada → novedades actualizadas");
+    } else if (TIPOS_INCAPACIDAD.includes(tipo)) {
+      await q.query(
+        `UPDATE novedades_nomina_diarias
+         SET impacto_nomina = 'aprobado_rrhh', updated_at = NOW()
+         WHERE evento_rrhh_id = $1`,
+        [eventoId],
+      );
+      logger.info({ eventoId, tipo, updated: novedadesDirectas.length }, "Incapacidad aprobada → novedades actualizadas");
+    } else if (tipo === "horas_extra") {
+      await q.query(
+        `UPDATE novedades_nomina_diarias
+         SET horas_extra_estado = 'aprobado',
+             horas_extra_aprobadas_por = $1,
+             horas_extra_aprobadas_at = NOW(),
+             impacto_nomina = 'aprobado_rrhh',
+             updated_at = NOW()
+         WHERE evento_rrhh_id = $2`,
+        [usuario ?? "RRHH", eventoId],
+      );
+      logger.info({ eventoId, tipo, updated: novedadesDirectas.length }, "HE aprobada → novedades actualizadas");
+    }
+  } else {
+    if (TIPOS_FALTA.includes(tipo) || TIPOS_INCAPACIDAD.includes(tipo)) {
+      await q.query(
+        `UPDATE novedades_nomina_diarias
+         SET falta = FALSE, impacto_nomina = 'rechazado_rrhh', updated_at = NOW()
+         WHERE evento_rrhh_id = $1`,
+        [eventoId],
+      );
+      logger.info({ eventoId, tipo, updated: novedadesDirectas.length }, "Falta/incapacidad rechazada → novedades actualizadas");
+    } else if (esSuspension) {
+      await q.query(
+        `UPDATE novedades_nomina_diarias
+         SET suspension = FALSE, falta = FALSE, impacto_nomina = 'rechazado_rrhh', updated_at = NOW()
+         WHERE evento_rrhh_id = $1`,
+        [eventoId],
+      );
+      logger.info({ eventoId, tipo, updated: novedadesDirectas.length }, "Suspensión rechazada → novedades actualizadas");
+    } else if (tipo === "horas_extra") {
+      await q.query(
+        `UPDATE novedades_nomina_diarias
+         SET horas_extra_estado = 'rechazado', horas_extra = 0, impacto_nomina = 'rechazado_rrhh', updated_at = NOW()
+         WHERE evento_rrhh_id = $1`,
+        [eventoId],
+      );
+      logger.info({ eventoId, tipo, updated: novedadesDirectas.length }, "HE rechazada → novedades actualizadas");
+    }
+  }
+
+  if (novedadesDirectas.length === 0) {
+    if (TIPOS_FALTA.includes(tipo) || TIPOS_SUSPENSION.includes(tipo) || TIPOS_INCAPACIDAD.includes(tipo)) {
+      const { rows: novedadesFecha } = await q.query(
+        `SELECT id FROM novedades_nomina_diarias
+         WHERE employee_id = $1
+           AND fecha = (SELECT fecha::date FROM eventos_rrhh WHERE id = $2)
+           AND COALESCE(impacto_nomina, 'pendiente') = 'pendiente'
+         LIMIT 1`,
+        [evento.employee_id, eventoId],
+      );
+      if (novedadesFecha.length > 0) {
+        const setFields = esSuspension
+          ? (estado === "aprobado"
+            ? `suspension = TRUE, falta = FALSE, impacto_nomina = 'aprobado_rrhh'`
+            : `suspension = FALSE, falta = FALSE, impacto_nomina = 'rechazado_rrhh'`)
+          : (estado === "aprobado"
+            ? `falta = ${TIPOS_FALTA.includes(tipo) ? 'TRUE' : 'FALSE'}, impacto_nomina = 'aprobado_rrhh'`
+            : `falta = FALSE, impacto_nomina = 'rechazado_rrhh'`);
+        await q.query(
+          `UPDATE novedades_nomina_diarias
+           SET ${setFields}, evento_rrhh_id = $1, updated_at = NOW()
+           WHERE id = $2`,
+          [eventoId, novedadesFecha[0].id],
+        );
+        logger.info({ eventoId, novedadId: novedadesFecha[0].id }, "Novedad vinculada por fecha+empleado (falta/susp/incap)");
+      }
+    } else if (tipo === "horas_extra") {
+      const { rows: novedadesFecha } = await q.query(
+        `SELECT id FROM novedades_nomina_diarias
+         WHERE employee_id = $1
+           AND fecha = (SELECT fecha::date FROM eventos_rrhh WHERE id = $2)
+           AND COALESCE(horas_extra_estado, 'pendiente') = 'pendiente'
+           AND horas_extra::numeric > 0
+         LIMIT 1`,
+        [evento.employee_id, eventoId],
+      );
+      if (novedadesFecha.length > 0) {
+        if (estado === "aprobado") {
+          await q.query(
+            `UPDATE novedades_nomina_diarias
+             SET horas_extra_estado = 'aprobado', horas_extra_aprobadas_por = $1,
+                 horas_extra_aprobadas_at = NOW(), impacto_nomina = 'aprobado_rrhh',
+                 evento_rrhh_id = $2, updated_at = NOW()
+             WHERE id = $3`,
+            [usuario ?? "RRHH", eventoId, novedadesFecha[0].id],
+          );
+        } else {
+          await q.query(
+            `UPDATE novedades_nomina_diarias
+             SET horas_extra_estado = 'rechazado', horas_extra = 0,
+                 impacto_nomina = 'rechazado_rrhh', evento_rrhh_id = $1, updated_at = NOW()
+             WHERE id = $2`,
+            [eventoId, novedadesFecha[0].id],
+          );
+        }
+        logger.info({ eventoId, novedadId: novedadesFecha[0].id }, "Novedad vinculada por fecha+empleado (HE)");
+      }
+    }
+  }
+}
+
 // ─── GET /api/rrhh/eventos ────────────────────────────────────────────────────
 // Lista todos los eventos RRHH, con filtros opcionales
 eventosRrhhRouter.get("/rrhh/eventos", async (req, res) => {
@@ -220,22 +367,32 @@ eventosRrhhRouter.post("/rrhh/eventos", async (req, res) => {
 // ─── PATCH /api/rrhh/eventos/:id/estado ──────────────────────────────────────
 eventosRrhhRouter.patch("/rrhh/eventos/:id/estado", async (req, res) => {
   const id = Number(req.params.id);
-  const { estado, notas } = req.body;
+  const { estado, notas, usuario } = req.body;
 
   const VALID = ["pendiente_aprobacion", "aprobado", "rechazado"];
   if (!VALID.includes(estado)) {
     return res.status(400).json({ error: `Estado inválido. Válidos: ${VALID.join(", ")}` });
   }
 
+  const client = await pool.connect();
   try {
-    // No permitir modificar eventos anulados
-    const { rows: check } = await pool.query(`SELECT estado FROM eventos_rrhh WHERE id=$1`, [id]);
-    if (!check.length) return res.status(404).json({ error: "Evento no encontrado" });
+    await client.query("BEGIN");
+
+    const { rows: check } = await client.query(
+      `SELECT id, estado, tipo_evento, employee_id, evento_par_id FROM eventos_rrhh WHERE id=$1`,
+      [id],
+    );
+    if (!check.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Evento no encontrado" });
+    }
     if (check[0].estado === "anulado") {
+      await client.query("ROLLBACK");
       return res.status(409).json({ error: "No se puede modificar un evento anulado" });
     }
 
-    const { rows } = await pool.query(
+    const evento = check[0];
+    const { rows } = await client.query(
       `UPDATE eventos_rrhh
        SET estado=$1, notas=COALESCE($2, notas), updated_at=NOW()
        WHERE id=$3
@@ -243,10 +400,18 @@ eventosRrhhRouter.patch("/rrhh/eventos/:id/estado", async (req, res) => {
       [estado, notas || null, id],
     );
 
+    if (estado === "aprobado" || estado === "rechazado") {
+      await propagarEstadoANovedades(evento, estado, usuario, client);
+    }
+
+    await client.query("COMMIT");
     res.json({ ok: true, evento: rows[0] });
   } catch (err) {
+    await client.query("ROLLBACK");
     logger.error({ err }, "PATCH /rrhh/eventos/:id/estado error");
     res.status(500).json({ error: "Error al actualizar estado" });
+  } finally {
+    client.release();
   }
 });
 

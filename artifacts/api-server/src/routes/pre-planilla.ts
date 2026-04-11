@@ -89,13 +89,16 @@ const QUERY_CONSOLIDADO = `
     COALESCE(SUM(CASE WHEN n.trabajo_dia THEN n.horas_trabajadas::numeric ELSE 0 END), 0) AS horas_trabajadas,
     COALESCE(SUM(CASE
       WHEN n.trabajo_dia
-       AND (n.requiere_revision_rrhh IS NOT TRUE OR n.impacto_nomina = 'aprobado_rrhh')
+       AND (n.requiere_revision_rrhh IS NOT TRUE OR n.impacto_nomina = 'aprobado_rrhh' OR n.horas_extra_estado = 'aprobado')
        AND COALESCE(n.impacto_nomina, '') <> 'pagado_efectivo'
+       AND COALESCE(n.horas_extra_estado, 'pendiente') <> 'rechazado'
       THEN n.horas_extra::numeric ELSE 0 END), 0)                                        AS horas_extra,
 
     COALESCE(SUM(CASE
-      WHEN n.trabajo_dia AND n.requiere_revision_rrhh = TRUE
-       AND n.impacto_nomina = 'pendiente'
+      WHEN n.trabajo_dia
+       AND n.horas_extra::numeric > 0
+       AND COALESCE(n.horas_extra_estado, 'pendiente') = 'pendiente'
+       AND n.requiere_revision_rrhh = TRUE
       THEN n.horas_extra::numeric ELSE 0 END), 0)                                        AS horas_extra_pendientes,
 
     -- Relevos: días en que el colaborador cubrió un puesto distinto al suyo titular
