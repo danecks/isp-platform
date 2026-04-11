@@ -28,18 +28,32 @@ function parseBool(v: any): boolean {
 }
 
 function parseDate(v: any): string | null {
-  const s = trim(v);
-  if (!s) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
-    const [d, m, y] = s.split("/");
-    return `${y}-${m}-${d}`;
-  }
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  // 1. Objeto Date nativo de Excel (más confiable — verificar primero)
+  if (v instanceof Date && !isNaN(v.getTime())) return v.toISOString().slice(0, 10);
+  // 2. Número serial de Excel (días desde 1900)
   const n = Number(v);
-  if (!isNaN(n) && n > 1000) {
+  if (!isNaN(n) && n > 1000 && typeof v === "number") {
     const ms = Date.UTC(1899, 11, 30) + n * 86400000;
     return new Date(ms).toISOString().slice(0, 10);
+  }
+  const s = trim(v);
+  if (!s) return null;
+  // 3. ISO: yyyy-mm-dd
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // 4. dd/mm/aaaa o d/m/aaaa (formato guatemalteco — 1 o 2 dígitos día/mes)
+  const dmatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (dmatch) {
+    const d = dmatch[1].padStart(2, "0");
+    const m = dmatch[2].padStart(2, "0");
+    const y = dmatch[3];
+    // Si el día > 12, es inequívocamente DD/MM
+    // Si el mes > 12, es inequívocamente MM/DD (formato americano) → convertir
+    if (parseInt(m) > 12) {
+      // Formato americano M/D/YYYY: el segundo número es el día
+      return `${y}-${d}-${m}`;
+    }
+    // Asumir DD/MM/YYYY (formato guatemalteco)
+    return `${y}-${m}-${d}`;
   }
   return null;
 }
