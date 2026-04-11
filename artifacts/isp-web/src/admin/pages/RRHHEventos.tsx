@@ -55,40 +55,15 @@ async function apiPost(url: string, body: object): Promise<any> {
 
 // ─── Configuración de estados ─────────────────────────────────────────────────
 const ESTADO_CONFIG: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
-  pendiente: {
-    label: "Pendiente",
-    className: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20",
+  pendiente_aprobacion: {
+    label: "Pendiente aprobación",
+    className: "text-amber-400 bg-amber-400/10 border-amber-400/20",
     icon: <Clock className="w-3 h-3" />,
-  },
-  activo: {
-    label: "Activo",
-    className: "text-blue-400 bg-blue-400/10 border-blue-400/20",
-    icon: <RefreshCw className="w-3 h-3" />,
-  },
-  en_proceso: {
-    label: "En proceso",
-    className: "text-blue-400 bg-blue-400/10 border-blue-400/20",
-    icon: <RefreshCw className="w-3 h-3" />,
   },
   aprobado: {
     label: "Aprobado",
     className: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
     icon: <CheckCircle2 className="w-3 h-3" />,
-  },
-  cerrado: {
-    label: "Cerrado",
-    className: "text-green-400 bg-green-400/10 border-green-400/20",
-    icon: <CheckCircle2 className="w-3 h-3" />,
-  },
-  anulado: {
-    label: "ANULADO",
-    className: "text-red-400 bg-red-400/10 border-red-400/20",
-    icon: <Ban className="w-3 h-3" />,
-  },
-  pendiente_aprobacion: {
-    label: "Pendiente aprobación",
-    className: "text-amber-400 bg-amber-400/10 border-amber-400/20",
-    icon: <Clock className="w-3 h-3" />,
   },
   rechazado: {
     label: "Rechazado",
@@ -97,6 +72,31 @@ const ESTADO_CONFIG: Record<string, { label: string; className: string; icon: Re
   },
   pagado_efectivo: {
     label: "Pagado en efectivo",
+    className: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
+    icon: <CheckCircle2 className="w-3 h-3" />,
+  },
+  anulado: {
+    label: "ANULADO",
+    className: "text-red-400 bg-red-400/10 border-red-400/20",
+    icon: <Ban className="w-3 h-3" />,
+  },
+  pendiente: {
+    label: "Pendiente aprobación",
+    className: "text-amber-400 bg-amber-400/10 border-amber-400/20",
+    icon: <Clock className="w-3 h-3" />,
+  },
+  activo: {
+    label: "Aprobado",
+    className: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
+    icon: <CheckCircle2 className="w-3 h-3" />,
+  },
+  en_proceso: {
+    label: "Aprobado",
+    className: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
+    icon: <CheckCircle2 className="w-3 h-3" />,
+  },
+  cerrado: {
+    label: "Aprobado",
     className: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
     icon: <CheckCircle2 className="w-3 h-3" />,
   },
@@ -561,8 +561,8 @@ function EventoCard({
               </button>
               {showEstadoMenu && (
                 <div className="absolute right-0 top-full mt-1 z-20 bg-[#0c1929] border border-white/10 rounded-xl shadow-xl min-w-[140px] overflow-hidden">
-                  {Object.entries(ESTADO_CONFIG)
-                    .filter(([key]) => key !== "anulado")
+                  {(["pendiente_aprobacion", "aprobado", "rechazado", "pagado_efectivo"] as const)
+                    .map((key) => [key, ESTADO_CONFIG[key]] as const)
                     .map(([key, cfg]) => (
                       <button
                         key={key}

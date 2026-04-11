@@ -222,7 +222,7 @@ eventosRrhhRouter.patch("/rrhh/eventos/:id/estado", async (req, res) => {
   const id = Number(req.params.id);
   const { estado, notas } = req.body;
 
-  const VALID = ["pendiente", "en_proceso", "aprobado", "cerrado"];
+  const VALID = ["pendiente_aprobacion", "aprobado", "rechazado", "pagado_efectivo"];
   if (!VALID.includes(estado)) {
     return res.status(400).json({ error: `Estado inválido. Válidos: ${VALID.join(", ")}` });
   }
