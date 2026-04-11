@@ -276,9 +276,9 @@ function fmtQ(n: number | string | null) {
   return `Q${num.toLocaleString("es-GT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function calcularISRQuincenal(sueldoBaseMensual: number): number {
+function calcularISRQuincenal(sueldoBaseMensual: number, aplicaIgss: boolean = true): number {
   const brutaAnual = sueldoBaseMensual * 12;
-  const igssAnual = brutaAnual * 0.0483;
+  const igssAnual = aplicaIgss ? brutaAnual * 0.0483 : 0;
   const rentaImponible = brutaAnual - igssAnual - 48000;
   if (rentaImponible <= 0) return 0;
   let isrAnual = 0;
@@ -307,7 +307,7 @@ function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: number | n
   const anticipo = Number(col.anticipos_monto);
   const cuotaUniforme = Number(col.cuota_uniforme_monto ?? 0);
   const igssLaboral = col.aplica_igss ? Math.round((sueldoPeriodo - descFaltas) * 0.0483 * 100) / 100 : 0;
-  const isrQuincenal = calcularISRQuincenal(sb);
+  const isrQuincenal = calcularISRQuincenal(sb, col.aplica_igss);
   const total = sueldoPeriodo - descFaltas + valorHE - anticipo - cuotaUniforme - igssLaboral - isrQuincenal;
 
   const diasCerrados = Number(col.dias_cerrados ?? 0);

@@ -98,6 +98,7 @@ interface PlanillaLinea {
   total_neto: string;
   igss_trabajador: string | null;
   igss_patronal: string | null;
+  isr: string | null;
   otros_descuentos: string | null;
   otros_descuentos_detalle: string | null;
   anticipo_ids: number[] | null;
@@ -464,6 +465,8 @@ function TabPlanillaGeneral({ lineas }: { lineas: PlanillaLinea[] }) {
             <TableHead className="text-[#8bacc8] text-xs text-right">Desc. Faltas</TableHead>
             <TableHead className="text-[#8bacc8] text-xs text-right">Valor HE</TableHead>
             <TableHead className="text-[#8bacc8] text-xs text-right">Total Bruto</TableHead>
+            <TableHead className="text-[#8bacc8] text-xs text-right">IGSS</TableHead>
+            <TableHead className="text-[#8bacc8] text-xs text-right">ISR</TableHead>
             <TableHead className="text-[#8bacc8] text-xs text-right">Anticipos</TableHead>
             <TableHead className="text-[#8bacc8] text-xs text-right font-bold">Total Neto</TableHead>
             <TableHead className="text-[#8bacc8] text-xs">Rev.</TableHead>
@@ -504,6 +507,8 @@ function TabPlanillaGeneral({ lineas }: { lineas: PlanillaLinea[] }) {
               <TableCell className="text-right text-sm text-red-400">{parseFloat(l.desc_faltas) > 0 ? fmtQ(l.desc_faltas) : "—"}</TableCell>
               <TableCell className="text-right text-sm text-amber-400">{parseFloat(l.valor_he) > 0 ? fmtQ(l.valor_he) : "—"}</TableCell>
               <TableCell className="text-right text-sm text-white">{fmtQ(l.total_bruto)}</TableCell>
+              <TableCell className="text-right text-sm text-cyan-400">{l.igss_trabajador && parseFloat(l.igss_trabajador) > 0 ? fmtQ(l.igss_trabajador) : "—"}</TableCell>
+              <TableCell className="text-right text-sm text-purple-400">{l.isr && parseFloat(l.isr) > 0 ? fmtQ(l.isr) : "—"}</TableCell>
               <TableCell className="text-right text-sm text-orange-400">{parseFloat(l.anticipos) > 0 ? fmtQ(l.anticipos) : "—"}</TableCell>
               <TableCell className="text-right text-sm font-bold text-green-400">{fmtQ(l.total_neto)}</TableCell>
               <TableCell>
@@ -893,18 +898,8 @@ function DetallePlanilla({
           sub={`HE: ${fmtQ(planilla.total_valor_he)} | Desc: ${fmtQ(planilla.total_desc_faltas)}`}
           icon={<TrendingUp className="h-5 w-5" />} />
         <KpiCard label="Total Neto a Pagar" value={fmtQ(planilla.total_neto)}
-          sub={`Anticipos descontados: ${fmtQ(planilla.total_anticipos)}`}
+          sub={`IGSS + ISR + Anticipos descontados`}
           icon={<Wallet className="h-5 w-5" />} />
-      </div>
-
-      {/* Limitaciones */}
-      <div className="bg-blue-950/30 border border-blue-800/50 rounded p-3 flex gap-2 text-xs text-blue-300">
-        <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-        <span>
-          <strong>Límites actuales:</strong> Esta planilla no incluye IGSS, bonificación incentivo ni séptimo.
-          Estos componentes se agregarán en versiones futuras. El cálculo incluye: sueldo proporcional al período,
-          descuento por faltas/suspensiones, valor de horas extra (tarifa fija por turno) y deducción de anticipos.
-        </span>
       </div>
 
       {/* Tabs multi-hoja */}

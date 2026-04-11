@@ -49,7 +49,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
-import { calcularBruto, calcularBonificacionIncentivo, toNum, toInt } from "../lib/nomina-calc";
+import { calcularBruto, calcularBonificacionIncentivo, calcularISRQuincenal, toNum, toInt } from "../lib/nomina-calc";
 import { buildUniformeCuotaMap, descontarCuotaUniforme } from "./uniformes";
 
 export const planillaRouter = Router();
@@ -126,8 +126,10 @@ function calcularLinea(
     diasIncapacidadConGoce: toInt(row.dias_incapacidad),  // usar total incapacidad hasta tener columna separada
   });
 
+  const isr = calcularISRQuincenal(sb, igssData.aplica_igss);
+
   const uniforme = parseFloat(uniformeMonto.toFixed(2));
-  const totalNeto = parseFloat(Math.max(0, totalBrutoRnd - igssT + bonificacion_incentivo - anticipo - uniforme).toFixed(2));
+  const totalNeto = parseFloat(Math.max(0, totalBrutoRnd - igssT - isr + bonificacion_incentivo - anticipo - uniforme).toFixed(2));
 
   return {
     sueldo_base:      sb,
@@ -148,6 +150,7 @@ function calcularLinea(
     anticipos:        parseFloat(anticipo.toFixed(2)),
     igss_trabajador:  igssT,
     igss_patronal:    igssP,
+    isr,
     bonificacion_incentivo,
     total_neto:       totalNeto,
     aplica_igss:           igssData.aplica_igss,
@@ -360,6 +363,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         total_bruto:                  acc.total_bruto                  + l.total_bruto,
         total_igss_trabajador:        acc.total_igss_trabajador        + l.igss_trabajador,
         total_igss_patronal:          acc.total_igss_patronal          + l.igss_patronal,
+        total_isr:                    acc.total_isr                    + l.isr,
         total_bonificacion_incentivo: acc.total_bonificacion_incentivo + l.bonificacion_incentivo,
         total_anticipos:              acc.total_anticipos              + l.anticipos,
         total_neto:                   acc.total_neto                   + l.total_neto,
@@ -367,7 +371,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
       {
         total_sueldo_periodo: 0, total_desc_faltas: 0, total_desc_septimo: 0,
         total_valor_he: 0, total_bruto: 0,
-        total_igss_trabajador: 0, total_igss_patronal: 0,
+        total_igss_trabajador: 0, total_igss_patronal: 0, total_isr: 0,
         total_bonificacion_incentivo: 0,
         total_anticipos: 0, total_neto: 0,
       }
@@ -379,8 +383,8 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         (periodo_desde, periodo_hasta, cierre_id, generado_por, observaciones,
          total_colaboradores, total_sueldo_periodo, total_desc_faltas, total_desc_septimo,
          total_valor_he, total_bruto, total_igss_trabajador, total_igss_patronal,
-         total_bonificacion_incentivo, total_anticipos, total_neto)
-      VALUES ($1::date, $2::date, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+         total_isr, total_bonificacion_incentivo, total_anticipos, total_neto)
+      VALUES ($1::date, $2::date, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       RETURNING id
     `, [
       desde, hasta, cierre.id, generadoPor, observaciones ?? null,
@@ -392,6 +396,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
       totales.total_bruto.toFixed(2),
       totales.total_igss_trabajador.toFixed(2),
       totales.total_igss_patronal.toFixed(2),
+      totales.total_isr.toFixed(2),
       totales.total_bonificacion_incentivo.toFixed(2),
       totales.total_anticipos.toFixed(2),
       totales.total_neto.toFixed(2),
@@ -444,11 +449,11 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
            dias_trabajados, faltas, suspensiones, horas_trabajadas, horas_extra,
            sueldo_periodo, desc_faltas, desc_septimo, valor_he, total_bruto, anticipos,
            aplica_igss, motivo_exclusion_igss,
-           igss_trabajador, igss_patronal, bonificacion_incentivo, otros_descuentos, total_neto,
+           igss_trabajador, igss_patronal, isr, bonificacion_incentivo, otros_descuentos, total_neto,
            anticipo_ids, novedad_ids, segmento_ids,
            revision_estado, observaciones_rrhh,
            descuentos_uniforme, uniforme_cuota_ids)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38)
       `, [
         planillaId, l.employee_id, l.nombre_completo, l.dpi, l.puesto, l.sede, l.cliente,
         l.tipo_jornada, l.horas_contrato, l.frecuencia_pago, l.sueldo_base, l.periodo_dias,
@@ -456,7 +461,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         l.horas_trabajadas, l.horas_extra,
         l.sueldo_periodo, l.desc_faltas, l.desc_septimo, l.valor_he, l.total_bruto, l.anticipos,
         l.aplica_igss, l.motivo_exclusion_igss,
-        l.igss_trabajador, l.igss_patronal, l.bonificacion_incentivo, l.otros_descuentos, l.total_neto,
+        l.igss_trabajador, l.igss_patronal, l.isr, l.bonificacion_incentivo, l.otros_descuentos, l.total_neto,
         JSON.stringify(anticipoIds), JSON.stringify([]), JSON.stringify([]),
         l.revision_estado, l.observaciones_rrhh,
         l.descuentos_uniforme, JSON.stringify(uniformeCuotaIds),
@@ -686,7 +691,7 @@ planillaRouter.get("/nomina/planilla/:id/export", async (req, res) => {
       "Sueldo Base (Q)", "Días Período", "Días Trabajados",
       "Faltas", "Suspensiones", "H. Trabajadas", "H. Extra",
       "Sueldo Período (Q)", "Desc. Faltas (Q)", "Valor HE (Q)",
-      "IGSS Trab. (Q)", "IGSS Pat. (Q)", "Otros Desc. (Q)",
+      "IGSS Trab. (Q)", "IGSS Pat. (Q)", "ISR (Q)", "Otros Desc. (Q)",
       "Total Bruto (Q)", "Anticipos (Q)", "# Anticipos",
       "Total Neto (Q)", "Revisión RRHH",
     ];
@@ -705,7 +710,7 @@ planillaRouter.get("/nomina/planilla/:id/export", async (req, res) => {
         parseFloat(l.horas_trabajadas || 0).toFixed(2),
         parseFloat(l.horas_extra || 0).toFixed(2),
         fmtQ(l.sueldo_periodo), fmtQ(l.desc_faltas), fmtQ(l.valor_he),
-        fmtQ(l.igss_trabajador ?? 0), fmtQ(l.igss_patronal ?? 0), fmtQ(l.otros_descuentos ?? 0),
+        fmtQ(l.igss_trabajador ?? 0), fmtQ(l.igss_patronal ?? 0), fmtQ(l.isr ?? 0), fmtQ(l.otros_descuentos ?? 0),
         fmtQ(l.total_bruto), fmtQ(l.anticipos),
         anticCountMap.get(l.id) ?? 0,
         fmtQ(l.total_neto), l.revision_estado ?? "",
@@ -713,7 +718,7 @@ planillaRouter.get("/nomina/planilla/:id/export", async (req, res) => {
       "",
       ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
        fmtQ(p.total_sueldo_periodo), fmtQ(p.total_desc_faltas), fmtQ(p.total_valor_he),
-       "—", "—", "—",
+       "—", "—", fmtQ(p.total_isr ?? 0), "—",
        fmtQ(p.total_bruto), fmtQ(p.total_anticipos), "",
        fmtQ(p.total_neto), "TOTALES"].map(esc).join(","),
     ];

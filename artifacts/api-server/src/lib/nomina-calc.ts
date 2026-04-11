@@ -180,6 +180,32 @@ export function calcularBonificacionIncentivo(p: BonificacionParams): number {
 }
 
 /**
+ * Calcula ISR quincenal (Guatemala) usando proyección anual fija.
+ *
+ * Fórmula:
+ *   rentaAnual     = sueldoBase × 12
+ *   igssAnual      = rentaAnual × 4.83%
+ *   rentaImponible = rentaAnual − igssAnual − Q48,000 (mínimo vital)
+ *   ISR anual      = 5% hasta Q300,000 + 7% sobre excedente
+ *   ISR quincenal  = ISR anual / 24
+ *
+ * PENDIENTE LUNES: Verificar si IGSS debe deducirse antes de ISR o no.
+ */
+export function calcularISRQuincenal(sueldoBaseMensual: number, aplicaIgss: boolean = true): number {
+  const brutaAnual = sueldoBaseMensual * 12;
+  const igssAnual = aplicaIgss ? brutaAnual * 0.0483 : 0;
+  const rentaImponible = brutaAnual - igssAnual - 48000;
+  if (rentaImponible <= 0) return 0;
+  let isrAnual = 0;
+  if (rentaImponible <= 300000) {
+    isrAnual = rentaImponible * 0.05;
+  } else {
+    isrAnual = 300000 * 0.05 + (rentaImponible - 300000) * 0.07;
+  }
+  return Math.round((isrAnual / 24) * 100) / 100;
+}
+
+/**
  * Convierte cualquier valor de fila de BD a número seguro.
  * Cero si null/undefined/NaN.
  */
