@@ -90,6 +90,8 @@ interface Puesto {
   par_trabajando?: TitularCiclo;
   /** Titular que descansa hoy */
   par_descansando?: TitularCiclo;
+  /** Hay un relevo activo hoy (agente_id y agente_nombre ya fueron sobreescritos con el relevo) */
+  es_relevo_dia?: boolean;
 }
 
 /** Titular individual con su propio estado de ciclo */
@@ -276,6 +278,7 @@ interface JefeServicioPool {
 interface Pool {
   trabajando: Agente[];
   descansandoCiclo: Agente[];
+  haciendoHE: Agente[];
   disponibles: Agente[];
   enPuesto: Agente[];
   enSSA: Agente[];
@@ -3485,6 +3488,7 @@ function DroppablePuesto({
   isAgenteSeleccionado,
   onClick,
   onLiberar,
+  onRegistrarFalta,
   onAbrirSegmentos,
   onConfigTurno,
   cambiosProximos,
@@ -3495,6 +3499,7 @@ function DroppablePuesto({
   isAgenteSeleccionado: boolean;
   onClick: () => void;
   onLiberar: () => void;
+  onRegistrarFalta?: (puesto: Puesto, titularId: number, titularNombre: string) => void;
   onAbrirSegmentos: () => void;
   onConfigTurno?: () => void;
   cambiosProximos?: PlanFuturo[];
@@ -3654,10 +3659,20 @@ function DroppablePuesto({
                   </div>
                 </div>
 
-                {/* Liberar — solo si hay agente asignado manualmente (no titular automático) */}
-                {cubiertoManual && (
+                {/* Liberar — solo si hay agente asignado manualmente desde el pool (no via relevo ciclo) */}
+                {cubiertoManual && !puesto.es_relevo_dia && (
                   <button onClick={e => { e.stopPropagation(); onLiberar(); }} className="flex items-center gap-1 text-[9px] font-semibold text-red-300/80 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 hover:text-red-300 rounded-md px-2 py-1 transition-colors" title="Remover del puesto">
                     <XCircle className="w-3 h-3" /><span>Remover agente</span>
+                  </button>
+                )}
+                {/* Registrar falta — cuando el titular debería estar trabajando hoy */}
+                {activo.trabaja_hoy && activo.employee_id && onRegistrarFalta && (
+                  <button
+                    onClick={e => { e.stopPropagation(); onRegistrarFalta(puesto, activo.employee_id, activo.nombre); }}
+                    className="flex items-center gap-1 text-[9px] font-semibold text-amber-300/80 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 hover:text-amber-300 rounded-md px-2 py-1 transition-colors"
+                    title="Registrar inasistencia del titular"
+                  >
+                    <AlertTriangle className="w-3 h-3" /><span>Registrar falta</span>
                   </button>
                 )}
               </div>
@@ -3876,6 +3891,16 @@ function DroppablePuesto({
                   <XCircle className="w-3 h-3" /><span>Remover agente</span>
                 </button>
               )}
+              {/* Registrar falta — si hay titular conocido y el puesto está en estado visible */}
+              {onRegistrarFalta && puesto.titular_employee_id && puesto.titular_nombre && (
+                <button
+                  onClick={e => { e.stopPropagation(); onRegistrarFalta(puesto, puesto.titular_employee_id!, puesto.titular_nombre!); }}
+                  className="flex items-center gap-1 text-[9px] font-semibold text-amber-300/80 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 hover:text-amber-300 rounded-md px-2 py-1 transition-colors"
+                  title="Registrar inasistencia del titular"
+                >
+                  <AlertTriangle className="w-3 h-3" /><span>Registrar falta</span>
+                </button>
+              )}
               {/* Tramos */}
               <button onClick={e => { e.stopPropagation(); onAbrirSegmentos(); }} className="flex items-center gap-1 text-[9px] font-semibold text-indigo-300/70 bg-indigo-500/8 border border-indigo-500/20 hover:bg-indigo-500/15 hover:text-indigo-300 rounded-md px-2 py-1 transition-colors" title="Tramos de cobertura">
                 <Layers className="w-3 h-3" /><span>Tramos</span>
@@ -3918,6 +3943,7 @@ function ClienteColumna({
   agenteSeleccionadoId,
   onPuestoClick,
   onLiberar,
+  onRegistrarFalta,
   onNuevoPuesto,
   onEliminarPuesto,
   onAbrirSegmentos,
@@ -3933,6 +3959,7 @@ function ClienteColumna({
   agenteSeleccionadoId: number | null;
   onPuestoClick: (puesto: Puesto) => void;
   onLiberar: (puesto: Puesto) => void;
+  onRegistrarFalta?: (puesto: Puesto, titularId: number, titularNombre: string) => void;
   onNuevoPuesto: (cliente: ClienteBoard) => void;
   onEliminarPuesto: (puesto: Puesto) => void;
   onAbrirSegmentos: (puesto: Puesto) => void;
@@ -4071,6 +4098,7 @@ function ClienteColumna({
               isAgenteSeleccionado={agenteSeleccionadoId !== null}
               onClick={() => onPuestoClick(p)}
               onLiberar={() => onLiberar(p)}
+              onRegistrarFalta={onRegistrarFalta}
               onAbrirSegmentos={() => onAbrirSegmentos(p)}
               onConfigTurno={onConfigTurno ? () => onConfigTurno(p) : undefined}
               cambiosProximos={cambiosFuturosProximos?.[p.id]}
@@ -5306,6 +5334,93 @@ function ModalLiberar({
   );
 }
 
+// ─── Modal: Registrar falta de titular ───────────────────────────────────────
+
+function ModalRegistrarFalta({
+  puesto,
+  titularId: _titularId,
+  titularNombre,
+  onConfirm,
+  onClose,
+}: {
+  puesto: Puesto;
+  titularId: number;
+  titularNombre: string;
+  onConfirm: (motivo: string, notas?: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [motivo, setMotivo] = useState("inasistencia");
+  const [notas, setNotas]   = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleConfirm() {
+    setLoading(true);
+    try {
+      await onConfirm(motivo, notas.trim() || undefined);
+    } finally { setLoading(false); }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-xs shadow-2xl p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-amber-400" />
+          <h3 className="text-sm font-bold text-white">Registrar inasistencia</h3>
+        </div>
+        <div className="bg-[#0c1929] border border-white/8 rounded-xl p-3 text-xs text-white/60 space-y-0.5">
+          <p><span className="text-white/80">{titularNombre}</span> — titular de</p>
+          <p className="text-white/40">{puesto.cliente_nombre} · {puesto.nombre}</p>
+          {puesto.es_par_24x24 && (
+            <p className="text-[9px] text-amber-300/50 mt-1">Puesto 24x24: solo se registra el evento RRHH (el ciclo se restablece mañana automáticamente)</p>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs text-white/40">Tipo de inasistencia</label>
+          <select
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none appearance-none"
+          >
+            <option value="inasistencia">Inasistencia injustificada</option>
+            <option value="abandono">Abandono de puesto</option>
+            <option value="tardanza">Tardanza / llegada tarde</option>
+            <option value="enfermedad">Enfermedad / incapacidad</option>
+            <option value="accidente">Accidente</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs text-white/40">Notas adicionales (opcional)</label>
+          <input
+            type="text"
+            value={notas}
+            onChange={e => setNotas(e.target.value)}
+            placeholder="Comentario breve…"
+            className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500/40 placeholder:text-white/15"
+          />
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors">
+            Cancelar
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={loading}
+            className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-sm font-bold text-white disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+          >
+            {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            Registrar falta
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── Modal: Cerrar día ────────────────────────────────────────────────────────
 
 type PreviewCustodia = {
@@ -5646,7 +5761,8 @@ export default function Operaciones() {
     sedeId: number | null; fecha: string;
   } | null>(null);
   const [modalLiberar, setModalLiberar]              = useState<Puesto | null>(null);
-  const [poolTab, setPoolTab]                        = useState<"disponibles" | "trabajando" | "descansandoCiclo" | "enDescanso" | "suspendidos" | "enPuesto" | "enSSA" | "faltando" | "enVacaciones">("disponibles");
+  const [modalFalta, setModalFalta]                  = useState<{ puesto: Puesto; titularId: number; titularNombre: string } | null>(null);
+  const [poolTab, setPoolTab]                        = useState<"disponibles" | "trabajando" | "descansandoCiclo" | "haciendoHE" | "enDescanso" | "suspendidos" | "enPuesto" | "enSSA" | "faltando" | "enVacaciones">("disponibles");
   const [busquedaPool, setBusquedaPool]              = useState("");
   const [busquedaPersona, setBusquedaPersona]        = useState("");
   const [colGlobal, setColGlobal]                    = useState<{ v: number; val: boolean }>({ v: 0, val: false });
@@ -6352,6 +6468,26 @@ export default function Operaciones() {
     }
   }
 
+  // ── Registrar falta de titular ───────────────────────────────────────────
+  async function confirmarFalta(motivo: string, notas?: string) {
+    if (!modalFalta) return;
+    try {
+      await apiPost(`${API_BASE}/operaciones/registrar-falta`, {
+        puestoId: modalFalta.puesto.id,
+        empleadoId: modalFalta.titularId,
+        motivo,
+        notas: notas || undefined,
+        es_24x24: !!modalFalta.puesto.es_par_24x24,
+        usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+      });
+      toast({ title: "Falta registrada", description: `${modalFalta.titularNombre} — ${modalFalta.puesto.nombre}` });
+      setModalFalta(null);
+      invalidate();
+    } catch (e: any) {
+      toast({ title: "Error", description: e.error ?? "Error al registrar falta", variant: "destructive" });
+    }
+  }
+
   // ── Crear puesto ──────────────────────────────────────────────────────────
   async function crearPuesto(data: {
     clienteId: number | null;
@@ -6478,6 +6614,7 @@ export default function Operaciones() {
       const secciones: Array<[string, Agente[]]> = [
         ["Disponible",    pool.disponibles      ?? []],
         ["Descanso ciclo",pool.descansandoCiclo ?? []],
+        ["Horas extra",   pool.haciendoHE       ?? []],
         ["Trabaja hoy",   pool.trabajando       ?? []],
         ["Faltando",      pool.faltando         ?? []],
         ["Licencia",      pool.enDescanso       ?? []],
@@ -7001,6 +7138,7 @@ export default function Operaciones() {
                     { key: "disponibles"      as const, label: "Disponibles",    count: pool?.disponibles?.length ?? 0,      color: "text-green-400",  dot: "bg-green-400"  },
                     { key: "trabajando"       as const, label: "Trabaja hoy",    count: pool?.trabajando?.length ?? 0,       color: "text-orange-400", dot: "bg-orange-400" },
                     { key: "descansandoCiclo" as const, label: "Descanso ciclo", count: pool?.descansandoCiclo?.length ?? 0, color: "text-blue-400",   dot: "bg-blue-400"   },
+                    { key: "haciendoHE"       as const, label: "Horas extra",    count: pool?.haciendoHE?.length ?? 0,       color: "text-amber-300",  dot: "bg-amber-300"  },
                     { key: "faltando"         as const, label: "Faltando",       count: pool?.faltando?.length ?? 0,         color: "text-rose-400",   dot: "bg-rose-400"   },
                     { key: "enDescanso"       as const, label: "Licencia",       count: pool?.enDescanso?.length ?? 0,       color: "text-indigo-400", dot: "bg-indigo-400" },
                     { key: "enPuesto"         as const, label: "En puesto",      count: pool?.enPuesto?.length ?? 0,         color: "text-teal-400",   dot: "bg-teal-400"   },
@@ -7092,6 +7230,7 @@ export default function Operaciones() {
                   : poolTab === "disponibles"      ? "No hay agentes genuinamente disponibles hoy" :
                     poolTab === "trabajando"       ? "Ningún agente en turno de trabajo hoy" :
                     poolTab === "descansandoCiclo" ? "Ningún agente en descanso de ciclo hoy" :
+                    poolTab === "haciendoHE"       ? "Ningún agente de descanso está haciendo horas extra hoy" :
                     poolTab === "faltando"         ? "No hay ausencias registradas hoy" :
                     poolTab === "enDescanso"       ? "No hay agentes en licencia" :
                     poolTab === "enPuesto"         ? "Ningún agente está en puesto activo" :
@@ -7135,10 +7274,11 @@ export default function Operaciones() {
               <div className="flex gap-2 p-3 overflow-x-auto min-h-[80px]">
                 {poolActual.map((agente) => {
                   const seccion = agente._seccionLabel;
-                  const seccionDeshabilitada = seccion === "En puesto" || seccion === "En SSA" || seccion === "Faltando" || seccion === "Vacaciones";
+                  const seccionDeshabilitada = seccion === "En puesto" || seccion === "En SSA" || seccion === "Faltando" || seccion === "Vacaciones" || seccion === "Horas extra";
                   const seccionColor: Record<string, string> = {
                     "Disponible":     "bg-emerald-500/20 text-emerald-300",
                     "Descanso ciclo": "bg-blue-500/20 text-blue-300",
+                    "Horas extra":    "bg-amber-500/20 text-amber-200",
                     "Trabaja hoy":    "bg-orange-500/20 text-orange-300",
                     "Faltando":       "bg-rose-500/20 text-rose-300",
                     "Licencia":       "bg-indigo-500/20 text-indigo-300",
@@ -7167,7 +7307,7 @@ export default function Operaciones() {
                         disabled={
                           seccion
                             ? seccionDeshabilitada || fechaVistaCerrada
-                            : poolTab === "enPuesto" || poolTab === "enSSA" || poolTab === "faltando" || poolTab === "enVacaciones" || fechaVistaCerrada
+                            : poolTab === "enPuesto" || poolTab === "enSSA" || poolTab === "faltando" || poolTab === "enVacaciones" || poolTab === "haciendoHE" || fechaVistaCerrada
                         }
                       />
                     </div>
@@ -7252,6 +7392,7 @@ export default function Operaciones() {
                     onLiberar={(p) => esFuturo
                       ? setModalPlanFuturo({ puesto: p, plan: planFuturoPorPuesto[p.id] ?? null })
                       : setModalLiberar(p)}
+                    onRegistrarFalta={!esFuturo ? (puesto, titularId, titularNombre) => setModalFalta({ puesto, titularId, titularNombre }) : undefined}
                     onNuevoPuesto={(c) => setNuevoPuestoData(c)}
                     onEliminarPuesto={eliminarPuesto}
                     isDeleteMode={isDeleteMode}
@@ -7804,6 +7945,16 @@ export default function Operaciones() {
           puesto={modalLiberar}
           onConfirm={confirmarLiberar}
           onClose={() => setModalLiberar(null)}
+        />
+      )}
+
+      {modalFalta && (
+        <ModalRegistrarFalta
+          puesto={modalFalta.puesto}
+          titularId={modalFalta.titularId}
+          titularNombre={modalFalta.titularNombre}
+          onConfirm={confirmarFalta}
+          onClose={() => setModalFalta(null)}
         />
       )}
 

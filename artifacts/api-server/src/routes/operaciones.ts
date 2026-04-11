@@ -398,10 +398,15 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
             (p as any).agente_id     = override.relevo_id;
             (p as any).agente_nombre = override.relevo_nombre;
             (p as any).es_relevo_dia = true;
+            (p as any).estado        = "cubierto"; // forzar cubierto para el frontend
           } else {
             (p as any).agente_id     = p.par_trabajando.employee_id;
             (p as any).agente_nombre = p.par_trabajando.nombre;
             (p as any).es_relevo_dia = false;
+            // Si hay titular que trabaja hoy → el puesto está cubierto (incluso si po.estado='descubierto')
+            if (p.par_trabajando.employee_id) {
+              (p as any).estado = "cubierto";
+            }
           }
         } else if (!p.es_par_24x24 && override) {
           // Puesto normal (un agente): si hay relevo registrado ese día, mostrarlo
@@ -409,6 +414,7 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
           (p as any).agente_id     = override.relevo_id;
           (p as any).agente_nombre = override.relevo_nombre;
           (p as any).es_relevo_dia = true;
+          (p as any).estado        = "cubierto"; // forzar cubierto para el frontend
         }
         // Si es puesto normal sin override: agente_id ya viene de puestos_operativos (titular)
       }
@@ -489,6 +495,14 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         vac_activa.tipo_evento AS vacacion_activa_tipo,
         vac_activa.fecha::date AS vacacion_inicio,
         vac_activa.fecha_fin   AS vacacion_fin,
+        -- ¿El puesto del titular tiene un relevo HOY por alguien diferente a este empleado?
+        -- Detecta ausencias en puestos 24x24 donde estado_operativo_puesto puede ser 'normal'
+        -- pero ya hay un relevo registrado en cobertura_segmentos.
+        cs_faltando.tiene_relevo IS NOT NULL    AS hay_relevo_hoy_faltando,
+        -- ¿Este empleado tiene una cobertura activa HOY? (trabaja en su día de descanso = HE)
+        cs_trabajando.trabajando_hoy IS NOT NULL AS cs_trabajando_hoy,
+        -- ¿Su slot de ciclo indica que debe trabajar HOY?
+        COALESCE(slot_hoy.trabaja_hoy, FALSE)   AS slot_trabaja_hoy,
         CASE
           WHEN po.agente_id   IS NOT NULL AND e.estado_laboral = 'activo' THEN 'en_puesto'
           WHEN (ssa.agente_id IS NOT NULL OR ssa_ag.employee_id IS NOT NULL)
@@ -497,7 +511,15 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
           WHEN e.estado_laboral = 'suspendido'                            THEN 'suspendido'
           WHEN titular_po.id IS NOT NULL
                AND (titular_po.agente_id IS NULL OR titular_po.agente_id != e.id)
-               AND COALESCE(titular_po.estado_operativo_puesto, 'normal') != 'normal'
+               AND (
+                 COALESCE(titular_po.estado_operativo_puesto, 'normal') != 'normal'
+                 -- Detectar faltando via cobertura_segmentos (puestos 24x24 ciclo donde
+                 -- estado_operativo_puesto puede no haberse actualizado pero hay relevo registrado)
+                 OR (
+                   cs_faltando.tiene_relevo IS NOT NULL
+                   AND COALESCE(slot_hoy.trabaja_hoy, FALSE) = TRUE
+                 )
+               )
                AND e.estado_laboral = 'activo'                            THEN 'faltando'
           ELSE 'disponible'
         END AS categoria
@@ -557,6 +579,37 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         ORDER BY er.created_at DESC
         LIMIT 1
       ) vac_activa ON TRUE
+      -- ¿El puesto del titular tiene un relevo HOY por alguien distinto al empleado?
+      -- Permite detectar faltando en puestos 24x24 incluso cuando estado_operativo_puesto='normal'.
+      LEFT JOIN LATERAL (
+        SELECT TRUE AS tiene_relevo
+        FROM cobertura_segmentos cs_f
+        WHERE cs_f.puesto_id = titular_po.id
+          AND cs_f.fecha = CURRENT_DATE
+          AND cs_f.tipo_cobertura IN ('relevo','cobertura_supervisor','cobertura_jefe_servicio')
+          AND cs_f.employee_id IS DISTINCT FROM e.id
+        LIMIT 1
+      ) cs_faltando ON TRUE
+      -- ¿Este empleado tiene una cobertura activa HOY en algún puesto?
+      -- Permite detectar agentes de descanso que están haciendo horas extra.
+      LEFT JOIN LATERAL (
+        SELECT TRUE AS trabajando_hoy
+        FROM cobertura_segmentos cs_t
+        WHERE cs_t.employee_id = e.id
+          AND cs_t.fecha = CURRENT_DATE
+          AND cs_t.tipo_cobertura IN ('relevo','cobertura_supervisor','cobertura_jefe_servicio','titular')
+        LIMIT 1
+      ) cs_trabajando ON TRUE
+      -- ¿El slot de ciclo del empleado indica que trabaja HOY?
+      -- Se calcula desde puesto_slots: cycleDay = ((daysElapsed % 14) + 14) % 14 + 1
+      LEFT JOIN LATERAL (
+        SELECT
+          (((CURRENT_DATE - ps.fecha_inicio_ciclo::date) % 14 + 14) % 14 + 1) = ANY(ps.dias_trabajo)
+          AS trabaja_hoy
+        FROM puesto_slots ps
+        WHERE ps.empleado_id = e.id AND ps.activo = TRUE
+        LIMIT 1
+      ) slot_hoy ON TRUE
       WHERE e.estado_laboral IN ('activo', 'suspendido', 'licencia')
         AND COALESCE(e.tipo_personal, 'guardia') IN ('guardia', 'custodio')
         AND (
@@ -565,7 +618,13 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
             -- Siempre incluir titulares faltando aunque no sean elegibles para pool
             titular_po.id IS NOT NULL
             AND (titular_po.agente_id IS NULL OR titular_po.agente_id != e.id)
-            AND COALESCE(titular_po.estado_operativo_puesto, 'normal') != 'normal'
+            AND (
+              COALESCE(titular_po.estado_operativo_puesto, 'normal') != 'normal'
+              OR (
+                cs_faltando.tiene_relevo IS NOT NULL
+                AND COALESCE(slot_hoy.trabaja_hoy, FALSE) = TRUE
+              )
+            )
             AND e.estado_laboral = 'activo'
           )
           OR ssa.agente_id IS NOT NULL
@@ -897,9 +956,28 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       }
     }
 
+    // ── Separar "Haciendo horas extra" de descansandoCiclo ───────────────────────
+    // Un agente de descanso que tiene una cobertura activa hoy (relevo en su día libre)
+    // se mueve a haciendoHE para mostrarlo separado en el pool y no confundir el conteo
+    // de agentes genuinamente disponibles para cubrir.
+    const haciendoHE: any[] = [];
+    {
+      const quedanDescansando: any[] = [];
+      for (const a of descansandoCiclo) {
+        // cs_trabajando_hoy solo existe en agentes del query principal (no supervisores inyectados)
+        if (a.cs_trabajando_hoy === true) {
+          haciendoHE.push({ ...a, disponibleHE: false, haciendo_he: true });
+        } else {
+          quedanDescansando.push(a);
+        }
+      }
+      descansandoCiclo.splice(0, descansandoCiclo.length, ...quedanDescansando);
+    }
+
     res.json({
       trabajando,
       descansandoCiclo,
+      haciendoHE,
       disponibles,
       enPuesto,
       enSSA,
@@ -1222,6 +1300,59 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "POST /operaciones/asignar error");
     res.status(500).json({ error: "Error al asignar agente" });
+  }
+});
+
+// ─── POST /api/operaciones/registrar-falta ───────────────────────────────────
+// Registrar inasistencia de un titular en su puesto para el día de hoy.
+// Para puestos normales (no-24x24): también actualiza estado_operativo_puesto='faltando'.
+// Para puestos 24x24: solo registra el evento de RRHH (el ciclo se auto-corrige mañana).
+// Body: { puestoId, empleadoId, motivo, notas?, es_24x24?, usuario? }
+operacionesRouter.post("/operaciones/registrar-falta", async (req, res) => {
+  const { puestoId, empleadoId, motivo, notas, es_24x24, usuario } = req.body;
+  if (!puestoId || !empleadoId) {
+    return res.status(400).json({ error: "puestoId y empleadoId son requeridos" });
+  }
+  const motivoNorm = motivo ?? "inasistencia";
+  try {
+    // Verificar que el empleado y el puesto existen
+    const { rows: emp } = await pool.query(
+      `SELECT id, nombre_completo FROM employees WHERE id = $1`,
+      [empleadoId]
+    );
+    if (emp.length === 0) return res.status(404).json({ error: "Empleado no encontrado" });
+    const { rows: po } = await pool.query(
+      `SELECT id, nombre, cliente_nombre FROM puestos_operativos WHERE id = $1`,
+      [puestoId]
+    );
+    if (po.length === 0) return res.status(404).json({ error: "Puesto no encontrado" });
+
+    const hoyGT = new Date(Date.now() - 6 * 3_600_000).toISOString().slice(0, 10);
+    const nota  = notas
+      ? `${motivoNorm} — ${po[0].nombre} (${po[0].cliente_nombre}). ${notas}`
+      : `${motivoNorm} — ${po[0].nombre} (${po[0].cliente_nombre})`;
+
+    // Registrar evento de RRHH (falta)
+    await pool.query(`
+      INSERT INTO eventos_rrhh (employee_id, tipo_evento, fecha, descripcion, created_by)
+      VALUES ($1, 'falta', $2::date, $3, $4)
+      ON CONFLICT DO NOTHING
+    `, [empleadoId, hoyGT, nota, usuario ?? 'sistema']);
+
+    // Para puestos NO-24x24: marcar el puesto como 'faltando'
+    if (!es_24x24) {
+      await pool.query(`
+        UPDATE puestos_operativos
+        SET estado_operativo_puesto = 'faltando', updated_at = NOW()
+        WHERE id = $1
+      `, [puestoId]);
+    }
+
+    logger.info({ puestoId, empleadoId, motivo: motivoNorm, es_24x24 }, "Falta registrada");
+    res.json({ ok: true, empleado: emp[0].nombre_completo, puesto: po[0].nombre });
+  } catch (err) {
+    logger.error({ err }, "POST /operaciones/registrar-falta error");
+    res.status(500).json({ error: "Error al registrar falta" });
   }
 });
 
