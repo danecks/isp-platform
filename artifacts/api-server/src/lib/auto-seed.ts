@@ -3423,6 +3423,36 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: TURNOS-02 — error (no bloqueante)");
   }
 
+  // ── TURNOS-03: Corregir slots con fecha_inicio_ciclo desfasada ───────────────
+  // Bug histórico: al importar, el slot 2 recibía fecha_inicio_ciclo + 1 día.
+  // Esto rompe el cálculo del ciclo porque cycleDay de slot1 y slot2 nunca se complementan.
+  // Regla correcta: TODOS los slots del mismo puesto usan la MISMA fecha_inicio_ciclo.
+  // El array dias_trabajo ya distingue quién trabaja cada día ({1,3,5...} vs {2,4,6...}).
+  try {
+    const { rowCount } = await pool.query(`
+      UPDATE puesto_slots ps
+      SET    fecha_inicio_ciclo = base.fecha_inicio_ciclo,
+             updated_at         = NOW()
+      FROM (
+        SELECT puesto_id, MIN(fecha_inicio_ciclo) AS fecha_inicio_ciclo
+        FROM   puesto_slots
+        WHERE  activo = TRUE AND fecha_inicio_ciclo IS NOT NULL
+        GROUP  BY puesto_id
+        HAVING COUNT(DISTINCT fecha_inicio_ciclo) > 1   -- solo puestos con fechas distintas entre slots
+      ) base
+      WHERE  ps.puesto_id           = base.puesto_id
+        AND  ps.fecha_inicio_ciclo != base.fecha_inicio_ciclo
+        AND  ps.activo              = TRUE
+    `);
+    if ((rowCount ?? 0) > 0) {
+      logger.info({ rowCount }, "Auto-migrate: TURNOS-03 slots con fecha_inicio_ciclo desfasada corregidos");
+    } else {
+      logger.info("Auto-migrate: TURNOS-03 sin slots desfasados (OK)");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: TURNOS-03 — error (no bloqueante)");
+  }
+
   // ── SCT-01: tabla solicitudes_cambio_turno ───────────────────────────────────
   try {
     await pool.query(`

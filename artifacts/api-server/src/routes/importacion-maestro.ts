@@ -560,12 +560,12 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
             diasTrabajo = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
           }
 
-          // Para ciclos alternantes, cada slot adicional se desfasa +1 día respecto al slot 1
-          // Slot 1: fechaBase, Slot 2: fechaBase+1, etc.
-          let fechaSlot: Date | null = p.fecha_inicio_ciclo ?? null;
-          if (fechaSlot && esAlternante && titular.orden > 1) {
-            fechaSlot = new Date(fechaSlot.getTime() + (titular.orden - 1) * 86_400_000);
-          }
+          // Todos los slots del mismo puesto usan la MISMA fecha_inicio_ciclo.
+          // El array dias_trabajo ya distingue qué días trabaja cada slot:
+          //   slot 1 → [1,3,5,7,9,11,13]   (días impares del ciclo de 14)
+          //   slot 2 → [2,4,6,8,10,12,14]  (días pares del ciclo de 14)
+          // NO se aplica offset por orden — eso rompería el cálculo del ciclo.
+          const fechaSlot: Date | null = p.fecha_inicio_ciclo ?? null;
 
           await pool.query(
             `INSERT INTO puesto_slots
