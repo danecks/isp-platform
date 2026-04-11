@@ -445,6 +445,43 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       }
     }
 
+    // ── Verificar faltas registradas para la fecha consultada ──────────────────
+    // Si el titular que trabaja hoy tiene un evento 'falta' en eventos_rrhh,
+    // el puesto se muestra como descubierto (a menos que ya haya un relevo cubriendo).
+    {
+      const { rows: faltasRows } = await pool.query(`
+        SELECT employee_id FROM eventos_rrhh
+        WHERE tipo_evento = 'falta'
+          AND fecha::date = $1::date
+          AND estado NOT IN ('anulado', 'cancelado')
+      `, [fechaConsultada]);
+
+      const faltaSet = new Set(faltasRows.map((f: any) => Number(f.employee_id)));
+
+      if (faltaSet.size > 0) {
+        for (const p of puestosFinales) {
+          // 24x24: si par_trabajando tiene falta y no hay relevo cubriendo
+          if (p.es_par_24x24 && p.par_trabajando && !(p as any).es_relevo_dia) {
+            if (faltaSet.has(Number(p.par_trabajando.employee_id))) {
+              (p as any).agente_id        = null;
+              (p as any).agente_nombre    = null;
+              (p as any).estado           = "descubierto";
+              (p as any).titular_faltando = true;
+            }
+          }
+          // No-24x24: si el agente_id actual tiene falta y no es relevo
+          if (!p.es_par_24x24 && p.agente_id && !(p as any).es_relevo_dia) {
+            if (faltaSet.has(Number(p.agente_id))) {
+              (p as any).agente_id        = null;
+              (p as any).agente_nombre    = null;
+              (p as any).estado           = "descubierto";
+              (p as any).titular_faltando = true;
+            }
+          }
+        }
+      }
+    }
+
     // Agrupar por cliente
     const mapaClientes: Record<string, {
       clienteId: number | null;
