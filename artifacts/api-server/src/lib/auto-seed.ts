@@ -4378,5 +4378,31 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: EMPL-TIPOCUENTA-01 — error (no bloqueante)");
   }
 
+  // ── TARIFA-HE-01: tabla config_tarifa_he ─────────────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS config_tarifa_he (
+        id            SERIAL PRIMARY KEY,
+        jornada       VARCHAR(10) NOT NULL UNIQUE,
+        horas_turno   INT NOT NULL DEFAULT 12,
+        tarifa        NUMERIC(10,2) NOT NULL DEFAULT 150,
+        descripcion   VARCHAR(200),
+        updated_at    TIMESTAMPTZ DEFAULT NOW(),
+        updated_by    VARCHAR(100)
+      )
+    `);
+    const { rowCount } = await pool.query(`SELECT 1 FROM config_tarifa_he LIMIT 1`);
+    if (!rowCount) {
+      await pool.query(`
+        INSERT INTO config_tarifa_he (jornada, horas_turno, tarifa, descripcion) VALUES
+          ('12h', 12, 150.00, 'Tarifa fija por turno completo de 12 horas'),
+          ('24h', 24, 300.00, 'Tarifa fija por turno completo de 24 horas')
+      `);
+    }
+    logger.info("Auto-migrate: TARIFA-HE-01 tabla config_tarifa_he verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: TARIFA-HE-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

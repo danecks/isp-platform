@@ -72,6 +72,7 @@ function calcularLinea(
   desde: string,
   hasta: string,
   uniformeMonto: number = 0,
+  tarifasHE?: Map<string, { tarifa: number; horas_turno: number }>,
 ) {
   const sb        = toNum(row.sueldo_base);
   const hc        = toNum(row.horas_contrato);
@@ -84,6 +85,10 @@ function calcularLinea(
   // viene del snapshot del cierre, que a su vez viene de QUERY_CONSOLIDADO
   const septimos  = toInt(row.septimos_perdidos);
 
+  const jornada = String(row.jornada ?? (row.turno_horas_trabajo ? `${row.turno_horas_trabajo}h` : "12h"));
+  const tarifaConf = tarifasHE?.get(jornada) ?? tarifasHE?.get("12h");
+  const turnosHECount = tarifaConf && he > 0 ? he / (tarifaConf.horas_turno || 12) : undefined;
+
   const bruto = calcularBruto({
     sueldoBase:       sb,
     horasContrato:    hc,
@@ -94,6 +99,8 @@ function calcularLinea(
     frecuenciaPago:   frecuencia,
     quincenaTipo,
     septimosPerdidos: septimos,
+    tarifaFijaTurnoHE: tarifaConf?.tarifa ?? null,
+    turnosHE:         turnosHECount ?? null,
   });
 
   // IGSS Guatemala (Acuerdo 1118 IGSS):
@@ -313,6 +320,15 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
     // Construir mapa de cuotas de uniforme pendientes por empleado
     const unifMap = await buildUniformeCuotaMap(empIds);
 
+    // Cargar tarifas de HE configurables
+    const tarifasHE = new Map<string, { tarifa: number; horas_turno: number }>();
+    try {
+      const { rows: tarifaRows } = await pool.query(`SELECT jornada, tarifa, horas_turno FROM config_tarifa_he`);
+      for (const tr of tarifaRows) {
+        tarifasHE.set(String(tr.jornada), { tarifa: parseFloat(tr.tarifa), horas_turno: parseInt(tr.horas_turno) });
+      }
+    } catch { /* tabla aún no existe — usa cálculo legal */ }
+
     // Calcular líneas por colaborador
     const lineas = snapshot.map((row) => {
       const empId = row.employee_id as number | null;
@@ -330,7 +346,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         tipo_jornada:       row.tipo_jornada as string | null,
         revision_estado:    row.revision_estado as string | null,
         observaciones_rrhh: row.revision_observaciones as string | null,
-        ...calcularLinea(row, periodoTotalDias, igssData, quincenaTipo, desde, hasta, uniformeMonto),
+        ...calcularLinea(row, periodoTotalDias, igssData, quincenaTipo, desde, hasta, uniformeMonto, tarifasHE),
       };
     });
 
@@ -709,5 +725,35 @@ planillaRouter.get("/nomina/planilla/:id/export", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "GET /nomina/planilla/:id/export error");
     res.status(500).json({ error: "Error al exportar planilla" });
+  }
+});
+
+// ─── Tarifas de Horas Extra ──────────────────────────────────────────────────
+
+planillaRouter.get("/nomina/tarifas-he", async (_req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT id, jornada, horas_turno, tarifa, descripcion, updated_at, updated_by FROM config_tarifa_he ORDER BY horas_turno`);
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "GET /nomina/tarifas-he error");
+    res.status(500).json({ error: "Error al obtener tarifas" });
+  }
+});
+
+planillaRouter.put("/nomina/tarifas-he/:id", async (req, res) => {
+  try {
+    const { tarifa, descripcion, usuario } = req.body;
+    if (tarifa == null || isNaN(Number(tarifa)) || Number(tarifa) < 0) {
+      return res.status(400).json({ error: "Tarifa inválida" });
+    }
+    const { rows } = await pool.query(
+      `UPDATE config_tarifa_he SET tarifa = $1, descripcion = $2, updated_at = NOW(), updated_by = $3 WHERE id = $4 RETURNING *`,
+      [Number(tarifa), descripcion ?? null, usuario ?? "sistema", req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Tarifa no encontrada" });
+    res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "PUT /nomina/tarifas-he/:id error");
+    res.status(500).json({ error: "Error al actualizar tarifa" });
   }
 });

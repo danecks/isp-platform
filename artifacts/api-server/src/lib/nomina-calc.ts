@@ -39,6 +39,17 @@ export interface BrutoParams {
    * Por defecto 0 (sin descuento de séptimo).
    */
   septimosPerdidos?: number;
+  /**
+   * Tarifa fija por turno de HE (override del factor 1.5x legal).
+   * Si se proporciona, valorHE = tarifaFijaTurnoHE × turnosHE.
+   * Si no, se usa la fórmula legal: (sueldoDia / horasDia) × 1.5 × horasExtra.
+   */
+  tarifaFijaTurnoHE?: number | null;
+  /**
+   * Número de turnos completos de HE (cuando se usa tarifa fija).
+   * Si no se proporciona, se calcula como horasExtra / horasDelTurno.
+   */
+  turnosHE?: number | null;
 }
 
 export interface BrutoResult {
@@ -85,7 +96,11 @@ export function calcularBruto(p: BrutoParams): BrutoResult {
   const sueldoPeriodo = esMensualSeg ? p.sueldoBase : sueldoDia * p.periodoTotalDias;
   const descFaltas    = sueldoDia * (p.faltas + p.suspensiones);
   const descSeptimo   = sueldoDia * (p.septimosPerdidos ?? 0);
-  const valorHE       = p.horasExtra > 0 ? (sueldoDia / horasDia) * 1.5 * p.horasExtra : 0;
+  const valorHE       = p.horasExtra > 0
+    ? (p.tarifaFijaTurnoHE != null && p.tarifaFijaTurnoHE > 0
+        ? p.tarifaFijaTurnoHE * (p.turnosHE ?? p.horasExtra)
+        : (sueldoDia / horasDia) * 1.5 * p.horasExtra)
+    : 0;
   const totalBruto    = Math.max(0, sueldoPeriodo - descFaltas - descSeptimo + valorHE);
 
   return { sueldoDia, horasDia, sueldoPeriodo, descFaltas, descSeptimo, valorHE, totalBruto };
