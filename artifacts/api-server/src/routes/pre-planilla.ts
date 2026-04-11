@@ -877,6 +877,28 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
   }
 });
 
+// ─── POST /api/nomina/pre-planilla/reabrir ───────────────────────────────────
+prePlanillaRouter.post("/nomina/pre-planilla/reabrir", async (req, res) => {
+  const { desde, hasta, usuario } = req.body;
+  if (!desde || !hasta) return res.status(400).json({ error: "desde y hasta son requeridos" });
+  try {
+    const { rowCount } = await pool.query(
+      `UPDATE pre_planilla_cierres SET anulado = TRUE, anulado_por = $3, anulado_at = NOW()
+       WHERE periodo_desde = $1::date AND periodo_hasta = $2::date AND anulado = FALSE`,
+      [desde, hasta, usuario ?? "admin"]
+    );
+    if (!rowCount) return res.status(404).json({ error: "No hay cierre activo para este período" });
+    await pool.query(
+      `UPDATE pre_planilla_revision SET periodo_cerrado = FALSE
+       WHERE periodo_desde = $1::date AND periodo_hasta = $2::date`, [desde, hasta]
+    );
+    res.json({ ok: true, mensaje: "Período reabierto correctamente." });
+  } catch (err) {
+    logger.error({ err }, "POST /nomina/pre-planilla/reabrir error");
+    res.status(500).json({ error: "Error al reabrir período" });
+  }
+});
+
 // ─── GET /api/nomina/pre-planilla/anexo/horas-extra ──────────────────────────
 prePlanillaRouter.get("/nomina/pre-planilla/anexo/horas-extra", async (req, res) => {
   const { desde, hasta } = req.query as Record<string, string>;

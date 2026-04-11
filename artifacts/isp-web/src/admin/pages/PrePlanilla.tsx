@@ -27,7 +27,7 @@ import {
   CheckCircle2, AlertCircle, Clock, Eye, X, Loader2,
   Users, Briefcase, TrendingUp, Wallet, Info,
   Check, AlertTriangle, FileText, CreditCard, Repeat2,
-  MinusCircle, Lock, ShieldCheck, AlertOctagon, CheckCheck,
+  MinusCircle, Lock, Unlock, ShieldCheck, AlertOctagon, CheckCheck,
   XCircle, ChevronRight,
 } from "lucide-react";
 
@@ -1664,9 +1664,21 @@ export default function PrePlanilla() {
             {loaded && rows.length > 0 && (
               <div className="flex items-center gap-2">
                 {periodoCerrado ? (
-                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/30 text-primary text-xs font-semibold">
-                    <Lock className="w-3.5 h-3.5" />Período cerrado
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/30 text-primary text-xs font-semibold">
+                      <Lock className="w-3.5 h-3.5" />Período cerrado
+                    </span>
+                    <button onClick={async () => {
+                      if (!confirm("¿Reabrir el período? Podrás editar y volver a cerrar.")) return;
+                      try {
+                        await apiFetch("/api/nomina/pre-planilla/reabrir", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ desde, hasta, usuario: "admin" }) });
+                        toast({ title: "Período reabierto" });
+                        cargar(desde, hasta);
+                      } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
+                    }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600/20 border border-amber-500/40 text-amber-400 text-xs font-semibold hover:bg-amber-600/30 transition-colors">
+                      <Unlock className="w-3.5 h-3.5" />Reabrir
+                    </button>
+                  </div>
                 ) : (
                   <button onClick={() => { cargarValidacion(); setShowCierreModal(true); }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/15 border border-primary/40 text-primary text-xs font-semibold hover:bg-primary/25 transition-colors">
