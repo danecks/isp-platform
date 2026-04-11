@@ -276,10 +276,10 @@ function fmtQ(n: number | string | null) {
   return `Q${num.toLocaleString("es-GT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function calcularISRSobreDevengado(devengadoQuincenal: number, igssLaboralQuincenal: number): number {
-  const devengadoAnual = devengadoQuincenal * 24;
-  const igssAnual = igssLaboralQuincenal * 24;
-  const rentaImponible = devengadoAnual - igssAnual - 48000;
+function calcularISRQuincenal(sueldoBaseMensual: number): number {
+  const brutaAnual = sueldoBaseMensual * 12;
+  const igssAnual = brutaAnual * 0.0483;
+  const rentaImponible = brutaAnual - igssAnual - 48000;
   if (rentaImponible <= 0) return 0;
   let isrAnual = 0;
   if (rentaImponible <= 300000) {
@@ -307,18 +307,15 @@ function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: number | n
   const anticipo = Number(col.anticipos_monto);
   const cuotaUniforme = Number(col.cuota_uniforme_monto ?? 0);
   const igssLaboral = col.aplica_igss ? Math.round((sueldoPeriodo - descFaltas) * 0.0483 * 100) / 100 : 0;
-  const devengado = sueldoPeriodo - descFaltas + valorHE;
-  const isrQuincenal = calcularISRSobreDevengado(devengado, igssLaboral);
+  const isrQuincenal = calcularISRQuincenal(sb);
   const total = sueldoPeriodo - descFaltas + valorHE - anticipo - cuotaUniforme - igssLaboral - isrQuincenal;
 
   const diasCerrados = Number(col.dias_cerrados ?? 0);
   const sueldoReal = sueldoDia * diasCerrados;
   const igssLaboralReal = col.aplica_igss ? Math.round((sueldoReal - descFaltas) * 0.0483 * 100) / 100 : 0;
-  const devengadoReal = sueldoReal - descFaltas + valorHE;
-  const isrQuincenalReal = calcularISRSobreDevengado(devengadoReal, igssLaboralReal);
-  const totalReal = sueldoReal - descFaltas + valorHE - anticipo - cuotaUniforme - igssLaboralReal - isrQuincenalReal;
+  const totalReal = sueldoReal - descFaltas + valorHE - anticipo - cuotaUniforme - igssLaboralReal - isrQuincenal;
 
-  return { sueldoPeriodo, descFaltas, valorHE, anticipo, cuotaUniforme, igssLaboral, igssLaboralReal, isrQuincenal, isrQuincenalReal, total, diasDesc, diasCerrados, sueldoReal, totalReal };
+  return { sueldoPeriodo, descFaltas, valorHE, anticipo, cuotaUniforme, igssLaboral, igssLaboralReal, isrQuincenal, total, diasDesc, diasCerrados, sueldoReal, totalReal };
 }
 
 // ─── Badge revisión ───────────────────────────────────────────────────────────
@@ -511,10 +508,10 @@ function DetalleModal({
                           <span className="text-cyan-400">–{fmtQ(est.igssLaboralReal)}</span>
                         </div>
                       )}
-                      {est.isrQuincenalReal > 0 && (
+                      {est.isrQuincenal > 0 && (
                         <div className="flex justify-between text-xs">
-                          <span className="text-amber-400/70">— ISR s/devengado</span>
-                          <span className="text-amber-400">–{fmtQ(est.isrQuincenalReal)}</span>
+                          <span className="text-amber-400/70">— ISR quincenal</span>
+                          <span className="text-amber-400">–{fmtQ(est.isrQuincenal)}</span>
                         </div>
                       )}
                     </div>
@@ -555,7 +552,7 @@ function DetalleModal({
                         )}
                         {est.isrQuincenal > 0 && (
                           <div className="flex justify-between text-xs">
-                            <span className="text-amber-400/70">— ISR s/devengado</span>
+                            <span className="text-amber-400/70">— ISR quincenal</span>
                             <span className="text-amber-400">–{fmtQ(est.isrQuincenal)}</span>
                           </div>
                         )}
