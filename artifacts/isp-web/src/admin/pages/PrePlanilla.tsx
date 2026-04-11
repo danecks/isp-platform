@@ -279,8 +279,7 @@ function fmtQ(n: number | string | null) {
 function calcularISRSobreDevengado(devengadoQuincenal: number, igssLaboralQuincenal: number): number {
   const devengadoAnual = devengadoQuincenal * 24;
   const igssAnual = igssLaboralQuincenal * 24;
-  const bonoIncentivoAnual = 250 * 12;
-  const rentaImponible = devengadoAnual - bonoIncentivoAnual - igssAnual - 48000;
+  const rentaImponible = devengadoAnual - igssAnual - 48000;
   if (rentaImponible <= 0) return 0;
   let isrAnual = 0;
   if (rentaImponible <= 300000) {
