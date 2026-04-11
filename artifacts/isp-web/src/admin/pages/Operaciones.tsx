@@ -23,7 +23,7 @@ import {
   ChevronRight, ChevronLeft, Info, Building2, Circle, GripVertical,
   UserMinus, UserPlus, UserCheck, XCircle, RotateCcw, FileText,
   Lock, Unlock, Calendar, CalendarDays, AlertCircle, CheckSquare,
-  Layers, Timer, Moon, Settings2, Repeat, Sun, ExternalLink, Search,
+  Layers, Timer, Moon, Settings2, Repeat, Sun, ExternalLink, Search, DollarSign,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -4731,12 +4731,15 @@ function ModalSustitucion({
 }: {
   puesto: Puesto;
   agenteEntrante: Agente;
-  onConfirm: (motivo: string, notas: string, forzar: boolean, tipoSustitucion: string, tipoNovedad: string, coberturaTipo: string, horasParcial?: { inicio: string; fin: string }) => Promise<void>;
+  onConfirm: (motivo: string, notas: string, forzar: boolean, tipoSustitucion: string, tipoNovedad: string, coberturaTipo: string, horasParcial?: { inicio: string; fin: string }, pagoEfectivo?: { monto: number; pagadoPor: string }) => Promise<void>;
   onCancel: () => void;
   advertencia?: string;
 }) {
   const [motivoSalida, setMotivoSalida] = useState("falta_total");
   const [tipoCobertura, setTipoCobertura] = useState<"completo" | "parcial">("completo");
+  const [modoPagoHE, setModoPagoHE] = useState<"planilla" | "efectivo">("planilla");
+  const [montoEfectivo, setMontoEfectivo] = useState("");
+  const [pagadoPor, setPagadoPor] = useState("");
   const [notas, setNotas] = useState("");
   const [loading, setLoading] = useState(false);
   const [tipoSustitucion, setTipoSustitucion] = useState<"relevo" | "reasignacion">("relevo");
@@ -4763,7 +4766,11 @@ function ModalSustitucion({
   useEffect(() => {
     fetch(`${API_BASE}/nomina/tarifas-he`).then(r => r.json()).then((rows: any[]) => {
       const found = rows.find((r: any) => r.jornada === jornadaReal) ?? rows[0];
-      if (found) setTarifaHE({ tarifa: parseFloat(found.tarifa), horas_turno: parseInt(found.horas_turno) });
+      if (found) {
+        const t = { tarifa: parseFloat(found.tarifa), horas_turno: parseInt(found.horas_turno) };
+        setTarifaHE(t);
+        if (!montoEfectivo) setMontoEfectivo(t.tarifa.toFixed(2));
+      }
     }).catch(() => {});
   }, [jornadaReal]);
 
@@ -4787,6 +4794,10 @@ function ModalSustitucion({
 
   async function handleConfirm() {
     if (parcialExcede || parcialIncompleto) return;
+    if (modoPagoHE === "efectivo" && tipoSustitucion === "relevo") {
+      const m = Number(montoEfectivo);
+      if (!montoEfectivo || isNaN(m) || m <= 0) return;
+    }
     setLoading(true);
     try {
       const notasFinal = tipoCobertura === "parcial" && horaInicioParcial && horaFinParcial
@@ -4795,7 +4806,10 @@ function ModalSustitucion({
       const horasParcialData = tipoCobertura === "parcial" && horaInicioParcial && horaFinParcial
         ? { inicio: horaInicioParcial, fin: horaFinParcial }
         : undefined;
-      await onConfirm(motivoSalida, notasFinal, !!advertencia, tipoSustitucion, motivoSalida, tipoCobertura, horasParcialData);
+      const pagoEfectivoData = modoPagoHE === "efectivo" && tipoSustitucion === "relevo"
+        ? { monto: Number(montoEfectivo), pagadoPor: pagadoPor || "" }
+        : undefined;
+      await onConfirm(motivoSalida, notasFinal, !!advertencia, tipoSustitucion, motivoSalida, tipoCobertura, horasParcialData, pagoEfectivoData);
     } finally {
       setLoading(false);
     }
@@ -5063,6 +5077,74 @@ function ModalSustitucion({
             </div>
           )}
 
+          {/* ── SECCIÓN C: ¿Cómo se pagan las HE? ──────────────── */}
+          {esSustitucion && tipoSustitucion === "relevo" && (
+            <div className="space-y-2 border-t border-white/8 pt-3">
+              <div className="flex items-center gap-2">
+                <DollarSign className="w-3.5 h-3.5 text-amber-400/60" />
+                <label className="text-xs font-semibold text-white/60">¿Cómo se pagan las HE?</label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setModoPagoHE("planilla")}
+                  className={`py-2 px-3 rounded-lg border text-[11px] font-semibold transition-all ${
+                    modoPagoHE === "planilla"
+                      ? "bg-blue-500/15 border-blue-500/40 text-blue-300"
+                      : "border-white/10 text-white/35 hover:text-white/60"
+                  }`}
+                >
+                  En Planilla
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModoPagoHE("efectivo")}
+                  className={`py-2 px-3 rounded-lg border text-[11px] font-semibold transition-all ${
+                    modoPagoHE === "efectivo"
+                      ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                      : "border-white/10 text-white/35 hover:text-white/60"
+                  }`}
+                >
+                  En Efectivo
+                </button>
+              </div>
+
+              {modoPagoHE === "planilla" && (
+                <p className="text-[10px] text-blue-300/50">Pasa por aprobación RRHH y se incluye en la próxima nómina.</p>
+              )}
+
+              {modoPagoHE === "efectivo" && (
+                <div className="space-y-2">
+                  <div className="bg-emerald-500/8 border border-emerald-500/20 rounded-lg p-3 space-y-2">
+                    <div>
+                      <label className="block text-[10px] text-white/40 mb-1">Monto a pagar (Q)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="0.50"
+                        value={montoEfectivo}
+                        onChange={(e) => setMontoEfectivo(e.target.value)}
+                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-emerald-500/50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-white/40 mb-1">Pagado por</label>
+                      <input
+                        type="text"
+                        placeholder="Nombre de quien entrega…"
+                        value={pagadoPor}
+                        onChange={(e) => setPagadoPor(e.target.value)}
+                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-emerald-500/50"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-amber-300/60">Pago inmediato en campo. No aparecerá en planilla.</p>
+                </div>
+              )}
+            </div>
+          )}
+
           {costoHE != null && esSustitucion && (
             <div className="bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2">
               <div className="flex items-center justify-between">
@@ -5075,12 +5157,22 @@ function ModalSustitucion({
                 </div>
                 <span className="text-lg font-bold text-amber-400">Q{costoHE.toFixed(2)}</span>
               </div>
-              <div className="mt-1.5 flex items-center gap-1.5 border-t border-amber-500/15 pt-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
-                <p className="text-[9px] text-yellow-300/70">
-                  Requiere aprobación RRHH antes de pasar a planilla
-                </p>
-              </div>
+              {modoPagoHE === "planilla" && (
+                <div className="mt-1.5 flex items-center gap-1.5 border-t border-amber-500/15 pt-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
+                  <p className="text-[9px] text-yellow-300/70">
+                    Requiere aprobación RRHH antes de pasar a planilla
+                  </p>
+                </div>
+              )}
+              {modoPagoHE === "efectivo" && (
+                <div className="mt-1.5 flex items-center gap-1.5 border-t border-emerald-500/15 pt-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <p className="text-[9px] text-emerald-300/70">
+                    Se registra como pago en efectivo — excluido de nómina
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -6548,7 +6640,7 @@ export default function Operaciones() {
   }
 
   // ── Confirmar sustitución / asignación ───────────────────────────────────
-  async function confirmarSustitucion(motivo: string, notas: string, forzar: boolean, tipoSustitucion: string = "relevo", tipoNovedad?: string, coberturaTipo?: string, horasParcial?: { inicio: string; fin: string }) {
+  async function confirmarSustitucion(motivo: string, notas: string, forzar: boolean, tipoSustitucion: string = "relevo", tipoNovedad?: string, coberturaTipo?: string, horasParcial?: { inicio: string; fin: string }, pagoEfectivo?: { monto: number; pagadoPor: string }) {
     if (!modalSustitucion) return;
     const { puesto, agente } = modalSustitucion;
 
@@ -6584,17 +6676,48 @@ export default function Operaciones() {
           toast({ title: `Sustitución registrada · ${labelNov}`, description: `${puesto.agente_nombre} → ${agente.nombre_completo}` });
         }
         if (tipoSustitucion === "relevo") {
-          setModalIncentivo({
-            agenteId: agente.id,
-            agenteName: agente.nombre_completo,
-            puestoId: puesto.id,
-            puestoName: puesto.nombre,
-            clienteId: puesto.cliente_id,
-            clienteNombre: puesto.cliente_nombre ?? null,
-            sedeId: puesto.sede_id,
-            fecha: fechaActivaStr,
-            jornada: puesto.jornada ?? "12h",
-          });
+          if (pagoEfectivo && pagoEfectivo.monto > 0) {
+            try {
+              const r = await fetch(`${API_BASE}/incentivos`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
+                body: JSON.stringify({
+                  employeeId: agente.id,
+                  employeeNombre: agente.nombre_completo,
+                  fecha: fechaActivaStr,
+                  clienteId: puesto.cliente_id,
+                  clienteNombre: puesto.cliente_nombre ?? null,
+                  sedeId: puesto.sede_id,
+                  puestoId: puesto.id,
+                  puestoNombre: puesto.nombre,
+                  tipo: "he_efectivo",
+                  monto: pagoEfectivo.monto,
+                  motivo: `Pago HE en efectivo — ${puesto.nombre}`,
+                  autorizadoPor: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+                  pagadoPor: pagoEfectivo.pagadoPor || (currentUser?.nombre ?? "sistema"),
+                  metodoPago: "efectivo",
+                  estado: "pagado",
+                }),
+              });
+              if (r.status === 409) {
+                toast({ title: "Ya registrado", description: "Este pago en efectivo ya fue registrado previamente.", variant: "destructive" });
+              } else if (r.ok) {
+                toast({ title: "HE pagadas en efectivo", description: `Q${pagoEfectivo.monto.toFixed(2)} → ${agente.nombre_completo}. No se incluirá en planilla.` });
+              }
+            } catch { }
+          } else {
+            setModalIncentivo({
+              agenteId: agente.id,
+              agenteName: agente.nombre_completo,
+              puestoId: puesto.id,
+              puestoName: puesto.nombre,
+              clienteId: puesto.cliente_id,
+              clienteNombre: puesto.cliente_nombre ?? null,
+              sedeId: puesto.sede_id,
+              fecha: fechaActivaStr,
+              jornada: puesto.jornada ?? "12h",
+            });
+          }
         }
       } else {
         await apiPost(`${API_BASE}/operaciones/asignar`, {
