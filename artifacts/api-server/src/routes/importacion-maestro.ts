@@ -478,19 +478,28 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
         const pId = puestoIdByNombre[puestoNombre.toLowerCase()] ?? null;
         const ordenTitular = parseInt(trim(row["orden_titular"]) || "1") || 1;
         if (pId && !preview) {
-          // Solo el orden=1 actualiza titular_employee_id en puestos_operativos
+          // Solo el orden=1 actualiza titular_employee_id y agente_id en puestos_operativos
           if (ordenTitular === 1) {
             await pool.query(
               `UPDATE puestos_operativos SET titular_employee_id = $1, titular_nombre = $2,
-               estado = 'cubierto' WHERE id = $3`,
+               agente_id = $1, estado = 'cubierto' WHERE id = $3`,
               [empId, nombre, pId]
             ).catch(() => {});
           }
+          // Calcular fecha_inicio_ciclo: slot 1 usa la fecha del puesto, slot 2 = fecha + 1 día
+          const { rows: puestoFecha } = await pool.query(
+            `SELECT fecha_inicio_ciclo FROM puestos_operativos WHERE id = $1`, [pId]
+          );
+          const fechaBase: Date | null = puestoFecha[0]?.fecha_inicio_ciclo ?? null;
+          let fechaInicioTitular: Date | null = fechaBase;
+          if (fechaBase && ordenTitular === 2) {
+            fechaInicioTitular = new Date(fechaBase.getTime() + 86_400_000);
+          }
           await pool.query(
-            `INSERT INTO puesto_titulares (puesto_id, employee_id, orden, activo)
-             VALUES ($1, $2, $3, true) ON CONFLICT (puesto_id, employee_id)
-             DO UPDATE SET orden = $3, activo = true`,
-            [pId, empId, ordenTitular]
+            `INSERT INTO puesto_titulares (puesto_id, employee_id, orden, fecha_inicio_ciclo, activo)
+             VALUES ($1, $2, $3, $4, true) ON CONFLICT (puesto_id, employee_id)
+             DO UPDATE SET orden = $3, fecha_inicio_ciclo = $4, activo = true`,
+            [pId, empId, ordenTitular, fechaInicioTitular]
           ).catch(() => {});
         }
       }
