@@ -6393,8 +6393,7 @@ export default function Operaciones() {
 
   // ── DnD: inicio ───────────────────────────────────────────────────────────
   function handleDragStart(event: DragStartEvent) {
-    const enModoCuadre = esPasado && diasPendientesCierre.some(d => d.fecha === fechaVista);
-    if (!enModoCuadre && (fechaVistaCerrada || hayDiasPendientes)) return;
+    if (fechaVistaCerrada) return;
     const agenteId = parseInt(event.active.id.toString().replace("agent-", ""));
     const agente = [
       ...(pool?.disponibles ?? []),
@@ -6412,8 +6411,7 @@ export default function Operaciones() {
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     setDraggingAgente(null);
-    const enModoCuadre = esPasado && diasPendientesCierre.some(d => d.fecha === fechaVista);
-    if (!enModoCuadre && (fechaVistaCerrada || hayDiasPendientes)) return;
+    if (fechaVistaCerrada) return;
     if (!over) return;
 
     const agenteId = parseInt(active.id.toString().replace("agent-", ""));
@@ -6609,8 +6607,7 @@ export default function Operaciones() {
       return;
     }
 
-    // Operaciones de escritura (asignar agente): requieren que no haya bloqueos
-    if (!enModoCuadre && (fechaVistaCerrada || hayDiasPendientes)) return;
+    if (fechaVistaCerrada) return;
     await iniciarAsignacion(puesto, agenteSeleccionado);
   }
 
@@ -7488,7 +7485,7 @@ export default function Operaciones() {
                                 agente={agente}
                                 isSelected={agenteSeleccionado?.id === agente.id}
                                 motivos={agente.motivos}
-                                onClick={() => { if (fechaVistaCerrada || hayDiasPendientes) return; setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente); }}
+                                onClick={() => { if (fechaVistaCerrada) return; setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente); }}
                                 disabled={fechaVistaCerrada}
                               />
                             </div>
@@ -7576,8 +7573,7 @@ export default function Operaciones() {
                         agente={agente}
                         isSelected={agenteSeleccionado?.id === agente.id}
                         onClick={() => {
-                          const enModoCuadre = esPasado && diasPendientesCierre.some(d => d.fecha === fechaVista);
-                          if (!enModoCuadre && (fechaVistaCerrada || hayDiasPendientes)) return;
+                          if (fechaVistaCerrada) return;
                           setAgenteSeleccionado(agenteSeleccionado?.id === agente.id ? null : agente);
                         }}
                         disabled={
