@@ -605,6 +605,15 @@ function MiniAgente({ agente, compact = false }: { agente: Agente; compact?: boo
 
 // ─── Agente Draggable (pool) ──────────────────────────────────────────────────
 
+const ESTADO_PUESTO_BADGE: Record<string, { label: string; cls: string }> = {
+  relevo_completo:  { label: "Falta",       cls: "bg-red-500/20 text-red-300" },
+  relevo_parcial:   { label: "Parcial",     cls: "bg-amber-500/20 text-amber-300" },
+  abandono_parcial: { label: "Abandono",    cls: "bg-red-500/20 text-red-300" },
+  suspension:       { label: "Suspendido",  cls: "bg-orange-500/20 text-orange-300" },
+  vacaciones:       { label: "Vacaciones",  cls: "bg-blue-500/20 text-blue-300" },
+  incapacidad:      { label: "Incapacidad", cls: "bg-purple-500/20 text-purple-300" },
+};
+
 function DraggableAgente({
   agente,
   onClick,
@@ -616,7 +625,6 @@ function DraggableAgente({
   onClick: () => void;
   isSelected: boolean;
   disabled?: boolean;
-  /** Badges de motivo de ranking (solo en vista de candidatos rankeados) */
   motivos?: string[];
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -630,80 +638,68 @@ function DraggableAgente({
     zIndex: isDragging ? 999 : undefined,
   };
 
+  const estadoBadge = agente.estado_puesto_titular && agente.estado_puesto_titular !== "normal"
+    ? (ESTADO_PUESTO_BADGE[agente.estado_puesto_titular] ?? { label: agente.estado_puesto_titular.replace(/_/g, " "), cls: "bg-red-500/20 text-red-300" })
+    : null;
+
   return (
     <div
       ref={setNodeRef}
       style={style}
+      {...attributes}
+      {...listeners}
       onClick={onClick}
       className={`
-        relative flex items-center gap-2.5 p-2.5 rounded-xl border cursor-grab active:cursor-grabbing
+        relative flex flex-col gap-1.5 p-2.5 rounded-xl border cursor-pointer
         transition-all select-none group
         ${isSelected
-          ? "bg-primary/15 border-primary/40 shadow-md shadow-primary/10"
+          ? "bg-primary/15 border-primary/40 shadow-md shadow-primary/10 ring-1 ring-primary/30"
           : "bg-[#0c1929] border-white/8 hover:border-white/15 hover:bg-white/4"}
         ${disabled ? "opacity-40 cursor-not-allowed" : ""}
       `}
     >
-      <div {...attributes} {...listeners} className="shrink-0 text-white/15 hover:text-white/30 cursor-grab">
-        <GripVertical className="w-3 h-3" />
-      </div>
-      <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white shrink-0 ${avatarColor(agente.nombre_completo)}`}>
-        {iniciales(agente.nombre_completo)}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-semibold text-white/90 truncate">{agente.nombre_completo}</p>
-        <p className="text-[10px] text-white/35 truncate">
-          {agente.turno_nombre ? agente.turno_nombre : (agente.puesto ?? "Agente")}
-        </p>
-        {agente.estado_puesto_titular && agente.nombre_puesto_titular && (
-          <p className="text-[10px] text-orange-400/80 truncate mt-0.5">
-            {agente.nombre_puesto_titular}
-            {agente.cliente_puesto_titular ? ` · ${agente.cliente_puesto_titular}` : ""}
+      <div className="flex items-center gap-2">
+        <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarColor(agente.nombre_completo)}`}>
+          {iniciales(agente.nombre_completo)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-white/90 truncate leading-tight">{agente.nombre_completo}</p>
+          <p className="text-[10px] text-white/35 truncate leading-tight">
+            {agente.turno_nombre ? agente.turno_nombre : (agente.puesto ?? "Agente")}
           </p>
-        )}
-        {motivos && motivos.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-1">
-            {motivos.slice(0, 3).map((m) => {
-              const cfg = RANKING_MOTIVO_CONFIG[m];
-              if (!cfg) return null;
-              return (
-                <span key={m} className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${cfg.cls}`}>
-                  {cfg.label}
-                </span>
-              );
-            })}
-          </div>
+        </div>
+        {isSelected && (
+          <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0 animate-pulse" />
         )}
       </div>
-      {agente.disponibleHE && (
-        <span className="shrink-0 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">
-          HE
-        </span>
+      {(agente.estado_puesto_titular && agente.nombre_puesto_titular) && (
+        <p className="text-[10px] text-orange-400/70 truncate leading-tight pl-9">
+          {agente.nombre_puesto_titular}
+          {agente.cliente_puesto_titular ? ` · ${agente.cliente_puesto_titular}` : ""}
+        </p>
       )}
-      {agente.estado_puesto_titular && agente.estado_puesto_titular !== "normal" && (
-        <span className={`shrink-0 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
-          agente.estado_puesto_titular === "abandono_parcial" ? "bg-red-500/20 text-red-300" :
-          agente.estado_puesto_titular === "suspension"       ? "bg-orange-500/20 text-orange-300" :
-          agente.estado_puesto_titular === "vacaciones"       ? "bg-blue-500/20 text-blue-300" :
-          agente.estado_puesto_titular === "incapacidad"      ? "bg-purple-500/20 text-purple-300" :
-          "bg-red-500/20 text-red-300"
-        }`}>
-          {agente.estado_puesto_titular === "relevo_completo"  ? "FALTA" :
-           agente.estado_puesto_titular === "abandono_parcial" ? "ABANDONO" :
-           agente.estado_puesto_titular === "suspension"       ? "SUSPENDIDO" :
-           agente.estado_puesto_titular === "vacaciones"       ? "VACACIONES" :
-           agente.estado_puesto_titular === "incapacidad"      ? "INCAPACIDAD" :
-           agente.estado_puesto_titular.toUpperCase()}
-        </span>
-      )}
-      {agente.vacacion_trabajada && (
-        <span className="shrink-0 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/25 leading-tight">
-          VAC.✓
-        </span>
-      )}
-      {isSelected && (
-        <div className="w-2 h-2 rounded-full bg-primary shrink-0 animate-pulse" />
-      )}
+      <div className="flex flex-wrap gap-1 pl-9">
+        {agente.disponibleHE && (
+          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">HE</span>
+        )}
+        {estadoBadge && (
+          <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded capitalize ${estadoBadge.cls}`}>
+            {estadoBadge.label}
+          </span>
+        )}
+        {agente.vacacion_trabajada && (
+          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/25">VAC.✓</span>
+        )}
+        {motivos && motivos.length > 0 && motivos.slice(0, 3).map((m) => {
+          const cfg = RANKING_MOTIVO_CONFIG[m];
+          if (!cfg) return null;
+          return (
+            <span key={m} className={`text-[8px] font-semibold px-1.5 py-0.5 rounded-full ${cfg.cls}`}>
+              {cfg.label}
+            </span>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -7629,7 +7625,7 @@ export default function Operaciones() {
             <div className="flex items-center gap-4 px-4 py-2 border-t border-white/5 text-[10px] text-white/20">
               <span className="flex items-center gap-1"><CheckCircle2 className="w-2.5 h-2.5 text-green-400" /> Cubierto</span>
               <span className="flex items-center gap-1"><Circle className="w-2.5 h-2.5 text-red-400" /> Descubierto</span>
-              <span className="flex items-center gap-1"><GripVertical className="w-2.5 h-2.5" /> Arrastrar agente al puesto</span>
+              <span className="flex items-center gap-1"><ArrowLeftRight className="w-2.5 h-2.5" /> Click agente → click puesto</span>
               <span className="flex items-center gap-1"><XCircle className="w-2.5 h-2.5" /> Hover sobre puesto para remover</span>
               <div className="flex-1" />
               <span>Se refresca cada 30 seg automáticamente</span>
