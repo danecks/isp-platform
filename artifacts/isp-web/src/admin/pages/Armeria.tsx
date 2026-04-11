@@ -724,11 +724,11 @@ function TabEstado({ fecha, onFicha }: { fecha: string; onFicha: (a: EstadoArma)
     refetchInterval: 60_000,
   });
 
-  const porDoc = (ed: EstadoDocumental) => estado.filter(a => a.estado_documental === ed).length;
+  const porDoc = (ed: EstadoDocumental) => estado.filter(a => a.estado_documental_portacion === ed).length;
   const alertas = porDoc("vencida") + porDoc("proximo_a_vencer") + porDoc("sin_registro");
 
   const filtered = estado.filter(a => {
-    const matchDoc = filtroDoc === "todos" || a.estado_documental === filtroDoc;
+    const matchDoc = filtroDoc === "todos" || a.estado_documental_portacion === filtroDoc;
     const matchSearch = !search || a.codigo.toLowerCase().includes(search.toLowerCase())
       || (a.puesto_nombre ?? "").toLowerCase().includes(search.toLowerCase())
       || (a.cliente_nombre ?? "").toLowerCase().includes(search.toLowerCase())
@@ -790,7 +790,7 @@ function TabEstado({ fecha, onFicha }: { fecha: string; onFicha: (a: EstadoArma)
           { id: "todos",             label: "Todas",           count: estado.length,          cls: "border-gray-600 text-gray-300" },
           { id: "vencida",           label: "Vencidas",        count: porDoc("vencida"),       cls: "border-red-500/30 text-red-400" },
           { id: "proximo_a_vencer",  label: "Por vencer",      count: porDoc("proximo_a_vencer"), cls: "border-amber-500/30 text-amber-400" },
-          { id: "sin_registro",      label: "Sin tenencia",    count: porDoc("sin_registro"),  cls: "border-gray-600 text-gray-400" },
+          { id: "sin_registro",      label: "Sin portación",   count: porDoc("sin_registro"),  cls: "border-gray-600 text-gray-400" },
         ] as { id: FiltroDocumental; label: string; count: number; cls: string }[]).map(f => (
           <button key={f.id} onClick={() => setFiltroDoc(f.id)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
@@ -815,7 +815,7 @@ function TabEstado({ fecha, onFicha }: { fecha: string; onFicha: (a: EstadoArma)
       <div className="grid gap-3">
         {filtered.map(arma => (
           <div key={arma.id} className={`bg-gray-800/50 border rounded-xl p-4 hover:border-gray-600 transition-colors group ${
-            arma.estado_documental === "vencida" ? "border-red-500/25" : arma.estado_documental === "proximo_a_vencer" ? "border-amber-500/20" : "border-gray-700/60"
+            arma.estado_documental_portacion === "vencida" ? "border-red-500/25" : arma.estado_documental_portacion === "proximo_a_vencer" ? "border-amber-500/20" : "border-gray-700/60"
           }`}>
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="flex items-start gap-3 min-w-0 flex-1">
@@ -827,7 +827,7 @@ function TabEstado({ fecha, onFicha }: { fecha: string; onFicha: (a: EstadoArma)
                     {arma.marca && <span className="text-gray-500 text-xs">{arma.marca} {arma.modelo}</span>}
                     {arma.calibre && <span className="text-[10px] text-gray-500 bg-gray-700/50 px-1.5 py-0.5 rounded">{arma.calibre}</span>}
                     <EstadoBadge estado={arma.estado} />
-                    <TenenciaBadge arma={arma} showDays />
+                    <PortacionBadge arma={arma} showDays />
                     {arma.sugerencias_pendientes > 0 && (
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30 animate-pulse">
                         ⚠ {arma.sugerencias_pendientes} sugerencia{arma.sugerencias_pendientes > 1 ? "s" : ""}
