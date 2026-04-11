@@ -1391,10 +1391,10 @@ operacionesRouter.post("/operaciones/registrar-falta", async (req, res) => {
 
     // Registrar evento de RRHH (falta)
     await pool.query(`
-      INSERT INTO eventos_rrhh (employee_id, tipo_evento, fecha, observaciones, usuario_generador)
-      VALUES ($1, 'falta', $2::date, $3, $4)
+      INSERT INTO eventos_rrhh (employee_id, employee_nombre, tipo_evento, fecha, observaciones, usuario_generador, puesto_nombre, cliente_nombre, generado_desde, estado)
+      VALUES ($1, $2, 'falta', $3::date, $4, $5, $6, $7, 'operaciones', 'pendiente')
       ON CONFLICT DO NOTHING
-    `, [empleadoId, hoyGT, nota, usuario ?? 'sistema']);
+    `, [empleadoId, emp[0].nombre_completo, hoyGT, nota, usuario ?? 'sistema', po[0].nombre, po[0].cliente_nombre]);
 
     // Para puestos NO-24x24: marcar el puesto como 'faltando'
     if (!es_24x24) {
