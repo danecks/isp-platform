@@ -583,6 +583,25 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
     }
   }
 
+  // ── POST-COLABORADORES: Restaurar agente_id y estado desde puesto_titulares ──
+  // La FK ON DELETE SET NULL puede haber limpiado agente_id cuando los empleados
+  // fueron re-insertados. Hacemos un sweep final para dejarlo consistente.
+  if (!preview) {
+    try {
+      await pool.query(`
+        UPDATE puestos_operativos po
+        SET agente_id = pt.employee_id,
+            estado    = 'cubierto'
+        FROM puesto_titulares pt
+        WHERE pt.puesto_id = po.id
+          AND pt.orden = 1
+          AND pt.activo = TRUE
+      `);
+    } catch {
+      // No bloqueante
+    }
+  }
+
   // ── 6. ZONAS OPERATIVAS ─────────────────────────────────────────────────────
   // ZONAS va después de COLABORADORES para que el supervisor_dpi ya exista en la BD.
   // Tras crear cada zona, actualiza los puestos que tienen esa zona en puestoZonaPending.

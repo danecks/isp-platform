@@ -3623,6 +3623,20 @@ function DroppablePuesto({
               ) : null}
             </div>
 
+            {/* ── SIEMPRE VISIBLE: Arma + Tramo ── */}
+            <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                {arma && armaId && (
+                  <button onClick={e => { e.stopPropagation(); setFichaArmaId(armaId); }} title={`Ver ficha: ${arma} — ${armaTipo ?? ""}`} className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-500/8 border border-blue-500/15 rounded-md hover:bg-blue-500/15 hover:border-blue-500/30 transition-colors">
+                    <Shield className="w-2.5 h-2.5 text-blue-400/60 shrink-0" />
+                    <span className="text-[9px] font-mono font-semibold text-blue-300/70">{arma}</span>
+                    {armaTipo && <span className="text-[9px] text-blue-300/40 capitalize ml-0.5">{armaTipo}</span>}
+                  </button>
+                )}
+                <button onClick={e => { e.stopPropagation(); onAbrirSegmentos(); }} className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-300/50 bg-indigo-500/5 border border-indigo-500/15 hover:bg-indigo-500/15 hover:text-indigo-300 rounded-md transition-colors" title="Tramos de cobertura">
+                  <Layers className="w-2.5 h-2.5" /><span>Tramos</span>
+                </button>
+            </div>
+
             {/* ── EXPANDED: detalles completos ── */}
             {expanded && (
               <div className="mt-2.5 pt-2 border-t border-white/8 space-y-2">
@@ -3640,26 +3654,12 @@ function DroppablePuesto({
                   </div>
                 </div>
 
-                {/* Arma */}
-                {arma && armaId && (
-                  <button onClick={e => { e.stopPropagation(); setFichaArmaId(armaId); }} title={`Ver ficha: ${arma} — ${armaTipo ?? ""}`} className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-500/8 border border-blue-500/15 rounded-md w-fit hover:bg-blue-500/15 hover:border-blue-500/30 transition-colors">
-                    <Shield className="w-2.5 h-2.5 text-blue-400/60 shrink-0" />
-                    <span className="text-[9px] font-mono font-semibold text-blue-300/70">{arma}</span>
-                    {armaTipo && <span className="text-[9px] text-blue-300/40 capitalize ml-0.5">{armaTipo}</span>}
-                  </button>
-                )}
-
                 {/* Liberar — solo si hay agente asignado manualmente (no titular automático) */}
                 {cubiertoManual && (
                   <button onClick={e => { e.stopPropagation(); onLiberar(); }} className="flex items-center gap-1 text-[9px] font-semibold text-red-300/80 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 hover:text-red-300 rounded-md px-2 py-1 transition-colors" title="Remover del puesto">
                     <XCircle className="w-3 h-3" /><span>Remover agente</span>
                   </button>
                 )}
-
-                {/* Tramos */}
-                <button onClick={e => { e.stopPropagation(); onAbrirSegmentos(); }} className="flex items-center gap-1 text-[9px] font-semibold text-indigo-300/70 bg-indigo-500/8 border border-indigo-500/20 hover:bg-indigo-500/15 hover:text-indigo-300 rounded-md px-2 py-1 transition-colors" title="Tramos de cobertura">
-                  <Layers className="w-3 h-3" /><span>Tramos</span>
-                </button>
               </div>
             )}
           </div>
