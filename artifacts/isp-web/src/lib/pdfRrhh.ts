@@ -66,6 +66,10 @@ const tipoLabel = (tipo: string): string => {
   const map: Record<string, string> = {
     falta: "FALTA INJUSTIFICADA",
     suspension: "SUSPENSIÓN LABORAL",
+    horas_extra: "HORAS EXTRA",
+    incapacidad: "INCAPACIDAD",
+    permiso_sin_goce: "PERMISO SIN GOCE DE SALARIO",
+    permiso_con_goce: "PERMISO CON GOCE DE SALARIO",
   };
   return map[tipo] ?? tipo.toUpperCase();
 };
@@ -145,6 +149,86 @@ export async function generarBoletaDescuento(evento: EventoRrhh): Promise<void> 
   );
 
   const filename = `boleta-descuento-ERH-${String(evento.id).padStart(4, "0")}-${evento.employee_nombre.split(" ")[0].toLowerCase()}.pdf`;
+  pdf.save(filename);
+}
+
+// ─── Constancia de Horas Extra ────────────────────────────────────────────────
+export async function generarConstanciaHorasExtra(evento: EventoRrhh): Promise<void> {
+  const pdf = new IspPdf({
+    titulo: "CONSTANCIA DE HORAS EXTRA",
+    subtitulo: `Evento #${evento.id} — Cobertura Operativa`,
+    preparedBy: evento.usuario_generador || "Sistema",
+  });
+
+  await pdf.build();
+
+  pdf.addSeccionTitulo("Datos del Colaborador");
+
+  pdf.addTextoResumen(
+    `La presente constancia documenta las HORAS EXTRA trabajadas por el colaborador indicado a continuación, ` +
+    `en virtud de una cobertura operativa asignada por el Centro de Operaciones de ISP, S.A.`,
+  );
+
+  pdf.addTabla(
+    ["Campo", "Detalle"],
+    [
+      ["Nombre del colaborador", evento.employee_nombre],
+      ["DPI (últimos 4 dígitos)", evento.employee_dpi ? evento.employee_dpi.replace(/\*/g, "●") : "No registrado"],
+      ["Fecha de la cobertura", fmtFecha(evento.fecha)],
+      ["Tipo de evento", "HORAS EXTRA — COBERTURA"],
+      ["Cliente / Instalación", evento.cliente_nombre || "No especificado"],
+      ["Puesto cubierto", evento.puesto_nombre || "No especificado"],
+      ["Registrado por", evento.usuario_generador || "Sistema"],
+      ["Fecha de emisión", fmtFechaCorta(new Date().toISOString())],
+      ["No. de evento RRHH", `ERH-${String(evento.id).padStart(4, "0")}`],
+    ],
+  );
+
+  pdf.addEspacio(4);
+  pdf.addSeccionTitulo("Detalle de la Cobertura");
+
+  pdf.addTextoResumen(
+    evento.observaciones ||
+    `El colaborador ${evento.employee_nombre} realizó cobertura en el puesto "${evento.puesto_nombre || "asignado"}" ` +
+    `en las instalaciones del cliente ${evento.cliente_nombre || "no especificado"}, el día ` +
+    `${fmtFechaCorta(evento.fecha)}. Esta cobertura fue asignada por el Centro de Operaciones ` +
+    `para cubrir la ausencia del titular del puesto.`,
+  );
+
+  if (evento.notas) {
+    pdf.addEspacio(2);
+    pdf.addTextoResumen(`Notas adicionales: ${evento.notas}`);
+  }
+
+  pdf.addEspacio(4);
+  pdf.addSeccionTitulo("Forma de Pago");
+
+  pdf.addTextoResumen(
+    "Las horas extra serán compensadas según la modalidad autorizada por la Gerencia de Operaciones: " +
+    "pago en planilla regular o pago en efectivo, conforme lo establecido en el Artículo 121 del Código de Trabajo de Guatemala (Decreto 1441).",
+  );
+
+  pdf.addEspacio(6);
+  pdf.addSeccionTitulo("Firmas y Autorización");
+
+  pdf.addTabla(
+    ["Rol", "Nombre", "Firma", "Fecha"],
+    [
+      ["Elaborado por", evento.usuario_generador || "Jefe de Operaciones", "___________________", fmtFechaCorta(new Date().toISOString())],
+      ["Supervisor de Área", evento.supervisor_nombre || "________________________", "___________________", "_____ / _____ / _____"],
+      ["Colaborador", evento.employee_nombre, "___________________", "_____ / _____ / _____"],
+      ["Gerencia RRHH", "________________________", "___________________", "_____ / _____ / _____"],
+    ],
+    "Cuadro de firmas",
+  );
+
+  pdf.addEspacio(5);
+  pdf.addTextoResumen(
+    "NOTA: Este documento certifica la realización de horas extra y servirá como respaldo para el cálculo de la compensación correspondiente. " +
+    "La firma del colaborador confirma la recepción de esta constancia y la veracidad de las horas trabajadas.",
+  );
+
+  const filename = `constancia-he-ERH-${String(evento.id).padStart(4, "0")}-${evento.employee_nombre.split(" ")[0].toLowerCase()}.pdf`;
   pdf.save(filename);
 }
 

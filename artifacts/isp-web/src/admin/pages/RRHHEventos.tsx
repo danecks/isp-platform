@@ -19,7 +19,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { EventoRrhh } from "@/lib/pdfRrhh";
 import {
   generarBoletaDescuento, generarActaAdministrativa,
-  generarDocumentoAnulacion, MOTIVO_ANULACION_LABELS,
+  generarConstanciaHorasExtra, generarDocumentoAnulacion,
+  MOTIVO_ANULACION_LABELS,
 } from "@/lib/pdfRrhh";
 
 const API = "/api";
@@ -528,34 +529,32 @@ function EventoCard({
       )}
 
       {/* Encabezado de la tarjeta */}
-      <div className="px-5 py-3.5 border-b border-white/6 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center
-            ${isAnulado ? "bg-red-500/10 border border-red-500/20" : "bg-purple-500/15 border border-purple-500/20"}`}
-          >
-            {isAnulado
-              ? <XCircle className="w-4 h-4 text-red-400/60" />
-              : <ClipboardList className="w-4 h-4 text-purple-400" />
-            }
-          </div>
-          <div className="min-w-0">
-            <p className={`text-sm font-semibold truncate ${isAnulado ? "text-white/50 line-through" : "text-white"}`}>
+      <div className={`${compact ? "px-3 py-2.5" : "px-5 py-3.5"} border-b border-white/6`}>
+        <div className="flex items-center gap-2 min-w-0">
+          {!compact && (
+            <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center
+              ${isAnulado ? "bg-red-500/10 border border-red-500/20" : "bg-purple-500/15 border border-purple-500/20"}`}
+            >
+              {isAnulado
+                ? <XCircle className="w-4 h-4 text-red-400/60" />
+                : <ClipboardList className="w-4 h-4 text-purple-400" />
+              }
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className={`${compact ? "text-xs" : "text-sm"} font-semibold truncate ${isAnulado ? "text-white/50 line-through" : "text-white"}`}>
               {evento.employee_nombre}
             </p>
-            <p className="text-[11px] text-white/30">{numEvento} · {fmtFecha(evento.fecha)} {fmtHora(evento.fecha)}</p>
+            <p className={`${compact ? "text-[10px]" : "text-[11px]"} text-white/30`}>{numEvento} · {fmtFecha(evento.fecha)} {fmtHora(evento.fecha)}</p>
           </div>
         </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          {/* Tipo */}
-          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${tipoCfg.className} ${isAnulado ? "opacity-40" : ""}`}>
+        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${tipoCfg.className} ${isAnulado ? "opacity-40" : ""}`}>
             <AlertTriangle className="w-2.5 h-2.5" />
             {tipoCfg.label}
           </span>
-
-          {/* Estado (solo dropdown si no está anulado) */}
           {isAnulado ? (
-            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${estadoCfg.className}`}>
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${estadoCfg.className}`}>
               {estadoCfg.icon}
               {estadoCfg.label}
             </span>
@@ -564,14 +563,14 @@ function EventoCard({
               <button
                 onClick={() => setShowEstadoMenu((p) => !p)}
                 disabled={loadingEstado}
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border cursor-pointer hover:opacity-80 transition-opacity ${estadoCfg.className}`}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border cursor-pointer hover:opacity-80 transition-opacity ${estadoCfg.className}`}
               >
                 {loadingEstado ? <Loader2 className="w-3 h-3 animate-spin" /> : estadoCfg.icon}
                 {estadoCfg.label}
                 <ChevronDown className="w-2.5 h-2.5" />
               </button>
               {showEstadoMenu && (
-                <div className="absolute right-0 top-full mt-1 z-20 bg-[#0c1929] border border-white/10 rounded-xl shadow-xl min-w-[140px] overflow-hidden">
+                <div className="absolute left-0 top-full mt-1 z-20 bg-[#0c1929] border border-white/10 rounded-xl shadow-xl min-w-[140px] overflow-hidden">
                   {(["pendiente_aprobacion", "aprobado", "rechazado"] as const)
                     .map((key) => [key, ESTADO_CONFIG[key]] as const)
                     .map(([key, cfg]) => (
@@ -594,71 +593,87 @@ function EventoCard({
       </div>
 
       {/* Cuerpo */}
-      <div className="p-5 space-y-4">
-        {/* Info del evento */}
-        <div className="grid grid-cols-2 gap-3">
-          {evento.employee_dpi && (
-            <div className="flex items-center gap-2">
-              <Shield className="w-3.5 h-3.5 text-white/25 shrink-0" />
-              <div>
-                <p className="text-[10px] text-white/30">DPI</p>
-                <p className="text-xs text-white/60 font-mono">{evento.employee_dpi}</p>
+      <div className={`${compact ? "px-3 py-2.5 space-y-2.5" : "p-5 space-y-4"}`}>
+        {compact ? (
+          <div className="space-y-1 text-[11px]">
+            {evento.employee_dpi && (
+              <div className="flex items-center gap-1.5">
+                <Shield className="w-3 h-3 text-white/20 shrink-0" />
+                <span className="text-white/30">DPI</span>
+                <span className="text-white/50 font-mono">{evento.employee_dpi}</span>
               </div>
-            </div>
-          )}
-          {evento.cliente_nombre && (
-            <div className="flex items-center gap-2">
-              <Building2 className="w-3.5 h-3.5 text-white/25 shrink-0" />
-              <div>
-                <p className="text-[10px] text-white/30">Cliente</p>
-                <p className="text-xs text-white/60 truncate">{evento.cliente_nombre}</p>
-              </div>
-            </div>
-          )}
-          {evento.puesto_nombre && (
-            <div className="flex items-center gap-2">
-              <Briefcase className="w-3.5 h-3.5 text-white/25 shrink-0" />
-              <div>
-                <p className="text-[10px] text-white/30">Puesto</p>
-                <p className="text-xs text-white/60 truncate">{evento.puesto_nombre}</p>
-              </div>
-            </div>
-          )}
-          {evento.supervisor_nombre && (
-            <div className="flex items-center gap-2">
-              <User className="w-3.5 h-3.5 text-white/25 shrink-0" />
-              <div>
-                <p className="text-[10px] text-white/30">Supervisor</p>
-                <p className="text-xs text-white/60 truncate">{evento.supervisor_nombre}</p>
-              </div>
-            </div>
-          )}
-          <div className="flex items-center gap-2">
-            <Calendar className="w-3.5 h-3.5 text-white/25 shrink-0" />
-            <div>
-              <p className="text-[10px] text-white/30">Registrado por</p>
-              <p className="text-xs text-white/60">{evento.usuario_generador || "Sistema"}</p>
+            )}
+            <div className="flex items-center gap-1.5">
+              <Calendar className="w-3 h-3 text-white/20 shrink-0" />
+              <span className="text-white/30">Por</span>
+              <span className="text-white/50">{evento.usuario_generador || "sistema"}</span>
+              <span className="text-white/20">·</span>
+              <span className="text-white/30 capitalize">{evento.generado_desde || "operaciones"}</span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <BookOpen className="w-3.5 h-3.5 text-white/25 shrink-0" />
-            <div>
-              <p className="text-[10px] text-white/30">Origen</p>
-              <p className="text-xs text-white/60 capitalize">{evento.generado_desde || "operaciones"}</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            {evento.employee_dpi && (
+              <div className="flex items-center gap-2">
+                <Shield className="w-3.5 h-3.5 text-white/25 shrink-0" />
+                <div>
+                  <p className="text-[10px] text-white/30">DPI</p>
+                  <p className="text-xs text-white/60 font-mono">{evento.employee_dpi}</p>
+                </div>
+              </div>
+            )}
+            {evento.cliente_nombre && (
+              <div className="flex items-center gap-2">
+                <Building2 className="w-3.5 h-3.5 text-white/25 shrink-0" />
+                <div>
+                  <p className="text-[10px] text-white/30">Cliente</p>
+                  <p className="text-xs text-white/60 truncate">{evento.cliente_nombre}</p>
+                </div>
+              </div>
+            )}
+            {evento.puesto_nombre && (
+              <div className="flex items-center gap-2">
+                <Briefcase className="w-3.5 h-3.5 text-white/25 shrink-0" />
+                <div>
+                  <p className="text-[10px] text-white/30">Puesto</p>
+                  <p className="text-xs text-white/60 truncate">{evento.puesto_nombre}</p>
+                </div>
+              </div>
+            )}
+            {evento.supervisor_nombre && (
+              <div className="flex items-center gap-2">
+                <User className="w-3.5 h-3.5 text-white/25 shrink-0" />
+                <div>
+                  <p className="text-[10px] text-white/30">Supervisor</p>
+                  <p className="text-xs text-white/60 truncate">{evento.supervisor_nombre}</p>
+                </div>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <Calendar className="w-3.5 h-3.5 text-white/25 shrink-0" />
+              <div>
+                <p className="text-[10px] text-white/30">Registrado por</p>
+                <p className="text-xs text-white/60">{evento.usuario_generador || "Sistema"}</p>
+              </div>
             </div>
-          </div>
-        </div>
-
-        {/* Observaciones */}
-        {evento.observaciones && (
-          <div className="bg-[#0c1929] border border-white/6 rounded-xl p-3">
-            <p className="text-[10px] text-white/30 mb-1">Observaciones</p>
-            <p className="text-xs text-white/55 leading-relaxed">{evento.observaciones}</p>
+            <div className="flex items-center gap-2">
+              <BookOpen className="w-3.5 h-3.5 text-white/25 shrink-0" />
+              <div>
+                <p className="text-[10px] text-white/30">Origen</p>
+                <p className="text-xs text-white/60 capitalize">{evento.generado_desde || "operaciones"}</p>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* Bloque de auditoría de anulación */}
-        {isAnulado && evento.anulado_por && (
+        {evento.observaciones && (
+          <div className={`bg-[#0c1929] border border-white/6 rounded-xl ${compact ? "p-2" : "p-3"}`}>
+            <p className="text-[10px] text-white/30 mb-0.5">Observaciones</p>
+            <p className={`${compact ? "text-[11px] line-clamp-2" : "text-xs leading-relaxed"} text-white/55`}>{evento.observaciones}</p>
+          </div>
+        )}
+
+        {!compact && isAnulado && evento.anulado_por && (
           <div className="bg-red-900/10 border border-red-500/15 rounded-xl p-3.5 space-y-2">
             <p className="text-[10px] font-semibold text-red-400/70 uppercase tracking-wide">Auditoría de anulación</p>
             <div className="grid grid-cols-2 gap-2">
@@ -682,8 +697,7 @@ function EventoCard({
           </div>
         )}
 
-        {/* Documentos generados */}
-        {docsGenerados.length > 0 && (
+        {!compact && docsGenerados.length > 0 && (
           <div className={`border rounded-xl p-3 ${isAnulado ? "bg-red-500/5 border-red-500/10 opacity-60" : "bg-purple-500/5 border-purple-500/15"}`}>
             <p className={`text-[10px] mb-2 font-medium ${isAnulado ? "text-red-400/50" : "text-purple-400/60"}`}>
               Documentos generados {isAnulado ? "(anulados)" : ""}
@@ -701,44 +715,43 @@ function EventoCard({
           </div>
         )}
 
-        {/* Botones de acción */}
         {isAnulado ? (
-          // Solo descarga del acta de anulación disponible
           <button
             onClick={() => onDescargarAnulacion(evento)}
-            className="w-full flex items-center justify-center gap-1.5 py-2 bg-red-900/20 hover:bg-red-900/30 border border-red-500/15 rounded-xl text-xs text-red-400/70 hover:text-red-400 transition-all"
+            className={`w-full flex items-center justify-center gap-1.5 ${compact ? "py-1.5 rounded-lg text-[11px]" : "py-2 rounded-xl text-xs"} bg-red-900/20 hover:bg-red-900/30 border border-red-500/15 text-red-400/70 hover:text-red-400 transition-all`}
           >
-            <Download className="w-3.5 h-3.5" />
-            Descargar acta de anulación
+            <Download className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
+            {compact ? "Acta anulación" : "Descargar acta de anulación"}
           </button>
         ) : (
           <>
-            {/* Botones de documentos */}
-            <div className="flex gap-2">
+            <div className="flex gap-1.5">
               <button
                 onClick={() => onDescargarBoleta(evento)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-[#0c1929] hover:bg-[#0f1e34] border border-white/8 hover:border-primary/30 rounded-xl text-xs text-white/60 hover:text-white transition-all"
+                className={`flex-1 flex items-center justify-center gap-1 ${compact ? "py-1.5 rounded-lg text-[11px]" : "py-2 rounded-xl text-xs"} bg-[#0c1929] hover:bg-[#0f1e34] border border-white/8 hover:border-primary/30 text-white/60 hover:text-white transition-all`}
               >
-                <Download className="w-3.5 h-3.5" />
-                Boleta
+                <Download className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
+                {evento.tipo_evento === "horas_extra" ? "Constancia HE" : "Boleta"}
               </button>
-              <button
-                onClick={() => onDescargarActa(evento)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-[#0c1929] hover:bg-[#0f1e34] border border-white/8 hover:border-primary/30 rounded-xl text-xs text-white/60 hover:text-white transition-all"
-              >
-                <FileText className="w-3.5 h-3.5" />
-                Acta
-              </button>
+              {evento.tipo_evento !== "horas_extra" && (
+                <button
+                  onClick={() => onDescargarActa(evento)}
+                  className={`flex-1 flex items-center justify-center gap-1 ${compact ? "py-1.5 rounded-lg text-[11px]" : "py-2 rounded-xl text-xs"} bg-[#0c1929] hover:bg-[#0f1e34] border border-white/8 hover:border-primary/30 text-white/60 hover:text-white transition-all`}
+                >
+                  <FileText className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
+                  Acta
+                </button>
+              )}
             </div>
-
-            {/* Botón anular */}
-            <button
-              onClick={() => onAnular(evento)}
-              className="w-full flex items-center justify-center gap-1.5 py-2 bg-transparent hover:bg-red-500/8 border border-red-500/15 hover:border-red-500/30 rounded-xl text-xs text-red-400/50 hover:text-red-400 transition-all"
-            >
-              <Ban className="w-3.5 h-3.5" />
-              Anular evento
-            </button>
+            {!compact && (
+              <button
+                onClick={() => onAnular(evento)}
+                className="w-full flex items-center justify-center gap-1.5 py-2 bg-transparent hover:bg-red-500/8 border border-red-500/15 hover:border-red-500/30 rounded-xl text-xs text-red-400/50 hover:text-red-400 transition-all"
+              >
+                <Ban className="w-3.5 h-3.5" />
+                Anular evento
+              </button>
+            )}
           </>
         )}
       </div>
@@ -1272,9 +1285,15 @@ export default function RRHHEventos() {
 
   async function handleDescargarBoleta(evento: EventoRrhh) {
     try {
-      await generarBoletaDescuento(evento);
-      await registrarDescarga(evento, "boleta");
-      toast({ title: "Boleta generada", description: `ERH-${String(evento.id).padStart(4, "0")}` });
+      if (evento.tipo_evento === "horas_extra") {
+        await generarConstanciaHorasExtra(evento);
+        await registrarDescarga(evento, "constancia_he");
+        toast({ title: "Constancia de HE generada", description: `ERH-${String(evento.id).padStart(4, "0")}` });
+      } else {
+        await generarBoletaDescuento(evento);
+        await registrarDescarga(evento, "boleta");
+        toast({ title: "Boleta generada", description: `ERH-${String(evento.id).padStart(4, "0")}` });
+      }
     } catch {
       toast({ title: "Error al generar PDF", variant: "destructive" });
     }
