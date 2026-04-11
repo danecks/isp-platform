@@ -2190,23 +2190,22 @@ operacionesRouter.get("/operaciones/cierre-hoy", async (req, res) => {
     if (relevossinMotivo > 0) advertencias.push(`${relevossinMotivo} relevo${relevossinMotivo !== 1 ? 's' : ''} sin motivo registrado`);
     if (puestosSinTramos > 0) advertencias.push(`${puestosSinTramos} puesto${puestosSinTramos !== 1 ? 's' : ''} cubierto${puestosSinTramos !== 1 ? 's' : ''} sin tramos de cobertura registrados`);
 
-    // Días pasados (antes de hoy en Guatemala) con actividad operativa sin cierre
+    // Días pasados sin cierre: todos los días desde el primer cierre registrado
+    // hasta ayer, sin importar si hubo actividad operativa o no.
     const { rows: pendientesRows } = await pool.query(`
-      SELECT DISTINCT cd.fecha::text AS fecha
-      FROM cobertura_diaria cd
-      WHERE cd.fecha < $1
-        AND NOT EXISTS (
-          SELECT 1 FROM cierre_operativo_diario cod
-          WHERE cod.fecha = cd.fecha AND cod.estado = 'cerrado'
-        )
-      UNION
-      SELECT DISTINCT DATE(fecha_hora AT TIME ZONE 'America/Guatemala')::text AS fecha
-      FROM movimientos_operativos
-      WHERE DATE(fecha_hora AT TIME ZONE 'America/Guatemala') < $1
-        AND NOT EXISTS (
-          SELECT 1 FROM cierre_operativo_diario cod
-          WHERE cod.fecha = DATE(fecha_hora AT TIME ZONE 'America/Guatemala') AND cod.estado = 'cerrado'
-        )
+      SELECT d::date::text AS fecha
+      FROM generate_series(
+        COALESCE(
+          (SELECT MIN(fecha) FROM cierre_operativo_diario),
+          $1::date
+        ),
+        $1::date - INTERVAL '1 day',
+        '1 day'::interval
+      ) AS s(d)
+      WHERE NOT EXISTS (
+        SELECT 1 FROM cierre_operativo_diario cod
+        WHERE cod.fecha = d::date AND cod.estado = 'cerrado'
+      )
       ORDER BY fecha
     `, [todayGT()]);
 
