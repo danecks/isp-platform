@@ -5,7 +5,8 @@ import { AdminLayout } from "../layout/AdminLayout";
 import {
   Landmark, Building2, MapPin, Phone, Mail, Fax,
   Loader2, CheckCircle, AlertTriangle, Save, Edit3,
-  ExternalLink, Plus, RefreshCw, Shield, X
+  ExternalLink, Plus, RefreshCw, Shield, X,
+  FileText, Download, Eye, Users, DollarSign, Calendar
 } from "lucide-react";
 
 const API = "/api";
@@ -293,6 +294,234 @@ function TarjetaCentro({ centro }: { centro: CentroIGSS }) {
   );
 }
 
+// ─── Generador de Planilla TXT ────────────────────────────────────────────────
+interface PreviewData {
+  preview: boolean;
+  periodo: string;
+  totalEmpleados: number;
+  totalSalarios: string;
+  cuotaLaboral: string;
+  cuotaPatronal: string;
+  totalAPagar: string;
+  centros: { codigo: string; nombre: string; empleados: number }[];
+  lineasArchivo: number;
+  empleados: { nombre: string; igss: string; sueldo: string; cuotaLaboral: string; cuotaPatronal: string }[];
+}
+
+function PanelGenerarPlanilla() {
+  const hoy = new Date();
+  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  const [anio, setAnio] = useState(hoy.getFullYear());
+  const [loading, setLoading] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [preview, setPreview] = useState<PreviewData | null>(null);
+  const [error, setError] = useState("");
+
+  const meses = [
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+  ];
+
+  const doPreview = async () => {
+    setPreviewing(true); setError(""); setPreview(null);
+    try {
+      const r = await fetch(`${API}/igss/generar-planilla?mes=${mes}&anio=${anio}&preview=true`, {
+        headers: { "x-isp-session": getSession() },
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Error");
+      setPreview(data);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
+  const doDownload = async () => {
+    setLoading(true); setError("");
+    try {
+      const r = await fetch(`${API}/igss/generar-planilla?mes=${mes}&anio=${anio}`, {
+        headers: { "x-isp-session": getSession() },
+      });
+      if (!r.ok) {
+        const data = await r.json();
+        throw new Error(data.error || "Error");
+      }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `planilla_igss_${anio}_${String(mes).padStart(2, "0")}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const inp = "bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-primary/40";
+
+  return (
+    <div className="bg-[#0c1829] border border-white/5 rounded-2xl overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+        <div className="flex items-center gap-2">
+          <FileText className="w-4 h-4 text-emerald-400" />
+          <p className="text-sm font-bold text-white">Generar Planilla TXT</p>
+          <span className="text-[9px] text-emerald-400/60 bg-emerald-400/8 border border-emerald-400/20 px-2 py-0.5 rounded-full font-mono">
+            v2.2.0
+          </span>
+        </div>
+      </div>
+
+      <div className="p-5 space-y-4">
+        <div className="flex items-end gap-3">
+          <div>
+            <label className="text-[10px] text-white/40 uppercase tracking-wide block mb-1">Mes</label>
+            <select value={mes} onChange={(e) => { setMes(Number(e.target.value)); setPreview(null); }}
+              className={`${inp} w-40`}>
+              {meses.map((m, i) => (
+                <option key={i} value={i + 1}>{m}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] text-white/40 uppercase tracking-wide block mb-1">Año</label>
+            <input type="number" value={anio} onChange={(e) => { setAnio(Number(e.target.value)); setPreview(null); }}
+              min={2020} max={2030} className={`${inp} w-24`} />
+          </div>
+          <button onClick={doPreview} disabled={previewing}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/8 border border-white/10 text-xs text-white/70 hover:text-white transition-all disabled:opacity-50">
+            {previewing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+            Vista previa
+          </button>
+          <button onClick={doDownload} disabled={loading || !preview}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+            Descargar TXT
+          </button>
+        </div>
+
+        {error && (
+          <div className="flex items-start gap-2 bg-red-500/8 border border-red-500/20 rounded-xl p-3">
+            <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-red-300">{error}</p>
+          </div>
+        )}
+
+        {preview && (
+          <div className="space-y-4 animate-in fade-in duration-300">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-[#060e1c] rounded-xl p-3 border border-white/5">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Calendar className="w-3 h-3 text-blue-400" />
+                  <span className="text-[9px] text-white/30 uppercase">Período</span>
+                </div>
+                <p className="text-sm font-bold text-white">{preview.periodo}</p>
+              </div>
+              <div className="bg-[#060e1c] rounded-xl p-3 border border-white/5">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Users className="w-3 h-3 text-cyan-400" />
+                  <span className="text-[9px] text-white/30 uppercase">Empleados</span>
+                </div>
+                <p className="text-sm font-bold text-white">{preview.totalEmpleados}</p>
+              </div>
+              <div className="bg-[#060e1c] rounded-xl p-3 border border-white/5">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <DollarSign className="w-3 h-3 text-emerald-400" />
+                  <span className="text-[9px] text-white/30 uppercase">Total Salarios</span>
+                </div>
+                <p className="text-sm font-bold text-emerald-400">Q{Number(preview.totalSalarios).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</p>
+              </div>
+              <div className="bg-[#060e1c] rounded-xl p-3 border border-white/5">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Shield className="w-3 h-3 text-primary" />
+                  <span className="text-[9px] text-white/30 uppercase">Total a Pagar</span>
+                </div>
+                <p className="text-sm font-bold text-primary">Q{Number(preview.totalAPagar).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</p>
+              </div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="bg-[#060e1c] rounded-xl p-3 border border-white/5">
+                <p className="text-[10px] text-white/30 mb-2 uppercase">Cuotas</p>
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-white/50">Cuota Laboral (4.83%)</span>
+                    <span className="text-cyan-400 font-medium">Q{Number(preview.cuotaLaboral).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-white/50">Cuota Patronal (12.67%)</span>
+                    <span className="text-amber-400 font-medium">Q{Number(preview.cuotaPatronal).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between text-xs pt-1.5 border-t border-white/5">
+                    <span className="text-white/70 font-semibold">Total</span>
+                    <span className="text-primary font-bold">Q{Number(preview.totalAPagar).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-[#060e1c] rounded-xl p-3 border border-white/5">
+                <p className="text-[10px] text-white/30 mb-2 uppercase">Centros de Trabajo</p>
+                <div className="space-y-1.5">
+                  {preview.centros.map((c) => (
+                    <div key={c.codigo} className="flex justify-between text-xs">
+                      <span className="text-white/50">
+                        <span className="text-primary/60 font-mono mr-1">#{c.codigo}</span>
+                        {c.nombre}
+                      </span>
+                      <span className="text-white/70">{c.empleados} emp.</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-[#060e1c] rounded-xl border border-white/5 overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-white/5 flex items-center gap-2">
+                <Users className="w-3 h-3 text-white/30" />
+                <p className="text-[10px] text-white/30 uppercase">Detalle de Empleados</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-white/5">
+                      <th className="text-left px-4 py-2 text-white/30 font-normal text-[10px] uppercase">Nombre</th>
+                      <th className="text-left px-4 py-2 text-white/30 font-normal text-[10px] uppercase">No. IGSS</th>
+                      <th className="text-right px-4 py-2 text-white/30 font-normal text-[10px] uppercase">Sueldo</th>
+                      <th className="text-right px-4 py-2 text-white/30 font-normal text-[10px] uppercase">Cuota Lab.</th>
+                      <th className="text-right px-4 py-2 text-white/30 font-normal text-[10px] uppercase">Cuota Pat.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.empleados.map((emp, i) => (
+                      <tr key={i} className="border-b border-white/3 hover:bg-white/2">
+                        <td className="px-4 py-2 text-white/80">{emp.nombre}</td>
+                        <td className="px-4 py-2 text-white/50 font-mono">{emp.igss}</td>
+                        <td className="px-4 py-2 text-right text-emerald-400">Q{Number(emp.sueldo).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
+                        <td className="px-4 py-2 text-right text-cyan-400">Q{Number(emp.cuotaLaboral).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
+                        <td className="px-4 py-2 text-right text-amber-400">Q{Number(emp.cuotaPatronal).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-[10px] text-white/25">
+              <FileText className="w-3 h-3" />
+              <span>El archivo TXT contendrá {preview.lineasArchivo} líneas en formato IGSS v2.2.0 (delimitado por pipes).</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Página principal IGSS ────────────────────────────────────────────────────
 export default function IGSS() {
   const [, navigate] = useLocation();
@@ -325,6 +554,9 @@ export default function IGSS() {
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
         </div>
+
+        {/* Generar Planilla TXT */}
+        <PanelGenerarPlanilla />
 
         {/* Panel patrono */}
         <PanelConfigPatrono />
@@ -381,7 +613,7 @@ export default function IGSS() {
           <Landmark className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
           <div className="text-[10px] text-blue-300/70 leading-relaxed space-y-1">
             <p><strong>Centro de Trabajo = Cliente:</strong> Cada cliente donde laboran los agentes es un centro de trabajo del IGSS. Los datos se configuran desde la ficha del cliente en la tab "Centro IGSS".</p>
-            <p className="text-blue-300/40">Próximamente: generación del archivo TXT de planilla mensual en formato 2.2.0 para subir directamente al portal del IGSS.</p>
+            <p className="text-blue-300/40">El archivo TXT generado sigue el formato 2.2.0 con campos delimitados por pipes (|) y puede subirse directamente al portal del IGSS.</p>
           </div>
         </div>
 
