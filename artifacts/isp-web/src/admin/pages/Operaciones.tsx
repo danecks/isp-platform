@@ -6677,18 +6677,6 @@ export default function Operaciones() {
                 toast({ title: "HE pagadas en efectivo", description: `Q${pagoEfectivo.monto.toFixed(2)} → ${agente.nombre_completo}. No se incluirá en planilla.` });
               }
             } catch { }
-          } else {
-            setModalIncentivo({
-              agenteId: agente.id,
-              agenteName: agente.nombre_completo,
-              puestoId: puesto.id,
-              puestoName: puesto.nombre,
-              clienteId: puesto.cliente_id,
-              clienteNombre: puesto.cliente_nombre ?? null,
-              sedeId: puesto.sede_id,
-              fecha: fechaActivaStr,
-              jornada: puesto.jornada ?? "12h",
-            });
           }
         }
       } else {
