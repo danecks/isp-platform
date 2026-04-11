@@ -504,23 +504,32 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         -- ¿Su slot de ciclo indica que debe trabajar HOY?
         COALESCE(slot_hoy.trabaja_hoy, FALSE)   AS slot_trabaja_hoy,
         CASE
-          WHEN po.agente_id   IS NOT NULL AND e.estado_laboral = 'activo' THEN 'en_puesto'
+          -- Estado laboral no-activo tiene prioridad absoluta
+          WHEN e.estado_laboral = 'licencia'   THEN 'en_descanso'
+          WHEN e.estado_laboral = 'suspendido' THEN 'suspendido'
+          -- FALTANDO: agente titular cuyo puesto tiene un relevo activo hoy Y el ciclo
+          -- dice que hoy es su día de trabajo. Se evalúa ANTES de en_puesto para que
+          -- agentes 24x24 con agente_id en puestos_operativos sean detectados correctamente.
+          WHEN e.estado_laboral = 'activo'
+               AND cs_faltando.tiene_relevo IS NOT NULL
+               AND COALESCE(slot_hoy.trabaja_hoy, TRUE) = TRUE
+               AND (po.agente_id IS NOT NULL OR titular_po.id IS NOT NULL)
+               THEN 'faltando'
+          -- FALTANDO: estado_operativo_puesto explícito (puestos no-ciclo)
+          WHEN e.estado_laboral = 'activo'
+               AND titular_po.id IS NOT NULL
+               AND COALESCE(titular_po.estado_operativo_puesto, 'normal') != 'normal'
+               THEN 'faltando'
+          -- EN_PUESTO: agente titular y el ciclo confirma que HOY trabaja
+          -- Si slot_hoy.trabaja_hoy=FALSE (día de descanso 24x24), cae a ELSE 'disponible'
+          -- para que el motor de turnos JS lo clasifique como descansandoCiclo / haciendoHE.
+          WHEN po.agente_id IS NOT NULL
+               AND e.estado_laboral = 'activo'
+               AND COALESCE(slot_hoy.trabaja_hoy, TRUE) = TRUE
+               THEN 'en_puesto'
           WHEN (ssa.agente_id IS NOT NULL OR ssa_ag.employee_id IS NOT NULL)
-               AND e.estado_laboral = 'activo'                            THEN 'en_ssa'
-          WHEN e.estado_laboral = 'licencia'                              THEN 'en_descanso'
-          WHEN e.estado_laboral = 'suspendido'                            THEN 'suspendido'
-          WHEN titular_po.id IS NOT NULL
-               AND (titular_po.agente_id IS NULL OR titular_po.agente_id != e.id)
-               AND (
-                 COALESCE(titular_po.estado_operativo_puesto, 'normal') != 'normal'
-                 -- Detectar faltando via cobertura_segmentos (puestos 24x24 ciclo donde
-                 -- estado_operativo_puesto puede no haberse actualizado pero hay relevo registrado)
-                 OR (
-                   cs_faltando.tiene_relevo IS NOT NULL
-                   AND COALESCE(slot_hoy.trabaja_hoy, FALSE) = TRUE
-                 )
-               )
-               AND e.estado_laboral = 'activo'                            THEN 'faltando'
+               AND e.estado_laboral = 'activo'
+               THEN 'en_ssa'
           ELSE 'disponible'
         END AS categoria
       FROM employees e
@@ -580,14 +589,24 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         LIMIT 1
       ) vac_activa ON TRUE
       -- ¿El puesto del titular tiene un relevo HOY por alguien distinto al empleado?
-      -- Permite detectar faltando en puestos 24x24 incluso cuando estado_operativo_puesto='normal'.
+      -- Detecta faltando via AMBAS rutas: puesto_titulares (titular_po.id) Y puestos_operativos.agente_id.
       LEFT JOIN LATERAL (
         SELECT TRUE AS tiene_relevo
         FROM cobertura_segmentos cs_f
-        WHERE cs_f.puesto_id = titular_po.id
-          AND cs_f.fecha = CURRENT_DATE
+        WHERE cs_f.fecha = CURRENT_DATE
           AND cs_f.tipo_cobertura IN ('relevo','cobertura_supervisor','cobertura_jefe_servicio')
           AND cs_f.employee_id IS DISTINCT FROM e.id
+          AND (
+            -- Ruta puesto_titulares (puestos 24x24 ciclo)
+            cs_f.puesto_id = titular_po.id
+            -- Ruta legacy: puestos_operativos.agente_id
+            OR EXISTS (
+              SELECT 1 FROM puestos_operativos po_x
+              WHERE po_x.id = cs_f.puesto_id
+                AND po_x.agente_id = e.id
+                AND po_x.activo = TRUE
+            )
+          )
         LIMIT 1
       ) cs_faltando ON TRUE
       -- ¿Este empleado tiene una cobertura activa HOY en algún puesto?
@@ -616,16 +635,15 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
           COALESCE(e.elegible_pool, TRUE) = TRUE
           OR (
             -- Siempre incluir titulares faltando aunque no sean elegibles para pool
-            titular_po.id IS NOT NULL
-            AND (titular_po.agente_id IS NULL OR titular_po.agente_id != e.id)
+            (titular_po.id IS NOT NULL OR po.agente_id IS NOT NULL)
+            AND e.estado_laboral = 'activo'
             AND (
               COALESCE(titular_po.estado_operativo_puesto, 'normal') != 'normal'
               OR (
                 cs_faltando.tiene_relevo IS NOT NULL
-                AND COALESCE(slot_hoy.trabaja_hoy, FALSE) = TRUE
+                AND COALESCE(slot_hoy.trabaja_hoy, TRUE) = TRUE
               )
             )
-            AND e.estado_laboral = 'activo'
           )
           OR ssa.agente_id IS NOT NULL
           OR ssa_ag.employee_id IS NOT NULL
