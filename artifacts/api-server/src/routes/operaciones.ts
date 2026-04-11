@@ -2246,7 +2246,7 @@ operacionesRouter.get("/operaciones/cierre-hoy", async (req, res) => {
     if (puestosSinTramos > 0) advertencias.push(`${puestosSinTramos} puesto${puestosSinTramos !== 1 ? 's' : ''} cubierto${puestosSinTramos !== 1 ? 's' : ''} sin tramos de cobertura registrados`);
 
     // Días pasados sin cierre: todos los días desde el primer cierre registrado
-    // hasta ayer, sin importar si hubo actividad operativa o no.
+    // hasta ayer que NO están marcados como 'cerrado'.
     const { rows: pendientesRows } = await pool.query(`
       SELECT d::date::text AS fecha
       FROM generate_series(
@@ -2269,6 +2269,19 @@ operacionesRouter.get("/operaciones/cierre-hoy", async (req, res) => {
       fechaStr:  isoADDMMYYYY(r.fecha as string),
     }));
 
+    // Días pasados que SÍ están explícitamente cerrados (para que el frontend
+    // pueda distinguir "día cerrado → solo lectura" vs "día abierto/sin registro → editable").
+    const { rows: cerradosRows } = await pool.query(`
+      SELECT fecha::text AS fecha
+      FROM cierre_operativo_diario
+      WHERE estado = 'cerrado' AND fecha < $1::date
+      ORDER BY fecha
+    `, [todayGT()]);
+
+    const diasCerrados: string[] = cerradosRows.map((r: any) =>
+      (r.fecha as string).substring(0, 10)
+    );
+
     res.json({
       estado:         cierreActiva?.estado ?? 'abierto',
       cierre:         cierreActiva ?? null,
@@ -2287,6 +2300,7 @@ operacionesRouter.get("/operaciones/cierre-hoy", async (req, res) => {
       },
       advertencias,
       diasPendientesCierre,
+      diasCerrados,
     });
   } catch (err) {
     logger.error({ err }, "GET /operaciones/cierre-hoy error");

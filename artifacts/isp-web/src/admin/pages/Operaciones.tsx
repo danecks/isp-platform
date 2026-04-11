@@ -5902,14 +5902,20 @@ export default function Operaciones() {
   const primerDiaPendiente: DiaPendienteCierre | null = diasPendientesCierre[0] ?? null;
 
   // ── Lógica de cierre basada en fechaVista ──────────────────────────────────
-  // El día que se ve en pantalla es el que se cierra — no una "fecha activa" calculada
-  const fechaVistaEnPendiente = diasPendientesCierre.some(d => d.fecha === fechaVista);
+  // diasCerrados: lista explícita de días pasados con estado='cerrado' en BD.
+  // Un día pasado está cerrado SOLO si el backend lo reporta explícitamente como cerrado.
+  // Días sin registro o con estado='abierto' son editables (modo cuadre).
+  const diasCerrados: string[] = cierreHoy?.diasCerrados ?? [];
   // Hoy cerrado: esFechaFutura (API avanzó al siguiente) o cierreDeHoy existe
   const hoyCerrado = !!(cierreHoy?.esFechaFutura || cierreHoy?.cierreDeHoy?.estado === "cerrado");
   // Viendo hoy pero hay días pasados sin cerrar → bloqueado
   const bloqueadoPorPendientes = !esPasado && !esFuturo && hayDiasPendientes && !hoyCerrado;
   // ¿El día actual visto ya está cerrado?
-  const fechaVistaCerrada = esPasado ? !fechaVistaEnPendiente : (!esFuturo && hoyCerrado);
+  // Para días pasados: cerrado solo si está en diasCerrados (registro explícito con estado='cerrado')
+  // Para hoy: cerrado si el API dice que está cerrado
+  const fechaVistaCerrada = esPasado
+    ? diasCerrados.includes(fechaVista ?? "")
+    : (!esFuturo && hoyCerrado);
 
   // ── Invalidar y refrescar ─────────────────────────────────────────────────
   function invalidate() {
@@ -6445,8 +6451,7 @@ export default function Operaciones() {
       setModalReabrir(false);
       refetchCierre();
     } catch (e: any) {
-      toast({ title: "Error al reabrir", description: e.error ?? "Error desconocido", variant: "destructive" });
-      throw e;
+      toast({ title: "Error al reabrir", description: e.error ?? e.message ?? "Error desconocido", variant: "destructive" });
     }
   }
 
