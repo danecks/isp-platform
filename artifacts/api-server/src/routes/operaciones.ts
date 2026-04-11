@@ -621,7 +621,8 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
                po2.agente_id, po2.tipo_turno_id,
                COALESCE(pt2.fecha_inicio_ciclo, po2.fecha_inicio_ciclo) AS fecha_inicio_ciclo,
                po2.zona_operativa_id,
-               po2.hora_entrada
+               po2.hora_entrada,
+               po2.falta_employee_id
         FROM puesto_titulares pt2
         JOIN puestos_operativos po2 ON po2.id = pt2.puesto_id AND po2.activo = TRUE
         WHERE pt2.employee_id = e.id AND pt2.activo = TRUE
