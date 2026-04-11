@@ -1391,7 +1391,7 @@ operacionesRouter.post("/operaciones/registrar-falta", async (req, res) => {
 
     // Registrar evento de RRHH (falta)
     await pool.query(`
-      INSERT INTO eventos_rrhh (employee_id, tipo_evento, fecha, descripcion, created_by)
+      INSERT INTO eventos_rrhh (employee_id, tipo_evento, fecha, observaciones, usuario_generador)
       VALUES ($1, 'falta', $2::date, $3, $4)
       ON CONFLICT DO NOTHING
     `, [empleadoId, hoyGT, nota, usuario ?? 'sistema']);
