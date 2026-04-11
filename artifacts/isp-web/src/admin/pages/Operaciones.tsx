@@ -4256,7 +4256,7 @@ function ModalSustituyeTitular({
   const MOTIVOS_RAPIDOS = [
     { value: "falta_total",        label: "Falta total",                desc: "No se presentó sin justificación",               color: "text-red-300" },
     { value: "abandono_parcial",   label: "Abandono parcial",           desc: "Se retiró antes de terminar su turno",            color: "text-red-400" },
-    { value: "suspension_disc",    label: "Susp. disciplinaria",        desc: "Suspendido por medida disciplinaria",             color: "text-orange-300" },
+    { value: "suspension_disc",    label: "Susp. disciplinaria",        desc: "Se descuenta cada día suspendido",                color: "text-orange-300" },
     { value: "permiso_sin_goce",   label: "Permiso s/goce",             desc: "Requiere aprobación RRHH",                        color: "text-yellow-300" },
     { value: "incapacidad",        label: "Incapacidad IGSS",           desc: "Genera evento RRHH para seguimiento de suspensión oficial", color: "text-orange-300" },
     { value: "permiso_con_goce",   label: "Permiso c/goce",             desc: "Duelo, matrimonio, etc.",                         color: "text-emerald-300" },
@@ -4711,7 +4711,7 @@ const TIPOS_NOVEDAD: {
 }[] = [
   { value: "falta_total",        label: "Falta total",            desc: "No se presentó sin justificación. Descuento de 3 días (24h) o 2 días (12h).",                     grupo: "descuento",     genera_rrhh: true },
   { value: "abandono_parcial",   label: "Abandono parcial",       desc: "Se retiró antes de terminar su turno sin autorización. Descuento proporcional.",                  grupo: "descuento",     genera_rrhh: true, requiere_hora_abandono: true },
-  { value: "suspension_disc",    label: "Suspensión disciplinaria", desc: "Suspendido por medida disciplinaria. Se descuenta el período completo.",                        grupo: "descuento",     genera_rrhh: true },
+  { value: "suspension_disc",    label: "Suspensión disciplinaria", desc: "Suspendido por medida disciplinaria. Se descuenta cada día suspendido.",                        grupo: "descuento",     genera_rrhh: true },
   { value: "permiso_sin_goce",   label: "Permiso s/goce",         desc: "Permiso solicitado sin pago. Requiere aprobación de RRHH; si se rechaza, se convierte en falta.", grupo: "descuento",     genera_rrhh: true, requiere_aprobacion_rrhh: true },
   { value: "incapacidad",        label: "Incapacidad IGSS",       desc: "Suspensión médica del IGSS. Genera evento en RRHH para seguimiento y obtención de suspensión oficial.", grupo: "sin_descuento", genera_rrhh: true },
   { value: "permiso_con_goce",   label: "Permiso c/goce",         desc: "Permiso autorizado con goce de sueldo (duelo, matrimonio, etc.).",                                grupo: "sin_descuento" },
