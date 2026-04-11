@@ -72,6 +72,7 @@ The project uses a pnpm workspace monorepo, organizing deployable applications (
     - **Plantilla de Turnos (TURNOS-01):** Weekly shift schedule grid per puesto.
     - **Rondas de Patrullaje + NFC Piloto:** GPS patrol route tracking with NFC checkpoint verification.
     - **Rondas QR (QR-RONDAS-01):** QR code-based patrol round system with GPS verification.
+    - **ISR Quincenal (ISR-01):** ISR calculated on projected annual salary (sueldo_base × 12), minus IGSS anual (4.83%), minus Q48,000 personal deduction. Progressive: 5% ≤ Q300K, 7% above. Divided by 24 = fixed quincenal retention. ISR is a fixed amount per quincena (does NOT vary with faltas/HE of specific period). **PENDIENTE LUNES:** Verificar con el usuario si IGSS debe restarse como deducción para ISR, o si ISR va directo sobre bruto sin descontar IGSS. Con Q4,002.28: con IGSS deducido → ISR=Q0; sin IGSS → ISR=Q0.06/quincena.
     - **Fichaje QR de Agentes + Dispositivos Autenticados (FICHAJE-QR-01 + SUPERVISOR-DEV-01):** QR credential system for guard attendance and supervisor inspection, trust based on pre-registered devices.
 
 ## External Dependencies
