@@ -170,9 +170,10 @@ const QUERY_CONSOLIDADO = `
     pr.aprobado_por                                                             AS revision_aprobado_por,
     pr.aprobado_at                                                              AS revision_aprobado_at,
 
-    -- Cierre del período
+    -- Cierre del período (solo cierres activos, no anulados por reversión de planilla)
     (SELECT ppc.id FROM pre_planilla_cierres ppc
      WHERE ppc.periodo_desde = $1::date AND ppc.periodo_hasta = $2::date
+       AND ppc.anulado = FALSE
      LIMIT 1)                                                                   AS cierre_id,
 
     -- Incentivos cash del período (NO van a planilla — solo referencia)
