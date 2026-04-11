@@ -1437,7 +1437,8 @@ operacionesRouter.post("/operaciones/registrar-falta", async (req, res) => {
 //   y puestos_operativos.agente_id NO se modifica (el tablero lo calcula del ciclo+cobertura).
 operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
   const { puestoId, agenteEntranteId, motivo, usuario, notas, forzar, tipoSustitucion,
-          tipoNovedad, coberturaTipo, fechaOperacion } = req.body;
+          tipoNovedad, coberturaTipo, fechaOperacion,
+          horaInicioParcial, horaFinParcial } = req.body;
   if (!puestoId || !agenteEntranteId) return res.status(400).json({ error: "puestoId y agenteEntranteId son requeridos" });
 
   // tipoSustitucion: 'relevo' = solo cambia agente_id (titular no cambia)
@@ -1621,11 +1622,21 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
 
     // A-04: Auto-crear segmento de cobertura (para fechaCobertura: hoy o fecha retroactiva)
     try {
-      const hoy = fechaCobertura;  // usa fechaCobertura (puede ser pasado si es retroactivo)
+      const hoy = fechaCobertura;
       const turno = (puesto.turno ?? "día").toLowerCase();
-      const horaInicio = turno === "noche" ? "20:00" : "08:00";
-      const horaFin    = turno === "noche" ? "06:00" : "18:00";
-      const horasCalc  = 10;
+      const horaInicioDefault = turno === "noche" ? "20:00" : "08:00";
+      const horaFinDefault    = turno === "noche" ? "06:00" : "18:00";
+      const usaParcial = coberturaTipo === "parcial" && horaInicioParcial && horaFinParcial;
+      const horaInicio = usaParcial ? horaInicioParcial : horaInicioDefault;
+      const horaFin    = usaParcial ? horaFinParcial    : horaFinDefault;
+      const calcHorasCobertura = (hi: string, hf: string) => {
+        const [h1,m1] = hi.split(":").map(Number);
+        const [h2,m2] = hf.split(":").map(Number);
+        let diff = (h2*60+m2) - (h1*60+m1);
+        if (diff <= 0) diff += 1440;
+        return Math.round((diff / 60) * 100) / 100;
+      };
+      const horasCalc = usaParcial ? calcHorasCobertura(horaInicio, horaFin) : 10;
       // Marcar cobertura especial cuando el entrante es supervisor o jefe de servicio
       const tipoPersonalEntrante = entrante.tipo_personal ?? 'guardia';
       const tipoSeg = tipoPersonalEntrante === 'supervisor'

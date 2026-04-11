@@ -4699,31 +4699,27 @@ function ModalEligeCobertura({
 // ─── Modal: Confirmar Sustitución / Asignación ────────────────────────────────
 
 // ─── Catálogo de tipos de novedad ─────────────────────────────────────────────
-const TIPOS_NOVEDAD: {
+const MOTIVOS_SALIDA: {
   value: string;
   label: string;
   desc: string;
-  grupo: "descuento" | "sin_descuento" | "cobertura" | "especial";
+  grupo: "descuento" | "sin_descuento";
   genera_rrhh?: boolean;
   requiere_hora_abandono?: boolean;
   requiere_aprobacion_rrhh?: boolean;
-  requiere_horas_parcial?: boolean;
 }[] = [
   { value: "falta_total",        label: "Falta total",            desc: "No se presentó sin justificación. Descuento de 3 días (24h) o 2 días (12h).",                     grupo: "descuento",     genera_rrhh: true },
   { value: "abandono_parcial",   label: "Abandono parcial",       desc: "Se retiró antes de terminar su turno sin autorización. Descuento proporcional.",                  grupo: "descuento",     genera_rrhh: true, requiere_hora_abandono: true },
   { value: "permiso_sin_goce",   label: "Permiso s/goce",         desc: "Permiso solicitado sin pago. Requiere aprobación de RRHH; si se rechaza, se convierte en falta.", grupo: "descuento",     genera_rrhh: true, requiere_aprobacion_rrhh: true },
-  { value: "incapacidad",        label: "Incapacidad IGSS",       desc: "Suspensión médica del IGSS. Genera evento en RRHH para seguimiento y obtención de suspensión oficial.", grupo: "sin_descuento", genera_rrhh: true },
+  { value: "incapacidad",        label: "Incapacidad IGSS",       desc: "Suspensión médica del IGSS. Genera evento en RRHH para seguimiento.",                             grupo: "sin_descuento", genera_rrhh: true },
   { value: "permiso_con_goce",   label: "Permiso c/goce",         desc: "Permiso autorizado con goce de sueldo (duelo, matrimonio, etc.).",                                grupo: "sin_descuento" },
-  { value: "relevo_completo",    label: "Relevo completo",        desc: "Cobertura programada del turno completo. No implica falta del titular.",                           grupo: "cobertura" },
-  { value: "relevo_parcial",     label: "Relevo parcial",         desc: "Cobertura de solo una parte del turno. Requiere hora de inicio y fin.",                             grupo: "cobertura", requiere_horas_parcial: true },
-  { value: "horas_extra_puras",  label: "Horas extra",            desc: "El agente entrante cubre como horas extra en su día de descanso.",                                 grupo: "especial" },
 ];
+
+const TIPOS_NOVEDAD = MOTIVOS_SALIDA;
 
 const GRUPO_COLORS: Record<string, string> = {
   descuento:     "text-red-300 bg-red-500/10 border-red-500/25 data-[active]:bg-red-500/25 data-[active]:border-red-500/60",
   sin_descuento: "text-emerald-300 bg-emerald-500/10 border-emerald-500/25 data-[active]:bg-emerald-500/25 data-[active]:border-emerald-500/60",
-  cobertura:     "text-amber-300 bg-amber-500/10 border-amber-500/25 data-[active]:bg-amber-500/25 data-[active]:border-amber-500/60",
-  especial:      "text-purple-300 bg-purple-500/10 border-purple-500/25 data-[active]:bg-purple-500/25 data-[active]:border-purple-500/60",
 };
 
 function ModalSustitucion({
@@ -4735,12 +4731,12 @@ function ModalSustitucion({
 }: {
   puesto: Puesto;
   agenteEntrante: Agente;
-  onConfirm: (motivo: string, notas: string, forzar: boolean, tipoSustitucion: string, tipoNovedad: string, coberturaTipo: string) => Promise<void>;
+  onConfirm: (motivo: string, notas: string, forzar: boolean, tipoSustitucion: string, tipoNovedad: string, coberturaTipo: string, horasParcial?: { inicio: string; fin: string }) => Promise<void>;
   onCancel: () => void;
   advertencia?: string;
 }) {
-  const [tipoNovedad, setTipoNovedad] = useState("falta_total");
-  const [coberturaTipo, setCoberturaTipo] = useState<"completo" | "parcial">("completo");
+  const [motivoSalida, setMotivoSalida] = useState("falta_total");
+  const [tipoCobertura, setTipoCobertura] = useState<"completo" | "parcial">("completo");
   const [notas, setNotas] = useState("");
   const [loading, setLoading] = useState(false);
   const [tipoSustitucion, setTipoSustitucion] = useState<"relevo" | "reasignacion">("relevo");
@@ -4750,42 +4746,56 @@ function ModalSustitucion({
   const [tarifaHE, setTarifaHE] = useState<{ tarifa: number; horas_turno: number } | null>(null);
   const esSustitucion = !!puesto.agente_id;
 
+  const tipoNovedad = motivoSalida;
+
+  const jornadaReal = (() => {
+    if (puesto.jornada === "24h") return "24h";
+    if (puesto.jornada === "12h") return "12h";
+    if (puesto.hora_entrada && puesto.hora_salida) {
+      const parseMin = (hm: string) => { const [h, m] = hm.split(":").map(Number); return h * 60 + (m || 0); };
+      let d = parseMin(puesto.hora_salida) - parseMin(puesto.hora_entrada);
+      if (d <= 0) d += 1440;
+      return d >= 20 * 60 ? "24h" : "12h";
+    }
+    return "12h";
+  })();
+
   useEffect(() => {
     fetch(`${API_BASE}/nomina/tarifas-he`).then(r => r.json()).then((rows: any[]) => {
-      const jornadaClave = puesto.jornada === "24h" ? "24h" : "12h";
-      const found = rows.find((r: any) => r.jornada === jornadaClave) ?? rows[0];
+      const found = rows.find((r: any) => r.jornada === jornadaReal) ?? rows[0];
       if (found) setTarifaHE({ tarifa: parseFloat(found.tarifa), horas_turno: parseInt(found.horas_turno) });
     }).catch(() => {});
-  }, [puesto.jornada]);
+  }, [jornadaReal]);
 
-  const tipoSeleccionado = TIPOS_NOVEDAD.find((t) => t.value === tipoNovedad);
-  const generaRrhh = esSustitucion && !!tipoSeleccionado?.genera_rrhh;
+  const motivoSeleccionado = MOTIVOS_SALIDA.find((t) => t.value === motivoSalida);
+  const generaRrhh = esSustitucion && !!motivoSeleccionado?.genera_rrhh;
 
   const parseMin = (hm: string) => { const [h, m] = hm.split(":").map(Number); return h * 60 + (m || 0); };
   const turnoMin = puesto.hora_entrada && puesto.hora_salida
     ? (() => { let d = parseMin(puesto.hora_salida!) - parseMin(puesto.hora_entrada!); if (d <= 0) d += 1440; return d; })()
-    : (puesto.jornada === "24h" ? 1440 : puesto.jornada === "12h" ? 720 : 1440);
+    : (jornadaReal === "24h" ? 1440 : 720);
   const parcialMin = horaInicioParcial && horaFinParcial
     ? (() => { let d = parseMin(horaFinParcial) - parseMin(horaInicioParcial); if (d <= 0) d += 1440; return d; })()
     : 0;
-  const parcialExcede = parcialMin > turnoMin;
-  const parcialIncompleto = tipoSeleccionado?.requiere_horas_parcial && (!horaInicioParcial || !horaFinParcial);
+  const parcialExcede = tipoCobertura === "parcial" && parcialMin > turnoMin;
+  const parcialIncompleto = tipoCobertura === "parcial" && (!horaInicioParcial || !horaFinParcial);
 
   const costoPorHora = tarifaHE ? tarifaHE.tarifa / tarifaHE.horas_turno : null;
   const costoTurnoCompleto = tarifaHE?.tarifa ?? null;
   const costoParcial = costoPorHora && parcialMin > 0 ? costoPorHora * (parcialMin / 60) : null;
-  const costoHE = tipoNovedad === "relevo_parcial" && costoParcial != null ? costoParcial
-    : (tipoNovedad === "horas_extra_puras" || tipoNovedad === "relevo_completo") ? costoTurnoCompleto
-    : null;
+  const costoHE = tipoCobertura === "parcial" && costoParcial != null ? costoParcial : costoTurnoCompleto;
 
   async function handleConfirm() {
     if (parcialExcede || parcialIncompleto) return;
     setLoading(true);
     try {
-      const notasFinal = tipoSeleccionado?.requiere_horas_parcial && horaInicioParcial && horaFinParcial
+      const notasFinal = tipoCobertura === "parcial" && horaInicioParcial && horaFinParcial
         ? `${notas ? notas + " | " : ""}Cobertura parcial: ${horaInicioParcial} a ${horaFinParcial}`
         : notas;
-      await onConfirm(tipoNovedad, notasFinal, !!advertencia, tipoSustitucion, tipoNovedad, coberturaTipo);
+      const horasParcialData = tipoCobertura === "parcial" && horaInicioParcial && horaFinParcial
+        ? { inicio: horaInicioParcial, fin: horaFinParcial }
+        : undefined;
+      await onConfirm(motivoSalida, notasFinal, !!advertencia, tipoSustitucion, motivoSalida, tipoCobertura, horasParcialData);
     } finally {
       setLoading(false);
     }
@@ -4815,15 +4825,18 @@ function ModalSustitucion({
             </div>
           )}
 
-          {/* Aviso de generación RRHH */}
-          {generaRrhh && (
+          {/* Aviso de generación de eventos RRHH */}
+          {esSustitucion && (
             <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-3 flex items-start gap-2">
               <FileText className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
               <div>
-                <p className="text-xs font-semibold text-purple-300 mb-0.5">Se generará un evento RRHH</p>
+                <p className="text-xs font-semibold text-purple-300 mb-0.5">
+                  {tipoSustitucion === "relevo" ? "Se generarán 2 eventos RRHH" : "Se generará 1 evento RRHH"}
+                </p>
                 <p className="text-[11px] text-purple-300/70">
-                  Esta acción creará automáticamente una boleta de descuento y un acta administrativa
-                  disponibles en el módulo de Eventos RRHH.
+                  {tipoSustitucion === "relevo"
+                    ? `1) Titular: ${motivoSeleccionado?.label ?? "—"}. 2) Cubriente: horas extra.`
+                    : `Titular: ${motivoSeleccionado?.label ?? "—"}.`}
                 </p>
               </div>
             </div>
@@ -4896,33 +4909,27 @@ function ModalSustitucion({
             </div>
           )}
 
-          {/* Tipo de novedad — selector estructurado */}
+          {/* ── SECCIÓN A: ¿Por qué sale el titular? ──────────────── */}
           {esSustitucion && (
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs text-white/40">Tipo de movimiento</label>
-                <div className="flex items-center gap-1">
-                  {tipoSeleccionado && (
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold ${
-                      tipoSeleccionado.grupo === "descuento"     ? "text-red-300 bg-red-500/10 border-red-500/30" :
-                      tipoSeleccionado.grupo === "sin_descuento" ? "text-emerald-300 bg-emerald-500/10 border-emerald-500/30" :
-                      tipoSeleccionado.grupo === "cobertura"     ? "text-amber-300 bg-amber-500/10 border-amber-500/30" :
-                      "text-purple-300 bg-purple-500/10 border-purple-500/30"
-                    }`}>
-                      {tipoSeleccionado.grupo === "descuento" ? "Con descuento" :
-                       tipoSeleccionado.grupo === "sin_descuento" ? "Sin descuento" :
-                       tipoSeleccionado.grupo === "cobertura" ? "Cobertura" : "Especial"}
-                    </span>
-                  )}
-                </div>
+              <div className="flex items-center gap-2">
+                <UserMinus className="w-3.5 h-3.5 text-red-400/60" />
+                <label className="text-xs font-semibold text-white/60">¿Por qué sale {puesto.agente_nombre?.split(" ")[0] ?? "el titular"}?</label>
+                {motivoSeleccionado && (
+                  <span className={`ml-auto text-[9px] px-1.5 py-0.5 rounded border font-semibold ${
+                    motivoSeleccionado.grupo === "descuento"
+                      ? "text-red-300 bg-red-500/10 border-red-500/30"
+                      : "text-emerald-300 bg-emerald-500/10 border-emerald-500/30"
+                  }`}>
+                    {motivoSeleccionado.grupo === "descuento" ? "Con descuento" : "Sin descuento"}
+                  </span>
+                )}
               </div>
 
-              {(["descuento","sin_descuento","cobertura","especial"] as const).map((grupo) => {
-                const items = TIPOS_NOVEDAD.filter((t) => t.grupo === grupo);
+              {(["descuento","sin_descuento"] as const).map((grupo) => {
+                const items = MOTIVOS_SALIDA.filter((t) => t.grupo === grupo);
                 if (items.length === 0) return null;
-                const grupoLabel = grupo === "descuento" ? "Con descuento salarial" :
-                                   grupo === "sin_descuento" ? "Sin descuento" :
-                                   grupo === "cobertura" ? "Cobertura / Relevo" : "Especial";
+                const grupoLabel = grupo === "descuento" ? "Con descuento salarial" : "Sin descuento";
                 return (
                   <div key={grupo}>
                     <p className="text-[9px] text-white/25 uppercase tracking-wide mb-1">{grupoLabel}</p>
@@ -4931,15 +4938,15 @@ function ModalSustitucion({
                         <div key={t.value} className="relative group/tip">
                           <button
                             type="button"
-                            data-active={tipoNovedad === t.value ? "" : undefined}
-                            onClick={() => setTipoNovedad(t.value)}
+                            data-active={motivoSalida === t.value ? "" : undefined}
+                            onClick={() => setMotivoSalida(t.value)}
                             className={`px-2 py-1 rounded-md border text-[10px] font-semibold transition-all ${GRUPO_COLORS[grupo]} ${
-                              tipoNovedad === t.value ? "opacity-100 scale-[1.03]" : "opacity-60 hover:opacity-90"
+                              motivoSalida === t.value ? "opacity-100 scale-[1.03]" : "opacity-60 hover:opacity-90"
                             }`}
                           >
                             {t.label}
                           </button>
-                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-1.5 bg-[#0d1117] border border-white/20 rounded-lg text-[10px] text-white/80 leading-snug whitespace-nowrap opacity-0 pointer-events-none group-hover/tip:opacity-100 transition-opacity duration-150 z-50 shadow-xl">
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-1.5 bg-[#0d1117] border border-white/20 rounded-lg text-[10px] text-white/80 leading-snug whitespace-nowrap opacity-0 pointer-events-none group-hover/tip:opacity-100 transition-opacity duration-150 z-50 shadow-xl max-w-[250px] whitespace-normal">
                             {t.desc}
                             <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/20" />
                           </div>
@@ -4950,16 +4957,16 @@ function ModalSustitucion({
                 );
               })}
 
-              {tipoSeleccionado && (
+              {motivoSeleccionado && (
                 <div className="bg-white/5 border border-white/8 rounded-lg px-3 py-2">
-                  <p className="text-[10px] text-white/50 leading-relaxed">{tipoSeleccionado.desc}</p>
-                  {tipoSeleccionado.requiere_aprobacion_rrhh && (
+                  <p className="text-[10px] text-white/50 leading-relaxed">{motivoSeleccionado.desc}</p>
+                  {motivoSeleccionado.requiere_aprobacion_rrhh && (
                     <p className="text-[10px] text-amber-400/80 mt-1 font-medium">Requiere aprobación de RRHH</p>
                   )}
                 </div>
               )}
 
-              {tipoSeleccionado?.requiere_hora_abandono && (
+              {motivoSeleccionado?.requiere_hora_abandono && (
                 <div>
                   <label className="text-[10px] text-white/40 mb-1 block">Hora de abandono</label>
                   <input
@@ -4970,8 +4977,43 @@ function ModalSustitucion({
                   />
                 </div>
               )}
+            </div>
+          )}
 
-              {tipoSeleccionado?.requiere_horas_parcial && (
+          {/* ── SECCIÓN B: ¿Cómo cubre el entrante? ──────────────── */}
+          {esSustitucion && (
+            <div className="space-y-2 border-t border-white/8 pt-3">
+              <div className="flex items-center gap-2">
+                <UserPlus className="w-3.5 h-3.5 text-green-400/60" />
+                <label className="text-xs font-semibold text-white/60">¿Cómo cubre {agenteEntrante.nombre_completo.split(" ")[0]}?</label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setTipoCobertura("completo")}
+                  className={`py-2 px-3 rounded-lg border text-[11px] font-semibold transition-all ${
+                    tipoCobertura === "completo"
+                      ? "bg-amber-500/15 border-amber-500/40 text-amber-300"
+                      : "border-white/10 text-white/35 hover:text-white/60"
+                  }`}
+                >
+                  Relevo completo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTipoCobertura("parcial")}
+                  className={`py-2 px-3 rounded-lg border text-[11px] font-semibold transition-all ${
+                    tipoCobertura === "parcial"
+                      ? "bg-amber-500/15 border-amber-500/40 text-amber-300"
+                      : "border-white/10 text-white/35 hover:text-white/60"
+                  }`}
+                >
+                  Relevo parcial
+                </button>
+              </div>
+
+              {tipoCobertura === "parcial" && (
                 <div>
                   <label className="text-[10px] text-white/40 mb-1 block">
                     Horario de cobertura
@@ -5018,26 +5060,6 @@ function ModalSustitucion({
                   )}
                 </div>
               )}
-
-              {["abandono_parcial","permiso_con_goce","permiso_sin_goce"].includes(tipoNovedad) && (
-                <div className="flex items-center gap-2 pt-1">
-                  <span className="text-[10px] text-white/35">Alcance:</span>
-                  {(["completo","parcial"] as const).map((a) => (
-                    <button
-                      key={a}
-                      type="button"
-                      onClick={() => setCoberturaTipo(a)}
-                      className={`px-2 py-0.5 rounded border text-[10px] font-semibold transition-all ${
-                        coberturaTipo === a
-                          ? "bg-blue-500/20 border-blue-500/50 text-blue-300"
-                          : "border-white/10 text-white/30 hover:text-white/50"
-                      }`}
-                    >
-                      {a === "completo" ? "Turno completo" : "Turno parcial"}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
           )}
 
@@ -5045,9 +5067,10 @@ function ModalSustitucion({
             <div className="bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] text-amber-300/60">Costo estimado de cobertura</p>
+                  <p className="text-[10px] text-amber-300/60">Costo HE del cubriente</p>
                   <p className="text-[9px] text-white/25">
-                    Tarifa: Q{costoPorHora?.toFixed(2)}/hora ({puesto.jornada ?? "12h"})
+                    Tarifa: Q{costoPorHora?.toFixed(2)}/hora ({jornadaReal})
+                    {tipoCobertura === "parcial" && parcialMin > 0 && ` · ${Math.floor(parcialMin / 60)}h${parcialMin % 60 > 0 ? `${parcialMin % 60}m` : ""}`}
                   </p>
                 </div>
                 <span className="text-lg font-bold text-amber-400">Q{costoHE.toFixed(2)}</span>
@@ -6525,7 +6548,7 @@ export default function Operaciones() {
   }
 
   // ── Confirmar sustitución / asignación ───────────────────────────────────
-  async function confirmarSustitucion(motivo: string, notas: string, forzar: boolean, tipoSustitucion: string = "relevo", tipoNovedad?: string, coberturaTipo?: string) {
+  async function confirmarSustitucion(motivo: string, notas: string, forzar: boolean, tipoSustitucion: string = "relevo", tipoNovedad?: string, coberturaTipo?: string, horasParcial?: { inicio: string; fin: string }) {
     if (!modalSustitucion) return;
     const { puesto, agente } = modalSustitucion;
 
@@ -6540,9 +6563,8 @@ export default function Operaciones() {
           tipoSustitucion,
           tipoNovedad: tipoNovedad ?? null,
           coberturaTipo: coberturaTipo ?? "completo",
+          ...(horasParcial ? { horaInicioParcial: horasParcial.inicio, horaFinParcial: horasParcial.fin } : {}),
           usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
-          // Si estamos viendo un día pasado (modo cuadre retroactivo), pasar esa fecha
-          // para que el endpoint registre la cobertura en ese día y NO modifique agente_id actual.
           ...(esPasado && fechaVista ? { fechaOperacion: fechaVista } : {}),
         });
         if (resp?.impactoSalarial?.detectado) {
