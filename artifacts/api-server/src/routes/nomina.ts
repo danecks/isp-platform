@@ -201,6 +201,12 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
         puestoCubierto = pc[0]?.nombre ?? null;
       }
 
+      const esRelevo = s.puesto_cubierto_id != null
+        && (s.puesto_titular_id == null || String(s.puesto_cubierto_id) !== String(s.puesto_titular_id));
+      const horasTrab = parseFloat(s.horas_trabajadas ?? 0);
+      const horasExSeg = parseFloat(s.horas_extra ?? 0);
+      const horasExFinal = esRelevo && horasExSeg === 0 ? horasTrab : horasExSeg;
+
       await pool.query(`
         INSERT INTO novedades_nomina_diarias
           (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
@@ -225,8 +231,8 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
           updated_at            = NOW()
       `, [
         fecha, empId, nombreFinal,
-        parseFloat(s.horas_trabajadas ?? 0).toFixed(2),
-        parseFloat(s.horas_extra ?? 0).toFixed(2),
+        horasTrab.toFixed(2),
+        horasExFinal.toFixed(2),
         s.descanso_trabajado ?? false,
         s.puesto_titular_id ?? null, s.puesto_titular_nombre ?? null,
         s.puesto_cubierto_id ?? null, puestoCubierto,
@@ -283,9 +289,12 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
         if (empIdsConSegmento.has(empId)) continue;
 
         const nombreFinal = cd.empleado_nombre ?? "Desconocido";
-        const horasTrab   = parseFloat(cd.horas_trabajadas ?? 0).toFixed(2);
-        const horasExtra  = parseFloat(cd.horas_extra ?? 0).toFixed(2);
-        const esRelevo    = cd.tipo_cobertura === "relevo";
+        const horasTrabNum = parseFloat(cd.horas_trabajadas ?? 0);
+        const horasExNum   = parseFloat(cd.horas_extra ?? 0);
+        const esRelevo     = cd.tipo_cobertura === "relevo";
+        const horasExFinal = esRelevo && horasExNum === 0 ? horasTrabNum : horasExNum;
+        const horasTrab    = horasTrabNum.toFixed(2);
+        const horasExtra   = horasExFinal.toFixed(2);
         const tipoNov     = esRelevo ? "relevo" : null;
 
         // GUARD RRHH: si el empleado tiene ausencia RRHH ese día, no marcar como trabajó

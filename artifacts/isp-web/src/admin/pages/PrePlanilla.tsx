@@ -539,7 +539,7 @@ function DetalleModal({
                 <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Métricas del período</p>
                 <div className="grid grid-cols-3 gap-2 mb-2">
                   {[
-                    { label: "Días trab.", val: Number(col.dias_trabajados), cls: "text-green-400" },
+                    { label: "Días pagados", val: Math.max(Number(col.dias_cerrados) - Number(col.total_dias_descuento ?? 0), 0), cls: Number(col.total_dias_descuento ?? 0) > 0 ? "text-amber-400" : "text-green-400" },
                     { label: "Faltas", val: Number(col.faltas), cls: Number(col.faltas) > 0 ? "text-red-400" : "text-white/30",
                       extra: Number(col.faltas_pendientes_rrhh) > 0 ? `+${col.faltas_pendientes_rrhh} pend.` : undefined },
                     { label: "Suspensiones", val: Number(col.suspensiones), cls: Number(col.suspensiones) > 0 ? "text-amber-400" : "text-white/30" },
@@ -1957,13 +1957,20 @@ export default function PrePlanilla() {
                                 </td>
                                 {/* Sueldo */}
                                 <td className="px-3 py-2.5 text-white/60 text-right">{fmtQ(r.sueldo_base)}</td>
-                                {/* Días trabajados */}
+                                {/* Días pagados (cerrados - descuento) */}
                                 <td className="px-3 py-2.5 text-center">
-                                  <span className="text-green-400 font-semibold">{Number(r.dias_trabajados)}</span>
-                                  <span className="text-white/25 ml-1">/{Number(r.dias_cerrados)}d</span>
-                                  {periodoTotalDias != null && Number(r.dias_cerrados) < periodoTotalDias && (
-                                    <p className="text-[9px] text-white/20">de {periodoTotalDias}d</p>
-                                  )}
+                                  {(() => {
+                                    const cerr = Number(r.dias_cerrados);
+                                    const desc = Number(r.total_dias_descuento ?? 0);
+                                    const pagados = Math.max(cerr - desc, 0);
+                                    return <>
+                                      <span className={desc > 0 ? "text-amber-400 font-semibold" : "text-green-400 font-semibold"}>{pagados}</span>
+                                      <span className="text-white/25 ml-1">/{cerr}d</span>
+                                      {periodoTotalDias != null && cerr < periodoTotalDias && (
+                                        <p className="text-[9px] text-white/20">de {periodoTotalDias}d</p>
+                                      )}
+                                    </>;
+                                  })()}
                                 </td>
                                 {/* Faltas */}
                                 <td className="px-3 py-2.5 text-center">

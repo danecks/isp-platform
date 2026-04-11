@@ -950,6 +950,10 @@ prePlanillaRouter.get("/nomina/pre-planilla/anexo/faltas", async (req, res) => {
       JOIN employees e ON e.id = n.employee_id
       WHERE n.fecha BETWEEN $1 AND $2
         AND (n.falta = TRUE OR n.suspension = TRUE)
+        AND NOT EXISTS (
+          SELECT 1 FROM prestaciones_liquidaciones pl
+          WHERE pl.employee_id = e.id AND pl.estado = 'confirmada'
+        )
       ORDER BY n.fecha ASC, e.nombre_completo
     `, [desde, hasta]);
     res.json(rows);
