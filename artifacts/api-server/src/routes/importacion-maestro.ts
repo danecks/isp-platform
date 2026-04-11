@@ -642,9 +642,17 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
   const rArmas = emptyResult("Armería");
   rArmas.total = armaRows.length;
   const TIPOS_ARMA = ["pistola", "revolver", "escopeta", "fusil", "subametralladora", "otro"];
+  // Pre-cargar tenencias existentes para detectar duplicados entre cargas
+  const tenenciaToArmaId: Record<string, number> = {};
+  if (!preview) {
+    const { rows: tRows } = await pool.query(
+      `SELECT id, numero_tenencia FROM armas WHERE numero_tenencia IS NOT NULL`
+    ).catch(() => ({ rows: [] }));
+    for (const r of tRows) tenenciaToArmaId[r.numero_tenencia] = r.id;
+  }
   let autoArmaIdx = 0;
   if (!preview) {
-    const { rows: cnt } = await pool.query(`SELECT COUNT(*)::int AS n FROM armas`).catch(() => [{ n: 0 }]);
+    const { rows: cnt } = await pool.query(`SELECT COUNT(*)::int AS n FROM armas`).catch(() => ({ rows: [{ n: 0 }] }));
     autoArmaIdx = (cnt as any)?.[0]?.n ?? 0;
   }
 
@@ -654,41 +662,68 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
     const rawTipo = trim(row["tipo"]).toLowerCase();
     const tipo = TIPOS_ARMA.includes(rawTipo) ? rawTipo : "pistola";
     let codigo = trim(row["codigo"]).toUpperCase();
-    if (!codigo) {
-      autoArmaIdx++;
-      codigo = `${tipo.slice(0, 4).toUpperCase()}-${String(autoArmaIdx).padStart(3, "0")}`;
-    }
+    const numTenencia = trim(row["numero_tenencia"]) || null;
+    const numPortacion = trim(row["numero_portacion"]) || null;
+    const marca = trim(row["marca"]) || null;
+    const modelo = trim(row["modelo"]) || null;
+    const calibre = trim(row["calibre"]) || null;
+    const serie = trim(row["serie"]) || null;
+    const estadoArma = trim(row["estado"]) || "activo";
+    const fecVencTen = parseDate(row["fecha_vencimiento_tenencia"]);
+    const fecVencPort = parseDate(row["fecha_vencimiento_portacion"]);
+    const observaciones = trim(row["observaciones"]) || null;
+
     if (preview) {
       rArmas.detalle.push({ fila, estado: "ok" });
       rArmas.exitosos++; continue;
     }
     try {
-      const { rows: ins } = await pool.query(
-        `INSERT INTO armas
-           (codigo, tipo, marca, modelo, calibre, serie, estado, activo,
-            numero_tenencia, fecha_vencimiento_tenencia,
-            numero_portacion, fecha_vencimiento_portacion, observaciones)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE,$8,$9,$10,$11,$12)
-         ON CONFLICT (codigo) DO NOTHING RETURNING id`,
-        [
-          codigo, tipo,
-          trim(row["marca"]) || null,
-          trim(row["modelo"]) || null,
-          trim(row["calibre"]) || null,
-          trim(row["serie"]) || null,
-          trim(row["estado"]) || "activo",
-          trim(row["numero_tenencia"]) || null,
-          parseDate(row["fecha_vencimiento_tenencia"]),
-          trim(row["numero_portacion"]) || null,
-          parseDate(row["fecha_vencimiento_portacion"]),
-          trim(row["observaciones"]) || null,
-        ]
-      );
-      if (!ins.length) {
-        rArmas.detalle.push({ fila, estado: "omitido", mensaje: `Código "${codigo}" ya existe` });
-        rArmas.omitidos++; continue;
+      let armaId: number;
+
+      // ── Si la tenencia ya existe → actualizar en lugar de duplicar ───────────
+      if (numTenencia && tenenciaToArmaId[numTenencia]) {
+        armaId = tenenciaToArmaId[numTenencia];
+        await pool.query(
+          `UPDATE armas SET
+             tipo = $2, marca = $3, modelo = $4, calibre = $5, serie = $6,
+             estado = $7,
+             numero_tenencia = $8, fecha_vencimiento_tenencia = $9,
+             numero_portacion = $10, fecha_vencimiento_portacion = $11,
+             observaciones = $12
+           WHERE id = $1`,
+          [armaId, tipo, marca, modelo, calibre, serie, estadoArma,
+           numTenencia, fecVencTen, numPortacion, fecVencPort, observaciones]
+        );
+        rArmas.detalle.push({ fila, estado: "actualizado", mensaje: `Tenencia "${numTenencia}" actualizada` });
+        rArmas.exitosos++;
+        // Continuar para reasignar puesto/custodio si cambiaron
+      } else {
+        // ── Nueva arma — generar código si no viene ──────────────────────────
+        if (!codigo) {
+          autoArmaIdx++;
+          codigo = `${tipo.slice(0, 4).toUpperCase()}-${String(autoArmaIdx).padStart(3, "0")}`;
+        }
+        const { rows: ins } = await pool.query(
+          `INSERT INTO armas
+             (codigo, tipo, marca, modelo, calibre, serie, estado, activo,
+              numero_tenencia, fecha_vencimiento_tenencia,
+              numero_portacion, fecha_vencimiento_portacion, observaciones)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE,$8,$9,$10,$11,$12)
+           ON CONFLICT (codigo) DO NOTHING RETURNING id`,
+          [codigo, tipo, marca, modelo, calibre, serie, estadoArma,
+           numTenencia, fecVencTen, numPortacion, fecVencPort, observaciones]
+        );
+        if (!ins.length) {
+          rArmas.detalle.push({ fila, estado: "omitido", mensaje: `Código "${codigo}" ya existe` });
+          rArmas.omitidos++; continue;
+        }
+        armaId = ins[0].id;
+        if (numTenencia) tenenciaToArmaId[numTenencia] = armaId;
+        rArmas.detalle.push({ fila, estado: "ok" });
+        rArmas.exitosos++;
       }
-      const armaId = ins[0].id;
+
+      // ── Custodio y puesto (aplica tanto a nuevas como actualizadas) ──────────
       // Asignar custodio si se indicó
       const custodioNombre = trim(row["custodio_nombre"]);
       const custodioDpi = trim(row["custodio_dpi"]);
@@ -710,8 +745,6 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
           await pool.query(`UPDATE armas SET puesto_id = $1 WHERE id = $2`, [pId, armaId]).catch(() => {});
         }
       }
-      rArmas.detalle.push({ fila, estado: "ok" });
-      rArmas.exitosos++;
     } catch (e: any) {
       rArmas.detalle.push({ fila, estado: "error", mensaje: e.message });
       rArmas.errores++;
