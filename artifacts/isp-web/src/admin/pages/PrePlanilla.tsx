@@ -292,13 +292,15 @@ function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: number | n
   const valorHE = valorHora * 1.5 * he;
   const anticipo = Number(col.anticipos_monto);
   const cuotaUniforme = Number(col.cuota_uniforme_monto ?? 0);
-  const total = sueldoPeriodo - descFaltas + valorHE - anticipo - cuotaUniforme;
+  const igssLaboral = col.aplica_igss ? Math.round((sueldoPeriodo - descFaltas) * 0.0483 * 100) / 100 : 0;
+  const total = sueldoPeriodo - descFaltas + valorHE - anticipo - cuotaUniforme - igssLaboral;
 
   const diasCerrados = Number(col.dias_cerrados ?? 0);
   const sueldoReal = sueldoDia * diasCerrados;
-  const totalReal = sueldoReal - descFaltas + valorHE - anticipo - cuotaUniforme;
+  const igssLaboralReal = col.aplica_igss ? Math.round((sueldoReal - descFaltas) * 0.0483 * 100) / 100 : 0;
+  const totalReal = sueldoReal - descFaltas + valorHE - anticipo - cuotaUniforme - igssLaboralReal;
 
-  return { sueldoPeriodo, descFaltas, valorHE, anticipo, cuotaUniforme, total, diasDesc, diasCerrados, sueldoReal, totalReal };
+  return { sueldoPeriodo, descFaltas, valorHE, anticipo, cuotaUniforme, igssLaboral, igssLaboralReal, total, diasDesc, diasCerrados, sueldoReal, totalReal };
 }
 
 // ─── Badge revisión ───────────────────────────────────────────────────────────
@@ -620,6 +622,18 @@ function DetalleModal({
                     <span className="text-white/70">{v}</span>
                   </div>
                 ))}
+                {col.aplica_igss && est && (
+                  <div className="border-t border-white/6 pt-2 mt-2 space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-white/40">Cuota laboral (4.83%)</span>
+                      <span className="text-emerald-400 font-semibold">{fmtQ(est.igssLaboral)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-white/40">Cuota patronal (12.67%)</span>
+                      <span className="text-blue-300/70 font-medium">{fmtQ(Math.round((est.sueldoPeriodo - est.descFaltas) * 0.1267 * 100) / 100)}</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Frecuencia de pago */}
@@ -1557,6 +1571,11 @@ export default function PrePlanilla() {
   const totalIncentivos = filtrados.reduce((s, r) => s + Number(r.incentivos_cash_monto), 0);
   const conAlertas = filtrados.filter((r) => Number(r.faltas) > 0 || Number(r.suspensiones) > 0 || Number(r.dias_sin_horas) > 0 || Number(r.faltas_pendientes_rrhh) > 0).length;
   const totalRelevos = filtrados.reduce((s, r) => s + Number(r.relevos), 0);
+  const totalIGSS = filtrados.reduce((s, r) => {
+    if (!r.aplica_igss) return s;
+    const e = calcularTotalEstimado(r, periodoTotalDias);
+    return s + (e?.igssLaboral ?? 0);
+  }, 0);
 
   // Badges de tab
   const badgeHE = rows.filter((r) => parseFloat(r.horas_extra || "0") > 0).length;
@@ -1690,7 +1709,7 @@ export default function PrePlanilla() {
         {loaded && !loading && (
           <>
             {/* ── KPI Cards ───────────────────────────────────────────────── */}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
               {[
                 { icon: Users,         label: "Colaboradores",  val: totalColabs,               cls: "text-white" },
                 { icon: AlertTriangle, label: "Faltas / Susp.", val: totalFaltas,               cls: totalFaltas > 0 ? "text-red-400" : "text-white/30" },
@@ -1698,6 +1717,7 @@ export default function PrePlanilla() {
                 { icon: Repeat2,       label: "Relevos",        val: totalRelevos,              cls: totalRelevos > 0 ? "text-purple-400" : "text-white/30" },
                 { icon: Wallet,        label: "Incentivos Cash",val: fmtQ(totalIncentivos),     cls: totalIncentivos > 0 ? "text-emerald-400" : "text-white/30" },
                 { icon: CreditCard,    label: "Total anticipos",val: fmtQ(totalAnt),            cls: totalAnt > 0 ? "text-amber-400" : "text-white/30" },
+                { icon: ShieldCheck,   label: "IGSS laboral",   val: fmtQ(totalIGSS),           cls: totalIGSS > 0 ? "text-cyan-400" : "text-white/30" },
                 { icon: AlertCircle,   label: "Con alertas",    val: conAlertas,                cls: conAlertas > 0 ? "text-rose-400" : "text-white/30" },
               ].map(({ icon: Icon, label, val, cls }) => (
                 <div key={label} className="bg-[#0c1929] border border-white/8 rounded-xl p-3">
@@ -2028,8 +2048,15 @@ export default function PrePlanilla() {
                                   ) : <span className="text-white/20">—</span>}
                                 </td>
                                 {/* IGSS */}
-                                <td className="px-3 py-2.5 text-center">
-                                  {r.aplica_igss ? (
+                                <td className="px-3 py-2.5 text-right">
+                                  {r.aplica_igss && est2 ? (
+                                    <div>
+                                      <span className="text-xs font-medium text-emerald-400">
+                                        {fmtQ(est2.igssLaboral)}
+                                      </span>
+                                      <p className="text-[9px] text-white/25">4.83%</p>
+                                    </div>
+                                  ) : r.aplica_igss ? (
                                     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Sí
                                     </span>
@@ -2096,9 +2123,9 @@ export default function PrePlanilla() {
                 <div>
                   <p className="text-xs font-semibold text-blue-300 mb-1">Pre-planilla operativa — estimación indicativa</p>
                   <p className="text-[11px] text-blue-300/60 leading-relaxed">
-                    <strong className="text-blue-300/80">Total Estimado Preliminar</strong> = sueldo proporcional al período – descuento por faltas/suspensiones + valor horas extra (1.5x) – anticipos.
+                    <strong className="text-blue-300/80">Total Estimado Preliminar</strong> = sueldo proporcional al período – descuento por faltas/suspensiones + valor horas extra (1.5x) – anticipos – IGSS laboral (4.83%).
                     <br />
-                    <strong className="text-blue-300/80">Pendiente para planilla final:</strong> IGSS (12.67% patronal + 4.83% laboral), bonificación incentivo (Dto. 78-89), séptimo día remunerado, y deducciones legales finales.
+                    <strong className="text-blue-300/80">Pendiente para planilla final:</strong> bonificación incentivo (Dto. 78-89), séptimo día remunerado, y deducciones legales finales.
                   </p>
                 </div>
               </div>
