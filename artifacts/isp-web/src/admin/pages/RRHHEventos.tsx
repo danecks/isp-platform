@@ -1255,15 +1255,18 @@ export default function RRHHEventos() {
     if (!modalAnulacion) return;
     const usuario = currentUser?.nombre ?? currentUser?.username ?? "usuario";
     try {
-      await apiPost(`${API}/rrhh/eventos/${modalAnulacion.id}/anular`, {
+      const res = await apiPost(`${API}/rrhh/eventos/${modalAnulacion.id}/anular`, {
         motivoAnulacion: motivo,
         usuario,
       });
       invalidar();
       setModalAnulacion(null);
+      const parMsg = (res as any)?.parAnulado
+        ? " El evento de horas extra vinculado también fue anulado."
+        : "";
       toast({
         title: "Evento anulado correctamente",
-        description: `ERH-${String(modalAnulacion.id).padStart(4, "0")} marcado como ANULADO. Los documentos han quedado sin efecto legal.`,
+        description: `ERH-${String(modalAnulacion.id).padStart(4, "0")} marcado como ANULADO.${parMsg}`,
       });
     } catch (e: any) {
       toast({ title: "Error al anular", description: e?.error || "Intenta de nuevo", variant: "destructive" });
@@ -1271,7 +1274,7 @@ export default function RRHHEventos() {
     }
   }
 
-  async function registrarDescarga(evento: EventoRrhh, tipo: "boleta" | "acta" | "anulacion") {
+  async function registrarDescarga(evento: EventoRrhh, tipo: "boleta" | "acta" | "anulacion" | "constancia_he") {
     try {
       await apiPatch(`${API}/rrhh/eventos/${evento.id}/documentos`, {
         tipo,

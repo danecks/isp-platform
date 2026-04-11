@@ -298,6 +298,39 @@ eventosRrhhRouter.post("/rrhh/eventos/:id/anular", async (req, res) => {
       "Evento RRHH anulado",
     );
 
+    // Cascada: si se anula una falta que tiene par (HE), anular también la HE
+    let parAnulado = false;
+    try {
+      const evento = rows[0];
+      const esFalta = evento.tipo_evento !== "horas_extra";
+      if (esFalta && evento.evento_par_id) {
+        const { rows: parRows } = await pool.query(
+          `SELECT id, estado FROM eventos_rrhh WHERE id = $1`,
+          [evento.evento_par_id],
+        );
+        if (parRows.length && parRows[0].estado !== "anulado") {
+          await pool.query(
+            `UPDATE eventos_rrhh
+             SET estado           = 'anulado',
+                 estado_anterior  = $1,
+                 anulado_por      = $2,
+                 anulado_at       = NOW(),
+                 motivo_anulacion = $3,
+                 updated_at       = NOW()
+             WHERE id = $4`,
+            [parRows[0].estado, usuario, motivoAnulacion, evento.evento_par_id],
+          );
+          parAnulado = true;
+          logger.info(
+            { parId: evento.evento_par_id, motivo: motivoAnulacion, por: usuario },
+            "Evento par (HE) anulado en cascada por anulación de falta",
+          );
+        }
+      }
+    } catch (cascErr) {
+      logger.warn({ cascErr, id }, "Error al anular evento par en cascada (no bloqueante)");
+    }
+
     // C-03: Revertir novedad de nómina si no hay otro evento activo del mismo tipo para ese empleado/fecha
     try {
       const evento = rows[0];
@@ -346,7 +379,7 @@ eventosRrhhRouter.post("/rrhh/eventos/:id/anular", async (req, res) => {
       logger.warn({ novedadErr, id }, "C-03: error al revertir novedad de nómina (no bloqueante)");
     }
 
-    res.json({ ok: true, evento: rows[0] });
+    res.json({ ok: true, evento: rows[0], parAnulado });
   } catch (err) {
     logger.error({ err }, "POST /rrhh/eventos/:id/anular error");
     res.status(500).json({ error: "Error al anular evento" });
