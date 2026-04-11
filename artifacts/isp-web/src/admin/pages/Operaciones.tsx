@@ -4254,13 +4254,13 @@ function ModalSustituyeTitular({
   const [hora, setHora] = useState(ahoraHHMM);
 
   const MOTIVOS_RAPIDOS = [
-    { value: "falta_total",      label: "Falta total",      color: "text-red-300" },
-    { value: "incapacidad",      label: "Incapacidad IGSS", color: "text-orange-300" },
-    { value: "permiso_con_goce", label: "Permiso c/goce",   color: "text-emerald-300" },
-    { value: "permiso_sin_goce", label: "Permiso s/goce",   color: "text-yellow-300" },
-    { value: "vacaciones",       label: "Vacaciones",        color: "text-sky-300" },
-    { value: "relevo_completo",  label: "Relevo completo",  color: "text-violet-300" },
-    { value: "abandono_parcial", label: "Abandono parcial", color: "text-red-400" },
+    { value: "falta_total",        label: "Falta total",                desc: "No se presentó sin justificación",               color: "text-red-300" },
+    { value: "abandono_parcial",   label: "Abandono parcial",           desc: "Se retiró antes de terminar su turno",            color: "text-red-400" },
+    { value: "suspension_disc",    label: "Susp. disciplinaria",        desc: "Suspendido por medida disciplinaria",             color: "text-orange-300" },
+    { value: "permiso_sin_goce",   label: "Permiso s/goce",             desc: "Requiere aprobación RRHH",                        color: "text-yellow-300" },
+    { value: "incapacidad",        label: "Incapacidad IGSS",           desc: "Suspensión médica del IGSS",                      color: "text-orange-300" },
+    { value: "permiso_con_goce",   label: "Permiso c/goce",             desc: "Duelo, matrimonio, etc.",                         color: "text-emerald-300" },
+    { value: "relevo_completo",    label: "Relevo completo",            desc: "Cobertura programada, sin falta",                 color: "text-violet-300" },
   ];
 
   function TitularOpcion({ tc, label }: { tc: TitularCiclo; label: string }) {
@@ -4318,6 +4318,7 @@ function ModalSustituyeTitular({
                   key={m.value}
                   type="button"
                   onClick={() => setMotivo(m.value)}
+                  title={m.desc}
                   className={`text-left px-2.5 py-1.5 rounded-md border text-[11px] font-medium transition-all ${
                     motivo === m.value
                       ? `${m.color} border-current bg-current/10`
@@ -4328,6 +4329,12 @@ function ModalSustituyeTitular({
                 </button>
               ))}
             </div>
+            {(() => {
+              const sel = MOTIVOS_RAPIDOS.find(m => m.value === motivo);
+              return sel ? (
+                <p className="text-[10px] text-white/40 mt-1.5 leading-relaxed">{sel.desc}</p>
+              ) : null;
+            })()}
           </div>
 
           {/* Hora de instalación */}
@@ -4692,22 +4699,21 @@ function ModalEligeCobertura({
 const TIPOS_NOVEDAD: {
   value: string;
   label: string;
+  desc: string;
   grupo: "descuento" | "sin_descuento" | "cobertura" | "especial";
   genera_rrhh?: boolean;
+  requiere_hora_abandono?: boolean;
+  requiere_aprobacion_rrhh?: boolean;
 }[] = [
-  { value: "falta_total",      label: "Falta total",        grupo: "descuento",     genera_rrhh: true },
-  { value: "abandono_parcial", label: "Abandono parcial",   grupo: "descuento",     genera_rrhh: true },
-  { value: "suspension",       label: "Suspensión",         grupo: "descuento",     genera_rrhh: true },
-  { value: "vacaciones",       label: "Vacaciones",         grupo: "sin_descuento", genera_rrhh: true },
-  { value: "incapacidad",      label: "Incapacidad IGSS",   grupo: "sin_descuento", genera_rrhh: true },
-  { value: "permiso_con_goce", label: "Permiso c/goce",     grupo: "sin_descuento" },
-  { value: "permiso_sin_goce", label: "Permiso s/goce",     grupo: "descuento" },
-  { value: "relevo_completo",  label: "Relevo completo",    grupo: "cobertura" },
-  { value: "relevo_parcial",   label: "Relevo parcial",     grupo: "cobertura" },
-  { value: "relevo_vacaciones",label: "Cob. vacaciones",    grupo: "cobertura" },
-  { value: "horas_extra_puras",label: "Horas extra",        grupo: "especial" },
-  { value: "ssa_externo",      label: "Servicio especial",  grupo: "especial" },
-  { value: "cambio_titular",   label: "Cambio de titular",  grupo: "especial" },
+  { value: "falta_total",        label: "Falta total",            desc: "No se presentó sin justificación. Descuento de 3 días (24h) o 2 días (12h).",                     grupo: "descuento",     genera_rrhh: true },
+  { value: "abandono_parcial",   label: "Abandono parcial",       desc: "Se retiró antes de terminar su turno sin autorización. Descuento proporcional.",                  grupo: "descuento",     genera_rrhh: true, requiere_hora_abandono: true },
+  { value: "suspension_disc",    label: "Suspensión disciplinaria", desc: "Suspendido por medida disciplinaria. Se descuenta el período completo.",                        grupo: "descuento",     genera_rrhh: true },
+  { value: "permiso_sin_goce",   label: "Permiso s/goce",         desc: "Permiso solicitado sin pago. Requiere aprobación de RRHH; si se rechaza, se convierte en falta.", grupo: "descuento",     genera_rrhh: true, requiere_aprobacion_rrhh: true },
+  { value: "incapacidad",        label: "Incapacidad IGSS",       desc: "Suspensión médica del IGSS. El IGSS cubre el salario, no la empresa.",                            grupo: "sin_descuento", genera_rrhh: true },
+  { value: "permiso_con_goce",   label: "Permiso c/goce",         desc: "Permiso autorizado con goce de sueldo (duelo, matrimonio, etc.).",                                grupo: "sin_descuento" },
+  { value: "relevo_completo",    label: "Relevo completo",        desc: "Cobertura programada del turno completo. No implica falta del titular.",                           grupo: "cobertura" },
+  { value: "relevo_parcial",     label: "Relevo parcial",         desc: "Cobertura de solo una parte del turno.",                                                           grupo: "cobertura" },
+  { value: "horas_extra_puras",  label: "Horas extra",            desc: "El agente entrante cubre como horas extra en su día de descanso.",                                 grupo: "especial" },
 ];
 
 const GRUPO_COLORS: Record<string, string> = {
@@ -4735,6 +4741,7 @@ function ModalSustitucion({
   const [notas, setNotas] = useState("");
   const [loading, setLoading] = useState(false);
   const [tipoSustitucion, setTipoSustitucion] = useState<"relevo" | "reasignacion">("relevo");
+  const [horaAbandono, setHoraAbandono] = useState("");
   const esSustitucion = !!puesto.agente_id;
 
   const tipoSeleccionado = TIPOS_NOVEDAD.find((t) => t.value === tipoNovedad);
@@ -4863,9 +4870,9 @@ function ModalSustitucion({
                 </div>
               </div>
 
-              {/* Grupos */}
               {(["descuento","sin_descuento","cobertura","especial"] as const).map((grupo) => {
                 const items = TIPOS_NOVEDAD.filter((t) => t.grupo === grupo);
+                if (items.length === 0) return null;
                 const grupoLabel = grupo === "descuento" ? "Con descuento salarial" :
                                    grupo === "sin_descuento" ? "Sin descuento" :
                                    grupo === "cobertura" ? "Cobertura / Relevo" : "Especial";
@@ -4879,6 +4886,7 @@ function ModalSustitucion({
                           type="button"
                           data-active={tipoNovedad === t.value ? "" : undefined}
                           onClick={() => setTipoNovedad(t.value)}
+                          title={t.desc}
                           className={`px-2 py-1 rounded-md border text-[10px] font-semibold transition-all ${GRUPO_COLORS[grupo]} ${
                             tipoNovedad === t.value ? "opacity-100 scale-[1.03]" : "opacity-60 hover:opacity-90"
                           }`}
@@ -4891,7 +4899,27 @@ function ModalSustitucion({
                 );
               })}
 
-              {/* Alcance: parcial / completo (solo para relevos) */}
+              {tipoSeleccionado && (
+                <div className="bg-white/5 border border-white/8 rounded-lg px-3 py-2">
+                  <p className="text-[10px] text-white/50 leading-relaxed">{tipoSeleccionado.desc}</p>
+                  {tipoSeleccionado.requiere_aprobacion_rrhh && (
+                    <p className="text-[10px] text-amber-400/80 mt-1 font-medium">Requiere aprobación de RRHH</p>
+                  )}
+                </div>
+              )}
+
+              {tipoSeleccionado?.requiere_hora_abandono && (
+                <div>
+                  <label className="text-[10px] text-white/40 mb-1 block">Hora de abandono</label>
+                  <input
+                    type="time"
+                    value={horaAbandono}
+                    onChange={(e) => setHoraAbandono(e.target.value)}
+                    className="w-full bg-white/5 border border-white/15 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
+                  />
+                </div>
+              )}
+
               {["relevo_parcial","abandono_parcial","permiso_con_goce","permiso_sin_goce"].includes(tipoNovedad) && (
                 <div className="flex items-center gap-2 pt-1">
                   <span className="text-[10px] text-white/35">Alcance:</span>

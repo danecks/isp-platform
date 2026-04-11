@@ -1551,10 +1551,10 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
     // ── Auto-crear evento RRHH (expandido: tipoNovedad + motivo legacy) ────────
     const tiposRrhhSaliente: Record<string, string> = {
       falta_total:      "falta",
-      abandono_parcial: "abandono_parcial", // Fix: genera evento tipo abandono, no falta
-      suspension:       "suspension",
+      abandono_parcial: "abandono_parcial",
+      suspension_disc:  "suspension_disciplinaria",
+      suspension:       "suspension_disciplinaria",
       incapacidad:      "incapacidad",
-      vacaciones:       "vacaciones",
       permiso_sin_goce: "permiso_sin_goce",
       permiso_con_goce: "permiso_con_goce",
     };
@@ -1574,17 +1574,18 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
           employeeNombre = empRows[0].nombre_completo;
           employeeDpi    = empRows[0].dpi || null;
         }
+        const estadoEvento = tipoNovedad === "permiso_sin_goce" ? "pendiente_aprobacion" : "pendiente";
         await pool.query(
           `INSERT INTO eventos_rrhh
              (employee_id, employee_nombre, employee_dpi,
               tipo_evento, fecha, cliente_nombre, puesto_nombre,
               generado_desde, movimiento_id, estado, usuario_generador, documentos_generados)
-           VALUES ($1,$2,$3,$4,NOW(),$5,$6,'operaciones',$7,'pendiente',$8,'[]')`,
+           VALUES ($1,$2,$3,$4,NOW(),$5,$6,'operaciones',$7,$9,$8,'[]')`,
           [employeeId, employeeNombre, employeeDpi, tipoEventoRrhh,
            puesto.cliente_nombre || null, puesto.nombre || null,
-           movimientoId, usuario || "sistema"]
+           movimientoId, usuario || "sistema", estadoEvento]
         );
-        logger.info({ tipoEventoRrhh, empleado: employeeNombre }, "Evento RRHH auto-generado desde sustitución");
+        logger.info({ tipoEventoRrhh, empleado: employeeNombre, estadoEvento }, "Evento RRHH auto-generado desde sustitución");
       } catch (errRrhh) {
         logger.error({ errRrhh }, "Error al auto-generar evento RRHH (no bloqueante)");
       }
@@ -1597,14 +1598,15 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
       switch (tipoNovedad) {
         case "falta_total":      return "relevo_completo";
         case "abandono_parcial": return "abandono_parcial";
-        case "vacaciones":       return "vacaciones";
-        case "relevo_vacaciones":return "vacaciones";
         case "incapacidad":      return "incapacidad";
-        case "suspension":       return "suspension";
+        case "suspension_disc":  return "suspension_disciplinaria";
+        case "suspension":       return "suspension_disciplinaria";
+        case "permiso_sin_goce": return "permiso_sin_goce";
+        case "permiso_con_goce": return "permiso_con_goce";
         case "relevo_parcial":   return "relevo_parcial";
         case "relevo_completo":  return "relevo_completo";
+        case "horas_extra_puras":return "horas_extra";
         case "cierre_tarde_cliente": return "horas_extra";
-        case "servicio_especial": return "servicio_especial";
         default: return "relevo_completo";
       }
     })();
