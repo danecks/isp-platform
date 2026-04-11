@@ -159,7 +159,8 @@ armeriaRouter.get("/armas", async (req, res) => {
         a.estado, a.activo, a.observaciones,
         a.numero_tenencia, a.fecha_vencimiento_tenencia,
         CASE
-          WHEN a.fecha_vencimiento_tenencia IS NULL THEN 'sin_registro'
+          WHEN a.numero_tenencia IS NULL THEN 'sin_registro'
+          WHEN a.fecha_vencimiento_tenencia IS NULL THEN 'vigente'
           WHEN a.fecha_vencimiento_tenencia < CURRENT_DATE THEN 'vencida'
           WHEN a.fecha_vencimiento_tenencia <= CURRENT_DATE + INTERVAL '180 days' THEN 'proximo_a_vencer'
           ELSE 'vigente'
@@ -287,7 +288,8 @@ armeriaRouter.get("/armas/estado-operativo", async (req, res) => {
         a.codigo, a.tipo, a.marca, a.modelo, a.calibre, a.estado AS arma_estado,
         a.numero_tenencia, a.fecha_vencimiento_tenencia,
         CASE
-          WHEN a.fecha_vencimiento_tenencia IS NULL THEN 'sin_registro'
+          WHEN a.numero_tenencia IS NULL THEN 'sin_registro'
+          WHEN a.fecha_vencimiento_tenencia IS NULL THEN 'vigente'
           WHEN a.fecha_vencimiento_tenencia < CURRENT_DATE THEN 'vencida'
           WHEN a.fecha_vencimiento_tenencia <= CURRENT_DATE + INTERVAL '180 days' THEN 'proximo_a_vencer'
           ELSE 'vigente'
@@ -451,7 +453,8 @@ armeriaRouter.get("/armas/:id", async (req, res) => {
       SELECT
         a.*,
         CASE
-          WHEN a.fecha_vencimiento_tenencia IS NULL THEN 'sin_registro'
+          WHEN a.numero_tenencia IS NULL THEN 'sin_registro'
+          WHEN a.fecha_vencimiento_tenencia IS NULL THEN 'vigente'
           WHEN a.fecha_vencimiento_tenencia < CURRENT_DATE THEN 'vencida'
           WHEN a.fecha_vencimiento_tenencia <= CURRENT_DATE + INTERVAL '180 days' THEN 'proximo_a_vencer'
           ELSE 'vigente'
