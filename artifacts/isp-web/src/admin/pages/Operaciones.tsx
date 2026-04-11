@@ -4819,28 +4819,40 @@ function ModalSustitucion({
             <div className="space-y-1.5">
               <label className="text-xs text-white/40">Tipo de movimiento</label>
               <div className="grid grid-cols-2 gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setTipoSustitucion("relevo")}
-                  className={`py-2 px-2 rounded-lg border text-[11px] font-semibold transition-all ${
-                    tipoSustitucion === "relevo"
-                      ? "bg-amber-500/15 border-amber-500/40 text-amber-300"
-                      : "border-white/10 text-white/35 hover:text-white/60"
-                  }`}
-                >
-                  Relevo temporal
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTipoSustitucion("reasignacion")}
-                  className={`py-2 px-2 rounded-lg border text-[11px] font-semibold transition-all ${
-                    tipoSustitucion === "reasignacion"
-                      ? "bg-blue-500/15 border-blue-500/40 text-blue-300"
-                      : "border-white/10 text-white/35 hover:text-white/60"
-                  }`}
-                >
-                  Reasignación
-                </button>
+                <div className="relative group/tip">
+                  <button
+                    type="button"
+                    onClick={() => setTipoSustitucion("relevo")}
+                    className={`w-full py-2 px-2 rounded-lg border text-[11px] font-semibold transition-all ${
+                      tipoSustitucion === "relevo"
+                        ? "bg-amber-500/15 border-amber-500/40 text-amber-300"
+                        : "border-white/10 text-white/35 hover:text-white/60"
+                    }`}
+                  >
+                    Relevo temporal
+                  </button>
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-1.5 bg-[#0d1117] border border-white/20 rounded-lg text-[10px] text-white/80 leading-snug whitespace-nowrap opacity-0 pointer-events-none group-hover/tip:opacity-100 transition-opacity duration-150 z-50 shadow-xl">
+                    Cubre solo por hoy, el titular sigue asignado al puesto
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/20" />
+                  </div>
+                </div>
+                <div className="relative group/tip">
+                  <button
+                    type="button"
+                    onClick={() => setTipoSustitucion("reasignacion")}
+                    className={`w-full py-2 px-2 rounded-lg border text-[11px] font-semibold transition-all ${
+                      tipoSustitucion === "reasignacion"
+                        ? "bg-blue-500/15 border-blue-500/40 text-blue-300"
+                        : "border-white/10 text-white/35 hover:text-white/60"
+                    }`}
+                  >
+                    Reasignación
+                  </button>
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-1.5 bg-[#0d1117] border border-white/20 rounded-lg text-[10px] text-white/80 leading-snug whitespace-nowrap opacity-0 pointer-events-none group-hover/tip:opacity-100 transition-opacity duration-150 z-50 shadow-xl">
+                    Cambio permanente de titular en este puesto
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/20" />
+                  </div>
+                </div>
               </div>
               <p className="text-[10px] text-white/25">
                 {tipoSustitucion === "relevo"
