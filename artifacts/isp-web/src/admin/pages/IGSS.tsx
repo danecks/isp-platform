@@ -299,13 +299,13 @@ interface PreviewData {
   preview: boolean;
   periodo: string;
   totalEmpleados: number;
-  totalSalarios: string;
+  totalDevengado: string;
   cuotaLaboral: string;
   cuotaPatronal: string;
   totalAPagar: string;
   centros: { codigo: string; nombre: string; empleados: number }[];
   lineasArchivo: number;
-  empleados: { nombre: string; igss: string; sueldo: string; cuotaLaboral: string; cuotaPatronal: string }[];
+  empleados: { nombre: string; igss: string; sueldoBase: string; devengado: string; dias: number; cuotaLaboral: string; cuotaPatronal: string; centro: string }[];
 }
 
 function PanelGenerarPlanilla() {
@@ -433,9 +433,9 @@ function PanelGenerarPlanilla() {
               <div className="bg-[#060e1c] rounded-xl p-3 border border-white/5">
                 <div className="flex items-center gap-1.5 mb-1">
                   <DollarSign className="w-3 h-3 text-emerald-400" />
-                  <span className="text-[9px] text-white/30 uppercase">Total Salarios</span>
+                  <span className="text-[9px] text-white/30 uppercase">Total Devengado</span>
                 </div>
-                <p className="text-sm font-bold text-emerald-400">Q{Number(preview.totalSalarios).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</p>
+                <p className="text-sm font-bold text-emerald-400">Q{Number(preview.totalDevengado).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</p>
               </div>
               <div className="bg-[#060e1c] rounded-xl p-3 border border-white/5">
                 <div className="flex items-center gap-1.5 mb-1">
@@ -483,7 +483,7 @@ function PanelGenerarPlanilla() {
             <div className="bg-[#060e1c] rounded-xl border border-white/5 overflow-hidden">
               <div className="px-4 py-2.5 border-b border-white/5 flex items-center gap-2">
                 <Users className="w-3 h-3 text-white/30" />
-                <p className="text-[10px] text-white/30 uppercase">Detalle de Empleados</p>
+                <p className="text-[10px] text-white/30 uppercase">Detalle de Empleados (Libro de Salarios)</p>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
@@ -491,17 +491,19 @@ function PanelGenerarPlanilla() {
                     <tr className="border-b border-white/5">
                       <th className="text-left px-4 py-2 text-white/30 font-normal text-[10px] uppercase">Nombre</th>
                       <th className="text-left px-4 py-2 text-white/30 font-normal text-[10px] uppercase">No. IGSS</th>
-                      <th className="text-right px-4 py-2 text-white/30 font-normal text-[10px] uppercase">Sueldo</th>
+                      <th className="text-right px-4 py-2 text-white/30 font-normal text-[10px] uppercase">Días</th>
+                      <th className="text-right px-4 py-2 text-white/30 font-normal text-[10px] uppercase">Devengado</th>
                       <th className="text-right px-4 py-2 text-white/30 font-normal text-[10px] uppercase">Cuota Lab.</th>
                       <th className="text-right px-4 py-2 text-white/30 font-normal text-[10px] uppercase">Cuota Pat.</th>
                     </tr>
                   </thead>
                   <tbody>
                     {preview.empleados.map((emp, i) => (
-                      <tr key={i} className="border-b border-white/3 hover:bg-white/2">
+                      <tr key={i} className={`border-b border-white/3 hover:bg-white/2 ${Number(emp.devengado) === 0 ? "opacity-40" : ""}`}>
                         <td className="px-4 py-2 text-white/80">{emp.nombre}</td>
-                        <td className="px-4 py-2 text-white/50 font-mono">{emp.igss}</td>
-                        <td className="px-4 py-2 text-right text-emerald-400">Q{Number(emp.sueldo).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
+                        <td className="px-4 py-2 text-white/50 font-mono text-[10px]">{emp.igss}</td>
+                        <td className="px-4 py-2 text-right text-white/60">{emp.dias}</td>
+                        <td className="px-4 py-2 text-right text-emerald-400">Q{Number(emp.devengado).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
                         <td className="px-4 py-2 text-right text-cyan-400">Q{Number(emp.cuotaLaboral).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
                         <td className="px-4 py-2 text-right text-amber-400">Q{Number(emp.cuotaPatronal).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
                       </tr>

@@ -35,14 +35,14 @@ import {
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
-const API = "http://localhost:8080/api";
+const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
 function getSession() {
   return sessionStorage.getItem("isp_admin_session_v2") || "";
 }
 
 async function apiFetch(url: string, opts: RequestInit = {}) {
-  const res = await fetch(`${API}${url}`, {
+  const res = await fetch(`${BASE}/api${url}`, {
     ...opts,
     headers: { "x-isp-session": getSession(), "Content-Type": "application/json", ...(opts.headers ?? {}) },
   });

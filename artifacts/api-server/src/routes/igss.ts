@@ -275,7 +275,8 @@ igssRouter.post("/igss/importar-devengados", async (req, res) => {
 });
 
 // ─── GET /igss/generar-planilla ──────────────────────────────────────────────
-// Genera el archivo TXT formato 2.2.0 para subir al portal IGSS
+// Genera el archivo TXT formato 2.2.0 exacto para subir al portal IGSS
+// Secciones: header, [centros], [tiposplanilla], [liquidaciones], [empleados], [suspendidos], [licencias], [juramento], [finplanilla]
 igssRouter.get("/igss/generar-planilla", async (req, res) => {
   try {
     const mes = Number(req.query.mes);
@@ -291,7 +292,9 @@ igssRouter.get("/igss/generar-planilla", async (req, res) => {
     }
 
     const { rows: centros } = await pool.query(`
-      SELECT id, nombre, nombre_comercial, igss_codigo_centro, igss_departamento
+      SELECT id, nombre, nombre_comercial, igss_codigo_centro, igss_direccion,
+             igss_zona, igss_departamento, igss_municipio, igss_codigo_actividad,
+             igss_telefono, igss_contacto, igss_fax, igss_email
       FROM clients
       WHERE igss_aplica = TRUE AND estado = 'activo'
       ORDER BY igss_codigo_centro::int NULLS LAST
@@ -303,13 +306,14 @@ igssRouter.get("/igss/generar-planilla", async (req, res) => {
     const { rows: empleados } = await pool.query(`
       SELECT DISTINCT ON (e.id)
         e.id, e.nombre_completo, e.igss_numero, e.sueldo_base, e.dpi,
-        e.tipo_jornada, e.aplica_igss_general,
+        e.tipo_jornada, e.aplica_igss_general, e.estado_laboral,
+        e.fecha_ingreso, e.empl_numero,
         po.cliente_id, c.igss_codigo_centro, c.igss_departamento
       FROM employees e
       JOIN puesto_titulares pt ON pt.employee_id = e.id AND pt.activo = true
       JOIN puestos_operativos po ON po.id = pt.puesto_id
       JOIN clients c ON c.id = po.cliente_id AND c.igss_aplica = true
-      WHERE e.estado_laboral = 'activo'
+      WHERE e.estado_laboral IN ('activo', 'suspendido')
         AND e.aplica_igss_general = true
         AND e.igss_numero IS NOT NULL AND e.igss_numero != ''
         AND e.sueldo_base > 0
@@ -322,6 +326,49 @@ igssRouter.get("/igss/generar-planilla", async (req, res) => {
 
     const TASA_LABORAL = 0.0483;
     const TASA_PATRONAL = 0.1267;
+    const COD_OCUPACION = "5169";
+
+    const fechaIniMes = `01/${String(mes).padStart(2, "0")}/${anio}`;
+    const ultimoDia = new Date(anio, mes, 0).getDate();
+    const fechaFinMes = `${ultimoDia}/${String(mes).padStart(2, "0")}/${anio}`;
+    const hoy = new Date();
+    const fechaGen = `${String(hoy.getDate()).padStart(2, "0")}/${String(hoy.getMonth() + 1).padStart(2, "0")}/${hoy.getFullYear()}`;
+
+    const devengadoMap: Record<number, { devengado: number; dias: number }> = {};
+    const { rows: novedades } = await pool.query(`
+      SELECT n.employee_id,
+             COUNT(*) FILTER (WHERE n.trabajo_dia = true AND n.falta = false) AS dias_trabajados,
+             COALESCE(SUM(n.horas_trabajadas) FILTER (WHERE n.trabajo_dia = true AND n.falta = false), 0) AS total_horas,
+             COUNT(*) FILTER (WHERE n.falta = true AND COALESCE(n.impacto_nomina,'pendiente') != 'rechazado_rrhh') AS dias_falta,
+             COALESCE(SUM(n.dias_descuento) FILTER (WHERE n.falta = true AND COALESCE(n.impacto_nomina,'pendiente') != 'rechazado_rrhh'), 0) AS total_dias_descuento,
+             COALESCE(SUM(
+               CASE WHEN n.horas_extra > 0 AND n.horas_extra_estado = 'aprobado'
+                    AND COALESCE(n.impacto_nomina, '') <> 'pagado_efectivo'
+               THEN n.horas_extra ELSE 0 END
+             ), 0) AS horas_extra
+      FROM novedades_nomina_diarias n
+      WHERE n.fecha >= $1 AND n.fecha < $2
+      GROUP BY n.employee_id
+    `, [
+      `${anio}-${String(mes).padStart(2, "0")}-01`,
+      mes === 12 ? `${anio + 1}-01-01` : `${anio}-${String(mes + 1).padStart(2, "0")}-01`,
+    ]);
+
+    for (const nov of novedades) {
+      const empId = nov.employee_id;
+      const emp = empleados.find(e => e.id === empId);
+      if (!emp) continue;
+      const sb = parseFloat(emp.sueldo_base);
+      const sueldoDia = sb / 30;
+      const diasDesc = Number(nov.total_dias_descuento) || 0;
+      const he = Number(nov.horas_extra) || 0;
+      const horasDia = 8;
+      const valorHora = sueldoDia / horasDia;
+      const valorHE = valorHora * 1.5 * he;
+      const devengado = sb - (sueldoDia * diasDesc) + valorHE;
+      const diasTrab = Math.max(30 - diasDesc, 0);
+      devengadoMap[empId] = { devengado: Math.round(devengado * 100) / 100, dias: diasTrab };
+    }
 
     const empPorCentro: Record<string, typeof empleados> = {};
     for (const emp of empleados) {
@@ -330,114 +377,107 @@ igssRouter.get("/igss/generar-planilla", async (req, res) => {
       empPorCentro[centro].push(emp);
     }
 
+    const activos = empleados.filter(e => e.estado_laboral === "activo");
+    const suspendidos = empleados.filter(e => e.estado_laboral === "suspendido");
+
     const lines: string[] = [];
-    let liquidacionNum = 0;
 
-    for (const centro of centros) {
-      const codigoCentro = centro.igss_codigo_centro || "1";
-      const emps = empPorCentro[codigoCentro] || [];
-      if (emps.length === 0) continue;
+    lines.push(`2.2.0|${fechaGen}|${cfg.numero_patronal}|${String(mes).padStart(2, "0")}|${anio}|${cfg.nombre_comercial || ""}|${cfg.nit_patrono || ""}|${cfg.correo_igss || ""}|0`);
 
-      liquidacionNum++;
-      const numLiq = String(liquidacionNum).padStart(4, "0");
-
-      let totalSalarios = 0;
-      const detailLines: string[] = [];
-
-      for (const emp of emps) {
-        const sb = parseFloat(emp.sueldo_base);
-        const salarioDia = Math.round((sb / 30) * 100) / 100;
-        const diasTrabajados = 30;
-        totalSalarios += sb;
-
-        const circunscripcion = (centro.igss_departamento === 1) ? "1" : "2";
-        const tipoContrato = emp.tipo_jornada === "parcial" ? "P" : "C";
-
-        const parts = splitNombre(emp.nombre_completo);
-
-        detailLines.push([
-          "2",
-          numLiq,
-          emp.igss_numero,
-          parts.primerApellido,
-          parts.segundoApellido,
-          parts.primerNombre,
-          parts.segundoNombre,
-          String(diasTrabajados),
-          sb.toFixed(2),
-          "M",
-          salarioDia.toFixed(2),
-          tipoContrato,
-          circunscripcion,
-        ].join("|"));
-      }
-
-      const cuotaLaboral = Math.round(totalSalarios * TASA_LABORAL * 100) / 100;
-      const cuotaPatronal = Math.round(totalSalarios * TASA_PATRONAL * 100) / 100;
-      const salarioDiaProm = emps.length > 0 ? Math.round((totalSalarios / emps.length / 30) * 100) / 100 : 0;
-      const circEcon = (centro.igss_departamento === 1) ? "1" : "2";
-
-      const hoy = new Date();
-      const fechaGen = `${anio}-${String(mes).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`;
-      const fechaPago = `${anio}-${String(mes).padStart(2, "0")}-15`;
-
-      const headerLine = [
-        "1",
-        numLiq,
-        "OM",
-        cfg.numero_patronal,
-        codigoCentro,
-        String(mes).padStart(2, "0"),
-        String(anio),
-        fechaPago,
-        fechaGen,
-        salarioDiaProm.toFixed(2),
-        String(emps.length),
-        totalSalarios.toFixed(2),
-        cuotaLaboral.toFixed(2),
-        cuotaPatronal.toFixed(2),
-        circEcon,
-      ].join("|");
-
-      lines.push(headerLine);
-      lines.push(...detailLines);
+    lines.push("[centros]");
+    for (const c of centros) {
+      const cod = c.igss_codigo_centro || "1";
+      const nombre = c.nombre_comercial || c.nombre;
+      const muni = c.igss_direccion || c.nombre || "";
+      const tel = c.igss_telefono || cfg.correo_igss || "";
+      const depto = c.igss_departamento || 1;
+      const mun = c.igss_municipio || 1;
+      const act = c.igss_codigo_actividad || cfg.codigo_actividad_principal || "930900";
+      lines.push(`${cod}|${nombre}|${muni}||${tel}||||${depto}|${mun}|${act}|`);
     }
 
-    if (lines.length === 0) {
-      return res.status(400).json({ error: "No se generaron registros. Verifique que los empleados estén asignados a centros de trabajo IGSS." });
+    lines.push("[tiposplanilla]");
+    for (const c of centros) {
+      const cod = c.igss_codigo_centro || "1";
+      const nombre = c.nombre_comercial || c.nombre;
+      const depto = c.igss_departamento || 1;
+      const act = c.igss_codigo_actividad || cfg.codigo_actividad_principal || "930900";
+      const circ = (Number(depto) === 1) ? "C" : "C";
+      lines.push(`${cod}|${nombre}|C|M|${depto}|${act}|N|TC|`);
     }
+
+    lines.push("[liquidaciones]");
+    for (const c of centros) {
+      const cod = c.igss_codigo_centro || "1";
+      lines.push(`${cod}|${cod}|${fechaIniMes}|${fechaFinMes}|O||`);
+    }
+
+    lines.push("[empleados]");
+    for (const emp of activos) {
+      const centro = emp.igss_codigo_centro || "1";
+      const sb = parseFloat(emp.sueldo_base);
+      const dev = devengadoMap[emp.id];
+      const salario = dev ? dev.devengado : sb;
+      const dias = dev ? dev.dias : 30;
+      const depto = emp.igss_departamento || 1;
+      const parts = splitNombre(emp.nombre_completo);
+
+      lines.push(`${centro}|${emp.igss_numero}|${parts.primerNombre}|${parts.segundoNombre}|${parts.primerApellido}|${parts.segundoApellido}||${salario}|||${centro}||${COD_OCUPACION}|P||${depto}||TC|${dias}|`);
+    }
+
+    lines.push("[suspendidos]");
+    for (const emp of suspendidos) {
+      const centro = emp.igss_codigo_centro || "1";
+      const parts = splitNombre(emp.nombre_completo);
+      lines.push(`${centro}|${emp.igss_numero}|${parts.primerNombre}|${parts.segundoNombre}|${parts.primerApellido}|${parts.segundoApellido}||${fechaIniMes}|${fechaFinMes}|`);
+    }
+
+    lines.push("[licencias]");
+
+    lines.push("[juramento]");
+    lines.push("BAJO MI EXCLUSIVA Y ABSOLUTA RESPONSABILIDAD, DECLARO QUE LA INFORMACION QUE AQUI CONSIGNO ES FIEL Y EXACTA, QUE ESTA PLANILLA INCLUYE A TODOS LOS TRABAJADORES QUE ESTUVIERON A MI SERVICIO Y QUE SUS SALARIOS SON LOS EFECTIVAMENTE DEVENGADOS, DURANTE EL MES ARRIBA INDICADO");
+
+    lines.push("[finplanilla]");
 
     const preview = req.query.preview === "true";
     if (preview) {
-      const totalEmps = empleados.length;
-      const totalSalarios = empleados.reduce((s, e) => s + parseFloat(e.sueldo_base), 0);
-      const cuotaLab = Math.round(totalSalarios * TASA_LABORAL * 100) / 100;
-      const cuotaPat = Math.round(totalSalarios * TASA_PATRONAL * 100) / 100;
+      const totalEmps = activos.length;
+      let totalDevengado = 0;
+      const empPreview = activos.map(e => {
+        const sb = parseFloat(e.sueldo_base);
+        const dev = devengadoMap[e.id];
+        const salario = dev ? dev.devengado : sb;
+        const dias = dev ? dev.dias : 30;
+        totalDevengado += salario;
+        return {
+          nombre: e.nombre_completo,
+          igss: e.igss_numero,
+          sueldoBase: sb.toFixed(2),
+          devengado: salario.toFixed(2),
+          dias,
+          cuotaLaboral: (Math.round(salario * TASA_LABORAL * 100) / 100).toFixed(2),
+          cuotaPatronal: (Math.round(salario * TASA_PATRONAL * 100) / 100).toFixed(2),
+          centro: e.igss_codigo_centro || "1",
+        };
+      });
+      const cuotaLab = Math.round(totalDevengado * TASA_LABORAL * 100) / 100;
+      const cuotaPat = Math.round(totalDevengado * TASA_PATRONAL * 100) / 100;
       return res.json({
         preview: true,
         periodo: `${String(mes).padStart(2, "0")}/${anio}`,
         totalEmpleados: totalEmps,
-        totalSalarios: totalSalarios.toFixed(2),
+        totalSuspendidos: suspendidos.length,
+        totalDevengado: totalDevengado.toFixed(2),
         cuotaLaboral: cuotaLab.toFixed(2),
         cuotaPatronal: cuotaPat.toFixed(2),
         totalAPagar: (cuotaLab + cuotaPat).toFixed(2),
         centros: centros.filter(c => empPorCentro[c.igss_codigo_centro || "1"]?.length > 0).map(c => ({
           codigo: c.igss_codigo_centro,
           nombre: c.nombre_comercial || c.nombre,
-          empleados: (empPorCentro[c.igss_codigo_centro || "1"] || []).length,
+          empleados: (empPorCentro[c.igss_codigo_centro || "1"] || []).filter(e => e.estado_laboral === "activo").length,
         })),
         lineasArchivo: lines.length,
-        empleados: empleados.map(e => {
-          const sb = parseFloat(e.sueldo_base);
-          return {
-            nombre: e.nombre_completo,
-            igss: e.igss_numero,
-            sueldo: sb.toFixed(2),
-            cuotaLaboral: (Math.round(sb * TASA_LABORAL * 100) / 100).toFixed(2),
-            cuotaPatronal: (Math.round(sb * TASA_PATRONAL * 100) / 100).toFixed(2),
-            centro: empPorCentro[e.igss_codigo_centro || "1"] ? (e.igss_codigo_centro || "1") : "1",
-          };
-        }),
+        empleados: empPreview,
       });
     }
 
@@ -451,6 +491,12 @@ igssRouter.get("/igss/generar-planilla", async (req, res) => {
     res.status(500).json({ error: "Error al generar planilla IGSS" });
   }
 });
+
+function fmtFechaIGSS(d: string | Date): string {
+  const dt = typeof d === "string" ? new Date(d) : d;
+  if (isNaN(dt.getTime())) return "";
+  return `${String(dt.getDate()).padStart(2, "0")}/${String(dt.getMonth() + 1).padStart(2, "0")}/${dt.getFullYear()}`;
+}
 
 function splitNombre(full: string): { primerApellido: string; segundoApellido: string; primerNombre: string; segundoNombre: string } {
   const parts = (full || "").trim().toUpperCase().split(/\s+/).filter(Boolean);
