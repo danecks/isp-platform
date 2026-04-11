@@ -4747,7 +4747,16 @@ function ModalSustitucion({
   const [horaAbandono, setHoraAbandono] = useState("");
   const [horaInicioParcial, setHoraInicioParcial] = useState(puesto.hora_entrada ?? "");
   const [horaFinParcial, setHoraFinParcial] = useState("");
+  const [tarifaHE, setTarifaHE] = useState<{ tarifa: number; horas_turno: number } | null>(null);
   const esSustitucion = !!puesto.agente_id;
+
+  useEffect(() => {
+    fetch(`${API_BASE}/nomina/tarifas-he`).then(r => r.json()).then((rows: any[]) => {
+      const jornadaClave = puesto.jornada === "24h" ? "24h" : "12h";
+      const found = rows.find((r: any) => r.jornada === jornadaClave) ?? rows[0];
+      if (found) setTarifaHE({ tarifa: parseFloat(found.tarifa), horas_turno: parseInt(found.horas_turno) });
+    }).catch(() => {});
+  }, [puesto.jornada]);
 
   const tipoSeleccionado = TIPOS_NOVEDAD.find((t) => t.value === tipoNovedad);
   const generaRrhh = esSustitucion && !!tipoSeleccionado?.genera_rrhh;
@@ -4761,6 +4770,13 @@ function ModalSustitucion({
     : 0;
   const parcialExcede = parcialMin > turnoMin;
   const parcialIncompleto = tipoSeleccionado?.requiere_horas_parcial && (!horaInicioParcial || !horaFinParcial);
+
+  const costoPorHora = tarifaHE ? tarifaHE.tarifa / tarifaHE.horas_turno : null;
+  const costoTurnoCompleto = tarifaHE?.tarifa ?? null;
+  const costoParcial = costoPorHora && parcialMin > 0 ? costoPorHora * (parcialMin / 60) : null;
+  const costoHE = tipoNovedad === "relevo_parcial" && costoParcial != null ? costoParcial
+    : (tipoNovedad === "horas_extra_puras" || tipoNovedad === "relevo_completo") ? costoTurnoCompleto
+    : null;
 
   async function handleConfirm() {
     if (parcialExcede || parcialIncompleto) return;
@@ -4989,9 +5005,16 @@ function ModalSustitucion({
                     </p>
                   )}
                   {!parcialExcede && parcialMin > 0 && (
-                    <p className="text-[10px] text-white/30 mt-1">
-                      Cobertura: {Math.floor(parcialMin / 60)}h{parcialMin % 60 > 0 ? `${parcialMin % 60}m` : ""} de {Math.floor(turnoMin / 60)}h del turno
-                    </p>
+                    <div className="mt-1 flex items-center justify-between">
+                      <p className="text-[10px] text-white/30">
+                        Cobertura: {Math.floor(parcialMin / 60)}h{parcialMin % 60 > 0 ? `${parcialMin % 60}m` : ""} de {Math.floor(turnoMin / 60)}h del turno
+                      </p>
+                      {costoParcial != null && (
+                        <span className="text-[10px] font-semibold text-amber-400">
+                          Pago: Q{costoParcial.toFixed(2)}
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -5015,6 +5038,18 @@ function ModalSustitucion({
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {costoHE != null && esSustitucion && (
+            <div className="bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] text-amber-300/60">Costo estimado de cobertura</p>
+                <p className="text-[9px] text-white/25">
+                  Tarifa: Q{costoPorHora?.toFixed(2)}/hora ({puesto.jornada ?? "12h"})
+                </p>
+              </div>
+              <span className="text-lg font-bold text-amber-400">Q{costoHE.toFixed(2)}</span>
             </div>
           )}
 
