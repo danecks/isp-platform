@@ -4745,14 +4745,25 @@ function ModalSustitucion({
   const [loading, setLoading] = useState(false);
   const [tipoSustitucion, setTipoSustitucion] = useState<"relevo" | "reasignacion">("relevo");
   const [horaAbandono, setHoraAbandono] = useState("");
-  const [horaInicioParcial, setHoraInicioParcial] = useState("");
+  const [horaInicioParcial, setHoraInicioParcial] = useState(puesto.hora_entrada ?? "");
   const [horaFinParcial, setHoraFinParcial] = useState("");
   const esSustitucion = !!puesto.agente_id;
 
   const tipoSeleccionado = TIPOS_NOVEDAD.find((t) => t.value === tipoNovedad);
   const generaRrhh = esSustitucion && !!tipoSeleccionado?.genera_rrhh;
 
+  const parseMin = (hm: string) => { const [h, m] = hm.split(":").map(Number); return h * 60 + (m || 0); };
+  const turnoMin = puesto.hora_entrada && puesto.hora_salida
+    ? (() => { let d = parseMin(puesto.hora_salida!) - parseMin(puesto.hora_entrada!); if (d <= 0) d += 1440; return d; })()
+    : (puesto.jornada === "24h" ? 1440 : puesto.jornada === "12h" ? 720 : 1440);
+  const parcialMin = horaInicioParcial && horaFinParcial
+    ? (() => { let d = parseMin(horaFinParcial) - parseMin(horaInicioParcial); if (d <= 0) d += 1440; return d; })()
+    : 0;
+  const parcialExcede = parcialMin > turnoMin;
+  const parcialIncompleto = tipoSeleccionado?.requiere_horas_parcial && (!horaInicioParcial || !horaFinParcial);
+
   async function handleConfirm() {
+    if (parcialExcede || parcialIncompleto) return;
     setLoading(true);
     try {
       const notasFinal = tipoSeleccionado?.requiere_horas_parcial && horaInicioParcial && horaFinParcial
@@ -4946,7 +4957,12 @@ function ModalSustitucion({
 
               {tipoSeleccionado?.requiere_horas_parcial && (
                 <div>
-                  <label className="text-[10px] text-white/40 mb-1 block">Horario de cobertura</label>
+                  <label className="text-[10px] text-white/40 mb-1 block">
+                    Horario de cobertura
+                    {puesto.hora_entrada && puesto.hora_salida && (
+                      <span className="text-white/20 ml-1">(turno: {puesto.hora_entrada}–{puesto.hora_salida})</span>
+                    )}
+                  </label>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <span className="text-[9px] text-white/30 block mb-0.5">Inicio</span>
@@ -4954,7 +4970,7 @@ function ModalSustitucion({
                         type="time"
                         value={horaInicioParcial}
                         onChange={(e) => setHoraInicioParcial(e.target.value)}
-                        className="w-full bg-white/5 border border-white/15 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
+                        className={`w-full bg-white/5 border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500 ${parcialExcede ? "border-red-500/50" : "border-white/15"}`}
                       />
                     </div>
                     <div>
@@ -4963,10 +4979,20 @@ function ModalSustitucion({
                         type="time"
                         value={horaFinParcial}
                         onChange={(e) => setHoraFinParcial(e.target.value)}
-                        className="w-full bg-white/5 border border-white/15 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
+                        className={`w-full bg-white/5 border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500 ${parcialExcede ? "border-red-500/50" : "border-white/15"}`}
                       />
                     </div>
                   </div>
+                  {parcialExcede && (
+                    <p className="text-[10px] text-red-400 mt-1">
+                      Las horas de cobertura ({Math.floor(parcialMin / 60)}h{parcialMin % 60 > 0 ? `${parcialMin % 60}m` : ""}) exceden la duración del turno ({Math.floor(turnoMin / 60)}h). Ajuste el horario.
+                    </p>
+                  )}
+                  {!parcialExcede && parcialMin > 0 && (
+                    <p className="text-[10px] text-white/30 mt-1">
+                      Cobertura: {Math.floor(parcialMin / 60)}h{parcialMin % 60 > 0 ? `${parcialMin % 60}m` : ""} de {Math.floor(turnoMin / 60)}h del turno
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -5013,7 +5039,7 @@ function ModalSustitucion({
             </button>
             <button
               onClick={handleConfirm}
-              disabled={loading}
+              disabled={loading || parcialExcede || !!parcialIncompleto}
               className={`flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-colors flex items-center justify-center gap-2
                 ${esSustitucion
                   ? "bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50"
