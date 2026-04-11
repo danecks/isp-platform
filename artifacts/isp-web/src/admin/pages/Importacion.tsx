@@ -3338,7 +3338,15 @@ function CargaMaestraTab() {
       const json = XLSX.utils.sheet_to_json<Record<string, any>>(
         wb.Sheets[name], { defval: "" }
       );
-      const nonEmpty = json.filter(row =>
+      const normalized = json.map(row => {
+        const out: Record<string, any> = {};
+        for (const [k, v] of Object.entries(row)) {
+          const key = k.trim().toLowerCase().replace(/\s+/g, "_");
+          out[key] = v instanceof Date ? v.toISOString().slice(0, 10) : v;
+        }
+        return out;
+      });
+      const nonEmpty = normalized.filter(row =>
         Object.values(row).some(v => String(v ?? "").trim() !== "")
       );
       if (nonEmpty.length > 0) parsedSheets[name] = nonEmpty;
