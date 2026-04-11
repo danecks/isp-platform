@@ -1753,6 +1753,96 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
       } catch (nomEntranteErr) {
         logger.warn({ nomEntranteErr }, "A-04: no se pudo actualizar novedad nómina del entrante (no bloqueante)");
       }
+
+      // Registrar novedad de falta/ausencia para el agente SALIENTE (titular que sale)
+      if (agenteSalienteId && tipoEventoRrhh && esRelevo) {
+        try {
+          const TIPOS_SIN_DESCUENTO = ["vacaciones", "relevo_vacaciones", "incapacidad", "permiso_con_goce", "permiso", "descanso"];
+          const sinDescuento = TIPOS_SIN_DESCUENTO.includes(tipoNovedad ?? "");
+          const esSuspension = ["suspension", "suspension_disciplinaria"].includes(tipoEventoRrhh);
+          const esFalta      = !sinDescuento && !esSuspension;
+          const diasDesc     = esFalta ? (turnoHorasPuesto >= 24 ? 3 : turnoHorasPuesto >= 12 ? 2 : 1) : null;
+
+          let salienteNombre = agenteSalienteNombre || "Desconocido";
+          try {
+            const { rows: sRows } = await pool.query(`SELECT nombre_completo FROM employees WHERE id=$1`, [agenteSalienteId]);
+            if (sRows.length) salienteNombre = sRows[0].nombre_completo;
+          } catch {}
+
+          const ptId = puesto.titular_employee_id === Number(agenteSalienteId) ? puestoId : null;
+          const ptNombre = ptId ? puesto.nombre : null;
+
+          await pool.query(
+            `INSERT INTO novedades_nomina_diarias
+               (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
+                falta, suspension, descanso_trabajado, afecta_septimo, descuento_dia,
+                puesto_titular_id, puesto_titular_nombre,
+                tipo_novedad, fuente, evento_rrhh_id, dias_descuento,
+                requiere_revision_rrhh, impacto_nomina, updated_at)
+             VALUES ($1,$2,$3, FALSE, 0, 0,
+                     $4, $5, FALSE, $6, $7,
+                     $8, $9,
+                     $10, 'sustitucion_pizarron', $11, $12,
+                     TRUE, 'pendiente', NOW())
+             ON CONFLICT (fecha, employee_id) DO UPDATE SET
+               trabajo_dia      = CASE
+                 WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+                 THEN novedades_nomina_diarias.trabajo_dia
+                 ELSE FALSE END,
+               horas_trabajadas = CASE
+                 WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+                 THEN novedades_nomina_diarias.horas_trabajadas
+                 ELSE 0 END,
+               horas_extra      = CASE
+                 WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+                 THEN novedades_nomina_diarias.horas_extra
+                 ELSE 0 END,
+               falta            = CASE
+                 WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+                 THEN novedades_nomina_diarias.falta
+                 ELSE $4 END,
+               suspension       = CASE
+                 WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+                 THEN novedades_nomina_diarias.suspension
+                 ELSE $5 END,
+               afecta_septimo   = CASE
+                 WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+                 THEN novedades_nomina_diarias.afecta_septimo
+                 ELSE $6 END,
+               descuento_dia    = CASE
+                 WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+                 THEN novedades_nomina_diarias.descuento_dia
+                 ELSE $7 END,
+               tipo_novedad     = COALESCE(novedades_nomina_diarias.tipo_novedad, $10),
+               fuente           = CASE
+                 WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+                 THEN novedades_nomina_diarias.fuente
+                 ELSE 'sustitucion_pizarron' END,
+               evento_rrhh_id   = COALESCE(novedades_nomina_diarias.evento_rrhh_id, $11),
+               dias_descuento   = CASE
+                 WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+                 THEN novedades_nomina_diarias.dias_descuento
+                 ELSE $12 END,
+               requiere_revision_rrhh = CASE
+                 WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+                 THEN novedades_nomina_diarias.requiere_revision_rrhh
+                 ELSE TRUE END,
+               impacto_nomina   = CASE
+                 WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+                 THEN novedades_nomina_diarias.impacto_nomina
+                 ELSE 'pendiente' END,
+               updated_at       = NOW()`,
+            [hoy, agenteSalienteId, salienteNombre,
+             esFalta, esSuspension, esFalta, esFalta,
+             ptId, ptNombre,
+             tipoNovedad ?? 'falta_total', eventoRrhhSalienteId, diasDesc]
+          );
+          logger.info({ agenteSalienteId, fecha: hoy, tipoNovedad, diasDesc, esFalta, esSuspension },
+            "A-04: novedad de falta/ausencia creada para titular saliente");
+        } catch (nomSalienteErr) {
+          logger.warn({ nomSalienteErr }, "A-04: no se pudo crear novedad nómina del saliente (no bloqueante)");
+        }
+      }
     } catch (segErr) {
       logger.warn({ segErr }, "A-04: no se pudo auto-crear segmento al sustituir (no bloqueante)");
     }
