@@ -624,7 +624,7 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
   resultados.push(rZonas);
 
   // ── 7. ARMERÍA ─────────────────────────────────────────────────────────────
-  const armaRows = sheets["ARMERIA"] ?? sheets["armeria"] ?? sheets["ARMERÍA"] ?? [];
+  const armaRows = sheets["ARMAS"] ?? sheets["armas"] ?? sheets["ARMERIA"] ?? sheets["armeria"] ?? sheets["ARMERÍA"] ?? [];
   const rArmas = emptyResult("Armería");
   rArmas.total = armaRows.length;
   const TIPOS_ARMA = ["pistola", "revolver", "escopeta", "fusil", "subametralladora", "otro"];
