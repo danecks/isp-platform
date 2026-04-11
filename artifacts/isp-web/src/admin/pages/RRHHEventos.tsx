@@ -743,15 +743,13 @@ function EventoCard({
                 </button>
               )}
             </div>
-            {!compact && (
-              <button
-                onClick={() => onAnular(evento)}
-                className="w-full flex items-center justify-center gap-1.5 py-2 bg-transparent hover:bg-red-500/8 border border-red-500/15 hover:border-red-500/30 rounded-xl text-xs text-red-400/50 hover:text-red-400 transition-all"
-              >
-                <Ban className="w-3.5 h-3.5" />
-                Anular evento
-              </button>
-            )}
+            <button
+              onClick={() => onAnular(evento)}
+              className={`w-full flex items-center justify-center gap-1.5 ${compact ? "py-1.5 rounded-lg text-[11px]" : "py-2 rounded-xl text-xs"} bg-transparent hover:bg-red-500/8 border border-red-500/15 hover:border-red-500/30 text-red-400/50 hover:text-red-400 transition-all`}
+            >
+              <Ban className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
+              Anular evento
+            </button>
           </>
         )}
       </div>
