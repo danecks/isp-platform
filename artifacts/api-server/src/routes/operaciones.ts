@@ -457,11 +457,13 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       `, [fechaConsultada]);
 
       const faltaSet = new Set(faltasRows.map((f: any) => Number(f.employee_id)));
+      logger.info({ fechaConsultada, faltaSet: [...faltaSet], faltasCount: faltaSet.size }, "Falta post-process");
 
       if (faltaSet.size > 0) {
         for (const p of puestosFinales) {
           // 24x24: si par_trabajando tiene falta y no hay relevo cubriendo
           if (p.es_par_24x24 && p.par_trabajando && !(p as any).es_relevo_dia) {
+            logger.info({ puesto: p.nombre, parEmpId: p.par_trabajando.employee_id, hasFalta: faltaSet.has(Number(p.par_trabajando.employee_id)), esRelevo: (p as any).es_relevo_dia }, "24x24 falta check");
             if (faltaSet.has(Number(p.par_trabajando.employee_id))) {
               (p as any).agente_id        = null;
               (p as any).agente_nombre    = null;
@@ -1403,13 +1405,12 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
 // Para puestos 24x24: solo registra el evento de RRHH (el ciclo se auto-corrige mañana).
 // Body: { puestoId, empleadoId, motivo, notas?, es_24x24?, usuario? }
 operacionesRouter.post("/operaciones/registrar-falta", async (req, res) => {
-  const { puestoId, empleadoId, motivo, notas, es_24x24, usuario } = req.body;
+  const { puestoId, empleadoId, motivo, notas, es_24x24, usuario, fecha } = req.body;
   if (!puestoId || !empleadoId) {
     return res.status(400).json({ error: "puestoId y empleadoId son requeridos" });
   }
   const motivoNorm = motivo ?? "inasistencia";
   try {
-    // Verificar que el empleado y el puesto existen
     const { rows: emp } = await pool.query(
       `SELECT id, nombre_completo FROM employees WHERE id = $1`,
       [empleadoId]
@@ -1421,7 +1422,9 @@ operacionesRouter.post("/operaciones/registrar-falta", async (req, res) => {
     );
     if (po.length === 0) return res.status(404).json({ error: "Puesto no encontrado" });
 
-    const hoyGT = new Date(Date.now() - 6 * 3_600_000).toISOString().slice(0, 10);
+    const hoyGT = fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha)
+      ? fecha
+      : new Date(Date.now() - 6 * 3_600_000).toISOString().slice(0, 10);
     const nota  = notas
       ? `${motivoNorm} — ${po[0].nombre} (${po[0].cliente_nombre}). ${notas}`
       : `${motivoNorm} — ${po[0].nombre} (${po[0].cliente_nombre})`;

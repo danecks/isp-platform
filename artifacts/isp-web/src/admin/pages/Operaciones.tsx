@@ -6481,6 +6481,7 @@ export default function Operaciones() {
         notas: notas || undefined,
         es_24x24: !!modalFalta.puesto.es_par_24x24,
         usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+        fecha: fechaVista,
       });
       toast({ title: "Falta registrada", description: `${modalFalta.titularNombre} — ${modalFalta.puesto.nombre}` });
       setModalFalta(null);
