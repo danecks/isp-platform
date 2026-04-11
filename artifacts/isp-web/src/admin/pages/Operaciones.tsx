@@ -3628,7 +3628,7 @@ function DroppablePuesto({
               ) : null}
             </div>
 
-            {/* ── SIEMPRE VISIBLE: Arma + Tramo ── */}
+            {/* ── SIEMPRE VISIBLE: Arma + Tramo + Faltante ── */}
             <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
                 {arma && armaId && (
                   <button onClick={e => { e.stopPropagation(); setFichaArmaId(armaId); }} title={`Ver ficha: ${arma} — ${armaTipo ?? ""}`} className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-500/8 border border-blue-500/15 rounded-md hover:bg-blue-500/15 hover:border-blue-500/30 transition-colors">
@@ -3640,6 +3640,15 @@ function DroppablePuesto({
                 <button onClick={e => { e.stopPropagation(); onAbrirSegmentos(); }} className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-300/50 bg-indigo-500/5 border border-indigo-500/15 hover:bg-indigo-500/15 hover:text-indigo-300 rounded-md transition-colors" title="Tramos de cobertura">
                   <Layers className="w-2.5 h-2.5" /><span>Tramos</span>
                 </button>
+                {activo.trabaja_hoy && activo.employee_id && onRegistrarFalta && !cubiertoManual && (
+                  <button
+                    onClick={e => { e.stopPropagation(); onRegistrarFalta(puesto, activo.employee_id, activo.nombre); }}
+                    className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold text-red-300/80 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 hover:text-red-300 rounded-md transition-colors"
+                    title="Marcar titular como faltante"
+                  >
+                    <XCircle className="w-3 h-3" /><span>Faltante</span>
+                  </button>
+                )}
             </div>
 
             {/* ── EXPANDED: detalles completos ── */}
@@ -3663,16 +3672,6 @@ function DroppablePuesto({
                 {cubiertoManual && !puesto.es_relevo_dia && (
                   <button onClick={e => { e.stopPropagation(); onLiberar(); }} className="flex items-center gap-1 text-[9px] font-semibold text-red-300/80 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 hover:text-red-300 rounded-md px-2 py-1 transition-colors" title="Remover del puesto">
                     <XCircle className="w-3 h-3" /><span>Remover agente</span>
-                  </button>
-                )}
-                {/* Registrar falta — cuando el titular debería estar trabajando hoy */}
-                {activo.trabaja_hoy && activo.employee_id && onRegistrarFalta && (
-                  <button
-                    onClick={e => { e.stopPropagation(); onRegistrarFalta(puesto, activo.employee_id, activo.nombre); }}
-                    className="flex items-center gap-1 text-[9px] font-semibold text-amber-300/80 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 hover:text-amber-300 rounded-md px-2 py-1 transition-colors"
-                    title="Registrar inasistencia del titular"
-                  >
-                    <AlertTriangle className="w-3 h-3" /><span>Registrar falta</span>
                   </button>
                 )}
               </div>
@@ -6348,25 +6347,24 @@ export default function Operaciones() {
 
   // ── Click en puesto: asignar agente seleccionado ──────────────────────────
   async function handlePuestoClick(puesto: Puesto) {
-    // En modo cuadre (viendo un día pasado pendiente): permitir interacción con ese día
     const enModoCuadre = esPasado && diasPendientesCierre.some(d => d.fecha === fechaVista);
-    if (!enModoCuadre && (fechaVistaCerrada || hayDiasPendientes)) return;
+
     // En modo planificación: click en puesto abre el modal de plan futuro
     if (esFuturo) {
-      if (agenteSeleccionado) {
-        // Asignar como relevo en planificación
-        setModalPlanFuturo({ puesto, plan: planFuturoPorPuesto[puesto.id] ?? null });
-      } else {
-        setModalPlanFuturo({ puesto, plan: planFuturoPorPuesto[puesto.id] ?? null });
-      }
+      setModalPlanFuturo({ puesto, plan: planFuturoPorPuesto[puesto.id] ?? null });
       return;
     }
+
+    // Sin agente seleccionado: siempre permitir expandir/contextualizar el puesto
+    // (es lectura, no modifica nada — incluso si hay días pendientes)
     if (!agenteSeleccionado) {
-      // Sin agente: contextualizar el pool para recomendar candidatos de este puesto
       setPuestoContexto(prev => prev?.id === puesto.id ? null : puesto);
       if (poolTab !== "disponibles" && poolTab !== "descansandoCiclo") setPoolTab("disponibles");
       return;
     }
+
+    // Operaciones de escritura (asignar agente): requieren que no haya bloqueos
+    if (!enModoCuadre && (fechaVistaCerrada || hayDiasPendientes)) return;
     await iniciarAsignacion(puesto, agenteSeleccionado);
   }
 
