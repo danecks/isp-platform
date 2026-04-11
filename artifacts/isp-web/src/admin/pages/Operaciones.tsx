@@ -4314,19 +4314,23 @@ function ModalSustituyeTitular({
             <p className="text-xs text-white/50 mb-2 font-medium uppercase tracking-wider">Motivo de ausencia</p>
             <div className="grid grid-cols-2 gap-1.5">
               {MOTIVOS_RAPIDOS.map((m) => (
-                <button
-                  key={m.value}
-                  type="button"
-                  onClick={() => setMotivo(m.value)}
-                  title={m.desc}
-                  className={`text-left px-2.5 py-1.5 rounded-md border text-[11px] font-medium transition-all ${
-                    motivo === m.value
-                      ? `${m.color} border-current bg-current/10`
-                      : "text-white/40 border-white/10 hover:text-white/70 hover:border-white/20"
-                  }`}
-                >
-                  {m.label}
-                </button>
+                <div key={m.value} className="relative group/tip">
+                  <button
+                    type="button"
+                    onClick={() => setMotivo(m.value)}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-md border text-[11px] font-medium transition-all ${
+                      motivo === m.value
+                        ? `${m.color} border-current bg-current/10`
+                        : "text-white/40 border-white/10 hover:text-white/70 hover:border-white/20"
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-1.5 bg-[#0d1117] border border-white/20 rounded-lg text-[10px] text-white/80 leading-snug whitespace-nowrap opacity-0 pointer-events-none group-hover/tip:opacity-100 transition-opacity duration-150 z-50 shadow-xl">
+                    {m.desc}
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/20" />
+                  </div>
+                </div>
               ))}
             </div>
             {(() => {
@@ -4881,18 +4885,22 @@ function ModalSustitucion({
                     <p className="text-[9px] text-white/25 uppercase tracking-wide mb-1">{grupoLabel}</p>
                     <div className="flex flex-wrap gap-1">
                       {items.map((t) => (
-                        <button
-                          key={t.value}
-                          type="button"
-                          data-active={tipoNovedad === t.value ? "" : undefined}
-                          onClick={() => setTipoNovedad(t.value)}
-                          title={t.desc}
-                          className={`px-2 py-1 rounded-md border text-[10px] font-semibold transition-all ${GRUPO_COLORS[grupo]} ${
-                            tipoNovedad === t.value ? "opacity-100 scale-[1.03]" : "opacity-60 hover:opacity-90"
-                          }`}
-                        >
-                          {t.label}
-                        </button>
+                        <div key={t.value} className="relative group/tip">
+                          <button
+                            type="button"
+                            data-active={tipoNovedad === t.value ? "" : undefined}
+                            onClick={() => setTipoNovedad(t.value)}
+                            className={`px-2 py-1 rounded-md border text-[10px] font-semibold transition-all ${GRUPO_COLORS[grupo]} ${
+                              tipoNovedad === t.value ? "opacity-100 scale-[1.03]" : "opacity-60 hover:opacity-90"
+                            }`}
+                          >
+                            {t.label}
+                          </button>
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-1.5 bg-[#0d1117] border border-white/20 rounded-lg text-[10px] text-white/80 leading-snug whitespace-nowrap opacity-0 pointer-events-none group-hover/tip:opacity-100 transition-opacity duration-150 z-50 shadow-xl">
+                            {t.desc}
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/20" />
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>
