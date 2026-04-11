@@ -365,6 +365,31 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       const par_trabajando  = esPar ? (titulares.find((t) => t.trabaja_hoy)  ?? titulares[0]) : undefined;
       const par_descansando = esPar ? (titulares.find((t) => !t.trabaja_hoy) ?? titulares[1]) : undefined;
 
+      // ── Puestos single-titular vía puesto_titulares (sin agente_id legacy) ──────
+      // Si no hay par 24x24 y el puesto tiene un titular en puesto_titulares
+      // pero puestos_operativos.agente_id/titular_employee_id están vacíos,
+      // propagamos esos datos desde titulares[] para que el frontend pueda
+      // mostrar el nombre, los botones de acción y el estado correcto.
+      if (!esPar && titulares.length >= 1 && titulares[0].employee_id) {
+        const t0 = titulares[0];
+        // titular_employee_id / titular_nombre — siempre que no estén ya seteados
+        if (!p.titular_employee_id) {
+          (p as any).titular_employee_id = t0.employee_id;
+          (p as any).titular_nombre      = t0.nombre;
+        }
+        // agente_id / agente_nombre / estado — solo si el legado está vacío
+        if (!p.agente_id) {
+          if (t0.trabaja_hoy) {
+            (p as any).agente_id     = t0.employee_id;
+            (p as any).agente_nombre = t0.nombre;
+            (p as any).estado        = "cubierto";
+          } else {
+            // Titular en descanso de ciclo: el puesto está descubierto en esta fecha
+            (p as any).descanso_por_ciclo = true;
+          }
+        }
+      }
+
       return { ...p, titulares, es_par_24x24: esPar, par_trabajando, par_descansando };
     });
 
@@ -502,7 +527,8 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         -- ¿Este empleado tiene una cobertura activa HOY? (trabaja en su día de descanso = HE)
         cs_trabajando.trabajando_hoy IS NOT NULL AS cs_trabajando_hoy,
         -- ¿Su slot de ciclo indica que debe trabajar HOY?
-        COALESCE(slot_hoy.trabaja_hoy, FALSE)   AS slot_trabaja_hoy,
+        -- NULL = no tiene puesto_slots | TRUE = trabaja hoy | FALSE = descansa hoy
+        slot_hoy.trabaja_hoy AS slot_trabaja_hoy,
         CASE
           -- Estado laboral no-activo tiene prioridad absoluta
           WHEN e.estado_laboral = 'licencia'   THEN 'en_descanso'
@@ -520,10 +546,11 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
                AND titular_po.id IS NOT NULL
                AND COALESCE(titular_po.estado_operativo_puesto, 'normal') != 'normal'
                THEN 'faltando'
-          -- EN_PUESTO: agente titular y el ciclo confirma que HOY trabaja
+          -- EN_PUESTO: agente titular (via puestos_operativos.agente_id o puesto_titulares)
+          -- y el ciclo confirma que HOY trabaja.
           -- Si slot_hoy.trabaja_hoy=FALSE (día de descanso 24x24), cae a ELSE 'disponible'
           -- para que el motor de turnos JS lo clasifique como descansandoCiclo / haciendoHE.
-          WHEN po.agente_id IS NOT NULL
+          WHEN (po.agente_id IS NOT NULL OR titular_po.id IS NOT NULL)
                AND e.estado_laboral = 'activo'
                AND COALESCE(slot_hoy.trabaja_hoy, TRUE) = TRUE
                THEN 'en_puesto'
@@ -854,6 +881,18 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         case 'suspendido':  suspendidos.push(a);  break;
         case 'faltando':    faltando.push(a);     break;
         default: {
+          // ── Fallback por slot cuando tipo_ciclo_turno está vacío ─────────
+          // Agentes 24x24 cuyo turno no tiene tipo_ciclo configurado en DB pero sí tienen
+          // puesto_slots correctos. slot_trabaja_hoy=true|false|null (null=sin slot).
+          if (a.slot_trabaja_hoy !== null && a.slot_trabaja_hoy !== undefined && !a.tipo_ciclo_turno) {
+            if (a.slot_trabaja_hoy === false) {
+              descansandoCiclo.push({ ...a, disponibleHE: true });
+            } else {
+              // slot dice que trabaja hoy pero cayó aquí (ej. sin po.agente_id ni titular_po)
+              trabajando.push({ ...a, disponibleHE: false });
+            }
+            break;
+          }
           // ── Aplicar motor de turnos si el agente tiene datos de ciclo ──────
           if (a.tipo_ciclo_turno && a.horas_trabajo_turno && a.fecha_inicio_ciclo_turno) {
             const turnoObj = {
