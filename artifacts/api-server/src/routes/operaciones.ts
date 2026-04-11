@@ -368,6 +368,52 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       return { ...p, titulares, es_par_24x24: esPar, par_trabajando, par_descansando };
     });
 
+    // ── Aplicar agente efectivo desde ciclo + overrides de cobertura_segmentos ──
+    // Para puestos con ciclo configurado (24x24 etc), el agente mostrado es:
+    //   1. El sustituto registrado en cobertura_segmentos para esa fecha (relevo del día)
+    //   2. Si no hay relevo ese día → el titular que le toca trabajar según el ciclo
+    // Esto asegura que mañana el tablero vuelve automáticamente a la normalidad.
+    {
+      const { rows: coberturas } = await pool.query(`
+        SELECT DISTINCT ON (cs.puesto_id)
+          cs.puesto_id,
+          cs.employee_id       AS relevo_id,
+          cs.empleado_nombre   AS relevo_nombre,
+          cs.tipo_cobertura
+        FROM cobertura_segmentos cs
+        WHERE cs.fecha = $1::date
+          AND cs.tipo_cobertura IN ('relevo','cobertura_supervisor','cobertura_jefe_servicio')
+        ORDER BY cs.puesto_id, cs.created_at DESC
+      `, [fechaConsultada]);
+
+      const coberturaMap = new Map<number, { relevo_id: number; relevo_nombre: string; tipo_cobertura: string }>();
+      for (const c of coberturas) coberturaMap.set(Number(c.puesto_id), c);
+
+      for (const p of puestosFinales) {
+        const override = coberturaMap.get(Number(p.id));
+
+        if (p.es_par_24x24 && p.par_trabajando) {
+          // Puesto 24x24: el agente efectivo viene del ciclo, con posible relevo del día
+          if (override) {
+            (p as any).agente_id     = override.relevo_id;
+            (p as any).agente_nombre = override.relevo_nombre;
+            (p as any).es_relevo_dia = true;
+          } else {
+            (p as any).agente_id     = p.par_trabajando.employee_id;
+            (p as any).agente_nombre = p.par_trabajando.nombre;
+            (p as any).es_relevo_dia = false;
+          }
+        } else if (!p.es_par_24x24 && override) {
+          // Puesto normal (un agente): si hay relevo registrado ese día, mostrarlo
+          // puestos_operativos.agente_id NO se modificó → mañana el titular regresa solo
+          (p as any).agente_id     = override.relevo_id;
+          (p as any).agente_nombre = override.relevo_nombre;
+          (p as any).es_relevo_dia = true;
+        }
+        // Si es puesto normal sin override: agente_id ya viene de puestos_operativos (titular)
+      }
+    }
+
     // Agrupar por cliente
     const mapaClientes: Record<string, {
       clienteId: number | null;
@@ -876,17 +922,22 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
 // ─── POST /api/operaciones/asignar ───────────────────────────────────────────
 // Asignar agente a puesto (sin agente previo)
 operacionesRouter.post("/operaciones/asignar", async (req, res) => {
-  // soloCobertura=true → solo cubre hoy, NO cambia titular ni EOA
+  // soloCobertura=true → relevo temporal de un día, NO cambia titular ni EOA, NO toca agente_id
   // soloCobertura=false (default) → asigna como titular si el puesto no tiene uno
   // oldTitularAccion → qué hacer con el EOA del titular previo
   // fechaEfectiva   → "YYYY-MM-DD" o null (usa hoy si null)
   // motivoCambio    → texto libre del motivo del cambio de titular
+  // fechaOperacion  → "YYYY-MM-DD" de la fecha a cubrir (si es distinta a hoy, modo retroactivo)
   const { puestoId, agenteId, usuario, notas, forzar,
           soloCobertura = false,
           oldTitularAccion,
           fechaEfectiva,
           motivoCambio,
-          horaInstalacion } = req.body;
+          horaInstalacion,
+          fechaOperacion } = req.body;
+  const hoyGT = todayGT();
+  const fechaCobertura = fechaOperacion ?? hoyGT;
+  const esRetroactivo = fechaCobertura < hoyGT;
   if (!puestoId || !agenteId) return res.status(400).json({ error: "puestoId y agenteId son requeridos" });
 
   try {
@@ -939,16 +990,13 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
     const titularPrevioId: number | null = puesto.titular_employee_id ?? null;
 
     if (soloCobertura) {
-      // ── Solo cobertura temporal: solo pone agente_id, NO toca titular ────────
-      await pool.query(
-        `UPDATE puestos_operativos
-         SET agente_id     = $1,
-             agente_nombre = $2,
-             estado        = 'cubierto',
-             updated_at    = NOW()
-         WHERE id = $3`,
-        [agenteId, agente.nombre_completo, puestoId]
-      );
+      // ── Solo cobertura temporal (relevo): NO toca agente_id ni titular en puestos_operativos.
+      // El agente cubre SOLO la fecha indicada (fechaCobertura).
+      // El tablero lee el relevo desde cobertura_segmentos; al día siguiente el puesto vuelve
+      // automáticamente a su estado normal (vacante o con titular) sin intervención manual.
+      //
+      // No se hace ningún UPDATE a puestos_operativos aquí.
+      // (La cobertura queda registrada en el bloque A-04 de abajo)
     } else {
       // ── Asignación normal (puede convertir en titular) ─────────────────────
 
@@ -1053,9 +1101,9 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
        soloCobertura ? 'relevo' : 'asignacion', usuario || 'sistema', notas || null]
     );
 
-    // A-04: Auto-crear / actualizar segmento de cobertura para hoy
+    // A-04: Auto-crear / actualizar segmento de cobertura para fechaCobertura (hoy o fecha retroactiva)
     try {
-      const hoy = todayGT();
+      const hoy = fechaCobertura;  // puede ser hoy o una fecha retroactiva
       const turno = (puesto.turno ?? "día").toLowerCase();
       const horaFinTurno = turno === "noche" ? "06:00" : "18:00";
       const horaInicioDefault = turno === "noche" ? "20:00" : "08:00";
@@ -1179,14 +1227,25 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
 
 // ─── POST /api/operaciones/sustituir ─────────────────────────────────────────
 // Sustituir agente en un puesto (hay uno previo)
+// fechaOperacion: "YYYY-MM-DD" — si es un día pasado, la cobertura se registra en esa fecha
+//   y puestos_operativos.agente_id NO se modifica (el tablero lo calcula del ciclo+cobertura).
 operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
   const { puestoId, agenteEntranteId, motivo, usuario, notas, forzar, tipoSustitucion,
-          tipoNovedad, coberturaTipo } = req.body;
+          tipoNovedad, coberturaTipo, fechaOperacion } = req.body;
   if (!puestoId || !agenteEntranteId) return res.status(400).json({ error: "puestoId y agenteEntranteId son requeridos" });
 
   // tipoSustitucion: 'relevo' = solo cambia agente_id (titular no cambia)
   //                 'reasignacion' = cambia agente_id Y titular_employee_id
   const esRelevo = tipoSustitucion === 'relevo';
+
+  // Operación retroactiva: la fecha de la cobertura es en el pasado.
+  // En ese caso NO se toca agente_id en puestos_operativos — el tablero lo resuelve
+  // desde el ciclo (puesto_slots) y los overrides de cobertura_segmentos.
+  const hoyGT = todayGT();
+  const fechaCobertura = (fechaOperacion && /^\d{4}-\d{2}-\d{2}$/.test(fechaOperacion))
+    ? fechaOperacion
+    : hoyGT;
+  const esRetroactivoSustitucion = fechaCobertura < hoyGT;
 
   try {
     if (await verificarDiaCerrado()) {
@@ -1236,19 +1295,15 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
     const agenteSalienteId     = puesto.agente_id;
     const agenteSalienteNombre = puesto.agente_nombre;
 
-    // Si es relevo: solo cambia agente_id, el titular_employee_id NO cambia
-    // Si es reasignación: cambia tanto agente_id como titular_employee_id
-    if (esRelevo) {
-      await pool.query(
-        `UPDATE puestos_operativos
-         SET agente_id     = $1,
-             agente_nombre = $2,
-             estado        = 'cubierto',
-             updated_at    = NOW()
-         WHERE id = $3`,
-        [agenteEntranteId, entrante.nombre_completo, puestoId]
-      );
-    } else {
+    // REGLA FUNDAMENTAL DE RELEVOS:
+    // Un relevo es SIEMPRE un evento de un solo día — no importa si es hoy, ayer o retroactivo.
+    // El agente sustituto cubre SOLO esa fecha; al día siguiente el ciclo retoma normalmente.
+    // Por esto, un relevo NUNCA toca puestos_operativos.agente_id.
+    // Solo queda registrado en cobertura_segmentos para esa fecha específica.
+    //
+    // Una reasignación permanente (esRelevo=false) SÍ actualiza agente_id,
+    // pero solo si es para hoy o futuro (no retroactiva).
+    if (!esRelevo && !esRetroactivoSustitucion) {
       await pool.query(
         `UPDATE puestos_operativos
          SET agente_id             = $1,
@@ -1356,9 +1411,9 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
       [estadoOpPuesto, puestoId]
     );
 
-    // A-04: Auto-crear segmento de cobertura para hoy al sustituir agente
+    // A-04: Auto-crear segmento de cobertura (para fechaCobertura: hoy o fecha retroactiva)
     try {
-      const hoy = todayGT();
+      const hoy = fechaCobertura;  // usa fechaCobertura (puede ser pasado si es retroactivo)
       const turno = (puesto.turno ?? "día").toLowerCase();
       const horaInicio = turno === "noche" ? "20:00" : "08:00";
       const horaFin    = turno === "noche" ? "06:00" : "18:00";

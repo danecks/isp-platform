@@ -560,6 +560,13 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
             diasTrabajo = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
           }
 
+          // Para ciclos alternantes, cada slot adicional se desfasa +1 día respecto al slot 1
+          // Slot 1: fechaBase, Slot 2: fechaBase+1, etc.
+          let fechaSlot: Date | null = p.fecha_inicio_ciclo ?? null;
+          if (fechaSlot && esAlternante && titular.orden > 1) {
+            fechaSlot = new Date(fechaSlot.getTime() + (titular.orden - 1) * 86_400_000);
+          }
+
           await pool.query(
             `INSERT INTO puesto_slots
                (puesto_id, slot_numero, horas_turno, hora_entrada, dias_trabajo,
@@ -572,7 +579,7 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
               horasTrabajo,
               horaEntrada,
               diasTrabajo,
-              p.fecha_inicio_ciclo,
+              fechaSlot,
               titular.employee_id,
             ]
           ).catch(() => {});

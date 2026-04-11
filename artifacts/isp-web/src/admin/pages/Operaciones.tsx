@@ -6129,6 +6129,8 @@ export default function Operaciones() {
         motivoCambio: motivoCambio ?? null,
         horaInstalacion: horaInstalacion ?? null,
         usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+        // Si estamos en modo cuadre (día pasado), registrar la cobertura en esa fecha
+        ...(esPasado && fechaVista ? { fechaOperacion: fechaVista } : {}),
       });
       if (respAsignar?.impactoSalarial?.detectado) {
         setTimeout(() => toast({
@@ -6263,6 +6265,9 @@ export default function Operaciones() {
           tipoNovedad: tipoNovedad ?? null,
           coberturaTipo: coberturaTipo ?? "completo",
           usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+          // Si estamos viendo un día pasado (modo cuadre retroactivo), pasar esa fecha
+          // para que el endpoint registre la cobertura en ese día y NO modifique agente_id actual.
+          ...(esPasado && fechaVista ? { fechaOperacion: fechaVista } : {}),
         });
         if (resp?.impactoSalarial?.detectado) {
           setTimeout(() => toast({
