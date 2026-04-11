@@ -14,6 +14,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { AdminLayout } from "@/admin/layout/AdminLayout";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -1266,7 +1267,7 @@ export default function AdminPlanilla() {
   }
 
   return (
-    <div className="min-h-screen bg-[#061120] p-6">
+    <AdminLayout title="Planilla Final de Nómina">
       <div className="max-w-7xl mx-auto">
         {selected ? (
           <DetallePlanilla
@@ -1308,6 +1309,6 @@ export default function AdminPlanilla() {
         onSuccess={handleBack}
         sesionUsuario={sesionUsuario}
       />
-    </div>
+    </AdminLayout>
   );
 }
