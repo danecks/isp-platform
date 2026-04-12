@@ -1519,14 +1519,11 @@ Por favor ingresa al sistema o responde para continuar.',
         updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
-    // Seed turnos estándar
+    // Seed turnos estándar (solo 2 tipos activos: 24h y 12h)
     await pool.query(`
-      INSERT INTO turnos (nombre, descripcion, horas_trabajo, horas_descanso) VALUES
-        ('12x12', 'Turno de 12 horas diarias (diurno o nocturno). El colaborador trabaja todos los días, 12 horas por jornada.', 12, 12),
-        ('24x24', 'Turno de 24 horas continuas seguido de 24 horas de descanso. Alterna: trabaja / descansa.', 24, 24),
-        ('24x48', 'Turno de 24 horas continuas seguido de 48 horas de descanso. Trabaja 1 día, descansa 2 días.', 24, 48),
-        ('8 horas', 'Jornada ordinaria de 8 horas diarias. El día de descanso semanal se define en el puesto o empleado.', 8, 0),
-        ('12x36', 'Turno de 12 horas continuas seguido de 36 horas de descanso. Trabaja 1 turno, descansa 1.5 días.', 12, 36)
+      INSERT INTO turnos (nombre, descripcion, horas_trabajo, horas_descanso, num_titulares, activo) VALUES
+        ('Turno 24 horas', 'Turno de 24 horas continuas. 2 titulares alternan según plantilla semanal.', 24, 24, 2, TRUE),
+        ('Turno 12 horas', 'Turno de 12 horas diarias. 1 titular con horario definido en plantilla.', 12, 12, 1, TRUE)
       ON CONFLICT (nombre) DO NOTHING
     `);
     logger.info("Auto-migrate: T-01 tabla turnos verificada/creada");
@@ -1546,18 +1543,14 @@ Por favor ingresa al sistema o responde para continuar.',
   // ── T-02b: columna num_titulares en turnos ─────────────────────────────────
   try {
     await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS num_titulares INTEGER NOT NULL DEFAULT 2`);
-    // Actualiza los valores correctos para cada turno existente
+    // Actualiza los valores correctos para cada turno activo
     await pool.query(`
       UPDATE turnos SET num_titulares = CASE
-        WHEN nombre = '12x12'  THEN 1
-        WHEN nombre = '8 horas' THEN 1
-        WHEN nombre = '24x24'  THEN 2
-        WHEN nombre = '24x48'  THEN 2
-        WHEN nombre = '12x36'  THEN 2
-        WHEN nombre = '24x72'  THEN 2
-        WHEN nombre = '8x8'    THEN 2
-        ELSE 2
+        WHEN nombre = 'Turno 12 horas' THEN 1
+        WHEN nombre = 'Turno 24 horas' THEN 2
+        ELSE num_titulares
       END
+      WHERE activo = TRUE
     `);
     logger.info("Auto-migrate: T-02b num_titulares en turnos verificado");
   } catch (err) {
@@ -2212,33 +2205,11 @@ Por favor ingresa al sistema o responde para continuar.',
     `);
     if (parseInt(sinTurno[0].cnt) > 0) {
       // Fecha de inicio de ciclo: 2026-01-01 como referencia estable
+      // Asignar turno 24h por defecto a cualquier puesto que aún quede sin turno
       await pool.query(`
         UPDATE puestos_operativos
-        SET
-          tipo_turno_id     = t.id,
-          fecha_inicio_ciclo = '2026-01-01'
-        FROM (
-          SELECT id, nombre FROM turnos WHERE activo = TRUE
-        ) t
-        WHERE puestos_operativos.activo = TRUE
-          AND puestos_operativos.tipo_turno_id IS NULL
-          AND (
-            (puestos_operativos.nombre ILIKE '%garita principal%'   AND t.nombre = '12x12') OR
-            (puestos_operativos.nombre ILIKE '%garita norte%'        AND t.nombre = '12x12') OR
-            (puestos_operativos.nombre ILIKE '%garita secundaria%'   AND t.nombre = '12x12') OR
-            (puestos_operativos.nombre ILIKE '%control de acceso%'   AND t.nombre = '24x24') OR
-            (puestos_operativos.nombre ILIKE '%ronda%'               AND t.nombre = '12x36') OR
-            (puestos_operativos.nombre ILIKE '%bodega%'              AND t.nombre = '8 horas') OR
-            (puestos_operativos.nombre ILIKE '%acceso vehicular%'    AND t.nombre = '12x12') OR
-            (puestos_operativos.nombre ILIKE '%torre%'               AND t.nombre = '24x48') OR
-            (puestos_operativos.nombre ILIKE '%recepci%'             AND t.nombre = '8 horas')
-          )
-      `);
-      // Asignar turno genérico 12x12 a cualquier puesto que aún quede sin turno
-      await pool.query(`
-        UPDATE puestos_operativos
-        SET tipo_turno_id     = (SELECT id FROM turnos WHERE nombre = '12x12' LIMIT 1),
-            fecha_inicio_ciclo = '2026-01-01'
+        SET tipo_turno_id     = (SELECT id FROM turnos WHERE nombre = 'Turno 24 horas' AND activo = TRUE LIMIT 1),
+            fecha_inicio_ciclo = COALESCE(fecha_inicio_ciclo, '2026-01-01')
         WHERE activo = TRUE AND tipo_turno_id IS NULL
       `);
       logger.info("Auto-migrate: TRN-SEED-01 turnos asignados a puestos operativos");
