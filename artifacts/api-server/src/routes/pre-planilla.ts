@@ -133,13 +133,20 @@ const QUERY_CONSOLIDADO = `
     COUNT(DISTINCT n.fecha) FILTER (WHERE n.trabajo_esperado = TRUE)            AS dias_esperados_trabajo,
     COUNT(DISTINCT n.fecha) FILTER (WHERE n.trabajo_esperado = FALSE)           AS dias_esperados_descanso,
 
-    -- Anticipos aprobados o pagados del período
+    -- Anticipos: descuento por cuota (con interés) o monto_cobro si 1 cuota
     COALESCE((
-      SELECT SUM(a.cantidad)
+      SELECT SUM(
+        CASE
+          WHEN COALESCE(a.num_cuotas, 1) > 1 AND a.cuota_monto IS NOT NULL
+            THEN a.cuota_monto
+          ELSE COALESCE(a.monto_cobro, a.cantidad * 1.10)
+        END
+      )
       FROM anticipos a
       WHERE a.employee_id = e.id
         AND DATE(a.fecha_solicitud) BETWEEN $1 AND $2
         AND a.estado IN ('aprobada', 'pagada')
+        AND COALESCE(a.cuotas_pagadas, 0) < COALESCE(a.num_cuotas, 1)
     ), 0)                                                                       AS anticipos_monto,
     COALESCE((
       SELECT COUNT(a.id)
@@ -147,6 +154,7 @@ const QUERY_CONSOLIDADO = `
       WHERE a.employee_id = e.id
         AND DATE(a.fecha_solicitud) BETWEEN $1 AND $2
         AND a.estado IN ('aprobada', 'pagada')
+        AND COALESCE(a.cuotas_pagadas, 0) < COALESCE(a.num_cuotas, 1)
     ), 0)                                                                       AS anticipos_count,
 
     -- Próxima cuota de uniforme pendiente (UNIF-01)

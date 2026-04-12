@@ -409,25 +409,34 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
     let totalCuotasUniforme = 0;
 
     for (const l of lineas) {
-      // ── Anticipos ────────────────────────────────────────────────────────────
+      // ── Anticipos (con soporte de cuotas e interés) ──────────────────────────
       let anticipoIds: number[] = [];
       if (l.employee_id) {
         const { rows: antRows } = await pool.query(`
-          SELECT id, cantidad FROM anticipos
+          SELECT id, cantidad, num_cuotas, cuotas_pagadas, cuota_monto, monto_cobro
+          FROM anticipos
           WHERE employee_id = $1
-            AND planilla_id IS NULL
             AND estado IN ('pendiente', 'aprobada')
+            AND COALESCE(cuotas_pagadas, 0) < COALESCE(num_cuotas, 1)
           ORDER BY fecha_solicitud ASC
         `, [l.employee_id]);
         anticipoIds = antRows.map((r: Record<string, unknown>) => r.id as number);
         totalAnticiposVinculados += anticipoIds.length;
 
-        if (anticipoIds.length > 0) {
+        for (const ant of antRows) {
+          const numCuotas = Number(ant.num_cuotas) || 1;
+          const cuotasPagadas = Number(ant.cuotas_pagadas) || 0;
+          const nuevasCuotasPagadas = cuotasPagadas + 1;
+          const esUltimaCuota = nuevasCuotasPagadas >= numCuotas;
+
           await pool.query(`
             UPDATE anticipos
-            SET planilla_id = $1, estado = 'descontado', updated_at = NOW()
-            WHERE id = ANY($2::int[])
-          `, [planillaId, anticipoIds]);
+            SET planilla_id = $1,
+                cuotas_pagadas = $2,
+                estado = CASE WHEN $3 THEN 'descontado' ELSE estado END,
+                updated_at = NOW()
+            WHERE id = $4
+          `, [planillaId, nuevasCuotasPagadas, esUltimaCuota, ant.id]);
         }
       }
 
@@ -599,10 +608,13 @@ planillaRouter.delete("/nomina/planilla/:id", async (req, res) => {
       });
     }
 
-    // 1. Desvincular anticipos: volver a 'aprobada' y limpiar planilla_id
+    // 1. Desvincular anticipos: volver a 'aprobada', decrementar cuotas_pagadas, limpiar planilla_id
     await pool.query(`
       UPDATE anticipos
-      SET planilla_id = NULL, estado = 'aprobada', updated_at = NOW()
+      SET planilla_id = NULL,
+          estado = 'aprobada',
+          cuotas_pagadas = GREATEST(0, COALESCE(cuotas_pagadas, 0) - 1),
+          updated_at = NOW()
       WHERE planilla_id = $1
     `, [id]);
 
