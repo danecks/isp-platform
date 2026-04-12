@@ -94,6 +94,8 @@ interface Puesto {
   es_relevo_dia?: boolean;
   /** El titular que trabaja hoy tiene una falta registrada */
   titular_faltando?: boolean;
+  /** El puesto tiene un slot vacío en la plantilla (puede auto-asignar) */
+  tiene_slot_vacio?: boolean;
 }
 
 /** Titular individual con su propio estado de ciclo */
@@ -6458,8 +6460,34 @@ export default function Operaciones() {
       return;
     }
 
-    // ── NUEVO: Agente de pool → puesto SIN agente activo ─────────────────────
-    // Preguntamos si es cobertura temporal o cambio de titular
+    // ── Agente de pool → puesto SIN agente, SIN titular previo, y CON slot vacío → auto-asignar
+    if (!puesto.agente_id && !puesto.titular_employee_id && esAgentePool(agente) && puesto.tiene_slot_vacio) {
+      try {
+        const resp = await apiPost(`${API_BASE}/operaciones/asignar`, {
+          puestoId: puesto.id,
+          agenteId: agente.id,
+          soloCobertura: false,
+          usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+          motivoCambio: "asignacion_directa",
+          ...(esPasado && fechaVista ? { fechaOperacion: fechaVista } : {}),
+        });
+        if (resp?.impactoSalarial?.detectado) {
+          setTimeout(() => toast({
+            title: "⚠️ Cambio con impacto salarial",
+            description: "Este puesto tiene condiciones salariales distintas. El cambio requiere autorización de RRHH.",
+            variant: "destructive",
+          }), 400);
+        }
+        toast({ title: "Titular asignado", description: `${agente.nombre_completo} → ${puesto.nombre} (auto-asignado a plantilla)` });
+        await refetchTablero();
+        await refetchPool();
+      } catch (e: any) {
+        toast({ title: "Error", description: e?.message ?? "No se pudo asignar", variant: "destructive" });
+      }
+      return;
+    }
+
+    // ── Agente de pool → puesto SIN agente (sin slot vacío) → preguntar
     if (!puesto.agente_id && esAgentePool(agente)) {
       setModalEligeCobertura({ puesto, agente });
       return;

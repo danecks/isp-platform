@@ -116,6 +116,10 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         arm.tipo   AS arma_tipo,
         -- PT: todos los titulares del puesto con sus fechas de ciclo individuales
         COALESCE(pt_tab.titulares_json, '[]'::json)                   AS titulares_json,
+        EXISTS (
+          SELECT 1 FROM puesto_slots ps_v
+          WHERE ps_v.puesto_id = po.id AND ps_v.activo = TRUE AND ps_v.empleado_id IS NULL
+        ) AS tiene_slot_vacio,
         -- TURNO-RT: ¿el agente asignado está actualmente dentro de su ventana de turno?
         -- Prioridad 1: cobertura_segmentos (registro formal de cobertura del día).
         -- Prioridad 2: hora_entrada + horas_trabajo del turno (fallback cuando no hay cobertura formal).
@@ -695,6 +699,7 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         FROM puesto_slots ps
         JOIN puestos_operativos po_s ON po_s.id = ps.puesto_id
         WHERE ps.empleado_id = e.id AND ps.activo = TRUE
+        ORDER BY ps.slot_numero ASC
         LIMIT 1
       ) slot_hoy ON TRUE
       WHERE e.estado_laboral IN ('activo', 'suspendido', 'licencia')
@@ -1241,6 +1246,22 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
          FROM puestos_operativos po WHERE po.id = $2`,
         [agenteId, puestoId]
       );
+
+      // ── Auto-asignar al primer slot vacío de la plantilla (atómico) ─────
+      const { rows: slotAsignado } = await pool.query(
+        `UPDATE puesto_slots
+         SET empleado_id = $1
+         WHERE id = (
+           SELECT id FROM puesto_slots
+           WHERE puesto_id = $2 AND activo = TRUE AND empleado_id IS NULL
+           ORDER BY slot_numero ASC LIMIT 1
+         ) AND empleado_id IS NULL
+         RETURNING id, slot_numero`,
+        [agenteId, puestoId]
+      );
+      if (slotAsignado.length > 0) {
+        logger.info({ agenteId, slotId: slotAsignado[0].id, slotNumero: slotAsignado[0].slot_numero, puestoId }, "Auto-asignado a slot vacío de plantilla");
+      }
 
       // ── Mover titular previo a nueva categoría EOA (si se indicó acción) ─
       if (titularPrevioId && titularPrevioId !== agenteId && oldTitularAccion) {
