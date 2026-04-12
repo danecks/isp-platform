@@ -619,13 +619,24 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       LEFT JOIN LATERAL (
         SELECT po2.id, po2.estado_operativo_puesto, po2.nombre, po2.cliente_nombre,
                po2.agente_id, po2.tipo_turno_id,
-               COALESCE(pt2.fecha_inicio_ciclo, po2.fecha_inicio_ciclo) AS fecha_inicio_ciclo,
+               COALESCE(src.fic, po2.fecha_inicio_ciclo) AS fecha_inicio_ciclo,
                po2.zona_operativa_id,
                po2.hora_entrada,
                po2.falta_employee_id
-        FROM puesto_titulares pt2
-        JOIN puestos_operativos po2 ON po2.id = pt2.puesto_id AND po2.activo = TRUE
-        WHERE pt2.employee_id = e.id AND pt2.activo = TRUE
+        FROM (
+          SELECT pt2.employee_id, pt2.puesto_id, pt2.fecha_inicio_ciclo AS fic
+          FROM puesto_titulares pt2
+          WHERE pt2.employee_id = e.id AND pt2.activo = TRUE
+          UNION ALL
+          SELECT ps2.empleado_id, ps2.puesto_id, ps2.fecha_inicio_ciclo AS fic
+          FROM puesto_slots ps2
+          WHERE ps2.empleado_id = e.id AND ps2.activo = TRUE
+            AND NOT EXISTS (
+              SELECT 1 FROM puesto_titulares pt3
+              WHERE pt3.employee_id = e.id AND pt3.activo = TRUE
+            )
+        ) src
+        JOIN puestos_operativos po2 ON po2.id = src.puesto_id AND po2.activo = TRUE
         ORDER BY po2.id
         LIMIT 1
       ) titular_po ON TRUE
