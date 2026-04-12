@@ -36,8 +36,9 @@ turnosRouter.get("/turnos", async (_req, res) => {
         COUNT(po.id) FILTER (WHERE po.activo = TRUE)                          AS puestos_count
       FROM turnos t
       LEFT JOIN puestos_operativos po ON po.tipo_turno_id = t.id
+      WHERE t.activo = TRUE
       GROUP BY t.id
-      ORDER BY t.activo DESC, t.nombre
+      ORDER BY t.nombre
     `);
     res.json(rows);
   } catch (err) {
