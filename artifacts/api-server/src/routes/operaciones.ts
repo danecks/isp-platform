@@ -690,9 +690,10 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       ) cs_trabajando ON TRUE
       LEFT JOIN LATERAL (
         SELECT
-          ((($1::date - ps.fecha_inicio_ciclo::date) % 14 + 14) % 14 + 1) = ANY(ps.dias_trabajo)
+          ((($1::date - COALESCE(ps.fecha_inicio_ciclo, po_s.fecha_inicio_ciclo, $1::date)::date) % 14 + 14) % 14 + 1) = ANY(ps.dias_trabajo)
           AS trabaja_hoy
         FROM puesto_slots ps
+        JOIN puestos_operativos po_s ON po_s.id = ps.puesto_id
         WHERE ps.empleado_id = e.id AND ps.activo = TRUE
         LIMIT 1
       ) slot_hoy ON TRUE
@@ -920,14 +921,11 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         case 'suspendido':  suspendidos.push(a);  break;
         case 'faltando':    faltando.push(a);     break;
         default: {
-          // ── Fallback por slot cuando tipo_ciclo_turno está vacío ─────────
-          // Agentes 24x24 cuyo turno no tiene tipo_ciclo configurado en DB pero sí tienen
-          // puesto_slots correctos. slot_trabaja_hoy=true|false|null (null=sin slot).
-          if (a.slot_trabaja_hoy !== null && a.slot_trabaja_hoy !== undefined && !a.tipo_ciclo_turno) {
+          // ── Prioridad: slot_trabaja_hoy (fuente de verdad cuando hay puesto_slots) ─────
+          if (a.slot_trabaja_hoy !== null && a.slot_trabaja_hoy !== undefined) {
             if (a.slot_trabaja_hoy === false) {
               descansandoCiclo.push({ ...a, disponibleHE: true });
             } else {
-              // slot dice que trabaja hoy pero cayó aquí (ej. sin po.agente_id ni titular_po)
               trabajando.push({ ...a, disponibleHE: false });
             }
             break;
