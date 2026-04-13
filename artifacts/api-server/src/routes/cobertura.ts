@@ -350,16 +350,13 @@ coberturaRouter.post("/cobertura/segmentos", async (req, res) => {
         fueEnDiaDescanso = solapaCon(horaInicio, horaFin, puesto.descanso_inicio, puesto.descanso_fin);
       }
 
-      // Detectar horas extra: se genera HE si fue en día de descanso del titular
-      // O si las horas reales trabajadas SUPERAN las horas esperadas del puesto (comparación real vs esperado).
-      if (puesto?.elegible_horas_extra && puesto?.hora_entrada && puesto?.hora_salida) {
+      if (puesto?.hora_entrada && puesto?.hora_salida) {
         const jornadaBase = calcularHoras(puesto.hora_entrada, puesto.hora_salida);
         const exceso = horasCalculadas !== null && jornadaBase > 0
           ? Math.max(0, horasCalculadas - jornadaBase)
           : 0;
         generaHorasExtra = fueEnDiaDescanso || exceso > 0;
         if (generaHorasExtra) {
-          // Si fue en día de descanso: todas las horas son extra; si solo exceso, solo el exceso
           horasExtraCalculadas = fueEnDiaDescanso
             ? horasCalculadas ?? 0
             : exceso;

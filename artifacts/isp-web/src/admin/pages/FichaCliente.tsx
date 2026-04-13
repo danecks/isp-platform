@@ -377,11 +377,8 @@ function ModalPuesto({
     hora_salida: puesto?.hora_salida ?? "",
     descanso_inicio: puesto?.descanso_inicio ?? "",
     descanso_fin: puesto?.descanso_fin ?? "",
-    cantidad_contratada: puesto?.cantidad_contratada ?? 1,
     tarifa_puesto: puesto?.tarifa_puesto ?? "",
     tipo_servicio: puesto?.tipo_servicio ?? "",
-    elegible_horas_extra: puesto?.elegible_horas_extra ?? false,
-    costo_hora: puesto?.costo_hora ?? "",
     sede_id: puesto?.sede_id ? String(puesto.sede_id) : "",
     zona_operativa_id: puesto?.zona_operativa_id ? String(puesto.zona_operativa_id) : "",
     notas: puesto?.notas ?? "",
@@ -413,11 +410,8 @@ function ModalPuesto({
           hora_salida: d.hora_salida ?? "",
           descanso_inicio: d.descanso_inicio ?? "",
           descanso_fin: d.descanso_fin ?? "",
-          cantidad_contratada: d.cantidad_contratada ?? 1,
           tarifa_puesto: d.tarifa_puesto ?? "",
           tipo_servicio: d.tipo_servicio ?? "",
-          elegible_horas_extra: d.elegible_horas_extra ?? false,
-          costo_hora: d.costo_hora ?? "",
           sede_id: d.sede_id ? String(d.sede_id) : "",
           zona_operativa_id: d.zona_operativa_id ? String(d.zona_operativa_id) : "",
           notas: d.notas ?? "",
@@ -441,16 +435,13 @@ function ModalPuesto({
         nombre: form.nombre,
         sede_id: form.sede_id ? Number(form.sede_id) : null,
         zona_operativa_id: form.zona_operativa_id ? Number(form.zona_operativa_id) : null,
-        cantidad_contratada: Number(form.cantidad_contratada) || 1,
         tarifa_puesto: form.tarifa_puesto ? Number(form.tarifa_puesto) : null,
-        costo_hora: form.costo_hora ? Number(form.costo_hora) : null,
         hora_entrada: form.hora_entrada || null,
         hora_salida: form.hora_salida || null,
         descanso_inicio: form.descanso_inicio || null,
         descanso_fin: form.descanso_fin || null,
         tipo_servicio: form.tipo_servicio || null,
         notas: form.notas || null,
-        elegible_horas_extra: form.elegible_horas_extra,
         direccion: form.direccion || null,
       };
       const url = isEdit ? `${API}/puestos/${puesto!.id}` : `${API}/clientes/${clientId}/puestos`;
@@ -553,33 +544,8 @@ function ModalPuesto({
             <PuestoSlotsInline puestoId={puesto.id} puestoNombre={puesto.nombre} />
           )}
 
-          {/* Datos contractuales */}
-          <div>
-            <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Datos contractuales</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-[10px] text-white/40 uppercase tracking-wide">Guardias contratados</label>
-                <input
-                  type="number" min={1}
-                  value={form.cantidad_contratada}
-                  onChange={(e) => up("cantidad_contratada", Number(e.target.value))}
-                  className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50"
-                />
-              </div>
-              <Field label="Tarifa del puesto (Q)" k="tarifa_puesto" placeholder="0.00" />
-              <Field label="Costo hora colaborador (Q)" k="costo_hora" placeholder="0.00" />
-              <div className="flex items-center gap-2 pt-4">
-                <input
-                  type="checkbox"
-                  id="horas_extra"
-                  checked={form.elegible_horas_extra}
-                  onChange={(e) => up("elegible_horas_extra", e.target.checked)}
-                  className="w-4 h-4 accent-primary"
-                />
-                <label htmlFor="horas_extra" className="text-xs text-white/60">Elegible para horas extra</label>
-              </div>
-            </div>
-          </div>
+          {/* Tarifa */}
+          <Field label="Tarifa del puesto (Q)" k="tarifa_puesto" placeholder="0.00" />
 
           {/* Dirección */}
           <Field label="Dirección del puesto" k="direccion" placeholder="Ej. 5a Av. 10-25 Zona 1, Ciudad de Guatemala" />
@@ -1486,7 +1452,6 @@ export default function FichaCliente() {
   const { cliente, sedes, puestos, coberturaHoy } = data;
   const nombreMostrar = cliente.nombreComercial || cliente.nombre;
   const puestosActivosTotal = puestos.length;
-  const guardiasTotales = puestos.reduce((s, p) => s + (p.cantidad_contratada || 1), 0);
   const puestosConTitular = puestos.filter(p => p.titular_employee_id).length;
   const tarifaTotal = puestos.reduce((s, p) => s + Number(p.tarifa_puesto || 0), 0);
 
@@ -1540,7 +1505,7 @@ export default function FichaCliente() {
           {[
             { label: "Sedes activas", value: sedes.filter(s => s.activo).length, icon: MapPin, color: "text-blue-400" },
             { label: "Puestos activos", value: puestosActivosTotal, icon: Shield, color: "text-primary" },
-            { label: "Guardias contratados", value: guardiasTotales, icon: Users, color: "text-purple-400" },
+            { label: "Tarifa mensual", value: tarifaTotal > 0 ? `Q${tarifaTotal.toLocaleString()}` : "—", icon: Users, color: "text-purple-400" },
             { label: "Puestos con titular", value: `${puestosConTitular}/${puestosActivosTotal}`, icon: UserCheck, color: "text-green-400" },
           ].map(({ label, value, icon: Icon, color }) => (
             <div key={label} className="bg-[#0c1829] border border-white/5 rounded-xl p-3">
@@ -1970,18 +1935,12 @@ function PuestoRow({ puesto, onEdit, onDelete }: { puesto: Puesto; onEdit: () =>
             {puesto.tipo_servicio && (
               <span className="text-[9px] text-white/30 bg-white/4 px-1.5 py-0.5 rounded-full">{puesto.tipo_servicio.replace("_", " ")}</span>
             )}
-            {puesto.cantidad_contratada > 1 && (
-              <span className="text-[9px] text-purple-300/60 bg-purple-500/8 px-1.5 py-0.5 rounded-full">{puesto.cantidad_contratada} guardias</span>
-            )}
             {puesto.zona_nombre && (
               <span className="text-[9px] text-primary/60 bg-primary/8 border border-primary/15 px-1.5 py-0.5 rounded-full">
                 {puesto.zona_nombre}
               </span>
             )}
           </div>
-          <p className="text-[10px] text-white/30 mt-0.5">
-            {puesto.tipo_turno_nombre ? `Nómina: ${puesto.tipo_turno_nombre}` : "Sin ciclo de nómina"}
-          </p>
           {puesto.direccion && (
             <p className="text-[10px] text-white/20 mt-0.5 truncate">{puesto.direccion}</p>
           )}
@@ -2002,9 +1961,6 @@ function PuestoRow({ puesto, onEdit, onDelete }: { puesto: Puesto; onEdit: () =>
         <div className="px-4 pb-3 grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white/1.5 border-t border-white/4">
           {[
             { label: "Cubre hoy", value: puesto.agente_nombre },
-            { label: "Ciclo de nómina", value: puesto.tipo_turno_nombre ?? null },
-            { label: "Costo/hora", value: puesto.costo_hora ? fmtQ(puesto.costo_hora) : null },
-            { label: "HE elegible", value: puesto.elegible_horas_extra ? "Sí" : "No" },
             { label: "Estado", value: puesto.estado },
           ].map(({ label, value }) => (
             <div key={label} className="py-2">
@@ -2105,11 +2061,6 @@ function TabTitulares({ puestos, clienteId }: { puestos: Puesto[]; clienteId: nu
                       )}
                       {p.titular_telefono && (
                         <span className="text-[10px] text-white/40 bg-white/5 px-2 py-0.5 rounded-full">{p.titular_telefono}</span>
-                      )}
-                      {p.elegible_horas_extra && (
-                        <span className="text-[10px] bg-yellow-500/10 text-yellow-400 border border-yellow-400/20 px-2 py-0.5 rounded-full">
-                          <Zap className="w-2.5 h-2.5 inline-block mr-0.5" />HE elegible
-                        </span>
                       )}
                     </div>
                   </div>
