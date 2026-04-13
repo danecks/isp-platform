@@ -6,9 +6,9 @@ export const modules: ModuleMap = {
   "./components/mockups/fichaje-qr/AgenteCredencial.tsx": () => import("../components/mockups/fichaje-qr/AgenteCredencial.tsx"),
   "./components/mockups/fichaje-qr/FichajePuesto.tsx": () => import("../components/mockups/fichaje-qr/FichajePuesto.tsx"),
   "./components/mockups/fichaje-qr/Supervision.tsx": () => import("../components/mockups/fichaje-qr/Supervision.tsx"),
-  "./components/mockups/kiosco-solicitud/DpiCaptura.tsx": () => import("../components/mockups/kiosco-solicitud/DpiCaptura.tsx"),
-  "./components/mockups/kiosco-solicitud/FormCompleto.tsx": () => import("../components/mockups/kiosco-solicitud/FormCompleto.tsx"),
   "./components/mockups/carnets/VarianteA.tsx": () => import("../components/mockups/carnets/VarianteA.tsx"),
   "./components/mockups/carnets/VarianteB.tsx": () => import("../components/mockups/carnets/VarianteB.tsx"),
-  "./components/mockups/carnets/VarianteC.tsx": () => import("../components/mockups/carnets/VarianteC.tsx")
+  "./components/mockups/carnets/VarianteC.tsx": () => import("../components/mockups/carnets/VarianteC.tsx"),
+  "./components/mockups/kiosco-solicitud/DpiCaptura.tsx": () => import("../components/mockups/kiosco-solicitud/DpiCaptura.tsx"),
+  "./components/mockups/kiosco-solicitud/FormCompleto.tsx": () => import("../components/mockups/kiosco-solicitud/FormCompleto.tsx")
 };
