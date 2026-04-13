@@ -31,7 +31,7 @@ fichaRouter.get("/clientes/:id/ficha", async (req, res) => {
       `SELECT cs.*,
          (SELECT COUNT(*)::int FROM puestos_operativos po WHERE po.sede_id = cs.id AND po.activo = TRUE) AS total_puestos,
          (SELECT COUNT(*)::int FROM puestos_operativos po WHERE po.sede_id = cs.id AND po.activo = TRUE AND po.estado = 'cubierto') AS puestos_cubiertos,
-         (SELECT COUNT(*)::int FROM puestos_operativos po WHERE po.sede_id = cs.id AND po.activo = TRUE AND po.titular_employee_id IS NOT NULL) AS puestos_con_titular
+         (SELECT COUNT(*)::int FROM puestos_operativos po WHERE po.sede_id = cs.id AND po.activo = TRUE AND EXISTS (SELECT 1 FROM puesto_slots ps WHERE ps.puesto_id = po.id AND ps.activo = TRUE AND ps.empleado_id IS NOT NULL)) AS puestos_con_titular
        FROM client_sedes cs
        WHERE cs.client_id = $1
        ORDER BY cs.nombre`,
@@ -54,7 +54,8 @@ fichaRouter.get("/clientes/:id/ficha", async (req, res) => {
          po.fecha_inicio_ciclo,
          e.nombre_completo AS titular_nombre_completo,
          e.telefono AS titular_telefono,
-         e.estado_laboral AS titular_estado_laboral
+         e.estado_laboral AS titular_estado_laboral,
+         (SELECT COUNT(*)::int FROM puesto_slots ps WHERE ps.puesto_id = po.id AND ps.activo = TRUE AND ps.empleado_id IS NOT NULL) AS slots_con_titular
        FROM puestos_operativos po
        LEFT JOIN client_sedes cs ON cs.id = po.sede_id
        LEFT JOIN operational_zones oz ON oz.id = po.zona_operativa_id

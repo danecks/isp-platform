@@ -1452,7 +1452,7 @@ export default function FichaCliente() {
   const { cliente, sedes, puestos, coberturaHoy } = data;
   const nombreMostrar = cliente.nombreComercial || cliente.nombre;
   const puestosActivosTotal = puestos.length;
-  const puestosConTitular = puestos.filter(p => p.titular_employee_id).length;
+  const puestosConTitular = puestos.filter(p => (p as any).slots_con_titular > 0 || p.titular_employee_id).length;
   const tarifaTotal = puestos.reduce((s, p) => s + Number(p.tarifa_puesto || 0), 0);
 
   return (
