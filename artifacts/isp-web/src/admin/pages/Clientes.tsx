@@ -7,7 +7,7 @@ import { useDeleteMode } from "@/contexts/DeleteModeContext";
 import {
   Building2, Tag, MapPin, Search, Plus, Trash2, ChevronDown, ChevronRight,
   X, Loader2, CheckCircle, AlertTriangle, Hash, RefreshCw, Layers,
-  Shield, Users, Clock, ExternalLink, DollarSign, Pencil, Check
+  Shield, Users, Clock, ExternalLink, DollarSign, Pencil, Check, TrendingUp
 } from "lucide-react";
 
 const API = "/api";
@@ -1075,8 +1075,121 @@ function TabSalarios() {
   );
 }
 
+// ─── Tab Rentabilidad Global ──────────────────────────────────────────────────
+const fmtQR = (n: number) => n.toLocaleString("es-GT", { style: "currency", currency: "GTQ", minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+function TabRentabilidadClientes() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    fetch(`${API}/rentabilidad/global`, { headers: { "x-isp-session": getSession() } })
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(d => { setData(d); setLoading(false); })
+      .catch(e => { setErr(e.message); setLoading(false); });
+  }, []);
+
+  if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-white/30" /></div>;
+  if (err) return <div className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-4">{err}</div>;
+  if (!data) return null;
+
+  const { clientes, totales } = data;
+  const negativos = clientes.filter((c: any) => c.margen < 0);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 px-5 pt-4">
+        {[
+          { label: "Ingreso Neto", value: fmtQR(totales.ingreso_neto), color: "text-cyan-400" },
+          { label: "Costo Operativo", value: fmtQR(totales.costo_operativo), color: "text-amber-400" },
+          { label: "Margen Global", value: fmtQR(totales.margen), color: totales.margen >= 0 ? "text-emerald-400" : "text-red-400" },
+          { label: "Margen %", value: `${totales.margen_pct}%`, color: totales.margen_pct >= 0 ? "text-emerald-400" : "text-red-400" },
+          { label: "En Riesgo", value: String(negativos.length), color: negativos.length > 0 ? "text-red-400" : "text-emerald-400" },
+        ].map((kpi, i) => (
+          <div key={i} className="bg-white/3 border border-white/5 rounded-lg p-3">
+            <p className="text-[9px] uppercase tracking-wider text-white/35 mb-0.5">{kpi.label}</p>
+            <p className={`text-lg font-bold ${kpi.color}`}>{kpi.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {negativos.length > 0 && (
+        <div className="mx-5 bg-red-500/8 border border-red-500/15 rounded-lg p-3 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-[10px] font-semibold text-red-300 uppercase tracking-wider mb-1">Margen Negativo</p>
+            <div className="flex flex-wrap gap-1.5">
+              {negativos.map((c: any) => (
+                <span key={c.id} className="px-2 py-0.5 text-[10px] bg-red-500/12 border border-red-500/20 rounded text-red-300">
+                  {c.nombre}: {fmtQR(c.margen)}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-white/5 text-[9px] uppercase tracking-wider text-white/35">
+              <th className="text-left px-5 py-2.5">Cliente</th>
+              <th className="text-right px-3 py-2.5">Puestos</th>
+              <th className="text-right px-3 py-2.5">Tarifa Bruta</th>
+              <th className="text-right px-3 py-2.5">Ingreso Neto</th>
+              <th className="text-right px-3 py-2.5">Costo Op.</th>
+              <th className="text-right px-3 py-2.5">Margen</th>
+              <th className="text-right px-3 py-2.5">%</th>
+              <th className="text-center px-3 py-2.5">Bajas</th>
+              <th className="w-8"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {clientes.map((c: any) => (
+              <tr key={c.id} className="border-b border-white/3 hover:bg-white/3 transition-colors cursor-pointer" onClick={() => navigate(`/admin/clientes/${c.id}`)}>
+                <td className="px-5 py-2">
+                  <span className="text-white font-medium">{c.nombre}</span>
+                </td>
+                <td className="text-right px-3 py-2 text-white/50">{c.total_puestos}</td>
+                <td className="text-right px-3 py-2 text-white/35 font-mono text-[10px]">{fmtQR(c.tarifa_bruta)}</td>
+                <td className="text-right px-3 py-2 text-cyan-400/80 font-mono text-[10px]">{fmtQR(c.ingreso_neto)}</td>
+                <td className="text-right px-3 py-2 text-amber-400/80 font-mono text-[10px]">{fmtQR(c.costo_operativo)}</td>
+                <td className={`text-right px-3 py-2 font-mono text-[10px] font-semibold ${c.margen >= 0 ? "text-emerald-400" : "text-red-400"}`}>{fmtQR(c.margen)}</td>
+                <td className={`text-right px-3 py-2 text-[10px] ${c.margen_pct >= 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>{c.margen_pct}%</td>
+                <td className="text-center px-3 py-2">
+                  {(c.bajas_con_indem > 0 || c.bajas_sin_indem > 0) ? (
+                    <span className="text-[9px] text-white/35">{c.bajas_con_indem}c / {c.bajas_sin_indem}s</span>
+                  ) : <span className="text-white/12">—</span>}
+                </td>
+                <td className="px-2 py-2">
+                  <ChevronRight className="w-3.5 h-3.5 text-white/15" />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-white/10 bg-white/3 font-semibold text-[10px]">
+              <td className="px-5 py-2.5 text-white/50 uppercase">Totales</td>
+              <td className="text-right px-3 py-2.5 text-white/50">{totales.total_puestos}</td>
+              <td className="text-right px-3 py-2.5 text-white/35 font-mono">{fmtQR(totales.tarifa_bruta)}</td>
+              <td className="text-right px-3 py-2.5 text-cyan-400 font-mono">{fmtQR(totales.ingreso_neto)}</td>
+              <td className="text-right px-3 py-2.5 text-amber-400 font-mono">{fmtQR(totales.costo_operativo)}</td>
+              <td className={`text-right px-3 py-2.5 font-mono ${totales.margen >= 0 ? "text-emerald-400" : "text-red-400"}`}>{fmtQR(totales.margen)}</td>
+              <td className={`text-right px-3 py-2.5 ${totales.margen_pct >= 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>{totales.margen_pct}%</td>
+              <td className="text-center px-3 py-2.5 text-[9px] text-white/35">{totales.bajas_con_indem}c / {totales.bajas_sin_indem}s</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
-type Tab = "clientes" | "puestos" | "resolver" | "sedes" | "salarios";
+type Tab = "clientes" | "puestos" | "resolver" | "sedes" | "salarios" | "rentabilidad";
 
 export default function Clientes() {
   const role = getRole();
@@ -1176,6 +1289,7 @@ export default function Clientes() {
                 { id: "puestos", label: "Puestos y Rutas", icon: MapPin },
                 { id: "resolver", label: "Resolver Alias", icon: Search },
                 ...(puedeVerSalarios ? [{ id: "salarios", label: "Salarios de Puestos", icon: DollarSign }] : []),
+                ...(puedeVerSalarios ? [{ id: "rentabilidad", label: "Rentabilidad", icon: TrendingUp }] : []),
               ] as { id: Tab; label: string; icon: React.FC<{ className?: string }> }[]).map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
@@ -1225,6 +1339,8 @@ export default function Clientes() {
 
           {/* Tab: Salarios de Puestos (solo admin/rrhh) */}
           {tab === "salarios" && puedeVerSalarios && <TabSalarios />}
+
+          {tab === "rentabilidad" && puedeVerSalarios && <TabRentabilidadClientes />}
 
           {/* Tab: Resolver */}
           {tab === "resolver" && (
