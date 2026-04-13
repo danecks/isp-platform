@@ -183,6 +183,176 @@ const coberturaTxt = (tipo: string) => {
   return "Descubierto";
 };
 
+// ─── Sección inline: Titulares del puesto (slots) ─────────────────────────────
+function PuestoSlotsInline({ puestoId, puestoNombre }: { puestoId: number; puestoNombre: string }) {
+  const [slots, setSlots] = useState<PuestoSlot[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [savingSlotId, setSavingSlotId] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState(true);
+
+  async function loadSlots() {
+    try {
+      const r = await fetch(`${API}/puestos/${puestoId}/slots`, { headers: h() });
+      if (r.ok) {
+        const d = await r.json();
+        setSlots(Array.isArray(d) ? d : (d.slots || []));
+      }
+    } catch {}
+    setLoading(false);
+  }
+
+  useEffect(() => { loadSlots(); }, [puestoId]);
+
+  async function toggleDia(slot: PuestoSlot, dia: number) {
+    const nuevos = slot.dias_trabajo.includes(dia)
+      ? slot.dias_trabajo.filter(d => d !== dia)
+      : [...slot.dias_trabajo, dia].sort((a, b) => a - b);
+    if (nuevos.length === 0) return;
+    const prevDias = [...slot.dias_trabajo];
+    setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, dias_trabajo: nuevos } : s));
+    setSavingSlotId(slot.id);
+    try {
+      const r = await fetch(`${API}/slots/${slot.id}`, {
+        method: "PUT", headers: h(),
+        body: JSON.stringify({ dias_trabajo: nuevos }),
+      });
+      if (!r.ok) {
+        setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, dias_trabajo: prevDias } : s));
+      }
+    } catch {
+      setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, dias_trabajo: prevDias } : s));
+    }
+    setSavingSlotId(null);
+  }
+
+  async function deleteSlot(id: number) {
+    if (!confirm("¿Eliminar este titular del puesto?")) return;
+    await fetch(`${API}/slots/${id}`, { method: "DELETE", headers: h() });
+    loadSlots();
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-4">
+        <Loader2 className="w-4 h-4 animate-spin text-white/20" />
+      </div>
+    );
+  }
+
+  if (slots.length === 0) {
+    return (
+      <div className="bg-primary/5 border border-primary/15 rounded-xl px-4 py-3 flex items-start gap-2">
+        <Calendar className="w-3.5 h-3.5 text-primary/50 shrink-0 mt-0.5" />
+        <p className="text-[11px] text-white/40 leading-relaxed">
+          Sin titulares asignados — asigná titulares desde el <span className="text-primary/70 font-medium">Pizarrón Operativo</span>.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="flex items-center gap-2 w-full text-left"
+      >
+        <Calendar className="w-3.5 h-3.5 text-primary/50" />
+        <p className="text-[10px] text-white/30 uppercase tracking-widest font-semibold flex-1">
+          Titulares del puesto ({slots.length})
+        </p>
+        {expanded ? <ChevronDown className="w-3 h-3 text-white/20" /> : <ChevronRight className="w-3 h-3 text-white/20" />}
+      </button>
+
+      {expanded && (
+        <div className="space-y-2">
+          {slots.map(slot => {
+            const saving = savingSlotId === slot.id;
+            return (
+              <div key={slot.id} className="bg-[#060e1c] border border-white/8 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] font-bold text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded-full">
+                      T{slot.slot_numero}
+                    </span>
+                    {slot.empleado_nombre ? (
+                      <span className="text-[11px] text-white/70 font-medium">{slot.empleado_nombre}</span>
+                    ) : (
+                      <span className="text-[10px] text-white/25 italic">Sin agente asignado</span>
+                    )}
+                    {slot.empleado_estado && (
+                      <span className={`text-[9px] ${slot.empleado_estado === "activo" ? "text-green-400/60" : "text-white/20"}`}>
+                        {slot.empleado_estado}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${slot.horas_turno === 24 ? "text-blue-300 bg-blue-500/10 border border-blue-500/20" : "text-purple-300 bg-purple-500/10 border border-purple-500/20"}`}>
+                      {slot.horas_turno}h
+                    </span>
+                    <span className="text-[9px] text-white/25">{slot.hora_entrada}</span>
+                    <button onClick={() => deleteSlot(slot.id)} className="text-white/15 hover:text-red-400 transition-colors">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center gap-0.5">
+                    <span className="text-[8px] text-white/20 w-8 shrink-0">S1</span>
+                    {SEMANA1.map(({ n, label }) => {
+                      const trabaja = slot.dias_trabajo.includes(n);
+                      return (
+                        <button
+                          key={n}
+                          title={`${label}: ${trabaja ? "trabaja" : "descansa"}`}
+                          disabled={saving}
+                          onClick={() => toggleDia(slot, n)}
+                          className={`w-[34px] h-6 rounded text-[9px] font-semibold border transition-all ${
+                            trabaja
+                              ? "bg-primary/20 border-primary/40 text-primary"
+                              : "bg-white/3 border-white/8 text-white/15 hover:border-white/20"
+                          } ${saving ? "opacity-40 cursor-wait" : "cursor-pointer"}`}
+                        >
+                          {trabaja ? label : ""}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center gap-0.5">
+                    <span className="text-[8px] text-white/20 w-8 shrink-0">S2</span>
+                    {SEMANA2.map(({ n, label }) => {
+                      const trabaja = slot.dias_trabajo.includes(n);
+                      return (
+                        <button
+                          key={n}
+                          title={`${label}: ${trabaja ? "trabaja" : "descansa"}`}
+                          disabled={saving}
+                          onClick={() => toggleDia(slot, n)}
+                          className={`w-[34px] h-6 rounded text-[9px] font-semibold border transition-all ${
+                            trabaja
+                              ? "bg-primary/20 border-primary/40 text-primary"
+                              : "bg-white/3 border-white/8 text-white/15 hover:border-white/20"
+                          } ${saving ? "opacity-40 cursor-wait" : "cursor-pointer"}`}
+                        >
+                          {trabaja ? label : ""}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <p className="text-[9px] text-white/15">
+                  {slot.dias_trabajo.length} días trabaja · {14 - slot.dias_trabajo.length} descansa · turno de {slot.horas_turno}h
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Modal: Nuevo/Editar Puesto ───────────────────────────────────────────────
 interface ZonaDisponible { id: number; nombre: string; }
 
