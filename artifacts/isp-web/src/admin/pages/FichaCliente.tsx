@@ -502,13 +502,9 @@ function ModalPuesto({
             </div>
           </div>
 
-          {/* Nota horario operativo */}
-          <div className="bg-primary/5 border border-primary/15 rounded-xl px-4 py-3 flex items-start gap-2">
-            <Calendar className="w-3.5 h-3.5 text-primary/50 shrink-0 mt-0.5" />
-            <p className="text-[11px] text-white/40 leading-relaxed">
-              El horario operativo (días y horas exactas por slot) se define en la pestaña <span className="text-primary/70 font-medium">Plantilla de Turnos</span> de esta misma ficha. Los agentes heredan automáticamente el horario del puesto al que están asignados.
-            </p>
-          </div>
+          {isEdit && puesto && (
+            <PuestoSlotsInline puestoId={puesto.id} puestoNombre={puesto.nombre} />
+          )}
 
           {/* Datos contractuales */}
           <div>
