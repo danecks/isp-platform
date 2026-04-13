@@ -297,7 +297,7 @@ actasRouter.get("/actas/datos-para-pdf/:employeeId", async (req, res) => {
     const { rows: puestoRows } = await pool.query(
       `SELECT po.nombre AS puesto_nombre, c.nombre AS cliente_nombre
        FROM puestos_operativos po
-       LEFT JOIN clients c ON c.id = po.client_id
+       LEFT JOIN clients c ON c.id = po.cliente_id
        WHERE po.titular_employee_id = $1 AND po.activo = TRUE
        LIMIT 1`,
       [empId]
