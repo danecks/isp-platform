@@ -103,6 +103,7 @@ interface PuestoSlot {
   horas_turno: number;
   hora_entrada: string;
   dias_trabajo: number[];
+  dias_medio_turno: number[];
   longitud_ciclo: number;
   fecha_inicio_ciclo: string | null;
   empleado_id: number | null;
@@ -204,23 +205,38 @@ function PuestoSlotsInline({ puestoId, puestoNombre }: { puestoId: number; puest
   useEffect(() => { loadSlots(); }, [puestoId]);
 
   async function toggleDia(slot: PuestoSlot, dia: number) {
-    const nuevos = slot.dias_trabajo.includes(dia)
-      ? slot.dias_trabajo.filter(d => d !== dia)
-      : [...slot.dias_trabajo, dia].sort((a, b) => a - b);
-    if (nuevos.length === 0) return;
+    const medios = slot.dias_medio_turno || [];
+    const trabaja = slot.dias_trabajo.includes(dia);
+    const esMedio = medios.includes(dia);
+
+    let newDias = [...slot.dias_trabajo];
+    let newMedios = [...medios];
+
+    if (!trabaja) {
+      newDias = [...newDias, dia].sort((a, b) => a - b);
+      newMedios = newMedios.filter(d => d !== dia);
+    } else if (trabaja && !esMedio) {
+      newMedios = [...newMedios, dia].sort((a, b) => a - b);
+    } else {
+      newDias = newDias.filter(d => d !== dia);
+      newMedios = newMedios.filter(d => d !== dia);
+    }
+
+    if (newDias.length === 0) return;
     const prevDias = [...slot.dias_trabajo];
-    setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, dias_trabajo: nuevos } : s));
+    const prevMedios = [...medios];
+    setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, dias_trabajo: newDias, dias_medio_turno: newMedios } : s));
     setSavingSlotId(slot.id);
     try {
       const r = await fetch(`${API}/slots/${slot.id}`, {
         method: "PUT", headers: h(),
-        body: JSON.stringify({ dias_trabajo: nuevos }),
+        body: JSON.stringify({ dias_trabajo: newDias, dias_medio_turno: newMedios }),
       });
       if (!r.ok) {
-        setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, dias_trabajo: prevDias } : s));
+        setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, dias_trabajo: prevDias, dias_medio_turno: prevMedios } : s));
       }
     } catch {
-      setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, dias_trabajo: prevDias } : s));
+      setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, dias_trabajo: prevDias, dias_medio_turno: prevMedios } : s));
     }
     setSavingSlotId(null);
   }
@@ -297,52 +313,37 @@ function PuestoSlotsInline({ puestoId, puestoNombre }: { puestoId: number; puest
                 </div>
 
                 <div className="space-y-1">
-                  <div className="flex items-center gap-0.5">
-                    <span className="text-[8px] text-white/20 w-8 shrink-0">S1</span>
-                    {SEMANA1.map(({ n, label }) => {
-                      const trabaja = slot.dias_trabajo.includes(n);
-                      return (
-                        <button
-                          key={n}
-                          title={`${label}: ${trabaja ? "trabaja" : "descansa"}`}
-                          disabled={saving}
-                          onClick={() => toggleDia(slot, n)}
-                          className={`w-[34px] h-6 rounded text-[9px] font-semibold border transition-all ${
-                            trabaja
-                              ? "bg-primary/20 border-primary/40 text-primary"
-                              : "bg-white/3 border-white/8 text-white/15 hover:border-white/20"
-                          } ${saving ? "opacity-40 cursor-wait" : "cursor-pointer"}`}
-                        >
-                          {trabaja ? label : ""}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="flex items-center gap-0.5">
-                    <span className="text-[8px] text-white/20 w-8 shrink-0">S2</span>
-                    {SEMANA2.map(({ n, label }) => {
-                      const trabaja = slot.dias_trabajo.includes(n);
-                      return (
-                        <button
-                          key={n}
-                          title={`${label}: ${trabaja ? "trabaja" : "descansa"}`}
-                          disabled={saving}
-                          onClick={() => toggleDia(slot, n)}
-                          className={`w-[34px] h-6 rounded text-[9px] font-semibold border transition-all ${
-                            trabaja
-                              ? "bg-primary/20 border-primary/40 text-primary"
-                              : "bg-white/3 border-white/8 text-white/15 hover:border-white/20"
-                          } ${saving ? "opacity-40 cursor-wait" : "cursor-pointer"}`}
-                        >
-                          {trabaja ? label : ""}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  {[{ label: "S1", dias: SEMANA1 }, { label: "S2", dias: SEMANA2 }].map(({ label: sl, dias }) => (
+                    <div key={sl} className="flex items-center gap-0.5">
+                      <span className="text-[8px] text-white/20 w-8 shrink-0">{sl}</span>
+                      {dias.map(({ n, label }) => {
+                        const trabaja = slot.dias_trabajo.includes(n);
+                        const esMedio = (slot.dias_medio_turno || []).includes(n);
+                        const estado = !trabaja ? "D" : esMedio ? "T/2" : "T";
+                        return (
+                          <button
+                            key={n}
+                            title={`${label}: ${estado === "T" ? "turno completo" : estado === "T/2" ? "medio turno (12h)" : "descansa"}`}
+                            disabled={saving}
+                            onClick={() => toggleDia(slot, n)}
+                            className={`w-[34px] h-6 rounded text-[9px] font-semibold border transition-all ${
+                              estado === "T"
+                                ? "bg-primary/20 border-primary/40 text-primary"
+                                : estado === "T/2"
+                                ? "bg-amber-500/20 border-amber-500/40 text-amber-400"
+                                : "bg-white/3 border-white/8 text-white/15 hover:border-white/20"
+                            } ${saving ? "opacity-40 cursor-wait" : "cursor-pointer"}`}
+                          >
+                            {estado === "T" ? label : estado === "T/2" ? "½" : ""}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
                 </div>
 
                 <p className="text-[9px] text-white/15">
-                  {slot.dias_trabajo.length} días trabaja · {14 - slot.dias_trabajo.length} descansa · turno de {slot.horas_turno}h
+                  {slot.dias_trabajo.length - (slot.dias_medio_turno || []).length} días completos · {(slot.dias_medio_turno || []).length} medios turnos · {14 - slot.dias_trabajo.length} descanso · {slot.horas_turno}h base
                 </p>
               </div>
             );
@@ -2495,16 +2496,29 @@ function TabPlantillaTurnos({ clienteId, puestos }: { clienteId: number; puestos
   useEffect(() => { load(); }, [clienteId]);
 
   async function toggleDia(slot: PuestoSlot, dia: number) {
-    const nuevos = slot.dias_trabajo.includes(dia)
-      ? slot.dias_trabajo.filter(d => d !== dia)
-      : [...slot.dias_trabajo, dia].sort((a, b) => a - b);
+    const medios = slot.dias_medio_turno || [];
+    const trabaja = slot.dias_trabajo.includes(dia);
+    const esMedio = medios.includes(dia);
 
-    setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, dias_trabajo: nuevos } : s));
+    let newDias = [...slot.dias_trabajo];
+    let newMedios = [...medios];
+
+    if (!trabaja) {
+      newDias = [...newDias, dia].sort((a, b) => a - b);
+      newMedios = newMedios.filter(d => d !== dia);
+    } else if (trabaja && !esMedio) {
+      newMedios = [...newMedios, dia].sort((a, b) => a - b);
+    } else {
+      newDias = newDias.filter(d => d !== dia);
+      newMedios = newMedios.filter(d => d !== dia);
+    }
+
+    setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, dias_trabajo: newDias, dias_medio_turno: newMedios } : s));
     setSavingSlotId(slot.id);
     try {
       await fetch(`${API}/slots/${slot.id}`, {
         method: "PUT", headers: h(),
-        body: JSON.stringify({ dias_trabajo: nuevos }),
+        body: JSON.stringify({ dias_trabajo: newDias, dias_medio_turno: newMedios }),
       });
     } catch {}
     setSavingSlotId(null);
@@ -2541,7 +2555,7 @@ function TabPlantillaTurnos({ clienteId, puestos }: { clienteId: number; puestos
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <p className="text-xs text-white/30">Cuadrícula de ciclo 14 días: ✓ = trabaja, vacío = descansa (disponible para cobertura)</p>
+          <p className="text-xs text-white/30">Cuadrícula de ciclo 14 días: ✓ = turno completo, ½ = medio turno, vacío = descansa. Clic para rotar.</p>
           <p className="text-[10px] text-white/20 mt-0.5">
             {slots.length} slots · {slotsConAgente} con agente · {slots.length - slotsConAgente} sin asignar
           </p>
@@ -2643,22 +2657,26 @@ function TabPlantillaTurnos({ clienteId, puestos }: { clienteId: number; puestos
                               </div>
                             </td>
 
-                            {/* 14 días — toggle interactivo */}
+                            {/* 14 días — toggle interactivo (D → T → T/2 → D) */}
                             {DIAS_CICLO.map(({ n, label }) => {
                               const trabaja = slot.dias_trabajo.includes(n);
+                              const esMedio = (slot.dias_medio_turno || []).includes(n);
+                              const estado = !trabaja ? "D" : esMedio ? "T/2" : "T";
                               return (
                                 <td key={n} className={`py-2.5 text-center ${n === 8 ? "border-l border-white/5" : ""}`}>
                                   <button
-                                    title={trabaja ? `${label} trabaja — clic para descanso` : `${label} descansa — clic para trabajo`}
+                                    title={`${label}: ${estado === "T" ? "turno completo" : estado === "T/2" ? "medio turno (12h)" : "descansa"}`}
                                     disabled={saving}
                                     onClick={() => toggleDia(slot, n)}
                                     className={`w-6 h-6 rounded flex items-center justify-center mx-auto text-[10px] font-bold border transition-all ${
-                                      trabaja
+                                      estado === "T"
                                         ? "bg-primary/20 border-primary/50 text-primary hover:bg-primary/10"
+                                        : estado === "T/2"
+                                        ? "bg-amber-500/20 border-amber-500/50 text-amber-400 hover:bg-amber-500/10"
                                         : "bg-white/3 border-white/8 text-white/10 hover:border-white/20 hover:text-white/25"
                                     } ${saving ? "opacity-40 cursor-wait" : "cursor-pointer"}`}
                                   >
-                                    {trabaja ? "✓" : ""}
+                                    {estado === "T" ? "✓" : estado === "T/2" ? "½" : ""}
                                   </button>
                                 </td>
                               );

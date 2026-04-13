@@ -21,7 +21,7 @@ puestoSlotsRouter.get("/puestos/:puestoId/slots", async (req, res) => {
       `SELECT
          ps.id, ps.puesto_id, ps.slot_numero, ps.horas_turno,
          to_char(ps.hora_entrada, 'HH24:MI') AS hora_entrada,
-         ps.dias_trabajo, ps.longitud_ciclo,
+         ps.dias_trabajo, ps.dias_medio_turno, ps.longitud_ciclo,
          to_char(ps.fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
          ps.empleado_id, ps.notas, ps.activo,
          ps.created_at, ps.updated_at,
@@ -52,7 +52,7 @@ puestoSlotsRouter.get("/clientes/:clienteId/slots", async (req, res) => {
       `SELECT
          ps.id, ps.puesto_id, ps.slot_numero, ps.horas_turno,
          to_char(ps.hora_entrada, 'HH24:MI') AS hora_entrada,
-         ps.dias_trabajo, ps.longitud_ciclo,
+         ps.dias_trabajo, ps.dias_medio_turno, ps.longitud_ciclo,
          to_char(ps.fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
          ps.empleado_id, ps.notas, ps.activo,
          ps.updated_at,
@@ -140,7 +140,7 @@ puestoSlotsRouter.post("/puestos/:puestoId/slots", async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, 14, $6, $7, $8)
        RETURNING id, puesto_id, slot_numero, horas_turno,
                  to_char(hora_entrada, 'HH24:MI') AS hora_entrada,
-                 dias_trabajo, longitud_ciclo,
+                 dias_trabajo, dias_medio_turno, longitud_ciclo,
                  to_char(fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
                  empleado_id, notas, activo, created_at`,
       [puestoId, newSlotNum, horasTurno, hora_entrada,
@@ -159,7 +159,7 @@ puestoSlotsRouter.put("/slots/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: "id inválido" });
 
-  const { horas_turno, hora_entrada, dias_trabajo, fecha_inicio_ciclo, empleado_id, notas, slot_numero } = req.body;
+  const { horas_turno, hora_entrada, dias_trabajo, dias_medio_turno, fecha_inicio_ciclo, empleado_id, notas, slot_numero } = req.body;
 
   const updates: string[] = [];
   const params: any[] = [];
@@ -175,6 +175,12 @@ puestoSlotsRouter.put("/slots/:id", async (req, res) => {
     const diasValidos = dias_trabajo.every((d: any) => Number.isInteger(d) && d >= 1 && d <= 14);
     if (!diasValidos) return res.status(400).json({ error: "dias_trabajo debe contener números del 1 al 14" });
     updates.push(`dias_trabajo = $${p++}`); params.push(dias_trabajo);
+  }
+  if (dias_medio_turno !== undefined) {
+    if (!Array.isArray(dias_medio_turno)) return res.status(400).json({ error: "dias_medio_turno inválido" });
+    const diasValidos = dias_medio_turno.every((d: any) => Number.isInteger(d) && d >= 1 && d <= 14);
+    if (!diasValidos) return res.status(400).json({ error: "dias_medio_turno debe contener números del 1 al 14" });
+    updates.push(`dias_medio_turno = $${p++}`); params.push(dias_medio_turno);
   }
   if (fecha_inicio_ciclo !== undefined) {
     updates.push(`fecha_inicio_ciclo = $${p++}`); params.push(fecha_inicio_ciclo || null);
@@ -192,7 +198,7 @@ puestoSlotsRouter.put("/slots/:id", async (req, res) => {
       `UPDATE puesto_slots SET ${updates.join(", ")} WHERE id = $${p} AND activo = TRUE
        RETURNING id, puesto_id, slot_numero, horas_turno,
                  to_char(hora_entrada, 'HH24:MI') AS hora_entrada,
-                 dias_trabajo, longitud_ciclo,
+                 dias_trabajo, dias_medio_turno, longitud_ciclo,
                  to_char(fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
                  empleado_id, notas, activo, updated_at`,
       params

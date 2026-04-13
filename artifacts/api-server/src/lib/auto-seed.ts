@@ -3388,6 +3388,7 @@ Por favor ingresa al sistema o responde para continuar.',
   try {
     await pool.query(`ALTER TABLE puesto_slots ADD COLUMN IF NOT EXISTS longitud_ciclo SMALLINT NOT NULL DEFAULT 14`);
     await pool.query(`ALTER TABLE puesto_slots ADD COLUMN IF NOT EXISTS fecha_inicio_ciclo DATE`);
+    await pool.query(`ALTER TABLE puesto_slots ADD COLUMN IF NOT EXISTS dias_medio_turno integer[] NOT NULL DEFAULT '{}'`);
     // Actualizar slots existentes sin longitud_ciclo correcta (fallback a 14)
     await pool.query(`UPDATE puesto_slots SET longitud_ciclo = 14 WHERE longitud_ciclo != 14`);
     logger.info("Auto-migrate: TURNOS-02 ciclo 14 días aplicado en puesto_slots");

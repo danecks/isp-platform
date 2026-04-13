@@ -1999,6 +1999,7 @@ interface SlotItem {
   horas_turno: number;
   hora_entrada: string;
   dias_trabajo: number[];
+  dias_medio_turno: number[];
   longitud_ciclo: number;
   fecha_inicio_ciclo: string | null;
   empleado_id: number | null;
@@ -2165,17 +2166,30 @@ function ModalConfigTurno({
     onSaved();
   }
 
-  // Toggle día en slot existente
   async function toggleDia(slot: SlotItem, day: number) {
-    const nuevos = slot.dias_trabajo.includes(day)
-      ? slot.dias_trabajo.filter(d => d !== day)
-      : [...slot.dias_trabajo, day].sort((a, b) => a - b);
-    setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, dias_trabajo: nuevos } : s));
+    const medios = slot.dias_medio_turno || [];
+    const trabaja = slot.dias_trabajo.includes(day);
+    const esMedio = medios.includes(day);
+
+    let newDias = [...slot.dias_trabajo];
+    let newMedios = [...medios];
+
+    if (!trabaja) {
+      newDias = [...newDias, day].sort((a, b) => a - b);
+      newMedios = newMedios.filter(d => d !== day);
+    } else if (trabaja && !esMedio) {
+      newMedios = [...newMedios, day].sort((a, b) => a - b);
+    } else {
+      newDias = newDias.filter(d => d !== day);
+      newMedios = newMedios.filter(d => d !== day);
+    }
+
+    setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, dias_trabajo: newDias, dias_medio_turno: newMedios } : s));
     setSavingSlotId(slot.id);
     try {
       await fetch(`${API_BASE}/slots/${slot.id}`, {
         method: "PUT", headers: hd(),
-        body: JSON.stringify({ dias_trabajo: nuevos }),
+        body: JSON.stringify({ dias_trabajo: newDias, dias_medio_turno: newMedios }),
       });
     } catch {}
     setSavingSlotId(null);
@@ -2594,19 +2608,23 @@ function ModalConfigTurno({
                               <span className="text-[8px] text-white/20 w-6 shrink-0 font-medium">S{si + 1}</span>
                               {semana.map(({ n, label }) => {
                                 const trabaja = slot.dias_trabajo.includes(n);
+                                const esMedio = (slot.dias_medio_turno || []).includes(n);
+                                const estado = !trabaja ? "D" : esMedio ? "T/2" : "T";
                                 return (
                                   <button
                                     key={n}
                                     disabled={saving}
                                     onClick={() => toggleDia(slot, n)}
-                                    title={trabaja ? `${label} (S${si+1}) trabaja` : `${label} (S${si+1}) descansa`}
+                                    title={`${label} (S${si+1}): ${estado === "T" ? "turno completo" : estado === "T/2" ? "medio turno" : "descansa"}`}
                                     className={`flex-1 h-8 rounded text-[9px] font-semibold border transition-all ${
-                                      trabaja
+                                      estado === "T"
                                         ? "bg-indigo-500/20 border-indigo-500/50 text-indigo-200 hover:bg-indigo-500/10"
+                                        : estado === "T/2"
+                                        ? "bg-amber-500/20 border-amber-500/50 text-amber-300 hover:bg-amber-500/10"
                                         : "bg-white/3 border-white/8 text-white/20 hover:border-white/20 hover:text-white/40"
                                     } ${saving ? "opacity-40 cursor-wait" : "cursor-pointer"}`}
                                   >
-                                    {label}
+                                    {estado === "T" ? label : estado === "T/2" ? "½" : label}
                                   </button>
                                 );
                               })}
@@ -2614,7 +2632,7 @@ function ModalConfigTurno({
                           ))}
                         </div>
                         <p className="text-[8px] text-white/15">
-                          {slot.dias_trabajo.length} día{slot.dias_trabajo.length !== 1 ? "s" : ""} trabaja · {14 - slot.dias_trabajo.length} descansa · turno de {slot.horas_turno}h
+                          {slot.dias_trabajo.length - (slot.dias_medio_turno || []).length} completos · {(slot.dias_medio_turno || []).length} medios · {14 - slot.dias_trabajo.length} descanso · {slot.horas_turno}h base
                         </p>
                       </div>
                     );
