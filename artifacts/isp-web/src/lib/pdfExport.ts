@@ -340,6 +340,98 @@ export class IspPdf {
     this.currentY = (finalY != null ? finalY + 8 : this.currentY + 20);
   }
 
+  addTextoBold(texto: string, fontSize = 9): void {
+    this.checkPageBreak(15);
+    const doc = this.doc;
+    doc.setFontSize(fontSize);
+    doc.setTextColor(...COLORS.navy);
+    doc.setFont("helvetica", "bold");
+    const lines = doc.splitTextToSize(texto, this.contentWidth);
+    doc.text(lines, this.marginL, this.currentY);
+    this.currentY += lines.length * (fontSize * 0.45) + 3;
+  }
+
+  addTextoCentrado(texto: string, fontSize = 10, bold = false): void {
+    this.checkPageBreak(15);
+    const doc = this.doc;
+    doc.setFontSize(fontSize);
+    doc.setTextColor(...COLORS.navy);
+    doc.setFont("helvetica", bold ? "bold" : "normal");
+    const lines = doc.splitTextToSize(texto, this.contentWidth);
+    for (const line of lines) {
+      doc.text(line, this.pageWidth / 2, this.currentY, { align: "center" });
+      this.currentY += fontSize * 0.45;
+    }
+    this.currentY += 3;
+  }
+
+  addTextoJustificado(texto: string, fontSize = 9, indent = 0): void {
+    this.checkPageBreak(15);
+    const doc = this.doc;
+    doc.setFontSize(fontSize);
+    doc.setTextColor(...COLORS.darkGray);
+    doc.setFont("helvetica", "normal");
+    const width = this.contentWidth - indent;
+    const lines = doc.splitTextToSize(texto, width);
+    doc.text(lines, this.marginL + indent, this.currentY);
+    this.currentY += lines.length * (fontSize * 0.48) + 2;
+  }
+
+  addLinea(): void {
+    const doc = this.doc;
+    doc.setDrawColor(...COLORS.border);
+    doc.setLineWidth(0.3);
+    doc.line(this.marginL, this.currentY, this.pageWidth - this.marginR, this.currentY);
+    this.currentY += 3;
+  }
+
+  addFirmaDoble(izq: { label: string; nombre: string }, der: { label: string; nombre: string }): void {
+    this.checkPageBreak(30);
+    const doc = this.doc;
+    const halfW = this.contentWidth / 2 - 5;
+    const xIzq = this.marginL + halfW / 2;
+    const xDer = this.marginL + this.contentWidth / 2 + 5 + halfW / 2;
+
+    doc.setDrawColor(...COLORS.darkGray);
+    doc.setLineWidth(0.3);
+    doc.line(this.marginL + 5, this.currentY, this.marginL + halfW - 5, this.currentY);
+    doc.line(this.marginL + this.contentWidth / 2 + 10, this.currentY, this.pageWidth - this.marginR - 5, this.currentY);
+
+    this.currentY += 4;
+    doc.setFontSize(8);
+    doc.setTextColor(...COLORS.darkGray);
+    doc.setFont("helvetica", "bold");
+    doc.text(izq.label, xIzq, this.currentY, { align: "center" });
+    doc.text(der.label, xDer, this.currentY, { align: "center" });
+    this.currentY += 3.5;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.text(izq.nombre, xIzq, this.currentY, { align: "center" });
+    doc.text(der.nombre, xDer, this.currentY, { align: "center" });
+    this.currentY += 6;
+  }
+
+  addFirmaSimple(label: string, nombre: string): void {
+    this.checkPageBreak(20);
+    const doc = this.doc;
+    const cx = this.pageWidth / 2;
+
+    doc.setDrawColor(...COLORS.darkGray);
+    doc.setLineWidth(0.3);
+    doc.line(cx - 40, this.currentY, cx + 40, this.currentY);
+
+    this.currentY += 4;
+    doc.setFontSize(8);
+    doc.setTextColor(...COLORS.darkGray);
+    doc.setFont("helvetica", "bold");
+    doc.text(label, cx, this.currentY, { align: "center" });
+    this.currentY += 3.5;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.text(nombre, cx, this.currentY, { align: "center" });
+    this.currentY += 6;
+  }
+
   // ─── Espacio ─────────────────────────────────────────────────────────────────
   addEspacio(mm = 6): void {
     this.currentY += mm;

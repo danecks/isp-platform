@@ -54,6 +54,7 @@ export interface DatosActa {
   causal: string;
   articulo_legal: string;
   eventos_historial?: Array<{ fecha: string; tipo: string; notas: string }>;
+  causales_seleccionadas?: string[];
 }
 
 const fmtFecha = (iso: string): string => {
@@ -126,6 +127,19 @@ const dpiEnLetras = (dpi: string): string => {
   return clean;
 };
 
+export const CAUSALES_ACTA = [
+  { id: "alcohol_drogas", label: "Alcohol / Drogas", desc: "Se presentó en estado de ebriedad o bajo efectos de sustancias, imposibilitando el desempeño de sus funciones", articulo: "Art. 77 inciso d)" },
+  { id: "descuido_grave", label: "Descuido grave que afecte el trabajo", desc: "Actuó con descuido o negligencia que afectó seriamente las operaciones y/o la prestación del servicio", articulo: "Art. 77 inciso e)" },
+  { id: "riesgo_bienes", label: "Poner en riesgo bienes, personas o procesos", desc: "Puso en riesgo la integridad de bienes, personas o procesos operativos bajo su responsabilidad", articulo: "Art. 77 inciso e)" },
+  { id: "falta_injustificada", label: "Faltas injustificadas / Abandono", desc: "No se presentó a sus labores sin dar aviso ni justificación alguna, generando descubierto en la cobertura operativa", articulo: "Art. 77 inciso f)" },
+  { id: "ausencia_sin_permiso", label: "Ausencias sin permiso", desc: "Se ausentó del puesto de trabajo sin autorización de su superior inmediato", articulo: "Art. 77 inciso f)" },
+  { id: "bajo_rendimiento", label: "Bajo rendimiento intencional", desc: "Disminuyó deliberadamente su productividad y rendimiento laboral sin justificación válida", articulo: "Art. 77 inciso e)" },
+  { id: "incumplimiento", label: "Incumplimiento sin justificación", desc: "No cumplió con las funciones y responsabilidades asignadas a su puesto sin justificación alguna", articulo: "Art. 77 inciso b)" },
+  { id: "desobediencia", label: "Desobediencia / Indisciplina", desc: "Desobedeció instrucciones directas de sus superiores o incurrió en actos de indisciplina", articulo: "Art. 77 inciso b)" },
+  { id: "violencia", label: "Violencia / Amenazas", desc: "Realizó actos de violencia, amenazas o injurias contra compañeros o superiores dentro o fuera del lugar de trabajo", articulo: "Art. 77 inciso c)" },
+  { id: "robo_hurto", label: "Robo / Hurto / Daño intencional", desc: "Cometió o intentó cometer actos de sustracción o daño intencional contra bienes de la empresa o del cliente", articulo: "Art. 77 inciso a)" },
+] as const;
+
 export const MOTIVO_ANULACION_LABELS: Record<string, string> = {
   error_registro: "Error de registro",
   agente_asistio: "El agente sí asistió",
@@ -133,104 +147,137 @@ export const MOTIVO_ANULACION_LABELS: Record<string, string> = {
   otro: "Otro motivo",
 };
 
-// ─── Acta Administrativa (Formato Ministerio de Trabajo) ─────────────────────
+// ─── Acta Administrativa (Formato Oficio – Ministerio de Trabajo) ────────────
 export async function generarActaAdministrativa(datos: DatosActa): Promise<void> {
   const pdf = new IspPdf({
     titulo: "ACTA ADMINISTRATIVA",
-    subtitulo: `No. ${datos.numero_acta} — ${datos.causal.toUpperCase()}`,
-    preparedBy: "Departamento de RRHH",
+    subtitulo: `Acta No. ${String(datos.numero_acta).padStart(4, "0")}`,
+    preparedBy: "Departamento de Recursos Humanos",
   });
 
   await pdf.build();
 
-  pdf.addSeccionTitulo(`ACTA ADMINISTRATIVA NO. ${datos.numero_acta} POR ${datos.causal.toUpperCase()}`);
-
   const horaActual = fmtHora();
   const fechaHoy = fmtFechaDia(new Date().toISOString());
-
-  const parrafo1 =
-    `En el día de hoy: ${fechaHoy}, siendo las: ${horaActual} horas, ` +
-    `Yo ${datos.representante_nombre}, me identifico con Documento Personal de Identificación ` +
-    `número ${dpiEnLetras(datos.representante_dpi)}, extendido por el Registro Nacional de las Personas ` +
-    `(RENAP) de la República de Guatemala; constituido en ${datos.direccion_empresa}, ` +
-    `ubicación de la empresa ${datos.nombre_empresa}, actúo en calidad de Representante Legal ` +
-    `y/o Gerente General de la empresa, hago constar lo siguiente:`;
-
-  pdf.addTextoResumen(parrafo1);
-  pdf.addEspacio(4);
-
   const fechaIngreso = datos.empleado_fecha_ingreso ? fmtFechaDia(datos.empleado_fecha_ingreso) : "fecha no registrada";
 
-  const parrafo2 =
-    `Que el trabajador ${datos.empleado_nombre.toUpperCase()}, quien se identifica con Documento Personal ` +
-    `de Identificación número ${dpiEnLetras(datos.empleado_dpi)}, ` +
-    `quien labora para la empresa desde el ${fechaIngreso} ` +
-    `desempeñando el puesto de ${datos.empleado_cargo || "Agente de Seguridad"} ` +
-    `en las instalaciones del cliente ${datos.cliente_nombre || "asignado"}, ` +
-    `puesto "${datos.puesto_nombre || "operativo"}".`;
+  pdf.addTextoCentrado(`ACTA ADMINISTRATIVA No. ${String(datos.numero_acta).padStart(4, "0")}`, 12, true);
+  pdf.addEspacio(2);
 
-  pdf.addTextoResumen(parrafo2);
-  pdf.addEspacio(4);
-
-  pdf.addSeccionTitulo("HECHOS");
-
-  pdf.addTextoResumen(datos.hechos);
-
-  if (datos.notas_sistema && datos.notas_sistema.length > 0) {
-    pdf.addEspacio(3);
-    pdf.addTextoResumen("Notas registradas en el sistema operativo:");
-    for (const nota of datos.notas_sistema) {
-      pdf.addTextoResumen(`• ${nota}`);
-    }
+  const articulosUsados = new Set<string>();
+  let causalesTexto = "";
+  if (datos.causales_seleccionadas && datos.causales_seleccionadas.length > 0) {
+    const seleccionadas = datos.causales_seleccionadas
+      .map(id => CAUSALES_ACTA.find(c => c.id === id))
+      .filter(Boolean) as typeof CAUSALES_ACTA[number][];
+    seleccionadas.forEach(c => articulosUsados.add(c.articulo));
+    causalesTexto = seleccionadas.map(c => c.desc).join(". Asimismo, ") + ".";
   }
 
+  pdf.addTextoJustificado(
+    `En la ciudad de Guatemala, el día ${fechaHoy}, siendo las ${horaActual} horas, ` +
+    `constituido(a) en ${datos.direccion_empresa || "las oficinas de la empresa"}, ` +
+    `sede de la empresa ${datos.nombre_empresa || "INVESTIGACIONES Y SEGURIDAD PROFESIONAL, S.A."}, ` +
+    `comparece:`
+  );
+  pdf.addEspacio(3);
+
+  pdf.addTextoBold("POR PARTE DE LA EMPRESA:");
+  pdf.addTextoJustificado(
+    `${datos.representante_nombre}, quien se identifica con Documento Personal de Identificación (DPI) ` +
+    `número ${dpiEnLetras(datos.representante_dpi)}, extendido por el Registro Nacional de las Personas (RENAP) ` +
+    `de la República de Guatemala, actuando en calidad de Representante Legal y/o Gerente General.`
+  );
+  pdf.addEspacio(3);
+
+  pdf.addTextoBold("TRABAJADOR CITADO:");
+  pdf.addTextoJustificado(
+    `${datos.empleado_nombre.toUpperCase()}, quien se identifica con DPI número ${dpiEnLetras(datos.empleado_dpi)}, ` +
+    `quien labora para la empresa desde el ${fechaIngreso}, ` +
+    `desempeñando el puesto de ${datos.empleado_cargo || "Agente de Seguridad"} ` +
+    `en las instalaciones del cliente ${datos.cliente_nombre || "asignado"}, ` +
+    `puesto operativo "${datos.puesto_nombre || "asignado"}".`
+  );
   pdf.addEspacio(4);
+  pdf.addLinea();
+  pdf.addEspacio(2);
+
+  pdf.addTextoCentrado("HECHOS", 11, true);
+  pdf.addEspacio(2);
+
+  if (causalesTexto) {
+    pdf.addTextoJustificado(
+      `El trabajador ${datos.empleado_nombre.toUpperCase()} ha incurrido en la(s) siguiente(s) falta(s):`,
+    );
+    pdf.addEspacio(2);
+    pdf.addTextoJustificado(causalesTexto, 9, 5);
+    pdf.addEspacio(2);
+  }
+
+  if (datos.hechos) {
+    pdf.addTextoJustificado(datos.hechos);
+    pdf.addEspacio(2);
+  }
+
+  if (datos.notas_sistema && datos.notas_sistema.length > 0) {
+    pdf.addTextoBold("Notas del sistema operativo:", 8);
+    for (const nota of datos.notas_sistema) {
+      pdf.addTextoJustificado(`• ${nota}`, 8, 5);
+    }
+    pdf.addEspacio(3);
+  }
 
   if (datos.eventos_historial && datos.eventos_historial.length > 0) {
-    pdf.addSeccionTitulo("ANTECEDENTES DISCIPLINARIOS");
+    pdf.addLinea();
+    pdf.addEspacio(2);
+    pdf.addTextoCentrado("ANTECEDENTES DISCIPLINARIOS", 10, true);
+    pdf.addEspacio(2);
     const filas = datos.eventos_historial.map(e => [
       fmtFechaCorta(e.fecha),
       tipoLabel(e.tipo),
-      e.notas || "—",
+      (e.notas || "—").substring(0, 80),
     ]);
-    pdf.addTabla(["Fecha", "Tipo", "Observaciones"], filas);
-    pdf.addEspacio(4);
+    pdf.addTabla(["Fecha", "Tipo de Evento", "Observaciones"], filas);
+    pdf.addEspacio(3);
   }
 
-  pdf.addSeccionTitulo("FUNDAMENTO LEGAL");
+  pdf.addLinea();
+  pdf.addEspacio(2);
+  pdf.addTextoCentrado("FUNDAMENTO LEGAL", 10, true);
+  pdf.addEspacio(2);
 
-  const parrafoLegal =
+  const articulosStr = articulosUsados.size > 0
+    ? Array.from(articulosUsados).join(", ")
+    : datos.articulo_legal || "Art. 77 del Código de Trabajo";
+
+  pdf.addTextoJustificado(
     `Con base en lo anteriormente expuesto, y de conformidad con lo establecido en el ` +
-    `${datos.articulo_legal} del Código de Trabajo de Guatemala (Decreto 1441 del Congreso de la ` +
-    `República), se deja constancia de los hechos para los efectos legales correspondientes.`;
-
-  pdf.addTextoResumen(parrafoLegal);
-  pdf.addEspacio(4);
-
-  const parrafoCierre =
-    `No habiendo más que hacer constar, se da por terminada la presente acta en el mismo lugar y ` +
-    `fecha de su inicio, la cual consta de una hoja firmada y sellada por los comparecientes que en ` +
-    `ella intervinieron.`;
-
-  pdf.addTextoResumen(parrafoCierre);
-
-  pdf.addEspacio(15);
-
-  pdf.addTextoResumen("_____________________________________");
-  pdf.addTextoResumen("Representante Legal");
-  pdf.addTextoResumen(datos.representante_nombre);
-
-  pdf.addEspacio(15);
-
-  pdf.addTabla(
-    ["", ""],
-    [
-      ["_____________________________________", "_____________________________________"],
-      ["Testigo", "Testigo"],
-    ],
+    `${articulosStr} del Código de Trabajo de Guatemala (Decreto 1441 del Congreso de la República ` +
+    `y sus reformas), se deja constancia de los hechos para los efectos legales correspondientes. ` +
+    `El trabajador queda formalmente notificado de que la reincidencia en estas faltas puede dar ` +
+    `lugar a la terminación de la relación laboral sin responsabilidad para el patrono.`
   );
 
-  const filename = `acta-administrativa-${datos.numero_acta}-${datos.empleado_nombre.split(" ")[0].toLowerCase()}.pdf`;
+  pdf.addEspacio(4);
+
+  pdf.addTextoJustificado(
+    `No habiendo más que hacer constar, se da por terminada la presente acta en el mismo lugar y ` +
+    `fecha de su inicio, la cual consta de una hoja útil, firmada y sellada por los comparecientes ` +
+    `que en ella intervinieron, quienes ratifican su contenido.`
+  );
+
+  pdf.addEspacio(18);
+
+  pdf.addFirmaSimple("Representante Legal", datos.representante_nombre);
+  pdf.addEspacio(10);
+  pdf.addFirmaSimple("Trabajador Citado", datos.empleado_nombre.toUpperCase());
+  pdf.addEspacio(10);
+  pdf.addFirmaDoble(
+    { label: "Testigo 1", nombre: "" },
+    { label: "Testigo 2", nombre: "" },
+  );
+
+  const filename = `acta-administrativa-${String(datos.numero_acta).padStart(4, "0")}-${datos.empleado_nombre.split(" ")[0].toLowerCase()}.pdf`;
   pdf.save(filename);
 }
 
@@ -238,115 +285,145 @@ export async function generarActaAdministrativa(datos: DatosActa): Promise<void>
 export async function generarAvisoInspector(datos: DatosActa): Promise<void> {
   const pdf = new IspPdf({
     titulo: "AVISO AL INSPECTOR DE TRABAJO",
-    subtitulo: `Trabajador: ${datos.empleado_nombre} — Acta No. ${datos.numero_acta}`,
+    subtitulo: `Ref: Acta No. ${String(datos.numero_acta).padStart(4, "0")}`,
     preparedBy: "Representante Legal",
   });
 
   await pdf.build();
 
-  pdf.addTextoResumen("SEÑOR:");
-  pdf.addEspacio(2);
-  pdf.addTextoResumen("INSPECTOR DE TRABAJO DEL MINISTERIO DE TRABAJO Y PREVISIÓN SOCIAL");
-  pdf.addTextoResumen("SU DESPACHO.");
-  pdf.addEspacio(6);
-
-  const parrafoIntro =
-    `${datos.representante_nombre.toUpperCase()}, guatemalteco, de este domicilio, quien se identifica ` +
-    `con el Documento Personal de Identificación -DPI- con Código Único de Identificación -CUI- ` +
-    `número ${dpiEnLetras(datos.representante_dpi)} extendido por el Registro Nacional de las Personas ` +
-    `de la República de Guatemala -RENAP-, actuando en calidad de Gerente General y Representante ` +
-    `Legal de la entidad ${datos.nombre_empresa.toUpperCase()}, ante usted respetuosamente comparezco ` +
-    `y EXPONGO:`;
-
-  pdf.addTextoResumen(parrafoIntro);
-  pdf.addEspacio(4);
-
-  pdf.addSeccionTitulo("I. DE MI REPRESENTADA");
-
-  const parrafoRepresentada =
-    `${datos.nombre_empresa.toUpperCase()}, es una entidad que se dedica a la prestación de ` +
-    `servicios de seguridad privada, con domicilio en ${datos.direccion_empresa}, ` +
-    `ciudad de Guatemala, departamento de Guatemala.`;
-
-  pdf.addTextoResumen(parrafoRepresentada);
-  pdf.addEspacio(4);
-
-  pdf.addSeccionTitulo("II. DEL TRABAJADOR");
-
+  const fechaHoy = fmtFechaDia(new Date().toISOString());
   const fechaIngreso = datos.empleado_fecha_ingreso ? fmtFechaDia(datos.empleado_fecha_ingreso) : "fecha no registrada";
 
-  const parrafoTrabajador =
+  const articulosUsados = new Set<string>();
+  if (datos.causales_seleccionadas && datos.causales_seleccionadas.length > 0) {
+    const seleccionadas = datos.causales_seleccionadas
+      .map(id => CAUSALES_ACTA.find(c => c.id === id))
+      .filter(Boolean) as typeof CAUSALES_ACTA[number][];
+    seleccionadas.forEach(c => articulosUsados.add(c.articulo));
+  }
+  const articulosStr = articulosUsados.size > 0
+    ? Array.from(articulosUsados).join(", ")
+    : datos.articulo_legal || "Art. 77 del Código de Trabajo";
+
+  pdf.addTextoCentrado("Guatemala, " + fechaHoy, 9, false);
+  pdf.addEspacio(4);
+
+  pdf.addTextoBold("SEÑOR:");
+  pdf.addTextoBold("INSPECTOR DE TRABAJO");
+  pdf.addTextoBold("MINISTERIO DE TRABAJO Y PREVISIÓN SOCIAL");
+  pdf.addTextoJustificado("Su Despacho.");
+  pdf.addEspacio(6);
+
+  pdf.addTextoJustificado(
+    `${datos.representante_nombre.toUpperCase()}, guatemalteco(a), de este domicilio, quien se identifica ` +
+    `con el Documento Personal de Identificación -DPI- con Código Único de Identificación -CUI- ` +
+    `número ${dpiEnLetras(datos.representante_dpi)}, extendido por el Registro Nacional de las Personas ` +
+    `de la República de Guatemala -RENAP-, actuando en calidad de Gerente General y Representante ` +
+    `Legal de la entidad ${datos.nombre_empresa.toUpperCase()}, ante usted respetuosamente comparezco ` +
+    `y EXPONGO:`
+  );
+  pdf.addEspacio(4);
+
+  pdf.addTextoCentrado("I. DE MI REPRESENTADA", 10, true);
+  pdf.addEspacio(2);
+  pdf.addTextoJustificado(
+    `${datos.nombre_empresa.toUpperCase()}, es una entidad dedicada a la prestación de ` +
+    `servicios de seguridad privada, con domicilio en ${datos.direccion_empresa || "Ciudad de Guatemala"}, ` +
+    `departamento de Guatemala.`
+  );
+  pdf.addEspacio(4);
+
+  pdf.addTextoCentrado("II. DEL TRABAJADOR", 10, true);
+  pdf.addEspacio(2);
+  pdf.addTextoJustificado(
     `El trabajador ${datos.empleado_nombre.toUpperCase()}, quien se identifica con DPI número ` +
     `${dpiEnLetras(datos.empleado_dpi)}, laboró para mi representada desde el ${fechaIngreso}, ` +
     `desempeñando el puesto de ${datos.empleado_cargo || "Agente de Seguridad"} ` +
-    `en las instalaciones del cliente ${datos.cliente_nombre || "asignado"}.`;
-
-  pdf.addTextoResumen(parrafoTrabajador);
+    `en las instalaciones del cliente ${datos.cliente_nombre || "asignado"}.`
+  );
   pdf.addEspacio(4);
 
-  pdf.addSeccionTitulo("III. DE LOS HECHOS");
+  pdf.addTextoCentrado("III. DE LOS HECHOS", 10, true);
+  pdf.addEspacio(2);
 
-  pdf.addTextoResumen(datos.hechos);
+  if (datos.causales_seleccionadas && datos.causales_seleccionadas.length > 0) {
+    const seleccionadas = datos.causales_seleccionadas
+      .map(id => CAUSALES_ACTA.find(c => c.id === id))
+      .filter(Boolean) as typeof CAUSALES_ACTA[number][];
+    const causalesTexto = seleccionadas.map(c => c.desc).join(". Asimismo, ") + ".";
+    pdf.addTextoJustificado(causalesTexto);
+    pdf.addEspacio(2);
+  }
+
+  if (datos.hechos) {
+    pdf.addTextoJustificado(datos.hechos);
+  }
 
   if (datos.notas_sistema && datos.notas_sistema.length > 0) {
     pdf.addEspacio(3);
     for (const nota of datos.notas_sistema) {
-      pdf.addTextoResumen(`• ${nota}`);
+      pdf.addTextoJustificado(`• ${nota}`, 8, 5);
     }
+  }
+
+  if (datos.eventos_historial && datos.eventos_historial.length > 0) {
+    pdf.addEspacio(4);
+    pdf.addTextoCentrado("HISTORIAL DE ACTAS Y ANTECEDENTES", 9, true);
+    pdf.addEspacio(2);
+    const filas = datos.eventos_historial.map(e => [
+      fmtFechaCorta(e.fecha),
+      tipoLabel(e.tipo),
+      (e.notas || "—").substring(0, 80),
+    ]);
+    pdf.addTabla(["Fecha", "Tipo", "Observaciones"], filas);
   }
 
   pdf.addEspacio(4);
 
-  pdf.addSeccionTitulo("IV. FUNDAMENTO LEGAL");
-
-  const parrafoFundamento =
-    `De conformidad con lo establecido en el ${datos.articulo_legal} del Código de Trabajo de Guatemala ` +
-    `(Decreto 1441 del Congreso de la República de Guatemala), y dado que el trabajador ha incurrido en ` +
-    `las causales anteriormente descritas, se procede a dar por terminada la relación laboral con causa ` +
-    `justa y sin responsabilidad de mi representada.`;
-
-  pdf.addTextoResumen(parrafoFundamento);
+  pdf.addTextoCentrado("IV. FUNDAMENTO LEGAL", 10, true);
+  pdf.addEspacio(2);
+  pdf.addTextoJustificado(
+    `De conformidad con lo establecido en el ${articulosStr} del Código de Trabajo de Guatemala ` +
+    `(Decreto 1441 del Congreso de la República de Guatemala y sus reformas), y dado que el trabajador ` +
+    `ha incurrido en las causales anteriormente descritas, se procede a dar por terminada la relación ` +
+    `laboral con causa justa y sin responsabilidad de mi representada.`
+  );
   pdf.addEspacio(4);
 
-  const fechaEvento = datos.fecha_evento ? fmtFechaDia(datos.fecha_evento) : fmtFechaDia(new Date().toISOString());
-
-  const parrafoPeticion =
+  pdf.addTextoJustificado(
     `Por lo anteriormente expuesto, a través del presente memorial doy el AVISO DE TERMINACIÓN DE ` +
     `RELACIÓN LABORAL DEL TRABAJADOR ${datos.empleado_nombre.toUpperCase()}, en consecuencia, se da por ` +
     `terminada la relación laboral entre mi representada y dicho trabajador, con causa justa y sin ` +
     `responsabilidad de nuestra parte, de conformidad con la normativa legal citada y por los hechos ` +
-    `y causas arriba descritas.`;
-
-  pdf.addTextoResumen(parrafoPeticion);
+    `y causas arriba descritas.`
+  );
   pdf.addEspacio(4);
 
-  pdf.addSeccionTitulo("SOLICITO");
+  const fechaEvento = datos.fecha_evento ? fmtFechaDia(datos.fecha_evento) : fmtFechaDia(new Date().toISOString());
 
-  pdf.addTextoResumen("Que se tenga por recibido el presente memorial.");
+  pdf.addTextoCentrado("SOLICITO", 10, true);
   pdf.addEspacio(2);
-  pdf.addTextoResumen(
-    `Que se tenga por señalado de mi parte el lugar para recibir notificaciones ` +
-    `${datos.direccion_empresa}, de la ciudad de Guatemala, departamento de Guatemala.`
+
+  pdf.addTextoJustificado("Que se tenga por recibido el presente memorial.");
+  pdf.addEspacio(2);
+  pdf.addTextoJustificado(
+    `Que se tenga por señalado de mi parte el lugar para recibir notificaciones: ` +
+    `${datos.direccion_empresa || "Ciudad de Guatemala"}, departamento de Guatemala.`
   );
   pdf.addEspacio(2);
-  pdf.addTextoResumen(
+  pdf.addTextoJustificado(
     `Que se tenga por presentado el AVISO DE TERMINACIÓN LABORAL DEL TRABAJADOR ` +
     `${datos.empleado_nombre.toUpperCase()} y en consecuencia se tenga por terminado el contrato de ` +
     `trabajo entre ${datos.empleado_nombre.toUpperCase()} y mi representada, con justa causa y sin ` +
     `responsabilidad de nuestra parte, de conformidad con las normas legales citadas y las aplicables, ` +
-    `a partir del ${fechaEvento}. SE ADJUNTA ACTA ADMINISTRATIVA NUMERO ${datos.numero_acta}.`
+    `a partir del ${fechaEvento}. SE ADJUNTA ACTA ADMINISTRATIVA NUMERO ${String(datos.numero_acta).padStart(4, "0")}.`
   );
 
-  pdf.addEspacio(4);
-  pdf.addTextoResumen(`Guatemala, ${fmtFechaDia(new Date().toISOString())}`);
+  pdf.addEspacio(18);
 
-  pdf.addEspacio(15);
+  pdf.addFirmaSimple("Representante Legal", datos.representante_nombre);
 
-  pdf.addTextoResumen("_____________________________________");
-  pdf.addTextoResumen("Representante Legal");
-  pdf.addTextoResumen(datos.representante_nombre);
-
-  const filename = `aviso-inspector-${datos.numero_acta}-${datos.empleado_nombre.split(" ")[0].toLowerCase()}.pdf`;
+  const filename = `aviso-inspector-${String(datos.numero_acta).padStart(4, "0")}-${datos.empleado_nombre.split(" ")[0].toLowerCase()}.pdf`;
   pdf.save(filename);
 }
 

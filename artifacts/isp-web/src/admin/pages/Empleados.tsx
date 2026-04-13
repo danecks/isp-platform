@@ -669,6 +669,141 @@ function ResumenDimensionesKPI({ empId }: { empId: number }) {
   );
 }
 
+function ActaDesdeKPI({ empId }: { empId: number }) {
+  const [open, setOpen] = useState(false);
+  const [causales, setCausales] = useState<string[]>([]);
+  const [hechosCustom, setHechosCustom] = useState("");
+  const [generando, setGenerando] = useState(false);
+  const { toast } = useToast();
+  const getSession = () => sessionStorage.getItem("isp_admin_session_v2") ?? "";
+
+  const handleGenerar = async () => {
+    if (causales.length === 0) {
+      toast({ title: "Seleccione al menos una causal", variant: "destructive" });
+      return;
+    }
+    setGenerando(true);
+    try {
+      const hdr = { "x-isp-session": getSession() };
+      const [configRes, numRes] = await Promise.all([
+        fetch(`${API_BASE}/actas/datos-para-pdf/${empId}`, { headers: hdr }).then(r => r.ok ? r.json() : null),
+        fetch(`${API_BASE}/actas/siguiente-numero`, { method: "POST", headers: { ...hdr, "Content-Type": "application/json" } }).then(r => r.ok ? r.json() : null),
+      ]);
+      if (!configRes) throw new Error("No se pudo obtener datos del empleado");
+      if (!numRes?.numero) throw new Error("No se pudo obtener número de acta");
+      const cfg = configRes?.config || {};
+      const emp = configRes?.empleado || {};
+      const hist = (configRes?.eventos_recientes || [])
+        .filter((e: any) => ["falta","falta_injustificada","llamada_atencion_1","llamada_atencion_2","acta_administrativa"].includes(e.tipo_evento))
+        .slice(0, 10);
+
+      const { generarActaAdministrativa } = await import("@/lib/pdfRrhh");
+      await generarActaAdministrativa({
+        numero_acta: numRes.numero,
+        representante_nombre: cfg.representante_nombre || "Representante Legal",
+        representante_dpi: cfg.representante_dpi || "",
+        direccion_empresa: cfg.direccion_empresa || "",
+        nombre_empresa: cfg.nombre_empresa || "Investigaciones y Seguridad Profesional S.A.",
+        empleado_nombre: emp.nombre_completo || "Empleado",
+        empleado_dpi: emp.dpi || "",
+        empleado_fecha_ingreso: emp.fecha_ingreso || "",
+        empleado_cargo: emp.cargo || "Agente de Seguridad",
+        puesto_nombre: emp.puesto_nombre || "",
+        cliente_nombre: emp.cliente_nombre || "",
+        fecha_evento: new Date().toISOString(),
+        hechos: hechosCustom || "Acumulación de faltas disciplinarias según historial documentado.",
+        notas_sistema: [],
+        causal: "INCUMPLIMIENTO LABORAL",
+        articulo_legal: "Art. 77",
+        eventos_historial: hist.map((e: any) => ({ fecha: e.fecha, tipo: e.tipo_evento, notas: e.notas || "" })),
+        causales_seleccionadas: causales,
+      });
+      toast({ title: "Acta generada", description: "El PDF se descargó correctamente." });
+      setOpen(false);
+    } catch (err: any) {
+      toast({ title: "Error al generar acta", description: err?.message || "Intenta de nuevo", variant: "destructive" });
+    } finally {
+      setGenerando(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="flex items-center gap-1.5 text-[10px] font-semibold text-red-300 hover:text-red-200 transition-colors bg-red-500/10 hover:bg-red-500/15 rounded-lg px-3 py-2">
+        <FileText className="w-3.5 h-3.5" /> Generar Acta Administrativa
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-3 mt-2 bg-[#0a1628] border border-white/8 rounded-xl p-3">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-semibold text-white/50 uppercase tracking-widest">Seleccionar Causales</p>
+        <button onClick={() => setOpen(false)} className="text-white/30 hover:text-white/50"><X className="w-3.5 h-3.5" /></button>
+      </div>
+      <CausalSelector selected={causales} onChange={setCausales} />
+      <div>
+        <label className="text-[10px] text-white/30 block mb-1">Hechos adicionales (opcional)</label>
+        <textarea
+          value={hechosCustom}
+          onChange={e => setHechosCustom(e.target.value)}
+          rows={2}
+          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white/70 placeholder-white/20 resize-none focus:outline-none focus:border-white/20"
+          placeholder="Describir hechos específicos o dejar en blanco para texto automático…"
+        />
+      </div>
+      <button onClick={handleGenerar} disabled={generando || causales.length === 0}
+        className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-300 rounded-lg px-3 py-2 disabled:opacity-40 transition-colors">
+        {generando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+        {generando ? "Generando…" : "Descargar Acta PDF"}
+      </button>
+    </div>
+  );
+}
+
+function CausalSelector({ selected, onChange }: { selected: string[]; onChange: (v: string[]) => void }) {
+  const [causales, setCausales] = useState<Array<{ id: string; label: string; desc: string; articulo: string }>>([]);
+  const [loadError, setLoadError] = useState(false);
+
+  useEffect(() => {
+    import("@/lib/pdfRrhh")
+      .then(m => setCausales([...m.CAUSALES_ACTA]))
+      .catch(() => setLoadError(true));
+  }, []);
+
+  const toggle = (id: string) => {
+    onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
+  };
+
+  if (loadError) {
+    return <p className="text-[10px] text-red-400 py-2">Error al cargar causales. Recarga la página e intenta de nuevo.</p>;
+  }
+  if (causales.length === 0) {
+    return <div className="flex items-center gap-2 py-3 text-white/30 text-[10px]"><Loader2 className="w-3 h-3 animate-spin" /> Cargando causales…</div>;
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-1.5 max-h-48 overflow-y-auto pr-1">
+      {causales.map(c => {
+        const active = selected.includes(c.id);
+        return (
+          <button key={c.id} onClick={() => toggle(c.id)}
+            className={`text-left rounded-lg px-3 py-2 border transition-colors ${active ? "bg-red-500/15 border-red-500/30 text-red-200" : "bg-white/3 border-white/8 text-white/50 hover:bg-white/5"}`}>
+            <div className="flex items-center gap-2">
+              <div className={`w-3 h-3 rounded border flex items-center justify-center shrink-0 ${active ? "bg-red-500 border-red-500" : "border-white/20"}`}>
+                {active && <CheckCircle2 className="w-2.5 h-2.5 text-white" />}
+              </div>
+              <span className="text-[10px] font-semibold">{c.label}</span>
+              <span className="text-[9px] text-white/25 ml-auto">{c.articulo}</span>
+            </div>
+            {active && <p className="text-[9px] text-white/30 mt-1 ml-5">{c.desc}</p>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function SeccionDisciplinaria({ empId }: { empId: number }) {
   const { data: disc, isLoading } = useQuery<KPIDisciplinario>({
     queryKey: ["employee-disciplinary", empId],
@@ -797,6 +932,19 @@ function SeccionDisciplinaria({ empId }: { empId: number }) {
         <div className="text-center py-4">
           <ShieldCheck className="w-8 h-8 text-green-400/20 mx-auto mb-2" />
           <p className="text-xs text-white/25">Sin eventos disciplinarios registrados</p>
+        </div>
+      )}
+
+      {disc.score < 70 && (
+        <div className="bg-red-500/5 border border-red-500/15 rounded-xl p-3 space-y-2">
+          <p className="text-[10px] font-semibold text-red-300 uppercase tracking-wide flex items-center gap-1.5">
+            <AlertTriangle className="w-3 h-3" /> Rendimiento bajo — Acción recomendada
+          </p>
+          <p className="text-[10px] text-white/30">
+            El score disciplinario de este colaborador está en nivel de riesgo.
+            Puede generar un acta administrativa directamente desde aquí.
+          </p>
+          <ActaDesdeKPI empId={empId} />
         </div>
       )}
 
