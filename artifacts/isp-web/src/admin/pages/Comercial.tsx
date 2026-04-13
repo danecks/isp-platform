@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "../layout/AdminLayout";
 import { StatusBadge } from "../components/StatusBadge";
 import { leadsApi } from "@/lib/api";
-import { Briefcase, Filter, Loader2, RefreshCw, ExternalLink, Send, CheckCircle2, UserPlus, X, Calendar, Plus } from "lucide-react";
+import { Briefcase, Filter, Loader2, RefreshCw, ExternalLink, Send, CheckCircle2, UserPlus, X, Calendar, Plus, Banknote, TrendingUp, AlertTriangle, ChevronRight } from "lucide-react";
 import LeadDetallePanel from "../components/LeadDetallePanel";
 
 type EstadoLead = "nuevo" | "contactado" | "cotizado" | "ganado" | "perdido";
@@ -169,8 +169,126 @@ function ModalNuevoLead({ onClose, onCreated }: { onClose: () => void; onCreated
   );
 }
 
+const fmtQG = (n: number) => n.toLocaleString("es-GT", { style: "currency", currency: "GTQ", minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+const getSessionC = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+
+function PanelRentabilidadGlobal() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    fetch(`${API}/rentabilidad/global`, { headers: { "x-isp-session": getSessionC() } })
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(d => { setData(d); setLoading(false); })
+      .catch(e => { setErr(e.message); setLoading(false); });
+  }, []);
+
+  if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-white/30" /></div>;
+  if (err) return <div className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-4">{err}</div>;
+  if (!data) return null;
+
+  const { clientes, totales } = data;
+  const negativos = clientes.filter((c: any) => c.margen < 0);
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: "Ingreso Neto Total", value: fmtQG(totales.ingreso_neto), sub: `${totales.total_puestos} puestos`, color: "text-cyan-400" },
+          { label: "Costo Operativo Total", value: fmtQG(totales.costo_operativo), sub: `${totales.total_titulares} titulares`, color: "text-amber-400" },
+          { label: "Margen Global", value: fmtQG(totales.margen), sub: `${totales.margen_pct}%`, color: totales.margen >= 0 ? "text-emerald-400" : "text-red-400" },
+          { label: "Clientes en Riesgo", value: String(negativos.length), sub: "Margen negativo", color: negativos.length > 0 ? "text-red-400" : "text-emerald-400" },
+        ].map((kpi, i) => (
+          <div key={i} className="bg-[#0c1829] border border-white/5 rounded-xl p-4">
+            <p className="text-[10px] uppercase tracking-wider text-white/40 mb-1">{kpi.label}</p>
+            <p className={`text-xl font-bold ${kpi.color}`}>{kpi.value}</p>
+            <p className="text-[10px] text-white/30 mt-0.5">{kpi.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {negativos.length > 0 && (
+        <div className="bg-red-500/8 border border-red-500/15 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle className="w-4 h-4 text-red-400" />
+            <span className="text-xs font-semibold text-red-300 uppercase tracking-wider">Clientes con Margen Negativo</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {negativos.map((c: any) => (
+              <span key={c.id} className="px-2.5 py-1 text-xs bg-red-500/15 border border-red-500/20 rounded-lg text-red-300">
+                {c.nombre}: {fmtQG(c.margen)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="bg-[#0c1829] border border-white/5 rounded-xl overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-white/5 text-[10px] uppercase tracking-wider text-white/40">
+              <th className="text-left px-4 py-3">Cliente</th>
+              <th className="text-right px-3 py-3">Puestos</th>
+              <th className="text-right px-3 py-3">Tarifa Bruta</th>
+              <th className="text-right px-3 py-3">Ingreso Neto</th>
+              <th className="text-right px-3 py-3">Costo Op.</th>
+              <th className="text-right px-3 py-3">Margen</th>
+              <th className="text-right px-3 py-3">%</th>
+              <th className="text-center px-3 py-3">Bajas</th>
+              <th className="w-8"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {clientes.map((c: any) => (
+              <tr key={c.id} className="border-b border-white/3 hover:bg-white/3 transition-colors">
+                <td className="px-4 py-2.5">
+                  <span className="text-white font-medium">{c.nombre}</span>
+                </td>
+                <td className="text-right px-3 py-2.5 text-white/60">{c.total_puestos}</td>
+                <td className="text-right px-3 py-2.5 text-white/40 font-mono text-xs">{fmtQG(c.tarifa_bruta)}</td>
+                <td className="text-right px-3 py-2.5 text-cyan-400/80 font-mono text-xs">{fmtQG(c.ingreso_neto)}</td>
+                <td className="text-right px-3 py-2.5 text-amber-400/80 font-mono text-xs">{fmtQG(c.costo_operativo)}</td>
+                <td className={`text-right px-3 py-2.5 font-mono text-xs font-semibold ${c.margen >= 0 ? "text-emerald-400" : "text-red-400"}`}>{fmtQG(c.margen)}</td>
+                <td className={`text-right px-3 py-2.5 text-xs ${c.margen_pct >= 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>{c.margen_pct}%</td>
+                <td className="text-center px-3 py-2.5">
+                  {(c.bajas_con_indem > 0 || c.bajas_sin_indem > 0) ? (
+                    <span className="text-[10px] text-white/40">{c.bajas_con_indem}c / {c.bajas_sin_indem}s</span>
+                  ) : <span className="text-white/15">—</span>}
+                </td>
+                <td className="px-2 py-2.5">
+                  <a href={`/admin/clientes/${c.id}`} className="text-white/20 hover:text-primary transition-colors">
+                    <ChevronRight className="w-4 h-4" />
+                  </a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-white/10 bg-white/3 font-semibold">
+              <td className="px-4 py-3 text-white/60 text-xs uppercase">Totales</td>
+              <td className="text-right px-3 py-3 text-white/60">{totales.total_puestos}</td>
+              <td className="text-right px-3 py-3 text-white/40 font-mono text-xs">{fmtQG(totales.tarifa_bruta)}</td>
+              <td className="text-right px-3 py-3 text-cyan-400 font-mono text-xs">{fmtQG(totales.ingreso_neto)}</td>
+              <td className="text-right px-3 py-3 text-amber-400 font-mono text-xs">{fmtQG(totales.costo_operativo)}</td>
+              <td className={`text-right px-3 py-3 font-mono text-xs ${totales.margen >= 0 ? "text-emerald-400" : "text-red-400"}`}>{fmtQG(totales.margen)}</td>
+              <td className={`text-right px-3 py-3 text-xs ${totales.margen_pct >= 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>{totales.margen_pct}%</td>
+              <td className="text-center px-3 py-3 text-[10px] text-white/40">{totales.bajas_con_indem}c / {totales.bajas_sin_indem}s</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+type ComercialTab = "leads" | "rentabilidad";
+
 export default function Comercial() {
   const qc = useQueryClient();
+  const [comTab, setComTab] = useState<ComercialTab>("leads");
   const [filtro, setFiltro] = useState<EstadoLead | "todos">("todos");
   const [canalFiltro, setCanalFiltro] = useState<CanalFilter>("todos");
   const [sendingId, setSendingId] = useState<number | null>(null);
@@ -199,8 +317,28 @@ export default function Comercial() {
   const waCount = leads.filter((l) => l.canal === "whatsapp").length;
 
   return (
-    <AdminLayout title="Gestión Comercial — Leads">
+    <AdminLayout title="Gestión Comercial">
       <div className="space-y-6 max-w-[1400px]">
+
+        <div className="flex items-center gap-2 border-b border-white/5 pb-3">
+          {([
+            { id: "leads" as ComercialTab, label: "Pipeline de Leads", icon: Briefcase },
+            { id: "rentabilidad" as ComercialTab, label: "Rentabilidad por Cliente", icon: TrendingUp },
+          ]).map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setComTab(id)}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm transition-all ${comTab === id ? "bg-primary/15 text-primary border border-primary/30 font-medium" : "text-white/40 hover:text-white/70 hover:bg-white/5"}`}
+            >
+              <Icon className="w-4 h-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {comTab === "rentabilidad" && <PanelRentabilidadGlobal />}
+
+        {comTab === "leads" && <div className="space-y-6">
 
         {/* STATS */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -417,7 +555,7 @@ export default function Comercial() {
           )}
         </div>
 
-      </div>
+      </div>}
       {/* ── Modal: Nuevo Lead ── */}
       {modalNuevoLead && (
         <ModalNuevoLead onClose={() => setModalNuevoLead(false)} onCreated={() => { refetch(); qc.invalidateQueries({ queryKey: ["leads"] }); }} />
@@ -518,6 +656,7 @@ export default function Comercial() {
           </div>
         </div>
       )}
+      </div>
     </AdminLayout>
   );
 }

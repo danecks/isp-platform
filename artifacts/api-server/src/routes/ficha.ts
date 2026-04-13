@@ -376,4 +376,293 @@ fichaRouter.get("/clientes-lista", async (_req, res) => {
   }
 });
 
+// ─── GET /api/clientes/:id/rentabilidad ───────────────────────────────────────
+fichaRouter.get("/clientes/:id/rentabilidad", async (req, res) => {
+  const clientId = Number(req.params.id);
+  if (!clientId) return res.status(400).json({ error: "id inválido" });
+
+  try {
+    const { rows: puestoRows } = await pool.query(`
+      SELECT
+        po.id,
+        po.nombre,
+        po.tarifa_puesto,
+        po.tipo_servicio,
+        cs.nombre AS sede_nombre,
+        t.nombre AS turno_nombre,
+        (
+          SELECT json_agg(json_build_object(
+            'employee_id', e.id,
+            'nombre', e.nombre_completo,
+            'sueldo_base', e.sueldo_base,
+            'horas_contrato', e.horas_contrato,
+            'aplica_igss', COALESCE(e.aplica_igss_general, TRUE),
+            'bonificacion_incentivo', COALESCE(e.bonificacion_incentivo, 250),
+            'fecha_ingreso', e.fecha_ingreso
+          ))
+          FROM puesto_slots ps
+          JOIN employees e ON e.id = ps.empleado_id
+          WHERE ps.puesto_id = po.id AND ps.activo = TRUE AND e.estado_laboral = 'activo'
+        ) AS titulares,
+        (
+          SELECT COALESCE(SUM(nnd.horas_extra), 0)
+          FROM novedades_nomina_diarias nnd
+          WHERE nnd.puesto_titular_id = po.id
+            AND nnd.horas_extra > 0
+            AND nnd.fecha >= (CURRENT_DATE - INTERVAL '30 days')
+        ) AS he_30d,
+        (
+          SELECT COALESCE(COUNT(*), 0)
+          FROM cobertura_segmentos cseg
+          WHERE cseg.puesto_id = po.id
+            AND cseg.tipo_cobertura IN ('relevo', 'cobertura')
+            AND cseg.fecha >= (CURRENT_DATE - INTERVAL '30 days')
+        ) AS relevos_30d
+      FROM puestos_operativos po
+      LEFT JOIN client_sedes cs ON cs.id = po.sede_id
+      LEFT JOIN turnos t ON t.id = po.tipo_turno_id
+      WHERE po.cliente_id = $1 AND po.activo = TRUE
+      ORDER BY po.nombre
+    `, [clientId]);
+
+    const IGSS_PATRONAL = 0.1267;
+    const PREST_FACTOR = 0.4183;
+    const BONO_MENSUAL = 250;
+    const IVA_RATE = 0.12;
+    const ISR_SERVICIOS_RATE = 0.05;
+
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+
+    const puestos = puestoRows.map(p => {
+      const tarifaBruta = Number(p.tarifa_puesto || 0);
+      const titulares = p.titulares || [];
+      const numTitulares = titulares.length;
+
+      const ivaFactura = r2(tarifaBruta - tarifaBruta / (1 + IVA_RATE));
+      const baseFactura = r2(tarifaBruta - ivaFactura);
+      const isrFactura = r2(baseFactura * ISR_SERVICIOS_RATE);
+      const ingresoNeto = r2(baseFactura - isrFactura);
+
+      let costoSueldos = 0;
+      let costoIGSS = 0;
+      let costoPrestaciones = 0;
+      let costoBonificacion = 0;
+
+      for (const t of titulares) {
+        const sb = Number(t.sueldo_base || 0);
+        costoSueldos += sb;
+        if (t.aplica_igss) costoIGSS += sb * IGSS_PATRONAL;
+        costoPrestaciones += sb * PREST_FACTOR;
+        costoBonificacion += Number(t.bonificacion_incentivo || BONO_MENSUAL);
+      }
+
+      const heAprobadas = Number(p.he_30d || 0);
+      let costoHE = 0;
+      if (heAprobadas > 0 && titulares.length > 0) {
+        const avgSueldo = costoSueldos / titulares.length;
+        const sueldoDia = avgSueldo / 30;
+        const horasDia = 8;
+        costoHE = (sueldoDia / horasDia) * 1.5 * heAprobadas;
+      }
+
+      const costoOperativo = costoSueldos + costoIGSS + costoPrestaciones + costoBonificacion + costoHE;
+      const costoTotal = costoOperativo + ivaFactura + isrFactura;
+      const margen = ingresoNeto - costoOperativo;
+      const margenPct = ingresoNeto > 0 ? (margen / ingresoNeto) * 100 : 0;
+
+      return {
+        id: p.id,
+        nombre: p.nombre,
+        sede: p.sede_nombre,
+        turno: p.turno_nombre,
+        tipo_servicio: p.tipo_servicio,
+        tarifa_bruta: tarifaBruta,
+        iva_factura: ivaFactura,
+        isr_factura: isrFactura,
+        ingreso_neto: ingresoNeto,
+        num_titulares: numTitulares,
+        costo_sueldos: r2(costoSueldos),
+        costo_igss_patronal: r2(costoIGSS),
+        costo_prestaciones: r2(costoPrestaciones),
+        costo_bonificacion: r2(costoBonificacion),
+        costo_he_30d: r2(costoHE),
+        he_horas_30d: heAprobadas,
+        relevos_30d: Number(p.relevos_30d || 0),
+        costo_operativo: r2(costoOperativo),
+        costo_total: r2(costoTotal),
+        margen: r2(margen),
+        margen_pct: Math.round(margenPct * 10) / 10,
+      };
+    });
+
+    const { rows: bajasRows } = await pool.query(`
+      SELECT
+        pl.causal_egreso,
+        pl.total_indemnizacion,
+        pl.total_general,
+        pl.fecha_egreso,
+        pl.empleado_nombre,
+        pl.anios_servicio
+      FROM prestaciones_liquidaciones pl
+      JOIN employees e ON e.id = pl.employee_id
+      WHERE e.cliente_id = $1
+        AND pl.estado = 'confirmada'
+        AND pl.simulacion = FALSE
+      ORDER BY pl.fecha_egreso DESC
+    `, [clientId]);
+
+    const causalesConIndemnizacion = ['despido_injustificado', 'finalizacion_contrato', 'mutuo_acuerdo'];
+
+    const bajasConIndemnizacion = bajasRows.filter(b => causalesConIndemnizacion.includes(b.causal_egreso));
+    const bajasSinIndemnizacion = bajasRows.filter(b => !causalesConIndemnizacion.includes(b.causal_egreso));
+
+    const totalTarifaBruta = puestos.reduce((s, p) => s + p.tarifa_bruta, 0);
+    const totalIVA = puestos.reduce((s, p) => s + p.iva_factura, 0);
+    const totalISR = puestos.reduce((s, p) => s + p.isr_factura, 0);
+    const totalIngresoNeto = puestos.reduce((s, p) => s + p.ingreso_neto, 0);
+    const totalCostoOp = puestos.reduce((s, p) => s + p.costo_operativo, 0);
+    const totalMargen = totalIngresoNeto - totalCostoOp;
+
+    res.json({
+      puestos,
+      resumen: {
+        total_tarifa_bruta: r2(totalTarifaBruta),
+        total_iva: r2(totalIVA),
+        total_isr: r2(totalISR),
+        total_ingreso_neto: r2(totalIngresoNeto),
+        total_costo_operativo: r2(totalCostoOp),
+        margen_global: r2(totalMargen),
+        margen_pct: totalIngresoNeto > 0 ? Math.round((totalMargen / totalIngresoNeto) * 1000) / 10 : 0,
+        total_puestos: puestos.length,
+      },
+      bajas: {
+        con_indemnizacion: {
+          total: bajasConIndemnizacion.length,
+          monto_indemnizacion: Math.round(bajasConIndemnizacion.reduce((s, b) => s + Number(b.total_indemnizacion || 0), 0) * 100) / 100,
+          monto_total: Math.round(bajasConIndemnizacion.reduce((s, b) => s + Number(b.total_general || 0), 0) * 100) / 100,
+          detalle: bajasConIndemnizacion.map(b => ({
+            nombre: b.empleado_nombre,
+            causal: b.causal_egreso,
+            fecha: b.fecha_egreso,
+            indemnizacion: Number(b.total_indemnizacion || 0),
+            total: Number(b.total_general || 0),
+            anios: Number(b.anios_servicio || 0),
+          })),
+        },
+        sin_indemnizacion: {
+          total: bajasSinIndemnizacion.length,
+          monto_total: Math.round(bajasSinIndemnizacion.reduce((s, b) => s + Number(b.total_general || 0), 0) * 100) / 100,
+          detalle: bajasSinIndemnizacion.map(b => ({
+            nombre: b.empleado_nombre,
+            causal: b.causal_egreso,
+            fecha: b.fecha_egreso,
+            total: Number(b.total_general || 0),
+            anios: Number(b.anios_servicio || 0),
+          })),
+        },
+      },
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /clientes/:id/rentabilidad error");
+    res.status(500).json({ error: "Error al calcular rentabilidad" });
+  }
+});
+
+// ─── GET /api/rentabilidad/global ──────────────────────────────────────────────
+fichaRouter.get("/rentabilidad/global", async (_req, res) => {
+  try {
+    const IVA_RATE = 0.12;
+    const ISR_SERVICIOS_RATE = 0.05;
+    const IGSS_PATRONAL = 0.1267;
+    const PREST_FACTOR = 0.4183;
+    const BONO_MENSUAL = 250;
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+
+    const { rows } = await pool.query(`
+      SELECT
+        c.id, c.nombre, c.nombre_comercial,
+        c.estado, c.estado_contrato,
+        (SELECT COUNT(*)::int FROM puestos_operativos po WHERE po.cliente_id = c.id AND po.activo = TRUE) AS total_puestos,
+        (SELECT COALESCE(SUM(po.tarifa_puesto), 0) FROM puestos_operativos po WHERE po.cliente_id = c.id AND po.activo = TRUE) AS tarifa_total,
+        (
+          SELECT json_agg(json_build_object(
+            'sueldo_base', e.sueldo_base,
+            'aplica_igss', COALESCE(e.aplica_igss_general, TRUE),
+            'bonificacion', COALESCE(e.bonificacion_incentivo, 250)
+          ))
+          FROM puesto_slots ps2
+          JOIN employees e ON e.id = ps2.empleado_id
+          WHERE ps2.puesto_id IN (SELECT po2.id FROM puestos_operativos po2 WHERE po2.cliente_id = c.id AND po2.activo = TRUE)
+            AND ps2.activo = TRUE AND e.estado_laboral = 'activo'
+        ) AS titulares_data,
+        (SELECT COUNT(*)::int FROM prestaciones_liquidaciones pl
+         JOIN employees e2 ON e2.id = pl.employee_id
+         WHERE e2.cliente_id = c.id AND pl.estado = 'confirmada' AND pl.simulacion = FALSE
+           AND pl.causal_egreso IN ('despido_injustificado','finalizacion_contrato','mutuo_acuerdo')
+        ) AS bajas_con_indem,
+        (SELECT COUNT(*)::int FROM prestaciones_liquidaciones pl
+         JOIN employees e2 ON e2.id = pl.employee_id
+         WHERE e2.cliente_id = c.id AND pl.estado = 'confirmada' AND pl.simulacion = FALSE
+           AND pl.causal_egreso NOT IN ('despido_injustificado','finalizacion_contrato','mutuo_acuerdo')
+        ) AS bajas_sin_indem
+      FROM clients c
+      WHERE c.estado = 'activo'
+      ORDER BY c.nombre
+    `);
+
+    const clientes = rows.map(c => {
+      const tarifaBruta = Number(c.tarifa_total || 0);
+      const ivaFactura = r2(tarifaBruta - tarifaBruta / (1 + IVA_RATE));
+      const baseFactura = r2(tarifaBruta - ivaFactura);
+      const isrFactura = r2(baseFactura * ISR_SERVICIOS_RATE);
+      const ingresoNeto = r2(baseFactura - isrFactura);
+
+      const titulares = c.titulares_data || [];
+      let costoOp = 0;
+      for (const t of titulares) {
+        const sb = Number(t.sueldo_base || 0);
+        costoOp += sb;
+        if (t.aplica_igss) costoOp += sb * IGSS_PATRONAL;
+        costoOp += sb * PREST_FACTOR;
+        costoOp += Number(t.bonificacion || BONO_MENSUAL);
+      }
+
+      const margen = r2(ingresoNeto - costoOp);
+      const margenPct = ingresoNeto > 0 ? Math.round((margen / ingresoNeto) * 1000) / 10 : 0;
+
+      return {
+        id: c.id,
+        nombre: c.nombre_comercial || c.nombre,
+        estado_contrato: c.estado_contrato,
+        total_puestos: Number(c.total_puestos),
+        num_titulares: titulares.length,
+        tarifa_bruta: tarifaBruta,
+        ingreso_neto: ingresoNeto,
+        costo_operativo: r2(costoOp),
+        margen,
+        margen_pct: margenPct,
+        bajas_con_indem: Number(c.bajas_con_indem),
+        bajas_sin_indem: Number(c.bajas_sin_indem),
+      };
+    });
+
+    const totales = {
+      tarifa_bruta: r2(clientes.reduce((s, c) => s + c.tarifa_bruta, 0)),
+      ingreso_neto: r2(clientes.reduce((s, c) => s + c.ingreso_neto, 0)),
+      costo_operativo: r2(clientes.reduce((s, c) => s + c.costo_operativo, 0)),
+      margen: r2(clientes.reduce((s, c) => s + c.margen, 0)),
+      total_puestos: clientes.reduce((s, c) => s + c.total_puestos, 0),
+      total_titulares: clientes.reduce((s, c) => s + c.num_titulares, 0),
+      bajas_con_indem: clientes.reduce((s, c) => s + c.bajas_con_indem, 0),
+      bajas_sin_indem: clientes.reduce((s, c) => s + c.bajas_sin_indem, 0),
+    };
+    const margenPctGlobal = totales.ingreso_neto > 0 ? Math.round((totales.margen / totales.ingreso_neto) * 1000) / 10 : 0;
+
+    res.json({ clientes, totales: { ...totales, margen_pct: margenPctGlobal } });
+  } catch (err) {
+    logger.error({ err }, "GET /rentabilidad/global error");
+    res.status(500).json({ error: "Error al calcular rentabilidad global" });
+  }
+});
+
 export default fichaRouter;
