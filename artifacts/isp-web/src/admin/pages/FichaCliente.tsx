@@ -385,23 +385,11 @@ function ModalPuesto({
     sede_id: puesto?.sede_id ? String(puesto.sede_id) : "",
     zona_operativa_id: puesto?.zona_operativa_id ? String(puesto.zona_operativa_id) : "",
     notas: puesto?.notas ?? "",
-    tipo_turno_id: puesto?.tipo_turno_id ? String(puesto.tipo_turno_id) : "",
-    fecha_inicio_ciclo: puesto?.fecha_inicio_ciclo ?? "",
     direccion: puesto?.direccion ?? "",
   });
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  const [turnosDisponibles, setTurnosDisponibles] = useState<Array<{ id: number; nombre: string; horas_trabajo: number; horas_descanso: number }>>([]);
-
-  // Cargar catálogo de turnos
-  useEffect(() => {
-    fetch(`${API}/turnos`, { headers: { "x-isp-session": getSession() } })
-      .then((r) => r.ok ? r.json() : [])
-      .then((data) => setTurnosDisponibles((data ?? []).filter((t: any) => t.activo)))
-      .catch(() => {});
-  }, []);
-
   // Zonas operativas disponibles
   const [zonas, setZonas] = useState<ZonaDisponible[]>([]);
   useEffect(() => {
@@ -433,39 +421,13 @@ function ModalPuesto({
           sede_id: d.sede_id ? String(d.sede_id) : "",
           zona_operativa_id: d.zona_operativa_id ? String(d.zona_operativa_id) : "",
           notas: d.notas ?? "",
-          tipo_turno_id: d.tipo_turno_id ? String(d.tipo_turno_id) : "",
-          fecha_inicio_ciclo: d.fecha_inicio_ciclo ?? "",
           direccion: d.direccion ?? "",
         });
-        setBusquedaTitular(d.titular_nombre_completo ?? d.titular_nombre ?? "");
-        setTitularId(d.titular_employee_id ?? null);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Búsqueda de titular
-  const [busquedaTitular, setBusquedaTitular] = useState(
-    puesto?.titular_nombre_completo ?? puesto?.titular_nombre ?? ""
-  );
-  const [titularId, setTitularId] = useState<number | null>(puesto?.titular_employee_id ?? null);
-  const [sugerencias, setSugerencias] = useState<{ id: number; nombre_completo: string }[]>([]);
-  const [showSugerencias, setShowSugerencias] = useState(false);
-
-  useEffect(() => {
-    if (busquedaTitular.length < 2) { setSugerencias([]); return; }
-    if (titularId) return;
-    const timer = setTimeout(() => {
-      fetch(`${API}/employees?q=${encodeURIComponent(busquedaTitular)}&limit=6`, {
-        headers: { "x-isp-session": getSession() },
-      })
-        .then((r) => r.json())
-        .then((d) => setSugerencias(Array.isArray(d) ? d : (d.employees ?? [])))
-        .catch(() => {});
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [busquedaTitular, titularId]);
 
   const up = (k: string, v: string | boolean | number) =>
     setForm((p) => ({ ...p, [k]: v }));
@@ -475,26 +437,19 @@ function ModalPuesto({
     if (!isEdit && !form.zona_operativa_id) { setErr("Debes seleccionar una zona operativa"); return; }
     setSaving(true); setErr("");
     try {
-      const turnoSeleccionado = turnosDisponibles.find(t => String(t.id) === form.tipo_turno_id);
       const body = {
         nombre: form.nombre,
         sede_id: form.sede_id ? Number(form.sede_id) : null,
         zona_operativa_id: form.zona_operativa_id ? Number(form.zona_operativa_id) : null,
-        titular_employee_id: titularId ?? null,
         cantidad_contratada: Number(form.cantidad_contratada) || 1,
         tarifa_puesto: form.tarifa_puesto ? Number(form.tarifa_puesto) : null,
         costo_hora: form.costo_hora ? Number(form.costo_hora) : null,
-        turno: turnoSeleccionado?.nombre || null,
-        jornada: null,
-        horario: null,
         hora_entrada: form.hora_entrada || null,
         hora_salida: form.hora_salida || null,
         descanso_inicio: form.descanso_inicio || null,
         descanso_fin: form.descanso_fin || null,
         tipo_servicio: form.tipo_servicio || null,
         notas: form.notas || null,
-        tipo_turno_id: form.tipo_turno_id ? Number(form.tipo_turno_id) : null,
-        fecha_inicio_ciclo: form.fecha_inicio_ciclo || null,
         elegible_horas_extra: form.elegible_horas_extra,
         direccion: form.direccion || null,
       };
@@ -590,85 +545,6 @@ function ModalPuesto({
                     <option key={z.id} value={z.id}>{z.nombre}</option>
                   ))}
                 </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Empleado titular */}
-          <div>
-            <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Empleado titular</p>
-            <div className="relative">
-              <input
-                type="text"
-                value={busquedaTitular}
-                onChange={(e) => { setBusquedaTitular(e.target.value); setTitularId(null); setShowSugerencias(true); }}
-                onFocus={() => setShowSugerencias(true)}
-                onBlur={() => setTimeout(() => setShowSugerencias(false), 150)}
-                placeholder="Buscar empleado por nombre..."
-                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50"
-              />
-              {titularId && (
-                <button
-                  type="button"
-                  onClick={() => { setTitularId(null); setBusquedaTitular(""); }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/70 transition-colors"
-                  title="Quitar titular"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-              {showSugerencias && sugerencias.length > 0 && (
-                <div className="absolute z-50 w-full mt-1 bg-[#0c1829] border border-white/10 rounded-xl shadow-xl overflow-hidden">
-                  {sugerencias.map((emp) => (
-                    <button
-                      key={emp.id}
-                      type="button"
-                      onMouseDown={() => { setTitularId(emp.id); setBusquedaTitular(emp.nombre_completo); setSugerencias([]); setShowSugerencias(false); }}
-                      className="w-full text-left px-3 py-2 text-xs text-white hover:bg-white/5 transition-colors"
-                    >
-                      {emp.nombre_completo}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            {titularId && (
-              <p className="text-[10px] text-emerald-400/70 mt-1 flex items-center gap-1">
-                <UserCheck className="w-3 h-3" />
-                Titular seleccionado — ID #{titularId}
-              </p>
-            )}
-          </div>
-
-          {/* Ciclo de nómina */}
-          <div>
-            <p className="text-[10px] text-white/30 uppercase tracking-widest mb-1">Ciclo de nómina (para planilla)</p>
-            <p className="text-[10px] text-white/20 mb-2">Define el patrón de descansos compensatorios para el cálculo de planilla. El horario operativo real se gestiona en la pestaña "Plantilla de Turnos".</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-[10px] text-white/40 uppercase tracking-wide">Ciclo de nómina</label>
-                <select
-                  value={form.tipo_turno_id}
-                  onChange={(e) => up("tipo_turno_id", e.target.value)}
-                  className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50"
-                >
-                  <option value="">Sin ciclo asignado</option>
-                  {turnosDisponibles.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.nombre} ({t.horas_trabajo}h + {t.horas_descanso}h)
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] text-white/40 uppercase tracking-wide">Fecha inicio de ciclo</label>
-                <input
-                  type="date"
-                  value={form.fecha_inicio_ciclo}
-                  onChange={(e) => up("fecha_inicio_ciclo", e.target.value)}
-                  className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50"
-                />
-                <p className="text-[10px] text-white/25">Solo para ciclos &gt; 24h (24x24, 24x48…)</p>
               </div>
             </div>
           </div>
