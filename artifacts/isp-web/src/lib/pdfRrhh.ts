@@ -161,8 +161,8 @@ export async function generarActaAdministrativa(datos: DatosActa): Promise<void>
   const fechaHoy = fmtFechaDia(new Date().toISOString());
   const fechaIngreso = datos.empleado_fecha_ingreso ? fmtFechaDia(datos.empleado_fecha_ingreso) : "fecha no registrada";
 
-  pdf.addTextoCentrado(`ACTA ADMINISTRATIVA No. ${String(datos.numero_acta).padStart(4, "0")}`, 12, true);
-  pdf.addEspacio(2);
+  pdf.addTextoCentrado(`ACTA ADMINISTRATIVA No. ${String(datos.numero_acta).padStart(4, "0")}`, 11, true);
+  pdf.addEspacio(1);
 
   const articulosUsados = new Set<string>();
   let causalesTexto = "";
@@ -180,71 +180,70 @@ export async function generarActaAdministrativa(datos: DatosActa): Promise<void>
     `sede de la empresa ${datos.nombre_empresa || "INVESTIGACIONES Y SEGURIDAD PROFESIONAL, S.A."}, ` +
     `comparece:`
   );
-  pdf.addEspacio(3);
+  pdf.addEspacio(1);
 
-  pdf.addTextoBold("POR PARTE DE LA EMPRESA:");
+  pdf.addTextoBold("POR PARTE DE LA EMPRESA:", 8);
   pdf.addTextoJustificado(
-    `${datos.representante_nombre}, quien se identifica con Documento Personal de Identificación (DPI) ` +
-    `número ${dpiEnLetras(datos.representante_dpi)}, extendido por el Registro Nacional de las Personas (RENAP) ` +
-    `de la República de Guatemala, actuando en calidad de Representante Legal y/o Gerente General.`
+    `${datos.representante_nombre}, DPI ${dpiEnLetras(datos.representante_dpi)}, ` +
+    `actuando en calidad de Representante Legal.`
   );
-  pdf.addEspacio(3);
+  pdf.addEspacio(1);
 
-  pdf.addTextoBold("TRABAJADOR CITADO:");
+  pdf.addTextoBold("TRABAJADOR CITADO:", 8);
   pdf.addTextoJustificado(
-    `${datos.empleado_nombre.toUpperCase()}, quien se identifica con DPI número ${dpiEnLetras(datos.empleado_dpi)}, ` +
+    `${datos.empleado_nombre.toUpperCase()}, DPI número ${dpiEnLetras(datos.empleado_dpi)}, ` +
     `quien labora para la empresa desde el ${fechaIngreso}, ` +
     `desempeñando el puesto de ${datos.empleado_cargo || "Agente de Seguridad"} ` +
     `en las instalaciones del cliente ${datos.cliente_nombre || "asignado"}, ` +
     `puesto operativo "${datos.puesto_nombre || "asignado"}".`
   );
-  pdf.addEspacio(4);
+  pdf.addEspacio(2);
   pdf.addLinea();
-  pdf.addEspacio(2);
+  pdf.addEspacio(1);
 
-  pdf.addTextoCentrado("HECHOS", 11, true);
-  pdf.addEspacio(2);
+  pdf.addTextoCentrado("HECHOS", 10, true);
+  pdf.addEspacio(1);
 
   if (causalesTexto) {
     pdf.addTextoJustificado(
       `El trabajador ${datos.empleado_nombre.toUpperCase()} ha incurrido en la(s) siguiente(s) falta(s):`,
     );
-    pdf.addEspacio(2);
-    pdf.addTextoJustificado(causalesTexto, 9, 5);
-    pdf.addEspacio(2);
+    pdf.addEspacio(1);
+    pdf.addTextoJustificado(causalesTexto, 8, 5);
+    pdf.addEspacio(1);
   }
 
   if (datos.hechos) {
     pdf.addTextoJustificado(datos.hechos);
-    pdf.addEspacio(2);
+    pdf.addEspacio(1);
   }
 
   if (datos.notas_sistema && datos.notas_sistema.length > 0) {
-    pdf.addTextoBold("Notas del sistema operativo:", 8);
+    pdf.addTextoBold("Notas del sistema:", 7);
     for (const nota of datos.notas_sistema) {
-      pdf.addTextoJustificado(`• ${nota}`, 8, 5);
+      pdf.addTextoJustificado(`• ${nota}`, 7, 5);
     }
-    pdf.addEspacio(3);
+    pdf.addEspacio(1);
   }
 
   if (datos.eventos_historial && datos.eventos_historial.length > 0) {
     pdf.addLinea();
-    pdf.addEspacio(2);
-    pdf.addTextoCentrado("ANTECEDENTES DISCIPLINARIOS", 10, true);
-    pdf.addEspacio(2);
+    pdf.addEspacio(1);
+    pdf.addTextoCentrado("ANTECEDENTES DISCIPLINARIOS", 9, true);
+    pdf.addEspacio(1);
     const filas = datos.eventos_historial.map(e => [
       fmtFechaCorta(e.fecha),
       tipoLabel(e.tipo),
-      (e.notas || "—").substring(0, 80),
+      (e.notas || "—").substring(0, 60),
     ]);
     pdf.addTabla(["Fecha", "Tipo de Evento", "Observaciones"], filas);
-    pdf.addEspacio(3);
+    pdf.addEspacio(1);
   }
 
   pdf.addLinea();
-  pdf.addEspacio(2);
+  pdf.addEspacio(1);
   pdf.addTextoCentrado("FUNDAMENTO LEGAL", 10, true);
-  pdf.addEspacio(2);
+  pdf.addEspacio(1);
 
   const articulosStr = articulosUsados.size > 0
     ? Array.from(articulosUsados).join(", ")
@@ -257,8 +256,7 @@ export async function generarActaAdministrativa(datos: DatosActa): Promise<void>
     `El trabajador queda formalmente notificado de que la reincidencia en estas faltas puede dar ` +
     `lugar a la terminación de la relación laboral sin responsabilidad para el patrono.`
   );
-
-  pdf.addEspacio(4);
+  pdf.addEspacio(1);
 
   pdf.addTextoJustificado(
     `No habiendo más que hacer constar, se da por terminada la presente acta en el mismo lugar y ` +
@@ -266,12 +264,13 @@ export async function generarActaAdministrativa(datos: DatosActa): Promise<void>
     `que en ella intervinieron, quienes ratifican su contenido.`
   );
 
-  pdf.addEspacio(18);
+  pdf.addEspacio(8);
 
-  pdf.addFirmaSimple("Representante Legal", datos.representante_nombre);
-  pdf.addEspacio(10);
-  pdf.addFirmaSimple("Trabajador Citado", datos.empleado_nombre.toUpperCase());
-  pdf.addEspacio(10);
+  pdf.addFirmaDoble(
+    { label: "Representante Legal", nombre: datos.representante_nombre },
+    { label: "Trabajador Citado", nombre: datos.empleado_nombre.toUpperCase() },
+  );
+  pdf.addEspacio(8);
   pdf.addFirmaDoble(
     { label: "Testigo 1", nombre: "" },
     { label: "Testigo 2", nombre: "" },
