@@ -4407,6 +4407,8 @@ Por favor ingresa al sistema o responde para continuar.',
     if (!rowCount) {
       await pool.query(`INSERT INTO config_empresa (id) VALUES (1)`);
     }
+    await pool.query(`ALTER TABLE config_empresa ADD COLUMN IF NOT EXISTS representante_nombre VARCHAR(255)`);
+    await pool.query(`ALTER TABLE config_empresa ADD COLUMN IF NOT EXISTS representante_dpi VARCHAR(30)`);
     logger.info("Auto-migrate: ACTAS-01 tabla config_empresa verificada/creada");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: ACTAS-01 config_empresa — error (no bloqueante)");

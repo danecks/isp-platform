@@ -9,8 +9,8 @@ actasRouter.get("/config-empresa", async (_req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT ce.*,
-             e.nombre_completo AS representante_nombre,
-             e.dpi             AS representante_dpi
+             COALESCE(ce.representante_nombre, e.nombre_completo) AS representante_nombre,
+             COALESCE(ce.representante_dpi, e.dpi)                AS representante_dpi
       FROM config_empresa ce
       LEFT JOIN employees e ON e.id = ce.representante_legal_id
       WHERE ce.id = 1
@@ -26,7 +26,8 @@ actasRouter.get("/config-empresa", async (_req, res) => {
 // ─── PUT /api/config-empresa ─────────────────────────────────────────────────
 actasRouter.put("/config-empresa", async (req, res) => {
   const {
-    representante_legal_id,
+    representante_nombre,
+    representante_dpi,
     direccion_empresa,
     nombre_empresa,
     umbral_dias_consecutivos,
@@ -35,16 +36,18 @@ actasRouter.put("/config-empresa", async (req, res) => {
   try {
     const { rows } = await pool.query(
       `UPDATE config_empresa SET
-         representante_legal_id   = COALESCE($1, representante_legal_id),
-         direccion_empresa        = COALESCE($2, direccion_empresa),
-         nombre_empresa           = COALESCE($3, nombre_empresa),
-         umbral_dias_consecutivos = COALESCE($4, umbral_dias_consecutivos),
-         umbral_medios_turnos_mes = COALESCE($5, umbral_medios_turnos_mes),
+         representante_nombre     = COALESCE($1, representante_nombre),
+         representante_dpi        = COALESCE($2, representante_dpi),
+         direccion_empresa        = COALESCE($3, direccion_empresa),
+         nombre_empresa           = COALESCE($4, nombre_empresa),
+         umbral_dias_consecutivos = COALESCE($5, umbral_dias_consecutivos),
+         umbral_medios_turnos_mes = COALESCE($6, umbral_medios_turnos_mes),
          updated_at = NOW()
        WHERE id = 1
        RETURNING *`,
       [
-        representante_legal_id ?? null,
+        representante_nombre ?? null,
+        representante_dpi ?? null,
         direccion_empresa ?? null,
         nombre_empresa ?? null,
         umbral_dias_consecutivos ?? null,
@@ -276,8 +279,8 @@ actasRouter.get("/actas/datos-para-pdf/:employeeId", async (req, res) => {
   try {
     const { rows: configRows } = await pool.query(`
       SELECT ce.*,
-             e.nombre_completo AS representante_nombre,
-             e.dpi             AS representante_dpi
+             COALESCE(ce.representante_nombre, e.nombre_completo) AS representante_nombre,
+             COALESCE(ce.representante_dpi, e.dpi)                AS representante_dpi
       FROM config_empresa ce
       LEFT JOIN employees e ON e.id = ce.representante_legal_id
       WHERE ce.id = 1

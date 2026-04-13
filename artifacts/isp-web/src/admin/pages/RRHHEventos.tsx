@@ -2101,6 +2101,11 @@ export default function RRHHEventos() {
         />
       )}
 
+      {/* ── Modal configuración empresa ──────────────────────────────────── */}
+      {modalConfig && (
+        <ModalConfigEmpresa onClose={() => setModalConfig(false)} />
+      )}
+
       {/* ── Modal causales acta ─────────────────────────────────────────── */}
       {modalCausales && (
         <ModalCausalesActa
