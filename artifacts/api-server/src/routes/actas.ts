@@ -288,7 +288,7 @@ actasRouter.get("/actas/datos-para-pdf/:employeeId", async (req, res) => {
     const config = configRows[0];
 
     const { rows: empRows } = await pool.query(
-      `SELECT id, nombre_completo, dpi, fecha_ingreso, cargo, tipo_personal
+      `SELECT id, nombre_completo, dpi, fecha_ingreso, puesto AS cargo, tipo_personal
        FROM employees WHERE id = $1`,
       [empId]
     );
