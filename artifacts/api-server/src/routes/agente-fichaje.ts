@@ -448,7 +448,7 @@ agenteFichajeRouter.post("/agente/fichaje", async (req, res) => {
 
 // POST /api/agente/supervision — registrar supervisión (requiere dispositivo tipo 'supervisor')
 agenteFichajeRouter.post("/agente/supervision", async (req, res) => {
-  const { token, checks, calificacion, observaciones, latitud, longitud, device_uuid, device_token } = req.body;
+  const { token, checks, calificacion, observaciones, latitud, longitud, device_uuid, device_token, accion_disciplinaria, notas_disciplinarias } = req.body;
   if (!token) return res.status(400).json({ error: "token requerido" });
 
   // Validar dispositivo de supervisor
@@ -503,8 +503,9 @@ agenteFichajeRouter.post("/agente/supervision", async (req, res) => {
     const { rows: inserted } = await pool.query(
       `INSERT INTO agente_fichajes
          (employee_id, puesto_id, qr_token, latitud, longitud, distancia_metros,
-          resultado, tipo, supervisor_nombre, supervisor_device_id, checks, calificacion, observaciones)
-       VALUES ($1,$2,$3,$4,$5,$6,'ok','supervision',$7,$8,$9,$10,$11)
+          resultado, tipo, supervisor_nombre, supervisor_device_id, checks, calificacion, observaciones,
+          accion_disciplinaria, notas_disciplinarias)
+       VALUES ($1,$2,$3,$4,$5,$6,'ok','supervision',$7,$8,$9,$10,$11,$12,$13)
        RETURNING id, registrado_en`,
       [
         employeeId, puestoId, token,
@@ -512,12 +513,63 @@ agenteFichajeRouter.post("/agente/supervision", async (req, res) => {
         supervisorNombre, deviceId,
         checks ? JSON.stringify(checks) : null,
         calificacion ?? null, observaciones ?? null,
+        accion_disciplinaria ?? null, notas_disciplinarias ?? null,
       ]
     );
 
+    const fichajeId = inserted[0].id;
+
+    if (accion_disciplinaria && ["llamada_atencion_1", "llamada_atencion_2", "acta_administrativa"].includes(accion_disciplinaria)) {
+      try {
+        const { rows: empRows } = await pool.query(
+          `SELECT nombre_completo, dpi FROM employees WHERE id = $1`,
+          [employeeId]
+        );
+        const empNombre = empRows[0]?.nombre_completo || "Desconocido";
+        const empDpi = empRows[0]?.dpi || null;
+
+        let clienteNombre: string | null = null;
+        let puestoNombre: string | null = null;
+        if (puestoId) {
+          const { rows: poInfo } = await pool.query(
+            `SELECT po.nombre, c.nombre AS cliente_nombre
+             FROM puestos_operativos po
+             LEFT JOIN clients c ON c.id = po.client_id
+             WHERE po.id = $1`,
+            [puestoId]
+          );
+          if (poInfo[0]) {
+            puestoNombre = poInfo[0].nombre;
+            clienteNombre = poInfo[0].cliente_nombre;
+          }
+        }
+
+        await pool.query(
+          `INSERT INTO eventos_rrhh
+             (employee_id, employee_nombre, employee_dpi,
+              tipo_evento, cliente_nombre, puesto_nombre,
+              supervisor_nombre, generado_desde, estado,
+              observaciones, notas, usuario_generador,
+              documentos_generados, fecha, fichaje_origen_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,'supervision','pendiente',$8,$9,$10,'[]',NOW(),$11)`,
+          [
+            employeeId, empNombre, empDpi,
+            accion_disciplinaria, clienteNombre, puestoNombre,
+            supervisorNombre, observaciones || null,
+            notas_disciplinarias || null,
+            supervisorNombre,
+            fichajeId,
+          ]
+        );
+        logger.info({ employeeId, accion_disciplinaria, fichajeId }, "Evento RRHH creado desde supervisión");
+      } catch (evErr) {
+        logger.warn({ evErr, employeeId, accion_disciplinaria }, "No se pudo crear evento RRHH desde supervisión (no bloqueante)");
+      }
+    }
+
     res.json({
       ok: true,
-      supervision_id: inserted[0].id,
+      supervision_id: fichajeId,
       registrado_en: inserted[0].registrado_en,
     });
   } catch (err) {

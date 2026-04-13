@@ -4388,5 +4388,47 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: TARIFA-HE-01 — error (no bloqueante)");
   }
 
+  // ── ACTAS-01: tabla config_empresa + acta correlativo + disciplinary tracking ──
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS config_empresa (
+        id                          SERIAL PRIMARY KEY,
+        representante_legal_id      INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        direccion_empresa           TEXT NOT NULL DEFAULT '14 calle 15-52 zona 1, Barrio Gerona, Ciudad de Guatemala',
+        nombre_empresa              VARCHAR(255) NOT NULL DEFAULT 'Investigaciones y Seguridad Profesional S.A.',
+        umbral_dias_consecutivos    INTEGER NOT NULL DEFAULT 2,
+        umbral_medios_turnos_mes    INTEGER NOT NULL DEFAULT 6,
+        acta_correlativo            INTEGER NOT NULL DEFAULT 0,
+        updated_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_by                  VARCHAR(100)
+      )
+    `);
+    const { rowCount } = await pool.query(`SELECT 1 FROM config_empresa LIMIT 1`);
+    if (!rowCount) {
+      await pool.query(`INSERT INTO config_empresa (id) VALUES (1)`);
+    }
+    logger.info("Auto-migrate: ACTAS-01 tabla config_empresa verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: ACTAS-01 config_empresa — error (no bloqueante)");
+  }
+
+  // ── ACTAS-02: columna accion_disciplinaria en agente_fichajes ──
+  try {
+    await pool.query(`ALTER TABLE agente_fichajes ADD COLUMN IF NOT EXISTS accion_disciplinaria VARCHAR(50)`);
+    await pool.query(`ALTER TABLE agente_fichajes ADD COLUMN IF NOT EXISTS notas_disciplinarias TEXT`);
+    logger.info("Auto-migrate: ACTAS-02 columnas disciplinarias en agente_fichajes verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: ACTAS-02 — error (no bloqueante)");
+  }
+
+  // ── ACTAS-03: tipo_evento 'llamada_atencion_1', 'llamada_atencion_2', 'acta_administrativa' en eventos_rrhh ──
+  try {
+    await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS fichaje_origen_id INTEGER REFERENCES agente_fichajes(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS numero_acta INTEGER`);
+    logger.info("Auto-migrate: ACTAS-03 columnas fichaje_origen_id y numero_acta en eventos_rrhh verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: ACTAS-03 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

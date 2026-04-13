@@ -260,6 +260,9 @@ export default function AgenteEscaneo() {
   const [enviandoSupervision, setEnviandoSupervision] = useState(false);
   const [supervisionOk, setSupervisionOk] = useState(false);
   const [supervisionError, setSupervisionError] = useState("");
+  // Acciones disciplinarias
+  const [accionDisciplinaria, setAccionDisciplinaria] = useState<string>("");
+  const [notasDisciplinarias, setNotasDisciplinarias] = useState("");
 
   // Ronda (maestro)
   const [obsRonda, setObsRonda] = useState("");
@@ -452,7 +455,7 @@ export default function AgenteEscaneo() {
     try {
       const res = await fetch(`${API}/agente/supervision`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, device_uuid: stored.uuid, device_token: stored.token, checks, calificacion: calificacion || null, observaciones, latitud: gpsCoords?.lat ?? null, longitud: gpsCoords?.lng ?? null }),
+        body: JSON.stringify({ token, device_uuid: stored.uuid, device_token: stored.token, checks, calificacion: calificacion || null, observaciones, latitud: gpsCoords?.lat ?? null, longitud: gpsCoords?.lng ?? null, accion_disciplinaria: accionDisciplinaria || null, notas_disciplinarias: notasDisciplinarias || null }),
       });
       const data = await res.json();
       if (data.ok) {
@@ -1159,9 +1162,40 @@ export default function AgenteEscaneo() {
                   placeholder="Ingresa tus observaciones..." rows={3}
                   className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white/80 placeholder-white/20 resize-none outline-none focus:border-purple-500/40 mb-4" />
 
+                <p className="text-white/50 text-xs font-semibold uppercase tracking-wide mb-2">Acción Disciplinaria</p>
+                <div className="space-y-2 mb-3">
+                  {[
+                    { v: "", l: "Sin acción", color: "border-white/15 text-white/40" },
+                    { v: "llamada_atencion_1", l: "Llamada de atención 1 (verbal)", color: "border-amber-500/30 text-amber-300" },
+                    { v: "llamada_atencion_2", l: "Llamada de atención 2 (escrita)", color: "border-orange-500/30 text-orange-300" },
+                    { v: "acta_administrativa", l: "Acta Administrativa", color: "border-red-500/30 text-red-300" },
+                  ].map(opt => (
+                    <button key={opt.v} onClick={() => setAccionDisciplinaria(opt.v)}
+                      className={`w-full text-left px-3 py-2.5 rounded-xl text-sm border transition-colors ${
+                        accionDisciplinaria === opt.v
+                          ? `${opt.color} bg-white/5`
+                          : "border-white/8 text-white/40 hover:border-white/15"
+                      }`}>
+                      {opt.l}
+                    </button>
+                  ))}
+                </div>
+
+                {accionDisciplinaria && (
+                  <div className="mb-4">
+                    <p className="text-white/50 text-xs font-semibold uppercase tracking-wide mb-2">
+                      Notas de la acción <span className="text-red-400">*</span>
+                    </p>
+                    <textarea value={notasDisciplinarias} onChange={e => setNotasDisciplinarias(e.target.value)}
+                      placeholder="Describa la situación: ej. 'El agente llegó en estado de ebriedad', 'No se presentó a sus labores'..."
+                      rows={3}
+                      className="w-full bg-white/5 border border-red-500/20 rounded-xl px-3 py-2 text-sm text-white/80 placeholder-white/20 resize-none outline-none focus:border-red-500/40" />
+                  </div>
+                )}
+
                 {supervisionError && <p className="text-red-400 text-xs mb-3">{supervisionError}</p>}
 
-                <button onClick={enviarSupervision} disabled={enviandoSupervision}
+                <button onClick={enviarSupervision} disabled={enviandoSupervision || (!!accionDisciplinaria && !notasDisciplinarias.trim())}
                   className="w-full py-3 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-xl text-sm text-purple-300 font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
                   {enviandoSupervision ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardCheck className="w-4 h-4" />}
                   {enviandoSupervision ? "Guardando..." : "Guardar Supervisión"}

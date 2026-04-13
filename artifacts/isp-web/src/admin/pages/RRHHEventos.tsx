@@ -11,20 +11,70 @@ import {
   ShieldAlert, ShieldCheck, ShieldOff, BarChart2,
   TrendingUp, ArrowUpRight, Minus, Users2, Palmtree,
   Bell, ThumbsUp, ThumbsDown, CheckCheck, Printer,
-  MapPin, Activity, Archive,
+  MapPin, Activity, Archive, Settings, Save,
 } from "lucide-react";
 import VacacionesTab from "./VacacionesTab";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import type { EventoRrhh } from "@/lib/pdfRrhh";
+import type { EventoRrhh, DatosActa } from "@/lib/pdfRrhh";
 import {
   generarBoletaDescuento, generarActaAdministrativa,
   generarConstanciaHorasExtra, generarDocumentoAnulacion,
+  generarAvisoInspector,
   MOTIVO_ANULACION_LABELS,
 } from "@/lib/pdfRrhh";
 
 const API = "/api";
 const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+
+async function construirDatosActa(evento: EventoRrhh): Promise<DatosActa> {
+  const hdr = { "x-isp-session": getSession() };
+  const [configRes, numRes] = await Promise.all([
+    fetch(`${API}/actas/datos-para-pdf/${evento.employee_id}`, { headers: hdr }).then(r => r.ok ? r.json() : null),
+    fetch(`${API}/actas/siguiente-numero`, { method: "POST", headers: { ...hdr, "Content-Type": "application/json" } }).then(r => r.ok ? r.json() : { numero: evento.id }),
+  ]);
+
+  const cfg = configRes?.config || {};
+  const emp = configRes?.empleado || {};
+  const puesto = configRes?.puesto || {};
+  const historial = (configRes?.eventos_recientes || [])
+    .filter((e: any) => ["falta","falta_injustificada","llamada_atencion_1","llamada_atencion_2","acta_administrativa","amonestacion","suspension","suspension_disciplinaria"].includes(e.tipo_evento))
+    .slice(0, 10);
+
+  const notas: string[] = [];
+  if (evento.notas) notas.push(evento.notas);
+  if (evento.observaciones && evento.observaciones !== evento.notas) notas.push(evento.observaciones);
+
+  const tipoTexto = evento.tipo_evento === "falta" || evento.tipo_evento === "falta_injustificada"
+    ? "ABANDONO DEL PUESTO DE TRABAJO" : "INCUMPLIMIENTO LABORAL";
+
+  const hechos = evento.observaciones ||
+    `El trabajador ${(emp.nombre_completo || evento.employee_nombre).toUpperCase()} no se presentó ` +
+    `a sus labores el día ${new Date(evento.fecha).toLocaleDateString("es-GT", { day: "2-digit", month: "long", year: "numeric" })}, ` +
+    `en el puesto "${puesto.puesto_nombre || evento.puesto_nombre || "asignado"}" ` +
+    `del cliente ${puesto.cliente_nombre || evento.cliente_nombre || "asignado"}, ` +
+    `sin dar aviso ni justificación alguna, generando descubierto en la cobertura operativa.`;
+
+  return {
+    numero_acta: numRes.numero || evento.id,
+    representante_nombre: cfg.representante_nombre || "Representante Legal",
+    representante_dpi: cfg.representante_dpi || "",
+    direccion_empresa: cfg.direccion_empresa || "14 calle 15-52 zona 1, Barrio Gerona, Ciudad de Guatemala",
+    nombre_empresa: cfg.nombre_empresa || "Investigaciones y Seguridad Profesional S.A.",
+    empleado_nombre: emp.nombre_completo || evento.employee_nombre,
+    empleado_dpi: emp.dpi || evento.employee_dpi || "",
+    empleado_fecha_ingreso: emp.fecha_ingreso || "",
+    empleado_cargo: emp.cargo || "Agente de Seguridad",
+    puesto_nombre: puesto.puesto_nombre || evento.puesto_nombre || "",
+    cliente_nombre: puesto.cliente_nombre || evento.cliente_nombre || "",
+    fecha_evento: evento.fecha,
+    hechos,
+    notas_sistema: notas,
+    causal: tipoTexto,
+    articulo_legal: "Art. 77 inciso f)",
+    eventos_historial: historial.map((e: any) => ({ fecha: e.fecha, tipo: e.tipo_evento, notas: e.notas || e.observaciones || "" })),
+  };
+}
 
 async function apiFetch<T>(url: string): Promise<T> {
   const r = await fetch(url, { headers: { "x-isp-session": getSession() } });
@@ -781,7 +831,8 @@ function BatchActasPanel({ eventos }: { eventos: EventoRrhh[] }) {
     let count = 0;
     for (const ev of filtrados) {
       try {
-        await generarActaAdministrativa(ev);
+        const datos = await construirDatosActa(ev);
+        await generarActaAdministrativa(datos);
         count++;
         await new Promise((r) => setTimeout(r, 180));
       } catch {
@@ -856,6 +907,120 @@ function BatchActasPanel({ eventos }: { eventos: EventoRrhh[] }) {
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Modal Config Empresa ─────────────────────────────────────────────────────
+function ModalConfigEmpresa({ onClose }: { onClose: () => void }) {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    representante_nombre: "",
+    representante_dpi: "",
+    direccion_empresa: "",
+    nombre_empresa: "",
+    umbral_dias_consecutivos: 2,
+    umbral_medios_turnos_mes: 6,
+  });
+
+  useEffect(() => {
+    fetch(`${API}/config-empresa`, { headers: { "x-isp-session": getSession() } })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data) {
+          setForm({
+            representante_nombre: data.representante_nombre || "",
+            representante_dpi: data.representante_dpi || "",
+            direccion_empresa: data.direccion_empresa || "",
+            nombre_empresa: data.nombre_empresa || "",
+            umbral_dias_consecutivos: data.umbral_dias_consecutivos ?? 2,
+            umbral_medios_turnos_mes: data.umbral_medios_turnos_mes ?? 6,
+          });
+        }
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const r = await fetch(`${API}/config-empresa`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
+        body: JSON.stringify(form),
+      });
+      if (!r.ok) throw new Error("Error al guardar");
+      toast({ title: "Configuración guardada" });
+      onClose();
+    } catch {
+      toast({ title: "Error al guardar configuración", variant: "destructive" });
+    } finally { setSaving(false); }
+  }
+
+  const inputCls = "w-full bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-primary/40";
+
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+      <div className="bg-[#07111f] border border-primary/20 rounded-2xl w-full max-w-lg shadow-2xl">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-white/8">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+            <Settings className="w-4 h-4 text-primary" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-bold text-white">Configuración de Empresa</p>
+            <p className="text-[11px] text-white/40">Datos para actas administrativas y avisos</p>
+          </div>
+          <button onClick={onClose} className="text-white/30 hover:text-white"><X className="w-4 h-4" /></button>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 text-primary animate-spin" /></div>
+        ) : (
+          <div className="p-5 space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs text-white/50">Nombre de Empresa</label>
+              <input value={form.nombre_empresa} onChange={e => setForm({ ...form, nombre_empresa: e.target.value })} placeholder="Investigaciones y Seguridad Profesional S.A." className={inputCls} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs text-white/50">Representante Legal</label>
+              <input value={form.representante_nombre} onChange={e => setForm({ ...form, representante_nombre: e.target.value })} placeholder="Nombre completo del representante" className={inputCls} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs text-white/50">DPI del Representante Legal</label>
+              <input value={form.representante_dpi} onChange={e => setForm({ ...form, representante_dpi: e.target.value })} placeholder="0000 00000 0000" className={inputCls} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs text-white/50">Dirección de la Empresa</label>
+              <input value={form.direccion_empresa} onChange={e => setForm({ ...form, direccion_empresa: e.target.value })} placeholder="14 calle 15-52 zona 1, Barrio Gerona" className={inputCls} />
+            </div>
+
+            <div className="border-t border-white/8 pt-4">
+              <p className="text-xs text-white/40 uppercase tracking-wide mb-3">Umbrales Disciplinarios</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] text-white/40">Días consecutivos para causa justa</label>
+                  <input type="number" min={1} max={30} value={form.umbral_dias_consecutivos} onChange={e => setForm({ ...form, umbral_dias_consecutivos: Number(e.target.value) })} className={inputCls} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] text-white/40">Medios turnos/mes para causa justa</label>
+                  <input type="number" min={1} max={30} value={form.umbral_medios_turnos_mes} onChange={e => setForm({ ...form, umbral_medios_turnos_mes: Number(e.target.value) })} className={inputCls} />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={onClose} className="flex-1 py-2 text-xs text-white/40 hover:text-white/70 border border-white/10 rounded-xl transition-colors">Cancelar</button>
+              <button onClick={handleSave} disabled={saving} className="flex-1 py-2 text-xs font-semibold bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary rounded-xl transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50">
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                Guardar
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -1158,6 +1323,7 @@ export default function RRHHEventos() {
   const [tabEventos, setTabEventos] = useState<"pendientes" | "historial">("pendientes");
   const [modalAnulacion, setModalAnulacion] = useState<EventoRrhh | null>(null);
   const [modalNuevo, setModalNuevo] = useState(false);
+  const [modalConfig, setModalConfig] = useState(false);
 
   const buildUrl = () => {
     const params = new URLSearchParams();
@@ -1302,9 +1468,20 @@ export default function RRHHEventos() {
 
   async function handleDescargarActa(evento: EventoRrhh) {
     try {
-      await generarActaAdministrativa(evento);
+      const datos = await construirDatosActa(evento);
+      await generarActaAdministrativa(datos);
       await registrarDescarga(evento, "acta");
-      toast({ title: "Acta administrativa generada", description: `ACT-${String(evento.id).padStart(5, "0")}` });
+      toast({ title: "Acta administrativa generada", description: `Acta No. ${datos.numero_acta}` });
+    } catch {
+      toast({ title: "Error al generar PDF", variant: "destructive" });
+    }
+  }
+
+  async function handleDescargarAviso(evento: EventoRrhh) {
+    try {
+      const datos = await construirDatosActa(evento);
+      await generarAvisoInspector(datos);
+      toast({ title: "Aviso al Inspector generado", description: `Acta No. ${datos.numero_acta}` });
     } catch {
       toast({ title: "Error al generar PDF", variant: "destructive" });
     }
@@ -1337,6 +1514,13 @@ export default function RRHHEventos() {
           </div>
           {paginaActiva === "eventos" && (
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setModalConfig(true)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-white/5 hover:bg-white/8 border border-white/10 rounded-xl text-xs text-white/50 hover:text-white transition-all"
+                title="Configuración de empresa"
+              >
+                <Settings className="w-3.5 h-3.5" />
+              </button>
               <button
                 onClick={() => { refetch(); qc.invalidateQueries({ queryKey: ["rrhh-stats"] }); }}
                 className="flex items-center gap-1.5 px-3 py-2 bg-white/5 hover:bg-white/8 border border-white/10 rounded-xl text-xs text-white/50 hover:text-white transition-all"

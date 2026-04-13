@@ -1,13 +1,12 @@
 /**
  * pdfRrhh.ts — Generación de documentos RRHH membretados
  *
- * Usa la clase IspPdf para generar:
+ * Genera:
  *   - Boleta de descuento por falta
- *   - Acta administrativa
- *
- * USO:
- *   await generarBoletaDescuento(evento);
- *   await generarActaAdministrativa(evento);
+ *   - Acta administrativa (formato Ministerio de Trabajo)
+ *   - Aviso al Inspector de Trabajo
+ *   - Constancia de horas extra
+ *   - Documento de anulación
  */
 
 import { IspPdf } from "./pdfExport";
@@ -37,6 +36,26 @@ export interface EventoRrhh {
   evento_par_id?: number | null;
 }
 
+export interface DatosActa {
+  numero_acta: number;
+  representante_nombre: string;
+  representante_dpi: string;
+  direccion_empresa: string;
+  nombre_empresa: string;
+  empleado_nombre: string;
+  empleado_dpi: string;
+  empleado_fecha_ingreso: string;
+  empleado_cargo: string;
+  puesto_nombre: string;
+  cliente_nombre: string;
+  fecha_evento: string;
+  hechos: string;
+  notas_sistema: string[];
+  causal: string;
+  articulo_legal: string;
+  eventos_historial?: Array<{ fecha: string; tipo: string; notas: string }>;
+}
+
 const fmtFecha = (iso: string): string => {
   try {
     return new Date(iso).toLocaleDateString("es-GT", {
@@ -62,16 +81,49 @@ const fmtFechaCorta = (iso: string): string => {
   }
 };
 
+const fmtFechaDia = (iso: string): string => {
+  try {
+    return new Date(iso).toLocaleDateString("es-GT", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+};
+
+const fmtHora = (): string => {
+  return new Date().toLocaleTimeString("es-GT", { hour: "2-digit", minute: "2-digit", hour12: false });
+};
+
 const tipoLabel = (tipo: string): string => {
   const map: Record<string, string> = {
     falta: "FALTA INJUSTIFICADA",
+    falta_injustificada: "FALTA INJUSTIFICADA",
     suspension: "SUSPENSIÓN LABORAL",
+    suspension_disciplinaria: "SUSPENSIÓN DISCIPLINARIA",
     horas_extra: "HORAS EXTRA",
     incapacidad: "INCAPACIDAD",
     permiso_sin_goce: "PERMISO SIN GOCE DE SALARIO",
     permiso_con_goce: "PERMISO CON GOCE DE SALARIO",
+    llamada_atencion_1: "LLAMADA DE ATENCIÓN VERBAL",
+    llamada_atencion_2: "LLAMADA DE ATENCIÓN ESCRITA",
+    acta_administrativa: "ACTA ADMINISTRATIVA",
+    amonestacion: "AMONESTACIÓN",
+    abandono_parcial: "ABANDONO PARCIAL",
   };
   return map[tipo] ?? tipo.toUpperCase();
+};
+
+const dpiEnLetras = (dpi: string): string => {
+  if (!dpi) return "no disponible";
+  const clean = dpi.replace(/\s+/g, " ").trim();
+  const parts = clean.split(" ");
+  if (parts.length === 3) {
+    return `${parts[0]} ${parts[1]} ${parts[2]}`;
+  }
+  return clean;
 };
 
 export const MOTIVO_ANULACION_LABELS: Record<string, string> = {
@@ -80,6 +132,223 @@ export const MOTIVO_ANULACION_LABELS: Record<string, string> = {
   duplicado: "Registro duplicado",
   otro: "Otro motivo",
 };
+
+// ─── Acta Administrativa (Formato Ministerio de Trabajo) ─────────────────────
+export async function generarActaAdministrativa(datos: DatosActa): Promise<void> {
+  const pdf = new IspPdf({
+    titulo: "ACTA ADMINISTRATIVA",
+    subtitulo: `No. ${datos.numero_acta} — ${datos.causal.toUpperCase()}`,
+    preparedBy: "Departamento de RRHH",
+  });
+
+  await pdf.build();
+
+  pdf.addSeccionTitulo(`ACTA ADMINISTRATIVA NO. ${datos.numero_acta} POR ${datos.causal.toUpperCase()}`);
+
+  const horaActual = fmtHora();
+  const fechaHoy = fmtFechaDia(new Date().toISOString());
+
+  const parrafo1 =
+    `En el día de hoy: ${fechaHoy}, siendo las: ${horaActual} horas, ` +
+    `Yo ${datos.representante_nombre}, me identifico con Documento Personal de Identificación ` +
+    `número ${dpiEnLetras(datos.representante_dpi)}, extendido por el Registro Nacional de las Personas ` +
+    `(RENAP) de la República de Guatemala; constituido en ${datos.direccion_empresa}, ` +
+    `ubicación de la empresa ${datos.nombre_empresa}, actúo en calidad de Representante Legal ` +
+    `y/o Gerente General de la empresa, hago constar lo siguiente:`;
+
+  pdf.addTextoResumen(parrafo1);
+  pdf.addEspacio(4);
+
+  const fechaIngreso = datos.empleado_fecha_ingreso ? fmtFechaDia(datos.empleado_fecha_ingreso) : "fecha no registrada";
+
+  const parrafo2 =
+    `Que el trabajador ${datos.empleado_nombre.toUpperCase()}, quien se identifica con Documento Personal ` +
+    `de Identificación número ${dpiEnLetras(datos.empleado_dpi)}, ` +
+    `quien labora para la empresa desde el ${fechaIngreso} ` +
+    `desempeñando el puesto de ${datos.empleado_cargo || "Agente de Seguridad"} ` +
+    `en las instalaciones del cliente ${datos.cliente_nombre || "asignado"}, ` +
+    `puesto "${datos.puesto_nombre || "operativo"}".`;
+
+  pdf.addTextoResumen(parrafo2);
+  pdf.addEspacio(4);
+
+  pdf.addSeccionTitulo("HECHOS");
+
+  pdf.addTextoResumen(datos.hechos);
+
+  if (datos.notas_sistema && datos.notas_sistema.length > 0) {
+    pdf.addEspacio(3);
+    pdf.addTextoResumen("Notas registradas en el sistema operativo:");
+    for (const nota of datos.notas_sistema) {
+      pdf.addTextoResumen(`• ${nota}`);
+    }
+  }
+
+  pdf.addEspacio(4);
+
+  if (datos.eventos_historial && datos.eventos_historial.length > 0) {
+    pdf.addSeccionTitulo("ANTECEDENTES DISCIPLINARIOS");
+    const filas = datos.eventos_historial.map(e => [
+      fmtFechaCorta(e.fecha),
+      tipoLabel(e.tipo),
+      e.notas || "—",
+    ]);
+    pdf.addTabla(["Fecha", "Tipo", "Observaciones"], filas);
+    pdf.addEspacio(4);
+  }
+
+  pdf.addSeccionTitulo("FUNDAMENTO LEGAL");
+
+  const parrafoLegal =
+    `Con base en lo anteriormente expuesto, y de conformidad con lo establecido en el ` +
+    `${datos.articulo_legal} del Código de Trabajo de Guatemala (Decreto 1441 del Congreso de la ` +
+    `República), se deja constancia de los hechos para los efectos legales correspondientes.`;
+
+  pdf.addTextoResumen(parrafoLegal);
+  pdf.addEspacio(4);
+
+  const parrafoCierre =
+    `No habiendo más que hacer constar, se da por terminada la presente acta en el mismo lugar y ` +
+    `fecha de su inicio, la cual consta de una hoja firmada y sellada por los comparecientes que en ` +
+    `ella intervinieron.`;
+
+  pdf.addTextoResumen(parrafoCierre);
+
+  pdf.addEspacio(15);
+
+  pdf.addTextoResumen("_____________________________________");
+  pdf.addTextoResumen("Representante Legal");
+  pdf.addTextoResumen(datos.representante_nombre);
+
+  pdf.addEspacio(15);
+
+  pdf.addTabla(
+    ["", ""],
+    [
+      ["_____________________________________", "_____________________________________"],
+      ["Testigo", "Testigo"],
+    ],
+  );
+
+  const filename = `acta-administrativa-${datos.numero_acta}-${datos.empleado_nombre.split(" ")[0].toLowerCase()}.pdf`;
+  pdf.save(filename);
+}
+
+// ─── Aviso al Inspector de Trabajo ───────────────────────────────────────────
+export async function generarAvisoInspector(datos: DatosActa): Promise<void> {
+  const pdf = new IspPdf({
+    titulo: "AVISO AL INSPECTOR DE TRABAJO",
+    subtitulo: `Trabajador: ${datos.empleado_nombre} — Acta No. ${datos.numero_acta}`,
+    preparedBy: "Representante Legal",
+  });
+
+  await pdf.build();
+
+  pdf.addTextoResumen("SEÑOR:");
+  pdf.addEspacio(2);
+  pdf.addTextoResumen("INSPECTOR DE TRABAJO DEL MINISTERIO DE TRABAJO Y PREVISIÓN SOCIAL");
+  pdf.addTextoResumen("SU DESPACHO.");
+  pdf.addEspacio(6);
+
+  const parrafoIntro =
+    `${datos.representante_nombre.toUpperCase()}, guatemalteco, de este domicilio, quien se identifica ` +
+    `con el Documento Personal de Identificación -DPI- con Código Único de Identificación -CUI- ` +
+    `número ${dpiEnLetras(datos.representante_dpi)} extendido por el Registro Nacional de las Personas ` +
+    `de la República de Guatemala -RENAP-, actuando en calidad de Gerente General y Representante ` +
+    `Legal de la entidad ${datos.nombre_empresa.toUpperCase()}, ante usted respetuosamente comparezco ` +
+    `y EXPONGO:`;
+
+  pdf.addTextoResumen(parrafoIntro);
+  pdf.addEspacio(4);
+
+  pdf.addSeccionTitulo("I. DE MI REPRESENTADA");
+
+  const parrafoRepresentada =
+    `${datos.nombre_empresa.toUpperCase()}, es una entidad que se dedica a la prestación de ` +
+    `servicios de seguridad privada, con domicilio en ${datos.direccion_empresa}, ` +
+    `ciudad de Guatemala, departamento de Guatemala.`;
+
+  pdf.addTextoResumen(parrafoRepresentada);
+  pdf.addEspacio(4);
+
+  pdf.addSeccionTitulo("II. DEL TRABAJADOR");
+
+  const fechaIngreso = datos.empleado_fecha_ingreso ? fmtFechaDia(datos.empleado_fecha_ingreso) : "fecha no registrada";
+
+  const parrafoTrabajador =
+    `El trabajador ${datos.empleado_nombre.toUpperCase()}, quien se identifica con DPI número ` +
+    `${dpiEnLetras(datos.empleado_dpi)}, laboró para mi representada desde el ${fechaIngreso}, ` +
+    `desempeñando el puesto de ${datos.empleado_cargo || "Agente de Seguridad"} ` +
+    `en las instalaciones del cliente ${datos.cliente_nombre || "asignado"}.`;
+
+  pdf.addTextoResumen(parrafoTrabajador);
+  pdf.addEspacio(4);
+
+  pdf.addSeccionTitulo("III. DE LOS HECHOS");
+
+  pdf.addTextoResumen(datos.hechos);
+
+  if (datos.notas_sistema && datos.notas_sistema.length > 0) {
+    pdf.addEspacio(3);
+    for (const nota of datos.notas_sistema) {
+      pdf.addTextoResumen(`• ${nota}`);
+    }
+  }
+
+  pdf.addEspacio(4);
+
+  pdf.addSeccionTitulo("IV. FUNDAMENTO LEGAL");
+
+  const parrafoFundamento =
+    `De conformidad con lo establecido en el ${datos.articulo_legal} del Código de Trabajo de Guatemala ` +
+    `(Decreto 1441 del Congreso de la República de Guatemala), y dado que el trabajador ha incurrido en ` +
+    `las causales anteriormente descritas, se procede a dar por terminada la relación laboral con causa ` +
+    `justa y sin responsabilidad de mi representada.`;
+
+  pdf.addTextoResumen(parrafoFundamento);
+  pdf.addEspacio(4);
+
+  const fechaEvento = datos.fecha_evento ? fmtFechaDia(datos.fecha_evento) : fmtFechaDia(new Date().toISOString());
+
+  const parrafoPeticion =
+    `Por lo anteriormente expuesto, a través del presente memorial doy el AVISO DE TERMINACIÓN DE ` +
+    `RELACIÓN LABORAL DEL TRABAJADOR ${datos.empleado_nombre.toUpperCase()}, en consecuencia, se da por ` +
+    `terminada la relación laboral entre mi representada y dicho trabajador, con causa justa y sin ` +
+    `responsabilidad de nuestra parte, de conformidad con la normativa legal citada y por los hechos ` +
+    `y causas arriba descritas.`;
+
+  pdf.addTextoResumen(parrafoPeticion);
+  pdf.addEspacio(4);
+
+  pdf.addSeccionTitulo("SOLICITO");
+
+  pdf.addTextoResumen("Que se tenga por recibido el presente memorial.");
+  pdf.addEspacio(2);
+  pdf.addTextoResumen(
+    `Que se tenga por señalado de mi parte el lugar para recibir notificaciones ` +
+    `${datos.direccion_empresa}, de la ciudad de Guatemala, departamento de Guatemala.`
+  );
+  pdf.addEspacio(2);
+  pdf.addTextoResumen(
+    `Que se tenga por presentado el AVISO DE TERMINACIÓN LABORAL DEL TRABAJADOR ` +
+    `${datos.empleado_nombre.toUpperCase()} y en consecuencia se tenga por terminado el contrato de ` +
+    `trabajo entre ${datos.empleado_nombre.toUpperCase()} y mi representada, con justa causa y sin ` +
+    `responsabilidad de nuestra parte, de conformidad con las normas legales citadas y las aplicables, ` +
+    `a partir del ${fechaEvento}. SE ADJUNTA ACTA ADMINISTRATIVA NUMERO ${datos.numero_acta}.`
+  );
+
+  pdf.addEspacio(4);
+  pdf.addTextoResumen(`Guatemala, ${fmtFechaDia(new Date().toISOString())}`);
+
+  pdf.addEspacio(15);
+
+  pdf.addTextoResumen("_____________________________________");
+  pdf.addTextoResumen("Representante Legal");
+  pdf.addTextoResumen(datos.representante_nombre);
+
+  const filename = `aviso-inspector-${datos.numero_acta}-${datos.empleado_nombre.split(" ")[0].toLowerCase()}.pdf`;
+  pdf.save(filename);
+}
 
 // ─── Boleta de Descuento ──────────────────────────────────────────────────────
 export async function generarBoletaDescuento(evento: EventoRrhh): Promise<void> {
@@ -102,7 +371,7 @@ export async function generarBoletaDescuento(evento: EventoRrhh): Promise<void> 
     ["Campo", "Detalle"],
     [
       ["Nombre del colaborador", evento.employee_nombre],
-      ["DPI (últimos 4 dígitos)", evento.employee_dpi ? evento.employee_dpi.replace(/\*/g, "●") : "No registrado"],
+      ["DPI", evento.employee_dpi || "No registrado"],
       ["Fecha del evento", fmtFecha(evento.fecha)],
       ["Tipo de evento", tipoLabel(evento.tipo_evento)],
       ["Cliente / Instalación", evento.cliente_nombre || "No especificado"],
@@ -173,7 +442,7 @@ export async function generarConstanciaHorasExtra(evento: EventoRrhh): Promise<v
     ["Campo", "Detalle"],
     [
       ["Nombre del colaborador", evento.employee_nombre],
-      ["DPI (últimos 4 dígitos)", evento.employee_dpi ? evento.employee_dpi.replace(/\*/g, "●") : "No registrado"],
+      ["DPI", evento.employee_dpi || "No registrado"],
       ["Fecha de la cobertura", fmtFecha(evento.fecha)],
       ["Tipo de evento", "HORAS EXTRA — COBERTURA"],
       ["Cliente / Instalación", evento.cliente_nombre || "No especificado"],
@@ -232,133 +501,6 @@ export async function generarConstanciaHorasExtra(evento: EventoRrhh): Promise<v
   pdf.save(filename);
 }
 
-// ─── Acta Administrativa ──────────────────────────────────────────────────────
-export async function generarActaAdministrativa(evento: EventoRrhh): Promise<void> {
-  const pdf = new IspPdf({
-    titulo: "ACTA ADMINISTRATIVA",
-    subtitulo: `Evento #${evento.id} — ${tipoLabel(evento.tipo_evento)}`,
-    preparedBy: evento.usuario_generador || "Sistema",
-  });
-
-  await pdf.build();
-
-  const numActa = `ACT-${String(evento.id).padStart(5, "0")}`;
-  const fechaEmision = fmtFecha(new Date().toISOString());
-
-  pdf.addSeccionTitulo("Acta Administrativa de Recursos Humanos");
-
-  pdf.addTextoResumen(
-    `En la Ciudad de Guatemala, el día ${fechaEmision}, la empresa INVESTIGACIONES Y SEGURIDAD PROFESIONAL, S.A. ` +
-    `(en adelante "LA EMPRESA"), con domicilio en la Ciudad de Guatemala, República de Guatemala, levanta la ` +
-    `presente ACTA ADMINISTRATIVA con número de referencia ${numActa}, en relación al evento descrito a continuación.`,
-  );
-
-  pdf.addEspacio(4);
-  pdf.addSeccionTitulo("I. Partes Involucradas");
-
-  pdf.addTabla(
-    ["Parte", "Información"],
-    [
-      ["LA EMPRESA", "Investigaciones y Seguridad Profesional, S.A. — ISP, S.A."],
-      ["EL COLABORADOR", evento.employee_nombre],
-      ["DPI (últimos 4)", evento.employee_dpi ? evento.employee_dpi.replace(/\*/g, "●") : "No disponible"],
-      ["Supervisor Directo", evento.supervisor_nombre || "No especificado"],
-      ["Cliente / Instalación", evento.cliente_nombre || "No especificado"],
-      ["Puesto Operativo", evento.puesto_nombre || "No especificado"],
-    ],
-  );
-
-  pdf.addEspacio(4);
-  pdf.addSeccionTitulo("II. Descripción del Evento");
-
-  const tipoTexto = evento.tipo_evento === "falta"
-    ? "FALTA INJUSTIFICADA AL TURNO DE TRABAJO"
-    : "SUSPENSIÓN LABORAL";
-
-  pdf.addTabla(
-    ["Campo", "Detalle"],
-    [
-      ["Tipo de evento", tipoTexto],
-      ["Fecha del evento", fmtFecha(evento.fecha)],
-      ["Registrado en sistema", fmtFecha(evento.created_at || evento.fecha)],
-      ["Registrado por", evento.usuario_generador || "Sistema automatizado"],
-      ["Módulo de origen", "Centro de Operaciones — Pizarrón Operativo"],
-      ["Número de acta", numActa],
-    ],
-  );
-
-  pdf.addEspacio(4);
-  pdf.addSeccionTitulo("III. Descripción de los Hechos");
-
-  const hechos = evento.observaciones
-    ? evento.observaciones
-    : evento.tipo_evento === "falta"
-    ? `El colaborador ${evento.employee_nombre} no se presentó al puesto de trabajo "${evento.puesto_nombre || "asignado"}" ` +
-      `en las instalaciones del cliente ${evento.cliente_nombre || "no especificado"}, el día ` +
-      `${fmtFecha(evento.fecha)}. Dicha ausencia fue registrada por el supervisor de operaciones ` +
-      `${evento.supervisor_nombre || "en turno"} a través del sistema de gestión operativa de ISP, S.A., ` +
-      `generando descubierto en el puesto y afectando la cobertura del cliente.`
-    : `El colaborador ${evento.employee_nombre} fue objeto de una medida de suspensión laboral el día ` +
-      `${fmtFecha(evento.fecha)}, registrada por ${evento.supervisor_nombre || "el supervisor en turno"} ` +
-      `en el sistema de gestión operativa de ISP, S.A.`;
-
-  pdf.addTextoResumen(hechos);
-
-  if (evento.notas) {
-    pdf.addEspacio(3);
-    pdf.addTextoResumen(`Observaciones adicionales del supervisor: ${evento.notas}`);
-  }
-
-  pdf.addEspacio(4);
-  pdf.addSeccionTitulo("IV. Consecuencias y Resolución");
-
-  const consecuencias: string[][] =
-    evento.tipo_evento === "falta"
-      ? [
-          ["1", "Descuento en planilla del día no laborado según Artículo 82 del Código de Trabajo."],
-          ["2", "Registro en expediente laboral del colaborador como antecedente disciplinario."],
-          ["3", "Notificación al colaborador mediante boleta de descuento complementaria."],
-          ["4", "Evaluación para posibles medidas adicionales según reglamento interno."],
-        ]
-      : [
-          ["1", "Suspensión temporal con o sin goce de salario según resolución de RRHH."],
-          ["2", "Registro en expediente laboral del colaborador."],
-          ["3", "Investigación disciplinaria si aplica."],
-          ["4", "Notificación formal al colaborador."],
-        ];
-
-  pdf.addTabla(["#", "Consecuencia / Acción"], consecuencias);
-
-  pdf.addEspacio(4);
-  pdf.addSeccionTitulo("V. Firmas y Certificación");
-
-  pdf.addTextoResumen(
-    "En fe de lo anterior, firman los comparecientes en señal de conformidad con lo consignado en el presente instrumento administrativo.",
-  );
-
-  pdf.addTabla(
-    ["Rol", "Nombre Completo", "Firma / Sello", "Fecha"],
-    [
-      ["Elaboró", evento.usuario_generador || "Jefe de Operaciones", "___________________", fmtFechaCorta(new Date().toISOString())],
-      ["Supervisor", evento.supervisor_nombre || "________________________", "___________________", "_____ / _____ / _____"],
-      ["El Colaborador", evento.employee_nombre, "___________________", "_____ / _____ / _____"],
-      ["Gerencia RRHH", "________________________", "___________________", "_____ / _____ / _____"],
-      ["Dirección General", "________________________", "___________________", "_____ / _____ / _____"],
-    ],
-    "Cuadro de certificación",
-  );
-
-  pdf.addEspacio(5);
-  pdf.addTextoResumen(
-    `La presente acta queda archivada en el expediente del colaborador con referencia ${numActa} ` +
-    `y forma parte del historial disciplinario-administrativo de ISP, S.A. Cualquier impugnación deberá ` +
-    `realizarse dentro de los 5 días hábiles siguientes a la notificación, ante el departamento de Recursos Humanos.`,
-  );
-
-  const filename = `acta-administrativa-${numActa}-${evento.employee_nombre.split(" ")[0].toLowerCase()}.pdf`;
-  pdf.save(filename);
-}
-
 // ─── Documento de Anulación (con marca ANULADO) ───────────────────────────────
 export async function generarDocumentoAnulacion(evento: EventoRrhh): Promise<void> {
   const numEvento = `ERH-${String(evento.id).padStart(4, "0")}`;
@@ -389,7 +531,7 @@ export async function generarDocumentoAnulacion(evento: EventoRrhh): Promise<voi
     [
       ["No. de evento", numEvento],
       ["Colaborador", evento.employee_nombre],
-      ["DPI (últimos 4)", evento.employee_dpi ? evento.employee_dpi.replace(/\*/g, "●") : "No disponible"],
+      ["DPI", evento.employee_dpi || "No disponible"],
       ["Tipo de evento original", tipoLabel(evento.tipo_evento)],
       ["Fecha del evento original", fmtFecha(evento.fecha)],
       ["Cliente / Instalación", evento.cliente_nombre || "No especificado"],
