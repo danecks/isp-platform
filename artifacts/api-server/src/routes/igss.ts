@@ -317,6 +317,7 @@ igssRouter.get("/igss/generar-planilla", async (req, res) => {
         AND e.aplica_igss_general = true
         AND e.igss_numero IS NOT NULL AND e.igss_numero != ''
         AND e.sueldo_base > 0
+        AND COALESCE(e.fecha_inicio_prestaciones, e.fecha_ingreso) <= CURRENT_DATE
       ORDER BY e.id
     `);
 

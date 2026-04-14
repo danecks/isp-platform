@@ -420,6 +420,7 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
         fecha_nacimiento, sexo, estado_civil, nivel_educativo,
         municipio, departamento, direccion,
         foto_url, estado_laboral, tipo_personal, fecha_ingreso,
+        fecha_inicio_prestaciones,
         puesto, sueldo_base, notas, created_at, updated_at,
         -- EMP-EXT-01
         nit, igss_numero, banco, cuenta_bancaria, forma_pago,
@@ -439,6 +440,7 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
         tipos_seguridad, servicio_militar, rango_militar, unidad_militar, fue_policia
       ) VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'activo',$13,CURRENT_DATE,
+        CURRENT_DATE + INTERVAL '2 months',
         $14,$15,$16,NOW(),NOW(),
         $17,$18,$19,$20,$21,$22,$23,
         $24,$25,$26,$27,$28,$29,$30,$31,$32,$33,

@@ -4432,5 +4432,13 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: ACTAS-03 — error (no bloqueante)");
   }
 
+  // ── PRUEBA-01: fecha_inicio_prestaciones en employees (período de prueba 2 meses) ──
+  try {
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS fecha_inicio_prestaciones DATE`);
+    logger.info("Auto-migrate: PRUEBA-01 columna fecha_inicio_prestaciones en employees verificada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PRUEBA-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

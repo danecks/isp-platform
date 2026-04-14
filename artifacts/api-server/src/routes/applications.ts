@@ -123,10 +123,10 @@ router.post("/applications/:id/contratar", async (req, res) => {
       INSERT INTO employees (
         nombre_completo, dpi, telefono, correo,
         puesto, area, sede,
-        estado_laboral, fecha_ingreso,
+        estado_laboral, fecha_ingreso, fecha_inicio_prestaciones,
         created_at, updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'activo', NOW(), NOW(), NOW())
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'activo', NOW(), NOW() + INTERVAL '2 months', NOW(), NOW())
       RETURNING id
     `, [
       String(app.nombre).trim(),

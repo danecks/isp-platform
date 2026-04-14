@@ -231,7 +231,8 @@ prestacionesRouter.post("/prestaciones/provisionar", async (req, res) => {
 
     // Obtener empleados del período
     let empQuery = `SELECT e.id, e.nombre_completo, e.sueldo_base, e.sede, e.puesto,
-                           e.fecha_ingreso, e.frecuencia_pago, e.estado_laboral,
+                           COALESCE(e.fecha_inicio_prestaciones, e.fecha_ingreso) AS fecha_ingreso,
+                           e.frecuencia_pago, e.estado_laboral,
                            COALESCE(e.cliente_id, 0) AS client_id
                     FROM employees e
                     WHERE e.estado_laboral = 'activo'`;
@@ -391,7 +392,10 @@ prestacionesRouter.get("/prestaciones/provisiones", async (req, res) => {
 // ─── Función interna para calcular liquidación completa ───────────────────────
 async function buildLiquidacion(empId: number, body: Record<string, unknown>) {
   const { rows: emp } = await pool.query(
-    `SELECT e.id, e.nombre_completo, e.fecha_ingreso, e.sueldo_base,
+    `SELECT e.id, e.nombre_completo,
+            COALESCE(e.fecha_inicio_prestaciones, e.fecha_ingreso) AS fecha_ingreso,
+            e.fecha_ingreso AS fecha_ingreso_real,
+            e.sueldo_base,
             COALESCE(e.frecuencia_pago, 'quincenal') AS frecuencia_pago
      FROM employees e WHERE e.id = $1`,
     [empId]
@@ -506,8 +510,8 @@ async function buildLiquidacion(empId: number, body: Record<string, unknown>) {
   const { rows: vacProrataRows } = await pool.query(`
     WITH srv AS (
       SELECT
-        ($2::date - fecha_ingreso::date)::int AS dias_servicio,
-        EXTRACT(YEAR FROM AGE($2::date, fecha_ingreso::date))::int AS anios_servicio
+        ($2::date - COALESCE(fecha_inicio_prestaciones, fecha_ingreso)::date)::int AS dias_servicio,
+        EXTRACT(YEAR FROM AGE($2::date, COALESCE(fecha_inicio_prestaciones, fecha_ingreso)::date))::int AS anios_servicio
       FROM employees WHERE id = $1
     ),
     autorizados AS (
@@ -882,7 +886,7 @@ prestacionesRouter.post("/prestaciones/calcular", async (req, res) => {
     let empSueldo = sueldo_mensual;
     let empIngreso = fecha_ingreso;
     if (employee_id && !sueldo_mensual) {
-      const { rows } = await pool.query(`SELECT sueldo_base, fecha_ingreso FROM employees WHERE id = $1`, [employee_id]);
+      const { rows } = await pool.query(`SELECT sueldo_base, COALESCE(fecha_inicio_prestaciones, fecha_ingreso) AS fecha_ingreso FROM employees WHERE id = $1`, [employee_id]);
       if (rows.length) {
         empSueldo = parseFloat(rows[0].sueldo_base);
         empIngreso = rows[0].fecha_ingreso.toISOString().slice(0, 10);
