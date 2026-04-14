@@ -455,18 +455,7 @@ function ModalPuesto({
     setSaving(false);
   }
 
-  const Field = ({ label, k, type = "text", placeholder = "" }: { label: string; k: string; type?: string; placeholder?: string }) => (
-    <div className="space-y-1">
-      <label className="text-[10px] text-white/40 uppercase tracking-wide">{label}</label>
-      <input
-        type={type}
-        value={(form as any)[k]}
-        onChange={(e) => up(k, e.target.value)}
-        placeholder={placeholder}
-        className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50"
-      />
-    </div>
-  );
+  const fieldCls = "w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50";
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
@@ -545,10 +534,16 @@ function ModalPuesto({
           )}
 
           {/* Tarifa */}
-          <Field label="Tarifa del puesto (Q)" k="tarifa_puesto" placeholder="0.00" />
+          <div className="space-y-1">
+            <label className="text-[10px] text-white/40 uppercase tracking-wide">Tarifa del puesto (Q)</label>
+            <input value={form.tarifa_puesto} onChange={(e) => up("tarifa_puesto", e.target.value)} placeholder="0.00" className={fieldCls} />
+          </div>
 
           {/* Dirección */}
-          <Field label="Dirección del puesto" k="direccion" placeholder="Ej. 5a Av. 10-25 Zona 1, Ciudad de Guatemala" />
+          <div className="space-y-1">
+            <label className="text-[10px] text-white/40 uppercase tracking-wide">Dirección del puesto</label>
+            <input value={form.direccion} onChange={(e) => up("direccion", e.target.value)} placeholder="Ej. 5a Av. 10-25 Zona 1, Ciudad de Guatemala" className={fieldCls} />
+          </div>
 
           {/* Notas */}
           <div className="space-y-1">
