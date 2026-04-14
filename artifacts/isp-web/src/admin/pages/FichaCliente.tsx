@@ -2570,7 +2570,7 @@ interface RentaPuesto {
   id: number; nombre: string; sede: string | null; turno: string | null; tipo_servicio: string | null;
   tarifa_bruta: number; iva_factura: number; isr_factura: number; ingreso_neto: number;
   num_titulares: number; costo_sueldos: number; costo_igss_patronal: number;
-  costo_prestaciones: number; costo_bonificacion: number; costo_he_30d: number;
+  costo_prestaciones: number; ahorro_indemnizacion: number; costo_bonificacion: number; costo_he_30d: number;
   he_horas_30d: number; relevos_30d: number; costo_operativo: number; costo_total: number;
   margen: number; margen_pct: number;
 }
@@ -2685,10 +2685,11 @@ function TabRentabilidad({ clienteId }: { clienteId: number }) {
                     <div className="col-span-full text-[10px] text-white/20 uppercase tracking-widest font-semibold mt-3 mb-1">Costos operativos</div>
                     <div className="flex justify-between"><span className="text-white/40">Sueldos base</span><span className="text-white/70">{fmtQr(p.costo_sueldos)}</span></div>
                     <div className="flex justify-between"><span className="text-white/40">IGSS patronal (12.67%)</span><span className="text-white/70">{fmtQr(p.costo_igss_patronal)}</span></div>
-                    <div className="flex justify-between"><span className="text-white/40">Prestaciones (41.83%)</span><span className="text-white/70">{fmtQr(p.costo_prestaciones)}</span></div>
+                    <div className="flex justify-between"><span className="text-white/40">Prestaciones (32.11%)</span><span className="text-white/70">{fmtQr(p.costo_prestaciones)}</span></div>
                     <div className="flex justify-between"><span className="text-white/40">Bonificación incentivo</span><span className="text-white/70">{fmtQr(p.costo_bonificacion)}</span></div>
                     <div className="flex justify-between"><span className="text-white/40">HE últ. 30 días ({p.he_horas_30d}h)</span><span className="text-white/70">{fmtQr(p.costo_he_30d)}</span></div>
                     <div className="flex justify-between border-t border-white/5 pt-1"><span className="text-orange-400/60 font-medium">Costo operativo total</span><span className="text-orange-400/80 font-medium">{fmtQr(p.costo_operativo)}</span></div>
+                    <div className="flex justify-between mt-1"><span className="text-green-400/60">Ahorro indemnización (9.72%)</span><span className="text-green-400/80 font-medium">+{fmtQr(p.ahorro_indemnizacion)}</span></div>
 
                     <div className="col-span-full border-t border-white/5 mt-2 pt-2 flex justify-between">
                       <span className={`font-bold ${mc}`}>Margen neto</span>
@@ -2761,7 +2762,8 @@ function TabRentabilidad({ clienteId }: { clienteId: number }) {
         <Zap className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
         <div className="text-[10px] text-blue-300/70 leading-relaxed">
           <p><strong>Ingreso neto</strong> = Tarifa bruta − IVA (12%) − ISR servicios (5% sobre base). <strong>Margen</strong> = Ingreso neto − costos operativos.</p>
-          <p><strong>Costos operativos</strong>: sueldos base + IGSS patronal (12.67%) + prestaciones (aguinaldo, bono14, vacaciones, indemnización ≈ 41.83%) + bonificación incentivo + horas extra aprobadas (últimos 30 días).</p>
+          <p><strong>Costos operativos</strong>: sueldos base + IGSS patronal (12.67%) + prestaciones sin indemnización (aguinaldo, bono14, vacaciones ≈ 32.11%) + bonificación incentivo + horas extra aprobadas (últimos 30 días).</p>
+          <p><strong>Política 0 despidos injustificados</strong>: la indemnización (9.72%) no se incluye como costo — se muestra como ahorro. Solo se registra como gasto real si ocurre un despido con indemnización.</p>
           <p><strong>Bajas con indemnización</strong>: despido injustificado, fin de contrato, mutuo acuerdo. <strong>Sin indemnización</strong>: renuncia, despido justificado.</p>
         </div>
       </div>

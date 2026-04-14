@@ -427,7 +427,8 @@ fichaRouter.get("/clientes/:id/rentabilidad", async (req, res) => {
     `, [clientId]);
 
     const IGSS_PATRONAL = 0.1267;
-    const PREST_FACTOR = 0.4183;
+    const PREST_FACTOR_SIN_INDEM = 0.3211;
+    const INDEM_FACTOR = 0.0972;
     const BONO_MENSUAL = 250;
     const IVA_RATE = 0.12;
     const ISR_SERVICIOS_RATE = 0.05;
@@ -448,12 +449,14 @@ fichaRouter.get("/clientes/:id/rentabilidad", async (req, res) => {
       let costoIGSS = 0;
       let costoPrestaciones = 0;
       let costoBonificacion = 0;
+      let ahorroIndemnizacion = 0;
 
       for (const t of titulares) {
         const sb = Number(t.sueldo_base || 0);
         costoSueldos += sb;
         if (t.aplica_igss) costoIGSS += sb * IGSS_PATRONAL;
-        costoPrestaciones += sb * PREST_FACTOR;
+        costoPrestaciones += sb * PREST_FACTOR_SIN_INDEM;
+        ahorroIndemnizacion += sb * INDEM_FACTOR;
         costoBonificacion += Number(t.bonificacion_incentivo || BONO_MENSUAL);
       }
 
@@ -485,6 +488,7 @@ fichaRouter.get("/clientes/:id/rentabilidad", async (req, res) => {
         costo_sueldos: r2(costoSueldos),
         costo_igss_patronal: r2(costoIGSS),
         costo_prestaciones: r2(costoPrestaciones),
+        ahorro_indemnizacion: r2(ahorroIndemnizacion),
         costo_bonificacion: r2(costoBonificacion),
         costo_he_30d: r2(costoHE),
         he_horas_30d: heAprobadas,
@@ -575,7 +579,8 @@ fichaRouter.get("/rentabilidad/global", async (_req, res) => {
     const IVA_RATE = 0.12;
     const ISR_SERVICIOS_RATE = 0.05;
     const IGSS_PATRONAL = 0.1267;
-    const PREST_FACTOR = 0.4183;
+    const PREST_FACTOR_SIN_INDEM = 0.3211;
+    const INDEM_FACTOR = 0.0972;
     const BONO_MENSUAL = 250;
     const r2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -620,11 +625,13 @@ fichaRouter.get("/rentabilidad/global", async (_req, res) => {
 
       const titulares = c.titulares_data || [];
       let costoOp = 0;
+      let ahorroIndem = 0;
       for (const t of titulares) {
         const sb = Number(t.sueldo_base || 0);
         costoOp += sb;
         if (t.aplica_igss) costoOp += sb * IGSS_PATRONAL;
-        costoOp += sb * PREST_FACTOR;
+        costoOp += sb * PREST_FACTOR_SIN_INDEM;
+        ahorroIndem += sb * INDEM_FACTOR;
         costoOp += Number(t.bonificacion || BONO_MENSUAL);
       }
 
@@ -640,6 +647,7 @@ fichaRouter.get("/rentabilidad/global", async (_req, res) => {
         tarifa_bruta: tarifaBruta,
         ingreso_neto: ingresoNeto,
         costo_operativo: r2(costoOp),
+        ahorro_indemnizacion: r2(ahorroIndem),
         margen,
         margen_pct: margenPct,
         bajas_con_indem: Number(c.bajas_con_indem),
