@@ -462,6 +462,84 @@ employeesRouter.get("/employees/:id/operacion", async (req, res) => {
   }
 });
 
+// ── GET /api/employees/:id/historial-asignaciones ─────────────────────────────
+employeesRouter.get("/employees/:id/historial-asignaciones", async (req, res) => {
+  const empId = parseInt(req.params.id);
+  if (isNaN(empId)) return res.status(400).json({ error: "ID inválido" });
+
+  const desde = typeof req.query.desde === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.desde)
+    ? req.query.desde : null;
+  const hasta = typeof req.query.hasta === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.hasta)
+    ? req.query.hasta : null;
+
+  try {
+    const { rows: coberturas } = await pool.query(`
+      SELECT
+        cs.fecha,
+        cs.puesto_id,
+        po.nombre AS puesto_nombre,
+        cs.client_id,
+        COALESCE(po.cliente_nombre, c.nombre) AS cliente_nombre,
+        cs.tipo_cobertura,
+        cs.hora_inicio,
+        cs.hora_fin,
+        cs.horas_calculadas,
+        cs.horas_extra_calculadas,
+        cs.genera_horas_extra,
+        cs.fue_en_dia_descanso,
+        cs.motivo,
+        cs.cubriendo_a_nombre,
+        cs.observaciones,
+        cs.created_at
+      FROM cobertura_segmentos cs
+      LEFT JOIN puestos_operativos po ON po.id = cs.puesto_id
+      LEFT JOIN clients c ON c.id = cs.client_id
+      WHERE cs.employee_id = $1
+        AND ($2::date IS NULL OR cs.fecha >= $2::date)
+        AND ($3::date IS NULL OR cs.fecha <= $3::date)
+      ORDER BY cs.fecha DESC, cs.created_at DESC
+    `, [empId, desde, hasta]);
+
+    const { rows: titularidades } = await pool.query(`
+      SELECT
+        pth.puesto_id,
+        po.nombre AS puesto_nombre,
+        po.cliente_nombre,
+        pth.fecha_inicio,
+        pth.fecha_fin,
+        pth.motivo,
+        pth.created_at
+      FROM puesto_titular_historico pth
+      LEFT JOIN puestos_operativos po ON po.id = pth.puesto_id
+      WHERE pth.employee_id = $1
+        AND ($2::date IS NULL OR pth.fecha_inicio >= $2::date OR (pth.fecha_fin IS NULL OR pth.fecha_fin >= $2::date))
+        AND ($3::date IS NULL OR pth.fecha_inicio <= $3::date)
+      ORDER BY pth.fecha_inicio DESC, pth.created_at DESC
+    `, [empId, desde, hasta]);
+
+    const { rows: titularActual } = await pool.query(`
+      SELECT
+        pt.puesto_id,
+        po.nombre AS puesto_nombre,
+        po.cliente_nombre,
+        pt.created_at AS fecha_inicio
+      FROM puesto_titulares pt
+      JOIN puestos_operativos po ON po.id = pt.puesto_id AND po.activo = TRUE
+      WHERE pt.employee_id = $1 AND pt.activo = TRUE
+      ORDER BY pt.orden
+    `, [empId]);
+
+    res.json({
+      coberturas,
+      titularidades,
+      titularActual: titularActual[0] ?? null,
+    });
+  } catch (err) {
+    console.error("[Employee/historial-asignaciones] Error:", err);
+    res.status(500).json({ error: "Error al obtener historial de asignaciones" });
+  }
+});
+
 // ── GET /api/employees/by-dpi/:dpi — búsqueda pública por DPI (kiosco actualización) ──
 employeesRouter.get("/employees/by-dpi/:dpi", async (req, res) => {
   const dpi = req.params.dpi?.trim();

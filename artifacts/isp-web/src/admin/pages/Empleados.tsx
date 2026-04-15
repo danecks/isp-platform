@@ -2047,6 +2047,236 @@ function TabOperacion({ empId }: { empId: number }) {
   );
 }
 
+// ─── Tab: Historial de Asignaciones ────────────────────────────────────────────
+
+interface HistorialCobertura {
+  fecha: string;
+  puesto_id: number;
+  puesto_nombre: string | null;
+  cliente_nombre: string | null;
+  tipo_cobertura: string;
+  hora_inicio: string | null;
+  hora_fin: string | null;
+  horas_calculadas: number | null;
+  horas_extra_calculadas: number | null;
+  genera_horas_extra: boolean;
+  fue_en_dia_descanso: boolean;
+  motivo: string | null;
+  cubriendo_a_nombre: string | null;
+  observaciones: string | null;
+}
+
+interface HistorialTitularidad {
+  puesto_id: number;
+  puesto_nombre: string | null;
+  cliente_nombre: string | null;
+  fecha_inicio: string;
+  fecha_fin: string | null;
+  motivo: string | null;
+}
+
+interface HistorialData {
+  coberturas: HistorialCobertura[];
+  titularidades: HistorialTitularidad[];
+  titularActual: { puesto_id: number; puesto_nombre: string | null; cliente_nombre: string | null; fecha_inicio: string } | null;
+}
+
+const TIPO_COBERTURA_LABELS: Record<string, { label: string; color: string; bg: string }> = {
+  relevo:                   { label: "Relevo",              color: "text-blue-300",   bg: "bg-blue-500/15 border-blue-500/25" },
+  titular:                  { label: "Titular",             color: "text-green-300",  bg: "bg-green-500/15 border-green-500/25" },
+  cobertura_supervisor:     { label: "Cob. Supervisor",     color: "text-orange-300", bg: "bg-orange-500/15 border-orange-500/25" },
+  cobertura_jefe_servicio:  { label: "Cob. Jefe Servicio",  color: "text-amber-300",  bg: "bg-amber-500/15 border-amber-500/25" },
+};
+
+function TabHistorialAsignaciones({ empId }: { empId: number }) {
+  const hoy = new Date().toISOString().split("T")[0];
+  const hace30 = (() => {
+    const d = new Date(); d.setDate(d.getDate() - 30);
+    return d.toISOString().split("T")[0];
+  })();
+
+  const [desde, setDesde] = useState(hace30);
+  const [hasta, setHasta] = useState(hoy);
+
+  const { data, isLoading, isError } = useQuery<HistorialData>({
+    queryKey: ["historial-asignaciones", empId, desde, hasta],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (desde) params.set("desde", desde);
+      if (hasta) params.set("hasta", hasta);
+      const r = await fetch(`${API_BASE}/employees/${empId}/historial-asignaciones?${params}`);
+      if (!r.ok) throw new Error(`Error ${r.status}`);
+      return r.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const fmtFecha = (f: string) => {
+    try {
+      const raw = f.length === 10 ? f + "T12:00:00Z" : f;
+      return new Date(raw).toLocaleDateString("es-GT", { day: "2-digit", month: "short", year: "numeric" });
+    } catch { return f; }
+  };
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>;
+  }
+
+  if (isError) {
+    return (
+      <div className="text-center py-14">
+        <AlertTriangle className="w-8 h-8 text-red-400/40 mx-auto mb-3" />
+        <p className="text-red-300/60 text-sm">Error al cargar historial</p>
+        <p className="text-white/20 text-xs mt-1">Intenta ajustar las fechas o recargar la página.</p>
+      </div>
+    );
+  }
+
+  const coberturas = data?.coberturas ?? [];
+  const titularidades = data?.titularidades ?? [];
+  const titularActual = data?.titularActual ?? null;
+
+  const coberturasPorFecha = coberturas.reduce<Record<string, HistorialCobertura[]>>((acc, c) => {
+    const key = typeof c.fecha === "string" ? c.fecha.slice(0, 10) : String(c.fecha);
+    (acc[key] ??= []).push(c);
+    return acc;
+  }, {});
+  const fechasOrdenadas = Object.keys(coberturasPorFecha).sort((a, b) => b.localeCompare(a));
+
+  const totalHE = coberturas.filter(c => c.genera_horas_extra).length;
+  const totalDias = fechasOrdenadas.length;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <label className="text-[10px] text-white/30 uppercase tracking-widest block mb-1">Desde</label>
+          <input type="date" value={desde} onChange={e => setDesde(e.target.value)} max={hasta || hoy}
+            className="bg-[#060e1c] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-primary/40" />
+        </div>
+        <div>
+          <label className="text-[10px] text-white/30 uppercase tracking-widest block mb-1">Hasta</label>
+          <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} min={desde || undefined} max={hoy}
+            className="bg-[#060e1c] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-primary/40" />
+        </div>
+        <div className="flex items-center gap-3 ml-auto text-[10px]">
+          <span className="text-white/30">{totalDias} día{totalDias !== 1 ? "s" : ""} con cobertura</span>
+          {totalHE > 0 && <span className="text-amber-400 font-bold">{totalHE} con HE</span>}
+        </div>
+      </div>
+
+      {titularActual && (
+        <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-3">
+          <p className="text-[10px] text-white/30 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+            <Shield className="w-3 h-3" /> Puesto titular actual
+          </p>
+          <p className="text-sm font-semibold text-white">{titularActual.puesto_nombre}</p>
+          <p className="text-xs text-white/40">{titularActual.cliente_nombre}</p>
+          <p className="text-[10px] text-white/25 mt-1">Desde {fmtFecha(titularActual.fecha_inicio)}</p>
+        </div>
+      )}
+
+      {titularidades.length > 0 && (
+        <div>
+          <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+            <Shield className="w-3 h-3" /> Historial de titularidades ({titularidades.length})
+          </p>
+          <div className="space-y-1.5">
+            {titularidades.map((t, i) => (
+              <div key={i} className="bg-[#0c1929] border border-white/6 rounded-lg px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs text-white/70 font-semibold truncate">{t.puesto_nombre ?? `Puesto #${t.puesto_id}`}</p>
+                    <p className="text-[10px] text-white/35">{t.cliente_nombre}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-[10px] text-white/40">{fmtFecha(t.fecha_inicio)}</p>
+                    <p className="text-[10px] text-white/25">{t.fecha_fin ? `→ ${fmtFecha(t.fecha_fin)}` : "→ Actual"}</p>
+                  </div>
+                </div>
+                {t.motivo && <p className="text-[10px] text-white/25 mt-1">Motivo: {t.motivo}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {fechasOrdenadas.length > 0 ? (
+        <div>
+          <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+            <History className="w-3 h-3" /> Coberturas realizadas ({coberturas.length})
+          </p>
+          <div className="space-y-3">
+            {fechasOrdenadas.map(fecha => {
+              const items = coberturasPorFecha[fecha];
+              const tieneHE = items.some(c => c.genera_horas_extra);
+              return (
+                <div key={fecha} className="bg-[#0c1929] border border-white/6 rounded-xl overflow-hidden">
+                  <div className={`flex items-center justify-between px-3 py-2 border-b ${tieneHE ? "border-amber-500/15 bg-amber-500/3" : "border-white/5"}`}>
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-3 h-3 text-white/25" />
+                      <span className="text-xs font-semibold text-white/60">{fmtFecha(fecha)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {tieneHE && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 font-bold">HE</span>}
+                      <span className="text-[10px] text-white/25">{items.length} asignación{items.length !== 1 ? "es" : ""}</span>
+                    </div>
+                  </div>
+                  <div className="divide-y divide-white/4">
+                    {items.map((c, idx) => {
+                      const cfg = TIPO_COBERTURA_LABELS[c.tipo_cobertura] ?? { label: c.tipo_cobertura, color: "text-white/50", bg: "bg-white/5 border-white/10" };
+                      return (
+                        <div key={idx} className="px-3 py-2">
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold shrink-0 ${cfg.bg} ${cfg.color}`}>
+                                {cfg.label}
+                              </span>
+                              <p className="text-xs text-white/70 truncate">{c.puesto_nombre ?? `Puesto #${c.puesto_id}`}</p>
+                            </div>
+                            {c.hora_inicio && c.hora_fin && (
+                              <span className="text-[10px] text-white/30 shrink-0">{c.hora_inicio} – {c.hora_fin}</span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-white/35">{c.cliente_nombre}</p>
+                          <div className="flex flex-wrap items-center gap-2 mt-1">
+                            {c.horas_calculadas != null && (
+                              <span className="text-[9px] text-white/25">{Number(c.horas_calculadas).toFixed(1)}h</span>
+                            )}
+                            {c.genera_horas_extra && (
+                              <span className="text-[9px] text-amber-400/70 font-bold">+HE {c.horas_extra_calculadas != null ? `${Number(c.horas_extra_calculadas).toFixed(1)}h` : ""}</span>
+                            )}
+                            {c.fue_en_dia_descanso && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-300/60">Día descanso</span>
+                            )}
+                            {c.cubriendo_a_nombre && (
+                              <span className="text-[9px] text-white/20">Cubriendo a: {c.cubriendo_a_nombre}</span>
+                            )}
+                          </div>
+                          {c.motivo && <p className="text-[9px] text-white/20 mt-0.5">Motivo: {c.motivo}</p>}
+                          {c.observaciones && <p className="text-[9px] text-white/15 italic mt-0.5">{c.observaciones}</p>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        !titularActual && titularidades.length === 0 && (
+          <div className="text-center py-14">
+            <History className="w-8 h-8 text-white/10 mx-auto mb-3" />
+            <p className="text-white/30 text-sm">Sin historial de asignaciones en este período</p>
+            <p className="text-white/15 text-xs mt-1">Ajusta las fechas para ver más registros.</p>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 // ─── Tab: Anticipos ────────────────────────────────────────────────────────────
 
 interface AnticipoDB {
@@ -3680,7 +3910,7 @@ function FichaModal({
   onEdit: (e: Empleado) => void;
   onEstado: (e: Empleado, estado: string) => void;
 }) {
-  const [tab, setTab] = useState<"perfil" | "asignacion-op" | "asignaciones" | "sistema" | "operacion" | "kpi" | "anticipos" | "vacaciones" | "qr" | "solicitud">("perfil");
+  const [tab, setTab] = useState<"perfil" | "asignacion-op" | "asignaciones" | "sistema" | "operacion" | "historial" | "kpi" | "anticipos" | "vacaciones" | "qr" | "solicitud">("perfil");
   const [showEstado, setShowEstado] = useState(false);
   const [bajaModal, setBajaModal]   = useState(false);
   const est = ESTADO_LAB[emp.estadoLaboral] ?? { label: emp.estadoLaboral, color: "text-white/40 bg-white/5 border-white/10", dot: "bg-white/40" };
@@ -3693,6 +3923,7 @@ function FichaModal({
     { key: "qr",            label: "Carnet QR",      icon: QrCode },
     { key: "sistema",       label: "Sistema",        icon: Lock },
     { key: "operacion",     label: "Operación",      icon: Activity },
+    { key: "historial",     label: "Historial",      icon: History },
     { key: "kpi",           label: "KPI",            icon: BarChart2 },
     { key: "anticipos",     label: "Anticipos",      icon: Wallet },
     { key: "indemnizacion", label: "Indemnización",  icon: Scale },
@@ -3905,6 +4136,7 @@ function FichaModal({
           )}
           {tab === "sistema" && <TabSistema emp={emp} />}
           {tab === "operacion" && <TabOperacion empId={emp.id} />}
+          {tab === "historial" && <TabHistorialAsignaciones empId={emp.id} />}
           {tab === "kpi" && <TabKPI empId={emp.id} />}
           {tab === "anticipos" && <TabAnticipo emp={emp} />}
           {tab === "indemnizacion" && <TabIndemnizacion emp={emp} />}
