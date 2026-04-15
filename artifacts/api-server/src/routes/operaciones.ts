@@ -504,9 +504,33 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
     `, [diaSemana]);
 
     const custodiaSlots: any[] = [];
+    const custodiaFaltaSet = new Set<number>();
+    {
+      const { rows: faltasRows } = await pool.query(`
+        SELECT employee_id FROM eventos_rrhh
+        WHERE tipo_evento = 'falta'
+          AND fecha::date = $1::date
+          AND estado NOT IN ('anulado', 'cancelado')
+      `, [fechaConsultada]);
+      for (const f of faltasRows) custodiaFaltaSet.add(Number(f.employee_id));
+    }
+
     for (const cl of custodiaClientes) {
       const fuerzaHoy = Number(cl.fuerza_hoy);
       if (fuerzaHoy <= 0) continue;
+
+      const { rows: titularesRows } = await pool.query(`
+        SELECT ct.slot_numero, ct.employee_id, e.nombre_completo
+        FROM custodia_titulares ct
+        JOIN employees e ON e.id = ct.employee_id
+        WHERE ct.cliente_id = $1 AND ct.activo = TRUE
+        ORDER BY ct.slot_numero
+      `, [cl.id]);
+
+      const titularMap = new Map<number, { employee_id: number; nombre: string }>();
+      for (const t of titularesRows) {
+        titularMap.set(Number(t.slot_numero), { employee_id: t.employee_id, nombre: t.nombre_completo });
+      }
 
       const { rows: asignaciones } = await pool.query(`
         SELECT cad.employee_id, cad.slot_numero, cad.notas, e.nombre_completo
@@ -522,7 +546,28 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       }
 
       for (let i = 1; i <= fuerzaHoy; i++) {
+        const titular = titularMap.get(i) ?? null;
         const asig = asignacionMap.get(i);
+        const titularFaltando = titular && custodiaFaltaSet.has(titular.employee_id);
+
+        let agente_id: number | null = null;
+        let agente_nombre: string | null = null;
+        let estado = "descubierto";
+        let es_relevo_dia = false;
+
+        if (asig) {
+          agente_id = asig.employee_id;
+          agente_nombre = asig.nombre_completo;
+          estado = "cubierto";
+          if (titular && asig.employee_id !== titular.employee_id) {
+            es_relevo_dia = true;
+          }
+        } else if (titular && !titularFaltando) {
+          agente_id = titular.employee_id;
+          agente_nombre = titular.nombre;
+          estado = "cubierto";
+        }
+
         custodiaSlots.push({
           id: `custodia-${cl.id}-${i}`,
           es_custodia: true,
@@ -531,16 +576,19 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
           cliente_nombre: cl.nombre_comercial || cl.nombre,
           fecha_inicio_contrato: cl.fecha_inicio_contrato,
           nombre: `Custodio ${i}`,
-          estado: asig ? "cubierto" : "descubierto",
-          agente_id: asig?.employee_id ?? null,
-          agente_nombre: asig?.nombre_completo ?? null,
+          estado,
+          agente_id,
+          agente_nombre,
           notas_custodia: asig?.notas ?? null,
-          titular_employee_id: null,
-          titular_nombre: null,
+          titular_employee_id: titular?.employee_id ?? null,
+          titular_nombre: titular?.nombre ?? null,
+          titular_faltando: titularFaltando || false,
+          es_relevo_dia,
           titulares: [],
           es_par_24x24: false,
           descanso_por_ciclo: false,
           es_inicio_hoy: false,
+          tiene_slot_vacio: !titular,
         });
       }
     }
@@ -598,14 +646,25 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
 
 // ─── POST /api/operaciones/asignar-custodia ──────────────────────────────────
 operacionesRouter.post("/operaciones/asignar-custodia", async (req, res) => {
-  const { clienteId, slotNumero, employeeId, fecha, notas } = req.body;
+  const { clienteId, slotNumero, employeeId, fecha, notas, soloCobertura } = req.body;
   if (!clienteId || !slotNumero) {
     return res.status(400).json({ error: "clienteId y slotNumero son requeridos" });
   }
   const fechaAsig = fecha || todayGT();
 
   try {
-    if (employeeId) {
+    if (!employeeId) {
+      await pool.query(`DELETE FROM custodia_asignacion_diaria WHERE cliente_id = $1 AND fecha = $2::date AND slot_numero = $3`, [clienteId, fechaAsig, slotNumero]);
+      return res.json({ ok: true });
+    }
+
+    const { rows: titularRows } = await pool.query(
+      `SELECT employee_id FROM custodia_titulares WHERE cliente_id = $1 AND slot_numero = $2 AND activo = TRUE`,
+      [clienteId, slotNumero]
+    );
+    const titularExistente = titularRows[0]?.employee_id ?? null;
+
+    if (soloCobertura || titularExistente) {
       await pool.query(`
         INSERT INTO custodia_asignacion_diaria (cliente_id, fecha, employee_id, slot_numero, notas)
         VALUES ($1, $2::date, $3, $4, $5)
@@ -613,18 +672,53 @@ operacionesRouter.post("/operaciones/asignar-custodia", async (req, res) => {
         DO UPDATE SET employee_id = $3, notas = $5
       `, [clienteId, fechaAsig, employeeId, slotNumero, notas ?? null]);
     } else {
-      await pool.query(`
-        DELETE FROM custodia_asignacion_diaria
-        WHERE cliente_id = $1 AND fecha = $2::date AND slot_numero = $3
-      `, [clienteId, fechaAsig, slotNumero]);
+      await pool.query(
+        `INSERT INTO custodia_titulares (cliente_id, slot_numero, employee_id) VALUES ($1, $2, $3)
+         ON CONFLICT (cliente_id, slot_numero, employee_id) DO UPDATE SET activo = TRUE`,
+        [clienteId, slotNumero, employeeId]
+      );
     }
-    res.json({ ok: true });
+    res.json({ ok: true, esTitular: !titularExistente && !soloCobertura });
   } catch (err: any) {
-    if (err.code === "23505" && err.constraint?.includes("emp")) {
-      return res.status(409).json({ error: "Este agente ya está asignado a otro slot de este cliente hoy" });
+    if (err.code === "23505") {
+      return res.status(409).json({ error: "Este agente ya está asignado a otro slot" });
     }
     logger.error({ err }, "[Custodias/asignar]");
     res.status(500).json({ error: "Error al asignar custodia" });
+  }
+});
+
+// ─── POST /api/operaciones/registrar-falta-custodia ──────────────────────────
+operacionesRouter.post("/operaciones/registrar-falta-custodia", async (req, res) => {
+  const { clienteId, slotNumero, empleadoId, motivo, notas, usuario, fecha } = req.body;
+  if (!clienteId || !slotNumero || !empleadoId) {
+    return res.status(400).json({ error: "clienteId, slotNumero y empleadoId son requeridos" });
+  }
+  const fechaHoy = fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha)
+    ? fecha
+    : todayGT();
+  const motivoNorm = motivo ?? "inasistencia";
+
+  try {
+    const { rows: emp } = await pool.query(`SELECT id, nombre_completo FROM employees WHERE id = $1`, [empleadoId]);
+    if (emp.length === 0) return res.status(404).json({ error: "Empleado no encontrado" });
+
+    const { rows: cl } = await pool.query(`SELECT id, nombre FROM clients WHERE id = $1`, [clienteId]);
+    const clienteNombre = cl[0]?.nombre ?? `Cliente ${clienteId}`;
+    const notaEvento = notas
+      ? `${motivoNorm} — Custodio ${slotNumero} (${clienteNombre}). ${notas}`
+      : `${motivoNorm} — Custodio ${slotNumero} (${clienteNombre})`;
+
+    await pool.query(`
+      INSERT INTO eventos_rrhh (employee_id, employee_nombre, employee_dpi, tipo_evento, fecha, observaciones, notas, usuario_generador, generado_desde, cliente_nombre, puesto_nombre)
+      VALUES ($1, $2, $3, 'falta', $4::date, $5, $6, $7, 'operaciones', $8, $9)
+    `, [empleadoId, emp[0].nombre_completo, '', fechaHoy, motivoNorm, notaEvento, usuario ?? 'sistema', clienteNombre, `Custodio ${slotNumero}`]);
+
+    logger.info({ clienteId, slotNumero, empleadoId, motivo: motivoNorm }, "Falta custodia registrada");
+    res.json({ ok: true, empleado: emp[0].nombre_completo, slot: `Custodio ${slotNumero}` });
+  } catch (err) {
+    logger.error({ err }, "POST /operaciones/registrar-falta-custodia error");
+    res.status(500).json({ error: "Error al registrar falta custodia" });
   }
 });
 
@@ -691,6 +785,20 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
                AND COALESCE(slot_hoy.trabaja_hoy, TRUE) = TRUE
                AND (po.agente_id IS NOT NULL OR titular_po.id IS NOT NULL)
                THEN 'faltando'
+          -- EN_PUESTO: agente cubriendo custodia hoy (daily assignment)
+          WHEN custodia_cob.employee_id IS NOT NULL
+               AND e.estado_laboral = 'activo'
+               THEN 'en_puesto'
+          -- EN_PUESTO: agente titular custodia activo
+          WHEN custodia_tit.employee_id IS NOT NULL
+               AND e.estado_laboral = 'activo'
+               AND ev_falta.tiene_falta IS NULL
+               THEN 'en_puesto'
+          -- FALTANDO: titular custodia con falta hoy
+          WHEN custodia_tit.employee_id IS NOT NULL
+               AND e.estado_laboral = 'activo'
+               AND ev_falta.tiene_falta IS NOT NULL
+               THEN 'faltando'
           -- EN_PUESTO: agente titular y el ciclo confirma que HOY trabaja.
           WHEN (po.agente_id IS NOT NULL OR titular_po.id IS NOT NULL)
                AND e.estado_laboral = 'activo'
@@ -750,6 +858,18 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         LIMIT 1
       ) titular_po ON TRUE
       LEFT JOIN turnos t ON t.id = titular_po.tipo_turno_id
+      LEFT JOIN LATERAL (
+        SELECT ct.employee_id
+        FROM custodia_titulares ct
+        WHERE ct.employee_id = e.id AND ct.activo = TRUE
+        LIMIT 1
+      ) custodia_tit ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT cad.employee_id
+        FROM custodia_asignacion_diaria cad
+        WHERE cad.employee_id = e.id AND cad.fecha = $1::date
+        LIMIT 1
+      ) custodia_cob ON TRUE
       LEFT JOIN operational_zones oz ON oz.id = COALESCE(eoa.zona_operativa_id, titular_po.zona_operativa_id)
       LEFT JOIN LATERAL (
         SELECT er.tipo_evento, er.fecha, er.fecha_fin

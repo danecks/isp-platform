@@ -4484,6 +4484,18 @@ Por favor ingresa al sistema o responde para continuar.',
     await pool.query(`ALTER TABLE custodia_asignacion_diaria ADD COLUMN IF NOT EXISTS slot_numero INTEGER NOT NULL DEFAULT 1`);
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS custodia_asig_diaria_cliente_fecha_slot_uq ON custodia_asignacion_diaria(cliente_id, fecha, slot_numero)`);
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS custodia_asig_diaria_cliente_fecha_emp_uq ON custodia_asignacion_diaria(cliente_id, fecha, employee_id)`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS custodia_titulares (
+        id SERIAL PRIMARY KEY,
+        cliente_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+        slot_numero INTEGER NOT NULL,
+        employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        activo BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(cliente_id, slot_numero, employee_id)
+      )
+    `);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS custodia_titulares_slot_activo_uq ON custodia_titulares(cliente_id, slot_numero) WHERE activo = TRUE`);
     logger.info("Auto-migrate: CUST-03 tipo_servicio + tablas custodia verificadas/creadas");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: CUST-03 — error (no bloqueante)");
