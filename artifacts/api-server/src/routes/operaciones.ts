@@ -264,7 +264,6 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       LEFT JOIN clients cl ON cl.id = po.cliente_id
       LEFT JOIN armas arm ON arm.puesto_id = po.id AND arm.activo = TRUE
       WHERE po.activo = TRUE
-        AND COALESCE(cl.tipo_servicio, 'vigilancia') != 'custodia'
         AND (cl.fecha_inicio_contrato IS NULL
              OR cl.fecha_inicio_contrato <= COALESCE($1::date, CURRENT_DATE))
       ORDER BY po.cliente_nombre, po.orden, po.nombre
@@ -492,13 +491,68 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       }
     }
 
+    // ── Inyectar slots virtuales de custodia ────────────────────────────────────
+    const diaSemana = new Date(fechaConsultada + "T12:00:00Z").getUTCDay();
+    const { rows: custodiaClientes } = await pool.query(`
+      SELECT
+        c.id, c.nombre, c.nombre_comercial, c.fecha_inicio_contrato,
+        COALESCE(cfs.cantidad_agentes, 0) AS fuerza_hoy
+      FROM clients c
+      LEFT JOIN custodia_fuerza_semanal cfs ON cfs.cliente_id = c.id AND cfs.dia_semana = $1
+      WHERE c.tipo_servicio IN ('custodia', 'mixto')
+        AND c.estado = 'activo'
+    `, [diaSemana]);
+
+    const custodiaSlots: any[] = [];
+    for (const cl of custodiaClientes) {
+      const fuerzaHoy = Number(cl.fuerza_hoy);
+      if (fuerzaHoy <= 0) continue;
+
+      const { rows: asignaciones } = await pool.query(`
+        SELECT cad.employee_id, cad.slot_numero, cad.notas, e.nombre_completo
+        FROM custodia_asignacion_diaria cad
+        JOIN employees e ON e.id = cad.employee_id
+        WHERE cad.cliente_id = $1 AND cad.fecha = $2::date
+        ORDER BY cad.slot_numero
+      `, [cl.id, fechaConsultada]);
+
+      const asignacionMap = new Map<number, any>();
+      for (const a of asignaciones) {
+        asignacionMap.set(Number(a.slot_numero), a);
+      }
+
+      for (let i = 1; i <= fuerzaHoy; i++) {
+        const asig = asignacionMap.get(i);
+        custodiaSlots.push({
+          id: `custodia-${cl.id}-${i}`,
+          es_custodia: true,
+          slot_numero: i,
+          cliente_id: cl.id,
+          cliente_nombre: cl.nombre_comercial || cl.nombre,
+          fecha_inicio_contrato: cl.fecha_inicio_contrato,
+          nombre: `Custodio ${i}`,
+          estado: asig ? "cubierto" : "descubierto",
+          agente_id: asig?.employee_id ?? null,
+          agente_nombre: asig?.nombre_completo ?? null,
+          notas_custodia: asig?.notas ?? null,
+          titular_employee_id: null,
+          titular_nombre: null,
+          titulares: [],
+          es_par_24x24: false,
+          descanso_por_ciclo: false,
+          es_inicio_hoy: false,
+        });
+      }
+    }
+
     // Agrupar por cliente
     const mapaClientes: Record<string, {
       clienteId: number | null;
       clienteNombre: string;
       fechaInicioContrato: string | null;
       iniciaHoy: boolean;
-      puestos: PuestoFinal[];
+      tipoServicio?: string;
+      puestos: any[];
     }> = {};
 
     for (const p of puestosFinales) {
@@ -517,10 +571,60 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       mapaClientes[key].puestos.push(p);
     }
 
+    for (const cs of custodiaSlots) {
+      const key = String(cs.cliente_id);
+      if (!mapaClientes[key]) {
+        mapaClientes[key] = {
+          clienteId: cs.cliente_id,
+          clienteNombre: cs.cliente_nombre,
+          fechaInicioContrato: cs.fecha_inicio_contrato
+            ? String(cs.fecha_inicio_contrato).slice(0, 10)
+            : null,
+          iniciaHoy: false,
+          tipoServicio: "custodia",
+          puestos: [],
+        };
+      }
+      mapaClientes[key].tipoServicio = "custodia";
+      mapaClientes[key].puestos.push(cs);
+    }
+
     res.json(Object.values(mapaClientes));
   } catch (err) {
     logger.error({ err }, "GET /operaciones/tablero error");
     res.status(500).json({ error: "Error al cargar tablero" });
+  }
+});
+
+// ─── POST /api/operaciones/asignar-custodia ──────────────────────────────────
+operacionesRouter.post("/operaciones/asignar-custodia", async (req, res) => {
+  const { clienteId, slotNumero, employeeId, fecha, notas } = req.body;
+  if (!clienteId || !slotNumero) {
+    return res.status(400).json({ error: "clienteId y slotNumero son requeridos" });
+  }
+  const fechaAsig = fecha || todayGT();
+
+  try {
+    if (employeeId) {
+      await pool.query(`
+        INSERT INTO custodia_asignacion_diaria (cliente_id, fecha, employee_id, slot_numero, notas)
+        VALUES ($1, $2::date, $3, $4, $5)
+        ON CONFLICT (cliente_id, fecha, slot_numero)
+        DO UPDATE SET employee_id = $3, notas = $5
+      `, [clienteId, fechaAsig, employeeId, slotNumero, notas ?? null]);
+    } else {
+      await pool.query(`
+        DELETE FROM custodia_asignacion_diaria
+        WHERE cliente_id = $1 AND fecha = $2::date AND slot_numero = $3
+      `, [clienteId, fechaAsig, slotNumero]);
+    }
+    res.json({ ok: true });
+  } catch (err: any) {
+    if (err.code === "23505" && err.constraint?.includes("emp")) {
+      return res.status(409).json({ error: "Este agente ya está asignado a otro slot de este cliente hoy" });
+    }
+    logger.error({ err }, "[Custodias/asignar]");
+    res.status(500).json({ error: "Error al asignar custodia" });
   }
 });
 
