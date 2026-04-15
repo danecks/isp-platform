@@ -30,7 +30,7 @@ custodiasRouter.get("/custodias/dashboard", async (req, res) => {
         SELECT
           pt.employee_id,
           e.nombre_completo,
-          e.codigo,
+          e.empl_numero,
           e.estado_laboral
         FROM puesto_titulares pt
         JOIN puestos_operativos po ON po.id = pt.puesto_id
@@ -45,7 +45,7 @@ custodiasRouter.get("/custodias/dashboard", async (req, res) => {
         SELECT
           cad.employee_id,
           e.nombre_completo,
-          e.codigo,
+          e.empl_numero,
           e.estado_laboral,
           cad.notas
         FROM custodia_asignacion_diaria cad
@@ -69,12 +69,12 @@ custodiasRouter.get("/custodias/dashboard", async (req, res) => {
         titularesFaltantes: titularesFaltantes.map((t: any) => ({
           employeeId: t.employee_id,
           nombre: t.nombre_completo,
-          codigo: t.codigo,
+          codigo: t.empl_numero,
         })),
         extras: extras.map((e: any) => ({
           employeeId: e.employee_id,
           nombre: e.nombre_completo,
-          codigo: e.codigo,
+          codigo: e.empl_numero,
           notas: e.notas,
         })),
         totalAsignados: asignados.length,
@@ -82,7 +82,7 @@ custodiasRouter.get("/custodias/dashboard", async (req, res) => {
         asignaciones: asignados.map((a: any) => ({
           employeeId: a.employee_id,
           nombre: a.nombre_completo,
-          codigo: a.codigo,
+          codigo: a.empl_numero,
           notas: a.notas,
           esTitular: titularIds.has(a.employee_id),
         })),
@@ -167,7 +167,7 @@ custodiasRouter.get("/custodias/cliente/:id/asignacion", async (req, res) => {
         cad.id,
         cad.employee_id,
         e.nombre_completo,
-        e.codigo,
+        e.empl_numero,
         cad.notas,
         cad.created_at
       FROM custodia_asignacion_diaria cad
@@ -284,7 +284,7 @@ custodiasRouter.get("/custodias/cliente/:id/hoja-imprimible", async (req, res) =
       SELECT
         e.id AS employee_id,
         e.nombre_completo,
-        e.codigo AS codigo_empleado,
+        e.empl_numero AS codigo_empleado,
         arm.marca AS arma_marca,
         arm.serie AS arma_serie,
         arm.tipo AS arma_tipo,
@@ -327,12 +327,11 @@ custodiasRouter.get("/custodias/pool-disponible", async (req, res) => {
       SELECT
         e.id,
         e.nombre_completo,
-        e.codigo,
+        e.empl_numero,
         e.estado_laboral,
         e.tipo_personal
       FROM employees e
       WHERE e.estado_laboral = 'activo'
-        AND e.tipo_personal IN ('guardia', 'custodio')
         AND NOT EXISTS (
           SELECT 1 FROM custodia_asignacion_diaria cad2
           WHERE cad2.employee_id = e.id AND cad2.fecha = $1::date
