@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo, useEffect } from "react";
+import { useState, useCallback, useRef, useMemo, useEffect, Fragment } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -284,6 +284,8 @@ interface Pool {
   descansandoCiclo: Agente[];
   haciendoHE: Agente[];
   disponibles: Agente[];
+  disponiblesCubriendo: Agente[];
+  vacacionistasCubriendo: Agente[];
   enPuesto: Agente[];
   enSSA: Agente[];
   enDescanso: Agente[];
@@ -1201,12 +1203,13 @@ const GRUPO_CONFIG: Record<GrupoEstado, {
 
 function normalizarPoolActual(p: Pool): AgenteAgrupado[] {
   const r: AgenteAgrupado[] = [];
-  for (const a of (p.disponibles ?? []))       r.push({ id: a.id, nombre: a.nombre_completo, grupo: "disponible",  detalle: null });
-  for (const a of (p.descansandoCiclo ?? []))  r.push({ id: a.id, nombre: a.nombre_completo, grupo: "descansando", detalle: a.turno_nombre ?? null });
-  for (const a of (p.trabajando ?? []))        r.push({ id: a.id, nombre: a.nombre_completo, grupo: "en_puesto",   detalle: a.nombre_puesto_titular ?? null });
-  for (const a of (p.enDescanso ?? []))        r.push({ id: a.id, nombre: a.nombre_completo, grupo: "descansando", detalle: "Licencia" });
-  for (const a of (p.enPuesto ?? []))          r.push({ id: a.id, nombre: a.nombre_completo, grupo: "en_puesto",   detalle: a.nombre_puesto_titular ?? null });
-  for (const a of (p.enSSA ?? []))             r.push({ id: a.id, nombre: a.nombre_completo, grupo: "en_ssa",      detalle: null });
+  for (const a of (p.disponibles ?? []))              r.push({ id: a.id, nombre: a.nombre_completo, grupo: "disponible",  detalle: null });
+  for (const a of (p.disponiblesCubriendo ?? []))     r.push({ id: a.id, nombre: a.nombre_completo, grupo: "disponible",  detalle: "Cubriendo hoy" });
+  for (const a of (p.descansandoCiclo ?? []))         r.push({ id: a.id, nombre: a.nombre_completo, grupo: "descansando", detalle: a.turno_nombre ?? null });
+  for (const a of (p.trabajando ?? []))               r.push({ id: a.id, nombre: a.nombre_completo, grupo: "en_puesto",   detalle: a.nombre_puesto_titular ?? null });
+  for (const a of (p.enDescanso ?? []))               r.push({ id: a.id, nombre: a.nombre_completo, grupo: "descansando", detalle: "Licencia" });
+  for (const a of (p.enPuesto ?? []))                 r.push({ id: a.id, nombre: a.nombre_completo, grupo: "en_puesto",   detalle: a.nombre_puesto_titular ?? null });
+  for (const a of (p.enSSA ?? []))                    r.push({ id: a.id, nombre: a.nombre_completo, grupo: "en_ssa",      detalle: null });
   for (const a of [...(p.suspendidos ?? []), ...(p.faltando ?? [])]) r.push({ id: a.id, nombre: a.nombre_completo, grupo: "ausente", detalle: null });
   return r;
 }
@@ -6023,7 +6026,7 @@ export default function Operaciones() {
   } | null>(null);
   const [modalLiberar, setModalLiberar]              = useState<Puesto | null>(null);
   const [modalFalta, setModalFalta]                  = useState<{ puesto: Puesto; titularId: number; titularNombre: string } | null>(null);
-  const [poolTab, setPoolTab]                        = useState<"disponibles" | "trabajando" | "descansandoCiclo" | "haciendoHE" | "enDescanso" | "suspendidos" | "enPuesto" | "enSSA" | "faltando" | "enVacaciones">("disponibles");
+  const [poolTab, setPoolTab]                        = useState<"disponibles" | "disponiblesCubriendo" | "vacacionistasCubriendo" | "trabajando" | "descansandoCiclo" | "haciendoHE" | "enDescanso" | "suspendidos" | "enPuesto" | "enSSA" | "faltando" | "enVacaciones">("disponibles");
   const [busquedaPool, setBusquedaPool]              = useState("");
   const [busquedaPersona, setBusquedaPersona]        = useState("");
   const [colGlobal, setColGlobal]                    = useState<{ v: number; val: boolean }>({ v: 0, val: false });
@@ -6930,16 +6933,17 @@ export default function Operaciones() {
     if (busquedaPool.trim()) {
       const q = busquedaPool.toLowerCase();
       const secciones: Array<[string, Agente[]]> = [
-        ["Disponible",    pool.disponibles      ?? []],
-        ["Descanso ciclo",pool.descansandoCiclo ?? []],
-        ["Horas extra",   pool.haciendoHE       ?? []],
-        ["Trabaja hoy",   pool.trabajando       ?? []],
-        ["Faltando",      pool.faltando         ?? []],
-        ["Licencia",      pool.enDescanso       ?? []],
-        ["En puesto",     pool.enPuesto         ?? []],
-        ["En SSA",        pool.enSSA            ?? []],
-        ["Suspendido",    pool.suspendidos      ?? []],
-        ["Vacaciones",    pool.enVacaciones     ?? []],
+        ["Disponible",              pool.disponibles            ?? []],
+        ["Disp. cubriendo",         pool.disponiblesCubriendo   ?? []],
+        ["Descanso ciclo",          pool.descansandoCiclo       ?? []],
+        ["Desc/Vac cubriendo",      [...(pool.haciendoHE ?? []), ...(pool.vacacionistasCubriendo ?? [])]],
+        ["Trabaja hoy",             pool.trabajando             ?? []],
+        ["Faltando",                pool.faltando               ?? []],
+        ["Licencia",                pool.enDescanso             ?? []],
+        ["En puesto",               pool.enPuesto               ?? []],
+        ["En SSA",                  pool.enSSA                  ?? []],
+        ["Suspendido",              pool.suspendidos            ?? []],
+        ["Vacaciones",              pool.enVacaciones           ?? []],
       ];
       return secciones.flatMap(([label, lista]) =>
         lista
@@ -6950,6 +6954,9 @@ export default function Operaciones() {
           )
           .map((a) => ({ ...a, _seccionLabel: label }))
       );
+    }
+    if (poolTab === "haciendoHE") {
+      return [...(pool.haciendoHE ?? []), ...(pool.vacacionistasCubriendo ?? [])];
     }
     return pool[poolTab] ?? [];
   })();
@@ -7421,7 +7428,9 @@ export default function Operaciones() {
                   <div className="flex items-center gap-1.5 ml-2">
                     <span className="text-[10px] text-green-400 font-bold">{pool?.disponibles?.length ?? 0} libres</span>
                     <span className="text-white/15">·</span>
-                    <span className="text-[10px] text-orange-400 font-bold">{pool?.trabajando?.length ?? 0} trabajando</span>
+                    <span className="text-[10px] text-cyan-400 font-bold">{pool?.disponiblesCubriendo?.length ?? 0} disp. cubriendo</span>
+                    <span className="text-white/15">·</span>
+                    <span className="text-[10px] text-amber-300 font-bold">{(pool?.haciendoHE?.length ?? 0) + (pool?.vacacionistasCubriendo?.length ?? 0)} desc/vac cubriendo</span>
                     <span className="text-white/15">·</span>
                     <span className="text-[10px] text-blue-400 font-bold">{pool?.descansandoCiclo?.length ?? 0} descanso</span>
                   </div>
@@ -7453,31 +7462,36 @@ export default function Operaciones() {
               {!colPool && (
                 <div className="flex items-center gap-1 px-4 py-1.5 overflow-x-auto border-t border-white/5" style={{ scrollbarWidth: "none" }}>
                   {[
-                    { key: "disponibles"      as const, label: "Disponibles",    count: pool?.disponibles?.length ?? 0,      color: "text-green-400",  dot: "bg-green-400"  },
-                    { key: "trabajando"       as const, label: "Trabaja hoy",    count: pool?.trabajando?.length ?? 0,       color: "text-orange-400", dot: "bg-orange-400" },
-                    { key: "descansandoCiclo" as const, label: "Descanso ciclo", count: pool?.descansandoCiclo?.length ?? 0, color: "text-blue-400",   dot: "bg-blue-400"   },
-                    { key: "haciendoHE"       as const, label: "Horas extra",    count: pool?.haciendoHE?.length ?? 0,       color: "text-amber-300",  dot: "bg-amber-300"  },
-                    { key: "faltando"         as const, label: "Faltando",       count: pool?.faltando?.length ?? 0,         color: "text-rose-400",   dot: "bg-rose-400"   },
-                    { key: "enDescanso"       as const, label: "Licencia",       count: pool?.enDescanso?.length ?? 0,       color: "text-indigo-400", dot: "bg-indigo-400" },
-                    { key: "enPuesto"         as const, label: "En puesto",      count: pool?.enPuesto?.length ?? 0,         color: "text-teal-400",   dot: "bg-teal-400"   },
-                    { key: "enSSA"            as const, label: "En SSA",         count: pool?.enSSA?.length ?? 0,            color: "text-amber-400",  dot: "bg-amber-400"  },
-                    { key: "suspendidos"      as const, label: "Suspendidos",    count: pool?.suspendidos?.length ?? 0,      color: "text-red-400",    dot: "bg-red-400"    },
-                    { key: "enVacaciones"     as const, label: "Vacaciones",     count: pool?.enVacaciones?.length ?? 0,     color: "text-violet-400", dot: "bg-violet-400" },
-                  ].map(({ key, label, count, color, dot }) => (
-                    <button
-                      key={key}
-                      onClick={() => setPoolTab(key)}
-                      className={`shrink-0 flex items-center gap-1.5 text-xs px-3 py-1 rounded-lg transition-colors whitespace-nowrap ${
-                        poolTab === key
-                          ? "bg-white/8 text-white"
-                          : "text-white/35 hover:text-white/65"
-                      }`}
-                    >
-                      {poolTab === key && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />}
-                      {label}
-                      <span className={`text-[10px] font-bold ${color}`}>{count}</span>
-                    </button>
-                  ))}
+                    { key: "disponibles"             as const, label: "Disponibles",          count: pool?.disponibles?.length ?? 0,              color: "text-green-400",   dot: "bg-green-400",   sep: true  },
+                    { key: "disponiblesCubriendo"    as const, label: "Disp. cubriendo",      count: pool?.disponiblesCubriendo?.length ?? 0,     color: "text-cyan-400",    dot: "bg-cyan-400",    sep: false },
+                    { key: "haciendoHE"              as const, label: "Desc/Vac cubriendo",   count: (pool?.haciendoHE?.length ?? 0) + (pool?.vacacionistasCubriendo?.length ?? 0), color: "text-amber-300", dot: "bg-amber-300", sep: false },
+                    { key: "trabajando"              as const, label: "Trabaja hoy",          count: pool?.trabajando?.length ?? 0,               color: "text-orange-400",  dot: "bg-orange-400",  sep: true  },
+                    { key: "descansandoCiclo"        as const, label: "Descanso ciclo",       count: pool?.descansandoCiclo?.length ?? 0,         color: "text-blue-400",    dot: "bg-blue-400",    sep: false },
+                    { key: "faltando"                as const, label: "Faltando",             count: pool?.faltando?.length ?? 0,                 color: "text-rose-400",    dot: "bg-rose-400",    sep: true  },
+                    { key: "enDescanso"              as const, label: "Licencia",             count: pool?.enDescanso?.length ?? 0,               color: "text-indigo-400",  dot: "bg-indigo-400",  sep: false },
+                    { key: "enPuesto"                as const, label: "En puesto",            count: pool?.enPuesto?.length ?? 0,                 color: "text-teal-400",    dot: "bg-teal-400",    sep: false },
+                    { key: "enSSA"                   as const, label: "En SSA",               count: pool?.enSSA?.length ?? 0,                    color: "text-amber-400",   dot: "bg-amber-400",   sep: false },
+                    { key: "suspendidos"             as const, label: "Suspendidos",          count: pool?.suspendidos?.length ?? 0,              color: "text-red-400",     dot: "bg-red-400",     sep: false },
+                    { key: "enVacaciones"            as const, label: "Vacaciones",           count: pool?.enVacaciones?.length ?? 0,             color: "text-violet-400",  dot: "bg-violet-400",  sep: false },
+                  ].map(({ key, label, count, color, dot, sep }, idx) => {
+                    return (
+                      <Fragment key={key}>
+                        {sep && idx > 0 && <span className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />}
+                        <button
+                          onClick={() => setPoolTab(key)}
+                          className={`shrink-0 flex items-center gap-1.5 text-xs px-3 py-1 rounded-lg transition-colors whitespace-nowrap ${
+                            poolTab === key
+                              ? "bg-white/8 text-white"
+                              : "text-white/35 hover:text-white/65"
+                          }`}
+                        >
+                          {poolTab === key && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />}
+                          {label}
+                          <span className={`text-[10px] font-bold ${color}`}>{count}</span>
+                        </button>
+                      </Fragment>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -7548,7 +7562,9 @@ export default function Operaciones() {
                   : poolTab === "disponibles"      ? "No hay agentes genuinamente disponibles hoy" :
                     poolTab === "trabajando"       ? "Ningún agente en turno de trabajo hoy" :
                     poolTab === "descansandoCiclo" ? "Ningún agente en descanso de ciclo hoy" :
-                    poolTab === "haciendoHE"       ? "Ningún agente de descanso está haciendo horas extra hoy" :
+                    poolTab === "disponiblesCubriendo" ? "Ningún disponible está cubriendo un puesto hoy" :
+                    poolTab === "vacacionistasCubriendo" ? "Ningún vacacionista está cubriendo hoy" :
+                    poolTab === "haciendoHE"       ? "Ningún descansero o vacacionista está cubriendo hoy" :
                     poolTab === "faltando"         ? "No hay ausencias registradas hoy" :
                     poolTab === "enDescanso"       ? "No hay agentes en licencia" :
                     poolTab === "enPuesto"         ? "Ningún agente está en puesto activo" :
@@ -7592,18 +7608,19 @@ export default function Operaciones() {
               <div className="flex gap-2 p-3 overflow-x-auto min-h-[80px]">
                 {poolActual.map((agente) => {
                   const seccion = agente._seccionLabel;
-                  const seccionDeshabilitada = seccion === "En puesto" || seccion === "En SSA" || seccion === "Faltando" || seccion === "Vacaciones" || seccion === "Horas extra";
+                  const seccionDeshabilitada = seccion === "En puesto" || seccion === "En SSA" || seccion === "Faltando" || seccion === "Vacaciones" || seccion === "Desc/Vac cubriendo";
                   const seccionColor: Record<string, string> = {
-                    "Disponible":     "bg-emerald-500/20 text-emerald-300",
-                    "Descanso ciclo": "bg-blue-500/20 text-blue-300",
-                    "Horas extra":    "bg-amber-500/20 text-amber-200",
-                    "Trabaja hoy":    "bg-orange-500/20 text-orange-300",
-                    "Faltando":       "bg-rose-500/20 text-rose-300",
-                    "Licencia":       "bg-indigo-500/20 text-indigo-300",
-                    "En puesto":      "bg-teal-500/20 text-teal-300",
-                    "En SSA":         "bg-amber-500/20 text-amber-300",
-                    "Suspendido":     "bg-red-500/20 text-red-300",
-                    "Vacaciones":     "bg-violet-500/20 text-violet-300",
+                    "Disponible":          "bg-emerald-500/20 text-emerald-300",
+                    "Disp. cubriendo":     "bg-cyan-500/20 text-cyan-300",
+                    "Descanso ciclo":      "bg-blue-500/20 text-blue-300",
+                    "Desc/Vac cubriendo":  "bg-amber-500/20 text-amber-200",
+                    "Trabaja hoy":         "bg-orange-500/20 text-orange-300",
+                    "Faltando":            "bg-rose-500/20 text-rose-300",
+                    "Licencia":            "bg-indigo-500/20 text-indigo-300",
+                    "En puesto":           "bg-teal-500/20 text-teal-300",
+                    "En SSA":              "bg-amber-500/20 text-amber-300",
+                    "Suspendido":          "bg-red-500/20 text-red-300",
+                    "Vacaciones":          "bg-violet-500/20 text-violet-300",
                   };
                   return (
                     <div key={agente.id} className="shrink-0 w-52">
@@ -7624,7 +7641,7 @@ export default function Operaciones() {
                         disabled={
                           seccion
                             ? seccionDeshabilitada || fechaVistaCerrada
-                            : poolTab === "enPuesto" || poolTab === "enSSA" || poolTab === "faltando" || poolTab === "enVacaciones" || poolTab === "haciendoHE" || fechaVistaCerrada
+                            : poolTab === "enPuesto" || poolTab === "enSSA" || poolTab === "faltando" || poolTab === "enVacaciones" || poolTab === "haciendoHE" || poolTab === "disponiblesCubriendo" || poolTab === "vacacionistasCubriendo" || fechaVistaCerrada
                         }
                       />
                     </div>

@@ -1063,7 +1063,6 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
     {
       const quedanDescansando: any[] = [];
       for (const a of descansandoCiclo) {
-        // cs_trabajando_hoy solo existe en agentes del query principal (no supervisores inyectados)
         if (a.cs_trabajando_hoy === true) {
           haciendoHE.push({ ...a, disponibleHE: false, haciendo_he: true });
         } else {
@@ -1073,11 +1072,41 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       descansandoCiclo.splice(0, descansandoCiclo.length, ...quedanDescansando);
     }
 
+    // ── Separar disponibles que ya están cubriendo hoy ─────────────────────────
+    const disponiblesCubriendo: any[] = [];
+    {
+      const quedanDisponibles: any[] = [];
+      for (const a of disponibles) {
+        if (a.cs_trabajando_hoy === true) {
+          disponiblesCubriendo.push({ ...a, cubriendo_hoy: true });
+        } else {
+          quedanDisponibles.push(a);
+        }
+      }
+      disponibles.splice(0, disponibles.length, ...quedanDisponibles);
+    }
+
+    // ── Separar vacacionistas que están cubriendo hoy ──────────────────────────
+    const vacacionistasCubriendo: any[] = [];
+    {
+      const quedanVacaciones: any[] = [];
+      for (const a of enVacaciones) {
+        if (a.cs_trabajando_hoy === true) {
+          vacacionistasCubriendo.push({ ...a, cubriendo_hoy: true });
+        } else {
+          quedanVacaciones.push(a);
+        }
+      }
+      enVacaciones.splice(0, enVacaciones.length, ...quedanVacaciones);
+    }
+
     res.json({
       trabajando,
       descansandoCiclo,
       haciendoHE,
       disponibles,
+      disponiblesCubriendo,
+      vacacionistasCubriendo,
       enPuesto,
       enSSA,
       enDescanso,
