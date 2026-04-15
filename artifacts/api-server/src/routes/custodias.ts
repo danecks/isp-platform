@@ -18,7 +18,7 @@ custodiasRouter.get("/custodias/dashboard", async (req, res) => {
       FROM clients c
       LEFT JOIN custodia_fuerza_semanal cfs
         ON cfs.cliente_id = c.id AND cfs.dia_semana = $1
-      WHERE c.tipo_servicio = 'custodia'
+      WHERE c.tipo_servicio IN ('custodia', 'mixto')
         AND c.estado = 'activo'
       ORDER BY c.nombre
     `, [diaSemana]);
