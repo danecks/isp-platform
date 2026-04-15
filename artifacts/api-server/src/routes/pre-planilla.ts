@@ -64,6 +64,10 @@ const QUERY_CONSOLIDADO = `
     e.supervisor_nombre,
     COALESCE(e.tipo_personal, 'guardia')                                        AS tipo_personal,
     COALESCE(e.frecuencia_pago, 'quincenal')                                    AS frecuencia_pago,
+    COALESCE(e.bonificacion_incentivo, 250)                                      AS bon_incentivo_base,
+    COALESCE(e.bonificacion_1, 0)                                                AS bon_1_base,
+    COALESCE(e.bonificacion_2, 0)                                                AS bon_2_base,
+    COALESCE(e.bonificacion_3, 0)                                                AS bon_3_base,
 
     -- Métricas del período desde novedades_nomina_diarias
     COUNT(DISTINCT n.fecha)                                                     AS dias_cerrados,
@@ -287,6 +291,7 @@ const QUERY_CONSOLIDADO = `
     e.id, e.nombre_completo, e.dpi, e.sueldo_base, e.tipo_jornada,
     e.dia_descanso, e.horas_contrato, e.estado_laboral, e.puesto,
     e.area, e.sede, e.supervisor_nombre, e.frecuencia_pago,
+    e.bonificacion_incentivo, e.bonificacion_1, e.bonificacion_2, e.bonificacion_3,
     e.aplica_igss_general, e.estado_igss, e.fecha_inicio_igss,
     po.aplica_igss, po.regimen_igss, po.cliente_nombre,
     pr.estado, pr.observaciones, pr.revisado_por, pr.updated_at,

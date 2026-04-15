@@ -61,6 +61,9 @@ interface LineaLibro {
   desc_faltas:            number;
   valor_he:               number;
   bonificacion_incentivo: number;
+  bonificacion_1:         number;
+  bonificacion_2:         number;
+  bonificacion_3:         number;
   desc_septimo:           number;
   total_bruto:            number;
   igss_trabajador:        number;
@@ -81,7 +84,7 @@ function exportarCSV(lineas: LineaLibro[], filename: string) {
     "Nombre Completo", "DPI", "Puesto", "Sede", "Cliente",
     "Días Contrato", "Días Trabajados", "Faltas", "Suspensiones", "Horas Extra",
     "Sueldo Base", "Sueldo Período", "Desc. Faltas", "Valor HE",
-    "Bonificación Incentivo", "Desc. Séptimo", "Total Bruto",
+    "Bon. Incentivo", "Bon. 1", "Bon. 2", "Bon. 3", "Desc. Séptimo", "Total Bruto",
     "IGSS Trabajador", "Anticipos", "Otros Descuentos", "Total Neto",
   ];
   const filas = lineas.map((l, i) => [

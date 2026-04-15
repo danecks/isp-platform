@@ -4440,5 +4440,15 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: PRUEBA-01 — error (no bloqueante)");
   }
 
+  // ── BON-01: columnas bonificacion_1/2/3 en planilla_lineas ──
+  try {
+    await pool.query(`ALTER TABLE planilla_lineas ADD COLUMN IF NOT EXISTS bonificacion_1 NUMERIC(10,2) DEFAULT 0`);
+    await pool.query(`ALTER TABLE planilla_lineas ADD COLUMN IF NOT EXISTS bonificacion_2 NUMERIC(10,2) DEFAULT 0`);
+    await pool.query(`ALTER TABLE planilla_lineas ADD COLUMN IF NOT EXISTS bonificacion_3 NUMERIC(10,2) DEFAULT 0`);
+    logger.info("Auto-migrate: BON-01 columnas bonificacion_1/2/3 en planilla_lineas verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: BON-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

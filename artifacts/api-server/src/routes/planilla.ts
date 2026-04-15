@@ -123,13 +123,30 @@ function calcularLinea(
     diasTrabajados:         toInt(row.dias_trabajados),
     diasVacaciones:         toInt(row.dias_vacaciones),
     diasPermisoConGoce:     toInt(row.dias_permiso_con_goce),
-    diasIncapacidadConGoce: toInt(row.dias_incapacidad),  // usar total incapacidad hasta tener columna separada
+    diasIncapacidadConGoce: toInt(row.dias_incapacidad),
   });
+
+  const bonProporcional = (base: number) => {
+    if (base <= 0) return 0;
+    const d1 = new Date(desde + "T00:00:00Z");
+    const d2 = new Date(hasta + "T00:00:00Z");
+    const diasPeriodo = Math.round((d2.getTime() - d1.getTime()) / 86400000) + 1;
+    if (diasPeriodo <= 0) return 0;
+    const diasPagables = Math.min(diasPeriodo, toInt(row.dias_trabajados) + toInt(row.dias_vacaciones) + toInt(row.dias_permiso_con_goce) + toInt(row.dias_incapacidad));
+    const mensual = base;
+    const diario = mensual / 30;
+    return parseFloat((diario * diasPagables).toFixed(2));
+  };
+
+  const bonificacion_1 = bonProporcional(toNum(row.bon_1_base));
+  const bonificacion_2 = bonProporcional(toNum(row.bon_2_base));
+  const bonificacion_3 = bonProporcional(toNum(row.bon_3_base));
 
   const isr = calcularISRQuincenal(sb, igssData.aplica_igss);
 
   const uniforme = parseFloat(uniformeMonto.toFixed(2));
-  const totalNeto = parseFloat(Math.max(0, totalBrutoRnd - igssT - isr + bonificacion_incentivo - anticipo - uniforme).toFixed(2));
+  const totalBonificaciones = bonificacion_incentivo + bonificacion_1 + bonificacion_2 + bonificacion_3;
+  const totalNeto = parseFloat(Math.max(0, totalBrutoRnd - igssT - isr + totalBonificaciones - anticipo - uniforme).toFixed(2));
 
   return {
     sueldo_base:      sb,
@@ -152,6 +169,9 @@ function calcularLinea(
     igss_patronal:    igssP,
     isr,
     bonificacion_incentivo,
+    bonificacion_1,
+    bonificacion_2,
+    bonificacion_3,
     total_neto:       totalNeto,
     aplica_igss:           igssData.aplica_igss,
     motivo_exclusion_igss: igssData.motivo_exclusion_igss,
@@ -365,6 +385,9 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         total_igss_patronal:          acc.total_igss_patronal          + l.igss_patronal,
         total_isr:                    acc.total_isr                    + l.isr,
         total_bonificacion_incentivo: acc.total_bonificacion_incentivo + l.bonificacion_incentivo,
+        total_bonificacion_1:         acc.total_bonificacion_1         + l.bonificacion_1,
+        total_bonificacion_2:         acc.total_bonificacion_2         + l.bonificacion_2,
+        total_bonificacion_3:         acc.total_bonificacion_3         + l.bonificacion_3,
         total_anticipos:              acc.total_anticipos              + l.anticipos,
         total_neto:                   acc.total_neto                   + l.total_neto,
       }),
@@ -372,7 +395,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         total_sueldo_periodo: 0, total_desc_faltas: 0, total_desc_septimo: 0,
         total_valor_he: 0, total_bruto: 0,
         total_igss_trabajador: 0, total_igss_patronal: 0, total_isr: 0,
-        total_bonificacion_incentivo: 0,
+        total_bonificacion_incentivo: 0, total_bonificacion_1: 0, total_bonificacion_2: 0, total_bonificacion_3: 0,
         total_anticipos: 0, total_neto: 0,
       }
     );
@@ -458,11 +481,13 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
            dias_trabajados, faltas, suspensiones, horas_trabajadas, horas_extra,
            sueldo_periodo, desc_faltas, desc_septimo, valor_he, total_bruto, anticipos,
            aplica_igss, motivo_exclusion_igss,
-           igss_trabajador, igss_patronal, isr, bonificacion_incentivo, otros_descuentos, total_neto,
+           igss_trabajador, igss_patronal, isr, bonificacion_incentivo,
+           bonificacion_1, bonificacion_2, bonificacion_3,
+           otros_descuentos, total_neto,
            anticipo_ids, novedad_ids, segmento_ids,
            revision_estado, observaciones_rrhh,
            descuentos_uniforme, uniforme_cuota_ids)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41)
       `, [
         planillaId, l.employee_id, l.nombre_completo, l.dpi, l.puesto, l.sede, l.cliente,
         l.tipo_jornada, l.horas_contrato, l.frecuencia_pago, l.sueldo_base, l.periodo_dias,
@@ -470,7 +495,9 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         l.horas_trabajadas, l.horas_extra,
         l.sueldo_periodo, l.desc_faltas, l.desc_septimo, l.valor_he, l.total_bruto, l.anticipos,
         l.aplica_igss, l.motivo_exclusion_igss,
-        l.igss_trabajador, l.igss_patronal, l.isr, l.bonificacion_incentivo, l.otros_descuentos, l.total_neto,
+        l.igss_trabajador, l.igss_patronal, l.isr, l.bonificacion_incentivo,
+        l.bonificacion_1, l.bonificacion_2, l.bonificacion_3,
+        l.otros_descuentos, l.total_neto,
         JSON.stringify(anticipoIds), JSON.stringify([]), JSON.stringify([]),
         l.revision_estado, l.observaciones_rrhh,
         l.descuentos_uniforme, JSON.stringify(uniformeCuotaIds),
