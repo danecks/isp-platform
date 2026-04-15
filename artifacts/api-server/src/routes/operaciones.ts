@@ -545,9 +545,20 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         asignacionMap.set(Number(a.slot_numero), a);
       }
 
+      const { rows: armasSlots } = await pool.query(`
+        SELECT a.id AS arma_id, a.codigo AS arma_codigo, a.tipo AS arma_tipo, a.marca AS arma_marca, a.serie AS arma_serie, a.custodia_slot_numero
+        FROM armas a
+        WHERE a.custodia_cliente_id = $1 AND a.custodia_slot_numero IS NOT NULL AND a.activo = TRUE
+      `, [cl.id]);
+      const armaMap = new Map<number, any>();
+      for (const ar of armasSlots) {
+        armaMap.set(Number(ar.custodia_slot_numero), ar);
+      }
+
       for (let i = 1; i <= fuerzaHoy; i++) {
         const titular = titularMap.get(i) ?? null;
         const asig = asignacionMap.get(i);
+        const arma = armaMap.get(i) ?? null;
         const titularFaltando = titular && custodiaFaltaSet.has(titular.employee_id);
 
         let agente_id: number | null = null;
@@ -584,11 +595,18 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
           titular_nombre: titular?.nombre ?? null,
           titular_faltando: titularFaltando || false,
           es_relevo_dia,
+          arma_id: arma?.arma_id ?? null,
+          arma_codigo: arma?.arma_codigo ?? null,
+          arma_tipo: arma?.arma_tipo ?? null,
+          arma_marca: arma?.arma_marca ?? null,
+          arma_serie: arma?.arma_serie ?? null,
           titulares: [],
           es_par_24x24: false,
           descanso_por_ciclo: false,
           es_inicio_hoy: false,
           tiene_slot_vacio: !titular,
+          jornada: "12h",
+          horas_trabajo: 12,
         });
       }
     }
@@ -719,6 +737,48 @@ operacionesRouter.post("/operaciones/registrar-falta-custodia", async (req, res)
   } catch (err) {
     logger.error({ err }, "POST /operaciones/registrar-falta-custodia error");
     res.status(500).json({ error: "Error al registrar falta custodia" });
+  }
+});
+
+// ─── POST /api/operaciones/cambiar-titular-custodia ──────────────────────────
+operacionesRouter.post("/operaciones/cambiar-titular-custodia", async (req, res) => {
+  const { clienteId, slotNumero, nuevoTitularId, anteriorTitularId, motivo, notas, usuario } = req.body;
+  if (!clienteId || !slotNumero || !nuevoTitularId) {
+    return res.status(400).json({ error: "clienteId, slotNumero y nuevoTitularId son requeridos" });
+  }
+  const { rows: empCheck } = await pool.query(`SELECT id FROM employees WHERE id = $1 AND estado_laboral = 'activo'`, [nuevoTitularId]);
+  if (empCheck.length === 0) {
+    return res.status(400).json({ error: "El agente no existe o no está activo" });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `UPDATE custodia_titulares SET activo = FALSE WHERE cliente_id = $1 AND slot_numero = $2 AND activo = TRUE`,
+      [clienteId, slotNumero]
+    );
+    await client.query(
+      `INSERT INTO custodia_titulares (cliente_id, slot_numero, employee_id) VALUES ($1, $2, $3)
+       ON CONFLICT (cliente_id, slot_numero, employee_id) DO UPDATE SET activo = TRUE`,
+      [clienteId, slotNumero, nuevoTitularId]
+    );
+    const fechaHoy = todayGT();
+    await client.query(
+      `DELETE FROM custodia_asignacion_diaria WHERE cliente_id = $1 AND fecha = $2::date AND slot_numero = $3`,
+      [clienteId, fechaHoy, slotNumero]
+    );
+    await client.query("COMMIT");
+    logger.info({ clienteId, slotNumero, nuevoTitularId, anteriorTitularId }, "Titular custodia cambiado");
+    res.json({ ok: true });
+  } catch (err: any) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (err.code === "23505") {
+      return res.status(409).json({ error: "Este agente ya es titular de otro slot" });
+    }
+    logger.error({ err }, "POST /operaciones/cambiar-titular-custodia error");
+    res.status(500).json({ error: "Error al cambiar titular" });
+  } finally {
+    client.release();
   }
 });
 
@@ -2955,8 +3015,52 @@ operacionesRouter.get("/operaciones/cierre-hoy", async (req, res) => {
     `, [fechaActivaISO]);
     const puestosSinTramos = sinSegmentos[0]?.cantidad ?? 0;
 
+    let totalCustodiaSlots = 0;
+    let custodiaCubiertos = 0;
+    try {
+      const diaSemCierre = new Date(fechaActivaISO + 'T12:00:00Z').getUTCDay();
+      const { rows: custCl } = await pool.query(`
+        SELECT c.id, COALESCE(cfs.cantidad_agentes, 0) AS fuerza
+        FROM clients c
+        LEFT JOIN custodia_fuerza_semanal cfs ON cfs.cliente_id = c.id AND cfs.dia_semana = $1
+        WHERE c.estado = 'activo' AND c.tipo_servicio IN ('custodia','mixto')
+      `, [diaSemCierre]);
+
+      for (const cl of custCl) {
+        const f = Number(cl.fuerza) || 0;
+        if (f === 0) continue;
+        totalCustodiaSlots += f;
+
+        const { rows: titR } = await pool.query(
+          `SELECT slot_numero, employee_id FROM custodia_titulares WHERE cliente_id = $1 AND activo = TRUE`, [cl.id]
+        );
+        const titMap = new Map<number, number>();
+        for (const t of titR) titMap.set(Number(t.slot_numero), Number(t.employee_id));
+
+        const { rows: asigR } = await pool.query(
+          `SELECT slot_numero FROM custodia_asignacion_diaria WHERE cliente_id = $1 AND fecha = $2::date`, [cl.id, fechaActivaISO]
+        );
+        const asigSet = new Set(asigR.map((a: any) => Number(a.slot_numero)));
+
+        const { rows: faltR } = await pool.query(
+          `SELECT employee_id FROM eventos_rrhh WHERE tipo_evento = 'falta' AND DATE(fecha) = $1::date AND estado != 'anulado'`, [fechaActivaISO]
+        );
+        const faltSet = new Set(faltR.map((r: any) => Number(r.employee_id)));
+
+        for (let i = 1; i <= f; i++) {
+          const titEmp = titMap.get(i);
+          if (asigSet.has(i)) { custodiaCubiertos++; }
+          else if (titEmp && !faltSet.has(titEmp)) { custodiaCubiertos++; }
+        }
+      }
+    } catch (custErr) {
+      logger.warn({ custErr }, "cierre-hoy: error contando custodia (no bloqueante)");
+    }
+    const custodiaDescubiertos = totalCustodiaSlots - custodiaCubiertos;
+
     const advertencias: string[] = [];
     if (descubiertos > 0)     advertencias.push(`${descubiertos} puesto${descubiertos !== 1 ? 's' : ''} descubierto${descubiertos !== 1 ? 's' : ''}`);
+    if (custodiaDescubiertos > 0) advertencias.push(`${custodiaDescubiertos} slot${custodiaDescubiertos !== 1 ? 's' : ''} de custodia descubierto${custodiaDescubiertos !== 1 ? 's' : ''}`);
     if (relevossinMotivo > 0) advertencias.push(`${relevossinMotivo} relevo${relevossinMotivo !== 1 ? 's' : ''} sin motivo registrado`);
     if (puestosSinTramos > 0) advertencias.push(`${puestosSinTramos} puesto${puestosSinTramos !== 1 ? 's' : ''} cubierto${puestosSinTramos !== 1 ? 's' : ''} sin tramos de cobertura registrados`);
 
@@ -3012,6 +3116,9 @@ operacionesRouter.get("/operaciones/cierre-hoy", async (req, res) => {
         cubiertosPorRelevo,
         ausencias,
         horasExtra: 0,
+        totalCustodiaSlots,
+        custodiaCubiertos,
+        custodiaDescubiertos,
       },
       advertencias,
       diasPendientesCierre,
@@ -3446,6 +3553,92 @@ operacionesRouter.post("/operaciones/cierre", async (req, res) => {
     const cubiertosPorTitular = snapshotPuestos.filter((p: any) => p.agente_id && p.agente_id === p.titular_employee_id).length;
     const cubiertosPorRelevo  = snapshotPuestos.filter((p: any) => p.agente_id && p.agente_id !== p.titular_employee_id).length;
 
+    // ── Snapshot de custodia slots ──────────────────────────────────────────
+    let snapshotCustodias: any[] = [];
+    try {
+      const diaSemana = new Date(fechaACerrarISO + 'T12:00:00Z').getUTCDay();
+
+      const { rows: custClients } = await pool.query(`
+        SELECT c.id, c.nombre, c.nombre_comercial, c.tipo_servicio,
+               COALESCE(cfs.cantidad_agentes, 0) AS fuerza_hoy
+        FROM clients c
+        LEFT JOIN custodia_fuerza_semanal cfs ON cfs.cliente_id = c.id AND cfs.dia_semana = $1
+        WHERE c.estado = 'activo' AND c.tipo_servicio IN ('custodia','mixto')
+      `, [diaSemana]);
+
+      for (const cl of custClients) {
+        const fuerza = Number(cl.fuerza_hoy) || 0;
+        if (fuerza === 0) continue;
+
+        const { rows: titRows } = await pool.query(
+          `SELECT slot_numero, employee_id, (SELECT nombre_completo FROM employees WHERE id = ct.employee_id) AS nombre
+           FROM custodia_titulares ct WHERE cliente_id = $1 AND activo = TRUE`,
+          [cl.id]
+        );
+        const titMap = new Map<number, any>();
+        for (const t of titRows) titMap.set(Number(t.slot_numero), t);
+
+        const { rows: asigRows } = await pool.query(
+          `SELECT cad.slot_numero, cad.employee_id, e.nombre_completo
+           FROM custodia_asignacion_diaria cad
+           JOIN employees e ON e.id = cad.employee_id
+           WHERE cad.cliente_id = $1 AND cad.fecha = $2::date`,
+          [cl.id, fechaACerrarISO]
+        );
+        const asigMap = new Map<number, any>();
+        for (const a of asigRows) asigMap.set(Number(a.slot_numero), a);
+
+        const { rows: faltaRows } = await pool.query(
+          `SELECT employee_id FROM eventos_rrhh
+           WHERE tipo_evento = 'falta' AND DATE(fecha) = $1::date AND estado != 'anulado'`,
+          [fechaACerrarISO]
+        );
+        const faltaSet = new Set(faltaRows.map((f: any) => Number(f.employee_id)));
+
+        for (let i = 1; i <= fuerza; i++) {
+          const tit = titMap.get(i);
+          const asig = asigMap.get(i);
+          const titFaltando = tit && faltaSet.has(Number(tit.employee_id));
+
+          let agente_id: number | null = null;
+          let agente_nombre: string | null = null;
+          let estado = 'descubierto';
+          let es_relevo = false;
+
+          if (asig) {
+            agente_id = asig.employee_id;
+            agente_nombre = asig.nombre_completo;
+            estado = 'cubierto';
+            if (tit && Number(asig.employee_id) !== Number(tit.employee_id)) es_relevo = true;
+          } else if (tit && !titFaltando) {
+            agente_id = tit.employee_id;
+            agente_nombre = tit.nombre;
+            estado = 'cubierto';
+          }
+
+          snapshotCustodias.push({
+            id: `custodia-${cl.id}-${i}`,
+            es_custodia: true,
+            slot_numero: i,
+            cliente_id: cl.id,
+            cliente_nombre: cl.nombre_comercial || cl.nombre,
+            estado,
+            agente_id,
+            agente_nombre,
+            titular_employee_id: tit?.employee_id ?? null,
+            titular_nombre: tit?.nombre ?? null,
+            titular_faltando: titFaltando || false,
+            es_relevo_dia: es_relevo,
+          });
+        }
+      }
+    } catch (custErr) {
+      logger.warn({ custErr }, "Cierre: error al generar snapshot custodia (no bloqueante)");
+    }
+
+    const totalCustodiaSlots = snapshotCustodias.length;
+    const custodiaCubiertos  = snapshotCustodias.filter((s: any) => s.estado === 'cubierto').length;
+
     // Movimientos de la fecha cerrada (históricos)
     const { rows: movDia } = await pool.query(`
       SELECT tipo, motivo, agente_saliente_nombre, agente_entrante_nombre,
@@ -3461,6 +3654,10 @@ operacionesRouter.post("/operaciones/cierre", async (req, res) => {
       cubiertosPorTitular, cubiertosPorRelevo,
       ausencias, horasExtra: 0,
       snapshotPuestos,
+      snapshotCustodias,
+      totalCustodiaSlots,
+      custodiaCubiertos,
+      custodiaDescubiertos: totalCustodiaSlots - custodiaCubiertos,
       movimientosHoy:   movDia,
       fechaCierre:      new Date().toISOString(),
       retroactivo:      esRetroactivo,

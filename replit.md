@@ -54,7 +54,7 @@ The project uses a pnpm workspace monorepo, organizing deployable applications (
 - **Labor Benefits:** Manages "Prestaciones Laborales" including liquidation processes and probation period tracking, impacting payroll and IGSS calculations.
 - **Operational Planning:** "Plantilla de Turnos" provides a weekly shift schedule grid with support for full and half-shifts.
 - **Payroll Generation:** Functionality for calculating Quincenal ISR and generating IGSS payroll TXT files in the official v2.2.0 format.
-- **Custody Management:** Integrated "Custodias" module allows managing custody clients and their specific operational slots directly within the main operational board.
+- **Custody Management:** Integrated "Custodias" module allows managing custody clients and their specific operational slots directly within the main operational board. Custodia slots appear in the pizarrón with truck icons (🚛), support permanent titulares, falta registration, relevo coverage, weapon inheritance per slot, and are included in the daily cierre snapshot with coverage stats. Endpoints: `asignar-custodia`, `registrar-falta-custodia`, `cambiar-titular-custodia`. Arma-slot binding via `armas.custodia_cliente_id` + `armas.custodia_slot_numero`.
 - **Assignment History:** Provides a detailed history of employee assignments, including titularships and daily coverage.
 
 ## External Dependencies

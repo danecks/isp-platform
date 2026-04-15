@@ -4496,6 +4496,9 @@ Por favor ingresa al sistema o responde para continuar.',
       )
     `);
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS custodia_titulares_slot_activo_uq ON custodia_titulares(cliente_id, slot_numero) WHERE activo = TRUE`);
+    await pool.query(`ALTER TABLE armas ADD COLUMN IF NOT EXISTS custodia_cliente_id INTEGER REFERENCES clients(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE armas ADD COLUMN IF NOT EXISTS custodia_slot_numero INTEGER`);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS armas_custodia_slot_uq ON armas(custodia_cliente_id, custodia_slot_numero) WHERE custodia_cliente_id IS NOT NULL AND custodia_slot_numero IS NOT NULL`);
     logger.info("Auto-migrate: CUST-03 tipo_servicio + tablas custodia verificadas/creadas");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: CUST-03 — error (no bloqueante)");

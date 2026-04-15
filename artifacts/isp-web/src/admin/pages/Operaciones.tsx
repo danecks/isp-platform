@@ -76,6 +76,7 @@ interface Puesto {
   arma_id?: number | null;
   arma_codigo?: string | null;
   arma_tipo?: string | null;
+  arma_marca?: string | null;
   /** Tipo de puesto: normal (operativo) o custodia */
   tipo_puesto?: "normal" | "custodia" | null;
   /** El agente asignado tiene un segmento activo HOY dentro de las horas esperadas del turno */
@@ -3517,10 +3518,15 @@ function DroppableCustodiaSlot({
     >
       <div className="flex items-center gap-2">
         <Truck className={`w-3.5 h-3.5 shrink-0 ${
-          cubierto ? (esRelevo ? "text-amber-400" : "text-amber-400") : titularFaltando ? "text-red-400" : "text-white/20"
+          cubierto ? "text-amber-400" : titularFaltando ? "text-red-400" : "text-white/20"
         }`} />
         <div className="flex-1 min-w-0">
-          <p className="text-[10px] text-white/40 font-medium">Custodio {puesto.slot_numero}</p>
+          <div className="flex items-center gap-1">
+            <p className="text-[10px] text-white/40 font-medium">Custodio {puesto.slot_numero}</p>
+            {puesto.arma_codigo && (
+              <span className="text-[8px] bg-white/8 text-white/50 px-1 py-0.5 rounded font-mono">{puesto.arma_codigo}</span>
+            )}
+          </div>
           {cubierto ? (
             <>
               <p className="text-xs text-white font-semibold truncate">{puesto.agente_nombre}</p>
@@ -3540,9 +3546,14 @@ function DroppableCustodiaSlot({
           ) : (
             <p className="text-[11px] text-white/25 italic">Sin asignar</p>
           )}
+          {puesto.arma_codigo && puesto.arma_tipo && (
+            <p className="text-[8px] text-white/30 truncate mt-0.5">
+              {puesto.arma_tipo}{puesto.arma_marca ? ` ${puesto.arma_marca}` : ""}{(puesto as any).arma_serie ? ` · S: ${(puesto as any).arma_serie}` : ""}
+            </p>
+          )}
         </div>
         {cubierto ? (
-          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${esRelevo ? "bg-amber-400" : "bg-amber-400"}`} />
+          <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
         ) : titularFaltando ? (
           <div className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0 animate-pulse" />
         ) : (
@@ -5869,6 +5880,11 @@ function ModalCierre({
                 { label: "Descubiertos",        value: resumen.descubiertos,        color: resumen.descubiertos > 0 ? "text-red-400" : "text-white/30" },
                 { label: "Ausencias",           value: resumen.ausencias,           color: resumen.ausencias > 0 ? "text-orange-400" : "text-white/30" },
                 { label: "Horas extra",         value: resumen.horasExtra,          color: "text-blue-400" },
+                ...((resumen as any).totalCustodiaSlots > 0 ? [
+                  { label: "Custodia slots", value: (resumen as any).totalCustodiaSlots, color: "text-amber-400" },
+                  { label: "Custodia cubiertos", value: (resumen as any).custodiaCubiertos ?? 0, color: "text-amber-300" },
+                  { label: "Custodia desc.", value: (resumen as any).custodiaDescubiertos ?? 0, color: ((resumen as any).custodiaDescubiertos ?? 0) > 0 ? "text-red-400" : "text-white/30" },
+                ] : []),
               ].map(({ label, value, color }) => (
                 <div key={label} className="bg-[#0c1929] border border-white/6 rounded-xl p-2.5 text-center">
                   <p className={`text-xl font-bold leading-none ${color}`}>{value}</p>
@@ -6568,13 +6584,17 @@ export default function Operaciones() {
   }
 
   async function asignarCustodia(puesto: Puesto, agente: Agente) {
+    const tieneTitular = !!puesto.titular_employee_id;
+
+    if (tieneTitular) {
+      setModalSustitucion({ puesto, agente });
+      return;
+    }
+
     try {
       const idParts = String(puesto.id).split("-");
       const clienteId = parseInt(idParts[1]);
       const slotNumero = parseInt(idParts[2]);
-      const tieneTitular = !!puesto.titular_employee_id;
-      const titularFaltando = (puesto as any).titular_faltando === true;
-      const soloCobertura = tieneTitular && (titularFaltando || puesto.agente_id !== puesto.titular_employee_id);
 
       const resp = await fetch(`${API_BASE}/operaciones/asignar-custodia`, {
         method: "POST",
@@ -6584,7 +6604,6 @@ export default function Operaciones() {
           slotNumero,
           employeeId: agente.id,
           fecha: fechaVista || undefined,
-          soloCobertura,
         }),
       });
       if (!resp.ok) {
@@ -6593,10 +6612,7 @@ export default function Operaciones() {
         return;
       }
       const result = await resp.json();
-      const msg = result.esTitular
-        ? `${agente.nombre_completo} asignado como titular — Custodio ${slotNumero}`
-        : `${agente.nombre_completo} cubriendo Custodio ${slotNumero}`;
-      toast({ title: "Asignado", description: msg });
+      toast({ title: "Titular asignado", description: `${agente.nombre_completo} → Custodio ${slotNumero}` });
       qc.invalidateQueries({ queryKey: ["tablero"] });
       qc.invalidateQueries({ queryKey: ["pool"] });
     } catch {
@@ -6819,6 +6835,62 @@ export default function Operaciones() {
     const { puesto, agente } = modalSustitucion;
 
     try {
+      if (puesto.es_custodia) {
+        const idParts = String(puesto.id).split("-");
+        const clienteId = parseInt(idParts[1]);
+        const slotNumero = parseInt(idParts[2]);
+
+        if (tipoSustitucion === "reasignacion") {
+          await apiPost(`${API_BASE}/operaciones/cambiar-titular-custodia`, {
+            clienteId,
+            slotNumero,
+            nuevoTitularId: agente.id,
+            anteriorTitularId: puesto.titular_employee_id,
+            motivo: tipoNovedad ?? motivo,
+            notas: notas || undefined,
+            usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+          });
+          toast({ title: "Titular cambiado", description: `${agente.nombre_completo} es el nuevo titular de Custodio ${slotNumero}` });
+        } else {
+          if (puesto.titular_employee_id && !(puesto as any).titular_faltando) {
+            await apiPost(`${API_BASE}/operaciones/registrar-falta-custodia`, {
+              clienteId,
+              slotNumero,
+              empleadoId: puesto.titular_employee_id,
+              motivo: tipoNovedad ?? motivo,
+              notas: notas || undefined,
+              usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+              fecha: fechaVista,
+            });
+          }
+
+          const resp = await fetch(`${API_BASE}/operaciones/asignar-custodia`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              clienteId,
+              slotNumero,
+              employeeId: agente.id,
+              fecha: fechaVista || undefined,
+              soloCobertura: true,
+            }),
+          });
+          if (!resp.ok) {
+            const data = await resp.json().catch(() => ({}));
+            toast({ title: "Error", description: data.error || "Error al asignar custodia", variant: "destructive" });
+            setModalSustitucion(null);
+            return;
+          }
+          const labelNov = TIPOS_NOVEDAD.find((t) => t.value === (tipoNovedad ?? ""))?.label ?? tipoNovedad ?? motivo;
+          toast({ title: `Sustitución registrada · ${labelNov}`, description: `${puesto.titular_nombre ?? "Titular"} → ${agente.nombre_completo} en Custodio ${slotNumero}` });
+        }
+        setModalSustitucion(null);
+        setAgenteSeleccionado(null);
+        setPuestoContexto(null);
+        invalidate();
+        return;
+      }
+
       if (puesto.agente_id) {
         const resp = await apiPost(`${API_BASE}/operaciones/sustituir`, {
           puestoId: puesto.id,
