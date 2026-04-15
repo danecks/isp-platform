@@ -1314,7 +1314,57 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
       }
       const horasCalcFinal  = calcHoras(horaInicioFinal, horaFinTurno);
       const horasStandard   = 10;
-      const generaExtra     = horasCalcFinal > horasStandard;
+
+      let agenteEnDescansoOVacaciones = false;
+      try {
+        const { rows: ptRows } = await pool.query(
+          `SELECT pt.puesto_id, po.tipo_turno_id, po.fecha_inicio_ciclo::text AS fic,
+                  t.horas_trabajo::float AS ht, t.horas_descanso::float AS hd,
+                  t.nombre AS turno_nombre,
+                  ps.dias_trabajo AS slot_dias_trabajo, ps.fecha_inicio_ciclo::text AS slot_fecha_inicio
+           FROM puesto_titulares pt
+           JOIN puestos_operativos po ON po.id = pt.puesto_id
+           LEFT JOIN turnos t ON t.id = po.tipo_turno_id
+           LEFT JOIN puesto_slots ps ON ps.puesto_id = po.id AND ps.empleado_id = $1 AND ps.activo = TRUE
+           WHERE pt.employee_id = $1 AND pt.activo = TRUE
+           LIMIT 1`,
+          [agenteId]
+        );
+        if (ptRows.length > 0) {
+          const ptRow = ptRows[0];
+          const slotFechaInicio = ptRow.slot_fecha_inicio ?? ptRow.fic;
+          if (ptRow.slot_dias_trabajo && Array.isArray(ptRow.slot_dias_trabajo) && ptRow.slot_dias_trabajo.length > 0 && slotFechaInicio) {
+            const [iy,im,id2] = slotFechaInicio.slice(0,10).split("-").map(Number);
+            const [cy,cm,cd2] = fechaCobertura.split("-").map(Number);
+            const inicio = Date.UTC(iy, im-1, id2);
+            const consulta = Date.UTC(cy, cm-1, cd2);
+            const daysElapsed = Math.floor((consulta - inicio) / 86400000);
+            const cycleDay = ((daysElapsed % 14) + 14) % 14 + 1;
+            const trabaja = (ptRow.slot_dias_trabajo as number[]).includes(cycleDay);
+            agenteEnDescansoOVacaciones = !trabaja;
+          } else if (ptRow.ht && ptRow.hd && ptRow.fic) {
+            const turnoObj = { horas_trabajo: ptRow.ht, horas_descanso: ptRow.hd };
+            const estado = calcularEstadoCiclo(turnoObj as any, ptRow.fic.slice(0, 10), fechaCobertura);
+            agenteEnDescansoOVacaciones = estado.descansoPorCiclo;
+          }
+        }
+        if (!agenteEnDescansoOVacaciones) {
+          const { rows: vacRows } = await pool.query(
+            `SELECT 1 FROM eventos_rrhh
+             WHERE employee_id = $1
+               AND tipo_evento IN ('vacaciones', 'vacaciones_trabajadas')
+               AND estado NOT IN ('anulado', 'cancelado')
+               AND $2::date BETWEEN fecha::date AND COALESCE(fecha_fin::date, fecha::date)
+             LIMIT 1`,
+            [agenteId, fechaCobertura]
+          );
+          if (vacRows.length > 0) agenteEnDescansoOVacaciones = true;
+        }
+      } catch (heCheckErr) {
+        logger.warn({ heCheckErr, agenteId }, "A-04: no se pudo verificar descanso/vacaciones del agente (fallback: sin HE)");
+      }
+
+      const generaExtra     = agenteEnDescansoOVacaciones && horasCalcFinal > horasStandard;
       const horasExtraCalc  = generaExtra ? Math.round((horasCalcFinal - horasStandard) * 10) / 10 : 0;
       // Marcar cobertura especial cuando es supervisor o jefe de servicio — trazabilidad
       const tipoPersonalAgente = agente.tipo_personal ?? 'guardia';
@@ -1335,14 +1385,14 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
            (fecha, puesto_id, client_id, employee_id, empleado_nombre,
             tipo_cobertura, hora_inicio, hora_fin, horas_calculadas,
             fue_en_dia_descanso, genera_horas_extra, observaciones, usuario_registro)
-         SELECT $1,$2,$3,$4,$5,$9,$6,$7,$8,FALSE,$10,$11,'asignacion_pizarron'
+         SELECT $1,$2,$3,$4,$5,$9,$6,$7,$8,$12,$10,$11,'asignacion_pizarron'
          WHERE NOT EXISTS (
            SELECT 1 FROM cobertura_segmentos
            WHERE fecha=$1 AND puesto_id=$2 AND employee_id=$4
          )`,
         [hoy, puestoId, puesto.cliente_id ?? null, agenteId,
          agente.nombre_completo, horaInicioFinal, horaFinTurno, horasCalcFinal,
-         tipoSegmento, generaExtra, obsSegmento]
+         tipoSegmento, generaExtra, obsSegmento, agenteEnDescansoOVacaciones]
       );
 
       // Si el registro ya existía y se indicó hora real, actualizar horas
@@ -1350,9 +1400,9 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
         await pool.query(
           `UPDATE cobertura_segmentos
            SET hora_inicio = $1, horas_calculadas = $2, genera_horas_extra = $3,
-               observaciones = $4, updated_at = NOW()
+               observaciones = $4, fue_en_dia_descanso = $8, updated_at = NOW()
            WHERE fecha = $5 AND puesto_id = $6 AND employee_id = $7`,
-          [horaInstalacion, horasCalcFinal, generaExtra, obsSegmento, hoy, puestoId, agenteId]
+          [horaInstalacion, horasCalcFinal, generaExtra, obsSegmento, hoy, puestoId, agenteId, agenteEnDescansoOVacaciones]
         );
       }
 

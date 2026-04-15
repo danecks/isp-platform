@@ -6478,8 +6478,9 @@ export default function Operaciones() {
       return;
     }
 
-    // ── Agente de pool → puesto SIN agente, SIN titular previo, y CON slot vacío → auto-asignar
-    if (!puesto.agente_id && !puesto.titular_employee_id && esAgentePool(agente) && puesto.tiene_slot_vacio) {
+    // ── Agente de pool → puesto SIN agente, SIN titular previo (ni en puesto_titulares), y CON slot vacío → auto-asignar
+    const tieneTitularesReales = !!puesto.titular_employee_id || (puesto.titulares && puesto.titulares.length > 0);
+    if (!puesto.agente_id && !tieneTitularesReales && esAgentePool(agente) && puesto.tiene_slot_vacio) {
       try {
         const resp = await apiPost(`${API_BASE}/operaciones/asignar`, {
           puestoId: puesto.id,
