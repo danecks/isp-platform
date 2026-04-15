@@ -18,6 +18,7 @@ fichaRouter.get("/clientes/:id/ficha", async (req, res) => {
               observaciones_contractuales, fecha_inicio_contrato,
               tarifa_base_mensual, estado_contrato, notas, created_at AS "createdAt",
               COALESCE(contrato_sin_prueba, FALSE) AS contrato_sin_prueba,
+              COALESCE(tipo_servicio, 'vigilancia') AS tipo_servicio,
               igss_aplica, igss_codigo_centro, igss_direccion, igss_zona,
               igss_departamento, igss_municipio, igss_codigo_actividad,
               igss_contacto, igss_fax, igss_email, igss_telefono
@@ -119,8 +120,12 @@ fichaRouter.patch("/clientes/:id/contrato", async (req, res) => {
     observaciones_contractuales, fecha_inicio_contrato,
     tarifa_base_mensual, estado_contrato, notas,
     nombre, nombreComercial, nit, sector,
-    contrato_sin_prueba,
+    contrato_sin_prueba, tipo_servicio,
   } = req.body;
+
+  if (tipo_servicio != null && !["vigilancia", "custodia", "mixto"].includes(tipo_servicio)) {
+    return res.status(400).json({ error: "tipo_servicio inválido" });
+  }
 
   try {
     const { rows } = await pool.query(
@@ -134,11 +139,12 @@ fichaRouter.patch("/clientes/:id/contrato", async (req, res) => {
            nombre_comercial            = COALESCE($7, nombre_comercial),
            nit                         = COALESCE($8, nit),
            sector                      = COALESCE($9, sector),
-           contrato_sin_prueba         = COALESCE($10, contrato_sin_prueba)
-       WHERE id = $11
+           contrato_sin_prueba         = COALESCE($10, contrato_sin_prueba),
+           tipo_servicio               = COALESCE($11, tipo_servicio)
+       WHERE id = $12
        RETURNING id, nombre, nombre_comercial AS "nombreComercial", nit, sector, estado,
                  observaciones_contractuales, fecha_inicio_contrato, tarifa_base_mensual,
-                 estado_contrato, notas, contrato_sin_prueba`,
+                 estado_contrato, notas, contrato_sin_prueba, tipo_servicio`,
       [
         observaciones_contractuales ?? null,
         fecha_inicio_contrato ?? null,
@@ -150,6 +156,7 @@ fichaRouter.patch("/clientes/:id/contrato", async (req, res) => {
         nit ?? null,
         sector ?? null,
         contrato_sin_prueba ?? null,
+        tipo_servicio ?? null,
         clientId,
       ]
     );

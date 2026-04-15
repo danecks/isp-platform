@@ -264,6 +264,7 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       LEFT JOIN clients cl ON cl.id = po.cliente_id
       LEFT JOIN armas arm ON arm.puesto_id = po.id AND arm.activo = TRUE
       WHERE po.activo = TRUE
+        AND COALESCE(cl.tipo_servicio, 'vigilancia') != 'custodia'
         AND (cl.fecha_inicio_contrato IS NULL
              OR cl.fecha_inicio_contrato <= COALESCE($1::date, CURRENT_DATE))
       ORDER BY po.cliente_nombre, po.orden, po.nombre

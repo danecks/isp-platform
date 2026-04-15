@@ -32,6 +32,7 @@ interface ClienteFicha {
   dotacion_uniforme_num: number | null;
   dotacion_uniforme_frecuencia_meses: number | null;
   contrato_sin_prueba: boolean;
+  tipo_servicio: string;
   igss_aplica: boolean;
   igss_codigo_centro: string | null;
   igss_direccion: string | null;
@@ -603,6 +604,7 @@ function ModalEditarCliente({
     dotacion_uniforme_num: String(cliente.dotacion_uniforme_num ?? 0),
     dotacion_uniforme_frecuencia_meses: String(cliente.dotacion_uniforme_frecuencia_meses ?? 0),
     contrato_sin_prueba: cliente.contrato_sin_prueba ?? false,
+    tipo_servicio: cliente.tipo_servicio ?? "vigilancia",
   });
   const [saving, setSaving] = useState(false);
 
@@ -611,7 +613,7 @@ function ModalEditarCliente({
   async function submit() {
     setSaving(true);
     try {
-      await fetch(`${API}/clientes/${cliente.id}/contrato`, {
+      const r1 = await fetch(`${API}/clientes/${cliente.id}/contrato`, {
         method: "PATCH",
         headers: h(),
         body: JSON.stringify({
@@ -622,10 +624,11 @@ function ModalEditarCliente({
           nit: form.nit || null,
           sector: form.sector || null,
           contrato_sin_prueba: form.contrato_sin_prueba,
+          tipo_servicio: form.tipo_servicio,
         }),
       });
-      // Guardar configuración de dotación uniforme (UNIF-01)
-      await fetch(`${API}/uniformes/config-cliente/${cliente.id}`, {
+      if (!r1.ok) throw new Error("Error al guardar contrato");
+      const r2 = await fetch(`${API}/uniformes/config-cliente/${cliente.id}`, {
         method: "PATCH",
         headers: h(),
         body: JSON.stringify({
@@ -633,6 +636,7 @@ function ModalEditarCliente({
           dotacion_uniforme_frecuencia_meses: parseInt(form.dotacion_uniforme_frecuencia_meses) || 0,
         }),
       });
+      if (!r2.ok) throw new Error("Error al guardar uniformes");
       onSaved();
     } catch { /* ignore */ }
     setSaving(false);
@@ -690,6 +694,18 @@ function ModalEditarCliente({
                 placeholder="6"
               />
             </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] text-white/40 uppercase tracking-wide">Tipo de servicio</label>
+            <select
+              value={form.tipo_servicio}
+              onChange={(e) => up("tipo_servicio", e.target.value)}
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50"
+            >
+              <option value="vigilancia">Vigilancia (Puestos fijos)</option>
+              <option value="custodia">Custodia (Fuerza diaria)</option>
+              <option value="mixto">Mixto</option>
+            </select>
           </div>
           <div className="pt-1 pb-0.5">
             <p className="text-[10px] text-blue-400/70 uppercase tracking-widest font-semibold">Período de Prueba</p>

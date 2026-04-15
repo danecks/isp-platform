@@ -58,6 +58,7 @@ import { igssRouter } from "./igss";
 import { solicitudesEmpleoRouter } from "./solicitudes-empleo";
 import { resetDatosRouter } from "./reset-datos";
 import { actasRouter } from "./actas";
+import custodiasRouter from "./custodias";
 
 const router: IRouter = Router();
 
@@ -120,5 +121,6 @@ router.use(igssRouter);
 router.use(solicitudesEmpleoRouter);
 router.use(resetDatosRouter);
 router.use(actasRouter);
+router.use(custodiasRouter);
 
 export default router;

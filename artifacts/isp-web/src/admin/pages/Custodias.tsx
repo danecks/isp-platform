@@ -1,108 +1,120 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useRef } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "../layout/AdminLayout";
-import { StatusBadge } from "../components/StatusBadge";
 import {
-  Truck, Filter, AlertTriangle, ShieldCheck, Shield,
-  CalendarClock, Loader2, RefreshCw, User, MapPin, Clock, CheckCircle2,
+  Truck, AlertTriangle, Shield, Loader2, RefreshCw, User, Users,
+  Calendar, Save, Printer, Plus, X, Search, ChevronDown, ChevronUp,
+  Check, Clock, UserPlus, UserMinus,
 } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
+const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
-type EstadoCustodia = "planificada" | "en_ruta" | "incidente_activo" | "incidente_completado" | "completada";
-
-interface CustodiaOperativa {
-  id: number;
-  nombre: string;
-  cliente_id: number | null;
-  cliente_nombre: string;
-  turno: string | null;
-  horario: string | null;
-  tipo_puesto: "custodia";
-  agente_id: number | null;
-  agente_nombre: string | null;
-  titular_employee_id: number | null;
-  titular_nombre: string | null;
-  notas: string | null;
-  activo: boolean;
-  zona_nombre: string | null;
-  sede_nombre: string | null;
-  turno_tipo_nombre: string | null;
-  tipo_turno_id: number | null;
-  fecha_inicio_ciclo: string | null;
-  estado_custodia: EstadoCustodia;
-  total_incidentes: number;
-  incidentes_activos: number;
+interface ClienteCustodia {
+  clienteId: number;
+  clienteNombre: string;
+  fuerzaHoy: number;
+  totalTitulares: number;
+  titularesPresentes: number;
+  titularesFaltantes: { employeeId: number; nombre: string; codigo: string }[];
+  extras: { employeeId: number; nombre: string; codigo: string; notas: string | null }[];
+  totalAsignados: number;
+  pendientes: number;
+  asignaciones: {
+    employeeId: number;
+    nombre: string;
+    codigo: string;
+    notas: string | null;
+    esTitular: boolean;
+  }[];
 }
 
-const ESTADO_CONFIG: Record<EstadoCustodia, { label: string; color: string; icon: typeof Shield }> = {
-  en_ruta:              { label: "En Ruta",              color: "text-green-300 bg-green-500/10 border-green-500/25",   icon: Truck },
-  incidente_activo:     { label: "Incidente Activo",     color: "text-red-300 bg-red-500/10 border-red-500/25",         icon: AlertTriangle },
-  incidente_completado: { label: "Incidente Completado", color: "text-amber-300 bg-amber-500/10 border-amber-500/25",   icon: ShieldCheck },
-  completada:           { label: "Finalizado",            color: "text-slate-300 bg-slate-500/10 border-slate-500/25",   icon: CheckCircle2 },
-  planificada:          { label: "Planificada",          color: "text-blue-300 bg-blue-500/10 border-blue-500/25",      icon: CalendarClock },
-};
+interface PoolAgent {
+  id: number;
+  nombre_completo: string;
+  codigo: string;
+  estado_laboral: string;
+  tipo_personal: string;
+}
 
-const FILTROS: { key: EstadoCustodia | "todas"; label: string }[] = [
-  { key: "todas",                label: "Todas" },
-  { key: "en_ruta",              label: "En Ruta" },
-  { key: "incidente_activo",     label: "Incidente Activo" },
-  { key: "incidente_completado", label: "Incidente Completado" },
-  { key: "completada",           label: "Turno Completado" },
-  { key: "planificada",          label: "Planificada" },
-];
+interface HojaImprimible {
+  clienteNombre: string;
+  fecha: string;
+  agentes: {
+    employeeId: number;
+    nombre: string;
+    codigoEmpleado: string;
+    armaMarca: string;
+    armaSerie: string;
+    armaTipo: string;
+    municion: number;
+  }[];
+}
+
+function todayLocal() {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset() - 360);
+  return d.toISOString().split("T")[0];
+}
 
 export default function Custodias() {
-  const [filtro, setFiltro] = useState<EstadoCustodia | "todas">("todas");
+  const qc = useQueryClient();
+  const [fecha, setFecha] = useState(todayLocal());
+  const [expandedClient, setExpandedClient] = useState<number | null>(null);
+  const [showFuerzaEditor, setShowFuerzaEditor] = useState<number | null>(null);
+  const [showAsignar, setShowAsignar] = useState<number | null>(null);
+  const [showHoja, setShowHoja] = useState<number | null>(null);
+  const [busquedaPool, setBusquedaPool] = useState("");
 
-  const { data: custodias = [], isLoading, isError, refetch, isFetching } = useQuery<CustodiaOperativa[]>({
-    queryKey: ["custodias-puestos"],
+  const { data: dashboard = [], isLoading, isError, refetch, isFetching } = useQuery<ClienteCustodia[]>({
+    queryKey: ["custodias-dashboard", fecha],
     queryFn: async () => {
-      const r = await fetch(`${API_BASE}/custodias/puestos`, { credentials: "include" });
-      if (!r.ok) throw new Error("Error al cargar custodias");
+      const r = await fetch(`${API_BASE}/custodias/dashboard?fecha=${fecha}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Error al cargar");
       return r.json();
     },
-    refetchInterval: 60_000,
+    refetchInterval: 30_000,
   });
 
-  const filtradas = filtro === "todas"
-    ? custodias
-    : custodias.filter((c) => c.estado_custodia === filtro);
-
-  const enRuta          = custodias.filter((c) => c.estado_custodia === "en_ruta");
-  const conIncidente    = custodias.filter((c) => c.estado_custodia === "incidente_activo");
-
-  const conteo: Record<EstadoCustodia | "todas", number> = {
-    todas:                custodias.length,
-    en_ruta:              custodias.filter((c) => c.estado_custodia === "en_ruta").length,
-    incidente_activo:     custodias.filter((c) => c.estado_custodia === "incidente_activo").length,
-    incidente_completado: custodias.filter((c) => c.estado_custodia === "incidente_completado").length,
-    completada:           custodias.filter((c) => c.estado_custodia === "completada").length,
-    planificada:          custodias.filter((c) => c.estado_custodia === "planificada").length,
-  };
+  const totalFuerza = dashboard.reduce((s, c) => s + c.fuerzaHoy, 0);
+  const totalAsignados = dashboard.reduce((s, c) => s + c.totalAsignados, 0);
+  const totalPendientes = dashboard.reduce((s, c) => s + c.pendientes, 0);
 
   return (
     <AdminLayout title="Control de Custodias">
-      <div className="space-y-6 max-w-[1400px]">
-
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-white/30 mt-0.5">
-              Puestos operativos de tipo custodia con su estado en tiempo real.
-            </p>
+      <div className="space-y-5 max-w-[1400px]">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div>
+              <label className="text-[10px] text-white/30 uppercase tracking-widest block mb-1">Fecha</label>
+              <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
+                className="bg-[#060e1c] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-primary/40" />
+            </div>
           </div>
-          <button
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 border border-white/8 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-40"
-          >
+          <button onClick={() => refetch()} disabled={isFetching}
+            className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 border border-white/8 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-40">
             <RefreshCw className={`w-3 h-3 ${isFetching ? "animate-spin" : ""}`} />
             Actualizar
           </button>
         </div>
 
-        {/* Loading */}
+        {!isLoading && !isError && dashboard.length > 0 && (
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-[#0c1829] border border-white/5 rounded-xl p-4">
+              <p className="text-[10px] text-white/30 uppercase tracking-widest mb-1">Fuerza del día</p>
+              <p className="text-2xl font-bold text-white">{totalFuerza}</p>
+            </div>
+            <div className="bg-[#0c1829] border border-white/5 rounded-xl p-4">
+              <p className="text-[10px] text-white/30 uppercase tracking-widest mb-1">Asignados</p>
+              <p className="text-2xl font-bold text-green-400">{totalAsignados}</p>
+            </div>
+            <div className={`bg-[#0c1829] border rounded-xl p-4 ${totalPendientes > 0 ? "border-amber-500/20" : "border-white/5"}`}>
+              <p className="text-[10px] text-white/30 uppercase tracking-widest mb-1">Pendientes</p>
+              <p className={`text-2xl font-bold ${totalPendientes > 0 ? "text-amber-400" : "text-white/30"}`}>{totalPendientes}</p>
+            </div>
+          </div>
+        )}
+
         {isLoading && (
           <div className="flex items-center justify-center py-16 text-white/30 gap-2">
             <Loader2 className="w-5 h-5 animate-spin" />
@@ -110,229 +122,442 @@ export default function Custodias() {
           </div>
         )}
 
-        {/* Error */}
         {isError && (
           <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-4 text-sm text-red-300">
             Error al cargar las custodias. Verifica la conexión con el servidor.
           </div>
         )}
 
-        {!isLoading && !isError && (
-          <>
-            {/* ALERT INCIDENTES ACTIVOS */}
-            {conIncidente.length > 0 && (
-              <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-4 flex items-center gap-3 animate-pulse">
-                <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
-                <div>
-                  <p className="text-sm font-bold text-red-300">
-                    {conIncidente.length} custodia{conIncidente.length > 1 ? "s" : ""} con incidente activo
-                  </p>
-                  <p className="text-xs text-red-400/60 mt-0.5">
-                    {conIncidente.map((c) => `${c.cliente_nombre} — ${c.nombre}`).join(" · ")}
-                  </p>
-                </div>
-              </div>
-            )}
+        {!isLoading && !isError && dashboard.length === 0 && (
+          <div className="text-center py-14">
+            <Truck className="w-10 h-10 text-white/10 mx-auto mb-3" />
+            <p className="text-sm font-semibold text-white/30">No hay clientes de custodia configurados</p>
+            <p className="text-xs text-white/20 mt-1 max-w-sm mx-auto">
+              Para activar un cliente como custodia, edítalo y cambia su tipo de servicio a "Custodia".
+            </p>
+          </div>
+        )}
 
-            {/* STATS CARDS */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              {(["en_ruta", "incidente_activo", "incidente_completado", "completada", "planificada"] as EstadoCustodia[]).map((estado) => {
-                const cfg = ESTADO_CONFIG[estado];
-                const Icon = cfg.icon;
-                const count = conteo[estado];
-                const iconColor =
-                  estado === "incidente_activo"     ? "text-red-400" :
-                  estado === "en_ruta"              ? "text-green-400" :
-                  estado === "incidente_completado" ? "text-amber-400" :
-                  estado === "completada"           ? "text-slate-400" :
-                  "text-blue-400";
-                return (
-                  <button
-                    key={estado}
-                    onClick={() => setFiltro(filtro === estado ? "todas" : estado)}
-                    className={`bg-[#0c1829] border rounded-xl p-4 text-left transition-all cursor-pointer ${
-                      filtro === estado ? "border-primary/40 bg-primary/5" : "border-white/5 hover:border-white/10"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <Icon className={`w-4 h-4 ${iconColor}`} />
-                      {filtro === estado && (
-                        <span className="text-[9px] text-primary font-bold px-1.5 py-0.5 bg-primary/10 border border-primary/20 rounded-full">activo</span>
-                      )}
-                    </div>
-                    <p className="text-2xl font-bold text-white">{count}</p>
-                    <p className={`text-[10px] font-semibold mt-1 ${iconColor}/70`}>{cfg.label}</p>
-                  </button>
-                );
-              })}
+        {!isLoading && !isError && dashboard.map(cl => (
+          <ClienteCard
+            key={cl.clienteId}
+            cliente={cl}
+            fecha={fecha}
+            expanded={expandedClient === cl.clienteId}
+            onToggle={() => setExpandedClient(expandedClient === cl.clienteId ? null : cl.clienteId)}
+            showFuerzaEditor={showFuerzaEditor === cl.clienteId}
+            onToggleFuerza={() => setShowFuerzaEditor(showFuerzaEditor === cl.clienteId ? null : cl.clienteId)}
+            showAsignar={showAsignar === cl.clienteId}
+            onToggleAsignar={() => { setShowAsignar(showAsignar === cl.clienteId ? null : cl.clienteId); setBusquedaPool(""); }}
+            showHoja={showHoja === cl.clienteId}
+            onToggleHoja={() => setShowHoja(showHoja === cl.clienteId ? null : cl.clienteId)}
+            busquedaPool={busquedaPool}
+            onBusquedaPool={setBusquedaPool}
+            onRefresh={() => qc.invalidateQueries({ queryKey: ["custodias-dashboard"] })}
+          />
+        ))}
+      </div>
+    </AdminLayout>
+  );
+}
+
+function ClienteCard({
+  cliente: cl, fecha, expanded, onToggle,
+  showFuerzaEditor, onToggleFuerza,
+  showAsignar, onToggleAsignar,
+  showHoja, onToggleHoja,
+  busquedaPool, onBusquedaPool,
+  onRefresh,
+}: {
+  cliente: ClienteCustodia;
+  fecha: string;
+  expanded: boolean;
+  onToggle: () => void;
+  showFuerzaEditor: boolean;
+  onToggleFuerza: () => void;
+  showAsignar: boolean;
+  onToggleAsignar: () => void;
+  showHoja: boolean;
+  onToggleHoja: () => void;
+  busquedaPool: string;
+  onBusquedaPool: (v: string) => void;
+  onRefresh: () => void;
+}) {
+  const pct = cl.fuerzaHoy > 0 ? Math.round((cl.totalAsignados / cl.fuerzaHoy) * 100) : 0;
+  const barColor = pct >= 100 ? "bg-green-500" : pct >= 70 ? "bg-amber-500" : "bg-red-500";
+
+  return (
+    <div className="bg-[#0c1829] border border-white/6 rounded-xl overflow-hidden">
+      <button onClick={onToggle}
+        className="w-full px-5 py-4 flex items-center justify-between hover:bg-white/2 transition-colors">
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+            <Truck className="w-5 h-5 text-primary" />
+          </div>
+          <div className="text-left min-w-0">
+            <p className="font-bold text-white text-sm truncate">{cl.clienteNombre}</p>
+            <div className="flex items-center gap-3 mt-0.5">
+              <span className="text-[10px] text-white/30">Fuerza: <strong className="text-white/60">{cl.fuerzaHoy}</strong></span>
+              <span className="text-[10px] text-white/30">Titulares: <strong className="text-white/60">{cl.totalTitulares}</strong></span>
+              <span className="text-[10px] text-white/30">Asignados: <strong className={cl.totalAsignados >= cl.fuerzaHoy ? "text-green-400" : "text-amber-400"}>{cl.totalAsignados}</strong></span>
+              {cl.pendientes > 0 && (
+                <span className="text-[10px] text-amber-400 font-bold flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" /> {cl.pendientes} pendientes
+                </span>
+              )}
             </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="w-24 h-2 bg-white/5 rounded-full overflow-hidden">
+            <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+          </div>
+          <span className="text-xs font-bold text-white/40 w-10 text-right">{pct}%</span>
+          {expanded ? <ChevronUp className="w-4 h-4 text-white/30" /> : <ChevronDown className="w-4 h-4 text-white/30" />}
+        </div>
+      </button>
 
-            {/* CARDS EN RUTA */}
-            {enRuta.length > 0 && filtro === "todas" && (
-              <div>
-                <p className="text-xs uppercase tracking-widest text-green-400/60 font-semibold mb-3">
-                  Custodias en Ruta Ahora
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {enRuta.map((c) => (
-                    <div key={c.id} className="bg-[#0c1829] border border-green-500/20 rounded-xl p-5 hover:border-green-500/30 transition-colors">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <p className="text-xs font-mono text-white/30">PUE-{String(c.id).padStart(4, "0")}</p>
-                          <p className="font-bold text-white text-sm">{c.nombre}</p>
-                          <p className="text-xs text-white/50">{c.cliente_nombre}</p>
-                        </div>
-                        <span className="text-[9px] px-2 py-1 rounded-full border font-bold text-green-300 bg-green-500/10 border-green-500/25">
-                          EN RUTA
-                        </span>
-                      </div>
-                      <div className="space-y-1.5">
-                        {c.agente_nombre && (
-                          <div className="flex items-center gap-2 text-xs text-white/50">
-                            <User className="w-3 h-3 text-green-400/60" />
-                            <span>{c.agente_nombre}</span>
-                          </div>
-                        )}
-                        {c.zona_nombre && (
-                          <div className="flex items-center gap-2 text-xs text-white/50">
-                            <MapPin className="w-3 h-3 text-white/30" />
-                            <span>{c.zona_nombre}</span>
-                          </div>
-                        )}
-                        {c.horario && (
-                          <div className="flex items-center gap-2 text-xs text-white/50">
-                            <Clock className="w-3 h-3 text-white/30" />
-                            <span>{c.horario}</span>
-                          </div>
-                        )}
-                      </div>
+      {expanded && (
+        <div className="border-t border-white/5 px-5 py-4 space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <button onClick={onToggleAsignar}
+              className={`text-xs px-3 py-1.5 rounded-lg border flex items-center gap-1.5 transition-colors ${showAsignar ? "bg-primary/15 border-primary/30 text-primary" : "border-white/10 text-white/50 hover:text-white/80"}`}>
+              <UserPlus className="w-3 h-3" /> Asignar agentes
+            </button>
+            <button onClick={onToggleFuerza}
+              className={`text-xs px-3 py-1.5 rounded-lg border flex items-center gap-1.5 transition-colors ${showFuerzaEditor ? "bg-blue-500/15 border-blue-500/30 text-blue-300" : "border-white/10 text-white/50 hover:text-white/80"}`}>
+              <Calendar className="w-3 h-3" /> Fuerza semanal
+            </button>
+            <button onClick={onToggleHoja}
+              className={`text-xs px-3 py-1.5 rounded-lg border flex items-center gap-1.5 transition-colors ${showHoja ? "bg-green-500/15 border-green-500/30 text-green-300" : "border-white/10 text-white/50 hover:text-white/80"}`}>
+              <Printer className="w-3 h-3" /> Hoja imprimible
+            </button>
+          </div>
+
+          {showFuerzaEditor && <FuerzaEditor clienteId={cl.clienteId} onSaved={onRefresh} />}
+          {showAsignar && <AsignarPanel clienteId={cl.clienteId} fecha={fecha} busqueda={busquedaPool} onBusqueda={onBusquedaPool} onChanged={onRefresh} />}
+          {showHoja && <HojaImprimiblePanel clienteId={cl.clienteId} fecha={fecha} />}
+
+          {cl.asignaciones.length > 0 && (
+            <div>
+              <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                <Users className="w-3 h-3" /> Agentes asignados hoy ({cl.asignaciones.length})
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                {cl.asignaciones.map(a => (
+                  <div key={a.employeeId} className={`flex items-center justify-between px-3 py-2 rounded-lg border ${a.esTitular ? "bg-green-500/5 border-green-500/15" : "bg-blue-500/5 border-blue-500/15"}`}>
+                    <div className="min-w-0">
+                      <p className="text-xs text-white/70 font-medium truncate">{a.nombre}</p>
+                      <p className="text-[10px] text-white/30">{a.codigo || "—"}</p>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* FILTROS */}
-            <div className="flex flex-wrap items-center gap-3">
-              <Filter className="w-4 h-4 text-white/30" />
-              <div className="flex flex-wrap gap-2">
-                {FILTROS.map(({ key, label }) => (
-                  <button
-                    key={key}
-                    onClick={() => setFiltro(key)}
-                    className={`text-xs px-3 py-1.5 rounded-full border transition-all flex items-center gap-1.5 ${
-                      filtro === key
-                        ? "bg-primary/15 border-primary/30 text-primary"
-                        : "bg-white/3 border-white/8 text-white/40 hover:text-white"
-                    }`}
-                  >
-                    {label}
-                    <span className="text-[9px] font-bold opacity-60">{conteo[key]}</span>
-                  </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${a.esTitular ? "bg-green-500/15 text-green-300" : "bg-blue-500/15 text-blue-300"}`}>
+                        {a.esTitular ? "TITULAR" : "EXTRA"}
+                      </span>
+                      <RemoveButton clienteId={cl.clienteId} employeeId={a.employeeId} fecha={fecha} onRemoved={onRefresh} />
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
+          )}
 
-            {/* TABLA */}
-            <div className="bg-[#0c1829] border border-white/5 rounded-xl overflow-hidden">
-              <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-primary" />
-                  <p className="text-sm font-bold text-white">Registro de Puestos de Custodia</p>
-                </div>
-                <span className="text-xs text-white/30">{filtradas.length} {filtradas.length === 1 ? "puesto" : "puestos"}</span>
+          {cl.titularesFaltantes.length > 0 && (
+            <div>
+              <p className="text-[10px] text-red-400/60 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                <AlertTriangle className="w-3 h-3" /> Titulares no asignados hoy ({cl.titularesFaltantes.length})
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {cl.titularesFaltantes.map(t => (
+                  <span key={t.employeeId} className="text-[10px] px-2 py-1 rounded border bg-red-500/5 border-red-500/15 text-red-300/60">
+                    {t.nombre}
+                  </span>
+                ))}
               </div>
-
-              {filtradas.length === 0 ? (
-                <div className="py-14 text-center space-y-4">
-                  {custodias.length === 0 ? (
-                    <>
-                      <Shield className="w-10 h-10 text-white/10 mx-auto" />
-                      <div>
-                        <p className="text-sm font-semibold text-white/30">No hay puestos de custodia configurados</p>
-                        <p className="text-xs text-white/20 mt-1 max-w-xs mx-auto">
-                          Los puestos de custodia se crean desde el Pizarrón Operativo. Al crear un puesto, selecciona el tipo "Custodia de Valores".
-                        </p>
-                      </div>
-                      <a
-                        href="/admin/operaciones"
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 border border-primary/25 hover:bg-primary/20 rounded-xl text-xs font-semibold text-primary transition-colors"
-                      >
-                        Ir al Pizarrón Operativo
-                      </a>
-                    </>
-                  ) : (
-                    <p className="text-sm text-white/20">No hay custodias con el filtro seleccionado.</p>
-                  )}
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="text-white/30 border-b border-white/5 uppercase tracking-wide text-[10px]">
-                        <th className="text-left px-5 py-3">Puesto</th>
-                        <th className="text-left px-3 py-3">Cliente</th>
-                        <th className="text-left px-3 py-3">Agente Asignado</th>
-                        <th className="text-left px-3 py-3">Zona</th>
-                        <th className="text-left px-3 py-3">Turno</th>
-                        <th className="text-left px-3 py-3">Estado</th>
-                        <th className="text-left px-3 py-3 text-center">Incidentes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filtradas.map((c) => {
-                        const cfg = ESTADO_CONFIG[c.estado_custodia];
-                        return (
-                          <tr key={c.id} className="border-b border-white/3 hover:bg-white/2 transition-colors">
-                            <td className="px-5 py-3">
-                              <p className="font-medium text-white/90">{c.nombre}</p>
-                              <p className="text-[10px] font-mono text-white/25">PUE-{String(c.id).padStart(4, "0")}</p>
-                            </td>
-                            <td className="px-3 py-3 text-white/70 font-medium max-w-[150px] truncate">{c.cliente_nombre}</td>
-                            <td className="px-3 py-3">
-                              {c.agente_nombre
-                                ? <span className="text-white/70">{c.agente_nombre}</span>
-                                : <span className="text-white/20 italic">Sin asignar</span>
-                              }
-                            </td>
-                            <td className="px-3 py-3 text-white/40 max-w-[120px] truncate">{c.zona_nombre ?? "—"}</td>
-                            <td className="px-3 py-3 text-white/40">{c.turno_tipo_nombre ?? c.turno ?? "—"}</td>
-                            <td className="px-3 py-3">
-                              <span className={`text-[9px] px-2 py-1 rounded-full border font-bold ${cfg.color}`}>
-                                {cfg.label.toUpperCase()}
-                              </span>
-                            </td>
-                            <td className="px-3 py-3 text-center">
-                              {Number(c.incidentes_activos) > 0 ? (
-                                <span className="text-red-400 font-bold">{c.incidentes_activos} activo{Number(c.incidentes_activos) > 1 ? "s" : ""}</span>
-                              ) : Number(c.total_incidentes) > 0 ? (
-                                <span className="text-amber-400/60">{c.total_incidentes} cerrado{Number(c.total_incidentes) > 1 ? "s" : ""}</span>
-                              ) : (
-                                <span className="text-white/20">0</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
             </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
-            {custodias.length === 0 && !isLoading && (
-              <div className="bg-blue-900/10 border border-blue-500/15 rounded-xl p-5 text-sm text-blue-300/70">
-                <p className="font-semibold mb-1">¿Cómo configurar puestos de custodia?</p>
-                <p className="text-xs text-blue-300/50">
-                  Ve al <strong>Pizarrón Operativo</strong>, crea un nuevo puesto y selecciona <strong>"Custodia"</strong> como tipo de puesto.
-                  Ese puesto aparecerá automáticamente aquí con su estado operativo en tiempo real.
-                </p>
-              </div>
-            )}
-          </>
-        )}
+function RemoveButton({ clienteId, employeeId, fecha, onRemoved }: {
+  clienteId: number; employeeId: number; fecha: string; onRemoved: () => void;
+}) {
+  const mut = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`${API_BASE}/custodias/cliente/${clienteId}/desasignar`, {
+        method: "DELETE", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fecha, employeeId }),
+      });
+      if (!r.ok) throw new Error("Error");
+    },
+    onSuccess: onRemoved,
+  });
 
+  return (
+    <button onClick={() => mut.mutate()} disabled={mut.isPending}
+      className="text-red-400/40 hover:text-red-400 transition-colors disabled:opacity-30" title="Quitar">
+      {mut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
+    </button>
+  );
+}
+
+function FuerzaEditor({ clienteId, onSaved }: { clienteId: number; onSaved: () => void }) {
+  const [fuerza, setFuerza] = useState<Record<number, number>>({});
+  const [loaded, setLoaded] = useState(false);
+
+  const { isLoading } = useQuery({
+    queryKey: ["custodia-fuerza", clienteId],
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/custodias/cliente/${clienteId}/fuerza`, { credentials: "include" });
+      if (!r.ok) throw new Error("Error");
+      const data = await r.json();
+      setFuerza(data.fuerza);
+      setLoaded(true);
+      return data;
+    },
+  });
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`${API_BASE}/custodias/cliente/${clienteId}/fuerza`, {
+        method: "PUT", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fuerza }),
+      });
+      if (!r.ok) throw new Error("Error");
+    },
+    onSuccess: onSaved,
+  });
+
+  if (isLoading || !loaded) {
+    return <div className="py-4 flex justify-center"><Loader2 className="w-4 h-4 animate-spin text-white/30" /></div>;
+  }
+
+  return (
+    <div className="bg-[#060e1c] border border-white/8 rounded-xl p-4 space-y-3">
+      <p className="text-xs font-semibold text-white/50 flex items-center gap-1.5"><Calendar className="w-3 h-3" /> Fuerza requerida por día</p>
+      <div className="grid grid-cols-7 gap-2">
+        {DIAS.map((dia, i) => (
+          <div key={i} className="text-center">
+            <p className="text-[9px] text-white/30 mb-1">{dia.slice(0, 3)}</p>
+            <input
+              type="number" min={0} value={fuerza[i] ?? 0}
+              onChange={e => setFuerza(prev => ({ ...prev, [i]: parseInt(e.target.value) || 0 }))}
+              className="w-full bg-[#0c1829] border border-white/10 rounded-lg px-2 py-1.5 text-center text-sm text-white font-bold outline-none focus:border-primary/40"
+            />
+          </div>
+        ))}
       </div>
-    </AdminLayout>
+      <div className="flex justify-end">
+        <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}
+          className="flex items-center gap-1.5 text-xs px-4 py-2 bg-primary/15 border border-primary/30 text-primary rounded-lg font-semibold hover:bg-primary/25 transition-colors disabled:opacity-40">
+          {saveMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+          Guardar
+        </button>
+      </div>
+      {saveMut.isSuccess && <p className="text-[10px] text-green-400 flex items-center gap-1"><Check className="w-3 h-3" /> Guardado</p>}
+    </div>
+  );
+}
+
+function AsignarPanel({ clienteId, fecha, busqueda, onBusqueda, onChanged }: {
+  clienteId: number; fecha: string; busqueda: string; onBusqueda: (v: string) => void; onChanged: () => void;
+}) {
+  const { data: pool = [], isLoading } = useQuery<PoolAgent[]>({
+    queryKey: ["custodia-pool", fecha],
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/custodias/pool-disponible?fecha=${fecha}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Error");
+      return r.json();
+    },
+  });
+
+  const asignarMut = useMutation({
+    mutationFn: async (employeeId: number) => {
+      const r = await fetch(`${API_BASE}/custodias/cliente/${clienteId}/asignar`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fecha, employeeId }),
+      });
+      if (!r.ok) throw new Error("Error");
+    },
+    onSuccess: onChanged,
+  });
+
+  const filtered = pool.filter(a => {
+    if (!busqueda) return true;
+    const q = busqueda.toLowerCase();
+    return a.nombre_completo?.toLowerCase().includes(q) || a.codigo?.toLowerCase().includes(q);
+  });
+
+  return (
+    <div className="bg-[#060e1c] border border-white/8 rounded-xl p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <Search className="w-3 h-3 text-white/30" />
+        <input
+          type="text" value={busqueda} onChange={e => onBusqueda(e.target.value)}
+          placeholder="Buscar agente por nombre o código…"
+          className="flex-1 bg-transparent border-none outline-none text-xs text-white placeholder:text-white/20"
+        />
+      </div>
+      {isLoading ? (
+        <div className="py-4 flex justify-center"><Loader2 className="w-4 h-4 animate-spin text-white/30" /></div>
+      ) : (
+        <div className="max-h-60 overflow-y-auto space-y-1">
+          {filtered.slice(0, 50).map(a => (
+            <div key={a.id} className="flex items-center justify-between px-3 py-1.5 rounded-lg hover:bg-white/3 transition-colors">
+              <div className="min-w-0">
+                <p className="text-xs text-white/70 truncate">{a.nombre_completo}</p>
+                <p className="text-[10px] text-white/25">{a.codigo || "Sin código"} · {a.tipo_personal}</p>
+              </div>
+              <button onClick={() => asignarMut.mutate(a.id)} disabled={asignarMut.isPending}
+                className="text-xs px-2 py-1 bg-primary/10 border border-primary/20 text-primary rounded-lg hover:bg-primary/20 transition-colors disabled:opacity-30 shrink-0">
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <p className="text-xs text-white/20 text-center py-4">No se encontraron agentes disponibles</p>
+          )}
+          {filtered.length > 50 && (
+            <p className="text-[10px] text-white/20 text-center">Mostrando 50 de {filtered.length} — refina tu búsqueda</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HojaImprimiblePanel({ clienteId, fecha }: { clienteId: number; fecha: string }) {
+  const { data, isLoading } = useQuery<HojaImprimible>({
+    queryKey: ["custodia-hoja", clienteId, fecha],
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/custodias/cliente/${clienteId}/hoja-imprimible?fecha=${fecha}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Error");
+      return r.json();
+    },
+  });
+
+  const handlePrint = () => {
+    const w = window.open("", "_blank");
+    if (!w || !data) return;
+    const fechaFmt = new Date(fecha + "T12:00:00Z").toLocaleDateString("es-GT", {
+      weekday: "long", day: "2-digit", month: "long", year: "numeric"
+    });
+    w.document.write(`<!DOCTYPE html><html><head><title>Hoja de Custodia — ${data.clienteNombre}</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 20px; color: #000; }
+      h1 { font-size: 16px; text-align: center; margin-bottom: 4px; }
+      h2 { font-size: 12px; text-align: center; font-weight: normal; color: #555; margin-bottom: 20px; }
+      table { width: 100%; border-collapse: collapse; font-size: 11px; }
+      th, td { border: 1px solid #000; padding: 4px 6px; text-align: left; }
+      th { background: #f0f0f0; font-weight: bold; text-transform: uppercase; font-size: 9px; }
+      td.center { text-align: center; }
+      .firma { min-width: 80px; }
+      .empty { color: #999; }
+      @media print { body { margin: 10mm; } }
+    </style></head><body>
+    <h1>${data.clienteNombre}</h1>
+    <h2>${fechaFmt}</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Marca</th>
+          <th>Serie</th>
+          <th>Código</th>
+          <th>No.</th>
+          <th>Nombres y Apellidos</th>
+          <th>Munición</th>
+          <th class="firma">Firma</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${data.agentes.map((a, i) => `
+          <tr>
+            <td class="center">${i + 1}</td>
+            <td>${a.armaMarca || '<span class="empty">—</span>'}</td>
+            <td>${a.armaSerie || '<span class="empty">—</span>'}</td>
+            <td></td>
+            <td></td>
+            <td>${a.nombre}</td>
+            <td class="center">${a.municion || ""}</td>
+            <td class="firma"></td>
+          </tr>
+        `).join("")}
+        ${Array.from({ length: Math.max(0, 5 - (data?.agentes?.length ?? 0)) }, (_, i) => `
+          <tr>
+            <td class="center">${(data?.agentes?.length ?? 0) + i + 1}</td>
+            <td></td><td></td><td></td><td></td><td></td><td></td><td class="firma"></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+    <p style="font-size:9px; color:#888; margin-top:10px; text-align:left;">
+      ESCOPETA CON SU AUTÉNTICA DE PORTACIÓN &nbsp;|&nbsp; Código y No. = asignado por el cliente
+    </p>
+    </body></html>`);
+    w.document.close();
+    setTimeout(() => w.print(), 300);
+  };
+
+  if (isLoading) {
+    return <div className="py-4 flex justify-center"><Loader2 className="w-4 h-4 animate-spin text-white/30" /></div>;
+  }
+
+  if (!data || data.agentes.length === 0) {
+    return (
+      <div className="bg-[#060e1c] border border-white/8 rounded-xl p-4 text-center">
+        <p className="text-xs text-white/30">No hay agentes asignados para imprimir la hoja.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-[#060e1c] border border-white/8 rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-white/50 flex items-center gap-1.5">
+          <Printer className="w-3 h-3" /> Vista previa — {data.agentes.length} agentes
+        </p>
+        <button onClick={handlePrint}
+          className="flex items-center gap-1.5 text-xs px-4 py-2 bg-green-500/15 border border-green-500/30 text-green-300 rounded-lg font-semibold hover:bg-green-500/25 transition-colors">
+          <Printer className="w-3 h-3" /> Imprimir
+        </button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[10px]">
+          <thead>
+            <tr className="text-white/30 border-b border-white/8 uppercase">
+              <th className="text-left px-2 py-1.5">#</th>
+              <th className="text-left px-2 py-1.5">Marca</th>
+              <th className="text-left px-2 py-1.5">Serie</th>
+              <th className="text-left px-2 py-1.5">Código</th>
+              <th className="text-left px-2 py-1.5">No.</th>
+              <th className="text-left px-2 py-1.5">Nombres y Apellidos</th>
+              <th className="text-center px-2 py-1.5">Munición</th>
+              <th className="text-left px-2 py-1.5">Firma</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.agentes.map((a, i) => (
+              <tr key={a.employeeId} className="border-b border-white/4">
+                <td className="px-2 py-1.5 text-white/30">{i + 1}</td>
+                <td className="px-2 py-1.5 text-white/50">{a.armaMarca || "—"}</td>
+                <td className="px-2 py-1.5 text-white/50">{a.armaSerie || "—"}</td>
+                <td className="px-2 py-1.5 text-white/20 italic">Cliente</td>
+                <td className="px-2 py-1.5 text-white/20 italic">Cliente</td>
+                <td className="px-2 py-1.5 text-white/70 font-medium">{a.nombre}</td>
+                <td className="px-2 py-1.5 text-white/50 text-center">{a.municion || "—"}</td>
+                <td className="px-2 py-1.5 text-white/10">________</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

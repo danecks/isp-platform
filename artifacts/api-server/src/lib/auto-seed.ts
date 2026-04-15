@@ -4458,5 +4458,33 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: PRUEBA-02 — error (no bloqueante)");
   }
 
+  // ── CUST-03: tipo_servicio en clients + tablas custodia ──
+  try {
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS tipo_servicio VARCHAR(20) NOT NULL DEFAULT 'vigilancia'`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS custodia_fuerza_semanal (
+        id SERIAL PRIMARY KEY,
+        cliente_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+        dia_semana SMALLINT NOT NULL CHECK (dia_semana BETWEEN 0 AND 6),
+        cantidad_agentes INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(cliente_id, dia_semana)
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS custodia_asignacion_diaria (
+        id SERIAL PRIMARY KEY,
+        cliente_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+        fecha DATE NOT NULL,
+        employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        notas TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(cliente_id, fecha, employee_id)
+      )
+    `);
+    logger.info("Auto-migrate: CUST-03 tipo_servicio + tablas custodia verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: CUST-03 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }
