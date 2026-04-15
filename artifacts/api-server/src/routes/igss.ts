@@ -317,7 +317,19 @@ igssRouter.get("/igss/generar-planilla", async (req, res) => {
         AND e.aplica_igss_general = true
         AND e.igss_numero IS NOT NULL AND e.igss_numero != ''
         AND e.sueldo_base > 0
-        AND COALESCE(e.fecha_inicio_prestaciones, e.fecha_ingreso) <= CURRENT_DATE
+        AND (CASE
+              WHEN EXISTS (
+                SELECT 1 FROM puesto_titulares pt_p
+                JOIN puestos_operativos po_p ON po_p.id = pt_p.puesto_id
+                JOIN clients cl_p ON cl_p.id = po_p.cliente_id
+                WHERE pt_p.employee_id = e.id AND pt_p.activo = TRUE
+                  AND cl_p.contrato_sin_prueba = TRUE
+                  AND e.fecha_ingreso IS NOT NULL
+                  AND pt_p.created_at >= e.fecha_ingreso
+                  AND pt_p.created_at <= (e.fecha_ingreso + INTERVAL '1 month')
+              ) THEN e.fecha_ingreso
+              ELSE COALESCE(e.fecha_inicio_prestaciones, e.fecha_ingreso)
+            END) <= CURRENT_DATE
       ORDER BY e.id
     `);
 

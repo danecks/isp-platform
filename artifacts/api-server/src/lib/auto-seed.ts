@@ -4450,5 +4450,13 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: BON-01 — error (no bloqueante)");
   }
 
+  // ── PRUEBA-02: columna contrato_sin_prueba en clients ──
+  try {
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS contrato_sin_prueba BOOLEAN NOT NULL DEFAULT FALSE`);
+    logger.info("Auto-migrate: PRUEBA-02 columna contrato_sin_prueba en clients verificada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PRUEBA-02 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

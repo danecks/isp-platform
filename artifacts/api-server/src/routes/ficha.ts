@@ -17,6 +17,7 @@ fichaRouter.get("/clientes/:id/ficha", async (req, res) => {
       `SELECT id, nombre, nombre_comercial AS "nombreComercial", nit, sector, estado,
               observaciones_contractuales, fecha_inicio_contrato,
               tarifa_base_mensual, estado_contrato, notas, created_at AS "createdAt",
+              COALESCE(contrato_sin_prueba, FALSE) AS contrato_sin_prueba,
               igss_aplica, igss_codigo_centro, igss_direccion, igss_zona,
               igss_departamento, igss_municipio, igss_codigo_actividad,
               igss_contacto, igss_fax, igss_email, igss_telefono
@@ -117,7 +118,8 @@ fichaRouter.patch("/clientes/:id/contrato", async (req, res) => {
   const {
     observaciones_contractuales, fecha_inicio_contrato,
     tarifa_base_mensual, estado_contrato, notas,
-    nombre, nombreComercial, nit, sector
+    nombre, nombreComercial, nit, sector,
+    contrato_sin_prueba,
   } = req.body;
 
   try {
@@ -131,10 +133,12 @@ fichaRouter.patch("/clientes/:id/contrato", async (req, res) => {
            nombre                      = COALESCE($6, nombre),
            nombre_comercial            = COALESCE($7, nombre_comercial),
            nit                         = COALESCE($8, nit),
-           sector                      = COALESCE($9, sector)
-       WHERE id = $10
+           sector                      = COALESCE($9, sector),
+           contrato_sin_prueba         = COALESCE($10, contrato_sin_prueba)
+       WHERE id = $11
        RETURNING id, nombre, nombre_comercial AS "nombreComercial", nit, sector, estado,
-                 observaciones_contractuales, fecha_inicio_contrato, tarifa_base_mensual, estado_contrato, notas`,
+                 observaciones_contractuales, fecha_inicio_contrato, tarifa_base_mensual,
+                 estado_contrato, notas, contrato_sin_prueba`,
       [
         observaciones_contractuales ?? null,
         fecha_inicio_contrato ?? null,
@@ -145,6 +149,7 @@ fichaRouter.patch("/clientes/:id/contrato", async (req, res) => {
         nombreComercial ?? null,
         nit ?? null,
         sector ?? null,
+        contrato_sin_prueba ?? null,
         clientId,
       ]
     );

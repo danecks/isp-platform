@@ -39,6 +39,38 @@ export const prestacionesRouter = Router();
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function r2(n: number) { return parseFloat(n.toFixed(2)); }
 
+/**
+ * Determina la fecha efectiva de inicio de prestaciones para un empleado.
+ *
+ * Regla:
+ *  - Si el empleado está asignado a un cliente con contrato_sin_prueba = TRUE
+ *    Y fue asignado dentro de 1 mes de su fecha_ingreso → usa fecha_ingreso
+ *  - Si no → usa fecha_inicio_prestaciones (fecha_ingreso + 2 meses)
+ *  - Si ya pasaron 2+ meses desde fecha_ingreso → no importa, usa fecha_inicio_prestaciones
+ *    (ya venció la prueba de todas formas)
+ *
+ * Retorna una subquery SQL que puede usarse en SELECT/WHERE.
+ * Alias: fecha_ingreso_efectiva
+ */
+const FECHA_PRESTACIONES_SQL = `
+  CASE
+    WHEN EXISTS (
+      SELECT 1
+      FROM puesto_titulares pt_p
+      JOIN puestos_operativos po_p ON po_p.id = pt_p.puesto_id
+      JOIN clients cl_p ON cl_p.id = po_p.cliente_id
+      WHERE pt_p.employee_id = e.id
+        AND pt_p.activo = TRUE
+        AND cl_p.contrato_sin_prueba = TRUE
+        AND e.fecha_ingreso IS NOT NULL
+        AND pt_p.created_at >= e.fecha_ingreso
+        AND pt_p.created_at <= (e.fecha_ingreso + INTERVAL '1 month')
+    )
+    THEN e.fecha_ingreso
+    ELSE COALESCE(e.fecha_inicio_prestaciones, e.fecha_ingreso)
+  END
+`;
+
 // ─── GET /api/prestaciones/config ─────────────────────────────────────────────
 prestacionesRouter.get("/prestaciones/config", async (req, res) => {
   try {
@@ -231,7 +263,7 @@ prestacionesRouter.post("/prestaciones/provisionar", async (req, res) => {
 
     // Obtener empleados del período
     let empQuery = `SELECT e.id, e.nombre_completo, e.sueldo_base, e.sede, e.puesto,
-                           COALESCE(e.fecha_inicio_prestaciones, e.fecha_ingreso) AS fecha_ingreso,
+                           (${FECHA_PRESTACIONES_SQL}) AS fecha_ingreso,
                            e.frecuencia_pago, e.estado_laboral,
                            COALESCE(e.cliente_id, 0) AS client_id
                     FROM employees e
@@ -393,7 +425,7 @@ prestacionesRouter.get("/prestaciones/provisiones", async (req, res) => {
 async function buildLiquidacion(empId: number, body: Record<string, unknown>) {
   const { rows: emp } = await pool.query(
     `SELECT e.id, e.nombre_completo,
-            COALESCE(e.fecha_inicio_prestaciones, e.fecha_ingreso) AS fecha_ingreso,
+            (${FECHA_PRESTACIONES_SQL}) AS fecha_ingreso,
             e.fecha_ingreso AS fecha_ingreso_real,
             e.sueldo_base,
             COALESCE(e.frecuencia_pago, 'quincenal') AS frecuencia_pago
@@ -510,9 +542,9 @@ async function buildLiquidacion(empId: number, body: Record<string, unknown>) {
   const { rows: vacProrataRows } = await pool.query(`
     WITH srv AS (
       SELECT
-        ($2::date - COALESCE(fecha_inicio_prestaciones, fecha_ingreso)::date)::int AS dias_servicio,
-        EXTRACT(YEAR FROM AGE($2::date, COALESCE(fecha_inicio_prestaciones, fecha_ingreso)::date))::int AS anios_servicio
-      FROM employees WHERE id = $1
+        ($2::date - (${FECHA_PRESTACIONES_SQL})::date)::int AS dias_servicio,
+        EXTRACT(YEAR FROM AGE($2::date, (${FECHA_PRESTACIONES_SQL})::date))::int AS anios_servicio
+      FROM employees e WHERE e.id = $1
     ),
     autorizados AS (
       SELECT COALESCE(SUM(
@@ -886,7 +918,7 @@ prestacionesRouter.post("/prestaciones/calcular", async (req, res) => {
     let empSueldo = sueldo_mensual;
     let empIngreso = fecha_ingreso;
     if (employee_id && !sueldo_mensual) {
-      const { rows } = await pool.query(`SELECT sueldo_base, COALESCE(fecha_inicio_prestaciones, fecha_ingreso) AS fecha_ingreso FROM employees WHERE id = $1`, [employee_id]);
+      const { rows } = await pool.query(`SELECT e.sueldo_base, (${FECHA_PRESTACIONES_SQL}) AS fecha_ingreso FROM employees e WHERE e.id = $1`, [employee_id]);
       if (rows.length) {
         empSueldo = parseFloat(rows[0].sueldo_base);
         empIngreso = rows[0].fecha_ingreso.toISOString().slice(0, 10);

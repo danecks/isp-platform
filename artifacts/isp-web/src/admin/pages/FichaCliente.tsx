@@ -31,6 +31,7 @@ interface ClienteFicha {
   notas: string | null;
   dotacion_uniforme_num: number | null;
   dotacion_uniforme_frecuencia_meses: number | null;
+  contrato_sin_prueba: boolean;
   igss_aplica: boolean;
   igss_codigo_centro: string | null;
   igss_direccion: string | null;
@@ -601,6 +602,7 @@ function ModalEditarCliente({
     notas: cliente.notas ?? "",
     dotacion_uniforme_num: String(cliente.dotacion_uniforme_num ?? 0),
     dotacion_uniforme_frecuencia_meses: String(cliente.dotacion_uniforme_frecuencia_meses ?? 0),
+    contrato_sin_prueba: cliente.contrato_sin_prueba ?? false,
   });
   const [saving, setSaving] = useState(false);
 
@@ -619,6 +621,7 @@ function ModalEditarCliente({
           nombreComercial: form.nombreComercial || null,
           nit: form.nit || null,
           sector: form.sector || null,
+          contrato_sin_prueba: form.contrato_sin_prueba,
         }),
       });
       // Guardar configuración de dotación uniforme (UNIF-01)
@@ -688,6 +691,26 @@ function ModalEditarCliente({
               />
             </div>
           </div>
+          <div className="pt-1 pb-0.5">
+            <p className="text-[10px] text-blue-400/70 uppercase tracking-widest font-semibold">Período de Prueba</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setForm(p => ({ ...p, contrato_sin_prueba: !p.contrato_sin_prueba }))}
+            className={`w-full flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${form.contrato_sin_prueba ? "border-blue-500/30 bg-blue-500/5" : "border-white/10 bg-[#060e1c]"}`}
+          >
+            <div className={`w-8 h-5 rounded-full flex items-center px-0.5 transition-colors ${form.contrato_sin_prueba ? "bg-blue-500" : "bg-white/15"}`}>
+              <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${form.contrato_sin_prueba ? "translate-x-3" : "translate-x-0"}`} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-white/80 font-medium">Contrato sin período de prueba</p>
+              <p className="text-[10px] text-white/30 mt-0.5">
+                {form.contrato_sin_prueba
+                  ? "Los empleados asignados como titulares dentro del primer mes acumularán prestaciones desde su fecha de ingreso."
+                  : "Los empleados pasan 2 meses de período de prueba antes de acumular prestaciones (regla estándar)."}
+              </p>
+            </div>
+          </button>
           <div className="space-y-1">
             <label className="text-[10px] text-white/40 uppercase tracking-wide">Estado del contrato</label>
             <select
@@ -1473,6 +1496,11 @@ export default function FichaCliente() {
                 <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${estadoContratoColor(cliente.estado_contrato)}`}>
                   Contrato: {cliente.estado_contrato ?? "activo"}
                 </span>
+                {cliente.contrato_sin_prueba && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full border text-blue-400 bg-blue-400/10 border-blue-400/20 font-semibold">
+                    Sin período de prueba
+                  </span>
+                )}
                 <span className={`text-[10px] px-2 py-0.5 rounded-full border ${cliente.estado === "activo" ? "text-green-400 bg-green-400/10 border-green-400/20" : "text-white/30 bg-white/4 border-white/10"}`}>
                   {cliente.estado}
                 </span>
@@ -1566,6 +1594,7 @@ export default function FichaCliente() {
                     { label: "Inicio de contrato", value: cliente.fecha_inicio_contrato ? new Date(cliente.fecha_inicio_contrato).toLocaleDateString("es-GT") : null },
                     { label: "Tarifa base mensual", value: cliente.tarifa_base_mensual ? fmtQ(cliente.tarifa_base_mensual) : null },
                     { label: "Tarifa total puestos", value: tarifaTotal > 0 ? fmtQ(tarifaTotal) : null },
+                    { label: "Período de prueba", value: cliente.contrato_sin_prueba ? "No aplica (prestaciones desde ingreso)" : "2 meses (estándar)" },
                     {
                       label: "Dotación de uniformes",
                       value: (cliente.dotacion_uniforme_num ?? 0) > 0
