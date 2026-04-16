@@ -4753,6 +4753,70 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-seed: DEMO-BARR-01 — error (no bloqueante)");
   }
 
+  // ── DEMO-CUST-01: custodias — clientes mixto/custodia + fuerza + titulares ─
+  try {
+    const { rows: custCnt } = await pool.query(
+      `SELECT COUNT(*) AS c FROM custodia_titulares`
+    );
+    const { rows: sflagCust } = await pool.query(
+      `SELECT value FROM system_config WHERE key = 'demo_seed_disabled' LIMIT 1`,
+    );
+    if (sflagCust[0]?.value !== "true" && parseInt(custCnt[0].c) === 0) {
+      const { rows: cerveceria } = await pool.query(
+        `SELECT id FROM clients WHERE nombre_comercial ILIKE '%Gallo%' OR nombre ILIKE '%Cervecería%' LIMIT 1`
+      );
+      const { rows: salvavidas } = await pool.query(
+        `SELECT id FROM clients WHERE nombre_comercial ILIKE '%Salvavidas%' OR nombre ILIKE '%Mariposa%' LIMIT 1`
+      );
+      if (cerveceria.length > 0) {
+        await pool.query(`UPDATE clients SET tipo_servicio='mixto' WHERE id=$1`, [cerveceria[0].id]);
+      }
+      if (salvavidas.length > 0) {
+        await pool.query(`UPDATE clients SET tipo_servicio='custodia' WHERE id=$1`, [salvavidas[0].id]);
+      }
+
+      const custClients = [
+        ...(cerveceria.length > 0 ? [{ id: cerveceria[0].id, slots: 2 }] : []),
+        ...(salvavidas.length > 0 ? [{ id: salvavidas[0].id, slots: 3 }] : []),
+      ];
+
+      const { rows: custodioGuardias } = await pool.query(
+        `SELECT id FROM employees
+         WHERE estado_laboral='activo' AND tipo_personal='guardia'
+         ORDER BY id DESC LIMIT 5`
+      );
+
+      let custIdx = 0;
+      for (const cc of custClients) {
+        for (let dia = 0; dia <= 6; dia++) {
+          await pool.query(
+            `INSERT INTO custodia_fuerza_semanal (cliente_id, dia_semana, cantidad_agentes)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (cliente_id, dia_semana) DO NOTHING`,
+            [cc.id, dia, cc.slots]
+          );
+        }
+        for (let slot = 1; slot <= cc.slots; slot++) {
+          const emp = custodioGuardias[custIdx];
+          if (!emp) continue;
+          try {
+            await pool.query(
+              `INSERT INTO custodia_titulares (cliente_id, slot_numero, employee_id, activo)
+               VALUES ($1, $2, $3, TRUE)`,
+              [cc.id, slot, emp.id]
+            );
+          } catch {
+            // unique constraint — skip
+          }
+          custIdx++;
+        }
+      }
+      logger.info(`Auto-seed: DEMO-CUST-01 custodias creadas (${custClients.length} clientes, ${custIdx} titulares)`);
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-seed: DEMO-CUST-01 — error (no bloqueante)");
+  }
+
   // ── DEMO-VAC-01: saldos de vacaciones iniciales ───────────────────────────
   try {
     const { rows: vCnt } = await pool.query(`SELECT COUNT(*) AS c FROM vacaciones_saldos`);
