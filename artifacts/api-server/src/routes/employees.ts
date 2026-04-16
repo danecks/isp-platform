@@ -681,14 +681,18 @@ employeesRouter.post("/employees", async (req, res) => {
   if (!nombreCompleto || !String(nombreCompleto).trim()) {
     return res.status(400).json({ error: "El nombre completo del empleado es requerido" });
   }
+  if (!dpi || !String(dpi).trim()) {
+    return res.status(400).json({ error: "El DPI del empleado es requerido" });
+  }
   const nombreCompletoLimpio = String(nombreCompleto).trim();
+  const dpiLimpio = String(dpi).trim();
 
   // Validar unicidad de DPI
-  if (dpi) {
+  {
     const [existing] = await db
       .select({ id: employeesTable.id })
       .from(employeesTable)
-      .where(eq(employeesTable.dpi, dpi))
+      .where(eq(employeesTable.dpi, dpiLimpio))
       .limit(1);
     if (existing) {
       return res.status(409).json({ error: "Ya existe un empleado con ese DPI" });

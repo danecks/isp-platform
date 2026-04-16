@@ -4205,6 +4205,7 @@ function FormModal({
   async function handleSubmit(ev: React.FormEvent) {
     ev.preventDefault();
     if (!form.nombreCompleto.trim()) { setError("El nombre completo es requerido."); return; }
+    if (!form.dpi.trim()) { setError("El DPI es requerido."); return; }
     setSaving(true);
     setError(null);
     try {
@@ -4255,7 +4256,7 @@ function FormModal({
             {field("Nombre completo", "nombreCompleto", "text", { required: true })}
           </div>
           <div className="grid grid-cols-2 gap-3">
-            {field("DPI", "dpi", "text", { placeholder: "Número de DPI" })}
+            {field("DPI", "dpi", "text", { placeholder: "Número de DPI", required: true })}
             {field("Fecha de ingreso", "fechaIngreso", "date")}
           </div>
           <div className="grid grid-cols-2 gap-3">
