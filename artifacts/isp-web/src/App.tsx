@@ -75,6 +75,7 @@ import ActualizacionDatos from "@/pages/ActualizacionDatos";
 import SolicitarAnticipo from "@/pages/SolicitarAnticipo";
 import AdminKioscoSolicitudes from "@/admin/pages/KioscoSolicitudes";
 import AdminMergeRequests from "@/admin/pages/MergeRequests";
+import AdminModeloDatos from "@/admin/pages/ModeloDatos";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
@@ -162,6 +163,9 @@ function Router() {
       </Route>
       <Route path="/admin/usuarios">
         {() => <AuthGuard requiredRoles={["admin"]}><AdminUsuarios /></AuthGuard>}
+      </Route>
+      <Route path="/admin/modelo-datos">
+        {() => <AuthGuard requiredRoles={["admin"]}><AdminModeloDatos /></AuthGuard>}
       </Route>
       <Route path="/admin/anticipos">
         {() => <AuthGuard requiredRoles={["admin", "rrhh"]}><AdminAnticipos /></AuthGuard>}

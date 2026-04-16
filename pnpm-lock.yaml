@@ -199,6 +199,9 @@ importers:
       leaflet:
         specifier: ^1.9.4
         version: 1.9.4
+      mermaid:
+        specifier: ^11.14.0
+        version: 11.14.0
       qrcode.react:
         specifier: ^4.2.0
         version: 4.2.0(react@19.1.0)
