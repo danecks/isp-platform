@@ -222,63 +222,154 @@ const SEED_USERS = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════
-// EMPLEADOS SEED — agentes y supervisores de muestra
+// EMPLEADOS SEED — agentes, supervisores y personal administrativo
+// 20 empleados para cubrir puestos 24x24 (2 titulares c/u) + supervisión
 // ═══════════════════════════════════════════════════════════════════════
-const SEED_EMPLOYEES = [
+const SEED_EMPLOYEES: Array<{
+  nombreCompleto: string; dpi: string; telefono: string; correo: string;
+  puesto: string; area: string; sede: string; supervisorNombre: string;
+  fechaIngreso: Date; sueldoBase: number; tipoPersonal: string;
+  frecuenciaPago: string; tipoJornada?: string; sexo?: string;
+}> = [
   {
     nombreCompleto: "Carlos Eduardo Rodríguez López",
-    dpi: "1234567890101",
-    telefono: "50220002222",
-    correo: "carlos.ops@isp.gt",
-    puesto: "Jefe de Operaciones",
-    area: "Operaciones",
-    sede: "Ciudad de Guatemala",
-    supervisorNombre: "Daniel Administrador",
-    fechaIngreso: new Date("2021-03-15"),
-  },
-  {
-    nombreCompleto: "Marco Antonio Tzoc López",
-    dpi: "2345678901202",
-    telefono: "50220010001",
-    correo: "marco.tzoc@isp.gt",
-    puesto: "Agente de Seguridad",
-    area: "Operaciones",
-    sede: "Zona 10",
-    supervisorNombre: "Carlos Eduardo Rodríguez López",
-    fechaIngreso: new Date("2022-06-01"),
-  },
-  {
-    nombreCompleto: "Lucía Ajú Samayoa",
-    dpi: "3456789012303",
-    telefono: "50220010002",
-    correo: "lucia.aju@isp.gt",
-    puesto: "Agente de Seguridad",
-    area: "Operaciones",
-    sede: "Zona 10",
-    supervisorNombre: "Carlos Eduardo Rodríguez López",
-    fechaIngreso: new Date("2022-08-15"),
-  },
-  {
-    nombreCompleto: "Pedro Pablo Cux Xicay",
-    dpi: "4567890123404",
-    telefono: "50220010003",
-    correo: "pedro.cux@isp.gt",
-    puesto: "Agente de Seguridad",
-    area: "Operaciones",
-    sede: "Mixco",
-    supervisorNombre: "Carlos Eduardo Rodríguez López",
-    fechaIngreso: new Date("2023-01-10"),
+    dpi: "1234567890101", telefono: "50220002222", correo: "carlos.ops@isp.gt",
+    puesto: "Jefe de Operaciones", area: "Operaciones", sede: "Ciudad de Guatemala",
+    supervisorNombre: "Daniel Administrador", fechaIngreso: new Date("2021-03-15"),
+    sueldoBase: 8500, tipoPersonal: "administrativo", frecuenciaPago: "mensual", tipoJornada: "diurna", sexo: "M",
   },
   {
     nombreCompleto: "Supervisor García",
-    dpi: "5678901234505",
-    telefono: "50220005555",
-    correo: "garcia.sup@isp.gt",
-    puesto: "Supervisor de Seguridad",
-    area: "Supervisión",
-    sede: "Ciudad de Guatemala",
-    supervisorNombre: "Daniel Administrador",
-    fechaIngreso: new Date("2020-07-20"),
+    dpi: "5678901234505", telefono: "50220005555", correo: "garcia.sup@isp.gt",
+    puesto: "Supervisor de Seguridad", area: "Supervisión", sede: "Ciudad de Guatemala",
+    supervisorNombre: "Daniel Administrador", fechaIngreso: new Date("2020-07-20"),
+    sueldoBase: 5500, tipoPersonal: "supervisor", frecuenciaPago: "quincenal", tipoJornada: "diurna", sexo: "M",
+  },
+  {
+    nombreCompleto: "Marco Antonio Tzoc López",
+    dpi: "2345678901202", telefono: "50220010001", correo: "marco.tzoc@isp.gt",
+    puesto: "Agente de Seguridad", area: "Operaciones", sede: "Zona 10",
+    supervisorNombre: "Supervisor García", fechaIngreso: new Date("2022-06-01"),
+    sueldoBase: 3800, tipoPersonal: "guardia", frecuenciaPago: "quincenal", sexo: "M",
+  },
+  {
+    nombreCompleto: "Lucía Ajú Samayoa",
+    dpi: "3456789012303", telefono: "50220010002", correo: "lucia.aju@isp.gt",
+    puesto: "Agente de Seguridad", area: "Operaciones", sede: "Zona 10",
+    supervisorNombre: "Supervisor García", fechaIngreso: new Date("2022-08-15"),
+    sueldoBase: 3800, tipoPersonal: "guardia", frecuenciaPago: "quincenal", sexo: "F",
+  },
+  {
+    nombreCompleto: "Pedro Pablo Cux Xicay",
+    dpi: "4567890123404", telefono: "50220010003", correo: "pedro.cux@isp.gt",
+    puesto: "Agente de Seguridad", area: "Operaciones", sede: "Mixco",
+    supervisorNombre: "Supervisor García", fechaIngreso: new Date("2023-01-10"),
+    sueldoBase: 3800, tipoPersonal: "guardia", frecuenciaPago: "quincenal", sexo: "M",
+  },
+  {
+    nombreCompleto: "José Luis Xolop Chub",
+    dpi: "6789012345606", telefono: "50220010004", correo: "jose.xolop@isp.gt",
+    puesto: "Agente de Seguridad", area: "Operaciones", sede: "Zona 12",
+    supervisorNombre: "Supervisor García", fechaIngreso: new Date("2023-03-01"),
+    sueldoBase: 3800, tipoPersonal: "guardia", frecuenciaPago: "quincenal", sexo: "M",
+  },
+  {
+    nombreCompleto: "María Elena Ixchop Batz",
+    dpi: "7890123456707", telefono: "50220010005", correo: "maria.ixchop@isp.gt",
+    puesto: "Agente de Seguridad", area: "Operaciones", sede: "Zona 12",
+    supervisorNombre: "Supervisor García", fechaIngreso: new Date("2023-04-15"),
+    sueldoBase: 3800, tipoPersonal: "guardia", frecuenciaPago: "quincenal", sexo: "F",
+  },
+  {
+    nombreCompleto: "Roberto Ajanel Morales",
+    dpi: "8901234567808", telefono: "50220010006", correo: "roberto.ajanel@isp.gt",
+    puesto: "Agente de Seguridad", area: "Operaciones", sede: "Villa Nueva",
+    supervisorNombre: "Supervisor García", fechaIngreso: new Date("2023-06-01"),
+    sueldoBase: 3800, tipoPersonal: "guardia", frecuenciaPago: "quincenal", sexo: "M",
+  },
+  {
+    nombreCompleto: "Ana Patricia Quiché Sol",
+    dpi: "9012345678909", telefono: "50220010007", correo: "ana.quiche@isp.gt",
+    puesto: "Agente de Seguridad", area: "Operaciones", sede: "Villa Nueva",
+    supervisorNombre: "Supervisor García", fechaIngreso: new Date("2023-07-10"),
+    sueldoBase: 3800, tipoPersonal: "guardia", frecuenciaPago: "quincenal", sexo: "F",
+  },
+  {
+    nombreCompleto: "Óscar René Tum Caal",
+    dpi: "1122334455010", telefono: "50220010008", correo: "oscar.tum@isp.gt",
+    puesto: "Agente de Seguridad", area: "Operaciones", sede: "Zona 1",
+    supervisorNombre: "Supervisor García", fechaIngreso: new Date("2023-08-20"),
+    sueldoBase: 3800, tipoPersonal: "guardia", frecuenciaPago: "quincenal", sexo: "M",
+  },
+  {
+    nombreCompleto: "Flor de María Sipac Noj",
+    dpi: "2233445566011", telefono: "50220010009", correo: "flor.sipac@isp.gt",
+    puesto: "Agente de Seguridad", area: "Operaciones", sede: "Zona 1",
+    supervisorNombre: "Supervisor García", fechaIngreso: new Date("2023-09-01"),
+    sueldoBase: 3800, tipoPersonal: "guardia", frecuenciaPago: "quincenal", sexo: "F",
+  },
+  {
+    nombreCompleto: "Hugo Alfredo Yat Pop",
+    dpi: "3344556677012", telefono: "50220010010", correo: "hugo.yat@isp.gt",
+    puesto: "Agente de Seguridad", area: "Operaciones", sede: "Zona 10",
+    supervisorNombre: "Supervisor García", fechaIngreso: new Date("2024-01-15"),
+    sueldoBase: 3800, tipoPersonal: "guardia", frecuenciaPago: "quincenal", sexo: "M",
+  },
+  {
+    nombreCompleto: "Ingrid Marisol Cotom Xec",
+    dpi: "4455667788013", telefono: "50220010011", correo: "ingrid.cotom@isp.gt",
+    puesto: "Agente de Seguridad", area: "Operaciones", sede: "Zona 12",
+    supervisorNombre: "Supervisor García", fechaIngreso: new Date("2024-02-01"),
+    sueldoBase: 3800, tipoPersonal: "guardia", frecuenciaPago: "quincenal", sexo: "F",
+  },
+  {
+    nombreCompleto: "Edwin Josué Macz Coc",
+    dpi: "5566778899014", telefono: "50220010012", correo: "edwin.macz@isp.gt",
+    puesto: "Agente de Seguridad", area: "Operaciones", sede: "Mixco",
+    supervisorNombre: "Supervisor García", fechaIngreso: new Date("2024-03-10"),
+    sueldoBase: 3800, tipoPersonal: "guardia", frecuenciaPago: "quincenal", sexo: "M",
+  },
+  {
+    nombreCompleto: "Karla Beatriz Choc May",
+    dpi: "6677889900015", telefono: "50220010013", correo: "karla.choc@isp.gt",
+    puesto: "Agente de Seguridad", area: "Operaciones", sede: "Mixco",
+    supervisorNombre: "Supervisor García", fechaIngreso: new Date("2024-04-01"),
+    sueldoBase: 3800, tipoPersonal: "guardia", frecuenciaPago: "quincenal", sexo: "F",
+  },
+  {
+    nombreCompleto: "Byron Estuardo Cac Tzul",
+    dpi: "7788990011016", telefono: "50220010014", correo: "byron.cac@isp.gt",
+    puesto: "Agente de Seguridad", area: "Operaciones", sede: "Villa Nueva",
+    supervisorNombre: "Supervisor García", fechaIngreso: new Date("2024-05-15"),
+    sueldoBase: 3800, tipoPersonal: "guardia", frecuenciaPago: "quincenal", sexo: "M",
+  },
+  {
+    nombreCompleto: "Sandra Aracely Pop Yoj",
+    dpi: "8899001122017", telefono: "50220010015", correo: "sandra.pop@isp.gt",
+    puesto: "Agente de Seguridad", area: "Operaciones", sede: "Zona 12",
+    supervisorNombre: "Supervisor García", fechaIngreso: new Date("2024-06-01"),
+    sueldoBase: 3800, tipoPersonal: "guardia", frecuenciaPago: "quincenal", sexo: "F",
+  },
+  {
+    nombreCompleto: "Mynor Geovani Ich Caal",
+    dpi: "9900112233018", telefono: "50220010016", correo: "mynor.ich@isp.gt",
+    puesto: "Agente de Seguridad", area: "Operaciones", sede: "Zona 1",
+    supervisorNombre: "Supervisor García", fechaIngreso: new Date("2024-07-10"),
+    sueldoBase: 3800, tipoPersonal: "guardia", frecuenciaPago: "quincenal", sexo: "M",
+  },
+  {
+    nombreCompleto: "Vilma Esperanza Toj Cux",
+    dpi: "1100223344019", telefono: "50220010017", correo: "vilma.toj@isp.gt",
+    puesto: "Agente de Seguridad", area: "Operaciones", sede: "Ciudad de Guatemala",
+    supervisorNombre: "Supervisor García", fechaIngreso: new Date("2024-08-01"),
+    sueldoBase: 3800, tipoPersonal: "guardia", frecuenciaPago: "quincenal", sexo: "F",
+  },
+  {
+    nombreCompleto: "Héctor Leonel Bac Ical",
+    dpi: "2200334455020", telefono: "50220010018", correo: "hector.bac@isp.gt",
+    puesto: "Agente de Seguridad", area: "Operaciones", sede: "Ciudad de Guatemala",
+    supervisorNombre: "Supervisor García", fechaIngreso: new Date("2024-09-15"),
+    sueldoBase: 3800, tipoPersonal: "guardia", frecuenciaPago: "quincenal", sexo: "M",
   },
 ];
 
@@ -370,20 +461,16 @@ export async function runAutoSeed(): Promise<void> {
     if (Number(empCount) === 0 && !isProduction && !demoSeedDisabled && Number(cliCountForSeed) === 0) {
       logger.info("Auto-seed: creando empleados de muestra...");
       for (const e of SEED_EMPLOYEES) {
-        await db.insert(employeesTable).values({
-          nombreCompleto: e.nombreCompleto,
-          dpi: e.dpi,
-          telefono: e.telefono,
-          correo: e.correo,
-          puesto: e.puesto,
-          area: e.area,
-          estadoLaboral: "activo",
-          sede: e.sede,
-          supervisorNombre: e.supervisorNombre,
-          fechaIngreso: e.fechaIngreso,
-          sourceSystem: "manual",
-          syncStatus: "manual",
-        });
+        await pool.query(
+          `INSERT INTO employees
+            (nombre_completo, dpi, telefono, correo, puesto, area, estado_laboral, sede,
+             supervisor_nombre, fecha_ingreso, source_system, sync_status,
+             sueldo_base, tipo_personal, frecuencia_pago, tipo_jornada, sexo)
+           VALUES ($1,$2,$3,$4,$5,$6,'activo',$7,$8,$9,'manual','manual',$10,$11,$12,$13,$14)`,
+          [e.nombreCompleto, e.dpi, e.telefono, e.correo, e.puesto, e.area, e.sede,
+           e.supervisorNombre, e.fechaIngreso, e.sueldoBase, e.tipoPersonal,
+           e.frecuenciaPago, e.tipoJornada ?? null, e.sexo ?? null]
+        );
       }
       logger.info({ count: SEED_EMPLOYEES.length }, "Auto-seed: empleados creados");
     } else {
@@ -1065,26 +1152,34 @@ Por favor ingresa al sistema o responde para continuar.',
     const clientCount = await pool.query(`SELECT COUNT(*) FROM clients WHERE estado='activo'`);
     const puestoCount = await pool.query(`SELECT COUNT(*) FROM puestos_operativos`);
     if (!_seedDisabledP && parseInt(clientCount.rows[0].count) > 0 && parseInt(puestoCount.rows[0].count) === 0) {
-      const clients = await pool.query(`SELECT id, nombre, nombre_comercial FROM clients WHERE estado='activo' LIMIT 4`);
-      const empleados = await pool.query(`SELECT id, nombre_completo FROM employees WHERE estado_laboral='activo' LIMIT 8`);
+      const clients = await pool.query(`SELECT id, nombre, nombre_comercial FROM clients WHERE estado='activo' ORDER BY id LIMIT 4`);
+      const { rows: turno24 } = await pool.query(`SELECT id FROM turnos WHERE nombre='Turno 24 horas' LIMIT 1`);
+      const turno24Id = turno24[0]?.id ?? null;
+      const guardias = await pool.query(
+        `SELECT id, nombre_completo FROM employees WHERE estado_laboral='activo' AND tipo_personal='guardia' ORDER BY id`
+      );
       let orden = 0;
-      let empIdx = 0;
+      let gIdx = 0;
       const puestoTemplates = ["Garita Principal", "Garita Secundaria", "Recepción", "Bodega"];
-      const turnos = ["día", "noche", "día", "noche"];
+      const turnos = ["24h", "24h", "24h", "24h"];
       for (const cli of clients.rows) {
         for (let i = 0; i < 2; i++) {
           const nombrePuesto = puestoTemplates[orden % puestoTemplates.length];
           const turno = turnos[orden % turnos.length];
-          const agente = empleados.rows[empIdx];
-          const agenteId = agente?.id ?? null;
-          const agenteNombre = agente?.nombre_completo ?? null;
+          const titular = guardias.rows[gIdx];
+          const titularId = titular?.id ?? null;
+          const titularNombre = titular?.nombre_completo ?? null;
           await pool.query(
-            `INSERT INTO puestos_operativos (cliente_id, cliente_nombre, nombre, turno, agente_id, agente_nombre, estado, orden)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [cli.id, cli.nombre_comercial || cli.nombre, nombrePuesto, turno, agenteId, agenteNombre, agenteId ? 'cubierto' : 'descubierto', orden]
+            `INSERT INTO puestos_operativos
+              (cliente_id, cliente_nombre, nombre, turno, estado, orden, activo,
+               tipo_turno_id, fecha_inicio_ciclo, titular_employee_id, titular_nombre,
+               salario_puesto, tipo_puesto)
+             VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7, '2026-01-01', $8, $9, 3800, 'normal')`,
+            [cli.id, cli.nombre_comercial || cli.nombre, nombrePuesto, turno,
+             titularId ? 'cubierto' : 'descubierto', orden, turno24Id, titularId, titularNombre]
           );
           orden++;
-          if (agenteId) empIdx++;
+          if (titularId) gIdx++;
         }
       }
       logger.info(`Auto-seed: puestos_operativos iniciales creados (${orden})`);
@@ -4552,6 +4647,132 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.info("Auto-migrate: BARR-01 tablas barracas + barraca_asignaciones verificadas/creadas");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: BARR-01 — error (no bloqueante)");
+  }
+
+  // ── DEMO-SLOTS-01: puesto_slots 24x24 (7 trabaja / 7 descansa) ─────────────
+  try {
+    const { rows: slotCnt } = await pool.query(`SELECT COUNT(*) AS c FROM puesto_slots`);
+    const { rows: sflagSlot } = await pool.query(
+      `SELECT value FROM system_config WHERE key = 'demo_seed_disabled' LIMIT 1`,
+    );
+    if (sflagSlot[0]?.value !== "true" && parseInt(slotCnt[0].c) === 0) {
+      const { rows: puestos } = await pool.query(
+        `SELECT po.id, po.titular_employee_id, po.fecha_inicio_ciclo
+         FROM puestos_operativos po
+         WHERE po.activo = TRUE AND po.titular_employee_id IS NOT NULL
+         ORDER BY po.id`
+      );
+      const guardias = await pool.query(
+        `SELECT id FROM employees WHERE estado_laboral='activo' AND tipo_personal='guardia' ORDER BY id`
+      );
+      const gIds = guardias.rows.map((r: any) => r.id);
+      let gAssigned = 0;
+      for (const p of puestos) {
+        const titularIdx = gIds.indexOf(p.titular_employee_id);
+        const parBId = gIds[titularIdx + puestos.length] ?? gIds[gIds.length - 1 - gAssigned] ?? null;
+        await pool.query(
+          `INSERT INTO puesto_slots (puesto_id, slot_numero, horas_turno, hora_entrada, dias_trabajo, empleado_id, longitud_ciclo, fecha_inicio_ciclo)
+           VALUES ($1, 1, 24, '07:00', '{1,2,3,4,5,6,7}', $2, 14, $3)
+           ON CONFLICT DO NOTHING`,
+          [p.id, p.titular_employee_id, p.fecha_inicio_ciclo || '2026-01-01']
+        );
+        if (parBId && parBId !== p.titular_employee_id) {
+          await pool.query(
+            `INSERT INTO puesto_slots (puesto_id, slot_numero, horas_turno, hora_entrada, dias_trabajo, empleado_id, longitud_ciclo, fecha_inicio_ciclo)
+             VALUES ($1, 2, 24, '07:00', '{8,9,10,11,12,13,14}', $2, 14, $3)
+             ON CONFLICT DO NOTHING`,
+            [p.id, parBId, p.fecha_inicio_ciclo || '2026-01-01']
+          );
+        }
+        gAssigned++;
+      }
+      logger.info(`Auto-seed: DEMO-SLOTS-01 puesto_slots creados para ${puestos.length} puestos`);
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-seed: DEMO-SLOTS-01 — error (no bloqueante)");
+  }
+
+  // ── DEMO-PT-01: puesto_titulares para puestos con slots (upsert) ──────────
+  try {
+    const { rows: sflagPT } = await pool.query(
+      `SELECT value FROM system_config WHERE key = 'demo_seed_disabled' LIMIT 1`,
+    );
+    if (sflagPT[0]?.value !== "true") {
+      const { rowCount: ptInserted } = await pool.query(`
+        INSERT INTO puesto_titulares (puesto_id, employee_id, orden, fecha_inicio_ciclo)
+        SELECT ps.puesto_id, ps.empleado_id, ps.slot_numero, ps.fecha_inicio_ciclo
+        FROM puesto_slots ps
+        WHERE ps.activo = TRUE AND ps.empleado_id IS NOT NULL
+        ON CONFLICT (puesto_id, employee_id) DO NOTHING
+      `);
+      if ((ptInserted ?? 0) > 0) {
+        logger.info(`Auto-seed: DEMO-PT-01 ${ptInserted} puesto_titulares sincronizados desde puesto_slots`);
+      }
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-seed: DEMO-PT-01 — error (no bloqueante)");
+  }
+
+  // ── DEMO-BARR-01: barracas de muestra + asignaciones ──────────────────────
+  try {
+    const { rows: bCnt } = await pool.query(`SELECT COUNT(*) AS c FROM barracas`);
+    const { rows: sflagB } = await pool.query(
+      `SELECT value FROM system_config WHERE key = 'demo_seed_disabled' LIMIT 1`,
+    );
+    if (sflagB[0]?.value !== "true" && parseInt(bCnt[0].c) === 0) {
+      const { rows: barr } = await pool.query(`
+        INSERT INTO barracas (nombre, direccion, departamento, municipio, cuota_mensual, capacidad) VALUES
+          ('Barraca Zona 12',    '15 calle 3-45 zona 12',          'Guatemala', 'Guatemala',   350, 8),
+          ('Barraca Villa Nueva','Km 20.5 Carretera al Pacífico',  'Guatemala', 'Villa Nueva',  300, 6),
+          ('Barraca Mixco',      'Col. San Cristóbal, 4a calle',   'Guatemala', 'Mixco',        325, 6)
+        RETURNING id
+      `);
+      const guardias = await pool.query(
+        `SELECT id FROM employees WHERE estado_laboral='activo' AND tipo_personal='guardia' ORDER BY id LIMIT 10`
+      );
+      const gIds = guardias.rows.map((r: any) => r.id);
+      const asignaciones = [
+        { barracaId: barr[0].id, empIds: gIds.slice(0, 4) },
+        { barracaId: barr[1].id, empIds: gIds.slice(4, 7) },
+        { barracaId: barr[2].id, empIds: gIds.slice(7, 10) },
+      ];
+      for (const a of asignaciones) {
+        for (const empId of a.empIds) {
+          if (!empId) continue;
+          await pool.query(
+            `INSERT INTO barraca_asignaciones (barraca_id, employee_id, fecha_inicio, activo)
+             VALUES ($1, $2, '2026-01-01', TRUE)
+             ON CONFLICT DO NOTHING`,
+            [a.barracaId, empId]
+          );
+        }
+      }
+      logger.info(`Auto-seed: DEMO-BARR-01 barracas y asignaciones creadas (3 barracas, hasta 10 agentes)`);
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-seed: DEMO-BARR-01 — error (no bloqueante)");
+  }
+
+  // ── DEMO-VAC-01: saldos de vacaciones iniciales ───────────────────────────
+  try {
+    const { rows: vCnt } = await pool.query(`SELECT COUNT(*) AS c FROM vacaciones_saldos`);
+    const { rows: sflagV } = await pool.query(
+      `SELECT value FROM system_config WHERE key = 'demo_seed_disabled' LIMIT 1`,
+    );
+    if (sflagV[0]?.value !== "true" && parseInt(vCnt[0].c) === 0) {
+      await pool.query(`
+        INSERT INTO vacaciones_saldos (employee_id, dias_ganados, dias_gozados, dias_disponibles)
+        SELECT e.id, 15, 0, 15
+        FROM employees e
+        WHERE e.estado_laboral = 'activo'
+          AND e.fecha_ingreso IS NOT NULL
+          AND e.fecha_ingreso <= '2025-12-31'
+        ON CONFLICT (employee_id) DO NOTHING
+      `);
+      logger.info("Auto-seed: DEMO-VAC-01 saldos de vacaciones creados");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-seed: DEMO-VAC-01 — error (no bloqueante)");
   }
 
   logger.info("Auto-seed completado");
