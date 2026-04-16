@@ -3790,6 +3790,19 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-seed: KIOSCO-PERM-01 permisos — error (no bloqueante)");
   }
 
+  // ── BARRACAS-PERM-01: permisos garantizados para módulo Barracas ───────────
+  try {
+    await pool.query(`
+      INSERT INTO rol_permisos (rol_clave, modulo_clave) VALUES
+        ('admin', 'barracas'),
+        ('rrhh',  'barracas')
+      ON CONFLICT DO NOTHING
+    `);
+    logger.info("Auto-seed: BARRACAS-PERM-01 permisos barracas insertados");
+  } catch (err) {
+    logger.error({ err }, "Auto-seed: BARRACAS-PERM-01 permisos — error (no bloqueante)");
+  }
+
   // ── SUPERVISOR-DEV-01: dispositivos autenticados (teléfonos de puesto y supervisor) ──
   try {
     await pool.query(`
@@ -4502,6 +4515,43 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.info("Auto-migrate: CUST-03 tipo_servicio + tablas custodia verificadas/creadas");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: CUST-03 — error (no bloqueante)");
+  }
+
+  // ── BARR-01: Barracas (vivienda empresarial) ──────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS barracas (
+        id SERIAL PRIMARY KEY,
+        nombre VARCHAR(200) NOT NULL,
+        direccion TEXT,
+        departamento VARCHAR(100),
+        municipio VARCHAR(100),
+        cuota_mensual NUMERIC(10,2) NOT NULL DEFAULT 0,
+        capacidad INTEGER NOT NULL DEFAULT 10,
+        activo BOOLEAN NOT NULL DEFAULT TRUE,
+        notas TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS barraca_asignaciones (
+        id SERIAL PRIMARY KEY,
+        barraca_id INTEGER NOT NULL REFERENCES barracas(id) ON DELETE CASCADE,
+        employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        fecha_inicio DATE NOT NULL DEFAULT CURRENT_DATE,
+        fecha_fin DATE,
+        activo BOOLEAN NOT NULL DEFAULT TRUE,
+        notas TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS barraca_asig_emp_activo_uq ON barraca_asignaciones(employee_id) WHERE activo = TRUE`);
+    await pool.query(`ALTER TABLE planilla_lineas ADD COLUMN IF NOT EXISTS descuento_barraca NUMERIC(10,2) NOT NULL DEFAULT 0`);
+    logger.info("Auto-migrate: BARR-01 tablas barracas + barraca_asignaciones verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: BARR-01 — error (no bloqueante)");
   }
 
   logger.info("Auto-seed completado");

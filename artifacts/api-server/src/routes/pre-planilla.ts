@@ -174,6 +174,19 @@ const QUERY_CONSOLIDADO = `
       LIMIT 1
     ), 0)                                                                       AS cuota_uniforme_monto,
 
+    -- Descuento de barraca (vivienda empresarial BARR-01)
+    COALESCE((
+      SELECT b.cuota_mensual::float
+      FROM barraca_asignaciones ba
+      JOIN barracas b ON b.id = ba.barraca_id
+      WHERE ba.employee_id = e.id
+        AND ba.activo = TRUE
+        AND b.activo = TRUE
+      LIMIT 1
+    ), 0)                                                                       AS barraca_monto,
+    (SELECT b.nombre FROM barraca_asignaciones ba JOIN barracas b ON b.id = ba.barraca_id
+     WHERE ba.employee_id = e.id AND ba.activo = TRUE AND b.activo = TRUE LIMIT 1) AS barraca_nombre,
+
     -- Estado de revisión RRHH
     COALESCE(pr.estado, 'pendiente')                                            AS revision_estado,
     pr.observaciones                                                            AS revision_observaciones,

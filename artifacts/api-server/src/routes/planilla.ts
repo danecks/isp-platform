@@ -51,6 +51,7 @@ import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { calcularBruto, calcularBonificacionIncentivo, calcularISRQuincenal, toNum, toInt } from "../lib/nomina-calc";
 import { buildUniformeCuotaMap, descontarCuotaUniforme } from "./uniformes";
+import { buildBarracaCuotaMap } from "./barracas";
 
 export const planillaRouter = Router();
 
@@ -73,6 +74,7 @@ function calcularLinea(
   hasta: string,
   uniformeMonto: number = 0,
   tarifasHE?: Map<string, { tarifa: number; horas_turno: number }>,
+  barracaMonto: number = 0,
 ) {
   const sb        = toNum(row.sueldo_base);
   const hc        = toNum(row.horas_contrato);
@@ -145,8 +147,9 @@ function calcularLinea(
   const isr = calcularISRQuincenal(sb, igssData.aplica_igss);
 
   const uniforme = parseFloat(uniformeMonto.toFixed(2));
+  const barraca = parseFloat(barracaMonto.toFixed(2));
   const totalBonificaciones = bonificacion_incentivo + bonificacion_1 + bonificacion_2 + bonificacion_3;
-  const totalNeto = parseFloat(Math.max(0, totalBrutoRnd - igssT - isr + totalBonificaciones - anticipo - uniforme).toFixed(2));
+  const totalNeto = parseFloat(Math.max(0, totalBrutoRnd - igssT - isr + totalBonificaciones - anticipo - uniforme - barraca).toFixed(2));
 
   return {
     sueldo_base:      sb,
@@ -177,6 +180,7 @@ function calcularLinea(
     motivo_exclusion_igss: igssData.motivo_exclusion_igss,
     otros_descuentos:    0,
     descuentos_uniforme: uniforme,
+    descuento_barraca:   barraca,
   };
 }
 
@@ -343,6 +347,9 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
     // Construir mapa de cuotas de uniforme pendientes por empleado
     const unifMap = await buildUniformeCuotaMap(empIds);
 
+    // Construir mapa de cuotas de barraca por empleado
+    const barracaMap = await buildBarracaCuotaMap(empIds);
+
     // Cargar tarifas de HE configurables
     const tarifasHE = new Map<string, { tarifa: number; horas_turno: number }>();
     try {
@@ -359,6 +366,10 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         ? igssMap.get(empId)!
         : { aplica_igss: false, motivo_exclusion_igss: empId ? "Sin datos IGSS" : "Sin ID de empleado" };
       const uniformeMonto = empId ? (unifMap.get(empId)?.monto ?? 0) : 0;
+      const barracaInfo = empId ? barracaMap.get(empId) : undefined;
+      const barracaCuotaMensual = barracaInfo?.cuota ?? 0;
+      const frecPago = String(row.frecuencia_pago ?? "quincenal");
+      const barracaMonto = frecPago === "quincenal" ? parseFloat((barracaCuotaMensual / 2).toFixed(2)) : barracaCuotaMensual;
       return {
         employee_id:        empId,
         nombre_completo:    String(row.nombre_completo ?? ""),
@@ -369,7 +380,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         tipo_jornada:       row.tipo_jornada as string | null,
         revision_estado:    row.revision_estado as string | null,
         observaciones_rrhh: row.revision_observaciones as string | null,
-        ...calcularLinea(row, periodoTotalDias, igssData, quincenaTipo, desde, hasta, uniformeMonto, tarifasHE),
+        ...calcularLinea(row, periodoTotalDias, igssData, quincenaTipo, desde, hasta, uniformeMonto, tarifasHE, barracaMonto),
       };
     });
 
@@ -486,8 +497,9 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
            otros_descuentos, total_neto,
            anticipo_ids, novedad_ids, segmento_ids,
            revision_estado, observaciones_rrhh,
-           descuentos_uniforme, uniforme_cuota_ids)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41)
+           descuentos_uniforme, uniforme_cuota_ids,
+           descuento_barraca)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42)
       `, [
         planillaId, l.employee_id, l.nombre_completo, l.dpi, l.puesto, l.sede, l.cliente,
         l.tipo_jornada, l.horas_contrato, l.frecuencia_pago, l.sueldo_base, l.periodo_dias,
@@ -501,6 +513,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         JSON.stringify(anticipoIds), JSON.stringify([]), JSON.stringify([]),
         l.revision_estado, l.observaciones_rrhh,
         l.descuentos_uniforme, JSON.stringify(uniformeCuotaIds),
+        l.descuento_barraca,
       ]);
     }
 

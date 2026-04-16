@@ -49,6 +49,7 @@ const ROUTE_MODULO_MAP: Record<string, string> = {
   "/leads":                  "reclutamiento",
   "/applications":           "reclutamiento",
   "/turnos":                 "turnos",
+  "/barracas":               "barracas",
 };
 
 // Caché en memoria: username → { rol, modulos, expiresAt } (TTL 30s)

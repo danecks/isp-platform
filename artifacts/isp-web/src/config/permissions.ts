@@ -39,6 +39,7 @@ import {
   Palmtree,
   CreditCard,
   Tablet,
+  Home,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -303,6 +304,13 @@ export const NAV_SECTIONS: NavSection[] = [
         label: "Carnets QR",
         icon: CreditCard,
         clave: "carnets_qr",
+        roles: ["admin", "rrhh"],
+      },
+      {
+        path: "/admin/rrhh/barracas",
+        label: "Barracas",
+        icon: Home,
+        clave: "barracas",
         roles: ["admin", "rrhh"],
       },
     ],

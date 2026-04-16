@@ -59,6 +59,7 @@ import { solicitudesEmpleoRouter } from "./solicitudes-empleo";
 import { resetDatosRouter } from "./reset-datos";
 import { actasRouter } from "./actas";
 import custodiasRouter from "./custodias";
+import { barracasRouter } from "./barracas";
 
 const router: IRouter = Router();
 
@@ -122,5 +123,6 @@ router.use(solicitudesEmpleoRouter);
 router.use(resetDatosRouter);
 router.use(actasRouter);
 router.use(custodiasRouter);
+router.use(barracasRouter);
 
 export default router;
