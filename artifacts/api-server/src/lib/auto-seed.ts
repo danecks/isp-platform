@@ -4870,5 +4870,61 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-seed: DEMO-VAC-01 — error (no bloqueante)");
   }
 
+  // ── WIPE-PROD-01: limpieza total de producción (solo cuando bandera activa) ──
+  // Activar con:  INSERT INTO system_config (key, value) VALUES ('wipe_prod_requested', 'true')
+  //               ON CONFLICT (key) DO UPDATE SET value = 'true';
+  // El bloque trunca TODO menos el usuario dan2336 y la tabla system_config, y apaga la bandera.
+  try {
+    const { rows: wflag } = await pool.query(
+      `SELECT value FROM system_config WHERE key = 'wipe_prod_requested' LIMIT 1`,
+    );
+    if (wflag[0]?.value === "true") {
+      logger.warn("Auto-migrate: WIPE-PROD-01 bandera detectada — ejecutando limpieza total");
+      // Verificar que dan2336 existe antes de empezar
+      const { rows: adminCheck } = await pool.query(
+        `SELECT id FROM users WHERE username = 'dan2336' LIMIT 1`,
+      );
+      if (adminCheck.length === 0) {
+        logger.error("Auto-migrate: WIPE-PROD-01 abortado — usuario dan2336 no existe, no se ejecuta limpieza");
+        await pool.query(
+          `UPDATE system_config SET value = 'false' WHERE key = 'wipe_prod_requested'`,
+        );
+        return;
+      }
+      await pool.query("BEGIN");
+      try {
+        // Listar tablas públicas excepto system_config y users (se conservan)
+        const { rows: allTables } = await pool.query(`
+          SELECT tablename FROM pg_tables
+          WHERE schemaname = 'public'
+            AND tablename NOT IN ('system_config', 'users')
+          ORDER BY tablename
+        `);
+        const tableNames = allTables.map((r: { tablename: string }) => `"${r.tablename}"`).join(", ");
+        if (tableNames) {
+          // TRUNCATE ... CASCADE limpia respetando FKs, RESTART IDENTITY reinicia secuencias
+          await pool.query(`TRUNCATE ${tableNames} RESTART IDENTITY CASCADE`);
+        }
+        // Eliminar todos los usuarios excepto dan2336 (conserva hash original)
+        await pool.query(`DELETE FROM users WHERE username <> 'dan2336'`);
+        // Apagar la bandera y activar demo_seed_disabled para evitar que los seeds demo vuelvan
+        await pool.query(
+          `UPDATE system_config SET value = 'false' WHERE key = 'wipe_prod_requested'`,
+        );
+        await pool.query(
+          `INSERT INTO system_config (key, value) VALUES ('demo_seed_disabled', 'true')
+           ON CONFLICT (key) DO UPDATE SET value = 'true'`,
+        );
+        await pool.query("COMMIT");
+        logger.warn("Auto-migrate: WIPE-PROD-01 limpieza completada — solo usuario dan2336 conservado");
+      } catch (werr) {
+        await pool.query("ROLLBACK");
+        logger.error({ err: werr }, "Auto-migrate: WIPE-PROD-01 — falló, ROLLBACK ejecutado");
+      }
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: WIPE-PROD-01 — error leyendo bandera (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }
