@@ -4828,12 +4828,14 @@ function ModalSustitucion({
   onConfirm,
   onCancel,
   advertencia,
+  agentePoolStatus,
 }: {
   puesto: Puesto;
   agenteEntrante: Agente;
   onConfirm: (motivo: string, notas: string, forzar: boolean, tipoSustitucion: string, tipoNovedad: string, coberturaTipo: string, horasParcial?: { inicio: string; fin: string }, pagoEfectivo?: { monto: number; pagadoPor: string }) => Promise<void>;
   onCancel: () => void;
   advertencia?: string;
+  agentePoolStatus?: "disponible" | "descansando" | "vacaciones" | "trabajando";
 }) {
   const [motivoSalida, setMotivoSalida] = useState("falta_total");
   const [tipoCobertura, setTipoCobertura] = useState<"completo" | "parcial">("completo");
@@ -4848,6 +4850,7 @@ function ModalSustitucion({
   const [horaFinParcial, setHoraFinParcial] = useState("");
   const [tarifaHE, setTarifaHE] = useState<{ tarifa: number; horas_turno: number } | null>(null);
   const esSustitucion = !!puesto.agente_id;
+  const aplicaHE = agentePoolStatus === "descansando" || agentePoolStatus === "vacaciones";
 
   const tipoNovedad = motivoSalida;
 
@@ -4869,6 +4872,7 @@ function ModalSustitucion({
   })();
 
   useEffect(() => {
+    if (!aplicaHE) return;
     fetch(`${API_BASE}/nomina/tarifas-he`).then(r => r.json()).then((rows: any[]) => {
       const found = rows.find((r: any) => r.jornada === jornadaReal) ?? rows[0];
       if (found) {
@@ -4876,7 +4880,7 @@ function ModalSustitucion({
         setTarifaHE(t);
       }
     }).catch(() => {});
-  }, [jornadaReal]);
+  }, [jornadaReal, aplicaHE]);
 
   const motivoSeleccionado = MOTIVOS_SALIDA.find((t) => t.value === motivoSalida);
   const generaRrhh = esSustitucion && !!motivoSeleccionado?.genera_rrhh;
@@ -4902,7 +4906,7 @@ function ModalSustitucion({
 
   async function handleConfirm() {
     if (parcialExcede || parcialIncompleto) return;
-    if (modoPagoHE === "efectivo" && tipoSustitucion === "relevo") {
+    if (aplicaHE && modoPagoHE === "efectivo" && tipoSustitucion === "relevo") {
       const m = Number(montoEfectivo);
       if (!montoEfectivo || isNaN(m) || m <= 0) return;
     }
@@ -4914,7 +4918,7 @@ function ModalSustitucion({
       const horasParcialData = tipoCobertura === "parcial" && horaInicioParcial && horaFinParcial
         ? { inicio: horaInicioParcial, fin: horaFinParcial }
         : undefined;
-      const pagoEfectivoData = modoPagoHE === "efectivo" && tipoSustitucion === "relevo"
+      const pagoEfectivoData = aplicaHE && modoPagoHE === "efectivo" && tipoSustitucion === "relevo"
         ? { monto: Number(montoEfectivo), pagadoPor: pagadoPor || "" }
         : undefined;
       await onConfirm(motivoSalida, notasFinal, !!advertencia, tipoSustitucion, motivoSalida, tipoCobertura, horasParcialData, pagoEfectivoData);
@@ -4957,7 +4961,7 @@ function ModalSustitucion({
                 </p>
                 <p className="text-[11px] text-purple-300/70">
                   {tipoSustitucion === "relevo"
-                    ? `1) Titular: ${motivoSeleccionado?.label ?? "—"}. 2) Cubriente: horas extra.`
+                    ? `1) Titular: ${motivoSeleccionado?.label ?? "—"}. 2) Cubriente: ${aplicaHE ? "horas extra" : "cobertura"}.`
                     : `Titular: ${motivoSeleccionado?.label ?? "—"}.`}
                 </p>
               </div>
@@ -5185,8 +5189,8 @@ function ModalSustitucion({
             </div>
           )}
 
-          {/* ── SECCIÓN C: ¿Cómo se pagan las HE? ──────────────── */}
-          {esSustitucion && tipoSustitucion === "relevo" && (
+          {/* ── SECCIÓN C: ¿Cómo se pagan las HE? (solo descansando/vacaciones) ── */}
+          {esSustitucion && tipoSustitucion === "relevo" && aplicaHE && (
             <div className="space-y-2 border-t border-white/8 pt-3">
               <div className="flex items-center gap-2">
                 <DollarSign className="w-3.5 h-3.5 text-amber-400/60" />
@@ -5253,7 +5257,7 @@ function ModalSustitucion({
             </div>
           )}
 
-          {costoHE != null && esSustitucion && (
+          {costoHE != null && esSustitucion && aplicaHE && (
             <div className="bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2">
               <div className="flex items-center justify-between">
                 <div>
@@ -6130,7 +6134,7 @@ export default function Operaciones() {
   const [draggingAgente, setDraggingAgente]         = useState<Agente | null>(null);
   const [historialAbierto, setHistorialAbierto]     = useState(false);
   const [nuevoPuestoData, setNuevoPuestoData]        = useState<ClienteBoard | null | "nuevo">(null);
-  const [modalSustitucion, setModalSustitucion]      = useState<{ puesto: Puesto; agente: Agente; advertencia?: string } | null>(null);
+  const [modalSustitucion, setModalSustitucion]      = useState<{ puesto: Puesto; agente: Agente; advertencia?: string; agentePoolStatus?: "disponible" | "descansando" | "vacaciones" | "trabajando" } | null>(null);
   const [modalEligeCobertura, setModalEligeCobertura] = useState<{ puesto: Puesto; agente: Agente } | null>(null);
   const [modalSustituyeTitular, setModalSustituyeTitular] = useState<{ puesto: Puesto; agente: Agente } | null>(null);
   const [modalIncentivo, setModalIncentivo]           = useState<{
@@ -6587,7 +6591,7 @@ export default function Operaciones() {
     const tieneTitular = !!puesto.titular_employee_id;
 
     if (tieneTitular) {
-      setModalSustitucion({ puesto, agente });
+      setModalSustitucion({ puesto, agente, agentePoolStatus: detectarPoolStatus(agente) });
       return;
     }
 
@@ -6624,6 +6628,19 @@ export default function Operaciones() {
   function esAgentePool(agente: Agente) {
     const eoa = agente.tipo_asignacion_eoa ?? "sin_asignacion";
     return eoa !== "titular";
+  }
+
+  function detectarPoolStatus(agente: Agente): "disponible" | "descansando" | "vacaciones" | "trabajando" {
+    if (!pool) return "disponible";
+    if ((pool.disponibles ?? []).some(a => a.id === agente.id)) return "disponible";
+    if ((pool.disponiblesCubriendo ?? []).some(a => a.id === agente.id)) return "disponible";
+    if ((pool.descansandoCiclo ?? []).some(a => a.id === agente.id)) return "descansando";
+    if ((pool.haciendoHE ?? []).some(a => a.id === agente.id)) return "descansando";
+    if ((pool.enVacaciones ?? []).some(a => a.id === agente.id)) return "vacaciones";
+    if ((pool.vacacionistasCubriendo ?? []).some(a => a.id === agente.id)) return "vacaciones";
+    if ((pool.trabajando ?? []).some(a => a.id === agente.id)) return "trabajando";
+    if ((pool.enPuesto ?? []).some(a => a.id === agente.id)) return "trabajando";
+    return "disponible";
   }
 
   // ── Lógica de asignación/sustitución ─────────────────────────────────────
@@ -6674,6 +6691,7 @@ export default function Operaciones() {
 
     // Flujo normal: verificar disponibilidad y mostrar modal de confirmación
     try {
+      const poolStatus = detectarPoolStatus(agente);
       const disp = await fetch(`${API_BASE}/operaciones/agentes/${agente.id}/disponibilidad`).then((r) => r.json());
       if (disp.puestosActivos.length > 0) {
         const yaTiene = disp.puestosActivos[0];
@@ -6681,12 +6699,13 @@ export default function Operaciones() {
           puesto,
           agente,
           advertencia: `${agente.nombre_completo} ya está en ${yaTiene.cliente_nombre} — ${yaTiene.nombre}. ¿Forzar?`,
+          agentePoolStatus: poolStatus,
         });
       } else {
-        setModalSustitucion({ puesto, agente });
+        setModalSustitucion({ puesto, agente, agentePoolStatus: poolStatus });
       }
     } catch {
-      setModalSustitucion({ puesto, agente });
+      setModalSustitucion({ puesto, agente, agentePoolStatus: detectarPoolStatus(agente) });
     }
   }
 
@@ -6892,6 +6911,8 @@ export default function Operaciones() {
       }
 
       if (puesto.agente_id) {
+        const poolStatus = modalSustitucion?.agentePoolStatus;
+        const generaHE = poolStatus === "descansando" || poolStatus === "vacaciones";
         const resp = await apiPost(`${API_BASE}/operaciones/sustituir`, {
           puestoId: puesto.id,
           agenteEntranteId: agente.id,
@@ -6903,6 +6924,7 @@ export default function Operaciones() {
           tipoSustitucion,
           tipoNovedad: tipoNovedad ?? null,
           coberturaTipo: coberturaTipo ?? "completo",
+          generaHE,
           ...(horasParcial ? { horaInicioParcial: horasParcial.inicio, horaFinParcial: horasParcial.fin } : {}),
           usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
           ...(esPasado && fechaVista ? { fechaOperacion: fechaVista } : {}),
@@ -8503,6 +8525,7 @@ export default function Operaciones() {
           puesto={modalSustitucion.puesto}
           agenteEntrante={modalSustitucion.agente}
           advertencia={modalSustitucion.advertencia}
+          agentePoolStatus={modalSustitucion.agentePoolStatus}
           onConfirm={confirmarSustitucion}
           onCancel={() => setModalSustitucion(null)}
         />

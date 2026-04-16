@@ -1843,7 +1843,8 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
   const { puestoId, agenteEntranteId, motivo, usuario, notas, forzar, tipoSustitucion,
           tipoNovedad, coberturaTipo, fechaOperacion,
           horaInicioParcial, horaFinParcial,
-          agenteSalienteId: bodySalienteId, agenteSalienteNombre: bodySalienteNombre } = req.body;
+          agenteSalienteId: bodySalienteId, agenteSalienteNombre: bodySalienteNombre,
+          generaHE } = req.body;
   if (!puestoId || !agenteEntranteId) return res.status(400).json({ error: "puestoId y agenteEntranteId son requeridos" });
 
   // tipoSustitucion: 'relevo' = solo cambia agente_id (titular no cambia)
@@ -2083,9 +2084,51 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
       );
       logger.info({ puestoId, agenteEntranteId, tipoSeg, tipoNovedad, hoy }, "A-04: segmento auto-creado en sustitución");
 
-      // Crear evento RRHH para el agente ENTRANTE (HE / cobertura) → requiere validación RRHH
-      let eventoRrhhEntranteId: number | null = null;
+      // Determinar si el agente entrante está en descanso o vacaciones (server-side)
+      // Solo esos estados generan HE; disponible/trabajando NO genera HE
+      let entranteEnDescansoOVacaciones = false;
       if (esRelevo) {
+        try {
+          const { rows: vacRows } = await pool.query(
+            `SELECT 1 FROM vacaciones
+             WHERE employee_id = $1 AND estado = 'aprobada'
+               AND $2::date BETWEEN fecha_inicio AND fecha_fin LIMIT 1`,
+            [agenteEntranteId, hoy]
+          );
+          if (vacRows.length > 0) {
+            entranteEnDescansoOVacaciones = true;
+          } else {
+            const { rows: slotRows } = await pool.query(
+              `SELECT ps.dia_trabaja
+               FROM puesto_slots ps
+               JOIN puestos_operativos po ON po.id = ps.puesto_id
+               WHERE po.titular_employee_id = $1 AND po.activo = TRUE
+               LIMIT 1`,
+              [agenteEntranteId]
+            );
+            if (slotRows.length > 0) {
+              const slotData = slotRows[0];
+              if (slotData.dia_trabaja && Array.isArray(slotData.dia_trabaja)) {
+                const fechaInicioCiclo = entrante.fecha_inicio_ciclo || entrante.fecha_ingreso;
+                if (fechaInicioCiclo) {
+                  const msPerDay = 86400000;
+                  const diffDays = Math.floor((new Date(hoy + "T12:00:00Z").getTime() - new Date(fechaInicioCiclo + "T12:00:00Z").getTime()) / msPerDay);
+                  const cycleDay = ((diffDays % 14) + 14) % 14;
+                  const trabajaHoy = slotData.dia_trabaja[cycleDay] ?? true;
+                  if (!trabajaHoy) {
+                    entranteEnDescansoOVacaciones = true;
+                  }
+                }
+              }
+            }
+          }
+        } catch (heCheckErr) {
+          logger.warn({ heCheckErr, agenteEntranteId }, "No se pudo verificar estado HE del entrante, defaulting to no-HE");
+        }
+      }
+      const creaEventoHE = esRelevo && entranteEnDescansoOVacaciones;
+      let eventoRrhhEntranteId: number | null = null;
+      if (creaEventoHE) {
         try {
           const { rows: evEntRows } = await pool.query(
             `INSERT INTO eventos_rrhh
@@ -2141,8 +2184,8 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
              evento_rrhh_id = COALESCE(novedades_nomina_diarias.evento_rrhh_id, $9),
              updated_at            = NOW()`,
           [hoy, agenteEntranteId, entrante.nombre_completo, horasCalc, puestoId, puesto.nombre,
-           esRelevo ? true : null, esRelevo ? 'pendiente' : null, eventoRrhhEntranteId,
-           tipoNovedad ?? 'relevo_completo', esRelevo ? horasCalc : 0]
+           creaEventoHE ? true : null, creaEventoHE ? 'pendiente' : null, eventoRrhhEntranteId,
+           tipoNovedad ?? 'relevo_completo', creaEventoHE ? horasCalc : 0]
         );
       } catch (nomEntranteErr) {
         logger.warn({ nomEntranteErr }, "A-04: no se pudo actualizar novedad nómina del entrante (no bloqueante)");
