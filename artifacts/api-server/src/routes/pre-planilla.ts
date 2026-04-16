@@ -361,7 +361,7 @@ prePlanillaRouter.get("/nomina/pre-planilla/detalle/:employeeId", async (req, re
   }
 
   try {
-    const [{ rows: novedades }, { rows: anticipos }, { rows: emps }, { rows: incentivos }] = await Promise.all([
+    const [{ rows: novedades }, { rows: anticipos }, { rows: emps }, { rows: incentivos }, { rows: puestosHistorial }] = await Promise.all([
       pool.query(`
         SELECT
           n.*,
@@ -399,13 +399,42 @@ prePlanillaRouter.get("/nomina/pre-planilla/detalle/:employeeId", async (req, re
           AND ic.estado != 'cancelado'
         ORDER BY ic.fecha ASC
       `, [employeeId, desde, hasta]),
+
+      pool.query(`
+        SELECT
+          cs.fecha,
+          cs.puesto_id,
+          po.nombre AS puesto_nombre,
+          po.cliente_nombre,
+          cs.tipo_cobertura,
+          cs.hora_inicio,
+          cs.hora_fin,
+          cs.horas_calculadas,
+          cs.genera_horas_extra,
+          cs.cobertura_alcance,
+          cs.tipo_novedad
+        FROM cobertura_segmentos cs
+        LEFT JOIN puestos_operativos po ON po.id = cs.puesto_id
+        WHERE cs.employee_id = $1
+          AND cs.fecha BETWEEN $2 AND $3
+        ORDER BY cs.fecha ASC, cs.hora_inicio ASC
+      `, [employeeId, desde, hasta]),
     ]);
+
+    const { rows: titularPuestos } = await pool.query(`
+      SELECT po.id, po.nombre, po.cliente_nombre, po.jornada, po.turno AS turno_nombre
+      FROM puestos_operativos po
+      WHERE po.titular_employee_id = $1 AND po.activo = TRUE
+      ORDER BY po.nombre
+    `, [employeeId]);
 
     res.json({
       empleado: emps[0] ?? null,
       novedades,
       anticipos,
       incentivos,
+      puestosHistorial,
+      titularPuestos,
     });
   } catch (err) {
     logger.error({ err }, "GET /nomina/pre-planilla/detalle error");

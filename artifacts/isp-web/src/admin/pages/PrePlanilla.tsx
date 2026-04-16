@@ -28,7 +28,7 @@ import {
   Users, Briefcase, TrendingUp, Wallet, Info,
   Check, AlertTriangle, FileText, CreditCard, Repeat2,
   MinusCircle, Lock, Unlock, ShieldCheck, AlertOctagon, CheckCheck,
-  XCircle, ChevronRight,
+  XCircle, ChevronRight, Building2, MapPin,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
@@ -817,6 +817,83 @@ function DetalleModal({
                 </div>
               ) : (
                 <>
+                  {/* Puesto titular actual */}
+                  {(data as any)?.titularPuestos?.length > 0 && (
+                    <div>
+                      <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Puesto titular</p>
+                      <div className="space-y-1.5">
+                        {(data as any).titularPuestos.map((p: any) => (
+                          <div key={p.id} className="flex items-center gap-3 px-3 py-2.5 bg-blue-500/8 border border-blue-500/20 rounded-lg">
+                            <Building2 className="w-4 h-4 text-blue-400 shrink-0" />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-semibold text-blue-300 truncate">{p.nombre}</p>
+                              <p className="text-[10px] text-white/40">{p.cliente_nombre}{p.jornada ? ` · ${p.jornada}` : ""}{p.turno_nombre ? ` · ${p.turno_nombre}` : ""}</p>
+                            </div>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded border font-medium text-blue-400 bg-blue-400/10 border-blue-400/20">Titular</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Historial de puestos cubiertos en el período */}
+                  {(() => {
+                    const segmentos = (data as any)?.puestosHistorial ?? [];
+                    const grouped: Record<string, { puesto_nombre: string; cliente_nombre: string; fechas: { fecha: string; hora_inicio: string; hora_fin: string; horas_calculadas: number; tipo_cobertura: string; genera_horas_extra: boolean; tipo_novedad: string; cobertura_alcance: string }[] }> = {};
+                    for (const s of segmentos) {
+                      const key = `${s.puesto_id}`;
+                      if (!grouped[key]) grouped[key] = { puesto_nombre: s.puesto_nombre || "Puesto desconocido", cliente_nombre: s.cliente_nombre || "—", fechas: [] };
+                      grouped[key].fechas.push({ fecha: s.fecha, hora_inicio: s.hora_inicio, hora_fin: s.hora_fin, horas_calculadas: parseFloat(s.horas_calculadas) || 0, tipo_cobertura: s.tipo_cobertura, genera_horas_extra: s.genera_horas_extra, tipo_novedad: s.tipo_novedad, cobertura_alcance: s.cobertura_alcance });
+                    }
+                    const entries = Object.entries(grouped);
+                    const totalHoras = segmentos.reduce((acc: number, s: any) => acc + (parseFloat(s.horas_calculadas) || 0), 0);
+                    return (
+                      <div>
+                        <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">
+                          Puestos cubiertos en el período
+                          {entries.length > 0 && <span className="text-white/50 ml-1">({segmentos.length} cobertura{segmentos.length !== 1 ? "s" : ""} · {totalHoras.toFixed(1)}h)</span>}
+                        </p>
+                        {entries.length === 0 ? (
+                          <p className="text-white/25 text-sm">Sin coberturas registradas en este período.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {entries.map(([pId, g]) => (
+                              <div key={pId} className="bg-[#0c1929] border border-white/8 rounded-lg overflow-hidden">
+                                <div className="flex items-center gap-2 px-3 py-2 border-b border-white/5">
+                                  <MapPin className="w-3.5 h-3.5 text-cyan-400/60 shrink-0" />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-semibold text-white/80 truncate">{g.puesto_nombre}</p>
+                                    <p className="text-[10px] text-white/35">{g.cliente_nombre}</p>
+                                  </div>
+                                  <span className="text-[10px] text-cyan-400/70 font-medium">{g.fechas.length} día{g.fechas.length !== 1 ? "s" : ""}</span>
+                                </div>
+                                <div className="px-3 py-1.5 space-y-0.5 max-h-32 overflow-y-auto">
+                                  {g.fechas.map((f, fi) => {
+                                    const tipoLabel: Record<string, string> = { relevo: "Relevo", titular: "Titular", cobertura_supervisor: "Sup.", cobertura_jefe_servicio: "Jefe Serv." };
+                                    return (
+                                      <div key={fi} className="flex items-center justify-between text-[10px]">
+                                        <span className="text-white/50">{fmtFecha(f.fecha)}</span>
+                                        <div className="flex items-center gap-2">
+                                          {f.hora_inicio && f.hora_fin && (
+                                            <span className="text-white/30">{f.hora_inicio}–{f.hora_fin}</span>
+                                          )}
+                                          <span className="text-white/40">{f.horas_calculadas.toFixed(1)}h</span>
+                                          <span className={`px-1 py-0.5 rounded text-[9px] font-medium ${
+                                            f.genera_horas_extra ? "text-amber-400 bg-amber-400/10" : "text-cyan-400/60 bg-cyan-400/5"
+                                          }`}>{tipoLabel[f.tipo_cobertura] ?? f.tipo_cobertura}{f.genera_horas_extra ? " HE" : ""}</span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {/* Incentivos cash */}
                   {(data?.incentivos?.length ?? 0) > 0 && (
                     <div>
