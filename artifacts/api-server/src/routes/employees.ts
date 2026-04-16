@@ -687,15 +687,42 @@ employeesRouter.post("/employees", async (req, res) => {
   const nombreCompletoLimpio = String(nombreCompleto).trim();
   const dpiLimpio = String(dpi).trim();
 
-  // Validar unicidad de DPI
+  // Validar unicidad de DPI — distinguir entre activo y de baja (reingreso disponible)
   {
-    const [existing] = await db
-      .select({ id: employeesTable.id })
-      .from(employeesTable)
-      .where(eq(employeesTable.dpi, dpiLimpio))
-      .limit(1);
-    if (existing) {
-      return res.status(409).json({ error: "Ya existe un empleado con ese DPI" });
+    const { rows: dup } = await pool.query(
+      `SELECT id, nombre_completo, estado_laboral, fecha_ingreso, fecha_baja, motivo_baja, puesto, area
+         FROM employees WHERE dpi = $1 LIMIT 1`,
+      [dpiLimpio]
+    );
+    if (dup[0]) {
+      const e = dup[0];
+      if (e.estado_laboral === "baja") {
+        // Conteo de períodos previos para mostrar al usuario
+        const { rows: cnt } = await pool.query(
+          `SELECT COUNT(*)::int AS n FROM empleados_periodos_laborales WHERE employee_id = $1`,
+          [e.id]
+        );
+        return res.status(409).json({
+          code: "REINGRESO_DISPONIBLE",
+          error: `Ya existe un empleado con ese DPI dado de baja. Puede registrar un reingreso.`,
+          empleado: {
+            id: e.id,
+            nombreCompleto: e.nombre_completo,
+            estadoLaboral: e.estado_laboral,
+            fechaIngreso: e.fecha_ingreso,
+            fechaBaja: e.fecha_baja,
+            motivoBaja: e.motivo_baja,
+            puesto: e.puesto,
+            area: e.area,
+            periodosPrevios: cnt[0]?.n ?? 0,
+          },
+        });
+      }
+      return res.status(409).json({
+        code: "DPI_DUPLICADO_ACTIVO",
+        error: `Ya existe un empleado activo con ese DPI: ${e.nombre_completo}`,
+        empleado: { id: e.id, nombreCompleto: e.nombre_completo, estadoLaboral: e.estado_laboral },
+      });
     }
   }
 
@@ -777,6 +804,160 @@ employeesRouter.post("/employees", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "POST /employees error");
     res.status(500).json({ error: "Error al crear empleado" });
+  }
+});
+
+// GET /api/employees/:id/periodos — historial de períodos laborales ─────────
+employeesRouter.get("/employees/:id/periodos", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+  try {
+    const { rows } = await pool.query(
+      `SELECT p.*, l.id AS liq_id, l.total_neto AS liq_total
+         FROM empleados_periodos_laborales p
+         LEFT JOIN prestaciones_liquidaciones l ON l.id = p.liquidacion_id
+        WHERE p.employee_id = $1
+        ORDER BY p.numero_periodo ASC`,
+      [id]
+    );
+    res.json({ rows });
+  } catch (err) {
+    logger.error({ err }, "GET /employees/:id/periodos error");
+    res.status(500).json({ error: "Error al obtener períodos" });
+  }
+});
+
+// POST /api/employees/:id/reingreso — reactivar empleado dado de baja ───────
+// Resetea: vacaciones, prestaciones acumuladas, contrato (nueva alta legal)
+// Conserva: datos personales, historial de períodos, liquidaciones previas, eventos RRHH
+employeesRouter.post("/employees/:id/reingreso", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+
+  const {
+    fechaIngreso, sueldoBase, tipoJornada, diaDescanso, horasContrato,
+    frecuenciaPago, tipoPersonal, puesto, area, telefono, telefonoSecundario,
+    correo, notas,
+  } = req.body ?? {};
+
+  if (!fechaIngreso) {
+    return res.status(400).json({ error: "La fecha de ingreso del reingreso es requerida" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Verificar que el empleado existe y está de baja
+    const { rows: empRows } = await client.query(
+      `SELECT id, nombre_completo, estado_laboral FROM employees WHERE id = $1 FOR UPDATE`,
+      [id]
+    );
+    if (!empRows[0]) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Empleado no encontrado" });
+    }
+    if (empRows[0].estado_laboral !== "baja") {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "El empleado no está de baja — no aplica reingreso" });
+    }
+
+    // Obtener siguiente número de período
+    const { rows: maxRows } = await client.query(
+      `SELECT COALESCE(MAX(numero_periodo), 0) AS max_n FROM empleados_periodos_laborales WHERE employee_id = $1`,
+      [id]
+    );
+    const siguientePeriodo = (maxRows[0]?.max_n ?? 0) + 1;
+
+    // Abrir nuevo período
+    await client.query(
+      `INSERT INTO empleados_periodos_laborales (employee_id, numero_periodo, fecha_ingreso, notas)
+       VALUES ($1, $2, $3, $4)`,
+      [id, siguientePeriodo, fechaIngreso, notas || `Reingreso #${siguientePeriodo}`]
+    );
+
+    // Reactivar empleado: estado activo, nueva fecha_ingreso, limpiar baja, actualizar opcionales
+    await client.query(
+      `UPDATE employees SET
+         estado_laboral      = 'activo',
+         fecha_ingreso       = $1,
+         fecha_baja          = NULL,
+         motivo_baja         = NULL,
+         puesto              = COALESCE($2, puesto),
+         area                = COALESCE($3, area),
+         telefono            = COALESCE($4, telefono),
+         telefono_secundario = COALESCE($5, telefono_secundario),
+         correo              = COALESCE($6, correo),
+         sueldo_base         = COALESCE($7, sueldo_base),
+         tipo_jornada        = COALESCE($8, tipo_jornada),
+         dia_descanso        = COALESCE($9, dia_descanso),
+         horas_contrato      = COALESCE($10, horas_contrato),
+         frecuencia_pago     = COALESCE($11, frecuencia_pago),
+         tipo_personal       = COALESCE($12, tipo_personal),
+         updated_at          = NOW()
+       WHERE id = $13`,
+      [
+        fechaIngreso,
+        puesto || null, area || null, telefono || null, telefonoSecundario || null, correo || null,
+        sueldoBase != null && sueldoBase !== "" ? String(sueldoBase) : null,
+        tipoJornada || null, diaDescanso || null,
+        horasContrato ? parseInt(horasContrato) : null,
+        frecuenciaPago && ["quincenal", "mensual"].includes(frecuenciaPago) ? frecuenciaPago : null,
+        tipoPersonal && ["guardia", "supervisor", "jefe_servicio", "administrativo_bodega", "administrativo_rrhh", "gerencia"].includes(tipoPersonal) ? tipoPersonal : null,
+        id,
+      ]
+    );
+
+    // RESET vacaciones — nueva alta empieza con saldo en 0
+    await client.query(
+      `UPDATE vacaciones_saldos
+         SET dias_ganados = 0, dias_gozados = 0, dias_disponibles = 0,
+             dias_pendientes_pago = 0, fecha_ultima_actualizacion = NOW()
+       WHERE employee_id = $1`,
+      [id]
+    );
+
+    // RESET prestaciones acumuladas — nueva alta empieza con acumulados en 0
+    await client.query(
+      `DELETE FROM prestaciones_acumulados WHERE employee_id = $1`,
+      [id]
+    );
+
+    // Generar nuevos contratos (inicial + post-prueba) para esta nueva alta
+    const fechaBase = new Date(fechaIngreso);
+    const fechaPostPrueba = new Date(fechaBase);
+    fechaPostPrueba.setMonth(fechaPostPrueba.getMonth() + 2);
+    const sueldoContrato = sueldoBase != null && sueldoBase !== "" ? parseFloat(String(sueldoBase)) : null;
+
+    await client.query(`
+      INSERT INTO contratos_empleados
+        (employee_id, tipo_contrato, etiqueta, fecha_contrato, fecha_inicio, puesto, sueldo_base, observaciones, generado_automatico)
+      VALUES
+        ($1, 'inicial',    $6,                                                        $2, $2, $3, $4, $7, TRUE),
+        ($1, 'post_prueba','Contrato post período de prueba (reingreso)',             $5, $5, $3, $4, 'Generado automáticamente. Confirmación tentativa (+2 meses).', TRUE)
+    `, [
+      id, fechaBase, puesto || null, sueldoContrato, fechaPostPrueba,
+      `Contrato inicial — Reingreso #${siguientePeriodo}`,
+      `Generado automáticamente al reingresar al colaborador (período laboral #${siguientePeriodo}).`,
+    ]);
+
+    await client.query("COMMIT");
+
+    const { rows: empCompleto } = await pool.query(
+      `SELECT *, COALESCE(frecuencia_pago, 'quincenal') AS frecuencia_pago FROM employees WHERE id = $1`, [id]
+    );
+    logger.info({ employeeId: id, numeroPeriodo: siguientePeriodo }, "Reingreso registrado");
+    res.status(200).json({
+      ok: true,
+      numeroPeriodo: siguientePeriodo,
+      empleado: snakeToCamel(empCompleto[0] ?? {}),
+    });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    logger.error({ err }, "POST /employees/:id/reingreso error");
+    res.status(500).json({ error: "Error al registrar reingreso" });
+  } finally {
+    client.release();
   }
 });
 

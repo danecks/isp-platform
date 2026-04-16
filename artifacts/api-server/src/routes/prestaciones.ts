@@ -761,6 +761,16 @@ prestacionesRouter.post("/prestaciones/liquidaciones", async (req, res) => {
         [fechaEgreso, causal, empId]
       );
 
+      // Cerrar el período laboral abierto (REING-01) — vincular liquidación
+      await db.query(
+        `UPDATE empleados_periodos_laborales
+            SET fecha_baja     = $1,
+                motivo_baja    = $2,
+                liquidacion_id = $3
+          WHERE employee_id = $4 AND fecha_baja IS NULL`,
+        [fechaEgreso, causal, liq.id, empId]
+      );
+
       // Desactivar puesto(s) titular(es) del empleado en el pizarrón
       await db.query(
         `UPDATE puesto_titulares SET activo = FALSE WHERE employee_id = $1 AND activo = TRUE`,
@@ -858,6 +868,16 @@ prestacionesRouter.patch("/prestaciones/liquidaciones/:id/anular", async (req, r
               motivo_baja    = NULL,
               updated_at     = NOW()
         WHERE id = $1`, [employeeId]
+    );
+
+    // Reabrir el período laboral cerrado por esta liquidación (REING-01)
+    await client.query(
+      `UPDATE empleados_periodos_laborales
+          SET fecha_baja     = NULL,
+              motivo_baja    = NULL,
+              liquidacion_id = NULL
+        WHERE liquidacion_id = $1`,
+      [id]
     );
 
     // Reactivar puesto(s) titular(es) en el pizarrón

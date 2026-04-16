@@ -3146,6 +3146,37 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: BJ-01 — error (no bloqueante)");
   }
 
+  // ── REING-01: tabla empleados_periodos_laborales (historial de altas/bajas) ──
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS empleados_periodos_laborales (
+        id              SERIAL PRIMARY KEY,
+        employee_id     INT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        numero_periodo  INT NOT NULL,
+        fecha_ingreso   DATE NOT NULL,
+        fecha_baja      DATE,
+        motivo_baja     VARCHAR(100),
+        liquidacion_id  INT REFERENCES prestaciones_liquidaciones(id) ON DELETE SET NULL,
+        notas           TEXT,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(employee_id, numero_periodo)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_periodos_emp ON empleados_periodos_laborales(employee_id)`);
+    // Backfill: para cada empleado existente sin períodos, crear el período #1 con su fecha_ingreso/fecha_baja actual
+    await pool.query(`
+      INSERT INTO empleados_periodos_laborales (employee_id, numero_periodo, fecha_ingreso, fecha_baja, motivo_baja)
+      SELECT e.id, 1, COALESCE(e.fecha_ingreso::date, e.created_at::date), e.fecha_baja, e.motivo_baja
+      FROM employees e
+      WHERE NOT EXISTS (
+        SELECT 1 FROM empleados_periodos_laborales p WHERE p.employee_id = e.id
+      )
+    `);
+    logger.info("Auto-migrate: REING-01 tabla empleados_periodos_laborales verificada/creada + backfill");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: REING-01 — error (no bloqueante)");
+  }
+
   // ── PESP-01: Planillas Especiales (Bono 14 y Aguinaldo) ──────────────────────
   try {
     await pool.query(`

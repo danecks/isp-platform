@@ -4567,6 +4567,14 @@ export default function Empleados() {
   const [vista, setVista] = useState<"tabla" | "tarjetas">("tabla");
   const [fichaAbierta, setFichaAbierta] = useState<Empleado | null>(null);
   const [formModal, setFormModal] = useState<{ modo: "crear" | "editar"; emp?: Empleado } | null>(null);
+  const [reingresoPending, setReingresoPending] = useState<{
+    existing: {
+      id: number; nombreCompleto: string; estadoLaboral: string;
+      fechaIngreso: string | null; fechaBaja: string | null; motivoBaja: string | null;
+      puesto: string | null; area: string | null; periodosPrevios: number;
+    };
+    formData: Partial<FormState>;
+  } | null>(null);
 
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -4607,13 +4615,60 @@ export default function Empleados() {
 
   async function handleSave(data: Partial<FormState>) {
     if (formModal?.modo === "crear") {
-      await apiCall(`${API_BASE}/employees`, "POST", data);
+      // POST directo para detectar 409 con código REINGRESO_DISPONIBLE
+      const r = await fetch(`${API_BASE}/employees`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (r.status === 409) {
+        const body = await r.json().catch(() => ({}));
+        if (body.code === "REINGRESO_DISPONIBLE" && body.empleado) {
+          setReingresoPending({ existing: body.empleado, formData: data });
+          throw new Error(`${body.error} Revise el cuadro de reingreso.`);
+        }
+        throw new Error(body.error ?? "DPI duplicado");
+      }
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ error: "Error desconocido" }));
+        throw new Error(err.error ?? "Error al guardar");
+      }
       toast({ title: "Colaborador creado", description: data.nombreCompleto });
     } else if (formModal?.emp) {
       await apiCall(`${API_BASE}/employees/${formModal.emp.id}`, "PATCH", data);
       toast({ title: "Colaborador actualizado", description: data.nombreCompleto });
     }
     qc.invalidateQueries({ queryKey: ["empleados"] });
+  }
+
+  async function confirmarReingreso() {
+    if (!reingresoPending) return;
+    const { existing, formData } = reingresoPending;
+    try {
+      const r = await fetch(`${API_BASE}/employees/${existing.id}/reingreso`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error ?? "Error al registrar reingreso");
+      }
+      const data = await r.json();
+      toast({
+        title: "Reingreso registrado",
+        description: `${existing.nombreCompleto} — período laboral #${data.numeroPeriodo}`,
+      });
+      setReingresoPending(null);
+      setFormModal(null);
+      qc.invalidateQueries({ queryKey: ["empleados"] });
+    } catch (e: unknown) {
+      toast({
+        title: "Error en reingreso",
+        description: e instanceof Error ? e.message : String(e),
+        variant: "destructive",
+      });
+    }
   }
 
   async function handleEstado(emp: Empleado, estado: string) {
@@ -4885,6 +4940,105 @@ export default function Empleados() {
           onSave={handleSave}
         />
       )}
+
+      {reingresoPending && (
+        <ReingresoModal
+          existing={reingresoPending.existing}
+          onConfirm={confirmarReingreso}
+          onCancel={() => setReingresoPending(null)}
+        />
+      )}
     </AdminLayout>
+  );
+}
+
+// ─── Modal: Confirmación de Reingreso ─────────────────────────────────────────
+function ReingresoModal({
+  existing,
+  onConfirm,
+  onCancel,
+}: {
+  existing: {
+    id: number; nombreCompleto: string; estadoLaboral: string;
+    fechaIngreso: string | null; fechaBaja: string | null; motivoBaja: string | null;
+    puesto: string | null; area: string | null; periodosPrevios: number;
+  };
+  onConfirm: () => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString("es-GT", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+
+  async function handleConfirm() {
+    setSaving(true);
+    try { await onConfirm(); } finally { setSaving(false); }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/80 backdrop-blur-sm p-4 pt-12 overflow-auto">
+      <div className="bg-[#07111f] border border-amber-500/30 rounded-2xl w-full max-w-md shadow-2xl">
+        <div className="px-5 py-4 border-b border-white/8 flex items-center gap-2">
+          <RefreshCw className="w-4 h-4 text-amber-400" />
+          <h3 className="text-sm font-bold text-white">Reingreso de colaborador</h3>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 text-xs text-amber-200/90 leading-relaxed">
+            Ya existe un colaborador con ese DPI que fue dado de baja. Puede registrar este ingreso como un <b>reingreso</b> (nueva alta laboral). Se conservará su historial de períodos anteriores, pero los saldos de vacaciones y prestaciones acumuladas inician en cero.
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-[10px] text-white/30 uppercase tracking-widest">Empleado anterior</p>
+            <div className="bg-[#060e1c] border border-white/10 rounded-lg p-3 space-y-1.5 text-xs">
+              <div className="flex justify-between"><span className="text-white/50">Nombre</span><span className="text-white font-medium">{existing.nombreCompleto}</span></div>
+              <div className="flex justify-between"><span className="text-white/50">Último puesto</span><span className="text-white">{existing.puesto ?? "—"}</span></div>
+              <div className="flex justify-between"><span className="text-white/50">Área</span><span className="text-white">{existing.area ?? "—"}</span></div>
+              <div className="flex justify-between"><span className="text-white/50">Fecha ingreso anterior</span><span className="text-white">{fmtDate(existing.fechaIngreso)}</span></div>
+              <div className="flex justify-between"><span className="text-white/50">Fecha de baja</span><span className="text-rose-300">{fmtDate(existing.fechaBaja)}</span></div>
+              <div className="flex justify-between"><span className="text-white/50">Motivo de baja</span><span className="text-white/80">{existing.motivoBaja ?? "—"}</span></div>
+              <div className="flex justify-between"><span className="text-white/50">Períodos previos</span><span className="text-white">{existing.periodosPrevios}</span></div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-[10px] text-emerald-400/70 uppercase tracking-widest">Se conserva</p>
+            <ul className="text-[11px] text-white/60 space-y-0.5 pl-2">
+              <li>• Datos personales (DPI, contacto, foto)</li>
+              <li>• Historial de períodos laborales</li>
+              <li>• Liquidaciones previas pagadas</li>
+              <li>• Eventos RRHH y disciplinarios</li>
+            </ul>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-[10px] text-amber-400/70 uppercase tracking-widest">Se reinicia (nueva alta)</p>
+            <ul className="text-[11px] text-white/60 space-y-0.5 pl-2">
+              <li>• Saldo de vacaciones → 0 días</li>
+              <li>• Prestaciones acumuladas → 0</li>
+              <li>• Antigüedad para indemnización</li>
+              <li>• Nuevo contrato inicial + post-prueba</li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="px-5 py-4 border-t border-white/8 flex items-center justify-end gap-2">
+          <button
+            onClick={onCancel}
+            disabled={saving}
+            className="px-3 py-1.5 text-xs text-white/60 hover:text-white transition-colors disabled:opacity-40"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={saving}
+            className="px-3 py-1.5 text-xs bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 rounded-lg font-medium transition-colors disabled:opacity-40"
+          >
+            {saving ? "Procesando…" : "Registrar reingreso"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
