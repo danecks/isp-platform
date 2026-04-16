@@ -356,6 +356,13 @@ export const NAV_SECTIONS: NavSection[] = [
         clave: "simulador_wa",
         roles: ["admin"],
       },
+      {
+        path: "/admin/modelo-datos",
+        label: "Modelo de Datos (ERD)",
+        icon: FlaskConical,
+        clave: "modelo_datos",
+        roles: ["admin"],
+      },
     ],
   },
 
