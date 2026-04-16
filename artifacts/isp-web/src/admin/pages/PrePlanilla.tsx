@@ -113,6 +113,8 @@ interface ColaboradorPre {
   tipo_personal: string | null;
   // Días descuento total (turno-based: 3d per 24h falta, 2d per 12h)
   total_dias_descuento: number;
+  barraca_monto: number;
+  barraca_nombre: string | null;
 }
 
 interface DetalleNovedad {
@@ -306,16 +308,17 @@ function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: number | n
   const valorHE = valorHora * 1.5 * he;
   const anticipo = Number(col.anticipos_monto);
   const cuotaUniforme = Number(col.cuota_uniforme_monto ?? 0);
+  const barracaMonto = Number(col.barraca_monto ?? 0);
   const igssLaboral = col.aplica_igss ? Math.round((sueldoPeriodo - descFaltas) * 0.0483 * 100) / 100 : 0;
   const isrQuincenal = calcularISRQuincenal(sb, col.aplica_igss);
-  const total = sueldoPeriodo - descFaltas + valorHE - anticipo - cuotaUniforme - igssLaboral - isrQuincenal;
+  const total = sueldoPeriodo - descFaltas + valorHE - anticipo - cuotaUniforme - barracaMonto - igssLaboral - isrQuincenal;
 
   const diasCerrados = Number(col.dias_cerrados ?? 0);
   const sueldoReal = sueldoDia * diasCerrados;
   const igssLaboralReal = col.aplica_igss ? Math.round((sueldoReal - descFaltas) * 0.0483 * 100) / 100 : 0;
-  const totalReal = sueldoReal - descFaltas + valorHE - anticipo - cuotaUniforme - igssLaboralReal - isrQuincenal;
+  const totalReal = sueldoReal - descFaltas + valorHE - anticipo - cuotaUniforme - barracaMonto - igssLaboralReal - isrQuincenal;
 
-  return { sueldoPeriodo, descFaltas, valorHE, anticipo, cuotaUniforme, igssLaboral, igssLaboralReal, isrQuincenal, total, diasDesc, diasCerrados, sueldoReal, totalReal };
+  return { sueldoPeriodo, descFaltas, valorHE, anticipo, cuotaUniforme, barracaMonto, igssLaboral, igssLaboralReal, isrQuincenal, total, diasDesc, diasCerrados, sueldoReal, totalReal };
 }
 
 // ─── Badge revisión ───────────────────────────────────────────────────────────
@@ -500,6 +503,12 @@ function DetalleModal({
                         <div className="flex justify-between text-xs">
                           <span className="text-orange-300/70">— Cuota uniforme/botas</span>
                           <span className="text-orange-300">–{fmtQ(est.cuotaUniforme)}</span>
+                        </div>
+                      )}
+                      {est.barracaMonto > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-violet-300/70">— Barraca{col.barraca_nombre ? ` (${col.barraca_nombre})` : ""}</span>
+                          <span className="text-violet-300">–{fmtQ(est.barracaMonto)}</span>
                         </div>
                       )}
                       {est.igssLaboralReal > 0 && (
