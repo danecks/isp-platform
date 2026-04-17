@@ -3,10 +3,14 @@ import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from "react-
 import L from "leaflet";
 import {
   MapPin, Clock, RefreshCw, Activity, CheckCircle2, User, Building2,
-  Loader2, AlertTriangle,
+  Loader2, AlertTriangle, XCircle,
 } from "lucide-react";
 
 const API = "/api";
+
+function getSession() {
+  return sessionStorage.getItem("isp_admin_session_v2") || "";
+}
 
 // Iconos personalizados (Leaflet por defecto pierde el ícono al hacer bundle)
 const iconoInicio = L.divIcon({
@@ -117,6 +121,8 @@ export default function RecorridosCustodia() {
   const [detalle, setDetalle] = useState<RecorridoDetalle | null>(null);
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [forzandoCierre, setForzandoCierre] = useState(false);
+  const [errorCierre, setErrorCierre] = useState<string | null>(null);
 
   const cargarLista = useCallback(async () => {
     try {
@@ -151,6 +157,38 @@ export default function RecorridosCustodia() {
       setCargandoDetalle(false);
     }
   }, []);
+
+  const forzarCierre = useCallback(async () => {
+    if (!seleccionado || !detalle) return;
+    const motivo = window.prompt(
+      `Forzar cierre del turno de ${detalle.turno.agente_nombre}.\n\n` +
+      `Esto cerrará el turno (y el de los co-tripulantes) sin pasar por la app del custodio.\n` +
+      `Ingresá un motivo (ej. "se le descargó el celular", "se olvidó cerrar"):`
+    );
+    if (motivo === null) return; // cancelado
+    setForzandoCierre(true);
+    setErrorCierre(null);
+    try {
+      const r = await fetch(`${API}/agente/forzar-cierre-turno`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
+        body: JSON.stringify({ fichaje_id: seleccionado, motivo }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setErrorCierre(data.mensaje || data.error || "No se pudo forzar el cierre");
+        return;
+      }
+      await Promise.all([cargarLista(), cargarDetalle(seleccionado)]);
+    } catch (e) {
+      setErrorCierre(e instanceof Error ? e.message : "Sin conexión");
+    } finally {
+      setForzandoCierre(false);
+    }
+  }, [seleccionado, detalle, cargarLista, cargarDetalle]);
+
+  // Limpiar error de cierre al cambiar de selección
+  useEffect(() => { setErrorCierre(null); }, [seleccionado]);
 
   // Cargar lista al montar y cada 30s si autoRefresh
   useEffect(() => {
@@ -301,6 +339,33 @@ export default function RecorridosCustodia() {
             </div>
           ) : (
             <>
+              {/* Acción admin: forzar cierre (solo si turno activo) */}
+              {!turnoCerrado && (
+                <div className="px-4 py-2.5 border-b border-white/8 bg-amber-500/5 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="text-[11px] text-amber-200/80 flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    Turno activo. Si el custodio no puede cerrarlo desde su teléfono, podés forzar el cierre desde acá.
+                  </div>
+                  <button
+                    onClick={() => void forzarCierre()}
+                    disabled={forzandoCierre}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-semibold text-white"
+                  >
+                    {forzandoCierre ? (
+                      <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Cerrando…</>
+                    ) : (
+                      <><XCircle className="w-3.5 h-3.5" /> Forzar cierre</>
+                    )}
+                  </button>
+                </div>
+              )}
+              {errorCierre && (
+                <div className="px-4 py-2 border-b border-white/8 bg-rose-500/10 text-[11px] text-rose-200 flex items-start gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                  <span>{errorCierre}</span>
+                </div>
+              )}
+
               {/* Header detalle */}
               <div className="px-4 py-3 border-b border-white/8 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                 <div>

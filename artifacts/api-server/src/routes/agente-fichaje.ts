@@ -2015,6 +2015,109 @@ agenteFichajeRouter.post("/agente/cerrar-turno", async (req, res) => {
   }
 });
 
+// POST /api/agente/forzar-cierre-turno — cierre administrativo (sin tracking_token)
+// Body: { fichaje_id, motivo? }
+// Auth: requiere sesión admin via x-isp-session (permisosMiddleware ya valida módulo control_qr).
+// Cierra el turno líder + todos los co-tripulantes en cascada y deja registro de quién lo forzó.
+agenteFichajeRouter.post("/agente/forzar-cierre-turno", async (req, res) => {
+  const { fichaje_id, motivo } = req.body ?? {};
+  if (!fichaje_id) return res.status(400).json({ error: "parametros_invalidos" });
+
+  // Identificar al admin que ejecuta la acción (para auditoría en observaciones)
+  let adminUsername = "admin";
+  try {
+    const raw = req.headers["x-isp-session"] as string | undefined;
+    if (raw) {
+      const session = JSON.parse(raw);
+      if (session?.username) adminUsername = String(session.username);
+    }
+  } catch {
+    // sesión inválida → seguimos con "admin" como etiqueta genérica
+  }
+
+  try {
+    const { rows: fRows } = await pool.query(
+      `SELECT employee_id, puesto_id, cliente_id, slot_numero, turno_cerrado_en
+         FROM agente_fichajes WHERE id = $1 AND tipo = 'inicio_turno'`,
+      [fichaje_id]
+    );
+    if (!fRows[0]) return res.status(404).json({ error: "fichaje_no_encontrado" });
+    if (fRows[0].turno_cerrado_en) {
+      return res.status(409).json({ error: "turno_ya_cerrado", cerrado_en: fRows[0].turno_cerrado_en });
+    }
+
+    const motivoLimpio = typeof motivo === "string" ? motivo.trim().slice(0, 200) : "";
+    const etiquetaMotivo = motivoLimpio || "sin motivo especificado";
+
+    const client = await pool.connect();
+    const cierres: Array<{ id: number; employee_id: number; registrado_en: string }> = [];
+    try {
+      await client.query("BEGIN");
+      const { rows: hijosRows } = await client.query(
+        `SELECT id, employee_id, puesto_id, cliente_id, slot_numero
+           FROM agente_fichajes
+          WHERE recorrido_padre_id = $1 AND turno_cerrado_en IS NULL
+          FOR UPDATE`,
+        [fichaje_id]
+      );
+      await client.query(
+        `UPDATE agente_fichajes SET turno_cerrado_en = NOW()
+          WHERE (id = $1 OR recorrido_padre_id = $1) AND turno_cerrado_en IS NULL`,
+        [fichaje_id]
+      );
+      const todos = [
+        {
+          id: fichaje_id,
+          employee_id: fRows[0].employee_id,
+          puesto_id: fRows[0].puesto_id,
+          cliente_id: fRows[0].cliente_id,
+          slot_numero: fRows[0].slot_numero,
+        },
+        ...hijosRows,
+      ];
+      for (const t of todos) {
+        const { rows: cierre } = await client.query(
+          `INSERT INTO agente_fichajes
+             (employee_id, puesto_id, cliente_id, slot_numero, latitud, longitud, distancia_metros, resultado, tipo, observaciones)
+           VALUES ($1,$2,$3,$4,NULL,NULL,NULL,'ok','cierre_turno',$5)
+           RETURNING id, registrado_en`,
+          [
+            t.employee_id,
+            t.puesto_id,
+            t.cliente_id,
+            t.slot_numero,
+            `cierre FORZADO por admin=${adminUsername} de fichaje_id=${t.id}${t.id !== fichaje_id ? ` (anexado a ${fichaje_id})` : ""} motivo=${etiquetaMotivo}`,
+          ]
+        );
+        cierres.push({ id: cierre[0].id, employee_id: t.employee_id, registrado_en: cierre[0].registrado_en });
+      }
+      await client.query("COMMIT");
+    } catch (txErr) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw txErr;
+    } finally {
+      client.release();
+    }
+
+    logger.warn(
+      { admin: adminUsername, fichaje_id, total_cerrados: cierres.length, motivo: etiquetaMotivo },
+      "agente/forzar-cierre-turno: cierre administrativo ejecutado"
+    );
+
+    res.json({
+      ok: true,
+      forzado_por: adminUsername,
+      cierre_id: cierres[0].id,
+      cerrado_en: cierres[0].registrado_en,
+      cierres_grupo: cierres,
+      total_cerrados: cierres.length,
+    });
+  } catch (err) {
+    logger.error({ err }, "agente/forzar-cierre-turno: error");
+    res.status(500).json({ error: "Error forzando cierre de turno" });
+  }
+});
+
 // GET /api/agente/co-custodios/:fichaje_id — lista los custodios anexados a un recorrido (líder + hijos)
 // Se autentica con tracking_token para no exponer la información a cualquiera.
 agenteFichajeRouter.get("/agente/co-custodios/:fichaje_id", async (req, res) => {
