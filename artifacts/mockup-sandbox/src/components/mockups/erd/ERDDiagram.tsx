@@ -327,7 +327,12 @@ export function ERDDiagram() {
       mermaid
         .render("erd-svg", ERD)
         .then(({ svg }) => {
-          if (ref.current) ref.current.innerHTML = svg;
+          if (ref.current) {
+            const parser = new DOMParser();
+            const svgDoc = parser.parseFromString(svg, "image/svg+xml");
+            const svgEl = svgDoc.documentElement;
+            ref.current.replaceChildren(svgEl);
+          }
         })
         .catch((e) => setError(String(e)));
     }
