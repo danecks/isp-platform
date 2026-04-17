@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Menu, X, ArrowRight } from "lucide-react";
+import { Menu, X, ArrowRight, Shield } from "lucide-react";
 
 export function Mision() {
   const [menuOpen, setMenuOpen] = useState(false);
