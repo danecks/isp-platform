@@ -59,6 +59,7 @@ export const SYSTEM_MODULOS = [
   { clave: "carnets_qr",          label: "Carnets QR",                 seccion: "Personal & RRHH" },
   { clave: "kiosco_solicitudes",  label: "Solicitudes Kiosco",         seccion: "Personal & RRHH" },
   { clave: "barracas",            label: "Barracas",                   seccion: "Personal & RRHH" },
+  { clave: "seguros",             label: "Seguros",                    seccion: "Personal & RRHH" },
   // Sistema
   { clave: "solicitudes_eliminacion", label: "Solicitudes de Eliminación", seccion: "Sistema" },
   { clave: "usuarios",            label: "Usuarios del Sistema",       seccion: "Sistema" },
