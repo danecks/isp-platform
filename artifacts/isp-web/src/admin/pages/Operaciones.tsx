@@ -6408,11 +6408,10 @@ export default function Operaciones() {
   // Viendo hoy pero hay días pasados sin cerrar → bloqueado
   const bloqueadoPorPendientes = !esPasado && !esFuturo && hayDiasPendientes && !hoyCerrado;
   // ¿El día actual visto ya está cerrado?
-  // Para días pasados: cerrado solo si está en diasCerrados (registro explícito con estado='cerrado')
-  // Para hoy: cerrado si el API dice que está cerrado
-  const fechaVistaCerrada = esPasado
-    ? diasCerrados.includes(fechaVista ?? "")
-    : (!esFuturo && hoyCerrado);
+  // Una fecha está cerrada SSI tiene registro explícito con estado='cerrado' en BD.
+  // No se debe inferir desde `esFechaFutura` (eso indica que la fecha activa avanzó
+  // porque "hoy del servidor" está cerrado, pero no que la fecha que estás viendo lo esté).
+  const fechaVistaCerrada = diasCerrados.includes(fechaVista ?? "");
 
   const fechaVistaStr = (() => {
     if (!fechaVista) return fechaHoyStr();

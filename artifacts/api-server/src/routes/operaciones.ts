@@ -3468,30 +3468,33 @@ operacionesRouter.post("/operaciones/cierre", async (req, res) => {
     const todayISO = todayGT();
 
     // ── Determinar fecha a cerrar y si es retroactiva ──────────────────────
+    // REGLA: si el frontend envía una `fecha` explícita, esa fecha manda.
+    // Solo si no envía nada, calculamos la fecha activa (siguiente día abierto).
     let fechaACerrarISO: string;
     let esRetroactivo: boolean;
 
-    if (fechaSolicitada && fechaSolicitada !== todayISO) {
+    if (fechaSolicitada) {
       if (fechaSolicitada > todayISO) {
         return res.status(400).json({ error: 'No se puede cerrar una fecha futura' });
       }
-      // Cierre retroactivo de una fecha pasada
-      const diasAtras = Math.floor(
-        (new Date(todayISO).getTime() - new Date(fechaSolicitada).getTime()) / 86_400_000
-      );
-      // Supervisor puede cerrar hasta 7 días atrás; admin sin límite
-      if (rol === 'supervisor' && diasAtras > 7) {
-        return res.status(403).json({
-          error: `Supervisores solo pueden cerrar hasta 7 días atrás (esta fecha tiene ${diasAtras} días). Contacta a un administrador.`,
-        });
+      esRetroactivo = fechaSolicitada < todayISO;
+      if (esRetroactivo) {
+        const diasAtras = Math.floor(
+          (new Date(todayISO).getTime() - new Date(fechaSolicitada).getTime()) / 86_400_000
+        );
+        // Supervisor puede cerrar hasta 7 días atrás; admin sin límite
+        if (rol === 'supervisor' && diasAtras > 7) {
+          return res.status(403).json({
+            error: `Supervisores solo pueden cerrar hasta 7 días atrás (esta fecha tiene ${diasAtras} días). Contacta a un administrador.`,
+          });
+        }
       }
       fechaACerrarISO = fechaSolicitada;
-      esRetroactivo = true;
     } else {
-      // Cierre normal: usar la fecha activa calculada por calcFechaActiva()
+      // Sin fecha explícita: usar la fecha activa calculada por calcFechaActiva()
       const { fechaActivaISO } = await calcFechaActiva();
       fechaACerrarISO = fechaActivaISO;
-      esRetroactivo = false;
+      esRetroactivo = fechaActivaISO < todayISO;
     }
 
     const fechaACerrarStr = isoADDMMYYYY(fechaACerrarISO);
