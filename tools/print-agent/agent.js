@@ -101,7 +101,7 @@ function listPrinters() {
  * Devuelve una cadena descriptiva del resultado para loguear.
  */
 function setPaperSource(printerName) {
-  const safe = printerName.replace(/'/g, "\\'");
+  const safe = printerName.replace(/'/g, "''");
 
   // Script PowerShell que prueba múltiples enfoques
   const script = [
