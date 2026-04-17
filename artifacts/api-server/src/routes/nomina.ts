@@ -810,6 +810,40 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
       logger.warn({ paso45bErr, fecha }, "Paso 4.5b puesto_slots: falló (no bloqueante)");
     }
 
+    // ── Paso 4.5bc: Novedades base derivadas desde custodia_asignacion_diaria ─
+    // Empleados asignados a custodias ese día. La tabla no guarda horas, por
+    // convención del negocio se cuenta como turno de 12h. Va ANTES del paso de
+    // "disponibles" para que estos custodios no queden marcados como disponibles.
+    try {
+      const r = await pool.query(`
+        INSERT INTO novedades_nomina_diarias
+          (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
+           falta, suspension, descanso_trabajado, afecta_septimo, descuento_dia,
+           tipo_novedad, fuente, observaciones, cierre_id, updated_at)
+        SELECT $1::date, e.id, e.nombre_completo, TRUE, 12, 0,
+               FALSE, FALSE, FALSE, FALSE, FALSE,
+               'custodia', 'derivado_custodia',
+               'Custodia cliente ' || cad.cliente_id || ' (slot ' || COALESCE(cad.slot_numero::text, '?') || ')',
+               $2, NOW()
+        FROM custodia_asignacion_diaria cad
+        JOIN employees e ON e.id = cad.employee_id
+        WHERE cad.fecha = $1::date
+          AND cad.employee_id IS NOT NULL
+          AND e.estado_laboral NOT IN ('baja', 'suspendido')
+        ON CONFLICT (fecha, employee_id) DO NOTHING
+      `, [fecha, cierreId]);
+      const custInserts = r.rowCount ?? 0;
+      if (custInserts > 0) {
+        count += custInserts;
+        logger.info(
+          { fecha, novedadesInsertadas: custInserts },
+          "Paso 4.5bc: novedades base 'custodia' generadas desde custodia_asignacion_diaria"
+        );
+      }
+    } catch (paso45bcErr) {
+      logger.warn({ paso45bcErr, fecha }, "Paso 4.5bc custodias: falló (no bloqueante)");
+    }
+
     // ── Paso 4.5c: Disponibles del pool de cobertura ───────────────────────
     // Empleados activos que NO tienen ningún registro previo (ni cobertura,
     // ni ausencia RRHH, ni slot, ni fallback): se marcan como "disponibles"
