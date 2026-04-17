@@ -633,7 +633,9 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
 
     // 2. Duplicado del día (zona Guatemala)
     const { rows: dupRows } = await pool.query(
-      `SELECT id, registrado_en FROM agente_fichajes
+      `SELECT id, registrado_en, cliente_id, puesto_id, tracking_token_hash,
+              recorrido_padre_id, turno_cerrado_en
+         FROM agente_fichajes
         WHERE employee_id = $1
           AND tipo = 'inicio_turno'
           AND DATE((registrado_en AT TIME ZONE 'America/Guatemala')) =
@@ -642,10 +644,65 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
       [employeeId]
     );
     if (dupRows.length > 0) {
+      const fichaje = dupRows[0];
+      // Si el turno ya fue cerrado, no permitir reabrirlo
+      if (fichaje.turno_cerrado_en) {
+        return res.status(409).json({
+          error: "ya_cerrado",
+          mensaje: "Ya cerraste tu turno hoy.",
+          registrado_en: fichaje.registrado_en,
+        });
+      }
+      // Reanudar: si hay fichaje abierto sin cerrar y es custodia LÍDER,
+      // regenerar tracking_token para que la app pueda continuar el rastreo.
+      // (Caso típico: app se cerró antes de arrancar el GPS.)
+      if (fichaje.cliente_id && fichaje.recorrido_padre_id === null) {
+        const nuevoToken = randomBytes(32).toString("hex");
+        const nuevoHash = hashToken(nuevoToken);
+        await pool.query(
+          `UPDATE agente_fichajes SET tracking_token_hash = $1 WHERE id = $2`,
+          [nuevoHash, fichaje.id]
+        );
+        // Recuperar datos del cliente para devolver el servicio
+        const { rows: cliRows } = await pool.query(
+          `SELECT COALESCE(nombre_comercial, nombre) AS cliente_nombre FROM clients WHERE id = $1`,
+          [fichaje.cliente_id]
+        );
+        return res.json({
+          ok: true,
+          reanudado: true,
+          fichaje_id: fichaje.id,
+          registrado_en: fichaje.registrado_en,
+          resultado: "reanudado",
+          distancia_metros: null,
+          agente,
+          servicio: {
+            tipo: "custodia",
+            puesto_id: null,
+            cliente_id: fichaje.cliente_id,
+            cliente_nombre: cliRows[0]?.cliente_nombre ?? null,
+            slot_numero: null,
+            titulo: "Turno reanudado",
+            horario: null,
+            hora_entrada: null,
+            hora_salida: null,
+            turno: "Custodia",
+            jornada: null,
+            gps_referencia: null,
+          },
+          arma: null,
+          tracking_token: nuevoToken,
+          anexado_a_recorrido: false,
+          padre_fichaje_id: null,
+          padre_nombre: null,
+          co_custodios: null,
+        });
+      }
+      // Co-tripulante o puesto fijo ya marcado: rechazar como antes.
       return res.status(409).json({
         error: "ya_iniciado",
         mensaje: "Ya iniciaste tu turno hoy.",
-        registrado_en: dupRows[0].registrado_en,
+        registrado_en: fichaje.registrado_en,
       });
     }
 
