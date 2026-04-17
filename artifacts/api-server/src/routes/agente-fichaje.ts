@@ -822,13 +822,43 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
     }
 
     // 6. Registrar el inicio de turno
-    // Si es custodia, generamos tracking_token para autenticar pings GPS posteriores
-    const trackingToken = servicio.tipo === "custodia" ? randomBytes(32).toString("hex") : null;
+    // GPS-RECO-02: si es custodia y vino de un kiosco, detectar si ya hay un recorrido activo
+    // (líder) en ESTE dispositivo + cliente. Si existe, este fichaje se anexa como co-tripulante:
+    // comparte el tracking del padre y NO genera tracking_token propio.
+    let recorridoPadreId: number | null = null;
+    let padreInfo: { id: number; agente_nombre: string } | null = null;
+    if (servicio.tipo === "custodia" && device_uuid) {
+      const { rows: padreRows } = await pool.query(
+        `SELECT af.id, e.nombre_completo AS agente_nombre
+           FROM agente_fichajes af
+           JOIN employees e ON e.id = af.employee_id
+          WHERE af.tipo = 'inicio_turno'
+            AND af.device_uuid_origen = $1
+            AND af.cliente_id = $2
+            AND af.tracking_token_hash IS NOT NULL
+            AND af.turno_cerrado_en IS NULL
+            AND af.recorrido_padre_id IS NULL
+            AND DATE((af.registrado_en AT TIME ZONE 'America/Guatemala')) =
+                DATE((NOW() AT TIME ZONE 'America/Guatemala'))
+          ORDER BY af.registrado_en ASC
+          LIMIT 1`,
+        [device_uuid, servicio.cliente_id]
+      );
+      if (padreRows[0]) {
+        recorridoPadreId = padreRows[0].id;
+        padreInfo = padreRows[0];
+      }
+    }
+
+    // Sólo el LÍDER del recorrido obtiene tracking_token. Los co-tripulantes NO (comparten el del padre).
+    const esLider = servicio.tipo === "custodia" && recorridoPadreId === null;
+    const trackingToken = esLider ? randomBytes(32).toString("hex") : null;
     const trackingTokenHash = trackingToken ? hashToken(trackingToken) : null;
+
     const { rows: inserted } = await pool.query(
       `INSERT INTO agente_fichajes
-         (employee_id, puesto_id, cliente_id, slot_numero, qr_token, latitud, longitud, distancia_metros, resultado, tipo, observaciones, tracking_token_hash)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'inicio_turno',$10,$11)
+         (employee_id, puesto_id, cliente_id, slot_numero, qr_token, latitud, longitud, distancia_metros, resultado, tipo, observaciones, tracking_token_hash, recorrido_padre_id, device_uuid_origen)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'inicio_turno',$10,$11,$12,$13)
        RETURNING id, registrado_en`,
       [
         employeeId,
@@ -841,11 +871,33 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
         distanciaMetros,
         resultado,
         servicio.tipo === "custodia"
-          ? `cliente_id=${servicio.cliente_id} slot=${servicio.slot_numero} precision=${precision_metros ?? "?"}m`
+          ? `cliente_id=${servicio.cliente_id} slot=${servicio.slot_numero} precision=${precision_metros ?? "?"}m${recorridoPadreId ? ` anexado_a=${recorridoPadreId}` : ""}`
           : `puesto_id=${servicio.puesto_id} precision=${precision_metros ?? "?"}m`,
         trackingTokenHash,
+        recorridoPadreId,
+        device_uuid ?? null,
       ]
     );
+
+    // Si es co-tripulante, devolver lista actualizada del grupo
+    let coCustodios: Array<{ employee_id: number; nombre: string; fichaje_id: number; es_lider: boolean }> | null = null;
+    if (recorridoPadreId !== null) {
+      const { rows: grupoRows } = await pool.query(
+        `SELECT af.id AS fichaje_id, af.employee_id, e.nombre_completo AS nombre,
+                (af.id = $1) AS es_lider
+           FROM agente_fichajes af
+           JOIN employees e ON e.id = af.employee_id
+          WHERE af.id = $1 OR af.recorrido_padre_id = $1
+          ORDER BY af.registrado_en ASC`,
+        [recorridoPadreId]
+      );
+      coCustodios = grupoRows.map(r => ({
+        employee_id: r.employee_id,
+        nombre: r.nombre,
+        fichaje_id: r.fichaje_id,
+        es_lider: r.es_lider,
+      }));
+    }
 
     res.json({
       ok: true,
@@ -856,7 +908,11 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
       agente,
       servicio,
       arma,
-      tracking_token: trackingToken, // null si no es custodia
+      tracking_token: trackingToken, // null si no es custodia o si es co-tripulante
+      anexado_a_recorrido: recorridoPadreId !== null,
+      padre_fichaje_id: recorridoPadreId,
+      padre_nombre: padreInfo?.agente_nombre ?? null,
+      co_custodios: coCustodios,
     });
   } catch (err) {
     logger.error({ err }, "agente/iniciar-turno: error");
@@ -1769,30 +1825,102 @@ agenteFichajeRouter.post("/agente/cerrar-turno", async (req, res) => {
       return res.status(409).json({ error: "turno_ya_cerrado", cerrado_en: fRows[0].turno_cerrado_en });
     }
 
-    // Marcar el inicio_turno como cerrado
-    await pool.query(`UPDATE agente_fichajes SET turno_cerrado_en = NOW() WHERE id = $1`, [fichaje_id]);
+    // GPS-RECO-02: cerrar el líder + todos los co-tripulantes en cascada (atomic)
+    const client = await pool.connect();
+    const cierres: Array<{ id: number; employee_id: number; registrado_en: string }> = [];
+    try {
+      await client.query("BEGIN");
+      const { rows: hijosRows } = await client.query(
+        `SELECT id, employee_id, puesto_id, cliente_id, slot_numero
+           FROM agente_fichajes
+          WHERE recorrido_padre_id = $1 AND turno_cerrado_en IS NULL
+          FOR UPDATE`,
+        [fichaje_id]
+      );
+      await client.query(
+        `UPDATE agente_fichajes SET turno_cerrado_en = NOW()
+          WHERE (id = $1 OR recorrido_padre_id = $1) AND turno_cerrado_en IS NULL`,
+        [fichaje_id]
+      );
+      const todos = [
+        {
+          id: fichaje_id,
+          employee_id: fRows[0].employee_id,
+          puesto_id: fRows[0].puesto_id,
+          cliente_id: fRows[0].cliente_id,
+          slot_numero: fRows[0].slot_numero,
+        },
+        ...hijosRows,
+      ];
+      for (const t of todos) {
+        const { rows: cierre } = await client.query(
+          `INSERT INTO agente_fichajes
+             (employee_id, puesto_id, cliente_id, slot_numero, latitud, longitud, distancia_metros, resultado, tipo, observaciones)
+           VALUES ($1,$2,$3,$4,$5,$6,NULL,'ok','cierre_turno',$7)
+           RETURNING id, registrado_en`,
+          [
+            t.employee_id,
+            t.puesto_id,
+            t.cliente_id,
+            t.slot_numero,
+            latitud ?? null,
+            longitud ?? null,
+            `cierre de fichaje_id=${t.id}${t.id !== fichaje_id ? ` (anexado a ${fichaje_id})` : ""} precision=${precision_metros ?? "?"}m`,
+          ]
+        );
+        cierres.push({ id: cierre[0].id, employee_id: t.employee_id, registrado_en: cierre[0].registrado_en });
+      }
+      await client.query("COMMIT");
+    } catch (txErr) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw txErr;
+    } finally {
+      client.release();
+    }
 
-    // Registrar fichaje de cierre con la última posición
-    const { rows: cierre } = await pool.query(
-      `INSERT INTO agente_fichajes
-         (employee_id, puesto_id, cliente_id, slot_numero, latitud, longitud, distancia_metros, resultado, tipo, observaciones)
-       VALUES ($1,$2,$3,$4,$5,$6,NULL,'ok','cierre_turno',$7)
-       RETURNING id, registrado_en`,
-      [
-        fRows[0].employee_id,
-        fRows[0].puesto_id,
-        fRows[0].cliente_id,
-        fRows[0].slot_numero,
-        latitud ?? null,
-        longitud ?? null,
-        `cierre de fichaje_id=${fichaje_id} precision=${precision_metros ?? "?"}m`,
-      ]
-    );
-
-    res.json({ ok: true, cierre_id: cierre[0].id, cerrado_en: cierre[0].registrado_en });
+    res.json({
+      ok: true,
+      cierre_id: cierres[0].id,
+      cerrado_en: cierres[0].registrado_en,
+      cierres_grupo: cierres,
+      total_cerrados: cierres.length,
+    });
   } catch (err) {
     logger.error({ err }, "agente/cerrar-turno: error");
     res.status(500).json({ error: "Error cerrando turno" });
+  }
+});
+
+// GET /api/agente/co-custodios/:fichaje_id — lista los custodios anexados a un recorrido (líder + hijos)
+// Se autentica con tracking_token para no exponer la información a cualquiera.
+agenteFichajeRouter.get("/agente/co-custodios/:fichaje_id", async (req, res) => {
+  const fichajeId = Number(req.params.fichaje_id);
+  const trackingToken = (req.query.tracking_token as string) || "";
+  if (!Number.isFinite(fichajeId) || !trackingToken) {
+    return res.status(400).json({ error: "parametros_invalidos" });
+  }
+  try {
+    const { rows: f } = await pool.query(
+      `SELECT tracking_token_hash FROM agente_fichajes WHERE id = $1 AND tipo = 'inicio_turno'`,
+      [fichajeId]
+    );
+    if (!f[0] || !f[0].tracking_token_hash || f[0].tracking_token_hash !== hashToken(trackingToken)) {
+      return res.status(403).json({ error: "token_invalido" });
+    }
+    const { rows } = await pool.query(
+      `SELECT af.id AS fichaje_id, af.employee_id, e.nombre_completo AS nombre,
+              (af.id = $1) AS es_lider, af.registrado_en AS inicio_en,
+              af.turno_cerrado_en
+         FROM agente_fichajes af
+         JOIN employees e ON e.id = af.employee_id
+        WHERE af.id = $1 OR af.recorrido_padre_id = $1
+        ORDER BY af.registrado_en ASC`,
+      [fichajeId]
+    );
+    res.json({ co_custodios: rows, total: rows.length });
+  } catch (err) {
+    logger.error({ err }, "agente/co-custodios: error");
+    res.status(500).json({ error: "Error obteniendo co-custodios" });
   }
 });
 
@@ -1865,7 +1993,23 @@ agenteFichajeRouter.get("/agente/recorrido/:fichaje_id", async (req, res) => {
       [fichajeId]
     );
 
-    res.json({ turno: header[0], puntos, total_puntos: puntos.length });
+    // GPS-RECO-02: lista de co-custodios (incluye al líder y a los anexados)
+    const { rows: coCustodios } = await pool.query(
+      `SELECT af.id AS fichaje_id, af.employee_id, e.nombre_completo AS nombre,
+              (af.id = $1) AS es_lider, af.registrado_en AS inicio_en
+         FROM agente_fichajes af
+         JOIN employees e ON e.id = af.employee_id
+        WHERE af.id = $1 OR af.recorrido_padre_id = $1
+        ORDER BY af.registrado_en ASC`,
+      [fichajeId]
+    );
+
+    res.json({
+      turno: header[0],
+      puntos,
+      total_puntos: puntos.length,
+      co_custodios: coCustodios,
+    });
   } catch (err) {
     logger.error({ err }, "agente/recorrido: error");
     res.status(500).json({ error: "Error obteniendo recorrido" });

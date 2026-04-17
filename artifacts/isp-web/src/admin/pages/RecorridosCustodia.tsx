@@ -64,6 +64,7 @@ interface RecorridoDetalle {
   };
   puntos: PuntoGPS[];
   total_puntos: number;
+  co_custodios?: Array<{ employee_id: number; nombre: string; fichaje_id: number; es_lider: boolean }>;
 }
 
 // Helper: ajustar mapa al recorrido cargado
@@ -304,9 +305,19 @@ export default function RecorridosCustodia() {
               <div className="px-4 py-3 border-b border-white/8 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                 <div>
                   <div className="text-white/40 uppercase tracking-wide text-[10px] flex items-center gap-1">
-                    <User className="w-3 h-3" /> Custodio
+                    <User className="w-3 h-3" /> Custodio{(detalle.co_custodios?.length ?? 0) > 1 ? "s" : ""}
                   </div>
-                  <div className="text-white font-medium truncate">{detalle.turno.agente_nombre}</div>
+                  {(detalle.co_custodios?.length ?? 0) > 1 ? (
+                    <div className="text-white font-medium text-[11px] leading-tight">
+                      {detalle.co_custodios!.map(c => (
+                        <div key={c.fichaje_id} className="truncate">
+                          {c.nombre}{c.es_lider && <span className="text-blue-400 ml-1">·líder</span>}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-white font-medium truncate">{detalle.turno.agente_nombre}</div>
+                  )}
                 </div>
                 <div>
                   <div className="text-white/40 uppercase tracking-wide text-[10px]">Duración</div>

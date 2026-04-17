@@ -4619,6 +4619,19 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: GPS-RECO-01 — error (no bloqueante)");
   }
 
+  // ── GPS-RECO-02: agrupación de custodios en una misma ruta (recorrido compartido) ──
+  // recorrido_padre_id = id del fichaje "líder" del recorrido (NULL si es el líder o no aplica).
+  // device_uuid_origen = uuid del dispositivo kiosco que originó el fichaje (para agrupar co-tripulantes).
+  try {
+    await pool.query(`ALTER TABLE agente_fichajes ADD COLUMN IF NOT EXISTS recorrido_padre_id INTEGER REFERENCES agente_fichajes(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE agente_fichajes ADD COLUMN IF NOT EXISTS device_uuid_origen TEXT`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_fichajes_recorrido_padre ON agente_fichajes(recorrido_padre_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_fichajes_device_origen ON agente_fichajes(device_uuid_origen, registrado_en)`);
+    logger.info("Auto-migrate: GPS-RECO-02 agrupación recorrido_padre_id/device_uuid_origen verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: GPS-RECO-02 — error (no bloqueante)");
+  }
+
   // ── ACTAS-03: tipo_evento 'llamada_atencion_1', 'llamada_atencion_2', 'acta_administrativa' en eventos_rrhh ──
   try {
     await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS fichaje_origen_id INTEGER REFERENCES agente_fichajes(id) ON DELETE SET NULL`);

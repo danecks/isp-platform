@@ -130,6 +130,7 @@ export default function AgenteInicio() {
   const [ultimaPosicion, setUltimaPosicion] = useState<{ lat: number; lng: number; ts: string } | null>(null);
   const [bateria, setBateria] = useState<number | null>(null);
   const [trackingError, setTrackingError] = useState<string | null>(null);
+  const [coCustodios, setCoCustodios] = useState<Array<{ employee_id: number; nombre: string; fichaje_id: number; es_lider: boolean }>>([]);
 
   const watchIdRef = useRef<number | null>(null);
   const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -141,6 +142,25 @@ export default function AgenteInicio() {
 
   // Mantener ref sincronizada con el estado para usar dentro de callbacks de geo
   useEffect(() => { turnoActivoRef.current = turnoActivo; }, [turnoActivo]);
+
+  // GPS-RECO-02: cargar lista de co-custodios anexados al recorrido (refresca cada 20s)
+  useEffect(() => {
+    if (!turnoActivo) { setCoCustodios([]); return; }
+    let cancelled = false;
+    const fetchCo = async () => {
+      try {
+        const r = await fetch(
+          `${API}/agente/co-custodios/${turnoActivo.fichaje_id}?tracking_token=${encodeURIComponent(turnoActivo.tracking_token)}`,
+        );
+        if (!r.ok) return;
+        const data = await r.json();
+        if (!cancelled) setCoCustodios(data.co_custodios ?? []);
+      } catch { /* noop */ }
+    };
+    void fetchCo();
+    const t = setInterval(() => void fetchCo(), 20_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [turnoActivo]);
 
   // Cargar lista del día (modo kiosco)
   const cargarPuestoDelDia = useCallback(async () => {
@@ -363,6 +383,7 @@ export default function AgenteInicio() {
     ultimoGrabadoRef.current = null;
     setPuntosCount(0);
     setTrackingError(null);
+    setCoCustodios([]);
 
     // Audio truco (no requiere permiso explícito)
     arrancarAudioSilencioso();
@@ -520,7 +541,7 @@ export default function AgenteInicio() {
         return;
       }
       setResultado(data);
-      // Si es custodia, el backend nos dio un tracking_token → arrancar rastreo
+      // Si es custodia y vino tracking_token → este custodio es el LÍDER del recorrido (arranca rastreo).
       if (data.tracking_token && data.servicio?.tipo === "custodia") {
         const turno: TurnoActivoStorage = {
           fichaje_id: data.fichaje_id,
@@ -532,6 +553,10 @@ export default function AgenteInicio() {
         };
         iniciarRastreo(turno);
         setEstado("turno_activo");
+      } else if (data.anexado_a_recorrido && data.servicio?.tipo === "custodia") {
+        // Co-tripulante: ya hay un líder rastreando en este teléfono. NO sobreescribir el turnoActivo.
+        // Sólo mostrar mensaje de éxito (auto-reset de kiosco lo lleva a la pantalla principal).
+        setEstado("ok");
       } else {
         setEstado("ok");
       }
@@ -838,6 +863,26 @@ export default function AgenteInicio() {
                   <div className="text-sm text-slate-300">{turnoActivo.cliente_nombre}</div>
                 )}
               </div>
+
+              {coCustodios.length > 1 && (
+                <div className="border-t border-slate-800 pt-3">
+                  <div className="text-[11px] uppercase tracking-wide text-slate-500">
+                    Custodios en esta ruta ({coCustodios.length})
+                  </div>
+                  <ul className="mt-1.5 space-y-1">
+                    {coCustodios.map(c => (
+                      <li key={c.fichaje_id} className="text-sm text-slate-200 flex items-center gap-2">
+                        <span className={`w-1.5 h-1.5 rounded-full ${c.es_lider ? "bg-blue-400" : "bg-emerald-400"}`} />
+                        {c.nombre}
+                        {c.es_lider && <span className="text-[10px] text-blue-400 uppercase tracking-wide">líder</span>}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-[10px] text-slate-500 mt-1.5">
+                    El GPS rastrea desde este teléfono. Al cerrar el turno, se cierra a todos.
+                  </p>
+                </div>
+              )}
               <div className="border-t border-slate-800 pt-3 grid grid-cols-2 gap-3 text-xs">
                 <div>
                   <div className="text-slate-500 uppercase tracking-wide text-[10px]">Inicio</div>
@@ -922,7 +967,15 @@ export default function AgenteInicio() {
           <div className="space-y-5 pt-2">
             <div className="text-center">
               <CheckCircle className="w-16 h-16 mx-auto text-emerald-400" />
-              <h2 className="text-2xl font-bold mt-3">¡Turno iniciado!</h2>
+              <h2 className="text-2xl font-bold mt-3">
+                {(resultado as any).anexado_a_recorrido ? "¡Anexado a la ruta!" : "¡Turno iniciado!"}
+              </h2>
+              {(resultado as any).anexado_a_recorrido && (resultado as any).padre_nombre && (
+                <p className="text-sm text-blue-300 mt-1">
+                  Acompañando a {(resultado as any).padre_nombre}
+                  {(resultado as any).co_custodios && ` · ${(resultado as any).co_custodios.length} custodios en ruta`}
+                </p>
+              )}
               <p className="text-xs text-slate-400 mt-1">
                 {new Date(resultado.registrado_en).toLocaleString("es-GT", { timeZone: "America/Guatemala" })}
               </p>

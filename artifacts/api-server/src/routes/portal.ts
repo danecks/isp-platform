@@ -751,13 +751,23 @@ portalRouter.get("/portal/recorrido/:fichaje_id", requirePortalAuth, async (req,
       return res.status(404).json({ error: "Turno no encontrado" });
     }
     const { rows: puntos } = await pool.query(
-      `SELECT lat, lng, precision_metros, velocidad_mps, rumbo_grados, bateria_pct, capturado_en
+      `SELECT latitud AS lat, longitud AS lng, precision_metros, velocidad_mps, rumbo_grados, bateria_pct, capturado_en
          FROM agente_recorrido_gps
         WHERE fichaje_id = $1
         ORDER BY capturado_en ASC`,
       [fichajeId]
     );
-    res.json({ turno: turnoRows[0], puntos, total_puntos: puntos.length });
+    // GPS-RECO-02: incluir co-custodios anexados (líder + hijos del grupo)
+    const { rows: coCustodios } = await pool.query(
+      `SELECT af.id AS fichaje_id, af.employee_id, e.nombre_completo AS nombre,
+              (af.id = $1) AS es_lider
+         FROM agente_fichajes af
+         JOIN employees e ON e.id = af.employee_id
+        WHERE af.id = $1 OR af.recorrido_padre_id = $1
+        ORDER BY af.registrado_en ASC`,
+      [fichajeId]
+    );
+    res.json({ turno: turnoRows[0], puntos, total_puntos: puntos.length, co_custodios: coCustodios });
   } catch (err) {
     res.status(500).json({ error: "Error obteniendo recorrido" });
   }
