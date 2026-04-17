@@ -80,16 +80,16 @@ export function Mision() {
       {/* MISIÓN 02 */}
       <section className="h-screen w-full relative snap-start flex flex-col justify-end pb-24 px-6 lg:px-12">
         <div className="absolute inset-0 z-0">
-          <img src="/__mockup/images/mision-02.png" alt="Custodia Transporte" className="w-full h-full object-cover opacity-60" />
+          <img src="/__mockup/images/mision-02.png" alt="Custodia de Transporte" className="w-full h-full object-cover opacity-60" />
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
         </div>
         <div className="relative z-10 flex justify-between items-end w-full">
           <div>
             <h2 className="text-sm font-[500] tracking-[0.2em] mb-4 text-gray-300">MISIÓN 02 / CUSTODIA DE TRANSPORTE</h2>
             <h1 className="text-5xl md:text-7xl lg:text-8xl font-[800] tracking-[-0.02em] uppercase leading-none mb-4">
-              Transporte<br />Blindado
+              Custodia<br />Armada
             </h1>
-            <p className="text-lg md:text-xl text-gray-300 font-light max-w-xl">Aseguramiento de mercancías críticas con vehículos y personal especializado.</p>
+            <p className="text-lg md:text-xl text-gray-300 font-light max-w-xl">Custodios certificados que escoltan mercancía y unidades de nuestros clientes en ruta a nivel nacional.</p>
           </div>
         </div>
         <div className="absolute bottom-12 right-6 lg:right-12 z-10">
