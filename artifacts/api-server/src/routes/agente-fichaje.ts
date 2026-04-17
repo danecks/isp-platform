@@ -38,10 +38,12 @@ agenteFichajeRouter.post("/supervisor-devices/validate", async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT sd.id, sd.supervisor_nombre, sd.descripcion, sd.tipo, sd.puesto_id,
-              sd.device_token_hash,
-              po.nombre AS puesto_nombre, po.cliente_nombre
+              sd.cliente_id, sd.slot_numero, sd.device_token_hash,
+              po.nombre AS puesto_nombre,
+              COALESCE(po.cliente_nombre, c.nombre_comercial, c.nombre) AS cliente_nombre
        FROM supervisor_devices sd
        LEFT JOIN puestos_operativos po ON po.id = sd.puesto_id
+       LEFT JOIN clients c ON c.id = sd.cliente_id
        WHERE sd.device_uuid = $1 AND sd.activo = TRUE`,
       [device_uuid]
     );
@@ -60,6 +62,8 @@ agenteFichajeRouter.post("/supervisor-devices/validate", async (req, res) => {
       descripcion: dev.descripcion,
       puesto_id: dev.puesto_id,
       puesto_nombre: dev.puesto_nombre,
+      cliente_id: dev.cliente_id,
+      slot_numero: dev.slot_numero,
       cliente_nombre: dev.cliente_nombre,
     });
   } catch (err) {
@@ -73,11 +77,15 @@ agenteFichajeRouter.get("/supervisor-devices", async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT sd.id, sd.device_uuid, sd.supervisor_nombre, sd.descripcion,
-             sd.tipo, sd.puesto_id, sd.activo, sd.ultimo_uso, sd.created_at,
+             sd.tipo, sd.puesto_id, sd.cliente_id, sd.slot_numero,
+             sd.activo, sd.ultimo_uso, sd.created_at,
              (sd.device_token_hash IS NOT NULL) AS tiene_token,
-             po.nombre AS puesto_nombre, po.cliente_nombre, po.novedad
+             po.nombre AS puesto_nombre,
+             COALESCE(po.cliente_nombre, c.nombre_comercial, c.nombre) AS cliente_nombre,
+             po.novedad
       FROM supervisor_devices sd
       LEFT JOIN puestos_operativos po ON po.id = sd.puesto_id
+      LEFT JOIN clients c ON c.id = sd.cliente_id
       ORDER BY sd.tipo, sd.supervisor_nombre
     `);
     res.json(rows);
@@ -107,19 +115,32 @@ agenteFichajeRouter.patch("/agente/puesto-novedad/:puestoId", async (req, res) =
 
 // POST /api/supervisor-devices — registrar nuevo dispositivo (admin)
 agenteFichajeRouter.post("/supervisor-devices", async (req, res) => {
-  const { supervisor_nombre, descripcion, tipo = "supervisor", puesto_id } = req.body;
+  const { supervisor_nombre, descripcion, tipo = "supervisor", puesto_id, cliente_id, slot_numero } = req.body;
   if (!supervisor_nombre) return res.status(400).json({ error: "supervisor_nombre requerido" });
-  if (!["supervisor", "puesto", "maestro"].includes(tipo)) return res.status(400).json({ error: "tipo debe ser 'supervisor', 'puesto' o 'maestro'" });
+  if (!["supervisor", "puesto", "maestro", "custodia"].includes(tipo)) {
+    return res.status(400).json({ error: "tipo debe ser 'supervisor', 'puesto', 'custodia' o 'maestro'" });
+  }
+  if (tipo === "custodia" && !cliente_id) {
+    return res.status(400).json({ error: "cliente_id requerido para tipo 'custodia'" });
+  }
 
   try {
     const plainToken = randomBytes(32).toString("hex");
     const tokenHash = hashToken(plainToken);
     const { rows } = await pool.query(
       `INSERT INTO supervisor_devices
-         (supervisor_nombre, descripcion, tipo, puesto_id, device_token_hash)
-       VALUES ($1,$2,$3,$4,$5)
-       RETURNING id, device_uuid, supervisor_nombre, descripcion, tipo, puesto_id, created_at`,
-      [supervisor_nombre, descripcion ?? null, tipo, puesto_id ?? null, tokenHash]
+         (supervisor_nombre, descripcion, tipo, puesto_id, cliente_id, slot_numero, device_token_hash)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       RETURNING id, device_uuid, supervisor_nombre, descripcion, tipo, puesto_id, cliente_id, slot_numero, created_at`,
+      [
+        supervisor_nombre,
+        descripcion ?? null,
+        tipo,
+        tipo === "puesto" ? (puesto_id ?? null) : null,
+        tipo === "custodia" ? (cliente_id ?? null) : null,
+        tipo === "custodia" ? (slot_numero ?? null) : null,
+        tokenHash,
+      ]
     );
     res.json({
       ok: true,
@@ -129,6 +150,60 @@ agenteFichajeRouter.post("/supervisor-devices", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "supervisor-devices POST: error");
     res.status(500).json({ error: "Error registrando dispositivo" });
+  }
+});
+
+// PATCH /api/supervisor-devices/:id — editar dispositivo existente (admin)
+// Permite cambiar tipo, puesto/cliente/slot, nombre, descripción. NO regenera el token.
+agenteFichajeRouter.patch("/supervisor-devices/:id", async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: "id inválido" });
+  const { supervisor_nombre, descripcion, tipo, puesto_id, cliente_id, slot_numero } = req.body ?? {};
+  if (tipo && !["supervisor", "puesto", "maestro", "custodia"].includes(tipo)) {
+    return res.status(400).json({ error: "tipo inválido" });
+  }
+  if (tipo === "custodia" && !cliente_id) {
+    return res.status(400).json({ error: "cliente_id requerido para tipo 'custodia'" });
+  }
+  try {
+    // Cargar el actual para conservar lo que no se manda
+    const { rows: cur } = await pool.query(
+      `SELECT supervisor_nombre, descripcion, tipo, puesto_id, cliente_id, slot_numero
+         FROM supervisor_devices WHERE id = $1`,
+      [id]
+    );
+    if (!cur[0]) return res.status(404).json({ error: "dispositivo_no_encontrado" });
+    const next = {
+      supervisor_nombre: supervisor_nombre ?? cur[0].supervisor_nombre,
+      descripcion: descripcion !== undefined ? descripcion : cur[0].descripcion,
+      tipo: tipo ?? cur[0].tipo,
+      puesto_id: puesto_id !== undefined ? puesto_id : cur[0].puesto_id,
+      cliente_id: cliente_id !== undefined ? cliente_id : cur[0].cliente_id,
+      slot_numero: slot_numero !== undefined ? slot_numero : cur[0].slot_numero,
+    };
+    // Saneo según el tipo final
+    if (next.tipo === "puesto") {
+      next.cliente_id = null;
+      next.slot_numero = null;
+    } else if (next.tipo === "custodia") {
+      next.puesto_id = null;
+    } else {
+      next.puesto_id = null;
+      next.cliente_id = null;
+      next.slot_numero = null;
+    }
+    await pool.query(
+      `UPDATE supervisor_devices
+          SET supervisor_nombre = $1, descripcion = $2, tipo = $3,
+              puesto_id = $4, cliente_id = $5, slot_numero = $6
+        WHERE id = $7`,
+      [next.supervisor_nombre, next.descripcion, next.tipo,
+       next.puesto_id, next.cliente_id, next.slot_numero, id]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "supervisor-devices PATCH: error");
+    res.status(500).json({ error: "Error actualizando dispositivo" });
   }
 });
 
@@ -357,10 +432,12 @@ agenteFichajeRouter.get("/agente/puesto-del-dia", async (req, res) => {
   }
   try {
     const { rows: devRows } = await pool.query(
-      `SELECT sd.id, sd.tipo, sd.device_token_hash, sd.puesto_id, sd.activo,
-              po.nombre AS puesto_nombre, po.cliente_nombre, po.horario, po.turno
+      `SELECT sd.id, sd.tipo, sd.device_token_hash, sd.puesto_id, sd.cliente_id, sd.slot_numero, sd.activo,
+              po.nombre AS puesto_nombre, po.horario, po.turno,
+              COALESCE(po.cliente_nombre, c.nombre_comercial, c.nombre) AS cliente_nombre
          FROM supervisor_devices sd
          LEFT JOIN puestos_operativos po ON po.id = sd.puesto_id
+         LEFT JOIN clients c ON c.id = sd.cliente_id
         WHERE sd.device_uuid = $1`,
       [device_uuid]
     );
@@ -370,15 +447,76 @@ agenteFichajeRouter.get("/agente/puesto-del-dia", async (req, res) => {
     if (devRows[0].device_token_hash !== hashToken(device_token)) {
       return res.status(403).json({ error: "token_incorrecto" });
     }
-    if (!["puesto", "maestro"].includes(devRows[0].tipo)) {
-      return res.status(403).json({ error: "tipo_incorrecto", mensaje: "Este dispositivo no está configurado como teléfono de puesto." });
+    if (!["puesto", "maestro", "custodia"].includes(devRows[0].tipo)) {
+      return res.status(403).json({ error: "tipo_incorrecto", mensaje: "Este dispositivo no está configurado como teléfono de puesto o de custodia." });
     }
+
+    await pool.query(`UPDATE supervisor_devices SET ultimo_uso = NOW() WHERE id = $1`, [devRows[0].id]);
+
+    // ── Modo custodia: lista de titulares del slot (o de todos los slots del cliente si no hay slot específico) ──
+    if (devRows[0].tipo === "custodia") {
+      if (!devRows[0].cliente_id) {
+        return res.status(404).json({ error: "sin_cliente_vinculado", mensaje: "El teléfono no está vinculado a un cliente." });
+      }
+      const params: any[] = [devRows[0].cliente_id];
+      let slotFilter = "";
+      if (devRows[0].slot_numero != null) {
+        params.push(devRows[0].slot_numero);
+        slotFilter = ` AND ct.slot_numero = $2`;
+      }
+      const { rows: ctRows } = await pool.query(
+        `SELECT ct.employee_id,
+                e.nombre_completo,
+                e.puesto AS cargo,
+                ct.slot_numero,
+                af.id AS fichaje_id,
+                af.registrado_en
+           FROM custodia_titulares ct
+           JOIN employees e ON e.id = ct.employee_id
+           LEFT JOIN LATERAL (
+             SELECT id, registrado_en
+               FROM agente_fichajes
+              WHERE employee_id = ct.employee_id
+                AND tipo = 'inicio_turno'
+                AND DATE((registrado_en AT TIME ZONE 'America/Guatemala')) =
+                    DATE((NOW() AT TIME ZONE 'America/Guatemala'))
+              ORDER BY registrado_en DESC LIMIT 1
+           ) af ON TRUE
+          WHERE ct.cliente_id = $1
+            AND ct.activo = TRUE${slotFilter}
+          ORDER BY ct.slot_numero ASC, e.nombre_completo ASC`,
+        params
+      );
+      return res.json({
+        puesto: {
+          id: null,
+          nombre: devRows[0].slot_numero != null
+            ? `Custodio ${devRows[0].slot_numero}`
+            : "Custodios",
+          cliente_nombre: devRows[0].cliente_nombre,
+          horario: null,
+          turno: "Custodia",
+          es_custodia: true,
+          cliente_id: devRows[0].cliente_id,
+          slot_numero: devRows[0].slot_numero,
+        },
+        agentes: ctRows.map(r => ({
+          employee_id: r.employee_id,
+          nombre: r.nombre_completo,
+          cargo: r.cargo,
+          orden: r.slot_numero,
+          inicio_turno_hoy: r.registrado_en
+            ? { fichaje_id: r.fichaje_id, registrado_en: r.registrado_en }
+            : null,
+        })),
+      });
+    }
+
+    // ── Modo puesto/maestro ──
     if (!devRows[0].puesto_id) {
       return res.status(404).json({ error: "sin_puesto_vinculado", mensaje: "El teléfono no está vinculado a un puesto." });
     }
-
     const puestoId = devRows[0].puesto_id;
-    await pool.query(`UPDATE supervisor_devices SET ultimo_uso = NOW() WHERE id = $1`, [devRows[0].id]);
 
     // Lista de titulares activos del puesto + estado de inicio_turno hoy
     const { rows: titRows } = await pool.query(
@@ -412,6 +550,7 @@ agenteFichajeRouter.get("/agente/puesto-del-dia", async (req, res) => {
         cliente_nombre: devRows[0].cliente_nombre,
         horario: devRows[0].horario,
         turno: devRows[0].turno,
+        es_custodia: false,
       },
       agentes: titRows.map(r => ({
         employee_id: r.employee_id,
@@ -439,13 +578,16 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
 
   // Modo kiosco: validar device si viene
   let kioscoPuestoId: number | null = null;
+  let kioscoClienteId: number | null = null;
+  let kioscoSlotNumero: number | null = null;
+  let kioscoTipo: string | null = null;
   if (device_uuid && device_token) {
     if (!UUID_RE.test(device_uuid)) {
       return res.status(403).json({ error: "dispositivo_no_autorizado" });
     }
     try {
       const { rows: devRows } = await pool.query(
-        `SELECT id, tipo, device_token_hash, puesto_id, activo
+        `SELECT id, tipo, device_token_hash, puesto_id, cliente_id, slot_numero, activo
            FROM supervisor_devices WHERE device_uuid = $1`,
         [device_uuid]
       );
@@ -455,10 +597,13 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
       if (devRows[0].device_token_hash !== hashToken(device_token)) {
         return res.status(403).json({ error: "token_incorrecto" });
       }
-      if (!["puesto", "maestro"].includes(devRows[0].tipo)) {
+      if (!["puesto", "maestro", "custodia"].includes(devRows[0].tipo)) {
         return res.status(403).json({ error: "tipo_incorrecto" });
       }
+      kioscoTipo = devRows[0].tipo;
       kioscoPuestoId = devRows[0].puesto_id ?? null;
+      kioscoClienteId = devRows[0].cliente_id ?? null;
+      kioscoSlotNumero = devRows[0].slot_numero ?? null;
     } catch (err) {
       logger.error({ err }, "agente/iniciar-turno: error validando device");
       return res.status(500).json({ error: "Error validando dispositivo" });
@@ -598,13 +743,36 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
       });
     }
 
-    // 3b. Modo kiosco: el agente debe pertenecer al puesto vinculado al teléfono
-    if (kioscoPuestoId != null && servicio.puesto_id !== kioscoPuestoId) {
+    // 3b. Modo kiosco: el agente debe pertenecer al puesto/cliente vinculado al teléfono
+    if (kioscoTipo === "puesto" && kioscoPuestoId != null && servicio.puesto_id !== kioscoPuestoId) {
       return res.status(403).json({
         error: "puesto_no_coincide",
         mensaje: `${agente.nombre} no pertenece a este puesto. Verificá que estás en el teléfono correcto.`,
         agente,
       });
+    }
+    if (kioscoTipo === "custodia") {
+      if (servicio.tipo !== "custodia") {
+        return res.status(403).json({
+          error: "tipo_no_coincide",
+          mensaje: `${agente.nombre} no es custodio. Verificá que estás en el teléfono correcto.`,
+          agente,
+        });
+      }
+      if (kioscoClienteId != null && servicio.cliente_id !== kioscoClienteId) {
+        return res.status(403).json({
+          error: "cliente_no_coincide",
+          mensaje: `${agente.nombre} no presta custodia para este cliente. Verificá que estás en el teléfono correcto.`,
+          agente,
+        });
+      }
+      if (kioscoSlotNumero != null && servicio.slot_numero !== kioscoSlotNumero) {
+        return res.status(403).json({
+          error: "slot_no_coincide",
+          mensaje: `${agente.nombre} no es titular del slot Custodio ${kioscoSlotNumero} de este cliente.`,
+          agente,
+        });
+      }
     }
 
     // 4. Validar GPS contra puesto si hay referencia
@@ -656,12 +824,14 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
     // 6. Registrar el inicio de turno
     const { rows: inserted } = await pool.query(
       `INSERT INTO agente_fichajes
-         (employee_id, puesto_id, qr_token, latitud, longitud, distancia_metros, resultado, tipo, observaciones)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'inicio_turno',$8)
+         (employee_id, puesto_id, cliente_id, slot_numero, qr_token, latitud, longitud, distancia_metros, resultado, tipo, observaciones)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'inicio_turno',$10)
        RETURNING id, registrado_en`,
       [
         employeeId,
         servicio.puesto_id,
+        servicio.cliente_id,
+        servicio.tipo === "custodia" ? servicio.slot_numero ?? null : null,
         qr_token,
         latitud ?? null,
         longitud ?? null,

@@ -4,7 +4,7 @@ import {
   QrCode, RefreshCw, Trash2, CheckCircle, XCircle,
   Search, Users, ClipboardList, MapPin, Star, Shield,
   Smartphone, Plus, Copy, Check, MapPinned, ShieldCheck, Footprints, Bell, X,
-  ShieldAlert, AlertTriangle,
+  ShieldAlert, AlertTriangle, Pencil, Truck,
 } from "lucide-react";
 
 const API = "/api";
@@ -65,9 +65,11 @@ interface Dispositivo {
   device_uuid: string;
   supervisor_nombre: string;
   descripcion: string | null;
-  tipo: "supervisor" | "puesto" | "maestro";
+  tipo: "supervisor" | "puesto" | "maestro" | "custodia";
   puesto_id: number | null;
   puesto_nombre: string | null;
+  cliente_id: number | null;
+  slot_numero: number | null;
   cliente_nombre: string | null;
   novedad: string | null;
   activo: boolean;
@@ -75,6 +77,8 @@ interface Dispositivo {
   ultimo_uso: string | null;
   created_at: string;
 }
+
+interface ClienteOpt { id: number; nombre: string; nombre_comercial: string | null; }
 
 // ── Modal: Activación de dispositivo ─────────────────────────────────────────
 function ActivacionModal({
@@ -145,6 +149,8 @@ function ActivacionModal({
 }
 
 // ── Modal: Registro de nuevo dispositivo ──────────────────────────────────────
+type DeviceTipo = "supervisor" | "puesto" | "maestro" | "custodia";
+
 function NuevoDispositivoModal({
   onCreado,
   onClose,
@@ -154,9 +160,12 @@ function NuevoDispositivoModal({
 }) {
   const [nombre, setNombre] = useState("");
   const [descripcion, setDescripcion] = useState("");
-  const [tipo, setTipo] = useState<"supervisor" | "puesto" | "maestro">("supervisor");
+  const [tipo, setTipo] = useState<DeviceTipo>("supervisor");
   const [puestos, setPuestos] = useState<{ id: number; nombre: string; cliente_nombre: string }[]>([]);
   const [puestoId, setPuestoId] = useState<number | "">("");
+  const [clientes, setClientes] = useState<ClienteOpt[]>([]);
+  const [clienteId, setClienteId] = useState<number | "">("");
+  const [slotNumero, setSlotNumero] = useState<string>("");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
 
@@ -164,16 +173,24 @@ function NuevoDispositivoModal({
     if (tipo === "puesto") {
       f("/puestos-gps").then(r => r.json()).then(data => setPuestos(data)).catch(() => {});
     }
-  }, [tipo]);
+    if (tipo === "custodia" && clientes.length === 0) {
+      f("/operaciones/clientes-disponibles").then(r => r.json()).then(setClientes).catch(() => {});
+    }
+  }, [tipo, clientes.length]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     if (!nombre.trim()) { setError("El nombre es requerido"); return; }
+    if (tipo === "custodia" && !clienteId) { setError("Selecciona el cliente para la custodia"); return; }
     setGuardando(true);
     try {
       const body: Record<string, unknown> = { supervisor_nombre: nombre.trim(), descripcion: descripcion.trim() || undefined, tipo };
       if (tipo === "puesto" && puestoId) body.puesto_id = puestoId;
+      if (tipo === "custodia") {
+        body.cliente_id = clienteId;
+        if (slotNumero.trim()) body.slot_numero = Number(slotNumero);
+      }
       const res = await f("/supervisor-devices", { method: "POST", body: JSON.stringify(body) });
       const data = await res.json();
       if (!data.ok) { setError(data.error || "Error al registrar dispositivo"); return; }
@@ -201,21 +218,27 @@ function NuevoDispositivoModal({
         {/* Tipo */}
         <div>
           <p className="text-white/50 text-xs font-semibold uppercase tracking-wide mb-2">Tipo de dispositivo</p>
-          <div className="flex gap-1.5 flex-wrap">
+          <div className="grid grid-cols-2 gap-1.5">
             <button type="button" onClick={() => setTipo("supervisor")}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold border transition-colors min-w-[80px] ${
+              className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${
                 tipo === "supervisor" ? "bg-purple-600/20 border-purple-500/40 text-purple-300" : "bg-white/5 border-white/10 text-white/40"
               }`}>
               <ShieldCheck className="w-3.5 h-3.5" /> Supervisor
             </button>
             <button type="button" onClick={() => setTipo("puesto")}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold border transition-colors min-w-[80px] ${
+              className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${
                 tipo === "puesto" ? "bg-blue-600/20 border-blue-500/40 text-blue-300" : "bg-white/5 border-white/10 text-white/40"
               }`}>
               <MapPinned className="w-3.5 h-3.5" /> Puesto
             </button>
+            <button type="button" onClick={() => setTipo("custodia")}
+              className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${
+                tipo === "custodia" ? "bg-emerald-600/20 border-emerald-500/40 text-emerald-300" : "bg-white/5 border-white/10 text-white/40"
+              }`}>
+              <Truck className="w-3.5 h-3.5" /> Custodia
+            </button>
             <button type="button" onClick={() => setTipo("maestro")}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold border transition-colors min-w-[80px] ${
+              className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${
                 tipo === "maestro" ? "bg-amber-600/20 border-amber-500/40 text-amber-300" : "bg-white/5 border-white/10 text-white/40"
               }`}>
               <span className="text-sm">🧪</span> Maestro
@@ -223,8 +246,9 @@ function NuevoDispositivoModal({
           </div>
           <p className="text-white/25 text-xs mt-1.5">
             {tipo === "supervisor" ? "Puede registrar supervisiones en cualquier puesto"
-             : tipo === "maestro" ? "Para pruebas: puede fichar, supervisar y marcar rondas"
-             : "Solo puede registrar fichajes de llegada"}
+             : tipo === "puesto" ? "Teléfono compartido del puesto: muestra los agentes del día"
+             : tipo === "custodia" ? "Teléfono de custodia: muestra los custodios del cliente"
+             : "Para pruebas: puede fichar, supervisar y marcar rondas"}
           </p>
         </div>
 
@@ -271,6 +295,37 @@ function NuevoDispositivoModal({
           </div>
         )}
 
+        {/* Cliente + slot (solo para tipo custodia) */}
+        {tipo === "custodia" && (
+          <>
+            <div>
+              <label className="text-white/50 text-xs font-semibold uppercase tracking-wide block mb-1.5">Cliente de custodia</label>
+              <select
+                value={clienteId}
+                onChange={e => setClienteId(e.target.value ? Number(e.target.value) : "")}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white/80 outline-none focus:border-white/20"
+              >
+                <option value="">— Selecciona un cliente —</option>
+                {clientes.map(c => (
+                  <option key={c.id} value={c.id}>{c.nombre_comercial || c.nombre}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-white/50 text-xs font-semibold uppercase tracking-wide block mb-1.5">Slot de custodio (opcional)</label>
+              <input
+                type="number"
+                min="1"
+                value={slotNumero}
+                onChange={e => setSlotNumero(e.target.value)}
+                placeholder="Ej: 1, 2, 3 — vacío = todos los custodios del cliente"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white/80 placeholder-white/20 outline-none focus:border-white/20"
+              />
+              <p className="text-white/25 text-xs mt-1">Si lo dejas vacío, el teléfono mostrará la lista de todos los custodios del cliente.</p>
+            </div>
+          </>
+        )}
+
         {error && <p className="text-red-400 text-xs">{error}</p>}
 
         <div className="flex gap-2 pt-1">
@@ -280,6 +335,154 @@ function NuevoDispositivoModal({
           <button type="submit" disabled={guardando}
             className="flex-1 py-2.5 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 rounded-xl text-sm text-blue-300 font-semibold transition-colors disabled:opacity-50">
             {guardando ? "Registrando..." : "Registrar"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ── Modal: Editar dispositivo ────────────────────────────────────────────────
+function EditarDispositivoModal({
+  device,
+  onGuardado,
+  onClose,
+}: {
+  device: Dispositivo;
+  onGuardado: () => void;
+  onClose: () => void;
+}) {
+  const [nombre, setNombre] = useState(device.supervisor_nombre);
+  const [descripcion, setDescripcion] = useState(device.descripcion ?? "");
+  const [tipo, setTipo] = useState<DeviceTipo>(device.tipo);
+  const [puestos, setPuestos] = useState<{ id: number; nombre: string; cliente_nombre: string }[]>([]);
+  const [puestoId, setPuestoId] = useState<number | "">(device.puesto_id ?? "");
+  const [clientes, setClientes] = useState<ClienteOpt[]>([]);
+  const [clienteId, setClienteId] = useState<number | "">(device.cliente_id ?? "");
+  const [slotNumero, setSlotNumero] = useState<string>(device.slot_numero != null ? String(device.slot_numero) : "");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (tipo === "puesto" && puestos.length === 0) {
+      f("/puestos-gps").then(r => r.json()).then(setPuestos).catch(() => {});
+    }
+    if (tipo === "custodia" && clientes.length === 0) {
+      f("/operaciones/clientes-disponibles").then(r => r.json()).then(setClientes).catch(() => {});
+    }
+  }, [tipo, puestos.length, clientes.length]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (!nombre.trim()) { setError("El nombre es requerido"); return; }
+    if (tipo === "custodia" && !clienteId) { setError("Selecciona el cliente para la custodia"); return; }
+    setGuardando(true);
+    try {
+      const body: Record<string, unknown> = {
+        supervisor_nombre: nombre.trim(),
+        descripcion: descripcion.trim() || null,
+        tipo,
+        puesto_id: tipo === "puesto" ? (puestoId || null) : null,
+        cliente_id: tipo === "custodia" ? (clienteId || null) : null,
+        slot_numero: tipo === "custodia" && slotNumero.trim() ? Number(slotNumero) : null,
+      };
+      const res = await f(`/supervisor-devices/${device.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!data.ok) { setError(data.error || "Error al actualizar"); return; }
+      onGuardado();
+    } catch {
+      setError("Error de conexión");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  const tipoOpts: { v: DeviceTipo; label: string; cls: string; icon: React.ReactNode }[] = [
+    { v: "supervisor", label: "Supervisor", cls: "bg-purple-600/20 border-purple-500/40 text-purple-300", icon: <ShieldCheck className="w-3.5 h-3.5" /> },
+    { v: "puesto",     label: "Puesto",     cls: "bg-blue-600/20 border-blue-500/40 text-blue-300",       icon: <MapPinned className="w-3.5 h-3.5" /> },
+    { v: "custodia",   label: "Custodia",   cls: "bg-emerald-600/20 border-emerald-500/40 text-emerald-300", icon: <Truck className="w-3.5 h-3.5" /> },
+    { v: "maestro",    label: "Maestro",    cls: "bg-amber-600/20 border-amber-500/40 text-amber-300",    icon: <span className="text-sm">🧪</span> },
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+      <form onSubmit={handleSubmit} className="bg-[#0f1724] border border-white/10 rounded-2xl p-6 w-full max-w-sm space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-9 h-9 rounded-xl bg-slate-700/50 border border-white/10 flex items-center justify-center">
+            <Pencil className="w-4 h-4 text-white/60" />
+          </div>
+          <div>
+            <p className="text-white font-semibold">Editar dispositivo</p>
+            <p className="text-white/40 text-xs">El token actual no cambia — el teléfono sigue activado</p>
+          </div>
+        </div>
+
+        <div>
+          <p className="text-white/50 text-xs font-semibold uppercase tracking-wide mb-2">Tipo de dispositivo</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {tipoOpts.map(opt => (
+              <button key={opt.v} type="button" onClick={() => setTipo(opt.v)}
+                className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${
+                  tipo === opt.v ? opt.cls : "bg-white/5 border-white/10 text-white/40"
+                }`}>
+                {opt.icon} {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="text-white/50 text-xs font-semibold uppercase tracking-wide block mb-1.5">Nombre / identificación</label>
+          <input type="text" value={nombre} onChange={e => setNombre(e.target.value)}
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white/80 outline-none focus:border-white/20" />
+        </div>
+
+        <div>
+          <label className="text-white/50 text-xs font-semibold uppercase tracking-wide block mb-1.5">Descripción</label>
+          <input type="text" value={descripcion} onChange={e => setDescripcion(e.target.value)}
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white/80 outline-none focus:border-white/20" />
+        </div>
+
+        {tipo === "puesto" && (
+          <div>
+            <label className="text-white/50 text-xs font-semibold uppercase tracking-wide block mb-1.5">Puesto asociado</label>
+            <select value={puestoId} onChange={e => setPuestoId(e.target.value ? Number(e.target.value) : "")}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white/80 outline-none focus:border-white/20">
+              <option value="">Sin puesto específico</option>
+              {puestos.map(p => <option key={p.id} value={p.id}>{p.nombre} · {p.cliente_nombre}</option>)}
+            </select>
+          </div>
+        )}
+
+        {tipo === "custodia" && (
+          <>
+            <div>
+              <label className="text-white/50 text-xs font-semibold uppercase tracking-wide block mb-1.5">Cliente de custodia</label>
+              <select value={clienteId} onChange={e => setClienteId(e.target.value ? Number(e.target.value) : "")}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white/80 outline-none focus:border-white/20">
+                <option value="">— Selecciona —</option>
+                {clientes.map(c => <option key={c.id} value={c.id}>{c.nombre_comercial || c.nombre}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-white/50 text-xs font-semibold uppercase tracking-wide block mb-1.5">Slot de custodio (opcional)</label>
+              <input type="number" min="1" value={slotNumero} onChange={e => setSlotNumero(e.target.value)}
+                placeholder="Vacío = todos"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white/80 placeholder-white/20 outline-none focus:border-white/20" />
+            </div>
+          </>
+        )}
+
+        {error && <p className="text-red-400 text-xs">{error}</p>}
+
+        <div className="flex gap-2 pt-1">
+          <button type="button" onClick={onClose} className="flex-1 py-2.5 bg-white/5 border border-white/10 rounded-xl text-sm text-white/50 hover:bg-white/10">
+            Cancelar
+          </button>
+          <button type="submit" disabled={guardando}
+            className="flex-1 py-2.5 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 rounded-xl text-sm text-blue-300 font-semibold disabled:opacity-50">
+            {guardando ? "Guardando..." : "Guardar cambios"}
           </button>
         </div>
       </form>
@@ -298,6 +501,7 @@ export default function FichajeQR() {
   const [generando, setGenerando] = useState<number | null>(null);
   const [filtroTipo, setFiltroTipo] = useState<"" | "fichaje" | "supervision" | "ronda">("");
   const [nuevoDispositivoOpen, setNuevoDispositivoOpen] = useState(false);
+  const [editarDispositivo, setEditarDispositivo] = useState<Dispositivo | null>(null);
   const [activacionModal, setActivacionModal] = useState<{ device: Dispositivo; token: string } | null>(null);
   const [novedadEdit, setNovedadEdit] = useState<{ puesto_id: number; texto: string } | null>(null);
   const [guardandoNovedad, setGuardandoNovedad] = useState(false);
@@ -664,6 +868,13 @@ export default function FichajeQR() {
                       <Bell className="w-4 h-4" />
                     </button>
                   )}
+                  <button
+                    onClick={() => setEditarDispositivo(dev)}
+                    title="Editar dispositivo (cambiar tipo, puesto, cliente)"
+                    className="p-2 rounded-lg bg-white/5 hover:bg-blue-600/20 border border-white/10 hover:border-blue-500/30 transition-colors"
+                  >
+                    <Pencil className="w-4 h-4 text-white/50 hover:text-blue-300" />
+                  </button>
                   <button
                     onClick={() => regenerarDispositivo(dev.id)}
                     title="Generar nuevo enlace de activación"
@@ -1036,6 +1247,13 @@ export default function FichajeQR() {
           device={activacionModal.device}
           deviceToken={activacionModal.token}
           onClose={() => setActivacionModal(null)}
+        />
+      )}
+      {editarDispositivo && (
+        <EditarDispositivoModal
+          device={editarDispositivo}
+          onGuardado={() => { setEditarDispositivo(null); void cargarDispositivos(); }}
+          onClose={() => setEditarDispositivo(null)}
         />
       )}
     </div>

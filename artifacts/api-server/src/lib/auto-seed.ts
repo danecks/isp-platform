@@ -4575,6 +4575,26 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: ACTAS-02 — error (no bloqueante)");
   }
 
+  // ── FICH-CUST-01: cliente_id + slot_numero en agente_fichajes para soportar custodia ──
+  // (los custodios no tienen puesto_id; se identifica el servicio por cliente_id + slot)
+  try {
+    await pool.query(`ALTER TABLE agente_fichajes ADD COLUMN IF NOT EXISTS cliente_id INTEGER`);
+    await pool.query(`ALTER TABLE agente_fichajes ADD COLUMN IF NOT EXISTS slot_numero INTEGER`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_agente_fichajes_cliente_id ON agente_fichajes(cliente_id) WHERE cliente_id IS NOT NULL`);
+    logger.info("Auto-migrate: FICH-CUST-01 cliente_id/slot_numero en agente_fichajes verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: FICH-CUST-01 — error (no bloqueante)");
+  }
+
+  // ── DEV-CUST-01: cliente_id + slot_numero en supervisor_devices (teléfonos de custodia) ──
+  try {
+    await pool.query(`ALTER TABLE supervisor_devices ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clients(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE supervisor_devices ADD COLUMN IF NOT EXISTS slot_numero INTEGER`);
+    logger.info("Auto-migrate: DEV-CUST-01 cliente_id/slot_numero en supervisor_devices verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: DEV-CUST-01 — error (no bloqueante)");
+  }
+
   // ── ACTAS-03: tipo_evento 'llamada_atencion_1', 'llamada_atencion_2', 'acta_administrativa' en eventos_rrhh ──
   try {
     await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS fichaje_origen_id INTEGER REFERENCES agente_fichajes(id) ON DELETE SET NULL`);

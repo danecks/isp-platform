@@ -547,15 +547,22 @@ portalRouter.get("/portal/qr/fichajes", requirePortalAuth, async (req, res) => {
   const periodo = String(req.query.periodo || "7d");
   const desde = periodoToDesde(periodo);
   try {
+    // Incluye fichajes de puesto fijo (JOIN puestos_operativos) y de custodia (cliente_id directo, sin puesto)
     const { rows } = await pool.query(
       `SELECT af.id, af.tipo, af.resultado, af.registrado_en,
               af.distancia_metros, af.calificacion,
               e.id AS employee_id, e.nombres, e.apellidos, e.empl_numero,
-              po.id AS puesto_id, po.nombre AS puesto_nombre
+              po.id AS puesto_id, po.nombre AS puesto_nombre,
+              af.slot_numero,
+              CASE
+                WHEN po.id IS NOT NULL THEN po.nombre
+                WHEN af.slot_numero IS NOT NULL THEN 'Custodio ' || af.slot_numero
+                ELSE 'Custodia'
+              END AS servicio_nombre
          FROM agente_fichajes af
-         JOIN puestos_operativos po ON po.id = af.puesto_id
+         LEFT JOIN puestos_operativos po ON po.id = af.puesto_id
          LEFT JOIN employees e ON e.id = af.employee_id
-        WHERE po.cliente_id = $1
+        WHERE (po.cliente_id = $1 OR af.cliente_id = $1)
           AND af.registrado_en >= $2
         ORDER BY af.registrado_en DESC
         LIMIT 500`,
