@@ -706,10 +706,13 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
         gps_referencia: gpsRef,
       };
     } else {
-      // Prioridad 2: custodia (titular de slot en algún cliente)
+      // Prioridad 2: custodia. Acepta tanto titular fijo (custodia_titulares)
+      // como asignación del día desde el pizarrón (custodia_asignacion_diaria).
+      // El titular tiene prioridad si ambos existen para el mismo agente.
       const { rows: ctRows } = await pool.query(
         `SELECT ct.cliente_id, ct.slot_numero,
-                COALESCE(c.nombre_comercial, c.nombre) AS cliente_nombre
+                COALESCE(c.nombre_comercial, c.nombre) AS cliente_nombre,
+                'titular' AS origen
            FROM custodia_titulares ct
            JOIN clients c ON c.id = ct.cliente_id
           WHERE ct.employee_id = $1 AND ct.activo = TRUE
@@ -717,14 +720,31 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
           LIMIT 1`,
         [employeeId]
       );
-      if (ctRows[0]) {
+      let custodiaRow = ctRows[0];
+      if (!custodiaRow) {
+        const { rows: cadRows } = await pool.query(
+          `SELECT cad.cliente_id, cad.slot_numero,
+                  COALESCE(c.nombre_comercial, c.nombre) AS cliente_nombre,
+                  'asignacion_diaria' AS origen
+             FROM custodia_asignacion_diaria cad
+             JOIN clients c ON c.id = cad.cliente_id
+            WHERE cad.employee_id = $1
+              AND cad.fecha = DATE((NOW() AT TIME ZONE 'America/Guatemala'))
+            ORDER BY cad.slot_numero ASC
+            LIMIT 1`,
+          [employeeId]
+        );
+        custodiaRow = cadRows[0];
+      }
+      if (custodiaRow) {
+        const esExtra = custodiaRow.origen === 'asignacion_diaria';
         servicio = {
           tipo: "custodia",
           puesto_id: null,
-          cliente_id: ctRows[0].cliente_id,
-          cliente_nombre: ctRows[0].cliente_nombre,
-          slot_numero: Number(ctRows[0].slot_numero),
-          titulo: `Custodio ${ctRows[0].slot_numero}`,
+          cliente_id: custodiaRow.cliente_id,
+          cliente_nombre: custodiaRow.cliente_nombre,
+          slot_numero: Number(custodiaRow.slot_numero),
+          titulo: esExtra ? `Custodio ${custodiaRow.slot_numero} (extra del día)` : `Custodio ${custodiaRow.slot_numero}`,
           horario: null,
           hora_entrada: null,
           hora_salida: null,
