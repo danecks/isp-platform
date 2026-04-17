@@ -342,6 +342,228 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
   }
 });
 
+// POST /api/agente/iniciar-turno — el agente escanea su propio carnet desde la PWA
+// Identidad = QR del carnet. Sin login. Resuelve el servicio del día (puesto fijo o slot de custodia)
+// y registra el inicio de turno del día. GPS se valida contra el puesto si aplica.
+agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
+  const { qr_token, latitud, longitud, precision_metros } = req.body ?? {};
+  if (!qr_token) return res.status(400).json({ error: "qr_token_requerido" });
+
+  try {
+    // 1. Validar carnet → empleado
+    const { rows: tkRows } = await pool.query(
+      `SELECT aqt.employee_id, aqt.activo,
+              e.nombre_completo, e.puesto AS cargo, e.tipo_personal, e.dpi
+         FROM agente_qr_tokens aqt
+         JOIN employees e ON e.id = aqt.employee_id
+        WHERE aqt.qr_token = $1`,
+      [qr_token]
+    );
+    if (!tkRows[0]) return res.status(404).json({ error: "carnet_invalido", mensaje: "Este carnet no está registrado." });
+    if (!tkRows[0].activo) return res.status(403).json({ error: "carnet_desactivado", mensaje: "Este carnet está desactivado. Avise al supervisor." });
+    const employeeId: number = tkRows[0].employee_id;
+    const agente = {
+      employee_id: employeeId,
+      nombre: tkRows[0].nombre_completo,
+      cargo: tkRows[0].cargo,
+      tipo_personal: tkRows[0].tipo_personal,
+      dpi: tkRows[0].dpi,
+    };
+
+    // 2. Duplicado del día (zona Guatemala)
+    const { rows: dupRows } = await pool.query(
+      `SELECT id, registrado_en FROM agente_fichajes
+        WHERE employee_id = $1
+          AND tipo = 'inicio_turno'
+          AND DATE((registrado_en AT TIME ZONE 'America/Guatemala')) =
+              DATE((NOW() AT TIME ZONE 'America/Guatemala'))
+        ORDER BY registrado_en DESC LIMIT 1`,
+      [employeeId]
+    );
+    if (dupRows.length > 0) {
+      return res.status(409).json({
+        error: "ya_iniciado",
+        mensaje: "Ya iniciaste tu turno hoy.",
+        registrado_en: dupRows[0].registrado_en,
+      });
+    }
+
+    // 3. Resolver servicio del día
+    //    Prioridad 1: puesto fijo (puesto_titulares activo + puesto activo)
+    let servicio: {
+      tipo: "puesto" | "custodia";
+      puesto_id: number | null;
+      cliente_id: number | null;
+      cliente_nombre: string | null;
+      slot_numero: number | null;
+      titulo: string;
+      horario: string | null;
+      hora_entrada: string | null;
+      hora_salida: string | null;
+      turno: string | null;
+      jornada: string | null;
+      gps_referencia: { latitud: number; longitud: number; radio_metros: number } | null;
+    } | null = null;
+
+    const { rows: ptRows } = await pool.query(
+      `SELECT po.id AS puesto_id, po.cliente_id, po.cliente_nombre, po.nombre AS puesto_nombre,
+              po.horario, po.hora_entrada, po.hora_salida, po.turno, po.jornada
+         FROM puesto_titulares pt
+         JOIN puestos_operativos po ON po.id = pt.puesto_id
+        WHERE pt.employee_id = $1
+          AND pt.activo = TRUE
+          AND po.activo = TRUE
+        ORDER BY pt.orden ASC, pt.id ASC
+        LIMIT 1`,
+      [employeeId]
+    );
+    if (ptRows[0]) {
+      let gpsRef: { latitud: number; longitud: number; radio_metros: number } | null = null;
+      const { rows: gpsRows } = await pool.query(
+        `SELECT latitud, longitud, radio_metros FROM puestos_gps WHERE puesto_id = $1`,
+        [ptRows[0].puesto_id]
+      );
+      if (gpsRows[0]) {
+        gpsRef = {
+          latitud: Number(gpsRows[0].latitud),
+          longitud: Number(gpsRows[0].longitud),
+          radio_metros: Number(gpsRows[0].radio_metros),
+        };
+      }
+      servicio = {
+        tipo: "puesto",
+        puesto_id: ptRows[0].puesto_id,
+        cliente_id: ptRows[0].cliente_id,
+        cliente_nombre: ptRows[0].cliente_nombre,
+        slot_numero: null,
+        titulo: ptRows[0].puesto_nombre,
+        horario: ptRows[0].horario,
+        hora_entrada: ptRows[0].hora_entrada,
+        hora_salida: ptRows[0].hora_salida,
+        turno: ptRows[0].turno,
+        jornada: ptRows[0].jornada,
+        gps_referencia: gpsRef,
+      };
+    } else {
+      // Prioridad 2: custodia (titular de slot en algún cliente)
+      const { rows: ctRows } = await pool.query(
+        `SELECT ct.cliente_id, ct.slot_numero,
+                COALESCE(c.nombre_comercial, c.nombre) AS cliente_nombre
+           FROM custodia_titulares ct
+           JOIN clients c ON c.id = ct.cliente_id
+          WHERE ct.employee_id = $1 AND ct.activo = TRUE
+          ORDER BY ct.slot_numero ASC
+          LIMIT 1`,
+        [employeeId]
+      );
+      if (ctRows[0]) {
+        servicio = {
+          tipo: "custodia",
+          puesto_id: null,
+          cliente_id: ctRows[0].cliente_id,
+          cliente_nombre: ctRows[0].cliente_nombre,
+          slot_numero: Number(ctRows[0].slot_numero),
+          titulo: `Custodio ${ctRows[0].slot_numero}`,
+          horario: null,
+          hora_entrada: null,
+          hora_salida: null,
+          turno: "Custodia",
+          jornada: null,
+          gps_referencia: null,
+        };
+      }
+    }
+
+    if (!servicio) {
+      return res.status(404).json({
+        error: "sin_servicio",
+        mensaje: "No tienes un puesto o slot de custodia asignado. Avise al supervisor.",
+        agente,
+      });
+    }
+
+    // 4. Validar GPS contra puesto si hay referencia
+    let resultado = "sin_gps";
+    let distanciaMetros: number | null = null;
+    if (latitud != null && longitud != null) {
+      if (servicio.gps_referencia) {
+        distanciaMetros = Math.round(
+          haversineMetros(Number(latitud), Number(longitud),
+            servicio.gps_referencia.latitud, servicio.gps_referencia.longitud)
+        );
+        resultado = distanciaMetros <= servicio.gps_referencia.radio_metros ? "ok" : "fuera_de_zona";
+      } else {
+        resultado = "ok";
+      }
+    }
+    if (resultado === "fuera_de_zona") {
+      return res.status(403).json({
+        error: "fuera_de_zona",
+        distancia_metros: distanciaMetros,
+        radio_metros: servicio.gps_referencia?.radio_metros ?? null,
+        mensaje: `Estás a ${distanciaMetros} m del puesto. Debes estar dentro del radio permitido.`,
+        agente,
+        servicio,
+      });
+    }
+
+    // 5. Equipo: arma asignada al puesto (si aplica)
+    let arma: { codigo: string; descripcion: string; serie: string | null } | null = null;
+    if (servicio.puesto_id) {
+      const { rows: armaRows } = await pool.query(
+        `SELECT codigo,
+                CONCAT(COALESCE(marca,''), ' ', COALESCE(modelo,''), ' ', COALESCE(calibre,'')) AS descripcion,
+                serie
+           FROM armas
+          WHERE puesto_id = $1 AND activo = TRUE
+          ORDER BY id ASC LIMIT 1`,
+        [servicio.puesto_id]
+      );
+      if (armaRows[0]) {
+        arma = {
+          codigo: armaRows[0].codigo,
+          descripcion: String(armaRows[0].descripcion).trim(),
+          serie: armaRows[0].serie,
+        };
+      }
+    }
+
+    // 6. Registrar el inicio de turno
+    const { rows: inserted } = await pool.query(
+      `INSERT INTO agente_fichajes
+         (employee_id, puesto_id, qr_token, latitud, longitud, distancia_metros, resultado, tipo, observaciones)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'inicio_turno',$8)
+       RETURNING id, registrado_en`,
+      [
+        employeeId,
+        servicio.puesto_id,
+        qr_token,
+        latitud ?? null,
+        longitud ?? null,
+        distanciaMetros,
+        resultado,
+        servicio.tipo === "custodia"
+          ? `cliente_id=${servicio.cliente_id} slot=${servicio.slot_numero} precision=${precision_metros ?? "?"}m`
+          : `puesto_id=${servicio.puesto_id} precision=${precision_metros ?? "?"}m`,
+      ]
+    );
+
+    res.json({
+      ok: true,
+      fichaje_id: inserted[0].id,
+      registrado_en: inserted[0].registrado_en,
+      resultado,
+      distancia_metros: distanciaMetros,
+      agente,
+      servicio,
+      arma,
+    });
+  } catch (err) {
+    logger.error({ err }, "agente/iniciar-turno: error");
+    res.status(500).json({ error: "Error iniciando turno" });
+  }
+});
+
 // POST /api/agente/fichaje — registrar fichaje (requiere dispositivo tipo 'puesto')
 agenteFichajeRouter.post("/agente/fichaje", async (req, res) => {
   const { token, latitud, longitud, precision_metros, device_uuid, device_token } = req.body;

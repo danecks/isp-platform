@@ -87,6 +87,7 @@ import PortalSolicitudes from "@/portal/pages/PortalSolicitudes";
 import PortalCobertura from "@/portal/pages/PortalCobertura";
 import PortalFichajes from "@/portal/pages/PortalFichajes";
 import PortalRondas from "@/portal/pages/PortalRondas";
+import AgenteInicio from "@/pages/AgenteInicio";
 
 const queryClient = new QueryClient();
 
@@ -107,6 +108,9 @@ function Router() {
 
       {/* ── Login unificado (admin + clientes) ─────────────────────────── */}
       <Route path="/admin/login" component={AdminLogin} />
+
+      {/* ── PWA agente: inicio de turno por carnet QR (sin login) ──────── */}
+      <Route path="/agente/inicio" component={AgenteInicio} />
 
       {/* ── Redirecciones de acceso directo ────────────────────────────── */}
       <Route path="/admin">
