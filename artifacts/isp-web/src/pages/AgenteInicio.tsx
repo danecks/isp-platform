@@ -57,7 +57,8 @@ type Estado =
   | "ok"
   | "turno_activo"
   | "cerrando_turno"
-  | "error";
+  | "error"
+  | "error_cierre";
 
 interface Servicio {
   tipo: "puesto" | "custodia";
@@ -496,12 +497,12 @@ export default function AgenteInicio() {
       if (!r.ok && r.status !== 409) {
         const data = await r.json().catch(() => ({}));
         setMensajeError(data.mensaje || data.error || "No se pudo cerrar el turno");
-        setEstado("error");
+        setEstado("error_cierre");
         return;
       }
     } catch (e) {
       setMensajeError(e instanceof Error ? e.message : "Sin conexión, intentá de nuevo");
-      setEstado("error");
+      setEstado("error_cierre");
       return;
     }
     detenerRastreoInterno();
@@ -646,7 +647,7 @@ export default function AgenteInicio() {
   // Auto-reset en modo kiosco después de un éxito o error
   useEffect(() => {
     if (!esKiosco) return;
-    if (estado !== "ok" && estado !== "error") return;
+    if (estado !== "ok" && estado !== "error" && estado !== "error_cierre") return;
     const t = setTimeout(() => { void reiniciar(); }, AUTO_RESET_MS);
     return () => clearTimeout(t);
   }, [estado, esKiosco, reiniciar]);
@@ -1057,6 +1058,39 @@ export default function AgenteInicio() {
               <RotateCcw className="w-4 h-4" />
               {esKiosco ? "Listo (vuelve solo)" : "Listo"}
             </button>
+            {esKiosco && (
+              <p className="text-center text-[11px] text-slate-500">
+                Esta pantalla volverá al inicio en {Math.round(AUTO_RESET_MS / 1000)} s.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Error al cerrar turno */}
+        {estado === "error_cierre" && (
+          <div className="space-y-5 pt-4 text-center">
+            <XCircle className="w-14 h-14 mx-auto text-rose-400" />
+            <div>
+              <h2 className="text-xl font-bold">No se pudo cerrar el turno</h2>
+              <p className="text-sm text-slate-300 mt-2 flex items-start gap-2 justify-center">
+                <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+                <span>{mensajeError || "Error desconocido"}</span>
+              </p>
+            </div>
+            <button
+              onClick={cerrarTurno}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg"
+            >
+              Volver a intentar
+            </button>
+            {turnoActivo && (
+              <button
+                onClick={() => { setMensajeError(""); setEstado("turno_activo"); }}
+                className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-3 rounded-lg"
+              >
+                Volver al turno activo
+              </button>
+            )}
             {esKiosco && (
               <p className="text-center text-[11px] text-slate-500">
                 Esta pantalla volverá al inicio en {Math.round(AUTO_RESET_MS / 1000)} s.
