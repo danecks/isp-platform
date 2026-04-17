@@ -198,7 +198,7 @@ export default function AgenteInicio() {
     setMensajeError("");
     setResultado(null);
 
-    // Pre-validaciones que dan mensajes mucho más claros que el catch genérico
+    // Pre-validaciones de contexto (no abren la cámara, solo chequean capacidad del navegador)
     if (!window.isSecureContext) {
       setMensajeError("La cámara solo funciona con HTTPS. Abrí la app desde el enlace seguro.");
       setEstado("error");
@@ -206,31 +206,6 @@ export default function AgenteInicio() {
     }
     if (!navigator.mediaDevices?.getUserMedia) {
       setMensajeError("Este navegador no soporta cámara. Usá Safari o Chrome actualizado.");
-      setEstado("error");
-      return;
-    }
-    // Pedir permiso explícitamente ANTES de Html5Qrcode (mejor diagnóstico)
-    try {
-      const probe = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" } },
-        audio: false,
-      });
-      probe.getTracks().forEach(t => t.stop());
-    } catch (probeErr: any) {
-      const name = probeErr?.name || "";
-      let msg = "No se pudo acceder a la cámara.";
-      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
-        msg = "Permiso de cámara denegado. Abrí Ajustes → Safari → Cámara y permití el acceso, luego recargá esta pantalla.";
-      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
-        msg = "No se encontró ninguna cámara en este dispositivo.";
-      } else if (name === "NotReadableError" || name === "TrackStartError") {
-        msg = "La cámara está siendo usada por otra app. Cerrala y volvé a intentar.";
-      } else if (name === "OverconstrainedError") {
-        msg = "Esta cámara no soporta los ajustes pedidos. Probá con la opción 'Subir foto del QR'.";
-      } else if (probeErr?.message) {
-        msg = `No se pudo acceder a la cámara: ${probeErr.message}`;
-      }
-      setMensajeError(msg);
       setEstado("error");
       return;
     }
