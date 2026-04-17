@@ -810,6 +810,38 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
       logger.warn({ paso45bErr, fecha }, "Paso 4.5b puesto_slots: falló (no bloqueante)");
     }
 
+    // ── Paso 4.5c: Disponibles del pool de cobertura ───────────────────────
+    // Empleados activos que NO tienen ningún registro previo (ni cobertura,
+    // ni ausencia RRHH, ni slot, ni fallback): se marcan como "disponibles"
+    // con jornada completa (día pagado en contrato mensual). ON CONFLICT
+    // DO NOTHING garantiza que solo afecta a los que aún no tienen novedad.
+    try {
+      const r = await pool.query(`
+        INSERT INTO novedades_nomina_diarias
+          (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
+           falta, suspension, descanso_trabajado, afecta_septimo, descuento_dia,
+           tipo_novedad, fuente, cierre_id, updated_at)
+        SELECT $1::date, e.id, e.nombre_completo, TRUE, 24, 0,
+               FALSE, FALSE, FALSE, FALSE, FALSE,
+               'disponible', 'derivado_disponible', $2, NOW()
+        FROM employees e
+        WHERE e.estado_laboral = 'activo'
+          AND (e.fecha_ingreso IS NULL OR e.fecha_ingreso <= $1::date)
+          AND (e.fecha_baja    IS NULL OR e.fecha_baja    >  $1::date)
+        ON CONFLICT (fecha, employee_id) DO NOTHING
+      `, [fecha, cierreId]);
+      const dispInserts = r.rowCount ?? 0;
+      if (dispInserts > 0) {
+        count += dispInserts;
+        logger.info(
+          { fecha, novedadesInsertadas: dispInserts },
+          "Paso 4.5c: novedades base 'disponible' generadas para empleados activos sin asignación"
+        );
+      }
+    } catch (paso45cErr) {
+      logger.warn({ paso45cErr, fecha }, "Paso 4.5c disponibles: falló (no bloqueante)");
+    }
+
     // ── Paso 4.6: Ajustar horas para descanso con cobertura ─────────────────
     // Si un titular en día de descanso cubrió a alguien (tiene horas_extra > 0),
     // sus horas_trabajadas deben incluir las horas base del turno (descanso pagado) + las HE.
