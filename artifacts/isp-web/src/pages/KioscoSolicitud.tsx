@@ -427,6 +427,16 @@ export default function KioscoSolicitud({ skipPin = false }: { skipPin?: boolean
             municipio: datos.municipio || f.municipio,
             departamento: datos.departamento || f.departamento,
           }));
+        }} onLimpiarDatos={() => {
+          setForm(f => ({
+            ...f,
+            nombre_completo: "",
+            dpi: "",
+            fecha_nacimiento: "",
+            genero: "",
+            municipio: "",
+            departamento: "",
+          }));
         }} />}
         {step === 2  && <PasoPersonal form={form} setEv={setEv} set={set} onNext={next} onBack={back} />}
         {step === 3  && <PasoDomicilio form={form} setEv={setEv} set={set} onNext={next} onBack={back} />}
@@ -687,7 +697,7 @@ type DpiPhase = "guide" | "scanning" | "aligning" | "stable" | "flash" | "captur
 
 interface DatosExtraidos { nombre_completo: string; dpi: string; fecha_nacimiento: string; genero: string; municipio: string; departamento: string; }
 
-function PasoDpi({ onFrenteDone, onReversoDone, frenteUrl, reversoUrl, onNext, onBack, onDatosExtraidos }: {
+function PasoDpi({ onFrenteDone, onReversoDone, frenteUrl, reversoUrl, onNext, onBack, onDatosExtraidos, onLimpiarDatos }: {
   onFrenteDone: (url: string) => void;
   onReversoDone: (url: string) => void;
   frenteUrl: string | null;
@@ -695,6 +705,7 @@ function PasoDpi({ onFrenteDone, onReversoDone, frenteUrl, reversoUrl, onNext, o
   onNext: () => void;
   onBack: () => void;
   onDatosExtraidos: (datos: DatosExtraidos) => void;
+  onLimpiarDatos: () => void;
 }) {
   const [side, setSide]           = useState<"front" | "back">("front");
   const [phase, setPhase]         = useState<DpiPhase>("guide");
@@ -811,6 +822,122 @@ function PasoDpi({ onFrenteDone, onReversoDone, frenteUrl, reversoUrl, onNext, o
   };
 
   const bothDone = !!frenteUrl && !!reversoUrl;
+
+  // ── Confirmación de datos extraídos ──
+  // Cuando ambos lados están escaneados, pedir al usuario que confirme los datos
+  // antes de avanzar. Si no son correctos, los limpia y pasa al formulario manual
+  // (las fotos del DPI quedan guardadas igual).
+  if (bothDone && phase === "guide") {
+    const confirmar = () => onNext();
+    const ingresarManual = () => { onLimpiarDatos(); onNext(); };
+    const repetir = () => {
+      onFrenteDone("");
+      onReversoDone("");
+      onLimpiarDatos();
+      setSide("front");
+      setDatosExtraidos(null);
+      setCapturedUrl(null);
+      setPhase("guide");
+    };
+    const tieneDatos = !!datosExtraidos && (
+      !!datosExtraidos.nombre_completo ||
+      !!datosExtraidos.dpi ||
+      !!datosExtraidos.fecha_nacimiento
+    );
+    return (
+      <div className="bg-[#0d2147] rounded-2xl border border-[#1e3a6e] w-full max-w-lg shadow-2xl flex flex-col">
+        <div className="bg-[#091a3d] px-5 py-4">
+          <h2 className="text-white text-lg font-bold">Confirme sus datos</h2>
+          <p className="text-[#64748b] text-xs mt-1">Verifique que la información leida del DPI sea correcta.</p>
+        </div>
+
+        <div className="p-5 flex flex-col gap-4">
+          {/* Miniaturas DPI */}
+          <div className="grid grid-cols-2 gap-3">
+            {frenteUrl && (
+              <div className="rounded-lg overflow-hidden border-2 border-green-600/40">
+                <img src={frenteUrl} alt="DPI Frente" className="w-full h-auto block" />
+                <div className="bg-[#052e16] px-2 py-1 text-center">
+                  <p className="text-green-400 text-[10px] font-bold">✓ FRENTE</p>
+                </div>
+              </div>
+            )}
+            {reversoUrl && (
+              <div className="rounded-lg overflow-hidden border-2 border-green-600/40">
+                <img src={reversoUrl} alt="DPI Reverso" className="w-full h-auto block" />
+                <div className="bg-[#052e16] px-2 py-1 text-center">
+                  <p className="text-green-400 text-[10px] font-bold">✓ REVERSO</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Datos extraídos */}
+          {tieneDatos ? (
+            <div className="bg-[#071630] border border-[#1d4ed8] rounded-xl p-4">
+              <p className="text-blue-300 text-xs font-bold uppercase tracking-wider mb-3">Datos leidos del DPI</p>
+              <div className="flex flex-col gap-2">
+                {[
+                  { l: "Nombre completo", v: datosExtraidos!.nombre_completo },
+                  { l: "DPI / CUI",       v: datosExtraidos!.dpi },
+                  { l: "Fecha nacimiento", v: datosExtraidos!.fecha_nacimiento },
+                  { l: "Genero",          v: datosExtraidos!.genero },
+                  { l: "Municipio",       v: datosExtraidos!.municipio },
+                  { l: "Departamento",    v: datosExtraidos!.departamento },
+                ].filter(r => r.v).map(r => (
+                  <div key={r.l} className="flex gap-3 items-baseline border-b border-[#1e3a6e]/40 pb-1.5 last:border-b-0 last:pb-0">
+                    <span className="text-[#64748b] text-xs w-32 shrink-0">{r.l}:</span>
+                    <span className="text-white text-sm font-medium">{r.v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-[#2d1810] border border-yellow-700/40 rounded-xl p-4 text-center">
+              <p className="text-yellow-400 text-sm font-semibold">No se pudieron leer los datos del DPI</p>
+              <p className="text-[#94a3b8] text-xs mt-1">Tendra que ingresarlos manualmente en el siguiente paso. Las fotos del DPI ya quedaron guardadas.</p>
+            </div>
+          )}
+
+          {/* Pregunta principal */}
+          <div className="bg-[#091a3d] border border-[#1e3a6e] rounded-xl p-4 text-center">
+            <p className="text-white font-bold text-base">
+              {tieneDatos ? "¿Sus datos son correctos?" : "¿Como desea continuar?"}
+            </p>
+          </div>
+
+          {/* Botones */}
+          <div className="flex flex-col gap-2.5">
+            {tieneDatos && (
+              <button onClick={confirmar}
+                className="w-full py-4 rounded-xl font-bold text-base text-white shadow-lg"
+                style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", boxShadow: "0 4px 16px rgba(22,163,74,0.35)" }}>
+                ✓ Si, son correctos — continuar
+              </button>
+            )}
+            <button onClick={ingresarManual}
+              className="w-full py-3.5 rounded-xl font-bold text-base border-2 border-blue-500 bg-[#0f2a5e] text-white">
+              {tieneDatos ? "No — quiero ingresarlos manualmente" : "Ingresar datos manualmente"}
+            </button>
+            <button onClick={repetir}
+              className="w-full py-3 rounded-xl font-semibold text-sm border border-red-500/40 bg-[#2d0a0a]/40 text-red-300 hover:bg-[#2d0a0a]">
+              ↻ Volver a escanear el DPI
+            </button>
+          </div>
+
+          <p className="text-[#64748b] text-[11px] text-center leading-relaxed">
+            Las fotos de su DPI quedan guardadas en el sistema sin importar la opcion que elija.
+          </p>
+        </div>
+
+        <div className="px-5 py-4 border-t border-[#1e3a6e] flex justify-start">
+          <button onClick={onBack} className="flex items-center gap-1 px-5 py-3 rounded-xl border border-[#1e3a6e] text-[#64748b] text-sm font-semibold">
+            <ChevronLeft size={16} /> Atras
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // ── Guide screen ──
   if (phase === "guide") return (
