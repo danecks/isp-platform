@@ -822,10 +822,13 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
     }
 
     // 6. Registrar el inicio de turno
+    // Si es custodia, generamos tracking_token para autenticar pings GPS posteriores
+    const trackingToken = servicio.tipo === "custodia" ? randomBytes(32).toString("hex") : null;
+    const trackingTokenHash = trackingToken ? hashToken(trackingToken) : null;
     const { rows: inserted } = await pool.query(
       `INSERT INTO agente_fichajes
-         (employee_id, puesto_id, cliente_id, slot_numero, qr_token, latitud, longitud, distancia_metros, resultado, tipo, observaciones)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'inicio_turno',$10)
+         (employee_id, puesto_id, cliente_id, slot_numero, qr_token, latitud, longitud, distancia_metros, resultado, tipo, observaciones, tracking_token_hash)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'inicio_turno',$10,$11)
        RETURNING id, registrado_en`,
       [
         employeeId,
@@ -840,6 +843,7 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
         servicio.tipo === "custodia"
           ? `cliente_id=${servicio.cliente_id} slot=${servicio.slot_numero} precision=${precision_metros ?? "?"}m`
           : `puesto_id=${servicio.puesto_id} precision=${precision_metros ?? "?"}m`,
+        trackingTokenHash,
       ]
     );
 
@@ -852,6 +856,7 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
       agente,
       servicio,
       arma,
+      tracking_token: trackingToken, // null si no es custodia
     });
   } catch (err) {
     logger.error({ err }, "agente/iniciar-turno: error");
@@ -1677,5 +1682,151 @@ agenteFichajeRouter.get("/arma-ordenes-servicio", async (req, res) => {
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: "Error obteniendo órdenes de servicio" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TRACKING GPS DEL RECORRIDO DE CUSTODIOS DURANTE EL TURNO
+// ─────────────────────────────────────────────────────────────────────────────
+
+// POST /api/agente/recorrido-ping — recibe lote de puntos GPS para un fichaje activo
+// Body: { fichaje_id, tracking_token, puntos: [{lat, lng, precision, velocidad?, rumbo?, bateria?, ts}] }
+agenteFichajeRouter.post("/agente/recorrido-ping", async (req, res) => {
+  const { fichaje_id, tracking_token, puntos } = req.body ?? {};
+  if (!fichaje_id || !tracking_token || !Array.isArray(puntos)) {
+    return res.status(400).json({ error: "parametros_invalidos" });
+  }
+  if (puntos.length === 0) return res.json({ ok: true, guardados: 0 });
+  if (puntos.length > 200) return res.status(400).json({ error: "demasiados_puntos" });
+
+  try {
+    const { rows: fRows } = await pool.query(
+      `SELECT tracking_token_hash, turno_cerrado_en
+         FROM agente_fichajes WHERE id = $1 AND tipo = 'inicio_turno'`,
+      [fichaje_id]
+    );
+    if (!fRows[0]) return res.status(404).json({ error: "fichaje_no_encontrado" });
+    if (!fRows[0].tracking_token_hash || fRows[0].tracking_token_hash !== hashToken(tracking_token)) {
+      return res.status(403).json({ error: "token_invalido" });
+    }
+    if (fRows[0].turno_cerrado_en) {
+      return res.status(409).json({ error: "turno_ya_cerrado" });
+    }
+
+    // Insert masivo (filtrando puntos sin lat/lng)
+    let guardados = 0;
+    const values: unknown[] = [];
+    const placeholders: string[] = [];
+    for (const p of puntos) {
+      if (typeof p?.lat !== "number" || typeof p?.lng !== "number") continue;
+      const ts = p.ts ? new Date(p.ts) : new Date();
+      if (isNaN(ts.getTime())) continue;
+      const i = values.length;
+      placeholders.push(`($${i + 1}, $${i + 2}, $${i + 3}, $${i + 4}, $${i + 5}, $${i + 6}, $${i + 7}, $${i + 8})`);
+      values.push(
+        fichaje_id,
+        p.lat,
+        p.lng,
+        typeof p.precision === "number" ? Math.round(p.precision) : null,
+        typeof p.velocidad === "number" ? p.velocidad : null,
+        typeof p.rumbo === "number" ? p.rumbo : null,
+        typeof p.bateria === "number" ? Math.round(p.bateria) : null,
+        ts.toISOString(),
+      );
+      guardados++;
+    }
+    if (guardados === 0) return res.json({ ok: true, guardados: 0 });
+
+    await pool.query(
+      `INSERT INTO agente_recorrido_gps
+         (fichaje_id, latitud, longitud, precision_metros, velocidad_mps, rumbo_grados, bateria_pct, capturado_en)
+       VALUES ${placeholders.join(", ")}`,
+      values
+    );
+    res.json({ ok: true, guardados });
+  } catch (err) {
+    logger.error({ err }, "agente/recorrido-ping: error");
+    res.status(500).json({ error: "Error guardando puntos" });
+  }
+});
+
+// POST /api/agente/cerrar-turno — registra el cierre de turno del custodio
+// Body: { fichaje_id, tracking_token, latitud?, longitud?, precision_metros? }
+agenteFichajeRouter.post("/agente/cerrar-turno", async (req, res) => {
+  const { fichaje_id, tracking_token, latitud, longitud, precision_metros } = req.body ?? {};
+  if (!fichaje_id || !tracking_token) return res.status(400).json({ error: "parametros_invalidos" });
+  try {
+    const { rows: fRows } = await pool.query(
+      `SELECT employee_id, puesto_id, cliente_id, slot_numero, tracking_token_hash, turno_cerrado_en
+         FROM agente_fichajes WHERE id = $1 AND tipo = 'inicio_turno'`,
+      [fichaje_id]
+    );
+    if (!fRows[0]) return res.status(404).json({ error: "fichaje_no_encontrado" });
+    if (!fRows[0].tracking_token_hash || fRows[0].tracking_token_hash !== hashToken(tracking_token)) {
+      return res.status(403).json({ error: "token_invalido" });
+    }
+    if (fRows[0].turno_cerrado_en) {
+      return res.status(409).json({ error: "turno_ya_cerrado", cerrado_en: fRows[0].turno_cerrado_en });
+    }
+
+    // Marcar el inicio_turno como cerrado
+    await pool.query(`UPDATE agente_fichajes SET turno_cerrado_en = NOW() WHERE id = $1`, [fichaje_id]);
+
+    // Registrar fichaje de cierre con la última posición
+    const { rows: cierre } = await pool.query(
+      `INSERT INTO agente_fichajes
+         (employee_id, puesto_id, cliente_id, slot_numero, latitud, longitud, distancia_metros, resultado, tipo, observaciones)
+       VALUES ($1,$2,$3,$4,$5,$6,NULL,'ok','cierre_turno',$7)
+       RETURNING id, registrado_en`,
+      [
+        fRows[0].employee_id,
+        fRows[0].puesto_id,
+        fRows[0].cliente_id,
+        fRows[0].slot_numero,
+        latitud ?? null,
+        longitud ?? null,
+        `cierre de fichaje_id=${fichaje_id} precision=${precision_metros ?? "?"}m`,
+      ]
+    );
+
+    res.json({ ok: true, cierre_id: cierre[0].id, cerrado_en: cierre[0].registrado_en });
+  } catch (err) {
+    logger.error({ err }, "agente/cerrar-turno: error");
+    res.status(500).json({ error: "Error cerrando turno" });
+  }
+});
+
+// GET /api/agente/recorrido/:fichaje_id — devuelve la ruta GPS grabada de un turno
+// (uso interno: admin / portal cliente para mostrar en mapa)
+agenteFichajeRouter.get("/agente/recorrido/:fichaje_id", async (req, res) => {
+  const fichajeId = Number(req.params.fichaje_id);
+  if (!Number.isFinite(fichajeId)) return res.status(400).json({ error: "id_invalido" });
+  try {
+    const { rows: header } = await pool.query(
+      `SELECT af.id, af.employee_id, af.cliente_id, af.slot_numero, af.puesto_id,
+              af.registrado_en AS inicio_en, af.turno_cerrado_en,
+              e.nombre_completo AS agente_nombre,
+              c.nombre AS cliente_nombre
+         FROM agente_fichajes af
+         JOIN employees e ON e.id = af.employee_id
+         LEFT JOIN clients c ON c.id = af.cliente_id
+        WHERE af.id = $1 AND af.tipo = 'inicio_turno'`,
+      [fichajeId]
+    );
+    if (!header[0]) return res.status(404).json({ error: "fichaje_no_encontrado" });
+
+    const { rows: puntos } = await pool.query(
+      `SELECT latitud AS lat, longitud AS lng, precision_metros, velocidad_mps,
+              rumbo_grados, bateria_pct, capturado_en
+         FROM agente_recorrido_gps
+        WHERE fichaje_id = $1
+        ORDER BY capturado_en ASC`,
+      [fichajeId]
+    );
+
+    res.json({ turno: header[0], puntos, total_puntos: puntos.length });
+  } catch (err) {
+    logger.error({ err }, "agente/recorrido: error");
+    res.status(500).json({ error: "Error obteniendo recorrido" });
   }
 });

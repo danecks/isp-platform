@@ -4595,6 +4595,30 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: DEV-CUST-01 — error (no bloqueante)");
   }
 
+  // ── GPS-RECO-01: tracking del recorrido GPS de custodios durante el turno ──
+  try {
+    await pool.query(`ALTER TABLE agente_fichajes ADD COLUMN IF NOT EXISTS tracking_token_hash TEXT`);
+    await pool.query(`ALTER TABLE agente_fichajes ADD COLUMN IF NOT EXISTS turno_cerrado_en TIMESTAMPTZ`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS agente_recorrido_gps (
+        id BIGSERIAL PRIMARY KEY,
+        fichaje_id INTEGER NOT NULL REFERENCES agente_fichajes(id) ON DELETE CASCADE,
+        latitud DOUBLE PRECISION NOT NULL,
+        longitud DOUBLE PRECISION NOT NULL,
+        precision_metros INTEGER,
+        velocidad_mps DOUBLE PRECISION,
+        rumbo_grados DOUBLE PRECISION,
+        bateria_pct INTEGER,
+        capturado_en TIMESTAMPTZ NOT NULL,
+        registrado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_recorrido_fichaje_capturado ON agente_recorrido_gps(fichaje_id, capturado_en)`);
+    logger.info("Auto-migrate: GPS-RECO-01 tracking GPS de recorrido verificado/creado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: GPS-RECO-01 — error (no bloqueante)");
+  }
+
   // ── ACTAS-03: tipo_evento 'llamada_atencion_1', 'llamada_atencion_2', 'acta_administrativa' en eventos_rrhh ──
   try {
     await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS fichaje_origen_id INTEGER REFERENCES agente_fichajes(id) ON DELETE SET NULL`);

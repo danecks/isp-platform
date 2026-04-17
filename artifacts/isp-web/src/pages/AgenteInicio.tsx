@@ -3,12 +3,50 @@ import { Html5Qrcode } from "html5-qrcode";
 import {
   CheckCircle, XCircle, Loader2, MapPin, AlertTriangle,
   QrCode, ShieldAlert, RotateCcw, Smartphone, Users, Clock,
+  Navigation, LogOut, Activity,
 } from "lucide-react";
 
 const API = "/api";
 const SCANNER_ID = "isp-agente-scanner";
 const DEVICE_KEY = "isp_device";          // mismo key que SupervisorActivar
 const AUTO_RESET_MS = 8000;                // tiempo de éxito antes de volver al inicio (modo kiosco)
+
+// ── Tracking GPS de custodios ──
+const TRACKING_KEY = "isp_turno_activo";   // localStorage para reanudar al reabrir
+const PING_DISTANCIA_M = 30;               // mover al menos 30m para grabar punto
+const PING_TIEMPO_MAX_MS = 60_000;         // o cada 60s si no se movió (heartbeat)
+const FLUSH_INTERVAL_MS = 30_000;          // intentar enviar lote cada 30s
+const FLUSH_MAX_PUNTOS = 20;               // o cuando se acumulen 20 puntos
+
+interface TurnoActivoStorage {
+  fichaje_id: number;
+  tracking_token: string;
+  iniciado_en: string;
+  agente_nombre: string;
+  cliente_nombre: string | null;
+  titulo: string;
+}
+
+interface PuntoGPS {
+  lat: number;
+  lng: number;
+  precision: number | null;
+  velocidad: number | null;
+  rumbo: number | null;
+  bateria: number | null;
+  ts: string; // ISO
+}
+
+function distanciaMetros(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
 
 type Estado =
   | "inicio"
@@ -17,6 +55,8 @@ type Estado =
   | "gps_denegado"
   | "enviando"
   | "ok"
+  | "turno_activo"
+  | "cerrando_turno"
   | "error";
 
 interface Servicio {
@@ -83,6 +123,24 @@ export default function AgenteInicio() {
   const esKiosco = device !== null;
   const [puestoDelDia, setPuestoDelDia] = useState<PuestoDelDia | null>(null);
   const [errorKiosco, setErrorKiosco] = useState<string | null>(null);
+
+  // ── Tracking GPS de turno activo (custodia) ──
+  const [turnoActivo, setTurnoActivo] = useState<TurnoActivoStorage | null>(null);
+  const [puntosCount, setPuntosCount] = useState(0);
+  const [ultimaPosicion, setUltimaPosicion] = useState<{ lat: number; lng: number; ts: string } | null>(null);
+  const [bateria, setBateria] = useState<number | null>(null);
+  const [trackingError, setTrackingError] = useState<string | null>(null);
+
+  const watchIdRef = useRef<number | null>(null);
+  const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const bufferRef = useRef<PuntoGPS[]>([]);
+  const ultimoGrabadoRef = useRef<{ lat: number; lng: number; ts: number } | null>(null);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const turnoActivoRef = useRef<TurnoActivoStorage | null>(null);
+
+  // Mantener ref sincronizada con el estado para usar dentro de callbacks de geo
+  useEffect(() => { turnoActivoRef.current = turnoActivo; }, [turnoActivo]);
 
   // Cargar lista del día (modo kiosco)
   const cargarPuestoDelDia = useCallback(async () => {
@@ -210,6 +268,236 @@ export default function AgenteInicio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Enviar lote de puntos al servidor ──
+  const flushPuntos = useCallback(async () => {
+    const turno = turnoActivoRef.current;
+    if (!turno) return;
+    if (bufferRef.current.length === 0) return;
+    const lote = bufferRef.current.splice(0, bufferRef.current.length);
+    try {
+      const r = await fetch(`${API}/agente/recorrido-ping`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fichaje_id: turno.fichaje_id,
+          tracking_token: turno.tracking_token,
+          puntos: lote,
+        }),
+        keepalive: true, // permite enviar aunque la pestaña se cierre
+      });
+      if (!r.ok) {
+        // Si el server rechaza por "turno_ya_cerrado", limpiar local
+        if (r.status === 409) {
+          localStorage.removeItem(TRACKING_KEY);
+          detenerRastreoInterno();
+          setTurnoActivo(null);
+          setEstado("inicio");
+          return;
+        }
+        // Reintento simple: devolver al buffer al frente
+        bufferRef.current = [...lote, ...bufferRef.current];
+        setTrackingError("Conexión inestable, reintentando…");
+      } else {
+        setTrackingError(null);
+      }
+    } catch {
+      // Sin red — devolvemos al buffer y reintentamos en el siguiente tick
+      bufferRef.current = [...lote, ...bufferRef.current];
+      setTrackingError("Sin conexión, los puntos se enviarán cuando vuelva");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Liberar todos los recursos del rastreo (sin tocar localStorage) ──
+  const detenerRastreoInterno = useCallback(() => {
+    if (watchIdRef.current !== null && navigator.geolocation) {
+      try { navigator.geolocation.clearWatch(watchIdRef.current); } catch { /* noop */ }
+      watchIdRef.current = null;
+    }
+    if (flushTimerRef.current) {
+      clearInterval(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    if (wakeLockRef.current) {
+      try { void wakeLockRef.current.release(); } catch { /* noop */ }
+      wakeLockRef.current = null;
+    }
+    if (audioCtxRef.current) {
+      try { void audioCtxRef.current.close(); } catch { /* noop */ }
+      audioCtxRef.current = null;
+    }
+  }, []);
+
+  // ── Audio silencioso en loop: trick para que Android no duerma la pestaña ──
+  const arrancarAudioSilencioso = useCallback(() => {
+    try {
+      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      gain.gain.value = 0; // silencio absoluto
+      osc.connect(gain).connect(ctx.destination);
+      osc.start();
+      audioCtxRef.current = ctx;
+    } catch { /* noop */ }
+  }, []);
+
+  // ── Wake Lock: mantiene la pantalla encendida si el agente lo deja activo ──
+  // (no lo activamos automáticamente para no quemar batería; lo activa el botón)
+  const adquirirWakeLock = useCallback(async () => {
+    try {
+      const wl = (navigator as Navigator & { wakeLock?: { request: (t: "screen") => Promise<WakeLockSentinel> } }).wakeLock;
+      if (!wl) return false;
+      wakeLockRef.current = await wl.request("screen");
+      return true;
+    } catch { return false; }
+  }, []);
+
+  // ── Iniciar el rastreo continuo ──
+  const iniciarRastreo = useCallback((turno: TurnoActivoStorage) => {
+    setTurnoActivo(turno);
+    turnoActivoRef.current = turno;
+    localStorage.setItem(TRACKING_KEY, JSON.stringify(turno));
+    bufferRef.current = [];
+    ultimoGrabadoRef.current = null;
+    setPuntosCount(0);
+    setTrackingError(null);
+
+    // Audio truco (no requiere permiso explícito)
+    arrancarAudioSilencioso();
+
+    // Batería (Battery API; no soportada en iOS)
+    try {
+      const navAny = navigator as Navigator & { getBattery?: () => Promise<{ level: number; addEventListener: (e: string, f: () => void) => void }> };
+      navAny.getBattery?.().then((b) => {
+        const update = () => setBateria(Math.round(b.level * 100));
+        update();
+        b.addEventListener("levelchange", update);
+      });
+    } catch { /* noop */ }
+
+    // GPS continuo
+    if (!navigator.geolocation) {
+      setTrackingError("Este teléfono no tiene GPS disponible");
+      return;
+    }
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const ahora = Date.now();
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const ultimo = ultimoGrabadoRef.current;
+        let grabar = false;
+        if (!ultimo) {
+          grabar = true;
+        } else {
+          const dist = distanciaMetros(ultimo.lat, ultimo.lng, lat, lng);
+          const tiempoMs = ahora - ultimo.ts;
+          if (dist >= PING_DISTANCIA_M) grabar = true;
+          else if (tiempoMs >= PING_TIEMPO_MAX_MS) grabar = true;
+        }
+        if (!grabar) return;
+        const punto: PuntoGPS = {
+          lat, lng,
+          precision: typeof pos.coords.accuracy === "number" ? Math.round(pos.coords.accuracy) : null,
+          velocidad: typeof pos.coords.speed === "number" ? pos.coords.speed : null,
+          rumbo: typeof pos.coords.heading === "number" ? pos.coords.heading : null,
+          bateria,
+          ts: new Date(ahora).toISOString(),
+        };
+        bufferRef.current.push(punto);
+        ultimoGrabadoRef.current = { lat, lng, ts: ahora };
+        setPuntosCount((c) => c + 1);
+        setUltimaPosicion({ lat, lng, ts: punto.ts });
+        // Si llenamos el lote, flush inmediato
+        if (bufferRef.current.length >= FLUSH_MAX_PUNTOS) void flushPuntos();
+      },
+      (err) => {
+        if (err.code === 1) setTrackingError("Permiso de GPS denegado");
+        else if (err.code === 3) setTrackingError("GPS lento, esperando señal…");
+        else setTrackingError("Error obteniendo GPS");
+      },
+      { enableHighAccuracy: true, timeout: 30000, maximumAge: 10000 }
+    );
+
+    // Flush periódico
+    flushTimerRef.current = setInterval(() => { void flushPuntos(); }, FLUSH_INTERVAL_MS);
+  }, [arrancarAudioSilencioso, bateria, flushPuntos]);
+
+  // ── Cerrar turno (botón) ──
+  const cerrarTurno = useCallback(async () => {
+    const turno = turnoActivoRef.current;
+    if (!turno) return;
+    setEstado("cerrando_turno");
+    // 1. Mandar lo que quede en buffer
+    await flushPuntos();
+    // 2. Última posición conocida (si hay)
+    const last = ultimaPosicion;
+    try {
+      const r = await fetch(`${API}/agente/cerrar-turno`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fichaje_id: turno.fichaje_id,
+          tracking_token: turno.tracking_token,
+          latitud: last?.lat ?? null,
+          longitud: last?.lng ?? null,
+        }),
+      });
+      if (!r.ok && r.status !== 409) {
+        const data = await r.json().catch(() => ({}));
+        setMensajeError(data.mensaje || data.error || "No se pudo cerrar el turno");
+        setEstado("error");
+        return;
+      }
+    } catch (e) {
+      setMensajeError(e instanceof Error ? e.message : "Sin conexión, intentá de nuevo");
+      setEstado("error");
+      return;
+    }
+    detenerRastreoInterno();
+    localStorage.removeItem(TRACKING_KEY);
+    setTurnoActivo(null);
+    setPuntosCount(0);
+    setUltimaPosicion(null);
+    setEstado("inicio");
+    if (esKiosco) void cargarPuestoDelDia();
+  }, [flushPuntos, ultimaPosicion, detenerRastreoInterno, esKiosco, cargarPuestoDelDia]);
+
+  // ── Reanudar tracking si la app se reabre con turno activo en localStorage ──
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(TRACKING_KEY);
+      if (!raw) return;
+      const turno = JSON.parse(raw) as TurnoActivoStorage;
+      if (!turno?.fichaje_id || !turno?.tracking_token) {
+        localStorage.removeItem(TRACKING_KEY);
+        return;
+      }
+      iniciarRastreo(turno);
+      setEstado("turno_activo");
+    } catch {
+      localStorage.removeItem(TRACKING_KEY);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Cleanup: liberar GPS y audio al desmontar ──
+  useEffect(() => () => { detenerRastreoInterno(); }, [detenerRastreoInterno]);
+
+  // ── Re-adquirir wake lock al volver a primer plano (si estaba activo) ──
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && turnoActivoRef.current && wakeLockRef.current === null) {
+        // No re-adquirir automático; solo hacer flush al volver
+        void flushPuntos();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [flushPuntos]);
+
   const enviar = useCallback(async (
     token: string, lat: number | null, lng: number | null, precision: number | null
   ) => {
@@ -232,14 +520,28 @@ export default function AgenteInicio() {
         return;
       }
       setResultado(data);
-      setEstado("ok");
+      // Si es custodia, el backend nos dio un tracking_token → arrancar rastreo
+      if (data.tracking_token && data.servicio?.tipo === "custodia") {
+        const turno: TurnoActivoStorage = {
+          fichaje_id: data.fichaje_id,
+          tracking_token: data.tracking_token,
+          iniciado_en: data.registrado_en,
+          agente_nombre: data.agente.nombre,
+          cliente_nombre: data.servicio.cliente_nombre,
+          titulo: data.servicio.titulo,
+        };
+        iniciarRastreo(turno);
+        setEstado("turno_activo");
+      } else {
+        setEstado("ok");
+      }
       // Modo kiosco: refrescar lista en segundo plano
       if (esKiosco) void cargarPuestoDelDia();
     } catch (e) {
       setMensajeError(e instanceof Error ? e.message : "Error de red");
       setEstado("error");
     }
-  }, [device, esKiosco, cargarPuestoDelDia]);
+  }, [device, esKiosco, cargarPuestoDelDia, iniciarRastreo]);
 
   // Toggle linterna (flash) — solo Android Chrome
   const toggleLinterna = useCallback(async () => {
@@ -510,6 +812,108 @@ export default function AgenteInicio() {
           <div className="text-center pt-12 space-y-4">
             <Loader2 className="w-12 h-12 mx-auto animate-spin text-blue-400" />
             <p className="text-slate-300">Registrando inicio de turno…</p>
+          </div>
+        )}
+
+        {/* Turno activo (custodia) — rastreando GPS */}
+        {estado === "turno_activo" && turnoActivo && (
+          <div className="space-y-4 pt-2">
+            <div className="text-center">
+              <div className="mx-auto w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                <Activity className="w-8 h-8 text-emerald-400 animate-pulse" />
+              </div>
+              <h2 className="text-xl font-bold mt-2">Turno activo</h2>
+              <p className="text-xs text-emerald-400 mt-1">Rastreando recorrido GPS</p>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 space-y-3">
+              <div>
+                <div className="text-[11px] uppercase tracking-wide text-slate-500">Custodio</div>
+                <div className="font-semibold">{turnoActivo.agente_nombre}</div>
+              </div>
+              <div className="border-t border-slate-800 pt-3">
+                <div className="text-[11px] uppercase tracking-wide text-slate-500">Servicio</div>
+                <div className="font-semibold">{turnoActivo.titulo}</div>
+                {turnoActivo.cliente_nombre && (
+                  <div className="text-sm text-slate-300">{turnoActivo.cliente_nombre}</div>
+                )}
+              </div>
+              <div className="border-t border-slate-800 pt-3 grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <div className="text-slate-500 uppercase tracking-wide text-[10px]">Inicio</div>
+                  <div className="text-slate-200">
+                    {new Date(turnoActivo.iniciado_en).toLocaleTimeString("es-GT", {
+                      hour: "2-digit", minute: "2-digit", timeZone: "America/Guatemala",
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-slate-500 uppercase tracking-wide text-[10px]">Puntos grabados</div>
+                  <div className="text-slate-200 font-mono">{puntosCount}</div>
+                </div>
+                {ultimaPosicion && (
+                  <div className="col-span-2">
+                    <div className="text-slate-500 uppercase tracking-wide text-[10px]">Última ubicación</div>
+                    <div className="text-slate-300 font-mono text-[11px]">
+                      {ultimaPosicion.lat.toFixed(5)}, {ultimaPosicion.lng.toFixed(5)}
+                    </div>
+                    <div className="text-slate-500 text-[10px]">
+                      hace {Math.max(0, Math.round((Date.now() - new Date(ultimaPosicion.ts).getTime()) / 1000))} s
+                    </div>
+                  </div>
+                )}
+                {bateria !== null && (
+                  <div className="col-span-2 flex items-center justify-between text-slate-400 text-[11px]">
+                    <span>Batería del teléfono</span>
+                    <span className={bateria < 20 ? "text-rose-400 font-semibold" : "text-slate-300"}>
+                      {bateria}%
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {trackingError && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-xs text-amber-200 flex gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>{trackingError}</span>
+              </div>
+            )}
+
+            <button
+              onClick={() => void adquirirWakeLock()}
+              className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-3 rounded-lg text-sm flex items-center justify-center gap-2"
+            >
+              <Navigation className="w-4 h-4" />
+              {wakeLockRef.current ? "Pantalla bloqueada activa" : "Mantener pantalla encendida"}
+            </button>
+
+            <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-3 text-[11px] text-slate-400 space-y-1">
+              <div className="flex gap-2">
+                <span className="text-emerald-400">✓</span>
+                <span>Podés bloquear el teléfono y guardarlo. El recorrido sigue grabando en segundo plano.</span>
+              </div>
+              <div className="flex gap-2">
+                <span className="text-amber-400">!</span>
+                <span>No cerrés esta pantalla del menú de apps recientes — eso detiene el rastreo.</span>
+              </div>
+            </div>
+
+            <button
+              onClick={cerrarTurno}
+              className="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold py-4 rounded-lg flex items-center justify-center gap-2"
+            >
+              <LogOut className="w-5 h-5" />
+              Cerrar turno
+            </button>
+          </div>
+        )}
+
+        {/* Cerrando turno */}
+        {estado === "cerrando_turno" && (
+          <div className="text-center pt-12 space-y-4">
+            <Loader2 className="w-12 h-12 mx-auto animate-spin text-rose-400" />
+            <p className="text-slate-300">Cerrando turno…</p>
           </div>
         )}
 
