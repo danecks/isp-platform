@@ -3929,6 +3929,19 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-seed: BARRACAS-PERM-01 permisos — error (no bloqueante)");
   }
 
+  // ── SEGUROS-PERM-01: permisos garantizados para módulo Seguros ─────────────
+  try {
+    await pool.query(`
+      INSERT INTO rol_permisos (rol_clave, modulo_clave) VALUES
+        ('admin', 'seguros'),
+        ('rrhh',  'seguros')
+      ON CONFLICT DO NOTHING
+    `);
+    logger.info("Auto-seed: SEGUROS-PERM-01 permisos seguros insertados");
+  } catch (err) {
+    logger.error({ err }, "Auto-seed: SEGUROS-PERM-01 permisos — error (no bloqueante)");
+  }
+
   // ── SUPERVISOR-DEV-01: dispositivos autenticados (teléfonos de puesto y supervisor) ──
   try {
     await pool.query(`
