@@ -67,6 +67,9 @@ export default defineConfig({
         // del portal admin/cliente. Sólo cachea assets estáticos.
         navigateFallback: null,
         globPatterns: ["**/*.{js,css,svg,png,woff2}"],
+        // El bundle JS principal puede superar 2 MB; permitimos hasta 10 MB
+        // para que se precacheen assets grandes (bundle, logo, etc.).
+        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true,
