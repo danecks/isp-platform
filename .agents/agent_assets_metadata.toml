@@ -1,5 +1,4 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "nyHQs5Hn340voigtMPRBO"
@@ -48,3 +47,9 @@ id = "ztFfzn-Oc4z4TDRfWDXfR"
 uri = "file://artifacts/mockup-sandbox/public/images/mision-04.png"
 type = "image"
 title = "Monitoring center screens"
+
+[[outputs]]
+id = "cfbrhXSvUNKm8VUJP_bs_"
+uri = "file://attached_assets/exports/qr-kiosco.png"
+type = "image"
+title = "QR de acceso al Kiosko de Solicitud de Empleo (ispsa.net/kiosco)"
