@@ -653,21 +653,67 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
           registrado_en: fichaje.registrado_en,
         });
       }
-      // Reanudar: si hay fichaje abierto sin cerrar y es custodia LÍDER,
-      // regenerar tracking_token para que la app pueda continuar el rastreo.
-      // (Caso típico: app se cerró antes de arrancar el GPS.)
-      if (fichaje.cliente_id && fichaje.recorrido_padre_id === null) {
+      // Co-tripulante anexado: ya marcó, no puede iniciar otro
+      if (fichaje.recorrido_padre_id !== null) {
+        return res.status(409).json({
+          error: "ya_iniciado",
+          mensaje: "Ya iniciaste tu turno hoy (anexado a otro recorrido).",
+          registrado_en: fichaje.registrado_en,
+        });
+      }
+
+      // ── Resolver/migrar a custodia si hoy aplica ──
+      // Si el agente HOY tiene asignación de custodia (titular o pizarrón),
+      // permitir reanudar/migrar el fichaje y arrancar tracking.
+      const { rows: ctRows } = await pool.query(
+        `SELECT ct.cliente_id, ct.slot_numero,
+                COALESCE(c.nombre_comercial, c.nombre) AS cliente_nombre
+           FROM custodia_titulares ct
+           JOIN clients c ON c.id = ct.cliente_id
+          WHERE ct.employee_id = $1 AND ct.activo = TRUE
+          ORDER BY ct.slot_numero ASC LIMIT 1`,
+        [employeeId]
+      );
+      let custodiaHoy = ctRows[0];
+      if (!custodiaHoy) {
+        const { rows: cadRows } = await pool.query(
+          `SELECT cad.cliente_id, cad.slot_numero,
+                  COALESCE(c.nombre_comercial, c.nombre) AS cliente_nombre
+             FROM custodia_asignacion_diaria cad
+             JOIN clients c ON c.id = cad.cliente_id
+            WHERE cad.employee_id = $1
+              AND cad.fecha = DATE((NOW() AT TIME ZONE 'America/Guatemala'))
+            ORDER BY cad.slot_numero ASC LIMIT 1`,
+          [employeeId]
+        );
+        custodiaHoy = cadRows[0];
+      }
+
+      const targetClienteId = custodiaHoy ? Number(custodiaHoy.cliente_id) : (fichaje.cliente_id ?? null);
+      const targetClienteNombre = custodiaHoy?.cliente_nombre ?? null;
+      const aplicaCustodia = targetClienteId !== null;
+
+      if (aplicaCustodia) {
         const nuevoToken = randomBytes(32).toString("hex");
         const nuevoHash = hashToken(nuevoToken);
         await pool.query(
-          `UPDATE agente_fichajes SET tracking_token_hash = $1 WHERE id = $2`,
-          [nuevoHash, fichaje.id]
+          `UPDATE agente_fichajes
+              SET tracking_token_hash = $1,
+                  cliente_id = $2,
+                  puesto_id = NULL,
+                  slot_numero = $3
+            WHERE id = $4`,
+          [nuevoHash, targetClienteId, custodiaHoy?.slot_numero ?? null, fichaje.id]
         );
-        // Recuperar datos del cliente para devolver el servicio
-        const { rows: cliRows } = await pool.query(
-          `SELECT COALESCE(nombre_comercial, nombre) AS cliente_nombre FROM clients WHERE id = $1`,
-          [fichaje.cliente_id]
-        );
+        // Si la fila no traía cliente_nombre, lo buscamos
+        let cliNombreFinal = targetClienteNombre;
+        if (!cliNombreFinal && targetClienteId) {
+          const { rows: cliRows } = await pool.query(
+            `SELECT COALESCE(nombre_comercial, nombre) AS cliente_nombre FROM clients WHERE id = $1`,
+            [targetClienteId]
+          );
+          cliNombreFinal = cliRows[0]?.cliente_nombre ?? null;
+        }
         return res.json({
           ok: true,
           reanudado: true,
@@ -679,9 +725,9 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
           servicio: {
             tipo: "custodia",
             puesto_id: null,
-            cliente_id: fichaje.cliente_id,
-            cliente_nombre: cliRows[0]?.cliente_nombre ?? null,
-            slot_numero: null,
+            cliente_id: targetClienteId,
+            cliente_nombre: cliNombreFinal,
+            slot_numero: custodiaHoy?.slot_numero ?? null,
             titulo: "Turno reanudado",
             horario: null,
             hora_entrada: null,
@@ -698,7 +744,8 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
           co_custodios: null,
         });
       }
-      // Co-tripulante o puesto fijo ya marcado: rechazar como antes.
+
+      // No es custodia hoy y ya marcó (puesto fijo): rechazar como antes.
       return res.status(409).json({
         error: "ya_iniciado",
         mensaje: "Ya iniciaste tu turno hoy.",
