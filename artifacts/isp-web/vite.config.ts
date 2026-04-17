@@ -44,7 +44,7 @@ export default defineConfig({
         background_color: "#060e1c",
         display: "standalone",
         orientation: "portrait",
-        start_url: basePath,
+        start_url: `${basePath.replace(/\/$/, "")}/agente/inicio`,
         scope: basePath,
         lang: "es-GT",
         icons: [
