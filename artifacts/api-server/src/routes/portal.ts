@@ -385,7 +385,8 @@ portalRouter.get("/portal/cobertura", requirePortalAuth, async (req, res) => {
   }
 
   try {
-    const { rows } = await pool.query<{
+    // 1) Puestos operativos "estándar" (modelo de fijos / planta)
+    const { rows: puestosFijos } = await pool.query<{
       puesto_id: number;
       puesto_nombre: string;
       turno: string | null;
@@ -419,13 +420,80 @@ portalRouter.get("/portal/cobertura", requirePortalAuth, async (req, res) => {
       ORDER BY cs.nombre NULLS LAST, po.turno, po.nombre
     `, [clienteIntId]);
 
-    const total    = rows.length;
-    const cubiertos = rows.filter(r => r.titular_nombre && r.estado === "cubierto").length;
+    // 2) Slots de custodia (modelo de custodia / mixto) — fuente del Pizarrón
+    //    Total de slots = MAX(slot_numero asignado, fuerza configurada del día actual).
+    const diaSemana = new Date().getUTCDay();
+    const { rows: cliRow } = await pool.query<{
+      tipo_servicio: string | null;
+      fuerza_hoy: number;
+      max_slot_titular: number;
+    }>(`
+      SELECT
+        c.tipo_servicio,
+        COALESCE(cfs.cantidad_agentes, 0) AS fuerza_hoy,
+        COALESCE((
+          SELECT MAX(ct.slot_numero)
+            FROM custodia_titulares ct
+           WHERE ct.cliente_id = c.id AND ct.activo = TRUE
+        ), 0) AS max_slot_titular
+      FROM clients c
+      LEFT JOIN custodia_fuerza_semanal cfs
+             ON cfs.cliente_id = c.id AND cfs.dia_semana = $2
+      WHERE c.id = $1
+      LIMIT 1
+    `, [clienteIntId, diaSemana]);
+
+    const tipoSrv = (cliRow[0]?.tipo_servicio ?? "").toLowerCase();
+    const esCustodia = tipoSrv === "custodia" || tipoSrv === "mixto";
+    const fuerzaHoy = Number(cliRow[0]?.fuerza_hoy ?? 0);
+    const maxSlotTitular = Number(cliRow[0]?.max_slot_titular ?? 0);
+    const totalSlots = esCustodia ? Math.max(fuerzaHoy, maxSlotTitular) : 0;
+
+    const puestosCustodia: typeof puestosFijos = [];
+    if (totalSlots > 0) {
+      const { rows: titularesRows } = await pool.query<{
+        slot_numero: number;
+        nombre: string | null;
+        area: string | null;
+      }>(`
+        SELECT ct.slot_numero, e.nombre_completo AS nombre, e.area
+          FROM custodia_titulares ct
+          LEFT JOIN employees e ON e.id = ct.employee_id
+         WHERE ct.cliente_id = $1 AND ct.activo = TRUE
+         ORDER BY ct.slot_numero
+      `, [clienteIntId]);
+      const titularMap = new Map<number, { nombre: string | null; area: string | null }>();
+      for (const t of titularesRows) {
+        titularMap.set(Number(t.slot_numero), { nombre: t.nombre, area: t.area });
+      }
+
+      for (let i = 1; i <= totalSlots; i++) {
+        const t = titularMap.get(i);
+        const cubierto = !!t?.nombre;
+        puestosCustodia.push({
+          puesto_id: -i, // id negativo para no chocar con puestos_operativos
+          puesto_nombre: `Custodio ${i}`,
+          turno: "Custodia",
+          jornada: null,
+          horario: null,
+          estado: cubierto ? "cubierto" : "descubierto",
+          sede_nombre: null,
+          sede_direccion: null,
+          zona_nombre: null,
+          titular_nombre: t?.nombre ?? null,
+          titular_area: t?.area ?? null,
+        });
+      }
+    }
+
+    const puestos = [...puestosFijos, ...puestosCustodia];
+    const total = puestos.length;
+    const cubiertos = puestos.filter(p => p.titular_nombre && p.estado === "cubierto").length;
     const vacantes  = total - cubiertos;
     const tasa      = total > 0 ? Math.round((cubiertos / total) * 100) : 0;
 
     res.json({
-      puestos: rows,
+      puestos,
       resumen: { total, cubiertos, vacantes, tasa },
     });
   } catch (err) {
