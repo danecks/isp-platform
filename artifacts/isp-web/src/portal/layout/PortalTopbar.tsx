@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Menu, ChevronDown, Check, Building2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -22,7 +22,6 @@ interface MiCliente {
 
 export function PortalTopbar({ title, onMenuOpen }: PortalTopbarProps) {
   const { currentUser } = useAuth();
-  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [activeCid, setActiveCid] = useState<string | null>(getActivePortalClienteId());
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -57,11 +56,15 @@ export function PortalTopbar({ title, onMenuOpen }: PortalTopbarProps) {
   const showSelector = clientes.length > 1;
 
   function handleCambiar(cid: string) {
+    if (cid === activeCid) {
+      setOpen(false);
+      return;
+    }
     setActivePortalClienteId(cid);
-    setActiveCid(cid);
     setOpen(false);
-    // Limpiar todo el cache para que ninguna pestaña muestre datos del cliente anterior
-    queryClient.clear();
+    // Reload completo para garantizar que TODAS las pestañas y queries
+    // se reinicialicen con el nuevo cliente activo (sin datos cacheados).
+    window.location.reload();
   }
 
   return (
