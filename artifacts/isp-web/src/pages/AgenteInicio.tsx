@@ -264,12 +264,31 @@ export default function AgenteInicio() {
         setLinternaSoportada(!!capabilities?.torch);
       } catch { setLinternaSoportada(false); }
       setLinternaOn(false);
-    } catch (err) {
-      setMensajeError(
-        err instanceof Error
-          ? `No se pudo acceder a la cámara: ${err.message}`
-          : "No se pudo acceder a la cámara"
-      );
+    } catch (err: unknown) {
+      // Html5Qrcode a veces rechaza con string, a veces con DOMException
+      let detalle = "";
+      let nombre = "";
+      if (err instanceof Error) {
+        detalle = err.message;
+        nombre = err.name;
+      } else if (typeof err === "string") {
+        detalle = err;
+      } else if (err && typeof err === "object") {
+        const anyErr = err as { name?: string; message?: string };
+        nombre = anyErr.name || "";
+        detalle = anyErr.message || JSON.stringify(err);
+      } else {
+        detalle = String(err);
+      }
+      let msg = `No se pudo acceder a la cámara: ${detalle || "(sin detalle)"}`;
+      if (nombre === "NotAllowedError" || /denied|allow/i.test(detalle)) {
+        msg = "Permiso de cámara denegado. Abrí Ajustes → Safari → Cámara y permití el acceso.";
+      } else if (nombre === "NotFoundError" || /not found|no camera/i.test(detalle)) {
+        msg = "No se encontró ninguna cámara en este dispositivo.";
+      } else if (nombre === "NotReadableError" || /in use|busy|already/i.test(detalle)) {
+        msg = "La cámara está siendo usada por otra app o pestaña. Cerrala y volvé a intentar.";
+      }
+      setMensajeError(msg);
       setEstado("error");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
