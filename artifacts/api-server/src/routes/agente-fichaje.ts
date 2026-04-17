@@ -1796,6 +1796,47 @@ agenteFichajeRouter.post("/agente/cerrar-turno", async (req, res) => {
   }
 });
 
+// GET /api/agente/recorridos-del-dia — lista los turnos de custodia con tracking del día
+// Soporta filtro ?cliente_id=N (para portal cliente) y ?fecha=YYYY-MM-DD (default: hoy GT)
+agenteFichajeRouter.get("/agente/recorridos-del-dia", async (req, res) => {
+  const clienteId = req.query.cliente_id ? Number(req.query.cliente_id) : null;
+  const fecha = typeof req.query.fecha === "string" ? req.query.fecha : null;
+  try {
+    const params: unknown[] = [];
+    let whereFecha = `DATE((af.registrado_en AT TIME ZONE 'America/Guatemala')) = DATE((NOW() AT TIME ZONE 'America/Guatemala'))`;
+    if (fecha) {
+      params.push(fecha);
+      whereFecha = `DATE((af.registrado_en AT TIME ZONE 'America/Guatemala')) = $${params.length}::date`;
+    }
+    let whereCliente = "";
+    if (clienteId) {
+      params.push(clienteId);
+      whereCliente = `AND af.cliente_id = $${params.length}`;
+    }
+    const { rows } = await pool.query(
+      `SELECT af.id AS fichaje_id, af.employee_id, af.cliente_id, af.slot_numero,
+              af.registrado_en AS inicio_en, af.turno_cerrado_en,
+              e.nombre_completo AS agente_nombre,
+              c.nombre AS cliente_nombre,
+              (SELECT COUNT(*) FROM agente_recorrido_gps r WHERE r.fichaje_id = af.id)::int AS total_puntos,
+              (SELECT MAX(r.capturado_en) FROM agente_recorrido_gps r WHERE r.fichaje_id = af.id) AS ultimo_ping
+         FROM agente_fichajes af
+         JOIN employees e ON e.id = af.employee_id
+         LEFT JOIN clients c ON c.id = af.cliente_id
+        WHERE af.tipo = 'inicio_turno'
+          AND af.tracking_token_hash IS NOT NULL
+          AND ${whereFecha}
+          ${whereCliente}
+        ORDER BY af.turno_cerrado_en NULLS FIRST, af.registrado_en DESC`,
+      params
+    );
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "agente/recorridos-del-dia: error");
+    res.status(500).json({ error: "Error obteniendo recorridos" });
+  }
+});
+
 // GET /api/agente/recorrido/:fichaje_id — devuelve la ruta GPS grabada de un turno
 // (uso interno: admin / portal cliente para mostrar en mapa)
 agenteFichajeRouter.get("/agente/recorrido/:fichaje_id", async (req, res) => {

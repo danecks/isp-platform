@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { AdminLayout } from "../layout/AdminLayout";
-import { QrCode, MapPin, Activity, BarChart2 } from "lucide-react";
+import { QrCode, MapPin, Activity, BarChart2, Route } from "lucide-react";
 import FichajeQR from "./FichajeQR";
 import RondasQR from "./RondasQR";
 import EstadisticasRondas from "./EstadisticasRondas";
+import RecorridosCustodia from "./RecorridosCustodia";
 
-type Tab = "fichaje" | "rondas" | "estadisticas";
+type Tab = "fichaje" | "rondas" | "recorridos" | "estadisticas";
 
 export default function ControlOperativoQR() {
   const [tab, setTab] = useState<Tab>("fichaje");
@@ -13,6 +14,7 @@ export default function ControlOperativoQR() {
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: "fichaje",      label: "Fichaje & Control",    icon: <QrCode className="w-4 h-4" /> },
     { key: "rondas",       label: "Rondas de Patrullaje", icon: <MapPin className="w-4 h-4" /> },
+    { key: "recorridos",   label: "Recorridos Custodia",  icon: <Route className="w-4 h-4" /> },
     { key: "estadisticas", label: "Estadísticas",         icon: <BarChart2 className="w-4 h-4" /> },
   ];
 
@@ -47,6 +49,7 @@ export default function ControlOperativoQR() {
         {/* Contenido */}
         {tab === "fichaje"      && <FichajeQR />}
         {tab === "rondas"       && <RondasQR />}
+        {tab === "recorridos"   && <RecorridosCustodia />}
         {tab === "estadisticas" && <EstadisticasRondas />}
       </div>
     </AdminLayout>
