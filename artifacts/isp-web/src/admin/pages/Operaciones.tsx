@@ -4326,7 +4326,17 @@ const MOTIVOS_TITULAR = [
 ];
 
 function toISODate(d: Date) {
-  return d.toISOString().split("T")[0];
+  // Devuelve YYYY-MM-DD en zona horaria de Guatemala (America/Guatemala, UTC-6).
+  // Crítico: si el navegador del usuario está en otra zona horaria (Alemania, USA, etc.),
+  // d.toISOString() devolvería UTC y "hoy" podría adelantarse o atrasarse un día respecto
+  // al backend, rompiendo todas las comparaciones de fechaVista vs diasCerrados/cierreDeHoy.
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Guatemala",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return fmt.format(d); // "YYYY-MM-DD"
 }
 
 // ─── Modal: ¿A quién sustituye? (puestos multi-titular) ───────────────────────
