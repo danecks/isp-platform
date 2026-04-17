@@ -18,3 +18,33 @@ id = "ZMxprvgbna3wj3dZCzNCz"
 uri = "file://artifacts/mockup-sandbox/public/images/service-physical.png"
 type = "image"
 title = "Physical Security Guard"
+
+[[generated]]
+id = "8iMYZQcVtRD-ut8fLMiXi"
+uri = "file://artifacts/mockup-sandbox/public/images/mision-hero.png"
+type = "image"
+title = "Hero security operation"
+
+[[generated]]
+id = "M3kIqvIpYptdD847nIrUE"
+uri = "file://artifacts/mockup-sandbox/public/images/mision-01.png"
+type = "image"
+title = "Physical security guard"
+
+[[generated]]
+id = "ZTBpS6WiQxoMPbxUWTw_a"
+uri = "file://artifacts/mockup-sandbox/public/images/mision-02.png"
+type = "image"
+title = "Armored transport night"
+
+[[generated]]
+id = "J-UAY5XWEAssknCdL4m7M"
+uri = "file://artifacts/mockup-sandbox/public/images/mision-03.png"
+type = "image"
+title = "Mobile operations night"
+
+[[generated]]
+id = "ztFfzn-Oc4z4TDRfWDXfR"
+uri = "file://artifacts/mockup-sandbox/public/images/mision-04.png"
+type = "image"
+title = "Monitoring center screens"
