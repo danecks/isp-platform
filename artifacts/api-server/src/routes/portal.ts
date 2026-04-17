@@ -682,4 +682,85 @@ portalRouter.get("/portal/qr/cumplimiento", requirePortalAuth, async (req, res) 
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/portal/recorridos-del-dia — turnos de custodia con tracking GPS hoy
+// Filtra automáticamente por el cliente activo de la sesión
+// ─────────────────────────────────────────────────────────────────────────────
+portalRouter.get("/portal/recorridos-del-dia", requirePortalAuth, async (req, res) => {
+  const clienteIntId = (req as any).portalClienteIntId as number | null;
+  if (!clienteIntId) {
+    return res.status(404).json({ error: "Cliente no encontrado" });
+  }
+  const fecha = typeof req.query.fecha === "string" ? req.query.fecha : null;
+  try {
+    const params: unknown[] = [clienteIntId];
+    let whereFecha = `DATE((af.registrado_en AT TIME ZONE 'America/Guatemala')) = DATE((NOW() AT TIME ZONE 'America/Guatemala'))`;
+    if (fecha) {
+      params.push(fecha);
+      whereFecha = `DATE((af.registrado_en AT TIME ZONE 'America/Guatemala')) = $${params.length}::date`;
+    }
+    const { rows } = await pool.query(
+      `SELECT af.id AS fichaje_id, af.employee_id, af.cliente_id, af.slot_numero,
+              af.registrado_en AS inicio_en, af.turno_cerrado_en,
+              e.nombre_completo AS agente_nombre,
+              c.nombre AS cliente_nombre,
+              (SELECT COUNT(*) FROM agente_recorrido_gps r WHERE r.fichaje_id = af.id)::int AS total_puntos,
+              (SELECT MAX(r.capturado_en) FROM agente_recorrido_gps r WHERE r.fichaje_id = af.id) AS ultimo_ping
+         FROM agente_fichajes af
+         JOIN employees e ON e.id = af.employee_id
+         LEFT JOIN clients c ON c.id = af.cliente_id
+        WHERE af.tipo = 'inicio_turno'
+          AND af.tracking_token_hash IS NOT NULL
+          AND af.cliente_id = $1
+          AND ${whereFecha}
+        ORDER BY af.turno_cerrado_en NULLS FIRST, af.registrado_en DESC`,
+      params
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Error obteniendo recorridos" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/portal/recorrido/:fichaje_id — puntos GPS de un turno (filtrado por cliente)
+// ─────────────────────────────────────────────────────────────────────────────
+portalRouter.get("/portal/recorrido/:fichaje_id", requirePortalAuth, async (req, res) => {
+  const clienteIntId = (req as any).portalClienteIntId as number | null;
+  const fichajeId = Number(req.params.fichaje_id);
+  if (!clienteIntId) return res.status(404).json({ error: "Cliente no encontrado" });
+  if (!Number.isFinite(fichajeId)) return res.status(400).json({ error: "id_invalido" });
+  try {
+    // Verificar que el turno pertenece al cliente del portal
+    const { rows: turnoRows } = await pool.query(
+      `SELECT af.id, af.employee_id, af.cliente_id, af.slot_numero,
+              af.registrado_en AS inicio_en, af.turno_cerrado_en,
+              e.nombre_completo AS agente_nombre,
+              c.nombre AS cliente_nombre
+         FROM agente_fichajes af
+         JOIN employees e ON e.id = af.employee_id
+         LEFT JOIN clients c ON c.id = af.cliente_id
+        WHERE af.id = $1
+          AND af.cliente_id = $2
+          AND af.tipo = 'inicio_turno'
+          AND af.tracking_token_hash IS NOT NULL
+        LIMIT 1`,
+      [fichajeId, clienteIntId]
+    );
+    if (turnoRows.length === 0) {
+      return res.status(404).json({ error: "Turno no encontrado" });
+    }
+    const { rows: puntos } = await pool.query(
+      `SELECT lat, lng, precision_metros, velocidad_mps, rumbo_grados, bateria_pct, capturado_en
+         FROM agente_recorrido_gps
+        WHERE fichaje_id = $1
+        ORDER BY capturado_en ASC`,
+      [fichajeId]
+    );
+    res.json({ turno: turnoRows[0], puntos, total_puntos: puntos.length });
+  } catch (err) {
+    res.status(500).json({ error: "Error obteniendo recorrido" });
+  }
+});
+
 export default portalRouter;
