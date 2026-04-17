@@ -3131,12 +3131,13 @@ operacionesRouter.get("/operaciones/cierre-hoy", async (req, res) => {
       fechaStr:  isoADDMMYYYY(r.fecha as string),
     }));
 
-    // Días pasados que SÍ están explícitamente cerrados (para que el frontend
-    // pueda distinguir "día cerrado → solo lectura" vs "día abierto/sin registro → editable").
+    // Días que SÍ están explícitamente cerrados (para que el frontend
+    // pueda distinguir "día cerrado → solo lectura/Reabrir" vs "día abierto/sin registro → editable").
+    // Incluye también el día de hoy si ya fue cerrado (caso: cerraron hoy temprano y siguen viendo el pizarrón).
     const { rows: cerradosRows } = await pool.query(`
       SELECT fecha::text AS fecha
       FROM cierre_operativo_diario
-      WHERE estado = 'cerrado' AND fecha < $1::date
+      WHERE estado = 'cerrado' AND fecha <= $1::date
       ORDER BY fecha
     `, [todayGT()]);
 
