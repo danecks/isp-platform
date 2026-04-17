@@ -64,6 +64,117 @@ const DEFAULT_PUNTO: PuntoForm = { nombre: "", descripcion: "", radio_metros: 30
 const DEFAULT_RONDA: RondaForm = { nombre: "", descripcion: "", cliente_id: "" };
 
 // ── Componente: click en mapa para colocar marker ─────────────────────────
+function CoordenadasEditor({
+  latitud, longitud, placing, onMarcarMapa, onAplicarCoordenadas,
+}: {
+  latitud: number | null;
+  longitud: number | null;
+  placing: boolean;
+  onMarcarMapa: () => void;
+  onAplicarCoordenadas: (lat: number, lng: number) => void;
+}) {
+  const [latStr, setLatStr] = useState("");
+  const [lngStr, setLngStr] = useState("");
+  const [errorCoords, setErrorCoords] = useState<string | null>(null);
+
+  // Sincronizar inputs cuando cambia la ubicación marcada por el mapa
+  useEffect(() => {
+    setLatStr(latitud != null ? latitud.toFixed(6) : "");
+    setLngStr(longitud != null ? longitud.toFixed(6) : "");
+    setErrorCoords(null);
+  }, [latitud, longitud]);
+
+  const aplicar = () => {
+    // Aceptar tanto "14.123, -90.456" pegado en un solo campo como dos campos separados
+    let latRaw = latStr.trim();
+    let lngRaw = lngStr.trim();
+    if (latRaw.includes(",") && !lngRaw) {
+      const partes = latRaw.split(",").map(s => s.trim());
+      if (partes.length === 2) { latRaw = partes[0]; lngRaw = partes[1]; }
+    }
+    const lat = parseFloat(latRaw);
+    const lng = parseFloat(lngRaw);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      setErrorCoords("Ingresá números válidos (ej. 14.306205, -90.791965)");
+      return;
+    }
+    if (lat < -90 || lat > 90) {
+      setErrorCoords("La latitud debe estar entre -90 y 90");
+      return;
+    }
+    if (lng < -180 || lng > 180) {
+      setErrorCoords("La longitud debe estar entre -180 y 180");
+      return;
+    }
+    setErrorCoords(null);
+    onAplicarCoordenadas(lat, lng);
+  };
+
+  return (
+    <div className="bg-white/3 border border-white/8 rounded-lg p-3 space-y-3">
+      {latitud != null ? (
+        <div>
+          <p className="text-xs text-green-400 mb-1 flex items-center gap-1">
+            <CheckCircle className="w-3 h-3" /> Ubicación marcada
+          </p>
+          <p className="text-xs text-white/40">
+            {latitud.toFixed(6)}, {longitud?.toFixed(6)}
+          </p>
+        </div>
+      ) : (
+        <p className="text-xs text-yellow-400">Sin ubicación — marcá en el mapa o ingresá las coordenadas</p>
+      )}
+
+      <button
+        onClick={onMarcarMapa}
+        className={`w-full py-1.5 rounded-lg text-xs font-medium transition-colors ${
+          placing ? "bg-blue-500 text-white animate-pulse" : "bg-white/5 hover:bg-white/10 text-white/70"
+        }`}
+      >
+        {placing ? "Haz clic en el mapa..." : "Marcar en mapa"}
+      </button>
+
+      <div className="border-t border-white/8 pt-3">
+        <p className="text-xs text-white/50 mb-2">o ingresá las coordenadas manualmente</p>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-[10px] text-white/40 mb-1 block uppercase tracking-wide">Latitud</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={latStr}
+              onChange={e => setLatStr(e.target.value)}
+              placeholder="14.306205"
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white placeholder-white/30 focus:outline-none focus:border-blue-500/50 font-mono"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-white/40 mb-1 block uppercase tracking-wide">Longitud</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={lngStr}
+              onChange={e => setLngStr(e.target.value)}
+              placeholder="-90.791965"
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white placeholder-white/30 focus:outline-none focus:border-blue-500/50 font-mono"
+            />
+          </div>
+        </div>
+        {errorCoords && <p className="text-[11px] text-red-400 mt-2">{errorCoords}</p>}
+        <button
+          onClick={aplicar}
+          className="mt-2 w-full py-1.5 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 text-white/70 transition-colors"
+        >
+          Aplicar coordenadas
+        </button>
+        <p className="text-[10px] text-white/30 mt-2">
+          Tip: podés copiar/pegar de Google Maps (clic derecho sobre el punto → copia las coordenadas).
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function MapClickHandler({ onPlace }: { onPlace: (lat: number, lng: number) => void }) {
   useMapEvents({ click(e) { onPlace(e.latlng.lat, e.latlng.lng); } });
   return null;
@@ -356,20 +467,15 @@ function RondaDetalle({
                 </div>
 
                 {/* Coordenadas */}
-                <div className="bg-white/3 border border-white/8 rounded-lg p-3">
-                  {form.latitud_ref != null ? (
-                    <div>
-                      <p className="text-xs text-green-400 mb-1 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Ubicación marcada</p>
-                      <p className="text-xs text-white/40">{form.latitud_ref.toFixed(6)}, {form.longitud_ref?.toFixed(6)}</p>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-yellow-400">Sin ubicación — haz clic en el mapa</p>
-                  )}
-                  <button onClick={() => setPlacing(true)}
-                    className={`mt-2 w-full py-1.5 rounded-lg text-xs font-medium transition-colors ${placing ? "bg-blue-500 text-white animate-pulse" : "bg-white/5 hover:bg-white/10 text-white/70"}`}>
-                    {placing ? "Haz clic en el mapa..." : "Marcar en mapa"}
-                  </button>
-                </div>
+                <CoordenadasEditor
+                  latitud={form.latitud_ref}
+                  longitud={form.longitud_ref}
+                  placing={placing}
+                  onMarcarMapa={() => setPlacing(true)}
+                  onAplicarCoordenadas={(lat, lng) =>
+                    setForm(f => ({ ...f, latitud_ref: lat, longitud_ref: lng }))
+                  }
+                />
 
                 {error && <p className="text-xs text-red-400">{error}</p>}
 
