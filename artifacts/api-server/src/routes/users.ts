@@ -292,10 +292,15 @@ usersRouter.get("/clientes/:clienteDbId/usuarios", async (req, res) => {
     if (clientRows.length === 0) return res.status(404).json({ error: "Cliente no encontrado" });
     const portalId: string | null = clientRows[0].portal_cliente_id;
     if (!portalId) return res.json([]);
+    // USR-MULTI-01: usa la tabla de vínculos N:M (incluye usuarios con varios clientes)
     const { rows } = await pool.query(
-      `SELECT id, nombre, username, correo, telefono, rol, estado, cliente_id, employee_id,
-              can_report_emergency, can_request_advance, created_at, updated_at
-       FROM users WHERE cliente_id = $1 ORDER BY created_at ASC`,
+      `SELECT u.id, u.nombre, u.username, u.correo, u.telefono, u.rol, u.estado, u.cliente_id, u.employee_id,
+              u.can_report_emergency, u.can_request_advance, u.created_at, u.updated_at,
+              (u.cliente_id = $1) AS es_default
+         FROM users u
+         JOIN usuarios_clientes uc ON uc.user_id = u.id
+        WHERE uc.portal_cliente_id = $1
+        ORDER BY es_default DESC, u.created_at ASC`,
       [portalId]
     );
     res.json(rows);
@@ -311,9 +316,21 @@ usersRouter.get("/clientes/:clienteDbId/usuarios", async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 usersRouter.get("/users/cliente-disponibles", async (_req, res) => {
   try {
+    // Trae users con rol cliente + array de clientes a los que ya está vinculado
     const { rows } = await pool.query(
       `SELECT u.id, u.nombre, u.username, u.correo, u.telefono, u.estado, u.cliente_id,
-              c.id AS cliente_db_id, c.nombre AS cliente_nombre
+              c.id AS cliente_db_id, c.nombre AS cliente_nombre,
+              COALESCE(
+                (SELECT json_agg(json_build_object(
+                   'portal_cliente_id', uc.portal_cliente_id,
+                   'cliente_db_id', cc.id,
+                   'cliente_nombre', COALESCE(cc.nombre_comercial, cc.nombre)
+                 ) ORDER BY cc.nombre)
+                   FROM usuarios_clientes uc
+                   LEFT JOIN clients cc ON cc.portal_cliente_id = uc.portal_cliente_id
+                  WHERE uc.user_id = u.id),
+                '[]'::json
+              ) AS clientes_vinculados
          FROM users u
          LEFT JOIN clients c ON c.portal_cliente_id = u.cliente_id
         WHERE u.rol = 'cliente'
@@ -358,7 +375,18 @@ usersRouter.post("/clientes/:clienteDbId/usuarios/vincular", async (req, res) =>
     if (userRows[0].rol !== "cliente") {
       return res.status(400).json({ error: "Solo se pueden vincular usuarios con rol cliente" });
     }
-    await pool.query(`UPDATE users SET cliente_id = $1, updated_at = NOW() WHERE id = $2`, [portalId, userId]);
+    // USR-MULTI-01: insertar vínculo en tabla N:M (no sobreescribe vínculos existentes)
+    await pool.query(
+      `INSERT INTO usuarios_clientes (user_id, portal_cliente_id, es_default)
+       VALUES ($1, $2, FALSE)
+       ON CONFLICT (user_id, portal_cliente_id) DO NOTHING`,
+      [userId, portalId]
+    );
+    // Si el user no tenía cliente_id default, este se vuelve el default
+    await pool.query(
+      `UPDATE users SET cliente_id = $1, updated_at = NOW() WHERE id = $2 AND cliente_id IS NULL`,
+      [portalId, userId]
+    );
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: "Error al vincular usuario" });
@@ -370,10 +398,33 @@ usersRouter.post("/clientes/:clienteDbId/usuarios/vincular", async (req, res) =>
 // Desvincula un usuario cliente de este cliente (cliente_id = NULL)
 // ─────────────────────────────────────────────────────────────────────────────
 usersRouter.delete("/clientes/:clienteDbId/usuarios/:userId/vinculo", async (req, res) => {
+  const clienteDbId = parseInt(req.params.clienteDbId);
   const userId = parseInt(req.params.userId);
-  if (isNaN(userId)) return res.status(400).json({ error: "userId inválido" });
+  if (isNaN(userId) || isNaN(clienteDbId)) return res.status(400).json({ error: "ID inválido" });
   try {
-    await pool.query(`UPDATE users SET cliente_id = NULL, updated_at = NOW() WHERE id = $1`, [userId]);
+    const { rows: clientRows } = await pool.query(
+      `SELECT portal_cliente_id FROM clients WHERE id = $1 LIMIT 1`, [clienteDbId]
+    );
+    if (clientRows.length === 0) return res.status(404).json({ error: "Cliente no encontrado" });
+    const portalId: string | null = clientRows[0].portal_cliente_id;
+    if (!portalId) return res.json({ ok: true });
+
+    // USR-MULTI-01: borrar vínculo N:M
+    await pool.query(
+      `DELETE FROM usuarios_clientes WHERE user_id = $1 AND portal_cliente_id = $2`,
+      [userId, portalId]
+    );
+    // Si era el cliente_id default, mover a otro vínculo restante (o NULL)
+    const { rows: remRows } = await pool.query(
+      `SELECT portal_cliente_id FROM usuarios_clientes WHERE user_id = $1 ORDER BY created_at ASC LIMIT 1`,
+      [userId]
+    );
+    const nuevoDefault: string | null = remRows[0]?.portal_cliente_id ?? null;
+    await pool.query(
+      `UPDATE users SET cliente_id = $1, updated_at = NOW()
+        WHERE id = $2 AND cliente_id = $3`,
+      [nuevoDefault, userId, portalId]
+    );
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: "Error al desvincular usuario" });
@@ -416,6 +467,13 @@ usersRouter.post("/clientes/:clienteDbId/usuarios", async (req, res) => {
        RETURNING id, nombre, username, correo, telefono, rol, estado, cliente_id, created_at`,
       [String(nombre), String(username).trim().toLowerCase(), correo || null,
        passwordHash, estado || "activo", telefonoNorm, portalId]
+    );
+    // USR-MULTI-01: insertar en tabla N:M como vínculo default
+    await pool.query(
+      `INSERT INTO usuarios_clientes (user_id, portal_cliente_id, es_default)
+       VALUES ($1, $2, TRUE)
+       ON CONFLICT (user_id, portal_cliente_id) DO NOTHING`,
+      [rows[0].id, portalId]
     );
     res.status(201).json(rows[0]);
   } catch (err: any) {

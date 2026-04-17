@@ -7,16 +7,40 @@
  */
 
 const SESSION_KEY = "isp_admin_session_v2";
+const ACTIVE_CLIENT_KEY = "isp_portal_active_client";
+
+export function getActivePortalClienteId(): string | null {
+  try {
+    const stored = sessionStorage.getItem(ACTIVE_CLIENT_KEY);
+    if (stored) return stored;
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const user = JSON.parse(raw);
+    return user.clienteId ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function setActivePortalClienteId(cid: string) {
+  sessionStorage.setItem(ACTIVE_CLIENT_KEY, cid);
+}
+
+export function clearActivePortalClienteId() {
+  sessionStorage.removeItem(ACTIVE_CLIENT_KEY);
+}
 
 function getPortalHeaders(): HeadersInit {
   try {
     const raw = sessionStorage.getItem(SESSION_KEY);
     if (!raw) return { "Content-Type": "application/json" };
     const user = JSON.parse(raw);
+    const activeCid = getActivePortalClienteId();
     return {
       "Content-Type": "application/json",
       "x-isp-role": user.rol ?? "",
-      "x-isp-clienteid": user.clienteId ?? "",
+      "x-isp-userid": String(user.id ?? ""),
+      "x-isp-clienteid": activeCid ?? user.clienteId ?? "",
     };
   } catch {
     return { "Content-Type": "application/json" };

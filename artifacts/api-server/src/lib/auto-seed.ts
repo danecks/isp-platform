@@ -4915,6 +4915,41 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SEG-02 — error (no bloqueante)");
   }
 
+  // ── USR-MULTI-01: tabla usuarios_clientes (vínculos N:M user↔cliente) ──────
+  // Permite que un usuario rol=cliente acceda a múltiples proyectos/clientes.
+  // users.cliente_id se mantiene como "cliente activo por defecto" para compatibilidad.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS usuarios_clientes (
+        id                 SERIAL PRIMARY KEY,
+        user_id            INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        portal_cliente_id  TEXT NOT NULL,
+        es_default         BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (user_id, portal_cliente_id)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS uc_user ON usuarios_clientes(user_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS uc_portal ON usuarios_clientes(portal_cliente_id)`);
+
+    // Backfill: por cada user con cliente_id, insertar vínculo default si falta
+    await pool.query(`
+      INSERT INTO usuarios_clientes (user_id, portal_cliente_id, es_default)
+      SELECT u.id, u.cliente_id, TRUE
+        FROM users u
+       WHERE u.rol = 'cliente'
+         AND u.cliente_id IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM usuarios_clientes uc
+            WHERE uc.user_id = u.id AND uc.portal_cliente_id = u.cliente_id
+         )
+      ON CONFLICT (user_id, portal_cliente_id) DO NOTHING
+    `);
+    logger.info("Auto-migrate: USR-MULTI-01 tabla usuarios_clientes verificada/creada + backfill");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: USR-MULTI-01 — error (no bloqueante)");
+  }
+
   // ── WIPE-PROD-01: limpieza total de producción (solo cuando bandera activa) ──
   // Activar con:  INSERT INTO system_config (key, value) VALUES ('wipe_prod_requested', 'true')
   //               ON CONFLICT (key) DO UPDATE SET value = 'true';

@@ -28,15 +28,38 @@ async function requirePortalAuth(req: Request, res: Response, next: NextFunction
   }
 
   const cid = clienteId.trim();
+  const userIdHeader = req.headers["x-isp-userid"] as string | undefined;
+  const userId = userIdHeader ? parseInt(userIdHeader) : NaN;
 
   try {
-    // C-02: Verificar usuario activo + resolver el ID entero de clients
-    const { rows } = await pool.query<{ id: number }>(
-      `SELECT id FROM users WHERE cliente_id = $1 AND estado = 'activo' AND rol = 'cliente' LIMIT 1`,
-      [cid]
-    );
-    if (rows.length === 0) {
-      return res.status(403).json({ error: "Credenciales de portal inválidas o cuenta inactiva" });
+    // USR-MULTI-01: validar que el usuario tenga vínculo con el cliente solicitado.
+    // Compatibilidad: si no se manda x-isp-userid, fallback a validación legacy users.cliente_id.
+    if (!isNaN(userId)) {
+      const { rows } = await pool.query<{ id: number }>(
+        `SELECT u.id
+           FROM users u
+           JOIN usuarios_clientes uc ON uc.user_id = u.id
+          WHERE u.id = $1
+            AND uc.portal_cliente_id = $2
+            AND u.estado = 'activo'
+            AND u.rol = 'cliente'
+          LIMIT 1`,
+        [userId, cid]
+      );
+      if (rows.length === 0) {
+        return res.status(403).json({ error: "Acceso denegado: el usuario no está vinculado a este cliente" });
+      }
+      (req as any).portalUserId = userId;
+    } else {
+      // Legacy (sesiones antiguas sin x-isp-userid)
+      const { rows } = await pool.query<{ id: number }>(
+        `SELECT id FROM users WHERE cliente_id = $1 AND estado = 'activo' AND rol = 'cliente' LIMIT 1`,
+        [cid]
+      );
+      if (rows.length === 0) {
+        return res.status(403).json({ error: "Credenciales de portal inválidas o cuenta inactiva" });
+      }
+      (req as any).portalUserId = rows[0].id;
     }
 
     // Resolver el ID entero en la tabla clients (via portal_cliente_id)
@@ -52,6 +75,50 @@ async function requirePortalAuth(req: Request, res: Response, next: NextFunction
   (req as any).portalClienteId = cid;
   next();
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/portal/mis-clientes — lista clientes vinculados al usuario actual
+// No usa requirePortalAuth porque puede llamarse antes de tener cliente activo
+// ─────────────────────────────────────────────────────────────────────────────
+portalRouter.get("/portal/mis-clientes", async (req, res) => {
+  const rol = (req.headers["x-isp-role"] as string)?.toLowerCase();
+  const userIdHeader = req.headers["x-isp-userid"] as string | undefined;
+  const userId = userIdHeader ? parseInt(userIdHeader) : NaN;
+  if (rol !== "cliente" || isNaN(userId)) {
+    return res.status(403).json({ error: "Acceso denegado" });
+  }
+  try {
+    // Verificar usuario activo
+    const { rows: uRows } = await pool.query(
+      `SELECT id, cliente_id FROM users WHERE id = $1 AND estado = 'activo' AND rol = 'cliente' LIMIT 1`,
+      [userId]
+    );
+    if (uRows.length === 0) {
+      return res.status(403).json({ error: "Usuario inactivo o no autorizado" });
+    }
+    const defaultCid: string | null = uRows[0].cliente_id;
+
+    const { rows } = await pool.query(
+      `SELECT uc.portal_cliente_id, uc.es_default,
+              c.id AS cliente_db_id,
+              COALESCE(c.nombre_comercial, c.nombre, uc.portal_cliente_id) AS nombre
+         FROM usuarios_clientes uc
+         LEFT JOIN clients c ON c.portal_cliente_id = uc.portal_cliente_id
+        WHERE uc.user_id = $1
+        ORDER BY uc.es_default DESC, nombre ASC`,
+      [userId]
+    );
+
+    // Marcar default real (la columna es_default puede estar desincronizada con users.cliente_id)
+    const enriched = rows.map((r: any) => ({
+      ...r,
+      es_default: r.portal_cliente_id === defaultCid || r.es_default,
+    }));
+    res.json(enriched);
+  } catch (err) {
+    res.status(500).json({ error: "Error al obtener clientes vinculados" });
+  }
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/portal/dashboard — resumen ejecutivo del cliente

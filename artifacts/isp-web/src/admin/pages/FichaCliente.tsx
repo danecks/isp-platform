@@ -1196,6 +1196,11 @@ interface UsuarioClienteDisponible {
   cliente_id: string | null;
   cliente_db_id: number | null;
   cliente_nombre: string | null;
+  clientes_vinculados?: Array<{
+    portal_cliente_id: string;
+    cliente_db_id: number | null;
+    cliente_nombre: string | null;
+  }>;
 }
 function ModalVincularUsuarioCliente({
   clienteDbId, onClose, onLinked,
@@ -1273,8 +1278,9 @@ function ModalVincularUsuarioCliente({
           ) : (
             <div className="space-y-1.5">
               {filtrados.map(u => {
-                const yaVinculadoOtro = u.cliente_db_id !== null && u.cliente_db_id !== clienteDbId;
-                const yaVinculadoEste = u.cliente_db_id === clienteDbId;
+                const vinculados = u.clientes_vinculados ?? [];
+                const yaVinculadoEste = vinculados.some(v => v.cliente_db_id === clienteDbId);
+                const otrosVinculos = vinculados.filter(v => v.cliente_db_id !== clienteDbId);
                 const sel = selectedId === u.id;
                 return (
                   <button
@@ -1302,9 +1308,9 @@ function ModalVincularUsuarioCliente({
                         {yaVinculadoEste && (
                           <p className="text-[10px] text-green-400 mt-1">Ya vinculado a este cliente</p>
                         )}
-                        {yaVinculadoOtro && (
-                          <p className="text-[10px] text-yellow-400 mt-1">
-                            Vinculado a: {u.cliente_nombre}. Al vincularlo aquí se transferirá.
+                        {!yaVinculadoEste && otrosVinculos.length > 0 && (
+                          <p className="text-[10px] text-blue-300/70 mt-1">
+                            También vinculado a: {otrosVinculos.map(v => v.cliente_nombre).join(", ")}
                           </p>
                         )}
                       </div>
