@@ -4907,6 +4907,14 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SEG-01 — error (no bloqueante)");
   }
 
+  // ── SEG-02: columna descuento_seguro_vida en planilla_lineas ──────────────
+  try {
+    await pool.query(`ALTER TABLE planilla_lineas ADD COLUMN IF NOT EXISTS descuento_seguro_vida NUMERIC(10,2) NOT NULL DEFAULT 0`);
+    logger.info("Auto-migrate: SEG-02 columna descuento_seguro_vida en planilla_lineas verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SEG-02 — error (no bloqueante)");
+  }
+
   // ── WIPE-PROD-01: limpieza total de producción (solo cuando bandera activa) ──
   // Activar con:  INSERT INTO system_config (key, value) VALUES ('wipe_prod_requested', 'true')
   //               ON CONFLICT (key) DO UPDATE SET value = 'true';

@@ -115,6 +115,7 @@ interface ColaboradorPre {
   total_dias_descuento: number;
   barraca_monto: number;
   barraca_nombre: string | null;
+  seguro_prima_mensual: number;
 }
 
 interface DetalleNovedad {
@@ -309,16 +310,22 @@ function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: number | n
   const anticipo = Number(col.anticipos_monto);
   const cuotaUniforme = Number(col.cuota_uniforme_monto ?? 0);
   const barracaMonto = Number(col.barraca_monto ?? 0);
+  // Seguro de vida (SEG-02): mitad de la prima si quincenal, completo si mensual
+  const primaSeguroMensual = Number(col.seguro_prima_mensual ?? 0);
+  const frec = String(col.frecuencia_pago ?? "quincenal");
+  const seguroMonto = primaSeguroMensual > 0
+    ? (frec === "quincenal" ? Math.round((primaSeguroMensual / 2) * 100) / 100 : primaSeguroMensual)
+    : 0;
   const igssLaboral = col.aplica_igss ? Math.round((sueldoPeriodo - descFaltas) * 0.0483 * 100) / 100 : 0;
   const isrQuincenal = calcularISRQuincenal(sb, col.aplica_igss);
-  const total = sueldoPeriodo - descFaltas + valorHE - anticipo - cuotaUniforme - barracaMonto - igssLaboral - isrQuincenal;
+  const total = sueldoPeriodo - descFaltas + valorHE - anticipo - cuotaUniforme - barracaMonto - seguroMonto - igssLaboral - isrQuincenal;
 
   const diasCerrados = Number(col.dias_cerrados ?? 0);
   const sueldoReal = sueldoDia * diasCerrados;
   const igssLaboralReal = col.aplica_igss ? Math.round((sueldoReal - descFaltas) * 0.0483 * 100) / 100 : 0;
-  const totalReal = sueldoReal - descFaltas + valorHE - anticipo - cuotaUniforme - barracaMonto - igssLaboralReal - isrQuincenal;
+  const totalReal = sueldoReal - descFaltas + valorHE - anticipo - cuotaUniforme - barracaMonto - seguroMonto - igssLaboralReal - isrQuincenal;
 
-  return { sueldoPeriodo, descFaltas, valorHE, anticipo, cuotaUniforme, barracaMonto, igssLaboral, igssLaboralReal, isrQuincenal, total, diasDesc, diasCerrados, sueldoReal, totalReal };
+  return { sueldoPeriodo, descFaltas, valorHE, anticipo, cuotaUniforme, barracaMonto, seguroMonto, igssLaboral, igssLaboralReal, isrQuincenal, total, diasDesc, diasCerrados, sueldoReal, totalReal };
 }
 
 // ─── Badge revisión ───────────────────────────────────────────────────────────

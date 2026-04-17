@@ -187,6 +187,16 @@ const QUERY_CONSOLIDADO = `
     (SELECT b.nombre FROM barraca_asignaciones ba JOIN barracas b ON b.id = ba.barraca_id
      WHERE ba.employee_id = e.id AND ba.activo = TRUE AND b.activo = TRUE LIMIT 1) AS barraca_nombre,
 
+    -- Prima mensual de seguro de vida vigente al período (SEG-02)
+    -- El monto del período (mitad si quincenal, completo si mensual) se calcula en TS
+    COALESCE((
+      SELECT sc.prima_mensual::float
+      FROM seguros_config sc
+      WHERE sc.vigente_desde <= $2::date
+      ORDER BY sc.vigente_desde DESC, sc.id DESC
+      LIMIT 1
+    ), 0)                                                                        AS seguro_prima_mensual,
+
     -- Estado de revisión RRHH
     COALESCE(pr.estado, 'pendiente')                                            AS revision_estado,
     pr.observaciones                                                            AS revision_observaciones,

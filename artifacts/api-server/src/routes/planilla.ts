@@ -75,6 +75,7 @@ function calcularLinea(
   uniformeMonto: number = 0,
   tarifasHE?: Map<string, { tarifa: number; horas_turno: number }>,
   barracaMonto: number = 0,
+  seguroMontoPeriodo: number = 0,
 ) {
   const sb        = toNum(row.sueldo_base);
   const hc        = toNum(row.horas_contrato);
@@ -148,8 +149,9 @@ function calcularLinea(
 
   const uniforme = parseFloat(uniformeMonto.toFixed(2));
   const barraca = parseFloat(barracaMonto.toFixed(2));
+  const seguro = parseFloat(seguroMontoPeriodo.toFixed(2));
   const totalBonificaciones = bonificacion_incentivo + bonificacion_1 + bonificacion_2 + bonificacion_3;
-  const totalNeto = parseFloat(Math.max(0, totalBrutoRnd - igssT - isr + totalBonificaciones - anticipo - uniforme - barraca).toFixed(2));
+  const totalNeto = parseFloat(Math.max(0, totalBrutoRnd - igssT - isr + totalBonificaciones - anticipo - uniforme - barraca - seguro).toFixed(2));
 
   return {
     sueldo_base:      sb,
@@ -178,9 +180,10 @@ function calcularLinea(
     total_neto:       totalNeto,
     aplica_igss:           igssData.aplica_igss,
     motivo_exclusion_igss: igssData.motivo_exclusion_igss,
-    otros_descuentos:    0,
-    descuentos_uniforme: uniforme,
-    descuento_barraca:   barraca,
+    otros_descuentos:      0,
+    descuentos_uniforme:   uniforme,
+    descuento_barraca:     barraca,
+    descuento_seguro_vida: seguro,
   };
 }
 
@@ -350,6 +353,18 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
     // Construir mapa de cuotas de barraca por empleado
     const barracaMap = await buildBarracaCuotaMap(empIds);
 
+    // Cargar prima mensual de seguro de vida vigente al fin del período (SEG-02)
+    let primaSeguroMensual = 0;
+    try {
+      const { rows: segRows } = await pool.query(
+        `SELECT prima_mensual::float AS prima FROM seguros_config
+         WHERE vigente_desde <= $1::date
+         ORDER BY vigente_desde DESC, id DESC LIMIT 1`,
+        [hasta]
+      );
+      primaSeguroMensual = segRows[0]?.prima ?? 0;
+    } catch { /* tabla aún no existe — sin descuento */ }
+
     // Cargar tarifas de HE configurables
     const tarifasHE = new Map<string, { tarifa: number; horas_turno: number }>();
     try {
@@ -370,6 +385,10 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
       const barracaCuotaMensual = barracaInfo?.cuota ?? 0;
       const frecPago = String(row.frecuencia_pago ?? "quincenal");
       const barracaMonto = frecPago === "quincenal" ? parseFloat((barracaCuotaMensual / 2).toFixed(2)) : barracaCuotaMensual;
+      // Seguro de vida (SEG-02): mitad de la prima mensual si quincenal, completo si mensual
+      const seguroMontoPeriodo = frecPago === "quincenal"
+        ? parseFloat((primaSeguroMensual / 2).toFixed(2))
+        : parseFloat(primaSeguroMensual.toFixed(2));
       return {
         employee_id:        empId,
         nombre_completo:    String(row.nombre_completo ?? ""),
@@ -380,7 +399,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         tipo_jornada:       row.tipo_jornada as string | null,
         revision_estado:    row.revision_estado as string | null,
         observaciones_rrhh: row.revision_observaciones as string | null,
-        ...calcularLinea(row, periodoTotalDias, igssData, quincenaTipo, desde, hasta, uniformeMonto, tarifasHE, barracaMonto),
+        ...calcularLinea(row, periodoTotalDias, igssData, quincenaTipo, desde, hasta, uniformeMonto, tarifasHE, barracaMonto, seguroMontoPeriodo),
       };
     });
 
@@ -400,6 +419,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         total_bonificacion_2:         acc.total_bonificacion_2         + l.bonificacion_2,
         total_bonificacion_3:         acc.total_bonificacion_3         + l.bonificacion_3,
         total_anticipos:              acc.total_anticipos              + l.anticipos,
+        total_descuento_seguro_vida:  acc.total_descuento_seguro_vida  + l.descuento_seguro_vida,
         total_neto:                   acc.total_neto                   + l.total_neto,
       }),
       {
@@ -407,7 +427,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         total_valor_he: 0, total_bruto: 0,
         total_igss_trabajador: 0, total_igss_patronal: 0, total_isr: 0,
         total_bonificacion_incentivo: 0, total_bonificacion_1: 0, total_bonificacion_2: 0, total_bonificacion_3: 0,
-        total_anticipos: 0, total_neto: 0,
+        total_anticipos: 0, total_descuento_seguro_vida: 0, total_neto: 0,
       }
     );
 
@@ -498,8 +518,8 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
            anticipo_ids, novedad_ids, segmento_ids,
            revision_estado, observaciones_rrhh,
            descuentos_uniforme, uniforme_cuota_ids,
-           descuento_barraca)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42)
+           descuento_barraca, descuento_seguro_vida)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43)
       `, [
         planillaId, l.employee_id, l.nombre_completo, l.dpi, l.puesto, l.sede, l.cliente,
         l.tipo_jornada, l.horas_contrato, l.frecuencia_pago, l.sueldo_base, l.periodo_dias,
@@ -513,7 +533,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         JSON.stringify(anticipoIds), JSON.stringify([]), JSON.stringify([]),
         l.revision_estado, l.observaciones_rrhh,
         l.descuentos_uniforme, JSON.stringify(uniformeCuotaIds),
-        l.descuento_barraca,
+        l.descuento_barraca, l.descuento_seguro_vida,
       ]);
     }
 
