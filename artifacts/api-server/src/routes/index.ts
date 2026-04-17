@@ -60,6 +60,7 @@ import { resetDatosRouter } from "./reset-datos";
 import { actasRouter } from "./actas";
 import custodiasRouter from "./custodias";
 import { barracasRouter } from "./barracas";
+import segurosRouter from "./seguros";
 
 const router: IRouter = Router();
 
@@ -124,5 +125,6 @@ router.use(resetDatosRouter);
 router.use(actasRouter);
 router.use(custodiasRouter);
 router.use(barracasRouter);
+router.use(segurosRouter);
 
 export default router;

@@ -40,6 +40,7 @@ import {
   CreditCard,
   Tablet,
   Home,
+  ShieldCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -297,6 +298,13 @@ export const NAV_SECTIONS: NavSection[] = [
         label: "Planilla IGSS",
         icon: Landmark,
         clave: "igss_planilla",
+        roles: ["admin", "rrhh"],
+      },
+      {
+        path: "/admin/rrhh/seguros",
+        label: "Seguros",
+        icon: ShieldCheck,
+        clave: "seguros",
         roles: ["admin", "rrhh"],
       },
       {

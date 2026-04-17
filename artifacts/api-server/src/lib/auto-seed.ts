@@ -4870,6 +4870,30 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-seed: DEMO-VAC-01 — error (no bloqueante)");
   }
 
+  // ── SEG-01: tabla seguros_config (prima de seguro de vida — historial) ──────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS seguros_config (
+        id            SERIAL PRIMARY KEY,
+        prima_mensual NUMERIC(10,2) NOT NULL,
+        vigente_desde DATE NOT NULL,
+        notas         TEXT,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_by    VARCHAR(100)
+      )
+    `);
+    const { rowCount } = await pool.query(`SELECT 1 FROM seguros_config LIMIT 1`);
+    if (!rowCount) {
+      await pool.query(`
+        INSERT INTO seguros_config (prima_mensual, vigente_desde, notas, created_by)
+        VALUES (0.00, CURRENT_DATE, 'Configurar prima mensual de seguro de vida', 'system')
+      `);
+    }
+    logger.info("Auto-migrate: SEG-01 tabla seguros_config verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SEG-01 — error (no bloqueante)");
+  }
+
   // ── WIPE-PROD-01: limpieza total de producción (solo cuando bandera activa) ──
   // Activar con:  INSERT INTO system_config (key, value) VALUES ('wipe_prod_requested', 'true')
   //               ON CONFLICT (key) DO UPDATE SET value = 'true';

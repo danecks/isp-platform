@@ -32,6 +32,7 @@ import AdminCustodias from "@/admin/pages/Custodias";
 import AdminClientes from "@/admin/pages/Clientes";
 import AdminUsuarios from "@/admin/pages/Usuarios";
 import AdminAnticipos from "@/admin/pages/Anticipos";
+import AdminSeguros from "@/admin/pages/Seguros";
 import AdminWhatsappConfig from "@/admin/pages/configuracion/WhatsappConfig";
 import AdminReportes from "@/admin/pages/Reportes";
 import AdminCMS from "@/admin/pages/CMS";
@@ -169,6 +170,9 @@ function Router() {
       </Route>
       <Route path="/admin/anticipos">
         {() => <AuthGuard requiredRoles={["admin", "rrhh"]}><AdminAnticipos /></AuthGuard>}
+      </Route>
+      <Route path="/admin/rrhh/seguros">
+        {() => <AuthGuard requiredRoles={["admin", "rrhh"]}><AdminSeguros /></AuthGuard>}
       </Route>
       <Route path="/admin/configuracion/whatsapp">
         {() => <AuthGuard requiredRoles={["admin"]}><AdminWhatsappConfig /></AuthGuard>}
