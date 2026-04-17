@@ -224,14 +224,9 @@ export default function AgenteInicio() {
         const size = Math.floor(min * 0.8);
         return { width: size, height: size };
       };
-      // Constraints fuertes: cámara trasera + alta resolución + autoenfoque continuo
-      // (mejora notablemente la lectura en Android con cámaras flojas)
-      const videoConstraints = {
-        facingMode: { ideal: "environment" },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-        advanced: [{ focusMode: "continuous" }],
-      } as MediaTrackConstraints;
+      // Html5Qrcode exige que cameraIdOrConfig tenga EXACTAMENTE 1 key cuando es objeto.
+      // Solo pedimos cámara trasera; resolución/enfoque los maneja la lib internamente.
+      const videoConstraints = { facingMode: "environment" } as MediaTrackConstraints;
       await scanner.start(
         videoConstraints,
         {
