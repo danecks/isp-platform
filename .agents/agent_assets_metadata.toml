@@ -1,0 +1,20 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "nyHQs5Hn340voigtMPRBO"
+uri = "file://artifacts/mockup-sandbox/public/images/hero-cinematic.png"
+type = "image"
+title = "Cinematic Security Hero"
+
+[[generated]]
+id = "l3JGEJgmM7hs1KUHfve6r"
+uri = "file://artifacts/mockup-sandbox/public/images/service-transit.png"
+type = "image"
+title = "Armored Transit Vehicle"
+
+[[generated]]
+id = "ZMxprvgbna3wj3dZCzNCz"
+uri = "file://artifacts/mockup-sandbox/public/images/service-physical.png"
+type = "image"
+title = "Physical Security Guard"
