@@ -785,6 +785,152 @@ planillaRouter.get("/nomina/planilla/:id/export", async (req, res) => {
   }
 });
 
+// ─── Transferencias bancarias (un archivo CSV por banco) ────────────────────
+// Genera un archivo CSV por cada banco al que se le debe pagar por
+// transferencia. NO consolida bancos: cada portal del banco recibe solo las
+// cuentas de su propia institución.
+
+function slugBanco(s: string) {
+  return s.toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "") || "banco";
+}
+
+function nombrePeriodoConcepto(desde: string, hasta: string) {
+  // Devuelve algo como "1ra quincena abril 2026" o "abril 2026"
+  const d = new Date(desde + "T00:00:00");
+  const h = new Date(hasta + "T00:00:00");
+  if (isNaN(d.getTime()) || isNaN(h.getTime())) return `${desde} a ${hasta}`;
+  const meses = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+  if (d.getMonth() === h.getMonth() && d.getFullYear() === h.getFullYear()) {
+    const mes = meses[d.getMonth()];
+    const anio = d.getFullYear();
+    if (d.getDate() <= 5 && h.getDate() >= 14 && h.getDate() <= 16) return `1ra quincena ${mes} ${anio}`;
+    if (d.getDate() >= 14 && d.getDate() <= 17) return `2da quincena ${mes} ${anio}`;
+    return `${mes} ${anio}`;
+  }
+  return `${desde} a ${hasta}`;
+}
+
+planillaRouter.get("/nomina/planilla/:id/transferencias-resumen", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "id inválido" });
+  try {
+    const { rows } = await pool.query(`
+      SELECT pl.id, pl.nombre_completo, pl.dpi, pl.total_neto,
+             e.banco, e.cuenta_bancaria, e.tipo_cuenta, e.forma_pago
+      FROM planilla_lineas pl
+      LEFT JOIN employees e ON e.id = pl.employee_id
+      WHERE pl.planilla_id = $1
+      ORDER BY pl.nombre_completo
+    `, [id]);
+
+    type Bucket = { banco: string; bancoSlug: string; empleados: number; monto: number };
+    const buckets = new Map<string, Bucket>();
+    let otrosCount = 0;
+    let otrosMonto = 0;
+    const sinDatos: { id:number; nombre:string; dpi:string; razon:string; monto:number }[] = [];
+
+    for (const l of rows) {
+      const fp = String(l.forma_pago ?? "").toLowerCase();
+      const monto = parseFloat(l.total_neto ?? 0) || 0;
+      if (fp !== "transferencia") {
+        otrosCount++;
+        otrosMonto += monto;
+        continue;
+      }
+      const banco  = String(l.banco ?? "").trim();
+      const cuenta = String(l.cuenta_bancaria ?? "").trim();
+      if (!banco || !cuenta) {
+        sinDatos.push({
+          id: l.id,
+          nombre: l.nombre_completo,
+          dpi: l.dpi ?? "",
+          razon: !banco && !cuenta ? "sin banco ni cuenta" : !banco ? "sin banco" : "sin cuenta",
+          monto,
+        });
+        continue;
+      }
+      const key = banco.toLowerCase();
+      const b = buckets.get(key) ?? { banco, bancoSlug: slugBanco(banco), empleados: 0, monto: 0 };
+      b.empleados += 1;
+      b.monto += monto;
+      buckets.set(key, b);
+    }
+
+    res.json({
+      bancos: Array.from(buckets.values()).sort((a, b) => b.monto - a.monto),
+      otrosPagos: { empleados: otrosCount, monto: otrosMonto },
+      sinDatos,
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /nomina/planilla/:id/transferencias-resumen error");
+    res.status(500).json({ error: "Error al calcular resumen de transferencias" });
+  }
+});
+
+planillaRouter.get("/nomina/planilla/:id/transferencias", async (req, res) => {
+  const id = parseInt(req.params.id);
+  const banco = String(req.query.banco ?? "").trim();
+  if (isNaN(id)) return res.status(400).json({ error: "id inválido" });
+  if (!banco)   return res.status(400).json({ error: "Falta parámetro banco" });
+
+  try {
+    const { rows: plan } = await pool.query(`SELECT * FROM planillas WHERE id = $1`, [id]);
+    if (!plan.length) return res.status(404).json({ error: "Planilla no encontrada" });
+    const p = plan[0];
+
+    const { rows: lineas } = await pool.query(`
+      SELECT pl.nombre_completo, pl.dpi, pl.total_neto,
+             e.banco, e.cuenta_bancaria, e.tipo_cuenta
+      FROM planilla_lineas pl
+      JOIN employees e ON e.id = pl.employee_id
+      WHERE pl.planilla_id = $1
+        AND LOWER(e.forma_pago) = 'transferencia'
+        AND LOWER(TRIM(e.banco)) = LOWER($2)
+        AND e.cuenta_bancaria IS NOT NULL
+        AND TRIM(e.cuenta_bancaria) <> ''
+      ORDER BY pl.nombre_completo
+    `, [id, banco]);
+
+    if (!lineas.length) {
+      return res.status(404).json({ error: `No hay empleados con transferencia a "${banco}" en esta planilla` });
+    }
+
+    const concepto = `Planilla ${nombrePeriodoConcepto(p.periodo_desde, p.periodo_hasta)}`;
+    const BOM = "\uFEFF";
+    const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+
+    const headers = ["Nombre completo", "DPI", "Banco", "Tipo de cuenta", "Número de cuenta", "Monto (Q)", "Concepto"];
+    const filas = lineas.map((l: any) => [
+      l.nombre_completo,
+      l.dpi ?? "",
+      l.banco,
+      l.tipo_cuenta ?? "",
+      String(l.cuenta_bancaria),
+      (parseFloat(l.total_neto ?? 0) || 0).toFixed(2),
+      concepto,
+    ]);
+    const total = filas.reduce((s, r) => s + parseFloat(r[5]), 0);
+
+    const csv = [
+      headers.map(esc).join(","),
+      ...filas.map(r => r.map(esc).join(",")),
+      "",
+      ["TOTAL", "", "", "", `${filas.length} empleados`, total.toFixed(2), concepto].map(esc).join(","),
+    ].join("\r\n");
+
+    const filename = `transferencias_${slugBanco(banco)}_${p.periodo_desde}_${p.periodo_hasta}.csv`;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(BOM + csv);
+  } catch (err) {
+    logger.error({ err }, "GET /nomina/planilla/:id/transferencias error");
+    res.status(500).json({ error: "Error al generar archivo de transferencias" });
+  }
+});
+
 // ─── Tarifas de Horas Extra ──────────────────────────────────────────────────
 
 planillaRouter.get("/nomina/tarifas-he", async (_req, res) => {
