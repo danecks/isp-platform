@@ -1,7 +1,9 @@
-import { Menu, Bell, User, LogOut } from "lucide-react";
+import { useState } from "react";
+import { Menu, Bell, User, LogOut, KeyRound } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLocation } from "wouter";
 import { brand } from "@/config/branding";
+import { CambiarPasswordModal } from "@/components/CambiarPasswordModal";
 
 interface AdminTopbarProps {
   title: string;
@@ -11,6 +13,7 @@ interface AdminTopbarProps {
 export function AdminTopbar({ title, onMenuOpen }: AdminTopbarProps) {
   const { currentUser, logout } = useAuth();
   const [, navigate] = useLocation();
+  const [showChangePass, setShowChangePass] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -55,6 +58,14 @@ export function AdminTopbar({ title, onMenuOpen }: AdminTopbarProps) {
         </div>
 
         <button
+          onClick={() => setShowChangePass(true)}
+          title="Cambiar mi contraseña"
+          className="p-1.5 text-white/30 hover:text-primary transition-colors"
+        >
+          <KeyRound className="w-4 h-4" />
+        </button>
+
+        <button
           onClick={handleLogout}
           title="Cerrar sesión"
           className="p-1.5 text-white/30 hover:text-red-400 transition-colors"
@@ -62,6 +73,8 @@ export function AdminTopbar({ title, onMenuOpen }: AdminTopbarProps) {
           <LogOut className="w-4 h-4" />
         </button>
       </div>
+
+      {showChangePass && <CambiarPasswordModal onClose={() => setShowChangePass(false)} />}
     </header>
   );
 }

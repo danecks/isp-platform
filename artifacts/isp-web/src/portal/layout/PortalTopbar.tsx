@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Menu, ChevronDown, Check, Building2 } from "lucide-react";
+import { Menu, ChevronDown, Check, Building2, KeyRound, LogOut } from "lucide-react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   portalGet,
   getActivePortalClienteId,
   setActivePortalClienteId,
 } from "@/lib/portalApi";
+import { CambiarPasswordModal } from "@/components/CambiarPasswordModal";
 
 interface PortalTopbarProps {
   title: string;
@@ -21,8 +23,15 @@ interface MiCliente {
 }
 
 export function PortalTopbar({ title, onMenuOpen }: PortalTopbarProps) {
-  const { currentUser } = useAuth();
+  const { currentUser, logout } = useAuth();
+  const [, navigate] = useLocation();
   const [open, setOpen] = useState(false);
+  const [showChangePass, setShowChangePass] = useState(false);
+
+  function handleLogout() {
+    logout();
+    navigate("/admin/login");
+  }
   const [activeCid, setActiveCid] = useState<string | null>(getActivePortalClienteId());
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -147,7 +156,25 @@ export function PortalTopbar({ title, onMenuOpen }: PortalTopbarProps) {
             {currentUser?.nombre?.charAt(0) ?? "C"}
           </span>
         </div>
+
+        <button
+          onClick={() => setShowChangePass(true)}
+          title="Cambiar mi contraseña"
+          className="p-1.5 text-white/30 hover:text-primary transition-colors"
+        >
+          <KeyRound className="w-4 h-4" />
+        </button>
+
+        <button
+          onClick={handleLogout}
+          title="Cerrar sesión"
+          className="p-1.5 text-white/30 hover:text-red-400 transition-colors"
+        >
+          <LogOut className="w-4 h-4" />
+        </button>
       </div>
+
+      {showChangePass && <CambiarPasswordModal onClose={() => setShowChangePass(false)} />}
     </header>
   );
 }

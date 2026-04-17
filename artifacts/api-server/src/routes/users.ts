@@ -72,6 +72,55 @@ usersRouter.post("/auth/login", async (req, res) => {
   }
 });
 
+// POST /api/auth/change-password — el usuario logueado cambia su propia contraseña
+usersRouter.post("/auth/change-password", async (req, res) => {
+  const { currentPassword, newPassword } = req.body ?? {};
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: "Contraseña actual y nueva son requeridas" });
+  }
+  if (String(newPassword).length < 4) {
+    return res.status(400).json({ error: "La nueva contraseña debe tener al menos 4 caracteres" });
+  }
+
+  let session: { username?: string } | null = null;
+  try {
+    const raw = req.headers["x-isp-session"] as string | undefined;
+    if (raw) session = JSON.parse(raw);
+  } catch {
+    return res.status(401).json({ error: "Sesión inválida" });
+  }
+  if (!session?.username) {
+    return res.status(401).json({ error: "No hay sesión activa" });
+  }
+
+  try {
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.username, String(session.username).trim().toLowerCase()))
+      .limit(1);
+    if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+    if (user.estado !== "activo") {
+      return res.status(403).json({ error: "Cuenta desactivada" });
+    }
+
+    const valid = await bcrypt.compare(String(currentPassword), user.passwordHash);
+    if (!valid) {
+      return res.status(401).json({ error: "La contraseña actual es incorrecta" });
+    }
+
+    const newHash = await bcrypt.hash(String(newPassword), 10);
+    await db
+      .update(usersTable)
+      .set({ passwordHash: newHash })
+      .where(eq(usersTable.id, user.id));
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Error al cambiar la contraseña" });
+  }
+});
+
 // GET /api/users — list all users (admin only, enforced on frontend)
 usersRouter.get("/users", async (_req, res) => {
   try {
