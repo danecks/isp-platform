@@ -8,6 +8,7 @@ export const modules: ModuleMap = {
   "./components/mockups/carnets-pvc/Moderno.tsx": () => import("../components/mockups/carnets-pvc/Moderno.tsx"),
   "./components/mockups/erd/ERDDiagram.tsx": () => import("../components/mockups/erd/ERDDiagram.tsx"),
   "./components/mockups/isp-home/Cinematografico.tsx": () => import("../components/mockups/isp-home/Cinematografico.tsx"),
+  "./components/mockups/isp-home/Inmersiva.tsx": () => import("../components/mockups/isp-home/Inmersiva.tsx"),
   "./components/mockups/isp-home/Mision.tsx": () => import("../components/mockups/isp-home/Mision.tsx"),
   "./components/mockups/isp-home/Operacional.tsx": () => import("../components/mockups/isp-home/Operacional.tsx"),
   "./components/mockups/kiosco-solicitud/DpiCaptura.tsx": () => import("../components/mockups/kiosco-solicitud/DpiCaptura.tsx"),
