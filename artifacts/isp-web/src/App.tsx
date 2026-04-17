@@ -85,6 +85,8 @@ import PortalKPI from "@/portal/pages/PortalKPI";
 import PortalAgentes from "@/portal/pages/PortalAgentes";
 import PortalSolicitudes from "@/portal/pages/PortalSolicitudes";
 import PortalCobertura from "@/portal/pages/PortalCobertura";
+import PortalFichajes from "@/portal/pages/PortalFichajes";
+import PortalRondas from "@/portal/pages/PortalRondas";
 
 const queryClient = new QueryClient();
 
@@ -132,6 +134,12 @@ function Router() {
       </Route>
       <Route path="/portal/cobertura">
         {() => <PortalGuard><PortalCobertura /></PortalGuard>}
+      </Route>
+      <Route path="/portal/fichajes">
+        {() => <PortalGuard><PortalFichajes /></PortalGuard>}
+      </Route>
+      <Route path="/portal/rondas">
+        {() => <PortalGuard><PortalRondas /></PortalGuard>}
       </Route>
 
       {/* ── Panel administrativo (rol admin, operaciones, rrhh, etc.) ───── */}

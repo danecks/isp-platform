@@ -339,8 +339,17 @@ usersRouter.post("/clientes/:clienteDbId/usuarios/vincular", async (req, res) =>
       `SELECT portal_cliente_id FROM clients WHERE id = $1 LIMIT 1`, [clienteDbId]
     );
     if (clientRows.length === 0) return res.status(404).json({ error: "Cliente no encontrado" });
-    const portalId: string | null = clientRows[0].portal_cliente_id;
-    if (!portalId) return res.status(400).json({ error: "Este cliente no tiene portal_cliente_id configurado" });
+    let portalId: string | null = clientRows[0].portal_cliente_id;
+    if (!portalId) {
+      const { rows: genRows } = await pool.query(
+        `UPDATE clients SET portal_cliente_id = gen_random_uuid()::text, updated_at = NOW()
+         WHERE id = $1 AND portal_cliente_id IS NULL
+         RETURNING portal_cliente_id`,
+        [clienteDbId]
+      );
+      portalId = genRows[0]?.portal_cliente_id ?? null;
+      if (!portalId) return res.status(500).json({ error: "No se pudo generar portal_cliente_id" });
+    }
 
     const { rows: userRows } = await pool.query(
       `SELECT id, rol FROM users WHERE id = $1 LIMIT 1`, [userId]
@@ -383,8 +392,17 @@ usersRouter.post("/clientes/:clienteDbId/usuarios", async (req, res) => {
       `SELECT portal_cliente_id, nombre FROM clients WHERE id = $1 LIMIT 1`, [clienteDbId]
     );
     if (clientRows.length === 0) return res.status(404).json({ error: "Cliente no encontrado" });
-    const portalId: string = clientRows[0].portal_cliente_id;
-    if (!portalId) return res.status(400).json({ error: "Este cliente no tiene portal_cliente_id configurado" });
+    let portalId: string | null = clientRows[0].portal_cliente_id;
+    if (!portalId) {
+      const { rows: genRows } = await pool.query(
+        `UPDATE clients SET portal_cliente_id = gen_random_uuid()::text, updated_at = NOW()
+         WHERE id = $1 AND portal_cliente_id IS NULL
+         RETURNING portal_cliente_id`,
+        [clienteDbId]
+      );
+      portalId = genRows[0]?.portal_cliente_id ?? null;
+      if (!portalId) return res.status(500).json({ error: "No se pudo generar portal_cliente_id" });
+    }
 
     const { nombre, username, correo, password, telefono, estado } = req.body ?? {};
     if (!nombre || !username || !password) {

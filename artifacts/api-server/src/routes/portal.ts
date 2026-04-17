@@ -388,4 +388,156 @@ portalRouter.get("/portal/info", requirePortalAuth, async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper periodo: 'hoy' | '7d' | '15d' → fecha desde (ISO)
+// ─────────────────────────────────────────────────────────────────────────────
+function periodoToDesde(periodo: string): string {
+  const now = new Date();
+  if (periodo === "hoy") {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    return d.toISOString();
+  }
+  const dias = periodo === "15d" ? 15 : 7;
+  const d = new Date(now.getTime() - dias * 24 * 60 * 60 * 1000);
+  return d.toISOString();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/portal/qr/fichajes?periodo=hoy|7d|15d
+// Fichajes de agentes en puestos del cliente
+// ─────────────────────────────────────────────────────────────────────────────
+portalRouter.get("/portal/qr/fichajes", requirePortalAuth, async (req, res) => {
+  const clienteIntId: number | null = (req as any).portalClienteIntId;
+  if (!clienteIntId) return res.json([]);
+  const periodo = String(req.query.periodo || "7d");
+  const desde = periodoToDesde(periodo);
+  try {
+    const { rows } = await pool.query(
+      `SELECT af.id, af.tipo, af.resultado, af.registrado_en,
+              af.distancia_metros, af.calificacion,
+              e.id AS employee_id, e.nombres, e.apellidos, e.empl_numero,
+              po.id AS puesto_id, po.nombre AS puesto_nombre
+         FROM agente_fichajes af
+         JOIN puestos_operativos po ON po.id = af.puesto_id
+         LEFT JOIN employees e ON e.id = af.employee_id
+        WHERE po.cliente_id = $1
+          AND af.registrado_en >= $2
+        ORDER BY af.registrado_en DESC
+        LIMIT 500`,
+      [clienteIntId, desde]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Error al obtener fichajes" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/portal/qr/rondas?periodo=hoy|7d|15d
+// Eventos de rondas QR escaneadas en puestos del cliente
+// ─────────────────────────────────────────────────────────────────────────────
+portalRouter.get("/portal/qr/rondas", requirePortalAuth, async (req, res) => {
+  const clienteIntId: number | null = (req as any).portalClienteIntId;
+  if (!clienteIntId) return res.json([]);
+  const periodo = String(req.query.periodo || "7d");
+  const desde = periodoToDesde(periodo);
+  try {
+    const { rows } = await pool.query(
+      `SELECT ev.id, ev.escaneado_en, ev.resultado, ev.distancia_metros,
+              p.id AS punto_id, p.nombre AS punto_nombre,
+              r.id AS ronda_id, r.nombre AS ronda_nombre,
+              u.id AS user_id, u.nombre AS user_nombre, u.username
+         FROM qr_ronda_eventos ev
+         JOIN qr_ronda_puntos p ON p.id = ev.punto_id
+         JOIN qr_rondas r ON r.id = p.ronda_id
+         LEFT JOIN users u ON u.id = ev.user_id
+        WHERE r.cliente_id = $1
+          AND ev.escaneado_en >= $2
+        ORDER BY ev.escaneado_en DESC
+        LIMIT 500`,
+      [clienteIntId, desde]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Error al obtener rondas" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/portal/qr/cumplimiento?periodo=hoy|7d|15d
+// Estadísticas de cumplimiento: rondas y fichajes
+// ─────────────────────────────────────────────────────────────────────────────
+portalRouter.get("/portal/qr/cumplimiento", requirePortalAuth, async (req, res) => {
+  const clienteIntId: number | null = (req as any).portalClienteIntId;
+  if (!clienteIntId) return res.json({ rondas: null, fichajes: null });
+  const periodo = String(req.query.periodo || "7d");
+  const desde = periodoToDesde(periodo);
+  try {
+    // Total puntos QR activos del cliente
+    const { rows: puntosRows } = await pool.query(
+      `SELECT COUNT(*)::int AS total
+         FROM qr_ronda_puntos p
+         JOIN qr_rondas r ON r.id = p.ronda_id
+        WHERE r.cliente_id = $1 AND p.activo = TRUE AND r.activo = TRUE`,
+      [clienteIntId]
+    );
+    const totalPuntos: number = puntosRows[0]?.total ?? 0;
+
+    // Eventos OK por punto en el período
+    const { rows: evRows } = await pool.query(
+      `SELECT p.id AS punto_id, p.nombre AS punto_nombre,
+              COUNT(ev.id)::int AS escaneos,
+              MAX(ev.escaneado_en) AS ultimo
+         FROM qr_ronda_puntos p
+         JOIN qr_rondas r ON r.id = p.ronda_id
+         LEFT JOIN qr_ronda_eventos ev
+                ON ev.punto_id = p.id
+               AND ev.escaneado_en >= $2
+               AND ev.resultado = 'ok'
+        WHERE r.cliente_id = $1 AND p.activo = TRUE AND r.activo = TRUE
+        GROUP BY p.id, p.nombre
+        ORDER BY p.nombre`,
+      [clienteIntId, desde]
+    );
+    const puntosConEscaneo = evRows.filter((r: any) => r.escaneos > 0).length;
+    const pctCumplimiento = totalPuntos > 0 ? Math.round((puntosConEscaneo / totalPuntos) * 100) : null;
+
+    // Fichajes por puesto del cliente
+    const { rows: fichRows } = await pool.query(
+      `SELECT po.id AS puesto_id, po.nombre AS puesto_nombre,
+              COUNT(af.id)::int AS total_fichajes,
+              COUNT(*) FILTER (WHERE af.resultado = 'ok')::int AS fichajes_ok,
+              MAX(af.registrado_en) AS ultimo
+         FROM puestos_operativos po
+         LEFT JOIN agente_fichajes af
+                ON af.puesto_id = po.id
+               AND af.registrado_en >= $2
+        WHERE po.cliente_id = $1
+        GROUP BY po.id, po.nombre
+        ORDER BY po.nombre`,
+      [clienteIntId, desde]
+    );
+    const totalPuestos = fichRows.length;
+    const puestosConFichaje = fichRows.filter((r: any) => r.total_fichajes > 0).length;
+    const pctFichajes = totalPuestos > 0 ? Math.round((puestosConFichaje / totalPuestos) * 100) : null;
+
+    res.json({
+      rondas: {
+        total_puntos: totalPuntos,
+        puntos_con_escaneo: puntosConEscaneo,
+        pct_cumplimiento: pctCumplimiento,
+        detalle: evRows,
+      },
+      fichajes: {
+        total_puestos: totalPuestos,
+        puestos_con_fichaje: puestosConFichaje,
+        pct_cobertura: pctFichajes,
+        detalle: fichRows,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Error al obtener cumplimiento" });
+  }
+});
+
 export default portalRouter;
