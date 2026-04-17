@@ -1979,14 +1979,15 @@ agenteFichajeRouter.post("/agente/cerrar-turno", async (req, res) => {
       for (const t of todos) {
         const { rows: cierre } = await client.query(
           `INSERT INTO agente_fichajes
-             (employee_id, puesto_id, cliente_id, slot_numero, latitud, longitud, distancia_metros, resultado, tipo, observaciones)
-           VALUES ($1,$2,$3,$4,$5,$6,NULL,'ok','cierre_turno',$7)
+             (employee_id, puesto_id, cliente_id, slot_numero, qr_token, latitud, longitud, distancia_metros, resultado, tipo, observaciones)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,NULL,'ok','cierre_turno',$8)
            RETURNING id, registrado_en`,
           [
             t.employee_id,
             t.puesto_id,
             t.cliente_id,
             t.slot_numero,
+            "__cierre_turno__",
             latitud ?? null,
             longitud ?? null,
             `cierre de fichaje_id=${t.id}${t.id !== fichaje_id ? ` (anexado a ${fichaje_id})` : ""} precision=${precision_metros ?? "?"}m`,
@@ -2086,14 +2087,15 @@ agenteFichajeRouter.post("/agente/forzar-cierre-turno", async (req, res) => {
       for (const t of todos) {
         const { rows: cierre } = await client.query(
           `INSERT INTO agente_fichajes
-             (employee_id, puesto_id, cliente_id, slot_numero, latitud, longitud, distancia_metros, resultado, tipo, observaciones)
-           VALUES ($1,$2,$3,$4,NULL,NULL,NULL,'ok','cierre_turno',$5)
+             (employee_id, puesto_id, cliente_id, slot_numero, qr_token, latitud, longitud, distancia_metros, resultado, tipo, observaciones)
+           VALUES ($1,$2,$3,$4,$5,NULL,NULL,NULL,'ok','cierre_turno',$6)
            RETURNING id, registrado_en`,
           [
             t.employee_id,
             t.puesto_id,
             t.cliente_id,
             t.slot_numero,
+            "__cierre_forzado__",
             `cierre FORZADO por admin=${adminUsername} de fichaje_id=${t.id}${t.id !== fichaje_id ? ` (anexado a ${fichaje_id})` : ""} motivo=${etiquetaMotivo}`,
           ]
         );
