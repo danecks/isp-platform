@@ -6617,8 +6617,7 @@ export default function Operaciones() {
       }
       const result = await resp.json();
       toast({ title: "Titular asignado", description: `${agente.nombre_completo} → Custodio ${slotNumero}` });
-      qc.invalidateQueries({ queryKey: ["tablero"] });
-      qc.invalidateQueries({ queryKey: ["pool"] });
+      invalidate();
     } catch {
       toast({ title: "Error de conexión", variant: "destructive" });
     }

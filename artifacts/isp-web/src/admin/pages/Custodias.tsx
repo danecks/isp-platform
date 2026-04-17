@@ -367,6 +367,8 @@ function FuerzaEditor({ clienteId, onSaved }: { clienteId: number; onSaved: () =
 function AsignarPanel({ clienteId, fecha, busqueda, onBusqueda, onChanged }: {
   clienteId: number; fecha: string; busqueda: string; onBusqueda: (v: string) => void; onChanged: () => void;
 }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
   const { data: pool = [], isLoading } = useQuery<PoolAgent[]>({
     queryKey: ["custodia-pool", fecha],
     queryFn: async () => {
@@ -383,9 +385,18 @@ function AsignarPanel({ clienteId, fecha, busqueda, onBusqueda, onChanged }: {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fecha, employeeId }),
       });
-      if (!r.ok) throw new Error("Error");
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data.error || "No se pudo asignar el agente");
+      }
     },
-    onSuccess: onChanged,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["custodia-pool", fecha] });
+      onChanged();
+    },
+    onError: (e: Error) => {
+      toast({ title: "Error al asignar", description: e.message, variant: "destructive" });
+    },
   });
 
   const filtered = pool.filter(a => {
