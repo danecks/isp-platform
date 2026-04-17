@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import {
@@ -114,6 +115,8 @@ function distanciaTotalKm(puntos: PuntoGPS[]): number {
 }
 
 export default function RecorridosCustodia() {
+  const { currentUser } = useAuth();
+  const puedeForzarCierre = currentUser?.rol === "admin" || currentUser?.rol === "rrhh";
   const [lista, setLista] = useState<RecorridoListItem[]>([]);
   const [cargandoLista, setCargandoLista] = useState(true);
   const [errorLista, setErrorLista] = useState<string | null>(null);
@@ -339,8 +342,8 @@ export default function RecorridosCustodia() {
             </div>
           ) : (
             <>
-              {/* Acción admin: forzar cierre (solo si turno activo) */}
-              {!turnoCerrado && (
+              {/* Acción admin: forzar cierre (solo si turno activo y rol admin/rrhh) */}
+              {!turnoCerrado && puedeForzarCierre && (
                 <div className="px-4 py-2.5 border-b border-white/8 bg-amber-500/5 flex items-center justify-between gap-3 flex-wrap">
                   <div className="text-[11px] text-amber-200/80 flex items-center gap-1.5">
                     <AlertTriangle className="w-3.5 h-3.5" />

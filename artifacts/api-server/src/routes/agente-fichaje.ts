@@ -2023,16 +2023,24 @@ agenteFichajeRouter.post("/agente/forzar-cierre-turno", async (req, res) => {
   const { fichaje_id, motivo } = req.body ?? {};
   if (!fichaje_id) return res.status(400).json({ error: "parametros_invalidos" });
 
-  // Identificar al admin que ejecuta la acción (para auditoría en observaciones)
+  // Identificar al usuario y validar rol (solo admin o rrhh pueden forzar cierre)
   let adminUsername = "admin";
+  let adminRol = "";
   try {
     const raw = req.headers["x-isp-session"] as string | undefined;
     if (raw) {
       const session = JSON.parse(raw);
       if (session?.username) adminUsername = String(session.username);
+      if (session?.rol) adminRol = String(session.rol).toLowerCase();
     }
   } catch {
-    // sesión inválida → seguimos con "admin" como etiqueta genérica
+    // sesión inválida
+  }
+  if (adminRol !== "admin" && adminRol !== "rrhh") {
+    return res.status(403).json({
+      error: "no_autorizado",
+      mensaje: "Solo usuarios con rol Admin o RRHH pueden forzar el cierre de turnos.",
+    });
   }
 
   try {
