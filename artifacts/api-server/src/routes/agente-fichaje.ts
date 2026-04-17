@@ -11,6 +11,8 @@ function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function haversineMetros(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -342,12 +344,126 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
   }
 });
 
+// GET /api/agente/puesto-del-dia — modo kiosco: teléfono vinculado a un puesto
+// devuelve la info del puesto + lista de agentes que deben trabajar hoy + quién ya inició turno.
+agenteFichajeRouter.get("/agente/puesto-del-dia", async (req, res) => {
+  const device_uuid = String(req.query.device_uuid ?? "");
+  const device_token = String(req.query.device_token ?? "");
+  if (!device_uuid || !device_token) {
+    return res.status(400).json({ error: "device_credentials_requeridas" });
+  }
+  if (!UUID_RE.test(device_uuid)) {
+    return res.status(403).json({ error: "dispositivo_no_autorizado" });
+  }
+  try {
+    const { rows: devRows } = await pool.query(
+      `SELECT sd.id, sd.tipo, sd.device_token_hash, sd.puesto_id, sd.activo,
+              po.nombre AS puesto_nombre, po.cliente_nombre, po.horario, po.turno
+         FROM supervisor_devices sd
+         LEFT JOIN puestos_operativos po ON po.id = sd.puesto_id
+        WHERE sd.device_uuid = $1`,
+      [device_uuid]
+    );
+    if (!devRows[0] || !devRows[0].activo) {
+      return res.status(403).json({ error: "dispositivo_no_autorizado" });
+    }
+    if (devRows[0].device_token_hash !== hashToken(device_token)) {
+      return res.status(403).json({ error: "token_incorrecto" });
+    }
+    if (!["puesto", "maestro"].includes(devRows[0].tipo)) {
+      return res.status(403).json({ error: "tipo_incorrecto", mensaje: "Este dispositivo no está configurado como teléfono de puesto." });
+    }
+    if (!devRows[0].puesto_id) {
+      return res.status(404).json({ error: "sin_puesto_vinculado", mensaje: "El teléfono no está vinculado a un puesto." });
+    }
+
+    const puestoId = devRows[0].puesto_id;
+    await pool.query(`UPDATE supervisor_devices SET ultimo_uso = NOW() WHERE id = $1`, [devRows[0].id]);
+
+    // Lista de titulares activos del puesto + estado de inicio_turno hoy
+    const { rows: titRows } = await pool.query(
+      `SELECT pt.employee_id,
+              e.nombre_completo,
+              e.puesto AS cargo,
+              pt.orden,
+              af.id AS fichaje_id,
+              af.registrado_en
+         FROM puesto_titulares pt
+         JOIN employees e ON e.id = pt.employee_id
+         LEFT JOIN LATERAL (
+           SELECT id, registrado_en
+             FROM agente_fichajes
+            WHERE employee_id = pt.employee_id
+              AND tipo = 'inicio_turno'
+              AND DATE((registrado_en AT TIME ZONE 'America/Guatemala')) =
+                  DATE((NOW() AT TIME ZONE 'America/Guatemala'))
+            ORDER BY registrado_en DESC LIMIT 1
+         ) af ON TRUE
+        WHERE pt.puesto_id = $1
+          AND pt.activo = TRUE
+        ORDER BY pt.orden ASC, e.nombre_completo ASC`,
+      [puestoId]
+    );
+
+    res.json({
+      puesto: {
+        id: puestoId,
+        nombre: devRows[0].puesto_nombre,
+        cliente_nombre: devRows[0].cliente_nombre,
+        horario: devRows[0].horario,
+        turno: devRows[0].turno,
+      },
+      agentes: titRows.map(r => ({
+        employee_id: r.employee_id,
+        nombre: r.nombre_completo,
+        cargo: r.cargo,
+        orden: r.orden,
+        inicio_turno_hoy: r.registrado_en
+          ? { fichaje_id: r.fichaje_id, registrado_en: r.registrado_en }
+          : null,
+      })),
+    });
+  } catch (err) {
+    logger.error({ err }, "agente/puesto-del-dia: error");
+    res.status(500).json({ error: "Error obteniendo puesto del día" });
+  }
+});
+
 // POST /api/agente/iniciar-turno — el agente escanea su propio carnet desde la PWA
 // Identidad = QR del carnet. Sin login. Resuelve el servicio del día (puesto fijo o slot de custodia)
 // y registra el inicio de turno del día. GPS se valida contra el puesto si aplica.
+// Si vienen device_uuid+device_token (modo kiosco), se valida que el agente pertenezca al puesto vinculado.
 agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
-  const { qr_token, latitud, longitud, precision_metros } = req.body ?? {};
+  const { qr_token, latitud, longitud, precision_metros, device_uuid, device_token } = req.body ?? {};
   if (!qr_token) return res.status(400).json({ error: "qr_token_requerido" });
+
+  // Modo kiosco: validar device si viene
+  let kioscoPuestoId: number | null = null;
+  if (device_uuid && device_token) {
+    if (!UUID_RE.test(device_uuid)) {
+      return res.status(403).json({ error: "dispositivo_no_autorizado" });
+    }
+    try {
+      const { rows: devRows } = await pool.query(
+        `SELECT id, tipo, device_token_hash, puesto_id, activo
+           FROM supervisor_devices WHERE device_uuid = $1`,
+        [device_uuid]
+      );
+      if (!devRows[0] || !devRows[0].activo) {
+        return res.status(403).json({ error: "dispositivo_no_autorizado" });
+      }
+      if (devRows[0].device_token_hash !== hashToken(device_token)) {
+        return res.status(403).json({ error: "token_incorrecto" });
+      }
+      if (!["puesto", "maestro"].includes(devRows[0].tipo)) {
+        return res.status(403).json({ error: "tipo_incorrecto" });
+      }
+      kioscoPuestoId = devRows[0].puesto_id ?? null;
+    } catch (err) {
+      logger.error({ err }, "agente/iniciar-turno: error validando device");
+      return res.status(500).json({ error: "Error validando dispositivo" });
+    }
+  }
 
   try {
     // 1. Validar carnet → empleado
@@ -478,6 +594,15 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
       return res.status(404).json({
         error: "sin_servicio",
         mensaje: "No tienes un puesto o slot de custodia asignado. Avise al supervisor.",
+        agente,
+      });
+    }
+
+    // 3b. Modo kiosco: el agente debe pertenecer al puesto vinculado al teléfono
+    if (kioscoPuestoId != null && servicio.puesto_id !== kioscoPuestoId) {
+      return res.status(403).json({
+        error: "puesto_no_coincide",
+        mensaje: `${agente.nombre} no pertenece a este puesto. Verificá que estás en el teléfono correcto.`,
         agente,
       });
     }
