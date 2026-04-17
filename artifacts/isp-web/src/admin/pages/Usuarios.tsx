@@ -276,16 +276,11 @@ function EmpleadoPicker({ value, onChange, placeholder }: EmpleadoPickerProps) {
         )}
       </div>
 
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] text-white/30">o ingresar ID:</span>
-        <Input
-          value={value}
-          onChange={e => onChange(e.target.value.replace(/[^0-9]/g, ""))}
-          placeholder="ID numérico"
-          className="bg-[#060e1c] border-white/10 text-white text-xs h-7 font-mono w-32"
-          inputMode="numeric"
-        />
-      </div>
+      {!linked && (
+        <p className="text-[10px] text-white/30">
+          Escribí al menos 2 letras (nombre, DPI o puesto). Ej: "da" → Daniel, Danilo…
+        </p>
+      )}
     </div>
   );
 }
