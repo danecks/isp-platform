@@ -86,6 +86,7 @@ import PortalAgentes from "@/portal/pages/PortalAgentes";
 import PortalSolicitudes from "@/portal/pages/PortalSolicitudes";
 import PortalCobertura from "@/portal/pages/PortalCobertura";
 import PortalFichajes from "@/portal/pages/PortalFichajes";
+import PortalRecorridos from "@/portal/pages/PortalRecorridos";
 import PortalRondas from "@/portal/pages/PortalRondas";
 import AgenteInicio from "@/pages/AgenteInicio";
 
@@ -144,6 +145,9 @@ function Router() {
       </Route>
       <Route path="/portal/rondas">
         {() => <PortalGuard><PortalRondas /></PortalGuard>}
+      </Route>
+      <Route path="/portal/recorridos">
+        {() => <PortalGuard><PortalRecorridos /></PortalGuard>}
       </Route>
 
       {/* ── Panel administrativo (rol admin, operaciones, rrhh, etc.) ───── */}

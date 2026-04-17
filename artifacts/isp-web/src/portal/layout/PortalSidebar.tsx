@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { X, LayoutDashboard, AlertTriangle, BarChart3, Users, LogOut, ExternalLink, ShieldCheck, Zap, Shield, Clock, QrCode } from "lucide-react";
+import { X, LayoutDashboard, AlertTriangle, BarChart3, Users, LogOut, ExternalLink, ShieldCheck, Zap, Shield, Clock, QrCode, Route } from "lucide-react";
 import { brand } from "@/config/branding";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -10,6 +10,7 @@ const portalNav = [
   { path: "/portal/cobertura",   label: "Cobertura de Puestos", icon: Shield },
   { path: "/portal/fichajes",    label: "Fichajes QR",          icon: Clock },
   { path: "/portal/rondas",      label: "Rondas QR",            icon: QrCode },
+  { path: "/portal/recorridos",  label: "Recorridos Custodia",  icon: Route },
   { path: "/portal/solicitudes", label: "Servicios Adicionales",icon: Zap },
   { path: "/portal/incidencias", label: "Incidencias",          icon: AlertTriangle },
   { path: "/portal/kpi",         label: "KPI & Métricas",       icon: BarChart3 },
