@@ -330,6 +330,32 @@ const TIPO_PERSONAL_CFG = {
 
 const VALID_TIPOS_PERSONAL = ["guardia", "supervisor", "jefe_servicio", "administrativo_bodega", "administrativo_rrhh", "gerencia", "administrativo"] as const;
 
+// Tipo del catálogo configurable (Configuración → Usuarios → Tipos de Personal)
+interface TipoPersonalConfig {
+  clave: string;
+  label: string;
+  color: string;
+  descripcion: string | null;
+  activo: boolean;
+  es_sistema: boolean;
+  orden: number;
+  empleados_count?: number;
+}
+
+// Hook compartido: lee el catálogo de tipos de personal desde la API
+function useTiposPersonal() {
+  return useQuery<TipoPersonalConfig[]>({
+    queryKey: ["tipos-personal-config"],
+    queryFn: async () => {
+      const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+      const r = await fetch(`${base}/api/tipos-personal-config`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    staleTime: 60_000,
+  });
+}
+
 function TipoPersonalBadge({ tipo }: { tipo: string }) {
   const cfg = TIPO_PERSONAL_CFG[tipo as keyof typeof TIPO_PERSONAL_CFG]
     ?? { label: tipo, color: "text-white/40 bg-white/5 border-white/10" };
@@ -1340,10 +1366,9 @@ function IgssSection({ emp }: { emp: Empleado }) {
 function TabPerfil({ emp }: { emp: Empleado }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { data: tiposCfg = [] } = useTiposPersonal();
   const [tipoEditing, setTipoEditing] = useState(false);
-  const [tipoValue, setTipoValue] = useState(
-    (VALID_TIPOS_PERSONAL as readonly string[]).includes(emp.tipoPersonal ?? "") ? emp.tipoPersonal : "guardia"
-  );
+  const [tipoValue, setTipoValue] = useState(emp.tipoPersonal ?? "guardia");
   const [tipoSaving, setTipoSaving] = useState(false);
 
   async function saveTipo() {
@@ -1417,13 +1442,13 @@ function TabPerfil({ emp }: { emp: Empleado }) {
                 onChange={(e) => setTipoValue(e.target.value)}
                 className="flex-1 bg-[#060e1c] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-primary/40 appearance-none"
               >
-                <option value="guardia">Guardia</option>
-                <option value="supervisor">Supervisor</option>
-                <option value="jefe_servicio">Jefe de Servicio</option>
-                <option value="administrativo_bodega">Bodega</option>
-                <option value="administrativo_rrhh">RRHH</option>
-                <option value="administrativo">Administrativo</option>
-                <option value="gerencia">Gerencia</option>
+                {tiposCfg.filter(t => t.activo).map(t => (
+                  <option key={t.clave} value={t.clave}>{t.label}</option>
+                ))}
+                {/* Conserva el valor actual aunque esté inactivo o ya no exista en el catálogo */}
+                {tipoValue && !tiposCfg.some(t => t.clave === tipoValue) && (
+                  <option value={tipoValue}>{tipoValue} (no catalogado)</option>
+                )}
               </select>
               <button
                 onClick={saveTipo}
@@ -4172,6 +4197,7 @@ function FormModal({
   onClose: () => void;
   onSave: (data: Partial<FormState>) => Promise<void>;
 }) {
+  const { data: tiposCfg = [] } = useTiposPersonal();
   const [form, setForm] = useState<FormState>(() => ({
     nombreCompleto: emp?.nombreCompleto ?? "",
     dpi: emp?.dpi ?? "",
@@ -4189,7 +4215,7 @@ function FormModal({
     frecuenciaPago: emp?.frecuenciaPago ?? "quincenal",
     limiteAnticipo: emp?.limiteAnticipo != null ? String(emp.limiteAnticipo) : "",
     tipoLimitePeriodo: emp?.tipoLimitePeriodo ?? "quincenal",
-    tipoPersonal: (VALID_TIPOS_PERSONAL as readonly string[]).includes(emp?.tipoPersonal ?? "") ? emp!.tipoPersonal : "guardia",
+    tipoPersonal: emp?.tipoPersonal ?? "guardia",
     bonificacionIncentivo: emp?.bonificacionIncentivo ?? "",
     bonificacion1:         emp?.bonificacion1 ?? "",
     bonificacion2:         emp?.bonificacion2 ?? "",
@@ -4290,13 +4316,19 @@ function FormModal({
               onChange={(e) => set("tipoPersonal", e.target.value)}
               className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50 appearance-none"
             >
-              <option value="guardia">Guardia — Personal operativo de campo</option>
-              <option value="supervisor">Supervisor de Zona — Visible en pizarrón</option>
-              <option value="jefe_servicio">Jefe de Servicio — Turno 24×24, visible en pizarrón</option>
-              <option value="administrativo_bodega">Administrativo Bodega — Solo planilla</option>
-              <option value="administrativo_rrhh">Administrativo RRHH — Solo planilla</option>
-              <option value="gerencia">Gerencia — Solo planilla, protegido</option>
+              {tiposCfg.filter(t => t.activo).map(t => (
+                <option key={t.clave} value={t.clave}>
+                  {t.label}{t.descripcion ? ` — ${t.descripcion}` : ""}
+                </option>
+              ))}
+              {/* Si el valor actual ya no existe en el catálogo (o está inactivo), lo conservamos como opción extra */}
+              {form.tipoPersonal && !tiposCfg.some(t => t.clave === form.tipoPersonal) && (
+                <option value={form.tipoPersonal}>{form.tipoPersonal} (no catalogado)</option>
+              )}
             </select>
+            <p className="text-[10px] text-white/30 pt-0.5">
+              ¿Falta un tipo? Agregalo en <span className="text-white/50">Configuración → Usuarios → Tipos de Personal</span>.
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">

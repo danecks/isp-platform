@@ -236,7 +236,7 @@ const STEP_NAMES = ["","Escaneo DPI","Datos Personales","Domicilio y Banco","Fam
 // ══════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ══════════════════════════════════════════════════════════════════════════════
-export default function KioscoSolicitud(_props: { skipPin?: boolean } = {}) {
+export default function KioscoSolicitud() {
   // El PIN de acceso fue desactivado: el kiosko ahora abre directamente en el paso 1.
   const [step, setStep]             = useState(1);
   const [pin, setPin]               = useState("");
@@ -384,7 +384,7 @@ export default function KioscoSolicitud(_props: { skipPin?: boolean } = {}) {
     setPin("");
     setPinError(false);
     setSolicitudId(null);
-    setStep(skipPin ? 1 : 0);
+    setStep(1);
   };
 
   // ── Render ───────────────────────────────────────────────────────────────
