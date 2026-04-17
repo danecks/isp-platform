@@ -31,23 +31,23 @@ export function Cinematografico() {
       `}</style>
 
       {/* NAVBAR */}
-      <nav className={\`fixed top-0 left-0 right-0 z-50 transition-all duration-500 \${scrolled ? 'bg-charcoal/95 backdrop-blur-md py-4' : 'bg-transparent py-6'}\`}>
+      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled ? 'bg-charcoal/95 backdrop-blur-md py-4' : 'bg-transparent py-6'}`}>
         <div className="max-w-7xl mx-auto px-6 lg:px-12 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Shield className={\`w-8 h-8 \${scrolled ? 'text-deepgold' : 'text-white'}\`} />
-            <span className={\`font-serif font-bold text-2xl tracking-widest \${scrolled ? 'text-white' : 'text-white'}\`}>ISP, S.A.</span>
+            <Shield className={`w-8 h-8 ${scrolled ? 'text-deepgold' : 'text-white'}`} />
+            <span className={`font-serif font-bold text-2xl tracking-widest ${scrolled ? 'text-white' : 'text-white'}`}>ISP, S.A.</span>
           </div>
 
           <div className="hidden lg:flex items-center gap-8">
             {['Inicio', 'Nosotros', 'Servicios', 'Sectores', 'Reclutamiento', 'Contacto'].map(item => (
-              <a key={item} href="#" className={\`text-sm tracking-wide font-medium hover:text-deepgold transition-colors \${scrolled ? 'text-gray-300' : 'text-white/90'}\`}>
+              <a key={item} href="#" className={`text-sm tracking-wide font-medium hover:text-deepgold transition-colors ${scrolled ? 'text-gray-300' : 'text-white/90'}`}>
                 {item}
               </a>
             ))}
           </div>
 
           <div className="hidden lg:flex items-center gap-4">
-            <button className={\`text-sm font-semibold tracking-wide \${scrolled ? 'text-white' : 'text-white'}\`}>
+            <button className={`text-sm font-semibold tracking-wide ${scrolled ? 'text-white' : 'text-white'}`}>
               Portal Clientes
             </button>
             <button className="bg-deepgold text-white px-6 py-3 text-sm font-semibold tracking-wider hover:bg-[#856b32] transition-colors">
