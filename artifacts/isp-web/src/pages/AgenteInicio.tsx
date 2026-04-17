@@ -74,6 +74,9 @@ export default function AgenteInicio() {
   const [resultado, setResultado] = useState<Resultado | null>(null);
   const [carnetToken, setCarnetToken] = useState<string | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [linternaOn, setLinternaOn] = useState(false);
+  const [linternaSoportada, setLinternaSoportada] = useState(false);
 
   // Modo kiosco: si hay credenciales de dispositivo en localStorage
   const [device] = useState<DeviceCreds | null>(() => leerDeviceCreds());
@@ -119,11 +122,34 @@ export default function AgenteInicio() {
     setEstado("escaneando");
     await new Promise(r => setTimeout(r, 50));
     try {
-      const scanner = new Html5Qrcode(SCANNER_ID);
+      const scanner = new Html5Qrcode(SCANNER_ID, {
+        verbose: false,
+        useBarCodeDetectorIfSupported: true,
+      } as ConstructorParameters<typeof Html5Qrcode>[1]);
       scannerRef.current = scanner;
+      // qrbox dinámico: 80% del lado más corto del viewport del scanner
+      const qrboxFn = (vw: number, vh: number) => {
+        const min = Math.min(vw, vh);
+        const size = Math.floor(min * 0.8);
+        return { width: size, height: size };
+      };
+      // Constraints fuertes: cámara trasera + alta resolución + autoenfoque continuo
+      // (mejora notablemente la lectura en Android con cámaras flojas)
+      const videoConstraints = {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        advanced: [{ focusMode: "continuous" }],
+      } as MediaTrackConstraints;
       await scanner.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 240, height: 240 } },
+        videoConstraints,
+        {
+          fps: 20,
+          qrbox: qrboxFn,
+          aspectRatio: 1.0,
+          disableFlip: false,
+          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+        } as Parameters<Html5Qrcode["start"]>[2],
         (decoded) => {
           let token = decoded.trim();
           try {
@@ -136,6 +162,17 @@ export default function AgenteInicio() {
         },
         () => { /* scan fail por frame */ }
       );
+      // Detectar si el track soporta linterna (Android Chrome sí, iOS no)
+      try {
+        const videoEl = document.querySelector(
+          `#${SCANNER_ID} video`,
+        ) as HTMLVideoElement | null;
+        const stream = videoEl?.srcObject as MediaStream | null;
+        const track = stream?.getVideoTracks?.()[0];
+        const capabilities = track?.getCapabilities?.() as MediaTrackCapabilities & { torch?: boolean } | undefined;
+        setLinternaSoportada(!!capabilities?.torch);
+      } catch { setLinternaSoportada(false); }
+      setLinternaOn(false);
     } catch (err) {
       setMensajeError(
         err instanceof Error
@@ -203,6 +240,45 @@ export default function AgenteInicio() {
       setEstado("error");
     }
   }, [device, esKiosco, cargarPuestoDelDia]);
+
+  // Toggle linterna (flash) — solo Android Chrome
+  const toggleLinterna = useCallback(async () => {
+    try {
+      const videoEl = document.querySelector(
+        `#${SCANNER_ID} video`,
+      ) as HTMLVideoElement | null;
+      const stream = videoEl?.srcObject as MediaStream | null;
+      const track = stream?.getVideoTracks?.()[0];
+      if (!track) return;
+      const next = !linternaOn;
+      await track.applyConstraints({
+        advanced: [{ torch: next } as MediaTrackConstraintSet & { torch: boolean }],
+      });
+      setLinternaOn(next);
+    } catch { /* noop */ }
+  }, [linternaOn]);
+
+  // Fallback: subir foto del carnet QR
+  const escanearArchivo = useCallback(async (file: File) => {
+    setMensajeError("");
+    try {
+      await detenerScanner();
+      const scanner = new Html5Qrcode(SCANNER_ID);
+      const decoded = await scanner.scanFile(file, false);
+      try { scanner.clear(); } catch { /* noop */ }
+      let token = decoded.trim();
+      try {
+        const u = new URL(token);
+        token = u.searchParams.get("token") || u.pathname.split("/").pop() || token;
+      } catch { /* token directo */ }
+      setCarnetToken(token);
+      solicitarGPS(token);
+    } catch {
+      setMensajeError("No se pudo leer el QR de la foto. Probá con más luz o más cerca.");
+      setEstado("error");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detenerScanner]);
 
   const reiniciar = useCallback(async () => {
     await detenerScanner();
@@ -342,11 +418,52 @@ export default function AgenteInicio() {
 
         {/* Escaneando */}
         {estado === "escaneando" && (
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div className="text-center">
               <p className="text-sm text-slate-300">Apuntá la cámara al QR del carnet</p>
+              <p className="text-[11px] text-slate-500 mt-1">Acercá el carnet a unos 15–20 cm con buena luz</p>
             </div>
             <div id={SCANNER_ID} className="w-full overflow-hidden rounded-lg bg-black aspect-square" />
+
+            {/* Controles auxiliares para Android con cámara floja */}
+            <div className="grid grid-cols-2 gap-2">
+              {linternaSoportada ? (
+                <button
+                  onClick={() => void toggleLinterna()}
+                  className={`py-3 rounded-lg text-sm font-medium border ${
+                    linternaOn
+                      ? "bg-amber-500 text-slate-900 border-amber-400"
+                      : "bg-slate-800 text-slate-200 border-slate-700"
+                  }`}
+                >
+                  {linternaOn ? "Apagar linterna" : "Encender linterna"}
+                </button>
+              ) : (
+                <div className="py-3 rounded-lg text-xs text-slate-500 text-center border border-slate-800">
+                  Sin linterna en este teléfono
+                </div>
+              )}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="py-3 rounded-lg text-sm font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+              >
+                Subir foto del QR
+              </button>
+            </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void escanearArchivo(f);
+                e.target.value = "";
+              }}
+            />
+
             <button
               onClick={reiniciar}
               className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-3 rounded-lg text-sm"
