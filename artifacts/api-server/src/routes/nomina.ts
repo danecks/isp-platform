@@ -737,6 +737,79 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
       logger.warn({ paso45Err, fecha }, "Paso 4.5 novedades base titulares: falló (no bloqueante)");
     }
 
+    // ── Paso 4.5b: Novedades base derivadas desde puesto_slots ──────────────
+    // Mismo objetivo que Paso 4.5 pero leyendo de la tabla puesto_slots
+    // (modelo de rotación con dias_trabajo[] + longitud_ciclo + fecha_inicio_ciclo).
+    // En despliegues donde puesto_titulares está vacía y solo se usan slots,
+    // este paso es el que materializa "el plan del ciclo" como novedades de nómina.
+    // Cálculo del día del ciclo: ((fecha - fecha_inicio_ciclo) % longitud_ciclo) + 1
+    // Si el día está en dias_trabajo[] → trabajo, sino → descanso_ciclo (pagado).
+    try {
+      const { rows: slotsHoy } = await pool.query(`
+        SELECT
+          ps.empleado_id                                  AS employee_id,
+          e.nombre_completo                               AS empleado_nombre,
+          po.id                                           AS puesto_id,
+          po.nombre                                       AS puesto_nombre,
+          ps.horas_turno::float                           AS horas_turno,
+          CASE
+            WHEN ps.fecha_inicio_ciclo IS NULL THEN
+              EXTRACT(ISODOW FROM $1::date)::int = ANY(ps.dias_trabajo)
+            ELSE
+              ((($1::date - ps.fecha_inicio_ciclo) % ps.longitud_ciclo) + 1) = ANY(ps.dias_trabajo)
+          END                                             AS toca_hoy
+        FROM puesto_slots ps
+        JOIN puestos_operativos po ON po.id = ps.puesto_id
+        JOIN employees e            ON e.id = ps.empleado_id
+        WHERE ps.activo = TRUE
+          AND po.activo = TRUE
+          AND ps.empleado_id IS NOT NULL
+          AND e.estado_laboral NOT IN ('baja', 'suspendido')
+      `, [fecha]);
+
+      let slotInserts = 0;
+      for (const sl of slotsHoy) {
+        const empId = Number(sl.employee_id);
+
+        // GUARD RRHH: si el empleado tiene ausencia RRHH para esa fecha, no generamos
+        // novedad de trabajo derivada del slot (RRHH es fuente de verdad).
+        if (eventosRRHHMap.has(empId)) continue;
+
+        const horasBase = Number(sl.horas_turno ?? 24);
+        const tipoNov   = sl.toca_hoy ? null : 'descanso_ciclo';
+
+        // INSERT solo si no existe novedad para (fecha, empleado).
+        // Si ya existe (de Paso 1 cobertura, Paso 1.5 fallback, Paso 2 ausencia,
+        // Paso 4 sin presencia, o Paso 4.5 puesto_titulares), respetamos esa fuente.
+        const r = await pool.query(`
+          INSERT INTO novedades_nomina_diarias
+            (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
+             falta, suspension, descanso_trabajado, afecta_septimo, descuento_dia,
+             puesto_titular_id, puesto_titular_nombre, tipo_novedad, fuente, cierre_id, updated_at)
+          VALUES ($1,$2,$3,TRUE,$4,0, FALSE,FALSE,FALSE,FALSE,FALSE, $5,$6,$7,'derivado_slot',$8,NOW())
+          ON CONFLICT (fecha, employee_id) DO NOTHING
+        `, [
+          fecha, empId, sl.empleado_nombre ?? "Desconocido",
+          horasBase.toFixed(2),
+          sl.puesto_id, sl.puesto_nombre,
+          tipoNov,
+          cierreId,
+        ]);
+        if ((r.rowCount ?? 0) > 0) {
+          slotInserts++;
+          count++;
+        }
+      }
+      if (slotsHoy.length > 0) {
+        logger.info(
+          { fecha, slotsEvaluados: slotsHoy.length, novedadesInsertadas: slotInserts },
+          "Paso 4.5b: novedades base derivadas desde puesto_slots"
+        );
+      }
+    } catch (paso45bErr) {
+      logger.warn({ paso45bErr, fecha }, "Paso 4.5b puesto_slots: falló (no bloqueante)");
+    }
+
     // ── Paso 4.6: Ajustar horas para descanso con cobertura ─────────────────
     // Si un titular en día de descanso cubrió a alguien (tiene horas_extra > 0),
     // sus horas_trabajadas deben incluir las horas base del turno (descanso pagado) + las HE.
