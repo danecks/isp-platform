@@ -305,6 +305,73 @@ usersRouter.get("/clientes/:clienteDbId/usuarios", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/users/cliente-disponibles
+// Lista usuarios con rol='cliente' (con info del cliente al que ya están vinculados, si aplica)
+// Útil para vincular usuarios existentes a un cliente desde la ficha
+// ─────────────────────────────────────────────────────────────────────────────
+usersRouter.get("/users/cliente-disponibles", async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT u.id, u.nombre, u.username, u.correo, u.telefono, u.estado, u.cliente_id,
+              c.id AS cliente_db_id, c.nombre AS cliente_nombre
+         FROM users u
+         LEFT JOIN clients c ON c.portal_cliente_id = u.cliente_id
+        WHERE u.rol = 'cliente'
+        ORDER BY u.nombre ASC`
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Error al obtener usuarios cliente" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/clientes/:clienteDbId/usuarios/vincular
+// Vincula un usuario existente (rol cliente) a este cliente
+// ─────────────────────────────────────────────────────────────────────────────
+usersRouter.post("/clientes/:clienteDbId/usuarios/vincular", async (req, res) => {
+  const clienteDbId = parseInt(req.params.clienteDbId);
+  if (isNaN(clienteDbId)) return res.status(400).json({ error: "ID inválido" });
+  const userId = parseInt(req.body?.userId);
+  if (isNaN(userId)) return res.status(400).json({ error: "userId requerido" });
+  try {
+    const { rows: clientRows } = await pool.query(
+      `SELECT portal_cliente_id FROM clients WHERE id = $1 LIMIT 1`, [clienteDbId]
+    );
+    if (clientRows.length === 0) return res.status(404).json({ error: "Cliente no encontrado" });
+    const portalId: string | null = clientRows[0].portal_cliente_id;
+    if (!portalId) return res.status(400).json({ error: "Este cliente no tiene portal_cliente_id configurado" });
+
+    const { rows: userRows } = await pool.query(
+      `SELECT id, rol FROM users WHERE id = $1 LIMIT 1`, [userId]
+    );
+    if (userRows.length === 0) return res.status(404).json({ error: "Usuario no encontrado" });
+    if (userRows[0].rol !== "cliente") {
+      return res.status(400).json({ error: "Solo se pueden vincular usuarios con rol cliente" });
+    }
+    await pool.query(`UPDATE users SET cliente_id = $1, updated_at = NOW() WHERE id = $2`, [portalId, userId]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Error al vincular usuario" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /api/clientes/:clienteDbId/usuarios/:userId/vinculo
+// Desvincula un usuario cliente de este cliente (cliente_id = NULL)
+// ─────────────────────────────────────────────────────────────────────────────
+usersRouter.delete("/clientes/:clienteDbId/usuarios/:userId/vinculo", async (req, res) => {
+  const userId = parseInt(req.params.userId);
+  if (isNaN(userId)) return res.status(400).json({ error: "userId inválido" });
+  try {
+    await pool.query(`UPDATE users SET cliente_id = NULL, updated_at = NOW() WHERE id = $1`, [userId]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Error al desvincular usuario" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/clientes/:clienteDbId/usuarios
 // Crea un usuario para este cliente, pre-vinculado con su portal_cliente_id
 // ─────────────────────────────────────────────────────────────────────────────
