@@ -3,7 +3,7 @@ import { Html5Qrcode } from "html5-qrcode";
 import {
   CheckCircle, XCircle, Loader2, MapPin, AlertTriangle,
   QrCode, ShieldAlert, RotateCcw, Smartphone, Users, Clock,
-  Navigation, LogOut, Activity,
+  Navigation, LogOut, Activity, UserPlus,
 } from "lucide-react";
 
 const API = "/api";
@@ -972,6 +972,16 @@ export default function AgenteInicio() {
               </div>
             </div>
 
+            {esKiosco && (
+              <button
+                onClick={() => setEstado("inicio")}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 rounded-lg flex items-center justify-center gap-2"
+              >
+                <UserPlus className="w-5 h-5" />
+                Marcar otro agente
+              </button>
+            )}
+
             <button
               onClick={cerrarTurno}
               className="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold py-4 rounded-lg flex items-center justify-center gap-2"
@@ -979,6 +989,11 @@ export default function AgenteInicio() {
               <LogOut className="w-5 h-5" />
               Cerrar turno
             </button>
+            {esKiosco && (
+              <p className="text-center text-[11px] text-slate-500">
+                "Cerrar turno" finaliza a todos los custodios anexados a esta ruta.
+              </p>
+            )}
           </div>
         )}
 
@@ -1051,6 +1066,15 @@ export default function AgenteInicio() {
               </div>
             </div>
 
+            {esKiosco && (
+              <button
+                onClick={() => void reiniciar()}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 rounded-lg flex items-center justify-center gap-2"
+              >
+                <UserPlus className="w-5 h-5" />
+                Marcar otro agente
+              </button>
+            )}
             <button
               onClick={reiniciar}
               className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-3 rounded-lg flex items-center justify-center gap-2"
