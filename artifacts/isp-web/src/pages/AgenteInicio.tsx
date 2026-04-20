@@ -945,6 +945,16 @@ export default function AgenteInicio() {
               <p className="text-xs text-emerald-400 mt-1">Rastreando recorrido GPS</p>
             </div>
 
+            {esKiosco && (
+              <button
+                onClick={() => setEstado("inicio")}
+                className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-4 rounded-lg flex items-center justify-center gap-2 shadow-lg shadow-blue-900/40 border-2 border-blue-400/40"
+              >
+                <UserPlus className="w-6 h-6" />
+                Marcar otro agente
+              </button>
+            )}
+
             <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 space-y-3">
               <div>
                 <div className="text-[11px] uppercase tracking-wide text-slate-500">Custodio</div>
