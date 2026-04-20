@@ -16,7 +16,7 @@
  *  10  → Fotografía de rostro
  *  11  → Solicitud enviada
  */
-import { useState, useRef, useCallback, useEffect, Component, type ReactNode, type ErrorInfo } from "react";
+import { useState, useRef, useCallback, useEffect, Component, Children, type ReactNode, type ErrorInfo } from "react";
 import { Lock, ShieldCheck, ChevronLeft } from "lucide-react";
 
 const API = `${import.meta.env.BASE_URL}api`;
@@ -1847,8 +1847,8 @@ function ResumenFila({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ResumenSeccion({ titulo, children }: { titulo: string; children: React.ReactNode }) {
-  const hasContent = React.Children.toArray(children).some(c => c !== null && c !== false && c !== undefined);
+function ResumenSeccion({ titulo, children }: { titulo: string; children: ReactNode }) {
+  const hasContent = Children.toArray(children).some(c => c !== null && c !== false && c !== undefined);
   if (!hasContent) return null;
   return (
     <div className="col-span-2 bg-[#060f1e] border border-[#1e3a6e] rounded-xl p-4 mb-1">
