@@ -222,6 +222,9 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo", async (req: Request, res: Re
   if (!nombre_completo?.trim()) {
     return res.status(400).json({ error: "Nombre completo requerido" });
   }
+  if (!direccion?.trim()) {
+    return res.status(400).json({ error: "Dirección requerida" });
+  }
 
   try {
     const fotoExpira = foto_url
@@ -348,6 +351,110 @@ solicitudesEmpleoRouter.get("/solicitudes-empleo/:id", async (req: Request, res:
   } catch (err) {
     logger.error({ err }, "GET /solicitudes-empleo/:id error");
     res.status(500).json({ error: "Error obteniendo solicitud" });
+  }
+});
+
+// ── Editar datos de la solicitud (RRHH) ──────────────────────────────────────
+// Permite a RRHH corregir/completar los datos enviados por el candidato desde
+// el kiosko (segunda verificación). Solo se actualizan los campos enviados;
+// los no enviados permanecen sin cambios. La solicitud queda marcada con la
+// fecha de revisión y quién la editó.
+solicitudesEmpleoRouter.patch("/solicitudes-empleo/:id", async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+
+  // Lista blanca de campos editables desde el panel de RRHH.
+  const CAMPOS_EDITABLES: Record<string, "text" | "bool" | "int" | "num" | "date"> = {
+    nombre_completo: "text",
+    dpi: "text",
+    fecha_nacimiento: "date",
+    genero: "text",
+    estado_civil: "text",
+    telefono: "text",
+    correo: "text",
+    nombre_contacto_emergencia: "text",
+    telefono_emergencia: "text",
+    direccion: "text",
+    municipio: "text",
+    departamento: "text",
+    nombre_padre: "text",
+    nombre_madre: "text",
+    num_dependientes: "int",
+    familiar_en_empresa: "bool",
+    nombre_familiar_empresa: "text",
+    grado_estudios: "text",
+    experiencia_seguridad: "bool",
+    anios_experiencia: "int",
+    empresa_anterior: "text",
+    licencia_armas: "bool",
+    tiene_vehiculo: "bool",
+    puesto_solicitado: "text",
+    disponibilidad_horario: "text",
+    disponible_exterior: "bool",
+    pretension_salarial: "num",
+  };
+
+  const body = req.body ?? {};
+  const sets: string[] = [];
+  const params: unknown[] = [];
+
+  for (const [campo, tipo] of Object.entries(CAMPOS_EDITABLES)) {
+    if (!(campo in body)) continue;
+    let val = body[campo];
+    if (tipo === "text") {
+      val = val == null || (typeof val === "string" && val.trim() === "") ? null : String(val).trim();
+    } else if (tipo === "bool") {
+      val = val === true || val === "true" || val === 1 || val === "1";
+    } else if (tipo === "int") {
+      const n = parseInt(String(val));
+      val = isNaN(n) ? 0 : n;
+    } else if (tipo === "num") {
+      if (val == null || val === "") val = null;
+      else { const n = parseFloat(String(val)); val = isNaN(n) ? null : n; }
+    } else if (tipo === "date") {
+      val = val == null || val === "" ? null : String(val);
+    }
+    params.push(val);
+    sets.push(`${campo} = $${params.length}`);
+  }
+
+  if (sets.length === 0) {
+    return res.status(400).json({ error: "Sin cambios" });
+  }
+
+  // Validación: dirección no puede quedar vacía si se incluyó en el body
+  if ("direccion" in body && (body.direccion == null || String(body.direccion).trim() === "")) {
+    return res.status(400).json({ error: "La dirección es obligatoria" });
+  }
+  // Validación: nombre no puede quedar vacío
+  if ("nombre_completo" in body && (body.nombre_completo == null || String(body.nombre_completo).trim() === "")) {
+    return res.status(400).json({ error: "El nombre completo es obligatorio" });
+  }
+
+  // Normalizar nombre si se envió
+  const nombreIdx = sets.findIndex(s => s.startsWith("nombre_completo ="));
+  if (nombreIdx >= 0 && typeof params[nombreIdx] === "string") {
+    params[nombreIdx] = normalizarNombre(params[nombreIdx] as string);
+  }
+
+  const revisadoPor = body.revisado_por ? String(body.revisado_por).trim() : null;
+  params.push(revisadoPor);
+  sets.push(`revisado_por = COALESCE($${params.length}, revisado_por)`);
+  sets.push(`revisado_at = NOW()`);
+  sets.push(`updated_at = NOW()`);
+
+  params.push(id);
+
+  try {
+    const { rowCount } = await pool.query(
+      `UPDATE solicitudes_empleo SET ${sets.join(", ")} WHERE id = $${params.length}`,
+      params
+    );
+    if (rowCount === 0) return res.status(404).json({ error: "No encontrada" });
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "PATCH /solicitudes-empleo/:id error");
+    res.status(500).json({ error: "Error actualizando solicitud" });
   }
 });
 

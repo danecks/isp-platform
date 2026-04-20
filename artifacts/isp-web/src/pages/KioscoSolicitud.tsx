@@ -1395,9 +1395,10 @@ function PasoDomicilio({ form, setEv, set, onNext, onBack }: {
   set: (k: keyof FormData) => (v: string) => void; onNext: () => void; onBack: () => void;
 }) {
   return (
-    <StepCard title="Paso 3 — Domicilio, Banco y Licencia" onBack={onBack} onNext={onNext}>
+    <StepCard title="Paso 3 — Domicilio, Banco y Licencia" onBack={onBack} onNext={onNext}
+      nextDisabled={!form.direccion.trim()}>
       <Sec title="Donde vive?" />
-      <Field label="Direccion actual" hint="Calle, numero de casa, zona o aldea." wide>
+      <Field label="Direccion actual" required hint="Calle, numero de casa, zona o aldea. Este dato es obligatorio." wide>
         <ISPInput value={form.direccion} onChange={setEv("direccion")} placeholder="Ej: 3ra Calle 5-20 Zona 3, Colonia El Esfuerzo" />
       </Field>
       <Field label="Municipio">

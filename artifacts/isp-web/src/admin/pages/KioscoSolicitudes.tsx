@@ -10,7 +10,7 @@ import {
   Users, Search, RefreshCw, ChevronDown, Eye, X, CheckCircle2,
   XCircle, Clock, UserCheck, Camera, FileText, Phone, MapPin,
   GraduationCap, Briefcase, AlertCircle, Tablet, UserPlus, ExternalLink,
-  PhoneCall, MonitorSmartphone, Trash2, Printer,
+  PhoneCall, MonitorSmartphone, Trash2, Printer, Pencil, Save,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -140,6 +140,9 @@ export default function KioscoSolicitudes() {
   const [empleadoCreadoId, setEmpleadoCreadoId] = useState<number | null>(null);
   const [mostrarFormContratar, setMostrarFormContratar] = useState(false);
   const [asignacion, setAsignacion] = useState({ puesto: "", tipo_personal: "guardia", sueldo_base: "" });
+  const [editando, setEditando] = useState(false);
+  const [editado, setEditado] = useState<Partial<SolicitudDetalle>>({});
+  const [guardando, setGuardando] = useState(false);
 
   const { data: solicitudes = [], isLoading, refetch } = useQuery<Solicitud[]>({
     queryKey: ["kiosco-solicitudes", filtroEstado, busqueda],
@@ -209,7 +212,56 @@ export default function KioscoSolicitudes() {
     setEmpleadoCreadoId(null);
     setMostrarFormContratar(false);
     setAsignacion({ puesto: "", tipo_personal: "guardia", sueldo_base: "" });
+    setEditando(false);
+    setEditado({});
   }, [seleccionada]);
+
+  const iniciarEdicion = () => {
+    if (!detalle) return;
+    setEditado({ ...detalle });
+    setEditando(true);
+  };
+
+  const cancelarEdicion = () => {
+    setEditando(false);
+    setEditado({});
+  };
+
+  const guardarEdicion = async () => {
+    if (!detalle) return;
+    if (!editado.direccion || !String(editado.direccion).trim()) {
+      alert("La dirección es obligatoria.");
+      return;
+    }
+    if (!editado.nombre_completo || !String(editado.nombre_completo).trim()) {
+      alert("El nombre completo es obligatorio.");
+      return;
+    }
+    setGuardando(true);
+    try {
+      const r = await fetch(`${API}/solicitudes-empleo/${detalle.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...editado, revisado_por: currentUser?.name || "Admin" }),
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data.error || "Error al guardar");
+      }
+      qc.invalidateQueries({ queryKey: ["kiosco-solicitudes"] });
+      qc.invalidateQueries({ queryKey: ["kiosco-solicitud-detalle", detalle.id] });
+      setEditando(false);
+      setEditado({});
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Error al guardar cambios");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const setCampo = <K extends keyof SolicitudDetalle>(campo: K, valor: SolicitudDetalle[K]) => {
+    setEditado(prev => ({ ...prev, [campo]: valor }));
+  };
 
   const conteoEstados = ESTADOS.reduce((acc, e) => {
     if (e === "todos") acc[e] = solicitudes.length;
@@ -369,13 +421,41 @@ export default function KioscoSolicitudes() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <a
-                    href={`/admin/rrhh/kiosco-solicitudes/${detalle.id}/imprimir`}
-                    title="Abrir vista de impresión (use Imprimir → Guardar como PDF)"
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors"
-                  >
-                    <Printer size={14} /> Descargar formulario
-                  </a>
+                  {!editando ? (
+                    <>
+                      <button
+                        onClick={iniciarEdicion}
+                        title="Corregir o completar los datos enviados desde el kiosko"
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                      >
+                        <Pencil size={14} /> Editar datos
+                      </button>
+                      <a
+                        href={`/admin/rrhh/kiosco-solicitudes/${detalle.id}/imprimir`}
+                        title="Abrir vista de impresión (use Imprimir → Guardar como PDF)"
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                      >
+                        <Printer size={14} /> Descargar formulario
+                      </a>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={cancelarEdicion}
+                        disabled={guardando}
+                        className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-600 text-gray-300 hover:bg-gray-700 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={guardarEdicion}
+                        disabled={guardando}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+                      >
+                        <Save size={14} /> {guardando ? "Guardando..." : "Guardar cambios"}
+                      </button>
+                    </>
+                  )}
                   <button onClick={() => setSeleccionada(null)} className="text-gray-400 hover:text-white transition-colors">
                     <X size={22} />
                   </button>
@@ -403,51 +483,128 @@ export default function KioscoSolicitudes() {
                   </div>
                 )}
 
+                {/* Banner de modo edición */}
+                {editando && (
+                  <div className="flex items-start gap-3 bg-amber-950/40 border border-amber-700 rounded-xl px-4 py-3">
+                    <Pencil size={18} className="text-amber-400 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-amber-300 text-sm font-semibold">Modo edición — segunda verificación</p>
+                      <p className="text-amber-400/70 text-xs mt-0.5">
+                        Corrija o complete los datos enviados por el candidato. Los campos en amarillo se pueden modificar. <strong className="text-amber-300">La dirección y el nombre completo son obligatorios.</strong>
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Datos personales */}
                 <Section titulo="Datos Personales" icono={<Users size={16} />}>
                   <Grid2>
-                    <DatoItem label="DPI" value={detalle.dpi} />
-                    <DatoItem label="Fecha de nacimiento" value={detalle.fecha_nacimiento ? fmtDate(detalle.fecha_nacimiento) : null} />
-                    <DatoItem label="Género" value={detalle.genero} />
-                    <DatoItem label="Estado civil" value={detalle.estado_civil} />
-                    <DatoItem label="Teléfono" value={detalle.telefono} />
-                    <DatoItem label="Correo" value={detalle.correo} />
-                    <DatoItem label="Contacto emergencia" value={detalle.nombre_contacto_emergencia} />
-                    <DatoItem label="Tel. emergencia" value={detalle.telefono_emergencia} />
+                    <EField label="Nombre completo" span2 required editando={editando}
+                      display={detalle.nombre_completo}
+                      value={editado.nombre_completo} onChange={v => setCampo("nombre_completo", v as string)} />
+                    <EField label="DPI" editando={editando}
+                      display={detalle.dpi}
+                      value={editado.dpi} onChange={v => setCampo("dpi", v as string)} placeholder="13 dígitos" />
+                    <EField label="Fecha de nacimiento" tipo="date" editando={editando}
+                      display={detalle.fecha_nacimiento ? fmtDate(detalle.fecha_nacimiento) : null}
+                      value={editado.fecha_nacimiento} onChange={v => setCampo("fecha_nacimiento", v as string | null)} />
+                    <EField label="Género" tipo="genero" editando={editando}
+                      display={detalle.genero}
+                      value={editado.genero} onChange={v => setCampo("genero", v as string)} />
+                    <EField label="Estado civil" tipo="estado_civil" editando={editando}
+                      display={detalle.estado_civil}
+                      value={editado.estado_civil} onChange={v => setCampo("estado_civil", v as string)} />
+                    <EField label="Teléfono" editando={editando}
+                      display={detalle.telefono}
+                      value={editado.telefono} onChange={v => setCampo("telefono", v as string)} />
+                    <EField label="Correo" editando={editando}
+                      display={detalle.correo}
+                      value={editado.correo} onChange={v => setCampo("correo", v as string)} />
+                    <EField label="Contacto emergencia" editando={editando}
+                      display={detalle.nombre_contacto_emergencia}
+                      value={editado.nombre_contacto_emergencia} onChange={v => setCampo("nombre_contacto_emergencia", v as string)} />
+                    <EField label="Tel. emergencia" editando={editando}
+                      display={detalle.telefono_emergencia}
+                      value={editado.telefono_emergencia} onChange={v => setCampo("telefono_emergencia", v as string)} />
                   </Grid2>
                 </Section>
 
                 {/* Dirección y familia */}
                 <Section titulo="Dirección y Familia" icono={<MapPin size={16} />}>
                   <Grid2>
-                    <DatoItem label="Dirección" value={detalle.direccion} span2 />
-                    <DatoItem label="Municipio" value={detalle.municipio} />
-                    <DatoItem label="Departamento" value={detalle.departamento} />
-                    <DatoItem label="Nombre del padre" value={detalle.nombre_padre} />
-                    <DatoItem label="Nombre de la madre" value={detalle.nombre_madre} />
-                    <DatoItem label="Dependientes" value={String(detalle.num_dependientes)} />
-                    <DatoItem label="Familiar en ISP" value={detalle.familiar_en_empresa ? `Sí — ${detalle.nombre_familiar_empresa || ""}` : "No"} />
+                    <EField label="Dirección" tipo="textarea" span2 required editando={editando}
+                      display={detalle.direccion}
+                      value={editado.direccion} onChange={v => setCampo("direccion", v as string)}
+                      placeholder="Calle, número, zona, colonia o aldea — obligatorio" />
+                    <EField label="Municipio" editando={editando}
+                      display={detalle.municipio}
+                      value={editado.municipio} onChange={v => setCampo("municipio", v as string | null)} />
+                    <EField label="Departamento" editando={editando}
+                      display={detalle.departamento}
+                      value={editado.departamento} onChange={v => setCampo("departamento", v as string | null)} />
+                    <EField label="Nombre del padre" editando={editando}
+                      display={detalle.nombre_padre}
+                      value={editado.nombre_padre} onChange={v => setCampo("nombre_padre", v as string)} />
+                    <EField label="Nombre de la madre" editando={editando}
+                      display={detalle.nombre_madre}
+                      value={editado.nombre_madre} onChange={v => setCampo("nombre_madre", v as string)} />
+                    <EField label="Dependientes" tipo="number" editando={editando}
+                      display={String(detalle.num_dependientes)}
+                      value={editado.num_dependientes} onChange={v => setCampo("num_dependientes", (v as number) || 0)} />
+                    <EField label="Familiar en ISP" tipo="bool" editando={editando}
+                      display={detalle.familiar_en_empresa ? `Sí — ${detalle.nombre_familiar_empresa || ""}` : "No"}
+                      value={editado.familiar_en_empresa} onChange={v => setCampo("familiar_en_empresa", v as boolean)} />
+                    {(editando || editado.familiar_en_empresa || detalle.familiar_en_empresa) && (
+                      <EField label="Nombre del familiar en ISP" editando={editando}
+                        display={detalle.nombre_familiar_empresa}
+                        value={editado.nombre_familiar_empresa} onChange={v => setCampo("nombre_familiar_empresa", v as string)} />
+                    )}
                   </Grid2>
                 </Section>
 
                 {/* Educación y experiencia */}
                 <Section titulo="Educación y Experiencia" icono={<GraduationCap size={16} />}>
                   <Grid2>
-                    <DatoItem label="Grado de estudios" value={detalle.grado_estudios} />
-                    <DatoItem label="Experiencia en seguridad" value={detalle.experiencia_seguridad ? `Sí — ${detalle.anios_experiencia} año(s)` : "No"} />
-                    {detalle.empresa_anterior && <DatoItem label="Empresa anterior" value={detalle.empresa_anterior} span2 />}
-                    <DatoItem label="Licencia de armas" value={detalle.licencia_armas ? "Sí" : "No"} />
-                    <DatoItem label="Vehículo propio" value={detalle.tiene_vehiculo ? "Sí" : "No"} />
+                    <EField label="Grado de estudios" editando={editando}
+                      display={detalle.grado_estudios}
+                      value={editado.grado_estudios} onChange={v => setCampo("grado_estudios", v as string)} />
+                    <EField label="Experiencia en seguridad" tipo="bool" editando={editando}
+                      display={detalle.experiencia_seguridad ? `Sí — ${detalle.anios_experiencia} año(s)` : "No"}
+                      value={editado.experiencia_seguridad} onChange={v => setCampo("experiencia_seguridad", v as boolean)} />
+                    {(editando || editado.experiencia_seguridad || detalle.experiencia_seguridad) && (
+                      <>
+                        <EField label="Años de experiencia" tipo="number" editando={editando}
+                          display={String(detalle.anios_experiencia || 0)}
+                          value={editado.anios_experiencia} onChange={v => setCampo("anios_experiencia", (v as number) || 0)} />
+                        <EField label="Empresa anterior" span2 editando={editando}
+                          display={detalle.empresa_anterior}
+                          value={editado.empresa_anterior} onChange={v => setCampo("empresa_anterior", v as string)} />
+                      </>
+                    )}
+                    <EField label="Licencia de armas" tipo="bool" editando={editando}
+                      display={detalle.licencia_armas ? "Sí" : "No"}
+                      value={editado.licencia_armas} onChange={v => setCampo("licencia_armas", v as boolean)} />
+                    <EField label="Vehículo propio" tipo="bool" editando={editando}
+                      display={detalle.tiene_vehiculo ? "Sí" : "No"}
+                      value={editado.tiene_vehiculo} onChange={v => setCampo("tiene_vehiculo", v as boolean)} />
                   </Grid2>
                 </Section>
 
                 {/* Puesto */}
                 <Section titulo="Puesto Solicitado" icono={<Briefcase size={16} />}>
                   <Grid2>
-                    <DatoItem label="Puesto" value={detalle.puesto_solicitado} />
-                    <DatoItem label="Disponibilidad" value={detalle.disponibilidad_horario} />
-                    <DatoItem label="Disponible fuera de ciudad" value={detalle.disponible_exterior ? "Sí" : "No"} />
-                    <DatoItem label="Pretensión salarial" value={detalle.pretension_salarial ? `Q ${parseFloat(detalle.pretension_salarial).toLocaleString("es-GT")}` : null} />
+                    <EField label="Puesto" editando={editando}
+                      display={detalle.puesto_solicitado}
+                      value={editado.puesto_solicitado} onChange={v => setCampo("puesto_solicitado", v as string)} />
+                    <EField label="Disponibilidad" editando={editando}
+                      display={detalle.disponibilidad_horario}
+                      value={editado.disponibilidad_horario} onChange={v => setCampo("disponibilidad_horario", v as string)} />
+                    <EField label="Disponible fuera de ciudad" tipo="bool" editando={editando}
+                      display={detalle.disponible_exterior ? "Sí" : "No"}
+                      value={editado.disponible_exterior} onChange={v => setCampo("disponible_exterior", v as boolean)} />
+                    <EField label="Pretensión salarial (Q)" tipo="number" editando={editando}
+                      display={detalle.pretension_salarial ? `Q ${parseFloat(detalle.pretension_salarial).toLocaleString("es-GT")}` : null}
+                      value={editado.pretension_salarial} onChange={v => setCampo("pretension_salarial", v as string | null)} />
                   </Grid2>
                 </Section>
 
@@ -610,6 +767,105 @@ function DatoItem({ label, value, span2 }: { label: string; value: string | null
     <div className={span2 ? "col-span-2" : ""}>
       <div className="text-gray-500 text-xs mb-0.5">{label}</div>
       <div className="text-gray-200 text-sm">{value || <span className="text-gray-600 italic">—</span>}</div>
+    </div>
+  );
+}
+
+type EFieldTipo = "text" | "textarea" | "date" | "number" | "bool" | "genero" | "estado_civil";
+
+interface EFieldProps {
+  label: string;
+  display: string | null | undefined;          // valor formateado para mostrar (read-only)
+  editando: boolean;
+  value: unknown;                                // valor crudo del campo (para edición)
+  onChange: (v: unknown) => void;
+  tipo?: EFieldTipo;
+  span2?: boolean;
+  required?: boolean;
+  placeholder?: string;
+}
+
+function EField({ label, display, editando, value, onChange, tipo = "text", span2, required, placeholder }: EFieldProps) {
+  const wrap = span2 ? "col-span-2" : "";
+  if (!editando) {
+    return (
+      <div className={wrap}>
+        <div className="text-gray-500 text-xs mb-0.5">
+          {label}{required && <span className="text-red-400 ml-1">*</span>}
+        </div>
+        <div className="text-gray-200 text-sm">{display || <span className="text-gray-600 italic">—</span>}</div>
+      </div>
+    );
+  }
+  const inputCls = "w-full bg-gray-800 border border-amber-600/40 text-white rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500";
+  const v = value == null ? "" : String(value);
+  return (
+    <div className={wrap}>
+      <div className="text-amber-400 text-xs mb-0.5 font-medium">
+        {label}{required && <span className="text-red-400 ml-1">*</span>}
+      </div>
+      {tipo === "textarea" && (
+        <textarea
+          value={v}
+          rows={2}
+          placeholder={placeholder}
+          onChange={e => onChange(e.target.value)}
+          className={inputCls + " resize-none"}
+        />
+      )}
+      {tipo === "text" && (
+        <input
+          type="text"
+          value={v}
+          placeholder={placeholder}
+          onChange={e => onChange(e.target.value)}
+          className={inputCls}
+        />
+      )}
+      {tipo === "number" && (
+        <input
+          type="number"
+          value={v}
+          placeholder={placeholder}
+          onChange={e => onChange(e.target.value === "" ? "" : Number(e.target.value))}
+          className={inputCls}
+        />
+      )}
+      {tipo === "date" && (
+        <input
+          type="date"
+          value={v ? v.slice(0, 10) : ""}
+          onChange={e => onChange(e.target.value || null)}
+          className={inputCls}
+        />
+      )}
+      {tipo === "bool" && (
+        <select
+          value={value === true || value === "true" ? "si" : "no"}
+          onChange={e => onChange(e.target.value === "si")}
+          className={inputCls}
+        >
+          <option value="no">No</option>
+          <option value="si">Sí</option>
+        </select>
+      )}
+      {tipo === "genero" && (
+        <select value={v} onChange={e => onChange(e.target.value)} className={inputCls}>
+          <option value="">— sin especificar —</option>
+          <option value="Masculino">Masculino</option>
+          <option value="Femenino">Femenino</option>
+        </select>
+      )}
+      {tipo === "estado_civil" && (
+        <select value={v} onChange={e => onChange(e.target.value)} className={inputCls}>
+          <option value="">— sin especificar —</option>
+          <option value="Soltero/a">Soltero/a</option>
+          <option value="Casado/a">Casado/a</option>
+          <option value="Unido/a">Unido/a</option>
+          <option value="Divorciado/a">Divorciado/a</option>
+          <option value="Viudo/a">Viudo/a</option>
+        </select>
+      )}
     </div>
   );
 }
