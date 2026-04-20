@@ -107,6 +107,11 @@ router.get("/roles/modulos", (_req, res) => {
 router.get("/session/permisos", async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: "No autenticado" });
+  // Evitar cache/304: los permisos pueden cambiar al hacer deploy o asignar módulos.
+  // Sin esto, el navegador conserva un JSON viejo que oculta los menús nuevos.
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
   try {
     // Siempre consultar el rol actual desde la BD (evita stale session cuando el admin cambia el rol)
     const userRow = await pool.query(
