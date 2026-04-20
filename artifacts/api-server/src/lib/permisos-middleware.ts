@@ -28,6 +28,7 @@ const ROUTE_MODULO_MAP: Record<string, string> = {
   "/solicitudes-turno":      "pizarron",
   "/planificacion-futura":   "pizarron",
   "/qr-rondas":              "control_qr",
+  "/agente/tokens":          "carnets_qr",
   "/agente":                 "control_qr",
   "/municion-puestos":       "control_qr",
   "/bodega-solicitudes":     "control_qr",
@@ -124,12 +125,17 @@ export async function permisosMiddleware(req: any, res: any, next: any) {
 
   if (!session) return next();
 
-  // Determinar qué módulo corresponde a esta ruta
+  // Determinar qué módulo corresponde a esta ruta.
+  // Elegimos SIEMPRE el prefijo más largo (más específico) para que
+  // mapeos como "/agente/tokens" ganen sobre "/agente".
   let moduloClave: string | undefined;
+  let mejorPrefijo = -1;
   for (const [prefix, modulo] of Object.entries(ROUTE_MODULO_MAP)) {
     if (req.path === prefix || req.path.startsWith(prefix + "/") || req.path.startsWith(prefix + "?")) {
-      moduloClave = modulo;
-      break;
+      if (prefix.length > mejorPrefijo) {
+        mejorPrefijo = prefix.length;
+        moduloClave = modulo;
+      }
     }
   }
 
