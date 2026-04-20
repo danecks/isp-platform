@@ -13,10 +13,13 @@ const AUTO_RESET_MS = 8000;                // tiempo de éxito antes de volver a
 
 // ── Tracking GPS de custodios ──
 const TRACKING_KEY = "isp_turno_activo";   // localStorage para reanudar al reabrir
+const BUFFER_KEY = "isp_turno_buffer";     // localStorage para puntos no enviados
 const PING_DISTANCIA_M = 30;               // mover al menos 30m para grabar punto
 const PING_TIEMPO_MAX_MS = 60_000;         // o cada 60s si no se movió (heartbeat)
 const FLUSH_INTERVAL_MS = 30_000;          // intentar enviar lote cada 30s
 const FLUSH_MAX_PUNTOS = 20;               // o cuando se acumulen 20 puntos
+const GAP_CHECK_INTERVAL_MS = 30_000;      // chequear cada 30s si hay hueco GPS
+const GAP_THRESHOLD_MS = 180_000;          // 3 min sin punto = hueco visible
 
 interface TurnoActivoStorage {
   fichaje_id: number;
@@ -135,11 +138,13 @@ export default function AgenteInicio() {
 
   const watchIdRef = useRef<number | null>(null);
   const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const gapTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const bufferRef = useRef<PuntoGPS[]>([]);
   const ultimoGrabadoRef = useRef<{ lat: number; lng: number; ts: number } | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const turnoActivoRef = useRef<TurnoActivoStorage | null>(null);
+  const [gapAlerta, setGapAlerta] = useState<{ minutos: number } | null>(null);
 
   // Mantener ref sincronizada con el estado para usar dentro de callbacks de geo
   useEffect(() => { turnoActivoRef.current = turnoActivo; }, [turnoActivo]);
@@ -337,6 +342,7 @@ export default function AgenteInicio() {
         // Si el server rechaza por "turno_ya_cerrado", limpiar local
         if (r.status === 409) {
           localStorage.removeItem(TRACKING_KEY);
+          localStorage.removeItem(BUFFER_KEY);
           detenerRastreoInterno();
           setTurnoActivo(null);
           setEstado("inicio");
@@ -344,13 +350,17 @@ export default function AgenteInicio() {
         }
         // Reintento simple: devolver al buffer al frente
         bufferRef.current = [...lote, ...bufferRef.current];
+        try { localStorage.setItem(BUFFER_KEY, JSON.stringify(bufferRef.current)); } catch { /* noop */ }
         setTrackingError("Conexión inestable, reintentando…");
       } else {
+        // Éxito: limpiar buffer persistido
+        try { localStorage.removeItem(BUFFER_KEY); } catch { /* noop */ }
         setTrackingError(null);
       }
     } catch {
       // Sin red — devolvemos al buffer y reintentamos en el siguiente tick
       bufferRef.current = [...lote, ...bufferRef.current];
+      try { localStorage.setItem(BUFFER_KEY, JSON.stringify(bufferRef.current)); } catch { /* noop */ }
       setTrackingError("Sin conexión, los puntos se enviarán cuando vuelva");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -366,6 +376,10 @@ export default function AgenteInicio() {
       clearInterval(flushTimerRef.current);
       flushTimerRef.current = null;
     }
+    if (gapTimerRef.current) {
+      clearInterval(gapTimerRef.current);
+      gapTimerRef.current = null;
+    }
     if (wakeLockRef.current) {
       try { void wakeLockRef.current.release(); } catch { /* noop */ }
       wakeLockRef.current = null;
@@ -374,6 +388,7 @@ export default function AgenteInicio() {
       try { void audioCtxRef.current.close(); } catch { /* noop */ }
       audioCtxRef.current = null;
     }
+    setGapAlerta(null);
   }, []);
 
   // ── Audio silencioso en loop: trick para que Android no duerma la pestaña ──
@@ -391,13 +406,20 @@ export default function AgenteInicio() {
     } catch { /* noop */ }
   }, []);
 
-  // ── Wake Lock: mantiene la pantalla encendida si el agente lo deja activo ──
-  // (no lo activamos automáticamente para no quemar batería; lo activa el botón)
+  // ── Wake Lock: mantiene la pantalla encendida automáticamente durante el turno ──
+  // Si el sistema lo libera (ej. el usuario apaga la pantalla manualmente), se re-adquiere
+  // al volver a primer plano vía el listener de visibilitychange.
   const adquirirWakeLock = useCallback(async () => {
     try {
       const wl = (navigator as Navigator & { wakeLock?: { request: (t: "screen") => Promise<WakeLockSentinel> } }).wakeLock;
       if (!wl) return false;
-      wakeLockRef.current = await wl.request("screen");
+      const sentinel = await wl.request("screen");
+      wakeLockRef.current = sentinel;
+      // Cuando el sistema lo libera (cambio de app, etc.), limpiar la ref para
+      // que el visibilitychange handler sepa que tiene que re-adquirirlo.
+      sentinel.addEventListener("release", () => {
+        if (wakeLockRef.current === sentinel) wakeLockRef.current = null;
+      });
       return true;
     } catch { return false; }
   }, []);
@@ -407,11 +429,31 @@ export default function AgenteInicio() {
     setTurnoActivo(turno);
     turnoActivoRef.current = turno;
     localStorage.setItem(TRACKING_KEY, JSON.stringify(turno));
-    bufferRef.current = [];
+    // Restaurar puntos no enviados que quedaron de una sesión anterior (offline buffer)
+    try {
+      const rawBuf = localStorage.getItem(BUFFER_KEY);
+      if (rawBuf) {
+        const arr = JSON.parse(rawBuf) as PuntoGPS[];
+        if (Array.isArray(arr) && arr.length > 0) {
+          bufferRef.current = arr;
+        } else {
+          bufferRef.current = [];
+        }
+      } else {
+        bufferRef.current = [];
+      }
+    } catch {
+      bufferRef.current = [];
+      try { localStorage.removeItem(BUFFER_KEY); } catch { /* noop */ }
+    }
     ultimoGrabadoRef.current = null;
-    setPuntosCount(0);
+    setPuntosCount(bufferRef.current.length);
     setTrackingError(null);
     setCoCustodios([]);
+    setGapAlerta(null);
+
+    // Wake Lock automático: que la pantalla no se apague sola
+    void adquirirWakeLock();
 
     // Audio truco (no requiere permiso explícito)
     arrancarAudioSilencioso();
@@ -472,7 +514,20 @@ export default function AgenteInicio() {
 
     // Flush periódico
     flushTimerRef.current = setInterval(() => { void flushPuntos(); }, FLUSH_INTERVAL_MS);
-  }, [arrancarAudioSilencioso, bateria, flushPuntos]);
+
+    // Detector de hueco GPS: avisa si pasaron > 3 min sin grabar punto
+    // (significa que el navegador suspendió la pestaña, p.ej. teléfono bloqueado)
+    gapTimerRef.current = setInterval(() => {
+      const ultimo = ultimoGrabadoRef.current;
+      if (!ultimo) return;
+      const ms = Date.now() - ultimo.ts;
+      if (ms >= GAP_THRESHOLD_MS) {
+        setGapAlerta({ minutos: Math.floor(ms / 60_000) });
+      } else {
+        setGapAlerta(null);
+      }
+    }, GAP_CHECK_INTERVAL_MS);
+  }, [adquirirWakeLock, arrancarAudioSilencioso, bateria, flushPuntos]);
 
   // ── Cerrar turno (botón) ──
   const cerrarTurno = useCallback(async () => {
@@ -507,6 +562,7 @@ export default function AgenteInicio() {
     }
     detenerRastreoInterno();
     localStorage.removeItem(TRACKING_KEY);
+    localStorage.removeItem(BUFFER_KEY);
     setTurnoActivo(null);
     setPuntosCount(0);
     setUltimaPosicion(null);
@@ -535,17 +591,27 @@ export default function AgenteInicio() {
   // ── Cleanup: liberar GPS y audio al desmontar ──
   useEffect(() => () => { detenerRastreoInterno(); }, [detenerRastreoInterno]);
 
-  // ── Re-adquirir wake lock al volver a primer plano (si estaba activo) ──
+  // ── Al volver a primer plano: re-adquirir wake lock + flush + recheck gap ──
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === "visible" && turnoActivoRef.current && wakeLockRef.current === null) {
-        // No re-adquirir automático; solo hacer flush al volver
-        void flushPuntos();
+      if (document.visibilityState !== "visible") return;
+      if (!turnoActivoRef.current) return;
+      // Re-adquirir wake lock automático (el sistema lo libera al perder foco)
+      if (wakeLockRef.current === null) void adquirirWakeLock();
+      // Mandar lo que haya en buffer apenas vuelva la conexión
+      void flushPuntos();
+      // Forzar re-evaluación del gap inmediatamente (sin esperar al timer)
+      const ultimo = ultimoGrabadoRef.current;
+      if (ultimo) {
+        const ms = Date.now() - ultimo.ts;
+        if (ms >= GAP_THRESHOLD_MS) {
+          setGapAlerta({ minutos: Math.floor(ms / 60_000) });
+        }
       }
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [flushPuntos]);
+  }, [adquirirWakeLock, flushPuntos]);
 
   const enviar = useCallback(async (
     token: string, lat: number | null, lng: number | null, precision: number | null
@@ -946,6 +1012,19 @@ export default function AgenteInicio() {
               </div>
             </div>
 
+            {gapAlerta && (
+              <div className="bg-rose-500/15 border-2 border-rose-500/50 rounded-lg p-3 text-sm text-rose-100 flex gap-2 animate-pulse">
+                <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-semibold">Hueco en el recorrido detectado</div>
+                  <div className="text-xs mt-0.5 text-rose-200/90">
+                    No se grabaron puntos en los últimos {gapAlerta.minutos} min. El teléfono o la app
+                    estuvieron suspendidos. Manténgalo desbloqueado y con esta pantalla al frente.
+                  </div>
+                </div>
+              </div>
+            )}
+
             {trackingError && (
               <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-xs text-amber-200 flex gap-2">
                 <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -953,22 +1032,33 @@ export default function AgenteInicio() {
               </div>
             )}
 
-            <button
-              onClick={() => void adquirirWakeLock()}
-              className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-3 rounded-lg text-sm flex items-center justify-center gap-2"
-            >
-              <Navigation className="w-4 h-4" />
-              {wakeLockRef.current ? "Pantalla bloqueada activa" : "Mantener pantalla encendida"}
-            </button>
-
-            <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-3 text-[11px] text-slate-400 space-y-1">
-              <div className="flex gap-2">
-                <span className="text-emerald-400">✓</span>
-                <span>Podés bloquear el teléfono y guardarlo. El recorrido sigue grabando en segundo plano.</span>
+            <div className="bg-amber-500/10 border-2 border-amber-500/40 rounded-lg p-3 text-xs text-amber-100 space-y-2">
+              <div className="font-semibold text-amber-200 flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4" />
+                IMPORTANTE — para que el recorrido se grabe completo
               </div>
               <div className="flex gap-2">
-                <span className="text-amber-400">!</span>
-                <span>No cerrés esta pantalla del menú de apps recientes — eso detiene el rastreo.</span>
+                <span className="text-rose-400">✗</span>
+                <span><b>NO bloquees</b> el teléfono apretando el botón de power.</span>
+              </div>
+              <div className="flex gap-2">
+                <span className="text-rose-400">✗</span>
+                <span><b>NO cambies</b> a otra app (WhatsApp, cámara, etc).</span>
+              </div>
+              <div className="flex gap-2">
+                <span className="text-rose-400">✗</span>
+                <span><b>NO cerrés</b> esta pestaña del menú de apps recientes.</span>
+              </div>
+              <div className="flex gap-2">
+                <span className="text-emerald-400">✓</span>
+                <span>Dejá esta pantalla siempre al frente y guardá el teléfono así.</span>
+              </div>
+              <div className="flex gap-2 text-[10px] text-amber-300/70 pt-1 border-t border-amber-500/20">
+                <Navigation className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                <span>
+                  La pantalla está configurada para no apagarse sola.
+                  {wakeLockRef.current === null && " Tocá la pantalla cada cierto tiempo para reactivarla."}
+                </span>
               </div>
             </div>
 
