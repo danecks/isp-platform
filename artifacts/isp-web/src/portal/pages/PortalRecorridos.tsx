@@ -5,8 +5,24 @@ import { PortalLayout } from "@/portal/layout/PortalLayout";
 import { portalGet } from "@/lib/portalApi";
 import {
   MapPin, Clock, RefreshCw, Activity, CheckCircle2, User, Building2,
-  Loader2, AlertTriangle,
+  Loader2, AlertTriangle, Calendar,
 } from "lucide-react";
+
+// Fecha en zona horaria GT con offset en días (0 = hoy, -1 = ayer). Devuelve YYYY-MM-DD.
+function dateGT(offsetDays = 0): string {
+  const now = new Date();
+  now.setUTCDate(now.getUTCDate() + offsetDays);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Guatemala", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(now);
+}
+
+function fmtFechaLarga(yyyymmdd: string): string {
+  const [y, m, d] = yyyymmdd.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("es-GT", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+  });
+}
 
 const iconoInicio = L.divIcon({
   className: "",
@@ -113,10 +129,18 @@ export default function PortalRecorridos() {
   const [detalle, setDetalle] = useState<RecorridoDetalle | null>(null);
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [fechaSel, setFechaSel] = useState<string>(() => dateGT(0));
+
+  const hoyGT = dateGT(0);
+  const ayerGT = dateGT(-1);
+  const minFecha = dateGT(-90);
+  const esHoy = fechaSel === hoyGT;
 
   const cargarLista = useCallback(async () => {
     try {
-      const data = await portalGet<RecorridoListItem[]>("/portal/recorridos-del-dia");
+      const data = await portalGet<RecorridoListItem[]>(
+        `/portal/recorridos-del-dia?fecha=${encodeURIComponent(fechaSel)}`
+      );
       setLista(data);
       setErrorLista(null);
     } catch (err: any) {
@@ -124,7 +148,7 @@ export default function PortalRecorridos() {
     } finally {
       setCargandoLista(false);
     }
-  }, []);
+  }, [fechaSel]);
 
   const cargarDetalle = useCallback(async (fichajeId: number) => {
     setCargandoDetalle(true);
@@ -138,20 +162,27 @@ export default function PortalRecorridos() {
     }
   }, []);
 
+  // Al cambiar la fecha, limpiar la selección
+  useEffect(() => {
+    setSeleccionado(null);
+    setDetalle(null);
+    setCargandoLista(true);
+  }, [fechaSel]);
+
   useEffect(() => {
     void cargarLista();
-    if (!autoRefresh) return;
+    if (!autoRefresh || !esHoy) return;
     const t = setInterval(() => void cargarLista(), 30_000);
     return () => clearInterval(t);
-  }, [cargarLista, autoRefresh]);
+  }, [cargarLista, autoRefresh, esHoy]);
 
   useEffect(() => {
     if (seleccionado === null) { setDetalle(null); return; }
     void cargarDetalle(seleccionado);
-    if (!autoRefresh) return;
+    if (!autoRefresh || !esHoy) return;
     const t = setInterval(() => void cargarDetalle(seleccionado), 20_000);
     return () => clearInterval(t);
-  }, [seleccionado, autoRefresh, cargarDetalle]);
+  }, [seleccionado, autoRefresh, esHoy, cargarDetalle]);
 
   const polyline = useMemo<[number, number][]>(
     () => detalle?.puntos.map(p => [p.lat, p.lng]) ?? [],
@@ -168,14 +199,52 @@ export default function PortalRecorridos() {
         <div>
           <h2 className="text-xl font-bold text-white">Recorridos GPS</h2>
           <p className="text-sm text-white/40 mt-1">
-            Rastreo en tiempo real de los custodios en servicio hoy
+            {esHoy
+              ? "Rastreo en tiempo real de los custodios en servicio hoy"
+              : `Recorridos del ${fmtFechaLarga(fechaSel)}`}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-2 text-xs text-white/60 cursor-pointer">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-lg p-1">
+            <button
+              onClick={() => setFechaSel(hoyGT)}
+              className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                fechaSel === hoyGT ? "bg-blue-600 text-white" : "text-white/60 hover:bg-white/10"
+              }`}
+            >
+              Hoy
+            </button>
+            <button
+              onClick={() => setFechaSel(ayerGT)}
+              className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                fechaSel === ayerGT ? "bg-blue-600 text-white" : "text-white/60 hover:bg-white/10"
+              }`}
+            >
+              Ayer
+            </button>
+            <div className="flex items-center gap-1 pl-1.5 ml-0.5 border-l border-white/10">
+              <Calendar className="w-3.5 h-3.5 text-white/40" />
+              <input
+                type="date"
+                value={fechaSel}
+                min={minFecha}
+                max={hoyGT}
+                onChange={(e) => e.target.value && setFechaSel(e.target.value)}
+                className="bg-transparent text-xs text-white/80 outline-none [color-scheme:dark]"
+                title="Disponible los últimos 90 días"
+              />
+            </div>
+          </div>
+          <label
+            className={`flex items-center gap-2 text-xs cursor-pointer ${
+              esHoy ? "text-white/60" : "text-white/30 cursor-not-allowed"
+            }`}
+            title={esHoy ? "" : "Solo disponible al ver el día actual"}
+          >
             <input
               type="checkbox"
-              checked={autoRefresh}
+              checked={autoRefresh && esHoy}
+              disabled={!esHoy}
               onChange={(e) => setAutoRefresh(e.target.checked)}
               className="accent-blue-500"
             />
@@ -200,7 +269,7 @@ export default function PortalRecorridos() {
       <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-4">
         <div className="bg-white/3 border border-white/8 rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-white/8 text-xs uppercase tracking-wide text-white/50">
-            Turnos del día ({lista.length})
+            {esHoy ? "Turnos del día" : "Turnos"} ({lista.length})
           </div>
           <div className="max-h-[600px] overflow-y-auto">
             {cargandoLista ? (
@@ -210,7 +279,9 @@ export default function PortalRecorridos() {
               </div>
             ) : lista.length === 0 ? (
               <div className="p-6 text-center text-white/40 text-sm">
-                Sin custodios con tracking activo hoy.
+                {esHoy
+                  ? "Sin custodios con tracking activo hoy."
+                  : "Sin recorridos en esta fecha."}
               </div>
             ) : (
               <ul className="divide-y divide-white/8">

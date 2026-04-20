@@ -4,13 +4,29 @@ import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from "react-
 import L from "leaflet";
 import {
   MapPin, Clock, RefreshCw, Activity, CheckCircle2, User, Building2,
-  Loader2, AlertTriangle, XCircle,
+  Loader2, AlertTriangle, XCircle, Calendar,
 } from "lucide-react";
 
 const API = "/api";
 
 function getSession() {
   return sessionStorage.getItem("isp_admin_session_v2") || "";
+}
+
+// Fecha en zona horaria GT con offset en días (0 = hoy, -1 = ayer). Devuelve YYYY-MM-DD.
+function dateGT(offsetDays = 0): string {
+  const now = new Date();
+  now.setUTCDate(now.getUTCDate() + offsetDays);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Guatemala", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(now);
+}
+
+function fmtFechaLarga(yyyymmdd: string): string {
+  const [y, m, d] = yyyymmdd.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("es-GT", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+  });
 }
 
 // Iconos personalizados (Leaflet por defecto pierde el ícono al hacer bundle)
@@ -126,10 +142,15 @@ export default function RecorridosCustodia() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [forzandoCierre, setForzandoCierre] = useState(false);
   const [errorCierre, setErrorCierre] = useState<string | null>(null);
+  const [fechaSel, setFechaSel] = useState<string>(() => dateGT(0));
+
+  const hoyGT = dateGT(0);
+  const ayerGT = dateGT(-1);
+  const esHoy = fechaSel === hoyGT;
 
   const cargarLista = useCallback(async () => {
     try {
-      const r = await fetch(`${API}/agente/recorridos-del-dia`);
+      const r = await fetch(`${API}/agente/recorridos-del-dia?fecha=${encodeURIComponent(fechaSel)}`);
       const data = await r.json();
       if (!r.ok) {
         setErrorLista(data.error || "Error cargando lista");
@@ -142,7 +163,7 @@ export default function RecorridosCustodia() {
     } finally {
       setCargandoLista(false);
     }
-  }, []);
+  }, [fechaSel]);
 
   const cargarDetalle = useCallback(async (fichajeId: number) => {
     setCargandoDetalle(true);
@@ -193,22 +214,29 @@ export default function RecorridosCustodia() {
   // Limpiar error de cierre al cambiar de selección
   useEffect(() => { setErrorCierre(null); }, [seleccionado]);
 
-  // Cargar lista al montar y cada 30s si autoRefresh
+  // Al cambiar la fecha, deseleccionar el detalle y resetear estado de carga
+  useEffect(() => {
+    setSeleccionado(null);
+    setDetalle(null);
+    setCargandoLista(true);
+  }, [fechaSel]);
+
+  // Cargar lista al montar y cada 30s si autoRefresh (solo en "hoy")
   useEffect(() => {
     void cargarLista();
-    if (!autoRefresh) return;
+    if (!autoRefresh || !esHoy) return;
     const t = setInterval(() => void cargarLista(), 30_000);
     return () => clearInterval(t);
-  }, [cargarLista, autoRefresh]);
+  }, [cargarLista, autoRefresh, esHoy]);
 
-  // Cargar detalle al cambiar selección y refrescar cada 20s si turno activo
+  // Cargar detalle al cambiar selección y refrescar cada 20s si turno activo (solo en "hoy")
   useEffect(() => {
     if (seleccionado === null) { setDetalle(null); return; }
     void cargarDetalle(seleccionado);
-    if (!autoRefresh) return;
+    if (!autoRefresh || !esHoy) return;
     const t = setInterval(() => void cargarDetalle(seleccionado), 20_000);
     return () => clearInterval(t);
-  }, [seleccionado, autoRefresh, cargarDetalle]);
+  }, [seleccionado, autoRefresh, esHoy, cargarDetalle]);
 
   const polyline = useMemo<[number, number][]>(
     () => detalle?.puntos.map(p => [p.lat, p.lng]) ?? [],
@@ -224,13 +252,49 @@ export default function RecorridosCustodia() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold text-white">Recorridos de Custodios</h2>
-          <p className="text-xs text-white/40">Turnos de custodia con rastreo GPS — hoy</p>
+          <p className="text-xs text-white/40">
+            Turnos de custodia con rastreo GPS — {esHoy ? "hoy" : fmtFechaLarga(fechaSel)}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-2 text-xs text-white/60 cursor-pointer">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-lg p-1">
+            <button
+              onClick={() => setFechaSel(hoyGT)}
+              className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                fechaSel === hoyGT ? "bg-blue-600 text-white" : "text-white/60 hover:bg-white/10"
+              }`}
+            >
+              Hoy
+            </button>
+            <button
+              onClick={() => setFechaSel(ayerGT)}
+              className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                fechaSel === ayerGT ? "bg-blue-600 text-white" : "text-white/60 hover:bg-white/10"
+              }`}
+            >
+              Ayer
+            </button>
+            <div className="flex items-center gap-1 pl-1.5 ml-0.5 border-l border-white/10">
+              <Calendar className="w-3.5 h-3.5 text-white/40" />
+              <input
+                type="date"
+                value={fechaSel}
+                max={hoyGT}
+                onChange={(e) => e.target.value && setFechaSel(e.target.value)}
+                className="bg-transparent text-xs text-white/80 outline-none [color-scheme:dark]"
+              />
+            </div>
+          </div>
+          <label
+            className={`flex items-center gap-2 text-xs cursor-pointer ${
+              esHoy ? "text-white/60" : "text-white/30 cursor-not-allowed"
+            }`}
+            title={esHoy ? "" : "Solo disponible al ver el día actual"}
+          >
             <input
               type="checkbox"
-              checked={autoRefresh}
+              checked={autoRefresh && esHoy}
+              disabled={!esHoy}
               onChange={(e) => setAutoRefresh(e.target.checked)}
               className="accent-blue-500"
             />
@@ -266,7 +330,7 @@ export default function RecorridosCustodia() {
               </div>
             ) : lista.length === 0 ? (
               <div className="p-6 text-center text-white/40 text-sm">
-                Sin turnos de custodia con tracking hoy.
+                Sin turnos de custodia con tracking {esHoy ? "hoy" : "en esta fecha"}.
               </div>
             ) : (
               <ul className="divide-y divide-white/8">
