@@ -102,7 +102,9 @@ async function validarNumeroWA(
     return { autorizado: true, usuario };
   } catch (err) {
     console.error("[WA-Webhook] Error al validar número:", err);
-    return { autorizado: true };
+    // Si la BD falla (timeout, conexión muerta), asumir número desconocido
+    // para que al menos responda con menú externo en lugar de quedarse mudo.
+    return { autorizado: false, motivo: "no_registrado" };
   }
 }
 
@@ -323,8 +325,19 @@ async function handleIncomingMessage(
     return { tipo: "info_general", id: leadResult.id, respuesta: msg };
   }
 
-  // Default: lead / cotización
-  return { tipo: "lead", ...(await processLead(nombre, telefono, texto)) };
+  // Default: lead / cotización (siempre con acuse de recibo)
+  const leadResult = await processLead(nombre, telefono, texto);
+  const respuesta = await getWaMessage(
+    "lead_recibido",
+    `🙌 ¡Gracias por escribir a *ISP — Investigaciones y Seguridad Profesional S.A.*!\n\n` +
+    `Recibimos tu mensaje y un asesor te atenderá a la brevedad.\n\n` +
+    `Mientras tanto puedes:\n` +
+    `1️⃣ Solicitar cotización de seguridad\n` +
+    `2️⃣ Postularte a una plaza de guardia\n` +
+    `3️⃣ Conocer nuestros servicios\n\n` +
+    `Escribe el número de la opción o cuéntanos más sobre tu necesidad.`
+  );
+  return { tipo: "lead", id: leadResult.id, respuesta };
 }
 
 // ── GET /webhooks/whatsapp — Verificación de Meta ──────────────────────────
