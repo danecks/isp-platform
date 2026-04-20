@@ -75,6 +75,7 @@ import SolicitudEmpleo from "@/pages/SolicitudEmpleo";
 import ActualizacionDatos from "@/pages/ActualizacionDatos";
 import SolicitarAnticipo from "@/pages/SolicitarAnticipo";
 import AdminKioscoSolicitudes from "@/admin/pages/KioscoSolicitudes";
+import AdminKioscoSolicitudImprimible from "@/admin/pages/KioscoSolicitudImprimible";
 import AdminMergeRequests from "@/admin/pages/MergeRequests";
 import AdminModeloDatos from "@/admin/pages/ModeloDatos";
 
@@ -299,6 +300,9 @@ function Router() {
       <Route path="/plazas-disponibles" component={AnuncioPlazas} />
       <Route path="/admin/rrhh/kiosco-solicitudes">
         {() => <AuthGuard><AdminKioscoSolicitudes /></AuthGuard>}
+      </Route>
+      <Route path="/admin/rrhh/kiosco-solicitudes/:id/imprimir">
+        {() => <AuthGuard><AdminKioscoSolicitudImprimible /></AuthGuard>}
       </Route>
       <Route path="/admin/rrhh/reingresos">
         {() => <AuthGuard><AdminMergeRequests /></AuthGuard>}

@@ -10,7 +10,7 @@ import {
   Users, Search, RefreshCw, ChevronDown, Eye, X, CheckCircle2,
   XCircle, Clock, UserCheck, Camera, FileText, Phone, MapPin,
   GraduationCap, Briefcase, AlertCircle, Tablet, UserPlus, ExternalLink,
-  PhoneCall, MonitorSmartphone, Trash2,
+  PhoneCall, MonitorSmartphone, Trash2, Printer,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -368,9 +368,20 @@ export default function KioscoSolicitudes() {
                     </div>
                   </div>
                 </div>
-                <button onClick={() => setSeleccionada(null)} className="text-gray-400 hover:text-white transition-colors">
-                  <X size={22} />
-                </button>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={`/admin/rrhh/kiosco-solicitudes/${detalle.id}/imprimir`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Descargar formulario en PDF (se abre en una pestaña nueva)"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                  >
+                    <Printer size={14} /> Descargar formulario
+                  </a>
+                  <button onClick={() => setSeleccionada(null)} className="text-gray-400 hover:text-white transition-colors">
+                    <X size={22} />
+                  </button>
+                </div>
               </div>
 
               {/* Contenido */}
