@@ -16,10 +16,43 @@
  *  10  → Fotografía de rostro
  *  11  → Solicitud enviada
  */
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, Component, type ReactNode, type ErrorInfo } from "react";
 import { Lock, ShieldCheck, ChevronLeft } from "lucide-react";
 
 const API = `${import.meta.env.BASE_URL}api`;
+
+// Versión inyectada en build (ver vite.config.ts → define.__BUILD_VERSION__).
+// Se muestra en la pantalla del kiosco para verificar caché y se envía con cada
+// telemetría para correlacionar bugs con builds específicos.
+const BUILD_VERSION =
+  typeof __BUILD_VERSION__ !== "undefined" ? __BUILD_VERSION__ : "dev";
+
+// ID de sesión por carga de página, para correlacionar telemetría
+const SESSION_ID = Math.random().toString(36).slice(2, 10);
+
+/**
+ * Envía un evento de telemetría al servidor con keepalive=true para que
+ * sobreviva si la pestaña se cuelga o el usuario navega/cierra.
+ * NUNCA debe lanzar — toda falla se ignora silenciosamente.
+ */
+function telemetria(evento: string, detalle?: unknown): void {
+  try {
+    const body = JSON.stringify({
+      evento,
+      sessionId: SESSION_ID,
+      version: BUILD_VERSION,
+      detalle: detalle === undefined ? null : detalle,
+    });
+    fetch(`${API}/solicitudes-empleo/telemetria`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    /* ignorar */
+  }
+}
 
 // ── Helpers de foto ──────────────────────────────────────────────────────────
 async function comprimirFoto(blob: Blob): Promise<Blob> {
@@ -276,7 +309,62 @@ const STEP_NAMES = ["","Escaneo DPI","Datos Personales","Domicilio y Banco","Fam
 // ══════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ══════════════════════════════════════════════════════════════════════════════
-export default function KioscoSolicitud() {
+// ── ErrorBoundary: convierte un crash de render en un mensaje legible ──────
+// Sin esto, una excepción durante render deja toda la pantalla en negro
+// (especialmente notorio en iOS Safari standalone/PWA).
+class KioscoErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  private onUnhandledRejection = (ev: PromiseRejectionEvent) => {
+    const reason = ev.reason;
+    const err = reason instanceof Error ? reason : new Error(String(reason));
+    console.error("[kiosco] unhandledrejection:", err);
+    telemetria("async:unhandled-rejection", { msg: err.message, stack: err.stack?.slice(0, 500) });
+    this.setState({ error: err });
+  };
+  componentDidMount() {
+    window.addEventListener("unhandledrejection", this.onUnhandledRejection);
+  }
+  componentWillUnmount() {
+    window.removeEventListener("unhandledrejection", this.onUnhandledRejection);
+  }
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("[kiosco] ErrorBoundary captured:", error, info);
+    telemetria("render:crash", { msg: error.message, stack: error.stack?.slice(0, 500) });
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="min-h-screen bg-[#0a1628] text-white flex items-center justify-center p-6">
+          <div className="bg-[#0d2147] rounded-2xl p-8 max-w-md w-full border border-red-700">
+            <h2 className="text-red-400 text-2xl font-bold mb-3">Algo salió mal</h2>
+            <p className="text-blue-200 mb-4">
+              La aplicación tuvo un problema inesperado. Por favor avise al personal
+              de recepción y muéstreles este mensaje:
+            </p>
+            <pre className="bg-[#060f1e] text-amber-300 text-xs p-3 rounded-lg overflow-auto max-h-48 whitespace-pre-wrap break-all">
+              {this.state.error.message}
+            </pre>
+            <button onClick={() => location.reload()}
+              className="mt-5 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold w-full">
+              Reiniciar aplicación
+            </button>
+            <p className="text-[#1e3a6e] text-[10px] text-center mt-3">
+              v.{BUILD_VERSION} · s.{SESSION_ID}
+            </p>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function KioscoSolicitudWithBoundary() {
+  return <KioscoErrorBoundary><KioscoSolicitud /></KioscoErrorBoundary>;
+}
+
+function KioscoSolicitud() {
   // El PIN de acceso fue desactivado: el kiosko ahora abre directamente en el paso 1.
   const [step, setStep]             = useState(1);
   const [pin, setPin]               = useState("");
@@ -375,11 +463,16 @@ export default function KioscoSolicitud() {
   // ── Envío ────────────────────────────────────────────────────────────────
   const enviarSolicitud = async () => {
     setEnviando(true);
+    telemetria("enviar:inicio", { tieneFoto: !!fotoBlob });
     try {
       let foto_url: string | null = null;
       if (fotoBlob) {
+        telemetria("enviar:comprimir-foto-inicio", { bytes: fotoBlob.size });
         const c = await comprimirFoto(fotoBlob);
+        telemetria("enviar:comprimir-foto-fin", { bytes: c.size });
+        telemetria("enviar:subir-foto-inicio");
         foto_url = await subirFoto(c);
+        telemetria("enviar:subir-foto-fin", { foto_url });
       }
       const payload = {
         ...form,
@@ -398,6 +491,7 @@ export default function KioscoSolicitud() {
         foto_url,
         canal: "kiosco",
       };
+      telemetria("enviar:post-inicio", { payloadBytes: JSON.stringify(payload).length });
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 30000);
       let r: Response;
@@ -411,16 +505,19 @@ export default function KioscoSolicitud() {
       } finally {
         clearTimeout(t);
       }
+      telemetria("enviar:post-respuesta", { status: r.status, ok: r.ok });
       if (!r.ok) {
         const txt = await r.text().catch(() => "");
         throw new Error(`POST solicitud falló (HTTP ${r.status}) ${txt}`);
       }
       const data = await r.json();
+      telemetria("enviar:exito", { id: data?.id });
       setSolicitudId(data.id);
       setStep(12);
     } catch (err) {
       console.error("[kiosco] Error al enviar solicitud:", err);
       const msg = err instanceof Error ? err.message : String(err);
+      telemetria("enviar:error", { msg });
       alert(
         "No pudimos enviar su solicitud.\n\n" +
         "Detalle técnico: " + msg + "\n\n" +
@@ -507,6 +604,11 @@ export default function KioscoSolicitud() {
         {step === 10 && <PasoFoto videoRef={videoRef} camActiva={camActiva} camError={camError} fotoUrl={fotoUrl} onCapturar={capturarFoto} onRehacer={() => { if (fotoUrl) URL.revokeObjectURL(fotoUrl); setFotoBlob(null); setFotoUrl(null); setCamError(false); iniciarCamara(); }} onReintentar={iniciarCamara} onBack={back} onNext={next} enviando={false} />}
         {step === 11 && <PasoResumen form={form} fotoUrl={fotoUrl} onBack={back} onNext={enviarSolicitud} enviando={enviando} />}
         {step === 12 && <PantallaExito solicitudId={solicitudId} telefono={form.telefono} onReiniciar={reiniciar} />}
+      </div>
+
+      {/* Sello de versión: permite verificar que el cliente cargó el bundle nuevo */}
+      <div className="text-[#1e3a6e] text-[10px] text-center py-1 select-none">
+        v.{BUILD_VERSION} · s.{SESSION_ID}
       </div>
     </div>
   );

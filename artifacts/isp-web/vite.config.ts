@@ -27,8 +27,13 @@ if (!basePath) {
   );
 }
 
+const buildVersion = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 12);
+
 export default defineConfig({
   base: basePath,
+  define: {
+    __BUILD_VERSION__: JSON.stringify(buildVersion),
+  },
   plugins: [
     react(),
     tailwindcss(),

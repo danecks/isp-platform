@@ -39,6 +39,17 @@ const pinRateLimit = rateLimit({
   message: { error: "Demasiados intentos. Intente nuevamente en 15 minutos." },
 });
 
+// Rate limit generoso para telemetría (debug del kiosko): permite varios eventos
+// por envío de formulario sin bloquear, pero protege contra spam masivo.
+const telemetriaRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: false,
+  legacyHeaders: false,
+  // No respondemos con error visible; solo descartamos sin romper el cliente
+  handler: (_req, res) => res.status(204).end(),
+});
+
 export const solicitudesEmpleoRouter = Router();
 const storageService = new ObjectStorageService();
 
@@ -75,6 +86,22 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/foto", async (req: Request, re
     logger.error({ err }, "solicitudes-empleo/foto error");
     res.status(500).json({ error: "Error del servidor" });
   }
+});
+
+// ── Telemetría del kiosco (debug del envío en clientes con caché vieja) ───────
+// Endpoint público sin auth; solo loguea para que podamos ver en qué paso
+// quedó atorado el envío del usuario aunque su pantalla quede en negro.
+solicitudesEmpleoRouter.post("/solicitudes-empleo/telemetria", telemetriaRateLimit, async (req: Request, res: Response) => {
+  try {
+    const { evento, sessionId, version, detalle } = req.body ?? {};
+    logger.info(
+      { evento, sessionId, version, detalle, ua: req.headers["user-agent"] },
+      "kiosco-telemetria"
+    );
+  } catch {
+    /* nunca fallar */
+  }
+  res.status(204).end();
 });
 
 // ── Extraer datos del DPI usando IA (visión) ──────────────────────────────────
