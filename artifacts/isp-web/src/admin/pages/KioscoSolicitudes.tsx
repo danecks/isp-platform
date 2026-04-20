@@ -371,9 +371,7 @@ export default function KioscoSolicitudes() {
                 <div className="flex items-center gap-2">
                   <a
                     href={`/admin/rrhh/kiosco-solicitudes/${detalle.id}/imprimir`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="Descargar formulario en PDF (se abre en una pestaña nueva)"
+                    title="Abrir vista de impresión (use Imprimir → Guardar como PDF)"
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors"
                   >
                     <Printer size={14} /> Descargar formulario
