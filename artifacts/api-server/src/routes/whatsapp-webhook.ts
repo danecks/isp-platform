@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, incidentsTable, applicationsTable, leadsTable, usersTable } from "@workspace/db";
+import { db, incidentsTable, leadsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import {
   classifyMessage,
@@ -17,7 +17,13 @@ import {
   startPhoneRegSession,
   procesarPhoneRegStep,
 } from "../services/whatsapp/phone-registration-session";
+import { enviarTextoWA, marcarLeidoWA, waCredsStatus } from "../services/whatsapp/wa-sender";
 import { pool } from "@workspace/db";
+
+function kioskoUrl(): string {
+  const base = process.env.PUBLIC_BASE_URL?.replace(/\/$/, "") ?? "https://ispsa.net";
+  return `${base}/kiosko`;
+}
 
 const router = Router();
 
@@ -121,28 +127,28 @@ async function processIncidencia(
       descripcion: `[WA:${waMessageId.slice(0, 30)}] ${mensaje}`,
     })
     .returning();
-  return { tabla: "incidentes", id: inserted[0].id };
+  const respuesta = await getWaMessage(
+    "incidencia_recibida",
+    `🚨 Recibimos tu reporte (ID ${inserted[0].id}). Nuestro equipo de operaciones lo está atendiendo. Si es una emergencia inmediata, llama al *(502) 2220-0000*.`
+  );
+  return { tabla: "incidentes", id: inserted[0].id, respuesta };
 }
 
 async function processPostulacion(
-  nombre: string,
-  telefono: string,
-  mensaje: string
+  _nombre: string,
+  _telefono: string,
+  _mensaje: string
 ) {
-  const inserted = await db
-    .insert(applicationsTable)
-    .values({
-      nombre,
-      telefono,
-      correo: null,
-      experiencia: "Por evaluar",
-      ubicacion: "Guatemala",
-      puesto: "Agente de Seguridad",
-      canal: "whatsapp",
-      notas: mensaje,
-    })
-    .returning();
-  return { tabla: "postulaciones", id: inserted[0].id };
+  // Por política: NO crear application automática desde WA.
+  // Redirigimos al kiosko para que complete la solicitud formal.
+  const respuesta = await getWaMessage(
+    "postulacion_redirect_kiosko",
+    `👷 ¡Gracias por tu interés en trabajar con ISP!\n\n` +
+    `Para postular, completa tu solicitud aquí (te tomará ~5 minutos):\n` +
+    `${kioskoUrl()}\n\n` +
+    `Llena tus datos personales, experiencia y adjunta tu DPI. Nuestro equipo de RRHH te contactará pronto.`
+  );
+  return { tabla: "postulaciones", id: undefined, respuesta };
 }
 
 async function processLead(
@@ -366,11 +372,18 @@ router.post("/webhooks/whatsapp", async (req, res) => {
 
           console.log(`[WA-Webhook] Mensaje de ${nombre} (${telefono}): "${texto}"`);
 
+          // Acuse visual: marcar como leído (los dos chequecitos azules en WA).
+          marcarLeidoWA(msg.id).catch(() => {});
+
           const result = await handleIncomingMessage(nombre, telefono, texto, msg.id);
           console.log(`[WA-Webhook] Procesado → tipo=${result.tipo}, id=${result.id ?? "sesion"}`);
 
+          // Enviar respuesta automática si la hay
           if (result.respuesta) {
-            console.log(`[WA-Webhook] Respuesta: "${result.respuesta.substring(0, 80)}..."`);
+            const sendRes = await enviarTextoWA(telefono, result.respuesta);
+            console.log(
+              `[WA-Webhook] Send → ok=${sendRes.ok} ${sendRes.skipped ? "(skipped: " + sendRes.error + ")" : sendRes.error ? "err=" + sendRes.error : "id=" + sendRes.messageId}`
+            );
           }
         }
       }
@@ -378,6 +391,15 @@ router.post("/webhooks/whatsapp", async (req, res) => {
   } catch (err) {
     console.error("[WA-Webhook] Error procesando payload:", err);
   }
+});
+
+// ── GET /webhooks/whatsapp/status — Diagnóstico de credenciales ────────────
+router.get("/webhooks/whatsapp/status", (_req, res) => {
+  res.json({
+    creds: waCredsStatus(),
+    publicBaseUrl: process.env.PUBLIC_BASE_URL ?? "(no configurado, usando default)",
+    kioskoUrl: kioskoUrl(),
+  });
 });
 
 // ── POST /webhooks/whatsapp/simulate — Simulación local ────────────────────
