@@ -23,32 +23,72 @@ const API = `${import.meta.env.BASE_URL}api`;
 
 // ── Helpers de foto ──────────────────────────────────────────────────────────
 async function comprimirFoto(blob: Blob): Promise<Blob> {
-  return new Promise((res) => {
-    const img = new Image();
-    const url = URL.createObjectURL(blob);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const SIZE = 400;
-      const canvas = document.createElement("canvas");
-      const scale = Math.min(SIZE / img.width, SIZE / img.height);
-      canvas.width = img.width * scale;
-      canvas.height = img.height * scale;
-      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob((b) => res(b!), "image/jpeg", 0.82);
-    };
-    img.src = url;
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (b: Blob) => { if (!settled) { settled = true; resolve(b); } };
+
+    // Timeout duro: si en 8s no se completó, devolvemos el blob original
+    const timer = setTimeout(() => {
+      console.warn("[kiosco] comprimirFoto timeout — usando blob original");
+      finish(blob);
+    }, 8000);
+
+    try {
+      const img = new Image();
+      const url = URL.createObjectURL(blob);
+      img.onerror = () => {
+        clearTimeout(timer);
+        URL.revokeObjectURL(url);
+        console.warn("[kiosco] comprimirFoto img.onerror — usando blob original");
+        finish(blob);
+      };
+      img.onload = () => {
+        clearTimeout(timer);
+        URL.revokeObjectURL(url);
+        try {
+          const SIZE = 400;
+          const canvas = document.createElement("canvas");
+          const scale = Math.min(SIZE / img.width, SIZE / img.height, 1);
+          canvas.width  = Math.max(1, Math.round(img.width  * scale));
+          canvas.height = Math.max(1, Math.round(img.height * scale));
+          const ctx = canvas.getContext("2d");
+          if (!ctx) { finish(blob); return; }
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob((b) => finish(b || blob), "image/jpeg", 0.82);
+        } catch (err) {
+          console.warn("[kiosco] comprimirFoto draw error", err);
+          finish(blob);
+        }
+      };
+      img.src = url;
+    } catch (err) {
+      clearTimeout(timer);
+      console.warn("[kiosco] comprimirFoto setup error", err);
+      finish(blob);
+    }
   });
 }
 
 async function subirFoto(blob: Blob): Promise<string> {
-  const res = await fetch(`${API}/solicitudes-empleo/foto`, {
-    method: "POST",
-    headers: { "Content-Type": "image/jpeg" },
-    body: blob,
-  });
-  if (!res.ok) throw new Error("Error subiendo foto");
-  const { objectPath } = await res.json();
-  return objectPath as string;
+  // Timeout de 30s para la subida
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 30000);
+  try {
+    const res = await fetch(`${API}/solicitudes-empleo/foto`, {
+      method: "POST",
+      headers: { "Content-Type": "image/jpeg" },
+      body: blob,
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      throw new Error(`Subida de foto falló (HTTP ${res.status}) ${txt}`);
+    }
+    const { objectPath } = await res.json();
+    return objectPath as string;
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
@@ -358,17 +398,34 @@ export default function KioscoSolicitud() {
         foto_url,
         canal: "kiosco",
       };
-      const r = await fetch(`${API}/solicitudes-empleo`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!r.ok) throw new Error("Error al enviar");
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 30000);
+      let r: Response;
+      try {
+        r = await fetch(`${API}/solicitudes-empleo`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: ctrl.signal,
+        });
+      } finally {
+        clearTimeout(t);
+      }
+      if (!r.ok) {
+        const txt = await r.text().catch(() => "");
+        throw new Error(`POST solicitud falló (HTTP ${r.status}) ${txt}`);
+      }
       const data = await r.json();
       setSolicitudId(data.id);
       setStep(12);
-    } catch {
-      alert("Error al enviar su solicitud. Por favor intente de nuevo.");
+    } catch (err) {
+      console.error("[kiosco] Error al enviar solicitud:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(
+        "No pudimos enviar su solicitud.\n\n" +
+        "Detalle técnico: " + msg + "\n\n" +
+        "Por favor intente de nuevo. Si el problema persiste avise al personal de recepción."
+      );
     } finally { setEnviando(false); }
   };
 
