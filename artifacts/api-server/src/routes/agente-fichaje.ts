@@ -632,12 +632,17 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
     };
 
     // 2. Duplicado del día (zona Guatemala)
+    //    Solo nos interesa el último fichaje ABIERTO (no cerrado): si todos
+    //    los del día ya fueron cerrados, dejamos pasar para crear un nuevo
+    //    inicio_turno (caso real: se cerró por error, o el custodio sale a
+    //    comer y vuelve a entrar al turno).
     const { rows: dupRows } = await pool.query(
       `SELECT id, registrado_en, cliente_id, puesto_id, tracking_token_hash,
               recorrido_padre_id, turno_cerrado_en
          FROM agente_fichajes
         WHERE employee_id = $1
           AND tipo = 'inicio_turno'
+          AND turno_cerrado_en IS NULL
           AND DATE((registrado_en AT TIME ZONE 'America/Guatemala')) =
               DATE((NOW() AT TIME ZONE 'America/Guatemala'))
         ORDER BY registrado_en DESC LIMIT 1`,
@@ -645,14 +650,6 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
     );
     if (dupRows.length > 0) {
       const fichaje = dupRows[0];
-      // Si el turno ya fue cerrado, no permitir reabrirlo
-      if (fichaje.turno_cerrado_en) {
-        return res.status(409).json({
-          error: "ya_cerrado",
-          mensaje: "Ya cerraste tu turno hoy.",
-          registrado_en: fichaje.registrado_en,
-        });
-      }
       // Co-tripulante anexado: ya marcó, no puede iniciar otro
       if (fichaje.recorrido_padre_id !== null) {
         return res.status(409).json({
