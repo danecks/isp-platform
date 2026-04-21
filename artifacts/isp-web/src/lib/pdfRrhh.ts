@@ -819,7 +819,7 @@ export async function generarContratoLaboral(datos: DatosContratoLaboral): Promi
   const sueldoLetras = numeroALetras(datos.sueldo_base);
   const sueldoNum = datos.sueldo_base.toLocaleString("es-GT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const cargo = tipoPersonalLabel(datos.tipo_personal);
-  const jornada = datos.jornada ?? "diurna";
+  const jornada = datos.jornada ?? "mixta";
   const horas = datos.horas_semanales ?? (jornada === "nocturna" ? 36 : jornada === "mixta" ? 42 : 44);
   const diaDescanso = datos.dia_descanso ?? "según rol asignado por la empresa";
   const lugar = datos.lugar_trabajo ?? "las instalaciones del cliente que el patrono le asigne dentro del territorio de la República de Guatemala";
@@ -872,13 +872,18 @@ export async function generarContratoLaboral(datos: DatosContratoLaboral): Promi
 
   // ─── TERCERA: Jornada ──
   pdf.addTextoBold("TERCERA — JORNADA Y HORARIO:", 9);
-  const jornadaLabel = jornada === "diurna" ? "ordinaria diurna" : jornada === "nocturna" ? "ordinaria nocturna" : "mixta";
+  const jornadaLabel = jornada === "diurna" ? "ordinaria diurna" : jornada === "nocturna" ? "ordinaria nocturna" : "ordinaria mixta";
   pdf.addTextoJustificado(
-    `La jornada ordinaria de trabajo será ${jornadaLabel}, con un máximo de ${horas} horas semanales, distribuidas en turnos rotativos según el rol ` +
-    `de servicio que asigne EL PATRONO, dentro de los límites máximos establecidos en los artículos 116 al 124 del Código ` +
-    `de Trabajo. El día de descanso semanal será ${diaDescanso}, conforme al artículo 126 del mismo cuerpo legal. ` +
-    `EL TRABAJADOR acepta expresamente que, por la naturaleza de la actividad de seguridad privada, su horario podrá variar ` +
-    `según los requerimientos operativos del cliente.`
+    `Por la naturaleza propia del servicio de seguridad privada, la jornada ordinaria de trabajo de EL TRABAJADOR será ${jornadaLabel}, ` +
+    `comprendiendo períodos de tiempo diurno y nocturno, con un máximo de ${horas} horas semanales, conforme a los artículos 116 al 124 ` +
+    `del Código de Trabajo. La distribución específica del horario, los días laborables y el día de descanso semanal dependerán del ` +
+    `puesto operativo asignado y del rol de servicio que establezca EL PATRONO según los requerimientos del cliente. EL TRABAJADOR acepta ` +
+    `expresamente que sus turnos podrán ser diurnos (jornada máxima de 44 horas semanales), nocturnos (jornada máxima de 36 horas semanales) ` +
+    `o mixtos (jornada máxima de 42 horas semanales), pudiendo ser rotativos, fijos o variables según el contrato de servicios suscrito ` +
+    `entre EL PATRONO y el cliente final. El día de descanso semanal será ${diaDescanso}, conforme al artículo 126 del mismo cuerpo legal, ` +
+    `y podrá ser cualquier día de la semana atendiendo al rol asignado. EL TRABAJADOR reconoce y acepta que las reasignaciones de puesto, ` +
+    `turno u horario constituyen una característica esencial del servicio de seguridad privada y no implican modificación sustancial ` +
+    `de las condiciones de trabajo pactadas en el presente contrato.`
   );
   pdf.addEspacio(1);
 
