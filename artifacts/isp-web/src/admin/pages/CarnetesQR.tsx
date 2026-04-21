@@ -472,19 +472,34 @@ export default function CarnetesQR() {
         if (svg) qrMap[id] = new XMLSerializer().serializeToString(svg);
       });
 
+      // Verifica que un dataURL sea una imagen válida con dimensiones > 0.
+      // Si falla (CORS, archivo dañado, URL inválida), devuelve null para usar
+      // el avatar de iniciales como fallback en lugar de romper html2canvas.
+      const verificarImagen = (dataUrl: string): Promise<string | null> =>
+        new Promise(resolve => {
+          if (!dataUrl || !dataUrl.startsWith("data:image")) { resolve(null); return; }
+          const img = new Image();
+          img.onload  = () => resolve(img.naturalWidth > 0 && img.naturalHeight > 0 ? dataUrl : null);
+          img.onerror = () => resolve(null);
+          img.src = dataUrl;
+        });
+
       // Cargar fotos de agentes (base64) en paralelo
       const fotoMap: Record<number, string | null> = {};
       await Promise.all(lista.map(async a => {
-        if (a.foto_url) {
-          try {
-            // Si ya es data URL (heredada de solicitud), usarla directamente
-            if (a.foto_url.startsWith("data:")) {
-              fotoMap[a.employee_id] = a.foto_url;
-            } else {
-              fotoMap[a.employee_id] = await toBase64Url(`${API}/storage${a.foto_url}`);
-            }
-          } catch { fotoMap[a.employee_id] = null; }
-        } else {
+        if (!a.foto_url) { fotoMap[a.employee_id] = null; return; }
+        try {
+          let candidato: string;
+          if (a.foto_url.startsWith("data:")) {
+            candidato = a.foto_url;
+          } else if (/^https?:\/\//i.test(a.foto_url)) {
+            // URL absoluta (p.ej. firmada de GCS) — convertir a base64
+            candidato = await toBase64Url(a.foto_url);
+          } else {
+            candidato = await toBase64Url(`${API}/storage${a.foto_url}`);
+          }
+          fotoMap[a.employee_id] = await verificarImagen(candidato);
+        } catch {
           fotoMap[a.employee_id] = null;
         }
       }));
