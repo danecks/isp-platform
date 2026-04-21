@@ -534,6 +534,8 @@ export default function CarnetesQR() {
         }));
       };
 
+      const erroresPorAgente: string[] = [];
+
       for (let i = 0; i < lista.length; i++) {
         const a      = lista[i];
         const nombre = safeFolderName(a.nombre_completo);
@@ -543,31 +545,50 @@ export default function CarnetesQR() {
         if (!qrMap[a.employee_id]) {
           // eslint-disable-next-line no-console
           console.warn(`[CarnetesQR] Sin QR generado para ${a.nombre_completo}, se omite.`);
+          erroresPorAgente.push(`${a.nombre_completo}: sin QR generado`);
           setProgreso(Math.round(((i + 1) / lista.length) * 100));
           continue;
         }
 
-        // Frente
-        const frenteEl = createFrenteElement(a, qrMap[a.employee_id] ?? "", logoIconB64, logoFullB64, fecha, fotoMap[a.employee_id] ?? null);
-        container.appendChild(frenteEl);
-        await esperarImagenes(frenteEl);
-        const frenteCanvas = await html2canvas(frenteEl, {
-          scale: 3, useCORS: true, logging: false, backgroundColor: "#ffffff", imageTimeout: 15000,
-        });
-        folder.file("01_frente.jpg", canvasToJpeg(frenteCanvas), { base64: true });
-        container.removeChild(frenteEl);
+        try {
+          // Frente
+          const frenteEl = createFrenteElement(a, qrMap[a.employee_id] ?? "", logoIconB64, logoFullB64, fecha, fotoMap[a.employee_id] ?? null);
+          container.appendChild(frenteEl);
+          await esperarImagenes(frenteEl);
+          const frenteCanvas = await html2canvas(frenteEl, {
+            scale: 3, useCORS: true, logging: false, backgroundColor: "#ffffff", imageTimeout: 15000,
+          });
+          folder.file("01_frente.jpg", canvasToJpeg(frenteCanvas), { base64: true });
+          container.removeChild(frenteEl);
 
-        // Reverso
-        const reversoEl = createReversoElement(logoFullB64);
-        container.appendChild(reversoEl);
-        await esperarImagenes(reversoEl);
-        const reversoCanvas = await html2canvas(reversoEl, {
-          scale: 3, useCORS: true, logging: false, backgroundColor: "#ffffff", imageTimeout: 15000,
-        });
-        folder.file("02_reverso.jpg", canvasToJpeg(reversoCanvas), { base64: true });
-        container.removeChild(reversoEl);
+          // Reverso
+          const reversoEl = createReversoElement(logoFullB64);
+          container.appendChild(reversoEl);
+          await esperarImagenes(reversoEl);
+          const reversoCanvas = await html2canvas(reversoEl, {
+            scale: 3, useCORS: true, logging: false, backgroundColor: "#ffffff", imageTimeout: 15000,
+          });
+          folder.file("02_reverso.jpg", canvasToJpeg(reversoCanvas), { base64: true });
+          container.removeChild(reversoEl);
+        } catch (errAgente) {
+          // eslint-disable-next-line no-console
+          console.error(`[CarnetesQR] Falló agente ${a.nombre_completo} (id ${a.employee_id}):`, errAgente, {
+            tieneFoto: !!fotoMap[a.employee_id],
+            fotoUrlOriginal: a.foto_url,
+            tieneQR: !!qrMap[a.employee_id],
+          });
+          erroresPorAgente.push(`${a.nombre_completo}: ${errAgente instanceof Error ? errAgente.message : String(errAgente)}`);
+          // Limpiar el contenedor para no arrastrar elementos fallidos
+          while (container.firstChild) container.removeChild(container.firstChild);
+        }
 
         setProgreso(Math.round(((i + 1) / lista.length) * 100));
+      }
+
+      // Si hubo agentes con error pero al menos uno se generó, advertir y continuar con el ZIP
+      if (erroresPorAgente.length > 0) {
+        // eslint-disable-next-line no-console
+        console.warn("[CarnetesQR] Agentes con error:", erroresPorAgente);
       }
 
       const blob = await zip.generateAsync({ type: "blob" });
