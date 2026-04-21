@@ -3916,6 +3916,20 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-seed: CARNET-PERM-01 permisos — error (no bloqueante)");
   }
 
+  // ── CARNET-PERM-02: rrhh también necesita control_qr para endpoints /agente/* ─
+  // (foto via /storage no requiere módulo, pero algunas llamadas auxiliares
+  // de tokens caen bajo /agente/* y exigen control_qr según el mapa de rutas)
+  try {
+    await pool.query(`
+      INSERT INTO rol_permisos (rol_clave, modulo_clave) VALUES
+        ('rrhh', 'control_qr')
+      ON CONFLICT DO NOTHING
+    `);
+    logger.info("Auto-seed: CARNET-PERM-02 permiso control_qr para rrhh garantizado");
+  } catch (err) {
+    logger.error({ err }, "Auto-seed: CARNET-PERM-02 permisos — error (no bloqueante)");
+  }
+
   // ── KIOSCO-PERM-01: permisos garantizados para módulo Kiosco Solicitudes ─────
   try {
     await pool.query(`
