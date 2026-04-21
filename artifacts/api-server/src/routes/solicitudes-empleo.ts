@@ -653,14 +653,14 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
       sol.facebook || null,
       sol.instagram || null,
       /* $53-$59 seguridad previa */
-      sol.experiencia_seguridad || null,
+      boolToSiNo(sol.experiencia_seguridad),
       sol.anios_experiencia || null,
       sol.empresa_anterior || null,
       sol.tipos_seguridad || null,
-      sol.servicio_militar || null,
+      boolToSiNo(sol.servicio_militar),
       sol.rango_militar || null,
       sol.unidad_militar || null,
-      sol.fue_policia || null,
+      boolToSiNo(sol.fue_policia),
     ]);
 
     empId = empRows[0].id;
