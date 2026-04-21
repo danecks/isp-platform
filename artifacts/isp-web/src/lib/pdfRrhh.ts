@@ -907,7 +907,7 @@ export async function generarContratoLaboral(datos: DatosContratoLaboral): Promi
   const jornadaLabel = jornada === "diurna" ? "ordinaria diurna" : jornada === "nocturna" ? "ordinaria nocturna" : "ordinaria mixta";
   pdf.addTextoJustificado(
     `Por la naturaleza propia del servicio de seguridad privada, la jornada ordinaria de trabajo de EL TRABAJADOR será ${jornadaLabel}, ` +
-    `comprendiendo períodos de tiempo diurno y nocturno, con un máximo de ${horas} horas semanales, conforme a los artículos 116 al 124 ` +
+    `comprendiendo períodos de tiempo diurno y nocturno, conforme a los artículos 116 al 124 ` +
     `del Código de Trabajo. La distribución específica del horario, los días laborables y el día de descanso semanal dependerán del ` +
     `puesto operativo asignado y del rol de servicio que establezca EL PATRONO según los requerimientos del cliente. EL TRABAJADOR acepta ` +
     `expresamente que sus turnos podrán ser diurnos (jornada máxima de 44 horas semanales), nocturnos (jornada máxima de 36 horas semanales) ` +
