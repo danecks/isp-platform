@@ -499,6 +499,12 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
       : (sol.pretension_salarial ? parseFloat(sol.pretension_salarial) : null);
 
     const sexo = sol.genero === "Masculino" ? "M" : sol.genero === "Femenino" ? "F" : null;
+    // Convertir booleanos → "Sí"/"No" para columnas varchar(3) en employees
+    const boolToSiNo = (v: unknown): string | null => {
+      if (v === true || v === "true" || v === 1 || v === "1" || v === "Sí" || v === "Si") return "Sí";
+      if (v === false || v === "false" || v === 0 || v === "0" || v === "No") return "No";
+      return null;
+    };
     const notasExtra = [
       sol.puesto_solicitado ? `Plaza solicitada: ${sol.puesto_solicitado}` : null,
       sol.pretension_salarial ? `Pretensión salarial: Q${sol.pretension_salarial}` : null,
@@ -617,7 +623,7 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
       sol.estatura || null,
       sol.peso || null,
       /* $29-$31 licencia conducir */
-      sol.tiene_licencia || null,
+      boolToSiNo(sol.tiene_licencia),
       sol.tipo_licencia || null,
       sol.vigencia_licencia || null,
       /* $32-$33 DPI imágenes */
@@ -625,12 +631,12 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
       sol.dpi_reverso_url || null,
       /* $34-$42 habilidades y disponibilidad */
       sol.habilidades || null,
-      sol.tiene_vehiculo || null,
-      sol.licencia_armas || null,
-      sol.disp_rotativo || null,
-      sol.disp_nocturno || null,
-      sol.disp_fds || null,
-      sol.disponible_exterior || null,
+      boolToSiNo(sol.tiene_vehiculo),
+      boolToSiNo(sol.licencia_armas),
+      boolToSiNo(sol.disp_rotativo),
+      boolToSiNo(sol.disp_nocturno),
+      boolToSiNo(sol.disp_fds),
+      boolToSiNo(sol.disponible_exterior),
       sol.disponibilidad_horario || null,
       /* $43-$46 datos personales extendidos */
       sol.lugar_nacimiento || null,
