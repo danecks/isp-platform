@@ -3999,7 +3999,7 @@ function TabContratos({ emp }: { emp: Empleado }) {
           <div><span className="text-white/40">Puesto:</span> <span className="text-white/80">{emp.puesto ?? "—"}</span></div>
           <div><span className="text-white/40">Tipo:</span> <span className="text-white/80">{emp.tipoPersonal ?? "guardia"}</span></div>
           <div><span className="text-white/40">Sueldo:</span> <span className="text-white/80">{emp.sueldoBase ? `Q${Number(emp.sueldoBase).toLocaleString("es-GT", { minimumFractionDigits: 2 })}` : "— (requerido)"}</span></div>
-          <div><span className="text-white/40">F. ingreso:</span> <span className="text-white/80">{emp.fechaIngreso ?? "—"}</span></div>
+          <div><span className="text-white/40">F. ingreso:</span> <span className="text-white/80">{emp.fechaIngreso ? String(emp.fechaIngreso).slice(0, 10) : "—"}</span></div>
         </div>
       </div>
 
