@@ -1085,6 +1085,7 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
     sueldoBase, tipoJornada, diaDescanso, horasContrato,
     frecuenciaPago, tipoPersonal,
     bonificacionIncentivo, bonificacion1, bonificacion2, bonificacion3,
+    banco, cuentaBancaria, tipoCuenta, formaPago,
     // IGSS — elegibilidad por colaborador
     aplicaIgssGeneral, estadoIgss, fechaInicioIgss, observacionesIgss,
   } = req.body ?? {};
@@ -1187,6 +1188,33 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
     if (frecuenciaPago !== undefined) {
       const freqVal = ["quincenal", "mensual"].includes(frecuenciaPago) ? frecuenciaPago : "quincenal";
       await pool.query(`UPDATE employees SET frecuencia_pago = $1 WHERE id = $2`, [freqVal, id]);
+    }
+
+    // Banco / cuenta / forma de pago — actualizar campos individualmente si se enviaron
+    const bancoUpdates: string[] = [];
+    const bancoParams: unknown[] = [id];
+    if (banco !== undefined) {
+      bancoParams.push(banco || null);
+      bancoUpdates.push(`banco = $${bancoParams.length}`);
+    }
+    if (cuentaBancaria !== undefined) {
+      bancoParams.push(cuentaBancaria || null);
+      bancoUpdates.push(`cuenta_bancaria = $${bancoParams.length}`);
+    }
+    if (tipoCuenta !== undefined) {
+      bancoParams.push(tipoCuenta || null);
+      bancoUpdates.push(`tipo_cuenta = $${bancoParams.length}`);
+    }
+    if (formaPago !== undefined) {
+      const fpVal = ["cheque", "deposito"].includes(String(formaPago)) ? String(formaPago) : "cheque";
+      bancoParams.push(fpVal);
+      bancoUpdates.push(`forma_pago = $${bancoParams.length}`);
+    }
+    if (bancoUpdates.length > 0) {
+      await pool.query(
+        `UPDATE employees SET ${bancoUpdates.join(", ")} WHERE id = $1`,
+        bancoParams
+      );
     }
 
     // Devolver el registro completo incluyendo campos IGSS y frecuencia_pago

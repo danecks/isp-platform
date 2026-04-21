@@ -60,7 +60,7 @@ const CAMPOS_EXTENDIDOS_TEXT: readonly string[] = [
   // Domicilio & vivienda
   "tipo_vivienda", "tiempo_residencia", "renta_mensual",
   // Banco
-  "banco", "tipo_cuenta", "num_cuenta",
+  "banco", "tipo_cuenta", "num_cuenta", "forma_pago",
   // Licencia conducir
   "tiene_licencia", "tipo_licencia", "vigencia_licencia",
   // Familia extendida
@@ -697,7 +697,10 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
       sol.igss || null,
       sol.banco || null,
       sol.num_cuenta || null,
-      sol.tipo_cuenta || null,
+      // forma_pago: usa lo declarado, si no, deposito cuando hay banco+cuenta, sino cheque
+      (sol.forma_pago && String(sol.forma_pago).trim())
+        ? String(sol.forma_pago).toLowerCase().includes("dep") ? "deposito" : "cheque"
+        : ((sol.banco && sol.num_cuenta) ? "deposito" : "cheque"),
       sol.num_dependientes ? parseInt(sol.num_dependientes) || 0 : 0,
       sol.telefono_fijo || null,
       /* $24-$26 contacto emergencia */
@@ -749,6 +752,14 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
     ]);
 
     empId = empRows[0].id;
+
+    // Heredar tipo_cuenta (Monetaria/Ahorro) del solicitud al empleado
+    if (sol.tipo_cuenta) {
+      await pool.query(
+        `UPDATE employees SET tipo_cuenta = $1 WHERE id = $2`,
+        [sol.tipo_cuenta, empId]
+      );
+    }
 
     await pool.query(`
       UPDATE solicitudes_empleo

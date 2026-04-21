@@ -61,6 +61,11 @@ interface Empleado {
   bonificacion3: string | null;
   // Nómina — frecuencia de pago
   frecuenciaPago: string;
+  // Banco / cuenta / forma de pago
+  banco: string | null;
+  cuentaBancaria: string | null;
+  tipoCuenta: string | null;
+  formaPago: string | null;
   // Tipo de personal operativo
   tipoPersonal: string;
   // Cliente asignado
@@ -225,6 +230,11 @@ interface FormState {
   bonificacion1: string;
   bonificacion2: string;
   bonificacion3: string;
+  // Banco / cuenta / forma de pago
+  banco: string;
+  cuentaBancaria: string;
+  tipoCuenta: string;
+  formaPago: string;
 }
 
 interface AsignacionOperativa {
@@ -316,6 +326,7 @@ const FORM_EMPTY: FormState = {
   limiteAnticipo: "", tipoLimitePeriodo: "quincenal",
   tipoPersonal: "guardia",
   bonificacionIncentivo: "", bonificacion1: "", bonificacion2: "", bonificacion3: "",
+  banco: "", cuentaBancaria: "", tipoCuenta: "", formaPago: "cheque",
 };
 
 const TIPO_PERSONAL_CFG = {
@@ -3827,6 +3838,7 @@ function TabSolicitudEmpleo({ dpi, nombre }: { dpi: string; nombre: string }) {
         <SolFila label="Banco"                value={sol.banco} />
         <SolFila label="Tipo cuenta"          value={sol.tipo_cuenta} />
         <SolFila label="Núm. cuenta"          value={sol.num_cuenta} />
+        <SolFila label="Forma de pago"        value={sol.forma_pago === "deposito" ? "Depósito a cuenta" : sol.forma_pago === "cheque" ? "Cheque" : sol.forma_pago} />
         <SolFila label="Licencia conducir"    value={sol.tiene_licencia === "si" ? `Sí — ${sol.tipo_licencia ?? ""} (vence: ${sol.vigencia_licencia ?? ""})` : ""} />
       </SolSeccion>
 
@@ -4361,6 +4373,10 @@ function FormModal({
     bonificacion1:         emp?.bonificacion1 ?? "",
     bonificacion2:         emp?.bonificacion2 ?? "",
     bonificacion3:         emp?.bonificacion3 ?? "",
+    banco:                 emp?.banco ?? "",
+    cuentaBancaria:        emp?.cuentaBancaria ?? "",
+    tipoCuenta:            emp?.tipoCuenta ?? "",
+    formaPago:             emp?.formaPago ?? "cheque",
   }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -4585,6 +4601,59 @@ function FormModal({
                 <option value="jueves">Jueves</option>
                 <option value="viernes">Viernes</option>
                 <option value="sabado">Sábado</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Banco / cuenta / forma de pago */}
+          <p className="text-[10px] text-white/30 uppercase tracking-widest pt-2">Banco y forma de pago</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs text-white/50 font-medium">Banco</label>
+              <select
+                value={form.banco}
+                onChange={(e) => set("banco", e.target.value)}
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50 appearance-none"
+              >
+                <option value="">— Sin banco —</option>
+                <option value="Banrural">Banrural</option>
+                <option value="Banco Industrial">Banco Industrial</option>
+                <option value="G&T Continental">G&amp;T Continental</option>
+                <option value="BAC Credomatic">BAC Credomatic</option>
+                <option value="Bantrab">Bantrab</option>
+                <option value="Ficohsa">Ficohsa</option>
+                <option value="BAM">BAM</option>
+                <option value="Vivibanco">Vivibanco</option>
+                {form.banco && !["Banrural","Banco Industrial","G&T Continental","BAC Credomatic","Bantrab","Ficohsa","BAM","Vivibanco"].includes(form.banco) && (
+                  <option value={form.banco}>{form.banco}</option>
+                )}
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-white/50 font-medium">Tipo de cuenta</label>
+              <select
+                value={form.tipoCuenta}
+                onChange={(e) => set("tipoCuenta", e.target.value)}
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50 appearance-none"
+              >
+                <option value="">— Sin especificar —</option>
+                <option value="Monetaria (Cheques)">Monetaria (Cheques)</option>
+                <option value="Ahorro">Ahorro</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {field("Número de cuenta", "cuentaBancaria", "text", { placeholder: "Ej: 3-000-12345-6" })}
+            <div className="space-y-1">
+              <label className="text-xs text-white/50 font-medium">Forma de pago</label>
+              <select
+                value={form.formaPago || "cheque"}
+                onChange={(e) => set("formaPago", e.target.value)}
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50 appearance-none"
+              >
+                <option value="cheque">Cheque</option>
+                <option value="deposito">Depósito a cuenta</option>
               </select>
             </div>
           </div>

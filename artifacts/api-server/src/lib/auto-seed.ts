@@ -4430,6 +4430,7 @@ Por favor ingresa al sistema o responde para continuar.',
       ["banco", "VARCHAR(60)"],
       ["tipo_cuenta", "VARCHAR(30)"],
       ["num_cuenta", "VARCHAR(60)"],
+      ["forma_pago", "VARCHAR(20)"],
       // Licencia conducir
       ["tiene_licencia", "VARCHAR(3)"],
       ["tipo_licencia", "VARCHAR(60)"],

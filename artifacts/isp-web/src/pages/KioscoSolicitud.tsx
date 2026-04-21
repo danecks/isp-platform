@@ -151,6 +151,7 @@ interface FormData {
   banco: string;
   tipo_cuenta: string;
   num_cuenta: string;
+  forma_pago: string;
   tiene_licencia: string;
   tipo_licencia: string;
   vigencia_licencia: string;
@@ -267,7 +268,7 @@ const EMPTY: FormData = {
   estado_civil: "", genero: "", nacionalidad: "Guatemalteca", lugar_nacimiento: "",
   direccion: "", municipio: "", departamento: "", tiempo_residencia: "",
   tipo_vivienda: "", renta_mensual: "",
-  banco: "", tipo_cuenta: "", num_cuenta: "",
+  banco: "", tipo_cuenta: "", num_cuenta: "", forma_pago: "Cheque",
   tiene_licencia: "no", tipo_licencia: "", vigencia_licencia: "",
   nombre_padre: "", tel_padre: "", nombre_madre: "", tel_madre: "",
   nombre_conyuge: "", ocup_conyuge: "", tel_conyuge: "",
@@ -1430,6 +1431,9 @@ function PasoDomicilio({ form, setEv, set, onNext, onBack }: {
       <Field label="Numero de cuenta" hint="Copie exactamente de su libreta o tarjeta." wide>
         <ISPInput value={form.num_cuenta} onChange={setEv("num_cuenta")} placeholder="Ej: 3-000-12345-6 (opcional)" />
       </Field>
+      <Field label="Como prefiere recibir su sueldo?" hint="Si elige Deposito a cuenta debe llenar banco y numero de cuenta arriba.">
+        <ISPSelect value={form.forma_pago} onChange={set("forma_pago")} options={["Cheque","Deposito a cuenta"]} />
+      </Field>
 
       <Sec title="Licencia de conducir" />
       <div className="col-span-2">
@@ -1907,6 +1911,7 @@ function PasoResumen({ form, fotoUrl, onBack, onNext, enviando }: {
         <ResumenFila label="Banco" value={form.banco} />
         <ResumenFila label="Tipo cuenta" value={form.tipo_cuenta} />
         <ResumenFila label="Num. cuenta" value={form.num_cuenta} />
+        <ResumenFila label="Forma de pago" value={form.forma_pago} />
         <ResumenFila label="Licencia conducir" value={form.tiene_licencia === "si" ? `Si — ${form.tipo_licencia} (vence: ${form.vigencia_licencia})` : ""} />
       </ResumenSeccion>
 

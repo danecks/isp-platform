@@ -112,6 +112,7 @@ interface SolicitudDetalle extends Solicitud {
   banco: string | null;
   tipo_cuenta: string | null;
   num_cuenta: string | null;
+  forma_pago: string | null;
   // Licencia
   tiene_licencia: string | null;
   tipo_licencia: string | null;
@@ -695,9 +696,12 @@ export default function KioscoSolicitudes() {
                     <EField label="Tipo de cuenta" editando={editando}
                       display={detalle.tipo_cuenta}
                       value={editado.tipo_cuenta} onChange={v => setCampo("tipo_cuenta", v as string)} />
-                    <EField label="Número de cuenta" span2 editando={editando}
+                    <EField label="Número de cuenta" editando={editando}
                       display={detalle.num_cuenta}
                       value={editado.num_cuenta} onChange={v => setCampo("num_cuenta", v as string)} />
+                    <EField label="Forma de pago" tipo="forma_pago" editando={editando}
+                      display={detalle.forma_pago === "deposito" ? "Depósito a cuenta" : detalle.forma_pago === "cheque" ? "Cheque" : detalle.forma_pago}
+                      value={editado.forma_pago} onChange={v => setCampo("forma_pago", v as string)} />
                   </Grid2>
                 </Section>
 
@@ -1199,7 +1203,7 @@ function DatoItem({ label, value, span2 }: { label: string; value: string | null
   );
 }
 
-type EFieldTipo = "text" | "textarea" | "date" | "number" | "bool" | "yn" | "genero" | "estado_civil";
+type EFieldTipo = "text" | "textarea" | "date" | "number" | "bool" | "yn" | "genero" | "estado_civil" | "forma_pago";
 
 interface EFieldProps {
   label: string;
@@ -1293,6 +1297,13 @@ function EField({ label, display, editando, value, onChange, tipo = "text", span
           <option value="">— sin especificar —</option>
           <option value="Masculino">Masculino</option>
           <option value="Femenino">Femenino</option>
+        </select>
+      )}
+      {tipo === "forma_pago" && (
+        <select value={v} onChange={e => onChange(e.target.value)} className={inputCls}>
+          <option value="">— sin especificar —</option>
+          <option value="cheque">Cheque</option>
+          <option value="deposito">Depósito a cuenta</option>
         </select>
       )}
       {tipo === "estado_civil" && (
