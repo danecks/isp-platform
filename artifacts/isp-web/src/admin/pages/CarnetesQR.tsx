@@ -447,54 +447,58 @@ export default function CarnetesQR() {
   // ── Descarga ZIP ──────────────────────────────────────────────────────────
   async function handleDescargar() {
     const lista = agentes.filter(a => seleccionados.has(a.employee_id) && a.qr_token);
-    if (lista.length === 0) return;
+    if (lista.length === 0) {
+      window.alert("Selecciona al menos un agente con credencial QR activa.");
+      return;
+    }
 
     setGenerando(true);
     setProgreso(0);
 
-    const origin = window.location.origin;
-    const [logoIconB64, logoFullB64] = await Promise.all([
-      toBase64Url(`${origin}${import.meta.env.BASE_URL}images/logo-icon.png`),
-      toBase64Url(`${origin}${import.meta.env.BASE_URL}images/logo-isp.png`),
-    ]);
-    const fecha = new Date().toLocaleDateString("es-GT", { month: "long", year: "numeric" });
-
-    // Capturar QRs del contenedor oculto
-    const qrMap: Record<number, string> = {};
-    qrContainerRef.current?.querySelectorAll<HTMLElement>("[data-emp-id]").forEach(div => {
-      const id  = Number(div.getAttribute("data-emp-id"));
-      const svg = div.querySelector("svg");
-      if (svg) qrMap[id] = new XMLSerializer().serializeToString(svg);
-    });
-
-    // Cargar fotos de agentes (base64) en paralelo
-    const fotoMap: Record<number, string | null> = {};
-    await Promise.all(lista.map(async a => {
-      if (a.foto_url) {
-        try {
-          // Si ya es data URL (heredada de solicitud), usarla directamente
-          if (a.foto_url.startsWith("data:")) {
-            fotoMap[a.employee_id] = a.foto_url;
-          } else {
-            fotoMap[a.employee_id] = await toBase64Url(`${API}/storage${a.foto_url}`);
-          }
-        } catch { fotoMap[a.employee_id] = null; }
-      } else {
-        fotoMap[a.employee_id] = null;
-      }
-    }));
-
-    const [{ default: html2canvas }, { default: JSZip }] = await Promise.all([
-      import("html2canvas"),
-      import("jszip"),
-    ]);
-
-    const zip       = new JSZip();
-    const container = document.createElement("div");
-    container.style.cssText = "position:fixed;top:-9999px;left:-9999px;pointer-events:none;z-index:-1";
-    document.body.appendChild(container);
-
+    let container: HTMLDivElement | null = null;
     try {
+      const origin = window.location.origin;
+      const [logoIconB64, logoFullB64] = await Promise.all([
+        toBase64Url(`${origin}${import.meta.env.BASE_URL}images/logo-icon.png`),
+        toBase64Url(`${origin}${import.meta.env.BASE_URL}images/logo-isp.png`),
+      ]);
+      const fecha = new Date().toLocaleDateString("es-GT", { month: "long", year: "numeric" });
+
+      // Capturar QRs del contenedor oculto
+      const qrMap: Record<number, string> = {};
+      qrContainerRef.current?.querySelectorAll<HTMLElement>("[data-emp-id]").forEach(div => {
+        const id  = Number(div.getAttribute("data-emp-id"));
+        const svg = div.querySelector("svg");
+        if (svg) qrMap[id] = new XMLSerializer().serializeToString(svg);
+      });
+
+      // Cargar fotos de agentes (base64) en paralelo
+      const fotoMap: Record<number, string | null> = {};
+      await Promise.all(lista.map(async a => {
+        if (a.foto_url) {
+          try {
+            // Si ya es data URL (heredada de solicitud), usarla directamente
+            if (a.foto_url.startsWith("data:")) {
+              fotoMap[a.employee_id] = a.foto_url;
+            } else {
+              fotoMap[a.employee_id] = await toBase64Url(`${API}/storage${a.foto_url}`);
+            }
+          } catch { fotoMap[a.employee_id] = null; }
+        } else {
+          fotoMap[a.employee_id] = null;
+        }
+      }));
+
+      const [{ default: html2canvas }, { default: JSZip }] = await Promise.all([
+        import("html2canvas"),
+        import("jszip"),
+      ]);
+
+      const zip = new JSZip();
+      container = document.createElement("div");
+      container.style.cssText = "position:fixed;top:-9999px;left:-9999px;pointer-events:none;z-index:-1";
+      document.body.appendChild(container);
+
       for (let i = 0; i < lista.length; i++) {
         const a      = lista[i];
         const nombre = safeFolderName(a.nombre_completo);
@@ -542,8 +546,13 @@ export default function CarnetesQR() {
       );
       qc.invalidateQueries({ queryKey: ["agentes-carnets"] });
       setSeleccionados(new Set());
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[CarnetesQR] Error generando ZIP:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      window.alert(`No se pudo generar el ZIP de carnets.\n\nDetalle: ${msg}\n\nRevisa la consola del navegador (F12) para más información.`);
     } finally {
-      document.body.removeChild(container);
+      if (container && container.parentNode) container.parentNode.removeChild(container);
       setGenerando(false);
       setProgreso(0);
     }
