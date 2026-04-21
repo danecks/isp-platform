@@ -867,7 +867,7 @@ export async function generarContratoLaboral(datos: DatosContratoLaboral): Promi
     `${patrono.representante_nombre}, mayor de edad, guatemalteco(a), de este domicilio, ` +
     `quien se identifica con Documento Personal de Identificación (DPI) número ${patrono.representante_dpi}, ` +
     `actuando en su calidad de ${patrono.representante_cargo} de la entidad mercantil ` +
-    `${patrono.razon_social}, con NIT ${patrono.nit}, Patente de Comercio número ${patrono.patente_comercio}, ` +
+    `${patrono.razon_social}, con NIT ${patrono.nit}, ` +
     `con sede en ${patrono.direccion}, a quien en adelante se denominará "EL PATRONO"; y por la otra parte: ` +
     `${datos.empleado_nombre.toUpperCase()}, ${datos.empleado_estado_civil ?? "de estado civil ____________"}, ` +
     `guatemalteco(a), quien se identifica con Documento Personal de Identificación (DPI) número ${datos.empleado_dpi}, ` +
