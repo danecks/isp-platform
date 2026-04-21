@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
+import { generarContratoLaboral, type DatosContratoLaboral } from "@/lib/pdfRrhh";
 
 const API = "/api";
 const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
@@ -647,18 +648,76 @@ export default function KioscoSolicitudes() {
                   </div>
 
                   {(detalle.employee_id || empleadoCreadoId) ? (
-                    <div className="flex items-center gap-3">
-                      <CheckCircle2 size={20} className="text-emerald-400 shrink-0" />
-                      <div>
-                        <p className="text-emerald-300 text-sm font-medium">Ficha de empleado creada exitosamente</p>
-                        <p className="text-gray-400 text-xs">EMP-{String(detalle.employee_id ?? empleadoCreadoId).padStart(5, "0")} — {detalle.nombre_completo}</p>
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <CheckCircle2 size={20} className="text-emerald-400 shrink-0" />
+                        <div className="flex-1">
+                          <p className="text-emerald-300 text-sm font-medium">Ficha de empleado creada exitosamente</p>
+                          <p className="text-gray-400 text-xs">EMP-{String(detalle.employee_id ?? empleadoCreadoId).padStart(5, "0")} — {detalle.nombre_completo}</p>
+                        </div>
+                        <a
+                          href={`/admin/empleados?id=${detalle.employee_id ?? empleadoCreadoId}`}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium transition-colors"
+                        >
+                          <ExternalLink size={13} /> Ver Ficha
+                        </a>
                       </div>
-                      <a
-                        href={`/admin/empleados?id=${detalle.employee_id ?? empleadoCreadoId}`}
-                        className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium transition-colors"
-                      >
-                        <ExternalLink size={13} /> Ver Ficha
-                      </a>
+
+                      {/* Bloque de descarga de contrato */}
+                      <div className="border-t border-emerald-800/40 pt-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <FileText size={14} className="text-emerald-400" />
+                          <p className="text-emerald-300 text-xs font-semibold uppercase tracking-wide">Imprimir Contrato Individual de Trabajo</p>
+                        </div>
+                        <p className="text-gray-400 text-[11px] mb-3">
+                          Genera el contrato laboral según Código de Trabajo de Guatemala (Decreto 1441) listo para firma.
+                        </p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => {
+                              const datos: DatosContratoLaboral = {
+                                empleado_nombre: detalle.nombre_completo,
+                                empleado_dpi: detalle.dpi,
+                                empleado_estado_civil: detalle.estado_civil ?? undefined,
+                                empleado_direccion: detalle.direccion ?? undefined,
+                                empleado_telefono: detalle.telefono,
+                                fecha_inicio: new Date().toISOString().slice(0, 10),
+                                puesto: asignacion.puesto || detalle.puesto_solicitado,
+                                tipo_personal: asignacion.tipo_personal || "guardia",
+                                sueldo_base: parseFloat(asignacion.sueldo_base) || parseFloat(detalle.pretension_salarial || "0") || 0,
+                                tipo_contrato: "inicial",
+                              };
+                              generarContratoLaboral(datos);
+                            }}
+                            className="flex items-center justify-center gap-2 px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                          >
+                            <Printer size={14} /> Contrato Inicial<br/>(60 días prueba)
+                          </button>
+                          <button
+                            onClick={() => {
+                              const datos: DatosContratoLaboral = {
+                                empleado_nombre: detalle.nombre_completo,
+                                empleado_dpi: detalle.dpi,
+                                empleado_estado_civil: detalle.estado_civil ?? undefined,
+                                empleado_direccion: detalle.direccion ?? undefined,
+                                empleado_telefono: detalle.telefono,
+                                fecha_inicio: new Date().toISOString().slice(0, 10),
+                                puesto: asignacion.puesto || detalle.puesto_solicitado,
+                                tipo_personal: asignacion.tipo_personal || "guardia",
+                                sueldo_base: parseFloat(asignacion.sueldo_base) || parseFloat(detalle.pretension_salarial || "0") || 0,
+                                tipo_contrato: "post_prueba",
+                              };
+                              generarContratoLaboral(datos);
+                            }}
+                            className="flex items-center justify-center gap-2 px-3 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                          >
+                            <Printer size={14} /> Contrato Post-Prueba<br/>(Indefinido)
+                          </button>
+                        </div>
+                        <p className="text-yellow-500/80 text-[10px] mt-2 italic">
+                          ⚠ Algunos datos del patrono (NIT, representante, dirección) están en blanco. Edítalos en <code className="bg-gray-800 px-1 rounded">src/lib/pdfRrhh.ts → PATRONO_DATOS</code> o complétalos a mano antes de firmar.
+                        </p>
+                      </div>
                     </div>
                   ) : !mostrarFormContratar ? (
                     <div className="flex items-center gap-3">

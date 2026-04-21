@@ -681,3 +681,382 @@ export async function generarDocumentoAnulacion(evento: EventoRrhh): Promise<voi
   const filename = `anulacion-${numEvento}-${evento.employee_nombre.split(" ")[0].toLowerCase()}.pdf`;
   pdf.save(filename);
 }
+
+// ─── Contrato Individual de Trabajo (Decreto 1441 — Guatemala) ───────────────
+//
+// Datos del patrono (editar una sola vez aquí cuando estén disponibles).
+// Mientras no se actualicen, aparecerán líneas en blanco para llenar a mano.
+export const PATRONO_DATOS = {
+  razon_social: "INVESTIGACIONES Y SEGURIDAD PROFESIONAL, SOCIEDAD ANÓNIMA",
+  nombre_comercial: "ISP, S.A.",
+  nit: "____________",
+  patente_comercio: "____________",
+  direccion: "_________________________________________________ ciudad de Guatemala, departamento de Guatemala",
+  representante_nombre: "____________________________________",
+  representante_dpi: "____________",
+  representante_cargo: "Representante Legal",
+  telefono: "+502 2379 0700",
+};
+
+export interface DatosContratoLaboral {
+  // Empleado
+  empleado_nombre: string;
+  empleado_dpi: string;
+  empleado_fecha_nacimiento?: string;
+  empleado_estado_civil?: string;
+  empleado_direccion?: string;
+  empleado_telefono?: string;
+  empleado_nit?: string;
+  empleado_igss?: string;
+  // Relación laboral
+  fecha_inicio: string;
+  puesto: string;
+  tipo_personal?: string; // guardia, supervisor, administrativo...
+  sueldo_base: number;
+  jornada?: "diurna" | "nocturna" | "mixta";
+  horas_semanales?: number;
+  dia_descanso?: string;
+  lugar_trabajo?: string;
+  // Tipo de contrato
+  tipo_contrato: "inicial" | "post_prueba"; // inicial = con periodo de prueba 60d / post_prueba = indefinido
+  // Patrono (override opcional — si no se pasa, usa PATRONO_DATOS)
+  patrono?: Partial<typeof PATRONO_DATOS>;
+}
+
+const numeroALetras = (n: number): string => {
+  // Conversor simplificado para sueldos (montos típicos < 100,000 GTQ)
+  const unidades = ["", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve"];
+  const especiales: Record<number, string> = {
+    10: "diez", 11: "once", 12: "doce", 13: "trece", 14: "catorce", 15: "quince",
+    16: "dieciséis", 17: "diecisiete", 18: "dieciocho", 19: "diecinueve", 20: "veinte",
+    30: "treinta", 40: "cuarenta", 50: "cincuenta", 60: "sesenta", 70: "setenta",
+    80: "ochenta", 90: "noventa", 100: "cien",
+  };
+  const centenas = ["", "ciento", "doscientos", "trescientos", "cuatrocientos", "quinientos",
+    "seiscientos", "setecientos", "ochocientos", "novecientos"];
+
+  const decenasCompletas = (num: number): string => {
+    if (num === 0) return "";
+    if (num < 10) return unidades[num];
+    if (especiales[num]) return especiales[num];
+    if (num < 30) return "veinti" + unidades[num - 20];
+    const d = Math.floor(num / 10) * 10;
+    const u = num % 10;
+    return especiales[d] + (u > 0 ? " y " + unidades[u] : "");
+  };
+
+  const centenasCompletas = (num: number): string => {
+    if (num < 100) return decenasCompletas(num);
+    if (num === 100) return "cien";
+    const c = Math.floor(num / 100);
+    const r = num % 100;
+    return centenas[c] + (r > 0 ? " " + decenasCompletas(r) : "");
+  };
+
+  if (n === 0) return "cero";
+  const entero = Math.floor(n);
+  const decimal = Math.round((n - entero) * 100);
+  let texto = "";
+
+  if (entero >= 1000) {
+    const miles = Math.floor(entero / 1000);
+    const resto = entero % 1000;
+    texto = (miles === 1 ? "mil" : centenasCompletas(miles) + " mil");
+    if (resto > 0) texto += " " + centenasCompletas(resto);
+  } else {
+    texto = centenasCompletas(entero);
+  }
+
+  texto = texto.toUpperCase() + " QUETZALES";
+  if (decimal > 0) {
+    texto += " CON " + decenasCompletas(decimal).toUpperCase() + "/100";
+  } else {
+    texto += " EXACTOS";
+  }
+  return texto;
+};
+
+const fmtFechaLetras = (iso: string): string => {
+  try {
+    const d = new Date(iso);
+    const dia = d.getDate();
+    const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
+      "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+    return `${dia} de ${meses[d.getMonth()]} de ${d.getFullYear()}`;
+  } catch {
+    return iso;
+  }
+};
+
+const tipoPersonalLabel = (tipo?: string): string => {
+  const map: Record<string, string> = {
+    guardia: "Agente de Seguridad Privada",
+    supervisor: "Supervisor de Seguridad",
+    administrativo: "Personal Administrativo",
+    motorista: "Motorista / Conductor",
+    recepcionista: "Recepcionista",
+    tecnico: "Técnico",
+  };
+  return tipo ? (map[tipo] ?? tipo) : "Agente de Seguridad Privada";
+};
+
+export async function generarContratoLaboral(datos: DatosContratoLaboral): Promise<void> {
+  const patrono = { ...PATRONO_DATOS, ...(datos.patrono ?? {}) };
+  const esInicial = datos.tipo_contrato === "inicial";
+
+  const pdf = new IspPdf({
+    titulo: "CONTRATO INDIVIDUAL DE TRABAJO",
+    subtitulo: esInicial
+      ? "Por tiempo indefinido — con período de prueba"
+      : "Por tiempo indefinido — post período de prueba",
+    preparedBy: "Departamento de Recursos Humanos",
+  });
+
+  await pdf.build();
+
+  const fechaHoy = fmtFechaLetras(new Date().toISOString());
+  const fechaInicio = fmtFechaLetras(datos.fecha_inicio);
+  const sueldoLetras = numeroALetras(datos.sueldo_base);
+  const sueldoNum = datos.sueldo_base.toLocaleString("es-GT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const cargo = tipoPersonalLabel(datos.tipo_personal);
+  const jornada = datos.jornada ?? "diurna";
+  const horas = datos.horas_semanales ?? (jornada === "nocturna" ? 36 : jornada === "mixta" ? 42 : 44);
+  const diaDescanso = datos.dia_descanso ?? "según rol asignado por la empresa";
+  const lugar = datos.lugar_trabajo ?? "las instalaciones del cliente que el patrono le asigne dentro del territorio de la República de Guatemala";
+
+  // ─── Encabezado ──
+  pdf.addTextoCentrado("CONTRATO INDIVIDUAL DE TRABAJO", 12, true);
+  pdf.addTextoCentrado(esInicial ? "Por tiempo indefinido con período de prueba" : "Por tiempo indefinido", 9, false);
+  pdf.addEspacio(2);
+
+  // ─── Comparecientes ──
+  pdf.addTextoJustificado(
+    `En la ciudad de Guatemala, el día ${fechaHoy}, comparecen, por una parte: ` +
+    `${patrono.representante_nombre}, mayor de edad, guatemalteco(a), de este domicilio, ` +
+    `quien se identifica con Documento Personal de Identificación (DPI) número ${patrono.representante_dpi}, ` +
+    `actuando en su calidad de ${patrono.representante_cargo} de la entidad mercantil ` +
+    `${patrono.razon_social}, con NIT ${patrono.nit}, Patente de Comercio número ${patrono.patente_comercio}, ` +
+    `con sede en ${patrono.direccion}, a quien en adelante se denominará "EL PATRONO"; y por la otra parte: ` +
+    `${datos.empleado_nombre.toUpperCase()}, ${datos.empleado_estado_civil ?? "de estado civil ____________"}, ` +
+    `guatemalteco(a), quien se identifica con Documento Personal de Identificación (DPI) número ${datos.empleado_dpi}, ` +
+    `${datos.empleado_nit ? `con NIT ${datos.empleado_nit}, ` : ""}` +
+    `${datos.empleado_igss ? `afiliación al IGSS número ${datos.empleado_igss}, ` : ""}` +
+    `con domicilio en ${datos.empleado_direccion ?? "____________________________________"}, ` +
+    `${datos.empleado_telefono ? `teléfono ${datos.empleado_telefono}, ` : ""}` +
+    `a quien en adelante se denominará "EL TRABAJADOR". Ambas partes manifiestan tener libre ejercicio de sus ` +
+    `derechos civiles y la capacidad legal necesaria para celebrar el presente CONTRATO INDIVIDUAL DE TRABAJO, ` +
+    `de conformidad con el Código de Trabajo de Guatemala (Decreto Número 1441 del Congreso de la República y ` +
+    `sus reformas), conforme a las cláusulas siguientes:`
+  );
+  pdf.addEspacio(2);
+
+  // ─── PRIMERA: Objeto ──
+  pdf.addTextoBold("PRIMERA — OBJETO DEL CONTRATO:", 9);
+  pdf.addTextoJustificado(
+    `EL TRABAJADOR se obliga a prestar sus servicios personales al PATRONO en el puesto de ${cargo} ` +
+    `${datos.puesto ? `("${datos.puesto}") ` : ""}` +
+    `bajo la dirección, dependencia y subordinación continua de EL PATRONO, ejecutando las labores propias del cargo y todas ` +
+    `aquellas conexas o complementarias que le sean encomendadas, observando en todo momento las instrucciones, reglamentos ` +
+    `internos, manuales operativos y políticas de seguridad establecidas por EL PATRONO y/o sus clientes.`
+  );
+  pdf.addEspacio(1);
+
+  // ─── SEGUNDA: Lugar ──
+  pdf.addTextoBold("SEGUNDA — LUGAR DE TRABAJO:", 9);
+  pdf.addTextoJustificado(
+    `EL TRABAJADOR prestará sus servicios en ${lugar}. EL PATRONO se reserva el derecho de trasladarlo o reasignarlo ` +
+    `a cualquier puesto operativo o instalación de cliente dentro de la República de Guatemala, según las necesidades ` +
+    `del servicio, sin que dicho cambio implique modificación sustancial de sus condiciones de trabajo.`
+  );
+  pdf.addEspacio(1);
+
+  // ─── TERCERA: Jornada ──
+  pdf.addTextoBold("TERCERA — JORNADA Y HORARIO:", 9);
+  const jornadaLabel = jornada === "diurna" ? "ordinaria diurna" : jornada === "nocturna" ? "ordinaria nocturna" : "mixta";
+  pdf.addTextoJustificado(
+    `La jornada ordinaria de trabajo será ${jornadaLabel}, con un máximo de ${horas} horas semanales, distribuidas en turnos rotativos según el rol ` +
+    `de servicio que asigne EL PATRONO, dentro de los límites máximos establecidos en los artículos 116 al 124 del Código ` +
+    `de Trabajo. El día de descanso semanal será ${diaDescanso}, conforme al artículo 126 del mismo cuerpo legal. ` +
+    `EL TRABAJADOR acepta expresamente que, por la naturaleza de la actividad de seguridad privada, su horario podrá variar ` +
+    `según los requerimientos operativos del cliente.`
+  );
+  pdf.addEspacio(1);
+
+  // ─── CUARTA: Salario ──
+  pdf.addTextoBold("CUARTA — SALARIO Y FORMA DE PAGO:", 9);
+  pdf.addTextoJustificado(
+    `EL PATRONO pagará a EL TRABAJADOR un salario ordinario mensual de Q ${sueldoNum} ` +
+    `(${sueldoLetras}), pagadero en moneda de curso legal en quincenas vencidas, mediante depósito en cuenta bancaria ` +
+    `o por el medio que EL PATRONO determine. Sobre dicho salario se efectuarán las deducciones legales correspondientes ` +
+    `(IGSS, IRTRA, ISR cuando aplique) conforme a la legislación vigente. Las horas extraordinarias, bonificaciones y ` +
+    `demás emolumentos se pagarán conforme al Código de Trabajo y al Decreto 76-78 de la Bonificación Incentivo.`
+  );
+  pdf.addEspacio(1);
+
+  // ─── QUINTA: Período de prueba (solo inicial) o duración (post-prueba) ──
+  if (esInicial) {
+    pdf.addTextoBold("QUINTA — PERÍODO DE PRUEBA:", 9);
+    pdf.addTextoJustificado(
+      `Conforme al artículo 81 del Código de Trabajo, las partes pactan un PERÍODO DE PRUEBA de SESENTA (60) DÍAS ` +
+      `contados a partir del ${fechaInicio}, durante el cual cualquiera de las partes podrá dar por terminada la relación ` +
+      `laboral sin responsabilidad para ninguna de ellas, sin necesidad de expresión de causa ni preaviso. ` +
+      `Superado el período de prueba sin manifestación en contrario, el contrato continuará por tiempo indefinido en los ` +
+      `términos aquí pactados.`
+    );
+  } else {
+    pdf.addTextoBold("QUINTA — DURACIÓN:", 9);
+    pdf.addTextoJustificado(
+      `El presente contrato es por TIEMPO INDEFINIDO, en sustitución del contrato inicial suscrito entre las partes con ` +
+      `fecha ${fechaInicio}, una vez superado satisfactoriamente el período de prueba previsto en el artículo 81 del Código ` +
+      `de Trabajo. Se reconoce a EL TRABAJADOR la antigüedad acumulada desde la fecha original de ingreso para todos los ` +
+      `efectos legales.`
+    );
+  }
+  pdf.addEspacio(1);
+
+  // ─── SEXTA: Prestaciones de ley ──
+  pdf.addTextoBold("SEXTA — PRESTACIONES DE LEY:", 9);
+  pdf.addTextoJustificado(
+    `EL TRABAJADOR gozará de todas las prestaciones laborales establecidas en la Constitución Política de la República ` +
+    `de Guatemala, el Código de Trabajo y leyes complementarias, incluyendo: (a) Aguinaldo conforme al Decreto 76-78; ` +
+    `(b) Bono 14 conforme al Decreto 42-92; (c) Vacaciones anuales pagadas de quince (15) días hábiles después de cada año ` +
+    `continuo de labores (Art. 130); (d) Indemnización por tiempo servido en caso de despido injustificado (Art. 82); ` +
+    `(e) Cobertura del Instituto Guatemalteco de Seguridad Social (IGSS); (f) Bonificación Incentivo de Q 250.00 mensuales ` +
+    `(Decreto 37-2001); (g) Las demás prestaciones que correspondan según la ley.`
+  );
+  pdf.addEspacio(1);
+
+  // ─── SÉPTIMA: Confidencialidad y armas ──
+  pdf.addTextoBold("SÉPTIMA — CONFIDENCIALIDAD, MANEJO DE ARMAS Y EQUIPO:", 9);
+  pdf.addTextoJustificado(
+    `EL TRABAJADOR se obliga a guardar absoluta reserva sobre todas las informaciones, claves de acceso, planos, ` +
+    `procedimientos operativos, identidades de clientes y cualquier dato confidencial al que tenga acceso por razón de su cargo, ` +
+    `incluso después de terminada la relación laboral. El equipo, uniforme, armamento, municiones, radios y demás bienes ` +
+    `entregados son propiedad de EL PATRONO o del cliente y deberán devolverse al cesar sus funciones, en las mismas ` +
+    `condiciones en que fueron recibidos, salvo el desgaste natural por uso. EL TRABAJADOR declara conocer y aceptar ` +
+    `las normas de la Dirección General de Servicios de Seguridad Privada (DIGESSP) del Ministerio de Gobernación y la ` +
+    `Ley de Armas y Municiones (Decreto 15-2009).`
+  );
+  pdf.addEspacio(1);
+
+  // ─── OCTAVA: Causales de terminación (DETALLADAS) ──
+  pdf.addTextoBold("OCTAVA — CAUSALES DE TERMINACIÓN DE LA RELACIÓN LABORAL:", 9);
+  pdf.addTextoJustificado(
+    `El presente contrato podrá darse por terminado en los casos siguientes:`
+  );
+  pdf.addEspacio(1);
+
+  pdf.addTextoBold("A) POR MUTUO CONSENTIMIENTO DE LAS PARTES (Art. 76 inciso a):", 8);
+  pdf.addTextoJustificado(
+    `Cuando ambas partes acuerden por escrito dar por concluida la relación laboral.`,
+    8, 5
+  );
+  pdf.addEspacio(1);
+
+  pdf.addTextoBold("B) POR RENUNCIA DEL TRABAJADOR (Art. 78):", 8);
+  pdf.addTextoJustificado(
+    `EL TRABAJADOR podrá dar por terminado el contrato dando aviso por escrito a EL PATRONO con la anticipación que indica ` +
+    `el artículo 83 del Código de Trabajo, según el tiempo servido.`,
+    8, 5
+  );
+  pdf.addEspacio(1);
+
+  pdf.addTextoBold("C) POR DESPIDO JUSTIFICADO — CAUSAS IMPUTABLES AL TRABAJADOR (Art. 77):", 8);
+  pdf.addTextoJustificado(
+    `EL PATRONO podrá dar por terminado el contrato sin responsabilidad de su parte cuando EL TRABAJADOR incurra en ` +
+    `cualquiera de las siguientes faltas, las cuales se consideran graves para los efectos de este contrato:`,
+    8, 5
+  );
+  pdf.addEspacio(1);
+
+  const causales = [
+    ["a)", "Conducta inmoral, agresión, injurias, calumnias o vías de hecho contra el patrono, sus representantes, otros trabajadores, clientes, visitantes o personas custodiadas, dentro o fuera del lugar de trabajo (Art. 77 incisos a y c)."],
+    ["b)", "Cometer o intentar cometer actos de robo, hurto, sustracción, daño intencional, sabotaje o cualquier acto delictivo contra bienes de EL PATRONO, del cliente o de terceros bajo custodia (Art. 77 inciso a)."],
+    ["c)", "Revelar secretos comerciales, claves de acceso, planos, identidades de clientes, ubicación de cámaras o cualquier información confidencial obtenida por razón del cargo (Art. 77 inciso a)."],
+    ["d)", "Presentarse al trabajo en estado de ebriedad, bajo efectos de drogas o sustancias estupefacientes, o consumir las mismas durante la jornada (Art. 77 inciso d). Esta causal es de aplicación inmediata por la naturaleza de la actividad de seguridad privada y porte de armas."],
+    ["e)", "Faltar al trabajo sin permiso de EL PATRONO o sin causa justificada por dos días laborales completos y consecutivos, o por más de dos días en un mismo mes calendario (Art. 77 inciso f). Cada inasistencia generará descubierto en cobertura operativa que afecta directamente a clientes."],
+    ["f)", "Abandonar el puesto de trabajo durante la jornada sin autorización del supervisor inmediato. En servicios de seguridad privada, el abandono de puesto se considera falta gravísima por el riesgo que genera a personas y bienes custodiados."],
+    ["g)", "Negarse de manera manifiesta y reiterada a adoptar las medidas de seguridad e higiene, los procedimientos operativos, los protocolos de emergencia o las instrucciones impartidas por EL PATRONO o el cliente (Art. 77 inciso h)."],
+    ["h)", "Causar intencionalmente o por descuido grave perjuicios materiales, daño a equipos, vehículos, armamento, instalaciones o sistemas (Art. 77 inciso e)."],
+    ["i)", "Disminuir de manera injustificada y reiterada el rendimiento normal de las labores, o realizar actos de bajo rendimiento intencional (Art. 77 inciso e)."],
+    ["j)", "Desobedecer órdenes legítimas y reiteradas de EL PATRONO o sus representantes, relacionadas con el desempeño de las labores (Art. 77 inciso b)."],
+    ["k)", "Falsear datos en su solicitud de empleo, antecedentes, documentos personales (DPI, antecedentes penales y policíacos), o presentar documentos alterados o apócrifos."],
+    ["l)", "Pérdida, extravío, mal uso o entrega no autorizada del armamento, municiones, uniforme, radios, vehículos o equipo asignado para el servicio."],
+    ["m)", "Dormirse durante el turno, abandonar el puesto de vigilancia o realizar actividades ajenas al servicio (uso indebido del celular, conversaciones prolongadas, lectura no relacionada al servicio, ingestión de alimentos fuera del horario establecido) que comprometan la atención y seguridad del puesto."],
+    ["n)", "Recibir gratificaciones, sobornos o coimas de cualquier persona ajena a EL PATRONO, así como facilitar el ingreso o salida de personas, vehículos o bienes sin autorización."],
+    ["o)", "Suspender o entorpecer maliciosamente las labores, o incitar al personal a realizar paros ilegales (Art. 77 inciso g)."],
+    ["p)", "Encontrarse condenado por sentencia firme a sufrir pena de prisión (Art. 77 inciso i)."],
+    ["q)", "Sufrir incapacidad permanente para el trabajo contratado (Art. 77 inciso j)."],
+    ["r)", "Acumular tres llamadas de atención escritas en un período de doce (12) meses calendario, debidamente notificadas al trabajador y registradas en su expediente laboral."],
+    ["s)", "Cualquier otra causa análoga a las anteriores prevista en el Código de Trabajo o en el Reglamento Interior de Trabajo de la empresa, debidamente aprobado por la Inspección General de Trabajo."],
+  ];
+
+  for (const [letra, texto] of causales) {
+    pdf.addTextoJustificado(`${letra} ${texto}`, 8, 8);
+    pdf.addEspacio(0.5);
+  }
+
+  pdf.addEspacio(1);
+  pdf.addTextoBold("D) POR DESPIDO JUSTIFICADO IMPUTABLE AL PATRONO (Art. 79):", 8);
+  pdf.addTextoJustificado(
+    `EL TRABAJADOR podrá dar por terminado el contrato con responsabilidad para EL PATRONO, conservando el derecho a las ` +
+    `indemnizaciones de ley, en los casos previstos por el artículo 79 del Código de Trabajo.`,
+    8, 5
+  );
+  pdf.addEspacio(1);
+
+  pdf.addTextoBold("E) POR CAUSAS AJENAS A LA VOLUNTAD DE LAS PARTES (Art. 86):", 8);
+  pdf.addTextoJustificado(
+    `Por muerte o incapacidad de EL TRABAJADOR; por fuerza mayor; por insolvencia, quiebra o liquidación judicial de EL ` +
+    `PATRONO; o por cierre definitivo de la empresa.`,
+    8, 5
+  );
+  pdf.addEspacio(2);
+
+  // ─── NOVENA: Régimen disciplinario ──
+  pdf.addTextoBold("NOVENA — RÉGIMEN DISCIPLINARIO:", 9);
+  pdf.addTextoJustificado(
+    `Las faltas leves a las obligaciones laborales serán sancionadas progresivamente conforme al Reglamento Interior de ` +
+    `Trabajo, aplicando: (1) llamada de atención verbal; (2) llamada de atención escrita; (3) suspensión sin goce de ` +
+    `salario hasta por ocho (8) días; (4) despido por reincidencia o gravedad. Las faltas graves enumeradas en la ` +
+    `cláusula octava facultan a EL PATRONO a aplicar el despido directo sin necesidad de pasar por las medidas progresivas ` +
+    `anteriores. Toda sanción será documentada en el expediente del trabajador con copia al interesado.`
+  );
+  pdf.addEspacio(1);
+
+  // ─── DÉCIMA: Disposiciones finales ──
+  pdf.addTextoBold("DÉCIMA — DISPOSICIONES FINALES:", 9);
+  pdf.addTextoJustificado(
+    `El presente contrato deja sin efecto cualquier convenio anterior verbal o escrito entre las partes sobre la misma ` +
+    `materia. Para todo lo no previsto en este contrato se aplicarán supletoriamente las disposiciones del Código de ` +
+    `Trabajo, sus reformas, el Reglamento Interior de Trabajo y demás leyes laborales vigentes en la República de Guatemala. ` +
+    `Las partes señalan como lugares para recibir notificaciones los indicados al inicio de este contrato.`
+  );
+  pdf.addEspacio(2);
+
+  // ─── Cierre ──
+  pdf.addTextoJustificado(
+    `LEÍDO QUE FUE el presente contrato por ambas partes, lo aceptan, ratifican y firman al pie en señal de conformidad, ` +
+    `quedando un ejemplar en poder de cada parte y un tercer ejemplar para ser remitido a la Dirección General de Trabajo, ` +
+    `de conformidad con el artículo 28 del Código de Trabajo.`
+  );
+  pdf.addEspacio(2);
+  pdf.addTextoCentrado(`Guatemala, ${fechaHoy}`, 9, true);
+  pdf.addEspacio(8);
+
+  // ─── Firmas ──
+  pdf.addFirmaDoble(
+    { label: "EL PATRONO", nombre: `${patrono.representante_nombre}\n${patrono.representante_cargo}\n${patrono.razon_social}\nDPI: ${patrono.representante_dpi}` },
+    { label: "EL TRABAJADOR", nombre: `${datos.empleado_nombre.toUpperCase()}\nDPI: ${datos.empleado_dpi}\nHuella dactilar índice derecho:` },
+  );
+  pdf.addEspacio(4);
+  pdf.addTextoJustificado(
+    `Conforme al artículo 28 del Código de Trabajo, este contrato debe ser presentado por EL PATRONO a la Dirección General ` +
+    `de Trabajo dentro de los quince (15) días siguientes a su celebración.`,
+    7
+  );
+
+  const slug = datos.empleado_nombre.split(" ")[0].toLowerCase().replace(/[^a-z]/g, "");
+  const filename = `contrato-${esInicial ? "inicial" : "post-prueba"}-${slug}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  pdf.save(filename);
+}
