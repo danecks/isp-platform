@@ -499,16 +499,45 @@ export default function CarnetesQR() {
       container.style.cssText = "position:fixed;top:-9999px;left:-9999px;pointer-events:none;z-index:-1";
       document.body.appendChild(container);
 
+      // Espera a que todas las <img> de un elemento estén decodificadas (evita
+      // que html2canvas reciba imágenes con width/height = 0).
+      const esperarImagenes = async (root: HTMLElement) => {
+        const imgs = Array.from(root.querySelectorAll("img"));
+        await Promise.all(imgs.map(async img => {
+          try {
+            if (!img.complete || img.naturalWidth === 0) {
+              await new Promise<void>((resolve) => {
+                const done = () => resolve();
+                img.addEventListener("load",  done, { once: true });
+                img.addEventListener("error", done, { once: true });
+              });
+            }
+            if (typeof img.decode === "function") {
+              await img.decode().catch(() => {});
+            }
+          } catch { /* ignore — la imagen quedará en blanco pero no romperá */ }
+        }));
+      };
+
       for (let i = 0; i < lista.length; i++) {
         const a      = lista[i];
         const nombre = safeFolderName(a.nombre_completo);
         const folder = zip.folder(`${String(i + 1).padStart(2, "0")}_${nombre}`)!;
 
+        // Saltar agentes sin QR renderizado (evita createPattern con SVG vacío)
+        if (!qrMap[a.employee_id]) {
+          // eslint-disable-next-line no-console
+          console.warn(`[CarnetesQR] Sin QR generado para ${a.nombre_completo}, se omite.`);
+          setProgreso(Math.round(((i + 1) / lista.length) * 100));
+          continue;
+        }
+
         // Frente
         const frenteEl = createFrenteElement(a, qrMap[a.employee_id] ?? "", logoIconB64, logoFullB64, fecha, fotoMap[a.employee_id] ?? null);
         container.appendChild(frenteEl);
+        await esperarImagenes(frenteEl);
         const frenteCanvas = await html2canvas(frenteEl, {
-          scale: 3, useCORS: true, logging: false, backgroundColor: "#ffffff",
+          scale: 3, useCORS: true, logging: false, backgroundColor: "#ffffff", imageTimeout: 15000,
         });
         folder.file("01_frente.jpg", canvasToJpeg(frenteCanvas), { base64: true });
         container.removeChild(frenteEl);
@@ -516,8 +545,9 @@ export default function CarnetesQR() {
         // Reverso
         const reversoEl = createReversoElement(logoFullB64);
         container.appendChild(reversoEl);
+        await esperarImagenes(reversoEl);
         const reversoCanvas = await html2canvas(reversoEl, {
-          scale: 3, useCORS: true, logging: false, backgroundColor: "#ffffff",
+          scale: 3, useCORS: true, logging: false, backgroundColor: "#ffffff", imageTimeout: 15000,
         });
         folder.file("02_reverso.jpg", canvasToJpeg(reversoCanvas), { base64: true });
         container.removeChild(reversoEl);
