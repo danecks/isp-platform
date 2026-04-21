@@ -1033,21 +1033,6 @@ export async function generarContratoLaboral(datos: DatosContratoLaboral): Promi
     pdf.addEspacio(0.5);
   }
 
-  pdf.addEspacio(1);
-  pdf.addTextoBold("D) POR DESPIDO JUSTIFICADO IMPUTABLE AL PATRONO (Art. 79):", 8);
-  pdf.addTextoJustificado(
-    `EL TRABAJADOR podrá dar por terminado el contrato con responsabilidad para EL PATRONO, conservando el derecho a las ` +
-    `indemnizaciones de ley, en los casos previstos por el artículo 79 del Código de Trabajo.`,
-    8, 5
-  );
-  pdf.addEspacio(1);
-
-  pdf.addTextoBold("E) POR CAUSAS AJENAS A LA VOLUNTAD DE LAS PARTES (Art. 86):", 8);
-  pdf.addTextoJustificado(
-    `Por muerte o incapacidad de EL TRABAJADOR; por fuerza mayor; por insolvencia, quiebra o liquidación judicial de EL ` +
-    `PATRONO; o por cierre definitivo de la empresa.`,
-    8, 5
-  );
   pdf.addEspacio(2);
 
   // ─── NOVENA: Régimen disciplinario ──
