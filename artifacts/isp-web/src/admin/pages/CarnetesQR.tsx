@@ -224,7 +224,7 @@ function createReversoElement(logoFullB64: string): HTMLDivElement {
     <img src="${logoFullB64}" style="max-height:${_MM(48)}px;max-width:94%;object-fit:contain;display:block" />
   </div>
   <!-- TEXTO -->
-  <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:${_MM(0.5)}px ${_MM(4)}px ${_MM(2)}px">
+  <div style="flex:1;display:flex;align-items:flex-start;justify-content:center;padding:${_MM(1)}px ${_MM(4)}px ${_MM(2)}px">
     <div style="font-size:${_PT(9)}px;color:#334155;text-align:center;line-height:1.6">
       El presente acredita como colaborador de <strong style="font-weight:800;color:#0f2044">ISP S.A.</strong> Se solicita a las Autoridades <strong style="font-weight:800;color:#0f2044">Civiles y Militares</strong> su colaboración. Válido en el cumplimiento de sus funciones en el puesto asignado.
     </div>
@@ -331,7 +331,7 @@ function CarnetReversoPreview() {
         <img src={`${import.meta.env.BASE_URL}images/logo-isp.png`} style={{ display: "block", maxWidth: "94%", maxHeight: _M(48), objectFit: "contain" }} />
       </div>
       {/* Texto */}
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: `${_M(0.5)}px ${_M(4)}px ${_M(2)}px` }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: `${_M(1)}px ${_M(4)}px ${_M(2)}px` }}>
         <div style={{ fontSize: _P(9), color: "#334155", textAlign: "center", lineHeight: 1.6 }}>
           El presente acredita como colaborador de <strong style={{ fontWeight: 800, color: "#0f2044" }}>ISP S.A.</strong> Se solicita a las Autoridades <strong style={{ fontWeight: 800, color: "#0f2044" }}>Civiles y Militares</strong> su colaboración. Válido en el cumplimiento de sus funciones en el puesto asignado.
         </div>
