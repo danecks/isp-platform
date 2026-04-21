@@ -893,12 +893,13 @@ export async function generarContratoLaboral(datos: DatosContratoLaboral): Promi
   );
   pdf.addEspacio(1);
 
-  // ─── SEGUNDA: Lugar ──
-  pdf.addTextoBold("SEGUNDA — LUGAR DE TRABAJO:", 9);
+  // ─── SEGUNDA: Lugar e inicio del contrato ──
+  pdf.addTextoBold("SEGUNDA — LUGAR DE TRABAJO E INICIO DEL CONTRATO:", 9);
   pdf.addTextoJustificado(
-    `EL TRABAJADOR prestará sus servicios en ${lugar}. EL PATRONO se reserva el derecho de trasladarlo o reasignarlo ` +
-    `a cualquier puesto operativo o instalación de cliente dentro de la República de Guatemala, según las necesidades ` +
-    `del servicio, sin que dicho cambio implique modificación sustancial de sus condiciones de trabajo.`
+    `La presente relación laboral da inicio el ${fechaInicio}. EL TRABAJADOR prestará sus servicios en ${lugar}. ` +
+    `EL PATRONO se reserva el derecho de trasladarlo o reasignarlo a cualquier puesto operativo o instalación de cliente ` +
+    `dentro de la República de Guatemala, según las necesidades del servicio, sin que dicho cambio implique modificación ` +
+    `sustancial de sus condiciones de trabajo.`
   );
   pdf.addEspacio(1);
 
