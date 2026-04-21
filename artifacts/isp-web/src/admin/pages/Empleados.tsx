@@ -14,9 +14,10 @@ import {
   TrendingDown, Minus, ShieldAlert, ShieldCheck, ShieldOff,
   ArrowUpRight, ArrowDownRight, Repeat2, ArrowLeftRight, MapPinned, Map, History,
   UserCog, Sun, Umbrella, CheckCircle2, Info, ChevronRight, QrCode, Download,
-  ClipboardList, FileText, Scale,
+  ClipboardList, FileText, Scale, FileSignature, Printer,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { generarContratoLaboral, type DatosContratoLaboral } from "@/lib/pdfRrhh";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
 
 const API_BASE = "/api";
@@ -3924,6 +3925,114 @@ function TabSolicitudEmpleo({ dpi, nombre }: { dpi: string; nombre: string }) {
   );
 }
 
+// ─── Tab: Contratos del empleado ─────────────────────────────────────────────
+function TabContratos({ emp }: { emp: Empleado }) {
+  const { toast } = useToast();
+  const [generando, setGenerando] = useState<"inicial" | "post_prueba" | null>(null);
+
+  async function descargarContrato(tipo: "inicial" | "post_prueba") {
+    setGenerando(tipo);
+    try {
+      // Cargar datos completos del empleado (estado civil, dirección, etc.)
+      const res = await fetch(`${API_BASE}/employees/${emp.id}`);
+      const det = res.ok ? await res.json() : {};
+
+      const fechaIngreso = det.fecha_ingreso || emp.fechaIngreso || new Date().toISOString().slice(0, 10);
+      // Para el contrato post-prueba, la fecha de inicio es típicamente fecha_ingreso + 60 días
+      const fechaInicio = tipo === "post_prueba"
+        ? new Date(new Date(fechaIngreso).getTime() + 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+        : fechaIngreso;
+
+      const datos: DatosContratoLaboral = {
+        empleado_nombre: emp.nombreCompleto,
+        empleado_dpi: emp.dpi ?? det.dpi ?? "",
+        empleado_estado_civil: det.estado_civil ?? undefined,
+        empleado_direccion: det.direccion ?? undefined,
+        empleado_telefono: emp.telefono ?? det.telefono ?? null,
+        fecha_inicio: fechaInicio,
+        puesto: emp.puesto ?? det.puesto ?? "Guardia de Seguridad",
+        tipo_personal: emp.tipoPersonal ?? "guardia",
+        sueldo_base: parseFloat(emp.sueldoBase ?? det.sueldo_base ?? "0") || 0,
+        tipo_contrato: tipo,
+      };
+
+      if (!datos.sueldo_base) {
+        toast({ title: "Falta sueldo", description: "Asigna un sueldo base al empleado antes de generar el contrato.", variant: "destructive" });
+        return;
+      }
+
+      await generarContratoLaboral(datos);
+    } catch (err) {
+      toast({ title: "Error", description: "No se pudo generar el contrato.", variant: "destructive" });
+      // eslint-disable-next-line no-console
+      console.error(err);
+    } finally {
+      setGenerando(null);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-2 mb-1">
+        <FileSignature className="w-4 h-4 text-emerald-400" />
+        <p className="text-white/60 text-sm font-semibold uppercase tracking-wide">Contratos individuales de trabajo</p>
+      </div>
+
+      <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4">
+        <p className="text-emerald-300 text-xs font-semibold mb-1">📄 Generador conforme al Código de Trabajo de Guatemala</p>
+        <p className="text-white/50 text-[11px] leading-relaxed">
+          Decreto 1441. Los contratos se generan con los datos del empleado y los datos del patrono configurados en el sistema.
+          Imprime, firma con el trabajador y archiva una copia en el expediente.
+        </p>
+      </div>
+
+      {/* Datos que se usarán */}
+      <div className="bg-white/3 border border-white/8 rounded-xl p-4 space-y-2">
+        <p className="text-white/40 text-[10px] uppercase tracking-wider mb-2">Datos del empleado para el contrato</p>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+          <div><span className="text-white/40">Nombre:</span> <span className="text-white/80">{emp.nombreCompleto}</span></div>
+          <div><span className="text-white/40">DPI:</span> <span className="text-white/80 font-mono">{emp.dpi ?? "—"}</span></div>
+          <div><span className="text-white/40">Puesto:</span> <span className="text-white/80">{emp.puesto ?? "—"}</span></div>
+          <div><span className="text-white/40">Tipo:</span> <span className="text-white/80">{emp.tipoPersonal ?? "guardia"}</span></div>
+          <div><span className="text-white/40">Sueldo:</span> <span className="text-white/80">{emp.sueldoBase ? `Q${Number(emp.sueldoBase).toLocaleString("es-GT", { minimumFractionDigits: 2 })}` : "— (requerido)"}</span></div>
+          <div><span className="text-white/40">F. ingreso:</span> <span className="text-white/80">{emp.fechaIngreso ?? "—"}</span></div>
+        </div>
+      </div>
+
+      {/* Botones de descarga */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <button
+          onClick={() => descargarContrato("inicial")}
+          disabled={generando !== null}
+          className="flex items-center justify-center gap-2 px-4 py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-colors"
+        >
+          {generando === "inicial" ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
+          <div className="text-left leading-tight">
+            <div>Contrato Inicial</div>
+            <div className="text-[10px] opacity-80 font-normal">60 días de prueba (Art. 81)</div>
+          </div>
+        </button>
+        <button
+          onClick={() => descargarContrato("post_prueba")}
+          disabled={generando !== null}
+          className="flex items-center justify-center gap-2 px-4 py-3.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-colors"
+        >
+          {generando === "post_prueba" ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
+          <div className="text-left leading-tight">
+            <div>Contrato Post-Prueba</div>
+            <div className="text-[10px] opacity-80 font-normal">Indefinido (Art. 25)</div>
+          </div>
+        </button>
+      </div>
+
+      <p className="text-yellow-500/80 text-[10px] italic">
+        ⚠ Los datos del patrono (NIT, representante legal, dirección fiscal) se cargan desde la configuración del sistema.
+        Si están en blanco, complétalos en el PDF a mano antes de firmar.
+      </p>
+    </div>
+  );
+}
+
 function FichaModal({
   emp,
   onClose,
@@ -3935,7 +4044,7 @@ function FichaModal({
   onEdit: (e: Empleado) => void;
   onEstado: (e: Empleado, estado: string) => void;
 }) {
-  const [tab, setTab] = useState<"perfil" | "asignacion-op" | "asignaciones" | "sistema" | "operacion" | "historial" | "kpi" | "anticipos" | "vacaciones" | "qr" | "solicitud">("perfil");
+  const [tab, setTab] = useState<"perfil" | "asignacion-op" | "asignaciones" | "sistema" | "operacion" | "historial" | "kpi" | "anticipos" | "vacaciones" | "qr" | "solicitud" | "contratos" | "indemnizacion">("perfil");
   const [showEstado, setShowEstado] = useState(false);
   const [bajaModal, setBajaModal]   = useState(false);
   const est = ESTADO_LAB[emp.estadoLaboral] ?? { label: emp.estadoLaboral, color: "text-white/40 bg-white/5 border-white/10", dot: "bg-white/40" };
@@ -3952,6 +4061,7 @@ function FichaModal({
     { key: "kpi",           label: "KPI",            icon: BarChart2 },
     { key: "anticipos",     label: "Anticipos",      icon: Wallet },
     { key: "indemnizacion", label: "Indemnización",  icon: Scale },
+    { key: "contratos",     label: "Contratos",      icon: FileSignature },
     { key: "solicitud",     label: "Solicitud",      icon: ClipboardList },
   ] as const;
 
@@ -4165,6 +4275,7 @@ function FichaModal({
           {tab === "kpi" && <TabKPI empId={emp.id} />}
           {tab === "anticipos" && <TabAnticipo emp={emp} />}
           {tab === "indemnizacion" && <TabIndemnizacion emp={emp} />}
+          {tab === "contratos" && <TabContratos emp={emp} />}
         </div>
       </div>
     </div>,
