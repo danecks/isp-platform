@@ -3616,6 +3616,19 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SOL-DPI-01 — error (no bloqueante)");
   }
 
+  // ── EMP-URL-LEN-01: ampliar columnas URL en employees a TEXT ────────────────
+  // Las URLs firmadas (App Storage / GCS) pueden superar 500 chars y reventaban
+  // INSERT al contratar desde el kiosco con DPI subido.
+  try {
+    await pool.query(`ALTER TABLE employees ALTER COLUMN dpi_frente_url TYPE TEXT`);
+    await pool.query(`ALTER TABLE employees ALTER COLUMN dpi_reverso_url TYPE TEXT`);
+    await pool.query(`ALTER TABLE employees ALTER COLUMN direccion TYPE TEXT`);
+    await pool.query(`ALTER TABLE employees ALTER COLUMN tipos_seguridad TYPE TEXT`);
+    logger.info("Auto-migrate: EMP-URL-LEN-01 columnas URL/dirección ampliadas a TEXT en employees");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: EMP-URL-LEN-01 — error (no bloqueante)");
+  }
+
   // ── EMP-KIOSCO-01: municipio y departamento de residencia del colaborador ─────
   try {
     await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS municipio    VARCHAR(100)`);
