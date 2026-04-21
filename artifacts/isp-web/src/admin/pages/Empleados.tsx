@@ -3933,18 +3933,44 @@ function TabContratos({ emp }: { emp: Empleado }) {
   async function descargarContrato(tipo: "inicial" | "post_prueba") {
     setGenerando(tipo);
     try {
-      // Cargar datos completos del empleado y datos del patrono en paralelo
-      const [resEmp, patrono] = await Promise.all([
+      // Cargar datos del empleado, contratos previos y patrono en paralelo
+      const sess = sessionStorage.getItem("isp_admin_session_v2") || "";
+      const [resEmp, resContratos, patrono] = await Promise.all([
         fetch(`${API_BASE}/employees/${emp.id}`),
+        fetch(`${API_BASE}/employees/${emp.id}/contratos`, { headers: { "x-isp-session": sess } }),
         cargarPatronoDesdeConfig(),
       ]);
       const det = resEmp.ok ? await resEmp.json() : {};
+      const contratosPrev: Array<{ tipo_contrato: string; fecha_inicio: string; sueldo_base: string | null }> =
+        resContratos.ok ? await resContratos.json() : [];
+
+      // Contrato más reciente como fuente de "valores heredados"
+      const ultimoContrato = contratosPrev[0];
+      const contratoInicialPrev = contratosPrev.find((c) => c.tipo_contrato === "inicial");
 
       const fechaIngreso = det.fecha_ingreso || emp.fechaIngreso || new Date().toISOString().slice(0, 10);
-      // Para el contrato post-prueba, la fecha de inicio es típicamente fecha_ingreso + 60 días
-      const fechaInicio = tipo === "post_prueba"
-        ? new Date(new Date(fechaIngreso).getTime() + 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-        : fechaIngreso;
+      // Fecha de inicio:
+      //  - Inicial: hereda del contrato inicial previo si existe, o usa la fecha de ingreso del empleado.
+      //  - Post-prueba: hereda del post-prueba previo si existe; si no, fecha del inicial + 60 días.
+      let fechaInicio: string;
+      if (tipo === "inicial") {
+        fechaInicio = contratoInicialPrev?.fecha_inicio || fechaIngreso;
+      } else {
+        const postPrev = contratosPrev.find((c) => c.tipo_contrato === "post_prueba");
+        if (postPrev?.fecha_inicio) {
+          fechaInicio = postPrev.fecha_inicio;
+        } else {
+          const baseInicio = contratoInicialPrev?.fecha_inicio || fechaIngreso;
+          fechaInicio = new Date(new Date(baseInicio).getTime() + 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        }
+      }
+
+      // Sueldo: empleado → último contrato → ficha
+      const sueldoStr =
+        (emp.sueldoBase && emp.sueldoBase.trim()) ||
+        (ultimoContrato?.sueldo_base && String(ultimoContrato.sueldo_base).trim()) ||
+        (det.sueldo_base && String(det.sueldo_base).trim()) ||
+        "0";
 
       const datos: DatosContratoLaboral = {
         empleado_nombre: emp.nombreCompleto,
@@ -3955,7 +3981,7 @@ function TabContratos({ emp }: { emp: Empleado }) {
         fecha_inicio: fechaInicio,
         puesto: emp.puesto ?? det.puesto ?? "Guardia de Seguridad",
         tipo_personal: emp.tipoPersonal ?? "guardia",
-        sueldo_base: parseFloat(emp.sueldoBase ?? det.sueldo_base ?? "0") || 0,
+        sueldo_base: parseFloat(sueldoStr) || 0,
         tipo_contrato: tipo,
         patrono,
       };
