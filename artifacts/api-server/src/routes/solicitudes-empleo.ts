@@ -53,6 +53,54 @@ const telemetriaRateLimit = rateLimit({
 export const solicitudesEmpleoRouter = Router();
 const storageService = new ObjectStorageService();
 
+// ── Campos extendidos del kiosko (todos VARCHAR/TEXT) ──────────────────────
+// Estos se aceptan tanto en POST (creación) como en PATCH (edición admin).
+// Centralizado para evitar duplicación entre endpoints.
+const CAMPOS_EXTENDIDOS_TEXT: readonly string[] = [
+  // Domicilio & vivienda
+  "tipo_vivienda", "tiempo_residencia", "renta_mensual",
+  // Banco
+  "banco", "tipo_cuenta", "num_cuenta",
+  // Licencia conducir
+  "tiene_licencia", "tipo_licencia", "vigencia_licencia",
+  // Familia extendida
+  "tel_padre", "tel_madre",
+  "nombre_conyuge", "ocup_conyuge", "tel_conyuge",
+  "hermano1_nombre", "hermano1_tel", "hermano2_nombre", "hermano2_tel",
+  "facebook", "instagram",
+  // Salud
+  "estatura", "peso",
+  "enfermedad_cronica", "enfermedad_det",
+  "medicamento", "medicamento_det",
+  "impedimento_fisico", "impedimento_det",
+  "consume_alcohol", "consume_drogas",
+  "tiene_tatuajes", "tatuajes_det",
+  "parentesco_emergencia",
+  // Antecedentes y finanzas
+  "proceso_judicial", "proceso_det",
+  "detenido", "detencion_det",
+  "tiene_deudas", "estado_deuda", "gastos_mensuales",
+  "tiene_prestamo", "monto_prestamo",
+  // Educación
+  "prim_escuela", "prim_lugar", "prim_titulo",
+  "bas_escuela",  "bas_lugar",  "bas_titulo",
+  "div_escuela",  "div_lugar",  "div_titulo",
+  "uni_escuela",  "uni_lugar",  "uni_titulo",
+  // Experiencia laboral
+  "emp1_nombre", "emp1_puesto", "emp1_salario", "emp1_inicio", "emp1_fin", "emp1_motivo",
+  "emp2_nombre", "emp2_puesto", "emp2_salario", "emp2_inicio", "emp2_fin", "emp2_motivo",
+  "emp3_nombre", "emp3_puesto", "emp3_salario", "emp3_inicio", "emp3_fin", "emp3_motivo",
+  // Seguridad / militar / disponibilidad
+  "servicio_militar", "rango_militar", "unidad_militar",
+  "fue_policia", "motivo_baja_policial",
+  "habilidades", "tipos_seguridad",
+  "disp_rotativo", "disp_nocturno", "disp_fds",
+  // Referencias personales
+  "ref1_nombre", "ref1_relacion", "ref1_tel", "ref1_anios",
+  "ref2_nombre", "ref2_relacion", "ref2_tel", "ref2_anios",
+  "ref3_nombre", "ref3_relacion", "ref3_tel", "ref3_anios",
+];
+
 // ── Subir foto de solicitud (almacenada como data URL en DB) ─────────────────
 solicitudesEmpleoRouter.post("/solicitudes-empleo/foto", async (req: Request, res: Response) => {
   try {
@@ -231,56 +279,87 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo", async (req: Request, res: Re
       ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
       : null;
 
-    const { rows } = await pool.query(`
-      INSERT INTO solicitudes_empleo (
-        nombre_completo, fecha_nacimiento, dpi, genero, estado_civil,
-        telefono, telefono_emergencia, nombre_contacto_emergencia,
-        correo, direccion, municipio, departamento,
-        nombre_padre, nombre_madre, num_dependientes,
-        familiar_en_empresa, nombre_familiar_empresa,
-        grado_estudios, experiencia_seguridad, anios_experiencia,
-        empresa_anterior, licencia_armas, tiene_vehiculo,
-        puesto_solicitado, disponibilidad_horario, disponible_exterior,
-        pretension_salarial, foto_url, foto_expira_at,
-        dpi_frente_url, dpi_reverso_url, canal
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
-      RETURNING id, created_at
-    `, [
-      normalizarNombre(nombre_completo), fecha_nacimiento || null, dpi || null, genero || null, estado_civil || null,
-      telefono || null, telefono_emergencia || null, nombre_contacto_emergencia || null,
-      correo || null, direccion || null, municipio || null, departamento || null,
-      nombre_padre || null, nombre_madre || null, num_dependientes || 0,
-      familiar_en_empresa || false, nombre_familiar_empresa || null,
-      grado_estudios || null, experiencia_seguridad || false, anios_experiencia || 0,
-      empresa_anterior || null, licencia_armas || false, tiene_vehiculo || false,
-      puesto_solicitado || null, disponibilidad_horario || null, disponible_exterior || false,
-      pretension_salarial || null, foto_url || null, fotoExpira,
-      dpi_frente_url || null, dpi_reverso_url || null, canal || "kiosco",
-    ]);
-
-    const solicitudId = rows[0].id;
+    // ── Transacción: INSERT base + UPDATE de campos extendidos ────────────
+    // Si la persistencia de cualquier parte falla, se hace rollback completo
+    // para no dejar candidatos con datos parcialmente guardados.
+    const client = await pool.connect();
+    let solicitudId: number;
     let esReingreso = false;
+    try {
+      await client.query("BEGIN");
 
-    // ── Detección de reingreso: ¿el DPI ya existe en employees? ─────────────
-    if (dpi) {
-      try {
-        const { rows: empRows } = await pool.query(
+      const { rows } = await client.query(`
+        INSERT INTO solicitudes_empleo (
+          nombre_completo, fecha_nacimiento, dpi, genero, estado_civil,
+          telefono, telefono_emergencia, nombre_contacto_emergencia,
+          correo, direccion, municipio, departamento,
+          nombre_padre, nombre_madre, num_dependientes,
+          familiar_en_empresa, nombre_familiar_empresa,
+          grado_estudios, experiencia_seguridad, anios_experiencia,
+          empresa_anterior, licencia_armas, tiene_vehiculo,
+          puesto_solicitado, disponibilidad_horario, disponible_exterior,
+          pretension_salarial, foto_url, foto_expira_at,
+          dpi_frente_url, dpi_reverso_url, canal
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
+        RETURNING id, created_at
+      `, [
+        normalizarNombre(nombre_completo), fecha_nacimiento || null, dpi || null, genero || null, estado_civil || null,
+        telefono || null, telefono_emergencia || null, nombre_contacto_emergencia || null,
+        correo || null, direccion || null, municipio || null, departamento || null,
+        nombre_padre || null, nombre_madre || null, num_dependientes || 0,
+        familiar_en_empresa || false, nombre_familiar_empresa || null,
+        grado_estudios || null, experiencia_seguridad || false, anios_experiencia || 0,
+        empresa_anterior || null, licencia_armas || false, tiene_vehiculo || false,
+        puesto_solicitado || null, disponibilidad_horario || null, disponible_exterior || false,
+        pretension_salarial || null, foto_url || null, fotoExpira,
+        dpi_frente_url || null, dpi_reverso_url || null, canal || "kiosco",
+      ]);
+      solicitudId = rows[0].id;
+
+      // Campos extendidos (banco, salud, antecedentes, militar, etc.)
+      const extSets: string[] = [];
+      const extParams: unknown[] = [];
+      for (const campo of CAMPOS_EXTENDIDOS_TEXT) {
+        if (!(campo in (req.body ?? {}))) continue;
+        const v = (req.body as Record<string, unknown>)[campo];
+        const val = v == null || (typeof v === "string" && v.trim() === "")
+          ? null
+          : String(v).trim();
+        extParams.push(val);
+        extSets.push(`${campo} = $${extParams.length}`);
+      }
+      if (extSets.length > 0) {
+        extParams.push(solicitudId);
+        await client.query(
+          `UPDATE solicitudes_empleo SET ${extSets.join(", ")} WHERE id = $${extParams.length}`,
+          extParams
+        );
+      }
+
+      // Detección de reingreso: el DPI ya existe en employees
+      if (dpi) {
+        const { rows: empRows } = await client.query(
           `SELECT id FROM employees WHERE dpi = $1 LIMIT 1`, [dpi.trim()]
         );
         if (empRows.length > 0) {
           esReingreso = true;
-          await pool.query(
+          await client.query(
             `UPDATE solicitudes_empleo SET es_reingreso = TRUE WHERE id = $1`, [solicitudId]
           );
-          await pool.query(
+          await client.query(
             `INSERT INTO solicitudes_merge_requests (solicitud_id, employee_id) VALUES ($1, $2)`,
             [solicitudId, empRows[0].id]
           );
           logger.info({ solicitudId, employeeId: empRows[0].id }, "Reingreso detectado — merge request creado");
         }
-      } catch (mergeErr) {
-        logger.error({ mergeErr }, "Error al verificar reingreso (no bloqueante)");
       }
+
+      await client.query("COMMIT");
+    } catch (txErr) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw txErr;
+    } finally {
+      client.release();
     }
 
     res.status(201).json({ ok: true, id: solicitudId, es_reingreso: esReingreso });
@@ -393,6 +472,12 @@ solicitudesEmpleoRouter.patch("/solicitudes-empleo/:id", async (req: Request, re
     disponible_exterior: "bool",
     pretension_salarial: "num",
   };
+  // Agregar todos los campos extendidos como "text" (incluye tipo_vivienda,
+  // banco, salud, antecedentes, hermanos, cónyuge, redes, educación, exp.
+  // laboral, militar, habilidades, referencias, etc.)
+  for (const c of CAMPOS_EXTENDIDOS_TEXT) {
+    CAMPOS_EDITABLES[c] = "text";
+  }
 
   const body = req.body ?? {};
   const sets: string[] = [];

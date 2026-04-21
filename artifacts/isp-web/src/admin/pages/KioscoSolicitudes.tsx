@@ -102,6 +102,83 @@ interface SolicitudDetalle extends Solicitud {
   disponible_exterior: boolean;
   pretension_salarial: string | null;
   notas_reclutador: string | null;
+
+  // ── Campos extendidos del kiosko ────────────────────────────────────
+  // Domicilio
+  tipo_vivienda: string | null;
+  tiempo_residencia: string | null;
+  renta_mensual: string | null;
+  // Banco
+  banco: string | null;
+  tipo_cuenta: string | null;
+  num_cuenta: string | null;
+  // Licencia
+  tiene_licencia: string | null;
+  tipo_licencia: string | null;
+  vigencia_licencia: string | null;
+  // Familia extendida
+  tel_padre: string | null;
+  tel_madre: string | null;
+  nombre_conyuge: string | null;
+  ocup_conyuge: string | null;
+  tel_conyuge: string | null;
+  hermano1_nombre: string | null;
+  hermano1_tel: string | null;
+  hermano2_nombre: string | null;
+  hermano2_tel: string | null;
+  facebook: string | null;
+  instagram: string | null;
+  // Salud
+  estatura: string | null;
+  peso: string | null;
+  enfermedad_cronica: string | null;
+  enfermedad_det: string | null;
+  medicamento: string | null;
+  medicamento_det: string | null;
+  impedimento_fisico: string | null;
+  impedimento_det: string | null;
+  consume_alcohol: string | null;
+  consume_drogas: string | null;
+  tiene_tatuajes: string | null;
+  tatuajes_det: string | null;
+  parentesco_emergencia: string | null;
+  // Antecedentes y finanzas
+  proceso_judicial: string | null;
+  proceso_det: string | null;
+  detenido: string | null;
+  detencion_det: string | null;
+  tiene_deudas: string | null;
+  estado_deuda: string | null;
+  gastos_mensuales: string | null;
+  tiene_prestamo: string | null;
+  monto_prestamo: string | null;
+  // Educación
+  prim_escuela: string | null; prim_lugar: string | null; prim_titulo: string | null;
+  bas_escuela: string | null;  bas_lugar: string | null;  bas_titulo: string | null;
+  div_escuela: string | null;  div_lugar: string | null;  div_titulo: string | null;
+  uni_escuela: string | null;  uni_lugar: string | null;  uni_titulo: string | null;
+  // Experiencia laboral
+  emp1_nombre: string | null; emp1_puesto: string | null; emp1_salario: string | null;
+  emp1_inicio: string | null; emp1_fin: string | null;    emp1_motivo: string | null;
+  emp2_nombre: string | null; emp2_puesto: string | null; emp2_salario: string | null;
+  emp2_inicio: string | null; emp2_fin: string | null;    emp2_motivo: string | null;
+  emp3_nombre: string | null; emp3_puesto: string | null; emp3_salario: string | null;
+  emp3_inicio: string | null; emp3_fin: string | null;    emp3_motivo: string | null;
+  // Seguridad / militar
+  servicio_militar: string | null;
+  rango_militar: string | null;
+  unidad_militar: string | null;
+  fue_policia: string | null;
+  motivo_baja_policial: string | null;
+  habilidades: string | null;
+  tipos_seguridad: string | null;
+  disp_rotativo: string | null;
+  disp_nocturno: string | null;
+  disp_fds: string | null;
+  // Referencias
+  ref1_nombre: string | null; ref1_relacion: string | null; ref1_tel: string | null; ref1_anios: string | null;
+  ref2_nombre: string | null; ref2_relacion: string | null; ref2_tel: string | null; ref2_anios: string | null;
+  ref3_nombre: string | null; ref3_relacion: string | null; ref3_tel: string | null; ref3_anios: string | null;
 }
 
 const ESTADOS: (Estado | "todos")[] = ["todos", "pendiente", "en_revision", "entrevista", "aprobada", "rechazada", "contratada"];
@@ -609,6 +686,294 @@ export default function KioscoSolicitudes() {
                   </Grid2>
                 </Section>
 
+                {/* Banco y Cuenta */}
+                <Section titulo="Banco y Cuenta" icono={<Briefcase size={16} />}>
+                  <Grid2>
+                    <EField label="Banco" editando={editando}
+                      display={detalle.banco}
+                      value={editado.banco} onChange={v => setCampo("banco", v as string)} />
+                    <EField label="Tipo de cuenta" editando={editando}
+                      display={detalle.tipo_cuenta}
+                      value={editado.tipo_cuenta} onChange={v => setCampo("tipo_cuenta", v as string)} />
+                    <EField label="Número de cuenta" span2 editando={editando}
+                      display={detalle.num_cuenta}
+                      value={editado.num_cuenta} onChange={v => setCampo("num_cuenta", v as string)} />
+                  </Grid2>
+                </Section>
+
+                {/* Licencia de conducir */}
+                <Section titulo="Licencia de Conducir" icono={<FileText size={16} />}>
+                  <Grid2>
+                    <EField label="¿Tiene licencia?" tipo="yn" editando={editando}
+                      display={detalle.tiene_licencia}
+                      value={editado.tiene_licencia} onChange={v => setCampo("tiene_licencia", v as string)} />
+                    <EField label="Tipo de licencia" editando={editando}
+                      display={detalle.tipo_licencia}
+                      value={editado.tipo_licencia} onChange={v => setCampo("tipo_licencia", v as string)} />
+                    <EField label="Vigencia" span2 editando={editando}
+                      display={detalle.vigencia_licencia}
+                      value={editado.vigencia_licencia} onChange={v => setCampo("vigencia_licencia", v as string)} />
+                  </Grid2>
+                </Section>
+
+                {/* Vivienda */}
+                <Section titulo="Vivienda" icono={<MapPin size={16} />}>
+                  <Grid2>
+                    <EField label="Tipo de vivienda" editando={editando}
+                      display={detalle.tipo_vivienda}
+                      value={editado.tipo_vivienda} onChange={v => setCampo("tipo_vivienda", v as string)} />
+                    <EField label="Tiempo de residencia" editando={editando}
+                      display={detalle.tiempo_residencia}
+                      value={editado.tiempo_residencia} onChange={v => setCampo("tiempo_residencia", v as string)} />
+                    <EField label="Renta mensual (Q)" span2 editando={editando}
+                      display={detalle.renta_mensual}
+                      value={editado.renta_mensual} onChange={v => setCampo("renta_mensual", v as string)} />
+                  </Grid2>
+                </Section>
+
+                {/* Familia extendida */}
+                <Section titulo="Familia y Redes Sociales" icono={<Users size={16} />}>
+                  <Grid2>
+                    <EField label="Tel. del padre" editando={editando}
+                      display={detalle.tel_padre}
+                      value={editado.tel_padre} onChange={v => setCampo("tel_padre", v as string)} />
+                    <EField label="Tel. de la madre" editando={editando}
+                      display={detalle.tel_madre}
+                      value={editado.tel_madre} onChange={v => setCampo("tel_madre", v as string)} />
+                    <EField label="Cónyuge — nombre" editando={editando}
+                      display={detalle.nombre_conyuge}
+                      value={editado.nombre_conyuge} onChange={v => setCampo("nombre_conyuge", v as string)} />
+                    <EField label="Cónyuge — ocupación" editando={editando}
+                      display={detalle.ocup_conyuge}
+                      value={editado.ocup_conyuge} onChange={v => setCampo("ocup_conyuge", v as string)} />
+                    <EField label="Cónyuge — teléfono" span2 editando={editando}
+                      display={detalle.tel_conyuge}
+                      value={editado.tel_conyuge} onChange={v => setCampo("tel_conyuge", v as string)} />
+                    <EField label="Hermano/a 1 — nombre" editando={editando}
+                      display={detalle.hermano1_nombre}
+                      value={editado.hermano1_nombre} onChange={v => setCampo("hermano1_nombre", v as string)} />
+                    <EField label="Hermano/a 1 — teléfono" editando={editando}
+                      display={detalle.hermano1_tel}
+                      value={editado.hermano1_tel} onChange={v => setCampo("hermano1_tel", v as string)} />
+                    <EField label="Hermano/a 2 — nombre" editando={editando}
+                      display={detalle.hermano2_nombre}
+                      value={editado.hermano2_nombre} onChange={v => setCampo("hermano2_nombre", v as string)} />
+                    <EField label="Hermano/a 2 — teléfono" editando={editando}
+                      display={detalle.hermano2_tel}
+                      value={editado.hermano2_tel} onChange={v => setCampo("hermano2_tel", v as string)} />
+                    <EField label="Facebook" editando={editando}
+                      display={detalle.facebook}
+                      value={editado.facebook} onChange={v => setCampo("facebook", v as string)} />
+                    <EField label="Instagram" editando={editando}
+                      display={detalle.instagram}
+                      value={editado.instagram} onChange={v => setCampo("instagram", v as string)} />
+                    <EField label="Parentesco contacto emergencia" span2 editando={editando}
+                      display={detalle.parentesco_emergencia}
+                      value={editado.parentesco_emergencia} onChange={v => setCampo("parentesco_emergencia", v as string)} />
+                  </Grid2>
+                </Section>
+
+                {/* Salud */}
+                <Section titulo="Salud" icono={<AlertCircle size={16} />}>
+                  <Grid2>
+                    <EField label="Estatura" editando={editando}
+                      display={detalle.estatura}
+                      value={editado.estatura} onChange={v => setCampo("estatura", v as string)} />
+                    <EField label="Peso" editando={editando}
+                      display={detalle.peso}
+                      value={editado.peso} onChange={v => setCampo("peso", v as string)} />
+                    <EField label="Enfermedad crónica" tipo="yn" editando={editando}
+                      display={detalle.enfermedad_cronica}
+                      value={editado.enfermedad_cronica} onChange={v => setCampo("enfermedad_cronica", v as string)} />
+                    <EField label="Detalle enfermedad" editando={editando}
+                      display={detalle.enfermedad_det}
+                      value={editado.enfermedad_det} onChange={v => setCampo("enfermedad_det", v as string)} />
+                    <EField label="Toma medicamento" tipo="yn" editando={editando}
+                      display={detalle.medicamento}
+                      value={editado.medicamento} onChange={v => setCampo("medicamento", v as string)} />
+                    <EField label="Detalle medicamento" editando={editando}
+                      display={detalle.medicamento_det}
+                      value={editado.medicamento_det} onChange={v => setCampo("medicamento_det", v as string)} />
+                    <EField label="Impedimento físico" tipo="yn" editando={editando}
+                      display={detalle.impedimento_fisico}
+                      value={editado.impedimento_fisico} onChange={v => setCampo("impedimento_fisico", v as string)} />
+                    <EField label="Detalle impedimento" editando={editando}
+                      display={detalle.impedimento_det}
+                      value={editado.impedimento_det} onChange={v => setCampo("impedimento_det", v as string)} />
+                    <EField label="Consume alcohol" tipo="yn" editando={editando}
+                      display={detalle.consume_alcohol}
+                      value={editado.consume_alcohol} onChange={v => setCampo("consume_alcohol", v as string)} />
+                    <EField label="Consume drogas" tipo="yn" editando={editando}
+                      display={detalle.consume_drogas}
+                      value={editado.consume_drogas} onChange={v => setCampo("consume_drogas", v as string)} />
+                    <EField label="Tiene tatuajes" tipo="yn" editando={editando}
+                      display={detalle.tiene_tatuajes}
+                      value={editado.tiene_tatuajes} onChange={v => setCampo("tiene_tatuajes", v as string)} />
+                    <EField label="Detalle tatuajes" editando={editando}
+                      display={detalle.tatuajes_det}
+                      value={editado.tatuajes_det} onChange={v => setCampo("tatuajes_det", v as string)} />
+                  </Grid2>
+                </Section>
+
+                {/* Antecedentes y deudas */}
+                <Section titulo="Antecedentes y Finanzas Personales" icono={<AlertCircle size={16} />}>
+                  <Grid2>
+                    <EField label="Proceso judicial" tipo="yn" editando={editando}
+                      display={detalle.proceso_judicial}
+                      value={editado.proceso_judicial} onChange={v => setCampo("proceso_judicial", v as string)} />
+                    <EField label="Detalle proceso" editando={editando}
+                      display={detalle.proceso_det}
+                      value={editado.proceso_det} onChange={v => setCampo("proceso_det", v as string)} />
+                    <EField label="¿Detenido alguna vez?" tipo="yn" editando={editando}
+                      display={detalle.detenido}
+                      value={editado.detenido} onChange={v => setCampo("detenido", v as string)} />
+                    <EField label="Detalle detención" editando={editando}
+                      display={detalle.detencion_det}
+                      value={editado.detencion_det} onChange={v => setCampo("detencion_det", v as string)} />
+                    <EField label="¿Tiene deudas?" tipo="yn" editando={editando}
+                      display={detalle.tiene_deudas}
+                      value={editado.tiene_deudas} onChange={v => setCampo("tiene_deudas", v as string)} />
+                    <EField label="Estado de la deuda" editando={editando}
+                      display={detalle.estado_deuda}
+                      value={editado.estado_deuda} onChange={v => setCampo("estado_deuda", v as string)} />
+                    <EField label="Gastos mensuales (Q)" editando={editando}
+                      display={detalle.gastos_mensuales}
+                      value={editado.gastos_mensuales} onChange={v => setCampo("gastos_mensuales", v as string)} />
+                    <EField label="¿Tiene préstamo?" tipo="yn" editando={editando}
+                      display={detalle.tiene_prestamo}
+                      value={editado.tiene_prestamo} onChange={v => setCampo("tiene_prestamo", v as string)} />
+                    <EField label="Monto del préstamo (Q)" span2 editando={editando}
+                      display={detalle.monto_prestamo}
+                      value={editado.monto_prestamo} onChange={v => setCampo("monto_prestamo", v as string)} />
+                  </Grid2>
+                </Section>
+
+                {/* Educación detallada */}
+                <Section titulo="Educación Detallada" icono={<GraduationCap size={16} />}>
+                  {([
+                    ["Primaria", "prim"],
+                    ["Básicos",  "bas"],
+                    ["Diversificado", "div"],
+                    ["Universitaria", "uni"],
+                  ] as const).map(([etiqueta, pre]) => (
+                    <div key={pre} className="mb-3">
+                      <div className="text-gray-500 text-xs font-semibold uppercase mb-1">{etiqueta}</div>
+                      <Grid2>
+                        <EField label="Escuela" editando={editando}
+                          display={(detalle as any)[`${pre}_escuela`]}
+                          value={(editado as any)[`${pre}_escuela`]}
+                          onChange={v => setCampo(`${pre}_escuela` as keyof SolicitudDetalle, v as never)} />
+                        <EField label="Lugar" editando={editando}
+                          display={(detalle as any)[`${pre}_lugar`]}
+                          value={(editado as any)[`${pre}_lugar`]}
+                          onChange={v => setCampo(`${pre}_lugar` as keyof SolicitudDetalle, v as never)} />
+                        <EField label="Título obtenido" span2 editando={editando}
+                          display={(detalle as any)[`${pre}_titulo`]}
+                          value={(editado as any)[`${pre}_titulo`]}
+                          onChange={v => setCampo(`${pre}_titulo` as keyof SolicitudDetalle, v as never)} />
+                      </Grid2>
+                    </div>
+                  ))}
+                </Section>
+
+                {/* Experiencia laboral previa */}
+                <Section titulo="Experiencia Laboral (últimos 3 empleos)" icono={<Briefcase size={16} />}>
+                  {(["emp1", "emp2", "emp3"] as const).map((pre, i) => (
+                    <div key={pre} className="mb-3">
+                      <div className="text-gray-500 text-xs font-semibold uppercase mb-1">Empleo {i + 1}</div>
+                      <Grid2>
+                        <EField label="Empresa" editando={editando}
+                          display={(detalle as any)[`${pre}_nombre`]}
+                          value={(editado as any)[`${pre}_nombre`]}
+                          onChange={v => setCampo(`${pre}_nombre` as keyof SolicitudDetalle, v as never)} />
+                        <EField label="Puesto" editando={editando}
+                          display={(detalle as any)[`${pre}_puesto`]}
+                          value={(editado as any)[`${pre}_puesto`]}
+                          onChange={v => setCampo(`${pre}_puesto` as keyof SolicitudDetalle, v as never)} />
+                        <EField label="Salario" editando={editando}
+                          display={(detalle as any)[`${pre}_salario`]}
+                          value={(editado as any)[`${pre}_salario`]}
+                          onChange={v => setCampo(`${pre}_salario` as keyof SolicitudDetalle, v as never)} />
+                        <EField label="Inicio" editando={editando}
+                          display={(detalle as any)[`${pre}_inicio`]}
+                          value={(editado as any)[`${pre}_inicio`]}
+                          onChange={v => setCampo(`${pre}_inicio` as keyof SolicitudDetalle, v as never)} />
+                        <EField label="Fin" editando={editando}
+                          display={(detalle as any)[`${pre}_fin`]}
+                          value={(editado as any)[`${pre}_fin`]}
+                          onChange={v => setCampo(`${pre}_fin` as keyof SolicitudDetalle, v as never)} />
+                        <EField label="Motivo de retiro" editando={editando}
+                          display={(detalle as any)[`${pre}_motivo`]}
+                          value={(editado as any)[`${pre}_motivo`]}
+                          onChange={v => setCampo(`${pre}_motivo` as keyof SolicitudDetalle, v as never)} />
+                      </Grid2>
+                    </div>
+                  ))}
+                </Section>
+
+                {/* Seguridad / militar / disponibilidad */}
+                <Section titulo="Servicio Militar y Disponibilidad" icono={<UserCheck size={16} />}>
+                  <Grid2>
+                    <EField label="Servicio militar" tipo="yn" editando={editando}
+                      display={detalle.servicio_militar}
+                      value={editado.servicio_militar} onChange={v => setCampo("servicio_militar", v as string)} />
+                    <EField label="Rango militar" editando={editando}
+                      display={detalle.rango_militar}
+                      value={editado.rango_militar} onChange={v => setCampo("rango_militar", v as string)} />
+                    <EField label="Unidad militar" span2 editando={editando}
+                      display={detalle.unidad_militar}
+                      value={editado.unidad_militar} onChange={v => setCampo("unidad_militar", v as string)} />
+                    <EField label="¿Fue policía?" tipo="yn" editando={editando}
+                      display={detalle.fue_policia}
+                      value={editado.fue_policia} onChange={v => setCampo("fue_policia", v as string)} />
+                    <EField label="Motivo de baja policial" editando={editando}
+                      display={detalle.motivo_baja_policial}
+                      value={editado.motivo_baja_policial} onChange={v => setCampo("motivo_baja_policial", v as string)} />
+                    <EField label="Habilidades" tipo="textarea" span2 editando={editando}
+                      display={detalle.habilidades}
+                      value={editado.habilidades} onChange={v => setCampo("habilidades", v as string)} />
+                    <EField label="Tipos de seguridad con experiencia" tipo="textarea" span2 editando={editando}
+                      display={detalle.tipos_seguridad}
+                      value={editado.tipos_seguridad} onChange={v => setCampo("tipos_seguridad", v as string)} />
+                    <EField label="Disp. turno rotativo" tipo="yn" editando={editando}
+                      display={detalle.disp_rotativo}
+                      value={editado.disp_rotativo} onChange={v => setCampo("disp_rotativo", v as string)} />
+                    <EField label="Disp. turno nocturno" tipo="yn" editando={editando}
+                      display={detalle.disp_nocturno}
+                      value={editado.disp_nocturno} onChange={v => setCampo("disp_nocturno", v as string)} />
+                    <EField label="Disp. fines de semana" tipo="yn" span2 editando={editando}
+                      display={detalle.disp_fds}
+                      value={editado.disp_fds} onChange={v => setCampo("disp_fds", v as string)} />
+                  </Grid2>
+                </Section>
+
+                {/* Referencias personales */}
+                <Section titulo="Referencias Personales" icono={<Phone size={16} />}>
+                  {(["ref1", "ref2", "ref3"] as const).map((pre, i) => (
+                    <div key={pre} className="mb-3">
+                      <div className="text-gray-500 text-xs font-semibold uppercase mb-1">Referencia {i + 1}</div>
+                      <Grid2>
+                        <EField label="Nombre" editando={editando}
+                          display={(detalle as any)[`${pre}_nombre`]}
+                          value={(editado as any)[`${pre}_nombre`]}
+                          onChange={v => setCampo(`${pre}_nombre` as keyof SolicitudDetalle, v as never)} />
+                        <EField label="Relación" editando={editando}
+                          display={(detalle as any)[`${pre}_relacion`]}
+                          value={(editado as any)[`${pre}_relacion`]}
+                          onChange={v => setCampo(`${pre}_relacion` as keyof SolicitudDetalle, v as never)} />
+                        <EField label="Teléfono" editando={editando}
+                          display={(detalle as any)[`${pre}_tel`]}
+                          value={(editado as any)[`${pre}_tel`]}
+                          onChange={v => setCampo(`${pre}_tel` as keyof SolicitudDetalle, v as never)} />
+                        <EField label="Años de conocerlo" editando={editando}
+                          display={(detalle as any)[`${pre}_anios`]}
+                          value={(editado as any)[`${pre}_anios`]}
+                          onChange={v => setCampo(`${pre}_anios` as keyof SolicitudDetalle, v as never)} />
+                      </Grid2>
+                    </div>
+                  ))}
+                </Section>
+
                 {/* Notas del reclutador */}
                 <Section titulo="Notas del Reclutador" icono={<FileText size={16} />}>
                   {detalle.revisado_por && (
@@ -834,7 +1199,7 @@ function DatoItem({ label, value, span2 }: { label: string; value: string | null
   );
 }
 
-type EFieldTipo = "text" | "textarea" | "date" | "number" | "bool" | "genero" | "estado_civil";
+type EFieldTipo = "text" | "textarea" | "date" | "number" | "bool" | "yn" | "genero" | "estado_civil";
 
 interface EFieldProps {
   label: string;
@@ -910,6 +1275,17 @@ function EField({ label, display, editando, value, onChange, tipo = "text", span
         >
           <option value="no">No</option>
           <option value="si">Sí</option>
+        </select>
+      )}
+      {tipo === "yn" && (
+        <select
+          value={v === "si" ? "si" : v === "no" ? "no" : ""}
+          onChange={e => onChange(e.target.value || null)}
+          className={inputCls}
+        >
+          <option value="">— sin especificar —</option>
+          <option value="si">Sí</option>
+          <option value="no">No</option>
         </select>
       )}
       {tipo === "genero" && (

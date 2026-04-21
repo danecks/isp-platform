@@ -4418,6 +4418,94 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: FALTA-DIF-01 — error (no bloqueante)");
   }
 
+  // ── SOL-EXPAND-01: campos completos del kiosko (banco, salud, antecedentes,
+  //    militar, hijos/hermanos/cónyuge, redes, habilidades, referencias) ────────
+  try {
+    const cols: Array<[string, string]> = [
+      // Domicilio & vivienda
+      ["tipo_vivienda", "VARCHAR(60)"],
+      ["tiempo_residencia", "VARCHAR(60)"],
+      ["renta_mensual", "VARCHAR(30)"],
+      // Banco
+      ["banco", "VARCHAR(60)"],
+      ["tipo_cuenta", "VARCHAR(30)"],
+      ["num_cuenta", "VARCHAR(60)"],
+      // Licencia conducir
+      ["tiene_licencia", "VARCHAR(3)"],
+      ["tipo_licencia", "VARCHAR(60)"],
+      ["vigencia_licencia", "VARCHAR(30)"],
+      // Familia extendida
+      ["tel_padre", "VARCHAR(30)"],
+      ["tel_madre", "VARCHAR(30)"],
+      ["nombre_conyuge", "VARCHAR(200)"],
+      ["ocup_conyuge", "VARCHAR(200)"],
+      ["tel_conyuge", "VARCHAR(30)"],
+      ["hermano1_nombre", "VARCHAR(200)"],
+      ["hermano1_tel", "VARCHAR(30)"],
+      ["hermano2_nombre", "VARCHAR(200)"],
+      ["hermano2_tel", "VARCHAR(30)"],
+      ["facebook", "VARCHAR(200)"],
+      ["instagram", "VARCHAR(200)"],
+      // Salud
+      ["estatura", "VARCHAR(10)"],
+      ["peso", "VARCHAR(10)"],
+      ["enfermedad_cronica", "VARCHAR(3)"],
+      ["enfermedad_det", "TEXT"],
+      ["medicamento", "VARCHAR(3)"],
+      ["medicamento_det", "VARCHAR(200)"],
+      ["impedimento_fisico", "VARCHAR(3)"],
+      ["impedimento_det", "VARCHAR(200)"],
+      ["consume_alcohol", "VARCHAR(3)"],
+      ["consume_drogas", "VARCHAR(3)"],
+      ["tiene_tatuajes", "VARCHAR(3)"],
+      ["tatuajes_det", "TEXT"],
+      ["parentesco_emergencia", "VARCHAR(60)"],
+      // Antecedentes y finanzas
+      ["proceso_judicial", "VARCHAR(3)"],
+      ["proceso_det", "TEXT"],
+      ["detenido", "VARCHAR(3)"],
+      ["detencion_det", "TEXT"],
+      ["tiene_deudas", "VARCHAR(3)"],
+      ["estado_deuda", "VARCHAR(60)"],
+      ["gastos_mensuales", "VARCHAR(30)"],
+      ["tiene_prestamo", "VARCHAR(3)"],
+      ["monto_prestamo", "VARCHAR(30)"],
+      // Educación detallada
+      ["prim_escuela", "VARCHAR(200)"], ["prim_lugar", "VARCHAR(120)"], ["prim_titulo", "VARCHAR(200)"],
+      ["bas_escuela", "VARCHAR(200)"],  ["bas_lugar", "VARCHAR(120)"],  ["bas_titulo", "VARCHAR(200)"],
+      ["div_escuela", "VARCHAR(200)"],  ["div_lugar", "VARCHAR(120)"],  ["div_titulo", "VARCHAR(200)"],
+      ["uni_escuela", "VARCHAR(200)"],  ["uni_lugar", "VARCHAR(120)"],  ["uni_titulo", "VARCHAR(200)"],
+      // Experiencia laboral (3 empleos)
+      ["emp1_nombre", "VARCHAR(200)"], ["emp1_puesto", "VARCHAR(120)"], ["emp1_salario", "VARCHAR(30)"],
+      ["emp1_inicio", "VARCHAR(10)"],  ["emp1_fin", "VARCHAR(10)"],     ["emp1_motivo", "VARCHAR(120)"],
+      ["emp2_nombre", "VARCHAR(200)"], ["emp2_puesto", "VARCHAR(120)"], ["emp2_salario", "VARCHAR(30)"],
+      ["emp2_inicio", "VARCHAR(10)"],  ["emp2_fin", "VARCHAR(10)"],     ["emp2_motivo", "VARCHAR(120)"],
+      ["emp3_nombre", "VARCHAR(200)"], ["emp3_puesto", "VARCHAR(120)"], ["emp3_salario", "VARCHAR(30)"],
+      ["emp3_inicio", "VARCHAR(10)"],  ["emp3_fin", "VARCHAR(10)"],     ["emp3_motivo", "VARCHAR(120)"],
+      // Seguridad / militar / disponibilidad
+      ["servicio_militar", "VARCHAR(3)"],
+      ["rango_militar", "VARCHAR(60)"],
+      ["unidad_militar", "VARCHAR(120)"],
+      ["fue_policia", "VARCHAR(3)"],
+      ["motivo_baja_policial", "VARCHAR(200)"],
+      ["habilidades", "TEXT"],
+      ["tipos_seguridad", "TEXT"],
+      ["disp_rotativo", "VARCHAR(3)"],
+      ["disp_nocturno", "VARCHAR(3)"],
+      ["disp_fds", "VARCHAR(3)"],
+      // Referencias personales (3)
+      ["ref1_nombre", "VARCHAR(200)"], ["ref1_relacion", "VARCHAR(120)"], ["ref1_tel", "VARCHAR(30)"], ["ref1_anios", "VARCHAR(10)"],
+      ["ref2_nombre", "VARCHAR(200)"], ["ref2_relacion", "VARCHAR(120)"], ["ref2_tel", "VARCHAR(30)"], ["ref2_anios", "VARCHAR(10)"],
+      ["ref3_nombre", "VARCHAR(200)"], ["ref3_relacion", "VARCHAR(120)"], ["ref3_tel", "VARCHAR(30)"], ["ref3_anios", "VARCHAR(10)"],
+    ];
+    for (const [name, type] of cols) {
+      await pool.query(`ALTER TABLE solicitudes_empleo ADD COLUMN IF NOT EXISTS ${name} ${type}`);
+    }
+    logger.info(`Auto-migrate: SOL-EXPAND-01 ${cols.length} columnas extendidas en solicitudes_empleo verificadas/creadas`);
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SOL-EXPAND-01 — error (no bloqueante)");
+  }
+
   // ── SOL-MERGE-01: sistema de merge de reingresos ──────────────────────────
   try {
     await pool.query(`ALTER TABLE solicitudes_empleo ADD COLUMN IF NOT EXISTS es_reingreso BOOLEAN NOT NULL DEFAULT FALSE`);
