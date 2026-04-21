@@ -1082,15 +1082,10 @@ export async function generarContratoLaboral(datos: DatosContratoLaboral): Promi
   pdf.addEspacio(8);
 
   // ─── Firmas ──
-  pdf.addFirmaDoble(
+  pdf.addFirmaContrato(
     { label: "EL PATRONO", nombre: `${patrono.representante_nombre}\n${patrono.representante_cargo}\n${patrono.razon_social}\nDPI: ${patrono.representante_dpi}` },
-    { label: "EL TRABAJADOR", nombre: `${datos.empleado_nombre.toUpperCase()}\nDPI: ${datos.empleado_dpi}\nHuella dactilar índice derecho:` },
-  );
-  pdf.addEspacio(4);
-  pdf.addTextoJustificado(
-    `Conforme al artículo 28 del Código de Trabajo, este contrato debe ser presentado por EL PATRONO a la Dirección General ` +
-    `de Trabajo dentro de los quince (15) días siguientes a su celebración.`,
-    7
+    { label: "EL TRABAJADOR", nombre: `${datos.empleado_nombre.toUpperCase()}\nDPI: ${datos.empleado_dpi}` },
+    `Conforme al artículo 28 del Código de Trabajo, este contrato debe ser presentado por EL PATRONO a la Dirección General de Trabajo dentro de los quince (15) días siguientes a su celebración.`,
   );
 
   const slug = datos.empleado_nombre.split(" ")[0].toLowerCase().replace(/[^a-z]/g, "");

@@ -411,6 +411,72 @@ export class IspPdf {
     this.currentY += 6;
   }
 
+  addFirmaContrato(
+    patrono: { label: string; nombre: string },
+    trabajador: { label: string; nombre: string },
+    notaPie?: string,
+  ): void {
+    this.checkPageBreak(70);
+    const doc = this.doc;
+    const halfW = this.contentWidth / 2 - 5;
+    const xIzq = this.marginL + halfW / 2;
+    const xDer = this.marginL + this.contentWidth / 2 + 5 + halfW / 2;
+
+    // Líneas de firma
+    doc.setDrawColor(...COLORS.darkGray);
+    doc.setLineWidth(0.3);
+    doc.line(this.marginL + 5, this.currentY, this.marginL + halfW - 5, this.currentY);
+    doc.line(this.marginL + this.contentWidth / 2 + 10, this.currentY, this.pageWidth - this.marginR - 5, this.currentY);
+
+    this.currentY += 4;
+    doc.setFontSize(8);
+    doc.setTextColor(...COLORS.darkGray);
+    doc.setFont("helvetica", "bold");
+    doc.text(patrono.label, xIzq, this.currentY, { align: "center" });
+    doc.text(trabajador.label, xDer, this.currentY, { align: "center" });
+    this.currentY += 3.5;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    const izqLines = patrono.nombre.split("\n");
+    const derLines = trabajador.nombre.split("\n");
+    const startY = this.currentY;
+    izqLines.forEach((ln, i) => {
+      doc.text(ln, xIzq, startY + i * 3.5, { align: "center" });
+    });
+    derLines.forEach((ln, i) => {
+      doc.text(ln, xDer, startY + i * 3.5, { align: "center" });
+    });
+    const maxLines = Math.max(izqLines.length, derLines.length);
+    this.currentY = startY + maxLines * 3.5 + 2;
+
+    // Cuadro de huella dactilar (solo lado del trabajador)
+    const huellaW = 32;
+    const huellaH = 32;
+    const huellaX = xDer - huellaW / 2;
+    const huellaY = this.currentY + 2;
+    doc.setDrawColor(...COLORS.darkGray);
+    doc.setLineWidth(0.3);
+    doc.rect(huellaX, huellaY, huellaW, huellaH);
+    doc.setFontSize(6.5);
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(...COLORS.darkGray);
+    doc.text("Huella dactilar", xDer, huellaY + huellaH + 3, { align: "center" });
+    doc.text("índice derecho", xDer, huellaY + huellaH + 6, { align: "center" });
+
+    this.currentY = huellaY + huellaH + 10;
+
+    // Nota legal al pie (debajo de ambas firmas, ancho completo)
+    if (notaPie) {
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(7);
+      doc.setTextColor(...COLORS.darkGray);
+      const lines = doc.splitTextToSize(notaPie, this.contentWidth);
+      doc.text(lines, this.marginL, this.currentY);
+      this.currentY += lines.length * 3 + 2;
+    }
+  }
+
   addFirmaSimple(label: string, nombre: string): void {
     this.checkPageBreak(20);
     const doc = this.doc;
