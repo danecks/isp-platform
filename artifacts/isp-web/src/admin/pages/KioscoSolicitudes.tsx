@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
-import { generarContratoLaboral, type DatosContratoLaboral } from "@/lib/pdfRrhh";
+import { generarContratoLaboral, cargarPatronoDesdeConfig, type DatosContratoLaboral } from "@/lib/pdfRrhh";
 
 const API = "/api";
 const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
@@ -674,7 +674,8 @@ export default function KioscoSolicitudes() {
                         </p>
                         <div className="grid grid-cols-2 gap-2">
                           <button
-                            onClick={() => {
+                            onClick={async () => {
+                              const patrono = await cargarPatronoDesdeConfig();
                               const datos: DatosContratoLaboral = {
                                 empleado_nombre: detalle.nombre_completo,
                                 empleado_dpi: detalle.dpi,
@@ -686,6 +687,7 @@ export default function KioscoSolicitudes() {
                                 tipo_personal: asignacion.tipo_personal || "guardia",
                                 sueldo_base: parseFloat(asignacion.sueldo_base) || parseFloat(detalle.pretension_salarial || "0") || 0,
                                 tipo_contrato: "inicial",
+                                patrono,
                               };
                               generarContratoLaboral(datos);
                             }}
@@ -694,7 +696,8 @@ export default function KioscoSolicitudes() {
                             <Printer size={14} /> Contrato Inicial<br/>(60 días prueba)
                           </button>
                           <button
-                            onClick={() => {
+                            onClick={async () => {
+                              const patrono = await cargarPatronoDesdeConfig();
                               const datos: DatosContratoLaboral = {
                                 empleado_nombre: detalle.nombre_completo,
                                 empleado_dpi: detalle.dpi,
@@ -706,6 +709,7 @@ export default function KioscoSolicitudes() {
                                 tipo_personal: asignacion.tipo_personal || "guardia",
                                 sueldo_base: parseFloat(asignacion.sueldo_base) || parseFloat(detalle.pretension_salarial || "0") || 0,
                                 tipo_contrato: "post_prueba",
+                                patrono,
                               };
                               generarContratoLaboral(datos);
                             }}

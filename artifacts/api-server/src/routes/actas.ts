@@ -32,6 +32,9 @@ actasRouter.put("/config-empresa", async (req, res) => {
     nombre_empresa,
     umbral_dias_consecutivos,
     umbral_medios_turnos_mes,
+    nit_empresa,
+    patente_comercio,
+    telefono_empresa,
   } = req.body;
   try {
     const { rows } = await pool.query(
@@ -42,6 +45,9 @@ actasRouter.put("/config-empresa", async (req, res) => {
          nombre_empresa           = COALESCE($4, nombre_empresa),
          umbral_dias_consecutivos = COALESCE($5, umbral_dias_consecutivos),
          umbral_medios_turnos_mes = COALESCE($6, umbral_medios_turnos_mes),
+         nit_empresa              = COALESCE($7, nit_empresa),
+         patente_comercio         = COALESCE($8, patente_comercio),
+         telefono_empresa         = COALESCE($9, telefono_empresa),
          updated_at = NOW()
        WHERE id = 1
        RETURNING *`,
@@ -52,6 +58,9 @@ actasRouter.put("/config-empresa", async (req, res) => {
         nombre_empresa ?? null,
         umbral_dias_consecutivos ?? null,
         umbral_medios_turnos_mes ?? null,
+        nit_empresa ?? null,
+        patente_comercio ?? null,
+        telefono_empresa ?? null,
       ]
     );
     res.json({ ok: true, config: rows[0] });

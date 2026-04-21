@@ -698,6 +698,38 @@ export const PATRONO_DATOS = {
   telefono: "+502 2379 0700",
 };
 
+/**
+ * Carga los datos del patrono desde /api/config-empresa y los devuelve en el
+ * formato esperado por DatosContratoLaboral.patrono (override). Si la API no
+ * responde o algún campo está vacío, mantiene el placeholder de PATRONO_DATOS.
+ */
+export async function cargarPatronoDesdeConfig(): Promise<Partial<typeof PATRONO_DATOS>> {
+  try {
+    const res = await fetch("/api/config-empresa");
+    if (!res.ok) return {};
+    const cfg = await res.json() as {
+      nombre_empresa?: string;
+      direccion_empresa?: string;
+      nit_empresa?: string;
+      patente_comercio?: string;
+      telefono_empresa?: string;
+      representante_nombre?: string;
+      representante_dpi?: string;
+    };
+    const overrides: Partial<typeof PATRONO_DATOS> = {};
+    if (cfg.nombre_empresa)         overrides.razon_social         = cfg.nombre_empresa.toUpperCase();
+    if (cfg.direccion_empresa)      overrides.direccion            = cfg.direccion_empresa;
+    if (cfg.nit_empresa)            overrides.nit                  = cfg.nit_empresa;
+    if (cfg.patente_comercio)       overrides.patente_comercio     = cfg.patente_comercio;
+    if (cfg.telefono_empresa)       overrides.telefono             = cfg.telefono_empresa;
+    if (cfg.representante_nombre)   overrides.representante_nombre = cfg.representante_nombre;
+    if (cfg.representante_dpi)      overrides.representante_dpi    = cfg.representante_dpi;
+    return overrides;
+  } catch {
+    return {};
+  }
+}
+
 export interface DatosContratoLaboral {
   // Empleado
   empleado_nombre: string;

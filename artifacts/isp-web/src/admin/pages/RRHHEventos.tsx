@@ -1039,6 +1039,9 @@ function ModalConfigEmpresa({ onClose }: { onClose: () => void }) {
     representante_dpi: "",
     direccion_empresa: "",
     nombre_empresa: "",
+    nit_empresa: "",
+    patente_comercio: "",
+    telefono_empresa: "",
     umbral_dias_consecutivos: 2,
     umbral_medios_turnos_mes: 6,
   });
@@ -1053,6 +1056,9 @@ function ModalConfigEmpresa({ onClose }: { onClose: () => void }) {
             representante_dpi: data.representante_dpi || "",
             direccion_empresa: data.direccion_empresa || "",
             nombre_empresa: data.nombre_empresa || "",
+            nit_empresa: data.nit_empresa || "",
+            patente_comercio: data.patente_comercio || "",
+            telefono_empresa: data.telefono_empresa || "",
             umbral_dias_consecutivos: data.umbral_dias_consecutivos ?? 2,
             umbral_medios_turnos_mes: data.umbral_medios_turnos_mes ?? 6,
           });
@@ -1112,6 +1118,26 @@ function ModalConfigEmpresa({ onClose }: { onClose: () => void }) {
             <div className="space-y-1.5">
               <label className="text-xs text-white/50">Dirección de la Empresa</label>
               <input value={form.direccion_empresa} onChange={e => setForm({ ...form, direccion_empresa: e.target.value })} placeholder="14 calle 15-52 zona 1, Barrio Gerona" className={inputCls} />
+            </div>
+
+            <div className="border-t border-white/8 pt-4">
+              <p className="text-xs text-white/40 uppercase tracking-wide mb-3">Datos Mercantiles (para contratos laborales)</p>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] text-white/40">NIT de la empresa</label>
+                    <input value={form.nit_empresa} onChange={e => setForm({ ...form, nit_empresa: e.target.value })} placeholder="1234567-8" className={inputCls} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] text-white/40">Patente de Comercio</label>
+                    <input value={form.patente_comercio} onChange={e => setForm({ ...form, patente_comercio: e.target.value })} placeholder="No. xxxxx, Folio yy, Libro zz" className={inputCls} />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] text-white/40">Teléfono de la empresa</label>
+                  <input value={form.telefono_empresa} onChange={e => setForm({ ...form, telefono_empresa: e.target.value })} placeholder="+502 2379 0700" className={inputCls} />
+                </div>
+              </div>
             </div>
 
             <div className="border-t border-white/8 pt-4">

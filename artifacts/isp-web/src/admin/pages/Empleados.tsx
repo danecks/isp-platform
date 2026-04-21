@@ -17,7 +17,7 @@ import {
   ClipboardList, FileText, Scale, FileSignature, Printer,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { generarContratoLaboral, type DatosContratoLaboral } from "@/lib/pdfRrhh";
+import { generarContratoLaboral, cargarPatronoDesdeConfig, type DatosContratoLaboral } from "@/lib/pdfRrhh";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
 
 const API_BASE = "/api";
@@ -3933,9 +3933,12 @@ function TabContratos({ emp }: { emp: Empleado }) {
   async function descargarContrato(tipo: "inicial" | "post_prueba") {
     setGenerando(tipo);
     try {
-      // Cargar datos completos del empleado (estado civil, dirección, etc.)
-      const res = await fetch(`${API_BASE}/employees/${emp.id}`);
-      const det = res.ok ? await res.json() : {};
+      // Cargar datos completos del empleado y datos del patrono en paralelo
+      const [resEmp, patrono] = await Promise.all([
+        fetch(`${API_BASE}/employees/${emp.id}`),
+        cargarPatronoDesdeConfig(),
+      ]);
+      const det = resEmp.ok ? await resEmp.json() : {};
 
       const fechaIngreso = det.fecha_ingreso || emp.fechaIngreso || new Date().toISOString().slice(0, 10);
       // Para el contrato post-prueba, la fecha de inicio es típicamente fecha_ingreso + 60 días
@@ -3954,6 +3957,7 @@ function TabContratos({ emp }: { emp: Empleado }) {
         tipo_personal: emp.tipoPersonal ?? "guardia",
         sueldo_base: parseFloat(emp.sueldoBase ?? det.sueldo_base ?? "0") || 0,
         tipo_contrato: tipo,
+        patrono,
       };
 
       if (!datos.sueldo_base) {
