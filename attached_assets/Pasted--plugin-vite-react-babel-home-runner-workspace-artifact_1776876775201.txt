@@ -1,0 +1,43 @@
+[plugin:vite:react-babel] /home/runner/workspace/artifacts/isp-web/src/admin/pages/CarnetesQR.tsx: Missing semicolon. (144:10)
+  147 |   logoIconB64: string,
+/home/runner/workspace/artifacts/isp-web/src/admin/pages/CarnetesQR.tsx:144:10
+142 |  const _PT = (pt: number) => Math.round(pt * 4 / 3.78);
+143 |  
+144 |  rrfunction createFrenteElement(
+    |            ^
+145 |    agent: AgenteCarnet,
+146 |    qrSvgStr: string,
+    at constructor (/home/runner/workspace/node_modules/.pnpm/@babel+parser@7.29.0/node_modules/@babel/parser/lib/index.js:365:19)
+    at TypeScriptParserMixin.raise (/home/runner/workspace/node_modules/.pnpm/@babel+parser@7.29.0/node_modules/@babel/parser/lib/index.js:6599:19)
+    at TypeScriptParserMixin.semicolon (/home/runner/workspace/node_modules/.pnpm/@babel+parser@7.29.0/node_modules/@babel/parser/lib/index.js:6895:10)
+    at TypeScriptParserMixin.parseExpressionStatement (/home/runner/workspace/node_modules/.pnpm/@babel+parser@7.29.0/node_modules/@babel/parser/lib/index.js:13285:10)
+    at TypeScriptParserMixin.parseStatementContent (/home/runner/workspace/node_modules/.pnpm/@babel+parser@7.29.0/node_modules/@babel/parser/lib/index.js:12899:19)
+    at TypeScriptParserMixin.parseStatementContent (/home/runner/workspace/node_modules/.pnpm/@babel+parser@7.29.0/node_modules/@babel/parser/lib/index.js:9508:18)
+    at TypeScriptParserMixin.parseStatementLike (/home/runner/workspace/node_modules/.pnpm/@babel+parser@7.29.0/node_modules/@babel/parser/lib/index.js:12767:17)
+    at TypeScriptParserMixin.parseModuleItem (/home/runner/workspace/node_modules/.pnpm/@babel+parser@7.29.0/node_modules/@babel/parser/lib/index.js:12744:17)
+    at TypeScriptParserMixin.parseBlockOrModuleBlockBody (/home/runner/workspace/node_modules/.pnpm/@babel+parser@7.29.0/node_modules/@babel/parser/lib/index.js:13316:36)
+    at TypeScriptParserMixin.parseBlockBody (/home/runner/workspace/node_modules/.pnpm/@babel+parser@7.29.0/node_modules/@babel/parser/lib/index.js:13309:10)
+    at TypeScriptParserMixin.parseProgram (/home/runner/workspace/node_modules/.pnpm/@babel+parser@7.29.0/node_modules/@babel/parser/lib/index.js:12622:10)
+    at TypeScriptParserMixin.parseTopLevel (/home/runner/workspace/node_modules/.pnpm/@babel+parser@7.29.0/node_modules/@babel/parser/lib/index.js:12612:25)
+    at TypeScriptParserMixin.parse (/home/runner/workspace/node_modules/.pnpm/@babel+parser@7.29.0/node_modules/@babel/parser/lib/index.js:14488:25)
+    at TypeScriptParserMixin.parse (/home/runner/workspace/node_modules/.pnpm/@babel+parser@7.29.0/node_modules/@babel/parser/lib/index.js:10126:18)
+    at parse (/home/runner/workspace/node_modules/.pnpm/@babel+parser@7.29.0/node_modules/@babel/parser/lib/index.js:14522:38)
+    at parser (/home/runner/workspace/node_modules/.pnpm/@babel+core@7.29.0/node_modules/@babel/core/lib/parser/index.js:41:34)
+    at parser.next (<anonymous>)
+    at normalizeFile (/home/runner/workspace/node_modules/.pnpm/@babel+core@7.29.0/node_modules/@babel/core/lib/transformation/normalize-file.js:64:37)
+    at normalizeFile.next (<anonymous>)
+    at run (/home/runner/workspace/node_modules/.pnpm/@babel+core@7.29.0/node_modules/@babel/core/lib/transformation/index.js:22:50)
+    at run.next (<anonymous>)
+    at transform (/home/runner/workspace/node_modules/.pnpm/@babel+core@7.29.0/node_modules/@babel/core/lib/transform.js:22:33)
+    at transform.next (<anonymous>)
+    at step (/home/runner/workspace/node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:261:32)
+    at /home/runner/workspace/node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:273:13
+    at async.call.result.err.err (/home/runner/workspace/node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:223:11)
+    at /home/runner/workspace/node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:189:28
+    at /home/runner/workspace/node_modules/.pnpm/@babel+core@7.29.0/node_modules/@babel/core/lib/gensync-utils/async.js:67:7
+    at /home/runner/workspace/node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:113:33
+    at step (/home/runner/workspace/node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:287:14)
+    at /home/runner/workspace/node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:273:13
+    at async.call.result.err.err (/home/runner/workspace/node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:223:11)
+Click outside, press Esc key, or fix the code to dismiss.
+You can also disable this overlay by setting server.hmr.overlay to false in vite.config.ts.
