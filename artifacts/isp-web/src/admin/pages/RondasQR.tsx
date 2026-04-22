@@ -5,7 +5,7 @@ import { MapContainer, TileLayer, Marker, Circle, useMapEvents, Popup } from "re
 import { QRCodeSVG } from "qrcode.react";
 import {
   Plus, Trash2, Edit2, QrCode, MapPin, ChevronLeft, Printer,
-  CheckCircle, XCircle, Activity, ToggleLeft, ToggleRight,
+  CheckCircle, XCircle, Activity, ToggleLeft, ToggleRight, CheckSquare, Square,
 } from "lucide-react";
 
 // ── Leaflet icon fix (Vite) ────────────────────────────────────────────────
@@ -211,6 +211,16 @@ function PrintView({ punto, rondaNombre, onClose }: { punto: Punto; rondaNombre:
     .card {
       width: 340px;
       text-align: center;
+      border: 2px dashed #9ca3af;
+      border-radius: 12px;
+      padding: 18px 14px;
+    }
+    .cut-hint {
+      font-size: 8px;
+      color: #9ca3af;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
     }
     .label {
       font-size: 10px;
@@ -264,6 +274,7 @@ function PrintView({ punto, rondaNombre, onClose }: { punto: Punto; rondaNombre:
 </head>
 <body>
   <div class="card">
+    <p class="cut-hint">✂ Cortar por la línea punteada</p>
     <p class="label">ISP — Ronda de Seguridad</p>
     <p class="ronda-name">${rondaNombre}</p>
     <p class="punto-name">${punto.nombre}</p>
@@ -339,6 +350,157 @@ function RondaDetalle({
   const [printPunto, setPrintPunto] = useState<Punto | null>(null);
   const [tab, setTab] = useState<"mapa" | "lista" | "reporte">("mapa");
   const [eventos, setEventos] = useState<any[]>([]);
+  const [seleccionados, setSeleccionados] = useState<Set<number>>(new Set());
+
+  const toggleSel = (id: number) => {
+    setSeleccionados(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelAll = () => {
+    if (seleccionados.size === puntos.length) setSeleccionados(new Set());
+    else setSeleccionados(new Set(puntos.map(p => p.id)));
+  };
+
+  // Imprimir múltiples QR seleccionados en una hoja tamaño Carta con líneas de corte
+  const imprimirSeleccionados = () => {
+    const elegidos = puntos.filter(p => seleccionados.has(p.id));
+    if (elegidos.length === 0) return;
+
+    const cards = elegidos.map(p => {
+      const url = `${window.location.origin}/ronda?token=${p.qr_token}`;
+      // Generar SVG QR con qrcode.react server-side via hidden render no es trivial.
+      // En su lugar, usamos un <img> apuntando a un servicio in-page con SVG inline
+      // construido al vuelo: insertamos el QRCodeSVG renderizado a string vía dangerouslySetInnerHTML
+      // no funciona en otra ventana. Solución: usar la librería qrcode (canvas/string).
+      // Para mantener simple sin nuevas deps, generamos un <img src="data:image/svg+xml..."> usando
+      // el mismo algoritmo de qrcode.react ya cargado: serializamos un SVG renderizado en un nodo oculto.
+      return { p, url };
+    });
+
+    // Renderizamos los QRs ocultos en el documento actual para extraer su SVG
+    const tmp = document.createElement("div");
+    tmp.style.position = "absolute";
+    tmp.style.left = "-99999px";
+    document.body.appendChild(tmp);
+
+    // Usamos la API directa de qrcode.react importada arriba (QRCodeSVG)
+    // Pero no podemos invocar React fuera del tree fácilmente; en lugar de eso,
+    // copiamos los SVG ya renderizados desde el grid actual usando un atributo data-qr-id.
+    const svgPorPunto = new Map<number, string>();
+    document.querySelectorAll<HTMLElement>('[data-qr-id]').forEach(el => {
+      const id = Number(el.dataset.qrId);
+      const svg = el.querySelector('svg');
+      if (svg) svgPorPunto.set(id, new XMLSerializer().serializeToString(svg));
+    });
+    document.body.removeChild(tmp);
+
+    const win = window.open("", "_blank");
+    if (!win) return;
+
+    const cardsHtml = cards.map(({ p, url }) => {
+      const svg = svgPorPunto.get(p.id) || "";
+      return `
+        <div class="card">
+          <p class="cut-hint">✂ Cortar por la línea punteada</p>
+          <p class="label">ISP — Ronda</p>
+          <p class="ronda-name">${ronda.nombre}</p>
+          <p class="punto-name">${p.nombre}</p>
+          ${p.descripcion ? `<p class="descripcion">${p.descripcion}</p>` : ""}
+          <div class="qr-wrap">${svg}</div>
+          <p class="orden">Punto #${p.orden}</p>
+          <p class="url">${url}</p>
+        </div>`;
+    }).join("");
+
+    win.document.write(`<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>QRs · ${ronda.nombre} (${cards.length})</title>
+  <style>
+    @page { size: letter; margin: 0.4in; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #fff;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .card {
+      width: 100%;
+      text-align: center;
+      border: 2px dashed #6b7280;
+      border-radius: 10px;
+      padding: 12px 10px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .cut-hint {
+      font-size: 7px;
+      color: #9ca3af;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .label {
+      font-size: 8px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #6b7280;
+      margin-bottom: 2px;
+    }
+    .ronda-name {
+      font-size: 13px;
+      font-weight: 800;
+      color: #111827;
+      margin-bottom: 1px;
+    }
+    .punto-name {
+      font-size: 11px;
+      color: #374151;
+      font-weight: 600;
+    }
+    .descripcion {
+      font-size: 9px;
+      color: #9ca3af;
+      margin-top: 2px;
+    }
+    .qr-wrap {
+      display: flex;
+      justify-content: center;
+      margin: 8px 0 6px;
+    }
+    .qr-wrap svg {
+      width: 165px;
+      height: 165px;
+    }
+    .orden {
+      font-size: 9px;
+      color: #6b7280;
+      font-weight: 600;
+    }
+    .url {
+      font-size: 7px;
+      color: #d1d5db;
+      word-break: break-all;
+      margin-top: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="grid">${cardsHtml}</div>
+  <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 250); };<\/script>
+</body>
+</html>`);
+    win.document.close();
+  };
 
   const loadPuntos = useCallback(async () => {
     const r = await f(`/qr-rondas/${ronda.id}`);
@@ -598,35 +760,66 @@ function RondaDetalle({
 
       {/* ── TAB LISTA QR ── */}
       {tab === "lista" && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto">
-          {puntos.length === 0 && (
-            <div className="col-span-3 text-center py-16 text-white/30">
-              <QrCode className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p>No hay puntos de control. Agrégalos en la pestaña Mapa.</p>
+        <div className="flex flex-col gap-4 overflow-y-auto">
+          {puntos.length > 0 && (
+            <div className="flex items-center gap-3 bg-white/5 border border-white/8 rounded-xl px-4 py-3">
+              <button onClick={toggleSelAll}
+                className="flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors">
+                {seleccionados.size === puntos.length && puntos.length > 0
+                  ? <CheckSquare className="w-4 h-4 text-blue-400" />
+                  : <Square className="w-4 h-4" />}
+                {seleccionados.size === puntos.length && puntos.length > 0 ? "Deseleccionar todos" : "Seleccionar todos"}
+              </button>
+              <span className="text-xs text-white/40 ml-2">
+                {seleccionados.size} de {puntos.length} seleccionados
+              </span>
+              <button onClick={imprimirSeleccionados} disabled={seleccionados.size === 0}
+                className="ml-auto flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors">
+                <Printer className="w-4 h-4" />
+                Imprimir seleccionados {seleccionados.size > 0 ? `(${seleccionados.size})` : ""}
+              </button>
             </div>
           )}
-          {puntos.map((p, i) => {
-            const url = `${window.location.origin}/ronda?token=${p.qr_token}`;
-            return (
-              <div key={p.id} className="bg-white/5 border border-white/8 rounded-xl p-4 flex flex-col items-center gap-3">
-                <div className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-black"
-                  style={{ backgroundColor: COLORS[i % COLORS.length] }}>
-                  {p.orden}
-                </div>
-                <p className="text-sm font-semibold text-white text-center">{p.nombre}</p>
-                {p.descripcion && <p className="text-xs text-white/40 text-center">{p.descripcion}</p>}
-                <div className="bg-white p-3 rounded-xl">
-                  <QRCodeSVG value={url} size={160} level="H" />
-                </div>
-                <p className="text-xs text-white/30 break-all text-center max-w-full">{url}</p>
-                <p className="text-xs text-white/40">Radio: {p.radio_metros}m</p>
-                <button onClick={() => setPrintPunto(p)}
-                  className="w-full flex items-center justify-center gap-2 py-2 bg-white/5 hover:bg-white/10 border border-white/8 rounded-lg text-sm text-white/70 hover:text-white transition-colors">
-                  <Printer className="w-4 h-4" /> Imprimir QR
-                </button>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {puntos.length === 0 && (
+              <div className="col-span-3 text-center py-16 text-white/30">
+                <QrCode className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                <p>No hay puntos de control. Agrégalos en la pestaña Mapa.</p>
               </div>
-            );
-          })}
+            )}
+            {puntos.map((p, i) => {
+              const url = `${window.location.origin}/ronda?token=${p.qr_token}`;
+              const sel = seleccionados.has(p.id);
+              return (
+                <div key={p.id}
+                  className={`relative border rounded-xl p-4 flex flex-col items-center gap-3 transition-colors ${sel ? "bg-blue-500/10 border-blue-500/40" : "bg-white/5 border-white/8"}`}>
+                  <button onClick={() => toggleSel(p.id)}
+                    title={sel ? "Quitar selección" : "Seleccionar para imprimir"}
+                    className="absolute top-2 right-2 p-1 rounded-md hover:bg-white/10 transition-colors">
+                    {sel
+                      ? <CheckSquare className="w-5 h-5 text-blue-400" />
+                      : <Square className="w-5 h-5 text-white/40" />}
+                  </button>
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-black"
+                    style={{ backgroundColor: COLORS[i % COLORS.length] }}>
+                    {p.orden}
+                  </div>
+                  <p className="text-sm font-semibold text-white text-center">{p.nombre}</p>
+                  {p.descripcion && <p className="text-xs text-white/40 text-center">{p.descripcion}</p>}
+                  <div data-qr-id={p.id} className="bg-white p-3 rounded-xl border-2 border-dashed border-gray-400">
+                    <QRCodeSVG value={url} size={160} level="H" />
+                  </div>
+                  <p className="text-xs text-white/30 break-all text-center max-w-full">{url}</p>
+                  <p className="text-xs text-white/40">Radio: {p.radio_metros}m</p>
+                  <button onClick={() => setPrintPunto(p)}
+                    className="w-full flex items-center justify-center gap-2 py-2 bg-white/5 hover:bg-white/10 border border-white/8 rounded-lg text-sm text-white/70 hover:text-white transition-colors">
+                    <Printer className="w-4 h-4" /> Imprimir QR
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
