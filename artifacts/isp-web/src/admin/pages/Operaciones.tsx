@@ -7152,6 +7152,24 @@ export default function Operaciones() {
           }
           const labelNov = TIPOS_NOVEDAD.find((t) => t.value === (tipoNovedad ?? ""))?.label ?? tipoNovedad ?? motivo;
           toast({ title: `Sustitución registrada · ${labelNov}`, description: `${puesto.titular_nombre ?? "Titular"} → ${agente.nombre_completo} en Custodio ${slotNumero}` });
+
+          // Si el agente entrante estaba descansando o de vacaciones, abrir
+          // modal de HE para registrar pago en efectivo o dejar para planilla.
+          const poolStatus = modalSustitucion?.agentePoolStatus;
+          if (poolStatus === "descansando" || poolStatus === "vacaciones") {
+            const clienteNombre = puesto.cliente_nombre ?? null;
+            setModalIncentivo({
+              agenteId: agente.id,
+              agenteName: agente.nombre_completo,
+              puestoId: null,
+              puestoName: `Custodio ${slotNumero}${clienteNombre ? ` — ${clienteNombre}` : ""}`,
+              clienteId,
+              clienteNombre,
+              sedeId: null,
+              fecha: fechaVista,
+              jornada: "12h",
+            });
+          }
         }
         setModalSustitucion(null);
         setAgenteSeleccionado(null);
