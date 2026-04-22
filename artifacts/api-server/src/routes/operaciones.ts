@@ -690,11 +690,20 @@ operacionesRouter.post("/operaciones/asignar-custodia", async (req, res) => {
         DO UPDATE SET employee_id = $3, notas = $5
       `, [clienteId, fechaAsig, employeeId, slotNumero, notas ?? null]);
     } else {
+      // Nuevo titular: lo registramos en custodia_titulares Y reflejamos
+      // automáticamente la asignación diaria para que aparezca en el módulo
+      // Custodias como "asignado hoy".
       await pool.query(
         `INSERT INTO custodia_titulares (cliente_id, slot_numero, employee_id) VALUES ($1, $2, $3)
          ON CONFLICT (cliente_id, slot_numero, employee_id) DO UPDATE SET activo = TRUE`,
         [clienteId, slotNumero, employeeId]
       );
+      await pool.query(`
+        INSERT INTO custodia_asignacion_diaria (cliente_id, fecha, employee_id, slot_numero, notas)
+        VALUES ($1, $2::date, $3, $4, $5)
+        ON CONFLICT (cliente_id, fecha, slot_numero)
+        DO UPDATE SET employee_id = $3, notas = COALESCE(EXCLUDED.notas, custodia_asignacion_diaria.notas)
+      `, [clienteId, fechaAsig, employeeId, slotNumero, notas ?? null]);
     }
     res.json({ ok: true, esTitular: !titularExistente && !soloCobertura });
   } catch (err: any) {
@@ -766,6 +775,13 @@ operacionesRouter.post("/operaciones/cambiar-titular-custodia", async (req, res)
     await client.query(
       `DELETE FROM custodia_asignacion_diaria WHERE cliente_id = $1 AND fecha = $2::date AND slot_numero = $3`,
       [clienteId, fechaHoy, slotNumero]
+    );
+    // Reflejamos el nuevo titular como asignación diaria de hoy
+    await client.query(
+      `INSERT INTO custodia_asignacion_diaria (cliente_id, fecha, employee_id, slot_numero)
+       VALUES ($1, $2::date, $3, $4)
+       ON CONFLICT (cliente_id, fecha, slot_numero) DO UPDATE SET employee_id = $3`,
+      [clienteId, fechaHoy, nuevoTitularId, slotNumero]
     );
     await client.query("COMMIT");
     logger.info({ clienteId, slotNumero, nuevoTitularId, anteriorTitularId }, "Titular custodia cambiado");

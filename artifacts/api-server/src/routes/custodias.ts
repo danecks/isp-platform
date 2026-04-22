@@ -26,19 +26,28 @@ custodiasRouter.get("/custodias/dashboard", async (req, res) => {
     const result = [];
 
     for (const cl of clientes) {
+      // Titulares: unión de (1) puesto_titulares con tipo_puesto='custodia' y
+      // (2) custodia_titulares (slots asignados desde Pizarrón Operativo).
       const { rows: titulares } = await pool.query(`
-        SELECT
-          pt.employee_id,
+        SELECT DISTINCT ON (e.id)
+          e.id AS employee_id,
           e.nombre_completo,
           e.empl_numero,
           e.estado_laboral
-        FROM puesto_titulares pt
-        JOIN puestos_operativos po ON po.id = pt.puesto_id
-        JOIN employees e ON e.id = pt.employee_id
-        WHERE po.cliente_id = $1
-          AND po.activo = TRUE
-          AND pt.activo = TRUE
-          AND COALESCE(po.tipo_puesto, 'fijo') = 'custodia'
+        FROM (
+          SELECT pt.employee_id
+          FROM puesto_titulares pt
+          JOIN puestos_operativos po ON po.id = pt.puesto_id
+          WHERE po.cliente_id = $1
+            AND po.activo = TRUE
+            AND pt.activo = TRUE
+            AND COALESCE(po.tipo_puesto, 'fijo') = 'custodia'
+          UNION
+          SELECT ct.employee_id
+          FROM custodia_titulares ct
+          WHERE ct.cliente_id = $1 AND ct.activo = TRUE
+        ) t
+        JOIN employees e ON e.id = t.employee_id
       `, [cl.id]);
 
       const { rows: asignados } = await pool.query(`
