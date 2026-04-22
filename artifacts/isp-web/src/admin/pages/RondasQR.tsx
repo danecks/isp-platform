@@ -231,23 +231,29 @@ function PrintView({ punto, rondaNombre, onClose }: { punto: Punto; rondaNombre:
       line-height: 1.1;
     }
     .ronda-name {
-      font-size: 8pt;
+      font-size: 7pt;
       font-weight: 800;
       color: #111827;
       line-height: 1.1;
       margin-top: 1px;
     }
+    .punto-name {
+      font-size: 6pt;
+      font-weight: 600;
+      color: #374151;
+      line-height: 1.1;
+    }
     .qr-wrap {
       flex: 1;
       width: 100%;
-      margin-top: 0.1cm;
+      margin-top: 0.08cm;
       display: flex;
       align-items: center;
       justify-content: center;
     }
     .qr-wrap svg {
-      width: 3.6cm;
-      height: 3.6cm;
+      width: 3.4cm;
+      height: 3.4cm;
       display: block;
     }
     @page { size: letter; margin: 0.4in; }
@@ -258,6 +264,7 @@ function PrintView({ punto, rondaNombre, onClose }: { punto: Punto; rondaNombre:
   <div class="card">
     <p class="label">ISP · Ronda</p>
     <p class="ronda-name">${rondaNombre}</p>
+    <p class="punto-name">${punto.nombre}</p>
     <div class="qr-wrap">${svgHtml}</div>
   </div>
   <script>window.onload = function(){ window.print(); };<\/script>
@@ -368,6 +375,7 @@ function RondaDetalle({
         <div class="card">
           <p class="label">ISP · Ronda</p>
           <p class="ronda-name">${ronda.nombre}</p>
+          <p class="punto-name">${p.nombre}</p>
           <div class="qr-wrap">${svg}</div>
         </div>`;
     }).join("");
