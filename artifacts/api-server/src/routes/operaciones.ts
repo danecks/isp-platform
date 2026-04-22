@@ -2525,6 +2525,141 @@ operacionesRouter.post("/operaciones/puestos/:id/titular", async (req, res) => {
   }
 });
 
+// ─── POST /api/operaciones/quitar-titularidad ────────────────────────────────
+// Quita la titularidad de un colaborador en un puesto operativo (puesto fijo).
+// Reglas:
+//   - Solo rol "admin" u "operaciones".
+//   - Cierra puesto_titular_historico (fecha_fin = hoy GT).
+//   - Marca puesto_titulares.activo = FALSE.
+//   - Limpia titular/agente y libera el slot del puesto.
+//   - Mueve EOA del colaborador a "disponible".
+//   - El historial de titularidad y movimientos queda preservado.
+operacionesRouter.post("/operaciones/quitar-titularidad", async (req, res) => {
+  const sessionRaw = req.headers["x-isp-session"];
+  let userRole = "";
+  try { userRole = JSON.parse(sessionRaw as string)?.rol ?? ""; } catch {}
+  if (!["admin", "operaciones"].includes(userRole)) {
+    return res.status(403).json({ error: "Solo Operaciones o administradores pueden quitar la titularidad" });
+  }
+
+  const { puestoId, employeeId, motivo, usuario } = req.body as {
+    puestoId: number; employeeId: number; motivo?: string; usuario?: string;
+  };
+  if (!puestoId || !employeeId) {
+    return res.status(400).json({ error: "puestoId y employeeId son requeridos" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const { rows: puestoRows } = await client.query(
+      `SELECT id, nombre, cliente_nombre, titular_employee_id, agente_id
+         FROM puestos_operativos WHERE id = $1 FOR UPDATE`,
+      [puestoId]
+    );
+    if (!puestoRows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Puesto no encontrado" });
+    }
+    const puesto = puestoRows[0];
+
+    // Validar que el empleado sea titular (en puesto_titulares o titular_employee_id)
+    const { rows: ptRows } = await client.query(
+      `SELECT id FROM puesto_titulares
+        WHERE puesto_id = $1 AND employee_id = $2 AND activo = TRUE`,
+      [puestoId, employeeId]
+    );
+    const esTitularLegacy = puesto.titular_employee_id === employeeId;
+    if (ptRows.length === 0 && !esTitularLegacy) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "El colaborador no es titular activo de este puesto" });
+    }
+
+    const { rows: empRows } = await client.query(
+      `SELECT nombre_completo FROM employees WHERE id = $1`, [employeeId]
+    );
+    const empNombre = empRows[0]?.nombre_completo ?? "";
+    const hoy = todayGT();
+
+    // 1) Cerrar histórico de titularidad
+    await client.query(
+      `UPDATE puesto_titular_historico
+          SET fecha_fin = $1, motivo = COALESCE(motivo, $2), updated_at = NOW()
+        WHERE puesto_id = $3 AND employee_id = $4 AND fecha_fin IS NULL`,
+      [hoy, motivo || "Quitado de titularidad", puestoId, employeeId]
+    );
+
+    // 2) Marcar puesto_titulares como inactivo
+    await client.query(
+      `UPDATE puesto_titulares
+          SET activo = FALSE, updated_at = NOW()
+        WHERE puesto_id = $1 AND employee_id = $2`,
+      [puestoId, employeeId]
+    );
+
+    // 3) Liberar slot ocupado por el empleado
+    await client.query(
+      `UPDATE puesto_slots SET empleado_id = NULL
+        WHERE puesto_id = $1 AND empleado_id = $2`,
+      [puestoId, employeeId]
+    );
+
+    // 4) Limpiar titular/agente del puesto si coinciden
+    if (puesto.titular_employee_id === employeeId) {
+      await client.query(
+        `UPDATE puestos_operativos
+            SET titular_employee_id = NULL, titular_nombre = NULL, updated_at = NOW()
+          WHERE id = $1`,
+        [puestoId]
+      );
+    }
+    if (puesto.agente_id === employeeId) {
+      await client.query(
+        `UPDATE puestos_operativos
+            SET agente_id = NULL, agente_nombre = NULL, estado = 'vacante', updated_at = NOW()
+          WHERE id = $1`,
+        [puestoId]
+      );
+    }
+
+    // 5) Desactivar EOA del empleado para este puesto y crear "disponible"
+    await client.query(
+      `UPDATE employee_operational_assignments
+          SET activa = FALSE, updated_at = NOW()
+        WHERE employee_id = $1 AND activa = TRUE`,
+      [employeeId]
+    );
+    await client.query(
+      `INSERT INTO employee_operational_assignments
+         (employee_id, puesto_id, sede_id, cliente_id, zona_operativa_id, tipo_turno_id,
+          tipo_asignacion, activa, fecha_inicio, notas, created_at, updated_at)
+       VALUES ($1, NULL, NULL, NULL, NULL, NULL, 'disponible', TRUE, NOW(),
+               'Quitado de titularidad desde pizarrón', NOW(), NOW())`,
+      [employeeId]
+    );
+
+    // 6) Registrar movimiento operativo
+    await client.query(
+      `INSERT INTO movimientos_operativos
+         (puesto_id, cliente_nombre, puesto_nombre, agente_saliente_id, agente_saliente_nombre,
+          tipo, usuario_cambio, notas)
+       VALUES ($1, $2, $3, $4, $5, 'quitar_titularidad', $6, $7)`,
+      [puestoId, puesto.cliente_nombre, puesto.nombre, employeeId, empNombre,
+       usuario || 'sistema', motivo || null]
+    );
+
+    await client.query("COMMIT");
+    return res.json({ ok: true, mensaje: `${empNombre} ya no es titular de ${puesto.nombre}` });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    logger.error({ err }, "POST /operaciones/quitar-titularidad error");
+    return res.status(500).json({ error: "Error al quitar titularidad" });
+  } finally {
+    client.release();
+  }
+});
+
 // ─── PATCH /api/operaciones/puestos/:id ──────────────────────────────────────
 // Actualizar campos de configuración de un puesto (horario, jornada, sede, notas, zona)
 operacionesRouter.patch("/operaciones/puestos/:id", async (req, res) => {

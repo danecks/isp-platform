@@ -214,6 +214,14 @@ custodiasRouter.post("/custodias/cliente/:id/asignar", async (req, res) => {
 
 custodiasRouter.delete("/custodias/cliente/:id/desasignar", async (req, res) => {
   try {
+    // ── Auth: solo Operaciones o Admin ───────────────────────────────────────
+    const sessionRaw = req.headers["x-isp-session"];
+    let userRole = "";
+    try { userRole = JSON.parse(sessionRaw as string)?.rol ?? ""; } catch {}
+    if (!["admin", "operaciones"].includes(userRole)) {
+      return res.status(403).json({ error: "Solo Operaciones o administradores pueden quitar custodios" });
+    }
+
     const clienteId = parseInt(req.params.id);
     if (!clienteId) return res.status(400).json({ error: "ID inválido" });
 
@@ -222,10 +230,36 @@ custodiasRouter.delete("/custodias/cliente/:id/desasignar", async (req, res) => 
       return res.status(400).json({ error: "Faltan campos requeridos" });
     }
 
-    await pool.query(
-      `DELETE FROM custodia_asignacion_diaria WHERE cliente_id = $1 AND fecha = $2::date AND employee_id = $3`,
+    // ── No permitir quitar custodios de fechas pasadas ───────────────────────
+    const hoy = todayGT();
+    if (fecha < hoy) {
+      return res.status(409).json({ error: "No se puede quitar un custodio de una fecha pasada" });
+    }
+
+    // ── DELETE atómico: solo si NO existe fichaje del custodio ese día ──────
+    const { rowCount } = await pool.query(
+      `DELETE FROM custodia_asignacion_diaria
+        WHERE cliente_id = $1 AND fecha = $2::date AND employee_id = $3
+          AND NOT EXISTS (
+            SELECT 1 FROM agente_fichajes
+             WHERE employee_id = $3 AND cliente_id = $1
+               AND DATE(timestamp AT TIME ZONE 'America/Guatemala') = $2::date
+          )`,
       [clienteId, fecha, employeeId]
     );
+
+    if (rowCount === 0) {
+      // Verificamos por qué no se borró: puede que la asignación no exista o que ya inició
+      const { rows: existeRows } = await pool.query(
+        `SELECT 1 FROM custodia_asignacion_diaria
+          WHERE cliente_id = $1 AND fecha = $2::date AND employee_id = $3 LIMIT 1`,
+        [clienteId, fecha, employeeId]
+      );
+      if (existeRows.length > 0) {
+        return res.status(409).json({ error: "El custodio ya inició su servicio; no se puede quitar" });
+      }
+      return res.status(404).json({ error: "La asignación no existe" });
+    }
 
     res.json({ ok: true });
   } catch (err) {

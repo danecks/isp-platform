@@ -1,6 +1,8 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "../layout/AdminLayout";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 import {
   Truck, AlertTriangle, Shield, Loader2, RefreshCw, User, Users,
   Calendar, Save, Printer, Plus, X, Search, ChevronDown, ChevronUp,
@@ -254,7 +256,7 @@ function ClienteCard({
                       <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${a.esTitular ? "bg-green-500/15 text-green-300" : "bg-blue-500/15 text-blue-300"}`}>
                         {a.esTitular ? "TITULAR" : "EXTRA"}
                       </span>
-                      <RemoveButton clienteId={cl.clienteId} employeeId={a.employeeId} fecha={fecha} onRemoved={onRefresh} />
+                      <RemoveButton clienteId={cl.clienteId} employeeId={a.employeeId} fecha={fecha} nombre={a.nombre} onRemoved={onRefresh} />
                     </div>
                   </div>
                 ))}
@@ -282,24 +284,48 @@ function ClienteCard({
   );
 }
 
-function RemoveButton({ clienteId, employeeId, fecha, onRemoved }: {
-  clienteId: number; employeeId: number; fecha: string; onRemoved: () => void;
+function RemoveButton({ clienteId, employeeId, fecha, nombre, onRemoved }: {
+  clienteId: number; employeeId: number; fecha: string; nombre?: string; onRemoved: () => void;
 }) {
+  const { currentUser } = useAuth();
+  const { toast } = useToast();
+  const puede = currentUser?.rol === "admin" || currentUser?.rol === "operaciones";
+
   const mut = useMutation({
     mutationFn: async () => {
       const r = await fetch(`${API_BASE}/custodias/cliente/${clienteId}/desasignar`, {
         method: "DELETE", credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "",
+        },
         body: JSON.stringify({ fecha, employeeId }),
       });
-      if (!r.ok) throw new Error("Error");
+      if (!r.ok) {
+        const msg = await r.json().catch(() => ({ error: "Error al quitar custodio" }));
+        throw new Error(msg.error || "Error al quitar custodio");
+      }
     },
-    onSuccess: onRemoved,
+    onSuccess: () => {
+      toast({ title: "Custodio removido", description: nombre ? `${nombre} ya no está asignado` : "Asignación eliminada" });
+      onRemoved();
+    },
+    onError: (e: any) => {
+      toast({ title: "No se pudo quitar", description: e?.message || "Error", variant: "destructive" });
+    },
   });
 
+  if (!puede) return null;
+
   return (
-    <button onClick={() => mut.mutate()} disabled={mut.isPending}
-      className="text-red-400/40 hover:text-red-400 transition-colors disabled:opacity-30" title="Quitar">
+    <button
+      onClick={() => {
+        if (window.confirm(`¿Quitar a ${nombre || "este custodio"} del servicio?`)) mut.mutate();
+      }}
+      disabled={mut.isPending}
+      className="text-red-400/50 hover:text-red-400 transition-colors disabled:opacity-30"
+      title="Quitar custodio (solo si no ha iniciado el servicio)"
+    >
       {mut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
     </button>
   );

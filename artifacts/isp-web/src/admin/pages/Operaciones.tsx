@@ -3581,6 +3581,7 @@ function DroppablePuesto({
   onRegistrarFalta,
   onAbrirSegmentos,
   onConfigTurno,
+  onQuitarTitular,
   cambiosProximos,
   puestoContextoId,
   planFuturo,
@@ -3592,6 +3593,7 @@ function DroppablePuesto({
   onRegistrarFalta?: (puesto: Puesto, titularId: number, titularNombre: string) => void;
   onAbrirSegmentos: () => void;
   onConfigTurno?: () => void;
+  onQuitarTitular?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
   cambiosProximos?: PlanFuturo[];
   puestoContextoId?: number | null;
   planFuturo?: PlanFuturo | null;
@@ -3762,6 +3764,25 @@ function DroppablePuesto({
                 {cubiertoManual && !puesto.es_relevo_dia && (
                   <button onClick={e => { e.stopPropagation(); onLiberar(); }} className="flex items-center gap-1 text-[9px] font-semibold text-red-300/80 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 hover:text-red-300 rounded-md px-2 py-1 transition-colors" title="Remover del puesto">
                     <XCircle className="w-3 h-3" /><span>Remover agente</span>
+                  </button>
+                )}
+                {/* Quitar titularidad de cualquiera de los dos titulares del par 24x24 */}
+                {onQuitarTitular && activo.employee_id && activo.nombre && (
+                  <button
+                    onClick={e => { e.stopPropagation(); onQuitarTitular(puesto, activo.employee_id!, activo.nombre!); }}
+                    className="flex items-center gap-1 text-[9px] font-semibold text-rose-300/80 bg-rose-500/10 border border-rose-500/25 hover:bg-rose-500/20 hover:text-rose-300 rounded-md px-2 py-1 transition-colors"
+                    title={`Quitar titularidad de ${activo.nombre}`}
+                  >
+                    <UserMinus className="w-3 h-3" /><span>Quitar T1: {activo.nombre.split(" ")[0]}</span>
+                  </button>
+                )}
+                {onQuitarTitular && descansando.employee_id && descansando.nombre && (
+                  <button
+                    onClick={e => { e.stopPropagation(); onQuitarTitular(puesto, descansando.employee_id!, descansando.nombre!); }}
+                    className="flex items-center gap-1 text-[9px] font-semibold text-rose-300/80 bg-rose-500/10 border border-rose-500/25 hover:bg-rose-500/20 hover:text-rose-300 rounded-md px-2 py-1 transition-colors"
+                    title={`Quitar titularidad de ${descansando.nombre}`}
+                  >
+                    <UserMinus className="w-3 h-3" /><span>Quitar T2: {descansando.nombre.split(" ")[0]}</span>
                   </button>
                 )}
               </div>
@@ -3990,6 +4011,16 @@ function DroppablePuesto({
                   <AlertTriangle className="w-3 h-3" /><span>Registrar falta</span>
                 </button>
               )}
+              {/* Quitar titularidad — solo rol Operaciones/Admin */}
+              {onQuitarTitular && puesto.titular_employee_id && puesto.titular_nombre && (
+                <button
+                  onClick={e => { e.stopPropagation(); onQuitarTitular(puesto, puesto.titular_employee_id!, puesto.titular_nombre!); }}
+                  className="flex items-center gap-1 text-[9px] font-semibold text-rose-300/80 bg-rose-500/10 border border-rose-500/25 hover:bg-rose-500/20 hover:text-rose-300 rounded-md px-2 py-1 transition-colors"
+                  title="Quitar titularidad — el colaborador vuelve a Disponibles"
+                >
+                  <UserMinus className="w-3 h-3" /><span>Quitar titularidad</span>
+                </button>
+              )}
               {/* Tramos */}
               <button onClick={e => { e.stopPropagation(); onAbrirSegmentos(); }} className="flex items-center gap-1 text-[9px] font-semibold text-indigo-300/70 bg-indigo-500/8 border border-indigo-500/20 hover:bg-indigo-500/15 hover:text-indigo-300 rounded-md px-2 py-1 transition-colors" title="Tramos de cobertura">
                 <Layers className="w-3 h-3" /><span>Tramos</span>
@@ -4037,6 +4068,7 @@ function ClienteColumna({
   onEliminarPuesto,
   onAbrirSegmentos,
   onConfigTurno,
+  onQuitarTitular,
   cambiosFuturosProximos,
   planFuturoPorPuesto,
   resaltado,
@@ -4053,6 +4085,7 @@ function ClienteColumna({
   onEliminarPuesto: (puesto: Puesto) => void;
   onAbrirSegmentos: (puesto: Puesto) => void;
   onConfigTurno?: (puesto: Puesto) => void;
+  onQuitarTitular?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
   cambiosFuturosProximos?: Record<number, PlanFuturo[]>;
   planFuturoPorPuesto?: Record<number, PlanFuturo>;
   resaltado?: boolean;
@@ -4203,6 +4236,7 @@ function ClienteColumna({
                 onRegistrarFalta={onRegistrarFalta}
                 onAbrirSegmentos={() => onAbrirSegmentos(p)}
                 onConfigTurno={onConfigTurno ? () => onConfigTurno(p) : undefined}
+                onQuitarTitular={onQuitarTitular}
                 cambiosProximos={cambiosFuturosProximos?.[p.id]}
                 planFuturo={planFuturoPorPuesto?.[p.id] ?? null}
                 puestoContextoId={puestoContextoId}
@@ -6127,6 +6161,110 @@ function ModalReabrir({
   );
 }
 
+// ─── Modal: Quitar titularidad ──────────────────────────────────────────────
+function ModalQuitarTitularidad({
+  puesto,
+  employeeNombre,
+  onConfirm,
+  onClose,
+}: {
+  puesto: Puesto;
+  employeeNombre: string;
+  onConfirm: (motivo: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [motivo, setMotivo] = useState("rotacion");
+  const [notas, setNotas] = useState("");
+  const [confirmTexto, setConfirmTexto] = useState("");
+  const [loading, setLoading] = useState(false);
+  const esperado = "QUITAR";
+  const valido = confirmTexto.trim().toUpperCase() === esperado;
+
+  async function handleConfirm() {
+    if (!valido) return;
+    const motivoFinal = notas.trim() ? `${motivo}: ${notas.trim()}` : motivo;
+    setLoading(true);
+    try { await onConfirm(motivoFinal); }
+    finally { setLoading(false); }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-[#07111f] border border-rose-500/25 rounded-2xl w-full max-w-sm shadow-2xl p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <UserMinus className="w-4 h-4 text-rose-400" />
+          <h3 className="text-sm font-bold text-white">Quitar titularidad</h3>
+        </div>
+
+        <div className="bg-[#0c1929] border border-white/8 rounded-xl p-3 text-xs text-white/60 space-y-1">
+          <p><span className="text-white/85 font-semibold">{employeeNombre}</span> dejará de ser titular de</p>
+          <p className="text-white/45">{puesto.cliente_nombre} · {puesto.nombre}</p>
+        </div>
+
+        <div className="bg-rose-500/8 border border-rose-500/20 rounded-lg p-3 text-[11px] text-rose-200/80 leading-snug space-y-1">
+          <p>• El historial de titularidad y movimientos queda preservado.</p>
+          <p>• El colaborador vuelve al pool de <span className="font-semibold">Disponibles</span>.</p>
+          <p>• Se cierra el período de titularidad con fecha de hoy.</p>
+          <p>• El puesto quedará sin titular hasta asignar uno nuevo.</p>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs text-white/40">Motivo</label>
+          <select
+            value={motivo}
+            onChange={e => setMotivo(e.target.value)}
+            className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none appearance-none"
+          >
+            <option value="rotacion">Rotación / cambio de puesto</option>
+            <option value="renuncia">Renuncia / baja</option>
+            <option value="reasignacion">Reasignación operativa</option>
+            <option value="solicitud_cliente">Solicitud del cliente</option>
+            <option value="disciplinario">Motivo disciplinario</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs text-white/40">Notas (opcional)</label>
+          <textarea
+            value={notas}
+            onChange={e => setNotas(e.target.value)}
+            rows={2}
+            placeholder="Detalle adicional del cambio…"
+            className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-xs text-white outline-none resize-none"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs text-white/40">Escriba <span className="font-mono text-rose-300">{esperado}</span> para confirmar</label>
+          <input
+            value={confirmTexto}
+            onChange={e => setConfirmTexto(e.target.value)}
+            placeholder={esperado}
+            className={`w-full bg-[#060e1c] border rounded-lg px-3 py-2 text-sm font-mono outline-none transition-colors
+              ${valido ? "border-rose-500/50 text-rose-200" : confirmTexto ? "border-red-500/30 text-white" : "border-white/10 text-white"}`}
+          />
+        </div>
+
+        <div className="flex gap-2 pt-1">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white transition-colors">
+            Cancelar
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={!valido || loading}
+            className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-sm font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+          >
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserMinus className="w-3.5 h-3.5" />}
+            Quitar titularidad
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function Operaciones() {
@@ -6156,6 +6294,8 @@ export default function Operaciones() {
   } | null>(null);
   const [modalLiberar, setModalLiberar]              = useState<Puesto | null>(null);
   const [modalFalta, setModalFalta]                  = useState<{ puesto: Puesto; titularId: number; titularNombre: string } | null>(null);
+  const [modalQuitarTitular, setModalQuitarTitular]  = useState<{ puesto: Puesto; employeeId: number; employeeNombre: string } | null>(null);
+  const puedeQuitarTitular = currentUser?.rol === "admin" || currentUser?.rol === "operaciones";
   const [poolTab, setPoolTab]                        = useState<"disponibles" | "disponiblesCubriendo" | "vacacionistasCubriendo" | "trabajando" | "descansandoCiclo" | "haciendoHE" | "enDescanso" | "suspendidos" | "enPuesto" | "enSSA" | "faltando" | "enVacaciones">("disponibles");
   const [busquedaPool, setBusquedaPool]              = useState("");
   const [busquedaPersona, setBusquedaPersona]        = useState("");
@@ -7031,6 +7171,27 @@ export default function Operaciones() {
       invalidate();
     } catch (e: any) {
       toast({ title: "Error", description: e.error ?? "Error al liberar", variant: "destructive" });
+    }
+  }
+
+  // ── Confirmar quitar titularidad ─────────────────────────────────────────
+  async function confirmarQuitarTitular(motivo: string) {
+    if (!modalQuitarTitular) return;
+    try {
+      await apiPost(`${API_BASE}/operaciones/quitar-titularidad`, {
+        puestoId: modalQuitarTitular.puesto.id,
+        employeeId: modalQuitarTitular.employeeId,
+        motivo,
+        usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+      });
+      toast({
+        title: "Titularidad removida",
+        description: `${modalQuitarTitular.employeeNombre} ya no es titular de ${modalQuitarTitular.puesto.nombre}. Vuelve a Disponibles.`,
+      });
+      setModalQuitarTitular(null);
+      invalidate();
+    } catch (e: any) {
+      toast({ title: "Error", description: e?.error ?? "Error al quitar titularidad", variant: "destructive" });
     }
   }
 
@@ -7998,6 +8159,7 @@ export default function Operaciones() {
                     onConfigTurno={(p) => esFuturo
                       ? setModalPlanFuturo({ puesto: p, plan: planFuturoPorPuesto[p.id] ?? null })
                       : setPuestoParaTurno(p)}
+                    onQuitarTitular={puedeQuitarTitular ? (puesto, employeeId, employeeNombre) => setModalQuitarTitular({ puesto, employeeId, employeeNombre }) : undefined}
                     cambiosFuturosProximos={!esFuturo ? cambiosFuturosProximos : undefined}
                     planFuturoPorPuesto={esFuturo ? planFuturoPorPuesto : undefined}
                     resaltado={clienteResaltado !== null && cliente.clienteId === clienteResaltado}
@@ -8554,6 +8716,15 @@ export default function Operaciones() {
           titularNombre={modalFalta.titularNombre}
           onConfirm={confirmarFalta}
           onClose={() => setModalFalta(null)}
+        />
+      )}
+
+      {modalQuitarTitular && (
+        <ModalQuitarTitularidad
+          puesto={modalQuitarTitular.puesto}
+          employeeNombre={modalQuitarTitular.employeeNombre}
+          onConfirm={confirmarQuitarTitular}
+          onClose={() => setModalQuitarTitular(null)}
         />
       )}
 
