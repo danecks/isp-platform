@@ -231,36 +231,24 @@ function PrintView({ punto, rondaNombre, onClose }: { punto: Punto; rondaNombre:
       line-height: 1.1;
     }
     .ronda-name {
-      font-size: 7pt;
+      font-size: 8pt;
       font-weight: 800;
       color: #111827;
       line-height: 1.1;
       margin-top: 1px;
     }
-    .punto-name {
-      font-size: 6pt;
-      color: #374151;
-      font-weight: 600;
-      line-height: 1.1;
-    }
     .qr-wrap {
-      width: 3cm;
-      height: 3cm;
-      margin: 0.1cm 0 0.05cm;
+      flex: 1;
+      width: 100%;
+      margin-top: 0.1cm;
       display: flex;
       align-items: center;
       justify-content: center;
     }
     .qr-wrap svg {
-      width: 100%;
-      height: 100%;
+      width: 3.6cm;
+      height: 3.6cm;
       display: block;
-    }
-    .orden {
-      font-size: 5pt;
-      color: #6b7280;
-      font-weight: 600;
-      line-height: 1.1;
     }
     @page { size: letter; margin: 0.4in; }
     body { display: flex; justify-content: center; align-items: flex-start; padding: 0.5cm; }
@@ -270,9 +258,7 @@ function PrintView({ punto, rondaNombre, onClose }: { punto: Punto; rondaNombre:
   <div class="card">
     <p class="label">ISP · Ronda</p>
     <p class="ronda-name">${rondaNombre}</p>
-    <p class="punto-name">${punto.nombre}</p>
     <div class="qr-wrap">${svgHtml}</div>
-    <p class="orden">Punto #${punto.orden}</p>
   </div>
   <script>window.onload = function(){ window.print(); };<\/script>
 </body>
@@ -382,9 +368,7 @@ function RondaDetalle({
         <div class="card">
           <p class="label">ISP · Ronda</p>
           <p class="ronda-name">${ronda.nombre}</p>
-          <p class="punto-name">${p.nombre}</p>
           <div class="qr-wrap">${svg}</div>
-          <p class="orden">Punto #${p.orden}</p>
         </div>`;
     }).join("");
 
