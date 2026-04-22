@@ -209,80 +209,70 @@ function PrintView({ punto, rondaNombre, onClose }: { punto: Punto; rondaNombre:
       padding: 32px 24px;
     }
     .card {
-      width: 340px;
+      width: 4cm;
+      height: 5cm;
       text-align: center;
-      border: 2px dashed #9ca3af;
-      border-radius: 12px;
-      padding: 18px 14px;
-    }
-    .cut-hint {
-      font-size: 8px;
-      color: #9ca3af;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      margin-bottom: 6px;
+      border: 1.5px dashed #6b7280;
+      border-radius: 4px;
+      padding: 0.15cm 0.15cm;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      overflow: hidden;
+      box-sizing: border-box;
     }
     .label {
-      font-size: 10px;
+      font-size: 5pt;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.12em;
+      letter-spacing: 0.06em;
       color: #6b7280;
-      margin-bottom: 4px;
+      line-height: 1.1;
     }
     .ronda-name {
-      font-size: 20px;
+      font-size: 7pt;
       font-weight: 800;
       color: #111827;
-      margin-bottom: 2px;
+      line-height: 1.1;
+      margin-top: 1px;
     }
     .punto-name {
-      font-size: 14px;
-      color: #4b5563;
-      margin-bottom: 2px;
-    }
-    .descripcion {
-      font-size: 12px;
-      color: #9ca3af;
-      margin-bottom: 16px;
+      font-size: 6pt;
+      color: #374151;
+      font-weight: 600;
+      line-height: 1.1;
     }
     .qr-wrap {
+      width: 3cm;
+      height: 3cm;
+      margin: 0.1cm 0 0.05cm;
       display: flex;
+      align-items: center;
       justify-content: center;
-      margin: 16px 0;
+    }
+    .qr-wrap svg {
+      width: 100%;
+      height: 100%;
+      display: block;
     }
     .orden {
-      font-size: 11px;
-      color: #9ca3af;
-      margin-top: 10px;
+      font-size: 5pt;
+      color: #6b7280;
+      font-weight: 600;
+      line-height: 1.1;
     }
-    .url {
-      font-size: 9px;
-      color: #d1d5db;
-      word-break: break-all;
-      margin-top: 4px;
-    }
-    .divider {
-      border: none;
-      border-top: 1px solid #e5e7eb;
-      margin: 16px 0;
-    }
-    @media print {
-      body { padding: 20px; }
-    }
+    @page { size: letter; margin: 0.4in; }
+    body { display: flex; justify-content: center; align-items: flex-start; padding: 0.5cm; }
   </style>
 </head>
 <body>
   <div class="card">
-    <p class="cut-hint">✂ Cortar por la línea punteada</p>
-    <p class="label">ISP — Ronda de Seguridad</p>
+    <p class="label">ISP · Ronda</p>
     <p class="ronda-name">${rondaNombre}</p>
     <p class="punto-name">${punto.nombre}</p>
-    ${punto.descripcion ? `<p class="descripcion">${punto.descripcion}</p>` : ""}
-    <hr class="divider">
     <div class="qr-wrap">${svgHtml}</div>
     <p class="orden">Punto #${punto.orden}</p>
-    <p class="url">${url}</p>
   </div>
   <script>window.onload = function(){ window.print(); };<\/script>
 </body>
@@ -387,49 +377,45 @@ function RondaDetalle({
     if (!win) return;
 
     const cardsHtml = elegidos.map(p => {
-      const url = `${window.location.origin}/ronda?token=${p.qr_token}`;
       const svg = svgPorPunto.get(p.id) || "";
       return `
         <div class="card">
-          <p class="cut-hint">✂ Cortar por la línea punteada</p>
-          <p class="label">ISP — Ronda</p>
+          <p class="label">ISP · Ronda</p>
           <p class="ronda-name">${ronda.nombre}</p>
           <p class="punto-name">${p.nombre}</p>
-          ${p.descripcion ? `<p class="descripcion">${p.descripcion}</p>` : ""}
           <div class="qr-wrap">${svg}</div>
           <p class="orden">Punto #${p.orden}</p>
-          <p class="url">${url}</p>
         </div>`;
     }).join("");
 
+    // 4cm × 5cm por tarjeta. En hoja Carta (8.5" × 11" = 21.59 × 27.94 cm) con
+    // márgenes de 1 cm caben 4 columnas × 5 filas = 20 QR por hoja.
     win.document.write(`<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <title>QRs · ${ronda.nombre} (${elegidos.length})</title>
   <style>
-    @page { size: letter; margin: 0.4in; }
+    @page { size: letter; margin: 1cm; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { background: #fff; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      width: 7.7in;
-      margin: 0 auto;
     }
     .grid {
       display: grid;
-      grid-template-columns: 3.7in 3.7in;
-      grid-auto-rows: 3.25in;
-      gap: 0.15in;
+      grid-template-columns: repeat(4, 4cm);
+      grid-auto-rows: 5cm;
+      gap: 0.2cm 0.2cm;
       justify-content: center;
     }
     .card {
-      width: 3.7in;
-      height: 3.25in;
+      width: 4cm;
+      height: 5cm;
       text-align: center;
-      border: 2px dashed #6b7280;
-      border-radius: 10px;
-      padding: 0.12in 0.1in;
+      border: 1.5px dashed #6b7280;
+      border-radius: 4px;
+      padding: 0.15cm 0.15cm;
       page-break-inside: avoid;
       break-inside: avoid;
       display: flex;
@@ -437,42 +423,33 @@ function RondaDetalle({
       align-items: center;
       justify-content: flex-start;
       overflow: hidden;
-    }
-    .cut-hint {
-      font-size: 7px;
-      color: #9ca3af;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      margin-bottom: 2px;
+      box-sizing: border-box;
     }
     .label {
-      font-size: 8px;
+      font-size: 5pt;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.12em;
+      letter-spacing: 0.06em;
       color: #6b7280;
-      margin-bottom: 2px;
+      line-height: 1.1;
     }
     .ronda-name {
-      font-size: 12px;
+      font-size: 7pt;
       font-weight: 800;
       color: #111827;
+      line-height: 1.1;
+      margin-top: 1px;
     }
     .punto-name {
-      font-size: 11px;
+      font-size: 6pt;
       color: #374151;
       font-weight: 600;
-      margin-top: 1px;
-    }
-    .descripcion {
-      font-size: 9px;
-      color: #9ca3af;
-      margin-top: 1px;
+      line-height: 1.1;
     }
     .qr-wrap {
-      width: 1.7in;
-      height: 1.7in;
-      margin: 0.08in 0 0.05in;
+      width: 3cm;
+      height: 3cm;
+      margin: 0.1cm 0 0.05cm;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -483,16 +460,10 @@ function RondaDetalle({
       display: block;
     }
     .orden {
-      font-size: 9px;
+      font-size: 5pt;
       color: #6b7280;
       font-weight: 600;
-    }
-    .url {
-      font-size: 6px;
-      color: #d1d5db;
-      word-break: break-all;
-      margin-top: 2px;
-      max-width: 100%;
+      line-height: 1.1;
     }
   </style>
 </head>
