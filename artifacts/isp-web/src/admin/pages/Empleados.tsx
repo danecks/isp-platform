@@ -216,6 +216,7 @@ interface FormState {
   area: string;
   estadoLaboral: string;
   fechaIngreso: string;
+  fechaNacimiento: string;
   notas: string;
   // Datos laborales / nómina
   sueldoBase: string;
@@ -320,7 +321,7 @@ function avatarColor(nombre: string | null | undefined) {
 const FORM_EMPTY: FormState = {
   nombreCompleto: "", dpi: "", telefono: "", telefonoSecundario: "",
   correo: "", area: "", estadoLaboral: "activo",
-  fechaIngreso: "", notas: "",
+  fechaIngreso: "", fechaNacimiento: "", notas: "",
   sueldoBase: "", tipoJornada: "", diaDescanso: "", horasContrato: "",
   frecuenciaPago: "quincenal",
   limiteAnticipo: "", tipoLimitePeriodo: "quincenal",
@@ -4441,6 +4442,7 @@ function FormModal({
     area: emp?.area ?? "",
     estadoLaboral: emp?.estadoLaboral ?? "activo",
     fechaIngreso: emp?.fechaIngreso ? emp.fechaIngreso.split("T")[0] : "",
+    fechaNacimiento: emp?.fechaNacimiento ? String(emp.fechaNacimiento).split("T")[0] : "",
     notas: emp?.notas ?? "",
     sueldoBase: emp?.sueldoBase ?? "",
     tipoJornada: emp?.tipoJornada ?? "",
@@ -4531,7 +4533,11 @@ function FormModal({
           </div>
           <div className="grid grid-cols-2 gap-3">
             {field("DPI", "dpi", "text", { placeholder: "Número de DPI", required: true })}
+            {field("Fecha de nacimiento", "fechaNacimiento", "date")}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             {field("Fecha de ingreso", "fechaIngreso", "date")}
+            <div />
           </div>
           <div className="grid grid-cols-2 gap-3">
             {field("Teléfono principal", "telefono", "tel", { placeholder: "+502 XXXX XXXX" })}

@@ -675,7 +675,7 @@ employeesRouter.post("/employees", async (req, res) => {
     supervisorNombre, supervisorId, clienteId, fechaIngreso, notas,
     externalId, sourceSystem, syncStatus,
     sueldoBase, tipoJornada, diaDescanso, horasContrato,
-    frecuenciaPago, tipoPersonal,
+    frecuenciaPago, tipoPersonal, fechaNacimiento,
   } = req.body ?? {};
 
   if (!nombreCompleto || !String(nombreCompleto).trim()) {
@@ -759,6 +759,11 @@ employeesRouter.post("/employees", async (req, res) => {
     // FREQ: persist frecuencia_pago (fuera del schema Drizzle)
     const freqVal = ["quincenal", "mensual"].includes(frecuenciaPago) ? frecuenciaPago : "quincenal";
     await pool.query(`UPDATE employees SET frecuencia_pago = $1 WHERE id = $2`, [freqVal, emp.id]);
+
+    // Fecha de nacimiento (fuera del schema Drizzle)
+    if (fechaNacimiento !== undefined && fechaNacimiento !== null && fechaNacimiento !== "") {
+      await pool.query(`UPDATE employees SET fecha_nacimiento = $1 WHERE id = $2`, [fechaNacimiento, emp.id]);
+    }
 
     // CONT: auto-generar 2 contratos al contratar
     const fechaBase: Date = fechaIngreso ? new Date(fechaIngreso) : new Date();
@@ -1188,6 +1193,15 @@ employeesRouter.patch("/employees/:id", async (req, res) => {
     if (frecuenciaPago !== undefined) {
       const freqVal = ["quincenal", "mensual"].includes(frecuenciaPago) ? frecuenciaPago : "quincenal";
       await pool.query(`UPDATE employees SET frecuencia_pago = $1 WHERE id = $2`, [freqVal, id]);
+    }
+
+    // Fecha de nacimiento (fuera del schema Drizzle)
+    if (req.body?.fechaNacimiento !== undefined) {
+      const fn = req.body.fechaNacimiento;
+      await pool.query(
+        `UPDATE employees SET fecha_nacimiento = $1 WHERE id = $2`,
+        [fn === null || fn === "" ? null : fn, id]
+      );
     }
 
     // Banco / cuenta / forma de pago — actualizar campos individualmente si se enviaron
