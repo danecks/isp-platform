@@ -262,6 +262,26 @@ const QUERY_CONSOLIDADO = `
       ELSE NULL
     END                                                                         AS motivo_exclusion_igss,
 
+    -- Amonestaciones económicas activas y pendientes de descuento (AMON-01)
+    COALESCE((
+      SELECT SUM(am.monto)::float
+        FROM amonestaciones am
+       WHERE am.employee_id = e.id
+         AND am.tipo = 'economica'
+         AND am.estado = 'activa'
+         AND am.descontado = FALSE
+         AND am.fecha BETWEEN $1::date AND $2::date
+    ), 0)                                                                       AS amonestaciones_monto,
+    COALESCE((
+      SELECT COUNT(am.id)::int
+        FROM amonestaciones am
+       WHERE am.employee_id = e.id
+         AND am.tipo = 'economica'
+         AND am.estado = 'activa'
+         AND am.descontado = FALSE
+         AND am.fecha BETWEEN $1::date AND $2::date
+    ), 0)                                                                       AS amonestaciones_count,
+
     -- Séptimo día — resolución RRHH
     -- Número de semanas ISO del período en las que RRHH determinó pérdida del séptimo.
     -- Fuente autoritativa: eventos_rrhh.afecta_septimo_res = TRUE.
@@ -830,6 +850,7 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
     let totalEstimado = 0;
     for (const row of snapshotRows) {
       const anticipo = toNum(row.anticipos_monto);
+      const amonestaciones = toNum(row.amonestaciones_monto);
       const { totalBruto } = calcularBruto({
         sueldoBase:       toNum(row.sueldo_base),
         horasContrato:    toNum(row.horas_contrato),
@@ -843,7 +864,7 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
         septimosPerdidos: toInt(row.septimos_perdidos),
       });
       // Redondear por línea antes de acumular (igual que planilla.ts) → convergencia exacta
-      totalEstimado += parseFloat(Math.max(0, totalBruto - anticipo).toFixed(2));
+      totalEstimado += parseFloat(Math.max(0, totalBruto - anticipo - amonestaciones).toFixed(2));
     }
 
     // Guardar cierre

@@ -67,6 +67,7 @@ import AdminControlOperativoQR from "@/admin/pages/ControlOperativoQR";
 import AdminVacaciones from "@/admin/pages/AdminVacaciones";
 import CarnetesQR from "@/admin/pages/CarnetesQR";
 import AdminBarracas from "@/admin/pages/Barracas";
+import AdminAmonestaciones from "@/admin/pages/Amonestaciones";
 import RondaGuardia from "@/pages/RondaGuardia";
 import AgenteEscaneo from "@/pages/AgenteEscaneo";
 import SupervisorActivar from "@/pages/SupervisorActivar";
@@ -187,6 +188,9 @@ function Router() {
       </Route>
       <Route path="/admin/anticipos">
         {() => <AuthGuard requiredRoles={["admin", "rrhh"]}><AdminAnticipos /></AuthGuard>}
+      </Route>
+      <Route path="/admin/rrhh/amonestaciones">
+        {() => <AuthGuard requiredRoles={["admin", "rrhh", "operaciones", "supervisor"]}><AdminAmonestaciones /></AuthGuard>}
       </Route>
       <Route path="/admin/rrhh/seguros">
         {() => <AuthGuard requiredRoles={["admin", "rrhh"]}><AdminSeguros /></AuthGuard>}

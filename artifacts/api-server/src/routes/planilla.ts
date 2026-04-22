@@ -537,6 +537,28 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
       ]);
     }
 
+    // ── Marcar amonestaciones económicas activas como descontadas (AMON-01) ──
+    // Vincula a esta planilla todas las amonestaciones del rango cuyos
+    // colaboradores efectivamente entraron en líneas; quedan inmunes a
+    // futuros cierres y trazables al revertir la planilla.
+    const empIdsLineas = lineas.map((l: { employee_id?: number }) => l.employee_id).filter(Boolean);
+    let totalAmonestacionesVinculadas = 0;
+    if (empIdsLineas.length > 0) {
+      const { rowCount } = await pool.query(
+        `UPDATE amonestaciones
+            SET descontado = TRUE,
+                planilla_id = $1,
+                updated_at = NOW()
+          WHERE tipo = 'economica'
+            AND estado = 'activa'
+            AND descontado = FALSE
+            AND fecha BETWEEN $2::date AND $3::date
+            AND employee_id = ANY($4::int[])`,
+        [planillaId, desde, hasta, empIdsLineas]
+      );
+      totalAmonestacionesVinculadas = rowCount ?? 0;
+    }
+
     // Registrar en auditoría
     await pool.query(`
       INSERT INTO pre_planilla_auditoria
@@ -549,6 +571,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         total_colaboradores: lineas.length,
         total_neto: totales.total_neto.toFixed(2),
         anticipos_vinculados: totalAnticiposVinculados,
+        amonestaciones_vinculadas: totalAmonestacionesVinculadas,
       }),
     ]);
 
@@ -675,6 +698,13 @@ planillaRouter.delete("/nomina/planilla/:id", async (req, res) => {
           estado = 'aprobada',
           cuotas_pagadas = GREATEST(0, COALESCE(cuotas_pagadas, 0) - 1),
           updated_at = NOW()
+      WHERE planilla_id = $1
+    `, [id]);
+
+    // 1b. Liberar amonestaciones económicas vinculadas a esta planilla (AMON-01)
+    await pool.query(`
+      UPDATE amonestaciones
+      SET descontado = FALSE, planilla_id = NULL, updated_at = NOW()
       WHERE planilla_id = $1
     `, [id]);
 

@@ -5126,6 +5126,108 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: USR-MULTI-01 — error (no bloqueante)");
   }
 
+  // ── AMON-01: módulo de Amonestaciones (RRHH/Operaciones/Supervisor) ─────────
+  // Tabla maestra de amonestaciones (llamada de atención o económica),
+  // catálogo editable de motivos sugeridos y bandeja de solicitudes de
+  // modificación que Operaciones/Supervisor envían a RRHH.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS amonestaciones (
+        id                   SERIAL PRIMARY KEY,
+        employee_id          INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        empleado_nombre      TEXT,
+        creado_por_user_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        creado_por_username  TEXT,
+        creado_por_rol       TEXT NOT NULL,
+        tipo                 TEXT NOT NULL CHECK (tipo IN ('llamada_atencion','economica')),
+        motivo               TEXT NOT NULL,
+        descripcion          TEXT,
+        monto                NUMERIC(10,2) NOT NULL DEFAULT 0,
+        evidencia_url        TEXT,
+        cliente_id           TEXT,
+        cliente_nombre       TEXT,
+        puesto_id            INTEGER,
+        puesto_nombre        TEXT,
+        fecha                DATE NOT NULL DEFAULT CURRENT_DATE,
+        estado               TEXT NOT NULL DEFAULT 'activa' CHECK (estado IN ('activa','anulada')),
+        planilla_id          INTEGER,
+        descontado           BOOLEAN NOT NULL DEFAULT FALSE,
+        anulada_por          TEXT,
+        anulada_at           TIMESTAMPTZ,
+        anulada_motivo       TEXT,
+        notas_rrhh           TEXT,
+        evento_rrhh_id       INTEGER,
+        created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS amon_emp_idx ON amonestaciones(employee_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS amon_estado_idx ON amonestaciones(estado)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS amon_fecha_idx ON amonestaciones(fecha)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS amon_pendiente_planilla
+      ON amonestaciones(employee_id, fecha)
+      WHERE estado = 'activa' AND tipo = 'economica' AND descontado = FALSE`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS amonestacion_motivos (
+        id              SERIAL PRIMARY KEY,
+        nombre          TEXT NOT NULL UNIQUE,
+        monto_sugerido  NUMERIC(10,2) NOT NULL DEFAULT 0,
+        activo          BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    // Seed de motivos típicos en seguridad privada (sólo si la tabla está vacía)
+    const { rows: motCnt } = await pool.query(`SELECT COUNT(*)::int AS c FROM amonestacion_motivos`);
+    if (motCnt[0].c === 0) {
+      await pool.query(`
+        INSERT INTO amonestacion_motivos (nombre, monto_sugerido) VALUES
+          ('Mal uniformado', 50),
+          ('Sin gafete / carnet', 25),
+          ('Dormido en puesto', 200),
+          ('Abandono de puesto', 500),
+          ('Falta de respeto', 100),
+          ('Llegada tarde reincidente', 75),
+          ('Uso de celular en servicio', 50),
+          ('No reportar novedad', 50),
+          ('Mal trato al cliente', 150),
+          ('Incumplimiento de consigna', 100)
+        ON CONFLICT (nombre) DO NOTHING
+      `);
+    }
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS amonestacion_solicitudes_modificacion (
+        id                   SERIAL PRIMARY KEY,
+        amonestacion_id      INTEGER NOT NULL REFERENCES amonestaciones(id) ON DELETE CASCADE,
+        solicitada_por_user_id  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        solicitada_por_username TEXT,
+        solicitada_por_rol   TEXT,
+        cambio_solicitado    TEXT NOT NULL,
+        motivo_solicitud     TEXT NOT NULL,
+        estado               TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente','aprobada','rechazada')),
+        resuelta_por         TEXT,
+        resuelta_at          TIMESTAMPTZ,
+        respuesta_rrhh       TEXT,
+        created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS amon_solm_amon_idx ON amonestacion_solicitudes_modificacion(amonestacion_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS amon_solm_estado_idx ON amonestacion_solicitudes_modificacion(estado)`);
+
+    // Permisos del módulo
+    await pool.query(`
+      INSERT INTO rol_permisos (rol_clave, modulo_clave) VALUES
+        ('rrhh',        'amonestaciones'),
+        ('operaciones', 'amonestaciones'),
+        ('supervisor',  'amonestaciones')
+      ON CONFLICT DO NOTHING
+    `);
+    logger.info("Auto-migrate: AMON-01 módulo amonestaciones (3 tablas + 10 motivos + permisos) verificado/creado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: AMON-01 — error (no bloqueante)");
+  }
+
   // ── WIPE-PROD-01: limpieza total de producción (solo cuando bandera activa) ──
   // Activar con:  INSERT INTO system_config (key, value) VALUES ('wipe_prod_requested', 'true')
   //               ON CONFLICT (key) DO UPDATE SET value = 'true';

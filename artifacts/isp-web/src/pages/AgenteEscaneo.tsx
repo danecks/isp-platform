@@ -263,6 +263,7 @@ export default function AgenteEscaneo() {
   // Acciones disciplinarias
   const [accionDisciplinaria, setAccionDisciplinaria] = useState<string>("");
   const [notasDisciplinarias, setNotasDisciplinarias] = useState("");
+  const [amonestacionMonto, setAmonestacionMonto] = useState<string>("");
 
   // Ronda (maestro)
   const [obsRonda, setObsRonda] = useState("");
@@ -455,7 +456,7 @@ export default function AgenteEscaneo() {
     try {
       const res = await fetch(`${API}/agente/supervision`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, device_uuid: stored.uuid, device_token: stored.token, checks, calificacion: calificacion || null, observaciones, latitud: gpsCoords?.lat ?? null, longitud: gpsCoords?.lng ?? null, accion_disciplinaria: accionDisciplinaria || null, notas_disciplinarias: notasDisciplinarias || null }),
+        body: JSON.stringify({ token, device_uuid: stored.uuid, device_token: stored.token, checks, calificacion: calificacion || null, observaciones, latitud: gpsCoords?.lat ?? null, longitud: gpsCoords?.lng ?? null, accion_disciplinaria: accionDisciplinaria || null, notas_disciplinarias: notasDisciplinarias || null, amonestacion_monto: Number(amonestacionMonto) || 0, amonestacion_motivo: accionDisciplinaria ? String(accionDisciplinaria).replace(/_/g, " ") : null }),
       });
       const data = await res.json();
       if (data.ok) {
@@ -1182,14 +1183,28 @@ export default function AgenteEscaneo() {
                 </div>
 
                 {accionDisciplinaria && (
-                  <div className="mb-4">
-                    <p className="text-white/50 text-xs font-semibold uppercase tracking-wide mb-2">
-                      Notas de la acción <span className="text-red-400">*</span>
-                    </p>
-                    <textarea value={notasDisciplinarias} onChange={e => setNotasDisciplinarias(e.target.value)}
-                      placeholder="Describa la situación: ej. 'El agente llegó en estado de ebriedad', 'No se presentó a sus labores'..."
-                      rows={3}
-                      className="w-full bg-white/5 border border-red-500/20 rounded-xl px-3 py-2 text-sm text-white/80 placeholder-white/20 resize-none outline-none focus:border-red-500/40" />
+                  <div className="mb-4 space-y-3">
+                    <div>
+                      <p className="text-white/50 text-xs font-semibold uppercase tracking-wide mb-2">
+                        Notas de la acción <span className="text-red-400">*</span>
+                      </p>
+                      <textarea value={notasDisciplinarias} onChange={e => setNotasDisciplinarias(e.target.value)}
+                        placeholder="Describa la situación: ej. 'El agente llegó en estado de ebriedad', 'No se presentó a sus labores'..."
+                        rows={3}
+                        className="w-full bg-white/5 border border-red-500/20 rounded-xl px-3 py-2 text-sm text-white/80 placeholder-white/20 resize-none outline-none focus:border-red-500/40" />
+                    </div>
+                    <div>
+                      <p className="text-white/50 text-xs font-semibold uppercase tracking-wide mb-2">
+                        Monto a descontar (Q) — opcional
+                      </p>
+                      <input type="number" min="0" step="0.01" value={amonestacionMonto}
+                        onChange={e => setAmonestacionMonto(e.target.value)}
+                        placeholder="0 = solo llamada de atención (sin descuento)"
+                        className="w-full bg-white/5 border border-orange-500/20 rounded-xl px-3 py-2 text-sm text-white/80 placeholder-white/20 outline-none focus:border-orange-500/40" />
+                      <p className="text-white/30 text-[11px] mt-1">
+                        Si indicas un monto, se levantará una amonestación económica que se descontará en la próxima planilla. Sin monto, queda solo como llamada de atención registrada.
+                      </p>
+                    </div>
                   </div>
                 )}
 

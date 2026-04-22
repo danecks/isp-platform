@@ -280,6 +280,13 @@ export const NAV_SECTIONS: NavSection[] = [
         roles: ["admin", "rrhh", "operaciones"],
       },
       {
+        path: "/admin/rrhh/amonestaciones",
+        label: "Amonestaciones",
+        icon: AlertTriangle,
+        clave: "amonestaciones",
+        roles: ["admin", "rrhh", "operaciones", "supervisor"],
+      },
+      {
         path: "/admin/rrhh/planillas-especiales",
         label: "Bono 14 & Aguinaldo",
         icon: Gift,

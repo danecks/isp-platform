@@ -61,6 +61,7 @@ import { actasRouter } from "./actas";
 import custodiasRouter from "./custodias";
 import { barracasRouter } from "./barracas";
 import segurosRouter from "./seguros";
+import { amonestacionesRouter } from "./amonestaciones";
 
 const router: IRouter = Router();
 
@@ -126,5 +127,6 @@ router.use(actasRouter);
 router.use(custodiasRouter);
 router.use(barracasRouter);
 router.use(segurosRouter);
+router.use(amonestacionesRouter);
 
 export default router;

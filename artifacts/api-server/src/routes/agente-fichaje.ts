@@ -1147,7 +1147,7 @@ agenteFichajeRouter.post("/agente/fichaje", async (req, res) => {
 
 // POST /api/agente/supervision — registrar supervisión (requiere dispositivo tipo 'supervisor')
 agenteFichajeRouter.post("/agente/supervision", async (req, res) => {
-  const { token, checks, calificacion, observaciones, latitud, longitud, device_uuid, device_token, accion_disciplinaria, notas_disciplinarias } = req.body;
+  const { token, checks, calificacion, observaciones, latitud, longitud, device_uuid, device_token, accion_disciplinaria, notas_disciplinarias, amonestacion_monto, amonestacion_motivo } = req.body;
   if (!token) return res.status(400).json({ error: "token requerido" });
 
   // Validar dispositivo de supervisor
@@ -1263,6 +1263,53 @@ agenteFichajeRouter.post("/agente/supervision", async (req, res) => {
         logger.info({ employeeId, accion_disciplinaria, fichajeId }, "Evento RRHH creado desde supervisión");
       } catch (evErr) {
         logger.warn({ evErr, employeeId, accion_disciplinaria }, "No se pudo crear evento RRHH desde supervisión (no bloqueante)");
+      }
+    }
+
+    // Crear amonestación si el supervisor lo indicó (llamada o económica)
+    if (accion_disciplinaria || (Number(amonestacion_monto) || 0) > 0) {
+      try {
+        const tipoAmon = (Number(amonestacion_monto) || 0) > 0 ? "economica" : "llamada_atencion";
+        const montoAmon = tipoAmon === "economica" ? Math.max(0, Number(amonestacion_monto) || 0) : 0;
+        const motivoAmon =
+          (amonestacion_motivo && String(amonestacion_motivo).trim()) ||
+          (accion_disciplinaria
+            ? String(accion_disciplinaria).replace(/_/g, " ")
+            : "Amonestación levantada en supervisión");
+        const { rows: empRows2 } = await pool.query(
+          `SELECT nombre_completo FROM employees WHERE id = $1`, [employeeId]
+        );
+        const empNombre2 = empRows2[0]?.nombre_completo || "Desconocido";
+        let clienteNombre2: string | null = null;
+        let puestoNombre2: string | null = null;
+        if (puestoId) {
+          const { rows: poInfo } = await pool.query(
+            `SELECT po.nombre, c.nombre AS cliente_nombre
+             FROM puestos_operativos po LEFT JOIN clients c ON c.id = po.client_id
+             WHERE po.id = $1`, [puestoId]
+          );
+          if (poInfo[0]) { puestoNombre2 = poInfo[0].nombre; clienteNombre2 = poInfo[0].cliente_nombre; }
+        }
+        await pool.query(
+          `INSERT INTO amonestaciones (
+             employee_id, empleado_nombre,
+             creado_por_user_id, creado_por_username, creado_por_rol,
+             tipo, motivo, descripcion, monto,
+             cliente_nombre, puesto_nombre, fecha
+           ) VALUES (
+             $1,$2, NULL,$3,'supervisor',
+             $4,$5,$6,$7, $8,$9, CURRENT_DATE
+           )`,
+          [
+            employeeId, empNombre2,
+            supervisorNombre,
+            tipoAmon, motivoAmon, notas_disciplinarias || null, montoAmon,
+            clienteNombre2, puestoNombre2,
+          ]
+        );
+        logger.info({ employeeId, tipoAmon, montoAmon }, "Amonestación creada desde supervisión");
+      } catch (amErr) {
+        logger.warn({ amErr }, "No se pudo crear amonestación desde supervisión (no bloqueante)");
       }
     }
 
