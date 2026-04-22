@@ -1,10 +1,124 @@
 import { Router } from "express";
+import type { PoolClient } from "pg";
 import { pool, todayGT } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { generarNovedades } from "./nomina";
 import { calcularEstadoCiclo } from "../lib/turno-calc";
 
 const operacionesRouter = Router();
+
+// ─── Helper: liberar TITULARIDAD activa de un agente (modo estricto) ────────
+// Garantiza que un agente NO pueda quedar como titular en dos lugares al mismo
+// tiempo (puestos fijos, custodias, o cruzado entre módulos).
+//
+// SOLO toca registros de titularidad. La cobertura diaria (`agente_id` cuando
+// el agente NO es el titular del puesto) se respeta y NO se modifica.
+// Cuando el agente SÍ era titular del puesto, también se limpia su `agente_id`
+// del mismo registro (es el efecto natural de perder al titular).
+//
+// `excluir` preserva una titularidad que no debe tocarse (el destino actual).
+//
+// Debe correrse SIEMPRE dentro de una transacción del endpoint llamador,
+// junto con el advisory lock y la asignación al destino, para garantizar
+// atomicidad y evitar carreras.
+async function liberarTitularidadAgente(
+  client: PoolClient,
+  employeeId: number,
+  excluir: {
+    puestoId?: number | null;
+    custodia?: { clienteId: number; slotNumero: number } | null;
+  } = {},
+): Promise<{
+  puestos: Array<{ id: number; nombre: string; cliente_nombre: string }>;
+  custodias: Array<{ cliente_id: number; slot_numero: number }>;
+}> {
+  const exPuestoId  = excluir.puestoId ?? -1;
+  const exClienteId = excluir.custodia?.clienteId ?? -1;
+  const exSlot      = excluir.custodia?.slotNumero ?? -1;
+
+  // 1) Puestos fijos: liberar SOLO donde el agente es titular.
+  //    Si el agente también figura como agente_id del MISMO registro
+  //    (caso normal: titular cubriendo su propio puesto), se limpia también.
+  const { rows: puestosLib } = await client.query(`
+    UPDATE puestos_operativos
+    SET
+      agente_id           = CASE WHEN agente_id = $1 THEN NULL ELSE agente_id END,
+      agente_nombre       = CASE WHEN agente_id = $1 THEN NULL ELSE agente_nombre END,
+      titular_employee_id = NULL,
+      titular_nombre      = NULL,
+      estado              = CASE WHEN agente_id = $1 THEN 'descubierto' ELSE estado END,
+      updated_at          = NOW()
+    WHERE titular_employee_id = $1
+      AND activo = TRUE
+      AND id != $2
+    RETURNING id, nombre, cliente_nombre
+  `, [employeeId, exPuestoId]);
+
+  // 2) Cerrar historial de titularidad activo (solo del/los puestos liberados)
+  await client.query(`
+    UPDATE puesto_titular_historico
+    SET fecha_fin = CURRENT_DATE, updated_at = NOW()
+    WHERE employee_id = $1 AND fecha_fin IS NULL AND puesto_id != $2
+  `, [employeeId, exPuestoId]);
+
+  // 3) Liberar slots de plantilla SOLO de los puestos donde dejó de ser titular.
+  if (puestosLib.length > 0) {
+    const ids = puestosLib.map(r => r.id);
+    await client.query(`
+      UPDATE puesto_slots
+      SET empleado_id = NULL
+      WHERE empleado_id = $1 AND puesto_id = ANY($2::int[])
+    `, [employeeId, ids]);
+  }
+
+  // 4) Custodias: desactivar titularidad activa (excepto el destino actual)
+  const { rows: custodiasLib } = await client.query(`
+    UPDATE custodia_titulares
+    SET activo = FALSE
+    WHERE employee_id = $1 AND activo = TRUE
+      AND NOT (cliente_id = $2 AND slot_numero = $3)
+    RETURNING cliente_id, slot_numero
+  `, [employeeId, exClienteId, exSlot]);
+
+  // 5) Borrar asignación diaria de hoy en los slots de custodia liberados
+  if (custodiasLib.length > 0) {
+    const fechaHoy = todayGT();
+    for (const c of custodiasLib) {
+      await client.query(`
+        DELETE FROM custodia_asignacion_diaria
+        WHERE cliente_id = $1 AND slot_numero = $2 AND fecha = $3::date AND employee_id = $4
+      `, [c.cliente_id, c.slot_numero, fechaHoy, employeeId]);
+    }
+  }
+
+  // 6) EOA: desactivar asignaciones operacionales activas
+  //    (se reabrirá el EOA del nuevo destino en el endpoint llamador)
+  if (puestosLib.length > 0 || custodiasLib.length > 0) {
+    await client.query(`
+      UPDATE employee_operational_assignments
+      SET activa = FALSE, updated_at = NOW()
+      WHERE employee_id = $1 AND activa = TRUE
+    `, [employeeId]);
+
+    logger.info({
+      employeeId,
+      puestosLiberados: puestosLib.map(r => r.id),
+      custodiasLiberadas: custodiasLib,
+      excluir,
+    }, "Titularidad previa liberada (modo estricto)");
+  }
+
+  return {
+    puestos:   puestosLib.map(r => ({ id: r.id, nombre: r.nombre, cliente_nombre: r.cliente_nombre })),
+    custodias: custodiasLib.map(r => ({ cliente_id: r.cliente_id, slot_numero: r.slot_numero })),
+  };
+}
+
+// Lock advisory por employee_id — serializa operaciones de titularidad por agente
+// dentro de la transacción actual. Hash estable para evitar colisiones globales.
+async function lockTitularidadAgente(client: PoolClient, employeeId: number) {
+  await client.query(`SELECT pg_advisory_xact_lock(hashtext('titularidad'), $1)`, [employeeId]);
+}
 
 // ─── Helper: detectar y registrar impacto salarial ───────────────────────────
 // Llámalo DESPUÉS de actualizar puestos_operativos.
@@ -676,36 +790,54 @@ operacionesRouter.post("/operaciones/asignar-custodia", async (req, res) => {
       return res.json({ ok: true });
     }
 
-    const { rows: titularRows } = await pool.query(
-      `SELECT employee_id FROM custodia_titulares WHERE cliente_id = $1 AND slot_numero = $2 AND activo = TRUE`,
-      [clienteId, slotNumero]
-    );
-    const titularExistente = titularRows[0]?.employee_id ?? null;
+    const tx = await pool.connect();
+    try {
+      await tx.query("BEGIN");
+      await lockTitularidadAgente(tx, Number(employeeId));
 
-    if (soloCobertura || titularExistente) {
-      await pool.query(`
-        INSERT INTO custodia_asignacion_diaria (cliente_id, fecha, employee_id, slot_numero, notas)
-        VALUES ($1, $2::date, $3, $4, $5)
-        ON CONFLICT (cliente_id, fecha, slot_numero)
-        DO UPDATE SET employee_id = $3, notas = $5
-      `, [clienteId, fechaAsig, employeeId, slotNumero, notas ?? null]);
-    } else {
-      // Nuevo titular: lo registramos en custodia_titulares Y reflejamos
-      // automáticamente la asignación diaria para que aparezca en el módulo
-      // Custodias como "asignado hoy".
-      await pool.query(
-        `INSERT INTO custodia_titulares (cliente_id, slot_numero, employee_id) VALUES ($1, $2, $3)
-         ON CONFLICT (cliente_id, slot_numero, employee_id) DO UPDATE SET activo = TRUE`,
-        [clienteId, slotNumero, employeeId]
+      const { rows: titularRows } = await tx.query(
+        `SELECT employee_id FROM custodia_titulares WHERE cliente_id = $1 AND slot_numero = $2 AND activo = TRUE`,
+        [clienteId, slotNumero]
       );
-      await pool.query(`
-        INSERT INTO custodia_asignacion_diaria (cliente_id, fecha, employee_id, slot_numero, notas)
-        VALUES ($1, $2::date, $3, $4, $5)
-        ON CONFLICT (cliente_id, fecha, slot_numero)
-        DO UPDATE SET employee_id = $3, notas = COALESCE(EXCLUDED.notas, custodia_asignacion_diaria.notas)
-      `, [clienteId, fechaAsig, employeeId, slotNumero, notas ?? null]);
+      const titularExistente = titularRows[0]?.employee_id ?? null;
+
+      let liberado: { puestos: any[]; custodias: any[] } = { puestos: [], custodias: [] };
+
+      if (soloCobertura || titularExistente) {
+        // Cobertura diaria: NO toca titularidad ni libera nada — es solo un día.
+        await tx.query(`
+          INSERT INTO custodia_asignacion_diaria (cliente_id, fecha, employee_id, slot_numero, notas)
+          VALUES ($1, $2::date, $3, $4, $5)
+          ON CONFLICT (cliente_id, fecha, slot_numero)
+          DO UPDATE SET employee_id = $3, notas = $5
+        `, [clienteId, fechaAsig, employeeId, slotNumero, notas ?? null]);
+      } else {
+        // Nuevo titular: liberar titularidad previa y asignar — todo atómico.
+        liberado = await liberarTitularidadAgente(tx, Number(employeeId), {
+          custodia: { clienteId, slotNumero },
+        });
+
+        await tx.query(
+          `INSERT INTO custodia_titulares (cliente_id, slot_numero, employee_id) VALUES ($1, $2, $3)
+           ON CONFLICT (cliente_id, slot_numero, employee_id) DO UPDATE SET activo = TRUE`,
+          [clienteId, slotNumero, employeeId]
+        );
+        await tx.query(`
+          INSERT INTO custodia_asignacion_diaria (cliente_id, fecha, employee_id, slot_numero, notas)
+          VALUES ($1, $2::date, $3, $4, $5)
+          ON CONFLICT (cliente_id, fecha, slot_numero)
+          DO UPDATE SET employee_id = $3, notas = COALESCE(EXCLUDED.notas, custodia_asignacion_diaria.notas)
+        `, [clienteId, fechaAsig, employeeId, slotNumero, notas ?? null]);
+      }
+
+      await tx.query("COMMIT");
+      res.json({ ok: true, esTitular: !titularExistente && !soloCobertura, liberado });
+    } catch (e) {
+      await tx.query("ROLLBACK").catch(() => {});
+      throw e;
+    } finally {
+      tx.release();
     }
-    res.json({ ok: true, esTitular: !titularExistente && !soloCobertura });
   } catch (err: any) {
     if (err.code === "23505") {
       return res.status(409).json({ error: "Este agente ya está asignado a otro slot" });
@@ -762,6 +894,14 @@ operacionesRouter.post("/operaciones/cambiar-titular-custodia", async (req, res)
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    await lockTitularidadAgente(client, Number(nuevoTitularId));
+
+    // Modo estricto: liberar otra titularidad del nuevo titular dentro de la
+    // misma transacción para evitar estado intermedio.
+    const liberado = await liberarTitularidadAgente(client, Number(nuevoTitularId), {
+      custodia: { clienteId, slotNumero },
+    });
+
     await client.query(
       `UPDATE custodia_titulares SET activo = FALSE WHERE cliente_id = $1 AND slot_numero = $2 AND activo = TRUE`,
       [clienteId, slotNumero]
@@ -785,7 +925,7 @@ operacionesRouter.post("/operaciones/cambiar-titular-custodia", async (req, res)
     );
     await client.query("COMMIT");
     logger.info({ clienteId, slotNumero, nuevoTitularId, anteriorTitularId }, "Titular custodia cambiado");
-    res.json({ ok: true });
+    res.json({ ok: true, liberado });
   } catch (err: any) {
     await client.query("ROLLBACK").catch(() => {});
     if (err.code === "23505") {
@@ -1459,21 +1599,9 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
     if (!agenteRows.length) return res.status(404).json({ error: "Agente no encontrado" });
     const agente = agenteRows[0];
 
-    // Verificar que no esté ya asignado a otro puesto (se puede forzar)
-    if (!forzar) {
-      const { rows: yaAsignadoRows } = await pool.query(
-        `SELECT po.nombre, po.cliente_nombre FROM puestos_operativos po
-         WHERE po.agente_id=$1 AND po.activo=TRUE AND po.id!=$2`,
-        [agenteId, puestoId]
-      );
-      if (yaAsignadoRows.length > 0) {
-        return res.status(409).json({
-          error: `${agente.nombre_completo} ya está asignado en ${yaAsignadoRows[0].cliente_nombre} — ${yaAsignadoRows[0].nombre}`,
-          advertencia: true,
-        });
-      }
-
-      // Verificar que no esté cubriendo un SSA vigente HOY
+    // SSA es bloqueante incluso en modo estricto: cubre un servicio especial
+    // que no se puede liberar silenciosamente. Hay que cancelarlo aparte.
+    {
       const { rows: yaEnSSA } = await pool.query(
         `SELECT s.id, c.nombre AS cliente_nombre, s.tipo_solicitud, s.fecha
          FROM solicitudes_servicio_adicional s
@@ -1486,7 +1614,7 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
       if (yaEnSSA.length > 0) {
         const ssa = yaEnSSA[0];
         return res.status(409).json({
-          error: `${agente.nombre_completo} ya cubre un Servicio Especial (${ssa.cliente_nombre ?? "—"} · ${ssa.id})`,
+          error: `${agente.nombre_completo} ya cubre un Servicio Especial (${ssa.cliente_nombre ?? "—"} · ${ssa.id}). Cancele el SSA antes de reasignar.`,
           advertencia: true,
           ssaId: ssa.id,
         });
@@ -1506,112 +1634,152 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
       // (La cobertura queda registrada en el bloque A-04 de abajo)
     } else {
       // ── Asignación normal (puede convertir en titular) ─────────────────────
+      //
+      // Modo estricto (Opción A): un agente solo puede ser titular en UN lugar.
+      // SOLO liberamos titularidad previa cuando el agente efectivamente se
+      // convertirá en titular del destino (sinTitular === true). Si el puesto
+      // ya tiene titular, esta asignación es solo cobertura diaria (`agente_id`)
+      // y NO debe afectar las titularidades del agente en otros lugares.
+      //
+      // El helper + el UPDATE del puesto destino + el lock advisory corren en
+      // UNA misma transacción para garantizar atomicidad y evitar carreras.
 
-      // Fix E2E-02: Exclusividad de titular.
-      // Si el puesto no tiene titular, este agente se convertirá en titular.
-      // Antes de hacerlo, verificar que no sea ya titular en otro puesto activo.
-      if (!forzar && !puesto.titular_employee_id) {
-        const { rows: yaTitularRows } = await pool.query(
-          `SELECT po.nombre, po.cliente_nombre FROM puestos_operativos po
-           WHERE po.titular_employee_id = $1 AND po.activo = TRUE AND po.id != $2`,
-          [agenteId, puestoId]
-        );
-        if (yaTitularRows.length > 0) {
-          return res.status(409).json({
-            error: `${agente.nombre_completo} ya es titular en "${yaTitularRows[0].nombre}" (${yaTitularRows[0].cliente_nombre}). Resuelva esa titularidad antes de asignar una nueva.`,
-            advertencia: true,
-            titularEnPuesto: yaTitularRows[0].nombre,
-            titularEnCliente: yaTitularRows[0].cliente_nombre,
-          });
-        }
-      }
-
-      await pool.query(
-        `UPDATE puestos_operativos
-         SET agente_id      = $1,
-             agente_nombre  = $2,
-             estado         = 'cubierto',
-             titular_employee_id = COALESCE(titular_employee_id, $1),
-             titular_nombre      = COALESCE(titular_nombre, $2),
-             updated_at     = NOW()
-         WHERE id = $3`,
-        [agenteId, agente.nombre_completo, puestoId]
-      );
-
-      // ── Registro en historial de titularidad (TH) ────────────────────────
       const fechaEfectivaDate = fechaEfectiva
         ? fechaEfectiva  // "YYYY-MM-DD" string → PostgreSQL lo parsea como DATE
         : todayGT();
 
-      // Cerrar registro activo del titular anterior (si lo había)
-      if (titularPrevioId) {
-        await pool.query(
-          `UPDATE puesto_titular_historico
-           SET fecha_fin = $1, updated_at = NOW()
-           WHERE puesto_id = $2 AND fecha_fin IS NULL`,
-          [fechaEfectivaDate, puestoId]
-        );
-      }
-      // Abrir registro para el nuevo titular
-      await pool.query(
-        `INSERT INTO puesto_titular_historico
-           (puesto_id, employee_id, fecha_inicio, motivo, creado_por)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [puestoId, agenteId, fechaEfectivaDate, motivoCambio || null, usuario || 'sistema']
-      );
+      // `seConvirtioEnTitular` se determina DENTRO de la transacción tras
+      // hacer SELECT ... FOR UPDATE del puesto destino, no de la lectura previa.
+      let seConvirtioEnTitular = false;
 
-      // ── Actualizar EOA del agente entrante ────────────────────────────────
-      await pool.query(
-        `UPDATE employee_operational_assignments
-         SET activa = FALSE, updated_at = NOW()
-         WHERE employee_id = $1 AND activa = TRUE`,
-        [agenteId]
-      );
-      await pool.query(
-        `INSERT INTO employee_operational_assignments
-           (employee_id, puesto_id, sede_id, cliente_id, zona_operativa_id, tipo_turno_id,
-            tipo_asignacion, activa, fecha_inicio, notas, created_at, updated_at)
-         SELECT $1, $2, po.sede_id, po.cliente_id, po.zona_operativa_id, po.tipo_turno_id,
-                'titular', TRUE, NOW(), 'Asignado desde pizarrón operativo', NOW(), NOW()
-         FROM puestos_operativos po WHERE po.id = $2`,
-        [agenteId, puestoId]
-      );
+      const tx = await pool.connect();
+      try {
+        await tx.query("BEGIN");
+        await lockTitularidadAgente(tx, Number(agenteId));
 
-      // ── Auto-asignar al primer slot vacío de la plantilla (atómico) ─────
-      const { rows: slotAsignado } = await pool.query(
-        `UPDATE puesto_slots
-         SET empleado_id = $1
-         WHERE id = (
-           SELECT id FROM puesto_slots
-           WHERE puesto_id = $2 AND activo = TRUE AND empleado_id IS NULL
-           ORDER BY slot_numero ASC LIMIT 1
-         ) AND empleado_id IS NULL
-         RETURNING id, slot_numero`,
-        [agenteId, puestoId]
-      );
-      if (slotAsignado.length > 0) {
-        logger.info({ agenteId, slotId: slotAsignado[0].id, slotNumero: slotAsignado[0].slot_numero, puestoId }, "Auto-asignado a slot vacío de plantilla");
-      }
+        // Re-leer puesto destino con candado de fila para evitar race condition
+        // entre la lectura inicial (sinTitular) y el UPDATE.
+        const { rows: puestoLk } = await tx.query(
+          `SELECT id, titular_employee_id FROM puestos_operativos WHERE id = $1 FOR UPDATE`,
+          [puestoId]
+        );
+        if (!puestoLk.length) throw new Error("Puesto no encontrado al bloquear");
+        const puestoYaTieneTitular = puestoLk[0].titular_employee_id !== null;
+        const titularPrevioReal: number | null = puestoLk[0].titular_employee_id ?? null;
+        seConvirtioEnTitular = !puestoYaTieneTitular;
 
-      // ── Mover titular previo a nueva categoría EOA (si se indicó acción) ─
-      if (titularPrevioId && titularPrevioId !== agenteId && oldTitularAccion) {
-        const nuevoTipo = oldTitularAccion === 'disponible'   ? 'disponible'
-                        : oldTitularAccion === 'pool_relevo'  ? 'pool_relevo'
-                        : 'sin_asignacion';
-        await pool.query(
-          `UPDATE employee_operational_assignments
-           SET activa = FALSE, updated_at = NOW()
-           WHERE employee_id = $1 AND activa = TRUE`,
-          [titularPrevioId]
-        );
-        await pool.query(
-          `INSERT INTO employee_operational_assignments
-             (employee_id, puesto_id, sede_id, cliente_id, zona_operativa_id, tipo_turno_id,
-              tipo_asignacion, activa, fecha_inicio, notas, created_at, updated_at)
-           VALUES ($1, NULL, NULL, NULL, NULL, NULL, $2, TRUE, NOW(),
-                   'Movido al cambiar titular en pizarrón', NOW(), NOW())`,
-          [titularPrevioId, nuevoTipo]
-        );
+        // Solo si el agente efectivamente se convierte en titular: liberar su
+        // titularidad previa (modo estricto) y registrar TH/EOA/slot.
+        if (seConvirtioEnTitular) {
+          const _liberadoTitular = await liberarTitularidadAgente(tx, Number(agenteId), {
+            puestoId: Number(puestoId),
+          });
+          if (_liberadoTitular.puestos.length > 0 || _liberadoTitular.custodias.length > 0) {
+            logger.info({
+              agenteId, puestoDestino: puestoId, liberado: _liberadoTitular,
+            }, "Asignación: titularidad previa liberada automáticamente");
+          }
+
+          await tx.query(
+            `UPDATE puestos_operativos
+             SET agente_id      = $1,
+                 agente_nombre  = $2,
+                 estado         = 'cubierto',
+                 titular_employee_id = $1,
+                 titular_nombre      = $2,
+                 updated_at     = NOW()
+             WHERE id = $3`,
+            [agenteId, agente.nombre_completo, puestoId]
+          );
+
+          // ── TH: cerrar histórico previo y abrir el del nuevo titular ────
+          if (titularPrevioReal) {
+            await tx.query(
+              `UPDATE puesto_titular_historico
+               SET fecha_fin = $1, updated_at = NOW()
+               WHERE puesto_id = $2 AND fecha_fin IS NULL`,
+              [fechaEfectivaDate, puestoId]
+            );
+          }
+          await tx.query(
+            `INSERT INTO puesto_titular_historico
+               (puesto_id, employee_id, fecha_inicio, motivo, creado_por)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [puestoId, agenteId, fechaEfectivaDate, motivoCambio || null, usuario || 'sistema']
+          );
+
+          // ── EOA del agente entrante (tipo titular) ──────────────────────
+          await tx.query(
+            `UPDATE employee_operational_assignments
+             SET activa = FALSE, updated_at = NOW()
+             WHERE employee_id = $1 AND activa = TRUE`,
+            [agenteId]
+          );
+          await tx.query(
+            `INSERT INTO employee_operational_assignments
+               (employee_id, puesto_id, sede_id, cliente_id, zona_operativa_id, tipo_turno_id,
+                tipo_asignacion, activa, fecha_inicio, notas, created_at, updated_at)
+             SELECT $1, $2, po.sede_id, po.cliente_id, po.zona_operativa_id, po.tipo_turno_id,
+                    'titular', TRUE, NOW(), 'Asignado desde pizarrón operativo', NOW(), NOW()
+             FROM puestos_operativos po WHERE po.id = $2`,
+            [agenteId, puestoId]
+          );
+
+          // ── Auto-asignar al primer slot vacío de la plantilla ────────────
+          const { rows: slotAsignado } = await tx.query(
+            `UPDATE puesto_slots
+             SET empleado_id = $1
+             WHERE id = (
+               SELECT id FROM puesto_slots
+               WHERE puesto_id = $2 AND activo = TRUE AND empleado_id IS NULL
+               ORDER BY slot_numero ASC LIMIT 1
+             ) AND empleado_id IS NULL
+             RETURNING id, slot_numero`,
+            [agenteId, puestoId]
+          );
+          if (slotAsignado.length > 0) {
+            logger.info({ agenteId, slotId: slotAsignado[0].id, slotNumero: slotAsignado[0].slot_numero, puestoId }, "Auto-asignado a slot vacío de plantilla");
+          }
+
+          // ── Mover titular previo a nueva categoría EOA si se indicó ─────
+          if (titularPrevioReal && titularPrevioReal !== Number(agenteId) && oldTitularAccion) {
+            const nuevoTipo = oldTitularAccion === 'disponible'   ? 'disponible'
+                            : oldTitularAccion === 'pool_relevo'  ? 'pool_relevo'
+                            : 'sin_asignacion';
+            await tx.query(
+              `UPDATE employee_operational_assignments
+               SET activa = FALSE, updated_at = NOW()
+               WHERE employee_id = $1 AND activa = TRUE`,
+              [titularPrevioReal]
+            );
+            await tx.query(
+              `INSERT INTO employee_operational_assignments
+                 (employee_id, puesto_id, sede_id, cliente_id, zona_operativa_id, tipo_turno_id,
+                  tipo_asignacion, activa, fecha_inicio, notas, created_at, updated_at)
+               VALUES ($1, NULL, NULL, NULL, NULL, NULL, $2, TRUE, NOW(),
+                       'Movido al cambiar titular en pizarrón', NOW(), NOW())`,
+              [titularPrevioReal, nuevoTipo]
+            );
+          }
+        } else {
+          // Puesto YA tiene titular → solo cobertura diaria, no toca titularidad.
+          await tx.query(
+            `UPDATE puestos_operativos
+             SET agente_id      = $1,
+                 agente_nombre  = $2,
+                 estado         = 'cubierto',
+                 updated_at     = NOW()
+             WHERE id = $3`,
+            [agenteId, agente.nombre_completo, puestoId]
+          );
+        }
+
+        await tx.query("COMMIT");
+      } catch (e) {
+        await tx.query("ROLLBACK").catch(() => {});
+        throw e;
+      } finally {
+        tx.release();
       }
     }
 
@@ -1933,17 +2101,37 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
     // Una reasignación permanente (esRelevo=false) SÍ actualiza agente_id,
     // pero solo si es para hoy o futuro (no retroactiva).
     if (!esRelevo && !esRetroactivoSustitucion) {
-      await pool.query(
-        `UPDATE puestos_operativos
-         SET agente_id             = $1,
-             agente_nombre         = $2,
-             titular_employee_id   = $1,
-             titular_nombre        = $2,
-             estado                = 'cubierto',
-             updated_at            = NOW()
-         WHERE id = $3`,
-        [agenteEntranteId, entrante.nombre_completo, puestoId]
-      );
+      // Modo estricto: liberar titularidad previa del entrante (puestos/custodias)
+      // ANTES de hacerlo titular aquí. Todo dentro de UNA transacción con lock.
+      const txS = await pool.connect();
+      try {
+        await txS.query("BEGIN");
+        await lockTitularidadAgente(txS, Number(agenteEntranteId));
+        const _libS = await liberarTitularidadAgente(txS, Number(agenteEntranteId), {
+          puestoId: Number(puestoId),
+        });
+        if (_libS.puestos.length > 0 || _libS.custodias.length > 0) {
+          logger.info({ agenteEntranteId, puestoDestino: puestoId, liberado: _libS },
+            "Sustitución: titularidad previa del entrante liberada automáticamente");
+        }
+        await txS.query(
+          `UPDATE puestos_operativos
+           SET agente_id             = $1,
+               agente_nombre         = $2,
+               titular_employee_id   = $1,
+               titular_nombre        = $2,
+               estado                = 'cubierto',
+               updated_at            = NOW()
+           WHERE id = $3`,
+          [agenteEntranteId, entrante.nombre_completo, puestoId]
+        );
+        await txS.query("COMMIT");
+      } catch (e) {
+        await txS.query("ROLLBACK").catch(() => {});
+        throw e;
+      } finally {
+        txS.release();
+      }
     }
 
     // Registrar movimiento de sustitución
@@ -2519,19 +2707,36 @@ operacionesRouter.post("/operaciones/puestos/:id/titular", async (req, res) => {
     const { rows: empRows } = await pool.query(`SELECT * FROM employees WHERE id=$1`, [titularEmployeeId]);
     if (!empRows.length) return res.status(404).json({ error: "Colaborador no encontrado" });
     const emp = empRows[0];
-
-    await pool.query(
-      `UPDATE puestos_operativos SET titular_employee_id=$1, titular_nombre=$2, updated_at=NOW() WHERE id=$3`,
-      [titularEmployeeId, emp.nombre_completo, puestoId]
-    );
-
-    // Si no hay agente_id asignado, también asignar como cobertura actual
     const puesto = puestoRows[0];
-    if (!puesto.agente_id) {
-      await pool.query(
-        `UPDATE puestos_operativos SET agente_id=$1, agente_nombre=$2, estado='cubierto', updated_at=NOW() WHERE id=$3`,
+
+    // Modo estricto: liberar titularidad previa del agente + setear titular en UNA tx con lock
+    const txT = await pool.connect();
+    try {
+      await txT.query("BEGIN");
+      await lockTitularidadAgente(txT, Number(titularEmployeeId));
+      const _libT = await liberarTitularidadAgente(txT, Number(titularEmployeeId), {
+        puestoId: Number(puestoId),
+      });
+      if (_libT.puestos.length > 0 || _libT.custodias.length > 0) {
+        logger.info({ titularEmployeeId, puestoDestino: puestoId, liberado: _libT },
+          "POST /puestos/:id/titular: titularidad previa liberada automáticamente");
+      }
+      await txT.query(
+        `UPDATE puestos_operativos SET titular_employee_id=$1, titular_nombre=$2, updated_at=NOW() WHERE id=$3`,
         [titularEmployeeId, emp.nombre_completo, puestoId]
       );
+      if (!puesto.agente_id) {
+        await txT.query(
+          `UPDATE puestos_operativos SET agente_id=$1, agente_nombre=$2, estado='cubierto', updated_at=NOW() WHERE id=$3`,
+          [titularEmployeeId, emp.nombre_completo, puestoId]
+        );
+      }
+      await txT.query("COMMIT");
+    } catch (e) {
+      await txT.query("ROLLBACK").catch(() => {});
+      throw e;
+    } finally {
+      txT.release();
     }
 
     res.json({ ok: true, mensaje: `${emp.nombre_completo} definido como titular de ${puestoRows[0].nombre}` });
