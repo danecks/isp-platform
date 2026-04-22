@@ -6358,7 +6358,7 @@ export default function Operaciones() {
   const [modalSustituyeTitular, setModalSustituyeTitular] = useState<{ puesto: Puesto; agente: Agente } | null>(null);
   const [modalIncentivo, setModalIncentivo]           = useState<{
     agenteId: number; agenteName: string;
-    puestoId: number; puestoName: string;
+    puestoId: number | null; puestoName: string;
     clienteId: number | null; clienteNombre: string | null;
     sedeId: number | null; fecha: string;
     costoHE?: number | null; jornada?: string;
@@ -6827,6 +6827,7 @@ export default function Operaciones() {
     slotNumero: number,
     agente: Agente,
     soloCobertura: boolean,
+    puesto?: Puesto,
   ) {
     try {
       const resp = await fetch(`${API_BASE}/operaciones/asignar-custodia`, {
@@ -6850,6 +6851,24 @@ export default function Operaciones() {
         description: `${agente.nombre_completo} → Custodio ${slotNumero}`,
       });
       invalidate();
+
+      // Si el agente está en descanso (descanso de ciclo o haciendo HE), ofrecer
+      // registro de horas extras igual que en puestos fijos.
+      const poolStatus = detectarPoolStatus(agente);
+      if (poolStatus === "descansando") {
+        const clienteNombre = puesto?.cliente_nombre ?? null;
+        setModalIncentivo({
+          agenteId: agente.id,
+          agenteName: agente.nombre_completo,
+          puestoId: null,
+          puestoName: `Custodio ${slotNumero}${clienteNombre ? ` — ${clienteNombre}` : ""}`,
+          clienteId,
+          clienteNombre,
+          sedeId: null,
+          fecha: fechaVista,
+          jornada: "12h",
+        });
+      }
     } catch {
       toast({ title: "Error de conexión", variant: "destructive" });
     }
@@ -8791,7 +8810,7 @@ export default function Operaciones() {
           onElegir={async (soloCobertura) => {
             const data = modalCustodiaTipo;
             setModalCustodiaTipo(null);
-            await ejecutarAsignarCustodia(data.clienteId, data.slotNumero, data.agente, soloCobertura);
+            await ejecutarAsignarCustodia(data.clienteId, data.slotNumero, data.agente, soloCobertura, data.puesto);
           }}
           onCancel={() => setModalCustodiaTipo(null)}
         />
@@ -8960,7 +8979,7 @@ function ModalIncentivoCash({
 }: {
   data: {
     agenteId: number; agenteName: string;
-    puestoId: number; puestoName: string;
+    puestoId: number | null; puestoName: string;
     clienteId: number | null; clienteNombre: string | null;
     sedeId: number | null; fecha: string;
     costoHE?: number | null; jornada?: string;
