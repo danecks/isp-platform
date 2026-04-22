@@ -174,8 +174,8 @@ function createFrenteElement(
     <div style="position:absolute;top:0;left:0;right:0;height:${_MM(0.8)}px;background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017)"></div>
     <div style="position:absolute;bottom:0;left:0;right:0;height:${_MM(0.8)}px;background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017)"></div>
     ${logoMedaillon}
-    <span style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:${_PT(3.8)}px;color:#f5c842;font-weight:800;margin-top:${_MM(2.5)}px;flex:1;display:flex;align-items:center;justify-content:center;letter-spacing:1.2px;text-transform:uppercase">INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A</span>
-    <span style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:${_PT(3.5)}px;color:rgba(255,255,255,.35);font-family:monospace;font-weight:700;margin-bottom:${_MM(3.5)}px;letter-spacing:1px">${num}</span>
+    <span style="writing-mode:vertical-rl;font-size:${_PT(4.5)}px;color:#f5c842;font-weight:800;margin-top:${_MM(2.5)}px;flex:1;display:flex;align-items:center;justify-content:center;letter-spacing:1.2px;text-transform:uppercase">INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A</span>
+    <span style="writing-mode:vertical-rl;font-size:${_PT(4)}px;color:rgba(255,255,255,.35);font-family:monospace;font-weight:700;margin-bottom:${_MM(3.5)}px;letter-spacing:1px">${num}</span>
   </div>
   <!-- CUERPO BLANCO -->
   <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;background:#fff">
@@ -219,22 +219,28 @@ function createReversoElement(logoFullB64: string): HTMLDivElement {
   </div>
   <!-- DIVISOR DORADO -->
   <div style="height:${_MM(0.5)}px;background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017);flex-shrink:0"></div>
-  <!-- LOGO GRANDE — más arriba y más grande -->
-  <div style="display:flex;align-items:center;justify-content:center;padding:${_MM(2)}px ${_MM(3)}px ${_MM(0.5)}px;flex-shrink:0">
-    <img src="${logoFullB64}" style="max-height:${_MM(48)}px;max-width:94%;object-fit:contain;display:block" />
+  <!-- LOGO GRANDE con escala 1.9 (igual a Variante A) -->
+  <div style="display:flex;align-items:center;justify-content:center;padding:${_MM(2)}px ${_MM(3)}px ${_MM(0.5)}px;flex-shrink:0;overflow:hidden">
+    <img src="${logoFullB64}" style="max-height:${_MM(36)}px;max-width:88%;object-fit:contain;display:block;transform:scale(1.9);transform-origin:center;mix-blend-mode:multiply" />
   </div>
   <!-- TEXTO -->
-  <div style="flex:1;display:flex;align-items:flex-start;justify-content:center;padding:${_MM(1)}px ${_MM(4)}px ${_MM(2)}px">
-    <div style="font-size:${_PT(9)}px;color:#334155;text-align:center;line-height:1.6">
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:${_MM(1)}px ${_MM(4.5)}px ${_MM(2)}px">
+    <div style="font-size:${_PT(8)}px;color:#334155;text-align:center;line-height:1.7">
       El presente acredita como colaborador de <strong style="font-weight:800;color:#0f2044">ISP S.A.</strong> Se solicita a las Autoridades <strong style="font-weight:800;color:#0f2044">Civiles y Militares</strong> su colaboración. Válido en el cumplimiento de sus funciones en el puesto asignado.
     </div>
   </div>
   <!-- DIVISOR TENUE DORADO -->
   <div style="height:${_MM(0.25)}px;background:linear-gradient(90deg,transparent,#f5c842,transparent);margin:0 ${_MM(5)}px;flex-shrink:0"></div>
-  <!-- FOOTER CONTACTO -->
+  <!-- FOOTER CONTACTO con íconos -->
   <div style="padding:${_MM(2.5)}px ${_MM(4)}px ${_MM(3.5)}px;display:flex;flex-direction:column;align-items:center;gap:${_MM(0.8)}px;flex-shrink:0">
-    <div style="font-size:${_PT(7)}px;font-weight:900;color:#0f2044;letter-spacing:.06em">www.ispsa.net</div>
-    <div style="font-size:${_PT(4)}px;color:#25D366;font-weight:700;letter-spacing:.04em">+502 2200-0000</div>
+    <div style="font-size:${_PT(7)}px;font-weight:900;color:#0f2044;letter-spacing:.06em;display:flex;align-items:center;gap:${_MM(1)}px">
+      <svg width="${_MM(2.5)}" height="${_MM(2.5)}" viewBox="0 0 24 24" fill="none" stroke="#0f2044" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+      www.ispsa.net
+    </div>
+    <div style="font-size:${_PT(4)}px;color:#25D366;font-weight:700;letter-spacing:.04em;display:flex;align-items:center;gap:${_MM(0.8)}px">
+      <svg width="${_MM(2.2)}" height="${_MM(2.2)}" viewBox="0 0 24 24" fill="#25D366" xmlns="http://www.w3.org/2000/svg"><path d="M12 0C5.373 0 0 5.373 0 12c0 2.117.553 4.103 1.518 5.829L0 24l6.335-1.518A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 2c5.514 0 10 4.486 10 10s-4.486 10-10 10a9.945 9.945 0 01-4.906-1.287l-.352-.206-3.652.875.891-3.561-.22-.366A9.945 9.945 0 012 12C2 6.486 6.486 2 12 2zm-1.172 4.5c-.207 0-.435.007-.65.017-.214.01-.476.063-.724.313-.249.249-.948.926-.948 2.259s.97 2.619 1.106 2.8c.136.18 1.884 3.012 4.637 4.104.648.26 1.154.415 1.548.532.65.194 1.242.167 1.71.101.522-.073 1.608-.658 1.835-1.293.228-.635.228-1.18.16-1.293-.069-.114-.249-.181-.522-.318s-1.608-.793-1.858-.884c-.249-.09-.43-.136-.612.137-.181.272-.703.883-.862 1.065-.158.181-.318.204-.59.068-.272-.136-1.148-.423-2.187-1.35-.808-.721-1.354-1.61-1.513-1.882-.158-.272-.017-.419.119-.555.122-.122.272-.318.408-.477.136-.158.181-.272.272-.453.09-.182.045-.34-.023-.477-.068-.137-.612-1.474-.838-2.018-.22-.53-.445-.458-.612-.466z"/></svg>
+      +502 2200-0000
+    </div>
   </div>
   <!-- BARRA INFERIOR NAVY -->
   <div style="background:#0f2044;height:${_MM(2)}px;flex-shrink:0"></div>`;
@@ -277,10 +283,10 @@ function CarnetFrentePreview({ agent, fotoSrc }: { agent: AgenteCarnet; fotoSrc?
           backgroundRepeat: "no-repeat",
           backgroundColor: "#fff",
         }} />
-        <span style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", fontSize: _P(3.8), color: "#f5c842", fontWeight: 800, marginTop: _M(2.5), flex: 1, display: "flex", alignItems: "center", justifyContent: "center", letterSpacing: 1.2, textTransform: "uppercase" }}>
+        <span style={{ writingMode: "vertical-rl", fontSize: _P(4.5), color: "#f5c842", fontWeight: 800, marginTop: _M(2.5), flex: 1, display: "flex", alignItems: "center", justifyContent: "center", letterSpacing: 1.2, textTransform: "uppercase" }}>
           INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A
         </span>
-        <span style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", fontSize: _P(3.5), color: "rgba(255,255,255,.35)", fontFamily: "monospace", fontWeight: 700, marginBottom: _M(3.5), letterSpacing: 1 }}>
+        <span style={{ writingMode: "vertical-rl", fontSize: _P(4), color: "rgba(255,255,255,.35)", fontFamily: "monospace", fontWeight: 700, marginBottom: _M(3.5), letterSpacing: 1 }}>
           {num}
         </span>
       </div>
@@ -326,13 +332,13 @@ function CarnetReversoPreview() {
         <div style={{ fontSize: _P(3.5), color: "rgba(255,255,255,.45)", letterSpacing: 1.5, marginTop: _M(0.5), textAlign: "center" }}>INVESTIGACIONES Y SEGURIDAD PROFESIONAL, S.A.</div>
       </div>
       <div style={{ height: 2, background: "linear-gradient(90deg,#d4a017,#f5c842,#d4a017)", flexShrink: 0 }} />
-      {/* Logo grande y más arriba */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: `${_M(2)}px ${_M(3)}px ${_M(0.5)}px`, flexShrink: 0 }}>
-        <img src={`${import.meta.env.BASE_URL}images/logo-isp.png`} style={{ display: "block", maxWidth: "94%", maxHeight: _M(48), objectFit: "contain" }} />
+      {/* Logo con escala 1.9 igual a Variante A */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: `${_M(2)}px ${_M(3)}px ${_M(0.5)}px`, flexShrink: 0, overflow: "hidden" }}>
+        <img src={`${import.meta.env.BASE_URL}images/logo-isp.png`} style={{ display: "block", maxWidth: "88%", maxHeight: _M(36), objectFit: "contain", transform: "scale(1.9)", transformOrigin: "center", mixBlendMode: "multiply" }} />
       </div>
       {/* Texto */}
-      <div style={{ flex: 1, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: `${_M(1)}px ${_M(4)}px ${_M(2)}px` }}>
-        <div style={{ fontSize: _P(9), color: "#334155", textAlign: "center", lineHeight: 1.6 }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: `${_M(1)}px ${_M(4.5)}px ${_M(2)}px` }}>
+        <div style={{ fontSize: _P(8), color: "#334155", textAlign: "center", lineHeight: 1.7 }}>
           El presente acredita como colaborador de <strong style={{ fontWeight: 800, color: "#0f2044" }}>ISP S.A.</strong> Se solicita a las Autoridades <strong style={{ fontWeight: 800, color: "#0f2044" }}>Civiles y Militares</strong> su colaboración. Válido en el cumplimiento de sus funciones en el puesto asignado.
         </div>
       </div>
