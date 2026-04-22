@@ -2033,6 +2033,9 @@ function lastMondayDate(fromDate?: string | null): string {
 }
 const S1_14 = DIAS_C14.slice(0, 7);
 const S2_14 = DIAS_C14.slice(7, 14);
+// Vista de 4 semanas: como el ciclo es de 14 días, S3 repite S1 y S4 repite S2.
+// Esto permite visualizar la rotación de descansos a lo largo de un mes completo.
+const SEMANAS_4 = [S1_14, S2_14, S1_14, S2_14];
 
 function ModalConfigTurno({
   puesto,
@@ -2482,7 +2485,7 @@ function ModalConfigTurno({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <p className="text-[9px] font-semibold text-white/30 uppercase tracking-widest">
-                  Titulares del puesto — ciclo 2 semanas
+                  Titulares del puesto — vista 4 semanas (ciclo 14 días)
                 </p>
                 <span className="text-[9px] text-white/20">
                   {slots.length}/{turnoId ? maxSlots : "?"} titular{maxSlots !== 1 ? "es" : ""}
@@ -2610,11 +2613,11 @@ function ModalConfigTurno({
                           </button>
                         </div>
 
-                        {/* Cuadrícula 2 semanas: Lun-Dom */}
+                        {/* Cuadrícula 4 semanas: Lun-Dom (S3 y S4 repiten el ciclo de 14 días) */}
                         <div className="space-y-1">
-                          {[S1_14, S2_14].map((semana, si) => (
+                          {SEMANAS_4.map((semana, si) => (
                             <div key={si} className="flex items-center gap-0.5">
-                              <span className="text-[8px] text-white/20 w-6 shrink-0 font-medium">S{si + 1}</span>
+                              <span className={`text-[8px] w-6 shrink-0 font-medium ${si >= 2 ? "text-white/15" : "text-white/20"}`}>S{si + 1}</span>
                               {semana.map(({ n, label }) => {
                                 const trabaja = slot.dias_trabajo.includes(n);
                                 const esMedio = (slot.dias_medio_turno || []).includes(n);
@@ -2680,11 +2683,11 @@ function ModalConfigTurno({
                         </div>
                       </div>
 
-                      {/* Grid días: Lun-Dom x2 */}
+                      {/* Grid días: 4 semanas (S3 y S4 repiten el ciclo de 14 días) */}
                       <div className="space-y-1">
-                        {[S1_14, S2_14].map((semana, si) => (
+                        {SEMANAS_4.map((semana, si) => (
                           <div key={si} className="flex items-center gap-0.5">
-                            <span className="text-[8px] text-white/20 w-6 shrink-0">S{si + 1}</span>
+                            <span className={`text-[8px] w-6 shrink-0 ${si >= 2 ? "text-white/15" : "text-white/20"}`}>S{si + 1}</span>
                             {semana.map(({ n, label }) => (
                               <button
                                 key={n}
