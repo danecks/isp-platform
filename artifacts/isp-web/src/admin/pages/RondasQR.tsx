@@ -364,43 +364,30 @@ function RondaDetalle({
     else setSeleccionados(new Set(puntos.map(p => p.id)));
   };
 
-  // Imprimir múltiples QR seleccionados en una hoja tamaño Carta con líneas de corte
+  // Imprimir múltiples QR seleccionados en hojas tamaño Carta con líneas de corte
+  // Layout: 2 columnas × 3 filas = 6 por hoja, paginación automática.
   const imprimirSeleccionados = () => {
     const elegidos = puntos.filter(p => seleccionados.has(p.id));
     if (elegidos.length === 0) return;
 
-    const cards = elegidos.map(p => {
-      const url = `${window.location.origin}/ronda?token=${p.qr_token}`;
-      // Generar SVG QR con qrcode.react server-side via hidden render no es trivial.
-      // En su lugar, usamos un <img> apuntando a un servicio in-page con SVG inline
-      // construido al vuelo: insertamos el QRCodeSVG renderizado a string vía dangerouslySetInnerHTML
-      // no funciona en otra ventana. Solución: usar la librería qrcode (canvas/string).
-      // Para mantener simple sin nuevas deps, generamos un <img src="data:image/svg+xml..."> usando
-      // el mismo algoritmo de qrcode.react ya cargado: serializamos un SVG renderizado en un nodo oculto.
-      return { p, url };
-    });
-
-    // Renderizamos los QRs ocultos en el documento actual para extraer su SVG
-    const tmp = document.createElement("div");
-    tmp.style.position = "absolute";
-    tmp.style.left = "-99999px";
-    document.body.appendChild(tmp);
-
-    // Usamos la API directa de qrcode.react importada arriba (QRCodeSVG)
-    // Pero no podemos invocar React fuera del tree fácilmente; en lugar de eso,
-    // copiamos los SVG ya renderizados desde el grid actual usando un atributo data-qr-id.
+    // Copiamos el SVG de cada QR ya renderizado en la grilla (atributo data-qr-id)
     const svgPorPunto = new Map<number, string>();
     document.querySelectorAll<HTMLElement>('[data-qr-id]').forEach(el => {
       const id = Number(el.dataset.qrId);
       const svg = el.querySelector('svg');
-      if (svg) svgPorPunto.set(id, new XMLSerializer().serializeToString(svg));
+      if (svg) {
+        const clone = svg.cloneNode(true) as SVGElement;
+        clone.setAttribute('width', '100%');
+        clone.setAttribute('height', '100%');
+        svgPorPunto.set(id, new XMLSerializer().serializeToString(clone));
+      }
     });
-    document.body.removeChild(tmp);
 
     const win = window.open("", "_blank");
     if (!win) return;
 
-    const cardsHtml = cards.map(({ p, url }) => {
+    const cardsHtml = elegidos.map(p => {
+      const url = `${window.location.origin}/ronda?token=${p.qr_token}`;
       const svg = svgPorPunto.get(p.id) || "";
       return `
         <div class="card">
@@ -419,34 +406,44 @@ function RondaDetalle({
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>QRs · ${ronda.nombre} (${cards.length})</title>
+  <title>QRs · ${ronda.nombre} (${elegidos.length})</title>
   <style>
     @page { size: letter; margin: 0.4in; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { background: #fff; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #fff;
+      width: 7.7in;
+      margin: 0 auto;
     }
     .grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
+      grid-template-columns: 3.7in 3.7in;
+      grid-auto-rows: 3.25in;
+      gap: 0.15in;
+      justify-content: center;
     }
     .card {
-      width: 100%;
+      width: 3.7in;
+      height: 3.25in;
       text-align: center;
       border: 2px dashed #6b7280;
       border-radius: 10px;
-      padding: 12px 10px;
+      padding: 0.12in 0.1in;
       page-break-inside: avoid;
       break-inside: avoid;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      overflow: hidden;
     }
     .cut-hint {
       font-size: 7px;
       color: #9ca3af;
       letter-spacing: 0.1em;
       text-transform: uppercase;
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
     .label {
       font-size: 8px;
@@ -457,29 +454,33 @@ function RondaDetalle({
       margin-bottom: 2px;
     }
     .ronda-name {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 800;
       color: #111827;
-      margin-bottom: 1px;
     }
     .punto-name {
       font-size: 11px;
       color: #374151;
       font-weight: 600;
+      margin-top: 1px;
     }
     .descripcion {
       font-size: 9px;
       color: #9ca3af;
-      margin-top: 2px;
+      margin-top: 1px;
     }
     .qr-wrap {
+      width: 1.7in;
+      height: 1.7in;
+      margin: 0.08in 0 0.05in;
       display: flex;
+      align-items: center;
       justify-content: center;
-      margin: 8px 0 6px;
     }
     .qr-wrap svg {
-      width: 165px;
-      height: 165px;
+      width: 100%;
+      height: 100%;
+      display: block;
     }
     .orden {
       font-size: 9px;
@@ -487,16 +488,17 @@ function RondaDetalle({
       font-weight: 600;
     }
     .url {
-      font-size: 7px;
+      font-size: 6px;
       color: #d1d5db;
       word-break: break-all;
       margin-top: 2px;
+      max-width: 100%;
     }
   </style>
 </head>
 <body>
   <div class="grid">${cardsHtml}</div>
-  <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 250); };<\/script>
+  <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 300); };<\/script>
 </body>
 </html>`);
     win.document.close();
