@@ -292,7 +292,9 @@ function PrintView({ punto, rondaNombre, onClose }: { punto: Punto; rondaNombre:
         </div>
 
         <div ref={svgRef} className="flex justify-center mb-4">
-          <QRCodeSVG value={url} size={220} level="H" includeMargin />
+          <div className="p-3 bg-white border-2 border-gray-900 rounded-lg shadow-sm">
+            <QRCodeSVG value={url} size={220} level="H" includeMargin />
+          </div>
         </div>
 
         <p className="text-center text-xs text-gray-400 mb-1">Punto #{punto.orden}</p>
