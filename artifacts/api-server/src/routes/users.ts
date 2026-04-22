@@ -78,8 +78,8 @@ usersRouter.post("/auth/change-password", async (req, res) => {
   if (!currentPassword || !newPassword) {
     return res.status(400).json({ error: "Contraseña actual y nueva son requeridas" });
   }
-  if (String(newPassword).length < 4) {
-    return res.status(400).json({ error: "La nueva contraseña debe tener al menos 4 caracteres" });
+  if (String(newPassword).length < 8) {
+    return res.status(400).json({ error: "La nueva contraseña debe tener al menos 8 caracteres" });
   }
 
   let session: { username?: string } | null = null;
