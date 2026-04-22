@@ -4461,6 +4461,16 @@ function FormModal({
   }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const formScrollRef = useRef<HTMLFormElement>(null);
+  const { toast } = useToast();
+
+  function showError(msg: string) {
+    setError(msg);
+    toast({ title: "No se pudo guardar", description: msg, variant: "destructive" });
+    requestAnimationFrame(() => {
+      formScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
 
   function set(field: keyof FormState, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -4468,15 +4478,15 @@ function FormModal({
 
   async function handleSubmit(ev: React.FormEvent) {
     ev.preventDefault();
-    if (!form.nombreCompleto.trim()) { setError("El nombre completo es requerido."); return; }
-    if (!form.dpi.trim()) { setError("El DPI es requerido."); return; }
+    if (!form.nombreCompleto.trim()) { showError("El nombre completo es requerido."); return; }
+    if (!form.dpi.trim()) { showError("El DPI es requerido."); return; }
     setSaving(true);
     setError(null);
     try {
       await onSave(form);
       onClose();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Error al guardar");
+      showError(e instanceof Error ? e.message : "Error al guardar");
     } finally {
       setSaving(false);
     }
@@ -4507,7 +4517,7 @@ function FormModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+        <form ref={formScrollRef} onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
           {error && (
             <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-xs text-red-400">
               {error}
