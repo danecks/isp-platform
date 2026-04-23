@@ -19,6 +19,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { generarContratoLaboral, cargarPatronoDesdeConfig, type DatosContratoLaboral } from "@/lib/pdfRrhh";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
+import DescansoSemanalEditor from "../components/DescansoSemanalEditor";
 
 const API_BASE = "/api";
 
@@ -4701,6 +4702,14 @@ function FormModal({
               </select>
             </div>
           </div>
+
+          {emp?.id ? (
+            <DescansoSemanalEditor employeeId={emp.id} diaDescansoDefault={form.diaDescanso} />
+          ) : (
+            <p className="text-[10px] text-white/30 italic">
+              Guarda primero al colaborador para configurar descansos por semana.
+            </p>
+          )}
 
           {/* Banco / cuenta / forma de pago */}
           <p className="text-[10px] text-white/30 uppercase tracking-widest pt-2">Banco y forma de pago</p>

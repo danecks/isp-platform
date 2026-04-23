@@ -68,11 +68,30 @@ export interface EstadoCiclo {
  * @param fecha             Fecha a consultar (YYYY-MM-DD)
  * @param diaDescanso       Día de descanso semanal (para turnos diarios: 12h, 8h)
  */
+/**
+ * Resuelve el día de descanso efectivo para una fecha dada.
+ * Si hay un override registrado para la semana (lunes-domingo) que contiene esa fecha,
+ * se usa ese override. Si no, se usa el `diaDescansoDefault` del empleado.
+ */
+export function resolverDiaDescanso(
+  fecha: string,
+  diaDescansoDefault?: string | null,
+  descansoOverrides?: Record<string, string> | null,
+): string | null {
+  if (descansoOverrides && Object.keys(descansoOverrides).length > 0) {
+    const lunes = getLunesISO(fecha);
+    const ov = descansoOverrides[lunes];
+    if (ov) return ov;
+  }
+  return diaDescansoDefault ?? null;
+}
+
 export function calcularEstadoCiclo(
   turno: Turno,
   fechaInicioCiclo: string | Date | null,
   fecha: string,
   diaDescanso?: string | null,
+  descansoOverrides?: Record<string, string> | null,
 ): EstadoCiclo {
   const ht = parseFloat(String(turno.horas_trabajo ?? 0));
   const hd = parseFloat(String(turno.horas_descanso ?? 0));
@@ -101,12 +120,14 @@ export function calcularEstadoCiclo(
   }
 
   // ── Turnos diarios (ciclo ≤ 24h): 8h y similares ──────────────────────────
-  // El agente trabaja todos los días. El descanso semanal se controla por dia_descanso.
+  // El agente trabaja todos los días. El descanso semanal se controla por dia_descanso,
+  // con posibles overrides por semana via descansoOverrides.
   const ciclo = ht + hd;
   if (ciclo <= 24) {
-    if (diaDescanso) {
+    const diaDescansoEfectivo = resolverDiaDescanso(fecha, diaDescanso, descansoOverrides);
+    if (diaDescansoEfectivo) {
       const diaSemana = getDiaSemana(fecha);
-      if (diaSemana === normalizarDia(diaDescanso)) {
+      if (diaSemana === normalizarDia(diaDescansoEfectivo)) {
         return {
           trabaja: false,
           horasEsperadas: 0,
@@ -424,8 +445,9 @@ export function calcularJornadaEsperada(
   fechaInicioCiclo: string | null,
   fecha: string,
   diaDescanso?: string | null,
+  descansoOverrides?: Record<string, string> | null,
 ): { trabajaEseDia: boolean; horasEsperadas: number } {
-  const estado = calcularEstadoCiclo(turno, fechaInicioCiclo, fecha, diaDescanso);
+  const estado = calcularEstadoCiclo(turno, fechaInicioCiclo, fecha, diaDescanso, descansoOverrides);
   return { trabajaEseDia: estado.trabaja, horasEsperadas: estado.horasEsperadas };
 }
 
@@ -438,6 +460,7 @@ export function calcularHorasEsperadasPeriodo(
   desde: string,
   hasta: string,
   diaDescanso?: string | null,
+  descansoOverrides?: Record<string, string> | null,
 ): { horasEsperadas: number; diasTrabajo: number; diasDescanso: number } {
   const diasPeriodo = getDiasPeriodo(desde, hasta);
   let horasEsperadas = 0;
@@ -446,7 +469,7 @@ export function calcularHorasEsperadasPeriodo(
 
   for (const fecha of diasPeriodo) {
     const { trabaja, horasEsperadas: h } = calcularEstadoCiclo(
-      turno, fechaInicioCiclo, fecha, diaDescanso
+      turno, fechaInicioCiclo, fecha, diaDescanso, descansoOverrides
     );
     if (trabaja) {
       horasEsperadas += h;
@@ -474,6 +497,21 @@ function getDiaSemana(isoDate: string): string {
   const d = parseFecha(isoDate);
   const nombres = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
   return nombres[d.getUTCDay()];
+}
+
+/**
+ * getLunesISO — Devuelve el lunes (YYYY-MM-DD) de la semana ISO
+ * que contiene la fecha dada. La semana se considera Lunes-Domingo.
+ */
+export function getLunesISO(isoDate: string): string {
+  const d = parseFecha(isoDate);
+  const jsDay = d.getUTCDay(); // 0=Dom, 1=Lun, ..., 6=Sab
+  const offsetAlLunes = (jsDay + 6) % 7; // Lun=0, Mar=1, ..., Dom=6
+  d.setUTCDate(d.getUTCDate() - offsetAlLunes);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function getDiasPeriodo(desde: string, hasta: string): string[] {

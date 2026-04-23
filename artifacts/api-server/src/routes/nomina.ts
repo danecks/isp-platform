@@ -15,9 +15,30 @@
 import { Router } from "express";
 import { pool, todayGT } from "@workspace/db";
 import { logger } from "../lib/logger";
-import { calcularJornadaEsperada } from "../lib/turno-calc";
+import { calcularJornadaEsperada, getLunesISO } from "../lib/turno-calc";
 
 export const nominaRouter = Router();
+
+/**
+ * Devuelve un mapa { lunesISO -> dia_descanso } con el override de descanso
+ * de la semana que contiene `fecha`, si existe. Retorna {} si no hay override.
+ * Usado para que la planilla honre descansos que rotan semana a semana.
+ */
+async function fetchDescansoOverride(employeeId: number, fecha: string): Promise<Record<string, string>> {
+  try {
+    const lunes = getLunesISO(fecha);
+    const { rows } = await pool.query(
+      `SELECT to_char(semana_inicio, 'YYYY-MM-DD') AS semana, dia_descanso
+         FROM employee_descanso_semanal
+         WHERE employee_id = $1 AND semana_inicio = $2::date`,
+      [employeeId, lunes]
+    );
+    if (rows.length === 0) return {};
+    return { [rows[0].semana]: rows[0].dia_descanso };
+  } catch {
+    return {};
+  }
+}
 
 // ─── Helper: generar novedades para una fecha ────────────────────────────────
 /**
@@ -548,11 +569,13 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
           horas_descanso: Number(t.horas_descanso),
           ciclo_horas: Number(t.ciclo_horas),
         };
+        const _ovT = await fetchDescansoOverride(Number(t.employee_id), fecha);
         const { trabajaEseDia } = calcularJornadaEsperada(
           turnoObj,
           t.fecha_inicio_ciclo ?? null,
           fecha,
           t.dia_descanso ?? null,
+          _ovT,
         );
         if (!trabajaEseDia) {
           // No es una falta: hoy le toca descanso según su ciclo de turno.
@@ -694,11 +717,13 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
             horas_descanso: Number(tit.horas_descanso),
             ciclo_horas: Number(tit.ciclo_horas),
           };
+          const _ovTit = await fetchDescansoOverride(Number(tit.employee_id), fecha);
           const { trabajaEseDia } = calcularJornadaEsperada(
             turnoObj,
             tit.fecha_inicio_ciclo ?? null,
             fecha,
             tit.dia_descanso ?? null,
+            _ovTit,
           );
           esDescanso = !trabajaEseDia;
         }
@@ -907,11 +932,13 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
           horas_descanso: Number(cd.turno_descanso),
           ciclo_horas: Number(cd.turno_horas) + Number(cd.turno_descanso),
         };
+        const _ovCd = await fetchDescansoOverride(Number(cd.employee_id), fecha);
         const { trabajaEseDia } = calcularJornadaEsperada(
           turnoObj,
           cd.fecha_inicio_ciclo ?? null,
           fecha,
           cd.dia_descanso ?? null,
+          _ovCd,
         );
 
         if (!trabajaEseDia) {
@@ -1068,11 +1095,13 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
           horas_descanso: parseFloat(nv.horas_descanso ?? 0),
           ciclo_horas: parseFloat(nv.ciclo_horas ?? nv.horas_trabajo ?? 0),
         };
+        const _ovNv = await fetchDescansoOverride(Number(nv.employee_id), fecha);
         const { trabajaEseDia, horasEsperadas } = calcularJornadaEsperada(
           turno,
           nv.fecha_inicio_ciclo ? String(nv.fecha_inicio_ciclo).slice(0, 10) : null,
           fecha,
           nv.dia_descanso ?? null,
+          _ovNv,
         );
         await pool.query(`
           UPDATE novedades_nomina_diarias SET

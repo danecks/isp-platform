@@ -1555,6 +1555,27 @@ Por favor ingresa al sistema o responde para continuar.',
     await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS tipo_jornada   VARCHAR(20)`);
     await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS dia_descanso   VARCHAR(20)`);
     await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS horas_contrato SMALLINT`);
+
+    // Tabla de overrides de día de descanso por semana
+    // semana_inicio = LUNES de la semana (date) — se normaliza al insertar
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS employee_descanso_semanal (
+        id              SERIAL PRIMARY KEY,
+        employee_id     INTEGER     NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        semana_inicio   DATE        NOT NULL,
+        dia_descanso    VARCHAR(20) NOT NULL,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_emp_descanso_semanal
+        ON employee_descanso_semanal(employee_id, semana_inicio)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_emp_descanso_semanal_semana
+        ON employee_descanso_semanal(semana_inicio)
+    `);
     logger.info("Auto-migrate: P-NOM-01 campos laborales en employees verificados");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: P-NOM-01 employees laborales — error (no bloqueante)");
