@@ -27,6 +27,9 @@ interface PdfOptions {
   hasta?: string;
   cliente?: string;
   preparedBy?: string;
+  /** Fecha que aparece junto a "Emitido:" en el encabezado. Si no se
+   *  pasa, se usa la fecha de hoy. Acepta YYYY-MM-DD o ISO. */
+  fechaEmision?: string;
 }
 
 interface ResumenCard {
@@ -146,8 +149,19 @@ export class IspPdf {
       doc.text(this.opts.subtitulo, this.pageWidth - this.marginR, 21.5, { align: "right" });
     }
 
-    // Fecha de emisión
-    const fechaEmision = new Date().toLocaleDateString("es-GT", {
+    // Fecha de emisión (puede ser sobrescrita por opciones)
+    const fechaBase = this.opts.fechaEmision
+      ? (() => {
+          const s = this.opts.fechaEmision!;
+          // Soporta YYYY-MM-DD parseado en local (no UTC).
+          if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+            const [y, m, d] = s.split("-").map(Number);
+            return new Date(y, m - 1, d);
+          }
+          return new Date(s);
+        })()
+      : new Date();
+    const fechaEmision = fechaBase.toLocaleDateString("es-GT", {
       day: "2-digit", month: "long", year: "numeric",
     });
     doc.setFontSize(7.5);

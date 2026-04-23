@@ -873,6 +873,9 @@ export async function generarContratoLaboral(datos: DatosContratoLaboral): Promi
       ? "Por tiempo indefinido — con período de prueba"
       : "Por tiempo indefinido — post período de prueba",
     preparedBy: "Departamento de Recursos Humanos",
+    // El "Emitido:" del encabezado refleja la fecha de inicio del contrato,
+    // no la fecha real de impresión.
+    fechaEmision: datos.fecha_inicio,
   });
 
   await pdf.build();
