@@ -572,13 +572,20 @@ custodiasRouter.get("/custodias/cliente/:id/hoja-imprimible", async (req, res) =
         arm.marca AS arma_marca,
         arm.serie AS arma_serie,
         arm.tipo AS arma_tipo,
-        COALESCE(pm.cantidad_actual, 0) AS municion
+        COALESCE(pm.cantidad_asignada, 0) AS municion
       FROM custodia_asignacion_diaria cad
       JOIN employees e ON e.id = cad.employee_id
-      LEFT JOIN armas arm ON arm.empleado_id = e.id AND arm.activo = TRUE
-      LEFT JOIN puesto_municion pm ON pm.arma_id = arm.id
+      LEFT JOIN arma_custodia ac
+             ON ac.employee_id = e.id
+            AND ac.fecha_fin IS NULL
+      LEFT JOIN armas arm
+             ON arm.id = ac.arma_id
+            AND arm.activo = TRUE
+      LEFT JOIN puesto_municion pm
+             ON pm.puesto_id = arm.puesto_id
+            AND pm.activo = TRUE
       WHERE cad.cliente_id = $1 AND cad.fecha = $2::date
-      ORDER BY e.nombre_completo
+      ORDER BY cad.slot_numero, e.nombre_completo
     `, [clienteId, fecha]);
 
     const cliente = clienteRows[0];
