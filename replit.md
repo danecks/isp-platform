@@ -20,6 +20,18 @@ Key capabilities include:
 ## User Preferences
 I prefer simple language. I want iterative development. Ask before making major changes. Do not make changes to the `lib/api-spec` folder. Do not make changes to the `orval.config.ts` file.
 
+## Documentación oficial — REGLA OBLIGATORIA
+La documentación del proyecto vive en `/docs/` (5 archivos `.md`: README, manual de usuario, documentación técnica, procedimientos operativos, diccionario de datos) y se publica en el panel admin en `/admin/documentacion` (solo rol admin). El endpoint backend es `GET /api/docs` y `GET /api/docs/:slug`.
+
+**Cada vez que se haga un cambio significativo al sistema** (nuevo módulo, nuevo endpoint, nueva tabla en BD, cambio de flujo operativo, refactor que mueva código, nueva regla de negocio, cambio de permisos, etc.) **se DEBE actualizar el documento correspondiente en `/docs/`**:
+- `01-manual-usuario.md` → cambios visibles para el usuario final (UI, nuevas pantallas, nuevos botones, flujos operativos).
+- `02-documentacion-tecnica.md` → cambios de arquitectura, endpoints, archivos importantes, helpers, dependencias.
+- `03-procedimientos-operativos.md` → cambios en cómo se hacen las cosas día a día (cierre, sustitución, falta, etc.).
+- `04-diccionario-datos.md` → cualquier nueva tabla o columna en Postgres.
+- `README.md` → solo si cambia la estructura general de la documentación.
+
+No se considera completo un cambio hasta que la documentación correspondiente esté actualizada.
+
 ## System Architecture
 
 ### Monorepo Structure

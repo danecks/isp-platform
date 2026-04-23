@@ -79,6 +79,7 @@ import AdminKioscoSolicitudes from "@/admin/pages/KioscoSolicitudes";
 import AdminKioscoSolicitudImprimible from "@/admin/pages/KioscoSolicitudImprimible";
 import AdminMergeRequests from "@/admin/pages/MergeRequests";
 import AdminModeloDatos from "@/admin/pages/ModeloDatos";
+import AdminDocumentacion from "@/admin/pages/Documentacion";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
@@ -182,6 +183,9 @@ function Router() {
       </Route>
       <Route path="/admin/usuarios">
         {() => <AuthGuard requiredRoles={["admin"]}><AdminUsuarios /></AuthGuard>}
+      </Route>
+      <Route path="/admin/documentacion">
+        {() => <AuthGuard requiredRoles={["admin"]}><AdminDocumentacion /></AuthGuard>}
       </Route>
       <Route path="/admin/modelo-datos">
         {() => <AuthGuard requiredRoles={["admin"]}><AdminModeloDatos /></AuthGuard>}

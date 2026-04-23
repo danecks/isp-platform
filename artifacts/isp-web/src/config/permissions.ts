@@ -378,6 +378,13 @@ export const NAV_SECTIONS: NavSection[] = [
         clave: "modelo_datos",
         roles: ["admin"],
       },
+      {
+        path: "/admin/documentacion",
+        label: "Documentación",
+        icon: BookOpen,
+        clave: "documentacion",
+        roles: ["admin"],
+      },
     ],
   },
 
