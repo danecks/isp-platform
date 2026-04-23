@@ -25,6 +25,66 @@ function kioskoUrl(): string {
   return `${base}/kiosko`;
 }
 
+// Crea una incidencia desde un reporte público enviado por WhatsApp con el
+// marcador `[ISP-CARNET:<token>]`. Resuelve el agente vía qr_token, enriquece
+// con el puesto actual y guarda en `incidents` con origen='carnet_publico_wa'.
+async function crearIncidenciaDesdeCarnet(args: {
+  token: string;
+  descripcion: string;
+  telefonoReporte: string;
+  nombreReporte: string;
+}): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const { rows: tkRows } = await pool.query(
+    `SELECT aqt.employee_id, aqt.activo, e.nombre_completo, e.puesto AS cargo
+     FROM agente_qr_tokens aqt
+     JOIN employees e ON e.id = aqt.employee_id
+     WHERE aqt.qr_token = $1`,
+    [args.token]
+  );
+  if (!tkRows[0]) return { ok: false, error: "Carnet no reconocido." };
+  if (!tkRows[0].activo) return { ok: false, error: "Carnet desactivado." };
+
+  const emp = tkRows[0];
+
+  const { rows: poRows } = await pool.query(
+    `SELECT id, nombre, cliente_nombre, cliente_id, sede_id
+     FROM puestos_operativos
+     WHERE agente_id = $1 AND estado = 'cubierto'
+     LIMIT 1`,
+    [emp.employee_id]
+  );
+  const puesto = poRows[0] ?? null;
+
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, "0");
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const yy = String(now.getFullYear()).slice(2);
+  const rand = Math.floor(Math.random() * 9000) + 1000;
+  const id = `INC-${yy}${mm}${dd}-${rand}`;
+
+  await pool.query(
+    `INSERT INTO incidents
+       (id, origen, cliente, ubicacion, tipo, prioridad, estado,
+        responsable, descripcion, es_emergencia, reportado_por,
+        puesto_id, client_id, sede_id, responsable_id)
+     VALUES ($1, 'carnet_publico_wa', $2, $3, 'Reporte ciudadano sobre agente',
+             'media', 'abierta', 'Sin asignar', $4, false, $5, $6, $7, $8, $9)`,
+    [
+      id,
+      puesto?.cliente_nombre ?? "—",
+      puesto?.nombre ?? "Vía pública / sin puesto asignado",
+      `Reporte sobre el agente ${emp.nombre_completo}${emp.cargo ? ` (${emp.cargo})` : ""}.\n\n${args.descripcion}`,
+      `${args.nombreReporte} (WhatsApp ${args.telefonoReporte})`,
+      puesto?.id ?? null,
+      puesto?.cliente_id ?? null,
+      puesto?.sede_id ?? null,
+      emp.employee_id,
+    ]
+  );
+
+  return { ok: true, id };
+}
+
 const router = Router();
 
 interface WaContact {
@@ -387,6 +447,37 @@ router.post("/webhooks/whatsapp", async (req, res) => {
 
           // Acuse visual: marcar como leído (los dos chequecitos azules en WA).
           marcarLeidoWA(msg.id).catch(() => {});
+
+          // ── Reporte público desde un carnet QR ────────────────────────
+          // Si el mensaje viene del botón "Reportar por WhatsApp" de la
+          // tarjeta pública del carnet, contiene el marcador
+          // [ISP-CARNET:<token>] al inicio. Lo procesamos aquí (sin pasar
+          // por el bot de sesiones) para que cualquier ciudadano pueda
+          // reportar sin estar registrado en el sistema.
+          const carnetMatch = texto.match(/^\s*\[ISP-CARNET:([A-Za-z0-9-]+)\]\s*([\s\S]*)$/);
+          if (carnetMatch) {
+            const [, tokenCarnet, restoMensaje] = carnetMatch;
+            const descripcion = restoMensaje.trim() || "(sin descripción adicional)";
+            try {
+              const incRes = await crearIncidenciaDesdeCarnet({
+                token: tokenCarnet,
+                descripcion,
+                telefonoReporte: telefono,
+                nombreReporte: nombre,
+              });
+              const reply = incRes.ok
+                ? `✅ Recibido. Su reporte fue registrado con el ID *${incRes.id}*. Un supervisor ISP lo atenderá. Gracias.`
+                : `⚠️ No pudimos registrar el reporte: ${incRes.error}`;
+              await enviarTextoWA(telefono, reply);
+            } catch (errCar) {
+              console.error("[WA-Webhook] Error en reporte público:", errCar);
+              await enviarTextoWA(
+                telefono,
+                "⚠️ No pudimos registrar el reporte por un error interno. Llame directamente a ISP."
+              );
+            }
+            continue; // no pasar al bot
+          }
 
           const result = await handleIncomingMessage(nombre, telefono, texto, msg.id);
           console.log(`[WA-Webhook] Procesado → tipo=${result.tipo}, id=${result.id ?? "sesion"}`);

@@ -447,6 +447,90 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
   }
 });
 
+// POST /api/agente/scan/:token/incidencia — reporte público desde el carnet
+// Cualquier ciudadano que escanee el QR puede enviar un reporte sobre el agente.
+// No requiere autenticación. Crea una entrada en la tabla `incidents` marcada
+// como `origen='carnet_publico'` para que el equipo ISP la atienda.
+agenteFichajeRouter.post("/agente/scan/:token/incidencia", async (req, res) => {
+  const { token } = req.params;
+  const descripcion = String(req.body?.descripcion ?? "").trim();
+  const telefonoReporte = String(req.body?.telefono_reporte ?? "").trim();
+
+  if (descripcion.length < 5) {
+    return res.status(400).json({ error: "La descripción es muy corta (mínimo 5 caracteres)." });
+  }
+  if (descripcion.length > 2000) {
+    return res.status(400).json({ error: "La descripción es muy larga (máximo 2000 caracteres)." });
+  }
+
+  try {
+    const { rows: tkRows } = await pool.query(
+      `SELECT aqt.employee_id, aqt.activo,
+              e.nombre_completo, e.puesto AS cargo
+       FROM agente_qr_tokens aqt
+       JOIN employees e ON e.id = aqt.employee_id
+       WHERE aqt.qr_token = $1`,
+      [token]
+    );
+    if (!tkRows[0]) return res.status(404).json({ error: "QR no válido" });
+    if (!tkRows[0].activo) return res.status(403).json({ error: "Token desactivado" });
+
+    const emp = tkRows[0];
+
+    // Buscar puesto y cliente actual del agente (para enriquecer la incidencia)
+    const { rows: poRows } = await pool.query(
+      `SELECT id, nombre, cliente_nombre, cliente_id, sede_id
+       FROM puestos_operativos
+       WHERE agente_id = $1 AND estado = 'cubierto'
+       LIMIT 1`,
+      [emp.employee_id]
+    );
+    const puesto = poRows[0] ?? null;
+
+    // Generar id legible: INC-YYMMDD-NNNN
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, "0");
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const yy = String(now.getFullYear()).slice(2);
+    const rand = Math.floor(Math.random() * 9000) + 1000;
+    const id = `INC-${yy}${mm}${dd}-${rand}`;
+
+    const reportadoPor = telefonoReporte
+      ? `Ciudadano (tel: ${telefonoReporte})`
+      : "Ciudadano (anónimo, vía carnet QR)";
+
+    await pool.query(
+      `INSERT INTO incidents
+         (id, origen, cliente, ubicacion, tipo, prioridad, estado,
+          responsable, descripcion, es_emergencia, reportado_por,
+          puesto_id, client_id, sede_id, responsable_id)
+       VALUES ($1, 'carnet_publico', $2, $3, 'Reporte ciudadano sobre agente',
+               'media', 'abierta', 'Sin asignar', $4, false, $5, $6, $7, $8, $9)`,
+      [
+        id,
+        puesto?.cliente_nombre ?? "—",
+        puesto?.nombre ?? "Vía pública / sin puesto asignado",
+        `Reporte sobre el agente ${emp.nombre_completo}${emp.cargo ? ` (${emp.cargo})` : ""}.\n\n${descripcion}`,
+        reportadoPor,
+        puesto?.id ?? null,
+        puesto?.cliente_id ?? null,
+        puesto?.sede_id ?? null,
+        emp.employee_id,
+      ]
+    );
+
+    logger.info(
+      { id, employee_id: emp.employee_id, telefonoReporte: telefonoReporte || null },
+      "agente/scan: incidencia pública creada"
+    );
+
+    res.status(201).json({ ok: true, id });
+  } catch (err) {
+    logger.error({ err }, "agente/scan/incidencia: error");
+    res.status(500).json({ error: "No se pudo registrar la incidencia. Intente más tarde." });
+  }
+});
+
 // GET /api/agente/puesto-del-dia — modo kiosco: teléfono vinculado a un puesto
 // devuelve la info del puesto + lista de agentes que deben trabajar hoy + quién ya inició turno.
 agenteFichajeRouter.get("/agente/puesto-del-dia", async (req, res) => {

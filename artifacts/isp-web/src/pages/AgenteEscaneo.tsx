@@ -3,7 +3,7 @@ import {
   CheckCircle, XCircle, Loader2, MapPin, AlertTriangle,
   QrCode, ShieldAlert, Star, ClipboardCheck, UserCheck, Smartphone,
   Footprints, ChevronRight, RotateCcw, Clock, Bell, Users, Package,
-  Calendar, Phone, BadgeCheck,
+  Calendar, Phone, BadgeCheck, MessageCircle, Send, FileText,
 } from "lucide-react";
 
 const API = "/api";
@@ -257,10 +257,47 @@ function BriefingPanel({ info }: { info: AgenteInfo }) {
 function CarnetPublico({
   info,
   mensajeError,
+  token,
 }: {
   info: AgenteInfo | null;
   mensajeError: string;
+  token: string | null;
 }) {
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [descripcion, setDescripcion] = useState("");
+  const [telReporte, setTelReporte] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [enviadoOk, setEnviadoOk] = useState<string | null>(null);
+  const [enviadoErr, setEnviadoErr] = useState<string | null>(null);
+
+  async function enviarIncidencia() {
+    if (!token) return;
+    if (descripcion.trim().length < 5) {
+      setEnviadoErr("Por favor describa qué desea reportar (mínimo 5 caracteres).");
+      return;
+    }
+    setEnviando(true);
+    setEnviadoErr(null);
+    try {
+      const res = await fetch(`${API}/agente/scan/${token}/incidencia`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          descripcion: descripcion.trim(),
+          telefono_reporte: telReporte.trim() || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Error al enviar el reporte.");
+      setEnviadoOk(data.id || "OK");
+      setDescripcion("");
+      setTelReporte("");
+    } catch (e) {
+      setEnviadoErr(e instanceof Error ? e.message : "No se pudo enviar el reporte.");
+    } finally {
+      setEnviando(false);
+    }
+  }
   function formatDesde(iso: string | null): string {
     if (!iso) return "—";
     const [y, m] = iso.split("-").map(Number);
@@ -392,6 +429,105 @@ function CarnetPublico({
             <p className="text-emerald-200/70 text-[10px] mt-0.5">Toca para llamar</p>
           </div>
         </a>
+      )}
+
+      {/* ── REPORTAR INCIDENCIA ──────────────────────────────────────── */}
+      {token && (
+        <div className="mx-5 mb-5 border-t border-white/10 pt-4">
+          <p className="text-amber-200/80 text-[10px] uppercase tracking-widest font-bold text-center mb-3">
+            ¿Algo que reportar sobre este agente?
+          </p>
+
+          {enviadoOk ? (
+            <div className="bg-emerald-500/15 border border-emerald-400/40 rounded-xl px-4 py-4 text-center">
+              <CheckCircle className="w-8 h-8 text-emerald-300 mx-auto mb-2" />
+              <p className="text-white text-sm font-semibold">Reporte enviado</p>
+              <p className="text-emerald-200/80 text-xs mt-1">
+                ID: <span className="font-mono">{enviadoOk}</span>
+              </p>
+              <p className="text-white/50 text-[11px] mt-2">
+                Un supervisor ISP atenderá su reporte. Gracias.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Dos botones lado a lado */}
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <button
+                  type="button"
+                  onClick={() => { setMostrarForm(v => !v); setEnviadoErr(null); }}
+                  className="bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/40 rounded-xl px-3 py-3 flex flex-col items-center gap-1 transition-colors"
+                >
+                  <FileText className="w-5 h-5 text-amber-300" />
+                  <span className="text-white text-[11px] font-semibold leading-tight">
+                    {mostrarForm ? "Cerrar formulario" : "Reportar aquí"}
+                  </span>
+                </button>
+
+                {/* WhatsApp */}
+                {info.telefono_empresa ? (
+                  <a
+                    href={`https://wa.me/${info.telefono_empresa.replace(/[^\d+]/g, "").replace(/^\+/, "")}?text=${encodeURIComponent(`[ISP-CARNET:${token}]\nQuiero reportar lo siguiente sobre el agente ${info.nombre_completo}:\n\n`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/40 rounded-xl px-3 py-3 flex flex-col items-center gap-1 transition-colors"
+                  >
+                    <MessageCircle className="w-5 h-5 text-emerald-300" />
+                    <span className="text-white text-[11px] font-semibold leading-tight">
+                      Por WhatsApp
+                    </span>
+                  </a>
+                ) : (
+                  <div className="bg-white/[0.03] border border-white/10 rounded-xl px-3 py-3 flex flex-col items-center gap-1 opacity-50">
+                    <MessageCircle className="w-5 h-5 text-white/30" />
+                    <span className="text-white/40 text-[11px] leading-tight text-center">
+                      WhatsApp no disponible
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Formulario expandible */}
+              {mostrarForm && (
+                <div className="bg-white/[0.04] border border-white/10 rounded-xl p-3 space-y-2">
+                  <textarea
+                    value={descripcion}
+                    onChange={e => setDescripcion(e.target.value)}
+                    placeholder="Describa lo que desea reportar (ej. incidente, comportamiento, observación)..."
+                    rows={4}
+                    maxLength={2000}
+                    className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-amber-400/50"
+                  />
+                  <input
+                    type="tel"
+                    value={telReporte}
+                    onChange={e => setTelReporte(e.target.value)}
+                    placeholder="Su teléfono (opcional, para que ISP le contacte)"
+                    maxLength={30}
+                    className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-amber-400/50"
+                  />
+                  {enviadoErr && (
+                    <p className="text-red-400 text-xs flex items-center gap-1">
+                      <AlertTriangle className="w-3.5 h-3.5" /> {enviadoErr}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    disabled={enviando}
+                    onClick={enviarIncidencia}
+                    className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-[#0a1a3d] font-bold rounded-lg px-4 py-2.5 flex items-center justify-center gap-2 transition-colors"
+                  >
+                    {enviando ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" /> Enviando...</>
+                    ) : (
+                      <><Send className="w-4 h-4" /> Enviar reporte</>
+                    )}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       )}
 
       {/* Pie informativo */}
@@ -1150,6 +1286,7 @@ export default function AgenteEscaneo() {
           <CarnetPublico
             info={agenteInfo}
             mensajeError={mensajeError}
+            token={token}
           />
         )}
 
