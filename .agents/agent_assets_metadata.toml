@@ -53,3 +53,33 @@ id = "cfbrhXSvUNKm8VUJP_bs_"
 uri = "file://attached_assets/exports/qr-kiosco.png"
 type = "image"
 title = "QR de acceso al Kiosko de Solicitud de Empleo (ispsa.net/kiosco)"
+
+[[outputs]]
+id = "UyMm3nrjW5YQYr-ASLw4g"
+uri = "file://docs/README.md"
+type = "text"
+title = "Índice general de documentación"
+
+[[outputs]]
+id = "W3Xh2p-Siauiw2Jvmmjuo"
+uri = "file://docs/01-manual-usuario.md"
+type = "text"
+title = "1. Manual de Usuario por Módulo"
+
+[[outputs]]
+id = "uQJno1ukhbEemnd-jy8Oo"
+uri = "file://docs/02-documentacion-tecnica.md"
+type = "text"
+title = "2. Documentación Técnica"
+
+[[outputs]]
+id = "h1ncNnN1qMDb9KADC6oKg"
+uri = "file://docs/03-procedimientos-operativos.md"
+type = "text"
+title = "3. Procedimientos Operativos"
+
+[[outputs]]
+id = "X3WFhnNGJnKtDrKQ6dhjh"
+uri = "file://docs/04-diccionario-datos.md"
+type = "text"
+title = "4. Diccionario de Datos"
