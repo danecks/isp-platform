@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, Component, type ReactNode, type ErrorInfo } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Map, Plus, Edit3, Trash2, X, Loader2, Users, Building2,
+  Map as MapIcon, Plus, Edit3, Trash2, X, Loader2, Users, Building2,
   Shield, ChevronLeft, ChevronDown, ChevronRight,
   User, CheckCircle2, AlertCircle, RefreshCw, MapPin,
   Save, Layers, Power,
@@ -14,6 +14,58 @@ import { useLocation } from "wouter";
 const API = "/api";
 const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
 const h = () => ({ "x-isp-session": getSession(), "Content-Type": "application/json" });
+
+// Helper: garantiza que la respuesta sea siempre un array (defensa contra
+// errores del backend que devuelven { error: ... } en lugar de [] y harían
+// crashear los .map() / .filter() del componente).
+async function fetchArray<T>(url: string): Promise<T[]> {
+  const r = await fetch(url);
+  let json: unknown = [];
+  try { json = await r.json(); } catch { json = []; }
+  return Array.isArray(json) ? (json as T[]) : [];
+}
+
+// Error boundary local: si algo crashea en runtime, mostramos el error
+// en pantalla en vez de quedar en blanco — así podemos diagnosticar prod.
+class ZonasErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    // Log a consola del navegador para diagnóstico
+    console.error("[ZonasOperativas] crash:", error, info);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="p-6 max-w-3xl mx-auto">
+          <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-5">
+            <div className="flex items-start gap-3 mb-3">
+              <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+              <div>
+                <h2 className="text-sm font-bold text-red-300">Error al cargar Zonas Operativas</h2>
+                <p className="text-xs text-red-300/70 mt-1">
+                  Ocurrió un problema al desplegar la página. Intenta recargar (Ctrl+F5).
+                  Si persiste, comparte este detalle con soporte:
+                </p>
+              </div>
+            </div>
+            <pre className="text-[11px] text-red-200/80 bg-black/30 rounded-lg p-3 overflow-auto max-h-64 whitespace-pre-wrap">
+              {this.state.error.message}
+              {this.state.error.stack ? "\n\n" + this.state.error.stack : ""}
+            </pre>
+            <button
+              onClick={() => { this.setState({ error: null }); location.reload(); }}
+              className="mt-3 text-xs text-white bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-xl px-3 py-2"
+            >
+              Recargar página
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -99,8 +151,7 @@ function ModalZona({
   // Lista filtrada: solo supervisores, jefes de servicio o administración.
   const { data: empleadosSup = [], isLoading: cargandoSup } = useQuery<Empleado[]>({
     queryKey: ["empleados-supervisores"],
-    queryFn: () =>
-      fetch(`${API}/operaciones/zonas/empleados-supervisores`).then((r) => r.json()),
+    queryFn: () => fetchArray<Empleado>(`${API}/operaciones/zonas/empleados-supervisores`),
   });
 
   const empleadosMap = new Map(empleadosSup.map((e) => [e.id, e] as const));
@@ -140,7 +191,7 @@ function ModalZona({
       <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/8 bg-[#0a1525]">
           <div className="flex items-center gap-2">
-            <Map className="w-4 h-4 text-primary" />
+            <MapIcon className="w-4 h-4 text-primary" />
             <h3 className="text-sm font-bold text-white">
               {zona ? "Editar zona operativa" : "Nueva zona operativa"}
             </h3>
@@ -467,7 +518,7 @@ function ZonaCard({
       {/* Header */}
       <div className="px-4 pt-4 pb-3 flex items-start gap-3">
         <div className="w-8 h-8 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center shrink-0">
-          <Map className="w-4 h-4 text-primary" />
+          <MapIcon className="w-4 h-4 text-primary" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -598,7 +649,7 @@ function ModalDetalle({
       <div className="bg-[#07111f] border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/8 bg-[#0a1525] shrink-0">
           <div className="flex items-center gap-2">
-            <Map className="w-4 h-4 text-primary" />
+            <MapIcon className="w-4 h-4 text-primary" />
             <h3 className="text-sm font-bold text-white">{zona?.nombre ?? "Cargando…"}</h3>
           </div>
           <button onClick={onClose} className="text-white/30 hover:text-white transition-colors">
@@ -695,13 +746,21 @@ export default function ZonasOperativas() {
 
   const { data: zonas = [], isLoading } = useQuery<Zona[]>({
     queryKey: ["operaciones-zonas"],
-    queryFn: () => fetch(`${API}/operaciones/zonas`).then((r) => r.json()),
+    queryFn: async () => {
+      const arr = await fetchArray<Zona>(`${API}/operaciones/zonas`);
+      // Normalizamos: garantiza que `supervisores` siempre sea array
+      // (defensa por si el backend devuelve null en lugar de []).
+      return arr.map((z) => ({
+        ...z,
+        supervisores: Array.isArray(z?.supervisores) ? z.supervisores : [],
+      }));
+    },
     refetchInterval: 30_000,
   });
 
   const { data: todosPuestos = [], refetch: refetchPuestos } = useQuery<PuestoAll[]>({
     queryKey: ["todos-puestos"],
-    queryFn: () => fetch(`${API}/operaciones/todos-puestos`).then((r) => r.json()),
+    queryFn: () => fetchArray<PuestoAll>(`${API}/operaciones/todos-puestos`),
     enabled: !!asignarZona,
   });
 
@@ -749,6 +808,7 @@ export default function ZonasOperativas() {
 
   return (
     <AdminLayout title="Zonas Operativas Globales">
+      <ZonasErrorBoundary>
       <div className="p-6 space-y-5 max-w-6xl mx-auto">
 
         {/* Encabezado */}
@@ -762,7 +822,7 @@ export default function ZonasOperativas() {
           </button>
           <span className="text-white/15">·</span>
           <div className="flex items-center gap-2">
-            <Map className="w-4 h-4 text-primary" />
+            <MapIcon className="w-4 h-4 text-primary" />
             <h1 className="text-base font-bold text-white">Zonas Operativas Globales</h1>
           </div>
           <div className="flex-1" />
@@ -783,7 +843,7 @@ export default function ZonasOperativas() {
         {/* Explicación conceptual */}
         <div className="bg-blue-500/8 border border-blue-500/15 rounded-xl p-4">
           <div className="flex items-start gap-3">
-            <Map className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
+            <MapIcon className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
             <div>
               <p className="text-xs font-semibold text-blue-300 mb-1">¿Qué es una zona operativa global?</p>
               <p className="text-[11px] text-blue-400/60 leading-relaxed">
@@ -825,7 +885,7 @@ export default function ZonasOperativas() {
         {/* Sin zonas */}
         {!isLoading && zonas.length === 0 && (
           <div className="bg-[#0a1525] border border-white/8 rounded-xl p-8 text-center">
-            <Map className="w-10 h-10 text-white/10 mx-auto mb-3" />
+            <MapIcon className="w-10 h-10 text-white/10 mx-auto mb-3" />
             <p className="text-sm text-white/40 mb-1">No hay zonas operativas configuradas</p>
             <p className="text-xs text-white/20 mb-4">
               Crea la primera zona para empezar a agrupar puestos por región.
@@ -907,6 +967,7 @@ export default function ZonasOperativas() {
           onClose={() => setDetalleZonaId(null)}
         />
       )}
+      </ZonasErrorBoundary>
     </AdminLayout>
   );
 }

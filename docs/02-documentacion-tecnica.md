@@ -465,3 +465,23 @@ export async function migrarPESP01() {
 
 ### Logs en producción
 - Pino en formato JSON. Replit los expone en su panel de deployment logs.
+
+---
+
+## 10. Bugfixes notables
+
+### 10.1 Pantalla en blanco en `/admin/operaciones/zonas` (abr 2026)
+- **Síntoma**: la página no desplegaba contenido.
+- **Causa raíz**: en `ZonasOperativas.tsx` se importaba el ícono `Map` de
+  `lucide-react`, sombreando el constructor global `Map` de JavaScript.
+  Cuando el componente intentaba construir un `new Map(...)` (en el modal
+  de zona), el bundle de Vite trataba de instanciar el componente React
+  como constructor y crasheaba.
+- **Fix**: renombrar el import a `Map as MapIcon` y dejar `new Map(...)`
+  apuntando al constructor global (commit fix Zonas).
+- **Hardening adicional**:
+  - Helper `fetchArray<T>()` que normaliza respuestas no-array a `[]`,
+    evitando crashes si el backend devuelve `{ error: ... }`.
+  - `ZonasErrorBoundary` local: si algo crashea en runtime, muestra el
+    error en pantalla (mensaje + stack) en vez de quedar en blanco.
+  - Normalización de `zona.supervisores` a `[]` por si llega `null`.
