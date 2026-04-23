@@ -58,7 +58,7 @@
 | `administrativo_bodega` | Personal de bodega. | Sí, en panel administración. |
 | `administrativo_rrhh` | Personal de RRHH. | Sí, en panel administración. |
 | `gerencia` | Gerentes, dirección. | Sí, en panel administración. |
-| `administrativo` | Administrativo genérico (legacy). | No (categoría sin panel propio). |
+| `administrativo` | Administrativo genérico (sin subtipo definido). | Sí, en panel administración bajo "Admin". |
 
 ### Estado laboral (`employees.estado_laboral`)
 

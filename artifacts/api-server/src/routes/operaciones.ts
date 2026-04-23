@@ -4251,7 +4251,7 @@ operacionesRouter.get("/operaciones/puestos/:id/turno", async (req, res) => {
 });
 
 // ─── GET /api/operaciones/tablero/administracion ──────────────────────────────
-// Devuelve personal administrativo (bodega, rrhh, gerencia) con estado de turno.
+// Devuelve personal administrativo (bodega, rrhh, gerencia y administrativo genérico) con estado de turno.
 // ?fecha=YYYY-MM-DD — opcional; si se omite usa la fecha actual.
 operacionesRouter.get("/operaciones/tablero/administracion", async (req, res) => {
   const { fecha } = req.query as { fecha?: string };
@@ -4276,14 +4276,15 @@ operacionesRouter.get("/operaciones/tablero/administracion", async (req, res) =>
       FROM employees e
       LEFT JOIN employee_operational_assignments eoa ON eoa.employee_id = e.id AND eoa.activa = TRUE
       LEFT JOIN turnos t ON t.id = eoa.tipo_turno_id
-      WHERE e.tipo_personal IN ('administrativo_bodega', 'administrativo_rrhh', 'gerencia')
+      WHERE e.tipo_personal IN ('administrativo_bodega', 'administrativo_rrhh', 'gerencia', 'administrativo')
         AND e.estado_laboral IN ('activo', 'licencia', 'suspendido')
       ORDER BY
         CASE e.tipo_personal
           WHEN 'gerencia'            THEN 1
           WHEN 'administrativo_rrhh' THEN 2
           WHEN 'administrativo_bodega' THEN 3
-          ELSE 4
+          WHEN 'administrativo'      THEN 4
+          ELSE 5
         END,
         e.nombre_completo
     `);
@@ -4317,6 +4318,7 @@ operacionesRouter.get("/operaciones/tablero/administracion", async (req, res) =>
       gerencia:             enriquecidos.filter((e: any) => e.tipo_personal === 'gerencia'),
       administrativo_rrhh:  enriquecidos.filter((e: any) => e.tipo_personal === 'administrativo_rrhh'),
       administrativo_bodega: enriquecidos.filter((e: any) => e.tipo_personal === 'administrativo_bodega'),
+      administrativo:       enriquecidos.filter((e: any) => e.tipo_personal === 'administrativo'),
     };
 
     res.json({ fecha: hoy, empleados: enriquecidos, grupos });

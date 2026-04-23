@@ -90,9 +90,9 @@ El pizarrón operativo es la vista en tiempo real de **todos los puestos cubiert
 - Vista futura permite **planificar cambios** que se aplican al llegar la fecha.
 
 ### Panel "Administración"
-En la parte inferior del pizarrón, si tenés personal administrativo cargado, aparece un panel con: **Gerencia, RRHH, Bodega**, mostrando quién trabaja hoy.
+En la parte inferior del pizarrón, si tenés personal administrativo cargado, aparece un panel con: **Gerencia, RRHH, Bodega y Admin** (genérico), mostrando quién trabaja hoy.
 
-> **Si no aparece**: significa que ningún empleado tiene asignado tipo "gerencia", "administrativo_rrhh" o "administrativo_bodega". Andá a Empleados y cambiá el tipo de personal a quienes correspondan.
+> **Si no aparece**: significa que ningún empleado tiene asignado un tipo administrativo. Los tipos válidos que aparecen acá son: `gerencia`, `administrativo_rrhh`, `administrativo_bodega` y `administrativo` (genérico). Andá a Empleados y cambiá el tipo de personal a quienes correspondan. Lo ideal es usar el subtipo específico (RRHH/Bodega/Gerencia) para que queden agrupados por departamento; si no se conoce, queda en "Admin" general.
 
 ### Panel "Servicios Especiales Activos (SSA)"
 Lista los servicios especiales en curso (custodias, eventos, refuerzos), con su etapa actual.

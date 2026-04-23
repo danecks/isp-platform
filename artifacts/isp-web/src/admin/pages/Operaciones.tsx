@@ -6510,6 +6510,7 @@ export default function Operaciones() {
       gerencia: AdminPersonal[];
       administrativo_rrhh: AdminPersonal[];
       administrativo_bodega: AdminPersonal[];
+      administrativo: AdminPersonal[];
     };
   }
   const { data: adminTablero } = useQuery<AdminTablero>({
@@ -8527,6 +8528,7 @@ export default function Operaciones() {
               gerencia:             { label: "Gerencia",  color: "text-amber-300/80",  bg: "bg-amber-500/10",  border: "border-amber-500/25" },
               administrativo_rrhh:  { label: "RRHH",     color: "text-sky-300/80",    bg: "bg-sky-500/10",    border: "border-sky-500/25" },
               administrativo_bodega:{ label: "Bodega",   color: "text-teal-300/80",   bg: "bg-teal-500/10",   border: "border-teal-500/25" },
+              administrativo:       { label: "Admin",    color: "text-slate-200/80",  bg: "bg-slate-500/15",  border: "border-slate-400/25" },
             };
             const totalTrabajando = adminTablero.empleados.filter(e => e.estado_ciclo === "trabajando").length;
             const totalDesc       = adminTablero.empleados.filter(e => e.estado_ciclo === "descansando_ciclo").length;
@@ -8579,8 +8581,8 @@ export default function Operaciones() {
 
                 {!colAdmin && (
                   <div className="border-t border-slate-500/8 p-2 flex flex-wrap gap-2 max-h-28 overflow-y-auto">
-                    {(["gerencia","administrativo_rrhh","administrativo_bodega"] as const).flatMap(key =>
-                      adminTablero.grupos[key].map(p => (
+                    {(["gerencia","administrativo_rrhh","administrativo_bodega","administrativo"] as const).flatMap(key =>
+                      (adminTablero.grupos[key] ?? []).map(p => (
                         <AdminChip key={p.id} p={p} grupoKey={key} />
                       ))
                     )}
