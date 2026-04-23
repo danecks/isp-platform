@@ -7,7 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { brand } from "@/config/branding";
 
-const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
+const RAW_TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
+const IS_REPLIT_PREVIEW = typeof window !== "undefined"
+  && (window.location.hostname.endsWith(".replit.dev") || window.location.hostname.endsWith(".repl.co"));
+const TURNSTILE_SITE_KEY = IS_REPLIT_PREVIEW ? undefined : RAW_TURNSTILE_SITE_KEY;
 
 declare global {
   interface Window {

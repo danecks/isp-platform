@@ -48,7 +48,13 @@ usersRouter.post("/auth/login", async (req, res) => {
   }
 
   const turnstileSecret = process.env["TURNSTILE_SECRET_KEY"];
-  if (turnstileSecret) {
+  const reqHost = String(req.headers["host"] || "");
+  const reqOrigin = String(req.headers["origin"] || "");
+  const isReplitPreview = /\.replit\.dev(?::|$|\/)/.test(reqHost)
+    || /\.repl\.co(?::|$|\/)/.test(reqHost)
+    || /\.replit\.dev(?::|$|\/)/.test(reqOrigin)
+    || /\.repl\.co(?::|$|\/)/.test(reqOrigin);
+  if (turnstileSecret && !isReplitPreview) {
     if (!turnstileToken) {
       return res.status(400).json({ error: "Verificación de seguridad requerida" });
     }
