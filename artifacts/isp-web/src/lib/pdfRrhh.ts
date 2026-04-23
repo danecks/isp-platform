@@ -877,8 +877,11 @@ export async function generarContratoLaboral(datos: DatosContratoLaboral): Promi
 
   await pdf.build();
 
-  const fechaHoy = fmtFechaLetras(new Date().toISOString());
+  // La fecha de los comparecientes coincide con la fecha de inicio del
+  // contrato (no se usa "hoy"): para el inicial es alta + 2 meses, para
+  // el post-prueba es la fecha de alta original.
   const fechaInicio = fmtFechaLetras(datos.fecha_inicio);
+  const fechaHoy = fechaInicio;
   const sueldoLetras = numeroALetras(datos.sueldo_base);
   const sueldoNum = datos.sueldo_base.toLocaleString("es-GT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const cargo = tipoPersonalLabel(datos.tipo_personal);
