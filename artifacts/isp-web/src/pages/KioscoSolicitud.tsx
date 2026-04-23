@@ -544,7 +544,12 @@ function KioscoSolicitud() {
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#0a1628] flex flex-col" style={{ fontFamily: "system-ui, sans-serif" }}>
+    <div
+      className="min-h-screen bg-[#0a1628] flex flex-col notranslate"
+      translate="no"
+      lang="es"
+      style={{ fontFamily: "system-ui, sans-serif" }}
+    >
       {/* Header */}
       <div className="bg-[#0d2147] border-b border-[#1e3a6e] px-4 py-3 flex items-center gap-4 shrink-0">
         <img src={`${import.meta.env.BASE_URL}images/logo-isp.png`} alt="ISP" className="h-12 object-contain" />
