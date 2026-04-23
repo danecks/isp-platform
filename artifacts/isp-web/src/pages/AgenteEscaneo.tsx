@@ -25,7 +25,12 @@ interface AgenteInfo {
   tipo_personal: string;
   dpi: string;
   fecha_ingreso: string | null;
-  telefono_emergencia: string | null;
+  telefono_empresa: string | null;
+  contacto_emergencia: {
+    nombre: string | null;
+    telefono: string;
+    parentesco: string | null;
+  } | null;
   puesto: {
     id: number;
     nombre: string;
@@ -295,7 +300,8 @@ function CarnetPublico({
     );
   }
 
-  const tel = info.telefono_emergencia?.replace(/[^\d+]/g, "") ?? "";
+  const telEmpresa = info.telefono_empresa?.replace(/[^\d+]/g, "") ?? "";
+  const telContacto = info.contacto_emergencia?.telefono.replace(/[^\d+]/g, "") ?? "";
   const desde = formatDesde(info.fecha_ingreso);
   const ant = antiguedad(info.fecha_ingreso);
 
@@ -332,32 +338,67 @@ function CarnetPublico({
         </div>
       </div>
 
-      {/* Teléfono de emergencia */}
-      {tel ? (
+      {/* Contacto de emergencia personal del agente (familia) */}
+      {info.contacto_emergencia && telContacto ? (
         <a
-          href={`tel:${tel}`}
+          href={`tel:${telContacto}`}
+          className="mx-5 mb-3 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-400/40 rounded-xl px-4 py-3 flex items-center gap-3 transition-colors"
+        >
+          <div className="w-10 h-10 bg-rose-500/30 border border-rose-400/50 rounded-full flex items-center justify-center shrink-0">
+            <Phone className="w-5 h-5 text-rose-200" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] text-rose-200/80 uppercase tracking-widest font-semibold">
+              Contacto de emergencia
+            </p>
+            {info.contacto_emergencia.nombre && (
+              <p className="text-white font-semibold text-sm leading-tight truncate">
+                {info.contacto_emergencia.nombre}
+                {info.contacto_emergencia.parentesco && (
+                  <span className="text-rose-200/70 font-normal text-xs ml-1">
+                    ({info.contacto_emergencia.parentesco})
+                  </span>
+                )}
+              </p>
+            )}
+            <p className="text-white font-bold text-base leading-tight">
+              {info.contacto_emergencia.telefono}
+            </p>
+            <p className="text-rose-200/70 text-[10px] mt-0.5">Toca para llamar</p>
+          </div>
+        </a>
+      ) : (
+        <div className="mx-5 mb-3 bg-white/[0.04] border border-white/10 rounded-xl px-4 py-3 text-center">
+          <p className="text-white/50 text-xs">
+            Contacto de emergencia no registrado en su ficha.
+          </p>
+        </div>
+      )}
+
+      {/* Teléfono institucional ISP (verificación) */}
+      {telEmpresa && (
+        <a
+          href={`tel:${telEmpresa}`}
           className="mx-5 mb-5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/40 rounded-xl px-4 py-3 flex items-center gap-3 transition-colors"
         >
           <div className="w-10 h-10 bg-emerald-500/30 border border-emerald-400/50 rounded-full flex items-center justify-center shrink-0">
             <Phone className="w-5 h-5 text-emerald-200" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[10px] text-emerald-200/70 uppercase tracking-widest">Emergencia / Verificación</p>
-            <p className="text-white font-bold text-base leading-tight">{info.telefono_emergencia}</p>
+            <p className="text-[10px] text-emerald-200/70 uppercase tracking-widest">
+              ISP — Verificación / Reportes
+            </p>
+            <p className="text-white font-bold text-base leading-tight">{info.telefono_empresa}</p>
             <p className="text-emerald-200/70 text-[10px] mt-0.5">Toca para llamar</p>
           </div>
         </a>
-      ) : (
-        <div className="mx-5 mb-5 bg-white/[0.04] border border-white/10 rounded-xl px-4 py-3 text-center">
-          <p className="text-white/50 text-xs">Teléfono de emergencia no configurado.</p>
-        </div>
       )}
 
       {/* Pie informativo */}
       <div className="bg-black/30 border-t border-white/5 px-5 py-3">
         <p className="text-white/40 text-[10px] text-center leading-relaxed">
-          Para verificar la identidad de este agente o reportar una incidencia,
-          comuníquese al teléfono indicado arriba.
+          En caso de emergencia, contacte primero al familiar del agente.
+          Para verificar identidad o reportar, llame a ISP.
         </p>
       </div>
     </div>

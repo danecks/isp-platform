@@ -251,7 +251,9 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
     const { rows: tkRows } = await pool.query(
       `SELECT aqt.employee_id, aqt.activo,
               e.nombre_completo, e.puesto AS cargo, e.tipo_personal, e.dpi,
-              e.fecha_ingreso
+              e.fecha_ingreso,
+              e.nombre_contacto_emergencia, e.telefono_emergencia AS contacto_emergencia_tel,
+              e.parentesco_emergencia
        FROM agente_qr_tokens aqt
        JOIN employees e ON e.id = aqt.employee_id
        WHERE aqt.qr_token = $1`,
@@ -262,14 +264,25 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
 
     const emp = tkRows[0];
 
-    // Teléfono de emergencia / atención al cliente de la empresa (público).
-    let telefono_emergencia: string | null = null;
+    // Teléfono institucional de la empresa (público) — desde config_empresa.
+    let telefono_empresa: string | null = null;
     try {
       const { rows: cfgRows } = await pool.query(
         `SELECT telefono_empresa FROM config_empresa ORDER BY id ASC LIMIT 1`
       );
-      telefono_emergencia = cfgRows[0]?.telefono_empresa ?? null;
+      telefono_empresa = cfgRows[0]?.telefono_empresa ?? null;
     } catch { /* config_empresa puede no existir aún */ }
+
+    // Contacto de emergencia personal del empleado (familia/cercano) — viene
+    // del formulario de empleado (nombre_contacto_emergencia / telefono_emergencia
+    // / parentesco_emergencia).
+    const contacto_emergencia = emp.contacto_emergencia_tel
+      ? {
+          nombre: emp.nombre_contacto_emergencia ?? null,
+          telefono: emp.contacto_emergencia_tel as string,
+          parentesco: emp.parentesco_emergencia ?? null,
+        }
+      : null;
 
     const { rows: poRows } = await pool.query(
       `SELECT po.id, po.nombre, po.cliente_nombre, po.horario,
@@ -416,7 +429,8 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
       fecha_ingreso: emp.fecha_ingreso
         ? new Date(emp.fecha_ingreso).toISOString().split("T")[0]
         : null,
-      telefono_emergencia,
+      telefono_empresa,
+      contacto_emergencia,
       puesto,
       gps,
       armamento,
