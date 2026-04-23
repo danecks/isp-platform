@@ -4189,23 +4189,20 @@ function TabContratos({ emp }: { emp: Empleado }) {
       const contratoInicialPrev = contratosPrev.find((c) => c.tipo_contrato === "inicial");
 
       const fechaIngreso = det.fecha_ingreso || emp.fechaIngreso || new Date().toISOString().slice(0, 10);
-      // Fecha de inicio:
-      //  - Inicial: hereda del contrato inicial previo si existe, o usa la fecha de ingreso del empleado.
-      //  - Post-prueba: hereda del post-prueba previo si existe; si no, fecha del inicial + 2 meses.
+      // Fecha de inicio que se imprime en el PDF:
+      //  - Inicial (60 días prueba): fecha de alta + 2 meses (entra "como
+      //    que entrara en fecha +2 meses", la fecha real de alta queda
+      //    oculta en este documento).
+      //  - Post-prueba (indefinido): fecha de alta original.
+      const fechaAltaBase = contratoInicialPrev?.fecha_inicio || fechaIngreso;
       let fechaInicio: string;
       if (tipo === "inicial") {
-        fechaInicio = contratoInicialPrev?.fecha_inicio || fechaIngreso;
+        const [yB, mB, dB] = fechaAltaBase.split("-").map(Number);
+        const fechaPP = new Date(yB, (mB || 1) - 1, dB || 1);
+        fechaPP.setMonth(fechaPP.getMonth() + 2);
+        fechaInicio = fechaPP.toISOString().slice(0, 10);
       } else {
-        const postPrev = contratosPrev.find((c) => c.tipo_contrato === "post_prueba");
-        if (postPrev?.fecha_inicio) {
-          fechaInicio = postPrev.fecha_inicio;
-        } else {
-          const baseInicio = contratoInicialPrev?.fecha_inicio || fechaIngreso;
-          const [yB, mB, dB] = baseInicio.split("-").map(Number);
-          const fechaPP = new Date(yB, (mB || 1) - 1, dB || 1);
-          fechaPP.setMonth(fechaPP.getMonth() + 2);
-          fechaInicio = fechaPP.toISOString().slice(0, 10);
-        }
+        fechaInicio = fechaAltaBase;
       }
 
       // Sueldo: empleado → último contrato → ficha
