@@ -417,9 +417,20 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
       const rawJornada = trim(row["tipo_jornada"]).toLowerCase();
       const tipoJornada = ["completa", "parcial", "mixta"].includes(rawJornada) ? rawJornada : "completa";
 
+      // Mapeo de género/estado civil desde la plantilla a los valores que la BD acepta
+      const rawGenero = trim(row["genero"]).toLowerCase();
+      const sexo =
+        rawGenero === "masculino" || rawGenero === "m" ? "M" :
+        rawGenero === "femenino"  || rawGenero === "f" ? "F" :
+        null;
+      const ESTADO_CIVIL_VALIDOS = ["soltero", "casado", "divorciado", "viudo", "union_libre"];
+      const rawEstCivil = trim(row["estado_civil"]).toLowerCase().replace(/\s+/g, "_");
+      const estadoCivil = ESTADO_CIVIL_VALIDOS.includes(rawEstCivil) ? rawEstCivil : null;
+
       const { rows: ins } = await pool.query(
         `INSERT INTO employees (
-           nombre_completo, dpi, fecha_ingreso, tipo_personal, estado_laboral,
+           nombre_completo, dpi, fecha_nacimiento, sexo, estado_civil,
+           fecha_ingreso, tipo_personal, estado_laboral,
            telefono, telefono_secundario, correo, sede, nit,
            sueldo_base, tipo_jornada, dia_descanso, horas_contrato,
            bonificacion_incentivo, bonificacion_1, bonificacion_2, bonificacion_3,
@@ -429,17 +440,21 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
            source_system, sync_status
          ) VALUES (
            $1,$2,$3,$4,$5,
-           $6,$7,$8,$9,$10,
-           $11,$12,$13,$14,
-           $15,$16,$17,$18,
-           $19,$20,$21,$22,
-           $23,$24,$25,$26,
-           $27,$28,
+           $6,$7,$8,
+           $9,$10,$11,$12,$13,
+           $14,$15,$16,$17,
+           $18,$19,$20,$21,
+           $22,$23,$24,$25,
+           $26,$27,$28,$29,
+           $30,$31,
            'importacion_maestra','manual'
          ) RETURNING id`,
         [
           nombre,
           dpi || null,
+          parseDate(row["fecha_nacimiento"]),
+          sexo,
+          estadoCivil,
           parseDate(row["fecha_ingreso"]),
           tipoPersonal,
           estadoLaboral,
