@@ -193,31 +193,68 @@ custodiasRouter.get("/custodias/cliente/:id/asignacion", async (req, res) => {
 });
 
 custodiasRouter.post("/custodias/cliente/:id/asignar", async (req, res) => {
+  const clienteId = parseInt(req.params.id);
+  if (!clienteId) return res.status(400).json({ error: "ID inválido" });
+
+  const { fecha, employeeId, notas } = req.body as {
+    fecha: string;
+    employeeId: number;
+    notas?: string;
+  };
+
+  if (!fecha || !employeeId) {
+    return res.status(400).json({ error: "Faltan campos requeridos (fecha, employeeId)" });
+  }
+  // Normalizar fecha a YYYY-MM-DD antes de usarla para el lock (evita locks distintos para misma fecha en formatos distintos).
+  const fechaNorm = String(fecha).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaNorm)) {
+    return res.status(400).json({ error: "Formato de fecha inválido (esperado YYYY-MM-DD)" });
+  }
+
+  const client = await pool.connect();
   try {
-    const clienteId = parseInt(req.params.id);
-    if (!clienteId) return res.status(400).json({ error: "ID inválido" });
+    await client.query("BEGIN");
+    // Lock transaccional por (cliente, fecha) para evitar carreras al asignar slot.
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`custodia:${clienteId}:${fechaNorm}`]);
 
-    const { fecha, employeeId, notas } = req.body as {
-      fecha: string;
-      employeeId: number;
-      notas?: string;
-    };
-
-    if (!fecha || !employeeId) {
-      return res.status(400).json({ error: "Faltan campos requeridos (fecha, employeeId)" });
+    // ¿Ya está asignado? Si sí, solo actualizamos notas y devolvemos su slot.
+    const existing = await client.query(
+      `SELECT id, slot_numero FROM custodia_asignacion_diaria
+        WHERE cliente_id = $1 AND fecha = $2::date AND employee_id = $3`,
+      [clienteId, fecha, employeeId]
+    );
+    if (existing.rowCount && existing.rowCount > 0) {
+      await client.query(
+        `UPDATE custodia_asignacion_diaria SET notas = $1 WHERE id = $2`,
+        [notas || null, existing.rows[0].id]
+      );
+      await client.query("COMMIT");
+      return res.json({ ok: true, id: existing.rows[0].id, slot: existing.rows[0].slot_numero });
     }
 
-    const { rows } = await pool.query(`
-      INSERT INTO custodia_asignacion_diaria (cliente_id, fecha, employee_id, notas)
-      VALUES ($1, $2::date, $3, $4)
-      ON CONFLICT (cliente_id, fecha, employee_id) DO UPDATE SET notas = EXCLUDED.notas
-      RETURNING id
-    `, [clienteId, fecha, employeeId, notas || null]);
+    // Calcular siguiente slot libre para este (cliente, fecha).
+    const maxQ = await client.query(
+      `SELECT COALESCE(MAX(slot_numero), 0) + 1 AS next_slot
+         FROM custodia_asignacion_diaria
+        WHERE cliente_id = $1 AND fecha = $2::date`,
+      [clienteId, fecha]
+    );
+    const nextSlot: number = maxQ.rows[0].next_slot;
 
-    res.json({ ok: true, id: rows[0].id });
+    const ins = await client.query(
+      `INSERT INTO custodia_asignacion_diaria (cliente_id, fecha, employee_id, slot_numero, notas)
+       VALUES ($1, $2::date, $3, $4, $5)
+       RETURNING id`,
+      [clienteId, fecha, employeeId, nextSlot, notas || null]
+    );
+    await client.query("COMMIT");
+    res.json({ ok: true, id: ins.rows[0].id, slot: nextSlot });
   } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
     logger.error({ err }, "[Custodias/asignar]");
     res.status(500).json({ error: "Error al asignar agente" });
+  } finally {
+    client.release();
   }
 });
 
@@ -286,26 +323,50 @@ custodiasRouter.post("/custodias/cliente/:id/asignar-lote", async (req, res) => 
     if (!fecha || !Array.isArray(employeeIds) || employeeIds.length === 0) {
       return res.status(400).json({ error: "Faltan campos requeridos" });
     }
+    const fechaNorm = String(fecha).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaNorm)) {
+      return res.status(400).json({ error: "Formato de fecha inválido (esperado YYYY-MM-DD)" });
+    }
 
     const client = await pool.connect();
+    let inserted = 0;
     try {
       await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`custodia:${clienteId}:${fechaNorm}`]);
+
+      const maxQ = await client.query(
+        `SELECT COALESCE(MAX(slot_numero), 0) AS max_slot
+           FROM custodia_asignacion_diaria
+          WHERE cliente_id = $1 AND fecha = $2::date`,
+        [clienteId, fecha]
+      );
+      let nextSlot: number = Number(maxQ.rows[0].max_slot) + 1;
+
       for (const eid of employeeIds) {
-        await client.query(`
-          INSERT INTO custodia_asignacion_diaria (cliente_id, fecha, employee_id)
-          VALUES ($1, $2::date, $3)
-          ON CONFLICT (cliente_id, fecha, employee_id) DO NOTHING
-        `, [clienteId, fecha, eid]);
+        const exists = await client.query(
+          `SELECT 1 FROM custodia_asignacion_diaria
+            WHERE cliente_id = $1 AND fecha = $2::date AND employee_id = $3`,
+          [clienteId, fecha, eid]
+        );
+        if (exists.rowCount && exists.rowCount > 0) continue;
+
+        await client.query(
+          `INSERT INTO custodia_asignacion_diaria (cliente_id, fecha, employee_id, slot_numero)
+           VALUES ($1, $2::date, $3, $4)`,
+          [clienteId, fecha, eid, nextSlot]
+        );
+        nextSlot++;
+        inserted++;
       }
       await client.query("COMMIT");
     } catch (e) {
-      await client.query("ROLLBACK");
+      await client.query("ROLLBACK").catch(() => {});
       throw e;
     } finally {
       client.release();
     }
 
-    res.json({ ok: true, count: employeeIds.length });
+    res.json({ ok: true, count: inserted });
   } catch (err) {
     logger.error({ err }, "[Custodias/asignar-lote]");
     res.status(500).json({ error: "Error al asignar lote" });
