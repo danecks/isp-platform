@@ -29,3 +29,4 @@ to = "/index.html"
 [services.env]
 PORT = "21514"
 BASE_PATH = "/"
+VITE_TURNSTILE_SITE_KEY = "0x4AAAAAADBi_IxqkaWe6fj0"
