@@ -447,6 +447,112 @@ custodiasRouter.post("/custodias/cliente/:id/asignar-lote", async (req, res) => 
   }
 });
 
+// Asigna de un golpe a TODOS los titulares activos del cliente que no estén asignados ese día.
+// Respeta la regla "un agente, un puesto a la vez": omite a quien ya esté en otro cliente esa fecha
+// o cuyo slot ya esté ocupado por otro agente hoy. Devuelve { count, skipped[] }.
+custodiasRouter.post("/custodias/cliente/:id/asignar-titulares", async (req, res) => {
+  try {
+    const clienteId = parseInt(req.params.id);
+    if (!clienteId) return res.status(400).json({ error: "ID inválido" });
+
+    const { fecha } = req.body as { fecha: string };
+    if (!fecha) return res.status(400).json({ error: "Falta fecha" });
+    const fechaNorm = String(fecha).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaNorm)) {
+      return res.status(400).json({ error: "Formato de fecha inválido (esperado YYYY-MM-DD)" });
+    }
+
+    const client = await pool.connect();
+    let inserted = 0;
+    const skipped: { employeeId: number; nombre: string; slot: number; motivo: string }[] = [];
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`custodia:${clienteId}:${fechaNorm}`]);
+
+      // Lista de titulares activos pendientes (aún no asignados hoy en este cliente)
+      const { rows: pendientes } = await client.query(
+        `SELECT ct.employee_id, ct.slot_numero, e.nombre_completo
+           FROM custodia_titulares ct
+           JOIN employees e ON e.id = ct.employee_id
+          WHERE ct.cliente_id = $1
+            AND ct.activo = TRUE
+            AND NOT EXISTS (
+              SELECT 1 FROM custodia_asignacion_diaria cad
+               WHERE cad.cliente_id = $1
+                 AND cad.fecha = $2::date
+                 AND cad.employee_id = ct.employee_id
+            )
+          ORDER BY ct.slot_numero`,
+        [clienteId, fechaNorm]
+      );
+
+      for (const p of pendientes) {
+        // Lock por (agente, fecha) para serializar contra otros clientes
+        await client.query(
+          "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+          [`custodia-emp:${p.employee_id}:${fechaNorm}`]
+        );
+
+        // ¿Ya está asignado en otro cliente esa fecha?
+        const cAsig = await client.query(
+          `SELECT cad.slot_numero, c.nombre AS cliente_nombre
+             FROM custodia_asignacion_diaria cad
+             JOIN clients c ON c.id = cad.cliente_id
+            WHERE cad.employee_id = $1 AND cad.fecha = $2::date
+            LIMIT 1`,
+          [p.employee_id, fechaNorm]
+        );
+        if (cAsig.rowCount && cAsig.rowCount > 0) {
+          const x = cAsig.rows[0];
+          skipped.push({
+            employeeId: p.employee_id,
+            nombre: p.nombre_completo,
+            slot: p.slot_numero,
+            motivo: `Ya asignado al Custodio ${x.slot_numero} de "${x.cliente_nombre}".`,
+          });
+          continue;
+        }
+
+        // ¿El slot ya está ocupado por otro agente hoy en este cliente?
+        const cSlot = await client.query(
+          `SELECT employee_id FROM custodia_asignacion_diaria
+            WHERE cliente_id = $1 AND fecha = $2::date AND slot_numero = $3
+            LIMIT 1`,
+          [clienteId, fechaNorm, p.slot_numero]
+        );
+        if (cSlot.rowCount && cSlot.rowCount > 0) {
+          skipped.push({
+            employeeId: p.employee_id,
+            nombre: p.nombre_completo,
+            slot: p.slot_numero,
+            motivo: `El Custodio ${p.slot_numero} ya está ocupado por otro agente hoy.`,
+          });
+          continue;
+        }
+
+        await client.query(
+          `INSERT INTO custodia_asignacion_diaria (cliente_id, fecha, employee_id, slot_numero)
+           VALUES ($1, $2::date, $3, $4)`,
+          [clienteId, fechaNorm, p.employee_id, p.slot_numero]
+        );
+        inserted++;
+      }
+
+      await client.query("COMMIT");
+    } catch (e) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw e;
+    } finally {
+      client.release();
+    }
+
+    res.json({ ok: true, count: inserted, skipped });
+  } catch (err) {
+    logger.error({ err }, "[Custodias/asignar-titulares]");
+    res.status(500).json({ error: "Error al asignar titulares" });
+  }
+});
+
 custodiasRouter.get("/custodias/cliente/:id/hoja-imprimible", async (req, res) => {
   try {
     const clienteId = parseInt(req.params.id);

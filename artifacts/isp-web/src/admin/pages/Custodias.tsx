@@ -266,9 +266,17 @@ function ClienteCard({
 
           {cl.titularesFaltantes.length > 0 && (
             <div>
-              <p className="text-[10px] text-red-400/60 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                <AlertTriangle className="w-3 h-3" /> Titulares no asignados hoy ({cl.titularesFaltantes.length})
-              </p>
+              <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                <p className="text-[10px] text-red-400/60 uppercase tracking-widest flex items-center gap-1.5">
+                  <AlertTriangle className="w-3 h-3" /> Titulares no asignados hoy ({cl.titularesFaltantes.length})
+                </p>
+                <AsignarTitularesPendientesButton
+                  clienteId={cl.clienteId}
+                  fecha={fecha}
+                  total={cl.titularesFaltantes.length}
+                  onAsignado={onRefresh}
+                />
+              </div>
               <div className="flex flex-wrap gap-2">
                 {cl.titularesFaltantes.map(t => (
                   <AsignarTitularChip
@@ -384,6 +392,57 @@ function AsignarTitularChip({ clienteId, employeeId, nombre, fecha, onAsignado }
     >
       {mut.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <UserPlus className="w-2.5 h-2.5 opacity-70" />}
       {nombre}
+    </button>
+  );
+}
+
+function AsignarTitularesPendientesButton({ clienteId, fecha, total, onAsignado }: {
+  clienteId: number; fecha: string; total: number; onAsignado: () => void;
+}) {
+  const { currentUser } = useAuth();
+  const { toast } = useToast();
+  const puede = currentUser?.rol === "admin" || currentUser?.rol === "operaciones";
+
+  const mut = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`${API_BASE}/custodias/cliente/${clienteId}/asignar-titulares`, {
+        method: "POST", credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "",
+        },
+        body: JSON.stringify({ fecha }),
+      });
+      if (!r.ok) {
+        const msg = await r.json().catch(() => ({ error: "Error al asignar titulares" }));
+        throw new Error(msg.error || "Error al asignar titulares");
+      }
+      return r.json() as Promise<{ count: number; skipped: { nombre: string; motivo: string }[] }>;
+    },
+    onSuccess: (data) => {
+      const desc =
+        data.skipped.length > 0
+          ? `${data.count} asignados. ${data.skipped.length} omitidos: ${data.skipped.slice(0, 3).map(s => `${s.nombre} (${s.motivo})`).join(" · ")}${data.skipped.length > 3 ? "…" : ""}`
+          : `${data.count} titulares quedaron asignados al servicio del día.`;
+      toast({ title: "Titulares asignados", description: desc });
+      onAsignado();
+    },
+    onError: (e: any) => {
+      toast({ title: "Error", description: e?.message || "No se pudo asignar", variant: "destructive" });
+    },
+  });
+
+  if (!puede) return null;
+
+  return (
+    <button
+      onClick={() => mut.mutate()}
+      disabled={mut.isPending}
+      className="text-[10px] px-3 py-1.5 rounded-lg border border-green-500/30 bg-green-500/10 text-green-300 hover:bg-green-500/20 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+      title={`Asignar a los ${total} titulares pendientes al servicio del día`}
+    >
+      {mut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserPlus className="w-3 h-3" />}
+      Asignar los {total} titulares
     </button>
   );
 }
