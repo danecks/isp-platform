@@ -432,6 +432,7 @@ export async function migrarPESP01() {
 ### 8.3 Object Storage (Replit App Storage)
 - Usado para subir DPI (frente/reverso), fotos, documentos.
 - Endpoints proxy en `routes/storage.ts` para servir archivos privados con auth.
+- **Subida de foto de empleado (manual desde ficha)**: en la pestaña Perfil del empleado, el botón "Subir/Cambiar foto" usa el mismo flujo que el carnet/kiosco: comprime la imagen a JPEG 480 px, calidad 0.82 (`comprimirFotoEmpleado` en `Empleados.tsx`), sube el blob a `POST /api/storage/uploads/direct` con `Content-Type: image/jpeg` y luego guarda el `objectPath` con `PATCH /api/employees/:id/foto` (`{ foto_url }`). Mismo backend que la carga masiva, sin endpoints nuevos.
 
 ### 8.4 IGSS
 - Sin API directa; el sistema genera archivos en formato compatible con la planilla IGSS para presentación manual.

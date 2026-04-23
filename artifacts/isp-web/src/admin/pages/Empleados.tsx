@@ -1404,11 +1404,34 @@ async function comprimirFotoEmpleado(blob: Blob): Promise<Blob> {
   });
 }
 
-function FotoEmpleadoEditor({ emp }: { emp: Empleado }) {
+// Carga segura de foto privada desde object storage (mismo patrón que CarnetesQR.SecureFoto).
+function useFotoSegura(fotoUrl: string | null): string | null {
+  const [src, setSrc] = useState<string | null>(
+    fotoUrl && fotoUrl.startsWith("data:") ? fotoUrl : null
+  );
+  useEffect(() => {
+    if (!fotoUrl) { setSrc(null); return; }
+    if (fotoUrl.startsWith("data:")) { setSrc(fotoUrl); return; }
+    if (/^https?:\/\//i.test(fotoUrl)) { setSrc(fotoUrl); return; }
+    let active = true;
+    const session = sessionStorage.getItem("isp_admin_session_v2") ?? "";
+    fetch(`${API_BASE}/storage${fotoUrl}`, { headers: { "x-isp-session": session } })
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error("foto no disponible"))))
+      .then((blob) => { if (active) setSrc(URL.createObjectURL(blob)); })
+      .catch(() => { if (active) setSrc(null); });
+    return () => { active = false; };
+  }, [fotoUrl]);
+  return src;
+}
+
+function FotoEmpleadoEditor({ emp, onUpdated }: { emp: Empleado; onUpdated?: (fotoUrl: string) => void }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [subiendo, setSubiendo] = useState(false);
+  const [fotoLocal, setFotoLocal] = useState<string | null>(emp.fotoUrl);
+  useEffect(() => { setFotoLocal(emp.fotoUrl); }, [emp.fotoUrl]);
+  const fotoSrc = useFotoSegura(fotoLocal);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -1437,6 +1460,8 @@ function FotoEmpleadoEditor({ emp }: { emp: Empleado }) {
       if (!patchRes.ok) throw new Error("Error al guardar la foto");
       toast({ title: "Foto actualizada", description: emp.nombreCompleto });
       qc.invalidateQueries({ queryKey: ["empleados"] });
+      setFotoLocal(objectPath);
+      onUpdated?.(objectPath);
     } catch (err: any) {
       toast({ title: "Error", description: err?.message || "No se pudo subir la foto", variant: "destructive" });
     } finally {
@@ -1450,9 +1475,9 @@ function FotoEmpleadoEditor({ emp }: { emp: Empleado }) {
   return (
     <div className="flex items-center gap-4 p-4 bg-[#0c1929] border border-white/8 rounded-xl">
       <div className="relative">
-        {emp.fotoUrl ? (
+        {fotoSrc ? (
           <img
-            src={emp.fotoUrl}
+            src={fotoSrc}
             alt={emp.nombreCompleto}
             className="w-20 h-20 rounded-full object-cover border-2 border-white/15"
           />
@@ -1536,6 +1561,9 @@ function TabPerfil({ emp }: { emp: Empleado }) {
 
   return (
     <div className="space-y-4">
+      {/* Foto del empleado */}
+      <FotoEmpleadoEditor emp={emp} />
+
       {/* A — Datos personales */}
       <div>
         <p className="text-[10px] text-white/25 uppercase tracking-widest mb-2">Datos personales</p>
