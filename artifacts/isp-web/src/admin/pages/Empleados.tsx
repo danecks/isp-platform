@@ -14,7 +14,7 @@ import {
   TrendingDown, Minus, ShieldAlert, ShieldCheck, ShieldOff,
   ArrowUpRight, ArrowDownRight, Repeat2, ArrowLeftRight, MapPinned, Map, History,
   UserCog, Sun, Umbrella, CheckCircle2, Info, ChevronRight, QrCode, Download,
-  ClipboardList, FileText, Scale, FileSignature, Printer,
+  ClipboardList, FileText, Scale, FileSignature, Printer, Camera,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { generarContratoLaboral, cargarPatronoDesdeConfig, type DatosContratoLaboral } from "@/lib/pdfRrhh";
@@ -69,6 +69,8 @@ interface Empleado {
   formaPago: string | null;
   // Tipo de personal operativo
   tipoPersonal: string;
+  // Foto del empleado (objectPath en GCS)
+  fotoUrl: string | null;
   // Cliente asignado
   clienteNombre: string | null;
   // Seguridad social — IGSS
@@ -1376,6 +1378,120 @@ function IgssSection({ emp }: { emp: Empleado }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Comprime una imagen a JPEG 480px max, calidad 0.82 (igual al kiosco/carnet).
+async function comprimirFotoEmpleado(blob: Blob): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const SIZE = 480;
+      const cv = document.createElement("canvas");
+      const sc = Math.min(1, SIZE / Math.max(img.width, img.height));
+      cv.width = Math.round(img.width * sc);
+      cv.height = Math.round(img.height * sc);
+      const ctx = cv.getContext("2d");
+      if (!ctx) return reject(new Error("Canvas no disponible"));
+      ctx.drawImage(img, 0, 0, cv.width, cv.height);
+      cv.toBlob((b) => (b ? resolve(b) : reject(new Error("Error al comprimir"))), "image/jpeg", 0.82);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Imagen inválida")); };
+    img.src = url;
+  });
+}
+
+function FotoEmpleadoEditor({ emp }: { emp: Empleado }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [subiendo, setSubiendo] = useState(false);
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Archivo inválido", description: "Selecciona una imagen.", variant: "destructive" });
+      return;
+    }
+    setSubiendo(true);
+    try {
+      const comprimida = await comprimirFotoEmpleado(file);
+      const session = sessionStorage.getItem("isp_admin_session_v2") ?? "";
+      const upRes = await fetch(`${API_BASE}/storage/uploads/direct`, {
+        method: "POST",
+        headers: { "Content-Type": "image/jpeg", "x-isp-session": session },
+        body: comprimida,
+      });
+      if (!upRes.ok) throw new Error("Error al subir la foto");
+      const { objectPath } = await upRes.json();
+      const patchRes = await fetch(`${API_BASE}/employees/${emp.id}/foto`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-isp-session": session },
+        body: JSON.stringify({ foto_url: objectPath }),
+      });
+      if (!patchRes.ok) throw new Error("Error al guardar la foto");
+      toast({ title: "Foto actualizada", description: emp.nombreCompleto });
+      qc.invalidateQueries({ queryKey: ["empleados"] });
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message || "No se pudo subir la foto", variant: "destructive" });
+    } finally {
+      setSubiendo(false);
+    }
+  }
+
+  const initials = iniciales(emp.nombreCompleto);
+  const colorClass = avatarColor(emp.nombreCompleto);
+
+  return (
+    <div className="flex items-center gap-4 p-4 bg-[#0c1929] border border-white/8 rounded-xl">
+      <div className="relative">
+        {emp.fotoUrl ? (
+          <img
+            src={emp.fotoUrl}
+            alt={emp.nombreCompleto}
+            className="w-20 h-20 rounded-full object-cover border-2 border-white/15"
+          />
+        ) : (
+          <div className={`w-20 h-20 rounded-full ${colorClass} flex items-center justify-center text-white font-bold text-xl border-2 border-white/15`}>
+            {initials}
+          </div>
+        )}
+        {subiendo && (
+          <div className="absolute inset-0 rounded-full bg-black/60 flex items-center justify-center">
+            <Loader2 className="w-5 h-5 animate-spin text-white" />
+          </div>
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[10px] text-white/30 uppercase tracking-widest font-semibold mb-1">Fotografía</p>
+        <p className="text-xs text-white/50 mb-2">
+          {emp.fotoUrl ? "Foto cargada. Subir una nueva la reemplaza." : "Sin foto. Sube una imagen para usarla en carnet, listas y operativos."}
+        </p>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={subiendo}
+            className="text-[11px] px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+          >
+            <Camera className="w-3 h-3" />
+            {subiendo ? "Subiendo…" : emp.fotoUrl ? "Cambiar foto" : "Subir foto"}
+          </button>
+          <span className="text-[10px] text-white/25">JPG/PNG · se comprime automáticamente a 480 px</span>
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFile}
+          className="hidden"
+        />
+      </div>
     </div>
   );
 }
