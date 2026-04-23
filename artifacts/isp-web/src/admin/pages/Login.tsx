@@ -29,21 +29,34 @@ export default function AdminLogin() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaStatus, setCaptchaStatus] = useState<"loading" | "ready" | "error" | "verified">("loading");
   const captchaContainerRef = useRef<HTMLDivElement>(null);
   const captchaWidgetIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!TURNSTILE_SITE_KEY) return;
+    if (!TURNSTILE_SITE_KEY) {
+      setCaptchaStatus("ready");
+      return;
+    }
+
+    const failTimer = window.setTimeout(() => {
+      if (!captchaWidgetIdRef.current) setCaptchaStatus("error");
+    }, 8000);
 
     const renderWidget = () => {
       if (!captchaContainerRef.current || captchaWidgetIdRef.current || !window.turnstile) return;
-      captchaWidgetIdRef.current = window.turnstile.render(captchaContainerRef.current, {
-        sitekey: TURNSTILE_SITE_KEY,
-        theme: "dark",
-        callback: (token: string) => setCaptchaToken(token),
-        "error-callback": () => setCaptchaToken(""),
-        "expired-callback": () => setCaptchaToken(""),
-      });
+      try {
+        captchaWidgetIdRef.current = window.turnstile.render(captchaContainerRef.current, {
+          sitekey: TURNSTILE_SITE_KEY,
+          theme: "dark",
+          callback: (token: string) => { setCaptchaToken(token); setCaptchaStatus("verified"); },
+          "error-callback": () => { setCaptchaToken(""); setCaptchaStatus("error"); },
+          "expired-callback": () => { setCaptchaToken(""); setCaptchaStatus("ready"); },
+        });
+        setCaptchaStatus((s) => (s === "verified" ? s : "ready"));
+      } catch {
+        setCaptchaStatus("error");
+      }
     };
 
     if (window.turnstile) {
@@ -55,12 +68,14 @@ export default function AdminLogin() {
         s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?onload=__ispOnTurnstileLoad&render=explicit";
         s.async = true;
         s.defer = true;
+        s.onerror = () => setCaptchaStatus("error");
         s.setAttribute("data-isp-turnstile", "true");
         document.head.appendChild(s);
       }
     }
 
     return () => {
+      window.clearTimeout(failTimer);
       if (captchaWidgetIdRef.current && window.turnstile) {
         try { window.turnstile.remove(captchaWidgetIdRef.current); } catch { /* ignore */ }
         captchaWidgetIdRef.current = null;
@@ -181,7 +196,17 @@ export default function AdminLogin() {
             </div>
 
             {TURNSTILE_SITE_KEY && (
-              <div ref={captchaContainerRef} className="flex justify-center" />
+              <div className="space-y-2">
+                <div ref={captchaContainerRef} className="flex justify-center min-h-[65px] items-center" />
+                {captchaStatus === "loading" && (
+                  <p className="text-xs text-white/40 text-center">Cargando verificación de seguridad…</p>
+                )}
+                {captchaStatus === "error" && (
+                  <p className="text-xs text-red-400 text-center">
+                    No se pudo cargar la verificación. Revise su conexión o desactive bloqueadores y recargue la página.
+                  </p>
+                )}
+              </div>
             )}
 
             {error && (
@@ -194,7 +219,7 @@ export default function AdminLogin() {
             <Button
               type="submit"
               disabled={loading || (!!TURNSTILE_SITE_KEY && !captchaToken)}
-              className="w-full h-11 bg-primary text-[#050d1a] font-bold hover:bg-primary/90 rounded-lg mt-2"
+              className="w-full h-11 bg-primary text-[#050d1a] font-bold hover:bg-primary/90 rounded-lg mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <span className="flex items-center gap-2">
