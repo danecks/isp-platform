@@ -271,9 +271,14 @@ function ClienteCard({
               </p>
               <div className="flex flex-wrap gap-2">
                 {cl.titularesFaltantes.map(t => (
-                  <span key={t.employeeId} className="text-[10px] px-2 py-1 rounded border bg-red-500/5 border-red-500/15 text-red-300/60">
-                    {t.nombre}
-                  </span>
+                  <AsignarTitularChip
+                    key={t.employeeId}
+                    clienteId={cl.clienteId}
+                    employeeId={t.employeeId}
+                    nombre={t.nombre}
+                    fecha={fecha}
+                    onAsignado={onRefresh}
+                  />
                 ))}
               </div>
             </div>
@@ -327,6 +332,58 @@ function RemoveButton({ clienteId, employeeId, fecha, nombre, onRemoved }: {
       title="Quitar custodio (solo si no ha iniciado el servicio)"
     >
       {mut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
+    </button>
+  );
+}
+
+function AsignarTitularChip({ clienteId, employeeId, nombre, fecha, onAsignado }: {
+  clienteId: number; employeeId: number; nombre: string; fecha: string; onAsignado: () => void;
+}) {
+  const { currentUser } = useAuth();
+  const { toast } = useToast();
+  const puede = currentUser?.rol === "admin" || currentUser?.rol === "operaciones";
+
+  const mut = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`${API_BASE}/custodias/cliente/${clienteId}/asignar`, {
+        method: "POST", credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "",
+        },
+        body: JSON.stringify({ fecha, employeeId }),
+      });
+      if (!r.ok) {
+        const msg = await r.json().catch(() => ({ error: "Error al asignar" }));
+        throw new Error(msg.error || "Error al asignar");
+      }
+    },
+    onSuccess: () => {
+      toast({ title: "Titular asignado", description: `${nombre} ahora aparece como TITULAR del día` });
+      onAsignado();
+    },
+    onError: (e: any) => {
+      toast({ title: "No se pudo asignar", description: e?.message || "Error", variant: "destructive" });
+    },
+  });
+
+  if (!puede) {
+    return (
+      <span className="text-[10px] px-2 py-1 rounded border bg-red-500/5 border-red-500/15 text-red-300/60">
+        {nombre}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => mut.mutate()}
+      disabled={mut.isPending}
+      title={`Asignar a ${nombre} como titular del día`}
+      className="text-[10px] px-2 py-1 rounded border bg-red-500/5 border-red-500/15 text-red-300/70 hover:bg-green-500/15 hover:border-green-500/30 hover:text-green-300 transition-colors flex items-center gap-1.5 disabled:opacity-40"
+    >
+      {mut.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <UserPlus className="w-2.5 h-2.5 opacity-70" />}
+      {nombre}
     </button>
   );
 }
