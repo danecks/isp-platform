@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { Eye, EyeOff, AlertCircle, Lock, User } from "lucide-react";
@@ -6,6 +6,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { brand } from "@/config/branding";
+
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (el: HTMLElement, opts: Record<string, unknown>) => string;
+      reset: (id?: string) => void;
+      remove: (id: string) => void;
+    };
+    __ispOnTurnstileLoad?: () => void;
+  }
+}
 
 export default function AdminLogin() {
   const [, navigate] = useLocation();
@@ -15,13 +28,66 @@ export default function AdminLogin() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState("");
+  const captchaContainerRef = useRef<HTMLDivElement>(null);
+  const captchaWidgetIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!TURNSTILE_SITE_KEY) return;
+
+    const renderWidget = () => {
+      if (!captchaContainerRef.current || captchaWidgetIdRef.current || !window.turnstile) return;
+      captchaWidgetIdRef.current = window.turnstile.render(captchaContainerRef.current, {
+        sitekey: TURNSTILE_SITE_KEY,
+        theme: "dark",
+        callback: (token: string) => setCaptchaToken(token),
+        "error-callback": () => setCaptchaToken(""),
+        "expired-callback": () => setCaptchaToken(""),
+      });
+    };
+
+    if (window.turnstile) {
+      renderWidget();
+    } else {
+      window.__ispOnTurnstileLoad = renderWidget;
+      if (!document.querySelector('script[data-isp-turnstile]')) {
+        const s = document.createElement("script");
+        s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?onload=__ispOnTurnstileLoad&render=explicit";
+        s.async = true;
+        s.defer = true;
+        s.setAttribute("data-isp-turnstile", "true");
+        document.head.appendChild(s);
+      }
+    }
+
+    return () => {
+      if (captchaWidgetIdRef.current && window.turnstile) {
+        try { window.turnstile.remove(captchaWidgetIdRef.current); } catch { /* ignore */ }
+        captchaWidgetIdRef.current = null;
+      }
+    };
+  }, []);
+
+  const resetCaptcha = () => {
+    setCaptchaToken("");
+    if (captchaWidgetIdRef.current && window.turnstile) {
+      try { window.turnstile.reset(captchaWidgetIdRef.current); } catch { /* ignore */ }
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    if (TURNSTILE_SITE_KEY && !captchaToken) {
+      setError("Por favor complete la verificación de seguridad.");
+      return;
+    }
     setLoading(true);
-    const result = await login(username, password);
+    const result = await login(username, password, captchaToken);
     setLoading(false);
+    if (!result.ok) {
+      resetCaptcha();
+    }
     if (result.ok) {
       try {
         const raw = sessionStorage.getItem("isp_admin_session_v2");
@@ -114,6 +180,10 @@ export default function AdminLogin() {
               </div>
             </div>
 
+            {TURNSTILE_SITE_KEY && (
+              <div ref={captchaContainerRef} className="flex justify-center" />
+            )}
+
             {error && (
               <div className="flex items-center gap-2 bg-red-950/40 border border-red-500/20 rounded-lg px-4 py-3">
                 <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
@@ -123,7 +193,7 @@ export default function AdminLogin() {
 
             <Button
               type="submit"
-              disabled={loading}
+              disabled={loading || (!!TURNSTILE_SITE_KEY && !captchaToken)}
               className="w-full h-11 bg-primary text-[#050d1a] font-bold hover:bg-primary/90 rounded-lg mt-2"
             >
               {loading ? (

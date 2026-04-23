@@ -42,10 +42,36 @@ function normalizePhone(raw: string): string {
 
 // POST /api/auth/login
 usersRouter.post("/auth/login", async (req, res) => {
-  const { username, password } = req.body ?? {};
+  const { username, password, turnstileToken } = req.body ?? {};
   if (!username || !password) {
     return res.status(400).json({ error: "Username y contraseña requeridos" });
   }
+
+  const turnstileSecret = process.env["TURNSTILE_SECRET_KEY"];
+  if (turnstileSecret) {
+    if (!turnstileToken) {
+      return res.status(400).json({ error: "Verificación de seguridad requerida" });
+    }
+    try {
+      const ip = (req.headers["x-forwarded-for"]?.toString().split(",")[0] || req.ip || "").trim();
+      const params = new URLSearchParams();
+      params.append("secret", turnstileSecret);
+      params.append("response", String(turnstileToken));
+      if (ip) params.append("remoteip", ip);
+      const verifyRes = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+        method: "POST",
+        body: params,
+      });
+      const verifyData = (await verifyRes.json()) as { success: boolean };
+      if (!verifyData.success) {
+        return res.status(403).json({ error: "Verificación de seguridad fallida. Recargue la página." });
+      }
+    } catch (err) {
+      req.log.error({ err }, "Turnstile verification error");
+      return res.status(503).json({ error: "No se pudo verificar la seguridad. Intente de nuevo." });
+    }
+  }
+
   try {
     const [user] = await db
       .select()
