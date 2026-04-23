@@ -362,7 +362,10 @@ function useTiposPersonal() {
     queryKey: ["tipos-personal-config"],
     queryFn: async () => {
       const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-      const r = await fetch(`${base}/api/tipos-personal-config`);
+      const sess = sessionStorage.getItem("isp_admin_session_v2") ?? "";
+      const r = await fetch(`${base}/api/tipos-personal-config`, {
+        headers: { "x-isp-session": sess },
+      });
       if (!r.ok) return [];
       return r.json();
     },
