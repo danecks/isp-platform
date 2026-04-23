@@ -695,8 +695,33 @@ export const PATRONO_DATOS = {
   representante_nombre: "____________________________________",
   representante_dpi: "____________",
   representante_cargo: "Representante Legal",
+  representante_fecha_nacimiento: "" as string, // ISO YYYY-MM-DD; vacío => se imprime "mayor de edad"
   telefono: "+502 2379 0700",
 };
+
+/**
+ * Calcula la edad actual en años cumplidos a partir de una fecha ISO.
+ * Devuelve null si la fecha es inválida o vacía.
+ */
+export function calcularEdadAnios(fechaIso?: string | null): number | null {
+  if (!fechaIso) return null;
+  // Parsear como fecha LOCAL (no UTC) para evitar desfase en zonas como
+  // Guatemala (UTC-6), donde new Date("1975-06-15") se interpreta a las
+  // 00:00 UTC y al leer getDate()/getMonth() en local cae al día anterior.
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(fechaIso);
+  if (!m) return null;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  if (!year || !month || !day) return null;
+  const nac = new Date(year, month - 1, day);
+  if (Number.isNaN(nac.getTime())) return null;
+  const hoy = new Date();
+  let edad = hoy.getFullYear() - nac.getFullYear();
+  const dm = hoy.getMonth() - nac.getMonth();
+  if (dm < 0 || (dm === 0 && hoy.getDate() < nac.getDate())) edad--;
+  return edad >= 0 && edad < 130 ? edad : null;
+}
 
 /**
  * Carga los datos del patrono desde /api/config-empresa y los devuelve en el
@@ -715,6 +740,7 @@ export async function cargarPatronoDesdeConfig(): Promise<Partial<typeof PATRONO
       telefono_empresa?: string;
       representante_nombre?: string;
       representante_dpi?: string;
+      representante_fecha_nacimiento?: string | null;
     };
     const overrides: Partial<typeof PATRONO_DATOS> = {};
     if (cfg.nombre_empresa)         overrides.razon_social         = cfg.nombre_empresa.toUpperCase();
@@ -724,6 +750,7 @@ export async function cargarPatronoDesdeConfig(): Promise<Partial<typeof PATRONO
     if (cfg.telefono_empresa)       overrides.telefono             = cfg.telefono_empresa;
     if (cfg.representante_nombre)   overrides.representante_nombre = cfg.representante_nombre;
     if (cfg.representante_dpi)      overrides.representante_dpi    = cfg.representante_dpi;
+    if (cfg.representante_fecha_nacimiento) overrides.representante_fecha_nacimiento = cfg.representante_fecha_nacimiento;
     return overrides;
   } catch {
     return {};
@@ -835,6 +862,10 @@ const tipoPersonalLabel = (tipo?: string): string => {
 export async function generarContratoLaboral(datos: DatosContratoLaboral): Promise<void> {
   const patrono = { ...PATRONO_DATOS, ...(datos.patrono ?? {}) };
   const esInicial = datos.tipo_contrato === "inicial";
+  // Edad del representante legal: si hay fecha de nacimiento configurada
+  // se imprime "de X años de edad"; de lo contrario se mantiene el genérico.
+  const edadRep = calcularEdadAnios(patrono.representante_fecha_nacimiento);
+  const edadRepTexto = edadRep != null ? `de ${edadRep} años de edad` : "mayor de edad";
 
   const pdf = new IspPdf({
     titulo: "CONTRATO INDIVIDUAL DE TRABAJO",
@@ -864,7 +895,7 @@ export async function generarContratoLaboral(datos: DatosContratoLaboral): Promi
   // ─── Comparecientes ──
   pdf.addTextoJustificado(
     `En la ciudad de Guatemala, el día ${fechaHoy}, comparecen, por una parte: ` +
-    `${patrono.representante_nombre}, mayor de edad, guatemalteco(a), de este domicilio, ` +
+    `${patrono.representante_nombre}, ${edadRepTexto}, guatemalteco(a), de este domicilio, ` +
     `quien se identifica con Documento Personal de Identificación (DPI) número ${patrono.representante_dpi}, ` +
     `actuando en su calidad de ${patrono.representante_cargo} de la entidad mercantil ` +
     `${patrono.razon_social}, con NIT ${patrono.nit}, ` +

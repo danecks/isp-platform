@@ -1037,6 +1037,7 @@ function ModalConfigEmpresa({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState({
     representante_nombre: "",
     representante_dpi: "",
+    representante_fecha_nacimiento: "",
     direccion_empresa: "",
     nombre_empresa: "",
     nit_empresa: "",
@@ -1054,6 +1055,7 @@ function ModalConfigEmpresa({ onClose }: { onClose: () => void }) {
           setForm({
             representante_nombre: data.representante_nombre || "",
             representante_dpi: data.representante_dpi || "",
+            representante_fecha_nacimiento: data.representante_fecha_nacimiento || "",
             direccion_empresa: data.direccion_empresa || "",
             nombre_empresa: data.nombre_empresa || "",
             nit_empresa: data.nit_empresa || "",
@@ -1111,9 +1113,21 @@ function ModalConfigEmpresa({ onClose }: { onClose: () => void }) {
               <label className="text-xs text-white/50">Representante Legal</label>
               <input value={form.representante_nombre} onChange={e => setForm({ ...form, representante_nombre: e.target.value })} placeholder="Nombre completo del representante" className={inputCls} />
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs text-white/50">DPI del Representante Legal</label>
-              <input value={form.representante_dpi} onChange={e => setForm({ ...form, representante_dpi: e.target.value })} placeholder="0000 00000 0000" className={inputCls} />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs text-white/50">DPI del Representante Legal</label>
+                <input value={form.representante_dpi} onChange={e => setForm({ ...form, representante_dpi: e.target.value })} placeholder="0000 00000 0000" className={inputCls} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs text-white/50">Fecha de nacimiento del Representante</label>
+                <input
+                  type="date"
+                  value={form.representante_fecha_nacimiento}
+                  onChange={e => setForm({ ...form, representante_fecha_nacimiento: e.target.value })}
+                  className={inputCls}
+                />
+                <p className="text-[10px] text-white/30">Se usa para imprimir “de XX años de edad” en los contratos.</p>
+              </div>
             </div>
             <div className="space-y-1.5">
               <label className="text-xs text-white/50">Dirección de la Empresa</label>

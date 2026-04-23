@@ -10,7 +10,8 @@ actasRouter.get("/config-empresa", async (_req, res) => {
     const { rows } = await pool.query(`
       SELECT ce.*,
              COALESCE(ce.representante_nombre, e.nombre_completo) AS representante_nombre,
-             COALESCE(ce.representante_dpi, e.dpi)                AS representante_dpi
+             COALESCE(ce.representante_dpi, e.dpi)                AS representante_dpi,
+             TO_CHAR(ce.representante_fecha_nacimiento, 'YYYY-MM-DD') AS representante_fecha_nacimiento
       FROM config_empresa ce
       LEFT JOIN employees e ON e.id = ce.representante_legal_id
       WHERE ce.id = 1
@@ -28,6 +29,7 @@ actasRouter.put("/config-empresa", async (req, res) => {
   const {
     representante_nombre,
     representante_dpi,
+    representante_fecha_nacimiento,
     direccion_empresa,
     nombre_empresa,
     umbral_dias_consecutivos,
@@ -37,17 +39,28 @@ actasRouter.put("/config-empresa", async (req, res) => {
     telefono_empresa,
   } = req.body;
   try {
+    // Permitir limpiar la fecha de nacimiento del representante pasando ""
+    const fechaNacRep =
+      representante_fecha_nacimiento === undefined
+        ? null
+        : representante_fecha_nacimiento === "" || representante_fecha_nacimiento === null
+        ? null
+        : representante_fecha_nacimiento;
     const { rows } = await pool.query(
       `UPDATE config_empresa SET
-         representante_nombre     = COALESCE($1, representante_nombre),
-         representante_dpi        = COALESCE($2, representante_dpi),
-         direccion_empresa        = COALESCE($3, direccion_empresa),
-         nombre_empresa           = COALESCE($4, nombre_empresa),
-         umbral_dias_consecutivos = COALESCE($5, umbral_dias_consecutivos),
-         umbral_medios_turnos_mes = COALESCE($6, umbral_medios_turnos_mes),
-         nit_empresa              = COALESCE($7, nit_empresa),
-         patente_comercio         = COALESCE($8, patente_comercio),
-         telefono_empresa         = COALESCE($9, telefono_empresa),
+         representante_nombre           = COALESCE($1, representante_nombre),
+         representante_dpi              = COALESCE($2, representante_dpi),
+         direccion_empresa              = COALESCE($3, direccion_empresa),
+         nombre_empresa                 = COALESCE($4, nombre_empresa),
+         umbral_dias_consecutivos       = COALESCE($5, umbral_dias_consecutivos),
+         umbral_medios_turnos_mes       = COALESCE($6, umbral_medios_turnos_mes),
+         nit_empresa                    = COALESCE($7, nit_empresa),
+         patente_comercio               = COALESCE($8, patente_comercio),
+         telefono_empresa               = COALESCE($9, telefono_empresa),
+         representante_fecha_nacimiento = CASE
+           WHEN $11::boolean THEN $10::date
+           ELSE representante_fecha_nacimiento
+         END,
          updated_at = NOW()
        WHERE id = 1
        RETURNING *`,
@@ -61,6 +74,8 @@ actasRouter.put("/config-empresa", async (req, res) => {
         nit_empresa ?? null,
         patente_comercio ?? null,
         telefono_empresa ?? null,
+        fechaNacRep,
+        representante_fecha_nacimiento !== undefined,
       ]
     );
     res.json({ ok: true, config: rows[0] });

@@ -503,3 +503,31 @@ export async function migrarPESP01() {
     al dar de alta (`fechaIngreso` para inicial, `+2 meses` para
     post-prueba) — el bug era solo en la generación del PDF desde
     el flujo del kiosco.
+
+### 10.3 Edad del representante legal en contratos (abr 2026)
+- **Necesidad**: el contrato laboral imprimía “mayor de edad” para el
+  representante legal de la empresa, en lugar de la edad real
+  (“de XX años de edad”) como se hace con los comparecientes.
+- **Cambios**:
+  - **BD**: nueva columna `representante_fecha_nacimiento DATE` en
+    `config_empresa` (auto-migrate idempotente en `auto-seed.ts`,
+    junto a la migración ACTAS-01).
+  - **API** (`routes/actas.ts`):
+    - `GET /config-empresa` devuelve la fecha como `YYYY-MM-DD`
+      vía `TO_CHAR`.
+    - `PUT /config-empresa` acepta el campo y permite limpiarlo
+      enviando `""` (CASE → NULL).
+  - **Frontend**:
+    - `RRHHEventos.tsx → ModalConfigEmpresa`: nuevo input
+      `type="date"` junto al DPI del representante legal.
+    - `pdfRrhh.ts`: helper `calcularEdadAnios()`,
+      `cargarPatronoDesdeConfig()` lee el nuevo campo, y
+      `generarContratoLaboral()` reemplaza el literal “mayor de
+      edad” por `de X años de edad` cuando hay fecha registrada
+      (fallback al texto genérico si no se ha configurado).
+- **Notas**:
+  - El cálculo de edad se hace en cliente al momento de generar el
+    PDF, así la edad siempre está actualizada sin depender de un
+    campo derivado almacenado.
+  - Misma fórmula que para los comparecientes (`floor((hoy - dob)
+    / 365.25)`).

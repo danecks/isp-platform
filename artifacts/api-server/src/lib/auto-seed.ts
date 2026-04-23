@@ -4698,6 +4698,7 @@ Por favor ingresa al sistema o responde para continuar.',
     }
     await pool.query(`ALTER TABLE config_empresa ADD COLUMN IF NOT EXISTS representante_nombre VARCHAR(255)`);
     await pool.query(`ALTER TABLE config_empresa ADD COLUMN IF NOT EXISTS representante_dpi VARCHAR(30)`);
+    await pool.query(`ALTER TABLE config_empresa ADD COLUMN IF NOT EXISTS representante_fecha_nacimiento DATE`);
     await pool.query(`ALTER TABLE config_empresa ADD COLUMN IF NOT EXISTS nit_empresa VARCHAR(30)`);
     await pool.query(`ALTER TABLE config_empresa ADD COLUMN IF NOT EXISTS patente_comercio VARCHAR(50)`);
     await pool.query(`ALTER TABLE config_empresa ADD COLUMN IF NOT EXISTS telefono_empresa VARCHAR(30)`);
