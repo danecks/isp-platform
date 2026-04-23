@@ -40,7 +40,7 @@
 | **Cierre del día** | Acción que congela el día operativo y lo hace válido para planilla. |
 | **Cliente** | Empresa que contrata servicios de seguridad. |
 | **Sede** | Ubicación física específica de un cliente (puede tener varias). |
-| **Zona operativa** | Agrupación geográfica de puestos bajo un supervisor. |
+| **Zona operativa** | Agrupación geográfica de puestos. Puede tener uno o varios supervisores responsables (tabla `zona_supervisores`). El campo legacy `operational_zones.supervisor_employee_id` se mantiene sincronizado con el primero de la lista por compatibilidad. Solo empleados con `tipo_personal` distinto de `guardia` y `custodio` (supervisor, jefe de servicio, administración…) pueden asignarse. |
 | **Período laboral** | Lapso continuo en que un empleado trabajó. Un empleado puede tener varios si reingresó. |
 
 ---

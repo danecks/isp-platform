@@ -5351,5 +5351,43 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: CUST-DUP-CLEAN-01 — error (no bloqueante)");
   }
 
+  // ── ZONA-SUPER-MULTI-01: tabla many-to-many de supervisores por zona ─────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS zona_supervisores (
+        id           SERIAL PRIMARY KEY,
+        zona_id      INTEGER NOT NULL REFERENCES operational_zones(id) ON DELETE CASCADE,
+        employee_id  INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        orden        INTEGER NOT NULL DEFAULT 0,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (zona_id, employee_id)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS zs_zona ON zona_supervisores(zona_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS zs_emp ON zona_supervisores(employee_id)`);
+
+    // Marker idempotente: backfill desde operational_zones.supervisor_employee_id (legacy)
+    const { rows: m } = await pool.query(
+      `SELECT value FROM system_config WHERE key = 'zona_super_multi_v1'`
+    );
+    if (!m.length || m[0].value !== "done") {
+      await pool.query(`
+        INSERT INTO zona_supervisores (zona_id, employee_id, orden)
+        SELECT id, supervisor_employee_id, 0
+          FROM operational_zones
+         WHERE supervisor_employee_id IS NOT NULL
+        ON CONFLICT (zona_id, employee_id) DO NOTHING
+      `);
+      await pool.query(
+        `INSERT INTO system_config (key, value) VALUES ('zona_super_multi_v1','done')
+         ON CONFLICT (key) DO UPDATE SET value = 'done'`
+      );
+      logger.info("Auto-migrate: ZONA-SUPER-MULTI-01 backfill aplicado");
+    }
+    logger.info("Auto-migrate: ZONA-SUPER-MULTI-01 tabla zona_supervisores verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: ZONA-SUPER-MULTI-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

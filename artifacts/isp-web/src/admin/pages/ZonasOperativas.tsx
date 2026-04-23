@@ -17,6 +17,13 @@ const h = () => ({ "x-isp-session": getSession(), "Content-Type": "application/j
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
+interface ZonaSupervisor {
+  employee_id: number;
+  nombre: string;
+  puesto: string | null;
+  telefono: string | null;
+}
+
 interface Zona {
   id: number;
   nombre: string;
@@ -26,6 +33,7 @@ interface Zona {
   supervisor_nombre: string | null;
   supervisor_puesto: string | null;
   supervisor_telefono: string | null;
+  supervisores: ZonaSupervisor[];
   estado: string;
   total_puestos: number;
   total_clientes: number;
@@ -73,22 +81,37 @@ interface PuestoAll {
 
 function ModalZona({
   zona,
-  empleados,
   onClose,
   onSaved,
 }: {
   zona: Zona | null;
-  empleados: Empleado[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const { toast } = useToast();
   const [nombre, setNombre] = useState(zona?.nombre ?? "");
   const [descripcion, setDescripcion] = useState(zona?.descripcion ?? "");
-  const [supervisorEmpId, setSupervisorEmpId] = useState<string>(
-    zona?.supervisor_employee_id?.toString() ?? ""
+  const [supervisorIds, setSupervisorIds] = useState<number[]>(
+    () => (zona?.supervisores ?? []).map((s) => s.employee_id)
   );
   const [saving, setSaving] = useState(false);
+
+  // Lista filtrada: solo supervisores, jefes de servicio o administración.
+  const { data: empleadosSup = [], isLoading: cargandoSup } = useQuery<Empleado[]>({
+    queryKey: ["empleados-supervisores"],
+    queryFn: () =>
+      fetch(`${API}/operaciones/zonas/empleados-supervisores`).then((r) => r.json()),
+  });
+
+  const empleadosMap = new Map(empleadosSup.map((e) => [e.id, e] as const));
+  const disponibles = empleadosSup.filter((e) => !supervisorIds.includes(e.id));
+
+  function agregar(id: number) {
+    if (!supervisorIds.includes(id)) setSupervisorIds([...supervisorIds, id]);
+  }
+  function quitar(id: number) {
+    setSupervisorIds(supervisorIds.filter((x) => x !== id));
+  }
 
   async function handleSave() {
     if (!nombre.trim()) { toast({ title: "El nombre es requerido", variant: "destructive" }); return; }
@@ -97,7 +120,7 @@ function ModalZona({
       const body = {
         nombre: nombre.trim(),
         descripcion: descripcion.trim() || null,
-        supervisor_employee_id: supervisorEmpId ? Number(supervisorEmpId) : null,
+        supervisor_employee_ids: supervisorIds,
       };
       const url = zona ? `${API}/operaciones/zonas/${zona.id}` : `${API}/operaciones/zonas`;
       const method = zona ? "PATCH" : "POST";
@@ -155,15 +178,54 @@ function ModalZona({
 
           <div>
             <label className="text-[10px] text-white/30 uppercase tracking-widest font-semibold block mb-1.5">
-              Supervisor responsable
+              Supervisores responsables
             </label>
+
+            {supervisorIds.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {supervisorIds.map((id) => {
+                  const emp = empleadosMap.get(id);
+                  const label = emp?.nombreCompleto ?? `Empleado #${id}`;
+                  return (
+                    <span
+                      key={id}
+                      className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg bg-primary/15 border border-primary/30 text-primary"
+                    >
+                      <User className="w-3 h-3" />
+                      <span className="truncate max-w-[180px]">{label}</span>
+                      <button
+                        type="button"
+                        onClick={() => quitar(id)}
+                        className="text-primary/60 hover:text-primary"
+                        title="Quitar supervisor"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
             <select
-              value={supervisorEmpId}
-              onChange={(e) => setSupervisorEmpId(e.target.value)}
-              className="w-full bg-[#0c1929] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-primary/40"
+              value=""
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v) agregar(Number(v));
+              }}
+              disabled={cargandoSup || disponibles.length === 0}
+              className="w-full bg-[#0c1929] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-primary/40 disabled:opacity-50"
             >
-              <option value="">Sin supervisor asignado</option>
-              {empleados.map((emp) => (
+              <option value="">
+                {cargandoSup
+                  ? "Cargando…"
+                  : disponibles.length === 0
+                    ? supervisorIds.length === 0
+                      ? "No hay supervisores registrados"
+                      : "Todos los supervisores ya están agregados"
+                    : "+ Agregar supervisor…"}
+              </option>
+              {disponibles.map((emp) => (
                 <option key={emp.id} value={emp.id}>
                   {emp.nombreCompleto}{emp.puesto ? ` — ${emp.puesto}` : ""}
                 </option>
@@ -476,15 +538,19 @@ function ZonaCard({
         </div>
       )}
 
-      {/* Supervisor */}
-      <div className="px-4 py-2.5 border-t border-white/6 flex items-center gap-2">
-        <User className="w-3 h-3 text-white/20 shrink-0" />
-        {zona.supervisor_nombre ? (
-          <div className="flex-1 min-w-0">
-            <p className="text-[11px] text-white/60 truncate">{zona.supervisor_nombre}</p>
-            {zona.supervisor_puesto && (
-              <p className="text-[9px] text-white/25 truncate">{zona.supervisor_puesto}</p>
-            )}
+      {/* Supervisores */}
+      <div className="px-4 py-2.5 border-t border-white/6 flex items-start gap-2">
+        <User className="w-3 h-3 text-white/20 shrink-0 mt-0.5" />
+        {zona.supervisores && zona.supervisores.length > 0 ? (
+          <div className="flex-1 min-w-0 space-y-0.5">
+            {zona.supervisores.map((s) => (
+              <div key={s.employee_id}>
+                <p className="text-[11px] text-white/60 truncate">{s.nombre}</p>
+                {s.puesto && (
+                  <p className="text-[9px] text-white/25 truncate">{s.puesto}</p>
+                )}
+              </div>
+            ))}
           </div>
         ) : (
           <span className="text-[10px] text-white/20 italic">Sin supervisor asignado</span>
@@ -631,15 +697,6 @@ export default function ZonasOperativas() {
     queryKey: ["operaciones-zonas"],
     queryFn: () => fetch(`${API}/operaciones/zonas`).then((r) => r.json()),
     refetchInterval: 30_000,
-  });
-
-  const { data: empleados = [] } = useQuery<Empleado[]>({
-    queryKey: ["empleados-mini"],
-    queryFn: () =>
-      fetch(`${API}/employees?limit=200`).then((r) => r.json()).then((d) => {
-        const arr: Empleado[] = Array.isArray(d) ? d : (d.data ?? []);
-        return arr.filter((e: any) => e.estadoLaboral === "activo" || e.estado_laboral === "activo");
-      }),
   });
 
   const { data: todosPuestos = [], refetch: refetchPuestos } = useQuery<PuestoAll[]>({
@@ -830,7 +887,6 @@ export default function ZonasOperativas() {
       {modalZona !== null && (
         <ModalZona
           zona={modalZona === "nuevo" ? null : modalZona}
-          empleados={Array.isArray(empleados) ? empleados : []}
           onClose={() => setModalZona(null)}
           onSaved={() => { setModalZona(null); invalidate(); }}
         />
