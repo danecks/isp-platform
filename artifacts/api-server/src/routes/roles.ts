@@ -67,6 +67,8 @@ export const SYSTEM_MODULOS = [
   { clave: "config_whatsapp",     label: "Configuración WhatsApp",     seccion: "Sistema" },
   { clave: "cms",                 label: "CMS Web",                    seccion: "Sistema" },
   { clave: "simulador_wa",        label: "Simulador WhatsApp",         seccion: "Sistema" },
+  { clave: "modelo_datos",        label: "Modelo de Datos (ERD)",      seccion: "Sistema" },
+  { clave: "documentacion",       label: "Documentación",              seccion: "Sistema" },
   // Bodega
   { clave: "bodega",              label: "Inventario General",         seccion: "Bodega e Inventario" },
   { clave: "vehiculos",           label: "Vehículos",                  seccion: "Bodega e Inventario" },
