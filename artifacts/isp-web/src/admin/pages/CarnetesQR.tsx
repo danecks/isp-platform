@@ -163,19 +163,29 @@ function createFrenteElement(
     ? `<img src="${fotoB64}" style="width:${_MM(21)}px;height:${_MM(21)}px;border-radius:50%;object-fit:cover;border:${_MM(0.8)}px solid #f5c842;box-shadow:0 ${_MM(1)}px ${_MM(3)}px rgba(15,32,68,.35);margin-bottom:${_MM(1.5)}px;display:block" crossorigin="anonymous" />`
     : `<div style="width:${_MM(21)}px;height:${_MM(21)}px;border-radius:50%;background:linear-gradient(135deg,#0f2044,#1e4a9a);border:${_MM(0.8)}px solid #f5c842;box-shadow:0 ${_MM(1)}px ${_MM(3)}px rgba(15,32,68,.35);display:flex;align-items:center;justify-content:center;margin-bottom:${_MM(1.5)}px"><span style="font-size:${_PT(12)}px;font-weight:900;color:#f5c842">${initials}</span></div>`;
 
-  // Medallón del logo en la stripe (círculo blanco con logo)
-  const logoMedaillon = `<div style="width:${_MM(7.5)}px;height:${_MM(7.5)}px;border-radius:50%;background:#fff;box-shadow:0 ${_MM(0.5)}px ${_MM(1.5)}px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;margin-top:${_MM(3)}px;flex-shrink:0;overflow:hidden"><img src="${logoIconB64}" style="width:${_MM(6)}px;height:${_MM(6)}px;object-fit:contain" /></div>`;
+  // Medallón del logo: idéntico a la previa — círculo blanco con logo-isp.png
+  // recortado al 158% (centrado en la corona ISP). Se usa background-image en
+  // un <div> en lugar de <img> para replicar exactamente la técnica del preview.
+  const logoMedaillon = `<div style="position:absolute;top:${_MM(3)}px;left:50%;transform:translateX(-50%);width:${_MM(7.5)}px;height:${_MM(7.5)}px;border-radius:50%;background-color:#fff;background-image:url('${logoFullB64}');background-repeat:no-repeat;background-position:center 29%;background-size:158%;box-shadow:0 ${_MM(0.5)}px ${_MM(1.5)}px rgba(0,0,0,.4);box-sizing:border-box"></div>`;
+
+  // Textos verticales: html2canvas no soporta bien writing-mode:vertical-rl
+  // (los renderiza en horizontal y a veces espejados). Usamos transform:rotate
+  // que sí captura correctamente.
+  const textoLargo  = `<div style="position:absolute;top:0;bottom:0;left:0;right:0;display:flex;align-items:center;justify-content:center"><span style="display:inline-block;transform:rotate(-90deg);transform-origin:center;white-space:nowrap;font-size:${_PT(4.5)}px;color:#f5c842;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;line-height:1">INVESTIGACIONES Y SEGURIDAD PROFESIONAL</span></div>`;
+  const textoNumero = num
+    ? `<div style="position:absolute;bottom:${_MM(2.5)}px;left:0;right:0;display:flex;justify-content:center"><span style="display:inline-block;transform:rotate(-90deg);transform-origin:center;white-space:nowrap;font-size:${_PT(4)}px;color:rgba(255,255,255,.35);font-family:monospace;font-weight:700;letter-spacing:1px;line-height:1">${num}</span></div>`
+    : "";
 
   const el = document.createElement("div");
   el.style.cssText = `width:${W}px;height:${H}px;display:flex;flex-direction:row;overflow:hidden;font-family:Arial,Helvetica,sans-serif;background:#fff;box-sizing:border-box`;
   el.innerHTML = `
   <!-- STRIPE LATERAL NAVY -->
-  <div style="width:${SW}px;height:${H}px;background:linear-gradient(180deg,#0a1a3d 0%,#0f2044 60%,#0a1a3d 100%);display:flex;flex-direction:column;align-items:center;flex-shrink:0;position:relative;box-sizing:border-box">
+  <div style="width:${SW}px;height:${H}px;background:linear-gradient(180deg,#0a1a3d 0%,#0f2044 60%,#0a1a3d 100%);flex-shrink:0;position:relative;box-sizing:border-box;overflow:hidden">
     <div style="position:absolute;top:0;left:0;right:0;height:${_MM(0.8)}px;background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017)"></div>
     <div style="position:absolute;bottom:0;left:0;right:0;height:${_MM(0.8)}px;background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017)"></div>
     ${logoMedaillon}
-    <span style="writing-mode:vertical-rl;font-size:${_PT(4.5)}px;color:#f5c842;font-weight:800;margin-top:${_MM(2.5)}px;flex:1;display:flex;align-items:center;justify-content:center;letter-spacing:1.2px;text-transform:uppercase">INVESTIGACIONES Y SEGURIDAD PROFESIONAL</span>
-    <span style="writing-mode:vertical-rl;font-size:${_PT(4)}px;color:rgba(255,255,255,.35);font-family:monospace;font-weight:700;margin-bottom:${_MM(3.5)}px;letter-spacing:1px">${num}</span>
+    ${textoLargo}
+    ${textoNumero}
   </div>
   <!-- CUERPO BLANCO -->
   <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;background:#fff">
