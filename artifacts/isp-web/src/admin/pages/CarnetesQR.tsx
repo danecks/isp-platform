@@ -174,7 +174,7 @@ function createFrenteElement(
     <div style="position:absolute;top:0;left:0;right:0;height:${_MM(0.8)}px;background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017)"></div>
     <div style="position:absolute;bottom:0;left:0;right:0;height:${_MM(0.8)}px;background:linear-gradient(90deg,#d4a017,#f5c842,#d4a017)"></div>
     ${logoMedaillon}
-    <span style="writing-mode:vertical-rl;font-size:${_PT(4.5)}px;color:#f5c842;font-weight:800;margin-top:${_MM(2.5)}px;flex:1;display:flex;align-items:center;justify-content:center;letter-spacing:1.2px;text-transform:uppercase">INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A</span>
+    <span style="writing-mode:vertical-rl;font-size:${_PT(4.5)}px;color:#f5c842;font-weight:800;margin-top:${_MM(2.5)}px;flex:1;display:flex;align-items:center;justify-content:center;letter-spacing:1.2px;text-transform:uppercase">INVESTIGACIONES Y SEGURIDAD PROFESIONAL</span>
     <span style="writing-mode:vertical-rl;font-size:${_PT(4)}px;color:rgba(255,255,255,.35);font-family:monospace;font-weight:700;margin-bottom:${_MM(3.5)}px;letter-spacing:1px">${num}</span>
   </div>
   <!-- CUERPO BLANCO -->
@@ -284,7 +284,7 @@ function CarnetFrentePreview({ agent, fotoSrc }: { agent: AgenteCarnet; fotoSrc?
           backgroundColor: "#fff",
         }} />
         <span style={{ writingMode: "vertical-rl", fontSize: _P(4.5), color: "#f5c842", fontWeight: 800, marginTop: _M(2.5), flex: 1, display: "flex", alignItems: "center", justifyContent: "center", letterSpacing: 1.2, textTransform: "uppercase" }}>
-          INVESTIGACIONES Y SEGURIDAD PROFESIONAL S.A
+          INVESTIGACIONES Y SEGURIDAD PROFESIONAL
         </span>
         <span style={{ writingMode: "vertical-rl", fontSize: _P(4), color: "rgba(255,255,255,.35)", fontFamily: "monospace", fontWeight: 700, marginBottom: _M(3.5), letterSpacing: 1 }}>
           {num}
