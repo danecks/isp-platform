@@ -5305,5 +5305,51 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: WIPE-PROD-01 — error leyendo bandera (no bloqueante)");
   }
 
+  // Auto-migrate: CUST-DUP-CLEAN-01 limpieza única de duplicados custodios (un agente, un puesto)
+  try {
+    const { rows: marker } = await pool.query(
+      `SELECT value FROM system_config WHERE key = 'cust_dup_clean_v1' LIMIT 1`,
+    );
+    if (marker[0]?.value !== "done") {
+      await pool.query("BEGIN");
+      try {
+        // Caso 1: borrar 5 asignaciones diarias en conflicto con titularidad activa
+        const del = await pool.query(
+          `DELETE FROM custodia_asignacion_diaria
+            WHERE id IN (
+              SELECT cad.id
+                FROM custodia_asignacion_diaria cad
+                JOIN custodia_titulares ct
+                  ON ct.employee_id = cad.employee_id
+                 AND ct.cliente_id = cad.cliente_id
+                 AND ct.activo = TRUE
+                 AND ct.slot_numero <> cad.slot_numero
+               WHERE (cad.fecha = '2026-04-23' AND cad.cliente_id = 5 AND cad.employee_id = 1)
+                  OR (cad.fecha = '2026-04-16' AND cad.cliente_id = 5 AND cad.employee_id IN (171, 238, 113, 298))
+            )`,
+        );
+        // Caso 2: desactivar titularidades duplicadas (mantener slot indicado por el usuario)
+        const upd = await pool.query(
+          `UPDATE custodia_titulares
+              SET activo = FALSE
+            WHERE activo = TRUE
+              AND ((cliente_id = 5 AND employee_id = 147 AND slot_numero = 13)
+                OR (cliente_id = 5 AND employee_id = 62  AND slot_numero = 14))`,
+        );
+        await pool.query(
+          `INSERT INTO system_config (key, value) VALUES ('cust_dup_clean_v1', 'done')
+           ON CONFLICT (key) DO UPDATE SET value = 'done'`,
+        );
+        await pool.query("COMMIT");
+        logger.info({ asignacionesEliminadas: del.rowCount, titularidadesDesactivadas: upd.rowCount }, "Auto-migrate: CUST-DUP-CLEAN-01 limpieza única ejecutada");
+      } catch (cerr) {
+        await pool.query("ROLLBACK");
+        logger.error({ err: cerr }, "Auto-migrate: CUST-DUP-CLEAN-01 — falló, ROLLBACK ejecutado");
+      }
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: CUST-DUP-CLEAN-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }
