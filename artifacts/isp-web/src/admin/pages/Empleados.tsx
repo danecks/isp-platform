@@ -4189,21 +4189,11 @@ function TabContratos({ emp }: { emp: Empleado }) {
       const contratoInicialPrev = contratosPrev.find((c) => c.tipo_contrato === "inicial");
 
       const fechaIngreso = det.fecha_ingreso || emp.fechaIngreso || new Date().toISOString().slice(0, 10);
-      // Fecha de inicio:
-      //  - Inicial: hereda del contrato inicial previo si existe, o usa la fecha de ingreso del empleado.
-      //  - Post-prueba: hereda del post-prueba previo si existe; si no, fecha del inicial + 60 días.
-      let fechaInicio: string;
-      if (tipo === "inicial") {
-        fechaInicio = contratoInicialPrev?.fecha_inicio || fechaIngreso;
-      } else {
-        const postPrev = contratosPrev.find((c) => c.tipo_contrato === "post_prueba");
-        if (postPrev?.fecha_inicio) {
-          fechaInicio = postPrev.fecha_inicio;
-        } else {
-          const baseInicio = contratoInicialPrev?.fecha_inicio || fechaIngreso;
-          fechaInicio = new Date(new Date(baseInicio).getTime() + 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-        }
-      }
+      // Fecha de inicio de la relación laboral: para AMBOS contratos
+      // (inicial y post-prueba) se usa la fecha de alta original. La cláusula
+      // QUINTA del post-prueba ya aclara que sustituye al inicial y reconoce
+      // la antigüedad desde esa misma fecha.
+      const fechaInicio: string = contratoInicialPrev?.fecha_inicio || fechaIngreso;
 
       // Sueldo: empleado → último contrato → ficha
       const sueldoStr =
