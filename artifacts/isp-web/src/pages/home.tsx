@@ -392,7 +392,7 @@ export default function Home() {
           </div>
 
           <FadeIn delay={0.4}>
-            <p className="text-primary font-medium text-lg">Nos convertimos en la extensión operativa de su empresa de seguridad.</p>
+            <p className="text-primary font-medium text-lg">Nos convertimos en la extensión operativa de su empresa.</p>
           </FadeIn>
         </div>
       </section>
