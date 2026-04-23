@@ -485,3 +485,21 @@ export async function migrarPESP01() {
   - `ZonasErrorBoundary` local: si algo crashea en runtime, muestra el
     error en pantalla (mensaje + stack) en vez de quedar en blanco.
   - Normalización de `zona.supervisores` a `[]` por si llega `null`.
+
+### 10.2 Contrato post-prueba con fecha incorrecta (abr 2026)
+- **Síntoma**: al imprimir los dos contratos desde el flujo
+  *Kiosco → Solicitud contratada*, ambos PDFs salían con la misma
+  fecha de inicio (la fecha de alta).
+- **Causa**: en `KioscoSolicitudes.tsx`, el botón "Contrato Post-Prueba"
+  pasaba `fecha_inicio: new Date().toISOString().slice(0, 10)` igual que
+  el botón "Contrato Inicial", sin sumar los 2 meses de período de prueba.
+- **Fix**: el botón post-prueba ahora calcula `new Date() + 2 meses`
+  vía `setMonth(getMonth() + 2)` antes de pasarlo al generador de PDF.
+- **Notas**:
+  - El botón equivalente en la ficha del empleado (`Empleados.tsx →
+    TabContratos`) ya hacía bien el cálculo (lee de la BD el
+    `fecha_inicio` del contrato post-prueba almacenado).
+  - El backend ya guardaba bien las fechas en `contratos_empleados`
+    al dar de alta (`fechaIngreso` para inicial, `+2 meses` para
+    post-prueba) — el bug era solo en la generación del PDF desde
+    el flujo del kiosco.

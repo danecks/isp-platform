@@ -1067,13 +1067,17 @@ export default function KioscoSolicitudes() {
                           <button
                             onClick={async () => {
                               const patrono = await cargarPatronoDesdeConfig();
+                              // El contrato post-prueba inicia 2 meses después
+                              // de la fecha de alta (período de prueba = 60 días).
+                              const fechaPostPrueba = new Date();
+                              fechaPostPrueba.setMonth(fechaPostPrueba.getMonth() + 2);
                               const datos: DatosContratoLaboral = {
                                 empleado_nombre: detalle.nombre_completo,
                                 empleado_dpi: detalle.dpi,
                                 empleado_estado_civil: detalle.estado_civil ?? undefined,
                                 empleado_direccion: detalle.direccion ?? undefined,
                                 empleado_telefono: detalle.telefono,
-                                fecha_inicio: new Date().toISOString().slice(0, 10),
+                                fecha_inicio: fechaPostPrueba.toISOString().slice(0, 10),
                                 puesto: asignacion.puesto || detalle.puesto_solicitado,
                                 tipo_personal: asignacion.tipo_personal || "guardia",
                                 sueldo_base: parseFloat(asignacion.sueldo_base) || parseFloat(detalle.pretension_salarial || "0") || 0,
