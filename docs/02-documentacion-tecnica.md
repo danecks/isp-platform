@@ -504,28 +504,6 @@ export async function migrarPESP01() {
     post-prueba) — el bug era solo en la generación del PDF desde
     el flujo del kiosco.
 
-### 10.3.6 Contrato post-prueba comparte fecha de inicio con el inicial (abr 2026)
-- **Necesidad**: el contrato post-prueba estaba imprimiendo como "fecha de
-  inicio de la relación laboral" la fecha de alta + 2 meses (vencimiento
-  del período de prueba). Lo correcto es que ambos contratos (inicial y
-  post-prueba) lleven como fecha de inicio la fecha de alta original,
-  porque el post-prueba es la *sustitución* del inicial y la antigüedad se
-  cuenta desde el ingreso.
-- **Cambios**:
-  - `KioscoSolicitudes.tsx` botón *Contrato Post-Prueba*: ya no suma 2
-    meses; usa `asignacion.fecha_alta` directo, igual que el inicial.
-  - `Empleados.tsx → TabContratos`: tanto el contrato inicial como el
-    post-prueba se generan con `fecha_inicio = fechaIngreso` (la del
-    contrato inicial guardado, con fallback a `employees.fecha_ingreso`).
-- **Notas**:
-  - La cláusula QUINTA del PDF post-prueba ya menciona explícitamente que
-    el contrato sustituye al inicial y reconoce la antigüedad acumulada,
-    así que la frase de inicio no necesita cambiar.
-  - El registro `contratos_empleados` del post-prueba sigue almacenado en
-    BD con `fecha_inicio = alta + 2 meses` para fines administrativos
-    (saber cuándo termina el período de prueba); este cambio solo afecta
-    el texto del PDF.
-
 ### 10.3.5 Fecha de alta editable al contratar desde el kiosco (abr 2026)
 - **Necesidad**: al contratar desde *Kiosco → Solicitudes*, la fecha de
   ingreso siempre se fijaba en `CURRENT_DATE` (hoy). Esto era incorrecto

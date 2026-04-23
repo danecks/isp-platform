@@ -1079,18 +1079,19 @@ export default function KioscoSolicitudes() {
                           <button
                             onClick={async () => {
                               const patrono = await cargarPatronoDesdeConfig();
-                              // Ambos contratos llevan como "fecha de inicio de la relación
-                              // laboral" la fecha de alta original. La cláusula QUINTA del
-                              // post-prueba ya aclara que sustituye al inicial y reconoce
-                              // la antigüedad desde esa misma fecha.
-                              const fechaAlta = asignacion.fecha_alta || new Date().toISOString().slice(0, 10);
+                              // El contrato post-prueba inicia 2 meses después
+                              // de la fecha de alta (al vencer el período de prueba de 60 días).
+                              const baseAlta = asignacion.fecha_alta || new Date().toISOString().slice(0, 10);
+                              const [yA, mA, dA] = baseAlta.split("-").map(Number);
+                              const fechaPostPrueba = new Date(yA, (mA || 1) - 1, dA || 1);
+                              fechaPostPrueba.setMonth(fechaPostPrueba.getMonth() + 2);
                               const datos: DatosContratoLaboral = {
                                 empleado_nombre: detalle.nombre_completo,
                                 empleado_dpi: detalle.dpi,
                                 empleado_estado_civil: detalle.estado_civil ?? undefined,
                                 empleado_direccion: detalle.direccion ?? undefined,
                                 empleado_telefono: detalle.telefono,
-                                fecha_inicio: fechaAlta,
+                                fecha_inicio: fechaPostPrueba.toISOString().slice(0, 10),
                                 puesto: asignacion.puesto || detalle.puesto_solicitado,
                                 tipo_personal: asignacion.tipo_personal || "guardia",
                                 sueldo_base: parseFloat(asignacion.sueldo_base) || parseFloat(detalle.pretension_salarial || "0") || 0,
