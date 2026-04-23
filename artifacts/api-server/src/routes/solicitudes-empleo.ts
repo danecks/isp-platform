@@ -582,6 +582,12 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
     const sueldoAsignado   = req.body?.sueldo_base != null
       ? parseFloat(req.body.sueldo_base)
       : (sol.pretension_salarial ? parseFloat(sol.pretension_salarial) : null);
+    // Fecha de ingreso opcional (YYYY-MM-DD). Si no viene, se usa la fecha
+    // actual del servidor (CURRENT_DATE).
+    const fechaIngresoBody: string | null =
+      typeof req.body?.fecha_ingreso === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.body.fecha_ingreso)
+        ? req.body.fecha_ingreso
+        : null;
 
     const sexo = sol.genero === "Masculino" ? "M" : sol.genero === "Femenino" ? "F" : null;
     // Convertir booleanos → "Sí"/"No" para columnas varchar(3) en employees
@@ -609,7 +615,7 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
         await pool.query(`
           UPDATE employees SET
             estado_laboral  = 'activo',
-            fecha_ingreso   = CURRENT_DATE,
+            fecha_ingreso   = COALESCE($9::date, CURRENT_DATE),
             tipo_personal   = $2,
             sueldo_base     = COALESCE($3, sueldo_base),
             puesto          = COALESCE($4, puesto),
@@ -625,6 +631,7 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
           sol.telefono || null,
           sol.correo || null,
           notasExtra || null,
+          fechaIngresoBody,
         ]);
 
         await pool.query(`
@@ -664,8 +671,9 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
         experiencia_seguridad, anios_experiencia_seg, empresa_anterior_seg,
         tipos_seguridad, servicio_militar, rango_militar, unidad_militar, fue_policia
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'activo',$13,CURRENT_DATE,
-        CURRENT_DATE + INTERVAL '2 months',
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'activo',$13,
+        COALESCE($60::date, CURRENT_DATE),
+        COALESCE($60::date, CURRENT_DATE) + INTERVAL '2 months',
         $14,$15,$16,NOW(),NOW(),
         $17,$18,$19,$20,$21,$22,$23,
         $24,$25,$26,$27,$28,$29,$30,$31,$32,$33,
@@ -749,6 +757,8 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
       sol.rango_militar || null,
       sol.unidad_militar || null,
       boolToSiNo(sol.fue_policia),
+      /* $60 fecha_ingreso opcional */
+      fechaIngresoBody,
     ]);
 
     empId = empRows[0].id;

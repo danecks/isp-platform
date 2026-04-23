@@ -504,6 +504,31 @@ export async function migrarPESP01() {
     post-prueba) — el bug era solo en la generación del PDF desde
     el flujo del kiosco.
 
+### 10.3.5 Fecha de alta editable al contratar desde el kiosco (abr 2026)
+- **Necesidad**: al contratar desde *Kiosco → Solicitudes*, la fecha de
+  ingreso siempre se fijaba en `CURRENT_DATE` (hoy). Esto era incorrecto
+  cuando el contrato se procesa días después o cuando se quiere agendar
+  una alta a futuro.
+- **Cambios**:
+  - **Frontend** (`KioscoSolicitudes.tsx`): nuevo input `type="date"` en
+    el formulario de "Confirmar y Crear Ficha", con valor por defecto =
+    hoy. Esa fecha se envía como `fecha_ingreso` al backend y también la
+    consumen los botones de "Contrato Inicial" (= esa fecha) y
+    "Contrato Post-Prueba" (= esa fecha + 2 meses, calculado en local
+    para evitar desfase UTC).
+  - **Backend** (`routes/solicitudes-empleo.ts → POST /:id/contratar`):
+    acepta `fecha_ingreso` opcional en formato `YYYY-MM-DD`. Si viene,
+    se usa para `employees.fecha_ingreso` y para
+    `fecha_inicio_prestaciones = fecha_ingreso + 2 meses`. Si no viene,
+    cae a `CURRENT_DATE` como antes (compatibilidad). Aplica tanto al
+    INSERT inicial como al UPDATE de reactivación (DPI ya existente).
+- **Notas**:
+  - Validación estricta en backend con regex `/^\d{4}-\d{2}-\d{2}$/`
+    para evitar inyección o fechas con timezone.
+  - Por consistencia con `Empleados.tsx → TabContratos`, esa fecha es la
+    que aparece como “Fecha de ingreso” en la ficha del colaborador y
+    es fuente única de verdad para contratos, prestaciones y antigüedad.
+
 ### 10.3 Edad del representante legal en contratos (abr 2026)
 - **Necesidad**: el contrato laboral imprimía “mayor de edad” para el
   representante legal de la empresa, en lugar de la edad real

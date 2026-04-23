@@ -218,7 +218,12 @@ export default function KioscoSolicitudes() {
   const [contratando, setContratando] = useState(false);
   const [empleadoCreadoId, setEmpleadoCreadoId] = useState<number | null>(null);
   const [mostrarFormContratar, setMostrarFormContratar] = useState(false);
-  const [asignacion, setAsignacion] = useState({ puesto: "", tipo_personal: "guardia", sueldo_base: "" });
+  const [asignacion, setAsignacion] = useState({
+    puesto: "",
+    tipo_personal: "guardia",
+    sueldo_base: "",
+    fecha_alta: new Date().toISOString().slice(0, 10),
+  });
   const [editando, setEditando] = useState(false);
   const [editado, setEditado] = useState<Partial<SolicitudDetalle>>({});
   const [guardando, setGuardando] = useState(false);
@@ -268,6 +273,7 @@ export default function KioscoSolicitudes() {
         puesto_asignado:  asignacion.puesto.trim() || undefined,
         tipo_personal:    asignacion.tipo_personal || "guardia",
         sueldo_base:      asignacion.sueldo_base ? parseFloat(asignacion.sueldo_base) : undefined,
+        fecha_ingreso:    asignacion.fecha_alta || undefined,
       };
       const r = await fetch(`${API}/solicitudes-empleo/${id}/contratar`, {
         method: "POST",
@@ -290,7 +296,12 @@ export default function KioscoSolicitudes() {
   useEffect(() => {
     setEmpleadoCreadoId(null);
     setMostrarFormContratar(false);
-    setAsignacion({ puesto: "", tipo_personal: "guardia", sueldo_base: "" });
+    setAsignacion({
+      puesto: "",
+      tipo_personal: "guardia",
+      sueldo_base: "",
+      fecha_alta: new Date().toISOString().slice(0, 10),
+    });
     setEditando(false);
     setEditado({});
   }, [seleccionada]);
@@ -1045,13 +1056,14 @@ export default function KioscoSolicitudes() {
                           <button
                             onClick={async () => {
                               const patrono = await cargarPatronoDesdeConfig();
+                              const fechaAlta = asignacion.fecha_alta || new Date().toISOString().slice(0, 10);
                               const datos: DatosContratoLaboral = {
                                 empleado_nombre: detalle.nombre_completo,
                                 empleado_dpi: detalle.dpi,
                                 empleado_estado_civil: detalle.estado_civil ?? undefined,
                                 empleado_direccion: detalle.direccion ?? undefined,
                                 empleado_telefono: detalle.telefono,
-                                fecha_inicio: new Date().toISOString().slice(0, 10),
+                                fecha_inicio: fechaAlta,
                                 puesto: asignacion.puesto || detalle.puesto_solicitado,
                                 tipo_personal: asignacion.tipo_personal || "guardia",
                                 sueldo_base: parseFloat(asignacion.sueldo_base) || parseFloat(detalle.pretension_salarial || "0") || 0,
@@ -1069,7 +1081,9 @@ export default function KioscoSolicitudes() {
                               const patrono = await cargarPatronoDesdeConfig();
                               // El contrato post-prueba inicia 2 meses después
                               // de la fecha de alta (período de prueba = 60 días).
-                              const fechaPostPrueba = new Date();
+                              const baseAlta = asignacion.fecha_alta || new Date().toISOString().slice(0, 10);
+                              const [yA, mA, dA] = baseAlta.split("-").map(Number);
+                              const fechaPostPrueba = new Date(yA, (mA || 1) - 1, dA || 1);
                               fechaPostPrueba.setMonth(fechaPostPrueba.getMonth() + 2);
                               const datos: DatosContratoLaboral = {
                                 empleado_nombre: detalle.nombre_completo,
@@ -1108,6 +1122,7 @@ export default function KioscoSolicitudes() {
                             puesto: detalle.puesto_solicitado || "",
                             tipo_personal: "guardia",
                             sueldo_base: detalle.pretension_salarial || "",
+                            fecha_alta: new Date().toISOString().slice(0, 10),
                           });
                           setMostrarFormContratar(true);
                         }}
@@ -1153,6 +1168,21 @@ export default function KioscoSolicitudes() {
                               className="w-full bg-gray-800 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                             />
                           </div>
+                        </div>
+                        <div>
+                          <label className="text-gray-400 text-xs mb-1 block">
+                            Fecha de alta (ingreso)
+                          </label>
+                          <input
+                            type="date"
+                            value={asignacion.fecha_alta}
+                            onChange={e => setAsignacion(a => ({ ...a, fecha_alta: e.target.value }))}
+                            className="w-full bg-gray-800 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                          <p className="text-[10px] text-gray-500 mt-1">
+                            Quedará como “Fecha de ingreso” en la ficha del colaborador y se usará para el contrato inicial
+                            (post-prueba = esta fecha + 2 meses).
+                          </p>
                         </div>
                       </div>
                       <div className="flex gap-2 pt-1">
