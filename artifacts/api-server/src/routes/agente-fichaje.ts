@@ -250,7 +250,8 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
   try {
     const { rows: tkRows } = await pool.query(
       `SELECT aqt.employee_id, aqt.activo,
-              e.nombre_completo, e.puesto AS cargo, e.tipo_personal, e.dpi
+              e.nombre_completo, e.puesto AS cargo, e.tipo_personal, e.dpi,
+              e.fecha_ingreso
        FROM agente_qr_tokens aqt
        JOIN employees e ON e.id = aqt.employee_id
        WHERE aqt.qr_token = $1`,
@@ -260,6 +261,15 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
     if (!tkRows[0].activo) return res.status(403).json({ error: "Token desactivado" });
 
     const emp = tkRows[0];
+
+    // Teléfono de emergencia / atención al cliente de la empresa (público).
+    let telefono_emergencia: string | null = null;
+    try {
+      const { rows: cfgRows } = await pool.query(
+        `SELECT telefono_empresa FROM config_empresa ORDER BY id ASC LIMIT 1`
+      );
+      telefono_emergencia = cfgRows[0]?.telefono_empresa ?? null;
+    } catch { /* config_empresa puede no existir aún */ }
 
     const { rows: poRows } = await pool.query(
       `SELECT po.id, po.nombre, po.cliente_nombre, po.horario,
@@ -403,6 +413,10 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
       cargo: emp.cargo,
       tipo_personal: emp.tipo_personal,
       dpi: emp.dpi,
+      fecha_ingreso: emp.fecha_ingreso
+        ? new Date(emp.fecha_ingreso).toISOString().split("T")[0]
+        : null,
+      telefono_emergencia,
       puesto,
       gps,
       armamento,

@@ -3,6 +3,7 @@ import {
   CheckCircle, XCircle, Loader2, MapPin, AlertTriangle,
   QrCode, ShieldAlert, Star, ClipboardCheck, UserCheck, Smartphone,
   Footprints, ChevronRight, RotateCcw, Clock, Bell, Users, Package,
+  Calendar, Phone, BadgeCheck,
 } from "lucide-react";
 
 const API = "/api";
@@ -23,6 +24,8 @@ interface AgenteInfo {
   cargo: string;
   tipo_personal: string;
   dpi: string;
+  fecha_ingreso: string | null;
+  telefono_emergencia: string | null;
   puesto: {
     id: number;
     nombre: string;
@@ -241,6 +244,126 @@ function BriefingPanel({ info }: { info: AgenteInfo }) {
   );
 }
 
+// ── Tarjeta pública del carnet ────────────────────────────────────────────────
+// Se muestra a cualquier persona/dispositivo que escanee el QR del carnet sin
+// estar registrado en el sistema. Solo expone datos no sensibles del agente
+// (nombre, cargo, antigüedad) y el teléfono de emergencia/atención de ISP
+// para que cualquiera pueda verificar la identidad del agente o reportar.
+function CarnetPublico({
+  info,
+  mensajeError,
+}: {
+  info: AgenteInfo | null;
+  mensajeError: string;
+}) {
+  function formatDesde(iso: string | null): string {
+    if (!iso) return "—";
+    const [y, m] = iso.split("-").map(Number);
+    const meses = ["enero","febrero","marzo","abril","mayo","junio",
+                   "julio","agosto","septiembre","octubre","noviembre","diciembre"];
+    return `${meses[(m ?? 1) - 1]} ${y}`;
+  }
+  function antiguedad(iso: string | null): string | null {
+    if (!iso) return null;
+    const [y, m, d] = iso.split("-").map(Number);
+    const inicio = new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1));
+    const ahora = new Date();
+    let meses = (ahora.getUTCFullYear() - inicio.getUTCFullYear()) * 12
+              + (ahora.getUTCMonth() - inicio.getUTCMonth());
+    if (ahora.getUTCDate() < inicio.getUTCDate()) meses -= 1;
+    if (meses < 0) return null;
+    const anios = Math.floor(meses / 12);
+    const rMeses = meses % 12;
+    if (anios === 0) return `${meses} ${meses === 1 ? "mes" : "meses"}`;
+    if (rMeses === 0) return `${anios} ${anios === 1 ? "año" : "años"}`;
+    return `${anios} ${anios === 1 ? "año" : "años"} y ${rMeses} ${rMeses === 1 ? "mes" : "meses"}`;
+  }
+
+  if (!info) {
+    return (
+      <div className="bg-white/5 border border-white/10 rounded-2xl p-8 text-center">
+        <div className="w-16 h-16 bg-red-500/10 border border-red-500/30 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Smartphone className="w-8 h-8 text-red-400" />
+        </div>
+        <p className="text-red-400 font-bold text-xl mb-2">No se pudo leer el carnet</p>
+        <p className="text-white/50 text-sm leading-relaxed">
+          {mensajeError === "sin_conexion"
+            ? "No se pudo conectar con el servidor."
+            : "Este código QR no es válido o fue desactivado."}
+        </p>
+      </div>
+    );
+  }
+
+  const tel = info.telefono_emergencia?.replace(/[^\d+]/g, "") ?? "";
+  const desde = formatDesde(info.fecha_ingreso);
+  const ant = antiguedad(info.fecha_ingreso);
+
+  return (
+    <div className="bg-gradient-to-br from-[#0a1a3d] via-[#0f2044] to-[#0a1a3d] border border-amber-500/30 rounded-2xl overflow-hidden shadow-2xl">
+      {/* Encabezado de marca */}
+      <div className="bg-gradient-to-r from-amber-600/20 via-amber-400/10 to-amber-600/20 border-b border-amber-500/30 px-5 py-3 text-center">
+        <p className="text-amber-300 text-[10px] font-bold tracking-[0.25em] uppercase">
+          Investigaciones y Seguridad Profesional
+        </p>
+        <p className="text-white/40 text-[9px] tracking-widest">CARNET DE IDENTIFICACIÓN</p>
+      </div>
+
+      {/* Identidad del agente */}
+      <div className="px-5 pt-5 pb-4 text-center">
+        <div className="w-14 h-14 bg-amber-500/15 border border-amber-500/40 rounded-full flex items-center justify-center mx-auto mb-3">
+          <BadgeCheck className="w-7 h-7 text-amber-300" />
+        </div>
+        <p className="text-white text-lg font-bold leading-tight">{info.nombre_completo}</p>
+        {info.cargo && (
+          <p className="text-amber-200/80 text-xs mt-0.5 font-medium uppercase tracking-wider">
+            {info.cargo}
+          </p>
+        )}
+      </div>
+
+      {/* Antigüedad */}
+      <div className="mx-5 mb-4 bg-white/[0.04] border border-white/10 rounded-xl px-4 py-3 flex items-center gap-3">
+        <Calendar className="w-5 h-5 text-amber-300 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-[10px] text-white/40 uppercase tracking-widest">Agente ISP desde</p>
+          <p className="text-white font-semibold text-sm leading-tight">{desde}</p>
+          {ant && <p className="text-white/50 text-[11px] mt-0.5">({ant} de servicio)</p>}
+        </div>
+      </div>
+
+      {/* Teléfono de emergencia */}
+      {tel ? (
+        <a
+          href={`tel:${tel}`}
+          className="mx-5 mb-5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/40 rounded-xl px-4 py-3 flex items-center gap-3 transition-colors"
+        >
+          <div className="w-10 h-10 bg-emerald-500/30 border border-emerald-400/50 rounded-full flex items-center justify-center shrink-0">
+            <Phone className="w-5 h-5 text-emerald-200" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] text-emerald-200/70 uppercase tracking-widest">Emergencia / Verificación</p>
+            <p className="text-white font-bold text-base leading-tight">{info.telefono_emergencia}</p>
+            <p className="text-emerald-200/70 text-[10px] mt-0.5">Toca para llamar</p>
+          </div>
+        </a>
+      ) : (
+        <div className="mx-5 mb-5 bg-white/[0.04] border border-white/10 rounded-xl px-4 py-3 text-center">
+          <p className="text-white/50 text-xs">Teléfono de emergencia no configurado.</p>
+        </div>
+      )}
+
+      {/* Pie informativo */}
+      <div className="bg-black/30 border-t border-white/5 px-5 py-3">
+        <p className="text-white/40 text-[10px] text-center leading-relaxed">
+          Para verificar la identidad de este agente o reportar una incidencia,
+          comuníquese al teléfono indicado arriba.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ── Componente principal ───────────────────────────────────────────────────────
 export default function AgenteEscaneo() {
   const token = new URLSearchParams(window.location.search).get("token");
@@ -329,6 +452,18 @@ export default function AgenteEscaneo() {
       })
       .catch(() => { setEstado("device_invalido"); setMensajeError("sin_conexion"); });
   }, []);
+
+  // 2.bis Tarjeta pública del carnet — siempre intentar cargar info del agente
+  // aunque el dispositivo no esté registrado, para que cualquier teléfono que
+  // escanee el QR pueda ver datos públicos (nombre, fecha de ingreso, tel. de
+  // emergencia ISP). No interfiere con el flujo de fichaje normal.
+  useEffect(() => {
+    if (!token || agenteInfo) return;
+    fetch(`${API}/agente/scan/${token}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then((data: AgenteInfo | null) => { if (data) setAgenteInfo(data); })
+      .catch(() => { /* silencioso: la UI de error ya cubre este caso */ });
+  }, [token, agenteInfo]);
 
   // 2. Cargar info del agente
   useEffect(() => {
@@ -969,24 +1104,12 @@ export default function AgenteEscaneo() {
           </div>
         )}
 
-        {/* ── DISPOSITIVO NO AUTORIZADO ─────────────────────────────────────── */}
+        {/* ── DISPOSITIVO NO AUTORIZADO → TARJETA PÚBLICA DEL CARNET ──────── */}
         {estado === "device_invalido" && (
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-8 text-center">
-            <div className="w-16 h-16 bg-red-500/10 border border-red-500/30 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Smartphone className="w-8 h-8 text-red-400" />
-            </div>
-            <p className="text-red-400 font-bold text-xl mb-2">Dispositivo no autorizado</p>
-            <p className="text-white/50 text-sm leading-relaxed">
-              {mensajeError === "no_registrado" ? "Este teléfono no está registrado en el sistema ISP."
-               : mensajeError === "sin_conexion" ? "No se pudo conectar con el servidor."
-               : "Este dispositivo fue revocado o su token expiró."}
-            </p>
-            <div className="mt-5 bg-white/5 border border-white/10 rounded-xl p-4 text-left text-xs text-white/30 space-y-1.5">
-              <p>1. El administrador registra el dispositivo en el panel</p>
-              <p>2. Abre el enlace de activación en este teléfono</p>
-              <p>3. Vuelve a escanear el QR del agente</p>
-            </div>
-          </div>
+          <CarnetPublico
+            info={agenteInfo}
+            mensajeError={mensajeError}
+          />
         )}
 
         {/* ── SELECTOR DE MODO (MAESTRO) ────────────────────────────────────── */}
