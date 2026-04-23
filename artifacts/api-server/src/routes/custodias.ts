@@ -216,6 +216,8 @@ custodiasRouter.post("/custodias/cliente/:id/asignar", async (req, res) => {
     await client.query("BEGIN");
     // Lock transaccional por (cliente, fecha) para evitar carreras al asignar slot.
     await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`custodia:${clienteId}:${fechaNorm}`]);
+    // Lock adicional por (agente, fecha) para serializar contra solicitudes de otros clientes
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`custodia-emp:${employeeId}:${fechaNorm}`]);
 
     // ¿Ya está asignado? Si sí, solo actualizamos notas y devolvemos su slot.
     const existing = await client.query(
@@ -230,6 +232,42 @@ custodiasRouter.post("/custodias/cliente/:id/asignar", async (req, res) => {
       );
       await client.query("COMMIT");
       return res.json({ ok: true, id: existing.rows[0].id, slot: existing.rows[0].slot_numero });
+    }
+
+    // Validación 1: el agente NO puede estar asignado ya en otro slot/cliente esa fecha.
+    const conflictAsig = await client.query(
+      `SELECT cad.cliente_id, cad.slot_numero, c.nombre AS cliente_nombre
+         FROM custodia_asignacion_diaria cad
+         JOIN clients c ON c.id = cad.cliente_id
+        WHERE cad.employee_id = $1 AND cad.fecha = $2::date
+        LIMIT 1`,
+      [employeeId, fechaNorm]
+    );
+    if (conflictAsig.rowCount && conflictAsig.rowCount > 0) {
+      await client.query("ROLLBACK");
+      const x = conflictAsig.rows[0];
+      const empQ = await pool.query(`SELECT nombre_completo FROM employees WHERE id=$1`, [employeeId]);
+      const nombre = empQ.rows[0]?.nombre_completo ?? `Agente #${employeeId}`;
+      return res.status(409).json({
+        error: `${nombre} ya está asignado al Custodio ${x.slot_numero} de "${x.cliente_nombre}" en esta fecha. Liberá ese slot primero.`
+      });
+    }
+
+    // Validación 2: el agente NO puede ser titular activo de otro slot del MISMO cliente.
+    const conflictTit = await client.query(
+      `SELECT slot_numero FROM custodia_titulares
+        WHERE employee_id = $1 AND cliente_id = $2 AND activo = TRUE
+        ORDER BY slot_numero
+        LIMIT 1`,
+      [employeeId, clienteId]
+    );
+    if (conflictTit.rowCount && conflictTit.rowCount > 0) {
+      await client.query("ROLLBACK");
+      const empQ = await pool.query(`SELECT nombre_completo FROM employees WHERE id=$1`, [employeeId]);
+      const nombre = empQ.rows[0]?.nombre_completo ?? `Agente #${employeeId}`;
+      return res.status(409).json({
+        error: `${nombre} es titular del Custodio ${conflictTit.rows[0].slot_numero} de este cliente. No puede ocupar otro Custodio del mismo cliente — asignalo a su slot titular.`
+      });
     }
 
     // Calcular siguiente slot libre para este (cliente, fecha).
@@ -330,6 +368,7 @@ custodiasRouter.post("/custodias/cliente/:id/asignar-lote", async (req, res) => 
 
     const client = await pool.connect();
     let inserted = 0;
+    const skipped: { employeeId: number; nombre: string; motivo: string }[] = [];
     try {
       await client.query("BEGIN");
       await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`custodia:${clienteId}:${fechaNorm}`]);
@@ -338,22 +377,57 @@ custodiasRouter.post("/custodias/cliente/:id/asignar-lote", async (req, res) => 
         `SELECT COALESCE(MAX(slot_numero), 0) AS max_slot
            FROM custodia_asignacion_diaria
           WHERE cliente_id = $1 AND fecha = $2::date`,
-        [clienteId, fecha]
+        [clienteId, fechaNorm]
       );
       let nextSlot: number = Number(maxQ.rows[0].max_slot) + 1;
 
       for (const eid of employeeIds) {
+        // Lock por (agente, fecha) para serializar contra otros clientes
+        await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`custodia-emp:${eid}:${fechaNorm}`]);
+        // Idempotente: el agente ya está en este cliente esa fecha
         const exists = await client.query(
           `SELECT 1 FROM custodia_asignacion_diaria
             WHERE cliente_id = $1 AND fecha = $2::date AND employee_id = $3`,
-          [clienteId, fecha, eid]
+          [clienteId, fechaNorm, eid]
         );
         if (exists.rowCount && exists.rowCount > 0) continue;
+
+        // Conflicto 1: ya asignado en otro cliente/slot esa fecha
+        const cAsig = await client.query(
+          `SELECT cad.slot_numero, c.nombre AS cliente_nombre, e.nombre_completo
+             FROM custodia_asignacion_diaria cad
+             JOIN clients c ON c.id = cad.cliente_id
+             JOIN employees e ON e.id = cad.employee_id
+            WHERE cad.employee_id = $1 AND cad.fecha = $2::date
+            LIMIT 1`,
+          [eid, fechaNorm]
+        );
+        if (cAsig.rowCount && cAsig.rowCount > 0) {
+          const x = cAsig.rows[0];
+          skipped.push({ employeeId: eid, nombre: x.nombre_completo, motivo: `Ya asignado al Custodio ${x.slot_numero} de "${x.cliente_nombre}".` });
+          continue;
+        }
+
+        // Conflicto 2: titular activo de otro slot del mismo cliente
+        const cTit = await client.query(
+          `SELECT ct.slot_numero, e.nombre_completo
+             FROM custodia_titulares ct
+             JOIN employees e ON e.id = ct.employee_id
+            WHERE ct.employee_id = $1 AND ct.cliente_id = $2 AND ct.activo = TRUE
+            ORDER BY ct.slot_numero
+            LIMIT 1`,
+          [eid, clienteId]
+        );
+        if (cTit.rowCount && cTit.rowCount > 0) {
+          const x = cTit.rows[0];
+          skipped.push({ employeeId: eid, nombre: x.nombre_completo, motivo: `Es titular del Custodio ${x.slot_numero} de este cliente.` });
+          continue;
+        }
 
         await client.query(
           `INSERT INTO custodia_asignacion_diaria (cliente_id, fecha, employee_id, slot_numero)
            VALUES ($1, $2::date, $3, $4)`,
-          [clienteId, fecha, eid, nextSlot]
+          [clienteId, fechaNorm, eid, nextSlot]
         );
         nextSlot++;
         inserted++;
@@ -366,7 +440,7 @@ custodiasRouter.post("/custodias/cliente/:id/asignar-lote", async (req, res) => 
       client.release();
     }
 
-    res.json({ ok: true, count: inserted });
+    res.json({ ok: true, count: inserted, skipped });
   } catch (err) {
     logger.error({ err }, "[Custodias/asignar-lote]");
     res.status(500).json({ error: "Error al asignar lote" });

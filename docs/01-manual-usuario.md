@@ -373,6 +373,13 @@ Servicio especial de protección personal o de mercadería en tránsito.
 3. Asignar agentes (titulares y refuerzos).
 4. Guardar.
 
+#### Regla: un agente, un puesto a la vez
+El sistema **bloquea** la asignación de un agente cuando:
+- **Ya está asignado** ese día a otro Custodio (de cualquier cliente). Mensaje: *"X ya está asignado al Custodio N de 'CLIENTE' en esta fecha. Liberá ese slot primero."*
+- **Es titular activo** de otro Custodio del **mismo cliente**. Mensaje: *"X es titular del Custodio N de este cliente. No puede ocupar otro Custodio del mismo cliente — asignalo a su slot titular."*
+
+Esto evita que un mismo agente aparezca duplicado en el pizarrón. En asignaciones masivas (lote), los agentes con conflicto se omiten y la respuesta lista los `skipped` con motivo.
+
 ### 13.2 Barracas
 **Ruta**: `/admin/rrhh/barracas`
 
