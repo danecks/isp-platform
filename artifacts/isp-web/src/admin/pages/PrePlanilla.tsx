@@ -1844,15 +1844,19 @@ export default function PrePlanilla() {
   const totalIncentivos = filtrados.reduce((s, r) => s + Number(r.incentivos_cash_monto), 0);
   const conAlertas = filtrados.filter((r) => Number(r.faltas) > 0 || Number(r.suspensiones) > 0 || Number(r.dias_sin_horas) > 0 || Number(r.faltas_pendientes_rrhh) > 0).length;
   const totalRelevos = filtrados.reduce((s, r) => s + Number(r.relevos), 0);
-  const totalIGSS = filtrados.reduce((s, r) => {
-    if (!r.aplica_igss) return s;
-    const e = calcularTotalEstimado(r, periodoTotalDias);
-    return s + (e?.igssLaboral ?? 0);
-  }, 0);
-  const totalISR = filtrados.reduce((s, r) => {
-    const e = calcularTotalEstimado(r, periodoTotalDias);
-    return s + (e?.isrQuincenal ?? 0);
-  }, 0);
+  // Cálculo único de estimados por colaborador (evita recalcular varias veces)
+  const estimadosPorEmp = filtrados.map((r) => ({ r, e: calcularTotalEstimado(r, periodoTotalDias) }));
+  const totalIGSS = estimadosPorEmp.reduce((s, { r, e }) => s + (r.aplica_igss ? (e?.igssLaboral ?? 0) : 0), 0);
+  const totalISR = estimadosPorEmp.reduce((s, { e }) => s + (e?.isrQuincenal ?? 0), 0);
+  const totalSueldoBase = filtrados.reduce((s, r) => s + Number(r.sueldo_base ?? 0), 0);
+  const totalBonif = estimadosPorEmp.reduce((s, { e }) => s + (e?.totalBonifReal ?? 0), 0);
+  const totalUniforme = filtrados.reduce((s, r) => s + Number(r.cuota_uniforme_monto ?? 0), 0);
+  const totalBarraca = filtrados.reduce((s, r) => s + Number(r.barraca_monto ?? 0), 0);
+  const totalSeguro = estimadosPorEmp.reduce((s, { e }) => s + (e?.seguroMonto ?? 0), 0);
+  const totalAmonest = filtrados.reduce((s, r) => s + Number(r.amonestaciones_monto ?? 0), 0);
+  const totalOtrosDesc = totalUniforme + totalBarraca + totalSeguro + totalAmonest;
+  const totalGeneralReal = estimadosPorEmp.reduce((s, { e }) => s + (e?.totalReal ?? 0), 0);
+  const totalGeneralEst = estimadosPorEmp.reduce((s, { e }) => s + (e?.total ?? 0), 0);
 
   // Badges de tab
   const badgeHE = rows.filter((r) => parseFloat(r.horas_extra || "0") > 0).length;
@@ -2203,7 +2207,9 @@ export default function PrePlanilla() {
                             {th("Susp.", "suspensiones")}
                             {th("H. Trab.", "horas_trabajadas")}
                             {th("H. Extra", "horas_extra")}
+                            <th className="text-left text-[10px] text-emerald-300/70 font-semibold uppercase tracking-wider px-3 py-2 whitespace-nowrap" title="Bonificación incentivo + Bonif 1/2/3 (proporcional a días trabajados)">Bonif.</th>
                             {th("Anticipo", "anticipos_monto")}
+                            <th className="text-left text-[10px] text-rose-300/70 font-semibold uppercase tracking-wider px-3 py-2 whitespace-nowrap" title="Cuota uniforme + Barraca + Seguro de vida + Amonestaciones">Otros Desc.</th>
                             {th("Total Est.", "sueldo_base")}
                             {th("IGSS", "aplica_igss")}
                             <th className="text-left text-[10px] text-white/40 font-semibold uppercase tracking-wider px-3 py-2 whitespace-nowrap">ISR</th>
@@ -2311,11 +2317,48 @@ export default function PrePlanilla() {
                                     </p>
                                   )}
                                 </td>
+                                {/* Bonificaciones (incentivo + 1/2/3) */}
+                                <td className="px-3 py-2.5 text-right">
+                                  {est2 != null && est2.totalBonifReal > 0 ? (
+                                    <span className="text-emerald-300 font-semibold"
+                                      title={[
+                                        est2.bonIncentivoReal > 0 ? `Incentivo: ${fmtQ(est2.bonIncentivoReal)}` : "",
+                                        est2.bon1Real > 0 ? `Bonif 1: ${fmtQ(est2.bon1Real)}` : "",
+                                        est2.bon2Real > 0 ? `Bonif 2: ${fmtQ(est2.bon2Real)}` : "",
+                                        est2.bon3Real > 0 ? `Bonif 3: ${fmtQ(est2.bon3Real)}` : "",
+                                        `(${est2.diasTrabReal}d trab.)`,
+                                      ].filter(Boolean).join("\n")}>
+                                      {fmtQ(est2.totalBonifReal)}
+                                    </span>
+                                  ) : <span className="text-white/20">—</span>}
+                                </td>
                                 {/* Anticipo */}
                                 <td className="px-3 py-2.5 text-right">
                                   {r.anticipos_count > 0
                                     ? <span className="text-amber-400 font-semibold">{fmtQ(r.anticipos_monto)}</span>
                                     : <span className="text-white/20">—</span>}
+                                </td>
+                                {/* Otros descuentos: uniforme + barraca + seguro + amonestaciones */}
+                                <td className="px-3 py-2.5 text-right">
+                                  {(() => {
+                                    const uni = Number(r.cuota_uniforme_monto ?? 0);
+                                    const bar = Number(r.barraca_monto ?? 0);
+                                    const seg = est2?.seguroMonto ?? 0;
+                                    const amon = Number(r.amonestaciones_monto ?? 0);
+                                    const sum = uni + bar + seg + amon;
+                                    if (sum <= 0) return <span className="text-white/20">—</span>;
+                                    return (
+                                      <span className="text-rose-300 font-semibold"
+                                        title={[
+                                          uni > 0 ? `Uniforme: ${fmtQ(uni)}` : "",
+                                          bar > 0 ? `Barraca${r.barraca_nombre ? ` (${r.barraca_nombre})` : ""}: ${fmtQ(bar)}` : "",
+                                          seg > 0 ? `Seguro vida: ${fmtQ(seg)}` : "",
+                                          amon > 0 ? `Amonestaciones${Number(r.amonestaciones_count ?? 0) > 0 ? ` (${r.amonestaciones_count})` : ""}: ${fmtQ(amon)}` : "",
+                                        ].filter(Boolean).join("\n")}>
+                                        {fmtQ(sum)}
+                                      </span>
+                                    );
+                                  })()}
                                 </td>
                                 {/* Total estimado */}
                                 <td className="px-3 py-2.5 text-right">
@@ -2401,6 +2444,45 @@ export default function PrePlanilla() {
                             );
                           })}
                         </tbody>
+                        <tfoot className="bg-[#060e1c] border-t-2 border-primary/30 sticky bottom-0">
+                          <tr className="font-bold">
+                            <td colSpan={5} className="px-3 py-2.5 text-right text-[10px] uppercase tracking-widest text-white/60">
+                              Totales ({filtrados.length} colab.)
+                            </td>
+                            <td className="px-3 py-2.5 text-right text-white/80">{fmtQ(totalSueldoBase)}</td>
+                            <td className="px-3 py-2.5" />
+                            <td className="px-3 py-2.5 text-center text-red-400">
+                              {filtrados.reduce((s, r) => s + Number(r.faltas), 0)}
+                            </td>
+                            <td className="px-3 py-2.5 text-center text-amber-400">
+                              {filtrados.reduce((s, r) => s + Number(r.suspensiones), 0)}
+                            </td>
+                            <td className="px-3 py-2.5" />
+                            <td className="px-3 py-2.5 text-right text-orange-400">{totalHE.toFixed(1)} h</td>
+                            <td className="px-3 py-2.5 text-right text-emerald-300">{totalBonif > 0 ? `+${fmtQ(totalBonif)}` : "—"}</td>
+                            <td className="px-3 py-2.5 text-right text-amber-400">{totalAnt > 0 ? `–${fmtQ(totalAnt)}` : "—"}</td>
+                            <td className="px-3 py-2.5 text-right text-rose-300"
+                              title={`Uniforme: ${fmtQ(totalUniforme)}\nBarraca: ${fmtQ(totalBarraca)}\nSeguro: ${fmtQ(totalSeguro)}\nAmonestaciones: ${fmtQ(totalAmonest)}`}>
+                              {totalOtrosDesc > 0 ? `–${fmtQ(totalOtrosDesc)}` : "—"}
+                            </td>
+                            <td className="px-3 py-2.5 text-right">
+                              <div>
+                                <span className={`text-sm ${totalGeneralReal >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                  {fmtQ(totalGeneralReal)}
+                                </span>
+                                {totalGeneralEst !== totalGeneralReal && (
+                                  <p className="text-[9px] font-normal text-white/30 mt-0.5"
+                                    title={`Proyección a ${periodoTotalDias}d`}>
+                                    est. {fmtQ(totalGeneralEst)}
+                                  </p>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5 text-right text-cyan-400">{totalIGSS > 0 ? `–${fmtQ(totalIGSS)}` : "—"}</td>
+                            <td className="px-3 py-2.5 text-right text-amber-400">{totalISR > 0 ? `–${fmtQ(totalISR)}` : "—"}</td>
+                            <td colSpan={3} className="px-3 py-2.5" />
+                          </tr>
+                        </tfoot>
                       </table>
                     </div>
                   )}

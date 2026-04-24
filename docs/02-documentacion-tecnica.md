@@ -666,3 +666,28 @@ export async function migrarPESP01() {
   amonestaciones — esta corrección únicamente alinea la vista
   previa de pre-planilla con lo que terminará pagando la
   planilla cerrada.
+
+### 10.5.1 Pre-planilla — columnas devengados/egresos en tabla y total general (abr 2026)
+
+- **Tabla principal de pre-planilla** ahora muestra TODOS los
+  devengados y egresos por colaborador, no solo en el panel
+  lateral de detalle. Columnas agregadas:
+  - **Bonif.** — suma de bonificación incentivo + bonif 1/2/3
+    devengadas en el período (proporcional a días trabajados).
+    Tooltip al pasar el mouse desglosa cada componente.
+  - **Otros Desc.** — suma de cuota uniforme + barraca + seguro
+    de vida + amonestaciones económicas. Tooltip desglosa cada
+    componente y muestra el nombre de la barraca y el conteo
+    de amonestaciones.
+- **Fila de totales (`<tfoot>`)** sticky al final de la tabla.
+  Suma por columna de toda la lista filtrada:
+  - Sueldo base, faltas, suspensiones, horas extra (h),
+    bonificaciones (+), anticipos (–), otros descuentos (–),
+    **Total General** (real cerrado + estimado a período
+    completo si difiere), IGSS (–), ISR (–).
+  - El total general se pinta verde si es positivo, rojo si
+    queda negativo (caso patológico que indica más descuentos
+    que devengos — alerta visible).
+- **Optimización**: `calcularTotalEstimado()` ahora se llama
+  una sola vez por colaborador (`estimadosPorEmp`) en vez de
+  3+ veces como hacía antes (totalIGSS, totalISR, render).
