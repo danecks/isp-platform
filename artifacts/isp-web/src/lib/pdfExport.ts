@@ -517,6 +517,33 @@ export class IspPdf {
     this.currentY += mm;
   }
 
+  // ─── Bloque personalizado ────────────────────────────────────────────────────
+  /**
+   * Permite dibujar contenido arbitrario en el PDF (mini-grids, gráficos, etc.).
+   * El callback recibe el contexto de dibujo y debe devolver la altura usada en mm.
+   * Maneja paginación automática según `estimatedHeight`.
+   */
+  addCustomBlock(
+    estimatedHeight: number,
+    render: (ctx: {
+      doc: jsPDF;
+      x: number;
+      y: number;
+      width: number;
+      colors: typeof COLORS;
+    }) => number,
+  ): void {
+    this.checkPageBreak(estimatedHeight);
+    const usedHeight = render({
+      doc: this.doc,
+      x: this.marginL,
+      y: this.currentY,
+      width: this.contentWidth,
+      colors: COLORS,
+    });
+    this.currentY += usedHeight;
+  }
+
   // ─── Control de páginas ──────────────────────────────────────────────────────
   private checkPageBreak(needed: number): void {
     if (this.currentY + needed > this.pageHeight - 20) {

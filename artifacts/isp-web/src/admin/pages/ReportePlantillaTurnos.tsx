@@ -128,14 +128,57 @@ function construirSemanas(slot: SlotPlantilla) {
   return out;
 }
 
-/** Resumen textual de días trabajo / descanso por semana, plano para CSV/PDF. */
-function resumenSemanasTexto(slot: SlotPlantilla) {
-  const sems = construirSemanas(slot);
-  return sems.map((s) => {
-    const t = s.dias.filter(d => d.estado !== "descanso").map(d => d.label).join("");
-    const dscount = s.dias.filter(d => d.estado === "descanso" && d.dia <= (Number(slot.longitud_ciclo) || 14)).length;
-    return `S${s.semana}@${s.hora}[${t || "—"}, desc:${dscount}]`;
-  }).join("  ");
+/** Marca textual por día para CSV / PDF de carga masiva: T=Trabaja, M=Medio, D=Descansa. */
+const MARCA: Record<"trabajo" | "medio" | "descanso", "T" | "M" | "D"> = {
+  trabajo: "T", medio: "M", descanso: "D",
+};
+
+/** Máximo de semanas soportadas en el ciclo (longitud_ciclo máx = 28 días = 4 sem). */
+const MAX_SEMANAS = 4;
+
+/**
+ * Normaliza la longitud_ciclo de un slot al rango válido para los exports/grids.
+ * La app solo soporta 7/14/21/28, pero si llegara un valor mayor lo trunca y
+ * loggea (warning) para evitar inconsistencias silenciosas entre las columnas
+ * exportadas (28 días máx) y los metadatos declarados (`Longitud Ciclo`, `Rotación`).
+ * Se usa como fuente única de verdad en CSV y `celdasPlanasSlot()`.
+ */
+function normalizarLongitudCiclo(slot: SlotPlantilla): { lc: number; semsActivas: number } {
+  const lcRaw = Number(slot.longitud_ciclo) || 14;
+  if (lcRaw > MAX_SEMANAS * 7) {
+    // eslint-disable-next-line no-console
+    console.warn(`[ReportePlantillaTurnos] slot ${slot.slot_id ?? "?"} tiene longitud_ciclo=${lcRaw} (>28); se trunca a 28 para los exports.`);
+  }
+  const lc = Math.min(lcRaw, MAX_SEMANAS * 7);
+  return { lc, semsActivas: Math.ceil(lc / 7) };
+}
+
+/**
+ * Devuelve un objeto plano con celdas SX-Y y SX-Hora para el slot dado.
+ * Las semanas/días fuera del ciclo quedan vacíos ("") para que el formato
+ * de columnas sea siempre el mismo (apto para carga masiva por importación).
+ */
+function celdasPlanasSlot(slot: SlotPlantilla): Record<string, string> {
+  const out: Record<string, string> = {};
+  const { lc, semsActivas } = normalizarLongitudCiclo(slot);
+  const trabajo = new Set((slot.dias_trabajo ?? []).map(Number));
+  const medio = new Set((slot.dias_medio_turno ?? []).map(Number));
+
+  for (let s = 1; s <= MAX_SEMANAS; s++) {
+    const dentroCiclo = s <= semsActivas;
+    out[`S${s}-Hora`] = dentroCiclo
+      ? String((slot.hora_entrada_por_semana?.[s - 1]) || slot.hora_entrada || "").slice(0, 5)
+      : "";
+    NOMBRE_DIA.forEach((label, i) => {
+      const dia = (s - 1) * 7 + i + 1;
+      let valor = "";
+      if (dentroCiclo && dia <= lc) {
+        valor = medio.has(dia) ? "M" : trabajo.has(dia) ? "T" : "D";
+      }
+      out[`S${s}-${label}`] = valor;
+    });
+  }
+  return out;
 }
 
 // ─── Componente principal ────────────────────────────────────────────────────
@@ -214,36 +257,77 @@ export default function ReportePlantillaTurnos() {
     });
   }
 
-  // ── CSV (Excel-friendly) Export ────────────────────────────────────────────
+  // ── CSV (Excel-friendly + carga masiva) Export ─────────────────────────────
+  // Formato AMPLIO con columnas determinísticas:
+  //   Identificadores (IDs) + datos del puesto/slot + 4 columnas de Hora (S1..S4)
+  //   + 28 columnas de día (S1-L .. S4-D) con valores T/M/D ("" fuera de ciclo).
+  // Diseñado para que en una futura iteración se pueda EDITAR el archivo en
+  // Excel y SUBIRLO para actualizar la plantilla masivamente (los IDs hacen
+  // match exacto, longitud_ciclo dice cuántas semanas son válidas).
   function exportCsv() {
     if (!data) return;
+
+    const diaCols: string[] = [];
+    const horaCols: string[] = [];
+    for (let s = 1; s <= MAX_SEMANAS; s++) {
+      horaCols.push(`S${s}-Hora`);
+      for (const d of NOMBRE_DIA) diaCols.push(`S${s}-${d}`);
+    }
+
     const headers = [
-      "Cliente", "Sede", "Zona", "Supervisor", "Puesto", "Tipo Servicio",
-      "Turno Puesto", "Jornada", "Slot #", "Titular",
-      "Horas Turno", "Hora Entrada", "Rotación (sem)", "Fecha Inicio Ciclo",
-      "Patrón Semanal", "Días Trabajo (raw)", "Días Medio (raw)", "Notas",
+      // Identificadores (claves para carga masiva)
+      "ID Slot", "ID Puesto", "ID Cliente", "ID Empleado",
+      // Información de contexto (informativa; no se usa al re-importar)
+      "Cliente", "Sede", "Zona", "Supervisor",
+      "Puesto", "Tipo Servicio", "Turno Puesto", "Jornada",
+      // Identidad del slot (clave secundaria)
+      "Slot #", "Titular",
+      // Configuración del slot (editable al re-importar)
+      "Horas Turno", "Longitud Ciclo (días)", "Rotación (sem)", "Fecha Inicio Ciclo",
+      // Horario por semana (editable)
+      ...horaCols,
+      // Plantilla por día (editable: T=Trabaja, M=Medio turno, D=Descansa, vacío=fuera de ciclo)
+      ...diaCols,
+      // Notas
+      "Notas",
     ];
-    const rows = data.slots.map((s) => [
-      s.cliente_nombre ?? "Sin cliente",
-      s.sede_nombre ?? "",
-      s.zona_nombre ?? "",
-      s.supervisor_nombre ?? "",
-      s.puesto_nombre,
-      s.tipo_servicio ?? "",
-      s.puesto_turno ?? "",
-      s.jornada ?? "",
-      s.slot_numero != null ? String(s.slot_numero) : "",
-      s.titular_nombre ?? "(Vacante)",
-      s.horas_turno != null ? String(s.horas_turno) : "",
-      s.hora_entrada ?? "",
-      String(Math.ceil((Number(s.longitud_ciclo) || 14) / 7)),
-      s.fecha_inicio_ciclo ?? "",
-      s.slot_id ? resumenSemanasTexto(s) : "",
-      s.dias_trabajo ? `[${s.dias_trabajo.join(",")}]` : "",
-      s.dias_medio_turno && s.dias_medio_turno.length > 0 ? `[${s.dias_medio_turno.join(",")}]` : "",
-      (s.notas ?? "").replace(/[\r\n,]/g, " "),
-    ]);
-    const csv = [headers, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+
+    // Solo se exportan slots configurados (con slot_id). Las super-vacantes
+    // (puestos sin ningún slot) NO van en el CSV porque no tienen clave primaria
+    // y por lo tanto no se pueden re-importar al hacer carga masiva. Para verlas
+    // está el resumen ejecutivo y la vista en pantalla.
+    const slotsExportables = data.slots.filter((s) => s.slot_id != null);
+    const rows = slotsExportables.map((s) => {
+      const { lc, semsActivas } = normalizarLongitudCiclo(s);
+      const cels = celdasPlanasSlot(s);
+      return [
+        s.slot_id ?? "",
+        s.puesto_id,
+        s.cliente_id ?? "",
+        s.empleado_id ?? "",
+        s.cliente_nombre ?? "Sin cliente",
+        s.sede_nombre ?? "",
+        s.zona_nombre ?? "",
+        s.supervisor_nombre ?? "",
+        s.puesto_nombre,
+        s.tipo_servicio ?? "",
+        s.puesto_turno ?? "",
+        s.jornada ?? "",
+        s.slot_numero != null ? String(s.slot_numero) : "",
+        s.titular_nombre ?? "(Vacante)",
+        s.horas_turno != null ? String(s.horas_turno) : "",
+        String(lc),
+        String(semsActivas),
+        s.fecha_inicio_ciclo ?? "",
+        ...horaCols.map((c) => cels[c] ?? ""),
+        ...diaCols.map((c) => cels[c] ?? ""),
+        (s.notas ?? "").replace(/[\r\n]/g, " "),
+      ];
+    });
+
+    const csv = [headers, ...rows]
+      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -292,25 +376,146 @@ export default function ReportePlantillaTurnos() {
         `${fmtNum(gs.rot_2_sem)} de 2 sem, ${fmtNum(gs.rot_3_sem)} de 3 sem, ${fmtNum(gs.rot_4_sem)} de 4 sem.`
       );
 
-      pdf.addSeccionTitulo("PLANTILLA DETALLADA");
-      const filas = data.slots.filter(s => s.slot_id).map((s) => [
-        (s.cliente_nombre ?? "—").substring(0, 18),
-        (s.sede_nombre ?? "—").substring(0, 12),
-        s.puesto_nombre.substring(0, 14),
-        s.slot_numero != null ? `#${s.slot_numero}` : "—",
-        (s.titular_nombre ?? "(Vacante)").substring(0, 18),
-        s.horas_turno != null ? `${s.horas_turno}h` : "—",
-        `${Math.ceil((Number(s.longitud_ciclo) || 14) / 7)} sem`,
-        s.hora_entrada ?? "—",
-        resumenSemanasTexto(s).substring(0, 50),
-      ]);
-      if (filas.length <= 600) {
-        pdf.addTabla(
-          ["Cliente", "Sede", "Puesto", "Slot", "Titular", "T", "Rot.", "H.Entr.", "Patrón"],
-          filas
+      pdf.addSeccionTitulo("PLANTILLA DETALLADA POR SLOT");
+
+      // Leyenda visual
+      pdf.addCustomBlock(8, ({ doc, x, y, colors }) => {
+        const labels: { letra: "T" | "M" | "D"; texto: string; color: [number, number, number] }[] = [
+          { letra: "T", texto: "Trabaja",      color: colors.green },
+          { letra: "M", texto: "Medio turno",  color: colors.yellow },
+          { letra: "D", texto: "Descansa",     color: [180, 188, 200] },
+        ];
+        let cx = x;
+        const cy = y;
+        const cellSize = 5;
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...colors.darkGray);
+        doc.text("Leyenda:", cx, cy + 3.5);
+        cx += 16;
+        for (const l of labels) {
+          doc.setFillColor(...l.color);
+          doc.roundedRect(cx, cy, cellSize, cellSize, 0.5, 0.5, "F");
+          doc.setTextColor(255, 255, 255);
+          doc.setFontSize(6.5);
+          doc.setFont("helvetica", "bold");
+          doc.text(l.letra, cx + cellSize / 2, cy + cellSize / 2 + 1.2, { align: "center" });
+          doc.setTextColor(...colors.darkGray);
+          doc.setFontSize(8);
+          doc.setFont("helvetica", "normal");
+          doc.text(l.texto, cx + cellSize + 1.5, cy + 3.5);
+          cx += cellSize + 1.5 + doc.getTextWidth(l.texto) + 6;
+        }
+        return 7;
+      });
+
+      // Tarjeta visual por cada slot
+      const slotsConId = data.slots.filter(s => s.slot_id);
+      const MAX_SLOTS_PDF = 250;
+      const slotsAImprimir = slotsConId.slice(0, MAX_SLOTS_PDF);
+
+      for (const s of slotsAImprimir) {
+        const sems = construirSemanas(s);
+        const totalSem = sems.length;
+        // Altura estimada: cabecera (12) + cada fila de semana (5.5) + padding (4)
+        const altura = 12 + totalSem * 5.5 + 4;
+
+        pdf.addCustomBlock(altura + 2, ({ doc, x, y, width, colors }) => {
+          // Marco de la tarjeta
+          doc.setDrawColor(...colors.border);
+          doc.setLineWidth(0.3);
+          doc.setFillColor(252, 253, 255);
+          doc.roundedRect(x, y, width, altura, 1.5, 1.5, "FD");
+
+          // ── Cabecera del slot ──
+          doc.setTextColor(...colors.navy);
+          doc.setFontSize(8.5);
+          doc.setFont("helvetica", "bold");
+          const titularTxt = s.titular_nombre ?? "(Vacante)";
+          const cabIzq = `${s.cliente_nombre ?? "Sin cliente"} · ${s.sede_nombre ?? "—"} · ${s.puesto_nombre} · #${s.slot_numero ?? "—"}`;
+          doc.text(doc.splitTextToSize(cabIzq, width * 0.65)[0], x + 3, y + 5);
+
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(7.5);
+          doc.setTextColor(s.titular_nombre ? 50 : 220, s.titular_nombre ? 60 : 60, s.titular_nombre ? 75 : 60);
+          doc.text(`Titular: ${titularTxt}`, x + 3, y + 9.2);
+
+          // Cabecera derecha: turno · rotación · ciclo
+          const rot = Math.ceil((Number(s.longitud_ciclo) || 14) / 7);
+          const cabDer = `${s.horas_turno ?? "—"}h · Rotación ${rot} sem · Ciclo ${s.longitud_ciclo}d`;
+          doc.setTextColor(...colors.darkGray);
+          doc.setFontSize(7);
+          doc.text(cabDer, x + width - 3, y + 5, { align: "right" });
+          if (s.fecha_inicio_ciclo) {
+            const [yy, mm, dd] = s.fecha_inicio_ciclo.split("-");
+            doc.text(`Inicio ciclo: ${dd}/${mm}/${yy}`, x + width - 3, y + 9.2, { align: "right" });
+          }
+
+          // ── Mini-grid ──
+          const gridTop = y + 12.5;
+          const labelSemW = 8;
+          const labelHoraW = 12;
+          const cellGap = 0.6;
+          const availForCells = width - 6 - labelSemW - labelHoraW;
+          const cellW = (availForCells - cellGap * 6) / 7;
+          const cellH = 4.6;
+          const rowGap = 0.9;
+
+          // Encabezado de días (L M X J V S D)
+          doc.setFontSize(6.5);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(...colors.darkGray);
+          NOMBRE_DIA.forEach((label, i) => {
+            const cx = x + 3 + labelSemW + labelHoraW + i * (cellW + cellGap) + cellW / 2;
+            doc.text(label, cx, gridTop - 0.5, { align: "center" });
+          });
+
+          // Filas por semana
+          sems.forEach((sem, idx) => {
+            const ry = gridTop + idx * (cellH + rowGap);
+            // Etiqueta semana
+            doc.setFontSize(7);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(...colors.navy);
+            doc.text(`S${sem.semana}`, x + 3, ry + cellH / 2 + 1);
+            // Hora de entrada
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(6.5);
+            doc.setTextColor(...colors.darkGray);
+            doc.text(sem.hora || "—", x + 3 + labelSemW, ry + cellH / 2 + 1);
+            // Celdas
+            sem.dias.forEach((d, i) => {
+              const cx = x + 3 + labelSemW + labelHoraW + i * (cellW + cellGap);
+              let fill: [number, number, number];
+              if (d.dia > (Number(s.longitud_ciclo) || 14)) {
+                fill = [240, 242, 246];
+              } else if (d.estado === "trabajo") {
+                fill = colors.green;
+              } else if (d.estado === "medio") {
+                fill = colors.yellow;
+              } else {
+                fill = [180, 188, 200];
+              }
+              doc.setFillColor(...fill);
+              doc.roundedRect(cx, ry, cellW, cellH, 0.3, 0.3, "F");
+              if (d.dia <= (Number(s.longitud_ciclo) || 14)) {
+                doc.setTextColor(255, 255, 255);
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(6);
+                doc.text(MARCA[d.estado], cx + cellW / 2, ry + cellH / 2 + 1.1, { align: "center" });
+              }
+            });
+          });
+
+          return altura + 2;
+        });
+      }
+
+      if (slotsConId.length > MAX_SLOTS_PDF) {
+        pdf.addTextoResumen(
+          `Se muestran los primeros ${MAX_SLOTS_PDF} de ${slotsConId.length} slots con configuración. ` +
+          `Para el detalle completo (incluyendo todos los slots), exportá a Excel.`
         );
-      } else {
-        pdf.addTextoResumen(`Detalle omitido (${filas.length} filas excede el máximo de 600 para PDF). Usá la exportación a Excel para el detalle completo.`);
       }
 
       pdf.save(`plantilla-turnos-${fechaHoy}.pdf`);

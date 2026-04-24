@@ -538,9 +538,30 @@ export async function migrarPESP01() {
     - **JOIN clave**: `LEFT JOIN puesto_slots ps ON ps.puesto_id = po.id AND ps.activo = TRUE` — el filtro de `activo`
       vive en el `ON` para preservar puestos sin slots configurados (super-vacantes).
     - **Frontend**: `admin/pages/ReportePlantillaTurnos.tsx` (ruta `/admin/reportes/plantilla-turnos`,
-      roles permitidos: admin, operaciones, supervisor). Exporta a Excel (CSV con BOM UTF-8) y a PDF (`IspPdf`).
-    - **Visualización**: grid semanas×días con colores (verde=trabajo, ámbar=medio turno, gris=descanso) y
-      hora de entrada por semana cuando rota (fallback a `hora_entrada` cuando no rota).
+      roles permitidos: admin, operaciones, supervisor).
+    - **Visualización en pantalla**: grid semanas×días con colores (verde=trabajo, ámbar=medio turno,
+      gris=descanso) y hora de entrada por semana cuando rota (fallback a `hora_entrada` cuando no rota).
+    - **Export Excel (CSV con BOM UTF-8)** — formato AMPLIO determinístico, diseñado además como
+      **plantilla para CARGA MASIVA futura**. Encabezados fijos sin importar la rotación del slot:
+      identificadores (`ID Slot`, `ID Puesto`, `ID Cliente`, `ID Empleado`) + datos del puesto/slot
+      (Cliente, Sede, Zona, Supervisor, Puesto, Tipo Servicio, Turno, Jornada, Slot #, Titular,
+      Horas Turno, `Longitud Ciclo (días)`, `Rotación (sem)`, `Fecha Inicio Ciclo`) + 4 columnas
+      `S{1..4}-Hora` + 28 columnas `S{1..4}-{L|M|X|J|V|S|D}` + Notas. Valores de día: `T`=Trabaja,
+      `M`=Medio turno, `D`=Descansa, vacío=día fuera del ciclo. La importación futura usará `ID Slot`
+      como clave primaria, `ID Puesto` como clave secundaria y `Longitud Ciclo (días)` para saber
+      cuántas semanas son válidas (ignora celdas fuera del ciclo). **Contrato del CSV** (importante
+      para el importador futuro): solo se exportan filas con `slot_id` no nulo (las super-vacantes
+      —puestos sin ningún slot configurado— quedan fuera del CSV porque no tienen PK; siguen visibles
+      en el resumen ejecutivo y en pantalla). El helper `celdasPlanasSlot()` clamp defensivamente
+      `longitud_ciclo` a 28 (con `console.warn`) si llegara un valor mayor, para evitar truncamiento
+      silencioso de columnas.
+    - **Export PDF (`IspPdf`)** — además del resumen ejecutivo + leyenda de colores, dibuja **una
+      tarjeta visual por slot** con cabecera (Cliente · Sede · Puesto · Slot # · Titular ·
+      Horas turno · Rotación · Inicio ciclo) y mini-grid semanas×días debajo. Cada celda del grid
+      se rellena con el color del estado (verde/ámbar/gris) y la letra `T`/`M`/`D`. Tope de
+      `MAX_SLOTS_PDF = 250` slots por PDF; si se excede, sugiere usar Excel para el detalle completo.
+      Implementado mediante `IspPdf.addCustomBlock(estimatedHeight, render)` (helper genérico nuevo
+      que expone `doc`, posición y colores corporativos para dibujo personalizado).
 
 ### 7.37 Tareas (Trello-like) (`/api/tareas`, `/api/trello`)
 - **Archivos**: `routes/tareas.ts`, `routes/trello.ts`
