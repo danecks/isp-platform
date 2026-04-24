@@ -172,19 +172,15 @@ export async function permisosMiddleware(req: any, res: any, next: any) {
     }
   }
 
-  // Sin sesión: MODO PERMISIVO TEMPORAL.
-  // Mientras se migran todos los fetches del frontend a enviar x-isp-session,
-  // dejamos pasar las rutas admin sin sesión pero registramos un WARN para
-  // poder auditar qué endpoints se están consumiendo sin auth y completar
-  // la migración. TODO: cambiar a 401 cuando todas las páginas envíen sesión.
+  // Sin sesión: bloquear si la ruta es admin (está en el mapa).
+  // Si no está en el mapa, mantener compatibilidad (formularios públicos
+  // no catalogados como /leads, /applications) — siguen pasando como hoy.
   if (!session) {
     if (moduloClave) {
-      try {
-        req.log?.warn?.(
-          { path: req.path, method: req.method, modulo: moduloClave },
-          "[PERMISIVO] Ruta admin accedida sin sesión",
-        );
-      } catch { /* logger opcional */ }
+      return res.status(401).json({
+        error: "Sesión requerida para acceder a este módulo",
+        modulo: moduloClave,
+      });
     }
     return next();
   }

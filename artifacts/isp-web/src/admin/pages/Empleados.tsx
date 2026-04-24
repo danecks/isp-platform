@@ -23,6 +23,11 @@ import DescansoSemanalEditor from "../components/DescansoSemanalEditor";
 
 const API_BASE = "/api";
 
+// Helper para enviar el header de sesión admin en todos los fetches.
+// Centralizado a nivel de archivo para que cualquier componente del archivo
+// pueda usarlo sin redefinirlo.
+const sessionHeader = () => ({ "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" });
+
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface Empleado {
@@ -480,7 +485,7 @@ const ROL_MOV_CFG = {
 function SeccionRotacion({ empId }: { empId: number }) {
   const { data: rot, isLoading } = useQuery<KPIRotacion>({
     queryKey: ["employee-rotation", empId],
-    queryFn: () => fetch(`${API_BASE}/employees/${empId}/rotation`).then((r) => r.json()),
+    queryFn: () => fetch(`${API_BASE}/employees/${empId}/rotation`, { headers: sessionHeader() }).then((r) => r.json()),
     staleTime: 60_000,
   });
 
@@ -663,12 +668,12 @@ function SeccionRotacion({ empId }: { empId: number }) {
 function ResumenDimensionesKPI({ empId }: { empId: number }) {
   const { data: disc } = useQuery<KPIDisciplinario>({
     queryKey: ["employee-disciplinary", empId],
-    queryFn: () => fetch(`${API_BASE}/employees/${empId}/disciplinary`).then((r) => r.json()),
+    queryFn: () => fetch(`${API_BASE}/employees/${empId}/disciplinary`, { headers: sessionHeader() }).then((r) => r.json()),
     staleTime: 60_000,
   });
   const { data: rot } = useQuery<KPIRotacion>({
     queryKey: ["employee-rotation", empId],
-    queryFn: () => fetch(`${API_BASE}/employees/${empId}/rotation`).then((r) => r.json()),
+    queryFn: () => fetch(`${API_BASE}/employees/${empId}/rotation`, { headers: sessionHeader() }).then((r) => r.json()),
     staleTime: 60_000,
   });
 
@@ -852,7 +857,7 @@ function CausalSelector({ selected, onChange }: { selected: string[]; onChange: 
 function SeccionDisciplinaria({ empId }: { empId: number }) {
   const { data: disc, isLoading } = useQuery<KPIDisciplinario>({
     queryKey: ["employee-disciplinary", empId],
-    queryFn: () => fetch(`${API_BASE}/employees/${empId}/disciplinary`).then((r) => r.json()),
+    queryFn: () => fetch(`${API_BASE}/employees/${empId}/disciplinary`, { headers: sessionHeader() }).then((r) => r.json()),
     staleTime: 60_000,
   });
 
@@ -1004,7 +1009,7 @@ function SeccionDisciplinaria({ empId }: { empId: number }) {
 function TabKPI({ empId }: { empId: number }) {
   const { data: kpi, isLoading, isError } = useQuery<KpiData>({
     queryKey: ["employee-kpi", empId],
-    queryFn: () => fetch(`${API_BASE}/employees/${empId}/kpi`).then((r) => r.json()),
+    queryFn: () => fetch(`${API_BASE}/employees/${empId}/kpi`, { headers: sessionHeader() }).then((r) => r.json()),
     staleTime: 60_000,
   });
 
@@ -1112,7 +1117,7 @@ function TabKPI({ empId }: { empId: number }) {
 function TabAsignaciones({ empId }: { empId: number }) {
   const { data: asignaciones = [], isLoading } = useQuery<Asignacion[]>({
     queryKey: ["employee-asignaciones", empId],
-    queryFn: () => fetch(`${API_BASE}/employees/${empId}/asignaciones`).then((r) => r.json()),
+    queryFn: () => fetch(`${API_BASE}/employees/${empId}/asignaciones`, { headers: sessionHeader() }).then((r) => r.json()),
     staleTime: 60_000,
   });
 
@@ -1840,7 +1845,7 @@ function TabSistema({ emp }: { emp: Empleado }) {
   const [showCrearModal, setShowCrearModal] = useState(false);
   const { data: user, isLoading } = useQuery<UserVinculado | null>({
     queryKey: ["employee-user", emp.id],
-    queryFn: () => fetch(`${API_BASE}/employees/${emp.id}/user`).then((r) => r.json()),
+    queryFn: () => fetch(`${API_BASE}/employees/${emp.id}/user`, { headers: sessionHeader() }).then((r) => r.json()),
     staleTime: 60_000,
   });
 
@@ -2012,13 +2017,13 @@ interface ZonaBasic {
 function TabOperacion({ empId }: { empId: number }) {
   const { data, isLoading } = useQuery<OperacionData>({
     queryKey: ["employee-operacion", empId],
-    queryFn: () => fetch(`${API_BASE}/employees/${empId}/operacion`).then((r) => r.json()),
+    queryFn: () => fetch(`${API_BASE}/employees/${empId}/operacion`, { headers: sessionHeader() }).then((r) => r.json()),
     staleTime: 60_000,
   });
 
   const { data: todasZonas = [] } = useQuery<ZonaBasic[]>({
     queryKey: ["zonas-all"],
-    queryFn: () => fetch(`${API_BASE}/operaciones/zonas`).then((r) => r.json()),
+    queryFn: () => fetch(`${API_BASE}/operaciones/zonas`, { headers: sessionHeader() }).then((r) => r.json()),
     staleTime: 120_000,
   });
 
@@ -2575,7 +2580,7 @@ function TabVacaciones({ emp }: { emp: Empleado }) {
 
   const { data: saldo, isLoading, isError, refetch } = useQuery<VacSaldo>({
     queryKey: ["vac-saldo-emp", emp.id],
-    queryFn:  () => fetch(`${API_BASE}/vacaciones/saldo/${emp.id}`).then((r) => r.json()),
+    queryFn:  () => fetch(`${API_BASE}/vacaciones/saldo/${emp.id}`, { headers: sessionHeader() }).then((r) => r.json()),
     staleTime: 30_000,
   });
 
@@ -2856,7 +2861,7 @@ function TabAnticipo({ emp }: { emp: Empleado }) {
 
   const { data, isLoading, isError, refetch } = useQuery<AnticiposEmpleadoData>({
     queryKey: ["employee-anticipos", emp.id],
-    queryFn: () => fetch(`${API_BASE}/employees/${emp.id}/anticipos`).then((r) => r.json()),
+    queryFn: () => fetch(`${API_BASE}/employees/${emp.id}/anticipos`, { headers: sessionHeader() }).then((r) => r.json()),
     staleTime: 30_000,
   });
 
@@ -5076,7 +5081,7 @@ export default function Empleados() {
 
   const { data: empleados = [], isLoading, isError, refetch } = useQuery<Empleado[]>({
     queryKey: ["empleados"],
-    queryFn: () => fetch(`${API_BASE}/employees`).then((r) => r.json()),
+    queryFn: () => fetch(`${API_BASE}/employees`, { headers: sessionHeader() }).then((r) => r.json()),
     staleTime: 60_000,
   });
 
