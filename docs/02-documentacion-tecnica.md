@@ -751,21 +751,27 @@ export async function migrarPESP01() {
   recibía el pago sin la rebaja.
 
 - **Corrección**:
-  - `routes/planilla.ts` POST `/nomina/planilla`: cargar
-    `amonestacionesMap` por `employee_id` con la suma de amonestaciones
-    activas, no descontadas, dentro del rango del período. El query
-    usa exactamente los mismos criterios que el `UPDATE` que las
-    marca como descontadas (`tipo='economica' AND estado='activa'
-    AND descontado=FALSE AND fecha BETWEEN desde AND hasta`).
+  - `routes/planilla.ts` POST `/nomina/planilla`: el monto a cobrar
+    se LEE DEL SNAPSHOT del cierre (`row.amonestaciones_monto`), no
+    de BD viva. Ese campo del snapshot lo congela
+    `pre-planilla.ts:266-274` (QUERY_CONSOLIDADO) al cerrar la
+    pre-planilla, con criterios `tipo='economica' AND estado='activa'
+    AND descontado=FALSE AND fecha BETWEEN desde AND hasta`.
   - `calcularLinea()` recibe `amonestacionesMonto` y lo asigna a
     `otros_descuentos`. El `total_neto` se calcula restando
     `otros_descuentos` igual que cualquier otro descuento.
+  - El `UPDATE amonestaciones SET descontado=TRUE` posterior usa
+    los mismos criterios para vincular las filas en BD.
 
 - **Garantía operativa**: lo que la pre-planilla muestra como
   descuento por amonestaciones = lo que el colaborador deja de
-  recibir en la planilla final. Y la BD queda consistente: la
-  amonestación marcada como `descontado=TRUE` corresponde a un monto
-  que efectivamente fue rebajado del pago.
+  recibir en la planilla final, **incluso si entre cierre y
+  generación de planilla alguien crea/modifica/anula amonestaciones**
+  en BD. Lo cobrado queda fijado al momento del cierre.
+
+- **Reversión**: al revertir planilla, las amonestaciones vinculadas
+  vuelven a `descontado=FALSE` y `planilla_id=NULL`, y al re-cerrarse
+  la pre-planilla regenera el snapshot con el estado vigente.
 
 - **Pendiente menor (no bloqueante)**: agregar `total_otros_descuentos`
   al reduce de totales y a la tabla `planillas` para que el reporte

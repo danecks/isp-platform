@@ -360,28 +360,14 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
     // Construir mapa de cuotas de barraca por empleado
     const barracaMap = await buildBarracaCuotaMap(empIds);
 
-    // ── Mapa de amonestaciones económicas a cobrar (AMON-01) ──────────────────
-    // Agrega el monto de las amonestaciones activas/pendientes del período por
-    // empleado, usando exactamente los mismos criterios del UPDATE que las
-    // marca como descontadas (más abajo). Esto garantiza que lo que se cobra
-    // == lo que se vincula como descontado en BD.
-    const amonestacionesMap = new Map<number, number>();
-    if (empIds.length > 0) {
-      const { rows: amonRows } = await pool.query(
-        `SELECT employee_id, SUM(monto)::float AS monto
-           FROM amonestaciones
-          WHERE tipo = 'economica'
-            AND estado = 'activa'
-            AND descontado = FALSE
-            AND fecha BETWEEN $1::date AND $2::date
-            AND employee_id = ANY($3::int[])
-          GROUP BY employee_id`,
-        [desde, hasta, empIds]
-      );
-      for (const r of amonRows) {
-        amonestacionesMap.set(r.employee_id as number, parseFloat(r.monto ?? 0));
-      }
-    }
+    // ── Amonestaciones económicas a cobrar (AMON-01) ─────────────────────────
+    // El monto viene CONGELADO en el snapshot del cierre (campo
+    // `amonestaciones_monto`, generado por QUERY_CONSOLIDADO en
+    // pre-planilla.ts:266-274 con los mismos criterios que el UPDATE de
+    // abajo). Se lee por fila más adelante; NO se reconsulta BD viva, así
+    // se garantiza que lo cobrado == lo prometido en la pre-planilla cerrada,
+    // incluso si entre cierre y generación de planilla cambian/anulan
+    // amonestaciones en la BD.
 
     // Cargar prima mensual de seguro de vida vigente al fin del período (SEG-02)
     let primaSeguroMensual = 0;
@@ -419,7 +405,8 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
       const seguroMontoPeriodo = frecPago === "quincenal"
         ? parseFloat((primaSeguroMensual / 2).toFixed(2))
         : parseFloat(primaSeguroMensual.toFixed(2));
-      const amonestacionesMonto = empId ? (amonestacionesMap.get(empId) ?? 0) : 0;
+      // Amonestaciones desde snapshot (no BD viva) — ver bloque AMON-01 arriba
+      const amonestacionesMonto = Math.max(0, parseFloat(String(row.amonestaciones_monto ?? 0)) || 0);
       return {
         employee_id:        empId,
         nombre_completo:    String(row.nombre_completo ?? ""),
