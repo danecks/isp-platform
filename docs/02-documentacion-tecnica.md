@@ -449,6 +449,26 @@ export async function migrarPESP01() {
   endpoint solo actualizaba `puestos_operativos`, dejando los slots con la
   fecha vieja → el pizarrón seguía calculando con días desfasados y reportaba
   "Sin cobertura" en fechas que sí debían estar cubiertas.
+- **TURNOS-04 — rotación variable (1/2/3/4 semanas) + horario por semana**:
+  cada `puesto_slot` tiene `longitud_ciclo SMALLINT` (valores válidos: 7, 14,
+  21, 28 — equivale a 1/2/3/4 semanas distintas). El array `dias_trabajo`
+  contiene los días del 1..longitud_ciclo en los que trabaja. El campo nuevo
+  `hora_entrada_por_semana TEXT[] NULL` permite asignar una hora distinta por
+  semana del ciclo (p.ej. S1 07:00, S2 18:00 para rotación diurna/nocturna);
+  cuando es `NULL`, todas las semanas usan `hora_entrada` (comportamiento
+  legacy, 100% compatible con slots existentes). Cálculo: `cycleDay =
+  ((daysElapsed % longitud_ciclo) + longitud_ciclo) % longitud_ciclo + 1`;
+  `semana = ceil(cycleDay / 7)`; `hora_efectiva =
+  hora_entrada_por_semana[semana-1] || hora_entrada`. La hora de salida no se
+  almacena (es `hora_efectiva + horas_turno`). Aplicado en:
+  `routes/operaciones.ts` (helper `calcTrabajaPorSlot` con parámetro
+  `longitudCiclo` opcional default 14, query SQL del pool con `COALESCE(ps.longitud_ciclo, 14)`,
+  snapshot HE), `routes/puesto-slots.ts` (POST/PUT validan
+  `dias_trabajo ⊆ 1..longitud_ciclo` y `hora_entrada_por_semana.length =
+  ceil(longitud_ciclo/7)`), modal "Plantilla de Turnos" en
+  `admin/pages/Operaciones.tsx` (selector "Rotación 1/2/3/4 sem", toggle
+  "Horarios = / rotan", input de hora por cabecera de semana, vista dinámica
+  de N semanas distintas).
 
 ### 7.23 Fichaje QR (`/api/agente-fichaje`)
 - **Archivo**: `routes/agente-fichaje.ts`

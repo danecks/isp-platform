@@ -185,12 +185,13 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       LEFT JOIN LATERAL (
         SELECT json_agg(
           json_build_object(
-            'employee_id',        src.employee_id,
-            'nombre',             COALESCE(e_src.nombre_completo, '—'),
-            'orden',              src.orden,
-            'fecha_inicio_ciclo', src.pt_fic,
-            'slot_dias_trabajo',  src.slot_dias,
-            'slot_fecha_inicio',  src.slot_fic
+            'employee_id',         src.employee_id,
+            'nombre',              COALESCE(e_src.nombre_completo, '—'),
+            'orden',               src.orden,
+            'fecha_inicio_ciclo',  src.pt_fic,
+            'slot_dias_trabajo',   src.slot_dias,
+            'slot_fecha_inicio',   src.slot_fic,
+            'slot_longitud_ciclo', src.slot_longitud_ciclo
           ) ORDER BY src.orden
         ) AS titulares_json
         FROM (
@@ -200,6 +201,7 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
             ps.slot_numero        AS orden,
             NULL::date            AS pt_fic,
             ps.dias_trabajo       AS slot_dias,
+            COALESCE(ps.longitud_ciclo, 14)::int AS slot_longitud_ciclo,
             COALESCE(ps.fecha_inicio_ciclo, po.fecha_inicio_ciclo) AS slot_fic
           FROM puesto_slots ps
           WHERE ps.puesto_id = po.id AND ps.activo = TRUE AND ps.empleado_id IS NOT NULL
@@ -212,6 +214,7 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
             pt.orden              AS orden,
             pt.fecha_inicio_ciclo AS pt_fic,
             ps2.dias_trabajo      AS slot_dias,
+            COALESCE(ps2.longitud_ciclo, 14)::int AS slot_longitud_ciclo,
             COALESCE(ps2.fecha_inicio_ciclo, po.fecha_inicio_ciclo) AS slot_fic
           FROM puesto_titulares pt
           LEFT JOIN puesto_slots ps2
@@ -254,14 +257,21 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
     };
 
     // Calcula si un titular trabaja en una fecha dada usando su puesto_slot.dias_trabajo.
-    // cycleDay = (diasDesdeInicio % 14) + 1  (1..14)
-    function calcTrabajaPorSlot(diasTrabajo: number[], fechaInicioStr: string, fechaConsulta: string): boolean {
+    // cycleDay = (diasDesdeInicio % longitud_ciclo) + 1  (1..longitud_ciclo)
+    // Default longitud_ciclo = 14 para compatibilidad con slots existentes.
+    function calcTrabajaPorSlot(
+      diasTrabajo: number[],
+      fechaInicioStr: string,
+      fechaConsulta: string,
+      longitudCiclo: number = 14,
+    ): boolean {
+      const lc = (longitudCiclo && longitudCiclo > 0) ? longitudCiclo : 14;
       const [iy, im, id] = fechaInicioStr.split("-").map(Number);
       const [cy, cm, cd] = fechaConsulta.split("-").map(Number);
       const inicio   = Date.UTC(iy, im - 1, id);
       const consulta = Date.UTC(cy, cm - 1, cd);
       const daysElapsed = Math.floor((consulta - inicio) / 86400000);
-      const cycleDay = ((daysElapsed % 14) + 14) % 14 + 1; // 1-based, handles negative offsets
+      const cycleDay = ((daysElapsed % lc) + lc) % lc + 1; // 1-based, handles negative offsets
       return diasTrabajo.includes(cycleDay);
     }
     type PuestoFinal = PuestoRaw & {
@@ -316,6 +326,7 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
             t.slot_dias_trabajo,
             String(t.slot_fecha_inicio).slice(0, 10),
             fechaConsultada,
+            (t as any).slot_longitud_ciclo,
           );
           return { ...t, trabaja_hoy: trabaja, descanso_por_ciclo: !trabaja };
         }
@@ -1193,7 +1204,9 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       ) cs_trabajando ON TRUE
       LEFT JOIN LATERAL (
         SELECT
-          ((($1::date - COALESCE(ps.fecha_inicio_ciclo, po_s.fecha_inicio_ciclo, $1::date)::date) % 14 + 14) % 14 + 1) = ANY(ps.dias_trabajo)
+          ((($1::date - COALESCE(ps.fecha_inicio_ciclo, po_s.fecha_inicio_ciclo, $1::date)::date)
+             % COALESCE(ps.longitud_ciclo, 14) + COALESCE(ps.longitud_ciclo, 14))
+             % COALESCE(ps.longitud_ciclo, 14) + 1) = ANY(ps.dias_trabajo)
           AS trabaja_hoy
         FROM puesto_slots ps
         JOIN puestos_operativos po_s ON po_s.id = ps.puesto_id
@@ -1877,7 +1890,8 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
           `SELECT pt.puesto_id, po.tipo_turno_id, po.fecha_inicio_ciclo::text AS fic,
                   t.horas_trabajo::float AS ht, t.horas_descanso::float AS hd,
                   t.nombre AS turno_nombre,
-                  ps.dias_trabajo AS slot_dias_trabajo, ps.fecha_inicio_ciclo::text AS slot_fecha_inicio
+                  ps.dias_trabajo AS slot_dias_trabajo, ps.fecha_inicio_ciclo::text AS slot_fecha_inicio,
+                  COALESCE(ps.longitud_ciclo, 14)::int AS slot_longitud_ciclo
            FROM puesto_titulares pt
            JOIN puestos_operativos po ON po.id = pt.puesto_id
            LEFT JOIN turnos t ON t.id = po.tipo_turno_id
@@ -1890,12 +1904,13 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
           const ptRow = ptRows[0];
           const slotFechaInicio = ptRow.slot_fecha_inicio ?? ptRow.fic;
           if (ptRow.slot_dias_trabajo && Array.isArray(ptRow.slot_dias_trabajo) && ptRow.slot_dias_trabajo.length > 0 && slotFechaInicio) {
+            const lc = Number(ptRow.slot_longitud_ciclo) || 14;
             const [iy,im,id2] = slotFechaInicio.slice(0,10).split("-").map(Number);
             const [cy,cm,cd2] = fechaCobertura.split("-").map(Number);
             const inicio = Date.UTC(iy, im-1, id2);
             const consulta = Date.UTC(cy, cm-1, cd2);
             const daysElapsed = Math.floor((consulta - inicio) / 86400000);
-            const cycleDay = ((daysElapsed % 14) + 14) % 14 + 1;
+            const cycleDay = ((daysElapsed % lc) + lc) % lc + 1;
             const trabaja = (ptRow.slot_dias_trabajo as number[]).includes(cycleDay);
             agenteEnDescansoOVacaciones = !trabaja;
           } else if (ptRow.ht && ptRow.hd && ptRow.fic) {
@@ -2360,27 +2375,36 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
           if (vacRows.length > 0) {
             entranteEnDescansoOVacaciones = true;
           } else {
+            // TURNOS-04: alineado con el modelo nuevo (dias_trabajo + longitud_ciclo).
+            // Antes este bloque usaba ps.dia_trabaja (columna inexistente), por lo que
+            // siempre era no-op. Ahora calcula correctamente si trabaja hoy.
             const { rows: slotRows } = await pool.query(
-              `SELECT ps.dia_trabaja
+              `SELECT ps.dias_trabajo,
+                      COALESCE(ps.longitud_ciclo, 14)::int AS longitud_ciclo,
+                      ps.fecha_inicio_ciclo::text AS slot_fecha_inicio
                FROM puesto_slots ps
                JOIN puestos_operativos po ON po.id = ps.puesto_id
-               WHERE po.titular_employee_id = $1 AND po.activo = TRUE
+               WHERE po.titular_employee_id = $1 AND po.activo = TRUE AND ps.activo = TRUE
                LIMIT 1`,
               [agenteEntranteId]
             );
             if (slotRows.length > 0) {
               const slotData = slotRows[0];
-              if (slotData.dia_trabaja && Array.isArray(slotData.dia_trabaja)) {
-                const fechaInicioCiclo = entrante.fecha_inicio_ciclo || entrante.fecha_ingreso;
-                if (fechaInicioCiclo) {
-                  const msPerDay = 86400000;
-                  const diffDays = Math.floor((new Date(hoy + "T12:00:00Z").getTime() - new Date(fechaInicioCiclo + "T12:00:00Z").getTime()) / msPerDay);
-                  const cycleDay = ((diffDays % 14) + 14) % 14;
-                  const trabajaHoy = slotData.dia_trabaja[cycleDay] ?? true;
-                  if (!trabajaHoy) {
-                    entranteEnDescansoOVacaciones = true;
-                  }
-                }
+              const dias = Array.isArray(slotData.dias_trabajo) ? slotData.dias_trabajo as number[] : null;
+              const lc = Number(slotData.longitud_ciclo) || 14;
+              const fechaInicioCiclo = slotData.slot_fecha_inicio
+                ?? entrante.fecha_inicio_ciclo
+                ?? entrante.fecha_ingreso;
+              if (dias && dias.length > 0 && fechaInicioCiclo) {
+                const fic = String(fechaInicioCiclo).slice(0, 10);
+                const [iy, im, id2] = fic.split("-").map(Number);
+                const [cy, cm, cd2] = hoy.split("-").map(Number);
+                const inicio = Date.UTC(iy, im - 1, id2);
+                const consulta = Date.UTC(cy, cm - 1, cd2);
+                const diffDays = Math.floor((consulta - inicio) / 86400000);
+                const cycleDay = ((diffDays % lc) + lc) % lc + 1; // 1-based
+                const trabajaHoy = dias.includes(cycleDay);
+                if (!trabajaHoy) entranteEnDescansoOVacaciones = true;
               }
             }
           }

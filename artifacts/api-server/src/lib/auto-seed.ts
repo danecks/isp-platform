@@ -3618,18 +3618,29 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: TURNOS-01 — error (no bloqueante)");
   }
 
-  // ── TURNOS-02: Migrar puesto_slots a modelo de ciclo de 14 días ───────────
-  // Agrega longitud_ciclo y fecha_inicio_ciclo; dias_trabajo ahora es 1..14.
-  // Elimina slots de prueba creados con el modelo antiguo (1-7 = día ISO).
+  // ── TURNOS-02: Migrar puesto_slots a modelo de ciclo configurable ───────────
+  // longitud_ciclo permite ahora 7, 14, 21 o 28 días (rotación 1..4 semanas).
+  // dias_trabajo es 1..longitud_ciclo. Compatibilidad: existing slots = 14.
   try {
     await pool.query(`ALTER TABLE puesto_slots ADD COLUMN IF NOT EXISTS longitud_ciclo SMALLINT NOT NULL DEFAULT 14`);
     await pool.query(`ALTER TABLE puesto_slots ADD COLUMN IF NOT EXISTS fecha_inicio_ciclo DATE`);
     await pool.query(`ALTER TABLE puesto_slots ADD COLUMN IF NOT EXISTS dias_medio_turno integer[] NOT NULL DEFAULT '{}'`);
-    // Actualizar slots existentes sin longitud_ciclo correcta (fallback a 14)
-    await pool.query(`UPDATE puesto_slots SET longitud_ciclo = 14 WHERE longitud_ciclo != 14`);
-    logger.info("Auto-migrate: TURNOS-02 ciclo 14 días aplicado en puesto_slots");
+    // Sanity: solo aceptar longitudes válidas {7,14,21,28}; cualquier otro valor → 14
+    await pool.query(`UPDATE puesto_slots SET longitud_ciclo = 14 WHERE longitud_ciclo NOT IN (7,14,21,28)`);
+    logger.info("Auto-migrate: TURNOS-02 ciclo configurable (7/14/21/28) aplicado en puesto_slots");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: TURNOS-02 — error (no bloqueante)");
+  }
+
+  // ── TURNOS-04: Hora de entrada por semana (rotación de horarios) ─────────────
+  // Permite que cada slot tenga distinta hora de entrada por semana del ciclo
+  // (ej. S1: 07:00, S2: 18:00). NULL = comportamiento legacy (usa hora_entrada).
+  // Es un TEXT[] de hasta 4 elementos en formato "HH:MM".
+  try {
+    await pool.query(`ALTER TABLE puesto_slots ADD COLUMN IF NOT EXISTS hora_entrada_por_semana TEXT[]`);
+    logger.info("Auto-migrate: TURNOS-04 hora_entrada_por_semana agregada en puesto_slots");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: TURNOS-04 — error (no bloqueante)");
   }
 
   // ── TURNOS-03: Corregir slots con fecha_inicio_ciclo desfasada ───────────────

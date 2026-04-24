@@ -2028,6 +2028,7 @@ interface SlotItem {
   slot_numero: number;
   horas_turno: number;
   hora_entrada: string;
+  hora_entrada_por_semana: string[] | null;
   dias_trabajo: number[];
   dias_medio_turno: number[];
   longitud_ciclo: number;
@@ -2037,26 +2038,38 @@ interface SlotItem {
   empleado_estado: string | null;
 }
 
-// Ciclo de 14 días para el modal del Pizarrón — etiquetas Lun–Dom
+// Ciclo configurable (7/14/21/28 días) — etiquetas Lun–Dom
 const DIAS_SEM_OP = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
-const DIAS_C14 = Array.from({ length: 14 }, (_, i) => ({ n: i + 1, label: DIAS_SEM_OP[i % 7] }));
 
 // Devuelve el lunes más cercano hacia atrás (o la fecha actual si ya es lunes).
-// Garantiza que D1=Lun, D2=Mar, ... D7=Dom en el ciclo de 14 días.
+// Garantiza que D1=Lun, D2=Mar, ... D7=Dom en el ciclo.
 function lastMondayDate(fromDate?: string | null): string {
-  // Extraer solo YYYY-MM-DD — el API puede devolver ISO completo ("2026-01-01T00:00:00.000Z")
   const dateStr = fromDate ? String(fromDate).slice(0, 10) : null;
   const d = dateStr ? new Date(dateStr + "T12:00:00") : new Date();
   const day = d.getDay(); // 0=Dom, 1=Lun, 2=Mar...
-  const diff = day === 0 ? 6 : day - 1; // cuántos días hacia atrás al lunes
+  const diff = day === 0 ? 6 : day - 1;
   d.setDate(d.getDate() - diff);
   return d.toISOString().slice(0, 10);
 }
-const S1_14 = DIAS_C14.slice(0, 7);
-const S2_14 = DIAS_C14.slice(7, 14);
-// Vista de 4 semanas: como el ciclo es de 14 días, S3 repite S1 y S4 repite S2.
-// Esto permite visualizar la rotación de descansos a lo largo de un mes completo.
-const SEMANAS_4 = [S1_14, S2_14, S1_14, S2_14];
+
+// Construye las "semanas" del ciclo según longitud_ciclo (7/14/21/28).
+// Devuelve siempre EXACTAMENTE las semanas distintas (no repetidas) — la rotación
+// se ve repetida sólo cuando longitud_ciclo es la misma del ciclo natural visual.
+function semanasCiclo(longitudCiclo: number): Array<Array<{ n: number; label: string }>> {
+  const lc = [7, 14, 21, 28].includes(longitudCiclo) ? longitudCiclo : 14;
+  const total = lc;
+  const dias = Array.from({ length: total }, (_, i) => ({ n: i + 1, label: DIAS_SEM_OP[i % 7] }));
+  const numSem = Math.ceil(total / 7);
+  return Array.from({ length: numSem }, (_, si) => dias.slice(si * 7, (si + 1) * 7));
+}
+
+// Hora de entrada efectiva para una semana del ciclo (0-indexed).
+// Si hay rotación de horarios usa hora_entrada_por_semana, si no usa hora_entrada legacy.
+function horaSemanaSlot(slot: SlotItem, semanaIdx: number): string {
+  const hps = slot.hora_entrada_por_semana;
+  if (Array.isArray(hps) && hps[semanaIdx]) return hps[semanaIdx];
+  return slot.hora_entrada || "07:00";
+}
 
 function ModalConfigTurno({
   puesto,
@@ -2097,6 +2110,9 @@ function ModalConfigTurno({
   // ── Nuevo titular (form inline) ───────────────────────────────────────────────
   const [showAddSlot, setShowAddSlot]     = useState(false);
   const [newHoraEntrada, setNewHoraEntrada] = useState("07:00");
+  const [newLongitudCiclo, setNewLongitudCiclo] = useState<number>(14);
+  // Hora de entrada por semana (rotación de horarios). null = todas iguales (legacy).
+  const [newHorasPorSemana, setNewHorasPorSemana] = useState<string[] | null>(null);
   const [newDiasTrabajo, setNewDiasTrabajo] = useState<number[]>([]);
   const [newFechaInicio, setNewFechaInicio] = useState(new Date().toISOString().slice(0, 10));
   const [newBusqueda, setNewBusqueda]       = useState("");
@@ -2240,25 +2256,39 @@ function ModalConfigTurno({
       toast({ title: "Marcá al menos un día de trabajo", variant: "destructive" });
       return;
     }
+    // Validar dias dentro del rango del ciclo
+    const diasFueraRango = newDiasTrabajo.some(d => d < 1 || d > newLongitudCiclo);
+    if (diasFueraRango) {
+      toast({ title: `Días fuera del rango 1..${newLongitudCiclo}`, variant: "destructive" });
+      return;
+    }
     setCreatingSlot(true);
     try {
+      const body: any = {
+        horas_turno: horasTurnoDefault,
+        hora_entrada: newHoraEntrada,
+        dias_trabajo: newDiasTrabajo,
+        fecha_inicio_ciclo: newFechaInicio || null,
+        empleado_id: newEmpleadoId || null,
+        longitud_ciclo: newLongitudCiclo,
+      };
+      // Solo enviar hora_entrada_por_semana si el usuario activó la rotación de horarios
+      if (newHorasPorSemana && newHorasPorSemana.length === Math.ceil(newLongitudCiclo / 7)) {
+        body.hora_entrada_por_semana = newHorasPorSemana;
+      }
       const r = await fetch(`${API_BASE}/puestos/${puesto.id}/slots`, {
         method: "POST", headers: hd(),
-        body: JSON.stringify({
-          horas_turno: horasTurnoDefault,
-          hora_entrada: newHoraEntrada,
-          dias_trabajo: newDiasTrabajo,
-          fecha_inicio_ciclo: newFechaInicio || null,
-          empleado_id: newEmpleadoId || null,
-        }),
+        body: JSON.stringify(body),
       });
       if (!r.ok) { const e = await r.json(); throw new Error(e.error ?? "Error al crear titular"); }
-      toast({ title: "✅ Titular agregado" });
+      toast({ title: "Titular agregado" });
       setShowAddSlot(false);
       setNewDiasTrabajo([]);
       setNewBusqueda("");
       setNewEmpleadoId(null);
       setNewEmpleadoNombre("");
+      setNewLongitudCiclo(14);
+      setNewHorasPorSemana(null);
       loadSlots(true);
       onSaved();
     } catch (err: unknown) {
@@ -2541,11 +2571,13 @@ function ModalConfigTurno({
                   {slots.map((slot, idx) => {
                     const saving = savingSlotId === slot.id;
                     const isEditingAgent = editAgentSlotId === slot.id;
-                    const salida = calcSalida(slot.hora_entrada, slot.horas_turno);
                     const esExcedente = turnoSel ? idx >= maxSlots : false;
+                    const lcSlot = [7,14,21,28].includes(slot.longitud_ciclo) ? slot.longitud_ciclo : 14;
+                    const semanasSlot = semanasCiclo(lcSlot);
+                    const tieneRotHorarios = Array.isArray(slot.hora_entrada_por_semana) && slot.hora_entrada_por_semana!.length === semanasSlot.length;
                     return (
                       <div key={slot.id} className={`bg-[#080f1e] border rounded-xl p-3 space-y-2 ${esExcedente ? "border-amber-500/40 bg-amber-500/4" : "border-white/8"}`}>
-                        {/* Fila superior: T1/T2 | Agente | Hora entrada → salida | Delete */}
+                        {/* Fila superior: T1/T2 | Agente | Rotación | Delete */}
                         <div className="flex items-center gap-2 flex-wrap">
                           {/* Badge titular */}
                           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 ${esExcedente ? "text-amber-300/80 bg-amber-500/15 border-amber-500/30" : "text-indigo-300/70 bg-indigo-500/10 border-indigo-500/20"}`}>
@@ -2605,24 +2637,92 @@ function ModalConfigTurno({
 
                           <div className="flex-1" />
 
-                          {/* Hora entrada editable + salida calculada */}
-                          <div className="flex items-center gap-1 shrink-0">
-                            <input
-                              type="time"
-                              defaultValue={slot.hora_entrada}
-                              onBlur={e => {
-                                const newHora = e.target.value;
-                                if (newHora !== slot.hora_entrada) {
-                                  setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, hora_entrada: newHora } : s));
-                                  updateSlotField(slot.id, "hora_entrada", newHora);
+                          {/* Selector rotación: 1 / 2 / 3 / 4 semanas */}
+                          <div className="flex items-center gap-1 shrink-0" title="Cantidad de semanas distintas en la rotación">
+                            <label className="text-[8px] text-white/30">Rotación</label>
+                            <select
+                              value={lcSlot}
+                              disabled={saving}
+                              onChange={async e => {
+                                const nuevoLC = Number(e.target.value);
+                                if (nuevoLC === lcSlot) return;
+                                if (!confirm(`¿Cambiar rotación a ${nuevoLC/7} semana${nuevoLC>7?"s":""}? Los días que excedan se descartarán.`)) return;
+                                const diasFiltrados = slot.dias_trabajo.filter(d => d <= nuevoLC);
+                                const mediosFiltrados = (slot.dias_medio_turno || []).filter(d => d <= nuevoLC);
+                                if (diasFiltrados.length === 0) {
+                                  alert(`No se puede cambiar a ${nuevoLC/7} semana${nuevoLC>7?"s":""}: el patrón actual no tiene ningún día de trabajo dentro del nuevo ciclo. Marcá al menos un día válido primero.`);
+                                  return;
+                                }
+                                // Snapshot inmutable para rollback ANTES de cualquier mutación
+                                const prevSnapshot = {
+                                  longitud_ciclo: slot.longitud_ciclo,
+                                  dias_trabajo: [...slot.dias_trabajo],
+                                  dias_medio_turno: slot.dias_medio_turno ? [...slot.dias_medio_turno] : null,
+                                  hora_entrada_por_semana: slot.hora_entrada_por_semana ? [...slot.hora_entrada_por_semana] : null,
+                                };
+                                // Ajustar hora_entrada_por_semana clonando defensivamente (no mutar slot original)
+                                let nuevasHps: string[] | null = Array.isArray(slot.hora_entrada_por_semana) ? [...slot.hora_entrada_por_semana] : null;
+                                const semNew = Math.ceil(nuevoLC/7);
+                                if (Array.isArray(nuevasHps)) {
+                                  if (nuevasHps.length > semNew) nuevasHps = nuevasHps.slice(0, semNew);
+                                  else while (nuevasHps.length < semNew) nuevasHps.push(slot.hora_entrada || "07:00");
+                                }
+                                setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, longitud_ciclo: nuevoLC, dias_trabajo: diasFiltrados, dias_medio_turno: mediosFiltrados, hora_entrada_por_semana: nuevasHps } : s));
+                                setSavingSlotId(slot.id);
+                                try {
+                                  const body: any = { longitud_ciclo: nuevoLC, dias_trabajo: diasFiltrados, dias_medio_turno: mediosFiltrados };
+                                  if (Array.isArray(nuevasHps)) body.hora_entrada_por_semana = nuevasHps;
+                                  const r = await fetch(`${API_BASE}/slots/${slot.id}`, { method: "PUT", headers: hd(), body: JSON.stringify(body) });
+                                  if (!r.ok) {
+                                    let msg = "No se pudo cambiar la rotación.";
+                                    try { const j = await r.json(); if (j?.error) msg = j.error; } catch {}
+                                    setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, ...prevSnapshot } : s));
+                                    alert(msg);
+                                  }
+                                } catch (err) {
+                                  setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, ...prevSnapshot } : s));
+                                  alert("Error de red al cambiar la rotación. Intentá de nuevo.");
+                                } finally {
+                                  setSavingSlotId(null);
                                 }
                               }}
-                              className="bg-[#0d1e38] border border-white/10 text-white/60 text-[10px] rounded px-1.5 py-1 focus:outline-none focus:border-indigo-500/40 w-[72px]"
-                              title="Hora de inicio del turno"
-                            />
-                            <span className="text-[9px] text-white/20">→</span>
-                            <span className="text-[10px] text-white/40 font-mono w-16">{salida}</span>
+                              className="bg-[#0d1e38] border border-white/10 text-white/60 text-[10px] rounded px-1.5 py-1 focus:outline-none focus:border-indigo-500/40"
+                            >
+                              <option value={7}>1 sem</option>
+                              <option value={14}>2 sem</option>
+                              <option value={21}>3 sem</option>
+                              <option value={28}>4 sem</option>
+                            </select>
                           </div>
+
+                          {/* Toggle: rotación de horarios */}
+                          <button
+                            disabled={saving}
+                            onClick={async () => {
+                              const sem = semanasSlot.length;
+                              if (tieneRotHorarios) {
+                                if (!confirm("¿Quitar rotación de horarios? Todas las semanas usarán la misma hora de entrada.")) return;
+                                setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, hora_entrada_por_semana: null } : s));
+                                setSavingSlotId(slot.id);
+                                try {
+                                  await fetch(`${API_BASE}/slots/${slot.id}`, { method: "PUT", headers: hd(), body: JSON.stringify({ hora_entrada_por_semana: null }) });
+                                } catch {}
+                                setSavingSlotId(null);
+                              } else {
+                                const nuevasHps = Array.from({ length: sem }, () => slot.hora_entrada || "07:00");
+                                setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, hora_entrada_por_semana: nuevasHps } : s));
+                                setSavingSlotId(slot.id);
+                                try {
+                                  await fetch(`${API_BASE}/slots/${slot.id}`, { method: "PUT", headers: hd(), body: JSON.stringify({ hora_entrada_por_semana: nuevasHps }) });
+                                } catch {}
+                                setSavingSlotId(null);
+                              }
+                            }}
+                            className={`text-[9px] px-1.5 py-1 rounded border transition-colors shrink-0 ${tieneRotHorarios ? "bg-amber-500/10 border-amber-500/40 text-amber-300" : "bg-white/3 border-white/10 text-white/40 hover:text-white/70"}`}
+                            title="Activar / desactivar rotación de horarios por semana"
+                          >
+                            {tieneRotHorarios ? "Horarios rotan" : "Horarios ="}
+                          </button>
 
                           {/* Delete */}
                           <button
@@ -2634,38 +2734,82 @@ function ModalConfigTurno({
                           </button>
                         </div>
 
-                        {/* Cuadrícula 4 semanas: Lun-Dom (S3 y S4 repiten el ciclo de 14 días) */}
+                        {/* Cuadrícula de N semanas (1/2/3/4) — cada semana con su hora de entrada */}
                         <div className="space-y-1">
-                          {SEMANAS_4.map((semana, si) => (
-                            <div key={si} className="flex items-center gap-0.5">
-                              <span className={`text-[8px] w-6 shrink-0 font-medium ${si >= 2 ? "text-white/15" : "text-white/20"}`}>S{si + 1}</span>
-                              {semana.map(({ n, label }) => {
-                                const trabaja = slot.dias_trabajo.includes(n);
-                                const esMedio = (slot.dias_medio_turno || []).includes(n);
-                                const estado = !trabaja ? "D" : esMedio ? "T/2" : "T";
-                                return (
-                                  <button
-                                    key={n}
+                          {semanasSlot.map((semana, si) => {
+                            const horaSem = horaSemanaSlot(slot, si);
+                            const salidaSem = calcSalida(horaSem, slot.horas_turno);
+                            return (
+                              <div key={si} className="space-y-0.5">
+                                {/* Cabecera de semana: S# + hora de entrada → salida */}
+                                <div className="flex items-center gap-1.5 pl-7">
+                                  <input
+                                    type="time"
+                                    value={horaSem}
                                     disabled={saving}
-                                    onClick={() => toggleDia(slot, n)}
-                                    title={`${label} (S${si+1}): ${estado === "T" ? "turno completo" : estado === "T/2" ? "medio turno" : "descansa"}`}
-                                    className={`flex-1 h-8 rounded text-[9px] font-semibold border transition-all ${
-                                      estado === "T"
-                                        ? "bg-indigo-500/20 border-indigo-500/50 text-indigo-200 hover:bg-indigo-500/10"
-                                        : estado === "T/2"
-                                        ? "bg-amber-500/20 border-amber-500/50 text-amber-300 hover:bg-amber-500/10"
-                                        : "bg-white/3 border-white/8 text-white/20 hover:border-white/20 hover:text-white/40"
-                                    } ${saving ? "opacity-40 cursor-wait" : "cursor-pointer"}`}
-                                  >
-                                    {estado === "T" ? label : estado === "T/2" ? "½" : label}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          ))}
+                                    onChange={e => {
+                                      const nuevaHora = e.target.value;
+                                      if (tieneRotHorarios) {
+                                        const nuevasHps = [...(slot.hora_entrada_por_semana || [])];
+                                        nuevasHps[si] = nuevaHora;
+                                        setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, hora_entrada_por_semana: nuevasHps } : s));
+                                      } else {
+                                        // Sin rotación → cambia hora_entrada base (afecta todas las semanas)
+                                        setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, hora_entrada: nuevaHora } : s));
+                                      }
+                                    }}
+                                    onBlur={async e => {
+                                      const nuevaHora = e.target.value;
+                                      setSavingSlotId(slot.id);
+                                      try {
+                                        if (tieneRotHorarios) {
+                                          const nuevasHps = [...(slot.hora_entrada_por_semana || [])];
+                                          nuevasHps[si] = nuevaHora;
+                                          await fetch(`${API_BASE}/slots/${slot.id}`, { method: "PUT", headers: hd(), body: JSON.stringify({ hora_entrada_por_semana: nuevasHps }) });
+                                        } else if (nuevaHora !== slot.hora_entrada) {
+                                          await fetch(`${API_BASE}/slots/${slot.id}`, { method: "PUT", headers: hd(), body: JSON.stringify({ hora_entrada: nuevaHora }) });
+                                        }
+                                      } catch {}
+                                      setSavingSlotId(null);
+                                    }}
+                                    className="bg-[#0d1e38] border border-white/10 text-white/60 text-[10px] rounded px-1.5 py-0.5 focus:outline-none focus:border-indigo-500/40 w-[68px]"
+                                    title={tieneRotHorarios ? `Hora de entrada de la semana ${si+1}` : "Hora de entrada (común a todas las semanas)"}
+                                  />
+                                  <span className="text-[8px] text-white/20">→</span>
+                                  <span className="text-[9px] text-white/35 font-mono">{salidaSem}</span>
+                                </div>
+                                {/* Fila de días */}
+                                <div className="flex items-center gap-0.5">
+                                  <span className="text-[8px] w-6 shrink-0 font-medium text-white/30">S{si + 1}</span>
+                                  {semana.map(({ n, label }) => {
+                                    const trabaja = slot.dias_trabajo.includes(n);
+                                    const esMedio = (slot.dias_medio_turno || []).includes(n);
+                                    const estado = !trabaja ? "D" : esMedio ? "T/2" : "T";
+                                    return (
+                                      <button
+                                        key={n}
+                                        disabled={saving}
+                                        onClick={() => toggleDia(slot, n)}
+                                        title={`${label} (S${si+1}): ${estado === "T" ? "turno completo" : estado === "T/2" ? "medio turno" : "descansa"}`}
+                                        className={`flex-1 h-8 rounded text-[9px] font-semibold border transition-all ${
+                                          estado === "T"
+                                            ? "bg-indigo-500/20 border-indigo-500/50 text-indigo-200 hover:bg-indigo-500/10"
+                                            : estado === "T/2"
+                                            ? "bg-amber-500/20 border-amber-500/50 text-amber-300 hover:bg-amber-500/10"
+                                            : "bg-white/3 border-white/8 text-white/20 hover:border-white/20 hover:text-white/40"
+                                        } ${saving ? "opacity-40 cursor-wait" : "cursor-pointer"}`}
+                                      >
+                                        {estado === "T" ? label : estado === "T/2" ? "½" : label}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                         <p className="text-[8px] text-white/15">
-                          {slot.dias_trabajo.length - (slot.dias_medio_turno || []).length} completos · {(slot.dias_medio_turno || []).length} medios · {14 - slot.dias_trabajo.length} descanso · {slot.horas_turno}h base
+                          {slot.dias_trabajo.length - (slot.dias_medio_turno || []).length} completos · {(slot.dias_medio_turno || []).length} medios · {lcSlot - slot.dias_trabajo.length} descanso · {slot.horas_turno}h base · ciclo {lcSlot}d
                         </p>
                       </div>
                     );
@@ -2680,18 +2824,62 @@ function ModalConfigTurno({
 
                       <div className="flex items-center gap-3 flex-wrap">
                         <div className="flex items-center gap-1.5">
-                          <label className="text-[9px] text-white/30">Hora inicio</label>
-                          <input
-                            type="time"
-                            value={newHoraEntrada}
-                            onChange={e => setNewHoraEntrada(e.target.value)}
+                          <label className="text-[9px] text-white/30">Rotación</label>
+                          <select
+                            value={newLongitudCiclo}
+                            onChange={e => {
+                              const nuevo = Number(e.target.value);
+                              setNewLongitudCiclo(nuevo);
+                              // Filtrar días fuera del nuevo rango
+                              setNewDiasTrabajo(prev => prev.filter(d => d <= nuevo));
+                              // Ajustar horarios por semana si están activos
+                              const semNew = Math.ceil(nuevo / 7);
+                              setNewHorasPorSemana(prev => {
+                                if (!prev) return null;
+                                if (prev.length > semNew) return prev.slice(0, semNew);
+                                if (prev.length < semNew) {
+                                  const ext = [...prev];
+                                  while (ext.length < semNew) ext.push(newHoraEntrada || "07:00");
+                                  return ext;
+                                }
+                                return prev;
+                              });
+                            }}
                             className="bg-[#0d1e38] border border-white/12 text-white/70 text-[10px] rounded px-2 py-1.5 focus:outline-none focus:border-indigo-500/50"
-                          />
+                          >
+                            <option value={7}>1 semana</option>
+                            <option value={14}>2 semanas</option>
+                            <option value={21}>3 semanas</option>
+                            <option value={28}>4 semanas</option>
+                          </select>
                         </div>
-                        {newHoraEntrada && (
-                          <span className="text-[9px] text-white/30">
-                            → sale: <strong className="text-white/50">{calcSalida(newHoraEntrada, horasTurnoDefault)}</strong>
-                          </span>
+                        <button
+                          onClick={() => {
+                            const sem = Math.ceil(newLongitudCiclo / 7);
+                            if (newHorasPorSemana) {
+                              setNewHorasPorSemana(null);
+                            } else {
+                              setNewHorasPorSemana(Array.from({ length: sem }, () => newHoraEntrada || "07:00"));
+                            }
+                          }}
+                          className={`text-[9px] px-2 py-1.5 rounded border ${newHorasPorSemana ? "bg-amber-500/10 border-amber-500/40 text-amber-300" : "bg-white/3 border-white/12 text-white/40 hover:text-white/70"}`}
+                          title="Activar / desactivar rotación de horarios por semana"
+                        >
+                          {newHorasPorSemana ? "Horarios rotan" : "Horarios ="}
+                        </button>
+                        {!newHorasPorSemana && (
+                          <div className="flex items-center gap-1.5">
+                            <label className="text-[9px] text-white/30">Hora inicio</label>
+                            <input
+                              type="time"
+                              value={newHoraEntrada}
+                              onChange={e => setNewHoraEntrada(e.target.value)}
+                              className="bg-[#0d1e38] border border-white/12 text-white/70 text-[10px] rounded px-2 py-1.5 focus:outline-none focus:border-indigo-500/50"
+                            />
+                            <span className="text-[9px] text-white/30">
+                              → sale: <strong className="text-white/50">{calcSalida(newHoraEntrada, horasTurnoDefault)}</strong>
+                            </span>
+                          </div>
                         )}
                         <div className="flex items-center gap-1.5">
                           <label className="text-[9px] text-white/30">Lun S1 =</label>
@@ -2704,28 +2892,51 @@ function ModalConfigTurno({
                         </div>
                       </div>
 
-                      {/* Grid días: 4 semanas (S3 y S4 repiten el ciclo de 14 días) */}
+                      {/* Grid días: N semanas distintas según rotación */}
                       <div className="space-y-1">
-                        {SEMANAS_4.map((semana, si) => (
-                          <div key={si} className="flex items-center gap-0.5">
-                            <span className={`text-[8px] w-6 shrink-0 ${si >= 2 ? "text-white/15" : "text-white/20"}`}>S{si + 1}</span>
-                            {semana.map(({ n, label }) => (
-                              <button
-                                key={n}
-                                onClick={() => toggleNewDia(n)}
-                                className={`flex-1 h-8 rounded text-[9px] font-semibold border transition-all ${
-                                  newDiasTrabajo.includes(n)
-                                    ? "bg-indigo-500/20 border-indigo-500/50 text-indigo-200"
-                                    : "bg-white/3 border-white/8 text-white/20 hover:border-white/20 hover:text-white/40"
-                                }`}
-                              >
-                                {label}
-                              </button>
-                            ))}
-                          </div>
-                        ))}
+                        {semanasCiclo(newLongitudCiclo).map((semana, si) => {
+                          const horaSem = newHorasPorSemana ? newHorasPorSemana[si] : newHoraEntrada;
+                          const salidaSem = calcSalida(horaSem, horasTurnoDefault);
+                          return (
+                            <div key={si} className="space-y-0.5">
+                              {newHorasPorSemana && (
+                                <div className="flex items-center gap-1.5 pl-7">
+                                  <input
+                                    type="time"
+                                    value={horaSem}
+                                    onChange={e => {
+                                      const nuevo = [...newHorasPorSemana];
+                                      nuevo[si] = e.target.value;
+                                      setNewHorasPorSemana(nuevo);
+                                    }}
+                                    className="bg-[#0d1e38] border border-white/10 text-white/60 text-[10px] rounded px-1.5 py-0.5 focus:outline-none focus:border-indigo-500/40 w-[68px]"
+                                    title={`Hora de entrada de la semana ${si+1}`}
+                                  />
+                                  <span className="text-[8px] text-white/20">→</span>
+                                  <span className="text-[9px] text-white/35 font-mono">{salidaSem}</span>
+                                </div>
+                              )}
+                              <div className="flex items-center gap-0.5">
+                                <span className="text-[8px] w-6 shrink-0 text-white/30">S{si + 1}</span>
+                                {semana.map(({ n, label }) => (
+                                  <button
+                                    key={n}
+                                    onClick={() => toggleNewDia(n)}
+                                    className={`flex-1 h-8 rounded text-[9px] font-semibold border transition-all ${
+                                      newDiasTrabajo.includes(n)
+                                        ? "bg-indigo-500/20 border-indigo-500/50 text-indigo-200"
+                                        : "bg-white/3 border-white/8 text-white/20 hover:border-white/20 hover:text-white/40"
+                                    }`}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                      <p className="text-[9px] text-white/25">{newDiasTrabajo.length} días trabaja · {14 - newDiasTrabajo.length} días descansa</p>
+                      <p className="text-[9px] text-white/25">{newDiasTrabajo.length} días trabaja · {newLongitudCiclo - newDiasTrabajo.length} días descansa · ciclo {newLongitudCiclo}d</p>
 
                       {/* Búsqueda de agente */}
                       <div className="relative">
