@@ -3822,23 +3822,31 @@ function DroppablePuesto({
                     <XCircle className="w-3 h-3" /><span>Remover agente</span>
                   </button>
                 )}
-                {/* Quitar titularidad de cualquiera de los dos titulares del par 24x24 */}
+                {/* Quitar titularidad de cualquiera de los dos titulares del par 24x24.
+                    Las etiquetas T1/T2 se evitan adrede: 'activo' y 'descansando' se calculan
+                    según quién trabaja vs descansa HOY (temporal), no por slot_numero
+                    (posicional), por lo que mostrar T1/T2 confunde. Además, si por
+                    configuración solo hay 1 titular asignado al par, ambos lados pueden
+                    apuntar al mismo employee_id — en ese caso renderizamos un solo botón. */}
                 {onQuitarTitular && activo.employee_id && activo.nombre && (
                   <button
                     onClick={e => { e.stopPropagation(); onQuitarTitular(puesto, activo.employee_id!, activo.nombre!); }}
                     className="flex items-center gap-1 text-[9px] font-semibold text-rose-300/80 bg-rose-500/10 border border-rose-500/25 hover:bg-rose-500/20 hover:text-rose-300 rounded-md px-2 py-1 transition-colors"
                     title={`Quitar titularidad de ${activo.nombre}`}
                   >
-                    <UserMinus className="w-3 h-3" /><span>Quitar T1: {activo.nombre.split(" ")[0]}</span>
+                    <UserMinus className="w-3 h-3" /><span>Quitar: {activo.nombre.split(" ")[0]}</span>
                   </button>
                 )}
-                {onQuitarTitular && descansando.employee_id && descansando.nombre && (
+                {onQuitarTitular
+                  && descansando.employee_id
+                  && descansando.nombre
+                  && descansando.employee_id !== activo.employee_id && (
                   <button
                     onClick={e => { e.stopPropagation(); onQuitarTitular(puesto, descansando.employee_id!, descansando.nombre!); }}
                     className="flex items-center gap-1 text-[9px] font-semibold text-rose-300/80 bg-rose-500/10 border border-rose-500/25 hover:bg-rose-500/20 hover:text-rose-300 rounded-md px-2 py-1 transition-colors"
                     title={`Quitar titularidad de ${descansando.nombre}`}
                   >
-                    <UserMinus className="w-3 h-3" /><span>Quitar T2: {descansando.nombre.split(" ")[0]}</span>
+                    <UserMinus className="w-3 h-3" /><span>Quitar: {descansando.nombre.split(" ")[0]}</span>
                   </button>
                 )}
               </div>

@@ -4342,34 +4342,63 @@ operacionesRouter.patch("/operaciones/puestos/:id/turno", async (req, res) => {
       ? hora_entrada
       : null;
 
-    const { rows: updated } = await pool.query(`
-      UPDATE puestos_operativos
-      SET
-        tipo_turno_id      = $1,
-        fecha_inicio_ciclo = $2,
-        hora_entrada       = $3,
-        updated_at         = NOW()
-      WHERE id = $4
-      RETURNING
-        id,
-        nombre,
-        tipo_turno_id,
-        fecha_inicio_ciclo,
-        hora_entrada
-    `, [
-      tipo_turno_id ?? null,
-      tipo_turno_id != null ? fecha_inicio_ciclo : null,
-      horaEntradaFinal,
-      puestoId,
-    ]);
+    // SLOT-DATE-SYNC-01: la fecha de inicio del ciclo vive en DOS lugares —
+    // `puestos_operativos.fecha_inicio_ciclo` (dato del puesto) y
+    // `puesto_slots.fecha_inicio_ciclo` (lo que realmente usa el cálculo del
+    // pizarrón). Si solo se actualiza el puesto y no los slots, el modal
+    // muestra una fecha pero el pizarrón calcula con la vieja → "Sin
+    // cobertura" en fechas que sí deberían estar cubiertas. Sincronizar
+    // ambos en una transacción.
+    const client = await pool.connect();
+    let slotsActualizados = 0;
+    try {
+      await client.query("BEGIN");
 
-    // Si hay asignaciones operativas activas para este puesto, actualizarlas también
-    if (tipo_turno_id != null) {
-      await pool.query(`
-        UPDATE employee_operational_assignments
-        SET tipo_turno_id = $1
-        WHERE puesto_id = $2 AND activa = TRUE
-      `, [tipo_turno_id, puestoId]);
+      await client.query(`
+        UPDATE puestos_operativos
+        SET
+          tipo_turno_id      = $1,
+          fecha_inicio_ciclo = $2,
+          hora_entrada       = $3,
+          updated_at         = NOW()
+        WHERE id = $4
+      `, [
+        tipo_turno_id ?? null,
+        tipo_turno_id != null ? fecha_inicio_ciclo : null,
+        horaEntradaFinal,
+        puestoId,
+      ]);
+
+      // Propagar fecha_inicio_ciclo a los slots activos del puesto
+      // (solo si el turno sigue asignado y la fecha viene del cliente).
+      if (tipo_turno_id != null && fecha_inicio_ciclo) {
+        const { rowCount } = await client.query(
+          `UPDATE puesto_slots
+              SET fecha_inicio_ciclo = $1,
+                  updated_at         = NOW()
+            WHERE puesto_id = $2
+              AND activo    = TRUE
+              AND (fecha_inicio_ciclo IS DISTINCT FROM $1::date)`,
+          [fecha_inicio_ciclo, puestoId]
+        );
+        slotsActualizados = rowCount ?? 0;
+      }
+
+      // Si hay asignaciones operativas activas para este puesto, actualizarlas también
+      if (tipo_turno_id != null) {
+        await client.query(`
+          UPDATE employee_operational_assignments
+          SET tipo_turno_id = $1
+          WHERE puesto_id = $2 AND activa = TRUE
+        `, [tipo_turno_id, puestoId]);
+      }
+
+      await client.query("COMMIT");
+    } catch (txErr) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw txErr;
+    } finally {
+      client.release();
     }
 
     // Obtener datos completos del puesto actualizado con turno
@@ -4396,7 +4425,7 @@ operacionesRouter.patch("/operaciones/puestos/:id/turno", async (req, res) => {
     `, [puestoId]);
 
     logger.info(
-      { puestoId, tipo_turno_id, fecha_inicio_ciclo },
+      { puestoId, tipo_turno_id, fecha_inicio_ciclo, slotsActualizados },
       "PATCH /operaciones/puestos/:id/turno: turno actualizado"
     );
     res.json({ ok: true, puesto: resultado[0] });

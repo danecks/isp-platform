@@ -437,6 +437,18 @@ export async function migrarPESP01() {
 ### 7.22 Turnos (`/api/turnos`)
 - **Archivo**: `routes/turnos.ts`, `routes/puesto-slots.ts`
 - **Tablas**: `turnos`, `puesto_slots`
+- **SLOT-DATE-SYNC-01 — sincronización fecha_inicio_ciclo puesto↔slots**: la fecha
+  que dispara el cálculo del ciclo (días que toca trabajar/descansar a cada
+  titular) se almacena en DOS lugares: `puestos_operativos.fecha_inicio_ciclo`
+  (informativa, mostrada en modal "Plantilla de Turnos") y
+  `puesto_slots.fecha_inicio_ciclo` (la que realmente usa el cálculo del
+  pizarrón). El endpoint `PATCH /operaciones/puestos/:id/turno`
+  (`routes/operaciones.ts`) las mantiene sincronizadas dentro de una
+  transacción: actualiza el puesto y propaga la nueva fecha a todos los
+  `puesto_slots WHERE puesto_id=$1 AND activo=TRUE`. Antes de este fix, el
+  endpoint solo actualizaba `puestos_operativos`, dejando los slots con la
+  fecha vieja → el pizarrón seguía calculando con días desfasados y reportaba
+  "Sin cobertura" en fechas que sí debían estar cubiertas.
 
 ### 7.23 Fichaje QR (`/api/agente-fichaje`)
 - **Archivo**: `routes/agente-fichaje.ts`
