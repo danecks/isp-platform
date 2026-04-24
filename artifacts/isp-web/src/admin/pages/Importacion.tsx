@@ -6,7 +6,7 @@ import {
   FileUp, Download, CheckCircle2, XCircle, AlertCircle,
   Loader2, ChevronRight, RotateCcw, Users, MapPin, Package,
   Wand2, HelpCircle, Shield, Database, RefreshCw, ToggleLeft, ToggleRight,
-  FileSpreadsheet, BarChart3, Upload, X,
+  FileSpreadsheet, BarChart3, Upload, X, Clock, ExternalLink,
 } from "lucide-react";
 
 const API_BASE = "/api";
@@ -1858,6 +1858,7 @@ const DETALLE_PREST_TAB_ID      = "detalle-prestaciones";
 const DIGECAM_TAB_ID            = "digecam-armas";
 const ALMACEN_TAB_ID            = "almacen-inventario";
 const CARGA_MAESTRA_TAB_ID      = "carga-maestra";
+const PLANTILLA_TURNOS_TAB_ID   = "plantilla-turnos";
 
 // ─── LibroSalariosTab ─────────────────────────────────────────────────────────
 const MESES_LS = ["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
@@ -3566,6 +3567,576 @@ function CargaMaestraTab() {
   return null;
 }
 
+// ─── PlantillaTurnosTab ───────────────────────────────────────────────────────
+// Carga masiva de edición de slots desde el CSV exportado por el reporte
+// "Plantilla de Turnos Vigente". Solo MODIFICA slots existentes (match por
+// "ID Slot"). NO crea, NO elimina, NO cambia titular.
+const NOMBRE_DIA_FULL = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+
+type CambioCampoUI = { campo: string; antes: any; despues: any };
+type FilaPreviewUI = {
+  fila: number;
+  slot_id: number;
+  puesto_id: number;
+  contexto: {
+    cliente_nombre: string | null;
+    sede_nombre: string | null;
+    puesto_nombre: string;
+    slot_numero: number | null;
+    titular_nombre: string | null;
+  };
+  antes: Record<string, any>;
+  despues: Record<string, any>;
+  cambios: CambioCampoUI[];
+};
+
+type FilaConflictoUI = {
+  fila: number;
+  slot_id: number;
+  contexto: { cliente_nombre: string | null; puesto_nombre: string; slot_numero: number | null };
+  descargado: string;
+  modificado: string;
+};
+
+type PreviewResp = {
+  total_filas: number;
+  filas_a_actualizar: FilaPreviewUI[];
+  filas_sin_cambios: { fila: number; slot_id: number }[];
+  filas_con_error: { fila: number; slot_id_raw: string; errores: string[] }[];
+  filas_con_conflicto: FilaConflictoUI[];
+  filas_ignoradas: number;
+};
+
+function MiniGrid({ longitud_ciclo, dias_trabajo, dias_medio_turno }: {
+  longitud_ciclo: number; dias_trabajo: number[]; dias_medio_turno: number[];
+}) {
+  const trabajo = new Set(dias_trabajo.map(Number));
+  const medio = new Set(dias_medio_turno.map(Number));
+  const sems = Math.max(1, Math.ceil(longitud_ciclo / 7));
+  const cells: { dia: number; tipo: "T" | "M" | "D" | "" }[][] = [];
+  for (let s = 0; s < sems; s++) {
+    const row: { dia: number; tipo: "T" | "M" | "D" | "" }[] = [];
+    for (let i = 0; i < 7; i++) {
+      const dia = s * 7 + i + 1;
+      if (dia > longitud_ciclo) row.push({ dia, tipo: "" });
+      else if (medio.has(dia)) row.push({ dia, tipo: "M" });
+      else if (trabajo.has(dia)) row.push({ dia, tipo: "T" });
+      else row.push({ dia, tipo: "D" });
+    }
+    cells.push(row);
+  }
+  return (
+    <div className="inline-block">
+      <div className="grid grid-cols-7 gap-[2px]">
+        {NOMBRE_DIA_FULL.map((d) => (
+          <div key={d} className="w-6 text-[8px] text-center text-white/30 uppercase">{d.slice(0, 1)}</div>
+        ))}
+      </div>
+      {cells.map((row, ri) => (
+        <div key={ri} className="grid grid-cols-7 gap-[2px] mt-[2px]">
+          {row.map((c, ci) => {
+            const cls =
+              c.tipo === "T" ? "bg-emerald-500/70 text-white"
+              : c.tipo === "M" ? "bg-amber-500/70 text-black"
+              : c.tipo === "D" ? "bg-white/10 text-white/40"
+              : "bg-transparent text-transparent";
+            return (
+              <div
+                key={ci}
+                title={c.tipo ? `Día ${c.dia} · ${c.tipo === "T" ? "Trabaja" : c.tipo === "M" ? "Medio" : "Descansa"}` : ""}
+                className={`w-6 h-5 rounded-[3px] text-[8px] flex items-center justify-center font-bold ${cls}`}
+              >
+                {c.tipo}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function fmtVal(v: any): string {
+  if (v === null || v === undefined || v === "") return "—";
+  if (Array.isArray(v)) return v.length === 0 ? "[]" : v.join(", ");
+  return String(v);
+}
+
+function PlantillaTurnosTab() {
+  const [step, setStep] = useState<"upload" | "preview" | "result">("upload");
+  const [rows, setRows] = useState<Record<string, any>[]>([]);
+  const [fileName, setFileName] = useState("");
+  const [previewResult, setPreviewResult] = useState<PreviewResp | null>(null);
+  const [importResult, setImportResult] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const reset = () => {
+    setStep("upload"); setRows([]); setFileName("");
+    setPreviewResult(null); setImportResult(null); setExpanded(new Set());
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const handleFile = useCallback(async (file: File) => {
+    const ext = file.name.toLowerCase();
+    let data: Record<string, any>[] = [];
+    try {
+      if (ext.endsWith(".csv")) {
+        const text = await file.text();
+        const cleaned = text.replace(/^\uFEFF/, "");
+        // Parser CSV simple con soporte de comillas dobles
+        const lines: string[][] = [];
+        let cur: string[] = [];
+        let cell = "";
+        let inQ = false;
+        for (let i = 0; i < cleaned.length; i++) {
+          const ch = cleaned[i];
+          if (inQ) {
+            if (ch === '"') {
+              if (cleaned[i + 1] === '"') { cell += '"'; i++; }
+              else inQ = false;
+            } else cell += ch;
+          } else {
+            if (ch === '"') inQ = true;
+            else if (ch === ",") { cur.push(cell); cell = ""; }
+            else if (ch === "\n") { cur.push(cell); lines.push(cur); cur = []; cell = ""; }
+            else if (ch === "\r") { /* skip */ }
+            else cell += ch;
+          }
+        }
+        if (cell.length > 0 || cur.length > 0) { cur.push(cell); lines.push(cur); }
+        if (lines.length < 2) { alert("El archivo CSV no tiene datos."); return; }
+        const headers = lines[0].map((s) => s.trim());
+        data = lines.slice(1).filter((r) => r.some((c) => String(c).trim() !== "")).map((r) => {
+          const obj: Record<string, any> = {};
+          headers.forEach((h, i) => { obj[h] = r[i] ?? ""; });
+          return obj;
+        });
+      } else if (ext.endsWith(".xlsx") || ext.endsWith(".xls")) {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        data = XLSX.utils.sheet_to_json(ws, { defval: "", raw: false }) as Record<string, any>[];
+      } else {
+        alert("Solo se aceptan archivos .csv o .xlsx (descargados del reporte de Plantilla de Turnos)."); return;
+      }
+    } catch (e: any) {
+      alert("No se pudo leer el archivo: " + (e?.message || "error desconocido")); return;
+    }
+
+    if (data.length === 0) { alert("El archivo no tiene filas con datos."); return; }
+    const keys = Object.keys(data[0]);
+    if (!keys.includes("ID Slot")) {
+      alert(
+        "Este archivo no parece ser la Plantilla de Turnos exportada del reporte. " +
+        "Falta la columna \"ID Slot\".\n\nDescargá la plantilla desde:\nReportes → Plantilla de Turnos Vigente → Exportar CSV."
+      );
+      return;
+    }
+
+    // Warning si falta el sello de concurrencia (CSV viejo): se permite la carga
+    // pero sin lock optimista. El usuario asume el riesgo de pisar cambios paralelos.
+    if (!keys.includes("_actualizado_ts")) {
+      const cont = window.confirm(
+        "Este archivo no incluye la columna oculta "_actualizado_ts" (es una plantilla de versión anterior).\n\n" +
+        "Si continuás, se aplicarán los cambios SIN protección de concurrencia: si otra persona modificó algún slot después de que descargaste el archivo, esos cambios podrían pisarse.\n\n" +
+        "Recomendado: cancelá, re-descargá la plantilla actual desde Reportes → Plantilla de Turnos Vigente y volvé a aplicar tus ediciones.\n\n" +
+        "¿Continuar de todas formas?"
+      );
+      if (!cont) return;
+    }
+
+    setRows(data); setFileName(file.name);
+    setLoading(true);
+    try {
+      const r = await fetch(`${API_BASE}/importacion/plantilla-turnos/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
+        body: JSON.stringify({ rows: data }),
+      });
+      const json = await r.json();
+      if (!r.ok) { alert(json?.error || "Error al validar la plantilla"); return; }
+      setPreviewResult(json as PreviewResp);
+      setStep("preview");
+    } catch (e: any) {
+      alert("Error al subir la plantilla: " + (e?.message || "error desconocido"));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); setDragOver(false);
+    const file = e.dataTransfer.files[0]; if (file) handleFile(file);
+  }, [handleFile]);
+
+  const aplicar = async () => {
+    if (!previewResult || previewResult.filas_a_actualizar.length === 0) return;
+    if (previewResult.filas_con_error.length > 0) {
+      alert("Hay filas con error. Corregilas en el archivo y volvé a subirlo antes de aplicar.");
+      return;
+    }
+    if ((previewResult.filas_con_conflicto?.length ?? 0) > 0) {
+      alert("Hay conflictos: otros usuarios modificaron algunos slots después de tu descarga. Re-descargá la plantilla y volvé a aplicar tus cambios sobre la versión actualizada.");
+      return;
+    }
+    if (!confirm(`¿Confirmás aplicar ${previewResult.filas_a_actualizar.length} cambio(s) en la plantilla de turnos? Esta acción modifica los slots seleccionados de forma transaccional.`)) return;
+    setLoading(true);
+    try {
+      const r = await fetch(`${API_BASE}/importacion/plantilla-turnos/aplicar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
+        body: JSON.stringify({ rows }),
+      });
+      const json = await r.json();
+      if (!r.ok) {
+        if (Array.isArray(json?.filas_con_conflicto) && previewResult) {
+          // El servidor detectó conflictos en el último momento (alguien tocó la BD entre preview y aplicar).
+          // Actualizamos el preview con los conflictos para que el usuario los vea.
+          setPreviewResult({ ...previewResult, filas_con_conflicto: json.filas_con_conflicto });
+        }
+        alert(json?.error || "Error al aplicar los cambios");
+        return;
+      }
+      setImportResult(json);
+      setStep("result");
+    } catch (e: any) {
+      alert("Error al aplicar: " + (e?.message || "error desconocido"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── UI ──
+  if (step === "upload") return (
+    <div className="space-y-6">
+      <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 space-y-2">
+        <div className="flex items-center gap-2">
+          <Clock className="w-4 h-4 text-blue-400" />
+          <span className="text-sm font-semibold text-blue-200">Plantilla de Turnos — carga masiva de edición</span>
+        </div>
+        <p className="text-xs text-blue-200/70">
+          Subí el archivo <code className="font-mono bg-blue-400/10 px-1 rounded">plantilla-turnos-YYYY-MM-DD.csv</code> (o <code className="font-mono bg-blue-400/10 px-1 rounded">.xlsx</code>) descargado desde el reporte y editado en Excel.
+          Esta carga <strong className="text-blue-200">solo modifica slots existentes</strong> (matchea por <code className="font-mono bg-blue-400/10 px-1 rounded">ID Slot</code>).
+        </p>
+        <ul className="text-[11px] text-blue-200/60 list-disc list-inside space-y-1 pt-1">
+          <li>Se pueden editar: <strong>patrones T/M/D</strong>, <strong>S{`{1..4}`}-Hora</strong>, <strong>Horas Turno</strong>, <strong>Longitud Ciclo</strong>, <strong>Fecha Inicio Ciclo</strong>, <strong>Notas</strong>.</li>
+          <li>NO se crean slots nuevos, NO se eliminan slots, NO se cambia el titular desde acá.</li>
+          <li>Filas sin <code className="font-mono">ID Slot</code> se ignoran. Filas con error bloquean la aplicación hasta que las corrijas.</li>
+        </ul>
+      </div>
+
+      <div className="flex gap-3">
+        <a
+          href="/admin/reportes/plantilla-turnos"
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border border-blue-500/30"
+        >
+          <Download className="w-4 h-4" />
+          Descargar plantilla actual
+          <ExternalLink className="w-3 h-3 opacity-60" />
+        </a>
+      </div>
+
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        onClick={() => fileRef.current?.click()}
+        className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors ${
+          dragOver ? "border-blue-400 bg-blue-500/5" : "border-white/15 hover:border-white/25 bg-white/[0.02]"
+        }`}
+      >
+        <Upload className="w-10 h-10 mx-auto text-white/30 mb-3" />
+        <p className="text-sm text-white/60">
+          Arrastrá el archivo de plantilla acá
+          <br />
+          <span className="text-xs text-white/40">o hacé clic para seleccionar (.csv o .xlsx)</span>
+        </p>
+        <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+      </div>
+
+      {loading && (
+        <div className="flex items-center gap-2 text-sm text-white/60">
+          <Loader2 className="w-4 h-4 animate-spin" /> Validando plantilla…
+        </div>
+      )}
+    </div>
+  );
+
+  if (step === "preview" && previewResult) {
+    const pr = previewResult;
+    const sinCambiosOk = pr.filas_a_actualizar.length === 0 && pr.filas_con_error.length === 0 && (pr.filas_con_conflicto?.length ?? 0) === 0;
+    return (
+      <div className="space-y-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs text-white/50">
+            <FileSpreadsheet className="w-4 h-4 text-blue-400" />
+            <span className="font-mono">{fileName}</span>
+            <span className="text-white/30">·</span>
+            <span>{pr.total_filas} fila(s) leída(s)</span>
+          </div>
+          <button onClick={reset} className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70">
+            <X className="w-3.5 h-3.5" /> Cancelar y subir otro
+          </button>
+        </div>
+
+        <div className="grid grid-cols-5 gap-3">
+          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 text-center">
+            <p className="text-2xl font-bold text-emerald-400">{pr.filas_a_actualizar.length}</p>
+            <p className="text-[11px] text-white/50 mt-1">A actualizar</p>
+          </div>
+          <div className="bg-white/5 border border-white/10 rounded-lg p-3 text-center">
+            <p className="text-2xl font-bold text-white/60">{pr.filas_sin_cambios.length}</p>
+            <p className="text-[11px] text-white/50 mt-1">Sin cambios</p>
+          </div>
+          <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3 text-center">
+            <p className="text-2xl font-bold text-orange-400">{pr.filas_con_error.length}</p>
+            <p className="text-[11px] text-white/50 mt-1">Con error</p>
+          </div>
+          <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-3 text-center">
+            <p className="text-2xl font-bold text-rose-400">{pr.filas_con_conflicto?.length ?? 0}</p>
+            <p className="text-[11px] text-white/50 mt-1">Conflictos</p>
+          </div>
+          <div className="bg-white/5 border border-white/10 rounded-lg p-3 text-center">
+            <p className="text-2xl font-bold text-white/40">{pr.filas_ignoradas}</p>
+            <p className="text-[11px] text-white/50 mt-1">Ignoradas (sin ID Slot)</p>
+          </div>
+        </div>
+
+        {pr.filas_con_error.length > 0 && (
+          <div className="bg-orange-500/10 border border-orange-500/30 rounded-xl p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-orange-400" />
+              <span className="text-sm font-semibold text-orange-200">Errores que bloquean la aplicación</span>
+            </div>
+            <div className="max-h-64 overflow-y-auto space-y-1">
+              {pr.filas_con_error.map((e, i) => (
+                <div key={i} className="text-xs text-orange-200/80 font-mono bg-orange-500/5 px-2 py-1.5 rounded">
+                  <span className="text-orange-300/60">Fila {e.fila}</span>
+                  {e.slot_id_raw && <span className="text-orange-300/60"> · slot {e.slot_id_raw}</span>}
+                  <span className="text-orange-300/40"> · </span>
+                  <span>{e.errores.join(" / ")}</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-orange-200/60 pt-1">Corregí estas filas en el archivo y volvé a subirlo.</p>
+          </div>
+        )}
+
+        {(pr.filas_con_conflicto?.length ?? 0) > 0 && (
+          <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-400" />
+              <span className="text-sm font-semibold text-rose-200">
+                Conflictos de concurrencia ({pr.filas_con_conflicto.length})
+              </span>
+            </div>
+            <p className="text-[11px] text-rose-200/70">
+              Estos slots fueron modificados por otra persona después de que descargaste la plantilla.
+              Para no pisar esos cambios, re-descargá la plantilla, aplicá tus cambios sobre la versión actualizada y volvé a subir.
+            </p>
+            <div className="max-h-64 overflow-y-auto space-y-1">
+              {pr.filas_con_conflicto.map((c, i) => (
+                <div key={i} className="text-xs text-rose-200/80 bg-rose-500/5 px-2 py-1.5 rounded">
+                  <div>
+                    <span className="text-rose-300/60 font-mono">Fila {c.fila} · slot {c.slot_id}</span>
+                    <span className="text-rose-300/40"> · </span>
+                    <span>{c.contexto.cliente_nombre || "Sin cliente"} — {c.contexto.puesto_nombre}{c.contexto.slot_numero != null ? " (slot " + c.contexto.slot_numero + ")" : ""}</span>
+                  </div>
+                  <div className="text-[10px] text-rose-200/50 font-mono mt-0.5">
+                    Descargado: {new Date(c.descargado).toLocaleString("es-GT")} · Modificado en BD: {new Date(c.modificado).toLocaleString("es-GT")}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {pr.filas_a_actualizar.length > 0 && (
+          <div className="bg-white/[0.02] border border-white/10 rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2 bg-white/[0.03] border-b border-white/10">
+              <span className="text-xs font-semibold text-white/70">Cambios a aplicar ({pr.filas_a_actualizar.length})</span>
+              <div className="flex gap-2 text-[10px]">
+                <button
+                  onClick={() => setExpanded(new Set(pr.filas_a_actualizar.map((f) => f.slot_id)))}
+                  className="text-white/40 hover:text-white/70"
+                >Expandir todos</button>
+                <span className="text-white/20">·</span>
+                <button onClick={() => setExpanded(new Set())} className="text-white/40 hover:text-white/70">Colapsar</button>
+              </div>
+            </div>
+            <div className="divide-y divide-white/5 max-h-[600px] overflow-y-auto">
+              {pr.filas_a_actualizar.map((f) => {
+                const isOpen = expanded.has(f.slot_id);
+                return (
+                  <div key={f.slot_id} className="px-4 py-3">
+                    <button
+                      onClick={() => {
+                        setExpanded((prev) => {
+                          const n = new Set(prev);
+                          if (n.has(f.slot_id)) n.delete(f.slot_id); else n.add(f.slot_id);
+                          return n;
+                        });
+                      }}
+                      className="w-full flex items-center justify-between text-left gap-3 hover:bg-white/[0.02] -mx-2 px-2 py-1 rounded"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-white/85 truncate">
+                          {f.contexto.cliente_nombre || "Sin cliente"} <span className="text-white/30">·</span>{" "}
+                          {f.contexto.puesto_nombre}
+                          {f.contexto.slot_numero != null && (
+                            <span className="text-white/40"> · Slot {f.contexto.slot_numero}</span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-white/40 truncate">
+                          {f.contexto.titular_nombre || "(Vacante)"} · {f.cambios.length} cambio{f.cambios.length === 1 ? "" : "s"}: {f.cambios.map((c) => c.campo).join(", ")}
+                        </div>
+                      </div>
+                      <ChevronRight className={`w-4 h-4 text-white/40 transition-transform ${isOpen ? "rotate-90" : ""}`} />
+                    </button>
+                    {isOpen && (
+                      <div className="mt-3 grid grid-cols-2 gap-4 pl-2">
+                        <div className="bg-white/[0.02] border border-white/10 rounded-lg p-3">
+                          <div className="text-[10px] text-white/40 uppercase mb-2">Antes</div>
+                          <MiniGrid
+                            longitud_ciclo={f.antes.longitud_ciclo}
+                            dias_trabajo={f.antes.dias_trabajo}
+                            dias_medio_turno={f.antes.dias_medio_turno}
+                          />
+                          <div className="text-[10px] text-white/50 mt-2 space-y-0.5 font-mono">
+                            <div>HT: {f.antes.horas_turno}h · LC: {f.antes.longitud_ciclo}d</div>
+                            <div>Hora: {f.antes.hora_entrada || "—"}{f.antes.hora_entrada_por_semana ? ` (×sem: ${(f.antes.hora_entrada_por_semana || []).join("/")})` : ""}</div>
+                            <div>FIC: {f.antes.fecha_inicio_ciclo || "—"}</div>
+                          </div>
+                        </div>
+                        <div className="bg-emerald-500/[0.04] border border-emerald-500/30 rounded-lg p-3">
+                          <div className="text-[10px] text-emerald-300 uppercase mb-2">Después</div>
+                          <MiniGrid
+                            longitud_ciclo={f.despues.longitud_ciclo}
+                            dias_trabajo={f.despues.dias_trabajo}
+                            dias_medio_turno={f.despues.dias_medio_turno}
+                          />
+                          <div className="text-[10px] text-emerald-200/80 mt-2 space-y-0.5 font-mono">
+                            <div>HT: {f.despues.horas_turno}h · LC: {f.despues.longitud_ciclo}d</div>
+                            <div>Hora: {f.despues.hora_entrada || "—"}{f.despues.hora_entrada_por_semana ? ` (×sem: ${(f.despues.hora_entrada_por_semana || []).join("/")})` : ""}</div>
+                            <div>FIC: {f.despues.fecha_inicio_ciclo || "—"}</div>
+                          </div>
+                        </div>
+                        <div className="col-span-2 bg-white/[0.01] border border-white/10 rounded-lg p-2">
+                          <div className="text-[10px] text-white/40 uppercase mb-1">Diferencias</div>
+                          <table className="w-full text-[11px]">
+                            <thead>
+                              <tr className="text-white/30">
+                                <th className="text-left font-normal pr-3 py-0.5">Campo</th>
+                                <th className="text-left font-normal pr-3 py-0.5">Antes</th>
+                                <th className="text-left font-normal py-0.5">Después</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {f.cambios.map((c, ci) => (
+                                <tr key={ci} className="text-white/70">
+                                  <td className="pr-3 py-0.5 font-medium">{c.campo}</td>
+                                  <td className="pr-3 py-0.5 font-mono text-white/40">{fmtVal(c.antes)}</td>
+                                  <td className="py-0.5 font-mono text-emerald-300/80">{fmtVal(c.despues)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {sinCambiosOk && (
+          <div className="bg-white/5 border border-white/10 rounded-xl p-6 text-center">
+            <CheckCircle2 className="w-8 h-8 text-white/40 mx-auto mb-2" />
+            <p className="text-sm text-white/60">No hay cambios para aplicar.</p>
+            <p className="text-xs text-white/40 mt-1">El contenido del archivo coincide con el sistema actual.</p>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between pt-2">
+          <button onClick={reset} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-white/5 hover:bg-white/10 text-white/60">
+            <RotateCcw className="w-4 h-4" /> Subir otro archivo
+          </button>
+          <button
+            onClick={aplicar}
+            disabled={loading || pr.filas_a_actualizar.length === 0 || pr.filas_con_error.length > 0 || (pr.filas_con_conflicto?.length ?? 0) > 0}
+            className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold bg-emerald-500 hover:bg-emerald-400 text-black disabled:bg-white/5 disabled:text-white/30 disabled:cursor-not-allowed"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+            Aplicar {pr.filas_a_actualizar.length} cambio{pr.filas_a_actualizar.length === 1 ? "" : "s"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === "result" && importResult) {
+    return (
+      <div className="space-y-5">
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+            <span className="font-semibold text-white">Cambios aplicados con éxito</span>
+          </div>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <p className="text-2xl font-bold text-emerald-400">{importResult.actualizados ?? 0}</p>
+              <p className="text-xs text-white/50 mt-1">Slots actualizados</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-white/60">{importResult.sin_cambios ?? 0}</p>
+              <p className="text-xs text-white/50 mt-1">Sin cambios</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-white/40">{importResult.ignorados ?? 0}</p>
+              <p className="text-xs text-white/50 mt-1">Ignorados</p>
+            </div>
+          </div>
+        </div>
+
+        {Array.isArray(importResult.detalle) && importResult.detalle.length > 0 && (
+          <div className="bg-white/[0.02] border border-white/10 rounded-xl overflow-hidden">
+            <div className="px-4 py-2 bg-white/[0.03] border-b border-white/10 text-xs font-semibold text-white/70">
+              Detalle ({importResult.detalle.length})
+            </div>
+            <div className="divide-y divide-white/5 max-h-96 overflow-y-auto">
+              {importResult.detalle.map((d: any, i: number) => (
+                <div key={i} className="px-4 py-2 text-xs text-white/70">
+                  <span className="text-white/40">slot {d.slot_id}</span>
+                  <span className="text-white/30"> · </span>
+                  {d.cliente || "Sin cliente"}
+                  <span className="text-white/30"> · </span>
+                  {d.puesto}
+                  {d.slot_numero != null && <span className="text-white/40"> #{d.slot_numero}</span>}
+                  <span className="text-white/30"> · </span>
+                  <span className="text-emerald-300/80">{d.cambios} cambio{d.cambios === 1 ? "" : "s"}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <button onClick={reset} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-white/10 hover:bg-white/15 text-white/60">
+          <RotateCcw className="w-4 h-4" /> Nueva carga
+        </button>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function Importacion() {
   const [activeTab, setActiveTab] = useState<string>(TABS[0].id);
@@ -3579,6 +4150,7 @@ export default function Importacion() {
   const isDigecam            = activeTab === DIGECAM_TAB_ID;
   const isAlmacen            = activeTab === ALMACEN_TAB_ID;
   const isCargaMaestra       = activeTab === CARGA_MAESTRA_TAB_ID;
+  const isPlantillaTurnos    = activeTab === PLANTILLA_TURNOS_TAB_ID;
   const isAnySA              = isLegacyEmpl || isLegacyClients;
 
   return (
@@ -3592,7 +4164,7 @@ export default function Importacion() {
           </p>
         </div>
 
-        {!isAnySA && !isLibroSal && !isDevEmp && !isDetallePrestaciones && !isDigecam && !isAlmacen && !isCargaMaestra && (
+        {!isAnySA && !isLibroSal && !isDevEmp && !isDetallePrestaciones && !isDigecam && !isAlmacen && !isCargaMaestra && !isPlantillaTurnos && (
           <div className="flex items-center gap-0 bg-white/[0.02] border border-white/10 rounded-xl p-4">
             {[
               { n: 1, label: "Descarga la plantilla" },
@@ -3730,6 +4302,20 @@ export default function Importacion() {
             </button>
             {/* Separador visual */}
             <div className="w-px bg-white/10 self-stretch mx-1" />
+            {/* Plantilla de Turnos — re-importación de edición */}
+            <button
+              onClick={() => setActiveTab(PLANTILLA_TURNOS_TAB_ID)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                isPlantillaTurnos
+                  ? "border-blue-400 text-blue-400"
+                  : "border-transparent text-white/40 hover:text-blue-400/60"
+              }`}
+            >
+              <Clock className="w-4 h-4" />
+              Plantilla de Turnos
+            </button>
+            {/* Separador visual */}
+            <div className="w-px bg-white/10 self-stretch mx-1" />
             {/* Carga Maestra */}
             <button
               onClick={() => setActiveTab(CARGA_MAESTRA_TAB_ID)}
@@ -3778,6 +4364,7 @@ export default function Importacion() {
              isDigecam             ? <DiGECAMTab              key={DIGECAM_TAB_ID} />            :
              isAlmacen             ? <AlmacenTab              key={ALMACEN_TAB_ID} />            :
              isCargaMaestra        ? <CargaMaestraTab         key={CARGA_MAESTRA_TAB_ID} />      :
+             isPlantillaTurnos     ? <PlantillaTurnosTab      key={PLANTILLA_TURNOS_TAB_ID} />   :
              isLegacyEmpl    ? <LegacyImporterTab     key={LEGACY_TAB_ID} />       :
              isLegacyClients ? <LegacyClientesTab     key={LEGACY_CLIENTES_TAB_ID} /> :
              tab             ? (

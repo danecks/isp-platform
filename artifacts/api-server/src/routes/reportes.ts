@@ -530,7 +530,8 @@ router.get("/reportes/plantilla-turnos", async (req, res) => {
         COALESCE(ps.longitud_ciclo, 14) AS longitud_ciclo,
         ps.hora_entrada_por_semana,
         to_char(ps.fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
-        ps.notas
+        ps.notas,
+        EXTRACT(EPOCH FROM ps.updated_at)::bigint AS slot_updated_ts
       FROM puestos_operativos po
       LEFT JOIN puesto_slots ps          ON ps.puesto_id = po.id AND ps.activo = TRUE
       LEFT JOIN employees e              ON e.id = ps.empleado_id

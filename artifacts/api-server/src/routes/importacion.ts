@@ -1039,6 +1039,7 @@ type FilaParsed = {
   slot_id_raw: string;
   slot_id: number | null;
   puesto_id_csv: number | null;
+  slot_updated_ts_csv: number | null;
   patch: {
     horas_turno: number;
     longitud_ciclo: number;
@@ -1060,13 +1061,19 @@ function parseFilaPlantillaTurnos(row: Record<string, any>, fila: number): FilaP
 
   // Filas sin ID Slot se ignoran (decisión v1: no crear slots desde la plantilla).
   if (!slot_id_raw) {
-    return { fila, slot_id_raw, slot_id: null, puesto_id_csv: null, patch: null, errores: [], ignorar: true };
+    return { fila, slot_id_raw, slot_id: null, puesto_id_csv: null, slot_updated_ts_csv: null, patch: null, errores: [], ignorar: true };
   }
   if (!Number.isInteger(slot_id) || (slot_id ?? 0) <= 0) {
-    return { fila, slot_id_raw, slot_id: null, puesto_id_csv: null, patch: null, errores: [`ID Slot "${slot_id_raw}" no es un entero válido`], ignorar: false };
+    return { fila, slot_id_raw, slot_id: null, puesto_id_csv: null, slot_updated_ts_csv: null, patch: null, errores: [`ID Slot "${slot_id_raw}" no es un entero válido`], ignorar: false };
   }
 
   const puesto_id_csv = parseInt(String(row["ID Puesto"] ?? "").trim(), 10) || null;
+
+  // Sello de concurrencia: epoch en seg al momento de descargar la plantilla.
+  // Si la columna no viene (CSV de versión anterior) → null = no se chequea.
+  const tsRaw = String(row["_actualizado_ts"] ?? "").trim();
+  const tsParsed = tsRaw ? Number(tsRaw) : NaN;
+  const slot_updated_ts_csv = Number.isFinite(tsParsed) && tsParsed > 0 ? Math.floor(tsParsed) : null;
 
   const horas_turno = parseInt(String(row["Horas Turno"] ?? "").trim(), 10);
   if (![8, 12, 24].includes(horas_turno)) errores.push(`Horas Turno debe ser 8, 12 o 24 (recibido: "${row["Horas Turno"] ?? ""}")`);
@@ -1143,7 +1150,7 @@ function parseFilaPlantillaTurnos(row: Record<string, any>, fila: number): FilaP
     notas,
   };
 
-  return { fila, slot_id_raw, slot_id, puesto_id_csv, patch, errores, ignorar: false };
+  return { fila, slot_id_raw, slot_id, puesto_id_csv, slot_updated_ts_csv, patch, errores, ignorar: false };
 }
 
 type CambioCampo = {
@@ -1156,6 +1163,7 @@ type FilaPreview = {
   fila: number;
   slot_id: number;
   puesto_id: number;
+  slot_updated_ts_csv: number | null;
   contexto: {
     cliente_nombre: string | null;
     sede_nombre: string | null;
@@ -1172,6 +1180,7 @@ async function calcularDiff(parsed: FilaParsed[]): Promise<{
   filas_a_actualizar: FilaPreview[];
   filas_sin_cambios: { fila: number; slot_id: number }[];
   filas_con_error: { fila: number; slot_id_raw: string; errores: string[] }[];
+  filas_con_conflicto: { fila: number; slot_id: number; contexto: { cliente_nombre: string | null; puesto_nombre: string; slot_numero: number | null }; descargado: string; modificado: string }[];
   filas_ignoradas: number;
 }> {
   const filas_ignoradas = parsed.filter((p) => p.ignorar).length;
@@ -1181,17 +1190,22 @@ async function calcularDiff(parsed: FilaParsed[]): Promise<{
   const { rows: actuales } = slotIds.length === 0
     ? { rows: [] as any[] }
     : await pool.query(
-      `SELECT ps.id, ps.puesto_id, ps.horas_turno, ps.longitud_ciclo, ps.fecha_inicio_ciclo,
-              ps.dias_trabajo, ps.dias_medio_turno, ps.hora_entrada, ps.hora_entrada_por_semana,
+      `SELECT ps.id, ps.puesto_id, ps.horas_turno, ps.longitud_ciclo,
+              to_char(ps.fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
+              ps.dias_trabajo, ps.dias_medio_turno,
+              to_char(ps.hora_entrada, 'HH24:MI') AS hora_entrada,
+              ps.hora_entrada_por_semana,
               ps.notas, ps.activo, ps.empleado_id, ps.slot_numero,
+              EXTRACT(EPOCH FROM ps.updated_at)::bigint AS slot_updated_ts_db,
+              ps.updated_at AS slot_updated_at_iso,
               po.nombre AS puesto_nombre,
-              cli.nombre AS cliente_nombre,
-              sed.nombre AS sede_nombre,
+              COALESCE(cli.nombre, po.cliente_nombre) AS cliente_nombre,
+              cs.nombre AS sede_nombre,
               emp.nombre_completo AS titular_nombre
          FROM puesto_slots ps
          JOIN puestos_operativos po ON po.id = ps.puesto_id
-         LEFT JOIN clientes cli      ON cli.id = po.cliente_id
-         LEFT JOIN sedes sed         ON sed.id = po.sede_id
+         LEFT JOIN clients cli       ON cli.id = po.cliente_id
+         LEFT JOIN client_sedes cs   ON cs.id = po.sede_id
          LEFT JOIN employees emp     ON emp.id = ps.empleado_id
         WHERE ps.id = ANY($1::int[])`,
       [slotIds]
@@ -1203,6 +1217,7 @@ async function calcularDiff(parsed: FilaParsed[]): Promise<{
   const filas_a_actualizar: FilaPreview[] = [];
   const filas_sin_cambios: { fila: number; slot_id: number }[] = [];
   const filas_con_error: { fila: number; slot_id_raw: string; errores: string[] }[] = [];
+  const filas_con_conflicto: { fila: number; slot_id: number; contexto: { cliente_nombre: string | null; puesto_nombre: string; slot_numero: number | null }; descargado: string; modificado: string }[] = [];
 
   for (const p of conSlot) {
     if (p.errores.length > 0 || p.slot_id === null || !p.patch) {
@@ -1255,10 +1270,31 @@ async function calcularDiff(parsed: FilaParsed[]): Promise<{
       continue;
     }
 
+    // Concurrencia: si el CSV trae timestamp y la BD fue modificada después → conflicto.
+    // Tolerancia: 2 segundos para evitar falsos positivos por redondeo de timestamps.
+    if (p.slot_updated_ts_csv !== null && actual.slot_updated_ts_db) {
+      const dbTs = Number(actual.slot_updated_ts_db);
+      if (dbTs > p.slot_updated_ts_csv + 2) {
+        filas_con_conflicto.push({
+          fila: p.fila,
+          slot_id: p.slot_id,
+          contexto: {
+            cliente_nombre: actual.cliente_nombre,
+            puesto_nombre: actual.puesto_nombre,
+            slot_numero: actual.slot_numero,
+          },
+          descargado: new Date(p.slot_updated_ts_csv * 1000).toISOString(),
+          modificado: actual.slot_updated_at_iso ? new Date(actual.slot_updated_at_iso).toISOString() : new Date(dbTs * 1000).toISOString(),
+        });
+        continue;
+      }
+    }
+
     filas_a_actualizar.push({
       fila: p.fila,
       slot_id: p.slot_id,
       puesto_id: actual.puesto_id,
+      slot_updated_ts_csv: p.slot_updated_ts_csv,
       contexto: {
         cliente_nombre: actual.cliente_nombre,
         sede_nombre: actual.sede_nombre,
@@ -1290,7 +1326,7 @@ async function calcularDiff(parsed: FilaParsed[]): Promise<{
     });
   }
 
-  return { filas_a_actualizar, filas_sin_cambios, filas_con_error, filas_ignoradas };
+  return { filas_a_actualizar, filas_sin_cambios, filas_con_error, filas_con_conflicto, filas_ignoradas };
 }
 
 // ─── POST /api/importacion/plantilla-turnos/preview ──────────────────────────
@@ -1335,6 +1371,13 @@ importacionRouter.post("/importacion/plantilla-turnos/aplicar", async (req: any,
       });
     }
 
+    if (diff.filas_con_conflicto.length > 0) {
+      return res.status(409).json({
+        error: "Hay slots que fueron modificados por otro usuario después de que descargaste la plantilla. Re-descargá la plantilla, aplicá tus cambios sobre la versión actualizada y volvé a subir.",
+        filas_con_conflicto: diff.filas_con_conflicto,
+      });
+    }
+
     if (diff.filas_a_actualizar.length === 0) {
       return res.json({
         actualizados: 0,
@@ -1348,7 +1391,10 @@ importacionRouter.post("/importacion/plantilla-turnos/aplicar", async (req: any,
 
     let actualizados = 0;
     for (const f of diff.filas_a_actualizar) {
-      await client.query(
+      // Lock optimista atómico: si $10 (csv ts) no es null, exigimos que la BD
+      // no haya sido modificada después de la descarga (con tolerancia 2s). Si
+      // alguien tocó el slot entre preview y aplicar, rowCount=0 y abortamos.
+      const upd = await client.query(
         `UPDATE puesto_slots
             SET horas_turno = $1,
                 longitud_ciclo = $2,
@@ -1359,7 +1405,9 @@ importacionRouter.post("/importacion/plantilla-turnos/aplicar", async (req: any,
                 hora_entrada_por_semana = $7,
                 notas = $8,
                 updated_at = NOW()
-          WHERE id = $9 AND activo = TRUE`,
+          WHERE id = $9
+            AND activo = TRUE
+            AND ($10::bigint IS NULL OR EXTRACT(EPOCH FROM updated_at)::bigint <= $10::bigint + 2)`,
         [
           f.despues.horas_turno,
           f.despues.longitud_ciclo,
@@ -1370,8 +1418,16 @@ importacionRouter.post("/importacion/plantilla-turnos/aplicar", async (req: any,
           f.despues.hora_entrada_por_semana,
           f.despues.notas,
           f.slot_id,
+          f.slot_updated_ts_csv,
         ]
       );
+      if ((upd.rowCount ?? 0) === 0) {
+        throw new Error(
+          `Conflicto de concurrencia al actualizar slot ${f.slot_id} (${f.contexto.cliente_nombre ?? "sin cliente"} · ${f.contexto.puesto_nombre}). ` +
+          `Otra persona modificó este slot entre la descarga de la plantilla y el momento de aplicar. ` +
+          `Re-descargá la plantilla y volvé a intentarlo.`
+        );
+      }
       actualizados++;
     }
 

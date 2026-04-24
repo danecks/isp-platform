@@ -51,6 +51,7 @@ interface SlotPlantilla {
   hora_entrada_por_semana: string[] | null;
   fecha_inicio_ciclo: string | null;
   notas: string | null;
+  slot_updated_ts: number | string | null;
 }
 
 interface GlobalStats {
@@ -288,6 +289,8 @@ export default function ReportePlantillaTurnos() {
       ...horaCols,
       // Plantilla por día (editable: T=Trabaja, M=Medio turno, D=Descansa, vacío=fuera de ciclo)
       ...diaCols,
+      // Sello de concurrencia (NO editar): epoch seg de cuando se modificó el slot por última vez
+      "_actualizado_ts",
       // Notas
       "Notas",
     ];
@@ -321,6 +324,7 @@ export default function ReportePlantillaTurnos() {
         s.fecha_inicio_ciclo ?? "",
         ...horaCols.map((c) => cels[c] ?? ""),
         ...diaCols.map((c) => cels[c] ?? ""),
+        s.slot_updated_ts != null ? String(s.slot_updated_ts) : "",
         (s.notas ?? "").replace(/[\r\n]/g, " "),
       ];
     });

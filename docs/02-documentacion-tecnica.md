@@ -562,6 +562,42 @@ export async function migrarPESP01() {
       `MAX_SLOTS_PDF = 250` slots por PDF; si se excede, sugiere usar Excel para el detalle completo.
       Implementado mediante `IspPdf.addCustomBlock(estimatedHeight, render)` (helper genérico nuevo
       que expone `doc`, posición y colores corporativos para dibujo personalizado).
+    - **Carga masiva (re-importación de la plantilla editada en Excel)** — endpoints en `routes/importacion.ts`:
+      - `POST /importacion/plantilla-turnos/preview` (admin + operaciones; `requireAdminOrOps`):
+        recibe `{ rows: object[] }` (filas tal cual leídas del CSV/XLSX), las parsea con
+        `parseFilaPlantillaTurnos` (valida `Horas Turno∈{8,12,24}`, `Longitud Ciclo∈{7,14,21,28}`,
+        valores T/M/D, `HH:MM`, fechas `YYYY-MM-DD` o `DD/MM/YYYY`), corre `calcularDiff` y devuelve
+        `{ total_filas, filas_a_actualizar[], filas_sin_cambios[], filas_con_error[],
+        filas_con_conflicto[], filas_ignoradas }`.
+      - `POST /importacion/plantilla-turnos/aplicar` (admin + operaciones): re-valida y aplica los
+        UPDATE en transacción (`BEGIN/COMMIT/ROLLBACK`); rechaza con 400 si `filas_con_error.length>0`
+        y con 409 si `filas_con_conflicto.length>0`.
+      - **Solo MODIFICA slots existentes** (match por columna `ID Slot`); NO crea, NO elimina, NO
+        cambia titular. Filas sin `ID Slot` se ignoran silenciosamente; filas con error bloquean.
+      - **Columnas editables re-importadas**: `Horas Turno`, `Longitud Ciclo (días)`, `Fecha Inicio
+        Ciclo`, `S{1..4}-Hora`, `S{1..4}-{L,M,X,J,V,S,D}` (T/M/D), `Notas`. La hora de entrada se
+        infiere así: si todas las semanas activas tienen la misma hora →
+        `hora_entrada` simple; si difieren → además se setea `hora_entrada_por_semana[]`.
+      - **Columnas IGNORADAS** (informativas, presentes pero no se aplican): `ID Cliente`,
+        `ID Empleado`, `Cliente`, `Sede`, `Zona`, `Supervisor`, `Puesto`, `Tipo Servicio`,
+        `Turno Puesto`, `Jornada`, `Slot #`, `Titular`, `Rotación (sem)` (derivada de Longitud Ciclo).
+      - **Validación cruzada**: si `ID Puesto` del CSV no coincide con el slot en BD →
+        error de fila (probable re-asignación o CSV obsoleto, sugiere re-descargar).
+      - **Concurrencia (lock optimista atómico)**: el CSV exportado incluye una columna oculta
+        `_actualizado_ts` (epoch en segundos al momento de descargar el slot, viene del SELECT
+        `EXTRACT(EPOCH FROM ps.updated_at)::bigint`). En `preview` el backend pre-detecta
+        conflictos comparando contra `puesto_slots.updated_at` (tolerancia 2s). En `aplicar` el
+        chequeo se repite y, además, la condición `EXTRACT(EPOCH FROM updated_at)::bigint ≤
+        $csv_ts + 2` viaja **dentro del propio `WHERE` del UPDATE**, dentro de la transacción
+        `BEGIN/COMMIT/ROLLBACK`. Si `rowCount = 0` (alguien tocó el slot entre `preview` y
+        `aplicar`) se hace ROLLBACK y se devuelve error con HTTP 409. CSVs antiguos sin la
+        columna mantienen retro-compatibilidad (no se chequea concurrencia, pero el frontend
+        muestra `confirm` de advertencia antes de subir).
+      - **Frontend**: tab `Plantilla de Turnos` en `admin/pages/Importacion.tsx` (componente
+        `PlantillaTurnosTab`, 3 pasos: `upload → preview → result`). Soporta CSV y XLSX (parser
+        CSV propio con comillas dobles + lector XLSX vía `xlsx`). Preview muestra mini-grids
+        antes/después coloreados (T=verde, M=ámbar, D=gris) y tabla de diferencias por campo;
+        panel separado para errores (naranja) y conflictos (rosa).
 
 ### 7.37 Tareas (Trello-like) (`/api/tareas`, `/api/trello`)
 - **Archivos**: `routes/tareas.ts`, `routes/trello.ts`
