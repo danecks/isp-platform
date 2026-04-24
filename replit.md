@@ -1,5 +1,8 @@
 # Workspace
 
+## ⚠ Recordatorios pendientes para el usuario
+- **Miércoles 6 de mayo de 2026 (o primera sesión después de esa fecha)**: recordarle al usuario que dejó pendiente decidir si arrancamos el **refactor modular del Pizarrón Operativo** (`artifacts/isp-web/src/admin/pages/Operaciones.tsx`, hoy ~9,862 líneas). Plan propuesto: (1) escribir tests E2E de los flujos críticos, (2) extraer tipos/helpers puros, (3) extraer modales, (4) extraer secciones (PoolDisponibles, SegmentosPorCliente, CustodiasPanel, ProximosRegresos), (5) mover hooks de datos (useTablero, usePool, useCustodias…), (6) dejar `Operaciones.tsx` como orquestador de 500-800 líneas. Antes de tocar código, armar plan completo de tareas con dependencias para que el usuario apruebe. **Borrar este recordatorio una vez tratado.**
+
 ## Overview
 This project is a pnpm monorepo for "Investigaciones y Seguridad Profesional S.A." (Guatemala), providing a comprehensive digital platform with a corporate website and an admin dashboard. The platform aims to streamline internal operations, enhance client interaction, and establish a robust online presence.
 
