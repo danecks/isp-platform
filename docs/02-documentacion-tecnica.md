@@ -609,3 +609,60 @@ export async function migrarPESP01() {
 - **Observabilidad**: cada PUT/restore queda en logs del API con
   `username`, `tipo`, `version`. La pantalla muestra historial
   completo en modal con quién y cuándo creó cada versión.
+
+### 10.5 Pre-planilla — devengados completos y amonestaciones (abr 2026)
+
+- **Síntoma**: la tarjeta de Total Real / Total Estimado por
+  colaborador en `/admin/pre-planilla` solo mostraba el sueldo
+  proporcional, las horas extra y los descuentos. Faltaba ver la
+  bonificación incentivo (Q250 por defecto), las bonificaciones
+  1/2/3 y el descuento por amonestaciones económicas — aunque el
+  backend ya los traía en `QUERY_CONSOLIDADO`.
+
+- **Cambio funcional**:
+  - **Devengados** ahora visibles y sumados al total:
+    - Bonificación incentivo (Decreto 78-89).
+    - Bonificación 1, 2 y 3 (las que tenga registradas el empleado).
+  - **Egreso nuevo** ahora visible y descontado del total:
+    - Amonestaciones económicas activas del período.
+  - **Egresos ya existentes** que faltaban en el desglose visual
+    aunque sí se descontaban (ahora visibles): seguro de vida,
+    anticipos/uniforme/barraca en la tarjeta de proyección.
+
+- **Fórmula de proporcionalidad** (decisión de negocio confirmada
+  por dirección — fórmula simple, sin interpretar legalmente
+  vacaciones/incapacidad):
+  - `bonif_real      = base / 30 × dias_trabajados`
+  - `bonif_proyectada = base / 30 × (dias_periodo − dias_descuento)`
+  - Aplica idéntica a bonificación incentivo y a bonificaciones
+    1/2/3. Cada una usa su propia base mensual del perfil del
+    empleado (`employees.bonificacion_incentivo`,
+    `bonificacion_1/2/3`).
+
+- **IGSS / ISR — sin cambios**: se siguen calculando solo sobre
+  el sueldo base (no sobre bonificaciones). Es lo correcto
+  legalmente: la bonificación incentivo no es base de IGSS ni
+  forma parte del salario ordinario para retención de ISR
+  quincenal.
+
+- **Archivos**:
+  - `artifacts/isp-web/src/admin/pages/PrePlanilla.tsx`
+    - `interface ColaboradorPre`: añadidos `bon_incentivo_base`,
+      `bon_1_base`, `bon_2_base`, `bon_3_base`,
+      `amonestaciones_monto`, `amonestaciones_count`.
+    - `calcularTotalEstimado()`: calcula `bonIncentivoReal/Proy`,
+      `bon1/2/3 Real/Proy`, `totalBonifReal/Proy`,
+      `amonestaciones`, y los suma/resta en `total` y `totalReal`.
+    - Tarjetas "Total Real" y "Total Estimado": agregadas filas
+      condicionales (`> 0`) para cada bonificación, amonestaciones
+      y seguro de vida.
+  - `artifacts/api-server/src/routes/pre-planilla.ts` — sin
+    cambios (ya devolvía los campos).
+
+- **Compatibilidad**: el backend ya generaba los campos desde el
+  hito BON-01 / AMON-01; los autotests y la planilla final no
+  cambian. La `calcularBruto` del lado del API (al cerrar
+  planilla quincenal) ya incluye bonificación incentivo y
+  amonestaciones — esta corrección únicamente alinea la vista
+  previa de pre-planilla con lo que terminará pagando la
+  planilla cerrada.

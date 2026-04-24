@@ -116,6 +116,14 @@ interface ColaboradorPre {
   barraca_monto: number;
   barraca_nombre: string | null;
   seguro_prima_mensual: number;
+  // Bases de bonificaciones (mensuales) tomadas del perfil del empleado
+  bon_incentivo_base: number | string | null;
+  bon_1_base: number | string | null;
+  bon_2_base: number | string | null;
+  bon_3_base: number | string | null;
+  // Amonestaciones económicas pendientes a descontar en el período
+  amonestaciones_monto: number | string | null;
+  amonestaciones_count: number | string | null;
 }
 
 interface DetalleNovedad {
@@ -318,14 +326,57 @@ function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: number | n
     : 0;
   const igssLaboral = col.aplica_igss ? Math.round((sueldoPeriodo - descFaltas) * 0.0483 * 100) / 100 : 0;
   const isrQuincenal = calcularISRQuincenal(sb, col.aplica_igss);
-  const total = sueldoPeriodo - descFaltas + valorHE - anticipo - cuotaUniforme - barracaMonto - seguroMonto - igssLaboral - isrQuincenal;
+
+  // Bonificaciones (proporcionales a días trabajados — base/30 × días)
+  // Para "Real" usamos los días efectivamente trabajados a la fecha.
+  // Para "Estimado" proyectamos: días del período menos días con descuento.
+  const safeNum = (v: unknown, def = 0) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : def;
+  };
+  const bonIncentivoBase = Math.max(safeNum(col.bon_incentivo_base, 250), 0);
+  const bon1Base = Math.max(safeNum(col.bon_1_base, 0), 0);
+  const bon2Base = Math.max(safeNum(col.bon_2_base, 0), 0);
+  const bon3Base = Math.max(safeNum(col.bon_3_base, 0), 0);
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+
+  const diasTrabReal = Number(col.dias_trabajados ?? 0);
+  const bonIncentivoReal = r2((bonIncentivoBase / 30) * diasTrabReal);
+  const bon1Real = r2((bon1Base / 30) * diasTrabReal);
+  const bon2Real = r2((bon2Base / 30) * diasTrabReal);
+  const bon3Real = r2((bon3Base / 30) * diasTrabReal);
+  const totalBonifReal = bonIncentivoReal + bon1Real + bon2Real + bon3Real;
+
+  const diasTrabProy = Math.max(periodoTotalDias - diasDesc, 0);
+  const bonIncentivoProy = r2((bonIncentivoBase / 30) * diasTrabProy);
+  const bon1Proy = r2((bon1Base / 30) * diasTrabProy);
+  const bon2Proy = r2((bon2Base / 30) * diasTrabProy);
+  const bon3Proy = r2((bon3Base / 30) * diasTrabProy);
+  const totalBonifProy = bonIncentivoProy + bon1Proy + bon2Proy + bon3Proy;
+
+  // Amonestaciones económicas activas pendientes de descuento
+  const amonestaciones = Number(col.amonestaciones_monto ?? 0);
+
+  const total = sueldoPeriodo + totalBonifProy + valorHE
+              - descFaltas - anticipo - cuotaUniforme - barracaMonto - seguroMonto
+              - amonestaciones - igssLaboral - isrQuincenal;
 
   const diasCerrados = Number(col.dias_cerrados ?? 0);
   const sueldoReal = sueldoDia * diasCerrados;
   const igssLaboralReal = col.aplica_igss ? Math.round((sueldoReal - descFaltas) * 0.0483 * 100) / 100 : 0;
-  const totalReal = sueldoReal - descFaltas + valorHE - anticipo - cuotaUniforme - barracaMonto - seguroMonto - igssLaboralReal - isrQuincenal;
+  const totalReal = sueldoReal + totalBonifReal + valorHE
+                  - descFaltas - anticipo - cuotaUniforme - barracaMonto - seguroMonto
+                  - amonestaciones - igssLaboralReal - isrQuincenal;
 
-  return { sueldoPeriodo, descFaltas, valorHE, anticipo, cuotaUniforme, barracaMonto, seguroMonto, igssLaboral, igssLaboralReal, isrQuincenal, total, diasDesc, diasCerrados, sueldoReal, totalReal };
+  return {
+    sueldoPeriodo, descFaltas, valorHE, anticipo, cuotaUniforme, barracaMonto, seguroMonto,
+    igssLaboral, igssLaboralReal, isrQuincenal, total, diasDesc, diasCerrados, sueldoReal, totalReal,
+    // Devengados extra
+    bonIncentivoReal, bon1Real, bon2Real, bon3Real, totalBonifReal, diasTrabReal,
+    bonIncentivoProy, bon1Proy, bon2Proy, bon3Proy, totalBonifProy, diasTrabProy,
+    // Egresos extra
+    amonestaciones,
+  };
 }
 
 // ─── Badge revisión ───────────────────────────────────────────────────────────
@@ -488,6 +539,30 @@ function DetalleModal({
                         <span className="text-white/50">Sueldo proporcional ({est.diasCerrados}d cerrados)</span>
                         <span className="text-white font-medium">{fmtQ(est.sueldoReal)}</span>
                       </div>
+                      {est.bonIncentivoReal > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-emerald-300/70">+ Bonif. incentivo ({est.diasTrabReal}d trab.)</span>
+                          <span className="text-emerald-300">+{fmtQ(est.bonIncentivoReal)}</span>
+                        </div>
+                      )}
+                      {est.bon1Real > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-emerald-300/70">+ Bonificación 1 ({est.diasTrabReal}d trab.)</span>
+                          <span className="text-emerald-300">+{fmtQ(est.bon1Real)}</span>
+                        </div>
+                      )}
+                      {est.bon2Real > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-emerald-300/70">+ Bonificación 2 ({est.diasTrabReal}d trab.)</span>
+                          <span className="text-emerald-300">+{fmtQ(est.bon2Real)}</span>
+                        </div>
+                      )}
+                      {est.bon3Real > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-emerald-300/70">+ Bonificación 3 ({est.diasTrabReal}d trab.)</span>
+                          <span className="text-emerald-300">+{fmtQ(est.bon3Real)}</span>
+                        </div>
+                      )}
                       {est.descFaltas > 0 && (
                         <div className="flex justify-between text-xs">
                           <span className="text-red-400/70">— Desc. faltas / susp. ({est.diasDesc}d descuento)</span>
@@ -516,6 +591,18 @@ function DetalleModal({
                         <div className="flex justify-between text-xs">
                           <span className="text-violet-300/70">— Barraca{col.barraca_nombre ? ` (${col.barraca_nombre})` : ""}</span>
                           <span className="text-violet-300">–{fmtQ(est.barracaMonto)}</span>
+                        </div>
+                      )}
+                      {est.seguroMonto > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-pink-300/70">— Seguro de vida</span>
+                          <span className="text-pink-300">–{fmtQ(est.seguroMonto)}</span>
+                        </div>
+                      )}
+                      {est.amonestaciones > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-rose-400/70">— Amonestaciones económicas{Number(col.amonestaciones_count ?? 0) > 0 ? ` (${col.amonestaciones_count})` : ""}</span>
+                          <span className="text-rose-400">–{fmtQ(est.amonestaciones)}</span>
                         </div>
                       )}
                       {est.igssLaboralReal > 0 && (
@@ -548,6 +635,30 @@ function DetalleModal({
                           <span className="text-white/50">Sueldo período ({periodoTotalDias}d)</span>
                           <span className="text-white font-medium">{fmtQ(est.sueldoPeriodo)}</span>
                         </div>
+                        {est.bonIncentivoProy > 0 && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-emerald-300/70">+ Bonif. incentivo ({est.diasTrabProy}d proy.)</span>
+                            <span className="text-emerald-300">+{fmtQ(est.bonIncentivoProy)}</span>
+                          </div>
+                        )}
+                        {est.bon1Proy > 0 && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-emerald-300/70">+ Bonificación 1 ({est.diasTrabProy}d proy.)</span>
+                            <span className="text-emerald-300">+{fmtQ(est.bon1Proy)}</span>
+                          </div>
+                        )}
+                        {est.bon2Proy > 0 && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-emerald-300/70">+ Bonificación 2 ({est.diasTrabProy}d proy.)</span>
+                            <span className="text-emerald-300">+{fmtQ(est.bon2Proy)}</span>
+                          </div>
+                        )}
+                        {est.bon3Proy > 0 && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-emerald-300/70">+ Bonificación 3 ({est.diasTrabProy}d proy.)</span>
+                            <span className="text-emerald-300">+{fmtQ(est.bon3Proy)}</span>
+                          </div>
+                        )}
                         {est.descFaltas > 0 && (
                           <div className="flex justify-between text-xs">
                             <span className="text-red-400/70">— Desc. faltas / susp. ({est.diasDesc}d descuento)</span>
@@ -558,6 +669,36 @@ function DetalleModal({
                           <div className="flex justify-between text-xs">
                             <span className="text-orange-400/70">+ H. Extra ({heNum.toFixed(1)} h × 1.5x)</span>
                             <span className="text-orange-400">+{fmtQ(est.valorHE)}</span>
+                          </div>
+                        )}
+                        {est.anticipo > 0 && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-amber-400/70">— Anticipo del período</span>
+                            <span className="text-amber-400">–{fmtQ(est.anticipo)}</span>
+                          </div>
+                        )}
+                        {est.cuotaUniforme > 0 && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-orange-300/70">— Cuota uniforme/botas</span>
+                            <span className="text-orange-300">–{fmtQ(est.cuotaUniforme)}</span>
+                          </div>
+                        )}
+                        {est.barracaMonto > 0 && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-violet-300/70">— Barraca{col.barraca_nombre ? ` (${col.barraca_nombre})` : ""}</span>
+                            <span className="text-violet-300">–{fmtQ(est.barracaMonto)}</span>
+                          </div>
+                        )}
+                        {est.seguroMonto > 0 && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-pink-300/70">— Seguro de vida</span>
+                            <span className="text-pink-300">–{fmtQ(est.seguroMonto)}</span>
+                          </div>
+                        )}
+                        {est.amonestaciones > 0 && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-rose-400/70">— Amonestaciones económicas{Number(col.amonestaciones_count ?? 0) > 0 ? ` (${col.amonestaciones_count})` : ""}</span>
+                            <span className="text-rose-400">–{fmtQ(est.amonestaciones)}</span>
                           </div>
                         )}
                         {est.igssLaboral > 0 && (
@@ -580,7 +721,7 @@ function DetalleModal({
                         </span>
                       </div>
                       <p className="text-[9px] text-white/25 mt-2 leading-relaxed">
-                        Proyección asumiendo {(periodoTotalDias ?? 0) - est.diasCerrados} días restantes sin cambios. No incluye bonificación incentivo (Dto. 78-89), séptimo día, ni deducciones finales.
+                        Proyección asumiendo {(periodoTotalDias ?? 0) - est.diasCerrados} días restantes sin cambios. Bonificaciones proporcionales (base/30 × días). No incluye séptimo día ni deducciones finales.
                       </p>
                     </div>
                   )}
