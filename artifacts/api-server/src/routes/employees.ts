@@ -42,6 +42,12 @@ employeesRouter.get("/employees", async (req, res) => {
       params.push(`%${q}%`);
       const i = params.length;
       clauses.push(`(e.nombre_completo ILIKE $${i} OR e.dpi ILIKE $${i} OR e.telefono ILIKE $${i} OR e.puesto ILIKE $${i} OR e.area ILIKE $${i})`);
+      // Autocomplete: si el cliente buscó por texto y NO pidió un estado_laboral
+      // específico, excluir bajas por defecto. Evita que el pizarrón / asignar usuario /
+      // FichaCliente listen como "disponibles" a empleados ya dados de baja.
+      if (!estadoLaboral) {
+        clauses.push(`e.estado_laboral != 'baja'`);
+      }
     }
 
     const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
