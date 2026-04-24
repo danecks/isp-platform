@@ -521,6 +521,26 @@ export async function migrarPESP01() {
 
 ### 7.36 Reportes (`/api/reportes`)
 - **Archivo**: `routes/reportes.ts`
+- **Reportes profesionales registrados**:
+  - `GET /reportes/operaciones` — Incidencias agregadas (filtros: desde, hasta, cliente, estado, canal, prioridad).
+  - `GET /reportes/emergencias` — Incidencias de emergencia.
+  - `GET /reportes/tareas` — Tareas operativas.
+  - `GET /reportes/rrhh` — Anticipos + Reclutamiento.
+  - `GET /reportes/comercial` — Leads comerciales.
+  - `GET /reportes/kpi` — KPI ejecutivo consolidado.
+  - `GET /reportes/cobertura-zonas` — Cobertura por zona operativa con período (titular/relevo/descubierto, HE).
+  - `GET /reportes/plantilla-turnos` — **Plantilla vigente** (foto del momento) por Cliente → Sede → Puesto → Slot:
+    - Filtros: `cliente_id`, `zona_id`, `sede_id`, `solo_vacantes=1`. Validación: enteros positivos finitos (400 en inválido).
+    - Devuelve: `globalStats` (total clientes/puestos/slots, con titular, vacantes, turnos 24/12h, rotaciones 1-4 sem),
+      `slots[]` con `puesto_*`, `slot_*`, `titular_nombre`, `horas_turno`, `hora_entrada`, `dias_trabajo`, `dias_medio_turno`,
+      `longitud_ciclo` (7/14/21/28), `hora_entrada_por_semana[]`, `fecha_inicio_ciclo`, `notas`,
+      más `clientesDisponibles[]` y `zonasDisponibles[]` para los filtros.
+    - **JOIN clave**: `LEFT JOIN puesto_slots ps ON ps.puesto_id = po.id AND ps.activo = TRUE` — el filtro de `activo`
+      vive en el `ON` para preservar puestos sin slots configurados (super-vacantes).
+    - **Frontend**: `admin/pages/ReportePlantillaTurnos.tsx` (ruta `/admin/reportes/plantilla-turnos`,
+      roles permitidos: admin, operaciones, supervisor). Exporta a Excel (CSV con BOM UTF-8) y a PDF (`IspPdf`).
+    - **Visualización**: grid semanas×días con colores (verde=trabajo, ámbar=medio turno, gris=descanso) y
+      hora de entrada por semana cuando rota (fallback a `hora_entrada` cuando no rota).
 
 ### 7.37 Tareas (Trello-like) (`/api/tareas`, `/api/trello`)
 - **Archivos**: `routes/tareas.ts`, `routes/trello.ts`

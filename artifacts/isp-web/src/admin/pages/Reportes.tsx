@@ -6,7 +6,7 @@ import {
   FileBarChart2, Download, FileText, RefreshCw, AlertCircle,
   Filter, Calendar, Building2, Loader2, BarChart3,
   AlertTriangle, CheckSquare, Users, Briefcase, TrendingUp,
-  FileDown, ChevronDown, X, Map, ArrowRight
+  FileDown, ChevronDown, X, Map, ArrowRight, CalendarClock
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend
@@ -1064,6 +1064,27 @@ export default function Reportes() {
               </p>
               <p className="text-[10px] text-white/30">
                 Titulares · Relevos · Descubiertos · HE · Exportación CSV / PDF · Selector de período
+              </p>
+            </div>
+            <ArrowRight className="w-3.5 h-3.5 text-white/20 group-hover:text-primary transition-colors shrink-0" />
+          </a>
+        )}
+
+        {/* REPORTE ESPECIAL: Plantilla de Turnos Vigente */}
+        {["admin", "operaciones", "supervisor"].includes(rolActual) && (
+          <a
+            href="/admin/reportes/plantilla-turnos"
+            className="flex items-center gap-3 bg-primary/5 border border-primary/15 hover:border-primary/35 hover:bg-primary/10 rounded-xl px-4 py-3 transition-all group"
+          >
+            <div className="w-7 h-7 rounded-lg bg-primary/12 border border-primary/20 flex items-center justify-center shrink-0">
+              <CalendarClock className="w-3.5 h-3.5 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-white/80 group-hover:text-white transition-colors">
+                Reporte de Plantilla de Turnos Vigente
+              </p>
+              <p className="text-[10px] text-white/30">
+                Titularidad · Turno 12/24h · Rotación 1-4 sem · Días trabajo y descanso por semana · Excel y PDF
               </p>
             </div>
             <ArrowRight className="w-3.5 h-3.5 text-white/20 group-hover:text-primary transition-colors shrink-0" />

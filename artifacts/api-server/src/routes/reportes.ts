@@ -451,6 +451,142 @@ router.get("/reportes/kpi", async (req, res) => {
 // ─── GET /reportes/cobertura-zonas ───────────────────────────────────────────
 // Reporte de cobertura operativa por zona, con soporte de períodos
 // Params: desde, hasta, zona_id, cliente_id, sede_id, tipo_cobertura, supervisor_id
+// ─────────────────────────────────────────────────────────────────────────────
+// REPORTE: PLANTILLA DE TURNOS VIGENTE
+// Devuelve por cliente → puesto → slots, la plantilla actual con titularidad,
+// turno (24/12), rotación (1-4 semanas), días de trabajo/descanso por semana
+// y hora de entrada por semana. Foto del momento (no histórico).
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/reportes/plantilla-turnos", async (req, res) => {
+  try {
+    const { cliente_id, zona_id, sede_id, solo_vacantes } = req.query;
+
+    // Helper: parseo seguro de filtro entero (devuelve null si inválido)
+    const intFiltro = (v: unknown): number | null | "invalid" => {
+      if (v === undefined || v === null || v === "") return null;
+      const n = Number(v);
+      return Number.isFinite(n) && Number.isInteger(n) && n > 0 ? n : "invalid";
+    };
+
+    const fCliente = intFiltro(cliente_id);
+    const fZona    = intFiltro(zona_id);
+    const fSede    = intFiltro(sede_id);
+    if (fCliente === "invalid" || fZona === "invalid" || fSede === "invalid") {
+      return res.status(400).json({ error: "Parámetros inválidos: cliente_id, zona_id y sede_id deben ser enteros positivos" });
+    }
+
+    // WHERE filtra solo lo que aplica a puestos_operativos (NUNCA a ps,
+    // para no convertir el LEFT JOIN en INNER JOIN y perder puestos sin slot).
+    const params: unknown[] = [];
+    const clauses: string[] = ["po.activo = TRUE"];
+
+    if (fCliente !== null) {
+      params.push(fCliente);
+      clauses.push(`po.cliente_id = $${params.length}`);
+    }
+    if (fZona !== null) {
+      params.push(fZona);
+      clauses.push(`po.zona_operativa_id = $${params.length}`);
+    }
+    if (fSede !== null) {
+      params.push(fSede);
+      clauses.push(`po.sede_id = $${params.length}`);
+    }
+    // solo_vacantes: incluye slots sin titular Y puestos sin slots configurados.
+    // Como ps.activo va en el ON del JOIN, las filas con ps.* todo en NULL
+    // (puestos sin slots activos) cuentan como vacantes.
+    if (String(solo_vacantes ?? "") === "1") {
+      clauses.push(`ps.empleado_id IS NULL`);
+    }
+
+    const where = `WHERE ${clauses.join(" AND ")}`;
+
+    const slotsQ = await pool.query(
+      `
+      SELECT
+        po.cliente_id,
+        po.cliente_nombre,
+        po.sede_id,
+        cs.nombre                       AS sede_nombre,
+        po.zona_operativa_id            AS zona_id,
+        oz.nombre                       AS zona_nombre,
+        esup.nombre_completo            AS supervisor_nombre,
+        po.id                           AS puesto_id,
+        po.nombre                       AS puesto_nombre,
+        po.tipo_servicio,
+        po.tipo_puesto,
+        po.turno                        AS puesto_turno,
+        po.jornada,
+        po.horario                      AS puesto_horario,
+        po.cantidad_contratada,
+        ps.id                           AS slot_id,
+        ps.slot_numero,
+        ps.empleado_id,
+        e.nombre_completo               AS titular_nombre,
+        ps.horas_turno,
+        to_char(ps.hora_entrada, 'HH24:MI') AS hora_entrada,
+        ps.dias_trabajo,
+        ps.dias_medio_turno,
+        COALESCE(ps.longitud_ciclo, 14) AS longitud_ciclo,
+        ps.hora_entrada_por_semana,
+        to_char(ps.fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
+        ps.notas
+      FROM puestos_operativos po
+      LEFT JOIN puesto_slots ps          ON ps.puesto_id = po.id AND ps.activo = TRUE
+      LEFT JOIN employees e              ON e.id = ps.empleado_id
+      LEFT JOIN client_sedes cs          ON cs.id = po.sede_id
+      LEFT JOIN operational_zones oz     ON oz.id = po.zona_operativa_id
+      LEFT JOIN employees esup           ON esup.id = oz.supervisor_employee_id
+      ${where}
+      ORDER BY po.cliente_nombre NULLS LAST, cs.nombre NULLS LAST,
+               po.nombre, ps.slot_numero NULLS FIRST
+      `,
+      params,
+    );
+
+    // Stats: total_puestos cuenta puestos únicos (con o sin slots);
+    // las demás métricas filtran a slots reales (ps.id NOT NULL) para no inflar.
+    const globalQ = await pool.query(
+      `
+      SELECT
+        COUNT(DISTINCT po.cliente_id)                                                   AS total_clientes,
+        COUNT(DISTINCT po.id)                                                           AS total_puestos,
+        COUNT(ps.id)                                                                    AS total_slots,
+        COUNT(*) FILTER (WHERE ps.id IS NOT NULL AND ps.empleado_id IS NOT NULL)        AS slots_con_titular,
+        COUNT(*) FILTER (WHERE ps.id IS NOT NULL AND ps.empleado_id IS NULL)            AS slots_vacantes,
+        COUNT(*) FILTER (WHERE ps.id IS NOT NULL AND ps.horas_turno = 24)               AS turnos_24h,
+        COUNT(*) FILTER (WHERE ps.id IS NOT NULL AND ps.horas_turno = 12)               AS turnos_12h,
+        COUNT(*) FILTER (WHERE ps.id IS NOT NULL AND COALESCE(ps.longitud_ciclo,14)=7)  AS rot_1_sem,
+        COUNT(*) FILTER (WHERE ps.id IS NOT NULL AND COALESCE(ps.longitud_ciclo,14)=14) AS rot_2_sem,
+        COUNT(*) FILTER (WHERE ps.id IS NOT NULL AND COALESCE(ps.longitud_ciclo,14)=21) AS rot_3_sem,
+        COUNT(*) FILTER (WHERE ps.id IS NOT NULL AND COALESCE(ps.longitud_ciclo,14)=28) AS rot_4_sem
+      FROM puestos_operativos po
+      LEFT JOIN puesto_slots ps ON ps.puesto_id = po.id AND ps.activo = TRUE
+      ${where}
+      `,
+      params,
+    );
+
+    const clientesQ = await pool.query(
+      `SELECT id, nombre FROM clients WHERE estado = 'activo' ORDER BY nombre`,
+    );
+    const zonasQ = await pool.query(
+      `SELECT id, nombre FROM operational_zones WHERE estado = 'activo' ORDER BY nombre`,
+    );
+
+    res.json({
+      generadoEn: new Date().toISOString(),
+      globalStats: globalQ.rows[0],
+      slots: slotsQ.rows,
+      clientesDisponibles: clientesQ.rows,
+      zonasDisponibles: zonasQ.rows,
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /reportes/plantilla-turnos error");
+    res.status(500).json({ error: "Error al generar reporte de plantilla de turnos" });
+  }
+});
+
 router.get("/reportes/cobertura-zonas", async (req, res) => {
   try {
     const { desde, hasta, zona_id, cliente_id, sede_id, tipo_cobertura, supervisor_id } = req.query;

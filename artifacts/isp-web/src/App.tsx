@@ -52,6 +52,7 @@ import AdminTurnos from "@/admin/pages/Turnos";
 import AdminFichaCliente from "@/admin/pages/FichaCliente";
 import AdminIGSS from "@/admin/pages/IGSS";
 import AdminReporteCoberturaZonas from "@/admin/pages/ReporteCoberturaZonas";
+import AdminReportePlantillaTurnos from "@/admin/pages/ReportePlantillaTurnos";
 import AdminCambiosEstructurales from "@/admin/pages/CambiosEstructurales";
 import AdminPipelineServicios from "@/admin/pages/PipelineServicios";
 import AdminTableroServicios from "@/admin/pages/TableroServicios";
@@ -208,6 +209,9 @@ function Router() {
       </Route>
       <Route path="/admin/reportes/cobertura-zonas">
         {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminReporteCoberturaZonas /></AuthGuard>}
+      </Route>
+      <Route path="/admin/reportes/plantilla-turnos">
+        {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminReportePlantillaTurnos /></AuthGuard>}
       </Route>
       <Route path="/admin/reportes">
         {() => <AuthGuard requiredRoles={["admin", "operaciones", "rrhh", "comercial", "supervisor"]}><AdminReportes /></AuthGuard>}
