@@ -325,7 +325,7 @@ export default function PlantillasContrato() {
                   type="text"
                   value={plantilla.titulo}
                   onChange={(e) => setPlantilla({ ...plantilla, titulo: e.target.value })}
-                  className="w-full border rounded px-3 py-2"
+                  className="w-full border rounded px-3 py-2 bg-white text-gray-900 placeholder-gray-400"
                 />
               </Bloque>
 
@@ -334,7 +334,7 @@ export default function PlantillasContrato() {
                   type="text"
                   value={plantilla.subtitulo ?? ""}
                   onChange={(e) => setPlantilla({ ...plantilla, subtitulo: e.target.value })}
-                  className="w-full border rounded px-3 py-2"
+                  className="w-full border rounded px-3 py-2 bg-white text-gray-900 placeholder-gray-400"
                 />
               </Bloque>
 
@@ -343,7 +343,7 @@ export default function PlantillasContrato() {
                   value={plantilla.encabezado}
                   onChange={(e) => setPlantilla({ ...plantilla, encabezado: e.target.value })}
                   rows={8}
-                  className="w-full border rounded px-3 py-2 font-mono text-xs"
+                  className="w-full border rounded px-3 py-2 font-mono text-xs bg-white text-gray-900 placeholder-gray-400"
                 />
               </Bloque>
 
@@ -403,7 +403,7 @@ export default function PlantillasContrato() {
                       value={cl.contenido}
                       onChange={(e) => updateClausula(i, { contenido: e.target.value })}
                       rows={Math.min(20, Math.max(4, cl.contenido.split("\n").length + 1))}
-                      className="w-full border rounded px-3 py-2 font-mono text-xs"
+                      className="w-full border rounded px-3 py-2 font-mono text-xs bg-white text-gray-900 placeholder-gray-400"
                       placeholder="Contenido de la cláusula. Usa {{variable}} para insertar datos."
                     />
                   </div>
@@ -415,7 +415,7 @@ export default function PlantillasContrato() {
                   value={plantilla.cierre}
                   onChange={(e) => setPlantilla({ ...plantilla, cierre: e.target.value })}
                   rows={4}
-                  className="w-full border rounded px-3 py-2 font-mono text-xs"
+                  className="w-full border rounded px-3 py-2 font-mono text-xs bg-white text-gray-900 placeholder-gray-400"
                 />
               </Bloque>
 
@@ -424,7 +424,7 @@ export default function PlantillasContrato() {
                   value={plantilla.notas ?? ""}
                   onChange={(e) => setPlantilla({ ...plantilla, notas: e.target.value })}
                   rows={2}
-                  className="w-full border rounded px-3 py-2 text-xs"
+                  className="w-full border rounded px-3 py-2 text-xs bg-white text-gray-900 placeholder-gray-400"
                   placeholder="Ej: Cambio solicitado por gerencia el ..."
                 />
               </Bloque>
