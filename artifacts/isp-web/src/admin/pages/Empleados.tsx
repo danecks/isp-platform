@@ -1258,7 +1258,7 @@ function IgssSection({ emp }: { emp: Empleado }) {
     try {
       await fetch(`${API_BASE}/employees/${emp.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...sessionHeader() },
         body: JSON.stringify({
           aplicaIgssGeneral: form.aplicaIgssGeneral,
           estadoIgss:        form.estadoIgss,
@@ -1539,7 +1539,7 @@ function TabPerfil({ emp }: { emp: Empleado }) {
     try {
       const r = await fetch(`${API_BASE}/employees/${emp.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...sessionHeader() },
         body: JSON.stringify({ tipoPersonal: tipoValue }),
       });
       if (!r.ok) throw new Error("Error al guardar");
@@ -2295,7 +2295,7 @@ function TabHistorialAsignaciones({ empId }: { empId: number }) {
       const params = new URLSearchParams();
       if (desde) params.set("desde", desde);
       if (hasta) params.set("hasta", hasta);
-      const r = await fetch(`${API_BASE}/employees/${empId}/historial-asignaciones?${params}`);
+      const r = await fetch(`${API_BASE}/employees/${empId}/historial-asignaciones?${params}`, { headers: sessionHeader() });
       if (!r.ok) throw new Error(`Error ${r.status}`);
       return r.json();
     },
@@ -2875,7 +2875,7 @@ function TabAnticipo({ emp }: { emp: Empleado }) {
       }
       const r = await fetch(`${API_BASE}/employees/${emp.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...sessionHeader() },
         body: JSON.stringify({ limiteAnticipo: valor }),
       });
       if (!r.ok) throw new Error("Error");
@@ -4349,7 +4349,7 @@ function FichaModal({
   useEffect(() => {
     if (tab !== "qr") return;
     setQrTokenData("loading");
-    fetch(`/api/agente/tokens`)
+    fetch(`/api/agente/tokens`, { headers: sessionHeader() })
       .then(r => r.ok ? r.json() : [])
       .then((lista: Array<{ employee_id: number; qr_token: string | null; token_id: number | null }>) => {
         const found = lista.find(a => a.employee_id === emp.id);
@@ -4363,7 +4363,7 @@ function FichaModal({
     try {
       const res = await fetch("/api/agente/tokens/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...sessionHeader() },
         body: JSON.stringify({ employee_id: emp.id }),
       });
       const data = await res.json();
@@ -5118,7 +5118,7 @@ export default function Empleados() {
       // POST directo para detectar 409 con código REINGRESO_DISPONIBLE
       const r = await fetch(`${API_BASE}/employees`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...sessionHeader() },
         body: JSON.stringify(data),
       });
       if (r.status === 409) {
@@ -5147,7 +5147,7 @@ export default function Empleados() {
     try {
       const r = await fetch(`${API_BASE}/employees/${existing.id}/reingreso`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...sessionHeader() },
         body: JSON.stringify(formData),
       });
       if (!r.ok) {

@@ -737,7 +737,7 @@ function ModalSegmentos({
   const { data: segmentos = [], isLoading, refetch } = useQuery<Segmento[]>({
     queryKey: ["segmentos", fecha, puesto.id],
     queryFn: () =>
-      fetch(`${API_BASE}/cobertura/segmentos?fecha=${fecha}&puestoId=${puesto.id}`)
+      fetch(`${API_BASE}/cobertura/segmentos?fecha=${fecha}&puestoId=${puesto.id}`, { headers: { "x-isp-session": getSession() } })
         .then((r) => r.json()),
   });
 
@@ -835,7 +835,7 @@ function ModalSegmentos({
     try {
       const res = await fetch(`${API_BASE}/cobertura/segmentos`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
         body: JSON.stringify({
           fecha,
           puestoId:       puesto.id,
@@ -5066,7 +5066,7 @@ function ModalSustitucion({
 
   useEffect(() => {
     if (!aplicaHE) return;
-    fetch(`${API_BASE}/nomina/tarifas-he`).then(r => r.json()).then((rows: any[]) => {
+    fetch(`${API_BASE}/nomina/tarifas-he`, { headers: { "x-isp-session": getSession() } }).then(r => r.json()).then((rows: any[]) => {
       const found = rows.find((r: any) => r.jornada === jornadaReal) ?? rows[0];
       if (found) {
         const t = { tarifa: parseFloat(found.tarifa), horas_turno: parseInt(found.horas_turno) };
@@ -6032,7 +6032,7 @@ function ModalCierre({
   useEffect(() => {
     const ctrl = new AbortController();
     const qp = fechaIso ? `?fecha=${fechaIso}` : "";
-    fetch(`${API_BASE}/operaciones/cierre/preview-custodias${qp}`, { signal: ctrl.signal })
+    fetch(`${API_BASE}/operaciones/cierre/preview-custodias${qp}`, { signal: ctrl.signal, headers: { "x-isp-session": getSession() } })
       .then(r => r.json())
       .then(d => {
         setPreviewArmas(d.armas ?? []);
@@ -6792,14 +6792,14 @@ export default function Operaciones() {
     if (plan) {
       await fetch(`${API_BASE}/operaciones/planificacion-futura/${plan.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
         body: JSON.stringify({ ...data }),
       });
       toast({ title: "Plan actualizado", description: `${puesto.nombre} · ${formatFechaVista(fechaVista)}` });
     } else {
       await fetch(`${API_BASE}/operaciones/planificacion-futura`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
         body: JSON.stringify({
           fecha: fechaVista,
           puestoId: puesto.id,
@@ -6815,7 +6815,7 @@ export default function Operaciones() {
   }
 
   async function eliminarPlanFuturo(planId: number) {
-    await fetch(`${API_BASE}/operaciones/planificacion-futura/${planId}`, { method: "DELETE" });
+    await fetch(`${API_BASE}/operaciones/planificacion-futura/${planId}`, { method: "DELETE", headers: { "x-isp-session": getSession() } });
     toast({ title: "Plan cancelado" });
     setModalPlanFuturo(null);
     invalidateFuture();
@@ -6826,7 +6826,7 @@ export default function Operaciones() {
     const ip = modalPlanSSA;
     const res = await fetch(`${API_BASE}/operaciones/planificacion-futura/ssa-batch`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
       body: JSON.stringify({
         fecha: fechaVista,
         ssaId: ip.ssa_id,
@@ -6951,7 +6951,7 @@ export default function Operaciones() {
     try {
       const resp = await fetch(`${API_BASE}/operaciones/asignar-custodia`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
         body: JSON.stringify({
           clienteId,
           slotNumero,
@@ -7061,7 +7061,7 @@ export default function Operaciones() {
     // Flujo normal: verificar disponibilidad y mostrar modal de confirmación
     try {
       const poolStatus = detectarPoolStatus(agente);
-      const disp = await fetch(`${API_BASE}/operaciones/agentes/${agente.id}/disponibilidad`).then((r) => r.json());
+      const disp = await fetch(`${API_BASE}/operaciones/agentes/${agente.id}/disponibilidad`, { headers: { "x-isp-session": getSession() } }).then((r) => r.json());
       if (disp.puestosActivos.length > 0) {
         const yaTiene = disp.puestosActivos[0];
         setModalSustitucion({
@@ -7254,7 +7254,7 @@ export default function Operaciones() {
 
           const resp = await fetch(`${API_BASE}/operaciones/asignar-custodia`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
             body: JSON.stringify({
               clienteId,
               slotNumero,

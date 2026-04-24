@@ -12,6 +12,9 @@ import { useLocation } from "wouter";
 
 const API_BASE = "/api";
 
+// Header de sesión admin para todos los fetches del archivo.
+const sessionHeader = () => ({ "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" });
+
 interface CierreListItem {
   id: number;
   fecha_iso: string;
@@ -60,7 +63,7 @@ function ModalDetalle({
   const { data, isLoading, error } = useQuery<CierreDetalle>({
     queryKey: ["cierre-detalle", fechaISO],
     queryFn: () =>
-      fetch(`${API_BASE}/operaciones/cierres/${fechaISO}`).then((r) => r.json()),
+      fetch(`${API_BASE}/operaciones/cierres/${fechaISO}`, { headers: sessionHeader() }).then((r) => r.json()),
   });
 
   const cierre = data?.cierre;
@@ -411,7 +414,7 @@ export default function CierresHistorico() {
   const { data: cierres = [], isLoading, error } = useQuery<CierreListItem[]>({
     queryKey: ["operaciones-cierres-historial"],
     queryFn: () =>
-      fetch(`${API_BASE}/operaciones/cierres`).then((r) => r.json()),
+      fetch(`${API_BASE}/operaciones/cierres`, { headers: sessionHeader() }).then((r) => r.json()),
   });
 
   return (

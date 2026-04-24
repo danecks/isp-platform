@@ -2162,7 +2162,7 @@ function DevengadosEmpleadoTab() {
 
   const { data: resumen, refetch: refetchResumen } = useQuery<DevResumen>({
     queryKey: ["igss-devengados-resumen"],
-    queryFn: () => fetch(`${API_BASE}/igss/devengados/resumen`).then((r) => r.json()),
+    queryFn: () => fetch(`${API_BASE}/igss/devengados/resumen`, { headers: { "x-isp-session": getSession() } }).then((r) => r.json()),
   });
 
   const parseFile = useCallback((file: File) => {
@@ -2191,7 +2191,7 @@ function DevengadosEmpleadoTab() {
     try {
       const r = await fetch(`${API_BASE}/igss/importar-devengados`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
         body: JSON.stringify({ rows, preview }),
       });
       const d = await r.json();

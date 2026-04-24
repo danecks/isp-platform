@@ -177,6 +177,40 @@
 - Middleware `requirePermiso("permiso.x")` valida.
 - Tabla `permisos_ruta_rol` — control granular de rutas.
 
+### Middleware `permisos-middleware.ts` (modo estricto, abr 2026)
+
+Implementa el cierre por defecto de la API: **toda ruta admin requiere sesión válida y permiso**, salvo las explícitamente whitelisted.
+
+- **`ROUTE_MODULO_MAP`**: mapa de prefijo de ruta → clave de módulo (la misma que se guarda en `rol_permisos.modulo_clave`). Ejemplos reales del código: `"/employees" → "empleados"`, `"/operaciones" → "pizarron"`, `"/planificacion-futura" → "pizarron"`, `"/cms" → "cms"`, `"/agente/tokens" → "carnets_qr"`. El matcheo es **PRECISO**: el path debe ser exactamente el prefijo o seguir con `/` (esto evita que `/wa` matchee `/wa-config`, o que `/roles` matchee `/roles/:clave`).
+- **`isPublicPath(path, method)`**: rutas legítimamente públicas. Hoy son:
+  - Exactas (cualquier método): `/healthz`, `/health`, `/auth/login`, `/auth/change-password`, `/session/permisos`, `/roles/modulos`.
+  - `GET /cms/pages/:key` (consumido por el sitio web público — solo páginas con `status='published'` y campos sanitizados; el listado `/cms/pages` queda admin porque incluye borradores y metadata interna).
+  - Prefijos seguros con su propio guard: `/portal/*` (tiene `requirePortalAuth`), `/webhooks/whatsapp/*` (validado por Meta).
+  - POST-only para formularios públicos: `POST /leads`, `POST /applications` (GET/PATCH/DELETE de esos recursos siguen siendo admin).
+- **Comportamiento ante sesión inválida o ausente**: si la ruta está mapeada en `ROUTE_MODULO_MAP` y no hay sesión válida → **401** (no 200 con datos vacíos, lo que cerró la fuga histórica). Si la ruta no está mapeada y no es pública, el middleware hace `next()` (passthrough) y queda en manos del handler/router específico decidir si requerir auth — por eso es importante mantener `ROUTE_MODULO_MAP` actualizado al agregar módulos nuevos.
+- **Caché en memoria**: permisos por usuario con TTL 30s para no golpear la DB en cada request.
+
+#### Convención frontend
+
+Todas las páginas admin envían el header `x-isp-session` en cada fetch. Cada archivo define un helper local al inicio:
+
+```ts
+const sessionHeader = () => ({ "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" });
+```
+
+Y lo aplica en cada request:
+
+```ts
+fetch(`${API_BASE}/employees/${id}`, { headers: sessionHeader() })
+fetch(`${API_BASE}/employees/${id}`, {
+  method: "PATCH",
+  headers: { "Content-Type": "application/json", ...sessionHeader() },
+  body: JSON.stringify(data),
+})
+```
+
+Si una pantalla admin empieza a devolver 401 después de un cambio, lo más probable es que un `fetch` nuevo se haya quedado **sin** el header de sesión. Buscar con `rg "fetch\(\`\\\$\{API_BASE\}" archivo.tsx` los fetches del archivo y verificar que cada uno lleve `headers: sessionHeader()` (o el helper equivalente del archivo: `hd()`, `hdr()`, `h()`).
+
 ### Variables de entorno
 | Variable | Descripción | Dónde se lee |
 |----------|-------------|--------------|

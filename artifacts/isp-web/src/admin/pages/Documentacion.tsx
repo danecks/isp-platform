@@ -12,6 +12,9 @@ interface DocItem {
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "";
 
+// Header de sesión admin para todos los fetches del archivo.
+const sessionHeader = () => ({ "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" });
+
 export default function Documentacion() {
   const [items, setItems] = useState<DocItem[]>([]);
   const [activeSlug, setActiveSlug] = useState<string | null>(null);
@@ -28,7 +31,7 @@ export default function Documentacion() {
       setLoadingList(true);
       setError(null);
       try {
-        const res = await fetch(`${API_BASE}/api/docs`, { credentials: "include" });
+        const res = await fetch(`${API_BASE}/api/docs`, { credentials: "include", headers: sessionHeader() });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as { items: DocItem[] };
         if (cancelled) return;
@@ -55,7 +58,7 @@ export default function Documentacion() {
       setLoadingDoc(true);
       setError(null);
       try {
-        const res = await fetch(`${API_BASE}/api/docs/${activeSlug}`, { credentials: "include" });
+        const res = await fetch(`${API_BASE}/api/docs/${activeSlug}`, { credentials: "include", headers: sessionHeader() });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const text = await res.text();
         if (!cancelled) setContent(text);

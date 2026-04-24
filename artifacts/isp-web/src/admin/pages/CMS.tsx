@@ -36,6 +36,9 @@ import {
 
 const API_BASE = "/api";
 
+// Header de sesión admin para todos los fetches del archivo.
+const sessionHeader = () => ({ "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" });
+
 interface CmsAdminData {
   page_key: string;
   content: Record<string, string>;
@@ -54,13 +57,15 @@ interface PageListItem {
 }
 
 async function fetchAdminPage(key: string): Promise<CmsAdminData> {
-  const res = await fetch(`${API_BASE}/cms/admin/pages/${key}`);
+  const res = await fetch(`${API_BASE}/cms/admin/pages/${key}`, { headers: sessionHeader() });
   if (!res.ok) throw new Error("Error al cargar página");
   return res.json();
 }
 
 async function fetchPageList(): Promise<PageListItem[]> {
-  const res = await fetch(`${API_BASE}/cms/pages`);
+  // /cms/pages es admin (incluye borradores y metadata interna).
+  // Para el sitio público solo se expone /cms/pages/:key (publicadas + sanitizado).
+  const res = await fetch(`${API_BASE}/cms/pages`, { headers: sessionHeader() });
   if (!res.ok) return [];
   return res.json();
 }
@@ -68,7 +73,7 @@ async function fetchPageList(): Promise<PageListItem[]> {
 async function saveDraft(key: string, body: object): Promise<void> {
   const res = await fetch(`${API_BASE}/cms/admin/pages/${key}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...sessionHeader() },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error("Error al guardar borrador");
@@ -77,7 +82,7 @@ async function saveDraft(key: string, body: object): Promise<void> {
 async function publishPage(key: string, body: object): Promise<void> {
   const res = await fetch(`${API_BASE}/cms/admin/pages/${key}/publish`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...sessionHeader() },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error("Error al publicar página");

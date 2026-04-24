@@ -70,6 +70,10 @@ function isPublicPath(path: string, method: string): boolean {
     case "/roles/modulos":             // catálogo de módulos para UI de permisos
       return true;
   }
+  // CMS: solo el contenido publicado de cada página es público (el sitio lo consume
+  // por page_key). El listado /cms/pages incluye borradores y metadata interna
+  // (status, updated_by) → queda como admin vía ROUTE_MODULO_MAP("/cms").
+  if (method === "GET" && path.startsWith("/cms/pages/")) return true;
   // Prefijos seguros: el path debe ser exactamente el prefijo o seguir con "/"
   const safePrefixes = [
     "/portal",            // tiene su propio middleware requirePortalAuth

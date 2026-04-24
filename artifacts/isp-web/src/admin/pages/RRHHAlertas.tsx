@@ -12,6 +12,9 @@ import { useLocation } from "wouter";
 
 const API_BASE = "/api";
 
+// Header de sesión admin para todos los fetches del archivo.
+const sessionHeader = () => ({ "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" });
+
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface DatosClave {
@@ -359,7 +362,7 @@ export default function RRHHAlertas() {
       const params = new URLSearchParams();
       params.set("estado", filtroEstado);
       if (filtroPrioridad) params.set("prioridad", filtroPrioridad);
-      return fetch(`${API_BASE}/rrhh/alertas?${params}`).then((r) => r.json());
+      return fetch(`${API_BASE}/rrhh/alertas?${params}`, { headers: sessionHeader() }).then((r) => r.json());
     },
     staleTime: 30_000,
     refetchInterval: 60_000,
@@ -367,7 +370,7 @@ export default function RRHHAlertas() {
 
   const mutacionGenerar = useMutation({
     mutationFn: () =>
-      fetch(`${API_BASE}/rrhh/alertas/generar`, { method: "POST" }).then((r) => r.json()),
+      fetch(`${API_BASE}/rrhh/alertas/generar`, { method: "POST", headers: sessionHeader() }).then((r) => r.json()),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["rrhh-alertas"] });
       toast({
@@ -382,7 +385,7 @@ export default function RRHHAlertas() {
     mutationFn: ({ id, estado }: { id: number; estado: string }) =>
       fetch(`${API_BASE}/rrhh/alertas/${id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...sessionHeader() },
         body: JSON.stringify({ estado }),
       }).then((r) => r.json()),
     onSuccess: () => {

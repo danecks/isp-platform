@@ -12,6 +12,9 @@ import {
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
 const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
+// Header de sesión admin para todos los fetches del archivo.
+const sessionHeader = () => ({ "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" });
+
 interface ClienteCustodia {
   clienteId: number;
   clienteNombre: string;
@@ -71,7 +74,7 @@ export default function Custodias() {
   const { data: dashboard = [], isLoading, isError, refetch, isFetching } = useQuery<ClienteCustodia[]>({
     queryKey: ["custodias-dashboard", fecha],
     queryFn: async () => {
-      const r = await fetch(`${API_BASE}/custodias/dashboard?fecha=${fecha}`, { credentials: "include" });
+      const r = await fetch(`${API_BASE}/custodias/dashboard?fecha=${fecha}`, { credentials: "include", headers: sessionHeader() });
       if (!r.ok) throw new Error("Error al cargar");
       return r.json();
     },
@@ -454,7 +457,7 @@ function FuerzaEditor({ clienteId, onSaved }: { clienteId: number; onSaved: () =
   const { isLoading } = useQuery({
     queryKey: ["custodia-fuerza", clienteId],
     queryFn: async () => {
-      const r = await fetch(`${API_BASE}/custodias/cliente/${clienteId}/fuerza`, { credentials: "include" });
+      const r = await fetch(`${API_BASE}/custodias/cliente/${clienteId}/fuerza`, { credentials: "include", headers: sessionHeader() });
       if (!r.ok) throw new Error("Error");
       const data = await r.json();
       setFuerza(data.fuerza);
@@ -467,7 +470,7 @@ function FuerzaEditor({ clienteId, onSaved }: { clienteId: number; onSaved: () =
     mutationFn: async () => {
       const r = await fetch(`${API_BASE}/custodias/cliente/${clienteId}/fuerza`, {
         method: "PUT", credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...sessionHeader() },
         body: JSON.stringify({ fuerza }),
       });
       if (!r.ok) throw new Error("Error");
@@ -514,7 +517,7 @@ function AsignarPanel({ clienteId, fecha, busqueda, onBusqueda, onChanged }: {
   const { data: pool = [], isLoading } = useQuery<PoolAgent[]>({
     queryKey: ["custodia-pool", fecha],
     queryFn: async () => {
-      const r = await fetch(`${API_BASE}/custodias/pool-disponible?fecha=${fecha}`, { credentials: "include" });
+      const r = await fetch(`${API_BASE}/custodias/pool-disponible?fecha=${fecha}`, { credentials: "include", headers: sessionHeader() });
       if (!r.ok) throw new Error("Error");
       return r.json();
     },
@@ -524,7 +527,7 @@ function AsignarPanel({ clienteId, fecha, busqueda, onBusqueda, onChanged }: {
     mutationFn: async (employeeId: number) => {
       const r = await fetch(`${API_BASE}/custodias/cliente/${clienteId}/asignar`, {
         method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...sessionHeader() },
         body: JSON.stringify({ fecha, employeeId }),
       });
       if (!r.ok) {
@@ -589,7 +592,7 @@ function HojaImprimiblePanel({ clienteId, fecha }: { clienteId: number; fecha: s
   const { data, isLoading } = useQuery<HojaImprimible>({
     queryKey: ["custodia-hoja", clienteId, fecha],
     queryFn: async () => {
-      const r = await fetch(`${API_BASE}/custodias/cliente/${clienteId}/hoja-imprimible?fecha=${fecha}`, { credentials: "include" });
+      const r = await fetch(`${API_BASE}/custodias/cliente/${clienteId}/hoja-imprimible?fecha=${fecha}`, { credentials: "include", headers: sessionHeader() });
       if (!r.ok) throw new Error("Error");
       return r.json();
     },

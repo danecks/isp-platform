@@ -11,6 +11,9 @@ import { AdminLayout } from "../layout/AdminLayout";
 
 const API_BASE = "/api";
 
+// Header de sesión admin para todos los fetches del archivo.
+const sessionHeader = () => ({ "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" });
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function iniciales(n: string | null | undefined) {
@@ -362,7 +365,7 @@ export default function PizarronHistorico() {
   // Lista de cierres disponibles
   const { data: cierres = [], isLoading: cargandoCierres } = useQuery<CierreListItem[]>({
     queryKey: ["pizarron-historico-cierres-lista"],
-    queryFn: () => fetch(`${API_BASE}/operaciones/cierres`).then((r) => r.json()),
+    queryFn: () => fetch(`${API_BASE}/operaciones/cierres`, { headers: sessionHeader() }).then((r) => r.json()),
     staleTime: 60_000,
   });
 
@@ -370,7 +373,7 @@ export default function PizarronHistorico() {
   const { data, isLoading: cargandoPizarron, error } = useQuery<PizarronHistoricoData>({
     queryKey: ["pizarron-historico", fechaSel],
     queryFn: () =>
-      fetch(`${API_BASE}/operaciones/pizarron-historico/${fechaSel}`).then(async (r) => {
+      fetch(`${API_BASE}/operaciones/pizarron-historico/${fechaSel}`, { headers: sessionHeader() }).then(async (r) => {
         if (!r.ok) throw new Error((await r.json()).error ?? "Error al cargar");
         return r.json();
       }),
