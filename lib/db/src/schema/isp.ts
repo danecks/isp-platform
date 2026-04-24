@@ -449,6 +449,29 @@ export const waNotificacionesLogTable = pgTable("wa_notificaciones_log", {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PLANTILLAS DE CONTRATO LABORAL — editor de plantillas (inicial / post_prueba)
+// ─────────────────────────────────────────────────────────────────────────────
+export const plantillasContratoTable = pgTable("plantillas_contrato", {
+  id: serial("id").primaryKey(),
+  // "inicial" (con período de prueba 60 días) | "post_prueba" (indefinido)
+  tipo: varchar("tipo", { length: 32 }).notNull(),
+  version: integer("version").notNull().default(1),
+  activa: boolean("activa").notNull().default(false),
+  titulo: varchar("titulo", { length: 255 }).notNull().default("CONTRATO INDIVIDUAL DE TRABAJO"),
+  subtitulo: varchar("subtitulo", { length: 255 }),
+  // Párrafo de comparecientes (encabezado del contrato).
+  encabezado: text("encabezado").notNull(),
+  // JSON serializado: Array<{ numero: string, titulo: string, contenido: string }>
+  clausulas: text("clausulas").notNull(),
+  // Párrafo de cierre (antes de firmas).
+  cierre: text("cierre").notNull(),
+  notas: text("notas"),
+  createdBy: varchar("created_by", { length: 255 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Zod insert schemas
 // ─────────────────────────────────────────────────────────────────────────────
 export const insertTareaSchema = createInsertSchema(tareasTable).omit({ createdAt: true, updatedAt: true });

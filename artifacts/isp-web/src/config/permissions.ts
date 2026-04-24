@@ -358,6 +358,13 @@ export const NAV_SECTIONS: NavSection[] = [
         roles: ["admin"],
       },
       {
+        path: "/admin/configuracion/plantillas-contrato",
+        label: "Plantillas de Contrato",
+        icon: BookOpen,
+        clave: "plantillas_contrato",
+        roles: ["admin", "rrhh"],
+      },
+      {
         path: "/admin/cms",
         label: "CMS Web",
         icon: Globe,

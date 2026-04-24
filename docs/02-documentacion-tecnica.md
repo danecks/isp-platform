@@ -556,3 +556,56 @@ export async function migrarPESP01() {
     campo derivado almacenado.
   - Misma fórmula que para los comparecientes (`floor((hoy - dob)
     / 365.25)`).
+
+### 10.4 Editor de plantillas de contrato laboral (abr 2026)
+- **Necesidad**: el texto del Contrato Individual de Trabajo (inicial y
+  post-prueba) estaba hardcodeado en `pdfRrhh.ts`. Cualquier cambio
+  legal o redacción requería tocar código. Se necesitaba un editor en
+  Admin con variables del estilo `{{empleado_nombre}}`.
+- **BD**: nueva tabla `plantillas_contrato`
+  (`id, tipo, version, activa, titulo, subtitulo, encabezado, clausulas
+  TEXT (JSON), cierre, notas, created_by/at, updated_at`) +
+  índice `plantillas_contrato_tipo_activa_idx`. Creada con SQL directo
+  porque drizzle-kit push detectó nombre similar y proponía RENOMBRAR
+  tablas existentes (peligro). Schema en `lib/db/src/schema/isp.ts`.
+- **API** (`routes/plantillas-contrato.ts`):
+  - `GET /plantillas-contrato/variables` (público) — catálogo de
+    `{{vars}}` con descripción y ejemplo.
+  - `GET /plantillas-contrato/:tipo/activa` (público) — lazy-seed:
+    si no hay versión activa la inserta desde
+    `lib/plantillas-contrato-default.ts`.
+  - `GET /plantillas-contrato/:tipo/versiones` (admin/rrhh).
+  - `PUT /plantillas-contrato/:tipo` (admin/rrhh) — crea version+1
+    activa, desactiva las previas del mismo tipo.
+  - `POST /plantillas-contrato/:tipo/restaurar/:version` — activa una
+    versión vieja sin crear nueva fila.
+  - `POST /plantillas-contrato/:tipo/reset-default` — crea versión
+    nueva con el texto base del archivo defaults.
+- **Frontend**:
+  - Pantalla `admin/pages/configuracion/PlantillasContrato.tsx` con
+    tabs Inicial / Post-prueba, editor de cada cláusula
+    (subir/bajar/eliminar/agregar), bloques fijos para encabezado
+    y cierre, panel lateral de variables (clic = copia al portapapeles),
+    botones Guardar / Restaurar original / Versiones / Vista previa.
+  - Ruta `/admin/configuracion/plantillas-contrato` registrada en
+    `App.tsx`, sidebar entrada en `permissions.ts` sección 6
+    (Configuración) con permiso `plantillas_contrato` para roles
+    `admin` y `rrhh`.
+  - `pdfRrhh.ts → generarContratoLaboral`: ahora carga la plantilla
+    activa por `fetch /api/plantillas-contrato/:tipo/activa`,
+    construye un objeto `ctx` con todas las variables disponibles y
+    aplica `aplicarVars()` (regex `/\{\{var\}\}/`) sobre encabezado,
+    cada cláusula y cierre. Soporta:
+    - Párrafos separados por línea en blanco (`\n\n`).
+    - Negrita de párrafo completo envolviéndolo entre `**...**`.
+    - Si una variable no existe se deja el literal `{{nombre}}` para
+      que sea visible en revisión.
+  - El bloque hardcodeado de cláusulas (~210 líneas) fue eliminado de
+    `pdfRrhh.ts`. Las firmas siguen como layout fijo.
+- **Cambios de redacción aplicados al default**:
+  - Cláusula SEXTA: se eliminó el inciso (e) "Cobertura del IGSS" que
+    estaba duplicado/redundante; los incisos (e/f/g) se renumeraron
+    a (e/f).
+- **Observabilidad**: cada PUT/restore queda en logs del API con
+  `username`, `tipo`, `version`. La pantalla muestra historial
+  completo en modal con quién y cuándo creó cada versión.
