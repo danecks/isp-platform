@@ -528,6 +528,51 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       }
     }
 
+    // ── Verificar TITULAR DADO DE BAJA (PIZ-BAJA-01) ────────────────────────────
+    // Si el titular del puesto fue dado de baja (estado_laboral != 'activo'),
+    // el slot debe quedar VACÍO en el pizarrón para que se vea claramente que
+    // hay que reasignar titular. NO se borra la titularidad real (el operador
+    // lo hace manualmente desde "Quitar titularidad" o asigna a otro). Igual
+    // patrón virtual que vacaciones: solo afecta la respuesta del API.
+    {
+      const { rows: bajaRows } = await pool.query(`
+        SELECT id, estado_laboral
+          FROM employees
+         WHERE estado_laboral != 'activo'
+      `);
+      const bajaMap = new Map<number, string>();
+      for (const b of bajaRows) bajaMap.set(Number(b.id), String(b.estado_laboral));
+
+      if (bajaMap.size > 0) {
+        for (const p of puestosFinales) {
+          // 24x24: si par_trabajando está dado de baja
+          if (p.es_par_24x24 && p.par_trabajando && !(p as any).es_relevo_dia) {
+            const estado = bajaMap.get(Number(p.par_trabajando.employee_id));
+            if (estado) {
+              (p as any).agente_id              = null;
+              (p as any).agente_nombre          = null;
+              (p as any).estado                 = "descubierto";
+              (p as any).titular_dado_de_baja   = true;
+              (p as any).titular_estado_laboral = estado;
+              (p as any).agente_virtual_titular = false;
+            }
+          }
+          // No-24x24: si el agente_id actual (titular puro o real) está dado de baja
+          if (!p.es_par_24x24 && p.agente_id && !(p as any).es_relevo_dia) {
+            const estado = bajaMap.get(Number(p.agente_id));
+            if (estado) {
+              (p as any).agente_id              = null;
+              (p as any).agente_nombre          = null;
+              (p as any).estado                 = "descubierto";
+              (p as any).titular_dado_de_baja   = true;
+              (p as any).titular_estado_laboral = estado;
+              (p as any).agente_virtual_titular = false;
+            }
+          }
+        }
+      }
+    }
+
     // ── Inyectar slots virtuales de custodia ────────────────────────────────────
     const diaSemana = new Date(fechaConsultada + "T12:00:00Z").getUTCDay();
     const { rows: custodiaClientes } = await pool.query(`

@@ -1,6 +1,10 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
+import {
+  liberarTitularidadAgente,
+  lockTitularidadAgente,
+} from "./operaciones/_helpers/titularidad";
 
 export const puestoSlotsRouter = Router();
 
@@ -134,19 +138,62 @@ puestoSlotsRouter.post("/puestos/:puestoId/slots", async (req, res) => {
       ? [1,2,3,4,5,6,7,8,9,10,11,12,13,14]
       : (newSlotNum % 2 === 1) ? [1,3,5,7,9,11,13] : [2,4,6,8,10,12,14];
 
-    const { rows } = await pool.query(
-      `INSERT INTO puesto_slots
-         (puesto_id, slot_numero, horas_turno, hora_entrada, dias_trabajo, longitud_ciclo, fecha_inicio_ciclo, empleado_id, notas)
-       VALUES ($1, $2, $3, $4, $5, 14, $6, $7, $8)
-       RETURNING id, puesto_id, slot_numero, horas_turno,
-                 to_char(hora_entrada, 'HH24:MI') AS hora_entrada,
-                 dias_trabajo, dias_medio_turno, longitud_ciclo,
-                 to_char(fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
-                 empleado_id, notas, activo, created_at`,
-      [puestoId, newSlotNum, horasTurno, hora_entrada,
-       diasAuto, fecha_inicio_ciclo || null, empleado_id || null, notas || null]
-    );
-    res.status(201).json({ slot: rows[0] });
+    // PIZ-DUP-01: si el slot se crea CON empleado titular, validar activo
+    // y liberar titularidad previa en otros puestos (regla "1 titular = 1 puesto").
+    const asignandoEmpleado = empleado_id !== undefined && empleado_id !== null && Number(empleado_id) > 0;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      if (asignandoEmpleado) {
+        const empId = Number(empleado_id);
+        const { rows: empCheck } = await client.query(
+          `SELECT id, estado_laboral FROM employees WHERE id = $1`,
+          [empId]
+        );
+        if (!empCheck.length) {
+          await client.query("ROLLBACK");
+          return res.status(400).json({ error: "Colaborador no encontrado" });
+        }
+        if (empCheck[0].estado_laboral !== "activo") {
+          await client.query("ROLLBACK");
+          return res.status(409).json({
+            error: `No se puede asignar como titular: el colaborador está ${empCheck[0].estado_laboral} (no activo)`
+          });
+        }
+        await lockTitularidadAgente(client, empId);
+        const liberado = await liberarTitularidadAgente(client, empId, {
+          puestoId: puestoId,
+        });
+        if (liberado.puestos.length > 0 || liberado.custodias.length > 0) {
+          logger.info({
+            employeeId: empId,
+            puestoDestino: puestoId,
+            liberado,
+          }, "POST /puestos/:puestoId/slots: titularidad previa liberada");
+        }
+      }
+
+      const { rows } = await client.query(
+        `INSERT INTO puesto_slots
+           (puesto_id, slot_numero, horas_turno, hora_entrada, dias_trabajo, longitud_ciclo, fecha_inicio_ciclo, empleado_id, notas)
+         VALUES ($1, $2, $3, $4, $5, 14, $6, $7, $8)
+         RETURNING id, puesto_id, slot_numero, horas_turno,
+                   to_char(hora_entrada, 'HH24:MI') AS hora_entrada,
+                   dias_trabajo, dias_medio_turno, longitud_ciclo,
+                   to_char(fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
+                   empleado_id, notas, activo, created_at`,
+        [puestoId, newSlotNum, horasTurno, hora_entrada,
+         diasAuto, fecha_inicio_ciclo || null, empleado_id || null, notas || null]
+      );
+      await client.query("COMMIT");
+      res.status(201).json({ slot: rows[0] });
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
   } catch (err) {
     logger.error({ err }, "POST /puestos/:puestoId/slots error");
     res.status(500).json({ error: "Error al crear slot" });
@@ -193,8 +240,59 @@ puestoSlotsRouter.put("/slots/:id", async (req, res) => {
   updates.push(`updated_at = NOW()`);
   params.push(id);
 
+  // PIZ-DUP-01: si se está asignando un empleado al slot, validar que esté activo
+  // y liberar cualquier titularidad previa que tenga (regla "1 titular = 1 puesto").
+  // Toda la operación va dentro de una transacción + advisory lock por agente.
+  const asignandoEmpleado = empleado_id !== undefined && empleado_id !== null && Number(empleado_id) > 0;
+  const client = await pool.connect();
   try {
-    const { rows } = await pool.query(
+    await client.query("BEGIN");
+
+    // Resolver puesto destino del slot que estamos editando
+    const { rows: slotInfo } = await client.query(
+      `SELECT puesto_id FROM puesto_slots WHERE id = $1 AND activo = TRUE FOR UPDATE`,
+      [id]
+    );
+    if (!slotInfo.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Slot no encontrado" });
+    }
+    const puestoDestinoId = Number(slotInfo[0].puesto_id);
+
+    if (asignandoEmpleado) {
+      const empId = Number(empleado_id);
+      // Validar empleado activo
+      const { rows: empCheck } = await client.query(
+        `SELECT id, estado_laboral FROM employees WHERE id = $1`,
+        [empId]
+      );
+      if (!empCheck.length) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "Colaborador no encontrado" });
+      }
+      if (empCheck[0].estado_laboral !== "activo") {
+        await client.query("ROLLBACK");
+        return res.status(409).json({
+          error: `No se puede asignar como titular: el colaborador está ${empCheck[0].estado_laboral} (no activo)`
+        });
+      }
+
+      // Lock + liberar titularidad previa en otros puestos (modo estricto)
+      await lockTitularidadAgente(client, empId);
+      const liberado = await liberarTitularidadAgente(client, empId, {
+        puestoId: puestoDestinoId,
+      });
+      if (liberado.puestos.length > 0 || liberado.custodias.length > 0) {
+        logger.info({
+          employeeId: empId,
+          puestoDestino: puestoDestinoId,
+          slotId: id,
+          liberado,
+        }, "PUT /slots/:id: titularidad previa liberada (modo estricto)");
+      }
+    }
+
+    const { rows } = await client.query(
       `UPDATE puesto_slots SET ${updates.join(", ")} WHERE id = $${p} AND activo = TRUE
        RETURNING id, puesto_id, slot_numero, horas_turno,
                  to_char(hora_entrada, 'HH24:MI') AS hora_entrada,
@@ -203,11 +301,18 @@ puestoSlotsRouter.put("/slots/:id", async (req, res) => {
                  empleado_id, notas, activo, updated_at`,
       params
     );
-    if (!rows.length) return res.status(404).json({ error: "Slot no encontrado" });
+    if (!rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Slot no encontrado" });
+    }
+    await client.query("COMMIT");
     res.json({ slot: rows[0] });
   } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
     logger.error({ err }, "PUT /slots/:id error");
     res.status(500).json({ error: "Error al actualizar slot" });
+  } finally {
+    client.release();
   }
 });
 

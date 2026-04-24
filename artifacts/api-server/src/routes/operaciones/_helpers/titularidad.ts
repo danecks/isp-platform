@@ -31,10 +31,11 @@ export async function liberarTitularidadAgente(
   const exClienteId = excluir.custodia?.clienteId ?? -1;
   const exSlot      = excluir.custodia?.slotNumero ?? -1;
 
-  // 1) Puestos fijos: liberar SOLO donde el agente es titular.
+  // 1) Puestos fijos LEGACY: liberar donde el agente es titular vía
+  //    puestos_operativos.titular_employee_id.
   //    Si el agente también figura como agente_id del MISMO registro
   //    (caso normal: titular cubriendo su propio puesto), se limpia también.
-  const { rows: puestosLib } = await client.query(`
+  const { rows: puestosLegacyLib } = await client.query(`
     UPDATE puestos_operativos
     SET
       agente_id           = CASE WHEN agente_id = $1 THEN NULL ELSE agente_id END,
@@ -49,24 +50,48 @@ export async function liberarTitularidadAgente(
     RETURNING id, nombre, cliente_nombre
   `, [employeeId, exPuestoId]);
 
-  // 2) Cerrar historial de titularidad activo (solo del/los puestos liberados)
+  // 2) puesto_titulares (sistema intermedio): desactivar titularidad activa
+  //    en TODOS los puestos excepto el destino actual.
+  const { rows: ptLib } = await client.query(`
+    UPDATE puesto_titulares pt
+    SET activo = FALSE, updated_at = NOW()
+    FROM puestos_operativos po
+    WHERE pt.puesto_id = po.id
+      AND pt.employee_id = $1
+      AND pt.activo = TRUE
+      AND pt.puesto_id != $2
+    RETURNING pt.puesto_id AS id, po.nombre, po.cliente_nombre
+  `, [employeeId, exPuestoId]);
+
+  // 3) puesto_slots (sistema nuevo multi-titular 24x24): liberar empleado_id
+  //    en TODOS los slots activos del agente excepto los del puesto destino.
+  //    ESTA es la fuente que estaba permitiendo duplicidad cruzada (PIZ-DUP-01).
+  const { rows: psLib } = await client.query(`
+    UPDATE puesto_slots ps
+    SET empleado_id = NULL
+    FROM puestos_operativos po
+    WHERE ps.puesto_id = po.id
+      AND ps.empleado_id = $1
+      AND ps.activo = TRUE
+      AND ps.puesto_id != $2
+    RETURNING ps.puesto_id AS id, po.nombre, po.cliente_nombre
+  `, [employeeId, exPuestoId]);
+
+  // Consolidar puestos liberados (cualquier fuente)
+  const puestosLibMap = new Map<number, { id: number; nombre: string; cliente_nombre: string }>();
+  for (const r of puestosLegacyLib) puestosLibMap.set(r.id, { id: r.id, nombre: r.nombre, cliente_nombre: r.cliente_nombre });
+  for (const r of ptLib)            puestosLibMap.set(r.id, { id: r.id, nombre: r.nombre, cliente_nombre: r.cliente_nombre });
+  for (const r of psLib)            puestosLibMap.set(r.id, { id: r.id, nombre: r.nombre, cliente_nombre: r.cliente_nombre });
+  const puestosLib = Array.from(puestosLibMap.values());
+
+  // 4) Cerrar historial de titularidad activo en cualquier puesto liberado.
   await client.query(`
     UPDATE puesto_titular_historico
     SET fecha_fin = CURRENT_DATE, updated_at = NOW()
     WHERE employee_id = $1 AND fecha_fin IS NULL AND puesto_id != $2
   `, [employeeId, exPuestoId]);
 
-  // 3) Liberar slots de plantilla SOLO de los puestos donde dejó de ser titular.
-  if (puestosLib.length > 0) {
-    const ids = puestosLib.map(r => r.id);
-    await client.query(`
-      UPDATE puesto_slots
-      SET empleado_id = NULL
-      WHERE empleado_id = $1 AND puesto_id = ANY($2::int[])
-    `, [employeeId, ids]);
-  }
-
-  // 4) Custodias: desactivar titularidad activa (excepto el destino actual)
+  // 5) Custodias: desactivar titularidad activa (excepto el destino actual)
   const { rows: custodiasLib } = await client.query(`
     UPDATE custodia_titulares
     SET activo = FALSE
@@ -75,7 +100,7 @@ export async function liberarTitularidadAgente(
     RETURNING cliente_id, slot_numero
   `, [employeeId, exClienteId, exSlot]);
 
-  // 5) Borrar asignación diaria de hoy en los slots de custodia liberados
+  // 6) Borrar asignación diaria de hoy en los slots de custodia liberados
   if (custodiasLib.length > 0) {
     const fechaHoy = todayGT();
     for (const c of custodiasLib) {
@@ -86,7 +111,7 @@ export async function liberarTitularidadAgente(
     }
   }
 
-  // 6) EOA: desactivar asignaciones operacionales activas
+  // 7) EOA: desactivar asignaciones operacionales activas
   //    (se reabrirá el EOA del nuevo destino en el endpoint llamador)
   if (puestosLib.length > 0 || custodiasLib.length > 0) {
     await client.query(`
