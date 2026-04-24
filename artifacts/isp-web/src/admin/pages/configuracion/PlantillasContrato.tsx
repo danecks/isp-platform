@@ -366,14 +366,14 @@ export default function PlantillasContrato() {
                         value={cl.numero}
                         onChange={(e) => updateClausula(i, { numero: e.target.value })}
                         placeholder="PRIMERA"
-                        className="border rounded px-2 py-1 w-28 text-sm font-bold"
+                        className="border rounded px-2 py-1 w-28 text-sm font-bold bg-white text-gray-900 placeholder-gray-400"
                       />
                       <input
                         type="text"
                         value={cl.titulo}
                         onChange={(e) => updateClausula(i, { titulo: e.target.value })}
                         placeholder="Título de la cláusula"
-                        className="flex-1 border rounded px-2 py-1 text-sm font-semibold"
+                        className="flex-1 border rounded px-2 py-1 text-sm font-semibold bg-white text-gray-900 placeholder-gray-400"
                       />
                       <button
                         onClick={() => moverClausula(i, -1)}
