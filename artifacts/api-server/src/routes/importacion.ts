@@ -972,3 +972,428 @@ importacionRouter.post("/importacion/crear-puestos-legacy", async (req: any, res
     omitidos_detalle: omitidos.slice(0, 10),
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// PLANTILLA DE TURNOS — carga masiva de edición desde el CSV exportado por
+// /reportes/plantilla-turnos. Solo MODIFICA slots existentes (no crea, no
+// elimina, no cambia titular). Match por columna "ID Slot".
+//
+// Columnas EDITABLES re-importadas:
+//   Horas Turno · Longitud Ciclo (días) · Fecha Inicio Ciclo
+//   S{1..4}-Hora · S{1..4}-{L,M,X,J,V,S,D} · Notas
+// Columnas IGNORADAS (informativas o no editables en v1):
+//   ID Cliente, ID Empleado, Cliente, Sede, Zona, Supervisor, Puesto,
+//   Tipo Servicio, Turno Puesto, Jornada, Slot #, Titular, Rotación (sem)
+// ════════════════════════════════════════════════════════════════════════════
+
+const NOMBRE_DIA_SEM = ["L", "M", "X", "J", "V", "S", "D"] as const;
+
+function requireAdminOrOps(req: any, res: any): { nombre: string; rol: string } | null {
+  try {
+    const raw = req.headers["x-isp-session"] as string;
+    const session = JSON.parse(raw);
+    if (!["admin", "operaciones"].includes(session.rol)) {
+      res.status(403).json({ error: "Solo administrador u operaciones pueden cargar la plantilla de turnos" });
+      return null;
+    }
+    return session;
+  } catch {
+    res.status(401).json({ error: "Sesión inválida" });
+    return null;
+  }
+}
+
+function parseHoraHHMM(v: string): string | null {
+  const x = String(v ?? "").trim();
+  if (!x) return null;
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(x);
+  if (!m) return null;
+  const h = parseInt(m[1], 10);
+  const mm = parseInt(m[2], 10);
+  if (isNaN(h) || isNaN(mm) || h < 0 || h > 23 || mm < 0 || mm > 59) return null;
+  return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+function arraysEqualSorted(a: number[] | null | undefined, b: number[] | null | undefined): boolean {
+  const aa = [...(a ?? [])].map(Number).sort((x, y) => x - y);
+  const bb = [...(b ?? [])].map(Number).sort((x, y) => x - y);
+  if (aa.length !== bb.length) return false;
+  for (let i = 0; i < aa.length; i++) if (aa[i] !== bb[i]) return false;
+  return true;
+}
+
+function horasSemEqual(a: string[] | null | undefined, b: string[] | null | undefined): boolean {
+  const aa = (a ?? []).map((x) => String(x ?? "").slice(0, 5));
+  const bb = (b ?? []).map((x) => String(x ?? "").slice(0, 5));
+  if (aa.length !== bb.length) return false;
+  for (let i = 0; i < aa.length; i++) if (aa[i] !== bb[i]) return false;
+  return true;
+}
+
+function normHora(s: any): string {
+  return String(s ?? "").trim().slice(0, 5);
+}
+
+type FilaParsed = {
+  fila: number;
+  slot_id_raw: string;
+  slot_id: number | null;
+  puesto_id_csv: number | null;
+  patch: {
+    horas_turno: number;
+    longitud_ciclo: number;
+    fecha_inicio_ciclo: string | null;
+    dias_trabajo: number[];
+    dias_medio_turno: number[];
+    hora_entrada: string;
+    hora_entrada_por_semana: string[] | null;
+    notas: string;
+  } | null;
+  errores: string[];
+  ignorar: boolean; // ID Slot vacío → se ignora silenciosamente
+};
+
+function parseFilaPlantillaTurnos(row: Record<string, any>, fila: number): FilaParsed {
+  const errores: string[] = [];
+  const slot_id_raw = String(row["ID Slot"] ?? "").trim();
+  const slot_id = slot_id_raw ? parseInt(slot_id_raw, 10) : null;
+
+  // Filas sin ID Slot se ignoran (decisión v1: no crear slots desde la plantilla).
+  if (!slot_id_raw) {
+    return { fila, slot_id_raw, slot_id: null, puesto_id_csv: null, patch: null, errores: [], ignorar: true };
+  }
+  if (!Number.isInteger(slot_id) || (slot_id ?? 0) <= 0) {
+    return { fila, slot_id_raw, slot_id: null, puesto_id_csv: null, patch: null, errores: [`ID Slot "${slot_id_raw}" no es un entero válido`], ignorar: false };
+  }
+
+  const puesto_id_csv = parseInt(String(row["ID Puesto"] ?? "").trim(), 10) || null;
+
+  const horas_turno = parseInt(String(row["Horas Turno"] ?? "").trim(), 10);
+  if (![8, 12, 24].includes(horas_turno)) errores.push(`Horas Turno debe ser 8, 12 o 24 (recibido: "${row["Horas Turno"] ?? ""}")`);
+
+  const lcRaw = String(row["Longitud Ciclo (días)"] ?? row["Longitud Ciclo"] ?? "").trim();
+  const longitud_ciclo = parseInt(lcRaw, 10);
+  if (![7, 14, 21, 28].includes(longitud_ciclo)) errores.push(`Longitud Ciclo debe ser 7, 14, 21 o 28 (recibido: "${lcRaw}")`);
+
+  const fic = parseDate(String(row["Fecha Inicio Ciclo"] ?? "").trim());
+  const fechaIcRaw = String(row["Fecha Inicio Ciclo"] ?? "").trim();
+  if (fechaIcRaw && !fic) errores.push(`Fecha Inicio Ciclo "${fechaIcRaw}" no es fecha válida (use YYYY-MM-DD o DD/MM/YYYY)`);
+
+  const semsActivas = !isNaN(longitud_ciclo) ? Math.ceil(longitud_ciclo / 7) : 0;
+
+  const horasSem: string[] = [];
+  for (let s = 1; s <= 4; s++) {
+    const cellRaw = String(row[`S${s}-Hora`] ?? "").trim();
+    if (s <= semsActivas) {
+      if (!cellRaw) {
+        errores.push(`S${s}-Hora vacía dentro del ciclo`);
+        horasSem.push("");
+      } else {
+        const norm = parseHoraHHMM(cellRaw);
+        if (!norm) errores.push(`S${s}-Hora inválida ("${cellRaw}"); use HH:MM`);
+        horasSem.push(norm ?? "");
+      }
+    }
+  }
+
+  const dias_trabajo: number[] = [];
+  const dias_medio_turno: number[] = [];
+  for (let s = 1; s <= 4; s++) {
+    if (s > semsActivas) continue;
+    for (let i = 0; i < 7; i++) {
+      const dia = (s - 1) * 7 + i + 1;
+      if (dia > longitud_ciclo) continue;
+      const col = `S${s}-${NOMBRE_DIA_SEM[i]}`;
+      const v = String(row[col] ?? "").trim().toUpperCase();
+      if (v === "T") dias_trabajo.push(dia);
+      else if (v === "M") dias_medio_turno.push(dia);
+      else if (v === "D") { /* descansa */ }
+      else if (v === "") errores.push(`${col} vacía dentro del ciclo (use T/M/D)`);
+      else errores.push(`${col} valor inválido "${v}" (use T, M o D)`);
+    }
+  }
+
+  // Hora de entrada: si todas las semanas activas tienen la misma hora → hora_entrada simple.
+  // Si difieren → hora_entrada_por_semana[].
+  let hora_entrada = "";
+  let hora_entrada_por_semana: string[] | null = null;
+  if (horasSem.length > 0 && horasSem.every((h) => h && h === horasSem[0])) {
+    hora_entrada = horasSem[0];
+  } else if (horasSem.length > 0 && horasSem.every((h) => !!h)) {
+    hora_entrada = horasSem[0];
+    hora_entrada_por_semana = [...horasSem];
+  } else {
+    // Hay vacíos: hora_entrada queda primera no vacía (o "") — los errores ya se reportaron.
+    hora_entrada = horasSem.find((h) => !!h) ?? "";
+    if (horasSem.some((h) => !!h) && horasSem.some((h) => !h)) {
+      hora_entrada_por_semana = horasSem.map((h) => h || hora_entrada);
+    }
+  }
+
+  const notas = String(row["Notas"] ?? "").trim();
+
+  const patch = {
+    horas_turno: isNaN(horas_turno) ? 24 : horas_turno,
+    longitud_ciclo: isNaN(longitud_ciclo) ? 14 : longitud_ciclo,
+    fecha_inicio_ciclo: fic,
+    dias_trabajo: dias_trabajo.sort((a, b) => a - b),
+    dias_medio_turno: dias_medio_turno.sort((a, b) => a - b),
+    hora_entrada,
+    hora_entrada_por_semana,
+    notas,
+  };
+
+  return { fila, slot_id_raw, slot_id, puesto_id_csv, patch, errores, ignorar: false };
+}
+
+type CambioCampo = {
+  campo: string;
+  antes: any;
+  despues: any;
+};
+
+type FilaPreview = {
+  fila: number;
+  slot_id: number;
+  puesto_id: number;
+  contexto: {
+    cliente_nombre: string | null;
+    sede_nombre: string | null;
+    puesto_nombre: string;
+    slot_numero: number | null;
+    titular_nombre: string | null;
+  };
+  antes: Record<string, any>;
+  despues: Record<string, any>;
+  cambios: CambioCampo[];
+};
+
+async function calcularDiff(parsed: FilaParsed[]): Promise<{
+  filas_a_actualizar: FilaPreview[];
+  filas_sin_cambios: { fila: number; slot_id: number }[];
+  filas_con_error: { fila: number; slot_id_raw: string; errores: string[] }[];
+  filas_ignoradas: number;
+}> {
+  const filas_ignoradas = parsed.filter((p) => p.ignorar).length;
+  const conSlot = parsed.filter((p) => !p.ignorar);
+
+  const slotIds = conSlot.map((p) => p.slot_id).filter((x): x is number => x !== null);
+  const { rows: actuales } = slotIds.length === 0
+    ? { rows: [] as any[] }
+    : await pool.query(
+      `SELECT ps.id, ps.puesto_id, ps.horas_turno, ps.longitud_ciclo, ps.fecha_inicio_ciclo,
+              ps.dias_trabajo, ps.dias_medio_turno, ps.hora_entrada, ps.hora_entrada_por_semana,
+              ps.notas, ps.activo, ps.empleado_id, ps.slot_numero,
+              po.nombre AS puesto_nombre,
+              cli.nombre AS cliente_nombre,
+              sed.nombre AS sede_nombre,
+              emp.nombre_completo AS titular_nombre
+         FROM puesto_slots ps
+         JOIN puestos_operativos po ON po.id = ps.puesto_id
+         LEFT JOIN clientes cli      ON cli.id = po.cliente_id
+         LEFT JOIN sedes sed         ON sed.id = po.sede_id
+         LEFT JOIN employees emp     ON emp.id = ps.empleado_id
+        WHERE ps.id = ANY($1::int[])`,
+      [slotIds]
+    );
+
+  const mapAct = new Map<number, any>();
+  for (const r of actuales) mapAct.set(r.id, r);
+
+  const filas_a_actualizar: FilaPreview[] = [];
+  const filas_sin_cambios: { fila: number; slot_id: number }[] = [];
+  const filas_con_error: { fila: number; slot_id_raw: string; errores: string[] }[] = [];
+
+  for (const p of conSlot) {
+    if (p.errores.length > 0 || p.slot_id === null || !p.patch) {
+      filas_con_error.push({ fila: p.fila, slot_id_raw: p.slot_id_raw, errores: p.errores.length > 0 ? p.errores : ["Fila inválida"] });
+      continue;
+    }
+    const actual = mapAct.get(p.slot_id);
+    if (!actual) {
+      filas_con_error.push({ fila: p.fila, slot_id_raw: p.slot_id_raw, errores: [`Slot ${p.slot_id} no existe en el sistema`] });
+      continue;
+    }
+    if (!actual.activo) {
+      filas_con_error.push({ fila: p.fila, slot_id_raw: p.slot_id_raw, errores: [`Slot ${p.slot_id} está inactivo (no editable por carga masiva)`] });
+      continue;
+    }
+    if (p.puesto_id_csv !== null && p.puesto_id_csv !== actual.puesto_id) {
+      filas_con_error.push({ fila: p.fila, slot_id_raw: p.slot_id_raw, errores: [`ID Puesto del CSV (${p.puesto_id_csv}) no coincide con el del slot en BD (${actual.puesto_id}). ¿Re-descargá la plantilla?`] });
+      continue;
+    }
+
+    const cambios: CambioCampo[] = [];
+    if (actual.horas_turno !== p.patch.horas_turno) {
+      cambios.push({ campo: "Horas Turno", antes: actual.horas_turno, despues: p.patch.horas_turno });
+    }
+    if (actual.longitud_ciclo !== p.patch.longitud_ciclo) {
+      cambios.push({ campo: "Longitud Ciclo", antes: actual.longitud_ciclo, despues: p.patch.longitud_ciclo });
+    }
+    const ficActual = actual.fecha_inicio_ciclo ? new Date(actual.fecha_inicio_ciclo).toISOString().slice(0, 10) : null;
+    if (ficActual !== p.patch.fecha_inicio_ciclo) {
+      cambios.push({ campo: "Fecha Inicio Ciclo", antes: ficActual, despues: p.patch.fecha_inicio_ciclo });
+    }
+    if (!arraysEqualSorted(actual.dias_trabajo, p.patch.dias_trabajo)) {
+      cambios.push({ campo: "Días Trabajo", antes: actual.dias_trabajo ?? [], despues: p.patch.dias_trabajo });
+    }
+    if (!arraysEqualSorted(actual.dias_medio_turno, p.patch.dias_medio_turno)) {
+      cambios.push({ campo: "Días Medio Turno", antes: actual.dias_medio_turno ?? [], despues: p.patch.dias_medio_turno });
+    }
+    if (normHora(actual.hora_entrada) !== normHora(p.patch.hora_entrada)) {
+      cambios.push({ campo: "Hora Entrada", antes: normHora(actual.hora_entrada), despues: p.patch.hora_entrada });
+    }
+    if (!horasSemEqual(actual.hora_entrada_por_semana, p.patch.hora_entrada_por_semana)) {
+      cambios.push({ campo: "Hora por Semana", antes: actual.hora_entrada_por_semana ?? null, despues: p.patch.hora_entrada_por_semana });
+    }
+    if (String(actual.notas ?? "") !== p.patch.notas) {
+      cambios.push({ campo: "Notas", antes: actual.notas ?? "", despues: p.patch.notas });
+    }
+
+    if (cambios.length === 0) {
+      filas_sin_cambios.push({ fila: p.fila, slot_id: p.slot_id });
+      continue;
+    }
+
+    filas_a_actualizar.push({
+      fila: p.fila,
+      slot_id: p.slot_id,
+      puesto_id: actual.puesto_id,
+      contexto: {
+        cliente_nombre: actual.cliente_nombre,
+        sede_nombre: actual.sede_nombre,
+        puesto_nombre: actual.puesto_nombre,
+        slot_numero: actual.slot_numero,
+        titular_nombre: actual.titular_nombre,
+      },
+      antes: {
+        horas_turno: actual.horas_turno,
+        longitud_ciclo: actual.longitud_ciclo,
+        fecha_inicio_ciclo: ficActual,
+        dias_trabajo: actual.dias_trabajo ?? [],
+        dias_medio_turno: actual.dias_medio_turno ?? [],
+        hora_entrada: normHora(actual.hora_entrada),
+        hora_entrada_por_semana: actual.hora_entrada_por_semana ?? null,
+        notas: actual.notas ?? "",
+      },
+      despues: {
+        horas_turno: p.patch.horas_turno,
+        longitud_ciclo: p.patch.longitud_ciclo,
+        fecha_inicio_ciclo: p.patch.fecha_inicio_ciclo,
+        dias_trabajo: p.patch.dias_trabajo,
+        dias_medio_turno: p.patch.dias_medio_turno,
+        hora_entrada: p.patch.hora_entrada,
+        hora_entrada_por_semana: p.patch.hora_entrada_por_semana,
+        notas: p.patch.notas,
+      },
+      cambios,
+    });
+  }
+
+  return { filas_a_actualizar, filas_sin_cambios, filas_con_error, filas_ignoradas };
+}
+
+// ─── POST /api/importacion/plantilla-turnos/preview ──────────────────────────
+importacionRouter.post("/importacion/plantilla-turnos/preview", async (req: any, res: any) => {
+  const session = requireAdminOrOps(req, res);
+  if (!session) return;
+  try {
+    const { rows }: { rows: Record<string, any>[] } = req.body;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: "No hay filas para procesar" });
+    }
+    const parsed = rows.map((r, i) => parseFilaPlantillaTurnos(r, i + 2));
+    const diff = await calcularDiff(parsed);
+    res.json({
+      total_filas: rows.length,
+      ...diff,
+    });
+  } catch (err: any) {
+    console.error("[plantilla-turnos/preview] error:", err);
+    res.status(500).json({ error: err?.message || "Error al procesar la plantilla" });
+  }
+});
+
+// ─── POST /api/importacion/plantilla-turnos/aplicar ──────────────────────────
+importacionRouter.post("/importacion/plantilla-turnos/aplicar", async (req: any, res: any) => {
+  const session = requireAdminOrOps(req, res);
+  if (!session) return;
+
+  const client = await pool.connect();
+  try {
+    const { rows }: { rows: Record<string, any>[] } = req.body;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: "No hay filas para procesar" });
+    }
+    const parsed = rows.map((r, i) => parseFilaPlantillaTurnos(r, i + 2));
+    const diff = await calcularDiff(parsed);
+
+    if (diff.filas_con_error.length > 0) {
+      return res.status(400).json({
+        error: "Hay filas con error; corregilas y volvé a subir antes de aplicar",
+        filas_con_error: diff.filas_con_error,
+      });
+    }
+
+    if (diff.filas_a_actualizar.length === 0) {
+      return res.json({
+        actualizados: 0,
+        sin_cambios: diff.filas_sin_cambios.length,
+        ignorados: diff.filas_ignoradas,
+        mensaje: "No hay cambios para aplicar",
+      });
+    }
+
+    await client.query("BEGIN");
+
+    let actualizados = 0;
+    for (const f of diff.filas_a_actualizar) {
+      await client.query(
+        `UPDATE puesto_slots
+            SET horas_turno = $1,
+                longitud_ciclo = $2,
+                fecha_inicio_ciclo = $3,
+                dias_trabajo = $4,
+                dias_medio_turno = $5,
+                hora_entrada = $6,
+                hora_entrada_por_semana = $7,
+                notas = $8,
+                updated_at = NOW()
+          WHERE id = $9 AND activo = TRUE`,
+        [
+          f.despues.horas_turno,
+          f.despues.longitud_ciclo,
+          f.despues.fecha_inicio_ciclo,
+          f.despues.dias_trabajo,
+          f.despues.dias_medio_turno,
+          f.despues.hora_entrada || "07:00",
+          f.despues.hora_entrada_por_semana,
+          f.despues.notas,
+          f.slot_id,
+        ]
+      );
+      actualizados++;
+    }
+
+    await client.query("COMMIT");
+
+    res.json({
+      actualizados,
+      sin_cambios: diff.filas_sin_cambios.length,
+      ignorados: diff.filas_ignoradas,
+      detalle: diff.filas_a_actualizar.map((f) => ({
+        slot_id: f.slot_id,
+        cliente: f.contexto.cliente_nombre,
+        puesto: f.contexto.puesto_nombre,
+        slot_numero: f.contexto.slot_numero,
+        cambios: f.cambios.length,
+      })),
+    });
+  } catch (err: any) {
+    try { await client.query("ROLLBACK"); } catch { /* noop */ }
+    console.error("[plantilla-turnos/aplicar] error:", err);
+    res.status(500).json({ error: err?.message || "Error al aplicar los cambios" });
+  } finally {
+    client.release();
+  }
+});
