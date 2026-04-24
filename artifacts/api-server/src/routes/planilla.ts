@@ -76,6 +76,7 @@ function calcularLinea(
   tarifasHE?: Map<string, { tarifa: number; horas_turno: number }>,
   barracaMonto: number = 0,
   seguroMontoPeriodo: number = 0,
+  amonestacionesMonto: number = 0,
 ) {
   const sb        = toNum(row.sueldo_base);
   const hc        = toNum(row.horas_contrato);
@@ -152,8 +153,12 @@ function calcularLinea(
   const uniforme = parseFloat(uniformeMonto.toFixed(2));
   const barraca = parseFloat(barracaMonto.toFixed(2));
   const seguro = parseFloat(seguroMontoPeriodo.toFixed(2));
+  // Amonestaciones económicas: monto agregado de las activas pendientes del período.
+  // Este monto se cobra al colaborador (rebaja el neto) y se vincula a la planilla
+  // en el endpoint POST /nomina/planilla (UPDATE amonestaciones SET descontado=TRUE).
+  const otrosDescuentos = parseFloat(Math.max(0, amonestacionesMonto).toFixed(2));
   const totalBonificaciones = bonificacion_incentivo + bonificacion_1 + bonificacion_2 + bonificacion_3;
-  const totalNeto = parseFloat(Math.max(0, totalBrutoRnd - igssT - isr + totalBonificaciones - anticipo - uniforme - barraca - seguro).toFixed(2));
+  const totalNeto = parseFloat(Math.max(0, totalBrutoRnd - igssT - isr + totalBonificaciones - anticipo - uniforme - barraca - seguro - otrosDescuentos).toFixed(2));
 
   return {
     sueldo_base:      sb,
@@ -182,7 +187,7 @@ function calcularLinea(
     total_neto:       totalNeto,
     aplica_igss:           igssData.aplica_igss,
     motivo_exclusion_igss: igssData.motivo_exclusion_igss,
-    otros_descuentos:      0,
+    otros_descuentos:      otrosDescuentos,
     descuentos_uniforme:   uniforme,
     descuento_barraca:     barraca,
     descuento_seguro_vida: seguro,
@@ -355,6 +360,29 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
     // Construir mapa de cuotas de barraca por empleado
     const barracaMap = await buildBarracaCuotaMap(empIds);
 
+    // ── Mapa de amonestaciones económicas a cobrar (AMON-01) ──────────────────
+    // Agrega el monto de las amonestaciones activas/pendientes del período por
+    // empleado, usando exactamente los mismos criterios del UPDATE que las
+    // marca como descontadas (más abajo). Esto garantiza que lo que se cobra
+    // == lo que se vincula como descontado en BD.
+    const amonestacionesMap = new Map<number, number>();
+    if (empIds.length > 0) {
+      const { rows: amonRows } = await pool.query(
+        `SELECT employee_id, SUM(monto)::float AS monto
+           FROM amonestaciones
+          WHERE tipo = 'economica'
+            AND estado = 'activa'
+            AND descontado = FALSE
+            AND fecha BETWEEN $1::date AND $2::date
+            AND employee_id = ANY($3::int[])
+          GROUP BY employee_id`,
+        [desde, hasta, empIds]
+      );
+      for (const r of amonRows) {
+        amonestacionesMap.set(r.employee_id as number, parseFloat(r.monto ?? 0));
+      }
+    }
+
     // Cargar prima mensual de seguro de vida vigente al fin del período (SEG-02)
     let primaSeguroMensual = 0;
     try {
@@ -391,6 +419,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
       const seguroMontoPeriodo = frecPago === "quincenal"
         ? parseFloat((primaSeguroMensual / 2).toFixed(2))
         : parseFloat(primaSeguroMensual.toFixed(2));
+      const amonestacionesMonto = empId ? (amonestacionesMap.get(empId) ?? 0) : 0;
       return {
         employee_id:        empId,
         nombre_completo:    String(row.nombre_completo ?? ""),
@@ -401,7 +430,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         tipo_jornada:       row.tipo_jornada as string | null,
         revision_estado:    row.revision_estado as string | null,
         observaciones_rrhh: row.revision_observaciones as string | null,
-        ...calcularLinea(row, periodoTotalDias, igssData, quincenaTipo, desde, hasta, uniformeMonto, tarifasHE, barracaMonto, seguroMontoPeriodo),
+        ...calcularLinea(row, periodoTotalDias, igssData, quincenaTipo, desde, hasta, uniformeMonto, tarifasHE, barracaMonto, seguroMontoPeriodo, amonestacionesMonto),
       };
     });
 

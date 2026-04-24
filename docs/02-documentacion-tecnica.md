@@ -739,3 +739,34 @@ export async function migrarPESP01() {
 - **Garantía operativa**: lo que el supervisor ve en
   pre-planilla = lo que el sistema paga al cerrar planilla.
   Ya no hay discrepancia silenciosa por vacaciones/incapacidad.
+
+### 10.5.3 Amonestaciones económicas — cobro real en planilla final (abr 2026)
+
+- **Problema previo**: la pre-planilla mostraba el monto de
+  amonestaciones económicas activas como descuento estimado, pero al
+  cerrar la planilla solo se VINCULABAN a la planilla
+  (`UPDATE amonestaciones SET descontado=TRUE, planilla_id=…`)
+  sin restarse del neto. El campo `otros_descuentos` estaba fijado en
+  `0` literal. Resultado: BD decía "cobrada" pero el colaborador
+  recibía el pago sin la rebaja.
+
+- **Corrección**:
+  - `routes/planilla.ts` POST `/nomina/planilla`: cargar
+    `amonestacionesMap` por `employee_id` con la suma de amonestaciones
+    activas, no descontadas, dentro del rango del período. El query
+    usa exactamente los mismos criterios que el `UPDATE` que las
+    marca como descontadas (`tipo='economica' AND estado='activa'
+    AND descontado=FALSE AND fecha BETWEEN desde AND hasta`).
+  - `calcularLinea()` recibe `amonestacionesMonto` y lo asigna a
+    `otros_descuentos`. El `total_neto` se calcula restando
+    `otros_descuentos` igual que cualquier otro descuento.
+
+- **Garantía operativa**: lo que la pre-planilla muestra como
+  descuento por amonestaciones = lo que el colaborador deja de
+  recibir en la planilla final. Y la BD queda consistente: la
+  amonestación marcada como `descontado=TRUE` corresponde a un monto
+  que efectivamente fue rebajado del pago.
+
+- **Pendiente menor (no bloqueante)**: agregar `total_otros_descuentos`
+  al reduce de totales y a la tabla `planillas` para que el reporte
+  agregado muestre cuánto se cobró en total por amonestaciones.
