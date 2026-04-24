@@ -203,6 +203,17 @@ export async function runAutoMigrations(): Promise<void> {
     `);
     logger.info("Auto-migrate: tabla 'wa_audit_log' verificada");
 
+    // BONIF-INCENTIVO-01: nivelar bonificación incentivo a Q250 mínimo
+    // (Decreto 78-89). Idempotente: solo afecta a quienes están abajo.
+    const bonifFix = await pool.query(`
+      UPDATE employees
+      SET bonificacion_incentivo = 250
+      WHERE COALESCE(bonificacion_incentivo, 0) < 250
+    `);
+    if (bonifFix.rowCount && bonifFix.rowCount > 0) {
+      logger.info(`Auto-migrate: ${bonifFix.rowCount} colaboradores nivelados a Q250 de bonificación incentivo`);
+    }
+
   } catch (err) {
     logger.error({ err }, "Auto-migrate: error — continuando de todas formas");
   }
