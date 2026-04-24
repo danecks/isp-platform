@@ -241,10 +241,10 @@ export default function PlantillasContrato() {
       <div className="p-6 max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <FileText className="w-6 h-6 text-blue-600" />
+            <FileText className="w-6 h-6 text-amber-400" />
             <div>
-              <h1 className="text-2xl font-bold">Plantillas de Contrato Laboral</h1>
-              <p className="text-sm text-gray-500">
+              <h1 className="text-2xl font-bold text-slate-100">Plantillas de Contrato Laboral</h1>
+              <p className="text-sm text-slate-400">
                 Edita el texto del contrato sin tocar código. Cada cambio crea una nueva versión.
               </p>
             </div>
@@ -252,27 +252,27 @@ export default function PlantillasContrato() {
           <div className="flex gap-2">
             <button
               onClick={vistaPrevia}
-              className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-sm"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700/60 hover:bg-slate-600 text-slate-100 border border-slate-600 rounded text-sm transition"
             >
               <Eye className="w-4 h-4" /> Vista previa
             </button>
             <button
               onClick={cargarHistorial}
-              className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-sm"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700/60 hover:bg-slate-600 text-slate-100 border border-slate-600 rounded text-sm transition"
             >
               <History className="w-4 h-4" /> Versiones
             </button>
             <button
               onClick={restaurarDefault}
               disabled={guardando}
-              className="flex items-center gap-1 px-3 py-1.5 bg-orange-100 hover:bg-orange-200 text-orange-800 rounded text-sm"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded text-sm transition disabled:opacity-40"
             >
               <RotateCcw className="w-4 h-4" /> Restaurar original
             </button>
             <button
               onClick={guardar}
               disabled={guardando || !plantilla}
-              className="flex items-center gap-1 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded text-sm font-semibold"
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 disabled:text-slate-400 text-white rounded text-sm font-semibold shadow transition"
             >
               <Save className="w-4 h-4" /> {guardando ? "Guardando..." : "Guardar nueva versión"}
             </button>
@@ -280,13 +280,13 @@ export default function PlantillasContrato() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-4 border-b">
+        <div className="flex gap-2 mb-4 border-b border-slate-700">
           {(["inicial", "post_prueba"] as Tipo[]).map((t) => (
             <button
               key={t}
               onClick={() => setTipo(t)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-                tipo === t ? "border-blue-600 text-blue-700" : "border-transparent text-gray-500 hover:text-gray-700"
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
+                tipo === t ? "border-amber-400 text-amber-300" : "border-transparent text-slate-400 hover:text-slate-200"
               }`}
             >
               {t === "inicial" ? "Inicial (con período de prueba)" : "Post-prueba (indefinido)"}
@@ -314,7 +314,7 @@ export default function PlantillasContrato() {
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
             {/* Editor */}
             <div className="space-y-4">
-              <div className="text-xs text-gray-500 bg-gray-50 px-3 py-2 rounded border">
+              <div className="text-xs text-slate-300 bg-slate-800/60 border border-slate-700 px-3 py-2 rounded">
                 Versión activa: <strong>v{plantilla.version}</strong> · creada por{" "}
                 {plantilla.createdBy ?? "—"} el{" "}
                 {new Date(plantilla.createdAt).toLocaleString("es-GT")}
@@ -350,10 +350,10 @@ export default function PlantillasContrato() {
               {/* Cláusulas */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h2 className="font-semibold text-gray-800">Cláusulas ({plantilla.clausulas.length})</h2>
+                  <h2 className="font-semibold text-slate-100">Cláusulas ({plantilla.clausulas.length})</h2>
                   <button
                     onClick={agregarClausula}
-                    className="flex items-center gap-1 text-sm text-blue-600 hover:underline"
+                    className="flex items-center gap-1 text-sm text-amber-300 hover:text-amber-200 hover:underline"
                   >
                     <Plus className="w-4 h-4" /> Agregar cláusula
                   </button>
@@ -432,9 +432,9 @@ export default function PlantillasContrato() {
 
             {/* Panel lateral de variables */}
             <aside className="lg:sticky lg:top-4 self-start">
-              <div className="border rounded bg-white p-3">
-                <h3 className="font-semibold text-sm mb-2">Variables disponibles</h3>
-                <p className="text-xs text-gray-500 mb-3">
+              <div className="border border-slate-700 rounded bg-slate-800/60 p-3">
+                <h3 className="font-semibold text-sm mb-2 text-slate-100">Variables disponibles</h3>
+                <p className="text-xs text-slate-400 mb-3">
                   Clic para copiar. Pégala dentro de cualquier texto.
                 </p>
                 <div className="space-y-1 max-h-[600px] overflow-auto pr-1">
@@ -442,18 +442,18 @@ export default function PlantillasContrato() {
                     <button
                       key={v.clave}
                       onClick={() => copiarVar(v.clave)}
-                      className="w-full text-left px-2 py-1 hover:bg-blue-50 rounded text-xs flex items-start gap-1 group"
+                      className="w-full text-left px-2 py-1 hover:bg-slate-700 rounded text-xs flex items-start gap-1 group transition"
                       title={v.descripcion + " — ej: " + v.ejemplo}
                     >
-                      <Copy className="w-3 h-3 mt-0.5 text-gray-400 group-hover:text-blue-600 flex-shrink-0" />
-                      <code className="text-blue-700 font-mono">{`{{${v.clave}}}`}</code>
+                      <Copy className="w-3 h-3 mt-0.5 text-slate-500 group-hover:text-amber-300 flex-shrink-0" />
+                      <code className="text-amber-300 font-mono">{`{{${v.clave}}}`}</code>
                     </button>
                   ))}
                 </div>
               </div>
-              <div className="border rounded bg-yellow-50 p-3 mt-3 text-xs text-yellow-900">
+              <div className="border border-amber-500/30 rounded bg-amber-500/10 p-3 mt-3 text-xs text-amber-200">
                 <strong>Tip:</strong> Para texto en negrita, envuelve un párrafo completo entre{" "}
-                <code className="bg-white px-1 rounded">**asteriscos**</code>. Separa párrafos con
+                <code className="bg-slate-900/60 px-1 rounded">**asteriscos**</code>. Separa párrafos con
                 líneas en blanco.
               </div>
             </aside>
