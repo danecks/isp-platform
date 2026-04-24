@@ -350,10 +350,13 @@ igssRouter.get("/igss/generar-planilla", async (req, res) => {
     const devengadoMap: Record<number, { devengado: number; dias: number }> = {};
     const { rows: novedades } = await pool.query(`
       SELECT n.employee_id,
-             COUNT(*) FILTER (WHERE n.trabajo_dia = true AND n.falta = false) AS dias_trabajados,
-             COALESCE(SUM(n.horas_trabajadas) FILTER (WHERE n.trabajo_dia = true AND n.falta = false), 0) AS total_horas,
+             COUNT(*) FILTER (WHERE n.trabajo_dia = true AND n.falta = false AND n.suspension = false) AS dias_trabajados,
+             COALESCE(SUM(n.horas_trabajadas) FILTER (WHERE n.trabajo_dia = true AND n.falta = false AND n.suspension = false), 0) AS total_horas,
              COUNT(*) FILTER (WHERE n.falta = true AND COALESCE(n.impacto_nomina,'pendiente') != 'rechazado_rrhh') AS dias_falta,
-             COALESCE(SUM(n.dias_descuento) FILTER (WHERE n.falta = true AND COALESCE(n.impacto_nomina,'pendiente') != 'rechazado_rrhh'), 0) AS total_dias_descuento,
+             COUNT(*) FILTER (WHERE n.suspension = true AND COALESCE(n.impacto_nomina,'pendiente') != 'rechazado_rrhh') AS dias_suspension,
+             COALESCE(SUM(n.dias_descuento) FILTER (WHERE n.falta = true AND COALESCE(n.impacto_nomina,'pendiente') != 'rechazado_rrhh'), 0)
+             + COALESCE(SUM(COALESCE(NULLIF(n.dias_descuento, 0), 1)) FILTER (WHERE n.suspension = true AND COALESCE(n.impacto_nomina,'pendiente') != 'rechazado_rrhh'), 0)
+               AS total_dias_descuento,
              COALESCE(SUM(
                CASE WHEN n.horas_extra > 0 AND n.horas_extra_estado = 'aprobado'
                     AND COALESCE(n.impacto_nomina, '') <> 'pagado_efectivo'
@@ -438,12 +441,57 @@ igssRouter.get("/igss/generar-planilla", async (req, res) => {
       lines.push(`${centro}|${emp.igss_numero}|${parts.primerNombre}|${parts.segundoNombre}|${parts.primerApellido}|${parts.segundoApellido}||${salario}|||${centro}||${COD_OCUPACION}|P||${depto}||TC|${dias}|`);
     }
 
+    // [suspendidos]: una línea por cada periodo de suspensión que se solapa con el mes.
+    // Fuente: eventos_rrhh con tipo_evento='suspension' y estado='aprobado' (no anulados).
+    // El clip al rango del mes se hace en SQL con GREATEST/LEAST sobre dates puros
+    // para evitar off-by-one por zona horaria al pasar por Date de JS.
+    // Si el empleado tiene múltiples puestos titulares activos, se elige el centro
+    // de menor código numérico de forma determinista (DISTINCT ON ev.id + ORDER BY).
+    const inicioMesISO = `${anio}-${String(mes).padStart(2, "0")}-01`;
+    const finMesISO = mes === 12
+      ? `${anio + 1}-01-01`
+      : `${anio}-${String(mes + 1).padStart(2, "0")}-01`;
+    const ultimoDiaISO = `${anio}-${String(mes).padStart(2, "0")}-${String(ultimoDia).padStart(2, "0")}`;
+
+    const { rows: eventosSusp } = await pool.query(`
+      SELECT DISTINCT ON (ev.id)
+        ev.id,
+        TO_CHAR(GREATEST(ev.fecha::date, $1::date), 'DD/MM/YYYY') AS desde_fmt,
+        TO_CHAR(LEAST(COALESCE(ev.fecha_fin::date, ev.fecha::date), $3::date), 'DD/MM/YYYY') AS hasta_fmt,
+        e.id AS employee_id, e.nombre_completo, e.igss_numero, e.estado_laboral,
+        c.igss_codigo_centro
+      FROM eventos_rrhh ev
+      JOIN employees e ON e.id = ev.employee_id
+      JOIN puesto_titulares pt ON pt.employee_id = e.id AND pt.activo = TRUE
+      JOIN puestos_operativos po ON po.id = pt.puesto_id
+      JOIN clients c ON c.id = po.cliente_id AND c.igss_aplica = TRUE
+      WHERE ev.tipo_evento = 'suspension'
+        AND ev.estado = 'aprobado'
+        AND e.aplica_igss_general = TRUE
+        AND e.igss_numero IS NOT NULL AND e.igss_numero != ''
+        AND ev.fecha::date < $2::date
+        AND COALESCE(ev.fecha_fin::date, ev.fecha::date) >= $1::date
+      ORDER BY ev.id, NULLIF(c.igss_codigo_centro,'')::int NULLS LAST, c.igss_codigo_centro
+    `, [inicioMesISO, finMesISO, ultimoDiaISO]);
+
     lines.push("[suspendidos]");
+    const empleadosConEventoSusp = new Set<number>();
+    for (const ev of eventosSusp) {
+      const centro = ev.igss_codigo_centro || "1";
+      const parts = splitNombre(ev.nombre_completo);
+      lines.push(`${centro}|${ev.igss_numero}|${parts.primerNombre}|${parts.segundoNombre}|${parts.primerApellido}|${parts.segundoApellido}||${ev.desde_fmt}|${ev.hasta_fmt}|`);
+      empleadosConEventoSusp.add(ev.employee_id);
+    }
+    // Fallback de compatibilidad: empleados con estado_laboral='suspendido' que NO tienen
+    // evento aprobado en el mes mantienen el comportamiento anterior (mes completo),
+    // así no se rompe la planilla para casos que ya funcionaban antes del fix.
     for (const emp of suspendidos) {
+      if (empleadosConEventoSusp.has(emp.id)) continue;
       const centro = emp.igss_codigo_centro || "1";
       const parts = splitNombre(emp.nombre_completo);
       lines.push(`${centro}|${emp.igss_numero}|${parts.primerNombre}|${parts.segundoNombre}|${parts.primerApellido}|${parts.segundoApellido}||${fechaIniMes}|${fechaFinMes}|`);
     }
+    const totalLineasSuspendidos = eventosSusp.length + suspendidos.filter(e => !empleadosConEventoSusp.has(e.id)).length;
 
     lines.push("[licencias]");
 
@@ -479,7 +527,7 @@ igssRouter.get("/igss/generar-planilla", async (req, res) => {
         preview: true,
         periodo: `${String(mes).padStart(2, "0")}/${anio}`,
         totalEmpleados: totalEmps,
-        totalSuspendidos: suspendidos.length,
+        totalSuspendidos: totalLineasSuspendidos,
         totalDevengado: totalDevengado.toFixed(2),
         cuotaLaboral: cuotaLab.toFixed(2),
         cuotaPatronal: cuotaPat.toFixed(2),

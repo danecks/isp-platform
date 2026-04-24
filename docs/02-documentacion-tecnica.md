@@ -313,6 +313,23 @@ export async function migrarPESP01() {
 ### 7.6 IGSS (`/api/igss`)
 - **Archivo**: `routes/igss.ts`
 - **Tablas**: `igss_config_patrono`, `historial_lib_sal`, `detalle_lib_sal`, `detalle_prestaciones_odbc`
+- **Generación de planilla mensual** (`GET /igss/generar-planilla?mes&anio`):
+  Construye archivo `.txt` formato 2.2.0 con secciones `[centros]`, `[empleados]`,
+  `[suspendidos]`, `[licencias]`, `[juramento]`.
+  - **Sección `[empleados]`**: días trabajados = `30 - dias_descuento` donde
+    `dias_descuento` ahora suma tanto **faltas aprobadas** (`novedades_nomina_diarias.falta = TRUE`)
+    como **suspensiones aprobadas** (`novedades_nomina_diarias.suspension = TRUE`),
+    excluyendo siempre las rechazadas (`impacto_nomina = 'rechazado_rrhh'`). El salario
+    devengado se reduce proporcionalmente a esos días.
+  - **Sección `[suspendidos]`**: una línea por cada periodo de suspensión que se
+    solapa con el mes. Fuente: `eventos_rrhh` con `tipo_evento = 'suspension'` y
+    `estado = 'aprobado'`. Las fechas (`desde` / `hasta`) se clipean al rango del
+    mes en SQL (`GREATEST` / `LEAST` sobre `date` puros) para evitar off-by-one
+    por zona horaria. Si un empleado tiene múltiples puestos titulares activos
+    se elige el centro IGSS de menor código de forma determinista. Como
+    fallback, los empleados con `estado_laboral = 'suspendido'` que NO tienen
+    evento aprobado en el mes se siguen reportando con fechas del mes completo
+    (compatibilidad con planillas anteriores).
 
 ### 7.7 Vacaciones (`/api/vacaciones`)
 - **Archivo**: `routes/vacaciones.ts`
