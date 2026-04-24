@@ -250,6 +250,7 @@ export async function migrarPESP01() {
   - `GET /operaciones/puestos/sin-zona`
   - `GET /operaciones/planificacion-futura?fecha`
   - `GET /operaciones/puestos/:id/titulares`
+  - `GET /operaciones/proximos-regresos-vacaciones?dias=5&fecha=YYYY-MM-DD` — titulares que regresan de vacaciones dentro de la ventana indicada (default 5 días). Devuelve `{fecha, dias, regresos:[{employee_id, nombre_completo, vac_inicio, vac_fin, dias_para_regreso, puestos:[{id, nombre, cliente_nombre}]}]}`. Cruza vacaciones activas con puesto_slots + puesto_titulares + legacy. Usado por el banner de cuenta regresiva en pizarrón y en RRHH/Vacaciones.
 - **Tablas**: `puestos_operativos`, `puesto_titulares`, `puesto_titular_historico`, `puesto_slots`, `cobertura_segmentos`, `cobertura_diaria`, `movimientos_operativos`, `cierre_operativo_diario`, `cierre_auditoria`, `planificacion_futura`, `solicitudes_cambio_operativo`
 - **Reglas de visualización del titular en el pizarrón**:
   - El pizarrón lee titulares de **3 fuentes** (orden de prioridad): (A) `puesto_slots.empleado_id` (multi-titular 24x24), (B) `puesto_titulares.employee_id`, (C) `puestos_operativos.titular_employee_id` (legacy). Cualquier endpoint que valide titularidad debe consultar las 3.

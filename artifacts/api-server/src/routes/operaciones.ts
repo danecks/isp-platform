@@ -478,19 +478,33 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
     {
       const { rows: vacRows } = await pool.query(`
         SELECT DISTINCT employee_id,
-               fecha::date AS vac_inicio,
-               COALESCE(fecha_fin, fecha)::date AS vac_fin
+               to_char(fecha::date, 'YYYY-MM-DD') AS vac_inicio,
+               to_char(COALESCE(fecha_fin, fecha)::date, 'YYYY-MM-DD') AS vac_fin
           FROM eventos_rrhh
          WHERE tipo_evento = 'vacaciones'
            AND $1::date BETWEEN fecha::date AND COALESCE(fecha_fin, fecha)::date
            AND estado NOT IN ('anulado', 'cancelado')
       `, [fechaConsultada]);
 
-      const vacacionMap = new Map<number, { inicio: string; fin: string }>();
+      // Calcula días hasta el regreso del titular: el regreso es el día siguiente
+      // al fin de las vacaciones. Si fin=30/04 y hoy=26/04 → vuelve en 5 días.
+      // Si fin=hoy → vuelve en 1 día (mañana). Si fin<hoy → 0 (ya regresó, no debería pasar).
+      function diasParaRegreso(vacFinISO: string): number {
+        const [fy, fm, fd] = vacFinISO.split("-").map(Number);
+        const [cy, cm, cd] = fechaConsultada.split("-").map(Number);
+        const fin     = Date.UTC(fy, fm - 1, fd);
+        const hoy     = Date.UTC(cy, cm - 1, cd);
+        const dias = Math.floor((fin - hoy) / 86400000) + 1; // +1 porque regresa al día siguiente del fin
+        return Math.max(0, dias);
+      }
+
+      const vacacionMap = new Map<number, { inicio: string; fin: string; dias_para_regreso: number }>();
       for (const v of vacRows) {
+        const fin = String(v.vac_fin);
         vacacionMap.set(Number(v.employee_id), {
           inicio: String(v.vac_inicio),
-          fin:    String(v.vac_fin),
+          fin,
+          dias_para_regreso: diasParaRegreso(fin),
         });
       }
 
@@ -500,28 +514,30 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
           if (p.es_par_24x24 && p.par_trabajando && !(p as any).es_relevo_dia) {
             const v = vacacionMap.get(Number(p.par_trabajando.employee_id));
             if (v) {
-              (p as any).agente_id              = null;
-              (p as any).agente_nombre          = null;
-              (p as any).estado                 = "descubierto";
-              (p as any).titular_en_vacaciones  = true;
-              (p as any).titular_vac_tipo       = "vacaciones";
-              (p as any).titular_vac_inicio     = v.inicio;
-              (p as any).titular_vac_fin        = v.fin;
-              (p as any).agente_virtual_titular = false;
+              (p as any).agente_id                  = null;
+              (p as any).agente_nombre              = null;
+              (p as any).estado                     = "descubierto";
+              (p as any).titular_en_vacaciones      = true;
+              (p as any).titular_vac_tipo           = "vacaciones";
+              (p as any).titular_vac_inicio         = v.inicio;
+              (p as any).titular_vac_fin            = v.fin;
+              (p as any).titular_vac_dias_regreso   = v.dias_para_regreso;
+              (p as any).agente_virtual_titular     = false;
             }
           }
           // No-24x24: si el agente_id actual (titular puro o real) está de vacaciones
           if (!p.es_par_24x24 && p.agente_id && !(p as any).es_relevo_dia) {
             const v = vacacionMap.get(Number(p.agente_id));
             if (v) {
-              (p as any).agente_id              = null;
-              (p as any).agente_nombre          = null;
-              (p as any).estado                 = "descubierto";
-              (p as any).titular_en_vacaciones  = true;
-              (p as any).titular_vac_tipo       = "vacaciones";
-              (p as any).titular_vac_inicio     = v.inicio;
-              (p as any).titular_vac_fin        = v.fin;
-              (p as any).agente_virtual_titular = false;
+              (p as any).agente_id                  = null;
+              (p as any).agente_nombre              = null;
+              (p as any).estado                     = "descubierto";
+              (p as any).titular_en_vacaciones      = true;
+              (p as any).titular_vac_tipo           = "vacaciones";
+              (p as any).titular_vac_inicio         = v.inicio;
+              (p as any).titular_vac_fin            = v.fin;
+              (p as any).titular_vac_dias_regreso   = v.dias_para_regreso;
+              (p as any).agente_virtual_titular     = false;
             }
           }
         }
@@ -903,6 +919,80 @@ operacionesRouter.post("/operaciones/cambiar-titular-custodia", async (req, res)
     res.status(500).json({ error: "Error al cambiar titular" });
   } finally {
     client.release();
+  }
+});
+
+// ─── GET /api/operaciones/proximos-regresos-vacaciones ───────────────────────
+// Lista titulares en vacaciones que regresan a su puesto en N días o menos.
+// Sirve para alertar a Operaciones y RRHH con cuenta regresiva (5,4,3,2,1 días).
+// Default: 5 días. Se puede pasar ?dias=N para personalizar.
+operacionesRouter.get("/operaciones/proximos-regresos-vacaciones", async (req, res) => {
+  try {
+    const dias = Math.max(1, Math.min(30, Number(req.query.dias) || 5));
+    const fechaParam = typeof req.query.fecha === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.fecha)
+      ? req.query.fecha : null;
+    const hoy = fechaParam ?? todayGT();
+
+    // Trae empleados con vacación activa cuyo fin está entre hoy y hoy+dias.
+    // El "regreso" es el día siguiente al fin → si fin=hoy regresa mañana (1 día).
+    // Cruza con puestos donde es titular (puesto_slots OR puesto_titulares OR legacy).
+    const { rows } = await pool.query(`
+      WITH vac AS (
+        SELECT er.employee_id,
+               e.nombre_completo,
+               to_char(er.fecha::date, 'YYYY-MM-DD') AS vac_inicio,
+               to_char(COALESCE(er.fecha_fin, er.fecha)::date, 'YYYY-MM-DD') AS vac_fin,
+               (COALESCE(er.fecha_fin, er.fecha)::date - $1::date + 1) AS dias_para_regreso
+          FROM eventos_rrhh er
+          JOIN employees e ON e.id = er.employee_id
+         WHERE er.tipo_evento = 'vacaciones'
+           AND er.estado NOT IN ('anulado', 'cancelado')
+           AND $1::date BETWEEN er.fecha::date AND COALESCE(er.fecha_fin, er.fecha)::date
+           AND COALESCE(er.fecha_fin, er.fecha)::date BETWEEN $1::date AND ($1::date + ($2::int - 1))
+      ),
+      puestos_titulares AS (
+        -- Vía puesto_slots (multi-titular nuevo)
+        SELECT ps.empleado_id AS employee_id,
+               po.id AS puesto_id, po.nombre AS puesto_nombre, po.cliente_nombre
+          FROM puesto_slots ps
+          JOIN puestos_operativos po ON po.id = ps.puesto_id
+         WHERE ps.activo = TRUE AND ps.empleado_id IS NOT NULL AND po.activo = TRUE
+        UNION
+        -- Vía puesto_titulares
+        SELECT pt.employee_id,
+               po.id, po.nombre, po.cliente_nombre
+          FROM puesto_titulares pt
+          JOIN puestos_operativos po ON po.id = pt.puesto_id
+         WHERE pt.activo = TRUE AND po.activo = TRUE
+        UNION
+        -- Vía legacy
+        SELECT po.titular_employee_id,
+               po.id, po.nombre, po.cliente_nombre
+          FROM puestos_operativos po
+         WHERE po.titular_employee_id IS NOT NULL AND po.activo = TRUE
+      )
+      SELECT v.employee_id,
+             v.nombre_completo,
+             v.vac_inicio,
+             v.vac_fin,
+             v.dias_para_regreso,
+             COALESCE(json_agg(
+               json_build_object(
+                 'id',             pt.puesto_id,
+                 'nombre',         pt.puesto_nombre,
+                 'cliente_nombre', pt.cliente_nombre
+               )
+             ) FILTER (WHERE pt.puesto_id IS NOT NULL), '[]'::json) AS puestos
+        FROM vac v
+        LEFT JOIN puestos_titulares pt ON pt.employee_id = v.employee_id
+       GROUP BY v.employee_id, v.nombre_completo, v.vac_inicio, v.vac_fin, v.dias_para_regreso
+       ORDER BY v.dias_para_regreso ASC, v.nombre_completo ASC
+    `, [hoy, dias]);
+
+    res.json({ fecha: hoy, dias, regresos: rows });
+  } catch (err) {
+    logger.error({ err }, "GET /operaciones/proximos-regresos-vacaciones error");
+    res.status(500).json({ error: "Error al obtener próximos regresos" });
   }
 });
 

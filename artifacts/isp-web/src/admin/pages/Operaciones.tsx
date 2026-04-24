@@ -30,6 +30,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
 import { ModalFichaArma } from "@/admin/components/ModalFichaArma";
 import { ModalFichaVehiculo } from "@/admin/components/ModalFichaVehiculo";
+import RegresosVacacionesBanner from "@/admin/components/RegresosVacacionesBanner";
 
 const API_BASE = "/api";
 
@@ -72,6 +73,8 @@ interface Puesto {
   titular_vac_tipo?: "vacaciones" | "vacaciones_trabajadas" | null;
   titular_vac_inicio?: string | null;
   titular_vac_fin?: string | null;
+  /** Días para que el titular regrese de vacaciones (1 = vuelve mañana). 0 = ya volvió. */
+  titular_vac_dias_regreso?: number | null;
   /** El titular del puesto está de vacaciones HOY (vaciado virtual del slot, PIZ-VAC-01) */
   titular_en_vacaciones?: boolean;
   /** El titular del puesto fue dado de baja / suspendido / con licencia (vaciado virtual, PIZ-BAJA-01) */
@@ -3676,6 +3679,29 @@ function DroppablePuesto({
             <span className="text-[8px] text-indigo-100 font-bold leading-none">{cambiosProximos.length}</span>
           </div>
         )}
+        {/* Badge titular en vacaciones (24x24): muestra cuenta regresiva los últimos 5 días */}
+        {puesto.titular_en_vacaciones && (() => {
+          const dr = puesto.titular_vac_dias_regreso;
+          const cuentaRegresiva = typeof dr === "number" && dr >= 1 && dr <= 5;
+          const tooltip = `Titular en vacaciones${puesto.titular_vac_inicio ? ` desde ${puesto.titular_vac_inicio}` : ""}${puesto.titular_vac_fin ? ` hasta ${puesto.titular_vac_fin}` : ""}${cuentaRegresiva ? ` — vuelve ${dr === 1 ? "mañana" : `en ${dr} días`}` : ""}`;
+          const claseBadge = cuentaRegresiva
+            ? "bg-amber-900/95 border-amber-400/60 animate-pulse"
+            : "bg-emerald-900/90 border-emerald-500/40";
+          const claseTexto = cuentaRegresiva ? "text-amber-200" : "text-emerald-300";
+          return (
+            <div className={`absolute -top-1.5 -left-1.5 z-10 flex items-center gap-0.5 border rounded-full px-1.5 py-0.5 ${claseBadge}`} title={tooltip}>
+              <span className={`text-[8px] font-bold leading-none ${claseTexto}`}>
+                {cuentaRegresiva ? `VAC ${dr}d` : "VAC"}
+              </span>
+            </div>
+          );
+        })()}
+        {/* Badge titular trabajando vacaciones (24x24): para consistencia con card no-24x24 */}
+        {puesto.titular_vac_tipo === "vacaciones_trabajadas" && (
+          <div className="absolute -top-1.5 -left-1.5 z-10 flex items-center gap-0.5 bg-orange-900/90 border border-orange-500/40 rounded-full px-1.5 py-0.5" title="Titular trabajando días de vacaciones">
+            <span className="text-[8px] text-orange-300 font-bold leading-none">VAC✓</span>
+          </div>
+        )}
 
         {/* ── COMPACT: siempre visible ── */}
         <div className="flex gap-2">
@@ -3866,11 +3892,22 @@ function DroppablePuesto({
           <span className="text-[8px] text-indigo-100 font-bold leading-none">{cambiosProximos.length}</span>
         </div>
       )}
-      {vacacionesTitular && (
-        <div className="absolute -top-1.5 -left-1.5 z-10 flex items-center gap-0.5 bg-emerald-900/90 border border-emerald-500/40 rounded-full px-1.5 py-0.5" title={`Titular en vacaciones${puesto.titular_vac_inicio ? ` desde ${puesto.titular_vac_inicio}` : ""}${puesto.titular_vac_fin ? ` hasta ${puesto.titular_vac_fin}` : ""}`}>
-          <span className="text-[8px] text-emerald-300 font-bold leading-none">VAC</span>
-        </div>
-      )}
+      {vacacionesTitular && (() => {
+        const dr = puesto.titular_vac_dias_regreso;
+        const cuentaRegresiva = typeof dr === "number" && dr >= 1 && dr <= 5;
+        const tooltip = `Titular en vacaciones${puesto.titular_vac_inicio ? ` desde ${puesto.titular_vac_inicio}` : ""}${puesto.titular_vac_fin ? ` hasta ${puesto.titular_vac_fin}` : ""}${cuentaRegresiva ? ` — vuelve ${dr === 1 ? "mañana" : `en ${dr} días`}` : ""}`;
+        const claseBadge = cuentaRegresiva
+          ? "bg-amber-900/95 border-amber-400/60 animate-pulse"
+          : "bg-emerald-900/90 border-emerald-500/40";
+        const claseTexto = cuentaRegresiva ? "text-amber-200" : "text-emerald-300";
+        return (
+          <div className={`absolute -top-1.5 -left-1.5 z-10 flex items-center gap-0.5 border rounded-full px-1.5 py-0.5 ${claseBadge}`} title={tooltip}>
+            <span className={`text-[8px] font-bold leading-none ${claseTexto}`}>
+              {cuentaRegresiva ? `VAC ${dr}d` : "VAC"}
+            </span>
+          </div>
+        );
+      })()}
       {vacacionesTrabajadas && (
         <div className="absolute -top-1.5 -left-1.5 z-10 flex items-center gap-0.5 bg-orange-900/90 border border-orange-500/40 rounded-full px-1.5 py-0.5" title="Titular trabajando días de vacaciones">
           <span className="text-[8px] text-orange-300 font-bold leading-none">VAC✓</span>
@@ -7602,6 +7639,9 @@ export default function Operaciones() {
     <AdminLayout title="Pizarrón Operativo">
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="flex flex-col h-full gap-4" style={{ minHeight: 0 }}>
+
+          {/* ── ALERTA: titulares regresan de vacaciones ≤5 días ─────────── */}
+          <RegresosVacacionesBanner fecha={fechaVista} dias={5} />
 
           {/* ── ALERTA: días sin cerrar ──────────────────────────────────── */}
           {hayDiasPendientes && (

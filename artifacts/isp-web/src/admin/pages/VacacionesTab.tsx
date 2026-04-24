@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import RegresosVacacionesBanner from "@/admin/components/RegresosVacacionesBanner";
 
 const API = "/api";
 const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
@@ -698,6 +699,9 @@ export default function VacacionesTab() {
 
   return (
     <div className="flex flex-col gap-5">
+
+      {/* Cuenta regresiva: titulares regresan de vacaciones ≤5 días */}
+      <RegresosVacacionesBanner dias={5} />
 
       {/* Alertas de aniversario */}
       {alertasUrgentes.length > 0 && (
