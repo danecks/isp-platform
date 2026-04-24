@@ -2646,14 +2646,25 @@ operacionesRouter.post("/operaciones/quitar-titularidad", async (req, res) => {
     }
     const puesto = puestoRows[0];
 
-    // Validar que el empleado sea titular (en puesto_titulares o titular_employee_id)
+    // Validar que el empleado sea titular en CUALQUIERA de las 3 fuentes que
+    // el pizarrón considera para mostrar titularidad (ver query del GET tablero):
+    //   A) puesto_slots.empleado_id (sistema nuevo, multi-titular 24x24)
+    //   B) puesto_titulares (sistema intermedio)
+    //   C) puestos_operativos.titular_employee_id (legacy single-titular)
+    // Bug PIZ-LIB-02: antes solo se validaban B y C, lo que rompía cuando el
+    // titular venía de puesto_slots → "El colaborador no es titular activo".
     const { rows: ptRows } = await client.query(
       `SELECT id FROM puesto_titulares
         WHERE puesto_id = $1 AND employee_id = $2 AND activo = TRUE`,
       [puestoId, employeeId]
     );
+    const { rows: psRows } = await client.query(
+      `SELECT id FROM puesto_slots
+        WHERE puesto_id = $1 AND empleado_id = $2 AND activo = TRUE`,
+      [puestoId, employeeId]
+    );
     const esTitularLegacy = puesto.titular_employee_id === employeeId;
-    if (ptRows.length === 0 && !esTitularLegacy) {
+    if (ptRows.length === 0 && psRows.length === 0 && !esTitularLegacy) {
       await client.query("ROLLBACK");
       return res.status(409).json({ error: "El colaborador no es titular activo de este puesto" });
     }
