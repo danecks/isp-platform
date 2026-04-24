@@ -124,6 +124,10 @@ interface ColaboradorPre {
   // Amonestaciones económicas pendientes a descontar en el período
   amonestaciones_monto: number | string | null;
   amonestaciones_count: number | string | null;
+  // Días por tipo de novedad (para cálculo de bonificaciones proporcionales)
+  dias_vacaciones: number | string | null;
+  dias_incapacidad: number | string | null;
+  dias_permiso_con_goce: number | string | null;
 }
 
 interface DetalleNovedad {
@@ -327,9 +331,10 @@ function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: number | n
   const igssLaboral = col.aplica_igss ? Math.round((sueldoPeriodo - descFaltas) * 0.0483 * 100) / 100 : 0;
   const isrQuincenal = calcularISRQuincenal(sb, col.aplica_igss);
 
-  // Bonificaciones (proporcionales a días trabajados — base/30 × días)
-  // Para "Real" usamos los días efectivamente trabajados a la fecha.
-  // Para "Estimado" proyectamos: días del período menos días con descuento.
+  // Bonificaciones (proporcionales a días pagables — base/30 × días)
+  // Días pagables = días trabajados + permiso con goce.
+  // (Vacaciones e incapacidad NO devengan bonificaciones — decisión empresa abr 2026,
+  //  alineado con backend `calcularBonificacionIncentivo` y `bonProporcional` de planilla.ts)
   const safeNum = (v: unknown, def = 0) => {
     const n = Number(v);
     return Number.isFinite(n) ? n : def;
@@ -340,14 +345,19 @@ function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: number | n
   const bon3Base = Math.max(safeNum(col.bon_3_base, 0), 0);
   const r2 = (n: number) => Math.round(n * 100) / 100;
 
-  const diasTrabReal = Number(col.dias_trabajados ?? 0);
+  const diasPermisoGoce = safeNum(col.dias_permiso_con_goce, 0);
+  // Para "Real": días efectivamente trabajados a la fecha + permiso con goce
+  const diasTrabReal = Math.max(safeNum(col.dias_trabajados, 0) + diasPermisoGoce, 0);
   const bonIncentivoReal = r2((bonIncentivoBase / 30) * diasTrabReal);
   const bon1Real = r2((bon1Base / 30) * diasTrabReal);
   const bon2Real = r2((bon2Base / 30) * diasTrabReal);
   const bon3Real = r2((bon3Base / 30) * diasTrabReal);
   const totalBonifReal = bonIncentivoReal + bon1Real + bon2Real + bon3Real;
 
-  const diasTrabProy = Math.max(periodoTotalDias - diasDesc, 0);
+  // Para "Estimado": proyectamos al período completo, descontando los días que
+  // no devengan (faltas, suspensiones, vacaciones, incapacidad, permiso sin goce).
+  const diasNoDevengan = diasDesc + safeNum(col.dias_vacaciones, 0) + safeNum(col.dias_incapacidad, 0);
+  const diasTrabProy = Math.max(periodoTotalDias - diasNoDevengan, 0);
   const bonIncentivoProy = r2((bonIncentivoBase / 30) * diasTrabProy);
   const bon1Proy = r2((bon1Base / 30) * diasTrabProy);
   const bon2Proy = r2((bon2Base / 30) * diasTrabProy);

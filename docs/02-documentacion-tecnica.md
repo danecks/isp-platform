@@ -691,3 +691,51 @@ export async function migrarPESP01() {
 - **Optimización**: `calcularTotalEstimado()` ahora se llama
   una sola vez por colaborador (`estimadosPorEmp`) en vez de
   3+ veces como hacía antes (totalIGSS, totalISR, render).
+
+### 10.5.2 Bonificaciones — fórmula unificada en pre-planilla y planilla final (abr 2026)
+
+- **Decisión de empresa** (confirmada por dirección, abr 2026):
+  > La bonificación incentivo (Q250 y bonif 1/2/3) se devenga
+  > únicamente por **días efectivamente trabajados + permiso con
+  > goce**. Vacaciones e incapacidad por IGSS NO devengan
+  > bonificación.
+
+- **Razonamiento de la decisión**:
+  - **Vacaciones**: durante vacaciones el colaborador no realiza
+    actividad para la empresa; la bonif. incentivo es por
+    productividad, no por estar contratado.
+  - **Incapacidad IGSS**: la subvención por incapacidad la paga
+    el seguro social, no la empresa, así que no corresponde
+    devengar bonificación.
+  - **Permiso con goce**: la empresa elige reconocerlo (cumpleaños,
+    duelo, matrimonio, etc.).
+
+- **Fórmula final unificada** en backend y frontend:
+  ```
+  bonificacion = (montoBase_mensual / 30) × diasPagables
+  diasPagables = dias_trabajados + dias_permiso_con_goce
+                 (capped a [0, diasPeriodo])
+  ```
+  - Divisor fijo **/30** (mes contable estándar) — IDÉNTICO en
+    `calcularBonificacionIncentivo`, `bonProporcional` (planilla.ts)
+    y `calcularTotalEstimado` (PrePlanilla.tsx).
+  - `montoBase_mensual` siempre el mensual entero
+    (Q250 para incentivo, `employees.bonificacion_1/2/3` para las otras).
+    Para una quincena con los 15 días pagables sale Q125 automáticamente
+    (250/30×15=125), sin necesidad de escalar el monto por frecuencia.
+  - Aplica idéntica a bonificación incentivo y a bonificaciones 1, 2, 3.
+
+- **Archivos modificados para alinear**:
+  - `artifacts/api-server/src/lib/nomina-calc.ts` →
+    `calcularBonificacionIncentivo()`: removidos
+    `diasVacaciones` y `diasIncapacidadConGoce` del cálculo.
+  - `artifacts/api-server/src/routes/planilla.ts` línea 143 →
+    `bonProporcional()`: misma corrección para bonif 1/2/3.
+  - `artifacts/isp-web/src/admin/pages/PrePlanilla.tsx` →
+    `calcularTotalEstimado()`: `diasTrabReal` ahora suma
+    `dias_permiso_con_goce`. `diasTrabProy` resta vacaciones
+    e incapacidad del período proyectado.
+
+- **Garantía operativa**: lo que el supervisor ve en
+  pre-planilla = lo que el sistema paga al cerrar planilla.
+  Ya no hay discrepancia silenciosa por vacaciones/incapacidad.

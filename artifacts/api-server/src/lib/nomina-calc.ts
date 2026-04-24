@@ -139,18 +139,25 @@ export interface BonificacionParams {
  * → Q125/quincena para empleados quincenales.
  * → Q250 para empleados mensuales (pagado en segunda quincena).
  *
- * REGLA DE PROPORCIONALIDAD:
- *   bonificacion = montoBase × (diasPagables / diasPeriodo)
+ * REGLA DE PROPORCIONALIDAD (decisión de empresa abr 2026):
+ *   bonificacion = (montoBase / 30) × diasPagables
+ *
+ * Usamos divisor fijo de 30 (mes contable estándar) para que la fórmula
+ * sea idéntica a `bonProporcional` en planilla.ts y a la pre-planilla,
+ * y para que un mes de 31 días pagado completo no genere Q258.33 en
+ * vez de Q250 (lo que pasaría si dividiéramos entre diasPeriodo).
  *
  * Donde:
  *   diasPeriodo  = días calendario del período (inclusive ambos extremos)
- *   diasPagables = diasTrabajados + diasVacaciones + diasPermisoConGoce + diasIncapacidadConGoce
+ *   diasPagables = diasTrabajados + diasPermisoConGoce
  *                  (capped al máximo de diasPeriodo, mínimo 0)
  *
  * NO se incluyen en diasPagables:
- *   - permisos sin goce
- *   - ausencias injustificadas
- *   - suspensiones sin goce
+ *   - vacaciones (postura empresa: durante vacaciones no hay actividad
+ *                 y la bonif. incentivo es por día efectivamente trabajado)
+ *   - incapacidad por IGSS (la subvención la paga el seguro social,
+ *                           no la empresa, así que no se devenga bonif.)
+ *   - permisos sin goce, faltas injustificadas, suspensiones sin goce
  *
  * Si diasPeriodo ≤ 0 o diasPagables = 0 → retorna 0.
  * Resultado redondeado a 2 decimales.
@@ -161,22 +168,24 @@ export function calcularBonificacionIncentivo(p: BonificacionParams): number {
   const d2 = new Date(p.hasta + "T00:00:00Z");
   const diasPeriodo = Math.round((d2.getTime() - d1.getTime()) / 86400000) + 1;
 
-  // Monto base según frecuencia
-  const montoBase = p.frecuenciaPago === "mensual" ? 250 : 125;
+  // Monto base SIEMPRE mensual (Q250) — la proporción /30 × días pagables
+  // ya da el valor correcto por período: para una quincena con 15 días
+  // pagables sale Q125 automáticamente (250/30×15=125). El parámetro
+  // `frecuenciaPago` se mantiene por compatibilidad pero ya no escala el monto.
+  const montoBase = 250;
 
-  // Días que generan derecho a bonificación
+  // Días que generan derecho a bonificación (solo trabajados + permiso con goce)
   let diasPagables =
-    (p.diasTrabajados        || 0) +
-    (p.diasVacaciones        || 0) +
-    (p.diasPermisoConGoce    || 0) +
-    (p.diasIncapacidadConGoce || 0);
+    (p.diasTrabajados     || 0) +
+    (p.diasPermisoConGoce || 0);
 
   // Clamp: no puede exceder el período ni ser negativo
   diasPagables = Math.max(0, Math.min(diasPagables, diasPeriodo));
 
   if (diasPeriodo <= 0 || diasPagables <= 0) return 0;
 
-  return parseFloat((montoBase * (diasPagables / diasPeriodo)).toFixed(2));
+  // Divisor fijo de 30 (mes contable) — alineado con planilla.ts y pre-planilla
+  return parseFloat(((montoBase / 30) * diasPagables).toFixed(2));
 }
 
 /**

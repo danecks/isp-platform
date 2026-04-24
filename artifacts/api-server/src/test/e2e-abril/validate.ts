@@ -312,9 +312,9 @@ export async function runValidate(verbose = true) {
       diasTrabajados: dt, diasVacaciones: dv,
       diasPermisoConGoce: dpc, diasIncapacidadConGoce: di,
     });
-    const montoBase = row.frecuencia_pago === "mensual" ? 250 : 125;
-    const diasPagables = Math.min(dt + dv + dpc + di, DIAS_PERIODO);
-    const expected = round2(montoBase * (diasPagables / DIAS_PERIODO));
+    // Regla abr 2026: vacaciones e incapacidad NO devengan; divisor fijo /30; base mensual Q250.
+    const diasPagables = Math.max(0, Math.min(dt + dpc, DIAS_PERIODO));
+    const expected = round2((250 / 30) * diasPagables);
     check("Bonificación", `V-21-${row.notas?.match(/EMP-\d+/)?.[0] ?? row.employee_id}: bono=${bono} correcto`,
       Math.abs(bono - expected) < 0.01,
       `pagables=${diasPagables}, bono_calculado=${bono}, bono_esperado=${expected}`,
@@ -338,8 +338,8 @@ export async function runValidate(verbose = true) {
     108.33, bono03
   );
 
-  // ── V-23: Vacaciones SÍ cuentan como días pagables ────────────────────────
-  // EMP-05: 12 trabajados + 3 vacaciones = 15 pagables → bono = Q125.00
+  // ── V-23: Vacaciones NO devengan bonificación (decisión empresa abr 2026) ─────
+  // EMP-05: 12 trabajados + 3 vacaciones → solo 12 pagables → bono = 250/30×12 = Q100.00
   const bono05 = emp05 ? calcularBonificacionIncentivo({
     frecuenciaPago: emp05.frecuencia_pago,
     desde: DESDE, hasta: HASTA,
@@ -348,10 +348,10 @@ export async function runValidate(verbose = true) {
     diasPermisoConGoce: parseInt(emp05.dias_permiso_con_goce),
     diasIncapacidadConGoce: parseInt(emp05.dias_incapacidad),
   }) : 0;
-  check("Bonificación", "V-23: EMP-05 vacaciones SÍ en bono (bono=Q125.00)",
-    bono05 === 125.00,
-    `bono=${bono05} (vacaciones incluidas en pagables)`,
-    125.00, bono05
+  check("Bonificación", "V-23: EMP-05 vacaciones NO en bono (bono=Q100.00)",
+    bono05 === 100.00,
+    `bono=${bono05} (vacaciones excluidas de pagables — paga el seguro/empresa solo trabajados)`,
+    100.00, bono05
   );
 
   // ── V-24: IGSS solo a quien cumple las 3 condiciones ─────────────────────

@@ -74,25 +74,29 @@ const S1 = "Bonificación Incentivo Proporcional";
   const r3 = calcularBonificacionIncentivo({ frecuenciaPago:"quincenal", desde, hasta, diasTrabajados:13, diasVacaciones:0, diasPermisoConGoce:0, diasIncapacidadConGoce:0 });
   assert(round2(r3) === 108.33, S1, "quincenal-permiso-sin-goce Q108.33", 108.33, round2(r3), r3);
 
-  // ── 1.4 Quincenal, vacaciones 3d (12 trabajados + 3 vacaciones = 15/15 = Q125) ─
+  // ── 1.4 Quincenal, vacaciones 3d → vacaciones NO devengan (decisión empresa abr 2026)
+  // 12 trabajados pagables → 250/30×12 = Q100.00
   const r4 = calcularBonificacionIncentivo({ frecuenciaPago:"quincenal", desde, hasta, diasTrabajados:12, diasVacaciones:3, diasPermisoConGoce:0, diasIncapacidadConGoce:0 });
-  assert(r4 === 125.00, S1, "quincenal-vacaciones-15pagables Q125", 125.00, r4, r4);
+  assert(r4 === 100.00, S1, "quincenal-vacaciones-NO-devengan Q100", 100.00, r4, r4);
 
   // ── 1.5 Quincenal, 0 días pagables → Q0.00 ──────────────────────────────
   const r5 = calcularBonificacionIncentivo({ frecuenciaPago:"quincenal", desde, hasta, diasTrabajados:0, diasVacaciones:0, diasPermisoConGoce:0, diasIncapacidadConGoce:0 });
   assert(r5 === 0, S1, "quincenal-0pagables Q0.00", 0, r5, r5);
 
-  // ── 1.6 Mensual, todos trabajados (15/15 = Q250.00) ─────────────────────
+  // ── 1.6 Mensual en segunda quincena, todos trabajados (15 pagables → 250/30×15 = Q125)
+  // En la primera quincena cobra los otros Q125, sumando Q250 al mes (bono completo).
   const r6 = calcularBonificacionIncentivo({ frecuenciaPago:"mensual", desde, hasta, diasTrabajados:15, diasVacaciones:0, diasPermisoConGoce:0, diasIncapacidadConGoce:0 });
-  assert(r6 === 250.00, S1, "mensual-todos-trabajados Q250", 250.00, r6, r6);
+  assert(r6 === 125.00, S1, "mensual-quincena-todos-trabajados Q125", 125.00, r6, r6);
 
-  // ── 1.7 Mensual, vacaciones 3d (12 trabajados + 3 vac = 15/15 = Q250) ──
+  // ── 1.7 Mensual, vacaciones 3d → vacaciones NO devengan (decisión empresa abr 2026)
+  // 12 trabajados pagables → 250/30×12 = Q100.00
   const r7 = calcularBonificacionIncentivo({ frecuenciaPago:"mensual", desde, hasta, diasTrabajados:12, diasVacaciones:3, diasPermisoConGoce:0, diasIncapacidadConGoce:0 });
-  assert(r7 === 250.00, S1, "mensual-vacaciones-15pagables Q250", 250.00, r7, r7);
+  assert(r7 === 100.00, S1, "mensual-vacaciones-NO-devengan Q100", 100.00, r7, r7);
 
-  // ── 1.8 Mensual, incapacidad 3d (12t + 3inc = 15 = Q250) ────────────────
+  // ── 1.8 Mensual, incapacidad 3d → incapacidad IGSS NO devenga (paga el seguro social)
+  // 12 trabajados pagables → 250/30×12 = Q100.00
   const r8 = calcularBonificacionIncentivo({ frecuenciaPago:"mensual", desde, hasta, diasTrabajados:12, diasVacaciones:0, diasPermisoConGoce:0, diasIncapacidadConGoce:3 });
-  assert(r8 === 250.00, S1, "mensual-incapacidad-pagable Q250", 250.00, r8, r8);
+  assert(r8 === 100.00, S1, "mensual-incapacidad-NO-devenga Q100", 100.00, r8, r8);
 
   // ── 1.9 Permiso con goce SÍ cuenta (12t + 2pcg = 14/15 = Q116.67) ─────
   const r9 = calcularBonificacionIncentivo({ frecuenciaPago:"quincenal", desde, hasta, diasTrabajados:12, diasVacaciones:0, diasPermisoConGoce:2, diasIncapacidadConGoce:0 });
@@ -102,10 +106,10 @@ const S1 = "Bonificación Incentivo Proporcional";
   const r10 = calcularBonificacionIncentivo({ frecuenciaPago:"quincenal", desde, hasta, diasTrabajados:20, diasVacaciones:0, diasPermisoConGoce:0, diasIncapacidadConGoce:0 });
   assert(r10 === 125.00, S1, "clamp-diasPagables>periodo Q125", 125.00, r10, r10);
 
-  // ── 1.11 HE EMP-08: en descanso trabajado 3 días (3/15 + 9 normal = 12t, vac=0)
-  //   EMP-08 tiene: 12 días trabajo_dia=TRUE + 3 descansos trabajados (=TRUE) = 15 días trabajados total → Q250 full (mensual)
+  // ── 1.11 EMP-08 (mensual, descanso trabajado): 15 pagables en la quincena → 250/30×15 = Q125
+  //   En la otra quincena cobra los Q125 restantes.
   const r11 = calcularBonificacionIncentivo({ frecuenciaPago:"mensual", desde, hasta, diasTrabajados:15, diasVacaciones:0, diasPermisoConGoce:0, diasIncapacidadConGoce:0 });
-  assert(r11 === 250.00, S1, "mensual-descanso-trabajado-15pagables Q250", 250.00, r11, r11);
+  assert(r11 === 125.00, S1, "mensual-descanso-trabajado-15pagables Q125", 125.00, r11, r11);
 
   // ── 1.12 EMP-24: permiso sin goce múltiple (12 trabajados / 15 días) = Q100
   const r12 = calcularBonificacionIncentivo({ frecuenciaPago:"quincenal", desde, hasta, diasTrabajados:12, diasVacaciones:0, diasPermisoConGoce:0, diasIncapacidadConGoce:0 });
@@ -225,17 +229,17 @@ const S4 = "Aislamiento días_pagables por colaborador";
   const bono3 = calcularBonificacionIncentivo({ frecuenciaPago:"quincenal", desde, hasta, diasTrabajados:13, diasVacaciones:0, diasPermisoConGoce:0, diasIncapacidadConGoce:0 });
   assert(round2(bono3) === 108.33, S4, "emp03-permiso-sin-goce-13pagables", 108.33, round2(bono3), bono3);
 
-  // EMP-05: 12 trabaja, 3 vacaciones → 15 pagables → Q125.00
+  // EMP-05: 12 trabaja, 3 vacaciones → vacaciones NO devengan → 12 pagables → 250/30×12 = Q100.00
   const bono5 = calcularBonificacionIncentivo({ frecuenciaPago:"quincenal", desde, hasta, diasTrabajados:12, diasVacaciones:3, diasPermisoConGoce:0, diasIncapacidadConGoce:0 });
-  assert(bono5 === 125.00, S4, "emp05-vacaciones-pagables-15 Q125", 125.00, bono5, bono5);
+  assert(bono5 === 100.00, S4, "emp05-vacaciones-NO-devengan Q100", 100.00, bono5, bono5);
 
-  // EMP-07 (mensual): 12 trabaja, 3 vacaciones → 15 pagables → Q250.00
+  // EMP-07 (mensual): 12 trabaja, 3 vacaciones → vacaciones NO devengan → 12 pagables → Q100.00
   const bono7 = calcularBonificacionIncentivo({ frecuenciaPago:"mensual", desde, hasta, diasTrabajados:12, diasVacaciones:3, diasPermisoConGoce:0, diasIncapacidadConGoce:0 });
-  assert(bono7 === 250.00, S4, "emp07-mensual-vacaciones-pagables-15 Q250", 250.00, bono7, bono7);
+  assert(bono7 === 100.00, S4, "emp07-mensual-vacaciones-NO-devengan Q100", 100.00, bono7, bono7);
 
-  // EMP-08 (mensual, descanso trabajado): trabaja 15 días (12 normal + 3 descanso_trabajado) → 15 pagables → Q250
+  // EMP-08 (mensual, descanso trabajado): 15 pagables en la quincena → 250/30×15 = Q125
   const bono8 = calcularBonificacionIncentivo({ frecuenciaPago:"mensual", desde, hasta, diasTrabajados:15, diasVacaciones:0, diasPermisoConGoce:0, diasIncapacidadConGoce:0 });
-  assert(bono8 === 250.00, S4, "emp08-descanso-trabajado-15pagables Q250", 250.00, bono8, bono8);
+  assert(bono8 === 125.00, S4, "emp08-descanso-trabajado-15pagables Q125", 125.00, bono8, bono8);
 
   // NO puede transferirse: bono de EMP-01 ≠ bono de EMP-02 (distinto N° de días falta)
   const bonoA = calcularBonificacionIncentivo({ frecuenciaPago:"quincenal", desde, hasta, diasTrabajados:14, diasVacaciones:0, diasPermisoConGoce:0, diasIncapacidadConGoce:0 }); // 14/15

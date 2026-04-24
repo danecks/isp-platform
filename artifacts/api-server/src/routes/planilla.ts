@@ -135,7 +135,9 @@ function calcularLinea(
     const d2 = new Date(hasta + "T00:00:00Z");
     const diasPeriodo = Math.round((d2.getTime() - d1.getTime()) / 86400000) + 1;
     if (diasPeriodo <= 0) return 0;
-    const diasPagables = Math.min(diasPeriodo, toInt(row.dias_trabajados) + toInt(row.dias_vacaciones) + toInt(row.dias_permiso_con_goce) + toInt(row.dias_incapacidad));
+    // Misma regla que calcularBonificacionIncentivo: solo días trabajados + permiso con goce.
+    // (Vacaciones e incapacidad NO devengan bonificaciones — decisión empresa abr 2026)
+    const diasPagables = Math.max(0, Math.min(diasPeriodo, toInt(row.dias_trabajados) + toInt(row.dias_permiso_con_goce)));
     const mensual = base;
     const diario = mensual / 30;
     return parseFloat((diario * diasPagables).toFixed(2));
