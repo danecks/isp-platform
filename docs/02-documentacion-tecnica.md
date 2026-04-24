@@ -251,6 +251,11 @@ export async function migrarPESP01() {
   - `GET /operaciones/planificacion-futura?fecha`
   - `GET /operaciones/puestos/:id/titulares`
 - **Tablas**: `puestos_operativos`, `puesto_titulares`, `puesto_titular_historico`, `puesto_slots`, `cobertura_segmentos`, `cobertura_diaria`, `movimientos_operativos`, `cierre_operativo_diario`, `cierre_auditoria`, `planificacion_futura`, `solicitudes_cambio_operativo`
+- **Reglas de visualización del titular en el pizarrón**:
+  - El pizarrón lee titulares de **3 fuentes** (orden de prioridad): (A) `puesto_slots.empleado_id` (multi-titular 24x24), (B) `puesto_titulares.employee_id`, (C) `puestos_operativos.titular_employee_id` (legacy). Cualquier endpoint que valide titularidad debe consultar las 3.
+  - **Falta del titular** (`eventos_rrhh.tipo_evento='falta'`): el puesto se muestra descubierto, `titular_faltando=true`. Se preserva `titular_employee_id` para mostrar de quién fue la falta.
+  - **Vacaciones del titular** (`tipo_evento='vacaciones'` con rango `fecha`–`fecha_fin` que incluye la fecha consultada): el puesto se muestra descubierto, `titular_en_vacaciones=true` con `titular_vac_inicio`/`titular_vac_fin`. Al terminar el rango, el titular vuelve a aparecer cubriendo el puesto automáticamente. **No** aplica para `vacaciones_trabajadas` (el colaborador renuncia a sus vacaciones y trabaja).
+  - Estos vaciados son **virtuales** (solo en respuesta del API, no tocan BD), por lo que la titularidad real se preserva intacta.
 
 ### 7.3 RRHH
 - **Eventos**: `routes/eventos-rrhh.ts` → tabla `eventos_rrhh`

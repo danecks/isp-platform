@@ -466,6 +466,68 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
       }
     }
 
+    // ── Verificar VACACIONES del titular para la fecha consultada (PIZ-VAC-01) ──
+    // Bug: cuando un titular entra de vacaciones (vacaciones normales, NO
+    // 'vacaciones_trabajadas'), el pizarrón seguía mostrándolo cubriendo el
+    // puesto. La query del SELECT solo capturaba vacaciones del titular legacy
+    // (po.titular_employee_id), no de titulares vía puesto_slots/puesto_titulares.
+    // Aquí hacemos query general por employee_id y aplicamos a TODOS los puestos:
+    // el puesto queda descubierto (estado='descubierto', agente_id=NULL) pero
+    // titular_employee_id se preserva para que se vea quién está de vacaciones
+    // y alguien lo pueda relevar. El frontend muestra badge "Titular en vacaciones".
+    {
+      const { rows: vacRows } = await pool.query(`
+        SELECT DISTINCT employee_id,
+               fecha::date AS vac_inicio,
+               COALESCE(fecha_fin, fecha)::date AS vac_fin
+          FROM eventos_rrhh
+         WHERE tipo_evento = 'vacaciones'
+           AND $1::date BETWEEN fecha::date AND COALESCE(fecha_fin, fecha)::date
+           AND estado NOT IN ('anulado', 'cancelado')
+      `, [fechaConsultada]);
+
+      const vacacionMap = new Map<number, { inicio: string; fin: string }>();
+      for (const v of vacRows) {
+        vacacionMap.set(Number(v.employee_id), {
+          inicio: String(v.vac_inicio),
+          fin:    String(v.vac_fin),
+        });
+      }
+
+      if (vacacionMap.size > 0) {
+        for (const p of puestosFinales) {
+          // 24x24: si par_trabajando está de vacaciones y no hay relevo cubriendo
+          if (p.es_par_24x24 && p.par_trabajando && !(p as any).es_relevo_dia) {
+            const v = vacacionMap.get(Number(p.par_trabajando.employee_id));
+            if (v) {
+              (p as any).agente_id              = null;
+              (p as any).agente_nombre          = null;
+              (p as any).estado                 = "descubierto";
+              (p as any).titular_en_vacaciones  = true;
+              (p as any).titular_vac_tipo       = "vacaciones";
+              (p as any).titular_vac_inicio     = v.inicio;
+              (p as any).titular_vac_fin        = v.fin;
+              (p as any).agente_virtual_titular = false;
+            }
+          }
+          // No-24x24: si el agente_id actual (titular puro o real) está de vacaciones
+          if (!p.es_par_24x24 && p.agente_id && !(p as any).es_relevo_dia) {
+            const v = vacacionMap.get(Number(p.agente_id));
+            if (v) {
+              (p as any).agente_id              = null;
+              (p as any).agente_nombre          = null;
+              (p as any).estado                 = "descubierto";
+              (p as any).titular_en_vacaciones  = true;
+              (p as any).titular_vac_tipo       = "vacaciones";
+              (p as any).titular_vac_inicio     = v.inicio;
+              (p as any).titular_vac_fin        = v.fin;
+              (p as any).agente_virtual_titular = false;
+            }
+          }
+        }
+      }
+    }
+
     // ── Inyectar slots virtuales de custodia ────────────────────────────────────
     const diaSemana = new Date(fechaConsultada + "T12:00:00Z").getUTCDay();
     const { rows: custodiaClientes } = await pool.query(`
