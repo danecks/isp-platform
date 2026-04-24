@@ -1287,7 +1287,11 @@ function SelectorAgenteAgrupado({
   // Pool base (sin hints de puesto)
   const { data: poolActual } = useQuery<Pool>({
     queryKey: ["operaciones-pool"],
-    queryFn: () => fetch(`${API_BASE}/operaciones/pool`).then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/operaciones/pool`, { headers: { "x-isp-session": getSession() } });
+      if (!r.ok) throw new Error(`pool ${r.status}`);
+      return r.json();
+    },
     enabled: !esFuturo && !modoRanking,
     staleTime: 60_000,
   });
@@ -1295,16 +1299,22 @@ function SelectorAgenteAgrupado({
   // Pool con hints de experiencia (para ranking)
   const { data: poolRanked } = useQuery<Pool>({
     queryKey: ["operaciones-pool", puestoId],
-    queryFn: () =>
-      fetch(`${API_BASE}/operaciones/pool?puesto_id=${puestoId}`).then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/operaciones/pool?puesto_id=${puestoId}`, { headers: { "x-isp-session": getSession() } });
+      if (!r.ok) throw new Error(`pool ranked ${r.status}`);
+      return r.json();
+    },
     enabled: modoRanking,
     staleTime: 60_000,
   });
 
   const { data: poolFuturoRaw } = useQuery<PoolFuturoData>({
     queryKey: ["pool-futuro", fecha],
-    queryFn: () =>
-      fetch(`${API_BASE}/operaciones/pool-futuro?fecha=${fecha}`).then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/operaciones/pool-futuro?fecha=${fecha}`, { headers: { "x-isp-session": getSession() } });
+      if (!r.ok) throw new Error(`pool-futuro ${r.status}`);
+      return r.json();
+    },
     enabled: esFuturo,
     staleTime: 120_000,
   });
@@ -5549,7 +5559,7 @@ function ModalNuevoPuesto({
   const { data: turnosCatalogo = [], isLoading: cargandoTurnos } = useQuery<TurnoApiItem[]>({
     queryKey: ["turnos-catalogo"],
     queryFn: async () => {
-      const r = await fetch(`${API_BASE}/turnos`, { credentials: "include" });
+      const r = await fetch(`${API_BASE}/turnos`, { headers: { "x-isp-session": getSession() } });
       if (!r.ok) throw new Error("Error al cargar turnos");
       return r.json();
     },
@@ -5559,7 +5569,7 @@ function ModalNuevoPuesto({
   const { data: zonasCatalogo = [], isLoading: cargandoZonas } = useQuery<{ id: number; nombre: string }[]>({
     queryKey: ["zonas-catalogo"],
     queryFn: async () => {
-      const r = await fetch(`${API_BASE}/operaciones/zonas`, { credentials: "include" });
+      const r = await fetch(`${API_BASE}/operaciones/zonas`, { headers: { "x-isp-session": getSession() } });
       if (!r.ok) throw new Error("Error al cargar zonas");
       const data = await r.json();
       return Array.isArray(data) ? data : (data.zonas ?? []);
@@ -6541,24 +6551,29 @@ export default function Operaciones() {
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: tablero = [], isLoading: loadingTablero, refetch: refetchTablero } = useQuery<ClienteBoard[]>({
     queryKey: ["operaciones-tablero", esOtraFecha ? fechaVista : "hoy"],
-    queryFn: () => {
+    queryFn: async () => {
       const url = esOtraFecha
         ? `${API_BASE}/operaciones/tablero?fecha=${fechaVista}`
         : `${API_BASE}/operaciones/tablero`;
-      return fetch(url).then((r) => r.json());
+      const r = await fetch(url, { headers: { "x-isp-session": getSession() } });
+      if (!r.ok) throw new Error(`No se pudo cargar el tablero (HTTP ${r.status})`);
+      const data = await r.json();
+      return Array.isArray(data) ? data : [];
     },
     refetchInterval: esOtraFecha ? false : 30_000,
   });
 
   const { data: pool, isLoading: loadingPool, refetch: refetchPool } = useQuery<Pool>({
     queryKey: ["operaciones-pool", puestoContexto?.id ?? null, fechaVista],
-    queryFn: () => {
+    queryFn: async () => {
       const params = new URLSearchParams();
       if (puestoContexto) params.set("puesto_id", String(puestoContexto.id));
       if (fechaVista) params.set("fecha", fechaVista);
       const qs = params.toString();
       const url = `${API_BASE}/operaciones/pool${qs ? `?${qs}` : ""}`;
-      return fetch(url).then((r) => r.json());
+      const r = await fetch(url, { headers: { "x-isp-session": getSession() } });
+      if (!r.ok) throw new Error(`No se pudo cargar el pool (HTTP ${r.status})`);
+      return r.json();
     },
     refetchInterval: 30_000,
   });
@@ -6581,45 +6596,70 @@ export default function Operaciones() {
   }
   const { data: adminTablero } = useQuery<AdminTablero>({
     queryKey: ["operaciones-admin", esOtraFecha ? fechaVista : "hoy"],
-    queryFn: () => {
+    queryFn: async () => {
       const url = esOtraFecha
         ? `${API_BASE}/operaciones/tablero/administracion?fecha=${fechaVista}`
         : `${API_BASE}/operaciones/tablero/administracion`;
-      return fetch(url).then((r) => r.json());
+      const r = await fetch(url, { headers: { "x-isp-session": getSession() } });
+      if (!r.ok) throw new Error(`tablero/administracion ${r.status}`);
+      return r.json();
     },
     refetchInterval: esOtraFecha ? false : 60_000,
   });
 
   const { data: historial = [], isLoading: loadingHistorial } = useQuery<Movimiento[]>({
     queryKey: ["operaciones-historial"],
-    queryFn: () => fetch(`${API_BASE}/operaciones/historial?limit=80`).then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/operaciones/historial?limit=80`, { headers: { "x-isp-session": getSession() } });
+      if (!r.ok) throw new Error(`historial ${r.status}`);
+      const data = await r.json();
+      return Array.isArray(data) ? data : [];
+    },
     enabled: historialAbierto,
     refetchInterval: historialAbierto ? 15_000 : false,
   });
 
   const { data: clientesDisponibles = [] } = useQuery<ClienteDisponible[]>({
     queryKey: ["operaciones-clientes"],
-    queryFn: () => fetch(`${API_BASE}/operaciones/clientes-disponibles`).then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/operaciones/clientes-disponibles`, { headers: { "x-isp-session": getSession() } });
+      if (!r.ok) throw new Error(`clientes-disponibles ${r.status}`);
+      const data = await r.json();
+      return Array.isArray(data) ? data : [];
+    },
   });
 
   const { data: cierreHoy, refetch: refetchCierre } = useQuery<CierreHoyData>({
     queryKey: ["operaciones-cierre-hoy"],
-    queryFn: () => fetch(`${API_BASE}/operaciones/cierre-hoy`).then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/operaciones/cierre-hoy`, { headers: { "x-isp-session": getSession() } });
+      if (!r.ok) throw new Error(`cierre-hoy ${r.status}`);
+      return r.json();
+    },
     refetchInterval: 60_000,
   });
 
   const { data: tarjetasSSA = [] } = useQuery<TarjetaSSAPendiente[]>({
     queryKey: ["ssa-tablero-pizarron"],
-    queryFn: () => fetch(`${API_BASE}/solicitudes-servicio/tablero`, {
-      headers: { "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" },
-    }).then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/solicitudes-servicio/tablero`, {
+        headers: { "x-isp-session": getSession() },
+      });
+      if (!r.ok) throw new Error(`ssa/tablero ${r.status}`);
+      const data = await r.json();
+      return Array.isArray(data) ? data : [];
+    },
     refetchInterval: 30_000,
   });
 
   // ── Query: puestos sin zona (alerta operativa) ───────────────────────────
   const { data: sinZonaData } = useQuery<{ total: number; puestos: { id: number; nombre: string; cliente: string }[] }>({
     queryKey: ["puestos-sin-zona"],
-    queryFn: () => fetch(`${API_BASE}/operaciones/puestos/sin-zona`, { credentials: "include" }).then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/operaciones/puestos/sin-zona`, { headers: { "x-isp-session": getSession() } });
+      if (!r.ok) throw new Error(`puestos/sin-zona ${r.status}`);
+      return r.json();
+    },
     refetchInterval: 120_000,
   });
   const puestosSinZonaCount = sinZonaData?.total ?? 0;
@@ -6627,18 +6667,23 @@ export default function Operaciones() {
   // ── Queries: planificación futura ────────────────────────────────────────
   const { data: planFuturoDia = [], refetch: refetchPlanFuturo } = useQuery<PlanFuturo[]>({
     queryKey: ["planificacion-futura", fechaVista],
-    queryFn: () =>
-      fetch(`${API_BASE}/operaciones/planificacion-futura?fecha=${fechaVista}`)
-        .then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/operaciones/planificacion-futura?fecha=${fechaVista}`, { headers: { "x-isp-session": getSession() } });
+      if (!r.ok) throw new Error(`planificacion-futura ${r.status}`);
+      const data = await r.json();
+      return Array.isArray(data) ? data : [];
+    },
     enabled: esFuturo,
     refetchInterval: esFuturo ? 30_000 : false,
   });
 
   const { data: cambiosFuturosProximos = {} } = useQuery<Record<number, PlanFuturo[]>>({
     queryKey: ["planificacion-futura-proximos"],
-    queryFn: () =>
-      fetch(`${API_BASE}/operaciones/planificacion-futura/proximos`)
-        .then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/operaciones/planificacion-futura/proximos`, { headers: { "x-isp-session": getSession() } });
+      if (!r.ok) throw new Error(`planificacion-futura/proximos ${r.status}`);
+      return r.json();
+    },
     refetchInterval: 60_000,
   });
 
@@ -6650,9 +6695,11 @@ export default function Operaciones() {
 
   const { data: poolFuturo, isLoading: loadingPoolFuturo } = useQuery<PoolFuturoData>({
     queryKey: ["pool-futuro", fechaVista],
-    queryFn: () =>
-      fetch(`${API_BASE}/operaciones/pool-futuro?fecha=${fechaVista}`)
-        .then((r) => { if (!r.ok) throw new Error("pool-futuro error"); return r.json(); }),
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/operaciones/pool-futuro?fecha=${fechaVista}`, { headers: { "x-isp-session": getSession() } });
+      if (!r.ok) throw new Error("pool-futuro error");
+      return r.json();
+    },
     enabled: esFuturo,
     refetchInterval: esFuturo ? 60_000 : false,
     retry: 1,
@@ -6660,9 +6707,11 @@ export default function Operaciones() {
 
   const { data: proximosArranques } = useQuery<{ arranques: InicioProyecto[]; total: number }>({
     queryKey: ["proximos-arranques"],
-    queryFn: () =>
-      fetch(`${API_BASE}/operaciones/proximos-arranques?dias=60`)
-        .then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/operaciones/proximos-arranques?dias=60`, { headers: { "x-isp-session": getSession() } });
+      if (!r.ok) throw new Error(`proximos-arranques ${r.status}`);
+      return r.json();
+    },
     refetchInterval: 300_000,
     retry: 1,
   });
@@ -8592,7 +8641,7 @@ export default function Operaciones() {
           })()}
 
           {/* ── Panel Administración / Backoffice ─────────────────────── */}
-          {adminTablero && adminTablero.empleados.length > 0 && (() => {
+          {adminTablero && Array.isArray(adminTablero.empleados) && adminTablero.empleados.length > 0 && (() => {
             const GRUPOS_LABELS: Record<string, { label: string; color: string; bg: string; border: string }> = {
               gerencia:             { label: "Gerencia",  color: "text-amber-300/80",  bg: "bg-amber-500/10",  border: "border-amber-500/25" },
               administrativo_rrhh:  { label: "RRHH",     color: "text-sky-300/80",    bg: "bg-sky-500/10",    border: "border-sky-500/25" },
