@@ -330,6 +330,20 @@ export async function migrarPESP01() {
     fallback, los empleados con `estado_laboral = 'suspendido'` que NO tienen
     evento aprobado en el mes se siguen reportando con fechas del mes completo
     (compatibilidad con planillas anteriores).
+- **Doble entrada del evento de suspensión** (Forma A / Forma B): el evento
+  RRHH `tipo_evento = 'suspension'` aprobado se puede crear por dos rutas y
+  ambas dejan **el mismo estado en BD**:
+  - **Forma B – RRHH > Eventos** (`POST /rrhh/eventos`): captura un evento
+    pendiente que un aprobador valida después.
+  - **Forma A – Ficha del empleado** (`PATCH /employees/:id/estado` con
+    `estadoLaboral='suspendido'`): el endpoint exige `fechaDesde` y
+    `fechaHasta` (YYYY-MM-DD); en una sola transacción actualiza
+    `estado_laboral`, inserta el evento RRHH ya `aprobado` con
+    `generado_desde='ficha_empleado'` y hace UPSERT en
+    `novedades_nomina_diarias` para cada día del rango con
+    `suspension=TRUE`, `descuento_dia=TRUE`, `trabajo_dia=FALSE`. La UI
+    abre un modal (`ModalSuspenderEmpleado`) para pedir las fechas y un
+    motivo opcional antes de llamar al endpoint.
 
 ### 7.7 Vacaciones (`/api/vacaciones`)
 - **Archivo**: `routes/vacaciones.ts`

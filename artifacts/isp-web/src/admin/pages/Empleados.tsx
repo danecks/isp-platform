@@ -3656,6 +3656,110 @@ interface SimBaja {
   rubros: RubroBaja[]; totalGeneral: number;
 }
 
+// ─── Modal: Suspender empleado (pide rango de fechas + motivo) ───────────────
+// Cuando se cambia estado a "suspendido" desde la ficha, debe crear el
+// evento RRHH equivalente al de RRHH > Eventos para que la nómina descuente
+// los días y aparezca en planilla IGSS con fechas reales.
+function ModalSuspenderEmpleado({
+  emp, onClose, onConfirm,
+}: {
+  emp: Empleado;
+  onClose: () => void;
+  onConfirm: (extras: { fechaDesde: string; fechaHasta: string; observaciones: string }) => void;
+}) {
+  const today = new Date().toISOString().split("T")[0];
+  const in7d  = (() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().split("T")[0]; })();
+  const [fechaDesde, setFechaDesde] = useState(today);
+  const [fechaHasta, setFechaHasta] = useState(in7d);
+  const [observaciones, setObservaciones] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const dias = (() => {
+    if (!fechaDesde || !fechaHasta || fechaDesde > fechaHasta) return 0;
+    const a = new Date(fechaDesde + "T00:00:00");
+    const b = new Date(fechaHasta + "T00:00:00");
+    return Math.round((b.getTime() - a.getTime()) / 86400000) + 1;
+  })();
+
+  function submit() {
+    if (!fechaDesde || !fechaHasta) { setError("Ambas fechas son requeridas"); return; }
+    if (fechaDesde > fechaHasta)   { setError("La fecha desde no puede ser mayor que la fecha hasta"); return; }
+    onConfirm({ fechaDesde, fechaHasta, observaciones: observaciones.trim() });
+  }
+
+  const inputCls = "w-full bg-[#060e1c] border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500/40";
+
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+      <div className="bg-[#07111f] border border-amber-500/20 rounded-2xl w-full max-w-md shadow-2xl">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-white/8">
+          <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-4 h-4 text-amber-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-white">Suspender Colaborador</p>
+            <p className="text-[11px] text-white/40 truncate">{emp.nombreCompleto}</p>
+          </div>
+          <button onClick={onClose} className="text-white/30 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div className="flex items-start gap-2 bg-amber-500/8 border border-amber-500/20 rounded-xl px-3 py-2.5">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
+            <p className="text-[11px] text-amber-300/80">
+              Se creará un <span className="font-semibold">evento RRHH de suspensión aprobado</span> con las fechas indicadas. Los días del rango se descontarán automáticamente en nómina y planilla IGSS.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] text-white/50 mb-1 block">Suspensión desde</label>
+              <input type="date" value={fechaDesde} onChange={(e) => { setError(null); setFechaDesde(e.target.value); }} className={inputCls} />
+            </div>
+            <div>
+              <label className="text-[11px] text-white/50 mb-1 block">Suspensión hasta</label>
+              <input type="date" value={fechaHasta} onChange={(e) => { setError(null); setFechaHasta(e.target.value); }} min={fechaDesde} className={inputCls} />
+            </div>
+          </div>
+
+          {dias > 0 && (
+            <div className="text-[11px] text-white/50 text-center">
+              <span className="text-amber-300 font-semibold">{dias}</span> {dias === 1 ? "día" : "días"} de suspensión
+            </div>
+          )}
+
+          <div>
+            <label className="text-[11px] text-white/50 mb-1 block">Motivo / observaciones (opcional)</label>
+            <textarea
+              value={observaciones}
+              onChange={(e) => setObservaciones(e.target.value)}
+              rows={3}
+              placeholder="Ej. Suspensión por incumplimiento de procedimientos..."
+              className={inputCls + " resize-none"}
+            />
+          </div>
+
+          {error && (
+            <div className="text-[11px] text-red-400 bg-red-500/8 border border-red-500/20 rounded-lg px-3 py-2">{error}</div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button onClick={onClose} className="flex-1 py-2.5 bg-white/5 hover:bg-white/8 border border-white/10 rounded-xl text-xs text-white/60 transition-colors">
+              Cancelar
+            </button>
+            <button onClick={submit} className="flex-1 py-2.5 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/30 rounded-xl text-xs text-amber-300 font-semibold transition-colors">
+              Confirmar suspensión
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function ModalBajaEmpleado({
   emp, onClose, onSuccess,
 }: {
@@ -4317,11 +4421,12 @@ function FichaModal({
   emp: Empleado;
   onClose: () => void;
   onEdit: (e: Empleado) => void;
-  onEstado: (e: Empleado, estado: string) => void;
+  onEstado: (e: Empleado, estado: string, extras?: { fechaDesde?: string; fechaHasta?: string; observaciones?: string }) => void;
 }) {
   const [tab, setTab] = useState<"perfil" | "asignacion-op" | "asignaciones" | "sistema" | "operacion" | "historial" | "kpi" | "anticipos" | "vacaciones" | "qr" | "solicitud" | "contratos" | "indemnizacion">("perfil");
   const [showEstado, setShowEstado] = useState(false);
   const [bajaModal, setBajaModal]   = useState(false);
+  const [suspenderModal, setSuspenderModal] = useState(false);
   const est = ESTADO_LAB[emp.estadoLaboral] ?? { label: emp.estadoLaboral, color: "text-white/40 bg-white/5 border-white/10", dot: "bg-white/40" };
 
   const tabs = [
@@ -4432,6 +4537,8 @@ function FichaModal({
                           setShowEstado(false);
                           if (e === "baja") {
                             setBajaModal(true);
+                          } else if (e === "suspendido") {
+                            setSuspenderModal(true);
                           } else {
                             onEstado(emp, e);
                           }
@@ -4566,6 +4673,16 @@ function FichaModal({
           emp={emp}
           onClose={() => setBajaModal(false)}
           onSuccess={() => { onEstado(emp, "baja"); }}
+        />
+      )}
+      {suspenderModal && (
+        <ModalSuspenderEmpleado
+          emp={emp}
+          onClose={() => setSuspenderModal(false)}
+          onConfirm={(extras) => {
+            setSuspenderModal(false);
+            onEstado(emp, "suspendido", extras);
+          }}
         />
       )}
     </>
@@ -5171,14 +5288,28 @@ export default function Empleados() {
     }
   }
 
-  async function handleEstado(emp: Empleado, estado: string) {
+  async function handleEstado(
+    emp: Empleado,
+    estado: string,
+    extras?: { fechaDesde?: string; fechaHasta?: string; observaciones?: string },
+  ) {
     try {
-      const updated = await apiCall(`${API_BASE}/employees/${emp.id}/estado`, "PATCH", { estadoLaboral: estado });
-      toast({ title: "Estado actualizado", description: `${emp.nombreCompleto} → ${ESTADO_LAB[estado]?.label ?? estado}` });
+      const body: Record<string, unknown> = { estadoLaboral: estado };
+      if (extras?.fechaDesde)    body.fechaDesde    = extras.fechaDesde;
+      if (extras?.fechaHasta)    body.fechaHasta    = extras.fechaHasta;
+      if (extras?.observaciones) body.observaciones = extras.observaciones;
+      const updated = await apiCall(`${API_BASE}/employees/${emp.id}/estado`, "PATCH", body);
+      const desc = estado === "suspendido" && extras?.fechaDesde && extras?.fechaHasta
+        ? `${emp.nombreCompleto} suspendido del ${extras.fechaDesde} al ${extras.fechaHasta} — evento RRHH creado`
+        : `${emp.nombreCompleto} → ${ESTADO_LAB[estado]?.label ?? estado}`;
+      toast({ title: "Estado actualizado", description: desc });
       qc.invalidateQueries({ queryKey: ["empleados"] });
+      qc.invalidateQueries({ queryKey: ["rrhh-eventos"] });
+      qc.invalidateQueries({ queryKey: ["novedades-nomina"] });
       if (fichaAbierta?.id === emp.id) setFichaAbierta(updated);
     } catch (e) {
-      toast({ title: "Error", description: "No se pudo cambiar el estado", variant: "destructive" });
+      const msg = e instanceof Error ? e.message : "No se pudo cambiar el estado";
+      toast({ title: "Error", description: msg, variant: "destructive" });
     }
   }
 

@@ -626,11 +626,15 @@ employeesRouter.patch("/employees/:id/self-update", async (req, res) => {
 });
 
 // PATCH /api/employees/:id/estado — cambio rápido de estado laboral
+// Cuando se cambia a 'suspendido' DESDE LA FICHA del empleado (Forma A),
+// se crea automáticamente el evento RRHH equivalente al de RRHH > Eventos
+// (Forma B), de modo que la suspensión se descuenta correctamente en nómina
+// y aparece en planilla IGSS con fechas reales.
 employeesRouter.patch("/employees/:id/estado", async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
 
-  const { estadoLaboral } = req.body ?? {};
+  const { estadoLaboral, fechaDesde, fechaHasta, observaciones } = req.body ?? {};
   const ESTADOS_VALIDOS = ["activo", "suspendido", "baja", "licencia"];
   if (!estadoLaboral || !ESTADOS_VALIDOS.includes(estadoLaboral)) {
     return res.status(400).json({
@@ -638,17 +642,229 @@ employeesRouter.patch("/employees/:id/estado", async (req, res) => {
     });
   }
 
-  try {
-    const [emp] = await db
-      .update(employeesTable)
-      .set({ estadoLaboral, updatedAt: new Date() })
-      .where(eq(employeesTable.id, id))
-      .returning();
+  // Validación específica para 'suspendido' — siempre debe traer fechas
+  // para crear el evento RRHH y descontar días de nómina.
+  // Validamos formato + fecha de calendario real (ej. 2026-13-40 falla aquí
+  // y devuelve 400, no 500 al castear en SQL).
+  function validDate(s: unknown): s is string {
+    if (!s || typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+    const [y, m, d] = s.split("-").map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+  }
+  if (estadoLaboral === "suspendido") {
+    if (!validDate(fechaDesde)) {
+      return res.status(400).json({ error: "fechaDesde inválida (YYYY-MM-DD, calendario real)" });
+    }
+    if (!validDate(fechaHasta)) {
+      return res.status(400).json({ error: "fechaHasta inválida (YYYY-MM-DD, calendario real)" });
+    }
+    if (fechaDesde > fechaHasta) {
+      return res.status(400).json({ error: "fechaDesde no puede ser mayor que fechaHasta" });
+    }
+  }
 
-    if (!emp) return res.status(404).json({ error: "Empleado no encontrado" });
-    res.json(emp);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Datos del empleado (lock) — incluye estado actual para detectar reactivación
+    const { rows: empRows } = await client.query(
+      `SELECT id, nombre_completo, dpi, area, puesto, estado_laboral
+         FROM employees WHERE id = $1 FOR UPDATE`,
+      [id]
+    );
+    if (!empRows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Empleado no encontrado" });
+    }
+    const emp = empRows[0];
+    const estadoAnterior = emp.estado_laboral as string;
+
+    // Update estado_laboral
+    await client.query(
+      `UPDATE employees SET estado_laboral = $1, updated_at = NOW() WHERE id = $2`,
+      [estadoLaboral, id]
+    );
+
+    const usuarioGenerador =
+      (req as any).user?.username ?? (req as any).user?.email ?? "ficha_empleado";
+
+    // ── Caso 1: NUEVA SUSPENSIÓN ──────────────────────────────────────────────
+    if (estadoLaboral === "suspendido") {
+      // Idempotencia: no duplicar evento si ya existe uno aprobado (no anulado)
+      // que solape con el rango pedido.
+      const { rows: dupRows } = await client.query(
+        `SELECT id, fecha::date AS fecha, fecha_fin
+           FROM eventos_rrhh
+          WHERE employee_id = $1
+            AND tipo_evento = 'suspension'
+            AND estado      = 'aprobado'
+            AND anulado_at  IS NULL
+            AND COALESCE(fecha_fin, fecha::date) >= $2::date
+            AND fecha::date                       <= $3::date
+          LIMIT 1`,
+        [emp.id, fechaDesde, fechaHasta]
+      );
+      if (dupRows.length) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({
+          error:
+            `Ya existe un evento de suspensión aprobado (#${dupRows[0].id}) que solapa con el rango. Anúlelo primero o ajuste las fechas.`,
+        });
+      }
+
+      // Buscar puesto titular para vincular novedades (puede no existir).
+      // Usamos clients.nombre_comercial (la columna razon_social NO existe en este schema).
+      const { rows: puestoRows } = await client.query(
+        `SELECT po.id, po.nombre,
+                COALESCE(c.nombre_comercial, c.nombre) AS cliente_nombre
+           FROM puestos_operativos po
+           LEFT JOIN clients c ON c.id = po.client_id
+          WHERE po.titular_employee_id = $1 AND po.activo = TRUE
+          LIMIT 1`,
+        [id]
+      );
+      const puestoTitularId = puestoRows[0]?.id ?? null;
+      const puestoTitularNombre = puestoRows[0]?.nombre ?? emp.puesto ?? null;
+      const clienteNombre = puestoRows[0]?.cliente_nombre ?? null;
+
+      // Crear evento RRHH aprobado
+      const { rows: evRows } = await client.query(
+        `INSERT INTO eventos_rrhh
+           (employee_id, employee_nombre, employee_dpi,
+            tipo_evento, cliente_nombre, puesto_nombre,
+            generado_desde, estado, observaciones, usuario_generador,
+            documentos_generados, fecha, fecha_fin)
+         VALUES ($1,$2,$3,'suspension',$4,$5,'ficha_empleado','aprobado',$6,$7,
+                 '[]',$8::date,$9::date)
+         RETURNING id`,
+        [
+          emp.id,
+          emp.nombre_completo,
+          emp.dpi || null,
+          clienteNombre,
+          puestoTitularNombre,
+          observaciones || null,
+          usuarioGenerador,
+          fechaDesde,
+          fechaHasta,
+        ]
+      );
+      const eventoId = evRows[0].id;
+
+      // UPSERT novedad para cada día del rango (clip TZ-safe en SQL)
+      await client.query(
+        `INSERT INTO novedades_nomina_diarias
+           (fecha, employee_id, empleado_nombre,
+            trabajo_dia, horas_trabajadas, horas_extra,
+            falta, suspension, descuento_dia,
+            puesto_titular_id, puesto_titular_nombre, fuente)
+         SELECT d::date, $1, $2,
+                FALSE, 0, 0,
+                FALSE, TRUE, TRUE,
+                $3, $4, 'rrhh_manual'
+           FROM generate_series($5::date, $6::date, INTERVAL '1 day') d
+         ON CONFLICT (fecha, employee_id) DO UPDATE SET
+           suspension    = TRUE,
+           descuento_dia = TRUE,
+           trabajo_dia   = FALSE,
+           updated_at    = NOW()`,
+        [
+          emp.id,
+          emp.nombre_completo,
+          puestoTitularId,
+          puestoTitularNombre,
+          fechaDesde,
+          fechaHasta,
+        ]
+      );
+
+      logger.info(
+        { employeeId: emp.id, eventoId, fechaDesde, fechaHasta },
+        "RRHH: suspensión creada desde ficha empleado (evento + novedades)"
+      );
+    }
+
+    // ── Caso 2: REACTIVACIÓN desde 'suspendido' → 'activo' ────────────────────
+    // Cerrar suspensiones aprobadas vigentes y revertir novedades futuras
+    // para que la nómina/IGSS deje de descontar a partir de hoy.
+    if (estadoAnterior === "suspendido" && estadoLaboral === "activo") {
+      const motivo = `Cerrado por reactivación desde ficha (${usuarioGenerador})`;
+      // 1) Truncar fecha_fin de eventos cuya cobertura llega a hoy o futuro.
+      //    Si la suspensión ya empezó: cerrar con fecha_fin = ayer.
+      //    Si aún no empezaba (futuro): anular.
+      const { rows: cerrados } = await client.query(
+        `UPDATE eventos_rrhh
+            SET fecha_fin = (CURRENT_DATE - INTERVAL '1 day')::date,
+                observaciones = CONCAT_WS(E'\n', observaciones, $2),
+                updated_at    = NOW()
+          WHERE employee_id = $1
+            AND tipo_evento = 'suspension'
+            AND estado      = 'aprobado'
+            AND anulado_at  IS NULL
+            AND fecha::date <= CURRENT_DATE
+            AND COALESCE(fecha_fin, fecha::date) >= CURRENT_DATE
+          RETURNING id`,
+        [id, motivo]
+      );
+      const { rows: anulados } = await client.query(
+        `UPDATE eventos_rrhh
+            SET estado            = 'anulado',
+                anulado_por       = $2,
+                anulado_at        = NOW(),
+                motivo_anulacion  = $3,
+                estado_anterior   = 'aprobado',
+                updated_at        = NOW()
+          WHERE employee_id = $1
+            AND tipo_evento = 'suspension'
+            AND estado      = 'aprobado'
+            AND anulado_at  IS NULL
+            AND fecha::date > CURRENT_DATE
+          RETURNING id`,
+        [id, usuarioGenerador, motivo]
+      );
+
+      // 2) Limpiar novedades futuras de suspensión (incluido hoy) generadas por RRHH.
+      const { rowCount: novFuturas } = await client.query(
+        `DELETE FROM novedades_nomina_diarias
+          WHERE employee_id = $1
+            AND fecha       >= CURRENT_DATE
+            AND fuente      = 'rrhh_manual'
+            AND suspension  = TRUE`,
+        [id]
+      );
+
+      logger.info(
+        {
+          employeeId: id,
+          eventosCerrados: cerrados.length,
+          eventosAnulados: anulados.length,
+          novedadesFuturasBorradas: novFuturas,
+        },
+        "RRHH: reactivación desde ficha — eventos suspension cerrados/anulados",
+      );
+    }
+
+    // Devolver empleado actualizado
+    const { rows: outRows } = await client.query(
+      `SELECT * FROM employees WHERE id = $1`, [id]
+    );
+    await client.query("COMMIT");
+
+    // Camel-case mínimo para el front
+    const out = outRows[0];
+    res.json({
+      ...out,
+      nombreCompleto: out.nombre_completo,
+      estadoLaboral: out.estado_laboral,
+    });
   } catch (err) {
+    await client.query("ROLLBACK");
+    logger.error({ err, id }, "PATCH /employees/:id/estado error");
     res.status(500).json({ error: "Error al actualizar estado" });
+  } finally {
+    client.release();
   }
 });
 
