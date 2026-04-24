@@ -5,7 +5,7 @@ import {
   AlertTriangle, Bell, BellRing, CheckCircle2, Clock, Eye,
   Loader2, RefreshCw, Play, ShieldAlert, Repeat2, Zap,
   User, MapPin, Briefcase, ChevronDown, ChevronUp,
-  ArrowRight, TriangleAlert,
+  ArrowRight, TriangleAlert, CalendarClock, X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
@@ -37,6 +37,14 @@ interface DatosClave {
   tendenciaRotacion?: string;
   movimientosPrev90d?: number;
   tendenciaDisc?: string;
+  // Suspensión próxima a vencer
+  evento_id?: number;
+  fecha_inicio?: string;
+  fecha_fin?: string;
+  dias_restantes?: number;
+  trigger_dias?: number;
+  cliente_nombre?: string | null;
+  puesto_nombre?: string | null;
 }
 
 interface Alerta {
@@ -100,6 +108,20 @@ const TIPO_CFG: Record<string, { label: string; icon: React.ComponentType<{ clas
     color: "text-yellow-400",
     bg: "bg-yellow-400/10",
     border: "border-yellow-400/25",
+  },
+  aniversario_vacaciones: {
+    label: "Aniversario Vacaciones",
+    icon: CalendarClock,
+    color: "text-emerald-400",
+    bg: "bg-emerald-400/10",
+    border: "border-emerald-400/25",
+  },
+  suspension_proxima_vencer: {
+    label: "Suspensión por vencer",
+    icon: CalendarClock,
+    color: "text-amber-400",
+    bg: "bg-amber-400/10",
+    border: "border-amber-400/25",
   },
 };
 
@@ -185,20 +207,37 @@ function DatosClaveTendencia({ d }: { d: DatosClave }) {
   );
 }
 
+function DatosClaveSuspension({ d }: { d: DatosClave }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <DatosClavePill label="Inicio"   value={d.fecha_inicio ?? "—"} />
+      <DatosClavePill label="Fin"      value={d.fecha_fin ?? "—"} danger />
+      <DatosClavePill
+        label="Días restantes"
+        value={d.dias_restantes ?? "—"}
+        danger={(d.dias_restantes ?? 99) <= 3}
+      />
+      {d.cliente_nombre && <DatosClavePill label="Cliente" value={d.cliente_nombre} />}
+    </div>
+  );
+}
+
 function DatosClaveSection({ tipo, datosClave }: { tipo: string; datosClave: DatosClave }) {
   if (tipo === "disciplina") return <DatosClaveDisciplina d={datosClave} />;
   if (tipo === "rotacion_alta") return <DatosClaveRotacion d={datosClave} />;
   if (tipo === "combinada") return <DatosClaveCombinada d={datosClave} />;
   if (tipo === "tendencia_negativa") return <DatosClaveTendencia d={datosClave} />;
+  if (tipo === "suspension_proxima_vencer") return <DatosClaveSuspension d={datosClave} />;
   return null;
 }
 
 // ─── Tarjeta de alerta ────────────────────────────────────────────────────────
 
-function TarjetaAlerta({ alerta, onCambiarEstado, onVerColaborador }: {
+function TarjetaAlerta({ alerta, onCambiarEstado, onVerColaborador, onRenovarSuspension }: {
   alerta: Alerta;
   onCambiarEstado: (id: number, estado: string) => void;
   onVerColaborador: (id: number) => void;
+  onRenovarSuspension: (alerta: Alerta) => void;
 }) {
   const [expandida, setExpandida] = useState(false);
 
@@ -320,6 +359,16 @@ function TarjetaAlerta({ alerta, onCambiarEstado, onVerColaborador }: {
               <ArrowRight className="w-3 h-3" />
             </button>
 
+            {alerta.tipo === "suspension_proxima_vencer" && alerta.estado !== "resuelta" && (
+              <button
+                onClick={() => onRenovarSuspension(alerta)}
+                className="flex items-center gap-1.5 text-xs bg-amber-400/10 border border-amber-400/20 text-amber-400 hover:bg-amber-400/20 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <CalendarClock className="w-3.5 h-3.5" />
+                Renovar suspensión
+              </button>
+            )}
+
             {alerta.estado === "nueva" && (
               <button
                 onClick={() => onCambiarEstado(alerta.id, "en_revision")}
@@ -355,6 +404,7 @@ export default function RRHHAlertas() {
 
   const [filtroEstado, setFiltroEstado] = useState<"activas" | "todas" | "resuelta">("activas");
   const [filtroPrioridad, setFiltroPrioridad] = useState<"" | "alta" | "media" | "baja">("");
+  const [renovarModal, setRenovarModal] = useState<Alerta | null>(null);
 
   const { data, isLoading, isError, refetch } = useQuery<AlertasResponse>({
     queryKey: ["rrhh-alertas", filtroEstado, filtroPrioridad],
@@ -394,12 +444,45 @@ export default function RRHHAlertas() {
     onError: () => toast({ title: "Error", description: "No se pudo actualizar el estado.", variant: "destructive" }),
   });
 
+  const mutacionRenovar = useMutation({
+    mutationFn: ({ employeeId, eventoId, nuevaFechaHasta, observaciones }: {
+      employeeId: number; eventoId: number; nuevaFechaHasta: string; observaciones: string;
+    }) =>
+      fetch(`${API_BASE}/employees/${employeeId}/renovar-suspension`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...sessionHeader() },
+        body: JSON.stringify({ eventoId, nuevaFechaHasta, observaciones }),
+      }).then(async (r) => {
+        const json = await r.json();
+        if (!r.ok) throw new Error(json?.error ?? "Error al renovar");
+        return json;
+      }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["rrhh-alertas"] });
+      queryClient.invalidateQueries({ queryKey: ["rrhh-alertas-pizarron"] });
+      setRenovarModal(null);
+      toast({
+        title: "Suspensión renovada",
+        description: `Nueva fecha fin: ${res.nuevaFechaHasta}. ${res.novedadesCreadas} día(s) añadidos.`,
+      });
+    },
+    onError: (err: Error) => toast({
+      title: "No se pudo renovar",
+      description: err.message,
+      variant: "destructive",
+    }),
+  });
+
   const handleCambiarEstado = (id: number, estado: string) => {
     mutacionEstado.mutate({ id, estado });
   };
 
   const handleVerColaborador = (empId: number) => {
     navigate(`/admin/empleados?id=${empId}`);
+  };
+
+  const handleRenovarSuspension = (alerta: Alerta) => {
+    setRenovarModal(alerta);
   };
 
   const resumen = data?.resumen;
@@ -522,6 +605,7 @@ export default function RRHHAlertas() {
                 alerta={alerta}
                 onCambiarEstado={handleCambiarEstado}
                 onVerColaborador={handleVerColaborador}
+                onRenovarSuspension={handleRenovarSuspension}
               />
             ))}
           </div>
@@ -575,6 +659,126 @@ export default function RRHHAlertas() {
           </div>
         </div>
       </div>
+
+      {/* Modal renovación suspensión */}
+      {renovarModal && (
+        <ModalRenovarSuspension
+          alerta={renovarModal}
+          onClose={() => setRenovarModal(null)}
+          onSubmit={(nuevaFechaHasta, observaciones) => {
+            const eventoId = renovarModal.datosClave.evento_id;
+            if (!eventoId) {
+              toast({ title: "Error", description: "La alerta no tiene evento_id asociado.", variant: "destructive" });
+              return;
+            }
+            mutacionRenovar.mutate({
+              employeeId: renovarModal.employeeId,
+              eventoId,
+              nuevaFechaHasta,
+              observaciones,
+            });
+          }}
+          submitting={mutacionRenovar.isPending}
+        />
+      )}
     </AdminLayout>
+  );
+}
+
+// ─── Modal: renovar suspensión ────────────────────────────────────────────────
+function ModalRenovarSuspension({ alerta, onClose, onSubmit, submitting }: {
+  alerta: Alerta;
+  onClose: () => void;
+  onSubmit: (nuevaFechaHasta: string, observaciones: string) => void;
+  submitting: boolean;
+}) {
+  const fechaFinActual = alerta.datosClave.fecha_fin ?? "";
+  // Sugerencia: mañana o día siguiente al fin actual, lo que sea mayor
+  const sugerida = (() => {
+    if (!fechaFinActual) return "";
+    const d = new Date(fechaFinActual + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + 7);
+    return d.toISOString().slice(0, 10);
+  })();
+  const minFecha = (() => {
+    if (!fechaFinActual) return new Date().toISOString().slice(0, 10);
+    const d = new Date(fechaFinActual + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + 1);
+    return d.toISOString().slice(0, 10);
+  })();
+  const [nuevaFechaHasta, setNuevaFechaHasta] = useState(sugerida);
+  const [observaciones, setObservaciones] = useState("");
+
+  const valido = nuevaFechaHasta && nuevaFechaHasta > fechaFinActual;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+      <div
+        className="bg-[#0a1628] border border-amber-400/25 rounded-xl max-w-md w-full p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <CalendarClock className="w-5 h-5 text-amber-400" />
+            <h2 className="text-lg font-bold text-white">Renovar suspensión</h2>
+          </div>
+          <button onClick={onClose} className="text-white/40 hover:text-white">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="bg-amber-400/8 border border-amber-400/20 rounded-lg p-3 mb-4 text-xs text-white/70 space-y-1">
+          <p><span className="text-white/40">Empleado: </span><span className="font-semibold text-white">{alerta.employeeNombre}</span></p>
+          <p><span className="text-white/40">Evento #: </span>{alerta.datosClave.evento_id ?? "—"}</p>
+          <p><span className="text-white/40">Inicio: </span>{alerta.datosClave.fecha_inicio ?? "—"}</p>
+          <p><span className="text-white/40">Fin actual: </span><span className="text-amber-400 font-semibold">{fechaFinActual}</span></p>
+        </div>
+
+        <label className="block text-xs text-white/60 uppercase tracking-wider mb-1">
+          Nueva fecha hasta
+        </label>
+        <input
+          type="date"
+          value={nuevaFechaHasta}
+          min={minFecha}
+          onChange={(e) => setNuevaFechaHasta(e.target.value)}
+          className="w-full bg-[#070d18] border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-amber-400/50 focus:outline-none"
+        />
+        {nuevaFechaHasta && nuevaFechaHasta <= fechaFinActual && (
+          <p className="text-[11px] text-red-400 mt-1">
+            Debe ser posterior a {fechaFinActual}
+          </p>
+        )}
+
+        <label className="block text-xs text-white/60 uppercase tracking-wider mb-1 mt-4">
+          Motivo / observaciones
+        </label>
+        <textarea
+          value={observaciones}
+          onChange={(e) => setObservaciones(e.target.value)}
+          rows={3}
+          placeholder="Explique por qué se está renovando la suspensión…"
+          className="w-full bg-[#070d18] border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-amber-400/50 focus:outline-none resize-none"
+        />
+
+        <div className="flex gap-2 mt-6 justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-white/60 hover:text-white transition-colors"
+            disabled={submitting}
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => onSubmit(nuevaFechaHasta, observaciones)}
+            disabled={!valido || submitting}
+            className="px-4 py-2 text-sm font-semibold bg-amber-400/15 border border-amber-400/40 text-amber-400 hover:bg-amber-400/25 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarClock className="w-4 h-4" />}
+            Renovar suspensión
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

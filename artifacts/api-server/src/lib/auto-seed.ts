@@ -2589,6 +2589,84 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.warn({ err }, "VAC-01: error al generar alertas de aniversario (no bloqueante)");
   }
 
+  // ── SUSP-01: Alertas de suspensión próxima a vencer (7/3/1 días antes) ──
+  // Detecta eventos_rrhh tipo='suspension' aprobados (no anulados) cuya fecha_fin
+  // cae dentro de los próximos 7 días, y genera alertas RRHH para que el área
+  // pueda renovarla a tiempo o confirmar la reactivación del empleado.
+  try {
+    const { rows: proximasASuvencer } = await pool.query(`
+      SELECT
+        er.id                                            AS evento_id,
+        er.employee_id,
+        er.employee_nombre,
+        er.fecha::date                                   AS fecha_inicio,
+        er.fecha_fin::date                               AS fecha_fin,
+        (er.fecha_fin::date - CURRENT_DATE)::int         AS dias_restantes,
+        er.cliente_nombre,
+        er.puesto_nombre,
+        er.observaciones
+      FROM eventos_rrhh er
+      WHERE er.tipo_evento = 'suspension'
+        AND er.estado      = 'aprobado'
+        AND er.anulado_at  IS NULL
+        AND er.fecha_fin   IS NOT NULL
+        AND er.fecha_fin::date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'
+    `);
+
+    let alertasSuspGeneradas = 0;
+    for (const ev of proximasASuvencer) {
+      const d = ev.dias_restantes;
+      if (![1, 3, 7].includes(d)) continue;
+
+      // Dedup por evento + día restante (no repetir misma alerta dentro del mismo trigger).
+      // Usamos extracción exacta vía JSONB para evitar matches accidentales por substring
+      // (ej. evento_id 12 vs 112) en el patrón LIKE original.
+      const { rows: existe } = await pool.query(`
+        SELECT id FROM rrhh_alertas
+        WHERE employee_id = $1
+          AND tipo        = 'suspension_proxima_vencer'
+          AND estado     != 'resuelta'
+          AND (datos_clave::jsonb ->> 'evento_id')::int    = $2
+          AND (datos_clave::jsonb ->> 'trigger_dias')::int = $3
+      `, [
+        ev.employee_id,
+        ev.evento_id,
+        d,
+      ]);
+      if (existe.length > 0) continue;
+
+      const prioridad = d <= 1 ? "alta" : d <= 3 ? "media" : "baja";
+      const sugerencia =
+        `Suspensión #${ev.evento_id} de ${ev.employee_nombre} termina el ${ev.fecha_fin}` +
+        ` (en ${d} día${d === 1 ? "" : "s"}). Renovar suspensión o confirmar reactivación.`;
+
+      await pool.query(`
+        INSERT INTO rrhh_alertas (employee_id, employee_nombre, tipo, prioridad, estado, datos_clave, sugerencia)
+        VALUES ($1, $2, 'suspension_proxima_vencer', $3, 'nueva', $4, $5)
+      `, [
+        ev.employee_id,
+        ev.employee_nombre,
+        prioridad,
+        JSON.stringify({
+          evento_id     : ev.evento_id,
+          fecha_inicio  : ev.fecha_inicio,
+          fecha_fin     : ev.fecha_fin,
+          dias_restantes: d,
+          trigger_dias  : d,
+          cliente_nombre: ev.cliente_nombre,
+          puesto_nombre : ev.puesto_nombre,
+        }),
+        sugerencia,
+      ]);
+      alertasSuspGeneradas++;
+    }
+    if (alertasSuspGeneradas > 0) {
+      logger.info({ alertasSuspGeneradas }, "SUSP-01: alertas de suspensión próxima a vencer generadas");
+    }
+  } catch (err) {
+    logger.warn({ err }, "SUSP-01: error al generar alertas de suspensión próxima a vencer (no bloqueante)");
+  }
+
   // ── VEH-01: Módulo de vehículos de supervisión ───────────────────────────
   try {
     await pool.query(`

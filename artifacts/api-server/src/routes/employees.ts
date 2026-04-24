@@ -868,6 +868,246 @@ employeesRouter.patch("/employees/:id/estado", async (req, res) => {
   }
 });
 
+// ─── POST /api/employees/:id/renovar-suspension ─────────────────────────────
+// Extiende la fecha_fin de un evento de suspensión aprobado vigente y crea
+// las novedades_nomina_diarias correspondientes para los días añadidos.
+// Resuelve también las alertas de tipo 'suspension_proxima_vencer' del evento.
+//
+// Body: { eventoId: number, nuevaFechaHasta: 'YYYY-MM-DD', observaciones?: string }
+employeesRouter.post("/employees/:id/renovar-suspension", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+
+  const { eventoId, nuevaFechaHasta, observaciones } = req.body ?? {};
+  const evtId = parseInt(eventoId);
+  if (isNaN(evtId)) return res.status(400).json({ error: "eventoId inválido" });
+
+  function validDate(s: unknown): s is string {
+    if (!s || typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+    const [y, m, d] = s.split("-").map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+  }
+  if (!validDate(nuevaFechaHasta)) {
+    return res.status(400).json({ error: "nuevaFechaHasta inválida (YYYY-MM-DD, calendario real)" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Advisory lock por empleado: serializa todas las operaciones de
+    // suspensión del mismo empleado (renovación + Forma A + Forma B),
+    // evitando write-skew en la validación de solapamiento.
+    await client.query(`SELECT pg_advisory_xact_lock(42001, $1)`, [id]);
+
+    // Datos del empleado (lock)
+    const { rows: empRows } = await client.query(
+      `SELECT id, nombre_completo, dpi, puesto, estado_laboral
+         FROM employees WHERE id = $1 FOR UPDATE`,
+      [id]
+    );
+    if (!empRows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Empleado no encontrado" });
+    }
+    const emp = empRows[0];
+
+    // Evento existente: debe ser suspension aprobada, no anulada y pertenecer al empleado
+    const { rows: evRows } = await client.query(
+      `SELECT id, employee_id, tipo_evento, estado, anulado_at,
+              fecha::date          AS fecha_inicio,
+              fecha_fin::date      AS fecha_fin,
+              observaciones,
+              cliente_nombre,
+              puesto_nombre
+         FROM eventos_rrhh
+        WHERE id = $1
+        FOR UPDATE`,
+      [evtId]
+    );
+    if (!evRows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Evento de suspensión no encontrado" });
+    }
+    const ev = evRows[0];
+    if (ev.employee_id !== emp.id) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "El evento no pertenece a este empleado" });
+    }
+    if (ev.tipo_evento !== "suspension") {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "El evento no es una suspensión" });
+    }
+    if (ev.estado !== "aprobado" || ev.anulado_at !== null) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "El evento no está aprobado (o fue anulado). No se puede renovar." });
+    }
+    if (!ev.fecha_fin) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "El evento no tiene fecha_fin (suspensión indefinida). Edite primero la fecha." });
+    }
+
+    // La nueva fecha debe ser estrictamente mayor a la fecha_fin actual
+    const fechaFinActual: string = ev.fecha_fin instanceof Date
+      ? ev.fecha_fin.toISOString().slice(0, 10)
+      : String(ev.fecha_fin);
+    if (nuevaFechaHasta <= fechaFinActual) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        error: `La nueva fecha (${nuevaFechaHasta}) debe ser posterior a la fecha actual de fin (${fechaFinActual})`,
+      });
+    }
+
+    // Guardarrail 1: el evento debe estar vigente (fecha_fin >= hoy en BD).
+    // Renovar una suspensión que ya terminó hace tiempo no tiene sentido y
+    // afectaría días históricos en novedades_nomina_diarias (impacto IGSS/planilla).
+    const { rows: vigRows } = await client.query(
+      `SELECT (fecha_fin::date >= CURRENT_DATE) AS vigente, CURRENT_DATE::text AS hoy
+         FROM eventos_rrhh WHERE id = $1`,
+      [evtId]
+    );
+    if (!vigRows[0]?.vigente) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({
+        error: `La suspensión ya venció (fecha_fin ${fechaFinActual} < hoy ${vigRows[0]?.hoy}). Cree una suspensión nueva en lugar de renovarla.`,
+      });
+    }
+
+    // Guardarrail 2: límite máximo de extensión = 90 días desde la fecha_fin actual.
+    // Evita renovaciones absurdas que generen rangos enormes en generate_series.
+    const { rows: limRows } = await client.query(
+      `SELECT ($1::date - $2::date)::int AS diff_dias`,
+      [nuevaFechaHasta, fechaFinActual]
+    );
+    const diffDias = limRows[0]?.diff_dias ?? 0;
+    if (diffDias > 90) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        error: `La renovación no puede extenderse más de 90 días sobre la fecha_fin actual (${fechaFinActual}). Solicitado: ${diffDias} días.`,
+      });
+    }
+
+    // Idempotencia: que el rango ampliado no choque con OTRO evento aprobado
+    const { rows: dupRows } = await client.query(
+      `SELECT id FROM eventos_rrhh
+        WHERE employee_id = $1
+          AND id          <> $2
+          AND tipo_evento = 'suspension'
+          AND estado      = 'aprobado'
+          AND anulado_at  IS NULL
+          AND fecha::date <= $3::date
+          AND COALESCE(fecha_fin, fecha::date) >= ($4::date + INTERVAL '1 day')::date
+        LIMIT 1`,
+      [emp.id, evtId, nuevaFechaHasta, fechaFinActual]
+    );
+    if (dupRows.length) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({
+        error: `La extensión choca con otra suspensión aprobada (#${dupRows[0].id}). Anúlela o ajuste la fecha.`,
+      });
+    }
+
+    const usuarioGenerador =
+      (req as any).user?.username ?? (req as any).user?.email ?? "ficha_empleado";
+
+    // Buscar puesto titular para vincular novedades nuevas (puede no existir)
+    const { rows: puestoRows } = await client.query(
+      `SELECT po.id, po.nombre
+         FROM puestos_operativos po
+        WHERE po.titular_employee_id = $1 AND po.activo = TRUE
+        LIMIT 1`,
+      [id]
+    );
+    const puestoTitularId = puestoRows[0]?.id ?? null;
+    const puestoTitularNombre = puestoRows[0]?.nombre ?? ev.puesto_nombre ?? emp.puesto ?? null;
+
+    const motivo =
+      `Renovada el ${new Date().toISOString().slice(0, 10)} por ${usuarioGenerador}: ${fechaFinActual} → ${nuevaFechaHasta}` +
+      (observaciones ? `. ${observaciones}` : "");
+
+    // 1) Extender fecha_fin del evento + agregar nota en observaciones
+    await client.query(
+      `UPDATE eventos_rrhh
+          SET fecha_fin     = $2::date,
+              observaciones = CONCAT_WS(E'\n', observaciones, $3),
+              updated_at    = NOW()
+        WHERE id = $1`,
+      [evtId, nuevaFechaHasta, motivo]
+    );
+
+    // 2) Crear/actualizar novedades para los días nuevos
+    //    [fechaFinActual + 1, nuevaFechaHasta]
+    const { rowCount: novedadesCreadas } = await client.query(
+      `INSERT INTO novedades_nomina_diarias
+         (fecha, employee_id, empleado_nombre,
+          trabajo_dia, horas_trabajadas, horas_extra,
+          falta, suspension, descuento_dia,
+          puesto_titular_id, puesto_titular_nombre, fuente, evento_rrhh_id)
+       SELECT d::date, $1, $2,
+              FALSE, 0, 0,
+              FALSE, TRUE, TRUE,
+              $3, $4, 'rrhh_manual', $7
+         FROM generate_series(
+                ($5::date + INTERVAL '1 day')::date,
+                $6::date,
+                INTERVAL '1 day'
+              ) d
+       ON CONFLICT (fecha, employee_id) DO UPDATE SET
+         suspension     = TRUE,
+         descuento_dia  = TRUE,
+         trabajo_dia    = FALSE,
+         evento_rrhh_id = COALESCE(novedades_nomina_diarias.evento_rrhh_id, EXCLUDED.evento_rrhh_id),
+         updated_at     = NOW()`,
+      [
+        emp.id,
+        emp.nombre_completo,
+        puestoTitularId,
+        puestoTitularNombre,
+        fechaFinActual,
+        nuevaFechaHasta,
+        evtId,
+      ]
+    );
+
+    // 3) Resolver alertas de suspension_proxima_vencer asociadas a este evento
+    //    (extracción exacta por JSONB para evitar matches de substring).
+    const { rowCount: alertasResueltas } = await client.query(
+      `UPDATE rrhh_alertas
+          SET estado       = 'resuelta',
+              resuelta_at  = NOW(),
+              resuelta_por = $2
+        WHERE employee_id  = $1
+          AND tipo         = 'suspension_proxima_vencer'
+          AND estado      != 'resuelta'
+          AND (datos_clave::jsonb ->> 'evento_id')::int = $3`,
+      [emp.id, usuarioGenerador, evtId]
+    );
+
+    await client.query("COMMIT");
+
+    logger.info(
+      { employeeId: emp.id, eventoId: evtId, fechaFinAnterior: fechaFinActual, nuevaFechaHasta, novedadesCreadas, alertasResueltas },
+      "RRHH: suspensión renovada (fecha_fin extendida + novedades + alertas)"
+    );
+
+    res.json({
+      ok: true,
+      eventoId: evtId,
+      fechaFinAnterior: fechaFinActual,
+      nuevaFechaHasta,
+      novedadesCreadas: novedadesCreadas ?? 0,
+      alertasResueltas: alertasResueltas ?? 0,
+    });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    logger.error({ err, id, evtId }, "POST /employees/:id/renovar-suspension error");
+    res.status(500).json({ error: "Error al renovar suspensión" });
+  } finally {
+    client.release();
+  }
+});
+
 // GET /api/employees/:id — single employee
 employeesRouter.get("/employees/:id", async (req, res) => {
   const id = parseInt(req.params.id);

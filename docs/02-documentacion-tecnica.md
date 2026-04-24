@@ -344,6 +344,35 @@ export async function migrarPESP01() {
     `suspension=TRUE`, `descuento_dia=TRUE`, `trabajo_dia=FALSE`. La UI
     abre un modal (`ModalSuspenderEmpleado`) para pedir las fechas y un
     motivo opcional antes de llamar al endpoint.
+- **Alertas de suspensión próxima a vencer y renovación**:
+  - `auto-seed.ts` (bloque **SUSP-01**, no bloqueante) corre al levantar
+    el API y consulta `eventos_rrhh` con `tipo_evento='suspension'`,
+    `estado='aprobado'`, `anulado_at IS NULL` cuya `fecha_fin` cae entre
+    `CURRENT_DATE` y `CURRENT_DATE + 7 días`. Genera filas en
+    `rrhh_alertas` con `tipo='suspension_proxima_vencer'` para los
+    triggers **7 / 3 / 1 días antes** del vencimiento (prioridad
+    `baja` / `media` / `alta` respectivamente). El `datos_clave`
+    incluye `evento_id`, `fecha_inicio`, `fecha_fin`, `dias_restantes`,
+    `trigger_dias`, `cliente_nombre`, `puesto_nombre`. La deduplicación
+    es por `employee_id + tipo + evento_id + trigger_dias` (no se
+    crea una nueva alerta para el mismo trigger en el mismo evento).
+  - `POST /api/employees/:id/renovar-suspension` extiende la
+    `fecha_fin` de un evento de suspensión aprobado vigente. Body:
+    `{ eventoId, nuevaFechaHasta (YYYY-MM-DD), observaciones? }`. En
+    una sola transacción: valida (mismo empleado, evento aprobado y no
+    anulado, nueva fecha > fecha_fin actual, sin solapamiento con otra
+    suspensión aprobada del mismo empleado), `UPDATE` la `fecha_fin`,
+    concatena un comentario en `observaciones` con la marca de
+    renovación, hace UPSERT en `novedades_nomina_diarias` para los días
+    nuevos `(fecha_fin_anterior + 1 .. nuevaFechaHasta)` con
+    `suspension=TRUE`, `descuento_dia=TRUE`, `trabajo_dia=FALSE` y
+    vínculo a `evento_rrhh_id`, y por último marca como `'resuelta'`
+    todas las alertas `suspension_proxima_vencer` asociadas a ese
+    `evento_id`. Devuelve `{ ok, eventoId, fechaFinAnterior,
+    nuevaFechaHasta, novedadesCreadas, alertasResueltas }`. La pantalla
+    **Alertas RRHH** muestra estas alertas con un botón "Renovar
+    suspensión" que abre `ModalRenovarSuspension` (selector de fecha
+    con `min = fecha_fin_actual + 1 día` y campo de motivo).
 
 ### 7.7 Vacaciones (`/api/vacaciones`)
 - **Archivo**: `routes/vacaciones.ts`
