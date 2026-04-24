@@ -353,9 +353,15 @@ operacionesRouter.get("/operaciones/tablero", async (req, res) => {
         // agente_id / agente_nombre / estado — solo si el legado está vacío
         if (!p.agente_id) {
           if (t0.trabaja_hoy) {
-            (p as any).agente_id     = t0.employee_id;
-            (p as any).agente_nombre = t0.nombre;
-            (p as any).estado        = "cubierto";
+            (p as any).agente_id              = t0.employee_id;
+            (p as any).agente_nombre          = t0.nombre;
+            (p as any).estado                 = "cubierto";
+            // Marca: el agente mostrado es el titular puro (no hay cobertura
+            // manual del día en BD). El frontend usa esto para ocultar el
+            // botón "Remover agente" — que llama a /liberar y requiere
+            // agente_id real en BD — y dejar solo "Quitar titularidad" o
+            // "Registrar falta" como acciones válidas. Bug: PIZ-LIB-01.
+            (p as any).agente_virtual_titular = true;
           } else {
             // Titular en descanso de ciclo: el puesto está descubierto en esta fecha
             (p as any).descanso_por_ciclo = true;

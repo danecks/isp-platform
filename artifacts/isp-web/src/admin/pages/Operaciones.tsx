@@ -97,6 +97,9 @@ interface Puesto {
   titular_faltando?: boolean;
   /** El puesto tiene un slot vacío en la plantilla (puede auto-asignar) */
   tiene_slot_vacio?: boolean;
+  /** El agente_id mostrado proviene del titular puro (no hay cobertura manual del día en BD).
+   *  Si es true, el botón "Remover agente" se oculta porque /liberar fallaría (agente_id NULL en BD). */
+  agente_virtual_titular?: boolean;
   /** Slot virtual de custodia (no es un puesto real) */
   es_custodia?: boolean;
   slot_numero?: number;
@@ -3998,8 +4001,11 @@ function DroppablePuesto({
                   {puesto.arma_tipo && <span className="text-[9px] text-blue-300/40 capitalize ml-0.5">{puesto.arma_tipo}</span>}
                 </button>
               )}
-              {/* Liberar */}
-              {cubierto && (
+              {/* Liberar — solo si hay cobertura manual del día (no titular puro).
+                  Bug PIZ-LIB-01: cuando agente_id es virtual del titular, /liberar
+                  fallaría con "El puesto no tiene agente asignado". En ese caso
+                  el usuario debe usar "Quitar titularidad" o "Registrar falta". */}
+              {cubierto && !puesto.agente_virtual_titular && (
                 <button onClick={e => { e.stopPropagation(); onLiberar(); }} className="flex items-center gap-1 text-[9px] font-semibold text-red-300/80 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 hover:text-red-300 rounded-md px-2 py-1 transition-colors" title="Remover del puesto">
                   <XCircle className="w-3 h-3" /><span>Remover agente</span>
                 </button>
