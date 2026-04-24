@@ -65,6 +65,7 @@ export const SYSTEM_MODULOS = [
   { clave: "solicitudes_eliminacion", label: "Solicitudes de Eliminación", seccion: "Sistema" },
   { clave: "usuarios",            label: "Usuarios del Sistema",       seccion: "Sistema" },
   { clave: "config_whatsapp",     label: "Configuración WhatsApp",     seccion: "Sistema" },
+  { clave: "plantillas_contrato", label: "Plantillas de Contrato",     seccion: "Sistema" },
   { clave: "cms",                 label: "CMS Web",                    seccion: "Sistema" },
   { clave: "simulador_wa",        label: "Simulador WhatsApp",         seccion: "Sistema" },
   { clave: "modelo_datos",        label: "Modelo de Datos (ERD)",      seccion: "Sistema" },
