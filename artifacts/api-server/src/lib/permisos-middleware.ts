@@ -52,7 +52,37 @@ const ROUTE_MODULO_MAP: Record<string, string> = {
   "/turnos":                 "turnos",
   "/barracas":               "barracas",
   "/amonestaciones":         "amonestaciones",
+  "/wa-config":              "simulador_wa",
 };
+
+// Rutas públicas legítimas (login, webhooks, portal, healthcheck).
+// Matcheo PRECISO: exacto o con prefijo + "/" — evita coincidencias accidentales
+// como "/wa" matcheando "/wa-config" o "/roles" matcheando "/roles/:clave".
+// Algunas rutas son públicas SOLO para ciertos métodos (formularios web).
+function isPublicPath(path: string, method: string): boolean {
+  // Coincidencias exactas (cualquier método)
+  switch (path) {
+    case "/healthz":
+    case "/health":
+    case "/auth/login":
+    case "/auth/change-password":     // valida sesión internamente
+    case "/session/permisos":          // necesario para que el frontend cargue módulos del usuario
+    case "/roles/modulos":             // catálogo de módulos para UI de permisos
+      return true;
+  }
+  // Prefijos seguros: el path debe ser exactamente el prefijo o seguir con "/"
+  const safePrefixes = [
+    "/portal",            // tiene su propio middleware requirePortalAuth
+    "/webhooks/whatsapp", // webhook de Meta — sin sesión por diseño
+  ];
+  if (safePrefixes.some(p => path === p || path.startsWith(p + "/"))) return true;
+
+  // Formularios web públicos: solo POST a la raíz del recurso
+  // (GET/PATCH/DELETE quedan como admin a través de ROUTE_MODULO_MAP)
+  if (method === "POST" && (path === "/leads" || path === "/applications")) return true;
+
+  return false;
+}
 
 // Caché en memoria: username → { rol, modulos, expiresAt } (TTL 30s)
 // Cacheamos por USERNAME (no por rol) para reflejar cambios de rol sin reiniciar sesión
@@ -111,20 +141,22 @@ export function invalidatePermCache(username?: string) {
 
 // Middleware Express — bloquea rutas según permisos del rol ACTUAL en BD
 export async function permisosMiddleware(req: any, res: any, next: any) {
-  // Rutas que no requieren sesión de admin
-  const skipPaths = ["/health", "/portal", "/wa", "/whatsapp", "/users/login",
-    "/session/permisos", "/roles/modulos", "/roles"];
-  if (skipPaths.some(p => req.path.startsWith(p))) return next();
+  // Rutas legítimamente públicas (login, webhooks, portal, healthcheck)
+  if (isPublicPath(req.path, req.method)) return next();
 
   let session: { rol: string; username?: string } | null = null;
+  let sessionMalformed = false;
   try {
     const raw = req.headers["x-isp-session"] as string;
     if (raw) session = JSON.parse(raw);
   } catch {
-    return next();
+    sessionMalformed = true;
   }
 
-  if (!session) return next();
+  // Header presente pero JSON inválido → bloquear (no asumir anónimo)
+  if (sessionMalformed) {
+    return res.status(401).json({ error: "Sesión inválida" });
+  }
 
   // Determinar qué módulo corresponde a esta ruta.
   // Elegimos SIEMPRE el prefijo más largo (más específico) para que
@@ -140,7 +172,20 @@ export async function permisosMiddleware(req: any, res: any, next: any) {
     }
   }
 
-  // Si la ruta no está en el mapa, la dejamos pasar
+  // Sin sesión: bloquear si la ruta es admin (está en el mapa).
+  // Si no está en el mapa, mantener compatibilidad (formularios públicos
+  // no catalogados como /leads, /applications) — siguen pasando como hoy.
+  if (!session) {
+    if (moduloClave) {
+      return res.status(401).json({
+        error: "Sesión requerida para acceder a este módulo",
+        modulo: moduloClave,
+      });
+    }
+    return next();
+  }
+
+  // Sesión válida + ruta sin módulo asociado → dejar pasar (compat)
   if (!moduloClave) return next();
 
   // Si hay username en la sesión, verificar rol ACTUAL desde BD (evita sesión desactualizada)
