@@ -66,7 +66,7 @@ const ORIGEN_LABELS: Record<string, string> = {
   automatico_turno:   "Automático turno",
 };
 
-type EstadoDocumental = "vigente" | "proximo_a_vencer" | "vencida" | "sin_registro";
+type EstadoDocumental = "vigente" | "proximo_a_vencer" | "vencida" | "pendiente" | "en_tramite" | "sin_registro";
 
 interface Arma {
   id: number; codigo: string; tipo: string; marca: string | null; modelo: string | null;
@@ -86,6 +86,8 @@ interface Arma {
   fecha_vencimiento_portacion: string | null;
   estado_documental_portacion: EstadoDocumental;
   dias_restantes_portacion: number | null;
+  tenencia_en_tramite: boolean;
+  portacion_en_tramite: boolean;
   sugerencias_pendientes: number;
 }
 interface EstadoArma extends Arma {
@@ -113,7 +115,9 @@ const TENENCIA_CONFIG: Record<EstadoDocumental, { label: string; cls: string; do
   vigente:          { label: "Tenencia vigente",          cls: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20", dot: "bg-emerald-400" },
   proximo_a_vencer: { label: "Por vencer",                cls: "text-amber-400 bg-amber-400/10 border-amber-400/20",   dot: "bg-amber-400"  },
   vencida:          { label: "Tenencia vencida",          cls: "text-red-400 bg-red-400/10 border-red-400/20",         dot: "bg-red-400"    },
-  sin_registro:     { label: "Sin tenencia",              cls: "text-gray-500 bg-gray-700/40 border-gray-600",         dot: "bg-gray-600"   },
+  pendiente:        { label: "Tenencia pendiente",        cls: "text-rose-400 bg-rose-400/10 border-rose-400/30",      dot: "bg-rose-400"   },
+  en_tramite:       { label: "Tenencia en trámite",       cls: "text-cyan-400 bg-cyan-400/10 border-cyan-400/30",      dot: "bg-cyan-400"   },
+  sin_registro:     { label: "Tenencia pendiente",        cls: "text-rose-400 bg-rose-400/10 border-rose-400/30",      dot: "bg-rose-400"   },
 };
 function TenenciaBadge({ arma, showDays = true }: { arma: Pick<Arma, "estado_documental" | "dias_restantes">; showDays?: boolean }) {
   const ed = arma.estado_documental ?? "sin_registro";
@@ -135,7 +139,9 @@ const PORTACION_CONFIG: Record<EstadoDocumental, { label: string; cls: string; d
   vigente:          { label: "Portación vigente",   cls: "text-violet-400 bg-violet-400/10 border-violet-400/20", dot: "bg-violet-400" },
   proximo_a_vencer: { label: "Por vencer",           cls: "text-amber-400 bg-amber-400/10 border-amber-400/20",    dot: "bg-amber-400"  },
   vencida:          { label: "Portación vencida",   cls: "text-red-400 bg-red-400/10 border-red-400/20",          dot: "bg-red-400"    },
-  sin_registro:     { label: "Sin portación",        cls: "text-gray-500 bg-gray-700/40 border-gray-600",          dot: "bg-gray-600"   },
+  pendiente:        { label: "Portación pendiente", cls: "text-rose-400 bg-rose-400/10 border-rose-400/30",       dot: "bg-rose-400"   },
+  en_tramite:       { label: "Portación en trámite",cls: "text-cyan-400 bg-cyan-400/10 border-cyan-400/30",       dot: "bg-cyan-400"   },
+  sin_registro:     { label: "Portación pendiente", cls: "text-rose-400 bg-rose-400/10 border-rose-400/30",       dot: "bg-rose-400"   },
 };
 function PortacionBadge({ arma, showDays = true }: { arma: Pick<Arma, "estado_documental_portacion" | "dias_restantes_portacion">; showDays?: boolean }) {
   const ed = arma.estado_documental_portacion ?? "sin_registro";
@@ -220,11 +226,12 @@ function ModalArma({
   const selectedPuesto = puestos.find(p => String(p.id) === form.puesto_id);
 
   async function save() {
-    if (!form.codigo.trim()) { toast({ title: "Código requerido", variant: "destructive" }); return; }
     setSaving(true);
     try {
+      // El código del arma lo genera el sistema; nunca lo enviamos al backend.
+      const { codigo: _ignorado, ...rest } = form;
       const body = {
-        ...form,
+        ...rest,
         puesto_id: form.puesto_id ? Number(form.puesto_id) : null,
         usuario,
       };
@@ -233,7 +240,7 @@ function ModalArma({
         toast({ title: "Arma actualizada" });
       } else {
         await apiPost(`${API}/armas`, body);
-        toast({ title: "Arma registrada" });
+        toast({ title: "Arma registrada", description: "El código se asignó automáticamente." });
       }
       onSaved();
     } catch (e: any) {
@@ -260,12 +267,18 @@ function ModalArma({
           {/* Código + tipo */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Código interno *</label>
-              <input
-                value={form.codigo} onChange={e => set("codigo", e.target.value.toUpperCase())}
-                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
-                placeholder="Ej. A-001"
-              />
+              <label className="block text-xs font-medium text-gray-400 mb-1">Código interno</label>
+              {arma ? (
+                <input
+                  value={form.codigo} readOnly
+                  title="El código se generó automáticamente y no puede modificarse"
+                  className="w-full bg-gray-800/40 border border-gray-700 rounded-lg px-3 py-2 text-gray-300 text-sm font-mono cursor-not-allowed"
+                />
+              ) : (
+                <div className="w-full bg-gray-800/30 border border-dashed border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-500 italic flex items-center h-[38px]">
+                  Se generará al guardar (ARM-####)
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-400 mb-1">Tipo *</label>
@@ -443,6 +456,8 @@ function FichaCampo({ label, value, mono = false }: { label: string; value: stri
 function ModalFichaArma({ arma, onClose, onEdit }: {
   arma: Arma; onClose: () => void; onEdit: () => void;
 }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
   const { data: detalle } = useQuery<Arma>({
     queryKey: ["arma-detalle", arma.id],
     queryFn: () => apiFetch(`${API}/armas/${arma.id}`),
@@ -454,6 +469,28 @@ function ModalFichaArma({ arma, onClose, onEdit }: {
   });
 
   const a = detalle ?? arma;
+  const [togglingTen, setTogglingTen] = useState(false);
+  const [togglingPort, setTogglingPort] = useState(false);
+
+  async function toggleTramite(campo: "tenencia_en_tramite" | "portacion_en_tramite") {
+    const setter = campo === "tenencia_en_tramite" ? setTogglingTen : setTogglingPort;
+    setter(true);
+    try {
+      await apiPatch(`${API}/armas/${a.id}`, { [campo]: !a[campo] });
+      qc.invalidateQueries({ queryKey: ["arma-detalle", a.id] });
+      qc.invalidateQueries({ queryKey: ["armas"] });
+      qc.invalidateQueries({ queryKey: ["armas-estado"] });
+      toast({
+        title: !a[campo]
+          ? (campo === "tenencia_en_tramite" ? "Tenencia marcada en trámite" : "Portación marcada en trámite")
+          : (campo === "tenencia_en_tramite" ? "Tenencia ya no está en trámite" : "Portación ya no está en trámite"),
+      });
+    } catch (e: any) {
+      toast({ title: e.error || "No se pudo actualizar", variant: "destructive" });
+    } finally {
+      setter(false);
+    }
+  }
 
   return createPortal(
     <div
@@ -481,6 +518,14 @@ function ModalFichaArma({ arma, onClose, onEdit }: {
                 <EstadoBadge estado={a.estado} />
                 {!a.activo && (
                   <span className="text-[10px] text-red-400 bg-red-400/10 border border-red-400/20 px-2 py-0.5 rounded-full">Inactiva</span>
+                )}
+                {!a.puesto_id && (
+                  <span
+                    title="Esta arma no está asignada a ningún puesto operativo"
+                    className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-indigo-300 bg-indigo-500/15 border border-indigo-400/30 px-2 py-0.5 rounded-full"
+                  >
+                    <Shield className="w-3 h-3" />En Armería
+                  </span>
                 )}
               </div>
               <p className="text-xs text-gray-400 mt-0.5">
@@ -534,9 +579,28 @@ function ModalFichaArma({ arma, onClose, onEdit }: {
                 <FichaCampo label="Vencimiento" value={a.fecha_vencimiento_tenencia ? fmtFecha(a.fecha_vencimiento_tenencia) : null} />
               </div>
             ) : (
-              <div className="bg-gray-800/30 border border-gray-700/30 rounded-lg px-3 py-2.5 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-gray-600 flex-shrink-0" />
-                <p className="text-xs text-gray-500">Sin datos de tenencia registrados — registra el número y fecha de vencimiento editando el arma.</p>
+              <div className={`rounded-lg px-3 py-2.5 flex items-center gap-2 border ${
+                a.tenencia_en_tramite
+                  ? "bg-cyan-500/5 border-cyan-500/25"
+                  : "bg-rose-500/5 border-rose-500/25"
+              }`}>
+                <AlertTriangle className={`w-4 h-4 flex-shrink-0 ${a.tenencia_en_tramite ? "text-cyan-400" : "text-rose-400"}`} />
+                <p className={`text-xs flex-1 ${a.tenencia_en_tramite ? "text-cyan-300/90" : "text-rose-300/90"}`}>
+                  {a.tenencia_en_tramite
+                    ? "En trámite — los datos se están gestionando. Edita el arma cuando llegue el número y la fecha."
+                    : "Sin datos de tenencia. Edita el arma para registrarlos o marca que ya está en trámite."}
+                </p>
+                <button
+                  onClick={() => toggleTramite("tenencia_en_tramite")}
+                  disabled={togglingTen}
+                  className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded-md border transition-colors flex-shrink-0 disabled:opacity-50 ${
+                    a.tenencia_en_tramite
+                      ? "text-gray-300 bg-gray-700/40 border-gray-600 hover:bg-gray-700/70"
+                      : "text-cyan-300 bg-cyan-500/15 border-cyan-500/30 hover:bg-cyan-500/25"
+                  }`}>
+                  {togglingTen && <Loader2 className="w-3 h-3 animate-spin" />}
+                  {a.tenencia_en_tramite ? "Quitar trámite" : "En trámite"}
+                </button>
               </div>
             )}
           </div>
@@ -548,9 +612,7 @@ function ModalFichaArma({ arma, onClose, onEdit }: {
                 <Hash className="w-3.5 h-3.5 text-gray-500" />
                 <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Portación de arma</h3>
               </div>
-              {a.numero_portacion && (
-                <PortacionBadge arma={a} showDays />
-              )}
+              <PortacionBadge arma={a} showDays />
             </div>
             {a.numero_portacion ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -559,9 +621,28 @@ function ModalFichaArma({ arma, onClose, onEdit }: {
                 <FichaCampo label="Vencimiento" value={a.fecha_vencimiento_portacion ? fmtFecha(a.fecha_vencimiento_portacion) : null} />
               </div>
             ) : (
-              <div className="bg-gray-800/30 border border-gray-700/30 rounded-lg px-3 py-2.5 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-gray-600 flex-shrink-0" />
-                <p className="text-xs text-gray-500">Sin datos de portación registrados — edita el arma para agregar número y fecha de emisión.</p>
+              <div className={`rounded-lg px-3 py-2.5 flex items-center gap-2 border ${
+                a.portacion_en_tramite
+                  ? "bg-cyan-500/5 border-cyan-500/25"
+                  : "bg-rose-500/5 border-rose-500/25"
+              }`}>
+                <AlertTriangle className={`w-4 h-4 flex-shrink-0 ${a.portacion_en_tramite ? "text-cyan-400" : "text-rose-400"}`} />
+                <p className={`text-xs flex-1 ${a.portacion_en_tramite ? "text-cyan-300/90" : "text-rose-300/90"}`}>
+                  {a.portacion_en_tramite
+                    ? "En trámite — los datos se están gestionando. Edita el arma cuando llegue el número y la fecha de emisión."
+                    : "Sin datos de portación. Edita el arma para registrarlos o marca que ya está en trámite."}
+                </p>
+                <button
+                  onClick={() => toggleTramite("portacion_en_tramite")}
+                  disabled={togglingPort}
+                  className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded-md border transition-colors flex-shrink-0 disabled:opacity-50 ${
+                    a.portacion_en_tramite
+                      ? "text-gray-300 bg-gray-700/40 border-gray-600 hover:bg-gray-700/70"
+                      : "text-cyan-300 bg-cyan-500/15 border-cyan-500/30 hover:bg-cyan-500/25"
+                  }`}>
+                  {togglingPort && <Loader2 className="w-3 h-3 animate-spin" />}
+                  {a.portacion_en_tramite ? "Quitar trámite" : "En trámite"}
+                </button>
               </div>
             )}
           </div>
@@ -707,7 +788,7 @@ function ModalFichaArma({ arma, onClose, onEdit }: {
 }
 
 // ── Tab: Estado Operativo ─────────────────────────────────────────────────────
-type FiltroDocumental = "todos" | "vencida" | "proximo_a_vencer" | "sin_registro";
+type FiltroDocumental = "todos" | "vencida" | "proximo_a_vencer" | "pendiente" | "en_tramite";
 
 function TabEstado({ fecha, onFicha }: { fecha: string; onFicha: (a: EstadoArma) => void }) {
   const qc = useQueryClient();
@@ -724,11 +805,24 @@ function TabEstado({ fecha, onFicha }: { fecha: string; onFicha: (a: EstadoArma)
     refetchInterval: 60_000,
   });
 
-  const porDoc = (ed: EstadoDocumental) => estado.filter(a => a.estado_documental_portacion === ed).length;
-  const alertas = porDoc("vencida") + porDoc("proximo_a_vencer") + porDoc("sin_registro");
+  // Cuenta armas que están en cualquiera de los dos documentos (tenencia o portación)
+  // en un estado dado. Así "Pendientes" incluye armas a las que les falta tenencia
+  // O portación, no solo portación.
+  const porDoc = (ed: EstadoDocumental) =>
+    estado.filter(a => a.estado_documental_portacion === ed || a.estado_documental === ed).length;
+  // "Sin registro" legacy se trata como pendiente para retrocompatibilidad
+  const porPendiente = estado.filter(a =>
+    ["pendiente", "sin_registro"].includes(a.estado_documental_portacion)
+    || ["pendiente", "sin_registro"].includes(a.estado_documental)
+  ).length;
+  const alertas = porDoc("vencida") + porDoc("proximo_a_vencer") + porPendiente;
 
   const filtered = estado.filter(a => {
-    const matchDoc = filtroDoc === "todos" || a.estado_documental_portacion === filtroDoc;
+    const matchDoc = filtroDoc === "todos"
+      || (filtroDoc === "pendiente"
+        ? ["pendiente", "sin_registro"].includes(a.estado_documental_portacion)
+          || ["pendiente", "sin_registro"].includes(a.estado_documental)
+        : a.estado_documental_portacion === filtroDoc || a.estado_documental === filtroDoc);
     const matchSearch = !search || a.codigo.toLowerCase().includes(search.toLowerCase())
       || (a.puesto_nombre ?? "").toLowerCase().includes(search.toLowerCase())
       || (a.cliente_nombre ?? "").toLowerCase().includes(search.toLowerCase())
@@ -787,10 +881,11 @@ function TabEstado({ fecha, onFicha }: { fecha: string; onFicha: (a: EstadoArma)
       {/* Filtros documentales */}
       <div className="flex items-center gap-2 flex-wrap">
         {([
-          { id: "todos",             label: "Todas",           count: estado.length,          cls: "border-gray-600 text-gray-300" },
-          { id: "vencida",           label: "Vencidas",        count: porDoc("vencida"),       cls: "border-red-500/30 text-red-400" },
+          { id: "todos",             label: "Todas",           count: estado.length,              cls: "border-gray-600 text-gray-300" },
+          { id: "vencida",           label: "Vencidas",        count: porDoc("vencida"),          cls: "border-red-500/30 text-red-400" },
           { id: "proximo_a_vencer",  label: "Por vencer",      count: porDoc("proximo_a_vencer"), cls: "border-amber-500/30 text-amber-400" },
-          { id: "sin_registro",      label: "Sin portación",   count: porDoc("sin_registro"),  cls: "border-gray-600 text-gray-400" },
+          { id: "pendiente",         label: "Pendientes",      count: porPendiente,                cls: "border-rose-500/30 text-rose-400" },
+          { id: "en_tramite",        label: "En trámite",      count: porDoc("en_tramite"),       cls: "border-cyan-500/30 text-cyan-400" },
         ] as { id: FiltroDocumental; label: string; count: number; cls: string }[]).map(f => (
           <button key={f.id} onClick={() => setFiltroDoc(f.id)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
@@ -976,7 +1071,8 @@ function TabArmas({ onEdit, onFicha }: {
                 <th className="text-left px-4 py-3 font-medium hidden lg:table-cell">Calibre / Serie</th>
                 <th className="text-left px-4 py-3 font-medium">Puesto</th>
                 <th className="text-left px-4 py-3 font-medium">Custodio actual</th>
-                <th className="text-left px-4 py-3 font-medium hidden xl:table-cell">Tenencia</th>
+                <th className="text-left px-4 py-3 font-medium hidden lg:table-cell">Tenencia</th>
+                <th className="text-left px-4 py-3 font-medium hidden xl:table-cell">Portación</th>
                 <th className="text-left px-4 py-3 font-medium">Estado</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -998,7 +1094,8 @@ function TabArmas({ onEdit, onFicha }: {
                       ? <><p className="text-gray-300">{arma.custodio_nombre}</p><p className="text-gray-500">{fmtFecha(arma.custodia_desde)}</p></>
                       : <span className="text-gray-600">—</span>}
                   </td>
-                  <td className="px-4 py-3 hidden xl:table-cell"><TenenciaBadge arma={arma} showDays /></td>
+                  <td className="px-4 py-3 hidden lg:table-cell"><TenenciaBadge arma={arma} showDays /></td>
+                  <td className="px-4 py-3 hidden xl:table-cell"><PortacionBadge arma={arma} showDays /></td>
                   <td className="px-4 py-3"><EstadoBadge estado={arma.estado} /></td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1 justify-end">

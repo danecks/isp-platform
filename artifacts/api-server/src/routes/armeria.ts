@@ -158,8 +158,10 @@ armeriaRouter.get("/armas", async (req, res) => {
         a.id, a.codigo, a.tipo, a.marca, a.modelo, a.calibre, a.serie,
         a.estado, a.activo, a.observaciones,
         a.numero_tenencia, a.fecha_vencimiento_tenencia,
+        a.tenencia_en_tramite,
         CASE
-          WHEN a.numero_tenencia IS NULL THEN 'sin_registro'
+          WHEN a.numero_tenencia IS NULL AND COALESCE(a.tenencia_en_tramite, FALSE) THEN 'en_tramite'
+          WHEN a.numero_tenencia IS NULL THEN 'pendiente'
           WHEN a.fecha_vencimiento_tenencia IS NULL THEN 'vigente'
           WHEN a.fecha_vencimiento_tenencia < CURRENT_DATE THEN 'vencida'
           WHEN a.fecha_vencimiento_tenencia <= CURRENT_DATE + INTERVAL '180 days' THEN 'proximo_a_vencer'
@@ -172,9 +174,12 @@ armeriaRouter.get("/armas", async (req, res) => {
         a.numero_portacion,
         a.fecha_emision_portacion,
         a.fecha_vencimiento_portacion,
+        a.portacion_en_tramite,
         CASE
-          WHEN a.numero_portacion IS NULL THEN 'sin_registro'
-          WHEN a.fecha_vencimiento_portacion IS NULL THEN 'sin_registro'
+          WHEN a.numero_portacion IS NULL AND COALESCE(a.portacion_en_tramite, FALSE) THEN 'en_tramite'
+          WHEN a.numero_portacion IS NULL THEN 'pendiente'
+          WHEN a.fecha_vencimiento_portacion IS NULL AND COALESCE(a.portacion_en_tramite, FALSE) THEN 'en_tramite'
+          WHEN a.fecha_vencimiento_portacion IS NULL THEN 'pendiente'
           WHEN a.fecha_vencimiento_portacion < CURRENT_DATE THEN 'vencida'
           WHEN a.fecha_vencimiento_portacion <= CURRENT_DATE + INTERVAL '180 days' THEN 'proximo_a_vencer'
           ELSE 'vigente'
@@ -287,8 +292,10 @@ armeriaRouter.get("/armas/estado-operativo", async (req, res) => {
         a.id   AS arma_id,
         a.codigo, a.tipo, a.marca, a.modelo, a.calibre, a.estado AS arma_estado,
         a.numero_tenencia, a.fecha_vencimiento_tenencia,
+        a.tenencia_en_tramite,
         CASE
-          WHEN a.numero_tenencia IS NULL THEN 'sin_registro'
+          WHEN a.numero_tenencia IS NULL AND COALESCE(a.tenencia_en_tramite, FALSE) THEN 'en_tramite'
+          WHEN a.numero_tenencia IS NULL THEN 'pendiente'
           WHEN a.fecha_vencimiento_tenencia IS NULL THEN 'vigente'
           WHEN a.fecha_vencimiento_tenencia < CURRENT_DATE THEN 'vencida'
           WHEN a.fecha_vencimiento_tenencia <= CURRENT_DATE + INTERVAL '180 days' THEN 'proximo_a_vencer'
@@ -298,6 +305,21 @@ armeriaRouter.get("/armas/estado-operativo", async (req, res) => {
           WHEN a.fecha_vencimiento_tenencia IS NULL THEN NULL
           ELSE (a.fecha_vencimiento_tenencia - CURRENT_DATE)::INTEGER
         END AS dias_restantes,
+        a.numero_portacion, a.fecha_emision_portacion, a.fecha_vencimiento_portacion,
+        a.portacion_en_tramite,
+        CASE
+          WHEN a.numero_portacion IS NULL AND COALESCE(a.portacion_en_tramite, FALSE) THEN 'en_tramite'
+          WHEN a.numero_portacion IS NULL THEN 'pendiente'
+          WHEN a.fecha_vencimiento_portacion IS NULL AND COALESCE(a.portacion_en_tramite, FALSE) THEN 'en_tramite'
+          WHEN a.fecha_vencimiento_portacion IS NULL THEN 'pendiente'
+          WHEN a.fecha_vencimiento_portacion < CURRENT_DATE THEN 'vencida'
+          WHEN a.fecha_vencimiento_portacion <= CURRENT_DATE + INTERVAL '180 days' THEN 'proximo_a_vencer'
+          ELSE 'vigente'
+        END AS estado_documental_portacion,
+        CASE
+          WHEN a.fecha_vencimiento_portacion IS NULL THEN NULL
+          ELSE (a.fecha_vencimiento_portacion - CURRENT_DATE)::INTEGER
+        END AS dias_restantes_portacion,
         a.puesto_id,
         po.nombre      AS puesto_nombre,
         po.cliente_nombre,
@@ -452,8 +474,10 @@ armeriaRouter.get("/armas/:id", async (req, res) => {
     const { rows } = await pool.query(`
       SELECT
         a.*,
+        a.tenencia_en_tramite,
         CASE
-          WHEN a.numero_tenencia IS NULL THEN 'sin_registro'
+          WHEN a.numero_tenencia IS NULL AND COALESCE(a.tenencia_en_tramite, FALSE) THEN 'en_tramite'
+          WHEN a.numero_tenencia IS NULL THEN 'pendiente'
           WHEN a.fecha_vencimiento_tenencia IS NULL THEN 'vigente'
           WHEN a.fecha_vencimiento_tenencia < CURRENT_DATE THEN 'vencida'
           WHEN a.fecha_vencimiento_tenencia <= CURRENT_DATE + INTERVAL '180 days' THEN 'proximo_a_vencer'
@@ -467,9 +491,12 @@ armeriaRouter.get("/armas/:id", async (req, res) => {
         ac.id AS custodia_id, ac.employee_id AS custodio_id,
         e.nombre_completo AS custodio_nombre,
         ac.fecha_inicio AS custodia_desde, ac.tipo_origen AS custodia_tipo_origen,
+        a.portacion_en_tramite,
         CASE
-          WHEN a.numero_portacion IS NULL THEN 'sin_registro'
-          WHEN a.fecha_vencimiento_portacion IS NULL THEN 'sin_registro'
+          WHEN a.numero_portacion IS NULL AND COALESCE(a.portacion_en_tramite, FALSE) THEN 'en_tramite'
+          WHEN a.numero_portacion IS NULL THEN 'pendiente'
+          WHEN a.fecha_vencimiento_portacion IS NULL AND COALESCE(a.portacion_en_tramite, FALSE) THEN 'en_tramite'
+          WHEN a.fecha_vencimiento_portacion IS NULL THEN 'pendiente'
           WHEN a.fecha_vencimiento_portacion < CURRENT_DATE THEN 'vencida'
           WHEN a.fecha_vencimiento_portacion <= CURRENT_DATE + INTERVAL '180 days' THEN 'proximo_a_vencer'
           ELSE 'vigente'
@@ -536,35 +563,77 @@ armeriaRouter.get("/armas/puestos/disponibles", async (req, res) => {
   }
 });
 
+/**
+ * Genera el siguiente código de arma en formato ARM-####.
+ * El ancho mínimo es 4 dígitos; si la cantidad supera 9999 crece automáticamente.
+ * Se ejecuta dentro de la misma transacción del INSERT para evitar carreras
+ * (combinado con UNIQUE(codigo) y reintentos).
+ */
+async function siguienteCodigoArma(client: any): Promise<string> {
+  // Consideramos solo códigos que matchean el patrón ARM-<dígitos> para extraer
+  // el siguiente número. Cualquier código manual heredado fuera de este patrón
+  // es ignorado por esta secuencia (la migración ARM-07 los renombra al arrancar).
+  const { rows } = await client.query(
+    `SELECT MAX(SUBSTRING(codigo FROM 5)::INTEGER) AS max_num
+     FROM armas
+     WHERE codigo ~ '^ARM-[0-9]+$'`
+  );
+  const next = (rows[0]?.max_num ?? 0) + 1;
+  // Ancho mínimo 4 dígitos. Si rebasa 9999 (next>=10000) toma su propio largo.
+  const width = Math.max(4, String(next).length);
+  return `ARM-${String(next).padStart(width, "0")}`;
+}
+
 // ── POST /api/armas ───────────────────────────────────────────────────────────
 armeriaRouter.post("/armas", async (req, res) => {
-  const { codigo, tipo, marca, modelo, calibre, serie, estado, activo, puesto_id, observaciones,
+  // El campo `codigo` se IGNORA si llega: el sistema lo genera automáticamente.
+  const { tipo, marca, modelo, calibre, serie, estado, activo, puesto_id, observaciones,
           numero_tenencia, fecha_vencimiento_tenencia,
           numero_portacion, fecha_emision_portacion, usuario } = req.body;
-  if (!codigo || !tipo) return res.status(400).json({ error: "codigo y tipo son requeridos" });
+  if (!tipo) return res.status(400).json({ error: "tipo es requerido" });
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const { rows } = await client.query(`
-      INSERT INTO armas (codigo, tipo, marca, modelo, calibre, serie, estado, activo, puesto_id, observaciones,
-                         numero_tenencia, fecha_vencimiento_tenencia,
-                         numero_portacion, fecha_emision_portacion, fecha_vencimiento_portacion)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
-              CASE WHEN $14::date IS NOT NULL THEN ($14::date + INTERVAL '1 year')::date ELSE NULL END)
-      RETURNING *
-    `, [
-      codigo.toUpperCase().trim(), tipo,
-      marca || null, modelo || null, calibre || null, serie || null,
-      estado ?? "activo", activo !== false,
-      puesto_id ? Number(puesto_id) : null,
-      observaciones || null,
-      numero_tenencia || null,
-      fecha_vencimiento_tenencia || null,
-      numero_portacion || null,
-      fecha_emision_portacion || null,
-    ]);
-    const arma = rows[0];
+    // Reintentos cortos por si hay carrera en la generación de código.
+    // Usamos SAVEPOINT por intento: si el INSERT viola el UNIQUE (23505),
+    // hacemos ROLLBACK al SAVEPOINT (la transacción sigue viva) y probamos
+    // el siguiente número.
+    let arma: any = null;
+    let lastErr: any = null;
+    for (let attempt = 0; attempt < 5 && !arma; attempt++) {
+      const codigoGenerado = await siguienteCodigoArma(client);
+      await client.query("SAVEPOINT sp_codigo_arma");
+      try {
+        const { rows } = await client.query(`
+          INSERT INTO armas (codigo, tipo, marca, modelo, calibre, serie, estado, activo, puesto_id, observaciones,
+                             numero_tenencia, fecha_vencimiento_tenencia,
+                             numero_portacion, fecha_emision_portacion, fecha_vencimiento_portacion)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
+                  CASE WHEN $14::date IS NOT NULL THEN ($14::date + INTERVAL '1 year')::date ELSE NULL END)
+          RETURNING *
+        `, [
+          codigoGenerado, tipo,
+          marca || null, modelo || null, calibre || null, serie || null,
+          estado ?? "activo", activo !== false,
+          puesto_id ? Number(puesto_id) : null,
+          observaciones || null,
+          numero_tenencia || null,
+          fecha_vencimiento_tenencia || null,
+          numero_portacion || null,
+          fecha_emision_portacion || null,
+        ]);
+        await client.query("RELEASE SAVEPOINT sp_codigo_arma");
+        arma = rows[0];
+      } catch (e: any) {
+        lastErr = e;
+        await client.query("ROLLBACK TO SAVEPOINT sp_codigo_arma");
+        await client.query("RELEASE SAVEPOINT sp_codigo_arma");
+        if (e.code !== "23505") throw e; // si no es violación de UNIQUE, propaga
+        // Carrera de código: el siguiente loop recalcula y reintenta.
+      }
+    }
+    if (!arma) throw lastErr ?? new Error("No se pudo generar un código único");
 
     // Si tiene puesto, calcular responsable actual y crear custodia inicial
     if (arma.puesto_id) {
@@ -582,7 +651,6 @@ armeriaRouter.post("/armas", async (req, res) => {
     res.status(201).json(arma);
   } catch (err: any) {
     await client.query("ROLLBACK");
-    if (err.code === "23505") return res.status(409).json({ error: `Código ${codigo} ya está registrado` });
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
@@ -592,9 +660,12 @@ armeriaRouter.post("/armas", async (req, res) => {
 // ── PATCH /api/armas/:id ──────────────────────────────────────────────────────
 armeriaRouter.patch("/armas/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { codigo, tipo, marca, modelo, calibre, serie, estado, activo, puesto_id, observaciones,
+  // Nota: el campo `codigo` se ignora — el código del arma es inmutable y
+  // generado por el sistema (ver POST /armas y migración ARM-07).
+  const { tipo, marca, modelo, calibre, serie, estado, activo, puesto_id, observaciones,
           numero_tenencia, fecha_vencimiento_tenencia,
-          numero_portacion, fecha_emision_portacion, usuario } = req.body;
+          numero_portacion, fecha_emision_portacion,
+          tenencia_en_tramite, portacion_en_tramite, usuario } = req.body;
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -604,7 +675,7 @@ armeriaRouter.patch("/armas/:id", async (req, res) => {
     const puestoNuevo = puesto_id !== undefined ? (puesto_id ? Number(puesto_id) : null) : puestoAnterior;
 
     const params: any[] = [
-      codigo ? codigo.toUpperCase().trim() : null,
+      null, // codigo: placeholder para mantener los índices de los $N existentes; el SET COALESCE($1, codigo) deja el código intacto
       tipo ?? null, marca ?? null, modelo ?? null, calibre ?? null, serie ?? null,
       estado ?? null, activo !== undefined ? activo : null,
       puestoNuevo, observaciones ?? null,
@@ -625,11 +696,19 @@ armeriaRouter.patch("/armas/:id", async (req, res) => {
     if ('fecha_emision_portacion' in req.body) {
       const emision = fecha_emision_portacion || null;
       params.push(emision);
-      const emisionIdx = params.length;
-      extraFields.push(`fecha_emision_portacion = $${emisionIdx}`);
+      const emisionIdx = `$${params.length}`;
+      extraFields.push(`fecha_emision_portacion = ${emisionIdx}`);
       extraFields.push(
-        `fecha_vencimiento_portacion = CASE WHEN $${emisionIdx}::date IS NOT NULL THEN ($${emisionIdx}::date + INTERVAL '1 year')::date ELSE NULL END`
+        `fecha_vencimiento_portacion = CASE WHEN ${emisionIdx}::date IS NOT NULL THEN (${emisionIdx}::date + INTERVAL '1 year')::date ELSE NULL END`
       );
+    }
+    if ('tenencia_en_tramite' in req.body) {
+      params.push(Boolean(tenencia_en_tramite));
+      extraFields.push(`tenencia_en_tramite = $${params.length}`);
+    }
+    if ('portacion_en_tramite' in req.body) {
+      params.push(Boolean(portacion_en_tramite));
+      extraFields.push(`portacion_en_tramite = $${params.length}`);
     }
     params.push(id);
     const tenenciaSQL = extraFields.length > 0 ? `, ${extraFields.join(", ")}` : "";

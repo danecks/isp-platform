@@ -390,6 +390,56 @@ export async function migrarPESP01() {
 - **Archivo**: `routes/armeria.ts`
 - **Tablas**: `armas`, `arma_custodia`, `arma_ordenes_servicio`, `arma_sugerencias`, `puesto_municion`
 
+#### 7.10.1 Estados documentales de tenencia y portación
+Las armas pueden estar en uno de cinco estados visuales — calculados en SQL, no almacenados:
+
+| Estado            | Condición                                                          | Color UI |
+|-------------------|--------------------------------------------------------------------|----------|
+| `vigente`         | Documento con número y fecha futura (>180 días)                    | verde / violeta |
+| `proximo_a_vencer`| Vence en ≤180 días                                                  | ámbar |
+| `vencida`         | Fecha de vencimiento < hoy                                          | rojo |
+| `pendiente`       | Sin número (ni fecha) registrado y SIN gestión activa               | rosa |
+| `en_tramite`      | Sin número (ni fecha) registrado y CON gestión activa marcada       | cyan |
+
+**Migración**: `ARM-06` (auto-seed) crea dos columnas booleanas en `armas`:
+- `tenencia_en_tramite BOOLEAN NOT NULL DEFAULT FALSE`
+- `portacion_en_tramite BOOLEAN NOT NULL DEFAULT FALSE`
+
+**Endpoints relevantes**:
+- `GET /api/armas` — devuelve `estado_documental` y `estado_documental_portacion` con los nuevos estados, además de los flags `tenencia_en_tramite` y `portacion_en_tramite`.
+- `GET /api/armas/:id` — ídem (ficha completa).
+- `GET /api/armas/estado-operativo` — ahora incluye también los campos de portación (`numero_portacion`, fechas, flag y `estado_documental_portacion`); antes sólo traía tenencia.
+- `PATCH /api/armas/:id` — acepta `tenencia_en_tramite` y `portacion_en_tramite` (booleans). Útil para que el botón **EN TRÁMITE / Quitar trámite** alterne el estado sin tocar otros campos.
+
+**UX en `Armería` (admin)**:
+- La ficha del arma muestra el badge de tenencia y portación SIEMPRE (incluso cuando no hay número), reflejando `pendiente` o `en_tramite`.
+- Cada bloque vacío muestra un botón **En trámite** (cyan) o **Quitar trámite** (gris) que llama al PATCH y refresca las queries `arma-detalle`, `armas` y `armas-estado`.
+- El tab **Estado Operativo** sustituye el filtro `Sin portación` por **Pendientes** (suma armas con tenencia O portación faltante) y agrega **En trámite**. La fila se incluye si CUALQUIERA de los dos documentos está en el estado filtrado.
+- La tabla del tab **Armas** ahora tiene columna de `Portación` (visible en xl) además de `Tenencia` (visible en lg).
+
+#### 7.10.2 Código de arma autogenerado (`ARM-####`)
+El código del arma es **inmutable** y lo asigna el sistema. Ya no se ingresa manualmente.
+
+**Formato**: `ARM-` + secuencial con padding mínimo de 4 dígitos (`ARM-0001`, `ARM-0002`, …, `ARM-9999`, `ARM-10000`).
+
+**Generador**: helper `siguienteCodigoArma(client)` en `routes/armeria.ts`. Hace `MAX(SUBSTRING(codigo FROM 5)::INTEGER) WHERE codigo ~ '^ARM-[0-9]+$'` y suma 1. El POST `/api/armas` lo invoca dentro de la transacción y reintenta hasta 5 veces si hay colisión por carrera (UNIQUE en `armas.codigo`).
+
+**Migración** `ARM-07` (auto-seed) — **idempotente**:
+- Carga todas las armas ordenadas por `id` (orden de creación).
+- Si ya están en el formato `ARM-####` consecutivo, no hace nada.
+- Si hay códigos heredados (ej. `A-001`, `TEST-X`), las renumera en dos pasos para evitar colisión con el UNIQUE: (1) mueve cada arma a `__TMP_ARM_<id>`, (2) asigna el código final `ARM-####`. Todo dentro de una transacción.
+- El padding usa `max(4, length(total))` para que crezca automáticamente si hay más de 9 999 armas.
+- Las FKs (`arma_custodia.arma_id`, etc.) usan el `id` numérico, así que la renumeración del código es segura.
+
+**Endpoints**:
+- `POST /api/armas` — ignora `codigo` si llega en el body. Solo valida `tipo`. Devuelve el arma con el código generado.
+- `PATCH /api/armas/:id` — el campo `codigo` es **inmutable**: aunque se envíe, se ignora (el SET usa `COALESCE($1, codigo)` con `$1=null`).
+
+**UX**:
+- Modal **Registrar arma**: en lugar del input de código aparece un placeholder *"Se generará al guardar (ARM-####)"*.
+- Modal **Editar arma**: el campo de código se muestra como `readOnly` y en `font-mono`, con tooltip *"El código se generó automáticamente y no puede modificarse"*.
+- El header de la ficha del arma muestra un chip **EN ARMERÍA** (indigo) cuando `arma.puesto_id` es null, junto al chip *Inactiva*. Visible tanto en la ficha de `Armería` como en la de `Operaciones` (componente compartido `components/ModalFichaArma.tsx`).
+
 ### 7.11 Bodega (`/api/bodega`)
 - **Archivo**: `routes/bodega.ts`
 - **Tablas**: `bodega_articulos`, `bodega_categorias`, `bodega_movimientos`, `bodega_solicitudes`, `bodega_unidades`

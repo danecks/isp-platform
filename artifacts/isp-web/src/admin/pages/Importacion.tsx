@@ -3740,7 +3740,7 @@ function PlantillaTurnosTab() {
     // pero sin lock optimista. El usuario asume el riesgo de pisar cambios paralelos.
     if (!keys.includes("_actualizado_ts")) {
       const cont = window.confirm(
-        "Este archivo no incluye la columna oculta "_actualizado_ts" (es una plantilla de versión anterior).\n\n" +
+        'Este archivo no incluye la columna oculta "_actualizado_ts" (es una plantilla de versión anterior).\n\n' +
         "Si continuás, se aplicarán los cambios SIN protección de concurrencia: si otra persona modificó algún slot después de que descargaste el archivo, esos cambios podrían pisarse.\n\n" +
         "Recomendado: cancelá, re-descargá la plantilla actual desde Reportes → Plantilla de Turnos Vigente y volvé a aplicar tus ediciones.\n\n" +
         "¿Continuar de todas formas?"

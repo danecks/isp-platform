@@ -4520,6 +4520,87 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: ARM-05 — error (no bloqueante)");
   }
 
+  // ── ARM-06: flags "en trámite" para tenencia y portación ──────────────────
+  // Permiten distinguir, cuando un arma no tiene número/fecha, entre:
+  //   • PENDIENTE  → faltan los datos y nadie los está gestionando
+  //   • EN TRÁMITE → faltan los datos pero alguien ya los está procesando
+  try {
+    await pool.query(`ALTER TABLE armas ADD COLUMN IF NOT EXISTS tenencia_en_tramite BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE armas ADD COLUMN IF NOT EXISTS portacion_en_tramite BOOLEAN NOT NULL DEFAULT FALSE`);
+    logger.info("Auto-migrate: ARM-06 flags en_tramite (tenencia/portación) verificados/creados");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: ARM-06 — error (no bloqueante)");
+  }
+
+  // ── ARM-07: re-numerar armas al formato ARM-#### secuencial ────────────────
+  // El código del arma ahora lo genera el sistema (ya no se ingresa manualmente).
+  // Esta migración renombra los códigos existentes (ej. "A-001", "TEST-X") al
+  // formato canónico ARM-0001, ARM-0002... ordenados por id (orden de creación).
+  // Es IDEMPOTENTE: si todas las armas ya están en formato correcto y son
+  // consecutivas, no hace nada.
+  try {
+    const { rows: armas } = await pool.query<{ id: number; codigo: string }>(
+      `SELECT id, codigo FROM armas ORDER BY id ASC`
+    );
+    const total = armas.length;
+    const minWidth = Math.max(4, String(total).length);
+    const allOk = total > 0 && armas.every((a, i) => a.codigo === `ARM-${String(i + 1).padStart(minWidth, "0")}`);
+    if (total > 0 && !allOk) {
+      // Renumeración en dos pasos para evitar colisión con el UNIQUE durante el UPDATE:
+      //   1) Mover todos a un código temporal único (basado en id)
+      //   2) Asignar el código final ARM-####
+      // Además guarda un mapeo de auditoría (codigo_anterior -> codigo_nuevo) en la
+      // tabla `arma_codigo_renumeracion`, útil para soporte y para rastrear referencias
+      // al código viejo en notas, exportaciones y documentos previos.
+      const cli = await pool.connect();
+      try {
+        await cli.query("BEGIN");
+        await cli.query(`
+          CREATE TABLE IF NOT EXISTS arma_codigo_renumeracion (
+            id SERIAL PRIMARY KEY,
+            arma_id INTEGER NOT NULL,
+            codigo_anterior VARCHAR(30) NOT NULL,
+            codigo_nuevo VARCHAR(30) NOT NULL,
+            renumerado_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          )
+        `);
+        const mapeo: Array<{ id: number; antes: string; despues: string }> = [];
+        for (const a of armas) {
+          await cli.query(`UPDATE armas SET codigo = $1 WHERE id = $2`, [`__TMP_ARM_${a.id}`, a.id]);
+        }
+        for (let i = 0; i < armas.length; i++) {
+          const nuevo = `ARM-${String(i + 1).padStart(minWidth, "0")}`;
+          await cli.query(`UPDATE armas SET codigo = $1 WHERE id = $2`, [nuevo, armas[i].id]);
+          if (armas[i].codigo !== nuevo) {
+            mapeo.push({ id: armas[i].id, antes: armas[i].codigo, despues: nuevo });
+          }
+        }
+        for (const m of mapeo) {
+          await cli.query(
+            `INSERT INTO arma_codigo_renumeracion (arma_id, codigo_anterior, codigo_nuevo) VALUES ($1, $2, $3)`,
+            [m.id, m.antes, m.despues]
+          );
+        }
+        await cli.query("COMMIT");
+        logger.info(
+          { total, cambios: mapeo.length, ejemplo: mapeo.slice(0, 3) },
+          "Auto-migrate: ARM-07 armas renumeradas al formato ARM-#### (mapeo en arma_codigo_renumeracion)"
+        );
+      } catch (e) {
+        await cli.query("ROLLBACK");
+        throw e;
+      } finally {
+        cli.release();
+      }
+    } else if (total === 0) {
+      logger.info("Auto-migrate: ARM-07 sin armas registradas (skip)");
+    } else {
+      logger.info("Auto-migrate: ARM-07 armas ya en formato ARM-#### (skip)");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: ARM-07 — error (no bloqueante)");
+  }
+
   // ── PO-DIR-01: direccion en puestos_operativos para reportería ────────────
   try {
     await pool.query(`ALTER TABLE puestos_operativos ADD COLUMN IF NOT EXISTS direccion TEXT`);

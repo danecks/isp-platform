@@ -3,6 +3,11 @@
 ## ⚠ Recordatorios pendientes para el usuario
 - **Miércoles 6 de mayo de 2026 (o primera sesión después de esa fecha)**: recordarle al usuario que dejó pendiente decidir si arrancamos el **refactor modular del Pizarrón Operativo** (`artifacts/isp-web/src/admin/pages/Operaciones.tsx`, hoy ~9,862 líneas). Plan propuesto: (1) escribir tests E2E de los flujos críticos, (2) extraer tipos/helpers puros, (3) extraer modales, (4) extraer secciones (PoolDisponibles, SegmentosPorCliente, CustodiasPanel, ProximosRegresos), (5) mover hooks de datos (useTablero, usePool, useCustodias…), (6) dejar `Operaciones.tsx` como orquestador de 500-800 líneas. Antes de tocar código, armar plan completo de tareas con dependencias para que el usuario apruebe. **Borrar este recordatorio una vez tratado.**
 
+## Cambios recientes en Armería (2026-04-25)
+- **Estados documentales `pendiente` / `en_tramite`** (migración `ARM-06`): se agregaron columnas `tenencia_en_tramite` y `portacion_en_tramite` (BOOLEAN) en `armas`. La UI muestra badges rosa (pendiente) y cyan (en trámite) en la ficha y en la tabla, con botón **En trámite / Quitar trámite** en cada bloque. El tab Estado Operativo filtra **Pendientes** y **En trámite** sumando tenencia OR portación.
+- **Código de arma autogenerado `ARM-####`** (migración `ARM-07`): el código del arma ya NO se ingresa manualmente — lo genera el sistema con padding mínimo de 4 dígitos. La migración `ARM-07` renumera de forma idempotente todos los códigos heredados (ej. `A-001`) ordenados por `id`. El POST `/api/armas` ignora cualquier `codigo` del body; el PATCH también lo ignora (el código es inmutable).
+- **Chip "EN ARMERÍA"** en el header de la ficha del arma (modal local en `Armería` y componente compartido `components/ModalFichaArma.tsx`, también usado por `Operaciones`): se muestra junto al chip *Inactiva* cuando `arma.puesto_id` es null.
+
 ## Overview
 This project is a pnpm monorepo for "Investigaciones y Seguridad Profesional S.A." (Guatemala), providing a comprehensive digital platform with a corporate website and an admin dashboard. The platform aims to streamline internal operations, enhance client interaction, and establish a robust online presence.
 

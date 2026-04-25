@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { createPortal } from "react-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Shield, X, Edit, FileText, MapPin, History, User, Clock,
   Loader2, AlertTriangle, Target, Hash,
@@ -8,6 +9,15 @@ import {
 const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
 async function apiFetch<T>(url: string): Promise<T> {
   const res = await fetch(url, { headers: { "x-isp-session": getSession() } });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw e; }
+  return res.json();
+}
+async function apiPatch<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
+    body: JSON.stringify(body),
+  });
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw e; }
   return res.json();
 }
@@ -25,7 +35,9 @@ const PORTACION_CONFIG: Record<string, { label: string; cls: string; dot: string
   vigente:          { label: "Portación vigente",   cls: "text-violet-400 bg-violet-400/10 border-violet-400/20", dot: "bg-violet-400" },
   proximo_a_vencer: { label: "Por vencer",           cls: "text-amber-400 bg-amber-400/10 border-amber-400/20",    dot: "bg-amber-400"  },
   vencida:          { label: "Portación vencida",   cls: "text-red-400 bg-red-400/10 border-red-400/20",          dot: "bg-red-400"    },
-  sin_registro:     { label: "Sin portación",        cls: "text-gray-500 bg-gray-700/40 border-gray-600",          dot: "bg-gray-600"   },
+  pendiente:        { label: "Portación pendiente", cls: "text-rose-400 bg-rose-400/10 border-rose-400/30",       dot: "bg-rose-400"   },
+  en_tramite:       { label: "Portación en trámite",cls: "text-cyan-400 bg-cyan-400/10 border-cyan-400/30",       dot: "bg-cyan-400"   },
+  sin_registro:     { label: "Portación pendiente", cls: "text-rose-400 bg-rose-400/10 border-rose-400/30",       dot: "bg-rose-400"   },
 };
 function PortacionBadge({ arma }: { arma: Pick<Arma, "estado_documental_portacion" | "dias_restantes_portacion"> }) {
   const ed = arma.estado_documental_portacion ?? "sin_registro";
@@ -74,8 +86,9 @@ interface Arma {
   numero_portacion: string | null;
   fecha_emision_portacion: string | null;
   fecha_vencimiento_portacion: string | null;
-  estado_documental_portacion: "vigente" | "proximo_a_vencer" | "vencida" | "sin_registro";
+  estado_documental_portacion: "vigente" | "proximo_a_vencer" | "vencida" | "pendiente" | "en_tramite" | "sin_registro";
   dias_restantes_portacion: number | null;
+  portacion_en_tramite: boolean;
 }
 interface CustodiaEntry {
   id: number; arma_id: number; employee_id: number | null; puesto_id: number | null;
@@ -110,6 +123,8 @@ export function ModalFichaArma({ armaId, onClose, onEdit }: {
   onClose: () => void;
   onEdit?: () => void;
 }) {
+  const qc = useQueryClient();
+  const [togglingPort, setTogglingPort] = useState(false);
   const { data: arma, isLoading: loadingArma } = useQuery<Arma>({
     queryKey: ["arma-detalle", armaId],
     queryFn: () => apiFetch<Arma>(`/api/armas/${armaId}`),
@@ -118,6 +133,19 @@ export function ModalFichaArma({ armaId, onClose, onEdit }: {
     queryKey: ["arma-custodia", armaId],
     queryFn: () => apiFetch<CustodiaEntry[]>(`/api/armas/${armaId}/custodia`),
   });
+
+  async function togglePortacionTramite() {
+    if (!arma) return;
+    setTogglingPort(true);
+    try {
+      await apiPatch(`/api/armas/${arma.id}`, { portacion_en_tramite: !arma.portacion_en_tramite });
+      qc.invalidateQueries({ queryKey: ["arma-detalle", armaId] });
+      qc.invalidateQueries({ queryKey: ["armas"] });
+      qc.invalidateQueries({ queryKey: ["armas-estado"] });
+    } finally {
+      setTogglingPort(false);
+    }
+  }
 
   return createPortal(
     <div
@@ -148,6 +176,14 @@ export function ModalFichaArma({ armaId, onClose, onEdit }: {
                   <EstadoBadge estado={arma.estado} />
                   {!arma.activo && (
                     <span className="text-[10px] text-red-400 bg-red-400/10 border border-red-400/20 px-2 py-0.5 rounded-full">Inactiva</span>
+                  )}
+                  {!arma.puesto_id && (
+                    <span
+                      title="Esta arma no está asignada a ningún puesto operativo"
+                      className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-indigo-300 bg-indigo-500/15 border border-indigo-400/30 px-2 py-0.5 rounded-full"
+                    >
+                      <Shield className="w-3 h-3" />En Armería
+                    </span>
                   )}
                 </div>
                 <p className="text-xs text-gray-400 mt-0.5">
@@ -208,7 +244,7 @@ export function ModalFichaArma({ armaId, onClose, onEdit }: {
                   <Hash className="w-3.5 h-3.5 text-gray-500" />
                   <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Portación de arma</h3>
                 </div>
-                {arma.numero_portacion && <PortacionBadge arma={arma} />}
+                <PortacionBadge arma={arma} />
               </div>
               {arma.numero_portacion ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -217,9 +253,28 @@ export function ModalFichaArma({ armaId, onClose, onEdit }: {
                   <FichaCampo label="Vencimiento" value={fmtFecha(arma.fecha_vencimiento_portacion)} />
                 </div>
               ) : (
-                <div className="bg-gray-800/30 border border-gray-700/30 rounded-lg px-3 py-2.5 flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-gray-600 flex-shrink-0" />
-                  <p className="text-xs text-gray-500">Sin datos de portación registrados.</p>
+                <div className={`rounded-lg px-3 py-2.5 flex items-center gap-2 border ${
+                  arma.portacion_en_tramite
+                    ? "bg-cyan-500/5 border-cyan-500/25"
+                    : "bg-rose-500/5 border-rose-500/25"
+                }`}>
+                  <AlertTriangle className={`w-4 h-4 flex-shrink-0 ${arma.portacion_en_tramite ? "text-cyan-400" : "text-rose-400"}`} />
+                  <p className={`text-xs flex-1 ${arma.portacion_en_tramite ? "text-cyan-300/90" : "text-rose-300/90"}`}>
+                    {arma.portacion_en_tramite
+                      ? "En trámite — los datos se están gestionando."
+                      : "Sin datos de portación. Marca que ya está en trámite o edita el arma."}
+                  </p>
+                  <button
+                    onClick={togglePortacionTramite}
+                    disabled={togglingPort}
+                    className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded-md border transition-colors flex-shrink-0 disabled:opacity-50 ${
+                      arma.portacion_en_tramite
+                        ? "text-gray-300 bg-gray-700/40 border-gray-600 hover:bg-gray-700/70"
+                        : "text-cyan-300 bg-cyan-500/15 border-cyan-500/30 hover:bg-cyan-500/25"
+                    }`}>
+                    {togglingPort && <Loader2 className="w-3 h-3 animate-spin" />}
+                    {arma.portacion_en_tramite ? "Quitar trámite" : "En trámite"}
+                  </button>
                 </div>
               )}
             </div>
