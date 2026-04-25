@@ -65,9 +65,19 @@ export const usersApi = {
 };
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  // El middleware de permisos exige el header x-isp-session (ver
+  // artifacts/api-server/src/lib/permisos-middleware.ts). Sin él, todos los
+  // módulos admin que pasan por este wrapper devuelven 401.
+  const session = (typeof sessionStorage !== "undefined"
+    ? sessionStorage.getItem("isp_admin_session_v2")
+    : null) || "";
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(session ? { "x-isp-session": session } : {}),
+      ...(options?.headers ?? {}),
+    },
   });
   if (!res.ok) {
     const error = await res.json().catch(() => ({}));
