@@ -3,6 +3,18 @@
 ## ⚠ Recordatorios pendientes para el usuario
 - **Miércoles 6 de mayo de 2026 (o primera sesión después de esa fecha)**: recordarle al usuario que dejó pendiente decidir si arrancamos el **refactor modular del Pizarrón Operativo** (`artifacts/isp-web/src/admin/pages/Operaciones.tsx`, hoy ~9,862 líneas). Plan propuesto: (1) escribir tests E2E de los flujos críticos, (2) extraer tipos/helpers puros, (3) extraer modales, (4) extraer secciones (PoolDisponibles, SegmentosPorCliente, CustodiasPanel, ProximosRegresos), (5) mover hooks de datos (useTablero, usePool, useCustodias…), (6) dejar `Operaciones.tsx` como orquestador de 500-800 líneas. Antes de tocar código, armar plan completo de tareas con dependencias para que el usuario apruebe. **Borrar este recordatorio una vez tratado.**
 
+## Hotfix middleware PWA agente (2026-04-25)
+- **Bug:** el middleware `lib/permisos-middleware.ts` mapea `/agente → módulo control_qr` y `/qr-rondas → control_qr`, lo que bloqueaba con 401 todos los endpoints públicos consumidos por las páginas `/agente`, `/agente/inicio`, `/ronda` y `/supervisor/activar` (que no envían `x-isp-session`).
+- **Fix:** allow-list explícita dentro de `isPublicPath()` para los siguientes endpoints (cada handler valida su propio token interno):
+  - `GET/POST /agente/scan/...` (carnet QR del agente).
+  - `GET /qr-rondas/scan/:token` y `POST /qr-rondas/scan` (puntos de ronda).
+  - `GET /agente/co-custodios/:fichaje_id` (regex `\d+` — exige `tracking_token`).
+  - `GET /agente/puesto-del-dia` y `GET /agente/puesto/:id/equipo-asignado` (kiosco / equipo por puesto).
+  - `POST` exactos: `/agente/fichaje`, `/agente/iniciar-turno`, `/agente/cerrar-turno`, `/agente/recorrido-ping`, `/agente/supervision`, `/agente/ronda-check`, `/agente/reporte-turno`, `/agente/reporte-turno/:id/equipo`, `/supervisor-devices/validate`.
+- **Sigue protegido:** `/agente/tokens` (administración admin) gracias a la regla "prefijo más largo gana" (`/agente/tokens → carnets_qr`).
+- **Smoke tests REST sin sesión:** `GET /agente/scan/<falso>` → 404; `GET /qr-rondas/scan/<falso>` → 404 "Código QR no válido"; `GET /agente/co-custodios/999999?tracking_token=falso` → 403 "token_invalido"; `GET /agente/co-custodios/abc` → 401 (regex no matchea — correcto); `POST /agente/fichaje` → 400; `POST /supervisor-devices/validate` → 400; `GET /agente/tokens` → 401. ✅
+- **TODO de hardening (no urgente, anotado por architect):** los handlers `GET /agente/puesto/:id/equipo-asignado`, `POST /agente/reporte-turno` y `POST /agente/reporte-turno/:id/equipo` aceptan `device_uuid+device_token` como **opcionales**. Hoy son públicos en el middleware pero no exigen credenciales en el handler — alguien con el `puestoId` puede enumerar inventario o crear reportes sin autenticación. Endurecer cuando se agende revisión de seguridad de la PWA del agente.
+
 ## Cambios recientes en Armería (2026-04-25)
 - **Estados documentales `pendiente` / `en_tramite`** (migración `ARM-06`): se agregaron columnas `tenencia_en_tramite` y `portacion_en_tramite` (BOOLEAN) en `armas`. La UI muestra badges rosa (pendiente) y cyan (en trámite) en la ficha y en la tabla, con botón **En trámite / Quitar trámite** en cada bloque. El tab Estado Operativo filtra **Pendientes** y **En trámite** sumando tenencia OR portación.
 - **Código de arma autogenerado `ARM-####`** (migración `ARM-07`): el código del arma ya NO se ingresa manualmente — lo genera el sistema con padding mínimo de 4 dígitos. La migración `ARM-07` renumera de forma idempotente todos los códigos heredados (ej. `A-001`) ordenados por `id`. El POST `/api/armas` ignora cualquier `codigo` del body; el PATCH también lo ignora (el código es inmutable).

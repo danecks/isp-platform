@@ -85,6 +85,46 @@ function isPublicPath(path: string, method: string): boolean {
   // (GET/PATCH/DELETE quedan como admin a través de ROUTE_MODULO_MAP)
   if (method === "POST" && (path === "/leads" || path === "/applications")) return true;
 
+  // ── PWA del agente / activación de supervisor ────────────────────────────
+  // Estos endpoints se consumen SIN sesión admin desde páginas públicas:
+  //   /agente (AgenteEscaneo), /agente/inicio (AgenteInicio),
+  //   /ronda (RondaGuardia), /supervisor/activar (SupervisorActivar).
+  // Cada handler valida internamente su propio token (qr_token, device_token,
+  // employee_id), por lo que el middleware no debe pedir sesión admin aquí.
+
+  // GET /api/agente/scan/:token  — info al escanear el carnet QR del agente
+  // POST /api/agente/scan/:token/incidencia — reportar incidencia desde QR
+  if (path === "/agente/scan" || path.startsWith("/agente/scan/")) return true;
+
+  // GET /api/qr-rondas/scan/:token y POST /api/qr-rondas/scan
+  // (página pública /ronda escanea puntos de ronda — handler valida token)
+  if (path === "/qr-rondas/scan" || path.startsWith("/qr-rondas/scan/")) return true;
+
+  // GET /api/agente/co-custodios/:fichaje_id — handler exige tracking_token
+  if (method === "GET" && /^\/agente\/co-custodios\/\d+$/.test(path)) return true;
+
+  // GETs públicos del agente (modo kiosco / equipo asignado por puesto)
+  if (method === "GET" && (
+    path === "/agente/puesto-del-dia" ||
+    /^\/agente\/puesto\/\d+\/equipo-asignado$/.test(path)
+  )) return true;
+
+  // POSTs públicos de la PWA del agente y validación de supervisor-device
+  const agentePublicPosts = new Set([
+    "/agente/fichaje",
+    "/agente/iniciar-turno",
+    "/agente/cerrar-turno",
+    "/agente/recorrido-ping",
+    "/agente/supervision",
+    "/agente/ronda-check",
+    "/agente/reporte-turno",
+    "/supervisor-devices/validate",
+  ]);
+  if (method === "POST" && agentePublicPosts.has(path)) return true;
+
+  // POST /api/agente/reporte-turno/:reporteId/equipo — adjuntar equipo al reporte
+  if (method === "POST" && path.startsWith("/agente/reporte-turno/")) return true;
+
   return false;
 }
 
