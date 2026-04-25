@@ -83,3 +83,9 @@ id = "X3WFhnNGJnKtDrKQ6dhjh"
 uri = "file://docs/04-diccionario-datos.md"
 type = "text"
 title = "4. Diccionario de Datos"
+
+[[outputs]]
+id = "dRCWXpvLopTjabDxEn0x1"
+uri = "file://docs/auditorias/pizarron-operativo-2026-04-25.md"
+type = "text"
+title = "Auditoría técnica — Pizarrón Operativo (25-abr-2026)"
