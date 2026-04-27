@@ -61,7 +61,7 @@ const ROUTE_MODULO_MAP: Record<string, string> = {
   "/admin":                  "usuarios",            // /admin/reset-* — handlers validan rol=admin internamente
   "/actas":                  "eventos_rrhh",
   "/alias":                  "pizarron",
-  "/config-empresa":         "usuarios",            // configuración global, sólo admin
+  "/config-empresa":         "usuarios",            // PUT/POST/etc → solo admin. (GET tiene override abajo: cualquier sesión válida.)
   "/empleados":              "empleados",           // alias en español de /employees
   "/puestos":                "pizarron",
   "/rentabilidad":           "reportes",
@@ -269,6 +269,12 @@ export async function permisosMiddleware(req: any, res: any, next: any) {
       modulo: moduloClave ?? null,
     });
   }
+
+  // ── Overrides de método ──────────────────────────────────────────────────
+  // GET /config-empresa: cualquier sesión válida puede LEER la configuración
+  // global (RRHH la usa para generar contratos/actas/avisos). Las escrituras
+  // siguen restringidas al módulo "usuarios" (admin) vía ROUTE_MODULO_MAP.
+  if (req.method === "GET" && req.path === "/config-empresa") return next();
 
   // Sesión válida + ruta sin módulo asociado → dejar pasar
   // (rutas internas no catalogadas, basta con que la sesión sea válida)
