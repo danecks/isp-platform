@@ -53,6 +53,23 @@ const ROUTE_MODULO_MAP: Record<string, string> = {
   "/barracas":               "barracas",
   "/amonestaciones":         "amonestaciones",
   "/wa-config":              "simulador_wa",
+  // ── Hardening 2026-04-25: rutas que antes pasaban por fail-open ──────────
+  "/users":                  "usuarios",
+  "/clientes":               "clientes",
+  "/clientes-lista":         "clientes",
+  "/sedes":                  "clientes",
+  "/admin":                  "usuarios",            // /admin/reset-* — handlers validan rol=admin internamente
+  "/actas":                  "eventos_rrhh",
+  "/alias":                  "pizarron",
+  "/config-empresa":         "usuarios",            // configuración global, sólo admin
+  "/empleados":              "empleados",           // alias en español de /employees
+  "/puestos":                "pizarron",
+  "/rentabilidad":           "reportes",
+  "/rrhh":                   "eventos_rrhh",        // /rrhh/eventos, /rrhh/alertas, /rrhh/incidencias, /rrhh/horas-extra
+  "/slots":                  "pizarron",
+  "/solicitudes-cambio":     "pizarron",
+  "/solicitudes-empleo":     "kiosco_solicitudes",  // los POST públicos viven en isPublicPath
+  "/docs":                   "usuarios",            // documentación interna admin
 };
 
 // Rutas públicas legítimas (login, webhooks, portal, healthcheck).
@@ -84,6 +101,32 @@ function isPublicPath(path: string, method: string): boolean {
   // Formularios web públicos: solo POST a la raíz del recurso
   // (GET/PATCH/DELETE quedan como admin a través de ROUTE_MODULO_MAP)
   if (method === "POST" && (path === "/leads" || path === "/applications")) return true;
+
+  // ── Hardening 2026-04-25: kiosco/anticipos/actualización-datos públicos ──
+  // Páginas /kiosco, /solicitar-anticipo, /actualizacion-datos consumen
+  // estos endpoints sin sesión admin. Cada handler valida internamente
+  // (DPI, captura del kiosco, etc.).
+  if (method === "POST" && (
+    path === "/anticipos" ||                         // /solicitar-anticipo: enviar solicitud
+    path === "/empleados/upload-foto" ||             // /solicitar-anticipo: subir foto del DPI
+    path === "/solicitudes-empleo" ||                // /kiosco: enviar solicitud completa
+    path === "/solicitudes-empleo/foto" ||           // /kiosco, /actualizacion-datos: subir foto
+    path === "/solicitudes-empleo/extraer-dpi" ||    // /kiosco, /solicitar-anticipo, /actualizacion-datos: OCR del DPI
+    path === "/solicitudes-empleo/verificar-pin" ||  // /kiosco: validar PIN
+    path === "/solicitudes-empleo/telemetria"        // /kiosco: telemetría de uso
+  )) return true;
+
+  // GETs públicos para formularios públicos (lookup por DPI, configs visibles)
+  if (method === "GET" && (
+    /^\/employees\/by-dpi\/[^/]+$/.test(path) ||             // /solicitar-anticipo, /actualizacion-datos
+    /^\/solicitudes-empleo\/by-dpi\/[^/]+$/.test(path) ||    // /kiosco: validar si DPI ya postuló
+    path === "/anticipos/config" ||                          // /solicitar-anticipo: config visible al usuario
+    /^\/anticipos\/limite\/\d+$/.test(path)                  // /solicitar-anticipo: límite del solicitante
+  )) return true;
+
+  // PATCH público para que el empleado actualice sus propios datos desde /actualizacion-datos
+  // (el handler ya está marcado como "actualización pública de datos (kiosco)")
+  if (method === "PATCH" && /^\/employees\/\d+\/self-update$/.test(path)) return true;
 
   // ── PWA del agente / activación de supervisor ────────────────────────────
   // Estos endpoints se consumen SIN sesión admin desde páginas públicas:
@@ -147,7 +190,7 @@ export async function getPermisosForRol(rol: string): Promise<Set<string>> {
 }
 
 // Nueva función: obtiene permisos por USERNAME (consulta rol actual desde BD)
-async function getPermisosForUsername(username: string): Promise<{ rol: string; modulos: Set<string> }> {
+export async function getPermisosForUsername(username: string): Promise<{ rol: string; modulos: Set<string> }> {
   const now = Date.now();
   const cached = permCache.get(username);
   if (cached && cached.expiresAt > now) return { rol: cached.rol, modulos: cached.modulos };
@@ -216,20 +259,19 @@ export async function permisosMiddleware(req: any, res: any, next: any) {
     }
   }
 
-  // Sin sesión: bloquear si la ruta es admin (está en el mapa).
-  // Si no está en el mapa, mantener compatibilidad (formularios públicos
-  // no catalogados como /leads, /applications) — siguen pasando como hoy.
+  // ── HARDENING 2026-04-25: fail-closed ────────────────────────────────────
+  // Sin sesión y la ruta no está en isPublicPath → 401 SIEMPRE.
+  // (Antes: las rutas no catalogadas pasaban por fail-open y exponían datos.
+  // Ej: /api/users devolvía 200 sin sesión por no estar en ROUTE_MODULO_MAP.)
   if (!session) {
-    if (moduloClave) {
-      return res.status(401).json({
-        error: "Sesión requerida para acceder a este módulo",
-        modulo: moduloClave,
-      });
-    }
-    return next();
+    return res.status(401).json({
+      error: "Sesión requerida",
+      modulo: moduloClave ?? null,
+    });
   }
 
-  // Sesión válida + ruta sin módulo asociado → dejar pasar (compat)
+  // Sesión válida + ruta sin módulo asociado → dejar pasar
+  // (rutas internas no catalogadas, basta con que la sesión sea válida)
   if (!moduloClave) return next();
 
   // Si hay username en la sesión, verificar rol ACTUAL desde BD (evita sesión desactualizada)

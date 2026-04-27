@@ -18,6 +18,7 @@ import {
   calcularResponsableTurnoLocal,
   sincronizarCustodiasAlCierre,
 } from "./operaciones/_helpers/cierre-sync";
+import { getActorFromReq } from "../lib/auth-helpers";
 
 const operacionesRouter = Router();
 
@@ -3632,8 +3633,18 @@ operacionesRouter.get("/operaciones/cierre/preview-custodias", async (req, res) 
 
 // ─── POST /api/operaciones/cierre ─────────────────────────────────────────────
 operacionesRouter.post("/operaciones/cierre", async (req, res) => {
-  const { confirmacion, comentario, usuario, usuarioId, rol, fecha: fechaSolicitada, sincronizarCustodias } = req.body;
+  const { confirmacion, comentario, fecha: fechaSolicitada, sincronizarCustodias } = req.body;
 
+  // Hardening 2026-04-25: rol/usuario/usuarioId vienen de la sesión real (BD),
+  // NO del body. (Antes: el cliente podía enviar `"rol":"admin"` o falsificar
+  // `usuario` para que la bitácora atribuyera el cierre a otra persona.)
+  const actor = await getActorFromReq(req);
+  if (!actor) {
+    return res.status(401).json({ error: 'Sesión inválida o expirada' });
+  }
+  const rol = actor.rol;
+  const usuario = actor.username;
+  const usuarioId = actor.id;
   if (!['admin', 'supervisor'].includes(rol)) {
     return res.status(403).json({ error: 'Solo supervisores y administradores pueden cerrar el día' });
   }
@@ -4052,8 +4063,16 @@ operacionesRouter.post("/operaciones/cierre", async (req, res) => {
 // ─── POST /api/operaciones/reabrir ───────────────────────────────────────────
 // Reabrir una fecha cerrada (solo admin). Acepta `fecha` ISO opcional; por defecto CURRENT_DATE.
 operacionesRouter.post("/operaciones/reabrir", async (req, res) => {
-  const { confirmacion, motivo, usuario, usuarioId, rol, fecha } = req.body;
+  const { confirmacion, motivo, fecha } = req.body;
 
+  // Hardening 2026-04-25: rol/usuario/usuarioId vienen de la sesión real (BD), NO del body.
+  const actor = await getActorFromReq(req);
+  if (!actor) {
+    return res.status(401).json({ error: 'Sesión inválida o expirada' });
+  }
+  const rol = actor.rol;
+  const usuario = actor.username;
+  const usuarioId = actor.id;
   if (rol !== 'admin') {
     return res.status(403).json({ error: 'Solo administradores pueden reabrir el día' });
   }
