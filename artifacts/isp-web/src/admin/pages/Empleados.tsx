@@ -4354,19 +4354,6 @@ function TabContratos({ emp }: { emp: Empleado }) {
         return;
       }
 
-      // DEBUG TEMPORAL: muestra en pantalla la fecha calculada antes de
-      // dibujar el PDF, para diagnosticar el problema de "27 vs 28 jun".
-      // Quitar una vez confirmado el comportamiento.
-      // eslint-disable-next-line no-alert
-      window.alert(
-        `DEBUG contrato:\n` +
-        `det.fecha_ingreso = ${JSON.stringify(det.fecha_ingreso)}\n` +
-        `emp.fechaIngreso  = ${JSON.stringify(emp.fechaIngreso)}\n` +
-        `fechaAltaBase     = ${fechaAltaBase}\n` +
-        `tipo              = ${tipo}\n` +
-        `fecha_inicio PDF  = ${fechaInicio}`,
-      );
-
       await generarContratoLaboral(datos);
     } catch (err) {
       toast({ title: "Error", description: "No se pudo generar el contrato.", variant: "destructive" });

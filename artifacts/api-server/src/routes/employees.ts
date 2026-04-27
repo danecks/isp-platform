@@ -1119,11 +1119,55 @@ employeesRouter.get("/employees/:id", async (req, res) => {
       .where(eq(employeesTable.id, id))
       .limit(1);
     if (!emp) return res.status(404).json({ error: "Empleado no encontrado" });
-    // enriquecer con campo frecuencia_pago (fuera del schema Drizzle)
+    // enriquecer con campos que están en la tabla pero NO en el schema Drizzle.
+    // Sin esto, datos como estado civil o dirección llegan vacíos al frontend
+    // y los contratos PDF salen con líneas en blanco "____________".
     const { rows: [extra] } = await pool.query(
-      `SELECT COALESCE(frecuencia_pago, 'quincenal') AS "frecuenciaPago" FROM employees WHERE id = $1`, [id]
+      `SELECT
+         COALESCE(frecuencia_pago, 'quincenal') AS "frecuenciaPago",
+         estado_civil      AS "estadoCivil",
+         direccion         AS "direccion",
+         telefono          AS "telefono",
+         dpi               AS "dpi",
+         fecha_nacimiento  AS "fechaNacimiento",
+         lugar_nacimiento  AS "lugarNacimiento",
+         municipio         AS "municipio",
+         departamento      AS "departamento",
+         sueldo_base       AS "sueldoBase",
+         tipo_jornada      AS "tipoJornada",
+         dia_descanso      AS "diaDescanso",
+         horas_contrato    AS "horasContrato",
+         tipo_personal     AS "tipoPersonal",
+         nit               AS "nit",
+         correo            AS "correo",
+         sexo              AS "sexo",
+         fecha_ingreso     AS "fechaIngreso"
+       FROM employees WHERE id = $1`,
+      [id]
     );
-    res.json({ ...emp, frecuenciaPago: extra?.frecuenciaPago ?? "quincenal" });
+    res.json({
+      ...emp,
+      frecuenciaPago: extra?.frecuenciaPago ?? "quincenal",
+      // También devolver los campos en snake_case para compatibilidad con
+      // código del frontend que los lee como det.estado_civil, etc.
+      estado_civil:    extra?.estadoCivil    ?? null,
+      direccion:       extra?.direccion      ?? null,
+      telefono:        extra?.telefono       ?? null,
+      dpi:             extra?.dpi            ?? null,
+      fecha_nacimiento: extra?.fechaNacimiento ?? null,
+      lugar_nacimiento: extra?.lugarNacimiento ?? null,
+      municipio:       extra?.municipio      ?? null,
+      departamento:    extra?.departamento   ?? null,
+      sueldo_base:     extra?.sueldoBase     ?? null,
+      tipo_jornada:    extra?.tipoJornada    ?? null,
+      dia_descanso:    extra?.diaDescanso    ?? null,
+      horas_contrato:  extra?.horasContrato  ?? null,
+      tipo_personal:   extra?.tipoPersonal   ?? null,
+      nit:             extra?.nit            ?? null,
+      correo:          extra?.correo        ?? null,
+      sexo:            extra?.sexo          ?? null,
+      fecha_ingreso:   extra?.fechaIngreso   ?? null,
+    });
   } catch (err) {
     res.status(500).json({ error: "Error al obtener empleado" });
   }

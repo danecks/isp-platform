@@ -1062,17 +1062,25 @@ export default function KioscoSolicitudes() {
                               const patrono = await cargarPatronoDesdeConfig();
                               // El contrato INICIAL (período de prueba 60 días) se imprime
                               // con fecha_inicio = fecha de alta + 2 meses.
-                              const baseAlta = asignacion.fecha_alta || new Date().toISOString().slice(0, 10);
+                              const baseAltaRaw = asignacion.fecha_alta || new Date().toISOString().slice(0, 10);
+                              // Quitar la "T..." si llega en formato ISO completo.
+                              const baseAlta = String(baseAltaRaw).split("T")[0];
                               const [yA, mA, dA] = baseAlta.split("-").map(Number);
                               const fechaInicialPP = new Date(yA, (mA || 1) - 1, dA || 1);
                               fechaInicialPP.setMonth(fechaInicialPP.getMonth() + 2);
+                              // Reconstruir YYYY-MM-DD usando getters LOCALES (no toISOString,
+                              // que convierte a UTC y desfasa el día en zonas como GT).
+                              const yy = fechaInicialPP.getFullYear();
+                              const mm = String(fechaInicialPP.getMonth() + 1).padStart(2, "0");
+                              const dd = String(fechaInicialPP.getDate()).padStart(2, "0");
+                              const fechaInicialStr = `${yy}-${mm}-${dd}`;
                               const datos: DatosContratoLaboral = {
                                 empleado_nombre: detalle.nombre_completo,
                                 empleado_dpi: detalle.dpi,
                                 empleado_estado_civil: detalle.estado_civil ?? undefined,
                                 empleado_direccion: detalle.direccion ?? undefined,
                                 empleado_telefono: detalle.telefono,
-                                fecha_inicio: fechaInicialPP.toISOString().slice(0, 10),
+                                fecha_inicio: fechaInicialStr,
                                 puesto: asignacion.puesto || detalle.puesto_solicitado,
                                 tipo_personal: asignacion.tipo_personal || "guardia",
                                 sueldo_base: parseFloat(asignacion.sueldo_base) || parseFloat(detalle.pretension_salarial || "0") || 0,
@@ -1089,7 +1097,10 @@ export default function KioscoSolicitudes() {
                             onClick={async () => {
                               const patrono = await cargarPatronoDesdeConfig();
                               // El contrato POST-PRUEBA se imprime con la fecha de alta original.
-                              const fechaAlta = asignacion.fecha_alta || new Date().toISOString().slice(0, 10);
+                              const fechaAltaRaw = asignacion.fecha_alta || new Date().toISOString().slice(0, 10);
+                              // Quitar la "T..." si llega en formato ISO completo, para que
+                              // el PDF lo interprete como fecha local correcta.
+                              const fechaAlta = String(fechaAltaRaw).split("T")[0];
                               const datos: DatosContratoLaboral = {
                                 empleado_nombre: detalle.nombre_completo,
                                 empleado_dpi: detalle.dpi,
