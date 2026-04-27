@@ -21,6 +21,91 @@ import { generarContratoLaboral, cargarPatronoDesdeConfig, type DatosContratoLab
 const API = "/api";
 const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
 
+/**
+ * Devuelve la fecha de HOY en formato YYYY-MM-DD usando la hora LOCAL del
+ * navegador, no UTC. Esto evita el desfase de un día que ocurre en zonas
+ * horarias negativas (ej. Guatemala UTC-6) cuando se usa toISOString(),
+ * que convierte la hora local a UTC y puede caer en el día siguiente.
+ */
+const hoyLocalISO = (): string => {
+  const d = new Date();
+  const yy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+};
+
+/**
+ * Convierte la fecha de ingreso que viene del servidor (puede ser un
+ * timestamp ISO completo "2026-04-28T00:00:00.000Z" o ya un YYYY-MM-DD)
+ * a formato YYYY-MM-DD interpretado en hora LOCAL del navegador.
+ *
+ * Si recibe un ISO con "T", extraemos solo la parte de la fecha; eso es
+ * seguro porque el servidor guarda la fecha como "YYYY-MM-DD 00:00:00 UTC"
+ * y la representación textual del día no cambia.
+ */
+const fechaIngresoALocal = (raw?: string | null): string => {
+  if (!raw) return "";
+  const s = String(raw);
+  // Si viene "YYYY-MM-DD..." (con o sin "T..."), tomamos los primeros 10 chars.
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return s;
+};
+
+interface EmpleadoReal {
+  fechaIngreso: string;       // YYYY-MM-DD
+  nombre: string;
+  dpi: string;
+  telefono: string;
+  estadoCivil: string | null;
+  direccion: string | null;
+  puesto: string;
+  tipoPersonal: string;
+  sueldoBase: number;
+}
+
+/**
+ * Carga los datos REALES del empleado desde el servidor para que la
+ * impresión del contrato siempre coincida con la ficha guardada.
+ * Si falla la carga (sin ID, error de red, etc.), devuelve un objeto
+ * vacío para que el llamador caiga al "fallback" del formulario.
+ */
+const cargarEmpleadoReal = async (empId?: number | null): Promise<EmpleadoReal> => {
+  const vacio: EmpleadoReal = {
+    fechaIngreso: "",
+    nombre: "",
+    dpi: "",
+    telefono: "",
+    estadoCivil: null,
+    direccion: null,
+    puesto: "",
+    tipoPersonal: "",
+    sueldoBase: 0,
+  };
+  if (!empId) return vacio;
+  try {
+    const r = await fetch(`${API}/employees/${empId}`, {
+      headers: { "x-isp-session": getSession() },
+    });
+    if (!r.ok) return vacio;
+    const e = await r.json();
+    return {
+      fechaIngreso: fechaIngresoALocal(e.fechaIngreso ?? e.fecha_ingreso),
+      nombre: String(e.nombreCompleto ?? e.nombre_completo ?? "").trim(),
+      dpi: String(e.dpi ?? "").trim(),
+      telefono: String(e.telefono ?? "").trim(),
+      estadoCivil: e.estadoCivil ?? e.estado_civil ?? null,
+      direccion: e.direccion ?? null,
+      puesto: String(e.puesto ?? "").trim(),
+      tipoPersonal: String(e.tipoPersonal ?? e.tipo_personal ?? "").trim(),
+      sueldoBase: parseFloat(String(e.sueldoBase ?? e.sueldo_base ?? "0")) || 0,
+    };
+  } catch {
+    return vacio;
+  }
+};
+
 function SecureFoto({ fotoUrl, className }: { fotoUrl: string; className?: string }) {
   const [src, setSrc] = useState<string | null>(fotoUrl.startsWith("data:") ? fotoUrl : null);
   useEffect(() => {
@@ -222,7 +307,7 @@ export default function KioscoSolicitudes() {
     puesto: "",
     tipo_personal: "guardia",
     sueldo_base: "",
-    fecha_alta: new Date().toISOString().slice(0, 10),
+    fecha_alta: hoyLocalISO(),
   });
   const [editando, setEditando] = useState(false);
   const [editado, setEditado] = useState<Partial<SolicitudDetalle>>({});
@@ -304,7 +389,7 @@ export default function KioscoSolicitudes() {
       puesto: "",
       tipo_personal: "guardia",
       sueldo_base: "",
-      fecha_alta: new Date().toISOString().slice(0, 10),
+      fecha_alta: hoyLocalISO(),
     });
     setEditando(false);
     setEditado({});
@@ -1059,12 +1144,18 @@ export default function KioscoSolicitudes() {
                         <div className="grid grid-cols-2 gap-2">
                           <button
                             onClick={async () => {
+                              // Cargamos los datos REALES del empleado desde el servidor
+                              // (fecha de ingreso, salario, sueldo, etc.) para que el contrato
+                              // siempre coincida con lo que está guardado en la ficha — y no
+                              // dependa de lo que tenga el formulario en pantalla.
+                              const empId = detalle.employee_id ?? empleadoCreadoId;
+                              const empReal = await cargarEmpleadoReal(empId);
                               const patrono = await cargarPatronoDesdeConfig();
                               // El contrato INICIAL (período de prueba 60 días) se imprime
-                              // con fecha_inicio = fecha de alta + 2 meses.
-                              const baseAltaRaw = asignacion.fecha_alta || new Date().toISOString().slice(0, 10);
-                              // Quitar la "T..." si llega en formato ISO completo.
-                              const baseAlta = String(baseAltaRaw).split("T")[0];
+                              // con fecha_inicio = fecha de ingreso + 2 meses.
+                              const baseAlta = empReal.fechaIngreso
+                                || asignacion.fecha_alta
+                                || hoyLocalISO();
                               const [yA, mA, dA] = baseAlta.split("-").map(Number);
                               const fechaInicialPP = new Date(yA, (mA || 1) - 1, dA || 1);
                               fechaInicialPP.setMonth(fechaInicialPP.getMonth() + 2);
@@ -1075,15 +1166,15 @@ export default function KioscoSolicitudes() {
                               const dd = String(fechaInicialPP.getDate()).padStart(2, "0");
                               const fechaInicialStr = `${yy}-${mm}-${dd}`;
                               const datos: DatosContratoLaboral = {
-                                empleado_nombre: detalle.nombre_completo,
-                                empleado_dpi: detalle.dpi,
-                                empleado_estado_civil: detalle.estado_civil ?? undefined,
-                                empleado_direccion: detalle.direccion ?? undefined,
-                                empleado_telefono: detalle.telefono,
+                                empleado_nombre: empReal.nombre || detalle.nombre_completo,
+                                empleado_dpi: empReal.dpi || detalle.dpi,
+                                empleado_estado_civil: empReal.estadoCivil ?? detalle.estado_civil ?? undefined,
+                                empleado_direccion: empReal.direccion ?? detalle.direccion ?? undefined,
+                                empleado_telefono: empReal.telefono || detalle.telefono,
                                 fecha_inicio: fechaInicialStr,
-                                puesto: asignacion.puesto || detalle.puesto_solicitado,
-                                tipo_personal: asignacion.tipo_personal || "guardia",
-                                sueldo_base: parseFloat(asignacion.sueldo_base) || parseFloat(detalle.pretension_salarial || "0") || 0,
+                                puesto: empReal.puesto || asignacion.puesto || detalle.puesto_solicitado,
+                                tipo_personal: empReal.tipoPersonal || asignacion.tipo_personal || "guardia",
+                                sueldo_base: empReal.sueldoBase || parseFloat(asignacion.sueldo_base) || parseFloat(detalle.pretension_salarial || "0") || 0,
                                 tipo_contrato: "inicial",
                                 patrono,
                               };
@@ -1095,22 +1186,23 @@ export default function KioscoSolicitudes() {
                           </button>
                           <button
                             onClick={async () => {
+                              const empId = detalle.employee_id ?? empleadoCreadoId;
+                              const empReal = await cargarEmpleadoReal(empId);
                               const patrono = await cargarPatronoDesdeConfig();
-                              // El contrato POST-PRUEBA se imprime con la fecha de alta original.
-                              const fechaAltaRaw = asignacion.fecha_alta || new Date().toISOString().slice(0, 10);
-                              // Quitar la "T..." si llega en formato ISO completo, para que
-                              // el PDF lo interprete como fecha local correcta.
-                              const fechaAlta = String(fechaAltaRaw).split("T")[0];
+                              // El contrato POST-PRUEBA se imprime con la fecha de ingreso real.
+                              const fechaAlta = empReal.fechaIngreso
+                                || asignacion.fecha_alta
+                                || hoyLocalISO();
                               const datos: DatosContratoLaboral = {
-                                empleado_nombre: detalle.nombre_completo,
-                                empleado_dpi: detalle.dpi,
-                                empleado_estado_civil: detalle.estado_civil ?? undefined,
-                                empleado_direccion: detalle.direccion ?? undefined,
-                                empleado_telefono: detalle.telefono,
+                                empleado_nombre: empReal.nombre || detalle.nombre_completo,
+                                empleado_dpi: empReal.dpi || detalle.dpi,
+                                empleado_estado_civil: empReal.estadoCivil ?? detalle.estado_civil ?? undefined,
+                                empleado_direccion: empReal.direccion ?? detalle.direccion ?? undefined,
+                                empleado_telefono: empReal.telefono || detalle.telefono,
                                 fecha_inicio: fechaAlta,
-                                puesto: asignacion.puesto || detalle.puesto_solicitado,
-                                tipo_personal: asignacion.tipo_personal || "guardia",
-                                sueldo_base: parseFloat(asignacion.sueldo_base) || parseFloat(detalle.pretension_salarial || "0") || 0,
+                                puesto: empReal.puesto || asignacion.puesto || detalle.puesto_solicitado,
+                                tipo_personal: empReal.tipoPersonal || asignacion.tipo_personal || "guardia",
+                                sueldo_base: empReal.sueldoBase || parseFloat(asignacion.sueldo_base) || parseFloat(detalle.pretension_salarial || "0") || 0,
                                 tipo_contrato: "post_prueba",
                                 patrono,
                               };
@@ -1138,7 +1230,7 @@ export default function KioscoSolicitudes() {
                             puesto: detalle.puesto_solicitado || "",
                             tipo_personal: "guardia",
                             sueldo_base: detalle.pretension_salarial || "",
-                            fecha_alta: new Date().toISOString().slice(0, 10),
+                            fecha_alta: hoyLocalISO(),
                           });
                           setMostrarFormContratar(true);
                         }}
