@@ -139,7 +139,14 @@ export default function Anticipos() {
       setEditando(null);
       toast({ title: "Estado actualizado", description: "La solicitud fue actualizada." });
     },
-    onError: () => toast({ title: "Error", description: "No se pudo actualizar.", variant: "destructive" }),
+    onError: (e: unknown) => {
+      const err = e as { error?: string; message?: string };
+      toast({
+        title: "No se pudo actualizar",
+        description: err?.error || err?.message || "Intenta de nuevo o avisa a soporte.",
+        variant: "destructive",
+      });
+    },
   });
 
   const { mutate: crearAnticipo, isPending: creando } = useMutation({
