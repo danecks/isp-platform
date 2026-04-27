@@ -862,11 +862,17 @@ const numeroALetras = (n: number): string => {
 
 const fmtFechaLetras = (iso: string): string => {
   try {
-    const d = new Date(iso);
-    const dia = d.getDate();
+    // Parsear como fecha local (no UTC) para evitar el desfase de un día
+    // en zonas horarias negativas como Guatemala (UTC-6). Si se usa
+    // new Date("YYYY-MM-DD") el motor lo interpreta como medianoche UTC
+    // y al pedir getDate() devuelve el día anterior.
+    const partes = iso.split("T")[0].split("-").map(Number);
+    const [y, m, d] = partes;
+    if (!y || !m || !d) return iso;
+    const fecha = new Date(y, m - 1, d);
     const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
       "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
-    return `${dia} de ${meses[d.getMonth()]} de ${d.getFullYear()}`;
+    return `${fecha.getDate()} de ${meses[fecha.getMonth()]} de ${fecha.getFullYear()}`;
   } catch {
     return iso;
   }
