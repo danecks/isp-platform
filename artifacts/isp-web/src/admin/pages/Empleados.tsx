@@ -4300,24 +4300,22 @@ function TabContratos({ emp }: { emp: Empleado }) {
       const contratosPrev: Array<{ tipo_contrato: string; fecha_inicio: string; sueldo_base: string | null }> =
         resContratos.ok ? await resContratos.json() : [];
 
-      // Contrato más reciente como fuente de "valores heredados"
+      // Contrato más reciente como fuente de "valores heredados" (sueldo, etc.)
       const ultimoContrato = contratosPrev[0];
-      const contratoInicialPrev = contratosPrev.find((c) => c.tipo_contrato === "inicial");
 
       const fechaIngreso = det.fecha_ingreso || emp.fechaIngreso || new Date().toISOString().slice(0, 10);
+      // Fuente de verdad para la fecha de alta: SIEMPRE la ficha del
+      // empleado (fecha_ingreso). NO heredar la fecha de un contrato
+      // anterior, porque pudo haberse generado con datos viejos o con
+      // un bug de zona horaria. Quitar la "T..." si llega en formato ISO
+      // completo ("2026-04-28T00:00:00.000Z").
+      const fechaAltaBase = String(fechaIngreso).split("T")[0];
       // Fecha de inicio que se imprime en el PDF:
-      //  - Inicial (60 días prueba): fecha de alta + 2 meses (entra "como
-      //    que entrara en fecha +2 meses", la fecha real de alta queda
-      //    oculta en este documento).
+      //  - Inicial (60 días prueba): fecha de alta + 2 meses.
       //  - Post-prueba (indefinido): fecha de alta original.
-      const fechaAltaBase = contratoInicialPrev?.fecha_inicio || fechaIngreso;
       let fechaInicio: string;
       if (tipo === "inicial") {
-        // Quitar la "T..." si la fecha viene en formato ISO completo
-        // ("2026-04-28T00:00:00.000Z") para que el split por "-" no devuelva
-        // NaN en el día.
-        const baseSinT = String(fechaAltaBase).split("T")[0];
-        const [yB, mB, dB] = baseSinT.split("-").map(Number);
+        const [yB, mB, dB] = fechaAltaBase.split("-").map(Number);
         const fechaPP = new Date(yB, (mB || 1) - 1, dB || 1);
         fechaPP.setMonth(fechaPP.getMonth() + 2);
         // Reconstruir YYYY-MM-DD usando getters LOCALES (no toISOString,
@@ -4327,7 +4325,7 @@ function TabContratos({ emp }: { emp: Empleado }) {
         const dd = String(fechaPP.getDate()).padStart(2, "0");
         fechaInicio = `${yy}-${mm}-${dd}`;
       } else {
-        fechaInicio = String(fechaAltaBase).split("T")[0];
+        fechaInicio = fechaAltaBase;
       }
 
       // Sueldo: empleado → último contrato → ficha
