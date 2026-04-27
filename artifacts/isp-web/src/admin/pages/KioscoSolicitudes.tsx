@@ -234,7 +234,9 @@ export default function KioscoSolicitudes() {
       const params = new URLSearchParams();
       if (filtroEstado !== "todos") params.set("estado", filtroEstado);
       if (busqueda.trim()) params.set("q", busqueda.trim());
-      const r = await fetch(`${API}/solicitudes-empleo?${params}`);
+      const r = await fetch(`${API}/solicitudes-empleo?${params}`, {
+        headers: { "x-isp-session": getSession() },
+      });
       if (!r.ok) throw new Error("Error");
       return r.json();
     },
@@ -244,7 +246,9 @@ export default function KioscoSolicitudes() {
   const { data: detalle } = useQuery<SolicitudDetalle>({
     queryKey: ["kiosco-solicitud-detalle", seleccionada],
     queryFn: async () => {
-      const r = await fetch(`${API}/solicitudes-empleo/${seleccionada}`);
+      const r = await fetch(`${API}/solicitudes-empleo/${seleccionada}`, {
+        headers: { "x-isp-session": getSession() },
+      });
       if (!r.ok) throw new Error("Error");
       return r.json();
     },
@@ -256,7 +260,7 @@ export default function KioscoSolicitudes() {
     try {
       await fetch(`${API}/solicitudes-empleo/${id}/estado`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
         body: JSON.stringify({ estado, notas_reclutador: notas || undefined, revisado_por: currentUser?.name || "Admin" }),
       });
       qc.invalidateQueries({ queryKey: ["kiosco-solicitudes"] });
@@ -277,7 +281,7 @@ export default function KioscoSolicitudes() {
       };
       const r = await fetch(`${API}/solicitudes-empleo/${id}/contratar`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
         body: JSON.stringify(body),
       });
       const data = await r.json();
@@ -331,7 +335,7 @@ export default function KioscoSolicitudes() {
     try {
       const r = await fetch(`${API}/solicitudes-empleo/${detalle.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
         body: JSON.stringify({ ...editado, revisado_por: currentUser?.name || "Admin" }),
       });
       if (!r.ok) {
