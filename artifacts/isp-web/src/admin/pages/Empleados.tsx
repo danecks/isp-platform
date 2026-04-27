@@ -280,7 +280,14 @@ function iniciales(nombre: string | null | undefined) {
 
 function fmtFecha(iso: string | null) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("es-GT", { day: "2-digit", month: "short", year: "numeric" });
+  // Evitar bug de timezone: "2026-04-28" o "2026-04-28T00:00:00.000Z" debe
+  // mostrarse como 28 abril en Guatemala (UTC-6). new Date(iso) interpreta
+  // la T...Z como UTC y al pedir el día local devuelve el anterior.
+  const [y, m, d] = iso.split("T")[0].split("-").map(Number);
+  if (!y || !m || !d) {
+    return new Date(iso).toLocaleDateString("es-GT", { day: "2-digit", month: "short", year: "numeric" });
+  }
+  return new Date(y, m - 1, d).toLocaleDateString("es-GT", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function fmtRelativa(iso: string | null) {
@@ -4306,12 +4313,21 @@ function TabContratos({ emp }: { emp: Empleado }) {
       const fechaAltaBase = contratoInicialPrev?.fecha_inicio || fechaIngreso;
       let fechaInicio: string;
       if (tipo === "inicial") {
-        const [yB, mB, dB] = fechaAltaBase.split("-").map(Number);
+        // Quitar la "T..." si la fecha viene en formato ISO completo
+        // ("2026-04-28T00:00:00.000Z") para que el split por "-" no devuelva
+        // NaN en el día.
+        const baseSinT = String(fechaAltaBase).split("T")[0];
+        const [yB, mB, dB] = baseSinT.split("-").map(Number);
         const fechaPP = new Date(yB, (mB || 1) - 1, dB || 1);
         fechaPP.setMonth(fechaPP.getMonth() + 2);
-        fechaInicio = fechaPP.toISOString().slice(0, 10);
+        // Reconstruir YYYY-MM-DD usando getters LOCALES (no toISOString,
+        // que convierte a UTC y puede desfasar el día en zonas como GT).
+        const yy = fechaPP.getFullYear();
+        const mm = String(fechaPP.getMonth() + 1).padStart(2, "0");
+        const dd = String(fechaPP.getDate()).padStart(2, "0");
+        fechaInicio = `${yy}-${mm}-${dd}`;
       } else {
-        fechaInicio = fechaAltaBase;
+        fechaInicio = String(fechaAltaBase).split("T")[0];
       }
 
       // Sueldo: empleado → último contrato → ficha
