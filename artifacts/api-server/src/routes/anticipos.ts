@@ -200,10 +200,10 @@ anticiposRouter.patch("/anticipos/:id", async (req, res) => {
     const existing = await db.select().from(anticiposTable).where(eq(anticiposTable.id, id)).limit(1);
     if (!existing.length) return res.status(404).json({ error: "Anticipo no encontrado" });
 
-    if (existing[0].planilla_id !== null) {
+    if (existing[0].planillaId !== null) {
       return res.status(409).json({
         error: "Este anticipo está vinculado a una planilla y no puede modificarse. Para corregirlo, revierte la planilla primero.",
-        planilla_id: existing[0].planilla_id,
+        planilla_id: existing[0].planillaId,
       });
     }
 
