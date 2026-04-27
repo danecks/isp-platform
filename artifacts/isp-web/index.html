@@ -16,6 +16,55 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Hot-fix: limpiar Service Worker y caches viejos UNA VEZ por navegador.
+      // Necesario porque versiones previas del PWA podían quedar sirviendo
+      // un bundle JS desactualizado (ej. cálculos de fecha con bug de zona
+      // horaria). Se ejecuta antes del bundle para no depender de él.
+      (function () {
+        try {
+          var KEY = "isp_pwa_purge_v1";
+          if (localStorage.getItem(KEY) === "done") return;
+          localStorage.setItem(KEY, "done");
+          var tasks = [];
+          if ("serviceWorker" in navigator) {
+            tasks.push(
+              navigator.serviceWorker
+                .getRegistrations()
+                .then(function (regs) {
+                  return Promise.all(
+                    regs.map(function (r) {
+                      return r.unregister();
+                    }),
+                  );
+                })
+                .catch(function () {}),
+            );
+          }
+          if (typeof caches !== "undefined" && caches && caches.keys) {
+            tasks.push(
+              caches
+                .keys()
+                .then(function (keys) {
+                  return Promise.all(
+                    keys.map(function (k) {
+                      return caches.delete(k);
+                    }),
+                  );
+                })
+                .catch(function () {}),
+            );
+          }
+          if (tasks.length) {
+            Promise.all(tasks).finally(function () {
+              window.location.reload();
+            });
+          }
+        } catch (_) {
+          // Storage no disponible — ignorar.
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
