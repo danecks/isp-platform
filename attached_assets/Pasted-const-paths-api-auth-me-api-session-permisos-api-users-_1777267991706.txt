@@ -1,0 +1,106 @@
+const paths = [
+  "/api/auth/me",
+  "/api/session/permisos",
+  "/api/users",
+  "/api/employees",
+  "/api/clientes",
+  "/api/roles",
+  "/api/config-empresa",
+  "/api/storage",
+  "/api/agente/tokens",
+  "/api/nomina/pre-planilla?desde=2026-04-01",
+  "/api/libro-salarios/general",
+  "/api/bodega/dashboard",
+  "/api/reportes",
+  "/api/docs"
+];
+
+(async () => {
+  for (const path of paths) {
+    const r = await fetch(path, {
+      method: "GET",
+      credentials: "omit",
+      cache: "no-store"
+    });
+
+    const text = await r.text();
+
+    console.log({
+      path,
+      status: r.status,
+      protected: [401, 403].includes(r.status),
+      sample: text.slice(0, 200)
+    });
+  }
+})();
+Promise {<pending>}
+VM183:20  GET https://ispsa.net/api/auth/me 401 (Unauthorized)
+(anonymous) @ VM183:20
+(anonymous) @ VM183:35Understand this error
+VM183:28 {path: '/api/auth/me', status: 401, protected: true, sample: '{"error":"Sesión requerida","modulo":null}'}
+VM183:20  GET https://ispsa.net/api/session/permisos 401 (Unauthorized)
+(anonymous) @ VM183:20
+await in (anonymous)
+(anonymous) @ VM183:35Understand this error
+VM183:28 {path: '/api/session/permisos', status: 401, protected: true, sample: '{"error":"No autenticado"}'}
+VM183:20  GET https://ispsa.net/api/users 401 (Unauthorized)
+(anonymous) @ VM183:20
+await in (anonymous)
+(anonymous) @ VM183:35Understand this error
+VM183:28 {path: '/api/users', status: 401, protected: true, sample: '{"error":"Sesión requerida","modulo":"usuarios"}'}
+VM183:20  GET https://ispsa.net/api/employees 401 (Unauthorized)
+(anonymous) @ VM183:20
+await in (anonymous)
+(anonymous) @ VM183:35Understand this error
+VM183:28 {path: '/api/employees', status: 401, protected: true, sample: '{"error":"Sesión requerida","modulo":"empleados"}'}
+VM183:20  GET https://ispsa.net/api/clientes 401 (Unauthorized)
+(anonymous) @ VM183:20
+await in (anonymous)
+(anonymous) @ VM183:35Understand this error
+VM183:28 {path: '/api/clientes', status: 401, protected: true, sample: '{"error":"Sesión requerida","modulo":"clientes"}'}
+VM183:20  GET https://ispsa.net/api/roles 401 (Unauthorized)
+(anonymous) @ VM183:20
+await in (anonymous)
+(anonymous) @ VM183:35Understand this error
+VM183:28 {path: '/api/roles', status: 401, protected: true, sample: '{"error":"Sesión requerida","modulo":null}'}
+VM183:20  GET https://ispsa.net/api/config-empresa 401 (Unauthorized)
+(anonymous) @ VM183:20
+await in (anonymous)
+(anonymous) @ VM183:35Understand this error
+VM183:28 {path: '/api/config-empresa', status: 401, protected: true, sample: '{"error":"Sesión requerida","modulo":"usuarios"}'}
+VM183:20  GET https://ispsa.net/api/storage 401 (Unauthorized)
+(anonymous) @ VM183:20
+await in (anonymous)
+(anonymous) @ VM183:35Understand this error
+VM183:28 {path: '/api/storage', status: 401, protected: true, sample: '{"error":"Sesión requerida","modulo":null}'}
+VM183:20  GET https://ispsa.net/api/agente/tokens 401 (Unauthorized)
+(anonymous) @ VM183:20
+await in (anonymous)
+(anonymous) @ VM183:35Understand this error
+VM183:28 {path: '/api/agente/tokens', status: 401, protected: true, sample: '{"error":"Sesión requerida","modulo":"carnets_qr"}'}
+VM183:20  GET https://ispsa.net/api/nomina/pre-planilla?desde=2026-04-01 401 (Unauthorized)
+(anonymous) @ VM183:20
+await in (anonymous)
+(anonymous) @ VM183:35Understand this error
+VM183:28 {path: '/api/nomina/pre-planilla?desde=2026-04-01', status: 401, protected: true, sample: '{"error":"Sesión requerida","modulo":"nomina"}'}
+VM183:20  GET https://ispsa.net/api/libro-salarios/general 401 (Unauthorized)
+(anonymous) @ VM183:20
+await in (anonymous)
+(anonymous) @ VM183:35Understand this error
+VM183:28 {path: '/api/libro-salarios/general', status: 401, protected: true, sample: '{"error":"Sesión requerida","modulo":"libro_salarios"}'}
+VM183:20  GET https://ispsa.net/api/bodega/dashboard 401 (Unauthorized)
+(anonymous) @ VM183:20
+await in (anonymous)
+(anonymous) @ VM183:35Understand this error
+VM183:28 {path: '/api/bodega/dashboard', status: 401, protected: true, sample: '{"error":"Sesión requerida","modulo":"bodega"}'}
+VM183:20  GET https://ispsa.net/api/reportes 401 (Unauthorized)
+(anonymous) @ VM183:20
+await in (anonymous)
+(anonymous) @ VM183:35Understand this error
+VM183:28 {path: '/api/reportes', status: 401, protected: true, sample: '{"error":"Sesión requerida","modulo":"reportes"}'}
+VM183:20  GET https://ispsa.net/api/docs 401 (Unauthorized)
+(anonymous) @ VM183:20
+await in (anonymous)
+(anonymous) @ VM183:35Understand this error
+VM183:28 {path: '/api/docs', status: 401, protected: true, sample: '{"error":"Sesión requerida","modulo":"usuarios"}'}
+normal?lang=auto:1 The resource https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/cmg/1 was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.Understand this warning
