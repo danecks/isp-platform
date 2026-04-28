@@ -48,12 +48,19 @@ app.use(
 
 // ── CORS — origenes permitidos ─────────────────────────────────────────────
 // Permite el mismo origen (sin Origin header), dominios de Replit (.replit.dev,
-// .replit.app, .riker.replit.dev, replit.com) y los listados en
-// ALLOWED_ORIGINS (separados por coma).
+// .replit.app, .riker.replit.dev, replit.com), el dominio corporativo
+// https://ispsa.net (y www) y los listados en ALLOWED_ORIGINS (separados
+// por coma).
 const extraOrigins = (process.env.ALLOWED_ORIGINS ?? "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
+
+// Dominios corporativos siempre permitidos (independiente de ENV).
+const CORPORATE_ORIGINS = [
+  "https://ispsa.net",
+  "https://www.ispsa.net",
+];
 
 const REPLIT_HOST_RE = /^https?:\/\/([a-z0-9-]+\.)*replit\.(dev|app|com)$/i;
 
@@ -62,6 +69,7 @@ app.use(
     origin(origin, callback) {
       if (!origin) return callback(null, true);
       if (REPLIT_HOST_RE.test(origin)) return callback(null, true);
+      if (CORPORATE_ORIGINS.includes(origin)) return callback(null, true);
       if (extraOrigins.includes(origin)) return callback(null, true);
       logger.warn({ origin }, "CORS bloqueado: origen no permitido");
       return callback(null, false);
