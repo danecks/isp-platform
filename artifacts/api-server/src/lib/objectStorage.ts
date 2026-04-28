@@ -88,7 +88,18 @@ export class ObjectStorageService {
   }
 
   async downloadObject(file: File, cacheTtlSec: number = 3600): Promise<Response> {
-    const [metadata] = await file.getMetadata();
+    let metadata: any;
+    try {
+      [metadata] = await file.getMetadata();
+    } catch (err: any) {
+      // 404 → traducir a ObjectNotFoundError; otros errores se propagan.
+      // err.code puede venir numérico o string según versión del SDK; también revisamos statusCode.
+      const code = err?.code ?? err?.statusCode;
+      if (code === 404 || code === "404") {
+        throw new ObjectNotFoundError();
+      }
+      throw err;
+    }
     const aclPolicy = await getObjectAclPolicy(file);
     const isPublic = aclPolicy?.visibility === "public";
 
@@ -161,10 +172,11 @@ export class ObjectStorageService {
     const { bucketName, objectName } = parseObjectPath(objectEntityPath);
     const bucket = objectStorageClient.bucket(bucketName);
     const objectFile = bucket.file(objectName);
-    const [exists] = await objectFile.exists();
-    if (!exists) {
-      throw new ObjectNotFoundError();
-    }
+    // Nota: Antes hacíamos `objectFile.exists()` aquí como pre-check,
+    // pero en el sidecar de producción esa llamada devuelve false aunque
+    // el archivo SÍ exista en el bucket. Confiamos en que `getMetadata()`
+    // (en downloadObject) o el stream de lectura emitan un 404 real si
+    // el archivo no existe — el caller traduce ese error a ObjectNotFoundError.
     return objectFile;
   }
 
