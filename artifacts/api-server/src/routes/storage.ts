@@ -11,11 +11,59 @@
  */
 import express, { Router, type IRouter, type Request, type Response } from "express";
 import { Readable } from "stream";
-import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+import { ObjectStorageService, ObjectNotFoundError, objectStorageClient } from "../lib/objectStorage";
 import { logger } from "../lib/logger";
+import { getActorFromReq } from "../lib/auth-helpers";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
+
+/**
+ * GET /storage/_diagnose — solo admin (validado contra BD).
+ * Reporta señales sanitizadas para diagnosticar 404 en producción
+ * sin filtrar configuración sensible.
+ */
+router.get("/storage/_diagnose", async (req: Request, res: Response) => {
+  const actor = await getActorFromReq(req);
+  if (!actor) { res.status(401).json({ error: "Sesión requerida" }); return; }
+  if (actor.rol !== "admin") { res.status(403).json({ error: "Solo admin" }); return; }
+
+  const privateDir = process.env.PRIVATE_OBJECT_DIR || "";
+  const publicPaths = process.env.PUBLIC_OBJECT_SEARCH_PATHS || "";
+  // Sanitizar: solo retornar el nombre del bucket (no la ruta completa).
+  let bucketName = "";
+  let bucketConfigurado = false;
+  if (privateDir) {
+    const path = privateDir.startsWith("/") ? privateDir.slice(1) : privateDir;
+    const slash = path.indexOf("/");
+    bucketName = slash > 0 ? path.slice(0, slash) : path;
+    bucketConfigurado = true;
+  }
+  let bucketAccesible = false;
+  let totalUploads = 0;
+  let errorCodigo: string | null = null;
+  try {
+    if (bucketConfigurado) {
+      const path = privateDir.startsWith("/") ? privateDir.slice(1) : privateDir;
+      const prefix = path.slice(bucketName.length + 1) + "/uploads/";
+      const bucket = objectStorageClient.bucket(bucketName);
+      const [files] = await bucket.getFiles({ prefix, maxResults: 100 });
+      totalUploads = files.length;
+      bucketAccesible = true;
+    }
+  } catch (e: any) {
+    errorCodigo = e?.code ? String(e.code) : "ERROR";
+    logger.error({ err: e, bucketName }, "[storage] _diagnose: error listando bucket");
+  }
+  res.json({
+    bucketConfigurado,
+    bucketName,
+    publicPathsConfigurado: Boolean(publicPaths),
+    bucketAccesible,
+    totalUploads,
+    errorCodigo,
+  });
+});
 
 /**
  * POST /storage/uploads/request-url
@@ -65,10 +113,6 @@ router.post(
   }
 );
 
-/**
- * GET /storage/public-objects/*
- * Sirve objetos públicos sin autenticación.
- */
 router.get("/storage/public-objects/*path", async (req: Request, res: Response) => {
   try {
     const raw = (req.params as any).path as string;
@@ -121,10 +165,24 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
     }
   } catch (error) {
     if (error instanceof ObjectNotFoundError) {
+      logger.warn(
+        {
+          requestedPath: (req.params as any).path,
+          privateDir: process.env.PRIVATE_OBJECT_DIR,
+        },
+        "[storage] Objeto no encontrado en bucket"
+      );
       res.status(404).json({ error: "Objeto no encontrado" });
       return;
     }
-    logger.error({ err: error }, "[storage] Error al servir objeto");
+    logger.error(
+      {
+        err: error,
+        requestedPath: (req.params as any).path,
+        privateDir: process.env.PRIVATE_OBJECT_DIR,
+      },
+      "[storage] Error al servir objeto"
+    );
     res.status(500).json({ error: "Error al servir objeto" });
   }
 });

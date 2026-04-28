@@ -1522,7 +1522,6 @@ agenteFichajeRouter.get("/agente/tokens", async (req, res) => {
       LEFT JOIN agente_qr_tokens aqt ON aqt.employee_id = e.id AND aqt.activo = TRUE
       LEFT JOIN puestos_operativos po ON po.agente_id = e.id AND po.estado = 'cubierto'
       WHERE e.estado_laboral = 'activo'
-        AND COALESCE(e.tipo_personal, 'guardia') NOT IN ('administrativo', 'supervisor_externo')
       ORDER BY e.nombre_completo
     `);
     res.json(rows);
