@@ -1453,27 +1453,33 @@ function FotoEmpleadoEditor({ emp, onUpdated }: { emp: Empleado; onUpdated?: (fo
       toast({ title: "Archivo inválido", description: "Selecciona una imagen.", variant: "destructive" });
       return;
     }
+    if (file.size > 15 * 1024 * 1024) {
+      toast({ title: "Foto muy grande", description: "Máximo 15 MB.", variant: "destructive" });
+      return;
+    }
     setSubiendo(true);
     try {
-      const comprimida = await comprimirFotoEmpleado(file);
       const session = sessionStorage.getItem("isp_admin_session_v2") ?? "";
-      const upRes = await fetch(`${API_BASE}/storage/uploads/direct`, {
+      // El servidor recibe la foto cruda y la procesa con sharp:
+      // auto-orient EXIF, resize a 480 px, JPEG q82 → guarda data URL en BD.
+      // No usa Object Storage (evita el bug del sidecar en producción).
+      const upRes = await fetch(`${API_BASE}/employees/${emp.id}/foto-upload`, {
         method: "POST",
-        headers: { "Content-Type": "image/jpeg", "x-isp-session": session },
-        body: comprimida,
+        headers: {
+          "Content-Type": file.type || "application/octet-stream",
+          "x-isp-session": session,
+        },
+        body: file,
       });
-      if (!upRes.ok) throw new Error("Error al subir la foto");
-      const { objectPath } = await upRes.json();
-      const patchRes = await fetch(`${API_BASE}/employees/${emp.id}/foto`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", "x-isp-session": session },
-        body: JSON.stringify({ foto_url: objectPath }),
-      });
-      if (!patchRes.ok) throw new Error("Error al guardar la foto");
+      if (!upRes.ok) {
+        const txt = await upRes.text().catch(() => "");
+        throw new Error(`No se pudo subir la foto (HTTP ${upRes.status}) ${txt}`);
+      }
+      const { fotoUrl } = await upRes.json();
       toast({ title: "Foto actualizada", description: emp.nombreCompleto });
       qc.invalidateQueries({ queryKey: ["empleados"] });
-      setFotoLocal(objectPath);
-      onUpdated?.(objectPath);
+      setFotoLocal(fotoUrl);
+      onUpdated?.(fotoUrl);
     } catch (err: any) {
       toast({ title: "Error", description: err?.message || "No se pudo subir la foto", variant: "destructive" });
     } finally {
