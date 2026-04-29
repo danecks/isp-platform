@@ -57,6 +57,7 @@ The project uses a pnpm workspace monorepo, organizing deployable applications (
 - **Barracas (Company Housing):** Module for managing company-rented housing with defined quotas per barraca, integrated into pre-payroll and payroll deductions. Includes admin CRUD for barracas and assignment/unassignment of employees.
 - **Assignment History:** Provides a detailed history of employee assignments, including titularships and daily coverage.
 - **PWA Agent Middleware:** Explicit allow-listing for public endpoints consumed by PWA agent pages, ensuring proper access control while allowing necessary public interactions.
+- **Bloqueo de Asignación por Fecha de Ingreso Futura:** Empleados con `fecha_ingreso > hoy` no pueden ser asignados (puestos, coberturas, custodias, segmentos, titulares) ni generan día pagado en el cierre nominal. Helper compartido `lib/empleado-fecha-ingreso.ts → validarEmpleadoAsignable()` aplicado en endpoints de asignación; cinturón de filtro `e.fecha_ingreso <= fecha_cierre` aplicado a todos los pasos del cierre que generan novedad. Etiqueta visual ámbar "⏳ Inicia DD-mmm" en la tarjeta del agente del pool en Operaciones cuando la fecha de ingreso es futura (calculada en hora local de Guatemala).
 
 # External Dependencies
 - **PostgreSQL:** Primary database.

@@ -159,6 +159,8 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
       LEFT JOIN employees e ON e.id = cs.employee_id
       WHERE cs.fecha = $1
         AND cs.employee_id IS NOT NULL
+        -- Cinturón fecha_ingreso: ignorar segmentos creados con fecha previa al ingreso del empleado
+        AND (e.fecha_ingreso IS NULL OR e.fecha_ingreso <= $1::date)
       GROUP BY cs.employee_id, cs.empleado_nombre, e.nombre_completo
     `, [fecha]);
 
@@ -301,6 +303,8 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
         WHERE cd.fecha = $1
           AND cd.tipo_cobertura IN ('titular', 'titular_he', 'relevo')
           AND cd.cobertura_employee_id IS NOT NULL
+          -- Cinturón fecha_ingreso: ignorar coberturas previas al ingreso del empleado
+          AND (e.fecha_ingreso IS NULL OR e.fecha_ingreso <= $1::date)
       `, [fecha]);
 
       for (const cd of coberturaFallback) {
@@ -529,6 +533,8 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
       LEFT JOIN turnos t ON t.id = po.tipo_turno_id
       WHERE po.activo = TRUE
         AND th_hist.efectivo_id IS NOT NULL
+        -- Cinturón fecha_ingreso: titular aún no inicia → no generar día (ni descanso de ciclo, ni falta)
+        AND (e.fecha_ingreso IS NULL OR e.fecha_ingreso <= $1::date)
         -- Sin segmento registrado para ese día
         AND NOT EXISTS (
           SELECT 1 FROM cobertura_segmentos cs
@@ -702,8 +708,10 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
         JOIN puestos_operativos po ON po.id = pt.puesto_id
         LEFT JOIN turnos t ON t.id = po.tipo_turno_id
         WHERE pt.activo = true
+          -- Cinturón fecha_ingreso: titular aún no inicia → no generar día
+          AND (e.fecha_ingreso IS NULL OR e.fecha_ingreso <= $1::date)
         ORDER BY pt.employee_id, po.id
-      `, []);
+      `, [fecha]);
 
       for (const tit of titularesFaltantes) {
         const turnoHoras = Number(tit.horas_trabajo ?? 24);
@@ -790,6 +798,8 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
           AND po.activo = TRUE
           AND ps.empleado_id IS NOT NULL
           AND e.estado_laboral NOT IN ('baja', 'suspendido')
+          -- Cinturón fecha_ingreso: empleado de slot aún no inicia → no generar día
+          AND (e.fecha_ingreso IS NULL OR e.fecha_ingreso <= $1::date)
       `, [fecha]);
 
       let slotInserts = 0;
@@ -855,6 +865,8 @@ export async function generarNovedades(fecha: string, cierreId: number | null): 
         WHERE cad.fecha = $1::date
           AND cad.employee_id IS NOT NULL
           AND e.estado_laboral NOT IN ('baja', 'suspendido')
+          -- Cinturón fecha_ingreso: empleado de custodia aún no inicia → no generar día
+          AND (e.fecha_ingreso IS NULL OR e.fecha_ingreso <= $1::date)
         ON CONFLICT (fecha, employee_id) DO NOTHING
       `, [fecha, cierreId]);
       const custInserts = r.rowCount ?? 0;

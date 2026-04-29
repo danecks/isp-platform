@@ -167,6 +167,8 @@ interface Agente {
   vacacion_trabajada?: boolean;
   /** Etiqueta de la sección del pool — solo presente en modo búsqueda global */
   _seccionLabel?: string;
+  /** Fecha de ingreso del empleado (YYYY-MM-DD). Si es futura, no debe ser asignable. */
+  fecha_ingreso?: string | null;
 }
 
 // ── Tipos para ranking de candidatos ─────────────────────────────────────────
@@ -626,6 +628,26 @@ function MiniAgente({ agente, compact = false }: { agente: Agente; compact?: boo
 
 // ─── Agente Draggable (pool) ──────────────────────────────────────────────────
 
+// Formatea YYYY-MM-DD a "DD-mmm" en español. Devuelve null si la fecha no es futura.
+const _MESES_ABR_ES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+// Devuelve la fecha "hoy" en hora local de Guatemala (UTC-6, sin DST) en formato YYYY-MM-DD.
+function _hoyGuatemalaISO(): string {
+  const now = new Date();
+  // Guatemala = UTC-6 (sin horario de verano). Convertimos restando 6 horas al UTC actual.
+  const gt = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+  return gt.toISOString().slice(0, 10);
+}
+function etiquetaInicioFuturo(fechaIngresoISO?: string | null): string | null {
+  if (!fechaIngresoISO) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(fechaIngresoISO);
+  if (!m) return null;
+  const fechaIng = `${m[1]}-${m[2]}-${m[3]}`;
+  if (fechaIng <= _hoyGuatemalaISO()) return null;
+  const dd = m[3];
+  const mm = _MESES_ABR_ES[Number(m[2]) - 1] ?? "";
+  return `Inicia ${dd}-${mm}`;
+}
+
 const ESTADO_PUESTO_BADGE: Record<string, { label: string; cls: string }> = {
   relevo_completo:  { label: "Falta",       cls: "bg-red-500/20 text-red-300" },
   relevo_parcial:   { label: "Parcial",     cls: "bg-amber-500/20 text-amber-300" },
@@ -691,6 +713,20 @@ function DraggableAgente({
           <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0 animate-pulse" />
         )}
       </div>
+      {/* Etiqueta informativa: empleado con fecha de ingreso futura (no asignable aún) */}
+      {(() => {
+        const et = etiquetaInicioFuturo(agente.fecha_ingreso);
+        if (!et) return null;
+        return (
+          <div
+            className="inline-flex items-center gap-1 self-start px-1.5 py-0.5 rounded-md text-[9px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/25"
+            title="Este empleado aún no inicia labores. No se le puede asignar puesto ni cobertura hasta su fecha de ingreso."
+          >
+            <span aria-hidden="true">⏳</span>
+            {et}
+          </div>
+        );
+      })()}
     </div>
   );
 }

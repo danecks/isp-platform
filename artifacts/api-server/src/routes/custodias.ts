@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool, todayGT } from "@workspace/db";
 import { logger } from "../lib/logger";
+import { validarEmpleadoAsignable } from "../lib/empleado-fecha-ingreso";
 
 export const custodiasRouter = Router();
 
@@ -211,6 +212,12 @@ custodiasRouter.post("/custodias/cliente/:id/asignar", async (req, res) => {
     return res.status(400).json({ error: "Formato de fecha inválido (esperado YYYY-MM-DD)" });
   }
 
+  // Bloqueo fecha_ingreso: el agente debe haber iniciado labores para esa fecha
+  {
+    const _v = await validarEmpleadoAsignable(pool, employeeId, fechaNorm);
+    if (!_v.ok) return res.status(400).json({ error: _v.error });
+  }
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -384,6 +391,14 @@ custodiasRouter.post("/custodias/cliente/:id/asignar-lote", async (req, res) => 
       for (const eid of employeeIds) {
         // Lock por (agente, fecha) para serializar contra otros clientes
         await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`custodia-emp:${eid}:${fechaNorm}`]);
+
+        // Bloqueo fecha_ingreso: si el agente aún no inicia, lo saltamos del lote (no aborta)
+        const _vIng = await validarEmpleadoAsignable(client, eid, fechaNorm);
+        if (!_vIng.ok) {
+          skipped.push({ employeeId: eid, nombre: _vIng.nombre ?? `Agente #${eid}`, motivo: _vIng.error ?? "Aún no inicia labores." });
+          continue;
+        }
+
         // Idempotente: el agente ya está en este cliente esa fecha
         const exists = await client.query(
           `SELECT 1 FROM custodia_asignacion_diaria
@@ -492,6 +507,18 @@ custodiasRouter.post("/custodias/cliente/:id/asignar-titulares", async (req, res
           "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
           [`custodia-emp:${p.employee_id}:${fechaNorm}`]
         );
+
+        // Bloqueo fecha_ingreso: si el titular aún no inicia, lo saltamos
+        const _vIngT = await validarEmpleadoAsignable(client, p.employee_id, fechaNorm);
+        if (!_vIngT.ok) {
+          skipped.push({
+            employeeId: p.employee_id,
+            nombre: _vIngT.nombre ?? p.nombre_completo,
+            slot: p.slot_numero,
+            motivo: _vIngT.error ?? "Aún no inicia labores.",
+          });
+          continue;
+        }
 
         // ¿Ya está asignado en otro cliente esa fecha?
         const cAsig = await client.query(

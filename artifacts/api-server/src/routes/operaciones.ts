@@ -19,6 +19,7 @@ import {
   sincronizarCustodiasAlCierre,
 } from "./operaciones/_helpers/cierre-sync";
 import { getActorFromReq } from "../lib/auth-helpers";
+import { validarEmpleadoAsignable } from "../lib/empleado-fecha-ingreso";
 
 const operacionesRouter = Router();
 
@@ -780,6 +781,12 @@ operacionesRouter.post("/operaciones/asignar-custodia", async (req, res) => {
   }
   const fechaAsig = fecha || todayGT();
 
+  // Bloqueo fecha_ingreso: si se asigna empleado, debe haber iniciado labores para esa fecha
+  if (employeeId) {
+    const _v = await validarEmpleadoAsignable(pool, employeeId, fechaAsig);
+    if (!_v.ok) return res.status(400).json({ error: _v.error });
+  }
+
   try {
     if (!employeeId) {
       await pool.query(`DELETE FROM custodia_asignacion_diaria WHERE cliente_id = $1 AND fecha = $2::date AND slot_numero = $3`, [clienteId, fechaAsig, slotNumero]);
@@ -886,6 +893,11 @@ operacionesRouter.post("/operaciones/cambiar-titular-custodia", async (req, res)
   const { rows: empCheck } = await pool.query(`SELECT id FROM employees WHERE id = $1 AND estado_laboral = 'activo'`, [nuevoTitularId]);
   if (empCheck.length === 0) {
     return res.status(400).json({ error: "El agente no existe o no está activo" });
+  }
+  // Bloqueo fecha_ingreso: el nuevo titular debe haber iniciado labores hoy
+  {
+    const _v = await validarEmpleadoAsignable(pool, nuevoTitularId, todayGT());
+    if (!_v.ok) return res.status(400).json({ error: _v.error });
   }
   const client = await pool.connect();
   try {
@@ -1031,6 +1043,7 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       SELECT
         e.id, e.nombre_completo, e.estado_laboral, e.puesto, e.area, e.sede,
         e.telefono, e.wa_autorizado, e.supervisor_id,
+        e.fecha_ingreso::text AS fecha_ingreso,
         COALESCE(e.tipo_personal, 'guardia') AS tipo_personal,
         COALESCE(e.elegible_pool, TRUE) AS elegible_pool,
         COALESCE(eoa.tipo_asignacion, 'sin_asignacion') AS tipo_asignacion_eoa,
@@ -1659,6 +1672,12 @@ operacionesRouter.post("/operaciones/asignar", async (req, res) => {
   const esRetroactivo = fechaCobertura < hoyGT;
   if (!puestoId || !agenteId) return res.status(400).json({ error: "puestoId y agenteId son requeridos" });
 
+  // Bloqueo fecha_ingreso: el agente debe haber iniciado labores para la fecha de cobertura
+  {
+    const _v = await validarEmpleadoAsignable(pool, agenteId, fechaCobertura);
+    if (!_v.ok) return res.status(400).json({ error: _v.error });
+  }
+
   try {
     if (await verificarDiaCerrado()) {
       return res.status(423).json({ error: "Día operativo cerrado. Reabre el día para continuar.", diaCerrado: true });
@@ -2117,6 +2136,12 @@ operacionesRouter.post("/operaciones/sustituir", async (req, res) => {
     ? fechaOperacion
     : hoyGT;
   const esRetroactivoSustitucion = fechaCobertura < hoyGT;
+
+  // Bloqueo fecha_ingreso: el agente entrante debe haber iniciado labores para esa fecha
+  {
+    const _v = await validarEmpleadoAsignable(pool, agenteEntranteId, fechaCobertura);
+    if (!_v.ok) return res.status(400).json({ error: _v.error });
+  }
 
   try {
     if (await verificarDiaCerrado()) {
@@ -2785,6 +2810,12 @@ operacionesRouter.post("/operaciones/puestos/:id/titular", async (req, res) => {
         [puestoId]
       );
       return res.json({ ok: true, mensaje: "Titular removido" });
+    }
+
+    // Bloqueo fecha_ingreso: el titular debe haber iniciado labores (validado contra hoy)
+    {
+      const _v = await validarEmpleadoAsignable(pool, titularEmployeeId, todayGT());
+      if (!_v.ok) return res.status(400).json({ error: _v.error });
     }
 
     const { rows: empRows } = await pool.query(`SELECT * FROM employees WHERE id=$1`, [titularEmployeeId]);
@@ -4663,6 +4694,12 @@ operacionesRouter.put("/operaciones/puestos/:id/titulares", async (req, res) => 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(t.fecha_inicio_ciclo)) {
       return res.status(400).json({ error: "fecha_inicio_ciclo debe tener formato YYYY-MM-DD" });
     }
+  }
+
+  // Bloqueo fecha_ingreso: ningún titular puede tener fecha de ingreso futura respecto al inicio de su ciclo
+  for (const t of titulares) {
+    const _v = await validarEmpleadoAsignable(pool, t.employee_id, t.fecha_inicio_ciclo);
+    if (!_v.ok) return res.status(400).json({ error: _v.error });
   }
 
   try {

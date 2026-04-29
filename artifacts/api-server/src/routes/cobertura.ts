@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool, todayGT } from "@workspace/db";
 import { logger } from "../lib/logger";
+import { validarEmpleadoAsignable } from "../lib/empleado-fecha-ingreso";
 
 const coberturaRouter = Router();
 
@@ -51,6 +52,14 @@ coberturaRouter.post("/cobertura/diaria", async (req, res) => {
   if (!fecha || !puestoId) return res.status(400).json({ error: "fecha y puestoId son requeridos" });
 
   try {
+    // Bloqueo fecha_ingreso: si viene un cobertura_employee_id, validar que ya inició labores a esa fecha.
+    if (coberturaEmployeeId != null) {
+      const _vIng = await validarEmpleadoAsignable(pool, Number(coberturaEmployeeId), String(fecha));
+      if (!_vIng.ok) {
+        return res.status(409).json({ error: _vIng.error ?? "Empleado aún no inicia labores." });
+      }
+    }
+
     // Upsert: si ya existe registro para ese puesto+fecha, actualiza
     const existing = await pool.query(
       `SELECT id FROM cobertura_diaria WHERE fecha = $1 AND puesto_id = $2`,
@@ -320,6 +329,12 @@ coberturaRouter.post("/cobertura/segmentos", async (req, res) => {
   // Fix P-NOM-03: hora_inicio y hora_fin son obligatorias para calcular horas
   if (!horaInicio || !horaFin) {
     return res.status(400).json({ error: "hora_inicio y hora_fin son requeridos para registrar un tramo de cobertura" });
+  }
+
+  // Bloqueo fecha_ingreso: el colaborador debe haber iniciado labores para esa fecha
+  {
+    const _v = await validarEmpleadoAsignable(pool, employeeId, fecha);
+    if (!_v.ok) return res.status(400).json({ error: _v.error });
   }
 
   try {
