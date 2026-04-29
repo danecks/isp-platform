@@ -8,8 +8,9 @@
     "./schema": "./src/schema/index.ts"
   },
   "scripts": {
-    "push": "drizzle-kit push --config ./drizzle.config.ts",
-    "push-force": "drizzle-kit push --force --config ./drizzle.config.ts"
+    "push": "echo 'ERROR: drizzle-kit push DESHABILITADO. La migracion real corre desde artifacts/api-server/src/lib/auto-seed.ts (auto-migrate idempotente). Reactivar este script provoca que Replit Deploy muestre el dialogo Migrations failed validation, cuya opcion Copy borra produccion.' && exit 1",
+    "push-force": "echo 'ERROR: drizzle-kit push --force DESHABILITADO por seguridad. Ver lib/db/package.json.' && exit 1",
+    "push-real-danger": "if [ \"$ALLOW_DRIZZLE_PUSH\" != \"1\" ]; then echo 'ERROR: este comando es DESTRUCTIVO en produccion. Para ejecutarlo en local de forma consciente: ALLOW_DRIZZLE_PUSH=1 pnpm --filter db run push-real-danger' && exit 1; fi && drizzle-kit push --config ./drizzle.config.ts"
   },
   "dependencies": {
     "drizzle-orm": "catalog:",
