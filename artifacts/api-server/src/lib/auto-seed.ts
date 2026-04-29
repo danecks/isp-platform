@@ -4604,39 +4604,48 @@ Por favor ingresa al sistema o responde para continuar.',
   // ── ARM-08: índices únicos parciales para serie / numero_tenencia / numero_portacion ─
   // Cinturón a nivel de base de datos: aunque la validación a nivel aplicación ya
   // rechaza duplicados, este índice protege contra carreras y datos cargados por otras
-  // vías (importación, kiosco, etc.). Se aplica sólo si NO existen duplicados previos
-  // (en cuyo caso se omite y queda log para resolver manualmente).
-  try {
-    const checks: Array<{ col: "serie" | "numero_tenencia" | "numero_portacion"; idx: string }> = [
-      { col: "serie",            idx: "armas_serie_uq"            },
-      { col: "numero_tenencia",  idx: "armas_numero_tenencia_uq"  },
-      { col: "numero_portacion", idx: "armas_numero_portacion_uq" },
+  // vías (importación, kiosco, etc.). Cada columna se procesa de forma independiente
+  // y NUNCA bloquea el arranque: si hay duplicados o el CREATE INDEX falla, se loggea
+  // qué armas concretas están en conflicto para que se resuelvan manualmente.
+  {
+    const checks: Array<{ col: "serie" | "numero_tenencia" | "numero_portacion"; idx: string; etiqueta: string }> = [
+      { col: "serie",            idx: "armas_serie_uq",            etiqueta: "número de serie"     },
+      { col: "numero_tenencia",  idx: "armas_numero_tenencia_uq",  etiqueta: "número de tenencia"  },
+      { col: "numero_portacion", idx: "armas_numero_portacion_uq", etiqueta: "número de portación" },
     ];
     for (const ch of checks) {
-      const { rows: dup } = await pool.query(
-        `SELECT LOWER(TRIM(${ch.col})) AS v, COUNT(*) AS c
-           FROM armas
-          WHERE ${ch.col} IS NOT NULL AND TRIM(${ch.col}) <> ''
-          GROUP BY LOWER(TRIM(${ch.col}))
-         HAVING COUNT(*) > 1
-          LIMIT 5`
-      );
-      if (dup.length > 0) {
-        logger.warn(
-          { columna: ch.col, duplicados: dup },
-          `Auto-migrate: ARM-08 columna ${ch.col} tiene duplicados — índice único omitido. Limpiar manualmente para activarlo.`
+      try {
+        const { rows: dup } = await pool.query(
+          `SELECT LOWER(TRIM(${ch.col})) AS valor,
+                  ARRAY_AGG(codigo ORDER BY id) AS codigos,
+                  ARRAY_AGG(id ORDER BY id) AS ids
+             FROM armas
+            WHERE ${ch.col} IS NOT NULL AND TRIM(${ch.col}) <> ''
+            GROUP BY LOWER(TRIM(${ch.col}))
+           HAVING COUNT(*) > 1
+            LIMIT 20`
         );
-        continue;
+        if (dup.length > 0) {
+          logger.warn(
+            { columna: ch.col, duplicados: dup },
+            `Auto-migrate: ARM-08 ${ch.etiqueta} tiene ${dup.length} valor(es) duplicado(s) en armas. Índice único omitido. ` +
+            `Resolver duplicados (renombrar o eliminar armas en conflicto) y reiniciar el servidor para activar el cinturón de BD. ` +
+            `La validación a nivel aplicación sigue activa.`
+          );
+          continue;
+        }
+        await pool.query(
+          `CREATE UNIQUE INDEX IF NOT EXISTS ${ch.idx}
+             ON armas (LOWER(TRIM(${ch.col})))
+           WHERE ${ch.col} IS NOT NULL AND TRIM(${ch.col}) <> ''`
+        );
+        logger.info(`Auto-migrate: ARM-08 índice único en ${ch.etiqueta} verificado/creado`);
+      } catch (err) {
+        // Tal vez una carrera entre el SELECT y el CREATE INDEX, o el índice falló
+        // por otra razón. Lo loggeamos pero NO bloqueamos el arranque.
+        logger.error({ err, columna: ch.col }, `Auto-migrate: ARM-08 ${ch.etiqueta} — no se pudo crear índice (no bloqueante)`);
       }
-      await pool.query(
-        `CREATE UNIQUE INDEX IF NOT EXISTS ${ch.idx}
-           ON armas (LOWER(TRIM(${ch.col})))
-         WHERE ${ch.col} IS NOT NULL AND TRIM(${ch.col}) <> ''`
-      );
     }
-    logger.info("Auto-migrate: ARM-08 índices únicos parciales en armas (serie/tenencia/portación) verificados/creados");
-  } catch (err) {
-    logger.error({ err }, "Auto-migrate: ARM-08 — error (no bloqueante)");
   }
 
   // ── PO-DIR-01: direccion en puestos_operativos para reportería ────────────
