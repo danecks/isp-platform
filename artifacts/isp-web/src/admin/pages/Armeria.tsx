@@ -5,6 +5,7 @@ import {
   Shield, Plus, RefreshCw, Search, X, XCircle, ChevronRight,
   MapPin, User, Clock, AlertTriangle, CheckCircle2, Loader2,
   Edit, History, ArrowRightLeft, Package, FileText, Hash, Target,
+  Copy, Trash2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -1203,11 +1204,199 @@ function TabHistorial() {
   );
 }
 
+// ── Tab: Duplicados ──────────────────────────────────────────────────────────
+// Ayuda al operador a resolver armas con número de serie / tenencia / portación
+// repetidos. Para cada conflicto muestra las armas lado a lado con su contexto
+// (puesto, custodio, conteos de uso) y permite editar o eliminar la incorrecta.
+interface DupArma {
+  id: number;
+  codigo: string;
+  tipo: string;
+  marca: string | null;
+  modelo: string | null;
+  calibre: string | null;
+  serie: string | null;
+  numero_tenencia: string | null;
+  numero_portacion: string | null;
+  estado: string;
+  activo: boolean;
+  observaciones: string | null;
+  created_at: string;
+  updated_at: string;
+  puesto_id: number | null;
+  puesto_nombre: string | null;
+  cliente_nombre: string | null;
+  custodia_cliente_id: number | null;
+  custodia_slot_numero: number | null;
+  custodia_cliente_nombre: string | null;
+  custodia_actual: { employee_id: number; nombre: string; fecha_inicio: string } | null;
+  total_custodias: number;
+  total_reportes: number;
+  total_ordenes: number;
+}
+interface DupGrupo {
+  campo: "serie" | "numero_tenencia" | "numero_portacion";
+  etiqueta: string;
+  valor: string;
+  armas: DupArma[];
+}
+
+function TabDuplicados({ onEdit }: { onEdit: (a: any) => void }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const { data, isLoading, refetch } = useQuery<{ total: number; grupos: DupGrupo[] }>({
+    queryKey: ["armas-duplicados"],
+    queryFn: () => apiFetch(`${API}/armas/duplicados`),
+  });
+
+  async function eliminar(arma: DupArma) {
+    const enUso = arma.total_custodias > 0 || arma.total_reportes > 0 || arma.total_ordenes > 0;
+    const confirma = window.confirm(
+      `¿Eliminar el arma ${arma.codigo}?\n\n` +
+      (enUso
+        ? `⚠ Esta arma tiene historial de uso (${arma.total_custodias} custodias, ${arma.total_reportes} reportes, ${arma.total_ordenes} órdenes).\n` +
+          `Al eliminarla, ese historial perderá la referencia al arma (los registros se conservan pero quedan sin arma asociada).\n\n`
+        : `Esta arma NO tiene historial de uso registrado.\n\n`) +
+      `Esta acción no se puede deshacer.`,
+    );
+    if (!confirma) return;
+    try {
+      const r = await fetch(`${API}/armas/${arma.id}`, {
+        method: "DELETE",
+        headers: { "x-isp-session": getSession() },
+      });
+      if (!r.ok) { const e = await r.json().catch(() => ({})); throw e; }
+      toast({ title: `Arma ${arma.codigo} eliminada`, description: "Conflicto resuelto." });
+      refetch();
+      qc.invalidateQueries({ queryKey: ["armas"] });
+      qc.invalidateQueries({ queryKey: ["armas-estado"] });
+    } catch (e: any) {
+      toast({ title: "No se pudo eliminar", description: e?.message ?? "Error desconocido", variant: "destructive" });
+    }
+  }
+
+  if (isLoading) return <div className="px-4 md:px-6 py-8 text-center text-gray-500"><Loader2 className="w-5 h-5 animate-spin inline mr-2" />Cargando…</div>;
+  const grupos = data?.grupos ?? [];
+
+  return (
+    <div className="px-4 md:px-6 pb-6 space-y-4">
+      {grupos.length === 0 ? (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-6 text-center">
+          <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-2" />
+          <p className="text-emerald-300 font-medium">No hay armas con números repetidos.</p>
+          <p className="text-xs text-gray-400 mt-1">Todo en orden.</p>
+        </div>
+      ) : (
+        <>
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-amber-100/90">
+                <p className="font-semibold mb-1">{grupos.length} conflicto(s) por resolver</p>
+                <p className="text-xs text-amber-200/70">
+                  Estas armas tienen número de serie, tenencia o portación repetidos. Revise cada caso y decida:
+                  editar el número incorrecto, o eliminar la duplicada (si fueron registradas dos veces por error).
+                  Mientras existan duplicados no se puede activar la protección a nivel base de datos.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {grupos.map((g, i) => (
+            <div key={`${g.campo}-${g.valor}-${i}`} className="bg-gray-900/60 border border-gray-800 rounded-xl overflow-hidden">
+              <div className="px-4 py-3 bg-amber-500/5 border-b border-amber-500/20 flex items-center gap-2 flex-wrap">
+                <span className="text-xs uppercase tracking-wide text-amber-400 font-semibold">{g.etiqueta} repetido</span>
+                <span className="font-mono text-white text-sm bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded">{g.valor}</span>
+                <span className="text-xs text-gray-500">— {g.armas.length} armas comparten este valor</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
+                {g.armas.map(arma => {
+                  const enUso = arma.total_custodias > 0 || arma.total_reportes > 0 || arma.total_ordenes > 0;
+                  return (
+                    <div key={arma.id} className="bg-gray-950/60 border border-gray-800 rounded-lg p-3 flex flex-col gap-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="font-mono font-semibold text-white text-sm">{arma.codigo}</div>
+                          <div className="text-xs text-gray-400">{TIPO_LABELS[arma.tipo] ?? arma.tipo}{arma.marca || arma.modelo ? ` · ${[arma.marca, arma.modelo].filter(Boolean).join(" ")}` : ""}</div>
+                        </div>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold border ${
+                          arma.activo ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" : "bg-gray-700/40 text-gray-400 border-gray-600/40"
+                        }`}>
+                          {arma.estado}
+                        </span>
+                      </div>
+
+                      <div className="text-xs space-y-1 text-gray-300">
+                        {arma.serie            && <div><span className="text-gray-500">Serie:</span> <span className={g.campo === "serie"            ? "text-amber-300 font-semibold" : ""}>{arma.serie}</span></div>}
+                        {arma.numero_tenencia  && <div><span className="text-gray-500">Tenencia:</span> <span className={g.campo === "numero_tenencia"  ? "text-amber-300 font-semibold" : ""}>{arma.numero_tenencia}</span></div>}
+                        {arma.numero_portacion && <div><span className="text-gray-500">Portación:</span> <span className={g.campo === "numero_portacion" ? "text-amber-300 font-semibold" : ""}>{arma.numero_portacion}</span></div>}
+                      </div>
+
+                      <div className="text-xs text-gray-400 space-y-0.5 border-t border-gray-800 pt-2">
+                        {arma.puesto_nombre ? (
+                          <div className="flex items-start gap-1"><MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-blue-400" /><span>{arma.puesto_nombre}{arma.cliente_nombre ? ` — ${arma.cliente_nombre}` : ""}</span></div>
+                        ) : arma.custodia_cliente_nombre ? (
+                          <div className="flex items-start gap-1"><MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-purple-400" /><span>Custodia: {arma.custodia_cliente_nombre}{arma.custodia_slot_numero ? ` (slot ${arma.custodia_slot_numero})` : ""}</span></div>
+                        ) : (
+                          <div className="text-gray-600 italic">Sin puesto ni custodia</div>
+                        )}
+                        {arma.custodia_actual && (
+                          <div className="flex items-start gap-1"><User className="w-3 h-3 mt-0.5 flex-shrink-0 text-emerald-400" /><span>{arma.custodia_actual.nombre}</span></div>
+                        )}
+                      </div>
+
+                      <div className="text-[10px] text-gray-500 flex flex-wrap gap-x-2 gap-y-0.5 border-t border-gray-800 pt-2">
+                        <span>{arma.total_custodias} custodia(s)</span>
+                        <span>·</span>
+                        <span>{arma.total_reportes} reporte(s)</span>
+                        <span>·</span>
+                        <span>{arma.total_ordenes} orden(es)</span>
+                      </div>
+
+                      <div className="text-[10px] text-gray-600">
+                        Creada: {new Date(arma.created_at).toLocaleDateString("es-GT", { day: "2-digit", month: "short", year: "numeric" })}
+                      </div>
+
+                      <div className="flex gap-2 mt-1">
+                        <button
+                          onClick={() => onEdit(arma)}
+                          className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded transition-colors"
+                        >
+                          <Edit className="w-3 h-3" /> Editar
+                        </button>
+                        <button
+                          onClick={() => eliminar(arma)}
+                          className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs font-medium rounded transition-colors ${
+                            enUso
+                              ? "bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-500/30"
+                              : "bg-red-600 hover:bg-red-500 text-white"
+                          }`}
+                          title={enUso ? "Eliminar (con historial)" : "Eliminar"}
+                        >
+                          <Trash2 className="w-3 h-3" /> {enUso ? "Eliminar*" : "Eliminar"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+
+          <p className="text-[10px] text-gray-600 text-center">
+            * = el arma tiene historial de uso. Considere editar el número en lugar de eliminar.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Página principal ──────────────────────────────────────────────────────────
 export default function Armeria() {
   const qc = useQueryClient();
   const { user } = useAuth();
-  const [tab, setTab] = useState<"estado" | "armas" | "historial">("estado");
+  const [tab, setTab] = useState<"estado" | "armas" | "historial" | "duplicados">("estado");
   const [fechaConsulta, setFechaConsulta] = useState(hoy());
   const [modalArma, setModalArma] = useState<Arma | null | "nuevo">(null);
   const [modalFicha, setModalFicha] = useState<Arma | null>(null);
@@ -1242,10 +1431,19 @@ export default function Armeria() {
     qc.invalidateQueries({ queryKey: ["armas-historial"] });
   }
 
+  // Cargamos la cuenta de duplicados para mostrarla como insignia en el tab.
+  const { data: dupData } = useQuery<{ total: number; grupos: any[] }>({
+    queryKey: ["armas-duplicados"],
+    queryFn: () => apiFetch(`${API}/armas/duplicados`),
+    refetchInterval: 60_000,
+  });
+  const totalDup = dupData?.total ?? 0;
+
   const TABS = [
-    { id: "estado",    label: "Estado Operativo", icon: Shield },
-    { id: "armas",     label: "Armas",             icon: Package },
-    { id: "historial", label: "Historial",          icon: History },
+    { id: "estado",     label: "Estado Operativo", icon: Shield,         badge: 0        },
+    { id: "armas",      label: "Armas",             icon: Package,        badge: 0        },
+    { id: "historial",  label: "Historial",         icon: History,        badge: 0        },
+    { id: "duplicados", label: "Duplicados",        icon: Copy,           badge: totalDup },
   ] as const;
 
   return (
@@ -1276,16 +1474,23 @@ export default function Armeria() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 -mb-px">
+        <div className="flex gap-1 -mb-px overflow-x-auto">
           {TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 tab === t.id
                   ? "text-blue-400 border-blue-400"
                   : "text-gray-500 border-transparent hover:text-gray-300"
               }`}>
               <t.icon className="w-3.5 h-3.5" />
               {t.label}
+              {t.badge > 0 && (
+                <span className={`ml-1 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold ${
+                  tab === t.id ? "bg-amber-500 text-black" : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                }`}>
+                  {t.badge}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -1324,9 +1529,10 @@ export default function Armeria() {
       )}
 
       {/* Content */}
-      {tab === "estado"    && <TabEstado fecha={fechaConsulta} onFicha={a => setModalFicha(a)} />}
-      {tab === "armas"     && <TabArmas onEdit={a => setModalArma(a)} onFicha={a => setModalFicha(a)} />}
-      {tab === "historial" && <TabHistorial />}
+      {tab === "estado"     && <TabEstado fecha={fechaConsulta} onFicha={a => setModalFicha(a)} />}
+      {tab === "armas"      && <TabArmas onEdit={a => setModalArma(a)} onFicha={a => setModalFicha(a)} />}
+      {tab === "historial"  && <TabHistorial />}
+      {tab === "duplicados" && <TabDuplicados onEdit={a => setModalArma(a)} usuario={(user as any)?.username ?? "admin"} />}
 
       {/* Modales */}
       {modalArma && (

@@ -467,6 +467,77 @@ armeriaRouter.get("/armas/historial/global", async (req, res) => {
   }
 });
 
+// ── GET /api/armas/duplicados ─────────────────────────────────────────────────
+// Lista grupos de armas con identificadores repetidos (serie / número de tenencia /
+// número de portación). Para cada grupo devuelve el detalle de cada arma con su
+// puesto, cliente, custodio actual y conteos de uso (custodias e historial de turno),
+// para que el operador pueda decidir cuál conservar y cuál corregir/eliminar.
+armeriaRouter.get("/armas/duplicados", async (_req, res) => {
+  try {
+    const grupos: Array<{
+      campo: "serie" | "numero_tenencia" | "numero_portacion";
+      etiqueta: string;
+      valor: string;
+      armas: any[];
+    }> = [];
+
+    const checks: Array<{ col: "serie" | "numero_tenencia" | "numero_portacion"; etiqueta: string }> = [
+      { col: "serie",            etiqueta: "Número de serie"     },
+      { col: "numero_tenencia",  etiqueta: "Número de tenencia"  },
+      { col: "numero_portacion", etiqueta: "Número de portación" },
+    ];
+
+    for (const ch of checks) {
+      const { rows: dupes } = await pool.query(
+        `SELECT LOWER(TRIM(${ch.col})) AS valor,
+                ARRAY_AGG(id ORDER BY id) AS ids
+           FROM armas
+          WHERE ${ch.col} IS NOT NULL AND TRIM(${ch.col}) <> ''
+          GROUP BY LOWER(TRIM(${ch.col}))
+         HAVING COUNT(*) > 1
+          ORDER BY MIN(id)`
+      );
+
+      for (const d of dupes) {
+        const { rows: armas } = await pool.query(
+          `SELECT
+              a.id, a.codigo, a.tipo, a.marca, a.modelo, a.calibre,
+              a.serie, a.numero_tenencia, a.numero_portacion,
+              a.estado, a.activo, a.observaciones,
+              a.created_at, a.updated_at,
+              a.puesto_id, po.nombre AS puesto_nombre, po.cliente_nombre,
+              a.custodia_cliente_id, a.custodia_slot_numero,
+              cli.nombre AS custodia_cliente_nombre,
+              -- custodia activa actual (si existe)
+              (SELECT json_build_object(
+                  'employee_id', ac.employee_id,
+                  'nombre', e.nombre_completo,
+                  'fecha_inicio', ac.fecha_inicio
+                )
+                 FROM arma_custodia ac
+            LEFT JOIN employees e ON e.id = ac.employee_id
+                WHERE ac.arma_id = a.id AND ac.fecha_fin IS NULL
+             ORDER BY ac.fecha_inicio DESC LIMIT 1) AS custodia_actual,
+              -- conteos de uso para evaluar el impacto de eliminar
+              (SELECT COUNT(*)::int FROM arma_custodia        WHERE arma_id = a.id) AS total_custodias,
+              (SELECT COUNT(*)::int FROM reporte_turno        WHERE arma_id = a.id) AS total_reportes,
+              (SELECT COUNT(*)::int FROM arma_ordenes_servicio WHERE arma_id = a.id) AS total_ordenes
+           FROM armas a
+      LEFT JOIN puestos_operativos po ON po.id = a.puesto_id
+      LEFT JOIN clients            cli ON cli.id = a.custodia_cliente_id
+          WHERE a.id = ANY($1::int[])
+          ORDER BY a.id`,
+          [d.ids],
+        );
+        grupos.push({ campo: ch.col, etiqueta: ch.etiqueta, valor: d.valor, armas });
+      }
+    }
+    res.json({ total: grupos.length, grupos });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── GET /api/armas/:id ────────────────────────────────────────────────────────
 armeriaRouter.get("/armas/:id", async (req, res) => {
   const id = Number(req.params.id);
@@ -822,6 +893,24 @@ armeriaRouter.patch("/armas/:id", async (req, res) => {
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
+  }
+});
+
+// ── DELETE /api/armas/:id ─────────────────────────────────────────────────────
+// Eliminación física del arma. Pensado para resolver duplicados (cargas repetidas).
+// Las tablas dependientes (arma_custodia, arma_ordenes_servicio, reporte_turno,
+// arma_sugerencias) tienen ON DELETE CASCADE / SET NULL, así que no rompemos integridad.
+armeriaRouter.delete("/armas/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "id inválido" });
+  try {
+    const { rows } = await pool.query(`SELECT codigo FROM armas WHERE id = $1`, [id]);
+    if (!rows[0]) return res.status(404).json({ error: "Arma no encontrada" });
+    const codigo = rows[0].codigo;
+    await pool.query(`DELETE FROM armas WHERE id = $1`, [id]);
+    res.json({ ok: true, codigo, mensaje: `Arma ${codigo} eliminada` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 
