@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
 import { AdminLayout } from "../layout/AdminLayout";
+import { TabReportes } from "./ArmeriaReportes";
 
 const API = "/api";
 const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
@@ -1396,7 +1397,7 @@ function TabDuplicados({ onEdit }: { onEdit: (a: any) => void }) {
 export default function Armeria() {
   const qc = useQueryClient();
   const { user } = useAuth();
-  const [tab, setTab] = useState<"estado" | "armas" | "historial" | "duplicados">("estado");
+  const [tab, setTab] = useState<"estado" | "armas" | "historial" | "duplicados" | "reportes">("estado");
   const [fechaConsulta, setFechaConsulta] = useState(hoy());
   const [modalArma, setModalArma] = useState<Arma | null | "nuevo">(null);
   const [modalFicha, setModalFicha] = useState<Arma | null>(null);
@@ -1444,6 +1445,7 @@ export default function Armeria() {
     { id: "armas",      label: "Armas",             icon: Package,        badge: 0        },
     { id: "historial",  label: "Historial",         icon: History,        badge: 0        },
     { id: "duplicados", label: "Duplicados",        icon: Copy,           badge: totalDup },
+    { id: "reportes",   label: "Reportes",          icon: FileText,       badge: 0        },
   ] as const;
 
   return (
@@ -1533,6 +1535,7 @@ export default function Armeria() {
       {tab === "armas"      && <TabArmas onEdit={a => setModalArma(a)} onFicha={a => setModalFicha(a)} />}
       {tab === "historial"  && <TabHistorial />}
       {tab === "duplicados" && <TabDuplicados onEdit={a => setModalArma(a)} usuario={(user as any)?.username ?? "admin"} />}
+      {tab === "reportes"   && <TabReportes />}
 
       {/* Modales */}
       {modalArma && (
