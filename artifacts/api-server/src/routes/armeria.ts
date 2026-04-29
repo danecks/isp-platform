@@ -5,7 +5,33 @@ import { calcularEstadoCiclo } from "../lib/turno-calc";
 export const armeriaRouter = Router();
 
 // ── Función: quién está trabajando el puesto X en la fecha dada ──────────────
-// Prioridad: 1) planificacion_futura (relevo del día) 2) titular (si no descansa)
+// Prioridad:
+//   1) planificacion_futura (relevo del día)
+//   2) puesto_slots (modelo nuevo multi-titular 24x24): slot cuyo dias_trabajo
+//      contenga el día del ciclo de hoy. Misma lógica que módulo Operaciones.
+//   3) puesto_titulares (sistema intermedio) usando dias_trabajo del slot par.
+//   4) Fallback legacy: puestos_operativos.titular_employee_id / agente_id +
+//      motor de ciclos genérico.
+//
+// Compatibilidad clave: la fuente de verdad para titular hoy en este proyecto
+// es puesto_slots.empleado_id (con dias_trabajo + longitud_ciclo +
+// fecha_inicio_ciclo). El campo legacy `agente_id` casi nunca se usa.
+function calcTrabajaPorSlot(
+  diasTrabajo: number[],
+  fechaInicioStr: string,
+  fechaConsulta: string,
+  longitudCiclo: number = 14,
+): boolean {
+  const lc = (longitudCiclo && longitudCiclo > 0) ? longitudCiclo : 14;
+  const [iy, im, id] = fechaInicioStr.split("-").map(Number);
+  const [cy, cm, cd] = fechaConsulta.split("-").map(Number);
+  const inicio   = Date.UTC(iy, im - 1, id);
+  const consulta = Date.UTC(cy, cm - 1, cd);
+  const daysElapsed = Math.floor((consulta - inicio) / 86400000);
+  const cycleDay = ((daysElapsed % lc) + lc) % lc + 1; // 1-based, handles negative offsets
+  return diasTrabajo.includes(cycleDay);
+}
+
 async function calcularResponsablePuesto(puestoId: number, fecha: string): Promise<{
   id: number; nombre_completo: string; tipo_personal: string; tipo_origen: string;
 } | null> {
@@ -35,10 +61,108 @@ async function calcularResponsablePuesto(puestoId: number, fecha: string): Promi
     };
   }
 
-  // 2. Titular del puesto con motor de ciclos
+  // 2. puesto_slots: titular del slot que trabaja hoy (modelo nuevo).
+  //    Prioridad por slot_numero ascendente (T1 antes que T2).
+  const { rows: slotRows } = await pool.query(`
+    SELECT
+      ps.empleado_id,
+      ps.slot_numero,
+      ps.dias_trabajo,
+      COALESCE(ps.longitud_ciclo, 14)::int AS longitud_ciclo,
+      COALESCE(ps.fecha_inicio_ciclo, po.fecha_inicio_ciclo) AS fecha_inicio_ciclo,
+      e.nombre_completo,
+      e.tipo_personal
+    FROM puesto_slots ps
+    JOIN puestos_operativos po ON po.id = ps.puesto_id
+    JOIN employees e ON e.id = ps.empleado_id
+    WHERE ps.puesto_id = $1
+      AND ps.activo = TRUE
+      AND ps.empleado_id IS NOT NULL
+      AND e.estado_laboral = 'activo'
+    ORDER BY ps.slot_numero ASC
+  `, [puestoId]);
+
+  for (const slot of slotRows) {
+    const diasTrabajo: number[] = Array.isArray(slot.dias_trabajo)
+      ? slot.dias_trabajo.map((d: any) => Number(d))
+      : [];
+    const fic = slot.fecha_inicio_ciclo instanceof Date
+      ? slot.fecha_inicio_ciclo.toISOString().slice(0, 10)
+      : String(slot.fecha_inicio_ciclo ?? "").slice(0, 10);
+    if (diasTrabajo.length === 0 || !fic) {
+      // Sin configuración de ciclo → ese slot trabaja todos los días.
+      return {
+        id:              slot.empleado_id,
+        nombre_completo: slot.nombre_completo,
+        tipo_personal:   slot.tipo_personal ?? "",
+        tipo_origen:     `slot_${slot.slot_numero}`,
+      };
+    }
+    if (calcTrabajaPorSlot(diasTrabajo, fic, fecha, Number(slot.longitud_ciclo))) {
+      return {
+        id:              slot.empleado_id,
+        nombre_completo: slot.nombre_completo,
+        tipo_personal:   slot.tipo_personal ?? "",
+        tipo_origen:     `slot_${slot.slot_numero}`,
+      };
+    }
+  }
+
+  // 3. puesto_titulares (sistema intermedio): aplica solo si NO hay slots con
+  //    empleado_id en el puesto (mismo criterio que routes/operaciones.ts).
+  if (slotRows.length === 0) {
+    const { rows: ptRows } = await pool.query(`
+      SELECT
+        pt.employee_id,
+        pt.orden,
+        pt.fecha_inicio_ciclo AS pt_fic,
+        ps2.dias_trabajo,
+        COALESCE(ps2.longitud_ciclo, 14)::int AS longitud_ciclo,
+        COALESCE(ps2.fecha_inicio_ciclo, po.fecha_inicio_ciclo) AS slot_fic,
+        e.nombre_completo,
+        e.tipo_personal
+      FROM puesto_titulares pt
+      JOIN puestos_operativos po ON po.id = pt.puesto_id
+      JOIN employees e ON e.id = pt.employee_id
+      LEFT JOIN puesto_slots ps2
+        ON  ps2.puesto_id   = pt.puesto_id
+        AND ps2.slot_numero = pt.orden
+        AND ps2.activo      = TRUE
+      WHERE pt.puesto_id = $1
+        AND pt.activo = TRUE
+        AND e.estado_laboral = 'activo'
+      ORDER BY pt.orden ASC
+    `, [puestoId]);
+
+    for (const t of ptRows) {
+      const diasTrabajo: number[] = Array.isArray(t.dias_trabajo)
+        ? t.dias_trabajo.map((d: any) => Number(d))
+        : [];
+      const fic = (t.slot_fic ?? t.pt_fic);
+      const ficStr = fic instanceof Date ? fic.toISOString().slice(0, 10) : String(fic ?? "").slice(0, 10);
+      if (diasTrabajo.length === 0 || !ficStr) {
+        return {
+          id:              t.employee_id,
+          nombre_completo: t.nombre_completo,
+          tipo_personal:   t.tipo_personal ?? "",
+          tipo_origen:     `titular_${t.orden}`,
+        };
+      }
+      if (calcTrabajaPorSlot(diasTrabajo, ficStr, fecha, Number(t.longitud_ciclo))) {
+        return {
+          id:              t.employee_id,
+          nombre_completo: t.nombre_completo,
+          tipo_personal:   t.tipo_personal ?? "",
+          tipo_origen:     `titular_${t.orden}`,
+        };
+      }
+    }
+  }
+
+  // 4. Fallback legacy: titular_employee_id o agente_id en puestos_operativos
   const { rows: poRows } = await pool.query(`
     SELECT
-      po.agente_id,
+      COALESCE(po.titular_employee_id, po.agente_id) AS employee_id,
       e.nombre_completo,
       e.tipo_personal,
       t.id             AS tipo_turno_id,
@@ -48,10 +172,10 @@ async function calcularResponsablePuesto(puestoId: number, fecha: string): Promi
       t.horas_descanso,
       po.fecha_inicio_ciclo
     FROM puestos_operativos po
-    JOIN employees e ON e.id = po.agente_id
+    JOIN employees e ON e.id = COALESCE(po.titular_employee_id, po.agente_id)
     LEFT JOIN turnos t ON t.id = po.tipo_turno_id
     WHERE po.id = $1
-      AND po.agente_id IS NOT NULL
+      AND COALESCE(po.titular_employee_id, po.agente_id) IS NOT NULL
       AND e.estado_laboral = 'activo'
   `, [puestoId]);
 
@@ -59,7 +183,7 @@ async function calcularResponsablePuesto(puestoId: number, fecha: string): Promi
   const po = poRows[0];
 
   if (!po.tipo_ciclo || !po.horas_trabajo || !po.fecha_inicio_ciclo) {
-    return { id: po.agente_id, nombre_completo: po.nombre_completo, tipo_personal: po.tipo_personal ?? "", tipo_origen: "turno_normal" };
+    return { id: po.employee_id, nombre_completo: po.nombre_completo, tipo_personal: po.tipo_personal ?? "", tipo_origen: "turno_normal" };
   }
 
   const turno = {
@@ -75,7 +199,7 @@ async function calcularResponsablePuesto(puestoId: number, fecha: string): Promi
 
   const estado = calcularEstadoCiclo(turno, fechaStr, fecha);
   if (estado.trabaja) {
-    return { id: po.agente_id, nombre_completo: po.nombre_completo, tipo_personal: po.tipo_personal ?? "", tipo_origen: "turno_normal" };
+    return { id: po.employee_id, nombre_completo: po.nombre_completo, tipo_personal: po.tipo_personal ?? "", tipo_origen: "turno_normal" };
   }
 
   return null; // Titular descansa, sin relevo planificado
