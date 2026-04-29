@@ -584,6 +584,50 @@ async function siguienteCodigoArma(client: any): Promise<string> {
   return `ARM-${String(next).padStart(width, "0")}`;
 }
 
+// ── Helper: traducir error 23505 del índice único a mensaje en español ──────
+// Cuando una carrera burla la validación previa, postgres devuelve 23505 con
+// `constraint`. Mapeamos los nombres de los índices ARM-08 a un mensaje útil.
+function traducirErrorUnicoArma(err: any): string | null {
+  if (!err || err.code !== "23505") return null;
+  const c: string = err.constraint || "";
+  if (c === "armas_serie_uq")            return "Ya existe un arma con ese número de serie. No se permiten duplicados.";
+  if (c === "armas_numero_tenencia_uq")  return "Ya existe un arma con ese número de tenencia. No se permiten duplicados.";
+  if (c === "armas_numero_portacion_uq") return "Ya existe un arma con ese número de portación. No se permiten duplicados.";
+  return null;
+}
+
+// ── Helper: validar unicidad de identificadores del arma ────────────────────
+// Devuelve mensaje de error en español si la serie / numero_tenencia / numero_portacion
+// ya existe en otra arma. Compara case-insensitive y sin espacios al borde.
+// `excluirId` permite ignorar el arma actual durante un PATCH.
+async function validarUnicidadArma(
+  db: { query: (...a: any[]) => Promise<any> },
+  campos: { serie?: string | null; numero_tenencia?: string | null; numero_portacion?: string | null },
+  excluirId?: number,
+): Promise<string | null> {
+  const checks: Array<{ col: "serie" | "numero_tenencia" | "numero_portacion"; valor: string; etiqueta: string }> = [];
+  const s  = (campos.serie ?? "").trim();
+  const nt = (campos.numero_tenencia ?? "").trim();
+  const np = (campos.numero_portacion ?? "").trim();
+  if (s)  checks.push({ col: "serie",            valor: s,  etiqueta: "número de serie" });
+  if (nt) checks.push({ col: "numero_tenencia",  valor: nt, etiqueta: "número de tenencia" });
+  if (np) checks.push({ col: "numero_portacion", valor: np, etiqueta: "número de portación" });
+  if (checks.length === 0) return null;
+
+  for (const ch of checks) {
+    const params: any[] = [ch.valor];
+    let sql = `SELECT id, codigo FROM armas WHERE LOWER(TRIM(${ch.col})) = LOWER($1)`;
+    if (excluirId) { params.push(excluirId); sql += ` AND id <> $${params.length}`; }
+    sql += ` LIMIT 1`;
+    const { rows } = await db.query(sql, params);
+    if (rows.length > 0) {
+      const cod = rows[0].codigo ? ` (${rows[0].codigo})` : "";
+      return `Ya existe un arma con ese ${ch.etiqueta}${cod}. No se permiten duplicados.`;
+    }
+  }
+  return null;
+}
+
 // ── POST /api/armas ───────────────────────────────────────────────────────────
 armeriaRouter.post("/armas", async (req, res) => {
   // El campo `codigo` se IGNORA si llega: el sistema lo genera automáticamente.
@@ -591,6 +635,10 @@ armeriaRouter.post("/armas", async (req, res) => {
           numero_tenencia, fecha_vencimiento_tenencia,
           numero_portacion, fecha_emision_portacion, usuario } = req.body;
   if (!tipo) return res.status(400).json({ error: "tipo es requerido" });
+
+  // Validación de unicidad: serie / tenencia / portación no pueden repetirse.
+  const errUnico = await validarUnicidadArma(pool, { serie, numero_tenencia, numero_portacion });
+  if (errUnico) return res.status(409).json({ error: errUnico });
 
   const client = await pool.connect();
   try {
@@ -651,6 +699,10 @@ armeriaRouter.post("/armas", async (req, res) => {
     res.status(201).json(arma);
   } catch (err: any) {
     await client.query("ROLLBACK");
+    // Si el índice único de la BD atrapó una carrera (cuando dos peticiones simultáneas
+    // pasaron la validación previa), traducimos el error a un mensaje claro en español.
+    const msg = traducirErrorUnicoArma(err);
+    if (msg) return res.status(409).json({ error: msg });
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
@@ -666,6 +718,18 @@ armeriaRouter.patch("/armas/:id", async (req, res) => {
           numero_tenencia, fecha_vencimiento_tenencia,
           numero_portacion, fecha_emision_portacion,
           tenencia_en_tramite, portacion_en_tramite, usuario } = req.body;
+
+  // Validación de unicidad: solo evaluamos los campos que el cliente está enviando.
+  // (Si no se envía el campo, no hay riesgo de cambiarlo a un duplicado.)
+  const camposParaValidar: { serie?: string | null; numero_tenencia?: string | null; numero_portacion?: string | null } = {};
+  if ('serie'            in req.body) camposParaValidar.serie            = serie;
+  if ('numero_tenencia'  in req.body) camposParaValidar.numero_tenencia  = numero_tenencia;
+  if ('numero_portacion' in req.body) camposParaValidar.numero_portacion = numero_portacion;
+  if (Object.keys(camposParaValidar).length > 0) {
+    const errUnico = await validarUnicidadArma(pool, camposParaValidar, id);
+    if (errUnico) return res.status(409).json({ error: errUnico });
+  }
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -752,6 +816,8 @@ armeriaRouter.patch("/armas/:id", async (req, res) => {
     res.json(rows[0]);
   } catch (err: any) {
     await client.query("ROLLBACK");
+    const msg = traducirErrorUnicoArma(err);
+    if (msg) return res.status(409).json({ error: msg });
     if (err.code === "23505") return res.status(409).json({ error: "Código duplicado" });
     res.status(500).json({ error: err.message });
   } finally {
@@ -918,14 +984,21 @@ armeriaRouter.post("/armeria/importar-digecam", async (req: any, res: any) => {
       const clientId  = matchClient(row.ubicacion || "");
       const puestoId  = nextPuesto(clientId);
 
-      // Buscar arma existente por serie, luego por tenencia
+      // Buscar arma existente por serie, luego por tenencia (case-insensitive,
+      // sin espacios al borde — coincide con la lógica del índice único ARM-08).
       let existingId: number | null = null;
       if (serie) {
-        const { rows: ex } = await pool.query(`SELECT id FROM armas WHERE serie = $1 LIMIT 1`, [serie]);
+        const { rows: ex } = await pool.query(
+          `SELECT id FROM armas WHERE LOWER(TRIM(serie)) = LOWER($1) LIMIT 1`,
+          [serie.trim()],
+        );
         if (ex[0]) existingId = ex[0].id;
       }
       if (!existingId && numTen) {
-        const { rows: ex } = await pool.query(`SELECT id FROM armas WHERE numero_tenencia = $1 LIMIT 1`, [numTen]);
+        const { rows: ex } = await pool.query(
+          `SELECT id FROM armas WHERE LOWER(TRIM(numero_tenencia)) = LOWER($1) LIMIT 1`,
+          [numTen.trim()],
+        );
         if (ex[0]) existingId = ex[0].id;
       }
 
