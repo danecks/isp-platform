@@ -224,12 +224,6 @@ export default function AgenteInicio() {
         useBarCodeDetectorIfSupported: true,
       } as ConstructorParameters<typeof Html5Qrcode>[1]);
       scannerRef.current = scanner;
-      // qrbox dinámico: 80% del lado más corto del viewport del scanner
-      const qrboxFn = (vw: number, vh: number) => {
-        const min = Math.min(vw, vh);
-        const size = Math.floor(min * 0.8);
-        return { width: size, height: size };
-      };
       // Html5Qrcode exige que cameraIdOrConfig tenga EXACTAMENTE 1 key
       // cuando es objeto, así que pedimos solo la cámara trasera aquí
       // y subimos resolución/zoom/focus después con applyConstraints().
@@ -238,8 +232,9 @@ export default function AgenteInicio() {
         videoConstraints,
         {
           fps: 20,
-          qrbox: qrboxFn,
-          aspectRatio: 1.0,
+          // Sin qrbox: escaneamos todo el frame del video (igual que la cámara
+          // nativa al subir foto). Esto evita que el recuadro de detección quede
+          // mal calculado cuando subimos la resolución del stream a 1080p después.
           disableFlip: false,
           experimentalFeatures: { useBarCodeDetectorIfSupported: true },
         } as Parameters<Html5Qrcode["start"]>[1],
