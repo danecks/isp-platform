@@ -1091,9 +1091,15 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
       }
     }
 
-    // Sólo el LÍDER del recorrido obtiene tracking_token. Los co-tripulantes NO (comparten el del padre).
-    const esLider = servicio.tipo === "custodia" && recorridoPadreId === null;
-    const trackingToken = esLider ? randomBytes(32).toString("hex") : null;
+    // Tracking token: lo emiten (a) el LÍDER del recorrido en custodia y
+    // (b) cualquier turno de puesto fijo, para que la PWA pueda autenticar
+    // llamadas posteriores (lista de rondas, cierre de turno) sin requerir
+    // dispositivo kiosco. Los co-tripulantes de custodia NO obtienen token
+    // propio: comparten el del padre del recorrido.
+    const generarTrackingToken =
+      servicio.tipo === "puesto" ||
+      (servicio.tipo === "custodia" && recorridoPadreId === null);
+    const trackingToken = generarTrackingToken ? randomBytes(32).toString("hex") : null;
     const trackingTokenHash = trackingToken ? hashToken(trackingToken) : null;
 
     const { rows: inserted } = await pool.query(
@@ -1149,7 +1155,7 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
       agente,
       servicio,
       arma,
-      tracking_token: trackingToken, // null si no es custodia o si es co-tripulante
+      tracking_token: trackingToken, // null sólo para co-tripulantes de custodia
       anexado_a_recorrido: recorridoPadreId !== null,
       padre_fichaje_id: recorridoPadreId,
       padre_nombre: padreInfo?.agente_nombre ?? null,
@@ -1509,6 +1515,119 @@ agenteFichajeRouter.post("/agente/ronda-check", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "agente/ronda-check: error");
     res.status(500).json({ error: "Error registrando ronda" });
+  }
+});
+
+// GET /api/agente/rondas-del-puesto/:fichaje_id — rondas del cliente del puesto
+// con progreso del día (para PWA del agente con turno fijo activo).
+// Autenticación: tracking_token (query) que coincida con el fichaje activo.
+agenteFichajeRouter.get("/agente/rondas-del-puesto/:fichaje_id", async (req, res) => {
+  const fichajeId = Number(req.params.fichaje_id);
+  const trackingToken = String(req.query.tracking_token ?? "");
+  if (!Number.isFinite(fichajeId) || !trackingToken) {
+    return res.status(400).json({ error: "parametros_invalidos" });
+  }
+  try {
+    const { rows: fRows } = await pool.query(
+      `SELECT employee_id, puesto_id, cliente_id, tracking_token_hash, turno_cerrado_en
+         FROM agente_fichajes
+        WHERE id = $1 AND tipo = 'inicio_turno'`,
+      [fichajeId]
+    );
+    const fichaje = fRows[0];
+    if (!fichaje) return res.status(404).json({ error: "fichaje_no_encontrado" });
+    if (!fichaje.tracking_token_hash || fichaje.tracking_token_hash !== hashToken(trackingToken)) {
+      return res.status(403).json({ error: "tracking_token_invalido" });
+    }
+    if (fichaje.turno_cerrado_en) {
+      return res.status(410).json({ error: "turno_cerrado" });
+    }
+    if (!fichaje.cliente_id) {
+      return res.json({ rondas: [] });
+    }
+
+    // Rondas activas del cliente con sus puntos activos + último escaneo "ok"
+    // del día (en TZ Guatemala). Cualquier escaneo del día cuenta como hecho,
+    // sin importar quién lo registró.
+    const { rows: puntoRows } = await pool.query(
+      `SELECT r.id   AS ronda_id,
+              r.nombre AS ronda_nombre,
+              r.descripcion AS ronda_descripcion,
+              p.id   AS punto_id,
+              p.nombre AS punto_nombre,
+              p.descripcion AS punto_descripcion,
+              p.orden AS punto_orden,
+              p.radio_metros,
+              ev.escaneado_en AS ultimo_escaneo,
+              ev.distancia_metros AS ultimo_distancia,
+              ev.resultado AS ultimo_resultado
+         FROM qr_rondas r
+         JOIN qr_ronda_puntos p ON p.ronda_id = r.id AND p.activo = TRUE
+         LEFT JOIN LATERAL (
+           SELECT escaneado_en, distancia_metros, resultado
+             FROM qr_ronda_eventos
+            WHERE punto_id = p.id
+              AND resultado = 'ok'
+              AND DATE((escaneado_en AT TIME ZONE 'America/Guatemala')) =
+                  DATE((NOW() AT TIME ZONE 'America/Guatemala'))
+            ORDER BY escaneado_en DESC LIMIT 1
+         ) ev ON TRUE
+        WHERE r.cliente_id = $1
+          AND r.activo = TRUE
+        ORDER BY r.id, p.orden ASC, p.id ASC`,
+      [fichaje.cliente_id]
+    );
+
+    const rondasMap = new Map<number, {
+      id: number;
+      nombre: string;
+      descripcion: string | null;
+      total_puntos: number;
+      escaneados_hoy: number;
+      puntos: Array<{
+        id: number;
+        nombre: string;
+        descripcion: string | null;
+        orden: number;
+        escaneado_hoy: boolean;
+        ultimo_escaneo: string | null;
+        ultimo_distancia_metros: number | null;
+        ultimo_resultado: string | null;
+      }>;
+    }>();
+
+    for (const r of puntoRows) {
+      let ronda = rondasMap.get(r.ronda_id);
+      if (!ronda) {
+        ronda = {
+          id: r.ronda_id,
+          nombre: r.ronda_nombre,
+          descripcion: r.ronda_descripcion ?? null,
+          total_puntos: 0,
+          escaneados_hoy: 0,
+          puntos: [],
+        };
+        rondasMap.set(r.ronda_id, ronda);
+      }
+      const escaneadoHoy = r.ultimo_escaneo !== null;
+      ronda.total_puntos += 1;
+      if (escaneadoHoy) ronda.escaneados_hoy += 1;
+      ronda.puntos.push({
+        id: r.punto_id,
+        nombre: r.punto_nombre,
+        descripcion: r.punto_descripcion ?? null,
+        orden: r.punto_orden,
+        escaneado_hoy: escaneadoHoy,
+        ultimo_escaneo: r.ultimo_escaneo,
+        ultimo_distancia_metros: r.ultimo_distancia,
+        ultimo_resultado: r.ultimo_resultado,
+      });
+    }
+
+    res.json({ rondas: Array.from(rondasMap.values()) });
+  } catch (err) {
+    logger.error({ err }, "agente/rondas-del-puesto: error");
+    res.status(500).json({ error: "Error consultando rondas" });
   }
 });
 

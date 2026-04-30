@@ -147,6 +147,9 @@ function isPublicPath(path: string, method: string): boolean {
   // GET /api/agente/co-custodios/:fichaje_id — handler exige tracking_token
   if (method === "GET" && /^\/agente\/co-custodios\/\d+$/.test(path)) return true;
 
+  // GET /api/agente/rondas-del-puesto/:fichaje_id — handler exige tracking_token
+  if (method === "GET" && /^\/agente\/rondas-del-puesto\/\d+$/.test(path)) return true;
+
   // GETs públicos del agente (modo kiosco / equipo asignado por puesto)
   if (method === "GET" && (
     path === "/agente/puesto-del-dia" ||

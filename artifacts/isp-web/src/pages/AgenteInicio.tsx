@@ -29,6 +29,26 @@ interface TurnoActivoStorage {
   agente_nombre: string;
   cliente_nombre: string | null;
   titulo: string;
+  tipo?: "puesto" | "custodia"; // opcional por compat con storage previo (custodia)
+}
+
+interface PuntoRonda {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+  orden: number;
+  escaneado_hoy: boolean;
+  ultimo_escaneo: string | null;
+  ultimo_distancia_metros: number | null;
+  ultimo_resultado: string | null;
+}
+interface RondaConProgreso {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+  total_puntos: number;
+  escaneados_hoy: number;
+  puntos: PuntoRonda[];
 }
 
 interface PuntoGPS {
@@ -138,6 +158,10 @@ export default function AgenteInicio() {
   const [bateria, setBateria] = useState<number | null>(null);
   const [trackingError, setTrackingError] = useState<string | null>(null);
   const [coCustodios, setCoCustodios] = useState<Array<{ employee_id: number; nombre: string; fichaje_id: number; es_lider: boolean }>>([]);
+  // Rondas del puesto (solo cuando turno_activo && tipo === "puesto")
+  const [rondas, setRondas] = useState<RondaConProgreso[] | null>(null);
+  const [rondasError, setRondasError] = useState<string | null>(null);
+  const [rondasCargando, setRondasCargando] = useState(false);
 
   const watchIdRef = useRef<number | null>(null);
   const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -639,7 +663,9 @@ export default function AgenteInicio() {
     if (esKiosco) void cargarPuestoDelDia();
   }, [flushPuntos, ultimaPosicion, detenerRastreoInterno, esKiosco, cargarPuestoDelDia]);
 
-  // ── Reanudar tracking si la app se reabre con turno activo en localStorage ──
+  // ── Reanudar turno si la app se reabre con uno guardado en localStorage ──
+  // Custodia → re-arranca el rastreo GPS continuo.
+  // Puesto fijo → sólo restaura la pantalla activa (no hay GPS que reanudar).
   useEffect(() => {
     try {
       const raw = localStorage.getItem(TRACKING_KEY);
@@ -649,8 +675,15 @@ export default function AgenteInicio() {
         localStorage.removeItem(TRACKING_KEY);
         return;
       }
-      iniciarRastreo(turno);
-      setEstado("turno_activo");
+      if (turno.tipo === "puesto") {
+        setTurnoActivo(turno);
+        turnoActivoRef.current = turno;
+        setEstado("turno_activo");
+      } else {
+        // Default = custodia (por compat con storage previo sin campo tipo).
+        iniciarRastreo(turno);
+        setEstado("turno_activo");
+      }
     } catch {
       localStorage.removeItem(TRACKING_KEY);
     }
@@ -659,6 +692,38 @@ export default function AgenteInicio() {
 
   // ── Cleanup: liberar GPS y audio al desmontar ──
   useEffect(() => () => { detenerRastreoInterno(); }, [detenerRastreoInterno]);
+
+  // ── Cargar rondas del puesto cuando hay turno fijo activo + auto-refresh ──
+  const cargarRondas = useCallback(async () => {
+    const turno = turnoActivoRef.current;
+    if (!turno || turno.tipo !== "puesto") return;
+    setRondasCargando(true);
+    try {
+      const r = await fetch(
+        `${API}/agente/rondas-del-puesto/${turno.fichaje_id}` +
+          `?tracking_token=${encodeURIComponent(turno.tracking_token)}`,
+      );
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        setRondasError(data.error || "No se pudieron cargar las rondas");
+        return;
+      }
+      const data = await r.json();
+      setRondas(Array.isArray(data.rondas) ? data.rondas : []);
+      setRondasError(null);
+    } catch {
+      setRondasError("Sin conexión, reintentando…");
+    } finally {
+      setRondasCargando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (estado !== "turno_activo" || turnoActivo?.tipo !== "puesto") return;
+    void cargarRondas();
+    const t = setInterval(() => { void cargarRondas(); }, 30_000);
+    return () => clearInterval(t);
+  }, [estado, turnoActivo?.tipo, turnoActivo?.fichaje_id, cargarRondas]);
 
   // ── Al volver a primer plano: re-adquirir wake lock + flush + recheck gap ──
   useEffect(() => {
@@ -713,6 +778,7 @@ export default function AgenteInicio() {
           agente_nombre: data.agente.nombre,
           cliente_nombre: data.servicio.cliente_nombre,
           titulo: data.servicio.titulo,
+          tipo: "custodia",
         };
         iniciarRastreo(turno);
         setEstado("turno_activo");
@@ -720,6 +786,22 @@ export default function AgenteInicio() {
         // Co-tripulante: ya hay un líder rastreando en este teléfono. NO sobreescribir el turnoActivo.
         // Sólo mostrar mensaje de éxito (auto-reset de kiosco lo lleva a la pantalla principal).
         setEstado("ok");
+      } else if (data.tracking_token && data.servicio?.tipo === "puesto") {
+        // Puesto fijo: NO hay rastreo GPS. Sólo guardar el turno y mostrar la
+        // pantalla con rondas y opciones del puesto.
+        const turno: TurnoActivoStorage = {
+          fichaje_id: data.fichaje_id,
+          tracking_token: data.tracking_token,
+          iniciado_en: data.registrado_en,
+          agente_nombre: data.agente.nombre,
+          cliente_nombre: data.servicio.cliente_nombre,
+          titulo: data.servicio.titulo,
+          tipo: "puesto",
+        };
+        setTurnoActivo(turno);
+        turnoActivoRef.current = turno;
+        try { localStorage.setItem(TRACKING_KEY, JSON.stringify(turno)); } catch { /* noop */ }
+        setEstado("turno_activo");
       } else {
         setEstado("ok");
       }
@@ -1013,7 +1095,7 @@ export default function AgenteInicio() {
         )}
 
         {/* Turno activo (custodia) — rastreando GPS */}
-        {estado === "turno_activo" && turnoActivo && (
+        {estado === "turno_activo" && turnoActivo && turnoActivo.tipo !== "puesto" && (
           <div className="space-y-4 pt-2">
             <div className="text-center">
               <div className="mx-auto w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center">
@@ -1172,6 +1254,151 @@ export default function AgenteInicio() {
                 "Cerrar turno" finaliza a todos los custodios anexados a esta ruta.
               </p>
             )}
+          </div>
+        )}
+
+        {/* Turno activo (puesto fijo) — sin GPS, con rondas y opciones del puesto */}
+        {estado === "turno_activo" && turnoActivo && turnoActivo.tipo === "puesto" && (
+          <div className="space-y-4 pt-2">
+            <div className="text-center">
+              <div className="mx-auto w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                <ShieldAlert className="w-8 h-8 text-emerald-400" />
+              </div>
+              <h2 className="text-xl font-bold mt-3 text-emerald-300">En servicio</h2>
+              <p className="text-xs text-slate-400 mt-1">
+                Desde {new Date(turnoActivo.iniciado_en).toLocaleTimeString("es-GT", {
+                  timeZone: "America/Guatemala", hour: "2-digit", minute: "2-digit",
+                })}
+              </p>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 space-y-2">
+              <div>
+                <div className="text-[11px] uppercase tracking-wide text-slate-500">Agente</div>
+                <div className="font-semibold">{turnoActivo.agente_nombre}</div>
+              </div>
+              <div className="border-t border-slate-800 pt-2">
+                <div className="text-[11px] uppercase tracking-wide text-slate-500">Puesto</div>
+                <div className="font-semibold">{turnoActivo.titulo}</div>
+                {turnoActivo.cliente_nombre && (
+                  <div className="text-sm text-slate-300">{turnoActivo.cliente_nombre}</div>
+                )}
+              </div>
+            </div>
+
+            {/* Rondas con progreso del día */}
+            <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Navigation className="w-4 h-4 text-blue-400" />
+                  <span className="font-semibold text-sm">Rondas del puesto</span>
+                </div>
+                <button
+                  onClick={() => void cargarRondas()}
+                  disabled={rondasCargando}
+                  className="text-[11px] text-slate-400 hover:text-slate-200 flex items-center gap-1"
+                >
+                  {rondasCargando ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                  Actualizar
+                </button>
+              </div>
+
+              {rondasError && (
+                <div className="text-xs text-amber-400 flex items-center gap-2">
+                  <AlertTriangle className="w-3 h-3" />
+                  {rondasError}
+                </div>
+              )}
+
+              {rondas === null && !rondasError && (
+                <div className="text-center text-xs text-slate-500 py-4">
+                  <Loader2 className="w-4 h-4 mx-auto animate-spin mb-1" />
+                  Cargando rondas…
+                </div>
+              )}
+
+              {rondas !== null && rondas.length === 0 && (
+                <div className="text-xs text-slate-400 text-center py-3">
+                  No hay rondas configuradas para este puesto.
+                </div>
+              )}
+
+              {rondas !== null && rondas.length > 0 && (
+                <div className="space-y-3">
+                  {rondas.map((ronda) => {
+                    const completa = ronda.escaneados_hoy >= ronda.total_puntos;
+                    return (
+                      <div key={ronda.id} className="border border-slate-800 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="font-semibold text-sm">{ronda.nombre}</div>
+                          <span className={`text-[11px] px-2 py-0.5 rounded-full ${
+                            completa
+                              ? "bg-emerald-500/20 text-emerald-300"
+                              : "bg-amber-500/20 text-amber-300"
+                          }`}>
+                            {ronda.escaneados_hoy}/{ronda.total_puntos}
+                          </span>
+                        </div>
+                        <ul className="space-y-1.5">
+                          {ronda.puntos.map((p) => (
+                            <li key={p.id} className="flex items-start gap-2 text-xs">
+                              {p.escaneado_hoy ? (
+                                <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                              ) : (
+                                <div className="w-4 h-4 rounded-full border-2 border-slate-600 flex-shrink-0 mt-0.5" />
+                              )}
+                              <div className="flex-1">
+                                <div className={p.escaneado_hoy ? "text-slate-200" : "text-slate-400"}>
+                                  {p.nombre}
+                                </div>
+                                {p.escaneado_hoy && p.ultimo_escaneo && (
+                                  <div className="text-[10px] text-slate-500">
+                                    {new Date(p.ultimo_escaneo).toLocaleTimeString("es-GT", {
+                                      timeZone: "America/Guatemala", hour: "2-digit", minute: "2-digit",
+                                    })}
+                                    {p.ultimo_distancia_metros != null && ` · ${p.ultimo_distancia_metros} m`}
+                                  </div>
+                                )}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                  <p className="text-[11px] text-slate-500 text-center pt-1">
+                    Escaneá los códigos QR pegados en cada punto con la cámara del teléfono.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Visitas: solo en kiosco; en personal mostrar mensaje informativo */}
+            {esKiosco ? (
+              <a
+                href="/agente/visitas"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg flex items-center justify-center gap-2"
+              >
+                <UserPlus className="w-5 h-5" />
+                Registrar visita
+              </a>
+            ) : (
+              <div className="bg-slate-900 border border-slate-800 rounded-lg p-3 flex items-start gap-2">
+                <Smartphone className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-slate-300">
+                  Las visitas se registran en el teléfono fijo del puesto.
+                </p>
+              </div>
+            )}
+
+            {/* Cerrar turno */}
+            <button
+              onClick={cerrarTurno}
+              className="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold py-4 rounded-lg flex items-center justify-center gap-2"
+            >
+              <LogOut className="w-5 h-5" />
+              Cerrar turno
+            </button>
           </div>
         )}
 
