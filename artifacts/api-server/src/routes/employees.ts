@@ -1800,7 +1800,8 @@ employeesRouter.get("/employees/:id/asignacion-operativa", async (req, res) => {
         e_sup.id           AS supervisor_id,
         e_sup.nombre_completo AS supervisor_nombre,
         e_sup.telefono     AS supervisor_telefono,
-        e_sup.puesto       AS supervisor_puesto
+        e_sup.puesto       AS supervisor_puesto,
+        FALSE              AS derivada_de_pizarron
       FROM employee_operational_assignments eoa
       LEFT JOIN puestos_operativos po    ON po.id = eoa.puesto_id
       LEFT JOIN client_sedes cs          ON cs.id = eoa.sede_id
@@ -1813,10 +1814,114 @@ employeesRouter.get("/employees/:id/asignacion-operativa", async (req, res) => {
       LIMIT 1
     `, [id]);
 
-    if (rows.length === 0) {
-      return res.json({ sin_asignacion: true, tipo_asignacion: "sin_asignacion" });
+    if (rows.length > 0) {
+      return res.json(rows[0]);
     }
-    return res.json(rows[0]);
+
+    // ── Fallback: titular en el Pizarrón Operativo (puestos_operativos.titular_employee_id)
+    // Cuando se asignó al empleado como titular desde el Pizarrón (drag&drop u otro flujo
+    // de Operaciones), aún no existe la fila en employee_operational_assignments.
+    // Inferimos la asignación desde puestos_operativos para evitar mostrar "Sin asignación"
+    // cuando en realidad sí lo está.
+    const { rows: po1 } = await pool.query(`
+      SELECT
+        NULL::int             AS id,
+        $1::int               AS employee_id,
+        po.id                 AS puesto_id,
+        po.sede_id,
+        po.cliente_id,
+        po.zona_operativa_id,
+        po.tipo_turno_id,
+        'titular'             AS tipo_asignacion,
+        TRUE                  AS activa,
+        po.fecha_inicio_ciclo AS fecha_inicio,
+        NULL::text            AS notas,
+        po.created_at,
+        po.updated_at,
+        po.nombre             AS puesto_nombre,
+        po.turno              AS puesto_turno_texto,
+        po.horario            AS puesto_horario,
+        po.jornada            AS puesto_jornada,
+        po.estado             AS puesto_estado,
+        cs.nombre             AS sede_nombre,
+        c.nombre              AS cliente_nombre,
+        c.portal_cliente_id   AS cliente_portal_id,
+        oz.nombre             AS zona_nombre,
+        t.nombre              AS turno_nombre,
+        t.horas_trabajo       AS turno_horas_trabajo,
+        t.horas_descanso      AS turno_horas_descanso,
+        e_sup.id              AS supervisor_id,
+        e_sup.nombre_completo AS supervisor_nombre,
+        e_sup.telefono        AS supervisor_telefono,
+        e_sup.puesto          AS supervisor_puesto,
+        TRUE                  AS derivada_de_pizarron
+      FROM puestos_operativos po
+      LEFT JOIN client_sedes cs       ON cs.id = po.sede_id
+      LEFT JOIN clients c             ON c.id  = po.cliente_id
+      LEFT JOIN operational_zones oz  ON oz.id = po.zona_operativa_id
+      LEFT JOIN turnos t              ON t.id  = po.tipo_turno_id
+      LEFT JOIN employees e_sup       ON e_sup.id = oz.supervisor_employee_id
+      WHERE po.titular_employee_id = $1 AND COALESCE(po.activo, TRUE) = TRUE
+      ORDER BY po.updated_at DESC NULLS LAST, po.id ASC
+      LIMIT 1
+    `, [id]);
+
+    if (po1.length > 0) {
+      return res.json(po1[0]);
+    }
+
+    // ── Fallback 2: titular en puesto_titulares (sistema multi-titular del Pizarrón)
+    const { rows: pt1 } = await pool.query(`
+      SELECT
+        NULL::int             AS id,
+        $1::int               AS employee_id,
+        po.id                 AS puesto_id,
+        po.sede_id,
+        po.cliente_id,
+        po.zona_operativa_id,
+        po.tipo_turno_id,
+        'titular'             AS tipo_asignacion,
+        TRUE                  AS activa,
+        pt.fecha_inicio_ciclo AS fecha_inicio,
+        NULL::text            AS notas,
+        po.created_at,
+        po.updated_at,
+        po.nombre             AS puesto_nombre,
+        po.turno              AS puesto_turno_texto,
+        po.horario            AS puesto_horario,
+        po.jornada            AS puesto_jornada,
+        po.estado             AS puesto_estado,
+        cs.nombre             AS sede_nombre,
+        c.nombre              AS cliente_nombre,
+        c.portal_cliente_id   AS cliente_portal_id,
+        oz.nombre             AS zona_nombre,
+        t.nombre              AS turno_nombre,
+        t.horas_trabajo       AS turno_horas_trabajo,
+        t.horas_descanso      AS turno_horas_descanso,
+        e_sup.id              AS supervisor_id,
+        e_sup.nombre_completo AS supervisor_nombre,
+        e_sup.telefono        AS supervisor_telefono,
+        e_sup.puesto          AS supervisor_puesto,
+        TRUE                  AS derivada_de_pizarron
+      FROM puesto_titulares pt
+      JOIN puestos_operativos po       ON po.id = pt.puesto_id
+      LEFT JOIN client_sedes cs        ON cs.id = po.sede_id
+      LEFT JOIN clients c              ON c.id  = po.cliente_id
+      LEFT JOIN operational_zones oz   ON oz.id = po.zona_operativa_id
+      LEFT JOIN turnos t               ON t.id  = po.tipo_turno_id
+      LEFT JOIN employees e_sup        ON e_sup.id = oz.supervisor_employee_id
+      WHERE pt.employee_id = $1
+        AND COALESCE(pt.activo, TRUE) = TRUE
+        AND COALESCE(po.activo, TRUE) = TRUE
+      ORDER BY pt.orden ASC, pt.id ASC
+      LIMIT 1
+    `, [id]);
+
+    if (pt1.length > 0) {
+      return res.json(pt1[0]);
+    }
+
+    return res.json({ sin_asignacion: true, tipo_asignacion: "sin_asignacion", derivada_de_pizarron: false });
   } catch (err) {
     logger.error({ err }, "GET /employees/:id/asignacion-operativa error");
     return res.status(500).json({ error: "Error al obtener asignación operativa" });
