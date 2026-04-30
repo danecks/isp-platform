@@ -53,9 +53,19 @@ const TIPO_LABELS: Record<string, string> = {
   pistola: "Pistola", revolver: "Revólver", escopeta: "Escopeta", rifle: "Rifle", otro: "Otro",
 };
 const ESTADO_CONFIG: Record<string, { label: string; cls: string }> = {
-  activo:          { label: "Activo",          cls: "text-teal-400 bg-teal-400/10 border-teal-400/20" },
-  en_mantenimiento:{ label: "En mantenimiento",cls: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20" },
-  baja:            { label: "Baja",             cls: "text-red-400 bg-red-400/10 border-red-400/20" },
+  activo:          { label: "Activa",            cls: "text-teal-400 bg-teal-400/10 border-teal-400/20" },
+  en_mantenimiento:{ label: "En mantenimiento",  cls: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20" },
+  hurtada:         { label: "Hurtada",           cls: "text-red-500 bg-red-500/10 border-red-500/30" },
+  robada:          { label: "Robada",            cls: "text-red-400 bg-red-400/10 border-red-400/20" },
+  // Compatibilidad con datos antiguos importados con género masculino
+  robado:          { label: "Robada",            cls: "text-red-400 bg-red-400/10 border-red-400/20" },
+  extraviada:      { label: "Extraviada",        cls: "text-orange-400 bg-orange-400/10 border-orange-400/20" },
+  consignada:      { label: "Consignada",        cls: "text-amber-400 bg-amber-400/10 border-amber-400/20" },
+  consignado:      { label: "Consignada",        cls: "text-amber-400 bg-amber-400/10 border-amber-400/20" },
+  omision_huella:  { label: "Omisión de huella", cls: "text-purple-400 bg-purple-400/10 border-purple-400/20" },
+  inservible:      { label: "Inservible",        cls: "text-gray-400 bg-gray-400/10 border-gray-400/20" },
+  mal_estado:      { label: "Inservible",        cls: "text-gray-400 bg-gray-400/10 border-gray-400/20" },
+  baja:            { label: "Baja",              cls: "text-red-400 bg-red-400/10 border-red-400/20" },
 };
 const ORIGEN_LABELS: Record<string, string> = {
   turno_normal:       "Turno normal",
@@ -329,8 +339,14 @@ function ModalArma({
               <label className="block text-xs font-medium text-gray-400 mb-1">Estado</label>
               <select value={form.estado} onChange={e => set("estado", e.target.value)}
                 className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
-                <option value="activo">Activo</option>
+                <option value="activo">Activa</option>
                 <option value="en_mantenimiento">En mantenimiento</option>
+                <option value="hurtada">Hurtada</option>
+                <option value="robada">Robada</option>
+                <option value="extraviada">Extraviada</option>
+                <option value="consignada">Consignada</option>
+                <option value="omision_huella">Omisión de huella</option>
+                <option value="inservible">Inservible</option>
                 <option value="baja">Baja</option>
               </select>
             </div>

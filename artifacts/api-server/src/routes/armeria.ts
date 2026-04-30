@@ -1215,7 +1215,12 @@ armeriaRouter.post("/armeria/importar-digecam", async (req: any, res: any) => {
         if (ex[0]) existingId = ex[0].id;
       }
 
-      const activo = !["robado", "consignado", "mal_estado"].includes(estado);
+      // Solo "activo" y "en_mantenimiento" mantienen el arma operativa.
+      // Cualquier otro estado (hurtada, robada, extraviada, consignada,
+      // omision_huella, inservible, baja y variantes antiguas en masculino)
+      // marca el arma como inactiva.
+      const ESTADOS_ACTIVOS = ["activo", "en_mantenimiento"];
+      const activo = ESTADOS_ACTIVOS.includes(estado);
       const obs    = String(row.observaciones || "").trim() || null;
       const fVenc  = row.fecha_vencimiento || null;
       const fEmis  = row.fecha_emision || null;
