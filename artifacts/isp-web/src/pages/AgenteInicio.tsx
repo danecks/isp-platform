@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
+import jsQR from "jsqr";
 import {
   CheckCircle, XCircle, Loader2, MapPin, AlertTriangle,
   QrCode, ShieldAlert, RotateCcw, Smartphone, Users, Clock,
@@ -118,6 +119,8 @@ export default function AgenteInicio() {
   const [resultado, setResultado] = useState<Resultado | null>(null);
   const [carnetToken, setCarnetToken] = useState<string | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scanCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [linternaOn, setLinternaOn] = useState(false);
   const [linternaSoportada, setLinternaSoportada] = useState(false);
@@ -191,6 +194,10 @@ export default function AgenteInicio() {
 
   // Detener scanner al desmontar
   const detenerScanner = useCallback(async () => {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
     if (scannerRef.current) {
       try { await scannerRef.current.stop(); } catch { /* noop */ }
       try { scannerRef.current.clear(); } catch { /* noop */ }
@@ -219,11 +226,30 @@ export default function AgenteInicio() {
     setEstado("escaneando");
     await new Promise(r => setTimeout(r, 50));
     try {
+      // No usamos useBarCodeDetectorIfSupported: en Safari iOS la API nativa
+      // BarcodeDetector está rota o ausente y termina rechazando QRs impresos
+      // que la cámara nativa de iOS sí decodifica sin problema. Forzamos el
+      // decodificador interno (ZXing-WASM) que es más tolerante.
       const scanner = new Html5Qrcode(SCANNER_ID, {
         verbose: false,
-        useBarCodeDetectorIfSupported: true,
+        useBarCodeDetectorIfSupported: false,
       } as ConstructorParameters<typeof Html5Qrcode>[1]);
       scannerRef.current = scanner;
+      // Handler único para ambos motores (ZXing y jsQR). El primero que
+      // decodifique gana; el segundo ya no encuentra scanner activo.
+      let yaDecodificado = false;
+      const handleDecoded = (raw: string) => {
+        if (yaDecodificado) return;
+        yaDecodificado = true;
+        let token = raw.trim();
+        try {
+          const u = new URL(token);
+          token = u.searchParams.get("token") || u.pathname.split("/").pop() || token;
+        } catch { /* token directo */ }
+        setCarnetToken(token);
+        void detenerScanner();
+        solicitarGPS(token);
+      };
       // Html5Qrcode exige que cameraIdOrConfig tenga EXACTAMENTE 1 key
       // cuando es objeto, así que pedimos solo la cámara trasera aquí
       // y subimos resolución/zoom/focus después con applyConstraints().
@@ -236,18 +262,8 @@ export default function AgenteInicio() {
           // nativa al subir foto). Esto evita que el recuadro de detección quede
           // mal calculado cuando subimos la resolución del stream a 1080p después.
           disableFlip: false,
-          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
         } as Parameters<Html5Qrcode["start"]>[1],
-        (decoded) => {
-          let token = decoded.trim();
-          try {
-            const u = new URL(token);
-            token = u.searchParams.get("token") || u.pathname.split("/").pop() || token;
-          } catch { /* token directo */ }
-          setCarnetToken(token);
-          void detenerScanner();
-          solicitarGPS(token);
-        },
+        (decoded) => handleDecoded(decoded),
         () => { /* scan fail por frame */ }
       );
       // Detectar capacidades del track y aplicar mejoras opcionales
@@ -279,9 +295,9 @@ export default function AgenteInicio() {
             });
           } catch { /* resolución no aplicable */ }
         }
-        // Zoom 2× para compensar el QR físicamente pequeño del gafete (Android Chrome lo soporta; iOS Safari lo ignora silenciosamente)
+        // Zoom 3× para compensar el QR físicamente pequeño del gafete (Android Chrome lo soporta; iOS Safari lo ignora silenciosamente)
         if (track && capabilities?.zoom) {
-          const target = Math.min(2, capabilities.zoom.max);
+          const target = Math.min(3, capabilities.zoom.max);
           if (target > (capabilities.zoom.min ?? 1)) {
             try { await track.applyConstraints({ advanced: [{ zoom: target } as MediaTrackConstraintSet] }); } catch { /* zoom no aplicable */ }
           }
@@ -289,6 +305,32 @@ export default function AgenteInicio() {
         // Enfoque continuo (mantiene foco sobre el carnet a 15-20 cm)
         if (track && capabilities?.focusMode?.includes?.("continuous")) {
           try { await track.applyConstraints({ advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet] }); } catch { /* focus no aplicable */ }
+        }
+        // Motor de respaldo jsQR: cada 200 ms tomamos un snapshot del video
+        // y lo decodificamos con jsQR. Es más tolerante que ZXing con QRs
+        // impresos en plástico mate y reflejos. El primero que decodifique gana.
+        if (videoEl) {
+          if (!scanCanvasRef.current) {
+            scanCanvasRef.current = document.createElement("canvas");
+          }
+          const canvas = scanCanvasRef.current;
+          const ctx = canvas.getContext("2d", { willReadFrequently: true });
+          if (ctx) {
+            scanIntervalRef.current = setInterval(() => {
+              if (yaDecodificado) return;
+              const w = videoEl.videoWidth;
+              const h = videoEl.videoHeight;
+              if (!w || !h) return;
+              if (canvas.width !== w) canvas.width = w;
+              if (canvas.height !== h) canvas.height = h;
+              try {
+                ctx.drawImage(videoEl, 0, 0, w, h);
+                const img = ctx.getImageData(0, 0, w, h);
+                const code = jsQR(img.data, w, h, { inversionAttempts: "attemptBoth" });
+                if (code?.data) handleDecoded(code.data);
+              } catch { /* frame ignorado */ }
+            }, 200);
+          }
         }
       } catch { setLinternaSoportada(false); }
       setLinternaOn(false);
