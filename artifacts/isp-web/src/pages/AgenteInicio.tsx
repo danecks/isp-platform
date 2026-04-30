@@ -230,13 +230,10 @@ export default function AgenteInicio() {
         const size = Math.floor(min * 0.8);
         return { width: size, height: size };
       };
-      // Pedimos cámara trasera + alta resolución (1080p ideal, 720p mínimo).
-      // Sin esto el navegador entrega ~480p y el QR pequeño del gafete no decodifica.
-      const videoConstraints = {
-        facingMode: { ideal: "environment" },
-        width:  { ideal: 1920, min: 1280 },
-        height: { ideal: 1080, min: 720 },
-      } as MediaTrackConstraints;
+      // Html5Qrcode exige que cameraIdOrConfig tenga EXACTAMENTE 1 key
+      // cuando es objeto, así que pedimos solo la cámara trasera aquí
+      // y subimos resolución/zoom/focus después con applyConstraints().
+      const videoConstraints = { facingMode: "environment" } as MediaTrackConstraints;
       await scanner.start(
         videoConstraints,
         {
@@ -267,9 +264,26 @@ export default function AgenteInicio() {
         const stream = videoEl?.srcObject as MediaStream | null;
         const track = stream?.getVideoTracks?.()[0];
         const capabilities = track?.getCapabilities?.() as
-          MediaTrackCapabilities & { torch?: boolean; zoom?: { min: number; max: number; step: number }; focusMode?: string[] }
-          | undefined;
+          MediaTrackCapabilities & {
+            torch?: boolean;
+            zoom?: { min: number; max: number; step: number };
+            focusMode?: string[];
+            width?: { max: number };
+            height?: { max: number };
+          } | undefined;
         setLinternaSoportada(!!capabilities?.torch);
+        // Subir resolución a 1080p (o lo más alto que soporte el track).
+        // Sin esto el navegador entrega ~480p por defecto y el QR pequeño del gafete no decodifica.
+        if (track) {
+          const maxW = capabilities?.width?.max ?? 1920;
+          const maxH = capabilities?.height?.max ?? 1080;
+          try {
+            await track.applyConstraints({
+              width:  { ideal: Math.min(1920, maxW) },
+              height: { ideal: Math.min(1080, maxH) },
+            });
+          } catch { /* resolución no aplicable */ }
+        }
         // Zoom 2× para compensar el QR físicamente pequeño del gafete (Android Chrome lo soporta; iOS Safari lo ignora silenciosamente)
         if (track && capabilities?.zoom) {
           const target = Math.min(2, capabilities.zoom.max);
