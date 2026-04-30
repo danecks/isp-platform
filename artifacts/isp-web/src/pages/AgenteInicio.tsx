@@ -230,9 +230,13 @@ export default function AgenteInicio() {
         const size = Math.floor(min * 0.8);
         return { width: size, height: size };
       };
-      // Html5Qrcode exige que cameraIdOrConfig tenga EXACTAMENTE 1 key cuando es objeto.
-      // Solo pedimos cámara trasera; resolución/enfoque los maneja la lib internamente.
-      const videoConstraints = { facingMode: "environment" } as MediaTrackConstraints;
+      // Pedimos cámara trasera + alta resolución (1080p ideal, 720p mínimo).
+      // Sin esto el navegador entrega ~480p y el QR pequeño del gafete no decodifica.
+      const videoConstraints = {
+        facingMode: { ideal: "environment" },
+        width:  { ideal: 1920, min: 1280 },
+        height: { ideal: 1080, min: 720 },
+      } as MediaTrackConstraints;
       await scanner.start(
         videoConstraints,
         {
@@ -241,7 +245,7 @@ export default function AgenteInicio() {
           aspectRatio: 1.0,
           disableFlip: false,
           experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-        } as Parameters<Html5Qrcode["start"]>[2],
+        } as Parameters<Html5Qrcode["start"]>[1],
         (decoded) => {
           let token = decoded.trim();
           try {
@@ -254,15 +258,29 @@ export default function AgenteInicio() {
         },
         () => { /* scan fail por frame */ }
       );
-      // Detectar si el track soporta linterna (Android Chrome sí, iOS no)
+      // Detectar capacidades del track y aplicar mejoras opcionales
+      // (linterna, zoom 2× para QR pequeños, enfoque continuo)
       try {
         const videoEl = document.querySelector(
           `#${SCANNER_ID} video`,
         ) as HTMLVideoElement | null;
         const stream = videoEl?.srcObject as MediaStream | null;
         const track = stream?.getVideoTracks?.()[0];
-        const capabilities = track?.getCapabilities?.() as MediaTrackCapabilities & { torch?: boolean } | undefined;
+        const capabilities = track?.getCapabilities?.() as
+          MediaTrackCapabilities & { torch?: boolean; zoom?: { min: number; max: number; step: number }; focusMode?: string[] }
+          | undefined;
         setLinternaSoportada(!!capabilities?.torch);
+        // Zoom 2× para compensar el QR físicamente pequeño del gafete (Android Chrome lo soporta; iOS Safari lo ignora silenciosamente)
+        if (track && capabilities?.zoom) {
+          const target = Math.min(2, capabilities.zoom.max);
+          if (target > (capabilities.zoom.min ?? 1)) {
+            try { await track.applyConstraints({ advanced: [{ zoom: target } as MediaTrackConstraintSet] }); } catch { /* zoom no aplicable */ }
+          }
+        }
+        // Enfoque continuo (mantiene foco sobre el carnet a 15-20 cm)
+        if (track && capabilities?.focusMode?.includes?.("continuous")) {
+          try { await track.applyConstraints({ advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet] }); } catch { /* focus no aplicable */ }
+        }
       } catch { setLinternaSoportada(false); }
       setLinternaOn(false);
     } catch (err: unknown) {
