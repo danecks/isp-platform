@@ -545,17 +545,26 @@ visitasRouter.get("/admin/visitas/foto/:id/:tipo", requireAdmin, async (req, res
   }
 });
 
-// GET /api/admin/visitas/estadisticas?año&mes&cliente_id?
+// GET /api/admin/visitas/estadisticas?anio&mes&cliente_id?&puesto_id?
 visitasRouter.get("/admin/visitas/estadisticas", requireAdmin, async (req, res) => {
   const ahoraGT = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Guatemala" }));
   const anio = req.query.anio ? Number(req.query.anio) : ahoraGT.getFullYear();
   const mes = req.query.mes ? Number(req.query.mes) : ahoraGT.getMonth() + 1;
   const cliente_id = req.query.cliente_id ? Number(req.query.cliente_id) : null;
+  const puesto_id = req.query.puesto_id ? Number(req.query.puesto_id) : null;
 
   try {
-    const filtro = cliente_id ? "AND cliente_id = $3" : "";
-    const params: any[] = [anio, mes];
-    if (cliente_id) params.push(cliente_id);
+    // WHERE dinámico: $1=anio, $2=mes, luego cliente_id y puesto_id si vienen
+    function buildFiltro(startIdx: number) {
+      const extras: string[] = [];
+      const extraParams: any[] = [];
+      let idx = startIdx;
+      if (cliente_id) { extras.push(`AND cliente_id = $${idx++}`); extraParams.push(cliente_id); }
+      if (puesto_id)  { extras.push(`AND puesto_id  = $${idx++}`); extraParams.push(puesto_id); }
+      return { sql: extras.join(" "), params: extraParams };
+    }
+    const f = buildFiltro(3);
+    const params: any[] = [anio, mes, ...f.params];
 
     // KPIs del mes
     const { rows: kpis } = await pool.query(
@@ -566,15 +575,14 @@ visitasRouter.get("/admin/visitas/estadisticas", requireAdmin, async (req, res) 
        FROM visitas
        WHERE EXTRACT(YEAR FROM entrada_at AT TIME ZONE 'America/Guatemala') = $1
          AND EXTRACT(MONTH FROM entrada_at AT TIME ZONE 'America/Guatemala') = $2
-         ${filtro}`,
+         ${f.sql}`,
       params
     );
 
     // Mes anterior para comparar
     const mesAnt = mes === 1 ? 12 : mes - 1;
     const anioAnt = mes === 1 ? anio - 1 : anio;
-    const paramsAnt: any[] = [anioAnt, mesAnt];
-    if (cliente_id) paramsAnt.push(cliente_id);
+    const paramsAnt: any[] = [anioAnt, mesAnt, ...f.params];
     const { rows: kpisAnt } = await pool.query(
       `SELECT
          COUNT(*) FILTER (WHERE tipo = 'persona')   AS personas_mes,
@@ -583,7 +591,7 @@ visitasRouter.get("/admin/visitas/estadisticas", requireAdmin, async (req, res) 
        FROM visitas
        WHERE EXTRACT(YEAR FROM entrada_at AT TIME ZONE 'America/Guatemala') = $1
          AND EXTRACT(MONTH FROM entrada_at AT TIME ZONE 'America/Guatemala') = $2
-         ${filtro}`,
+         ${f.sql}`,
       paramsAnt
     );
 
@@ -596,13 +604,13 @@ visitasRouter.get("/admin/visitas/estadisticas", requireAdmin, async (req, res) 
        FROM visitas
        WHERE EXTRACT(YEAR FROM entrada_at AT TIME ZONE 'America/Guatemala') = $1
          AND EXTRACT(MONTH FROM entrada_at AT TIME ZONE 'America/Guatemala') = $2
-         ${filtro}
+         ${f.sql}
        GROUP BY dia
        ORDER BY dia ASC`,
       params
     );
 
-    // Top 5 puestos
+    // Top 5 puestos (sede)
     const { rows: topPuestos } = await pool.query(
       `SELECT puesto_id, puesto_nombre, cliente_nombre,
               COUNT(*) AS total,
@@ -611,7 +619,7 @@ visitasRouter.get("/admin/visitas/estadisticas", requireAdmin, async (req, res) 
        FROM visitas
        WHERE EXTRACT(YEAR FROM entrada_at AT TIME ZONE 'America/Guatemala') = $1
          AND EXTRACT(MONTH FROM entrada_at AT TIME ZONE 'America/Guatemala') = $2
-         ${filtro}
+         ${f.sql}
        GROUP BY puesto_id, puesto_nombre, cliente_nombre
        ORDER BY total DESC
        LIMIT 5`,
@@ -620,6 +628,7 @@ visitasRouter.get("/admin/visitas/estadisticas", requireAdmin, async (req, res) 
 
     res.json({
       anio, mes,
+      cliente_id, puesto_id,
       kpis: kpis[0] ?? { personas_mes: 0, vehiculos_mes: 0, total_mes: 0 },
       kpis_mes_anterior: kpisAnt[0] ?? { personas_mes: 0, vehiculos_mes: 0, total_mes: 0 },
       por_dia: porDia,
@@ -627,6 +636,35 @@ visitasRouter.get("/admin/visitas/estadisticas", requireAdmin, async (req, res) 
     });
   } catch (err) {
     logger.error({ err }, "admin/visitas/estadisticas error");
+    res.status(500).json({ error: "Error del servidor" });
+  }
+});
+
+// GET /api/admin/visitas/filtros?cliente_id?
+// Devuelve lista de clientes activos y, si se pasa cliente_id, sus sedes (puestos operativos).
+visitasRouter.get("/admin/visitas/filtros", requireAdmin, async (req, res) => {
+  const cliente_id = req.query.cliente_id ? Number(req.query.cliente_id) : null;
+  try {
+    const { rows: clientes } = await pool.query(
+      `SELECT id, COALESCE(nombre_comercial, nombre) AS nombre
+         FROM clients
+        WHERE estado = 'activo'
+        ORDER BY nombre`
+    );
+    let puestos: any[] = [];
+    if (cliente_id) {
+      const { rows } = await pool.query(
+        `SELECT id, nombre
+           FROM puestos_operativos
+          WHERE cliente_id = $1 AND activo = TRUE
+          ORDER BY nombre`,
+        [cliente_id]
+      );
+      puestos = rows;
+    }
+    res.json({ clientes, puestos });
+  } catch (err) {
+    logger.error({ err }, "admin/visitas/filtros error");
     res.status(500).json({ error: "Error del servidor" });
   }
 });

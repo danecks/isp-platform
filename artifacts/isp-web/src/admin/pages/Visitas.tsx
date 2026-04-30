@@ -126,6 +126,10 @@ export function VisitasContent({ embedded = false }: { embedded?: boolean } = {}
   });
   const [anio, setAnio] = useState(fhoy.anio);
   const [mes, setMes] = useState(fhoy.mes);
+  const [statsClienteId, setStatsClienteId] = useState<string>("");
+  const [statsPuestoId, setStatsPuestoId] = useState<string>("");
+  const [statsClientes, setStatsClientes] = useState<{ id: number; nombre: string }[]>([]);
+  const [statsPuestos, setStatsPuestos] = useState<{ id: number; nombre: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [visitas, setVisitas] = useState<Visita[]>([]);
   const [stats, setStats] = useState<EstadisticasResp | null>(null);
@@ -162,6 +166,8 @@ export function VisitasContent({ embedded = false }: { embedded?: boolean } = {}
     setLoading(true);
     try {
       const params = new URLSearchParams({ anio: String(anio), mes: String(mes) });
+      if (statsClienteId) params.set("cliente_id", statsClienteId);
+      if (statsPuestoId) params.set("puesto_id", statsPuestoId);
       const r = await apiFetch<EstadisticasResp>(`/admin/visitas/estadisticas?${params.toString()}`);
       setStats(r);
     } catch (err) {
@@ -171,11 +177,43 @@ export function VisitasContent({ embedded = false }: { embedded?: boolean } = {}
     }
   }
 
+  // Cargar lista de clientes (y opcionalmente puestos del cliente seleccionado)
+  async function cargarFiltrosStats(clienteId?: string) {
+    try {
+      const qs = clienteId ? `?cliente_id=${clienteId}` : "";
+      const r = await apiFetch<{ clientes: { id: number; nombre: string }[]; puestos: { id: number; nombre: string }[] }>(
+        `/admin/visitas/filtros${qs}`
+      );
+      setStatsClientes(r.clientes);
+      setStatsPuestos(r.puestos);
+    } catch (err) {
+      console.error("Error cargando filtros estadísticas", err);
+    }
+  }
+
   useEffect(() => {
     if (tab === "tiempo_real" || tab === "historico") void cargar();
-    else void cargarStats();
+    else {
+      void cargarStats();
+      if (statsClientes.length === 0) void cargarFiltrosStats();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
+
+  // Recargar stats al cambiar mes/año/cliente/puesto (solo en tab estadísticas)
+  useEffect(() => {
+    if (tab !== "estadisticas") return;
+    void cargarStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anio, mes, statsClienteId, statsPuestoId]);
+
+  // Al cambiar cliente: recargar lista de puestos de ese cliente
+  // (el reseteo de puesto ya ocurre sincrónicamente en el onChange para evitar fetch inconsistente)
+  useEffect(() => {
+    if (tab !== "estadisticas") return;
+    void cargarFiltrosStats(statsClienteId || undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statsClienteId]);
 
   // Auto-refresh cada 30s en tiempo real
   useEffect(() => {
@@ -359,7 +397,7 @@ export function VisitasContent({ embedded = false }: { embedded?: boolean } = {}
         {/* TAB: ESTADÍSTICAS */}
         {tab === "estadisticas" && (
           <div className="space-y-4">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Calendar className="w-4 h-4 text-slate-400" />
               <select value={mes} onChange={e => setMes(Number(e.target.value))}
                 className="bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white">
@@ -368,6 +406,33 @@ export function VisitasContent({ embedded = false }: { embedded?: boolean } = {}
               <select value={anio} onChange={e => setAnio(Number(e.target.value))}
                 className="bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white">
                 {[fhoy.anio - 1, fhoy.anio, fhoy.anio + 1].map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
+              <select
+                value={statsClienteId}
+                onChange={e => {
+                  // Reset sede sincrónicamente para evitar fetch con sede del cliente anterior
+                  setStatsPuestoId("");
+                  setStatsClienteId(e.target.value);
+                }}
+                className="bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white max-w-[220px]"
+                title="Filtrar por cliente"
+              >
+                <option value="">Todos los clientes</option>
+                {statsClientes.map(c => (
+                  <option key={c.id} value={c.id}>{c.nombre}</option>
+                ))}
+              </select>
+              <select
+                value={statsPuestoId}
+                onChange={e => setStatsPuestoId(e.target.value)}
+                disabled={!statsClienteId}
+                className="bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white max-w-[220px] disabled:opacity-40 disabled:cursor-not-allowed"
+                title={statsClienteId ? "Filtrar por sede" : "Elegí primero un cliente"}
+              >
+                <option value="">{statsClienteId ? "Todas las sedes" : "Sede (elegí cliente)"}</option>
+                {statsPuestos.map(p => (
+                  <option key={p.id} value={p.id}>{p.nombre}</option>
+                ))}
               </select>
               <button onClick={cargarStats} className="ml-auto flex items-center gap-2 text-xs px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-white">
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Actualizar
