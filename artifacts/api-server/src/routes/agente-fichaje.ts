@@ -3,6 +3,7 @@ import { pool } from "@workspace/db";
 import { v4 as uuidv4 } from "uuid";
 import { createHash, randomBytes } from "node:crypto";
 import { logger } from "../lib/logger";
+import { TITULARES_UNIFICADOS_CTE } from "./operaciones/_helpers/titularidad";
 
 export const agenteFichajeRouter = Router();
 
@@ -359,16 +360,17 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
       );
       if (releRows[0]) relevo = { nombre: releRows[0].nombre, registrado_en: releRows[0].registrado_en };
 
-      // Próximo relevo desde puesto_titulares (el otro titular del puesto)
+      // Próximo relevo: el OTRO titular del puesto, fusionando las tres
+      // fuentes de titularidad (Pizarrón, intermedio, legacy).
       const { rows: proxRows } = await pool.query(
-        `SELECT e.nombre_completo AS nombre, e.puesto AS cargo
-         FROM puesto_titulares pt
-         JOIN employees e ON e.id = pt.employee_id
-         WHERE pt.puesto_id = $1
-           AND pt.employee_id != $2
-           AND pt.activo = TRUE
-         ORDER BY pt.orden
-         LIMIT 1`,
+        `WITH ${TITULARES_UNIFICADOS_CTE}
+         SELECT e.nombre_completo AS nombre, e.puesto AS cargo
+           FROM titulares_unificados tu
+           JOIN employees e ON e.id = tu.employee_id
+          WHERE tu.puesto_id = $1
+            AND tu.employee_id != $2
+          ORDER BY tu.prioridad_fuente ASC, tu.orden ASC
+          LIMIT 1`,
         [puesto.id, emp.employee_id]
       );
       if (proxRows[0]) proximo_relevo = proxRows[0];
@@ -630,28 +632,29 @@ agenteFichajeRouter.get("/agente/puesto-del-dia", async (req, res) => {
     }
     const puestoId = devRows[0].puesto_id;
 
-    // Lista de titulares activos del puesto + estado de inicio_turno hoy
+    // Lista de titulares activos del puesto + estado de inicio_turno hoy.
+    // Fusiona Pizarrón (puesto_slots) + intermedio + legacy.
     const { rows: titRows } = await pool.query(
-      `SELECT pt.employee_id,
+      `WITH ${TITULARES_UNIFICADOS_CTE}
+       SELECT tu.employee_id,
               e.nombre_completo,
               e.puesto AS cargo,
-              pt.orden,
+              tu.orden,
               af.id AS fichaje_id,
               af.registrado_en
-         FROM puesto_titulares pt
-         JOIN employees e ON e.id = pt.employee_id
+         FROM titulares_unificados tu
+         JOIN employees e ON e.id = tu.employee_id
          LEFT JOIN LATERAL (
            SELECT id, registrado_en
              FROM agente_fichajes
-            WHERE employee_id = pt.employee_id
+            WHERE employee_id = tu.employee_id
               AND tipo = 'inicio_turno'
               AND DATE((registrado_en AT TIME ZONE 'America/Guatemala')) =
                   DATE((NOW() AT TIME ZONE 'America/Guatemala'))
             ORDER BY registrado_en DESC LIMIT 1
          ) af ON TRUE
-        WHERE pt.puesto_id = $1
-          AND pt.activo = TRUE
-        ORDER BY pt.orden ASC, e.nombre_completo ASC`,
+        WHERE tu.puesto_id = $1
+        ORDER BY tu.prioridad_fuente ASC, tu.orden ASC, e.nombre_completo ASC`,
       [puestoId]
     );
 
@@ -879,15 +882,20 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
       gps_referencia: { latitud: number; longitud: number; radio_metros: number } | null;
     } | null = null;
 
+    // Resolución de puesto fijo: fusiona las TRES fuentes de titularidad
+    // (Pizarrón Operativo / puesto_titulares / legacy titular_employee_id)
+    // para que el agente pueda iniciar turno sin importar dónde el admin
+    // registró su asignación. Prioridad explícita: slots > intermedio > legacy
+    // para que un registro legacy stale NO gane sobre el Pizarrón vigente.
     const { rows: ptRows } = await pool.query(
-      `SELECT po.id AS puesto_id, po.cliente_id, po.cliente_nombre, po.nombre AS puesto_nombre,
+      `WITH ${TITULARES_UNIFICADOS_CTE}
+       SELECT po.id AS puesto_id, po.cliente_id, po.cliente_nombre, po.nombre AS puesto_nombre,
               po.horario, po.hora_entrada, po.hora_salida, po.turno, po.jornada
-         FROM puesto_titulares pt
-         JOIN puestos_operativos po ON po.id = pt.puesto_id
-        WHERE pt.employee_id = $1
-          AND pt.activo = TRUE
+         FROM titulares_unificados tu
+         JOIN puestos_operativos po ON po.id = tu.puesto_id
+        WHERE tu.employee_id = $1
           AND po.activo = TRUE
-        ORDER BY pt.orden ASC, pt.id ASC
+        ORDER BY tu.prioridad_fuente ASC, tu.orden ASC, po.id ASC
         LIMIT 1`,
       [employeeId]
     );

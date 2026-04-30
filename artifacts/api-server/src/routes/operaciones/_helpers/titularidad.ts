@@ -139,3 +139,43 @@ export async function liberarTitularidadAgente(
 export async function lockTitularidadAgente(client: PoolClient, employeeId: number) {
   await client.query(`SELECT pg_advisory_xact_lock(hashtext('titularidad'), $1)`, [employeeId]);
 }
+
+// ─── CTE unificada de titulares por puesto ──────────────────────────────────
+// Fusiona las TRES fuentes históricas de titularidad en un solo conjunto
+// `(puesto_id, employee_id, prioridad_fuente, orden)`, deduplicando por par
+// y conservando la prioridad más alta (1 > 2 > 3). Usar embebida como prefijo
+// `WITH` en queries de lectura.
+//
+//   prioridad 1) puesto_slots          — fuente actual del Pizarrón Operativo (24x24)
+//   prioridad 2) puesto_titulares      — sistema intermedio multi-titular
+//   prioridad 3) puestos_operativos    — campo legacy `titular_employee_id`
+//
+// Importante para el ORDER BY del caller: usar `prioridad_fuente ASC, orden ASC`
+// para que un registro legacy stale NO gane sobre un slot vigente del Pizarrón
+// cuando un agente tiene asignaciones en más de una fuente.
+//
+// Solo lectura. No filtra por puesto activo (el caller decide con su JOIN).
+export const TITULARES_UNIFICADOS_CTE = `
+  titulares_unificados AS (
+    SELECT puesto_id, employee_id,
+           MIN(prioridad_fuente) AS prioridad_fuente,
+           MIN(orden) AS orden
+      FROM (
+        SELECT puesto_id, empleado_id AS employee_id,
+               1 AS prioridad_fuente, slot_numero AS orden
+          FROM puesto_slots
+         WHERE empleado_id IS NOT NULL AND activo = TRUE
+        UNION ALL
+        SELECT puesto_id, employee_id,
+               2 AS prioridad_fuente, COALESCE(orden, 99) AS orden
+          FROM puesto_titulares
+         WHERE activo = TRUE
+        UNION ALL
+        SELECT id AS puesto_id, titular_employee_id AS employee_id,
+               3 AS prioridad_fuente, 0 AS orden
+          FROM puestos_operativos
+         WHERE titular_employee_id IS NOT NULL AND activo = TRUE
+      ) t
+     GROUP BY puesto_id, employee_id
+  )
+`;
