@@ -5201,6 +5201,7 @@ export default function Empleados() {
   const [filtroArea, setFiltroArea] = useState<string>("todos");
   const [filtroTipoPersonal, setFiltroTipoPersonal] = useState<string>("todos");
   const [filtroCliente, setFiltroCliente] = useState<string>("todos");
+  const [filtroSede, setFiltroSede] = useState<string>("todos");
   const [vista, setVista] = useState<"tabla" | "tarjetas">("tabla");
   const [fichaAbierta, setFichaAbierta] = useState<Empleado | null>(null);
   const [formModal, setFormModal] = useState<{ modo: "crear" | "editar"; emp?: Empleado } | null>(null);
@@ -5337,6 +5338,18 @@ export default function Empleados() {
 
   const areas = Array.from(new Set(empleados.map((e) => e.area).filter(Boolean))) as string[];
   const clientes = Array.from(new Set(empleados.map((e) => e.clienteNombre).filter(Boolean))).sort() as string[];
+  // Las sedes se derivan en cascada del cliente seleccionado:
+  // si hay cliente, solo mostramos sedes de ese cliente; si no, todas las sedes.
+  const sedes = Array.from(new Set(
+    empleados
+      .filter((e) => {
+        if (filtroCliente === "todos") return true;
+        if (filtroCliente === "__sin_cliente__") return !e.clienteNombre;
+        return e.clienteNombre === filtroCliente;
+      })
+      .map((e) => e.sede)
+      .filter(Boolean),
+  )).sort() as string[];
 
   const filtrados = empleados.filter((e) => {
     if (filtroEstado !== "todos" && e.estadoLaboral !== filtroEstado) return false;
@@ -5347,6 +5360,13 @@ export default function Empleados() {
         if (e.clienteNombre) return false;
       } else {
         if (e.clienteNombre !== filtroCliente) return false;
+      }
+    }
+    if (filtroSede !== "todos") {
+      if (filtroSede === "__sin_sede__") {
+        if (e.sede) return false;
+      } else {
+        if (e.sede !== filtroSede) return false;
       }
     }
     if (busqueda.trim()) {
@@ -5454,12 +5474,27 @@ export default function Empleados() {
           {clientes.length > 0 && (
             <select
               value={filtroCliente}
-              onChange={(e) => setFiltroCliente(e.target.value)}
+              onChange={(e) => {
+                setFiltroCliente(e.target.value);
+                setFiltroSede("todos"); // reset sede al cambiar de cliente
+              }}
               className="bg-[#0c1929] border border-white/8 rounded-lg px-3 py-2 text-sm text-white/70 outline-none focus:border-primary/40 appearance-none cursor-pointer max-w-[220px]"
             >
               <option value="todos">Todos los clientes</option>
               <option value="__sin_cliente__">— Sin cliente (disponible)</option>
               {clientes.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          )}
+
+          {sedes.length > 0 && (
+            <select
+              value={filtroSede}
+              onChange={(e) => setFiltroSede(e.target.value)}
+              className="bg-[#0c1929] border border-white/8 rounded-lg px-3 py-2 text-sm text-white/70 outline-none focus:border-primary/40 appearance-none cursor-pointer max-w-[220px]"
+            >
+              <option value="todos">Todas las sedes</option>
+              <option value="__sin_sede__">— Sin sede asignada</option>
+              {sedes.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           )}
 
