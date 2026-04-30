@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { AdminLayout } from "../layout/AdminLayout";
-import { QrCode, MapPin, Activity, BarChart2, Route } from "lucide-react";
+import { QrCode, MapPin, Activity, BarChart2, Route, ShieldCheck } from "lucide-react";
 import FichajeQR from "./FichajeQR";
 import RondasQR from "./RondasQR";
 import EstadisticasRondas from "./EstadisticasRondas";
 import RecorridosCustodia from "./RecorridosCustodia";
+import { VisitasContent } from "./Visitas";
 
-type Tab = "fichaje" | "rondas" | "recorridos" | "estadisticas";
+type Tab = "fichaje" | "rondas" | "recorridos" | "visitas" | "estadisticas";
 
 export default function ControlOperativoQR() {
   const [tab, setTab] = useState<Tab>("fichaje");
@@ -15,11 +16,12 @@ export default function ControlOperativoQR() {
     { key: "fichaje",      label: "Fichaje & Control",    icon: <QrCode className="w-4 h-4" /> },
     { key: "rondas",       label: "Rondas de Patrullaje", icon: <MapPin className="w-4 h-4" /> },
     { key: "recorridos",   label: "Recorridos Custodia",  icon: <Route className="w-4 h-4" /> },
+    { key: "visitas",      label: "Visitas",              icon: <ShieldCheck className="w-4 h-4" /> },
     { key: "estadisticas", label: "Estadísticas",         icon: <BarChart2 className="w-4 h-4" /> },
   ];
 
   return (
-    <AdminLayout>
+    <AdminLayout title="Control Operativo QR">
       <div className="p-6 max-w-6xl mx-auto">
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
@@ -50,6 +52,7 @@ export default function ControlOperativoQR() {
         {tab === "fichaje"      && <FichajeQR />}
         {tab === "rondas"       && <RondasQR />}
         {tab === "recorridos"   && <RecorridosCustodia />}
+        {tab === "visitas"      && <VisitasContent embedded />}
         {tab === "estadisticas" && <EstadisticasRondas />}
       </div>
     </AdminLayout>

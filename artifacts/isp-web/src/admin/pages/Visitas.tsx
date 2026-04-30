@@ -112,7 +112,7 @@ function fmtDuracion(entrada: string, salida: string | null): string {
   return `${h}h ${r}min`;
 }
 
-export default function AdminVisitas() {
+export function VisitasContent({ embedded = false }: { embedded?: boolean } = {}) {
   const [tab, setTab] = useState<"tiempo_real" | "historico" | "estadisticas">("tiempo_real");
   const fhoy = fechaGT();
   const [filtros, setFiltros] = useState({
@@ -239,9 +239,9 @@ export default function AdminVisitas() {
   const personasAdentro = useMemo(() => visitas.filter(v => v.tipo === "persona"), [visitas]);
   const vehiculosAdentro = useMemo(() => visitas.filter(v => v.tipo === "vehiculo"), [visitas]);
 
-  return (
-    <AdminLayout title="Visitas (entradas y salidas)">
-      <div className="p-4 sm:p-6 space-y-4">
+  const inner = (
+    <>
+    <div className={embedded ? "space-y-4" : "p-4 sm:p-6 space-y-4"}>
         {/* Tabs */}
         <div className="flex gap-2 border-b border-slate-800 pb-1 overflow-x-auto">
           {[
@@ -464,8 +464,15 @@ export default function AdminVisitas() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
+
+  if (embedded) return inner;
+  return <AdminLayout title="Visitas (entradas y salidas)">{inner}</AdminLayout>;
+}
+
+export default function AdminVisitas() {
+  return <VisitasContent />;
 }
 
 function KpiCard({ label, valor, cmp, color, icon: Icon }: any) {
