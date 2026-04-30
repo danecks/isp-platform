@@ -64,6 +64,7 @@ import segurosRouter from "./seguros";
 import { amonestacionesRouter } from "./amonestaciones";
 import docsRouter from "./docs";
 import plantillasContratoRouter from "./plantillas-contrato";
+import { visitasRouter } from "./visitas";
 
 const router: IRouter = Router();
 
@@ -132,5 +133,6 @@ router.use(segurosRouter);
 router.use(amonestacionesRouter);
 router.use(docsRouter);
 router.use(plantillasContratoRouter);
+router.use(visitasRouter);
 
 export default router;

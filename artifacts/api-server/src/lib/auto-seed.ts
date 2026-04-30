@@ -5618,5 +5618,58 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: ZONA-SUPER-MULTI-01 — error (no bloqueante)");
   }
 
+  // ── VIS-01: tabla de visitas (entradas y salidas en puestos) ───────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS visitas (
+        id                       SERIAL PRIMARY KEY,
+        tipo                     VARCHAR(20) NOT NULL CHECK (tipo IN ('persona','vehiculo')),
+        puesto_id                INTEGER NOT NULL REFERENCES puestos_operativos(id) ON DELETE CASCADE,
+        cliente_id               INTEGER,
+        cliente_nombre           VARCHAR(200),
+        puesto_nombre            VARCHAR(200),
+        -- Persona
+        dpi_numero               VARCHAR(20),
+        nombre_completo          VARCHAR(200),
+        fecha_nacimiento         DATE,
+        genero                   VARCHAR(20),
+        dpi_frente_url           TEXT,
+        foto_persona_url         TEXT,
+        -- Vehículo
+        placa                    VARCHAR(20),
+        marca_vehiculo           VARCHAR(100),
+        color_vehiculo           VARCHAR(50),
+        foto_vehiculo_url        TEXT,
+        conductor_dpi_numero     VARCHAR(20),
+        conductor_nombre         VARCHAR(200),
+        conductor_dpi_frente_url TEXT,
+        -- Comunes
+        motivo                   TEXT,
+        a_quien_visita           VARCHAR(200),
+        observaciones            TEXT,
+        -- Entrada
+        entrada_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        entrada_employee_id      INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        entrada_employee_nombre  VARCHAR(200),
+        entrada_device_id        INTEGER REFERENCES supervisor_devices(id) ON DELETE SET NULL,
+        -- Salida
+        salida_at                TIMESTAMPTZ,
+        salida_employee_id       INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        salida_employee_nombre   VARCHAR(200),
+        salida_device_id         INTEGER REFERENCES supervisor_devices(id) ON DELETE SET NULL,
+        created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS vis_puesto_abiertas ON visitas(puesto_id) WHERE salida_at IS NULL`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS vis_dpi_abiertas    ON visitas(dpi_numero) WHERE salida_at IS NULL AND dpi_numero IS NOT NULL`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS vis_placa_abiertas  ON visitas(placa) WHERE salida_at IS NULL AND placa IS NOT NULL`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS vis_cliente_entrada ON visitas(cliente_id, entrada_at DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS vis_puesto_entrada  ON visitas(puesto_id, entrada_at DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS vis_entrada_at      ON visitas(entrada_at DESC)`);
+    logger.info("Auto-migrate: VIS-01 tabla visitas verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: VIS-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

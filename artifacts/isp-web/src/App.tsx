@@ -93,7 +93,10 @@ import PortalCobertura from "@/portal/pages/PortalCobertura";
 import PortalFichajes from "@/portal/pages/PortalFichajes";
 import PortalRecorridos from "@/portal/pages/PortalRecorridos";
 import PortalRondas from "@/portal/pages/PortalRondas";
+import PortalVisitas from "@/portal/pages/PortalVisitas";
 import AgenteInicio from "@/pages/AgenteInicio";
+import AgenteVisitas from "@/pages/AgenteVisitas";
+import AdminVisitas from "@/admin/pages/Visitas";
 
 const queryClient = new QueryClient();
 
@@ -117,6 +120,7 @@ function Router() {
 
       {/* ── PWA agente: inicio de turno por carnet QR (sin login) ──────── */}
       <Route path="/agente/inicio" component={AgenteInicio} />
+      <Route path="/agente/visitas" component={AgenteVisitas} />
 
       {/* ── Redirecciones de acceso directo ────────────────────────────── */}
       <Route path="/admin">
@@ -153,6 +157,9 @@ function Router() {
       </Route>
       <Route path="/portal/recorridos">
         {() => <PortalGuard><PortalRecorridos /></PortalGuard>}
+      </Route>
+      <Route path="/portal/visitas">
+        {() => <PortalGuard><PortalVisitas /></PortalGuard>}
       </Route>
 
       {/* ── Panel administrativo (rol admin, operaciones, rrhh, etc.) ───── */}
@@ -272,6 +279,9 @@ function Router() {
       </Route>
       <Route path="/admin/armeria">
         {() => <AuthGuard><AdminArmeria /></AuthGuard>}
+      </Route>
+      <Route path="/admin/visitas">
+        {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminVisitas /></AuthGuard>}
       </Route>
       <Route path="/admin/solicitudes-eliminacion">
         {() => <AuthGuard requiredRoles={["admin"]}><AdminSolicitudesEliminacion /></AuthGuard>}

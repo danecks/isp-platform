@@ -451,6 +451,13 @@ export const NAV_SECTIONS: NavSection[] = [
         clave: "control_qr",
         roles: ["admin", "operaciones", "supervisor"],
       },
+      {
+        path: "/admin/visitas",
+        label: "Visitas (entradas/salidas)",
+        icon: ShieldCheck,
+        clave: "visitas",
+        roles: ["admin", "operaciones", "supervisor"],
+      },
     ],
   },
 ];

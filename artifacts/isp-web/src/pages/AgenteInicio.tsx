@@ -784,6 +784,15 @@ export default function AgenteInicio() {
               <QrCode className="w-5 h-5" /> Escanear carnet
             </button>
 
+            {esKiosco && puestoDelDia?.puesto?.id && (
+              <button
+                onClick={() => { window.location.href = "/agente/visitas"; }}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-4 rounded-lg flex items-center justify-center gap-2 transition"
+              >
+                <Users className="w-5 h-5" /> Visitas (entradas / salidas)
+              </button>
+            )}
+
             {esKiosco && puestoDelDia && (
               <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                 <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2 text-xs text-slate-300">

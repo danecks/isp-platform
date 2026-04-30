@@ -30,6 +30,7 @@ const ROUTE_MODULO_MAP: Record<string, string> = {
   "/qr-rondas":              "control_qr",
   "/agente/tokens":          "carnets_qr",
   "/agente":                 "control_qr",
+  "/admin/visitas":          "control_qr",          // visitas: admin/operaciones/supervisor (handler valida rol internamente)
   "/municion-puestos":       "control_qr",
   "/bodega-solicitudes":     "control_qr",
   "/arma-ordenes-servicio":  "control_qr",
@@ -167,6 +168,14 @@ function isPublicPath(path: string, method: string): boolean {
 
   // POST /api/agente/reporte-turno/:reporteId/equipo — adjuntar equipo al reporte
   if (method === "POST" && path.startsWith("/agente/reporte-turno/")) return true;
+
+  // ── Visitas (entradas/salidas) — handlers validan device/cliente internamente ──
+  // Agente PWA: /agente/visitas/{abiertas,foto,extraer-dpi,entrada,salida}
+  // Cada handler usa validarDeviceQuery/validarDeviceBody (device_uuid + sha256(token)).
+  if (path === "/agente/visitas" || path.startsWith("/agente/visitas/")) return true;
+  // Portal cliente: /portal-cliente/visitas[/estadisticas]
+  // Handler usa requireCliente que valida x-isp-userid + vínculo usuarios_clientes.
+  if (method === "GET" && (path === "/portal-cliente/visitas" || path.startsWith("/portal-cliente/visitas/"))) return true;
 
   return false;
 }
