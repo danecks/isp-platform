@@ -5671,5 +5671,23 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: VIS-01 — error (no bloqueante)");
   }
 
+  // ── VIS-02: timestamps de subida para retención de fotos DPI (30 días) ────
+  // Estas columnas registran cuándo se subió cada foto DPI para que el cron
+  // de cleanup pueda eliminarlas tras 30 días sin afectar el resto del registro.
+  try {
+    await pool.query(`ALTER TABLE visitas ADD COLUMN IF NOT EXISTS dpi_frente_subida_en TIMESTAMPTZ`);
+    await pool.query(`ALTER TABLE visitas ADD COLUMN IF NOT EXISTS conductor_dpi_frente_subida_en TIMESTAMPTZ`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS vis_dpi_retencion ON visitas(dpi_frente_subida_en) WHERE dpi_frente_url IS NOT NULL`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS vis_cond_dpi_retencion ON visitas(conductor_dpi_frente_subida_en) WHERE conductor_dpi_frente_url IS NOT NULL`);
+    // Backfill: marcar como subida_en = entrada_at para registros existentes que ya tienen URL
+    await pool.query(`UPDATE visitas SET dpi_frente_subida_en = entrada_at
+                       WHERE dpi_frente_url IS NOT NULL AND dpi_frente_subida_en IS NULL`);
+    await pool.query(`UPDATE visitas SET conductor_dpi_frente_subida_en = entrada_at
+                       WHERE conductor_dpi_frente_url IS NOT NULL AND conductor_dpi_frente_subida_en IS NULL`);
+    logger.info("Auto-migrate: VIS-02 timestamps retención fotos DPI verificados/creados");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: VIS-02 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

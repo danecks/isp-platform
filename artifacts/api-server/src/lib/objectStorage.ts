@@ -215,6 +215,22 @@ export class ObjectStorageService {
     return normalizedPath;
   }
 
+  // Borra el objeto referenciado por una ruta `/objects/...`. Best-effort:
+  // si el archivo no existe (404), se considera éxito silencioso.
+  async deleteObjectByPath(objectPath: string): Promise<void> {
+    if (!objectPath || !objectPath.startsWith("/objects/")) {
+      throw new ObjectNotFoundError();
+    }
+    const file = await this.getObjectEntityFile(objectPath);
+    try {
+      await file.delete({ ignoreNotFound: true });
+    } catch (err: any) {
+      const code = err?.code ?? err?.statusCode;
+      if (code === 404 || code === "404") return;
+      throw err;
+    }
+  }
+
   async canAccessObjectEntity({
     userId,
     objectFile,

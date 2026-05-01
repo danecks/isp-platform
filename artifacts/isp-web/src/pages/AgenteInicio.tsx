@@ -4,7 +4,7 @@ import jsQR from "jsqr";
 import {
   CheckCircle, XCircle, Loader2, MapPin, AlertTriangle,
   QrCode, ShieldAlert, RotateCcw, Smartphone, Users, Clock,
-  Navigation, LogOut, Activity, UserPlus,
+  Navigation, LogOut, Activity, UserPlus, Plus, ArrowLeft,
 } from "lucide-react";
 
 const API = "/api";
@@ -163,6 +163,58 @@ export default function AgenteInicio() {
   const [rondasError, setRondasError] = useState<string | null>(null);
   const [rondasCargando, setRondasCargando] = useState(false);
 
+  // ── Multi-agente puesto fijo (kiosco): cabecera con todos los activos +
+  // sub-vistas Agregar agente / Cerrar turno con doble verificación.
+  // Solo se usa cuando esKiosco && turnoActivo.tipo === "puesto".
+  const [agentesActivos, setAgentesActivos] = useState<Array<{
+    fichaje_id: number;
+    employee_id: number;
+    user_id: number | null;
+    nombre: string;
+    cargo: string | null;
+    iniciado_en: string;
+  }> | null>(null);
+  const [agentesActivosError, setAgentesActivosError] = useState<string | null>(null);
+  const [puestoSubVista, setPuestoSubVista] = useState<
+    "main" | "agregar_agente" | "cerrar_select" | "cerrar_scan" | "rondas_select" | "rondas_scan" | "visitas"
+  >("main");
+  // ── Visitas (sub-vista del puesto fijo) ────────────────────────────────────
+  const [visitaTab, setVisitaTab] = useState<"peaton" | "vehiculo">("peaton");
+  const [visitasAbiertas, setVisitasAbiertas] = useState<{
+    personas: Array<{ id: number; dpi_numero: string | null; nombre_completo: string | null; a_quien_visita: string | null; entrada_at: string }>;
+    vehiculos: Array<{ id: number; placa: string | null; marca_vehiculo: string | null; conductor_nombre: string | null; a_quien_visita: string | null; entrada_at: string }>;
+  } | null>(null);
+  const [visitasLoading, setVisitasLoading] = useState(false);
+  const [visitaSubmitting, setVisitaSubmitting] = useState(false);
+  const [visitaOcrLoading, setVisitaOcrLoading] = useState(false);
+  const [visitaForm, setVisitaForm] = useState<{
+    dpi_numero: string;
+    nombre_completo: string;
+    placa: string;
+    marca_vehiculo: string;
+    color_vehiculo: string;
+    a_quien_visita: string;
+    motivo: string;
+    dpi_frente_url: string | null;
+  }>({
+    dpi_numero: "", nombre_completo: "", placa: "", marca_vehiculo: "",
+    color_vehiculo: "", a_quien_visita: "", motivo: "", dpi_frente_url: null,
+  });
+  const [cerrarTarget, setCerrarTarget] = useState<{
+    fichaje_id: number; employee_id: number; nombre: string;
+  } | null>(null);
+  const [rondaTarget, setRondaTarget] = useState<{
+    user_id: number; nombre: string;
+  } | null>(null);
+  const rondaGpsRef = useRef<{
+    latitud: number; longitud: number; precision_metros: number | null;
+  } | null>(null);
+  const [accionMsg, setAccionMsg] = useState<{ kind: "ok" | "error"; texto: string } | null>(null);
+  const [accionLoading, setAccionLoading] = useState(false);
+  // Ref con la función a ejecutar cuando el escáner decodifique un QR.
+  // Si es null, se usa el flujo default (solicitarGPS para iniciar turno).
+  const onScanRef = useRef<((token: string) => void) | null>(null);
+
   const watchIdRef = useRef<number | null>(null);
   const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const gapTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -272,7 +324,15 @@ export default function AgenteInicio() {
         } catch { /* token directo */ }
         setCarnetToken(token);
         void detenerScanner();
-        solicitarGPS(token);
+        // Despacho: si hay un handler custom (agregar agente, cerrar verificado),
+        // se usa; si no, flujo default de inicio de turno con GPS.
+        const customHandler = onScanRef.current;
+        if (customHandler) {
+          onScanRef.current = null;
+          customHandler(token);
+        } else {
+          solicitarGPS(token);
+        }
       };
       // Html5Qrcode exige que cameraIdOrConfig tenga EXACTAMENTE 1 key
       // cuando es objeto, así que pedimos solo la cámara trasera aquí
@@ -725,6 +785,437 @@ export default function AgenteInicio() {
     return () => clearInterval(t);
   }, [estado, turnoActivo?.tipo, turnoActivo?.fichaje_id, cargarRondas]);
 
+  // ── MULTI-AGENTE PUESTO FIJO (kiosco) ──
+  // Lista de agentes con turno abierto en este puesto + acciones de gestión.
+  const cargarAgentesActivos = useCallback(async () => {
+    const turno = turnoActivoRef.current;
+    if (!turno || turno.tipo !== "puesto") return;
+    try {
+      const r = await fetch(
+        `${API}/agente/turnos-activos-del-puesto/${turno.fichaje_id}` +
+          `?tracking_token=${encodeURIComponent(turno.tracking_token)}`,
+      );
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        setAgentesActivosError(data.error || "No se pudieron cargar los agentes");
+        return;
+      }
+      const data = await r.json();
+      setAgentesActivos(Array.isArray(data.agentes) ? data.agentes : []);
+      setAgentesActivosError(null);
+    } catch {
+      setAgentesActivosError("Sin conexión, reintentando…");
+    }
+  }, []);
+
+  // Auto-refresh cada 30s cuando estamos en main del kiosco-puesto
+  useEffect(() => {
+    if (!esKiosco) return;
+    if (estado !== "turno_activo" || turnoActivo?.tipo !== "puesto") return;
+    if (puestoSubVista !== "main") return;
+    void cargarAgentesActivos();
+    const t = setInterval(() => { void cargarAgentesActivos(); }, 30_000);
+    return () => clearInterval(t);
+  }, [esKiosco, estado, turnoActivo?.tipo, turnoActivo?.fichaje_id, puestoSubVista, cargarAgentesActivos]);
+
+  // Iniciar escaneo en modo "agregar agente": el QR decodificado se manda a
+  // /agente/iniciar-turno; si OK, refresca la lista. NO toca turnoActivo.
+  const iniciarAgregarAgente = useCallback(() => {
+    setAccionMsg(null);
+    setPuestoSubVista("agregar_agente");
+    onScanRef.current = async (token: string) => {
+      setAccionLoading(true);
+      try {
+        const dev = leerDeviceCreds();
+        const r = await fetch(`${API}/agente/iniciar-turno`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            qr_token: token,
+            device_uuid: dev?.uuid ?? null,
+            device_token: dev?.token ?? null,
+          }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          setAccionMsg({
+            kind: "error",
+            texto: data.mensaje || data.error || "No se pudo iniciar el turno del nuevo agente.",
+          });
+          setPuestoSubVista("main");
+          if (turnoActivoRef.current?.tipo === "puesto") setEstado("turno_activo");
+          return;
+        }
+        setAccionMsg({
+          kind: "ok",
+          texto: `${data.agente?.nombre ?? "Agente"} entró en servicio.`,
+        });
+        setPuestoSubVista("main");
+        if (turnoActivoRef.current?.tipo === "puesto") setEstado("turno_activo");
+        await cargarAgentesActivos();
+      } catch {
+        setAccionMsg({ kind: "error", texto: "Sin conexión. Intentá de nuevo." });
+        setPuestoSubVista("main");
+        if (turnoActivoRef.current?.tipo === "puesto") setEstado("turno_activo");
+      } finally {
+        setAccionLoading(false);
+      }
+    };
+    void iniciarEscaneo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cargarAgentesActivos]);
+
+  // Iniciar escaneo en modo "cerrar verificado": valida que el carnet
+  // escaneado pertenezca al agente que se quiere cerrar y dispara el cierre.
+  const iniciarCerrarVerificado = useCallback((target: {
+    fichaje_id: number; employee_id: number; nombre: string;
+  }) => {
+    const turno = turnoActivoRef.current;
+    if (!turno) return;
+    setCerrarTarget(target);
+    setAccionMsg(null);
+    setPuestoSubVista("cerrar_scan");
+    onScanRef.current = async (carnetToken: string) => {
+      setAccionLoading(true);
+      try {
+        const r = await fetch(`${API}/agente/cerrar-turno-verificado`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fichaje_id_a_cerrar: target.fichaje_id,
+            carnet_qr_token: carnetToken,
+            sesion_fichaje_id: turno.fichaje_id,
+            tracking_token_sesion: turno.tracking_token,
+          }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          setAccionMsg({
+            kind: "error",
+            texto: data.mensaje || data.error || "No se pudo cerrar el turno.",
+          });
+          setPuestoSubVista("main");
+          setCerrarTarget(null);
+          if (turnoActivoRef.current?.tipo === "puesto") setEstado("turno_activo");
+          return;
+        }
+        // Si el cerrado era la sesión del kiosco y el backend rotó al siguiente
+        // agente como nuevo líder, actualizamos el storage y el state local.
+        if (data.nueva_sesion) {
+          const turnoActual = turnoActivoRef.current;
+          if (turnoActual) {
+            const nuevo: TurnoActivoStorage = {
+              ...turnoActual,
+              fichaje_id: data.nueva_sesion.fichaje_id,
+              tracking_token: data.nueva_sesion.tracking_token,
+              agente_nombre: data.nueva_sesion.agente_nombre,
+            };
+            try { localStorage.setItem(TRACKING_KEY, JSON.stringify(nuevo)); } catch { /* noop */ }
+            setTurnoActivo(nuevo);
+            turnoActivoRef.current = nuevo;
+          }
+        } else if (target.fichaje_id === turno.fichaje_id) {
+          // Cerró la sesión y NO hay siguiente: el kiosco vuelve al estado
+          // inicial (no quedan agentes activos en el puesto).
+          try { localStorage.removeItem(TRACKING_KEY); } catch { /* noop */ }
+          try { localStorage.removeItem(BUFFER_KEY); } catch { /* noop */ }
+          setTurnoActivo(null);
+          turnoActivoRef.current = null;
+          setEstado("inicio");
+          setAgentesActivos(null);
+          setPuestoSubVista("main");
+          setCerrarTarget(null);
+          setAccionMsg({ kind: "ok", texto: `${target.nombre} cerró su turno. Sin agentes activos.` });
+          return;
+        }
+        setAccionMsg({ kind: "ok", texto: `${target.nombre} cerró su turno.` });
+        setPuestoSubVista("main");
+        setCerrarTarget(null);
+        await cargarAgentesActivos();
+      } catch {
+        setAccionMsg({ kind: "error", texto: "Sin conexión. Intentá de nuevo." });
+        setPuestoSubVista("main");
+        setCerrarTarget(null);
+      } finally {
+        setAccionLoading(false);
+      }
+    };
+    void iniciarEscaneo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cargarAgentesActivos]);
+
+  // Iniciar marcaje de ronda en nombre de un agente activo del puesto.
+  // Sub-vista: rondas_scan. Pre-cachea GPS para enviarlo en el evento.
+  const iniciarMarcarRonda = useCallback((target: {
+    user_id: number; nombre: string;
+  }) => {
+    setAccionMsg(null);
+    setRondaTarget(target);
+    setPuestoSubVista("rondas_scan");
+    rondaGpsRef.current = null;
+    // Pre-cargar GPS sin bloquear; si tarda, el scan se enviará sin GPS
+    // (resultado="sin_gps").
+    if (typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          rondaGpsRef.current = {
+            latitud: pos.coords.latitude,
+            longitud: pos.coords.longitude,
+            precision_metros: pos.coords.accuracy ?? null,
+          };
+        },
+        () => { /* sin GPS */ },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+      );
+    }
+    onScanRef.current = async (token: string) => {
+      const turno = turnoActivoRef.current;
+      if (!turno) return;
+      setAccionLoading(true);
+      try {
+        const r = await fetch(`${API}/agente/marcar-ronda-puesto`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fichaje_id_sesion: turno.fichaje_id,
+            tracking_token_sesion: turno.tracking_token,
+            agente_user_id: target.user_id,
+            qr_token: token,
+            latitud: rondaGpsRef.current?.latitud ?? null,
+            longitud: rondaGpsRef.current?.longitud ?? null,
+            precision_metros: rondaGpsRef.current?.precision_metros ?? null,
+          }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          setAccionMsg({
+            kind: "error",
+            texto: data.error === "qr_no_valido" ? "QR no válido para una ronda."
+                  : data.error === "punto_inactivo" ? "Este punto de control está inactivo."
+                  : data.error === "agente_no_activo_en_puesto" ? "El agente seleccionado ya no está en servicio."
+                  : data.mensaje || data.error || "No se pudo marcar la ronda.",
+          });
+          setRondaTarget(null);
+          setPuestoSubVista("main");
+          if (turnoActivoRef.current?.tipo === "puesto") setEstado("turno_activo");
+          return;
+        }
+        const distancia = data.distancia_metros != null ? ` (${data.distancia_metros} m)` : "";
+        const sufijo = data.resultado === "ok" ? "✓"
+                     : data.resultado === "fuera_de_rango" ? `⚠ fuera de rango${distancia}`
+                     : "sin GPS";
+        setAccionMsg({
+          kind: data.resultado === "ok" ? "ok" : "error",
+          texto: `${target.nombre.split(" ")[0]} marcó "${data.nombre_punto}" — ${sufijo}`,
+        });
+        setRondaTarget(null);
+        setPuestoSubVista("main");
+        if (turnoActivoRef.current?.tipo === "puesto") setEstado("turno_activo");
+        // Refrescar progreso de rondas
+        void cargarRondas();
+      } catch {
+        setAccionMsg({ kind: "error", texto: "Sin conexión. Intentá de nuevo." });
+        setRondaTarget(null);
+        setPuestoSubVista("main");
+        if (turnoActivoRef.current?.tipo === "puesto") setEstado("turno_activo");
+      } finally {
+        setAccionLoading(false);
+      }
+    };
+    void iniciarEscaneo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const cancelarSubVista = useCallback(() => {
+    onScanRef.current = null;
+    void detenerScanner();
+    setCerrarTarget(null);
+    setRondaTarget(null);
+    setPuestoSubVista("main");
+    // Restaurar el estado al panel del turno activo (el escáner había
+    // forzado estado="escaneando").
+    if (turnoActivoRef.current?.tipo === "puesto") setEstado("turno_activo");
+  }, [detenerScanner]);
+
+  // ── Visitas: cargar abiertas, OCR/foto, registrar entrada/salida ──────────
+  const cargarVisitasAbiertas = useCallback(async () => {
+    const turno = turnoActivoRef.current;
+    if (!turno?.fichaje_id || !turno?.tracking_token) return;
+    setVisitasLoading(true);
+    try {
+      const r = await fetch(
+        `${API}/agente/visitas-puesto/abiertas/${turno.fichaje_id}` +
+          `?tracking_token=${encodeURIComponent(turno.tracking_token)}`,
+      );
+      if (r.ok) {
+        const d = await r.json();
+        setVisitasAbiertas({ personas: d.personas ?? [], vehiculos: d.vehiculos ?? [] });
+      }
+    } catch (err) {
+      console.error("cargarVisitasAbiertas", err);
+    } finally {
+      setVisitasLoading(false);
+    }
+  }, []);
+
+  const abrirVisitas = useCallback(() => {
+    setAccionMsg(null);
+    setVisitaTab("peaton");
+    setVisitaForm({
+      dpi_numero: "", nombre_completo: "", placa: "", marca_vehiculo: "",
+      color_vehiculo: "", a_quien_visita: "", motivo: "", dpi_frente_url: null,
+    });
+    setPuestoSubVista("visitas");
+    void cargarVisitasAbiertas();
+  }, [cargarVisitasAbiertas]);
+
+  // Sube foto del DPI y luego corre OCR para autocompletar nombre/dpi.
+  const tomarFotoYExtraerDpi = useCallback(async (file: File) => {
+    const turno = turnoActivoRef.current;
+    if (!turno?.fichaje_id || !turno?.tracking_token) return;
+    setVisitaOcrLoading(true);
+    try {
+      // 1) Convertir a data URL base64
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result ?? ""));
+        reader.onerror = () => reject(new Error("No se pudo leer la imagen"));
+        reader.readAsDataURL(file);
+      });
+      // 2) Subir a object storage
+      const upRes = await fetch(`${API}/agente/visitas-puesto/foto`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fichaje_id_sesion: turno.fichaje_id,
+          tracking_token_sesion: turno.tracking_token,
+          imagen: dataUrl,
+        }),
+      });
+      if (!upRes.ok) {
+        const e = await upRes.json().catch(() => ({}));
+        setAccionMsg({ kind: "error", texto: e.error ?? "No se pudo subir la foto" });
+        return;
+      }
+      const upData = await upRes.json();
+      setVisitaForm((f) => ({ ...f, dpi_frente_url: upData.url }));
+      // 3) Correr OCR (no bloqueante para guardar la foto)
+      const ocrRes = await fetch(`${API}/agente/visitas-puesto/extraer-dpi`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fichaje_id_sesion: turno.fichaje_id,
+          tracking_token_sesion: turno.tracking_token,
+          imagen: dataUrl,
+        }),
+      });
+      if (ocrRes.ok) {
+        const d = await ocrRes.json();
+        const datos = d.datos ?? {};
+        setVisitaForm((f) => ({
+          ...f,
+          dpi_numero: datos.dpi || f.dpi_numero,
+          nombre_completo: datos.nombre_completo || f.nombre_completo,
+        }));
+      }
+    } catch (err) {
+      console.error("tomarFotoYExtraerDpi", err);
+      setAccionMsg({ kind: "error", texto: "Error procesando la foto" });
+    } finally {
+      setVisitaOcrLoading(false);
+    }
+  }, []);
+
+  const registrarEntradaVisita = useCallback(async () => {
+    const turno = turnoActivoRef.current;
+    if (!turno?.fichaje_id || !turno?.tracking_token) return;
+    if (visitaTab === "peaton" && !visitaForm.dpi_numero.trim()) {
+      setAccionMsg({ kind: "error", texto: "DPI es requerido" });
+      return;
+    }
+    if (visitaTab === "vehiculo" && !visitaForm.placa.trim()) {
+      setAccionMsg({ kind: "error", texto: "Placa es requerida" });
+      return;
+    }
+    setVisitaSubmitting(true);
+    try {
+      const body = visitaTab === "peaton"
+        ? {
+            fichaje_id_sesion: turno.fichaje_id,
+            tracking_token_sesion: turno.tracking_token,
+            tipo: "persona",
+            dpi_numero: visitaForm.dpi_numero.trim(),
+            nombre_completo: visitaForm.nombre_completo.trim() || null,
+            dpi_frente_url: visitaForm.dpi_frente_url,
+            a_quien_visita: visitaForm.a_quien_visita.trim() || null,
+            motivo: visitaForm.motivo.trim() || null,
+          }
+        : {
+            fichaje_id_sesion: turno.fichaje_id,
+            tracking_token_sesion: turno.tracking_token,
+            tipo: "vehiculo",
+            placa: visitaForm.placa.trim(),
+            marca_vehiculo: visitaForm.marca_vehiculo.trim() || null,
+            color_vehiculo: visitaForm.color_vehiculo.trim() || null,
+            conductor_dpi_numero: visitaForm.dpi_numero.trim() || null,
+            conductor_nombre: visitaForm.nombre_completo.trim() || null,
+            conductor_dpi_frente_url: visitaForm.dpi_frente_url,
+            a_quien_visita: visitaForm.a_quien_visita.trim() || null,
+            motivo: visitaForm.motivo.trim() || null,
+          };
+      const r = await fetch(`${API}/agente/visitas-puesto/entrada`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        setAccionMsg({ kind: "error", texto: e.error ?? "No se pudo registrar la entrada" });
+        return;
+      }
+      setAccionMsg({ kind: "ok", texto: "Entrada registrada" });
+      setVisitaForm({
+        dpi_numero: "", nombre_completo: "", placa: "", marca_vehiculo: "",
+        color_vehiculo: "", a_quien_visita: "", motivo: "", dpi_frente_url: null,
+      });
+      await cargarVisitasAbiertas();
+    } catch (err) {
+      console.error("registrarEntradaVisita", err);
+      setAccionMsg({ kind: "error", texto: "Error de red" });
+    } finally {
+      setVisitaSubmitting(false);
+    }
+  }, [visitaTab, visitaForm, cargarVisitasAbiertas]);
+
+  const marcarSalidaVisita = useCallback(async (visita_id: number) => {
+    const turno = turnoActivoRef.current;
+    if (!turno?.fichaje_id || !turno?.tracking_token) return;
+    if (!confirm("¿Marcar salida?")) return;
+    setVisitaSubmitting(true);
+    try {
+      const r = await fetch(`${API}/agente/visitas-puesto/salida`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fichaje_id_sesion: turno.fichaje_id,
+          tracking_token_sesion: turno.tracking_token,
+          visita_id,
+        }),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        setAccionMsg({ kind: "error", texto: e.error ?? "No se pudo marcar salida" });
+        return;
+      }
+      setAccionMsg({ kind: "ok", texto: "Salida registrada" });
+      await cargarVisitasAbiertas();
+    } catch (err) {
+      console.error("marcarSalidaVisita", err);
+    } finally {
+      setVisitaSubmitting(false);
+    }
+  }, [cargarVisitasAbiertas]);
+
   // ── Al volver a primer plano: re-adquirir wake lock + flush + recheck gap ──
   useEffect(() => {
     const onVisible = () => {
@@ -1001,8 +1492,27 @@ export default function AgenteInicio() {
         {estado === "escaneando" && (
           <div className="space-y-3">
             <div className="text-center">
-              <p className="text-sm text-slate-300">Apuntá la cámara al QR del carnet</p>
-              <p className="text-[11px] text-slate-500 mt-1">Acercá el carnet a unos 15–20 cm con buena luz</p>
+              {puestoSubVista === "agregar_agente" ? (
+                <>
+                  <p className="text-sm text-emerald-300 font-semibold">Agregar agente al puesto</p>
+                  <p className="text-[11px] text-slate-400 mt-1">Pasá el carnet del nuevo agente</p>
+                </>
+              ) : puestoSubVista === "cerrar_scan" && cerrarTarget ? (
+                <>
+                  <p className="text-sm text-rose-300 font-semibold">Cerrar turno de {cerrarTarget.nombre}</p>
+                  <p className="text-[11px] text-slate-400 mt-1">Para confirmar, {cerrarTarget.nombre.split(" ")[0]} debe pasar su propio carnet</p>
+                </>
+              ) : puestoSubVista === "rondas_scan" && rondaTarget ? (
+                <>
+                  <p className="text-sm text-blue-300 font-semibold">Ronda — {rondaTarget.nombre}</p>
+                  <p className="text-[11px] text-slate-400 mt-1">Escaneá el QR del punto de control</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-slate-300">Apuntá la cámara al QR del carnet</p>
+                  <p className="text-[11px] text-slate-500 mt-1">Acercá el carnet a unos 15–20 cm con buena luz</p>
+                </>
+              )}
             </div>
             <div id={SCANNER_ID} className="w-full overflow-hidden rounded-lg bg-black aspect-square" />
 
@@ -1046,7 +1556,10 @@ export default function AgenteInicio() {
             />
 
             <button
-              onClick={reiniciar}
+              onClick={() => {
+                if (puestoSubVista !== "main") cancelarSubVista();
+                else void reiniciar();
+              }}
               className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-3 rounded-lg text-sm"
             >
               Cancelar
@@ -1260,6 +1773,7 @@ export default function AgenteInicio() {
         {/* Turno activo (puesto fijo) — sin GPS, con rondas y opciones del puesto */}
         {estado === "turno_activo" && turnoActivo && turnoActivo.tipo === "puesto" && (
           <div className="space-y-4 pt-2">
+            {/* Cabecera "En servicio" */}
             <div className="text-center">
               <div className="mx-auto w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center">
                 <ShieldAlert className="w-8 h-8 text-emerald-400" />
@@ -1272,133 +1786,576 @@ export default function AgenteInicio() {
               </p>
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 space-y-2">
-              <div>
-                <div className="text-[11px] uppercase tracking-wide text-slate-500">Agente</div>
-                <div className="font-semibold">{turnoActivo.agente_nombre}</div>
-              </div>
-              <div className="border-t border-slate-800 pt-2">
-                <div className="text-[11px] uppercase tracking-wide text-slate-500">Puesto</div>
-                <div className="font-semibold">{turnoActivo.titulo}</div>
-                {turnoActivo.cliente_nombre && (
-                  <div className="text-sm text-slate-300">{turnoActivo.cliente_nombre}</div>
-                )}
-              </div>
+            {/* Info del puesto */}
+            <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500">Puesto</div>
+              <div className="font-semibold">{turnoActivo.titulo}</div>
+              {turnoActivo.cliente_nombre && (
+                <div className="text-sm text-slate-300">{turnoActivo.cliente_nombre}</div>
+              )}
             </div>
 
-            {/* Rondas con progreso del día */}
-            <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Navigation className="w-4 h-4 text-blue-400" />
-                  <span className="font-semibold text-sm">Rondas del puesto</span>
-                </div>
+            {/* Banner de mensajes de acción (ok/error) */}
+            {accionMsg && (
+              <div className={`rounded-lg p-3 text-sm flex items-start gap-2 ${
+                accionMsg.kind === "ok"
+                  ? "bg-emerald-500/15 border border-emerald-500/40 text-emerald-200"
+                  : "bg-rose-500/15 border border-rose-500/40 text-rose-200"
+              }`}>
+                {accionMsg.kind === "ok"
+                  ? <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  : <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />}
+                <div className="flex-1">{accionMsg.texto}</div>
                 <button
-                  onClick={() => void cargarRondas()}
-                  disabled={rondasCargando}
-                  className="text-[11px] text-slate-400 hover:text-slate-200 flex items-center gap-1"
+                  onClick={() => setAccionMsg(null)}
+                  className="text-xs opacity-70 hover:opacity-100"
                 >
-                  {rondasCargando ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
-                  Actualizar
+                  ✕
                 </button>
-              </div>
-
-              {rondasError && (
-                <div className="text-xs text-amber-400 flex items-center gap-2">
-                  <AlertTriangle className="w-3 h-3" />
-                  {rondasError}
-                </div>
-              )}
-
-              {rondas === null && !rondasError && (
-                <div className="text-center text-xs text-slate-500 py-4">
-                  <Loader2 className="w-4 h-4 mx-auto animate-spin mb-1" />
-                  Cargando rondas…
-                </div>
-              )}
-
-              {rondas !== null && rondas.length === 0 && (
-                <div className="text-xs text-slate-400 text-center py-3">
-                  No hay rondas configuradas para este puesto.
-                </div>
-              )}
-
-              {rondas !== null && rondas.length > 0 && (
-                <div className="space-y-3">
-                  {rondas.map((ronda) => {
-                    const completa = ronda.escaneados_hoy >= ronda.total_puntos;
-                    return (
-                      <div key={ronda.id} className="border border-slate-800 rounded-lg p-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="font-semibold text-sm">{ronda.nombre}</div>
-                          <span className={`text-[11px] px-2 py-0.5 rounded-full ${
-                            completa
-                              ? "bg-emerald-500/20 text-emerald-300"
-                              : "bg-amber-500/20 text-amber-300"
-                          }`}>
-                            {ronda.escaneados_hoy}/{ronda.total_puntos}
-                          </span>
-                        </div>
-                        <ul className="space-y-1.5">
-                          {ronda.puntos.map((p) => (
-                            <li key={p.id} className="flex items-start gap-2 text-xs">
-                              {p.escaneado_hoy ? (
-                                <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-                              ) : (
-                                <div className="w-4 h-4 rounded-full border-2 border-slate-600 flex-shrink-0 mt-0.5" />
-                              )}
-                              <div className="flex-1">
-                                <div className={p.escaneado_hoy ? "text-slate-200" : "text-slate-400"}>
-                                  {p.nombre}
-                                </div>
-                                {p.escaneado_hoy && p.ultimo_escaneo && (
-                                  <div className="text-[10px] text-slate-500">
-                                    {new Date(p.ultimo_escaneo).toLocaleTimeString("es-GT", {
-                                      timeZone: "America/Guatemala", hour: "2-digit", minute: "2-digit",
-                                    })}
-                                    {p.ultimo_distancia_metros != null && ` · ${p.ultimo_distancia_metros} m`}
-                                  </div>
-                                )}
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    );
-                  })}
-                  <p className="text-[11px] text-slate-500 text-center pt-1">
-                    Escaneá los códigos QR pegados en cada punto con la cámara del teléfono.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Visitas: solo en kiosco; en personal mostrar mensaje informativo */}
-            {esKiosco ? (
-              <a
-                href="/agente/visitas"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg flex items-center justify-center gap-2"
-              >
-                <UserPlus className="w-5 h-5" />
-                Registrar visita
-              </a>
-            ) : (
-              <div className="bg-slate-900 border border-slate-800 rounded-lg p-3 flex items-start gap-2">
-                <Smartphone className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-slate-300">
-                  Las visitas se registran en el teléfono fijo del puesto.
-                </p>
               </div>
             )}
 
-            {/* Cerrar turno */}
-            <button
-              onClick={cerrarTurno}
-              className="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold py-4 rounded-lg flex items-center justify-center gap-2"
-            >
-              <LogOut className="w-5 h-5" />
-              Cerrar turno
-            </button>
+            {esKiosco ? (
+              <>
+                {/* MAIN: lista de agentes activos + botonería 2x2 */}
+                {puestoSubVista === "main" && (
+                  <>
+                    {/* Lista de agentes activos en este puesto */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Users className="w-4 h-4 text-emerald-400" />
+                          <span className="font-semibold text-sm">Agentes en servicio</span>
+                          {agentesActivos && (
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">
+                              {agentesActivos.length}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => void cargarAgentesActivos()}
+                          className="text-[11px] text-slate-400 hover:text-slate-200 flex items-center gap-1"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          Actualizar
+                        </button>
+                      </div>
+
+                      {agentesActivosError && (
+                        <div className="text-xs text-amber-400 flex items-center gap-2">
+                          <AlertTriangle className="w-3 h-3" />
+                          {agentesActivosError}
+                        </div>
+                      )}
+
+                      {agentesActivos === null && !agentesActivosError && (
+                        <div className="text-center text-xs text-slate-500 py-3">
+                          <Loader2 className="w-4 h-4 mx-auto animate-spin mb-1" />
+                          Cargando…
+                        </div>
+                      )}
+
+                      {agentesActivos && agentesActivos.length === 0 && (
+                        <div className="text-xs text-slate-400 text-center py-2">
+                          Sin agentes activos.
+                        </div>
+                      )}
+
+                      {agentesActivos && agentesActivos.length > 0 && (
+                        <div className="space-y-2">
+                          {agentesActivos.map((a) => (
+                            <div key={a.fichaje_id} className="flex items-center justify-between border border-slate-800 rounded-lg px-3 py-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold text-sm truncate">{a.nombre}</div>
+                                {a.cargo && (
+                                  <div className="text-[11px] text-slate-400 truncate">{a.cargo}</div>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-400 flex items-center gap-1 flex-shrink-0">
+                                <Clock className="w-3 h-3" />
+                                {new Date(a.iniciado_en).toLocaleTimeString("es-GT", {
+                                  timeZone: "America/Guatemala", hour: "2-digit", minute: "2-digit",
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Botonería principal 2x2 */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        onClick={iniciarAgregarAgente}
+                        disabled={accionLoading}
+                        className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-4 rounded-lg flex flex-col items-center justify-center gap-1"
+                      >
+                        <Plus className="w-6 h-6" />
+                        <span className="text-sm">Agregar agente</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setAccionMsg(null);
+                          setPuestoSubVista("cerrar_select");
+                        }}
+                        disabled={accionLoading || !agentesActivos || agentesActivos.length === 0}
+                        className="bg-rose-600 hover:bg-rose-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-4 rounded-lg flex flex-col items-center justify-center gap-1"
+                      >
+                        <LogOut className="w-6 h-6" />
+                        <span className="text-sm">Terminar turno</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setAccionMsg(null);
+                          setPuestoSubVista("rondas_select");
+                        }}
+                        disabled={accionLoading || !agentesActivos || agentesActivos.length === 0}
+                        className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-4 rounded-lg flex flex-col items-center justify-center gap-1"
+                      >
+                        <Navigation className="w-6 h-6" />
+                        <span className="text-sm">Rondas</span>
+                      </button>
+                      <button
+                        onClick={abrirVisitas}
+                        className="bg-amber-600 hover:bg-amber-700 text-white font-semibold py-4 rounded-lg flex flex-col items-center justify-center gap-1"
+                      >
+                        <UserPlus className="w-6 h-6" />
+                        <span className="text-sm">Visitas</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {/* SUB-VISTA: cerrar_select — selector de qué agente cierra turno */}
+                {puestoSubVista === "cerrar_select" && (
+                  <div className="space-y-3">
+                    <button
+                      onClick={cancelarSubVista}
+                      className="text-slate-400 hover:text-slate-200 text-sm flex items-center gap-1"
+                    >
+                      <ArrowLeft className="w-4 h-4" /> Volver
+                    </button>
+                    <div>
+                      <h3 className="font-bold text-lg">¿Quién termina turno?</h3>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Para confirmar, el agente seleccionado deberá pasar su propio carnet.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      {(agentesActivos ?? []).map((a) => (
+                        <button
+                          key={a.fichaje_id}
+                          onClick={() => iniciarCerrarVerificado({
+                            fichaje_id: a.fichaje_id,
+                            employee_id: a.employee_id,
+                            nombre: a.nombre,
+                          })}
+                          className="w-full bg-slate-900 border border-slate-700 hover:border-rose-500 rounded-lg p-3 text-left flex items-center justify-between"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold truncate">{a.nombre}</div>
+                            {a.cargo && (
+                              <div className="text-xs text-slate-400 truncate">{a.cargo}</div>
+                            )}
+                            <div className="text-[11px] text-slate-500 mt-0.5">
+                              Desde {new Date(a.iniciado_en).toLocaleTimeString("es-GT", {
+                                timeZone: "America/Guatemala", hour: "2-digit", minute: "2-digit",
+                              })}
+                            </div>
+                          </div>
+                          <LogOut className="w-5 h-5 text-rose-400 flex-shrink-0 ml-2" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* SUB-VISTA: rondas_select — qué agente marca el punto */}
+                {puestoSubVista === "rondas_select" && (
+                  <div className="space-y-3">
+                    <button
+                      onClick={cancelarSubVista}
+                      className="text-slate-400 hover:text-slate-200 text-sm flex items-center gap-1"
+                    >
+                      <ArrowLeft className="w-4 h-4" /> Volver
+                    </button>
+                    <div>
+                      <h3 className="font-bold text-lg">¿Quién marca la ronda?</h3>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Después escaneá el QR del punto de control.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      {(agentesActivos ?? []).map((a) => {
+                        const sinUsuario = !a.user_id;
+                        return (
+                          <button
+                            key={a.fichaje_id}
+                            disabled={sinUsuario}
+                            onClick={() => {
+                              if (a.user_id) iniciarMarcarRonda({ user_id: a.user_id, nombre: a.nombre });
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 hover:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg p-3 text-left flex items-center justify-between"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold truncate">{a.nombre}</div>
+                              {a.cargo && (
+                                <div className="text-xs text-slate-400 truncate">{a.cargo}</div>
+                              )}
+                              {sinUsuario && (
+                                <div className="text-[11px] text-amber-400 mt-0.5">
+                                  Sin usuario web — no puede marcar rondas
+                                </div>
+                              )}
+                            </div>
+                            <Navigation className="w-5 h-5 text-blue-400 flex-shrink-0 ml-2" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* SUB-VISTA: visitas — registro de entradas/salidas peatón/vehículo */}
+                {puestoSubVista === "visitas" && (
+                  <div className="space-y-3">
+                    <button
+                      onClick={cancelarSubVista}
+                      className="text-slate-400 hover:text-slate-200 text-sm flex items-center gap-1"
+                    >
+                      <ArrowLeft className="w-4 h-4" /> Volver
+                    </button>
+
+                    {/* Tabs Peatón / Vehículo */}
+                    <div className="flex bg-slate-900 border border-slate-700 rounded-lg p-1">
+                      <button
+                        onClick={() => setVisitaTab("peaton")}
+                        className={`flex-1 py-2 rounded text-sm font-medium ${
+                          visitaTab === "peaton" ? "bg-amber-600 text-white" : "text-slate-400"
+                        }`}
+                      >
+                        Peatón
+                      </button>
+                      <button
+                        onClick={() => setVisitaTab("vehiculo")}
+                        className={`flex-1 py-2 rounded text-sm font-medium ${
+                          visitaTab === "vehiculo" ? "bg-amber-600 text-white" : "text-slate-400"
+                        }`}
+                      >
+                        Vehículo
+                      </button>
+                    </div>
+
+                    {/* Form de nueva entrada */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg p-3 space-y-3">
+                      <h3 className="font-bold text-sm">Nueva entrada</h3>
+
+                      {/* Captura foto DPI (común a peatón y conductor del vehículo) */}
+                      <div>
+                        <label className="text-xs text-slate-400 block mb-1">
+                          Foto del DPI {visitaTab === "vehiculo" ? "(conductor)" : ""}
+                        </label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          disabled={visitaOcrLoading || visitaSubmitting}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) void tomarFotoYExtraerDpi(f);
+                            e.target.value = "";
+                          }}
+                          className="block w-full text-xs text-slate-300 file:mr-2 file:py-2 file:px-3 file:rounded file:border-0 file:bg-slate-700 file:text-white file:text-xs"
+                        />
+                        {visitaOcrLoading && (
+                          <div className="text-xs text-amber-400 mt-1">Procesando foto…</div>
+                        )}
+                        {visitaForm.dpi_frente_url && !visitaOcrLoading && (
+                          <div className="text-xs text-emerald-400 mt-1">✓ Foto guardada</div>
+                        )}
+                      </div>
+
+                      {visitaTab === "vehiculo" && (
+                        <>
+                          <div>
+                            <label className="text-xs text-slate-400 block mb-1">Placa *</label>
+                            <input
+                              type="text"
+                              value={visitaForm.placa}
+                              onChange={(e) => setVisitaForm((f) => ({ ...f, placa: e.target.value.toUpperCase() }))}
+                              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm uppercase"
+                              placeholder="P000ABC"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-xs text-slate-400 block mb-1">Marca</label>
+                              <input
+                                type="text"
+                                value={visitaForm.marca_vehiculo}
+                                onChange={(e) => setVisitaForm((f) => ({ ...f, marca_vehiculo: e.target.value }))}
+                                className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-slate-400 block mb-1">Color</label>
+                              <input
+                                type="text"
+                                value={visitaForm.color_vehiculo}
+                                onChange={(e) => setVisitaForm((f) => ({ ...f, color_vehiculo: e.target.value }))}
+                                className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm"
+                              />
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      <div>
+                        <label className="text-xs text-slate-400 block mb-1">
+                          DPI {visitaTab === "peaton" ? "*" : "(conductor)"}
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={visitaForm.dpi_numero}
+                          onChange={(e) => setVisitaForm((f) => ({ ...f, dpi_numero: e.target.value.replace(/\D/g, "") }))}
+                          className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm"
+                          placeholder="13 dígitos"
+                          maxLength={13}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-400 block mb-1">
+                          Nombre {visitaTab === "peaton" ? "*" : "(conductor)"}
+                        </label>
+                        <input
+                          type="text"
+                          value={visitaForm.nombre_completo}
+                          onChange={(e) => setVisitaForm((f) => ({ ...f, nombre_completo: e.target.value }))}
+                          className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-400 block mb-1">A quién visita</label>
+                        <input
+                          type="text"
+                          value={visitaForm.a_quien_visita}
+                          onChange={(e) => setVisitaForm((f) => ({ ...f, a_quien_visita: e.target.value }))}
+                          className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <button
+                        onClick={() => void registrarEntradaVisita()}
+                        disabled={visitaSubmitting || visitaOcrLoading}
+                        className="w-full bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white font-semibold py-3 rounded-lg"
+                      >
+                        {visitaSubmitting ? "Registrando…" : "Registrar entrada"}
+                      </button>
+                    </div>
+
+                    {/* Lista de visitas abiertas */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-bold text-sm">Adentro ahora</h3>
+                        <button
+                          onClick={() => void cargarVisitasAbiertas()}
+                          disabled={visitasLoading}
+                          className="text-xs text-slate-400 hover:text-slate-200"
+                        >
+                          {visitasLoading ? "…" : "↻"}
+                        </button>
+                      </div>
+                      {!visitasAbiertas || (visitasAbiertas.personas.length === 0 && visitasAbiertas.vehiculos.length === 0) ? (
+                        <div className="text-xs text-slate-500">No hay visitas abiertas.</div>
+                      ) : (
+                        <div className="space-y-2">
+                          {visitasAbiertas.personas.map((p) => (
+                            <div key={`p-${p.id}`} className="bg-slate-800 rounded p-2 flex items-center justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-semibold truncate">
+                                  {p.nombre_completo ?? p.dpi_numero ?? "Persona"}
+                                </div>
+                                <div className="text-[11px] text-slate-400 truncate">
+                                  {p.dpi_numero && <span>DPI {p.dpi_numero}</span>}
+                                  {p.a_quien_visita && <span> · visita {p.a_quien_visita}</span>}
+                                </div>
+                                <div className="text-[10px] text-slate-500">
+                                  Entró {new Date(p.entrada_at).toLocaleTimeString("es-GT", {
+                                    timeZone: "America/Guatemala", hour: "2-digit", minute: "2-digit",
+                                  })}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => void marcarSalidaVisita(p.id)}
+                                disabled={visitaSubmitting}
+                                className="bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white text-xs font-semibold px-3 py-1.5 rounded"
+                              >
+                                Salida
+                              </button>
+                            </div>
+                          ))}
+                          {visitasAbiertas.vehiculos.map((v) => (
+                            <div key={`v-${v.id}`} className="bg-slate-800 rounded p-2 flex items-center justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-semibold truncate">
+                                  {v.placa} {v.marca_vehiculo && `· ${v.marca_vehiculo}`}
+                                </div>
+                                <div className="text-[11px] text-slate-400 truncate">
+                                  {v.conductor_nombre && <span>{v.conductor_nombre}</span>}
+                                  {v.a_quien_visita && <span> · visita {v.a_quien_visita}</span>}
+                                </div>
+                                <div className="text-[10px] text-slate-500">
+                                  Entró {new Date(v.entrada_at).toLocaleTimeString("es-GT", {
+                                    timeZone: "America/Guatemala", hour: "2-digit", minute: "2-digit",
+                                  })}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => void marcarSalidaVisita(v.id)}
+                                disabled={visitaSubmitting}
+                                className="bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white text-xs font-semibold px-3 py-1.5 rounded"
+                              >
+                                Salida
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              /* Móvil personal del agente: vista clásica de un solo turno */
+              <>
+                <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
+                  <div className="text-[11px] uppercase tracking-wide text-slate-500">Agente</div>
+                  <div className="font-semibold">{turnoActivo.agente_nombre}</div>
+                </div>
+
+                {/* Lista de compañeros activos en el mismo puesto */}
+                {agentesActivos && agentesActivos.filter(a => a.fichaje_id !== turnoActivo.fichaje_id).length > 0 && (
+                  <div className="bg-slate-900 border border-slate-800 rounded-lg p-3">
+                    <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-2 flex items-center gap-1">
+                      <Users className="w-3 h-3" /> Otros agentes en este puesto
+                    </div>
+                    <div className="space-y-1">
+                      {agentesActivos
+                        .filter(a => a.fichaje_id !== turnoActivo.fichaje_id)
+                        .map((a) => (
+                          <div key={a.fichaje_id} className="text-sm text-slate-200">
+                            {a.nombre}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="bg-slate-900 border border-slate-800 rounded-lg p-3 flex items-start gap-2">
+                  <Smartphone className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-slate-300">
+                    Las visitas se registran en el teléfono fijo del puesto.
+                  </p>
+                </div>
+
+                <button
+                  onClick={cerrarTurno}
+                  className="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold py-4 rounded-lg flex items-center justify-center gap-2"
+                >
+                  <LogOut className="w-5 h-5" />
+                  Cerrar turno
+                </button>
+              </>
+            )}
+
+            {/* Rondas con progreso del día (visible en MAIN para ambos modos) */}
+            {puestoSubVista === "main" && (
+              <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Navigation className="w-4 h-4 text-blue-400" />
+                    <span className="font-semibold text-sm">Rondas del puesto</span>
+                  </div>
+                  <button
+                    onClick={() => void cargarRondas()}
+                    disabled={rondasCargando}
+                    className="text-[11px] text-slate-400 hover:text-slate-200 flex items-center gap-1"
+                  >
+                    {rondasCargando ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                    Actualizar
+                  </button>
+                </div>
+
+                {rondasError && (
+                  <div className="text-xs text-amber-400 flex items-center gap-2">
+                    <AlertTriangle className="w-3 h-3" />
+                    {rondasError}
+                  </div>
+                )}
+
+                {rondas === null && !rondasError && (
+                  <div className="text-center text-xs text-slate-500 py-4">
+                    <Loader2 className="w-4 h-4 mx-auto animate-spin mb-1" />
+                    Cargando rondas…
+                  </div>
+                )}
+
+                {rondas !== null && rondas.length === 0 && (
+                  <div className="text-xs text-slate-400 text-center py-3">
+                    No hay rondas configuradas para este puesto.
+                  </div>
+                )}
+
+                {rondas !== null && rondas.length > 0 && (
+                  <div className="space-y-3">
+                    {rondas.map((ronda) => {
+                      const completa = ronda.escaneados_hoy >= ronda.total_puntos;
+                      return (
+                        <div key={ronda.id} className="border border-slate-800 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="font-semibold text-sm">{ronda.nombre}</div>
+                            <span className={`text-[11px] px-2 py-0.5 rounded-full ${
+                              completa
+                                ? "bg-emerald-500/20 text-emerald-300"
+                                : "bg-amber-500/20 text-amber-300"
+                            }`}>
+                              {ronda.escaneados_hoy}/{ronda.total_puntos}
+                            </span>
+                          </div>
+                          <ul className="space-y-1.5">
+                            {ronda.puntos.map((p) => (
+                              <li key={p.id} className="flex items-start gap-2 text-xs">
+                                {p.escaneado_hoy ? (
+                                  <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                                ) : (
+                                  <div className="w-4 h-4 rounded-full border-2 border-slate-600 flex-shrink-0 mt-0.5" />
+                                )}
+                                <div className="flex-1">
+                                  <div className={p.escaneado_hoy ? "text-slate-200" : "text-slate-400"}>
+                                    {p.nombre}
+                                  </div>
+                                  {p.escaneado_hoy && p.ultimo_escaneo && (
+                                    <div className="text-[10px] text-slate-500">
+                                      {new Date(p.ultimo_escaneo).toLocaleTimeString("es-GT", {
+                                        timeZone: "America/Guatemala", hour: "2-digit", minute: "2-digit",
+                                      })}
+                                      {p.ultimo_distancia_metros != null && ` · ${p.ultimo_distancia_metros} m`}
+                                    </div>
+                                  )}
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      );
+                    })}
+                    <p className="text-[11px] text-slate-500 text-center pt-1">
+                      Escaneá los códigos QR pegados en cada punto con la cámara del teléfono.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

@@ -4,6 +4,8 @@ import { v4 as uuidv4 } from "uuid";
 import { createHash, randomBytes } from "node:crypto";
 import { logger } from "../lib/logger";
 import { TITULARES_UNIFICADOS_CTE } from "./operaciones/_helpers/titularidad";
+import { ObjectStorageService } from "../lib/objectStorage";
+import { getPermisosForUsername } from "../lib/permisos-middleware";
 
 export const agenteFichajeRouter = Router();
 
@@ -1628,6 +1630,797 @@ agenteFichajeRouter.get("/agente/rondas-del-puesto/:fichaje_id", async (req, res
   } catch (err) {
     logger.error({ err }, "agente/rondas-del-puesto: error");
     res.status(500).json({ error: "Error consultando rondas" });
+  }
+});
+
+// GET /api/agente/turnos-activos-del-puesto/:fichaje_id?tracking_token=...
+// Lista todos los agentes con turno abierto en el mismo puesto que el fichaje
+// de la sesión (incluye al propio fichaje). Pensado para el modo "puesto fijo"
+// multi-agente: el teléfono del puesto muestra a todos los activos.
+agenteFichajeRouter.get("/agente/turnos-activos-del-puesto/:fichaje_id", async (req, res) => {
+  const fichajeId = Number(req.params.fichaje_id);
+  const trackingToken = String(req.query.tracking_token ?? "");
+  if (!Number.isFinite(fichajeId) || !trackingToken) {
+    return res.status(400).json({ error: "parametros_invalidos" });
+  }
+  try {
+    const { rows: fRows } = await pool.query(
+      `SELECT puesto_id, cliente_id, tracking_token_hash, turno_cerrado_en
+         FROM agente_fichajes
+        WHERE id = $1 AND tipo = 'inicio_turno'`,
+      [fichajeId]
+    );
+    const fichaje = fRows[0];
+    if (!fichaje) return res.status(404).json({ error: "fichaje_no_encontrado" });
+    if (!fichaje.tracking_token_hash || fichaje.tracking_token_hash !== hashToken(trackingToken)) {
+      return res.status(403).json({ error: "tracking_token_invalido" });
+    }
+    if (fichaje.turno_cerrado_en) {
+      return res.status(410).json({ error: "sesion_cerrada" });
+    }
+    if (!fichaje.puesto_id) {
+      // Solo "puesto fijo" tiene puesto_id. Custodia no aplica.
+      return res.json({ agentes: [], puesto_id: null });
+    }
+    const { rows: agentesRows } = await pool.query(
+      `SELECT af.id            AS fichaje_id,
+              af.employee_id,
+              e.nombre_completo AS nombre,
+              e.puesto         AS cargo,
+              af.registrado_en AS iniciado_en,
+              u.id             AS user_id
+         FROM agente_fichajes af
+         JOIN employees e ON e.id = af.employee_id
+         LEFT JOIN users u ON u.empleado_id = af.employee_id
+        WHERE af.tipo = 'inicio_turno'
+          AND af.puesto_id = $1
+          AND af.turno_cerrado_en IS NULL
+          AND DATE((af.registrado_en AT TIME ZONE 'America/Guatemala')) =
+              DATE((NOW() AT TIME ZONE 'America/Guatemala'))
+        ORDER BY af.registrado_en ASC`,
+      [fichaje.puesto_id]
+    );
+    res.json({
+      puesto_id: fichaje.puesto_id,
+      agentes: agentesRows.map(r => ({
+        fichaje_id: r.fichaje_id,
+        employee_id: r.employee_id,
+        user_id: r.user_id ?? null,
+        nombre: r.nombre,
+        cargo: r.cargo,
+        iniciado_en: r.iniciado_en,
+      })),
+    });
+  } catch (err) {
+    logger.error({ err }, "agente/turnos-activos-del-puesto: error");
+    res.status(500).json({ error: "Error consultando agentes activos" });
+  }
+});
+
+// POST /api/agente/cerrar-turno-verificado
+// Cierra un turno con doble verificación: el agente debe escanear su propio
+// carnet para confirmar que es él quien cierra (anti malas prácticas en kiosco
+// multi-agente). Body: { fichaje_id_a_cerrar, carnet_qr_token,
+//                        sesion_fichaje_id, tracking_token_sesion,
+//                        latitud?, longitud?, precision_metros? }
+agenteFichajeRouter.post("/agente/cerrar-turno-verificado", async (req, res) => {
+  const {
+    fichaje_id_a_cerrar,
+    carnet_qr_token,
+    sesion_fichaje_id,
+    tracking_token_sesion,
+    latitud,
+    longitud,
+    precision_metros,
+  } = req.body ?? {};
+  if (!fichaje_id_a_cerrar || !carnet_qr_token || !sesion_fichaje_id || !tracking_token_sesion) {
+    return res.status(400).json({ error: "parametros_invalidos" });
+  }
+  try {
+    // 1. Validar sesión del puesto (tracking_token contra el fichaje de sesión)
+    const { rows: sRows } = await pool.query(
+      `SELECT puesto_id, tracking_token_hash, turno_cerrado_en
+         FROM agente_fichajes
+        WHERE id = $1 AND tipo = 'inicio_turno'`,
+      [sesion_fichaje_id]
+    );
+    if (!sRows[0]) return res.status(404).json({ error: "sesion_no_encontrada" });
+    if (!sRows[0].tracking_token_hash || sRows[0].tracking_token_hash !== hashToken(tracking_token_sesion)) {
+      return res.status(403).json({ error: "tracking_token_invalido" });
+    }
+    if (sRows[0].turno_cerrado_en) {
+      return res.status(410).json({ error: "sesion_cerrada" });
+    }
+    if (!sRows[0].puesto_id) {
+      return res.status(400).json({ error: "sesion_no_es_puesto_fijo" });
+    }
+    const sesionPuestoId: number = sRows[0].puesto_id;
+
+    // 2. Localizar el fichaje a cerrar y verificar que es del mismo puesto
+    const { rows: tRows } = await pool.query(
+      `SELECT employee_id, puesto_id, cliente_id, slot_numero, turno_cerrado_en
+         FROM agente_fichajes
+        WHERE id = $1 AND tipo = 'inicio_turno'`,
+      [fichaje_id_a_cerrar]
+    );
+    if (!tRows[0]) return res.status(404).json({ error: "fichaje_no_encontrado" });
+    if (tRows[0].turno_cerrado_en) {
+      return res.status(409).json({ error: "turno_ya_cerrado", cerrado_en: tRows[0].turno_cerrado_en });
+    }
+    if (tRows[0].puesto_id !== sesionPuestoId) {
+      return res.status(403).json({ error: "fichaje_de_otro_puesto" });
+    }
+
+    // 3. Validar el carnet escaneado: debe pertenecer al MISMO empleado del
+    //    fichaje a cerrar (la regla anti-molestia que pidió el usuario).
+    const { rows: ckRows } = await pool.query(
+      `SELECT aqt.employee_id, aqt.activo, e.nombre_completo
+         FROM agente_qr_tokens aqt
+         JOIN employees e ON e.id = aqt.employee_id
+        WHERE aqt.qr_token = $1`,
+      [carnet_qr_token]
+    );
+    if (!ckRows[0]) {
+      return res.status(404).json({ error: "carnet_invalido", mensaje: "Carnet no reconocido." });
+    }
+    if (!ckRows[0].activo) {
+      return res.status(403).json({ error: "carnet_desactivado", mensaje: "Carnet desactivado." });
+    }
+    if (ckRows[0].employee_id !== tRows[0].employee_id) {
+      return res.status(403).json({
+        error: "carnet_no_coincide",
+        mensaje: `Este carnet pertenece a ${ckRows[0].nombre_completo}. Cada quien debe cerrar su propio turno.`,
+      });
+    }
+
+    // 4. Cierre atómico (mismo patrón que /agente/cerrar-turno: cierra el
+    //    fichaje + sus posibles co-tripulantes anexados, e inserta la fila
+    //    'cierre_turno' por cada uno para auditoría).
+    const client = await pool.connect();
+    const cierres: Array<{ id: number; employee_id: number; registrado_en: string }> = [];
+    try {
+      await client.query("BEGIN");
+      const { rows: hijosRows } = await client.query(
+        `SELECT id, employee_id, puesto_id, cliente_id, slot_numero
+           FROM agente_fichajes
+          WHERE recorrido_padre_id = $1 AND turno_cerrado_en IS NULL
+          FOR UPDATE`,
+        [fichaje_id_a_cerrar]
+      );
+      await client.query(
+        `UPDATE agente_fichajes SET turno_cerrado_en = NOW()
+          WHERE (id = $1 OR recorrido_padre_id = $1) AND turno_cerrado_en IS NULL`,
+        [fichaje_id_a_cerrar]
+      );
+      const todos = [
+        {
+          id: fichaje_id_a_cerrar,
+          employee_id: tRows[0].employee_id,
+          puesto_id: tRows[0].puesto_id,
+          cliente_id: tRows[0].cliente_id,
+          slot_numero: tRows[0].slot_numero,
+        },
+        ...hijosRows,
+      ];
+      for (const t of todos) {
+        const { rows: cierre } = await client.query(
+          `INSERT INTO agente_fichajes
+             (employee_id, puesto_id, cliente_id, slot_numero, qr_token,
+              latitud, longitud, distancia_metros, resultado, tipo, observaciones)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,NULL,'ok','cierre_turno',$8)
+           RETURNING id, registrado_en`,
+          [
+            t.employee_id,
+            t.puesto_id,
+            t.cliente_id,
+            t.slot_numero,
+            "__cierre_turno_verificado__",
+            latitud ?? null,
+            longitud ?? null,
+            `cierre verificado de fichaje_id=${t.id}${t.id !== fichaje_id_a_cerrar ? ` (anexado a ${fichaje_id_a_cerrar})` : ""} sesion_puesto=${sesionPuestoId} precision=${precision_metros ?? "?"}m`,
+          ]
+        );
+        cierres.push({ id: cierre[0].id, employee_id: t.employee_id, registrado_en: cierre[0].registrado_en });
+      }
+      await client.query("COMMIT");
+    } catch (txErr) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw txErr;
+    } finally {
+      client.release();
+    }
+
+    // 5. Rotación de líder de sesión: si el fichaje cerrado ERA la sesión
+    //    activa del kiosco Y queda algún otro agente activo en el mismo
+    //    puesto, rotamos el tracking_token al más antiguo de los restantes.
+    //    Así el kiosco mantiene una sesión válida sin pedir al primer agente
+    //    quedarse hasta el final.
+    let nuevaSesion: { fichaje_id: number; tracking_token: string; agente_nombre: string } | null = null;
+    if (Number(fichaje_id_a_cerrar) === Number(sesion_fichaje_id)) {
+      const { rows: nextRows } = await pool.query(
+        `SELECT af.id AS fichaje_id, e.nombre_completo AS agente_nombre
+           FROM agente_fichajes af
+           JOIN employees e ON e.id = af.employee_id
+          WHERE af.tipo = 'inicio_turno'
+            AND af.puesto_id = $1
+            AND af.turno_cerrado_en IS NULL
+            AND af.id <> $2
+          ORDER BY af.registrado_en ASC
+          LIMIT 1`,
+        [sesionPuestoId, fichaje_id_a_cerrar]
+      );
+      if (nextRows[0]) {
+        const nuevoToken = randomBytes(32).toString("hex");
+        await pool.query(
+          `UPDATE agente_fichajes SET tracking_token_hash = $1 WHERE id = $2`,
+          [hashToken(nuevoToken), nextRows[0].fichaje_id]
+        );
+        nuevaSesion = {
+          fichaje_id: nextRows[0].fichaje_id,
+          tracking_token: nuevoToken,
+          agente_nombre: nextRows[0].agente_nombre,
+        };
+      }
+    }
+
+    res.json({
+      ok: true,
+      cierre_id: cierres[0].id,
+      cerrado_en: cierres[0].registrado_en,
+      cierres_grupo: cierres,
+      total_cerrados: cierres.length,
+      nueva_sesion: nuevaSesion, // null si no rotó (caso normal: el cerrado no era la sesión, o no quedan agentes)
+    });
+  } catch (err) {
+    logger.error({ err }, "agente/cerrar-turno-verificado: error");
+    res.status(500).json({ error: "Error cerrando turno" });
+  }
+});
+
+// POST /api/agente/marcar-ronda-puesto
+// Permite que el teléfono del puesto (modo kiosco) marque un punto de ronda
+// EN NOMBRE DE un agente activo del puesto. El supervisor del puesto elige
+// qué agente está marcando antes de escanear el QR del punto.
+//
+// Body: {
+//   fichaje_id_sesion: number,        // fichaje del que tiene la sesión kiosco
+//   tracking_token_sesion: string,    // tracking_token vigente del kiosco
+//   agente_user_id: number,           // user_id del agente que registra (debe estar activo en el mismo puesto)
+//   qr_token: string,                 // token del punto de ronda escaneado
+//   latitud?, longitud?, precision_metros?: number
+// }
+agenteFichajeRouter.post("/agente/marcar-ronda-puesto", async (req, res) => {
+  const {
+    fichaje_id_sesion,
+    tracking_token_sesion,
+    agente_user_id,
+    qr_token,
+    latitud,
+    longitud,
+    precision_metros,
+  } = req.body ?? {};
+
+  if (
+    !Number.isFinite(Number(fichaje_id_sesion)) ||
+    typeof tracking_token_sesion !== "string" || !tracking_token_sesion ||
+    !Number.isFinite(Number(agente_user_id)) ||
+    typeof qr_token !== "string" || !qr_token
+  ) {
+    return res.status(400).json({ error: "parametros_invalidos" });
+  }
+
+  const fichajeIdSesion = Number(fichaje_id_sesion);
+  const agenteUserId = Number(agente_user_id);
+
+  try {
+    // 1) Validar la sesión del kiosco
+    const { rows: sesionRows } = await pool.query(
+      `SELECT id, employee_id, puesto_id, tracking_token_hash, turno_cerrado_en
+         FROM agente_fichajes
+        WHERE id = $1 AND tipo = 'inicio_turno'`,
+      [fichajeIdSesion]
+    );
+    const sesion = sesionRows[0];
+    if (!sesion) return res.status(404).json({ error: "fichaje_sesion_no_encontrado" });
+    if (!sesion.tracking_token_hash || sesion.tracking_token_hash !== hashToken(tracking_token_sesion)) {
+      return res.status(403).json({ error: "tracking_token_invalido" });
+    }
+    if (sesion.turno_cerrado_en) return res.status(410).json({ error: "sesion_cerrada" });
+    if (!sesion.puesto_id) return res.status(409).json({ error: "sesion_sin_puesto" });
+
+    // 2) Validar que el agente seleccionado esté entre los activos del mismo
+    //    puesto. Resolvemos su employee_id desde users.
+    const { rows: activosRows } = await pool.query(
+      `SELECT af.employee_id, u.id AS user_id
+         FROM agente_fichajes af
+         JOIN users u ON u.empleado_id = af.employee_id
+        WHERE af.tipo = 'inicio_turno'
+          AND af.puesto_id = $1
+          AND af.turno_cerrado_en IS NULL
+          AND u.id = $2
+        LIMIT 1`,
+      [sesion.puesto_id, agenteUserId]
+    );
+    if (!activosRows[0]) {
+      return res.status(403).json({ error: "agente_no_activo_en_puesto" });
+    }
+
+    // 3) Resolver el punto de ronda por token
+    const { rows: puntoRows } = await pool.query(
+      `SELECT p.*, r.activo AS ronda_activa
+         FROM qr_ronda_puntos p
+         JOIN qr_rondas r ON r.id = p.ronda_id
+        WHERE p.qr_token = $1`,
+      [qr_token]
+    );
+    const punto = puntoRows[0];
+    if (!punto) return res.status(404).json({ error: "qr_no_valido" });
+    if (!punto.activo || !punto.ronda_activa) {
+      return res.status(403).json({ error: "punto_inactivo" });
+    }
+
+    // 4) Calcular distancia / resultado (mismo criterio que /qr-rondas/scan)
+    let resultado: "ok" | "fuera_de_rango" | "sin_gps" = "sin_gps";
+    let distancia_metros: number | null = null;
+    if (latitud != null && longitud != null && punto.latitud_ref != null && punto.longitud_ref != null) {
+      distancia_metros = Math.round(
+        haversineMetros(
+          Number(latitud), Number(longitud),
+          Number(punto.latitud_ref), Number(punto.longitud_ref)
+        )
+      );
+      resultado = distancia_metros <= punto.radio_metros ? "ok" : "fuera_de_rango";
+    }
+
+    // 5) Insertar el evento atribuido al agente seleccionado
+    const { rows: eventoRows } = await pool.query(
+      `INSERT INTO qr_ronda_eventos
+         (punto_id, user_id, latitud, longitud, precision_metros, distancia_metros, resultado)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, escaneado_en`,
+      [
+        punto.id,
+        agenteUserId,
+        latitud ?? null,
+        longitud ?? null,
+        precision_metros ?? null,
+        distancia_metros,
+        resultado,
+      ]
+    );
+
+    res.json({
+      ok: true,
+      evento_id: eventoRows[0].id,
+      escaneado_en: eventoRows[0].escaneado_en,
+      resultado,
+      distancia_metros,
+      radio_metros: punto.radio_metros,
+      nombre_punto: punto.nombre,
+    });
+  } catch (err) {
+    logger.error({ err }, "agente/marcar-ronda-puesto: error");
+    res.status(500).json({ error: "Error registrando ronda" });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VISITAS-PUESTO — control de entradas/salidas desde el teléfono del puesto fijo
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// A diferencia de /agente/visitas/* (que requiere device_uuid+device_token de un
+// dispositivo pre-registrado), estos endpoints autentican mediante la sesión de
+// kiosco abierta con fichaje_id_sesion + tracking_token_sesion. Las entradas se
+// guardan en la misma tabla `visitas`, y las fotos del DPI se almacenan en
+// object storage con un timestamp de subida (dpi_frente_subida_en o
+// conductor_dpi_frente_subida_en) para purga automática a los 30 días.
+
+interface SesionKioscoCtx {
+  fichaje_id: number;
+  employee_id: number;
+  puesto_id: number;
+}
+
+async function validarSesionKiosco(
+  fichaje_id_sesion: unknown,
+  tracking_token_sesion: unknown,
+): Promise<
+  | { ok: true; ctx: SesionKioscoCtx }
+  | { ok: false; status: number; error: string }
+> {
+  const fId = Number(fichaje_id_sesion);
+  const tok = typeof tracking_token_sesion === "string" ? tracking_token_sesion : "";
+  if (!Number.isFinite(fId) || !tok) {
+    return { ok: false, status: 400, error: "parametros_invalidos" };
+  }
+  const { rows } = await pool.query(
+    `SELECT id, employee_id, puesto_id, tracking_token_hash, turno_cerrado_en
+       FROM agente_fichajes
+      WHERE id = $1 AND tipo = 'inicio_turno'`,
+    [fId],
+  );
+  const s = rows[0];
+  if (!s) return { ok: false, status: 404, error: "fichaje_sesion_no_encontrado" };
+  if (!s.tracking_token_hash || s.tracking_token_hash !== hashToken(tok)) {
+    return { ok: false, status: 403, error: "tracking_token_invalido" };
+  }
+  if (s.turno_cerrado_en) return { ok: false, status: 410, error: "sesion_cerrada" };
+  if (!s.puesto_id) return { ok: false, status: 409, error: "sesion_sin_puesto" };
+  return { ok: true, ctx: { fichaje_id: s.id, employee_id: s.employee_id, puesto_id: s.puesto_id } };
+}
+
+async function ocrDpiOpenAI(imagen: string): Promise<
+  | { ok: true; datos: Record<string, string> }
+  | { ok: false; status: number; error: string }
+> {
+  const baseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+  if (!baseUrl || !apiKey) {
+    return { ok: false, status: 503, error: "Integración de IA no configurada" };
+  }
+  const imageUrl = imagen.startsWith("data:") ? imagen : `data:image/jpeg;base64,${imagen}`;
+  const aiRes = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: "gpt-4o",
+      max_tokens: 400,
+      messages: [{
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: `Eres un asistente que extrae datos del Documento Personal de Identificación (DPI/CUI) de Guatemala.
+Analiza la imagen y extrae estos campos. El DPI muestra los apellidos antes que los nombres, pero debes devolverlos en orden NOMBRE APELLIDO (primero el nombre de pila, luego los apellidos).
+Responde SOLO con un JSON válido con estas claves (deja vacío "" si no puedes leer el campo):
+{
+  "nombre_completo": "nombres de pila seguidos de los apellidos (ej: Juan Carlos Pérez García)",
+  "dpi": "los 13 dígitos del CUI sin espacios",
+  "fecha_nacimiento": "YYYY-MM-DD",
+  "genero": "Masculino o Femenino"
+}
+No incluyas explicaciones, solo el JSON.`,
+          },
+          { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
+        ],
+      }],
+    }),
+  });
+  if (!aiRes.ok) {
+    const errText = await aiRes.text();
+    logger.error({ status: aiRes.status, errText }, "visitas-puesto/extraer-dpi: AI error");
+    return { ok: false, status: 502, error: "Error del servicio de IA" };
+  }
+  const aiData = (await aiRes.json()) as { choices?: { message?: { content?: string } }[] };
+  const content = aiData.choices?.[0]?.message?.content ?? "";
+  let datos: Record<string, string> = {};
+  try {
+    const match = content.match(/\{[\s\S]*\}/);
+    if (match) datos = JSON.parse(match[0]);
+  } catch {
+    logger.warn({ content }, "visitas-puesto/extraer-dpi: no se pudo parsear JSON");
+  }
+  if (datos.nombre_completo) {
+    datos.nombre_completo = datos.nombre_completo
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .toUpperCase().trim();
+  }
+  if (datos.dpi) datos.dpi = datos.dpi.replace(/\D/g, "");
+  return { ok: true, datos };
+}
+
+// POST /api/agente/visitas-puesto/extraer-dpi
+//   Body: { fichaje_id_sesion, tracking_token_sesion, imagen (data URL o base64) }
+agenteFichajeRouter.post("/agente/visitas-puesto/extraer-dpi", async (req, res) => {
+  const { fichaje_id_sesion, tracking_token_sesion, imagen } = req.body ?? {};
+  const sesion = await validarSesionKiosco(fichaje_id_sesion, tracking_token_sesion);
+  if (!sesion.ok) return res.status(sesion.status).json({ error: sesion.error });
+  if (typeof imagen !== "string" || imagen.length < 50) {
+    return res.status(400).json({ error: "imagen requerida (base64 data URL)" });
+  }
+  try {
+    const r = await ocrDpiOpenAI(imagen);
+    if (!r.ok) return res.status(r.status).json({ error: r.error });
+    res.json({ datos: r.datos });
+  } catch (err) {
+    logger.error({ err }, "agente/visitas-puesto/extraer-dpi: error");
+    res.status(500).json({ error: "Error del servidor" });
+  }
+});
+
+// POST /api/agente/visitas-puesto/foto
+//   Body: { fichaje_id_sesion, tracking_token_sesion, imagen (data URL base64) }
+//   Sube la imagen a object storage y devuelve la URL del objeto privado.
+agenteFichajeRouter.post("/agente/visitas-puesto/foto", async (req, res) => {
+  const { fichaje_id_sesion, tracking_token_sesion, imagen } = req.body ?? {};
+  const sesion = await validarSesionKiosco(fichaje_id_sesion, tracking_token_sesion);
+  if (!sesion.ok) return res.status(sesion.status).json({ error: sesion.error });
+  if (typeof imagen !== "string" || imagen.length < 50) {
+    return res.status(400).json({ error: "imagen requerida (base64 data URL)" });
+  }
+  try {
+    // Parse data URL
+    const m = imagen.match(/^data:([^;]+);base64,(.+)$/);
+    const contentType = m ? m[1] : "image/jpeg";
+    const b64 = m ? m[2] : imagen;
+    const buffer = Buffer.from(b64, "base64");
+    const MAX = 6 * 1024 * 1024;
+    if (buffer.length > MAX) {
+      return res.status(413).json({ error: "imagen_demasiado_grande" });
+    }
+    const svc = new ObjectStorageService();
+    const url = await svc.saveObjectDirectly(buffer, contentType);
+    res.json({ ok: true, url });
+  } catch (err) {
+    logger.error({ err }, "agente/visitas-puesto/foto: error");
+    res.status(500).json({ error: "Error subiendo la imagen" });
+  }
+});
+
+// GET /api/agente/visitas-puesto/abiertas/:fichaje_id?tracking_token=...
+agenteFichajeRouter.get("/agente/visitas-puesto/abiertas/:fichaje_id", async (req, res) => {
+  const sesion = await validarSesionKiosco(
+    req.params.fichaje_id,
+    req.query.tracking_token,
+  );
+  if (!sesion.ok) return res.status(sesion.status).json({ error: sesion.error });
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, tipo, dpi_numero, nombre_completo, placa, marca_vehiculo,
+              color_vehiculo, conductor_nombre, motivo, a_quien_visita, entrada_at,
+              (dpi_frente_url IS NOT NULL OR conductor_dpi_frente_url IS NOT NULL) AS tiene_foto
+         FROM visitas
+        WHERE puesto_id = $1 AND salida_at IS NULL
+        ORDER BY entrada_at DESC`,
+      [sesion.ctx.puesto_id],
+    );
+    res.json({
+      personas: rows.filter((r) => r.tipo === "persona"),
+      vehiculos: rows.filter((r) => r.tipo === "vehiculo"),
+    });
+  } catch (err) {
+    logger.error({ err }, "agente/visitas-puesto/abiertas: error");
+    res.status(500).json({ error: "Error del servidor" });
+  }
+});
+
+// POST /api/agente/visitas-puesto/entrada
+//   Body: { fichaje_id_sesion, tracking_token_sesion, tipo, dpi_numero?, nombre_completo?,
+//           placa?, marca_vehiculo?, color_vehiculo?, conductor_dpi_numero?, conductor_nombre?,
+//           a_quien_visita?, motivo?, observaciones?, dpi_frente_url?, conductor_dpi_frente_url? }
+agenteFichajeRouter.post("/agente/visitas-puesto/entrada", async (req, res) => {
+  const {
+    fichaje_id_sesion, tracking_token_sesion,
+    tipo,
+    dpi_numero, nombre_completo, fecha_nacimiento, genero, dpi_frente_url,
+    placa, marca_vehiculo, color_vehiculo,
+    conductor_dpi_numero, conductor_nombre, conductor_dpi_frente_url,
+    a_quien_visita, motivo, observaciones,
+  } = req.body ?? {};
+  const sesion = await validarSesionKiosco(fichaje_id_sesion, tracking_token_sesion);
+  if (!sesion.ok) return res.status(sesion.status).json({ error: sesion.error });
+
+  if (!tipo || !["persona", "vehiculo"].includes(tipo)) {
+    return res.status(400).json({ error: "tipo_invalido" });
+  }
+  if (tipo === "persona" && (!dpi_numero || String(dpi_numero).trim().length < 5)) {
+    return res.status(400).json({ error: "dpi_requerido" });
+  }
+  if (tipo === "vehiculo" && (!placa || String(placa).trim().length < 3)) {
+    return res.status(400).json({ error: "placa_requerida" });
+  }
+
+  try {
+    // Validar duplicados
+    if (tipo === "persona" && dpi_numero) {
+      const { rows: dup } = await pool.query(
+        `SELECT id FROM visitas WHERE puesto_id = $1 AND dpi_numero = $2 AND salida_at IS NULL LIMIT 1`,
+        [sesion.ctx.puesto_id, String(dpi_numero).trim()],
+      );
+      if (dup[0]) return res.status(409).json({ error: "ya_registrada", visita_id: dup[0].id });
+    }
+    if (tipo === "vehiculo" && placa) {
+      const placaNorm = String(placa).trim().toUpperCase().replace(/\s+/g, "");
+      const { rows: dup } = await pool.query(
+        `SELECT id FROM visitas WHERE puesto_id = $1
+            AND UPPER(REPLACE(placa,' ','')) = $2 AND salida_at IS NULL LIMIT 1`,
+        [sesion.ctx.puesto_id, placaNorm],
+      );
+      if (dup[0]) return res.status(409).json({ error: "ya_registrada", visita_id: dup[0].id });
+    }
+
+    // Resolver datos del agente y el puesto
+    const { rows: pRows } = await pool.query(
+      `SELECT po.nombre AS puesto_nombre, po.cliente_id,
+              COALESCE(po.cliente_nombre, c.nombre_comercial, c.nombre) AS cliente_nombre,
+              e.nombre_completo AS empleado_nombre
+         FROM puestos_operativos po
+         LEFT JOIN clients c ON c.id = po.cliente_id
+         LEFT JOIN employees e ON e.id = $2
+        WHERE po.id = $1`,
+      [sesion.ctx.puesto_id, sesion.ctx.employee_id],
+    );
+    const meta = pRows[0] ?? {};
+
+    const { rows } = await pool.query(
+      `INSERT INTO visitas (
+         tipo, puesto_id, cliente_id, cliente_nombre, puesto_nombre,
+         dpi_numero, nombre_completo, fecha_nacimiento, genero, dpi_frente_url,
+         dpi_frente_subida_en,
+         placa, marca_vehiculo, color_vehiculo,
+         conductor_dpi_numero, conductor_nombre, conductor_dpi_frente_url,
+         conductor_dpi_frente_subida_en,
+         motivo, a_quien_visita, observaciones,
+         entrada_at, entrada_employee_id, entrada_employee_nombre
+       ) VALUES (
+         $1,$2,$3,$4,$5,
+         $6,$7,$8,$9,$10,
+         CASE WHEN $10 IS NOT NULL THEN NOW() ELSE NULL END,
+         $11,$12,$13,
+         $14,$15,$16,
+         CASE WHEN $16 IS NOT NULL THEN NOW() ELSE NULL END,
+         $17,$18,$19,
+         NOW(), $20, $21
+       )
+       RETURNING id, entrada_at`,
+      [
+        tipo, sesion.ctx.puesto_id, meta.cliente_id ?? null, meta.cliente_nombre ?? null, meta.puesto_nombre ?? null,
+        tipo === "persona" ? String(dpi_numero).trim() : null,
+        tipo === "persona" ? (nombre_completo ?? null) : null,
+        tipo === "persona" ? (fecha_nacimiento || null) : null,
+        tipo === "persona" ? (genero ?? null) : null,
+        tipo === "persona" ? (dpi_frente_url ?? null) : null,
+        tipo === "vehiculo" ? String(placa).trim().toUpperCase() : null,
+        tipo === "vehiculo" ? (marca_vehiculo ?? null) : null,
+        tipo === "vehiculo" ? (color_vehiculo ?? null) : null,
+        tipo === "vehiculo" ? (conductor_dpi_numero ?? null) : null,
+        tipo === "vehiculo" ? (conductor_nombre ?? null) : null,
+        tipo === "vehiculo" ? (conductor_dpi_frente_url ?? null) : null,
+        motivo ?? null, a_quien_visita ?? null, observaciones ?? null,
+        sesion.ctx.employee_id, meta.empleado_nombre ?? null,
+      ],
+    );
+    res.json({ ok: true, id: rows[0].id, entrada_at: rows[0].entrada_at });
+  } catch (err) {
+    logger.error({ err }, "agente/visitas-puesto/entrada: error");
+    res.status(500).json({ error: "Error registrando entrada" });
+  }
+});
+
+// POST /api/agente/visitas-puesto/salida
+//   Body: { fichaje_id_sesion, tracking_token_sesion, visita_id, observaciones? }
+agenteFichajeRouter.post("/agente/visitas-puesto/salida", async (req, res) => {
+  const { fichaje_id_sesion, tracking_token_sesion, visita_id, observaciones } = req.body ?? {};
+  const sesion = await validarSesionKiosco(fichaje_id_sesion, tracking_token_sesion);
+  if (!sesion.ok) return res.status(sesion.status).json({ error: sesion.error });
+  if (!Number.isFinite(Number(visita_id))) {
+    return res.status(400).json({ error: "visita_id_invalido" });
+  }
+  try {
+    const { rows: vRows } = await pool.query(
+      `SELECT id FROM visitas WHERE id = $1 AND puesto_id = $2 AND salida_at IS NULL LIMIT 1`,
+      [Number(visita_id), sesion.ctx.puesto_id],
+    );
+    if (!vRows[0]) {
+      return res.status(404).json({ error: "visita_no_encontrada_o_ya_cerrada" });
+    }
+    const { rows: emp } = await pool.query(
+      `SELECT nombre_completo FROM employees WHERE id = $1`,
+      [sesion.ctx.employee_id],
+    );
+    const { rows } = await pool.query(
+      `UPDATE visitas
+          SET salida_at = NOW(),
+              salida_employee_id = $1,
+              salida_employee_nombre = $2,
+              observaciones = COALESCE($3, observaciones)
+        WHERE id = $4
+        RETURNING id, salida_at, entrada_at, tipo, dpi_numero, nombre_completo, placa`,
+      [sesion.ctx.employee_id, emp[0]?.nombre_completo ?? null, observaciones ?? null, vRows[0].id],
+    );
+    res.json({ ok: true, ...rows[0] });
+  } catch (err) {
+    logger.error({ err }, "agente/visitas-puesto/salida: error");
+    res.status(500).json({ error: "Error registrando salida" });
+  }
+});
+
+// POST /api/admin/visitas/cleanup-fotos-dpi
+//   Cron diario o llamada manual: elimina fotos DPI de object storage cuyas
+//   timestamps de subida sean mayores a 30 días, y pone NULL en las URLs.
+//   No borra el registro de la visita, solo la imagen sensible.
+agenteFichajeRouter.post("/admin/visitas/cleanup-fotos-dpi", async (req, res) => {
+  // Verificación de rol vía sesión REAL (consulta BD por username), no por
+  // header x-isp-role que es falsificable desde el cliente.
+  // El permisosMiddleware ya validó la sesión y el módulo "control_qr"; aquí
+  // restringimos adicionalmente a admin/operaciones consultando rol vigente.
+  let rolReal = "";
+  try {
+    const raw = req.headers["x-isp-session"] as string | undefined;
+    const ses = raw ? JSON.parse(raw) : null;
+    if (ses?.username) {
+      const { rol } = await getPermisosForUsername(String(ses.username));
+      rolReal = String(rol ?? "").toLowerCase();
+    } else if (ses?.rol) {
+      rolReal = String(ses.rol).toLowerCase();
+    }
+  } catch {
+    rolReal = "";
+  }
+  if (!["admin", "operaciones"].includes(rolReal)) {
+    return res.status(403).json({ error: "acceso_denegado" });
+  }
+  try {
+    // Para cada URL a borrar, hacemos best-effort sobre object storage y
+    // ponemos NULL en BD aunque el delete del blob falle (no se cuenta como
+    // pendiente nuevamente y se puede limpiar el huérfano manualmente).
+    const { rows: expirados } = await pool.query<{
+      id: number;
+      dpi_frente_url: string | null;
+      conductor_dpi_frente_url: string | null;
+      dpi_expirado: boolean;
+      cond_expirado: boolean;
+    }>(
+      `SELECT id, dpi_frente_url, conductor_dpi_frente_url,
+              (dpi_frente_url IS NOT NULL AND dpi_frente_subida_en < NOW() - INTERVAL '30 days') AS dpi_expirado,
+              (conductor_dpi_frente_url IS NOT NULL AND conductor_dpi_frente_subida_en < NOW() - INTERVAL '30 days') AS cond_expirado
+         FROM visitas
+        WHERE (dpi_frente_url IS NOT NULL AND dpi_frente_subida_en < NOW() - INTERVAL '30 days')
+           OR (conductor_dpi_frente_url IS NOT NULL AND conductor_dpi_frente_subida_en < NOW() - INTERVAL '30 days')
+        LIMIT 500`,
+    );
+    const storage = new ObjectStorageService();
+    let borrados = 0;
+    let blobsEliminados = 0;
+    let blobsHuerfanos = 0;
+    let errores = 0;
+    for (const v of expirados) {
+      const updates: string[] = [];
+      if (v.dpi_expirado) {
+        updates.push("dpi_frente_url = NULL", "dpi_frente_subida_en = NULL");
+        if (v.dpi_frente_url && v.dpi_frente_url.startsWith("/objects/")) {
+          try {
+            await storage.deleteObjectByPath(v.dpi_frente_url);
+            blobsEliminados++;
+          } catch (e) {
+            blobsHuerfanos++;
+            logger.warn({ err: e, visitaId: v.id, url: v.dpi_frente_url }, "cleanup-fotos-dpi: blob delete fallido (huérfano)");
+          }
+        }
+        borrados++;
+      }
+      if (v.cond_expirado) {
+        updates.push("conductor_dpi_frente_url = NULL", "conductor_dpi_frente_subida_en = NULL");
+        if (v.conductor_dpi_frente_url && v.conductor_dpi_frente_url.startsWith("/objects/")) {
+          try {
+            await storage.deleteObjectByPath(v.conductor_dpi_frente_url);
+            blobsEliminados++;
+          } catch (e) {
+            blobsHuerfanos++;
+            logger.warn({ err: e, visitaId: v.id, url: v.conductor_dpi_frente_url }, "cleanup-fotos-dpi: blob delete fallido (huérfano)");
+          }
+        }
+        borrados++;
+      }
+      if (updates.length > 0) {
+        try {
+          await pool.query(`UPDATE visitas SET ${updates.join(", ")} WHERE id = $1`, [v.id]);
+        } catch (e) {
+          errores++;
+          logger.error({ err: e, visitaId: v.id }, "cleanup-fotos-dpi: update fallido");
+        }
+      }
+    }
+    res.json({
+      ok: true,
+      urls_purgadas: borrados,
+      blobs_eliminados: blobsEliminados,
+      blobs_huerfanos: blobsHuerfanos,
+      errores,
+      total_visitas_afectadas: expirados.length,
+    });
+  } catch (err) {
+    logger.error({ err }, "admin/visitas/cleanup-fotos-dpi: error");
+    res.status(500).json({ error: "Error en limpieza" });
   }
 });
 

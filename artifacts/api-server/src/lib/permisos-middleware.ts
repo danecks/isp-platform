@@ -150,6 +150,24 @@ function isPublicPath(path: string, method: string): boolean {
   // GET /api/agente/rondas-del-puesto/:fichaje_id — handler exige tracking_token
   if (method === "GET" && /^\/agente\/rondas-del-puesto\/\d+$/.test(path)) return true;
 
+  // GET /api/agente/turnos-activos-del-puesto/:fichaje_id — handler exige tracking_token
+  if (method === "GET" && /^\/agente\/turnos-activos-del-puesto\/\d+$/.test(path)) return true;
+
+  // POST /api/agente/cerrar-turno-verificado — handler exige tracking_token + carnet
+  if (method === "POST" && path === "/agente/cerrar-turno-verificado") return true;
+
+  // POST /api/agente/marcar-ronda-puesto — handler exige tracking_token de sesión kiosco
+  if (method === "POST" && path === "/agente/marcar-ronda-puesto") return true;
+
+  // Visitas-puesto desde teléfono fijo del puesto: handlers exigen tracking_token
+  if (method === "POST" && (
+    path === "/agente/visitas-puesto/extraer-dpi" ||
+    path === "/agente/visitas-puesto/foto" ||
+    path === "/agente/visitas-puesto/entrada" ||
+    path === "/agente/visitas-puesto/salida"
+  )) return true;
+  if (method === "GET" && /^\/agente\/visitas-puesto\/abiertas\/\d+$/.test(path)) return true;
+
   // GETs públicos del agente (modo kiosco / equipo asignado por puesto)
   if (method === "GET" && (
     path === "/agente/puesto-del-dia" ||
