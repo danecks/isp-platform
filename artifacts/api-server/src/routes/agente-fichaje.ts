@@ -2,9 +2,10 @@ import { Router } from "express";
 import { pool } from "@workspace/db";
 import { v4 as uuidv4 } from "uuid";
 import { createHash, randomBytes } from "node:crypto";
+import { Readable } from "node:stream";
 import { logger } from "../lib/logger";
 import { TITULARES_UNIFICADOS_CTE } from "./operaciones/_helpers/titularidad";
-import { ObjectStorageService } from "../lib/objectStorage";
+import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { getPermisosForUsername } from "../lib/permisos-middleware";
 
 export const agenteFichajeRouter = Router();
@@ -1671,7 +1672,7 @@ agenteFichajeRouter.get("/agente/turnos-activos-del-puesto/:fichaje_id", async (
               u.id             AS user_id
          FROM agente_fichajes af
          JOIN employees e ON e.id = af.employee_id
-         LEFT JOIN users u ON u.empleado_id = af.employee_id
+         LEFT JOIN users u ON u.employee_id = af.employee_id
         WHERE af.tipo = 'inicio_turno'
           AND af.puesto_id = $1
           AND af.turno_cerrado_en IS NULL
@@ -1933,7 +1934,7 @@ agenteFichajeRouter.post("/agente/marcar-ronda-puesto", async (req, res) => {
     const { rows: activosRows } = await pool.query(
       `SELECT af.employee_id, u.id AS user_id
          FROM agente_fichajes af
-         JOIN users u ON u.empleado_id = af.employee_id
+         JOIN users u ON u.employee_id = af.employee_id
         WHERE af.tipo = 'inicio_turno'
           AND af.puesto_id = $1
           AND af.turno_cerrado_en IS NULL
@@ -2156,6 +2157,56 @@ agenteFichajeRouter.post("/agente/visitas-puesto/foto", async (req, res) => {
   }
 });
 
+// GET /api/agente/visitas-puesto/foto/:visita_id?fichaje_id=...&tracking_token=...&cual=dpi|conductor
+//   Sirve la foto del DPI (frente) o del conductor de una visita, autenticando con
+//   el tracking_token del turno activo del puesto. La visita debe pertenecer al
+//   mismo puesto que el fichaje. Stream directo desde object storage.
+agenteFichajeRouter.get("/agente/visitas-puesto/foto/:visita_id", async (req, res) => {
+  const visitaId = Number(req.params.visita_id);
+  const fichajeIdRaw = req.query.fichaje_id;
+  const trackingToken = String(req.query.tracking_token ?? "");
+  const cual = String(req.query.cual ?? "dpi");
+  if (!Number.isFinite(visitaId) || !fichajeIdRaw || !trackingToken) {
+    return res.status(400).json({ error: "parametros_invalidos" });
+  }
+  if (cual !== "dpi" && cual !== "conductor") {
+    return res.status(400).json({ error: "cual_invalido" });
+  }
+  const sesion = await validarSesionKiosco(fichajeIdRaw, trackingToken);
+  if (!sesion.ok) return res.status(sesion.status).json({ error: sesion.error });
+  try {
+    const { rows } = await pool.query(
+      `SELECT dpi_frente_url, conductor_dpi_frente_url
+         FROM visitas
+        WHERE id = $1 AND puesto_id = $2`,
+      [visitaId, sesion.ctx.puesto_id],
+    );
+    if (!rows[0]) return res.status(404).json({ error: "visita_no_encontrada" });
+    const objectPath: string | null = cual === "dpi"
+      ? rows[0].dpi_frente_url
+      : rows[0].conductor_dpi_frente_url;
+    if (!objectPath || !objectPath.startsWith("/objects/")) {
+      return res.status(404).json({ error: "sin_foto" });
+    }
+    const svc = new ObjectStorageService();
+    const file = await svc.getObjectEntityFile(objectPath);
+    const response = await svc.downloadObject(file);
+    res.status(response.status);
+    response.headers.forEach((value, key) => res.setHeader(key, value));
+    if (response.body) {
+      Readable.fromWeb(response.body as any).pipe(res);
+    } else {
+      res.end();
+    }
+  } catch (err) {
+    if (err instanceof ObjectNotFoundError) {
+      return res.status(404).json({ error: "objeto_no_encontrado" });
+    }
+    logger.error({ err }, "agente/visitas-puesto/foto GET: error");
+    res.status(500).json({ error: "Error del servidor" });
+  }
+});
+
 // GET /api/agente/visitas-puesto/abiertas/:fichaje_id?tracking_token=...
 agenteFichajeRouter.get("/agente/visitas-puesto/abiertas/:fichaje_id", async (req, res) => {
   const sesion = await validarSesionKiosco(
@@ -2167,7 +2218,8 @@ agenteFichajeRouter.get("/agente/visitas-puesto/abiertas/:fichaje_id", async (re
     const { rows } = await pool.query(
       `SELECT id, tipo, dpi_numero, nombre_completo, placa, marca_vehiculo,
               color_vehiculo, conductor_nombre, motivo, a_quien_visita, entrada_at,
-              (dpi_frente_url IS NOT NULL OR conductor_dpi_frente_url IS NOT NULL) AS tiene_foto
+              (dpi_frente_url IS NOT NULL) AS tiene_foto_dpi,
+              (conductor_dpi_frente_url IS NOT NULL) AS tiene_foto_conductor
          FROM visitas
         WHERE puesto_id = $1 AND salida_at IS NULL
         ORDER BY entrada_at DESC`,

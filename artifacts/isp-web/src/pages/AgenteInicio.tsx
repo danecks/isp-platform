@@ -181,9 +181,10 @@ export default function AgenteInicio() {
   // ── Visitas (sub-vista del puesto fijo) ────────────────────────────────────
   const [visitaTab, setVisitaTab] = useState<"peaton" | "vehiculo">("peaton");
   const [visitasAbiertas, setVisitasAbiertas] = useState<{
-    personas: Array<{ id: number; dpi_numero: string | null; nombre_completo: string | null; a_quien_visita: string | null; entrada_at: string }>;
-    vehiculos: Array<{ id: number; placa: string | null; marca_vehiculo: string | null; conductor_nombre: string | null; a_quien_visita: string | null; entrada_at: string }>;
+    personas: Array<{ id: number; dpi_numero: string | null; nombre_completo: string | null; a_quien_visita: string | null; entrada_at: string; tiene_foto_dpi?: boolean }>;
+    vehiculos: Array<{ id: number; placa: string | null; marca_vehiculo: string | null; conductor_nombre: string | null; a_quien_visita: string | null; entrada_at: string; tiene_foto_conductor?: boolean }>;
   } | null>(null);
+  const [fotoVisitaModal, setFotoVisitaModal] = useState<{ url: string; titulo: string } | null>(null);
   const [visitasLoading, setVisitasLoading] = useState(false);
   const [visitaSubmitting, setVisitaSubmitting] = useState(false);
   const [visitaOcrLoading, setVisitaOcrLoading] = useState(false);
@@ -2170,56 +2171,94 @@ export default function AgenteInicio() {
                         <div className="text-xs text-slate-500">No hay visitas abiertas.</div>
                       ) : (
                         <div className="space-y-2">
-                          {visitasAbiertas.personas.map((p) => (
-                            <div key={`p-${p.id}`} className="bg-slate-800 rounded p-2 flex items-center justify-between gap-2">
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-semibold truncate">
-                                  {p.nombre_completo ?? p.dpi_numero ?? "Persona"}
+                          {visitasAbiertas.personas.map((p) => {
+                            const fotoUrl = p.tiene_foto_dpi && turnoActivo?.fichaje_id && turnoActivo?.tracking_token
+                              ? `${API}/agente/visitas-puesto/foto/${p.id}?fichaje_id=${turnoActivo.fichaje_id}&tracking_token=${encodeURIComponent(turnoActivo.tracking_token)}&cual=dpi`
+                              : null;
+                            return (
+                              <div key={`p-${p.id}`} className="bg-slate-800 rounded p-2 flex items-center gap-2">
+                                {fotoUrl ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setFotoVisitaModal({ url: fotoUrl, titulo: `DPI · ${p.nombre_completo ?? p.dpi_numero ?? "Persona"}` })}
+                                    className="flex-shrink-0 w-12 h-12 rounded overflow-hidden bg-slate-700 border border-slate-600 hover:border-amber-500 transition"
+                                    aria-label="Ver foto del DPI"
+                                  >
+                                    <img src={fotoUrl} alt="DPI" className="w-full h-full object-cover" />
+                                  </button>
+                                ) : (
+                                  <div className="flex-shrink-0 w-12 h-12 rounded bg-slate-700 border border-slate-600 flex items-center justify-center text-[9px] text-slate-500 text-center leading-tight">
+                                    Sin<br/>foto
+                                  </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-semibold truncate">
+                                    {p.nombre_completo ?? p.dpi_numero ?? "Persona"}
+                                  </div>
+                                  <div className="text-[11px] text-slate-400 truncate">
+                                    {p.dpi_numero && <span>DPI {p.dpi_numero}</span>}
+                                    {p.a_quien_visita && <span> · visita {p.a_quien_visita}</span>}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500">
+                                    Entró {new Date(p.entrada_at).toLocaleTimeString("es-GT", {
+                                      timeZone: "America/Guatemala", hour: "2-digit", minute: "2-digit",
+                                    })}
+                                  </div>
                                 </div>
-                                <div className="text-[11px] text-slate-400 truncate">
-                                  {p.dpi_numero && <span>DPI {p.dpi_numero}</span>}
-                                  {p.a_quien_visita && <span> · visita {p.a_quien_visita}</span>}
-                                </div>
-                                <div className="text-[10px] text-slate-500">
-                                  Entró {new Date(p.entrada_at).toLocaleTimeString("es-GT", {
-                                    timeZone: "America/Guatemala", hour: "2-digit", minute: "2-digit",
-                                  })}
-                                </div>
+                                <button
+                                  onClick={() => void marcarSalidaVisita(p.id)}
+                                  disabled={visitaSubmitting}
+                                  className="bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white text-xs font-semibold px-3 py-1.5 rounded"
+                                >
+                                  Salida
+                                </button>
                               </div>
-                              <button
-                                onClick={() => void marcarSalidaVisita(p.id)}
-                                disabled={visitaSubmitting}
-                                className="bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white text-xs font-semibold px-3 py-1.5 rounded"
-                              >
-                                Salida
-                              </button>
-                            </div>
-                          ))}
-                          {visitasAbiertas.vehiculos.map((v) => (
-                            <div key={`v-${v.id}`} className="bg-slate-800 rounded p-2 flex items-center justify-between gap-2">
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-semibold truncate">
-                                  {v.placa} {v.marca_vehiculo && `· ${v.marca_vehiculo}`}
+                            );
+                          })}
+                          {visitasAbiertas.vehiculos.map((v) => {
+                            const fotoUrl = v.tiene_foto_conductor && turnoActivo?.fichaje_id && turnoActivo?.tracking_token
+                              ? `${API}/agente/visitas-puesto/foto/${v.id}?fichaje_id=${turnoActivo.fichaje_id}&tracking_token=${encodeURIComponent(turnoActivo.tracking_token)}&cual=conductor`
+                              : null;
+                            return (
+                              <div key={`v-${v.id}`} className="bg-slate-800 rounded p-2 flex items-center gap-2">
+                                {fotoUrl ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setFotoVisitaModal({ url: fotoUrl, titulo: `DPI conductor · ${v.placa ?? "Vehículo"}` })}
+                                    className="flex-shrink-0 w-12 h-12 rounded overflow-hidden bg-slate-700 border border-slate-600 hover:border-amber-500 transition"
+                                    aria-label="Ver foto del DPI del conductor"
+                                  >
+                                    <img src={fotoUrl} alt="DPI conductor" className="w-full h-full object-cover" />
+                                  </button>
+                                ) : (
+                                  <div className="flex-shrink-0 w-12 h-12 rounded bg-slate-700 border border-slate-600 flex items-center justify-center text-[9px] text-slate-500 text-center leading-tight">
+                                    Sin<br/>foto
+                                  </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-semibold truncate">
+                                    {v.placa} {v.marca_vehiculo && `· ${v.marca_vehiculo}`}
+                                  </div>
+                                  <div className="text-[11px] text-slate-400 truncate">
+                                    {v.conductor_nombre && <span>{v.conductor_nombre}</span>}
+                                    {v.a_quien_visita && <span> · visita {v.a_quien_visita}</span>}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500">
+                                    Entró {new Date(v.entrada_at).toLocaleTimeString("es-GT", {
+                                      timeZone: "America/Guatemala", hour: "2-digit", minute: "2-digit",
+                                    })}
+                                  </div>
                                 </div>
-                                <div className="text-[11px] text-slate-400 truncate">
-                                  {v.conductor_nombre && <span>{v.conductor_nombre}</span>}
-                                  {v.a_quien_visita && <span> · visita {v.a_quien_visita}</span>}
-                                </div>
-                                <div className="text-[10px] text-slate-500">
-                                  Entró {new Date(v.entrada_at).toLocaleTimeString("es-GT", {
-                                    timeZone: "America/Guatemala", hour: "2-digit", minute: "2-digit",
-                                  })}
-                                </div>
+                                <button
+                                  onClick={() => void marcarSalidaVisita(v.id)}
+                                  disabled={visitaSubmitting}
+                                  className="bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white text-xs font-semibold px-3 py-1.5 rounded"
+                                >
+                                  Salida
+                                </button>
                               </div>
-                              <button
-                                onClick={() => void marcarSalidaVisita(v.id)}
-                                disabled={visitaSubmitting}
-                                className="bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white text-xs font-semibold px-3 py-1.5 rounded"
-                              >
-                                Salida
-                              </button>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -2473,6 +2512,29 @@ export default function AgenteInicio() {
       <footer className="px-4 py-3 text-center text-[11px] text-slate-600 border-t border-slate-900">
         ISP, S.A. · Investigaciones y Seguridad Profesional
       </footer>
+
+      {/* Modal lightbox para ver la foto del DPI de una visita */}
+      {fotoVisitaModal && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 flex flex-col items-center justify-center p-4"
+          onClick={() => setFotoVisitaModal(null)}
+        >
+          <div className="text-white text-sm mb-3 text-center">{fotoVisitaModal.titulo}</div>
+          <img
+            src={fotoVisitaModal.url}
+            alt="Foto DPI"
+            className="max-w-full max-h-[75vh] rounded shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            onClick={() => setFotoVisitaModal(null)}
+            className="mt-4 bg-white/10 hover:bg-white/20 text-white text-sm px-4 py-2 rounded"
+          >
+            Cerrar
+          </button>
+        </div>
+      )}
     </div>
   );
 }
