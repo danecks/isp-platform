@@ -127,45 +127,97 @@ portalRouter.get("/portal/mis-clientes", async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 portalRouter.get("/portal/dashboard", requirePortalAuth, async (req, res) => {
   const clienteId: string = (req as any).portalClienteId;
+  const clienteIntId: number | null = (req as any).portalClienteIntId;
 
   try {
-    const allIncidents = await db
-      .select()
-      .from(incidentsTable)
-      .where(eq(incidentsTable.clienteRefId, clienteId))
-      .orderBy(desc(incidentsTable.fecha));
+    // ─── Incidencias (agregaciones SQL en lugar de cargar todo a memoria) ───
+    const { rows: incRes } = await pool.query<{
+      total: string; activas: string; resueltas: string;
+      del_mes: string; del_mes_anterior: string;
+    }>(
+      `SELECT
+         COUNT(*)::text                                                            AS total,
+         COUNT(*) FILTER (WHERE estado IN ('abierta','en_proceso'))::text          AS activas,
+         COUNT(*) FILTER (WHERE estado = 'cerrada')::text                          AS resueltas,
+         COUNT(*) FILTER (WHERE fecha >= date_trunc('month', NOW()))::text         AS del_mes,
+         COUNT(*) FILTER (
+           WHERE fecha >= date_trunc('month', NOW() - INTERVAL '1 month')
+             AND fecha <  date_trunc('month', NOW())
+         )::text                                                                   AS del_mes_anterior
+       FROM incidents
+       WHERE cliente_ref_id = $1`,
+      [clienteId]
+    );
+    const incAgg = incRes[0] ?? { total: "0", activas: "0", resueltas: "0", del_mes: "0", del_mes_anterior: "0" };
+    const total          = parseInt(incAgg.total, 10) || 0;
+    const activas        = parseInt(incAgg.activas, 10) || 0;
+    const resueltas      = parseInt(incAgg.resueltas, 10) || 0;
+    const delMes         = parseInt(incAgg.del_mes, 10) || 0;
+    const delMesAnterior = parseInt(incAgg.del_mes_anterior, 10) || 0;
 
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    // ─── Recientes (top 5) ───
+    const { rows: recientes } = await pool.query(
+      `SELECT id, tipo, prioridad, estado, ubicacion, fecha, responsable
+         FROM incidents
+        WHERE cliente_ref_id = $1
+        ORDER BY fecha DESC
+        LIMIT 5`,
+      [clienteId]
+    );
 
-    const activas = allIncidents.filter((i) =>
-      ["abierta", "en_proceso"].includes(i.estado)
-    ).length;
-    const delMes = allIncidents.filter(
-      (i) => i.fecha >= startOfMonth
-    ).length;
-    const delMesAnterior = allIncidents.filter(
-      (i) => i.fecha >= startOfLastMonth && i.fecha <= endOfLastMonth
-    ).length;
-    const resueltas = allIncidents.filter((i) => i.estado === "cerrada").length;
-    const recientes = allIncidents.slice(0, 5);
-
-    const agentes = await db
-      .select({ total: count() })
-      .from(agentAssignmentsTable)
-      .where(
-        and(
-          eq(agentAssignmentsTable.clienteId, clienteId),
-          eq(agentAssignmentsTable.estado, "activo")
-        )
+    // ─── Agentes asignados (fuente real: puesto_slots + fallback titular legacy) ───
+    // Cuenta empleados ÚNICOS asignados a algún slot/puesto activo del cliente.
+    let agentesActivos = 0;
+    let agentesEnServicio = 0;
+    let puestosActivos = 0;
+    if (clienteIntId) {
+      const { rows: agRes } = await pool.query<{
+        agentes: string; puestos: string; en_servicio: string;
+      }>(
+        `WITH puestos_cli AS (
+           SELECT id FROM puestos_operativos
+            WHERE cliente_id = $1 AND activo = TRUE
+         ),
+         empleados_asignados AS (
+           SELECT DISTINCT ps.empleado_id AS emp_id
+             FROM puesto_slots ps
+            WHERE ps.puesto_id IN (SELECT id FROM puestos_cli)
+              AND ps.activo = TRUE
+              AND ps.empleado_id IS NOT NULL
+           UNION
+           SELECT DISTINCT COALESCE(po.titular_employee_id, po.agente_id) AS emp_id
+             FROM puestos_operativos po
+            WHERE po.id IN (SELECT id FROM puestos_cli)
+              AND COALESCE(po.titular_employee_id, po.agente_id) IS NOT NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM puesto_slots ps2
+                 WHERE ps2.puesto_id = po.id AND ps2.activo = TRUE
+              )
+         ),
+         en_servicio_ahora AS (
+           SELECT DISTINCT af.employee_id
+             FROM agente_fichajes af
+            WHERE af.puesto_id IN (SELECT id FROM puestos_cli)
+              AND af.tipo = 'inicio_turno'
+              AND af.turno_cerrado_en IS NULL
+              AND af.employee_id IS NOT NULL
+              AND af.registrado_en >= NOW() - INTERVAL '36 hours'
+         )
+         SELECT
+           (SELECT COUNT(*) FROM empleados_asignados)::text AS agentes,
+           (SELECT COUNT(*) FROM puestos_cli)::text         AS puestos,
+           (SELECT COUNT(*) FROM en_servicio_ahora)::text   AS en_servicio`,
+        [clienteIntId]
       );
+      agentesActivos    = parseInt(agRes[0]?.agentes ?? "0", 10) || 0;
+      puestosActivos    = parseInt(agRes[0]?.puestos ?? "0", 10) || 0;
+      agentesEnServicio = parseInt(agRes[0]?.en_servicio ?? "0", 10) || 0;
+    }
 
     res.json({
       clienteId,
       incidencias: {
-        total: allIncidents.length,
+        total,
         activas,
         resueltas,
         delMes,
@@ -176,7 +228,9 @@ portalRouter.get("/portal/dashboard", requirePortalAuth, async (req, res) => {
         recientes,
       },
       agentes: {
-        activos: agentes[0]?.total ?? 0,
+        activos: agentesActivos,
+        enServicioAhora: agentesEnServicio,
+        puestos: puestosActivos,
       },
       estadoServicio: activas === 0
         ? "operativo"

@@ -21,7 +21,11 @@ interface DashboardData {
       ubicacion: string | null; fecha: string; responsable: string | null;
     }[];
   };
-  agentes: { activos: number };
+  agentes: {
+    activos: number;
+    enServicioAhora?: number;
+    puestos?: number;
+  };
   estadoServicio: "operativo" | "atencion" | "critico";
 }
 
@@ -180,7 +184,19 @@ export default function PortalDashboard() {
             <span className="text-[10px] text-white/30 uppercase tracking-wider">Agentes</span>
           </div>
           <p className="text-3xl font-bold text-white">{data.agentes.activos}</p>
-          <p className="text-xs text-white/40 mt-1">asignados a su cuenta</p>
+          <p className="text-xs text-white/40 mt-1">
+            asignados
+            {typeof data.agentes.puestos === "number" && data.agentes.puestos > 0 &&
+              ` · ${data.agentes.puestos} puesto${data.agentes.puestos !== 1 ? "s" : ""}`}
+          </p>
+          {typeof data.agentes.enServicioAhora === "number" && data.agentes.enServicioAhora > 0 && (
+            <div className="flex items-center gap-1 mt-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[10px] text-emerald-300 font-semibold">
+                {data.agentes.enServicioAhora} en servicio ahora
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
