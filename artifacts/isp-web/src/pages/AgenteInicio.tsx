@@ -808,15 +808,15 @@ export default function AgenteInicio() {
     }
   }, []);
 
-  // Auto-refresh cada 30s cuando estamos en main del kiosco-puesto
+  // Auto-refresh cada 30s cuando estamos en main del puesto fijo
+  // (la nueva botonería operativa no depende del modo kiosko).
   useEffect(() => {
-    if (!esKiosco) return;
     if (estado !== "turno_activo" || turnoActivo?.tipo !== "puesto") return;
     if (puestoSubVista !== "main") return;
     void cargarAgentesActivos();
     const t = setInterval(() => { void cargarAgentesActivos(); }, 30_000);
     return () => clearInterval(t);
-  }, [esKiosco, estado, turnoActivo?.tipo, turnoActivo?.fichaje_id, puestoSubVista, cargarAgentesActivos]);
+  }, [estado, turnoActivo?.tipo, turnoActivo?.fichaje_id, puestoSubVista, cargarAgentesActivos]);
 
   // Iniciar escaneo en modo "agregar agente": el QR decodificado se manda a
   // /agente/iniciar-turno; si OK, refresca la lista. NO toca turnoActivo.
@@ -1815,8 +1815,9 @@ export default function AgenteInicio() {
               </div>
             )}
 
-            {esKiosco ? (
-              <>
+            {/* Botonería operativa multi-agente (visible en cualquier turno de puesto fijo;
+                las acciones se autorizan por carnet QR + tracking_token, no por modo kiosco). */}
+            <>
                 {/* MAIN: lista de agentes activos + botonería 2x2 */}
                 {puestoSubVista === "main" && (
                   <>
@@ -2225,48 +2226,6 @@ export default function AgenteInicio() {
                   </div>
                 )}
               </>
-            ) : (
-              /* Móvil personal del agente: vista clásica de un solo turno */
-              <>
-                <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
-                  <div className="text-[11px] uppercase tracking-wide text-slate-500">Agente</div>
-                  <div className="font-semibold">{turnoActivo.agente_nombre}</div>
-                </div>
-
-                {/* Lista de compañeros activos en el mismo puesto */}
-                {agentesActivos && agentesActivos.filter(a => a.fichaje_id !== turnoActivo.fichaje_id).length > 0 && (
-                  <div className="bg-slate-900 border border-slate-800 rounded-lg p-3">
-                    <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-2 flex items-center gap-1">
-                      <Users className="w-3 h-3" /> Otros agentes en este puesto
-                    </div>
-                    <div className="space-y-1">
-                      {agentesActivos
-                        .filter(a => a.fichaje_id !== turnoActivo.fichaje_id)
-                        .map((a) => (
-                          <div key={a.fichaje_id} className="text-sm text-slate-200">
-                            {a.nombre}
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="bg-slate-900 border border-slate-800 rounded-lg p-3 flex items-start gap-2">
-                  <Smartphone className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-slate-300">
-                    Las visitas se registran en el teléfono fijo del puesto.
-                  </p>
-                </div>
-
-                <button
-                  onClick={cerrarTurno}
-                  className="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold py-4 rounded-lg flex items-center justify-center gap-2"
-                >
-                  <LogOut className="w-5 h-5" />
-                  Cerrar turno
-                </button>
-              </>
-            )}
 
             {/* Rondas con progreso del día (visible en MAIN para ambos modos) */}
             {puestoSubVista === "main" && (
