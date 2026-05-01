@@ -2253,11 +2253,11 @@ agenteFichajeRouter.post("/agente/visitas-puesto/entrada", async (req, res) => {
          entrada_at, entrada_employee_id, entrada_employee_nombre
        ) VALUES (
          $1,$2,$3,$4,$5,
-         $6,$7,$8,$9,$10,
-         CASE WHEN $10 IS NOT NULL THEN NOW() ELSE NULL END,
+         $6,$7,$8::date,$9,$10::text,
+         CASE WHEN $10::text IS NOT NULL THEN NOW() ELSE NULL END,
          $11,$12,$13,
-         $14,$15,$16,
-         CASE WHEN $16 IS NOT NULL THEN NOW() ELSE NULL END,
+         $14,$15,$16::text,
+         CASE WHEN $16::text IS NOT NULL THEN NOW() ELSE NULL END,
          $17,$18,$19,
          NOW(), $20, $21
        )
