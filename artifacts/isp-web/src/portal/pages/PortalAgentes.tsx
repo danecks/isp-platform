@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { PortalLayout } from "@/portal/layout/PortalLayout";
 import { portalGet } from "@/lib/portalApi";
-import { Users, MapPin, User, Calendar, ShieldCheck, Info } from "lucide-react";
+import { Users, MapPin, User, Calendar, ShieldCheck, Info, Activity } from "lucide-react";
 
 interface Agente {
   asignacionId: number;
@@ -18,6 +18,7 @@ interface Agente {
   empleadoEstadoLaboral: string;
   empleadoSede: string | null;
   empleadoFuente: string;
+  enServicioAhora?: boolean;
 }
 
 const ESTADO_LAB_COLOR: Record<string, string> = {
@@ -51,11 +52,13 @@ function calcularTiempo(fechaInicio: string): string {
   return `${años} año${años !== 1 ? "s" : ""}${mesesRest > 0 ? ` ${mesesRest} mes${mesesRest !== 1 ? "es" : ""}` : ""}`;
 }
 
-function initials(nombre: string): string {
-  return nombre
-    .split(" ")
+function initials(nombre: string | null | undefined): string {
+  if (!nombre || typeof nombre !== "string") return "—";
+  const parts = nombre.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "—";
+  return parts
     .slice(0, 2)
-    .map((n) => n[0])
+    .map((n) => n[0] ?? "")
     .join("")
     .toUpperCase();
 }
@@ -125,14 +128,22 @@ export default function PortalAgentes() {
                       {agente.codigoAsignacion}
                     </p>
                   )}
-                  <span
-                    className={`inline-flex items-center mt-2 px-2 py-0.5 rounded text-[10px] font-semibold border ${
-                      ESTADO_LAB_COLOR[agente.empleadoEstadoLaboral] ?? "text-white/40 bg-white/5 border-white/10"
-                    }`}
-                  >
-                    <ShieldCheck className="w-2.5 h-2.5 mr-1" />
-                    {ESTADO_LAB_LABEL[agente.empleadoEstadoLaboral] ?? agente.empleadoEstadoLaboral}
-                  </span>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                        ESTADO_LAB_COLOR[agente.empleadoEstadoLaboral] ?? "text-white/40 bg-white/5 border-white/10"
+                      }`}
+                    >
+                      <ShieldCheck className="w-2.5 h-2.5 mr-1" />
+                      {ESTADO_LAB_LABEL[agente.empleadoEstadoLaboral] ?? agente.empleadoEstadoLaboral}
+                    </span>
+                    {agente.enServicioAhora && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border text-emerald-300 bg-emerald-400/10 border-emerald-400/30">
+                        <Activity className="w-2.5 h-2.5 mr-1 animate-pulse" />
+                        En servicio ahora
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 

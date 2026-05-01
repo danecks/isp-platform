@@ -68,8 +68,10 @@ async function requirePortalAuth(req: Request, res: Response, next: NextFunction
       [cid]
     );
     (req as any).portalClienteIntId = clientRows[0]?.id ?? null;
-  } catch {
-    // Si falla la consulta, seguir con validación básica
+  } catch (err) {
+    // Fail-closed: si falla la validación de acceso, NO permitir el request.
+    req.log?.error({ err }, "requirePortalAuth: fallo validando acceso");
+    return res.status(500).json({ error: "No fue posible validar el acceso al portal" });
   }
 
   (req as any).portalClienteId = cid;
@@ -215,6 +217,88 @@ portalRouter.get("/portal/incidencias", requirePortalAuth, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// POST /api/portal/incidencias — el cliente reporta una nueva incidencia
+// ─────────────────────────────────────────────────────────────────────────────
+portalRouter.post("/portal/incidencias", requirePortalAuth, async (req, res) => {
+  const clienteId: string = (req as any).portalClienteId;
+  const clienteIntId: number | null = (req as any).portalClienteIntId;
+
+  const { tipo, prioridad, ubicacion, descripcion, esEmergencia } = (req.body ?? {}) as {
+    tipo?: string;
+    prioridad?: string;
+    ubicacion?: string;
+    descripcion?: string;
+    esEmergencia?: boolean;
+  };
+
+  // Validación mínima
+  const tipoLimpio = (tipo ?? "").trim();
+  const descLimpia = (descripcion ?? "").trim();
+  if (!tipoLimpio || tipoLimpio.length > 100) {
+    return res.status(400).json({ error: "El tipo de incidencia es requerido (máx 100 caracteres)." });
+  }
+  if (!descLimpia || descLimpia.length < 5) {
+    return res.status(400).json({ error: "La descripción es requerida (mínimo 5 caracteres)." });
+  }
+  if (descLimpia.length > 2000) {
+    return res.status(400).json({ error: "La descripción es demasiado larga (máx 2000 caracteres)." });
+  }
+  const ubicacionLimpia = (ubicacion ?? "").trim();
+  if (ubicacionLimpia.length > 200) {
+    return res.status(400).json({ error: "La ubicación es demasiado larga (máx 200 caracteres)." });
+  }
+  const prioridadOk = ["alta", "media", "baja"].includes((prioridad ?? "").toLowerCase());
+  const prioridadFinal = prioridadOk ? (prioridad as string).toLowerCase() : "media";
+
+  // Resolver el nombre del cliente para el campo `cliente` (texto)
+  let clienteNombre = clienteId;
+  try {
+    if (clienteIntId) {
+      const { rows } = await pool.query<{ nombre_comercial: string | null; nombre: string | null }>(
+        `SELECT nombre_comercial, nombre FROM clients WHERE id = $1 LIMIT 1`,
+        [clienteIntId]
+      );
+      clienteNombre = rows[0]?.nombre_comercial || rows[0]?.nombre || clienteId;
+    }
+  } catch { /* fallback a clienteId */ }
+
+  // Generar id legible: INC-YYMMDD-NNNN
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, "0");
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const yy = String(now.getFullYear()).slice(2);
+  const rand = Math.floor(Math.random() * 9000) + 1000;
+  const id = `INC-${yy}${mm}${dd}-${rand}`;
+
+  try {
+    await pool.query(
+      `INSERT INTO incidents
+         (id, origen, cliente, cliente_ref_id, client_id, ubicacion, tipo,
+          prioridad, estado, responsable, descripcion, es_emergencia, reportado_por)
+       VALUES ($1, 'portal_cliente', $2, $3, $4, $5, $6, $7, 'abierta',
+               'Sin asignar', $8, $9, $10)`,
+      [
+        id,
+        clienteNombre,
+        clienteId,
+        clienteIntId ?? null,
+        ubicacionLimpia || null,
+        tipoLimpio,
+        prioridadFinal,
+        descLimpia,
+        !!esEmergencia,
+        `Cliente vía portal (${clienteNombre})`,
+      ]
+    );
+
+    res.status(201).json({ ok: true, id });
+  } catch (err) {
+    console.error("[portal/incidencias POST]", err);
+    res.status(500).json({ error: "No se pudo registrar la incidencia. Intente más tarde." });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/portal/kpi — métricas KPI del cliente
 // ─────────────────────────────────────────────────────────────────────────────
 // A-15: KPI con agregación SQL en lugar de JS en memoria
@@ -331,36 +415,75 @@ portalRouter.get("/portal/kpi", requirePortalAuth, async (req, res) => {
 // NO se incluye: DPI, teléfono personal, correo, dirección, info disciplinaria.
 // ─────────────────────────────────────────────────────────────────────────────
 portalRouter.get("/portal/agentes", requirePortalAuth, async (req, res) => {
-  const clienteId: string = (req as any).portalClienteId;
-  const clienteIdNum = parseInt(clienteId, 10);
+  // FIX BUG-PORTAL-AG: el portal_cliente_id es un string (UUID o slug),
+  // no un número. Usamos el ID entero ya resuelto por el middleware (portalClienteIntId).
+  const clienteIntId: number | null = (req as any).portalClienteIntId;
 
-  if (isNaN(clienteIdNum)) {
-    return res.status(400).json({ error: "clienteId inválido" });
+  if (!clienteIntId) {
+    // Sin cliente vinculado: lista vacía en lugar de 400, evita pantalla negra en el portal.
+    return res.json([]);
   }
+  const clienteIdNum = clienteIntId;
 
   try {
-    const { rows } = await pool.query(
+    // Devolvemos un registro por puesto activo + titular (fuente oficial: puestos_operativos).
+    // El shape coincide con la interface `Agente` del frontend (PortalAgentes.tsx) en camelCase.
+    const { rows } = await pool.query<{
+      asignacionId: number;
+      codigoAsignacion: string | null;
+      puesto: string | null;
+      servicio: string | null;
+      ubicacion: string | null;
+      supervisorNombre: string | null;
+      fechaInicio: string;
+      fechaFin: string | null;
+      estadoAsignacion: string;
+      empleadoNombreCompleto: string;
+      empleadoArea: string | null;
+      empleadoEstadoLaboral: string;
+      empleadoSede: string | null;
+      empleadoFuente: string;
+      enServicioAhora: boolean;
+    }>(
       `SELECT
-         po.id              AS puesto_id,
-         po.nombre          AS puesto,
-         po.turno,
-         po.estado          AS estado_puesto,
-         po.horario,
-         po.jornada,
-         -- Sede del puesto
-         cs.nombre          AS sede_nombre,
-         cs.direccion       AS sede_direccion,
-         -- Empleado titular (fuente oficial)
-         COALESCE(e_tit.nombre_completo, po.titular_nombre) AS empleado_nombre_completo,
-         e_tit.area         AS empleado_area,
-         e_tit.estado_laboral AS empleado_estado_laboral,
-         e_tit.sede         AS empleado_sede,
-         -- Zona operativa (si aplica)
-         oz.nombre          AS zona_nombre
+         po.id                                        AS "asignacionId",
+         NULLIF(TRIM(po.nombre), '')                  AS "codigoAsignacion",
+         po.nombre                                    AS "puesto",
+         COALESCE(po.turno, po.jornada, po.tipo_servicio) AS "servicio",
+         COALESCE(
+           NULLIF(TRIM(CONCAT_WS(' — ', cs.nombre, cs.direccion)), ''),
+           NULLIF(TRIM(po.direccion), ''),
+           oz.nombre
+         )                                            AS "ubicacion",
+         e_tit.supervisor_nombre                      AS "supervisorNombre",
+         COALESCE(po.fecha_inicio_ciclo, po.created_at, NOW()) AS "fechaInicio",
+         NULL::timestamptz                            AS "fechaFin",
+         CASE
+           WHEN COALESCE(e_tit.nombre_completo, po.titular_nombre, po.agente_nombre) IS NULL THEN 'vacante'
+           ELSE 'activa'
+         END                                          AS "estadoAsignacion",
+         COALESCE(
+           e_tit.nombre_completo,
+           po.titular_nombre,
+           po.agente_nombre,
+           'Puesto sin titular asignado'
+         )                                            AS "empleadoNombreCompleto",
+         e_tit.area                                   AS "empleadoArea",
+         COALESCE(e_tit.estado_laboral, 'activo')     AS "empleadoEstadoLaboral",
+         COALESCE(e_tit.sede, cs.nombre)              AS "empleadoSede",
+         COALESCE(e_tit.source_system, 'manual')      AS "empleadoFuente",
+         EXISTS (
+           SELECT 1
+             FROM agente_fichajes af
+            WHERE af.puesto_id = po.id
+              AND af.tipo = 'inicio_turno'
+              AND af.turno_cerrado_en IS NULL
+              AND af.registrado_en >= NOW() - INTERVAL '36 hours'
+         )                                            AS "enServicioAhora"
        FROM puestos_operativos po
-       LEFT JOIN client_sedes       cs    ON cs.id  = po.sede_id
+       LEFT JOIN client_sedes       cs    ON cs.id = po.sede_id
        LEFT JOIN employees          e_tit ON e_tit.id = COALESCE(po.titular_employee_id, po.agente_id)
-       LEFT JOIN operational_zones  oz    ON oz.id  = po.zona_operativa_id
+       LEFT JOIN operational_zones  oz    ON oz.id = po.zona_operativa_id
        WHERE po.cliente_id = $1
          AND po.activo     = TRUE
        ORDER BY cs.nombre NULLS LAST, po.nombre`,
@@ -386,6 +509,9 @@ portalRouter.get("/portal/cobertura", requirePortalAuth, async (req, res) => {
 
   try {
     // 1) Puestos operativos "estándar" (modelo de fijos / planta)
+    //    FIX BUG-PORTAL-COB: además del titular formal, considerar como "cubierto"
+    //    cualquier puesto donde haya un agente con turno abierto (fichaje sin cierre).
+    //    Devolvemos también el nombre del agente real que está adentro ahora.
     const { rows: puestosFijos } = await pool.query<{
       puesto_id: number;
       puesto_nombre: string;
@@ -398,7 +524,22 @@ portalRouter.get("/portal/cobertura", requirePortalAuth, async (req, res) => {
       zona_nombre: string | null;
       titular_nombre: string | null;
       titular_area: string | null;
+      en_servicio_nombre: string | null;
+      en_servicio_desde: string | null;
     }>(`
+      WITH turnos_activos AS (
+        SELECT DISTINCT ON (af.puesto_id)
+               af.puesto_id,
+               af.registrado_en,
+               COALESCE(e.nombre_completo, u.nombre, u.username) AS agente_nombre
+          FROM agente_fichajes af
+          LEFT JOIN employees e ON e.id = af.employee_id
+          LEFT JOIN users     u ON u.employee_id = af.employee_id
+         WHERE af.tipo = 'inicio_turno'
+           AND af.turno_cerrado_en IS NULL
+           AND af.registrado_en >= NOW() - INTERVAL '36 hours'
+         ORDER BY af.puesto_id, af.registrado_en DESC
+      )
       SELECT
         po.id                                     AS puesto_id,
         po.nombre                                 AS puesto_nombre,
@@ -410,11 +551,14 @@ portalRouter.get("/portal/cobertura", requirePortalAuth, async (req, res) => {
         cs.direccion                              AS sede_direccion,
         oz.nombre                                 AS zona_nombre,
         COALESCE(e.nombre_completo, po.titular_nombre) AS titular_nombre,
-        e.area                                    AS titular_area
+        e.area                                    AS titular_area,
+        ta.agente_nombre                          AS en_servicio_nombre,
+        ta.registrado_en                          AS en_servicio_desde
       FROM puestos_operativos po
       LEFT JOIN client_sedes      cs ON cs.id  = po.sede_id
       LEFT JOIN employees         e  ON e.id   = COALESCE(po.titular_employee_id, po.agente_id)
       LEFT JOIN operational_zones oz ON oz.id  = po.zona_operativa_id
+      LEFT JOIN turnos_activos    ta ON ta.puesto_id = po.id
       WHERE po.cliente_id = $1
         AND po.activo = TRUE
       ORDER BY cs.nombre NULLS LAST, po.turno, po.nombre
@@ -482,15 +626,20 @@ portalRouter.get("/portal/cobertura", requirePortalAuth, async (req, res) => {
           zona_nombre: null,
           titular_nombre: t?.nombre ?? null,
           titular_area: t?.area ?? null,
+          en_servicio_nombre: null,
+          en_servicio_desde: null,
         });
       }
     }
 
     const puestos = [...puestosFijos, ...puestosCustodia];
     const total = puestos.length;
-    const cubiertos = puestos.filter(p => p.titular_nombre && p.estado === "cubierto").length;
-    const vacantes  = total - cubiertos;
-    const tasa      = total > 0 ? Math.round((cubiertos / total) * 100) : 0;
+    // FIX BUG-PORTAL-COB: cubierto = titular asignado O agente con turno abierto en el puesto.
+    const cubiertos = puestos.filter(
+      (p) => !!p.titular_nombre || !!p.en_servicio_nombre
+    ).length;
+    const vacantes = total - cubiertos;
+    const tasa     = total > 0 ? Math.round((cubiertos / total) * 100) : 0;
 
     res.json({
       puestos,

@@ -1,8 +1,22 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PortalLayout } from "@/portal/layout/PortalLayout";
-import { portalGet } from "@/lib/portalApi";
-import { AlertTriangle, Filter, Search } from "lucide-react";
+import { portalGet, portalPost } from "@/lib/portalApi";
+import { AlertTriangle, Filter, Search, Plus, X, Loader2 } from "lucide-react";
+
+const TIPOS_INCIDENCIA = [
+  "Robo / Hurto",
+  "Intrusión / Acceso no autorizado",
+  "Vandalismo",
+  "Daño a propiedad",
+  "Persona sospechosa",
+  "Vehículo sospechoso",
+  "Falla de equipo / sistema",
+  "Falla de servicio del agente",
+  "Emergencia médica",
+  "Incendio / amago de incendio",
+  "Otro",
+];
 
 interface Incident {
   id: string;
@@ -44,6 +58,9 @@ export default function PortalIncidencias() {
   const [filtroEstado, setFiltroEstado] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [expandida, setExpandida] = useState<string | null>(null);
+  const [modalAbierto, setModalAbierto] = useState(false);
+
+  const queryClient = useQueryClient();
 
   const { data = [], isLoading, isError } = useQuery<Incident[]>({
     queryKey: ["portal-incidencias"],
@@ -77,7 +94,7 @@ export default function PortalIncidencias() {
             Historial de incidencias registradas en su cuenta
           </p>
         </div>
-        <div className="flex gap-3 text-sm">
+        <div className="flex flex-wrap gap-3 text-sm items-center">
           <div className="bg-[#0d1c30] border border-white/5 rounded-lg px-3 py-2 text-center">
             <p className="text-lg font-bold text-red-400">{activas}</p>
             <p className="text-[10px] text-white/40 uppercase">Activas</p>
@@ -86,6 +103,14 @@ export default function PortalIncidencias() {
             <p className="text-lg font-bold text-green-400">{cerradas}</p>
             <p className="text-[10px] text-white/40 uppercase">Cerradas</p>
           </div>
+          <button
+            type="button"
+            onClick={() => setModalAbierto(true)}
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-[#0a1422] font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Nueva incidencia
+          </button>
         </div>
       </div>
 
@@ -195,6 +220,220 @@ export default function PortalIncidencias() {
           Mostrando {filtradas.length} de {data.length} incidencias
         </p>
       )}
+
+      {modalAbierto && (
+        <ModalCrearIncidencia
+          onClose={() => setModalAbierto(false)}
+          onCreated={() => {
+            setModalAbierto(false);
+            queryClient.invalidateQueries({ queryKey: ["portal-incidencias"] });
+          }}
+        />
+      )}
     </PortalLayout>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Modal: Crear nueva incidencia desde el portal cliente
+// ─────────────────────────────────────────────────────────────────────────────
+function ModalCrearIncidencia({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (id: string) => void;
+}) {
+  const [tipo, setTipo] = useState<string>(TIPOS_INCIDENCIA[0]);
+  const [tipoOtro, setTipoOtro] = useState("");
+  const [prioridad, setPrioridad] = useState<"alta" | "media" | "baja">("media");
+  const [ubicacion, setUbicacion] = useState("");
+  const [descripcion, setDescripcion] = useState("");
+  const [esEmergencia, setEsEmergencia] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const tipoFinal = tipo === "Otro" ? tipoOtro.trim() : tipo;
+  const puedeEnviar = tipoFinal.length > 0 && descripcion.trim().length >= 5;
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      return portalPost<{ ok: boolean; id: string }>("/portal/incidencias", {
+        tipo: tipoFinal,
+        prioridad,
+        ubicacion: ubicacion.trim() || undefined,
+        descripcion: descripcion.trim(),
+        esEmergencia,
+      });
+    },
+    onSuccess: (res) => onCreated(res.id),
+    onError: (err: unknown) =>
+      setErrorMsg(err instanceof Error ? err.message : "No se pudo registrar la incidencia."),
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#0d1c30] border border-white/10 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[92vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/5 sticky top-0 bg-[#0d1c30]">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
+              <AlertTriangle className="w-4 h-4 text-primary" />
+            </div>
+            <h3 className="text-base font-bold text-white">Reportar incidencia</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-white/5 text-white/40 hover:text-white transition"
+            aria-label="Cerrar"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Form */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setErrorMsg(null);
+            if (!puedeEnviar || mutation.isPending) return;
+            mutation.mutate();
+          }}
+          className="p-5 space-y-4"
+        >
+          {/* Tipo */}
+          <div>
+            <label className="block text-xs text-white/60 mb-1.5 font-medium">Tipo de incidencia</label>
+            <select
+              value={tipo}
+              onChange={(e) => setTipo(e.target.value)}
+              className="w-full bg-[#0a1422] border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-primary/50"
+            >
+              {TIPOS_INCIDENCIA.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+            {tipo === "Otro" && (
+              <input
+                type="text"
+                placeholder="Describa el tipo en pocas palabras"
+                value={tipoOtro}
+                onChange={(e) => setTipoOtro(e.target.value)}
+                maxLength={100}
+                className="mt-2 w-full bg-[#0a1422] border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-primary/50"
+              />
+            )}
+          </div>
+
+          {/* Prioridad */}
+          <div>
+            <label className="block text-xs text-white/60 mb-1.5 font-medium">Prioridad</label>
+            <div className="grid grid-cols-3 gap-2">
+              {(["alta", "media", "baja"] as const).map((p) => {
+                const colorActivo =
+                  p === "alta" ? "border-red-400/40 bg-red-400/10 text-red-300"
+                  : p === "media" ? "border-yellow-400/40 bg-yellow-400/10 text-yellow-300"
+                  : "border-blue-400/40 bg-blue-400/10 text-blue-300";
+                const activo = prioridad === p;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPrioridad(p)}
+                    className={`px-3 py-2 rounded-lg border text-xs font-semibold uppercase transition
+                      ${activo ? colorActivo : "border-white/10 bg-[#0a1422] text-white/50 hover:text-white/80"}`}
+                  >
+                    {p}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Ubicación */}
+          <div>
+            <label className="block text-xs text-white/60 mb-1.5 font-medium">
+              Ubicación <span className="text-white/30 font-normal">(opcional)</span>
+            </label>
+            <input
+              type="text"
+              placeholder="Ej. Sede Zona 10, parqueo subterráneo"
+              value={ubicacion}
+              onChange={(e) => setUbicacion(e.target.value)}
+              maxLength={255}
+              className="w-full bg-[#0a1422] border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-primary/50"
+            />
+          </div>
+
+          {/* Descripción */}
+          <div>
+            <label className="block text-xs text-white/60 mb-1.5 font-medium">Descripción</label>
+            <textarea
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              rows={4}
+              placeholder="Describa lo ocurrido con el mayor detalle posible: hora aproximada, personas involucradas, qué se observó..."
+              className="w-full bg-[#0a1422] border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-primary/50 resize-none"
+            />
+            <p className="text-[10px] text-white/30 mt-1">{descripcion.trim().length} caracteres (mínimo 5)</p>
+          </div>
+
+          {/* Emergencia */}
+          <label className="flex items-start gap-3 p-3 bg-[#0a1422] border border-white/5 rounded-lg cursor-pointer hover:border-red-400/30 transition">
+            <input
+              type="checkbox"
+              checked={esEmergencia}
+              onChange={(e) => setEsEmergencia(e.target.checked)}
+              className="mt-0.5 accent-red-500"
+            />
+            <div>
+              <p className="text-sm text-white font-medium">Marcar como emergencia</p>
+              <p className="text-[11px] text-white/40 mt-0.5">
+                Solo para situaciones críticas que requieran respuesta inmediata.
+              </p>
+            </div>
+          </label>
+
+          {/* Error */}
+          {errorMsg && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-xs text-red-300">
+              {errorMsg}
+            </div>
+          )}
+
+          {/* Acciones */}
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={mutation.isPending}
+              className="flex-1 px-4 py-2.5 rounded-lg border border-white/10 text-sm text-white/70 hover:bg-white/5 transition disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={!puedeEnviar || mutation.isPending}
+              className="flex-1 px-4 py-2.5 rounded-lg bg-primary text-[#0a1422] text-sm font-semibold hover:bg-primary/90 transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+            >
+              {mutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Enviando...
+                </>
+              ) : (
+                "Reportar"
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }

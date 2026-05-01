@@ -3,7 +3,7 @@ import { PortalLayout } from "@/portal/layout/PortalLayout";
 import { portalGet } from "@/lib/portalApi";
 import {
   Shield, ShieldCheck, ShieldAlert, MapPin, Clock, User, Sun, Moon,
-  CheckCircle2, AlertCircle, Building2,
+  CheckCircle2, AlertCircle, Building2, Activity,
 } from "lucide-react";
 
 interface Puesto {
@@ -18,6 +18,8 @@ interface Puesto {
   zona_nombre: string | null;
   titular_nombre: string | null;
   titular_area: string | null;
+  en_servicio_nombre?: string | null;
+  en_servicio_desde?: string | null;
 }
 
 interface CoberturaData {
@@ -166,7 +168,9 @@ export default function PortalCobertura() {
 
         {/* Puestos agrupados por sede */}
         {!isLoading && Object.entries(sedes).map(([sede, items]) => {
-          const cubiertosEnSede = items.filter(p => p.titular_nombre).length;
+          const cubiertosEnSede = items.filter(
+            (p) => !!p.titular_nombre || !!p.en_servicio_nombre
+          ).length;
           return (
             <div key={sede} className="bg-[#0c1829] border border-white/5 rounded-xl overflow-hidden">
               {/* Sede header */}
@@ -183,7 +187,7 @@ export default function PortalCobertura() {
               {/* Tabla de puestos */}
               <div className="divide-y divide-white/4">
                 {items.map((puesto) => {
-                  const cubierto = !!puesto.titular_nombre;
+                  const cubierto = !!puesto.titular_nombre || !!puesto.en_servicio_nombre;
                   return (
                     <div
                       key={puesto.puesto_id}
@@ -216,9 +220,21 @@ export default function PortalCobertura() {
                         <TurnoChip turno={puesto.turno} />
                       </div>
 
-                      {/* Titular */}
+                      {/* Titular / Agente en servicio */}
                       <div className="flex-1 min-w-0 sm:text-right">
-                        {cubierto ? (
+                        {puesto.en_servicio_nombre ? (
+                          <div>
+                            <p className="text-[11px] text-emerald-300 mb-0.5 flex items-center gap-1 sm:justify-end">
+                              <Activity className="w-3 h-3 animate-pulse" /> En servicio ahora
+                            </p>
+                            <p className="text-sm text-white/90 font-medium truncate">{puesto.en_servicio_nombre}</p>
+                            {puesto.titular_nombre && puesto.titular_nombre !== puesto.en_servicio_nombre && (
+                              <p className="text-[10px] text-white/30 truncate">
+                                Titular: {puesto.titular_nombre}
+                              </p>
+                            )}
+                          </div>
+                        ) : puesto.titular_nombre ? (
                           <div>
                             <p className="text-[11px] text-white/40 mb-0.5 flex items-center gap-1 sm:justify-end">
                               <User className="w-3 h-3" /> Titular asignado
