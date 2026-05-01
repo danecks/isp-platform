@@ -426,27 +426,56 @@ portalRouter.get("/portal/agentes", requirePortalAuth, async (req, res) => {
   const clienteIdNum = clienteIntId;
 
   try {
-    // Devolvemos un registro por puesto activo + titular (fuente oficial: puestos_operativos).
-    // El shape coincide con la interface `Agente` del frontend (PortalAgentes.tsx) en camelCase.
-    const { rows } = await pool.query<{
-      asignacionId: number;
-      codigoAsignacion: string | null;
-      puesto: string | null;
-      servicio: string | null;
-      ubicacion: string | null;
-      supervisorNombre: string | null;
-      fechaInicio: string;
-      fechaFin: string | null;
-      estadoAsignacion: string;
-      empleadoNombreCompleto: string;
-      empleadoArea: string | null;
-      empleadoEstadoLaboral: string;
-      empleadoSede: string | null;
-      empleadoFuente: string;
-      enServicioAhora: boolean;
-    }>(
-      `SELECT
-         po.id                                        AS "asignacionId",
+    // Devolvemos un registro por SLOT del puesto (cada puesto puede tener varios slots
+    // con titulares y horarios distintos). Si un puesto no tiene slots configurados,
+    // se devuelve 1 fila con los datos del titular legacy del puesto.
+    // Calculamos día actual del ciclo y si el agente trabaja o descansa hoy.
+    const { rows } = await pool.query<any>(
+      `WITH slots_unidos AS (
+         -- Slots reales (puesto_slots): 1 fila por slot
+         SELECT
+           po.id                          AS puesto_id,
+           ps.slot_numero                 AS slot_numero,
+           ps.empleado_id                 AS slot_emp_id,
+           ps.hora_entrada::text          AS slot_hora_entrada,
+           ps.horas_turno                 AS slot_horas_turno,
+           ps.dias_trabajo                AS slot_dias_trabajo,
+           ps.longitud_ciclo              AS slot_longitud_ciclo,
+           COALESCE(ps.fecha_inicio_ciclo, po.fecha_inicio_ciclo, po.created_at::date) AS slot_inicio_ciclo
+         FROM puestos_operativos po
+         JOIN puesto_slots ps ON ps.puesto_id = po.id AND ps.activo = TRUE
+         WHERE po.cliente_id = $1 AND po.activo = TRUE
+
+         UNION ALL
+
+         -- Fallback: puestos sin slots → 1 fila virtual usando titular legacy del puesto
+         SELECT
+           po.id                          AS puesto_id,
+           1                              AS slot_numero,
+           COALESCE(po.titular_employee_id, po.agente_id) AS slot_emp_id,
+           po.hora_entrada                AS slot_hora_entrada,
+           NULL::int                      AS slot_horas_turno,
+           NULL::int[]                    AS slot_dias_trabajo,
+           NULL::smallint                 AS slot_longitud_ciclo,
+           COALESCE(po.fecha_inicio_ciclo, po.created_at::date) AS slot_inicio_ciclo
+         FROM puestos_operativos po
+         WHERE po.cliente_id = $1 AND po.activo = TRUE
+           AND NOT EXISTS (SELECT 1 FROM puesto_slots ps WHERE ps.puesto_id = po.id AND ps.activo = TRUE)
+       ),
+       turnos_activos AS (
+         -- Último fichaje abierto por (puesto, slot) en últimas 36h
+         SELECT DISTINCT ON (af.puesto_id, COALESCE(af.slot_numero, 1))
+           af.puesto_id,
+           COALESCE(af.slot_numero, 1) AS slot_numero,
+           af.employee_id              AS en_servicio_emp_id
+         FROM agente_fichajes af
+         WHERE af.tipo = 'inicio_turno'
+           AND af.turno_cerrado_en IS NULL
+           AND af.registrado_en >= NOW() - INTERVAL '36 hours'
+         ORDER BY af.puesto_id, COALESCE(af.slot_numero, 1), af.registrado_en DESC
+       )
+       SELECT
+         (su.puesto_id * 100 + su.slot_numero)        AS "asignacionId",
          NULLIF(TRIM(po.nombre), '')                  AS "codigoAsignacion",
          po.nombre                                    AS "puesto",
          COALESCE(po.turno, po.jornada, po.tipo_servicio) AS "servicio",
@@ -455,38 +484,56 @@ portalRouter.get("/portal/agentes", requirePortalAuth, async (req, res) => {
            NULLIF(TRIM(po.direccion), ''),
            oz.nombre
          )                                            AS "ubicacion",
-         e_tit.supervisor_nombre                      AS "supervisorNombre",
+         COALESCE(e_emp.supervisor_nombre, e_tit.supervisor_nombre) AS "supervisorNombre",
          COALESCE(po.fecha_inicio_ciclo, po.created_at, NOW()) AS "fechaInicio",
          NULL::timestamptz                            AS "fechaFin",
          CASE
-           WHEN COALESCE(e_tit.nombre_completo, po.titular_nombre, po.agente_nombre) IS NULL THEN 'vacante'
+           WHEN COALESCE(e_emp.nombre_completo, e_tit.nombre_completo, po.titular_nombre, po.agente_nombre) IS NULL
+             THEN 'vacante'
            ELSE 'activa'
          END                                          AS "estadoAsignacion",
          COALESCE(
+           e_emp.nombre_completo,
            e_tit.nombre_completo,
            po.titular_nombre,
            po.agente_nombre,
            'Puesto sin titular asignado'
          )                                            AS "empleadoNombreCompleto",
-         e_tit.area                                   AS "empleadoArea",
-         COALESCE(e_tit.estado_laboral, 'activo')     AS "empleadoEstadoLaboral",
-         COALESCE(e_tit.sede, cs.nombre)              AS "empleadoSede",
-         COALESCE(e_tit.source_system, 'manual')      AS "empleadoFuente",
-         EXISTS (
-           SELECT 1
-             FROM agente_fichajes af
-            WHERE af.puesto_id = po.id
-              AND af.tipo = 'inicio_turno'
-              AND af.turno_cerrado_en IS NULL
-              AND af.registrado_en >= NOW() - INTERVAL '36 hours'
-         )                                            AS "enServicioAhora"
-       FROM puestos_operativos po
-       LEFT JOIN client_sedes       cs    ON cs.id = po.sede_id
-       LEFT JOIN employees          e_tit ON e_tit.id = COALESCE(po.titular_employee_id, po.agente_id)
-       LEFT JOIN operational_zones  oz    ON oz.id = po.zona_operativa_id
-       WHERE po.cliente_id = $1
-         AND po.activo     = TRUE
-       ORDER BY cs.nombre NULLS LAST, po.nombre`,
+         COALESCE(e_emp.area, e_tit.area)             AS "empleadoArea",
+         COALESCE(e_emp.estado_laboral, e_tit.estado_laboral, 'activo') AS "empleadoEstadoLaboral",
+         COALESCE(e_emp.sede, e_tit.sede, cs.nombre)  AS "empleadoSede",
+         COALESCE(e_emp.source_system, e_tit.source_system, 'manual') AS "empleadoFuente",
+         (ta.en_servicio_emp_id IS NOT NULL)         AS "enServicioAhora",
+         e_serv.nombre_completo                       AS "enServicioNombre",
+         -- Datos del slot
+         su.slot_numero                               AS "slotNumero",
+         su.slot_hora_entrada                         AS "slotHoraEntrada",
+         su.slot_horas_turno                          AS "slotHorasTurno",
+         su.slot_dias_trabajo                         AS "slotDiasTrabajo",
+         COALESCE(su.slot_longitud_ciclo, 14)         AS "slotLongitudCiclo",
+         -- Día actual del ciclo (1..longitud_ciclo). NULL si el ciclo aún no inicia.
+         CASE
+           WHEN CURRENT_DATE < su.slot_inicio_ciclo THEN NULL::int
+           ELSE (((CURRENT_DATE - su.slot_inicio_ciclo)::int % NULLIF(COALESCE(su.slot_longitud_ciclo, 14)::int, 0)) + 1)
+         END                                          AS "diaCicloActual",
+         -- ¿Trabaja hoy? NULL si dias_trabajo vacío o ciclo aún no inicia.
+         CASE
+           WHEN su.slot_dias_trabajo IS NULL OR array_length(su.slot_dias_trabajo, 1) IS NULL THEN NULL::boolean
+           WHEN CURRENT_DATE < su.slot_inicio_ciclo THEN NULL::boolean
+           ELSE (
+             (((CURRENT_DATE - su.slot_inicio_ciclo)::int % NULLIF(COALESCE(su.slot_longitud_ciclo, 14)::int, 0)) + 1)
+             = ANY(su.slot_dias_trabajo)
+           )
+         END                                          AS "trabajaHoy"
+       FROM slots_unidos su
+       JOIN puestos_operativos po          ON po.id = su.puesto_id
+       LEFT JOIN client_sedes       cs     ON cs.id = po.sede_id
+       LEFT JOIN operational_zones  oz     ON oz.id = po.zona_operativa_id
+       LEFT JOIN employees          e_emp  ON e_emp.id = su.slot_emp_id
+       LEFT JOIN employees          e_tit  ON e_tit.id = COALESCE(po.titular_employee_id, po.agente_id)
+       LEFT JOIN turnos_activos     ta     ON ta.puesto_id = su.puesto_id AND ta.slot_numero = su.slot_numero
+       LEFT JOIN employees          e_serv ON e_serv.id = ta.en_servicio_emp_id
+       ORDER BY cs.nombre NULLS LAST, po.nombre, su.slot_numero`,
       [clienteIdNum]
     );
 

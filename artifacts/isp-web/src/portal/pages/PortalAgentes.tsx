@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { PortalLayout } from "@/portal/layout/PortalLayout";
 import { portalGet } from "@/lib/portalApi";
-import { Users, MapPin, User, Calendar, ShieldCheck, Info, Activity } from "lucide-react";
+import { Users, MapPin, User, Calendar, ShieldCheck, Info, Activity, Clock, Coffee, CalendarDays } from "lucide-react";
 
 interface Agente {
   asignacionId: number;
@@ -19,6 +19,26 @@ interface Agente {
   empleadoSede: string | null;
   empleadoFuente: string;
   enServicioAhora?: boolean;
+  enServicioNombre?: string | null;
+  slotNumero?: number | null;
+  slotHoraEntrada?: string | null;
+  slotHorasTurno?: number | null;
+  slotDiasTrabajo?: number[] | null;
+  slotLongitudCiclo?: number | null;
+  diaCicloActual?: number | null;
+  trabajaHoy?: boolean | null;
+}
+
+function formatHora(h: string | null | undefined): string | null {
+  if (!h) return null;
+  const m = /^(\d{1,2}):(\d{2})/.exec(h);
+  if (!m) return h;
+  return `${m[1].padStart(2, "0")}:${m[2]}`;
+}
+
+function formatDiasTrabajo(dias: number[] | null | undefined): string | null {
+  if (!dias || dias.length === 0) return null;
+  return `Días ${dias.join(", ")} del ciclo`;
 }
 
 const ESTADO_LAB_COLOR: Record<string, string> = {
@@ -109,7 +129,7 @@ export default function PortalAgentes() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {data.map((agente) => (
             <div
-              key={agente.asignacionId}
+              key={`${agente.puesto ?? "p"}-${agente.slotNumero ?? agente.asignacionId}`}
               className="bg-[#0d1c30] border border-white/5 rounded-xl overflow-hidden hover:border-white/10 transition-colors"
             >
               {/* Card header */}
@@ -123,11 +143,18 @@ export default function PortalAgentes() {
                   <h3 className="font-semibold text-white text-sm leading-tight truncate">
                     {agente.empleadoNombreCompleto}
                   </h3>
-                  {agente.codigoAsignacion && (
-                    <p className="text-[10px] font-mono text-primary/60 mt-0.5">
-                      {agente.codigoAsignacion}
-                    </p>
-                  )}
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {agente.codigoAsignacion && (
+                      <p className="text-[10px] font-mono text-primary/60">
+                        {agente.codigoAsignacion}
+                      </p>
+                    )}
+                    {agente.slotNumero != null && (
+                      <span className="text-[10px] font-mono text-white/40">
+                        · Turno {agente.slotNumero}
+                      </span>
+                    )}
+                  </div>
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     <span
                       className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border ${
@@ -141,6 +168,18 @@ export default function PortalAgentes() {
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border text-emerald-300 bg-emerald-400/10 border-emerald-400/30">
                         <Activity className="w-2.5 h-2.5 mr-1 animate-pulse" />
                         En servicio ahora
+                      </span>
+                    )}
+                    {!agente.enServicioAhora && agente.trabajaHoy === false && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border text-sky-300 bg-sky-400/10 border-sky-400/30">
+                        <Coffee className="w-2.5 h-2.5 mr-1" />
+                        Descansa hoy
+                      </span>
+                    )}
+                    {!agente.enServicioAhora && agente.trabajaHoy === true && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border text-amber-300 bg-amber-400/10 border-amber-400/30">
+                        <Calendar className="w-2.5 h-2.5 mr-1" />
+                        Trabaja hoy
                       </span>
                     )}
                   </div>
@@ -158,6 +197,50 @@ export default function PortalAgentes() {
                       {agente.servicio && (
                         <p className="text-[10px] text-primary/60">{agente.servicio}</p>
                       )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Horario del slot */}
+                {(agente.slotHoraEntrada || agente.slotHorasTurno != null) && (
+                  <div className="flex items-start gap-2">
+                    <Clock className="w-3.5 h-3.5 text-white/30 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-white/30 uppercase tracking-wider">Horario del turno</p>
+                      <p className="text-xs text-white mt-0.5">
+                        {formatHora(agente.slotHoraEntrada) ?? "—"}
+                        {agente.slotHorasTurno != null && ` · ${agente.slotHorasTurno}h`}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Días de trabajo en el ciclo */}
+                {agente.slotDiasTrabajo && agente.slotDiasTrabajo.length > 0 && (
+                  <div className="flex items-start gap-2">
+                    <CalendarDays className="w-3.5 h-3.5 text-white/30 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-white/30 uppercase tracking-wider">Calendario</p>
+                      <p className="text-xs text-white mt-0.5">
+                        {formatDiasTrabajo(agente.slotDiasTrabajo)}
+                      </p>
+                      {agente.diaCicloActual != null && agente.slotLongitudCiclo != null && (
+                        <p className="text-[10px] text-white/40">
+                          Hoy es día {agente.diaCicloActual} de {agente.slotLongitudCiclo}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Cubierto por (cuando hay un agente fichado distinto al titular del slot) */}
+                {agente.enServicioAhora && agente.enServicioNombre &&
+                 agente.enServicioNombre !== agente.empleadoNombreCompleto && (
+                  <div className="flex items-start gap-2">
+                    <Activity className="w-3.5 h-3.5 text-emerald-400/70 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-emerald-300/70 uppercase tracking-wider">Cubierto ahora por</p>
+                      <p className="text-xs text-emerald-200 mt-0.5">{agente.enServicioNombre}</p>
                     </div>
                   </div>
                 )}
