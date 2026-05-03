@@ -84,6 +84,42 @@ uri = "file://attached_assets/anuncios/isp-agente-vertical.png"
 type = "image"
 title = "ISP agente vertical"
 
+[[generated]]
+id = "yXrazXMHHuKovvvM_mxy_"
+uri = "file://attached_assets/anuncios/bg-jefe-servicio-cuadrado.png"
+type = "image"
+title = "bg jefe-servicio cuadrado"
+
+[[generated]]
+id = "TwI2hMb6UaDKG9ZnulF36"
+uri = "file://attached_assets/anuncios/bg-jefe-servicio-vertical.png"
+type = "image"
+title = "bg jefe-servicio vertical"
+
+[[generated]]
+id = "4ZUE-UcxKLtT2tMnAsMx3"
+uri = "file://attached_assets/anuncios/bg-supervisor-cuadrado.png"
+type = "image"
+title = "bg supervisor cuadrado"
+
+[[generated]]
+id = "4wAZZ3XUPdmzN8IipmKHz"
+uri = "file://attached_assets/anuncios/bg-supervisor-vertical.png"
+type = "image"
+title = "bg supervisor vertical"
+
+[[generated]]
+id = "It7y-5Yfc58hTNazROrzf"
+uri = "file://attached_assets/anuncios/bg-agente-cuadrado.png"
+type = "image"
+title = "bg agente cuadrado"
+
+[[generated]]
+id = "DQcKEX1gOoEUebKaaBnrB"
+uri = "file://attached_assets/anuncios/bg-agente-vertical.png"
+type = "image"
+title = "bg agente vertical"
+
 [[outputs]]
 id = "cfbrhXSvUNKm8VUJP_bs_"
 uri = "file://attached_assets/exports/qr-kiosco.png"
@@ -161,3 +197,39 @@ id = "dqoM_TMM3RxyPu8FiK2tB"
 uri = "file://attached_assets/anuncios/isp-agente-vertical.png"
 type = "image"
 title = "Agentes de Seguridad — Vertical (Stories/Reels/TikTok)"
+
+[[outputs]]
+id = "YVN5wk2CxYu8pDjoSNshC"
+uri = "file://attached_assets/anuncios/final-jefe-servicio-cuadrado.png"
+type = "image"
+title = "Jefe de Servicio — Cuadrado 1080x1080 (Feed FB/IG)"
+
+[[outputs]]
+id = "W6ERAhzxmXEPV-S0Dm1oB"
+uri = "file://attached_assets/anuncios/final-jefe-servicio-vertical.png"
+type = "image"
+title = "Jefe de Servicio — Vertical 1080x1920 (Stories/Reels/TikTok)"
+
+[[outputs]]
+id = "XK1kQCHfnJ4vOdPeZ8_j_"
+uri = "file://attached_assets/anuncios/final-supervisor-cuadrado.png"
+type = "image"
+title = "Supervisores — Cuadrado 1080x1080 (Feed FB/IG)"
+
+[[outputs]]
+id = "0AmkduHKXn95WN8uT0Hbm"
+uri = "file://attached_assets/anuncios/final-supervisor-vertical.png"
+type = "image"
+title = "Supervisores — Vertical 1080x1920 (Stories/Reels/TikTok)"
+
+[[outputs]]
+id = "mQCCvJJJmhdrvAWD9Kv7o"
+uri = "file://attached_assets/anuncios/final-agente-cuadrado.png"
+type = "image"
+title = "Agentes de Seguridad — Cuadrado 1080x1080 (Feed FB/IG)"
+
+[[outputs]]
+id = "yAcmWRMGUaiDbrkkJRYq2"
+uri = "file://attached_assets/anuncios/final-agente-vertical.png"
+type = "image"
+title = "Agentes de Seguridad — Vertical 1080x1920 (Stories/Reels/TikTok)"
