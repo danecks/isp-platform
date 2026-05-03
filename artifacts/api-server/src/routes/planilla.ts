@@ -138,7 +138,15 @@ function calcularLinea(
     if (diasPeriodo <= 0) return 0;
     // Misma regla que calcularBonificacionIncentivo: solo días trabajados + permiso con goce.
     // (Vacaciones e incapacidad NO devengan bonificaciones — decisión empresa abr 2026)
-    const diasPagables = Math.max(0, Math.min(diasPeriodo, toInt(row.dias_trabajados) + toInt(row.dias_permiso_con_goce)));
+    // Política empresa may-2026: quincena fija de 15 días contables.
+    // Acreditar "días padding" cuando el calendario real es < 15 (feb 16-28 = 13,
+    // feb bisiesto = 14): el agente no puede haber faltado a días inexistentes.
+    const topePeriodo = frecuencia === "quincenal" ? 15 : 30;
+    let diasPagablesRaw = toInt(row.dias_trabajados) + toInt(row.dias_permiso_con_goce);
+    if (frecuencia === "quincenal" && diasPeriodo > 0 && diasPeriodo < topePeriodo) {
+      diasPagablesRaw += (topePeriodo - diasPeriodo);
+    }
+    const diasPagables = Math.max(0, Math.min(topePeriodo, diasPagablesRaw));
     const mensual = base;
     const diario = mensual / 30;
     return parseFloat((diario * diasPagables).toFixed(2));

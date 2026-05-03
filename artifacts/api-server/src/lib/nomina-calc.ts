@@ -11,7 +11,9 @@
  *   - sueldoDia     = sueldo_base / 30  (base mensual dividida entre 30 siempre)
  *   - horasDia      = horas_contrato / 6  si horas_contrato > 0; si no → 8
  *                     (semana estándar: 6 días laborables × 8 h = 48 h contrato)
- *   - sueldoPeriodo = sueldoDia × periodoDias  (quincenal estándar)
+ *   - sueldoPeriodo = sueldoDia × 15            (quincenal: SIEMPRE 15 días contables,
+ *                                                 sin importar el calendario real.
+ *                                                 Política empresa may-2026.)
  *                   = sueldo_base completo      (mensual en segunda quincena)
  *   - descFaltas    = sueldoDia × (faltas + suspensiones)
  *   - valorHE       = (sueldoDia / horasDia) × 1.5 × horas_extra
@@ -94,7 +96,17 @@ export function calcularBruto(p: BrutoParams): BrutoResult {
   const sueldoDia     = p.sueldoBase / 30;
   const horasDia      = calcularHorasDia(p.horasContrato);
   const esMensualSeg  = p.frecuenciaPago === "mensual" && p.quincenaTipo === "segunda";
-  const sueldoPeriodo = esMensualSeg ? p.sueldoBase : sueldoDia * p.periodoTotalDias;
+  // Política empresa may-2026: quincena fija de 15 días contables, sin importar
+  // el calendario real. El agente cobra exactamente sueldo_base/2 cada quincena
+  // (en febrero, marzo de 31 días, año bisiesto, etc.). Esto evita que el monto
+  // varíe quincena a quincena por el largo del mes.
+  const DIAS_QUINCENA_FIJA = 15;
+  const esQuincenal = p.frecuenciaPago === "quincenal";
+  const sueldoPeriodo = esMensualSeg
+    ? p.sueldoBase
+    : esQuincenal
+      ? sueldoDia * DIAS_QUINCENA_FIJA
+      : sueldoDia * p.periodoTotalDias;
   const diasDesc      = (p.diasDescuento != null && p.diasDescuento > 0)
     ? p.diasDescuento + p.suspensiones
     : p.faltas + p.suspensiones;
@@ -179,8 +191,17 @@ export function calcularBonificacionIncentivo(p: BonificacionParams): number {
     (p.diasTrabajados     || 0) +
     (p.diasPermisoConGoce || 0);
 
-  // Clamp: no puede exceder el período ni ser negativo
-  diasPagables = Math.max(0, Math.min(diasPagables, diasPeriodo));
+  // Política empresa may-2026: quincena fija de 15 días contables.
+  // Si el calendario real tiene < 15 días (feb 16-28 = 13 días, feb bisiesto = 14),
+  // se acreditan los "días padding" como pagables, porque el agente no puede haber
+  // faltado a días que no existen en el calendario. Resultado: agente que trabajó
+  // toda la quincena cobra Q125 completo, sin importar el largo del mes.
+  // Tope final: 15 para quincenales, 30 para mensuales.
+  const topePeriodo = p.frecuenciaPago === "quincenal" ? 15 : 30;
+  if (p.frecuenciaPago === "quincenal" && diasPeriodo > 0 && diasPeriodo < topePeriodo) {
+    diasPagables += (topePeriodo - diasPeriodo);
+  }
+  diasPagables = Math.max(0, Math.min(diasPagables, topePeriodo));
 
   if (diasPeriodo <= 0 || diasPagables <= 0) return 0;
 
