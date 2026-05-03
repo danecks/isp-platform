@@ -48,6 +48,42 @@ uri = "file://artifacts/mockup-sandbox/public/images/mision-04.png"
 type = "image"
 title = "Monitoring center screens"
 
+[[generated]]
+id = "OXvVEVfcLdlA9eswRyBK-"
+uri = "file://attached_assets/anuncios/isp-jefe-servicio-cuadrado.png"
+type = "image"
+title = "ISP jefe-servicio cuadrado"
+
+[[generated]]
+id = "fwV-0sbZuAyE13QF7TD6Z"
+uri = "file://attached_assets/anuncios/isp-jefe-servicio-vertical.png"
+type = "image"
+title = "ISP jefe-servicio vertical"
+
+[[generated]]
+id = "mmzEvPSMi_oVlxoF1sJZq"
+uri = "file://attached_assets/anuncios/isp-supervisor-cuadrado.png"
+type = "image"
+title = "ISP supervisor cuadrado"
+
+[[generated]]
+id = "I9XT_8piLptYsLghfacjl"
+uri = "file://attached_assets/anuncios/isp-supervisor-vertical.png"
+type = "image"
+title = "ISP supervisor vertical"
+
+[[generated]]
+id = "Gqt7CCcRtwGAqpG8p-1hZ"
+uri = "file://attached_assets/anuncios/isp-agente-cuadrado.png"
+type = "image"
+title = "ISP agente cuadrado"
+
+[[generated]]
+id = "MWPkNX0XLqFzdPHM5ihvj"
+uri = "file://attached_assets/anuncios/isp-agente-vertical.png"
+type = "image"
+title = "ISP agente vertical"
+
 [[outputs]]
 id = "cfbrhXSvUNKm8VUJP_bs_"
 uri = "file://attached_assets/exports/qr-kiosco.png"
@@ -89,3 +125,39 @@ id = "dRCWXpvLopTjabDxEn0x1"
 uri = "file://docs/auditorias/pizarron-operativo-2026-04-25.md"
 type = "text"
 title = "Auditoría técnica — Pizarrón Operativo (25-abr-2026)"
+
+[[outputs]]
+id = "k1HphDJAceO_bBakQeCvR"
+uri = "file://attached_assets/anuncios/isp-jefe-servicio-cuadrado.png"
+type = "image"
+title = "Jefe de Servicio — Cuadrado (Feed Facebook/Instagram)"
+
+[[outputs]]
+id = "6poXY9PKX9O-zqNWLP9-C"
+uri = "file://attached_assets/anuncios/isp-jefe-servicio-vertical.png"
+type = "image"
+title = "Jefe de Servicio — Vertical (Stories/Reels/TikTok)"
+
+[[outputs]]
+id = "6kFPWDmNsqzzUiBgwQBTx"
+uri = "file://attached_assets/anuncios/isp-supervisor-cuadrado.png"
+type = "image"
+title = "Supervisores — Cuadrado (Feed Facebook/Instagram)"
+
+[[outputs]]
+id = "SQQwoqa6h2oTUQv45eEvV"
+uri = "file://attached_assets/anuncios/isp-supervisor-vertical.png"
+type = "image"
+title = "Supervisores — Vertical (Stories/Reels/TikTok)"
+
+[[outputs]]
+id = "FO1cMdrum8rm-LsYmVnNc"
+uri = "file://attached_assets/anuncios/isp-agente-cuadrado.png"
+type = "image"
+title = "Agentes de Seguridad — Cuadrado (Feed Facebook/Instagram)"
+
+[[outputs]]
+id = "dqoM_TMM3RxyPu8FiK2tB"
+uri = "file://attached_assets/anuncios/isp-agente-vertical.png"
+type = "image"
+title = "Agentes de Seguridad — Vertical (Stories/Reels/TikTok)"
