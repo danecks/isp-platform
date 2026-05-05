@@ -208,13 +208,38 @@ async function calcularResponsablePuesto(puestoId: number, fecha: string): Promi
 // ── Función: sincronizar custodia de un arma con el agente de turno ───────────
 async function syncCustodiaArma(armaId: number, fecha: string, usuario: string): Promise<any> {
   const { rows: aRows } = await pool.query(
-    `SELECT id, codigo, puesto_id FROM armas WHERE id=$1`, [armaId]
+    `SELECT a.id, a.codigo, a.puesto_id, a.custodio_employee_id,
+            COALESCE(po.tipo_puesto, 'normal') AS tipo_puesto
+     FROM armas a
+     LEFT JOIN puestos_operativos po ON po.id = a.puesto_id
+     WHERE a.id=$1`,
+    [armaId]
   );
   if (!aRows[0]) return { cambio: false, motivo: "Arma no encontrada" };
   const puesto_id = aRows[0].puesto_id;
   if (!puesto_id) return { cambio: false, codigo: aRows[0].codigo, motivo: "Sin puesto asignado" };
 
-  const responsable = await calcularResponsablePuesto(puesto_id, fecha);
+  const tipoPuesto = aRows[0].tipo_puesto as "normal" | "custodia";
+  const custodioOverride = aRows[0].custodio_employee_id as number | null;
+
+  // ARM-08: en puestos de tipo 'custodia' (rutas), si el arma tiene un
+  // custodio_employee_id asignado, ese override tiene prioridad sobre el
+  // titular calculado por turno. Esto preserva la intención del operador.
+  let responsable: { id: number; nombre_completo: string; tipo_origen?: string } | null = null;
+  let tipoOrigenOverride: string | null = null;
+  if (tipoPuesto === "custodia" && custodioOverride) {
+    const { rows: empRows } = await pool.query(
+      `SELECT id, nombre_completo FROM employees WHERE id=$1`,
+      [custodioOverride]
+    );
+    if (empRows[0]) {
+      responsable = { id: empRows[0].id, nombre_completo: empRows[0].nombre_completo };
+      tipoOrigenOverride = "custodia_asignada";
+    }
+  }
+  if (!responsable) {
+    responsable = await calcularResponsablePuesto(puesto_id, fecha);
+  }
 
   const { rows: custodiaRows } = await pool.query(
     `SELECT id, employee_id FROM arma_custodia WHERE arma_id=$1 AND fecha_fin IS NULL`,
@@ -244,16 +269,19 @@ async function syncCustodiaArma(armaId: number, fecha: string, usuario: string):
     }
     let nuevaCustodia: any = null;
     if (responsable) {
+      const tipoOrigen = tipoOrigenOverride
+        ?? responsable.tipo_origen
+        ?? "automatico_turno";
+      const notas = tipoOrigenOverride === "custodia_asignada"
+        ? `Custodio asignado (ruta) — ${fecha}`
+        : `Custodia automática por turno — ${fecha}`;
       const { rows: nc } = await client.query(`
         INSERT INTO arma_custodia
           (arma_id, employee_id, puesto_id, tipo_origen, notas, registrado_por)
         VALUES ($1,$2,$3,$4,$5,$6)
         RETURNING *
       `, [
-        armaId, responsable.id, puesto_id,
-        responsable.tipo_origen ?? "automatico_turno",
-        `Custodia automática por turno — ${fecha}`,
-        usuario,
+        armaId, responsable.id, puesto_id, tipoOrigen, notas, usuario,
       ]);
       nuevaCustodia = nc[0];
     }
@@ -261,7 +289,7 @@ async function syncCustodiaArma(armaId: number, fecha: string, usuario: string):
     return {
       cambio: true, codigo: aRows[0].codigo,
       responsable_nuevo: responsable
-        ? { id: responsable.id, nombre: responsable.nombre_completo, tipo_origen: responsable.tipo_origen }
+        ? { id: responsable.id, nombre: responsable.nombre_completo, tipo_origen: tipoOrigenOverride ?? responsable.tipo_origen }
         : null,
       sin_responsable: !responsable,
       nueva_custodia: nuevaCustodia,
@@ -314,10 +342,16 @@ armeriaRouter.get("/armas", async (req, res) => {
         END AS dias_restantes_portacion,
         a.puesto_id,
         po.nombre   AS puesto_nombre,
+        COALESCE(po.tipo_puesto, 'normal') AS tipo_puesto,
         po.agente_id AS titular_id,
         te.nombre_completo AS titular_nombre,
         po.cliente_nombre,
         po.direccion AS puesto_direccion,
+        -- Ubicación interna cuando NO está en puesto ('armeria' | 'jefatura_servicios')
+        COALESCE(a.ubicacion_interna, 'armeria') AS ubicacion_interna,
+        -- Custodio asignado manualmente al arma (override del titular del puesto)
+        a.custodio_employee_id,
+        cae.nombre_completo AS custodio_asignado_nombre,
         -- Custodio actual registrado
         ac.id           AS custodia_id,
         ac.employee_id  AS custodio_id,
@@ -336,6 +370,7 @@ armeriaRouter.get("/armas", async (req, res) => {
       LEFT JOIN employees te          ON te.id = po.agente_id
       LEFT JOIN arma_custodia ac      ON ac.arma_id = a.id AND ac.fecha_fin IS NULL
       LEFT JOIN employees ce          ON ce.id = ac.employee_id
+      LEFT JOIN employees cae         ON cae.id = a.custodio_employee_id
       ORDER BY a.activo DESC, a.codigo
     `);
     res.json(rows);
@@ -446,6 +481,7 @@ armeriaRouter.get("/armas/estado-operativo", async (req, res) => {
         END AS dias_restantes_portacion,
         a.puesto_id,
         po.nombre      AS puesto_nombre,
+        COALESCE(po.tipo_puesto, 'normal') AS tipo_puesto,
         po.cliente_nombre,
         po.zona_operativa_id,
         oz.nombre      AS zona_nombre,
@@ -458,6 +494,11 @@ armeriaRouter.get("/armas/estado-operativo", async (req, res) => {
         t.horas_trabajo,
         t.horas_descanso,
         po.fecha_inicio_ciclo,
+        -- Ubicación interna (cuando NO está en puesto)
+        COALESCE(a.ubicacion_interna, 'armeria') AS ubicacion_interna,
+        -- Custodio asignado manualmente al arma (override del titular del puesto)
+        a.custodio_employee_id,
+        cae.nombre_completo AS custodio_asignado_nombre,
         -- Custodio actual registrado en arma_custodia
         ac.id          AS custodia_id,
         ce.id          AS custodio_id,
@@ -472,6 +513,7 @@ armeriaRouter.get("/armas/estado-operativo", async (req, res) => {
       LEFT JOIN operational_zones oz ON oz.id = po.zona_operativa_id
       LEFT JOIN arma_custodia ac ON ac.arma_id = a.id AND ac.fecha_fin IS NULL
       LEFT JOIN employees ce     ON ce.id = ac.employee_id
+      LEFT JOIN employees cae    ON cae.id = a.custodio_employee_id
       WHERE a.activo = TRUE
       ORDER BY po.cliente_nombre, po.nombre, a.codigo
     `);
@@ -683,6 +725,10 @@ armeriaRouter.get("/armas/:id", async (req, res) => {
           ELSE (a.fecha_vencimiento_tenencia - CURRENT_DATE)::INTEGER
         END AS dias_restantes,
         po.nombre AS puesto_nombre, po.cliente_nombre, po.direccion AS puesto_direccion,
+        COALESCE(po.tipo_puesto, 'normal') AS tipo_puesto,
+        COALESCE(a.ubicacion_interna, 'armeria') AS ubicacion_interna,
+        a.custodio_employee_id,
+        cae.nombre_completo AS custodio_asignado_nombre,
         ac.id AS custodia_id, ac.employee_id AS custodio_id,
         e.nombre_completo AS custodio_nombre,
         ac.fecha_inicio AS custodia_desde, ac.tipo_origen AS custodia_tipo_origen,
@@ -704,6 +750,7 @@ armeriaRouter.get("/armas/:id", async (req, res) => {
       LEFT JOIN puestos_operativos po ON po.id = a.puesto_id
       LEFT JOIN arma_custodia ac      ON ac.arma_id = a.id AND ac.fecha_fin IS NULL
       LEFT JOIN employees e           ON e.id = ac.employee_id
+      LEFT JOIN employees cae         ON cae.id = a.custodio_employee_id
       WHERE a.id = $1
     `, [id]);
     if (!rows[0]) return res.status(404).json({ error: "Arma no encontrada" });
@@ -734,7 +781,9 @@ armeriaRouter.get("/armas/:id/custodia", async (req, res) => {
 });
 
 // ── GET /api/armas/puestos/disponibles ────────────────────────────────────────
-// Lista puestos activos con agente asignado para el selector del formulario
+// Lista puestos activos para el selector del formulario de Armería.
+// Incluye tipo_puesto ('normal' | 'custodia') y el titular real (titular_employee_id
+// o agente_id legacy) para que el frontend pueda agrupar y precargar el custodio.
 armeriaRouter.get("/armas/puestos/disponibles", async (req, res) => {
   try {
     const { rows } = await pool.query(`
@@ -742,15 +791,21 @@ armeriaRouter.get("/armas/puestos/disponibles", async (req, res) => {
         po.id,
         po.nombre,
         po.cliente_nombre,
+        COALESCE(po.tipo_puesto, 'normal') AS tipo_puesto,
         po.agente_id,
         e.nombre_completo AS agente_nombre,
+        COALESCE(po.titular_employee_id, po.agente_id) AS titular_id,
+        te.nombre_completo AS titular_nombre,
         oz.nombre AS zona_nombre,
         po.direccion
       FROM puestos_operativos po
       LEFT JOIN employees e        ON e.id  = po.agente_id
+      LEFT JOIN employees te       ON te.id = COALESCE(po.titular_employee_id, po.agente_id)
       LEFT JOIN operational_zones oz ON oz.id = po.zona_operativa_id
       WHERE po.activo = TRUE
-      ORDER BY po.cliente_nombre, po.nombre
+      ORDER BY
+        CASE WHEN COALESCE(po.tipo_puesto, 'normal') = 'custodia' THEN 1 ELSE 0 END,
+        po.cliente_nombre, po.nombre
     `);
     res.json(rows);
   } catch (err: any) {
@@ -828,8 +883,29 @@ armeriaRouter.post("/armas", async (req, res) => {
   // El campo `codigo` se IGNORA si llega: el sistema lo genera automáticamente.
   const { tipo, marca, modelo, calibre, serie, estado, activo, puesto_id, observaciones,
           numero_tenencia, fecha_vencimiento_tenencia,
-          numero_portacion, fecha_emision_portacion, usuario } = req.body;
+          numero_portacion, fecha_emision_portacion,
+          ubicacion_interna, custodio_employee_id, usuario } = req.body;
   if (!tipo) return res.status(400).json({ error: "tipo es requerido" });
+
+  // Normaliza ubicacion_interna: solo 'armeria' o 'jefatura_servicios'
+  const ubicacionFinal: "armeria" | "jefatura_servicios" =
+    ubicacion_interna === "jefatura_servicios" ? "jefatura_servicios" : "armeria";
+  let custodioOverride = custodio_employee_id != null && custodio_employee_id !== ""
+    ? Number(custodio_employee_id) : null;
+
+  // ARM-08 invariante: custodio_employee_id solo se persiste cuando el puesto
+  // existe Y es de tipo 'custodia'. En cualquier otro caso (sin puesto o puesto
+  // normal) se fuerza a NULL para evitar inconsistencias por payloads externos.
+  const puestoIdNum = puesto_id ? Number(puesto_id) : null;
+  if (custodioOverride && puestoIdNum) {
+    const { rows: tpRows } = await pool.query(
+      `SELECT COALESCE(tipo_puesto, 'normal') AS tipo_puesto FROM puestos_operativos WHERE id=$1`,
+      [puestoIdNum]
+    );
+    if (tpRows[0]?.tipo_puesto !== "custodia") custodioOverride = null;
+  } else if (!puestoIdNum) {
+    custodioOverride = null;
+  }
 
   // Validación de unicidad: serie / tenencia / portación no pueden repetirse.
   const errUnico = await validarUnicidadArma(pool, { serie, numero_tenencia, numero_portacion });
@@ -851,9 +927,11 @@ armeriaRouter.post("/armas", async (req, res) => {
         const { rows } = await client.query(`
           INSERT INTO armas (codigo, tipo, marca, modelo, calibre, serie, estado, activo, puesto_id, observaciones,
                              numero_tenencia, fecha_vencimiento_tenencia,
-                             numero_portacion, fecha_emision_portacion, fecha_vencimiento_portacion)
+                             numero_portacion, fecha_emision_portacion, fecha_vencimiento_portacion,
+                             ubicacion_interna, custodio_employee_id)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
-                  CASE WHEN $14::date IS NOT NULL THEN ($14::date + INTERVAL '1 year')::date ELSE NULL END)
+                  CASE WHEN $14::date IS NOT NULL THEN ($14::date + INTERVAL '1 year')::date ELSE NULL END,
+                  $15,$16)
           RETURNING *
         `, [
           codigoGenerado, tipo,
@@ -865,6 +943,8 @@ armeriaRouter.post("/armas", async (req, res) => {
           fecha_vencimiento_tenencia || null,
           numero_portacion || null,
           fecha_emision_portacion || null,
+          ubicacionFinal,
+          custodioOverride,
         ]);
         await client.query("RELEASE SAVEPOINT sp_codigo_arma");
         arma = rows[0];
@@ -878,15 +958,35 @@ armeriaRouter.post("/armas", async (req, res) => {
     }
     if (!arma) throw lastErr ?? new Error("No se pudo generar un código único");
 
-    // Si tiene puesto, calcular responsable actual y crear custodia inicial
+    // Si tiene puesto, calcular responsable inicial y crear custodia.
+    // Para puestos de tipo 'custodia' (rutas), si el operador asignó un
+    // custodio_employee_id manualmente, ese tiene prioridad sobre el titular
+    // calculado. Para puestos 'normal' se mantiene la lógica existente.
     if (arma.puesto_id) {
       const fecha = new Date().toISOString().slice(0, 10);
-      const responsable = await calcularResponsablePuesto(arma.puesto_id, fecha);
-      if (responsable) {
+      const { rows: tipoRows } = await client.query(
+        `SELECT COALESCE(tipo_puesto, 'normal') AS tipo_puesto FROM puestos_operativos WHERE id=$1`,
+        [arma.puesto_id]
+      );
+      const tipoPuesto = tipoRows[0]?.tipo_puesto ?? "normal";
+      let responsableId: number | null = null;
+      let tipoOrigen = "turno_normal";
+      let notas = "Custodia inicial al registrar arma";
+
+      if (tipoPuesto === "custodia" && custodioOverride) {
+        responsableId = custodioOverride;
+        tipoOrigen = "custodia_asignada";
+        notas = "Custodio asignado al registrar arma (ruta)";
+      } else {
+        const responsable = await calcularResponsablePuesto(arma.puesto_id, fecha);
+        if (responsable) responsableId = responsable.id;
+      }
+
+      if (responsableId) {
         await client.query(`
           INSERT INTO arma_custodia (arma_id, employee_id, puesto_id, tipo_origen, notas, registrado_por)
-          VALUES ($1,$2,$3,'turno_normal','Custodia inicial al registrar arma',$4)
-        `, [arma.id, responsable.id, arma.puesto_id, usuario ?? "sistema"]);
+          VALUES ($1,$2,$3,$4,$5,$6)
+        `, [arma.id, responsableId, arma.puesto_id, tipoOrigen, notas, usuario ?? "sistema"]);
       }
     }
 
@@ -912,7 +1012,8 @@ armeriaRouter.patch("/armas/:id", async (req, res) => {
   const { tipo, marca, modelo, calibre, serie, estado, activo, puesto_id, observaciones,
           numero_tenencia, fecha_vencimiento_tenencia,
           numero_portacion, fecha_emision_portacion,
-          tenencia_en_tramite, portacion_en_tramite, usuario } = req.body;
+          tenencia_en_tramite, portacion_en_tramite,
+          ubicacion_interna, custodio_employee_id, usuario } = req.body;
 
   // Validación de unicidad: solo evaluamos los campos que el cliente está enviando.
   // (Si no se envía el campo, no hay riesgo de cambiarlo a un duplicado.)
@@ -928,10 +1029,32 @@ armeriaRouter.patch("/armas/:id", async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const { rows: prevRows } = await client.query(`SELECT puesto_id FROM armas WHERE id=$1`, [id]);
+    const { rows: prevRows } = await client.query(
+      `SELECT puesto_id, custodio_employee_id FROM armas WHERE id=$1`, [id]
+    );
     if (!prevRows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "No encontrada" }); }
     const puestoAnterior = prevRows[0].puesto_id;
+    const custodioAnterior = prevRows[0].custodio_employee_id;
     const puestoNuevo = puesto_id !== undefined ? (puesto_id ? Number(puesto_id) : null) : puestoAnterior;
+    let custodioNuevo: number | null = 'custodio_employee_id' in req.body
+      ? (custodio_employee_id != null && custodio_employee_id !== "" ? Number(custodio_employee_id) : null)
+      : custodioAnterior;
+
+    // ARM-08 invariante: custodio_employee_id solo válido si el puesto efectivo
+    // es de tipo 'custodia'. Forzar NULL en cualquier otro caso para que la
+    // base de datos refleje el estado real (sin importar lo que envíe el cliente).
+    if (custodioNuevo && puestoNuevo) {
+      const { rows: tpRows } = await client.query(
+        `SELECT COALESCE(tipo_puesto, 'normal') AS tipo_puesto FROM puestos_operativos WHERE id=$1`,
+        [puestoNuevo]
+      );
+      if (tpRows[0]?.tipo_puesto !== "custodia") custodioNuevo = null;
+    } else if (!puestoNuevo) {
+      custodioNuevo = null;
+    }
+    // Si la normalización vació el override pero no estaba en el body, igual
+    // necesitamos persistirlo para limpiar valores residuales.
+    const custodioCambio = custodioNuevo !== custodioAnterior;
 
     const params: any[] = [
       null, // codigo: placeholder para mantener los índices de los $N existentes; el SET COALESCE($1, codigo) deja el código intacto
@@ -969,6 +1092,17 @@ armeriaRouter.patch("/armas/:id", async (req, res) => {
       params.push(Boolean(portacion_en_tramite));
       extraFields.push(`portacion_en_tramite = $${params.length}`);
     }
+    if ('ubicacion_interna' in req.body) {
+      const ubic = ubicacion_interna === "jefatura_servicios" ? "jefatura_servicios" : "armeria";
+      params.push(ubic);
+      extraFields.push(`ubicacion_interna = $${params.length}`);
+    }
+    // Persistimos custodio_employee_id cuando vino en el body O cuando la
+    // normalización de invariante lo cambió (limpieza de valor residual).
+    if ('custodio_employee_id' in req.body || custodioCambio) {
+      params.push(custodioNuevo);
+      extraFields.push(`custodio_employee_id = $${params.length}`);
+    }
     params.push(id);
     const tenenciaSQL = extraFields.length > 0 ? `, ${extraFields.join(", ")}` : "";
 
@@ -997,12 +1131,50 @@ armeriaRouter.patch("/armas/:id", async (req, res) => {
       );
       if (puestoNuevo) {
         const fecha = new Date().toISOString().slice(0, 10);
-        const responsable = await calcularResponsablePuesto(puestoNuevo, fecha);
-        if (responsable) {
+        const { rows: tipoRows } = await client.query(
+          `SELECT COALESCE(tipo_puesto, 'normal') AS tipo_puesto FROM puestos_operativos WHERE id=$1`,
+          [puestoNuevo]
+        );
+        const tipoPuesto = tipoRows[0]?.tipo_puesto ?? "normal";
+        let responsableId: number | null = null;
+        let tipoOrigen = "turno_normal";
+        let notas = "Reasignación de puesto";
+
+        if (tipoPuesto === "custodia" && custodioNuevo) {
+          responsableId = custodioNuevo;
+          tipoOrigen = "custodia_asignada";
+          notas = "Custodio asignado al cambiar de puesto (ruta)";
+        } else {
+          const responsable = await calcularResponsablePuesto(puestoNuevo, fecha);
+          if (responsable) responsableId = responsable.id;
+        }
+
+        if (responsableId) {
           await client.query(`
             INSERT INTO arma_custodia (arma_id, employee_id, puesto_id, tipo_origen, notas, registrado_por)
-            VALUES ($1,$2,$3,'turno_normal','Reasignación de puesto',$4)
-          `, [id, responsable.id, puestoNuevo, usuario ?? "sistema"]);
+            VALUES ($1,$2,$3,$4,$5,$6)
+          `, [id, responsableId, puestoNuevo, tipoOrigen, notas, usuario ?? "sistema"]);
+        }
+      }
+    } else if (
+      // Mismo puesto, pero cambió el custodio asignado (incluye el caso de
+      // limpieza de residuales aunque el body no traiga el campo).
+      puestoNuevo && custodioCambio
+    ) {
+      const { rows: tipoRows } = await client.query(
+        `SELECT COALESCE(tipo_puesto, 'normal') AS tipo_puesto FROM puestos_operativos WHERE id=$1`,
+        [puestoNuevo]
+      );
+      const tipoPuesto = tipoRows[0]?.tipo_puesto ?? "normal";
+      if (tipoPuesto === "custodia") {
+        await client.query(
+          `UPDATE arma_custodia SET fecha_fin=NOW() WHERE arma_id=$1 AND fecha_fin IS NULL`, [id]
+        );
+        if (custodioNuevo) {
+          await client.query(`
+            INSERT INTO arma_custodia (arma_id, employee_id, puesto_id, tipo_origen, notas, registrado_por)
+            VALUES ($1,$2,$3,'custodia_asignada','Cambio de custodio asignado (ruta)',$4)
+          `, [id, custodioNuevo, puestoNuevo, usuario ?? "sistema"]);
         }
       }
     }

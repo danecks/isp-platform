@@ -5082,6 +5082,23 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: CUST-03 — error (no bloqueante)");
   }
 
+  // ── ARM-08: Ubicación interna del arma (cuando no está en puesto)
+  //  + custodio asignado manualmente (opción B para puestos de tipo custodia) ──
+  // ubicacion_interna: 'armeria' (default) | 'jefatura_servicios'.  Solo se
+  // muestra/aplica cuando el arma no está asignada a un puesto operativo.
+  // custodio_employee_id: permite sobrescribir el titular cuando el arma se
+  // asigna a un puesto de tipo 'custodia' (ruta).  Si es NULL, se usa el
+  // titular calculado del puesto como hasta hoy.
+  try {
+    await pool.query(`ALTER TABLE armas ADD COLUMN IF NOT EXISTS ubicacion_interna VARCHAR(40) NOT NULL DEFAULT 'armeria'`);
+    await pool.query(`ALTER TABLE armas ADD COLUMN IF NOT EXISTS custodio_employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL`);
+    // Normalizar valores fuera de los esperados a 'armeria' para evitar UI rota
+    await pool.query(`UPDATE armas SET ubicacion_interna = 'armeria' WHERE ubicacion_interna NOT IN ('armeria','jefatura_servicios') OR ubicacion_interna IS NULL`);
+    logger.info("Auto-migrate: ARM-08 ubicacion_interna + custodio_employee_id verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: ARM-08 — error (no bloqueante)");
+  }
+
   // ── BARR-01: Barracas (vivienda empresarial) ──────────────────────────────
   try {
     await pool.query(`

@@ -85,7 +85,13 @@ interface Arma {
   calibre: string | null; serie: string | null; estado: string; activo: boolean;
   observaciones: string | null; puesto_id: number | null;
   puesto_nombre: string | null; cliente_nombre: string | null; puesto_direccion: string | null;
+  tipo_puesto: "normal" | "custodia" | null;
   titular_id: number | null; titular_nombre: string | null;
+  /** 'armeria' (default) | 'jefatura_servicios' — solo aplica cuando puesto_id es null */
+  ubicacion_interna: "armeria" | "jefatura_servicios" | null;
+  /** Custodio asignado manualmente al arma (override del titular del puesto custodia) */
+  custodio_employee_id: number | null;
+  custodio_asignado_nombre: string | null;
   custodia_id: number | null; custodio_id: number | null;
   custodio_nombre: string | null; custodio_tipo: string | null;
   custodia_desde: string | null; custodia_tipo_origen: string | null;
@@ -107,7 +113,16 @@ interface EstadoArma extends Arma {
   responsable_turno: { id: number; nombre_completo: string; tipo_personal: string; tipo_origen: string } | null;
   descanso_por_ciclo: boolean;
 }
-interface Puesto { id: number; nombre: string; cliente_nombre: string; agente_id: number | null; agente_nombre: string | null; zona_nombre: string | null; direccion: string | null; }
+interface Puesto {
+  id: number; nombre: string; cliente_nombre: string;
+  tipo_puesto: "normal" | "custodia";
+  agente_id: number | null; agente_nombre: string | null;
+  titular_id: number | null; titular_nombre: string | null;
+  zona_nombre: string | null; direccion: string | null;
+}
+interface EmpleadoOpcion {
+  id: number; nombreCompleto: string; tipoPersonal: string | null;
+}
 interface CustodiaEntry {
   id: number; arma_id: number; employee_id: number | null; puesto_id: number | null;
   fecha_inicio: string; fecha_fin: string | null; tipo_origen: string; notas: string | null;
@@ -172,15 +187,20 @@ function PortacionBadge({ arma, showDays = true }: { arma: Pick<Arma, "estado_do
 }
 
 // ── Chip responsable ────────────────────────────────────────────────────────
-function ResponsableChip({ responsable, descansa, enArmeria = false }: {
-  responsable: EstadoArma["responsable_turno"]; descansa: boolean; enArmeria?: boolean;
+function ResponsableChip({ responsable, descansa, enArmeria = false, ubicacion = null }: {
+  responsable: EstadoArma["responsable_turno"]; descansa: boolean;
+  enArmeria?: boolean;
+  ubicacion?: "armeria" | "jefatura_servicios" | null;
 }) {
   if (!responsable) {
-    if (enArmeria) return (
-      <span className="flex items-center gap-1 text-[11px] text-indigo-400 bg-indigo-400/10 px-2 py-0.5 rounded-full border border-indigo-400/20">
-        <Shield className="w-3 h-3" />En Armería
-      </span>
-    );
+    if (enArmeria) {
+      const label = ubicacion === "jefatura_servicios" ? "En Jefatura de Servicios" : "En Armería";
+      return (
+        <span className="flex items-center gap-1 text-[11px] text-indigo-400 bg-indigo-400/10 px-2 py-0.5 rounded-full border border-indigo-400/20">
+          <Shield className="w-3 h-3" />{label}
+        </span>
+      );
+    }
     if (descansa) return (
       <span className="flex items-center gap-1 text-[11px] text-blue-400 bg-blue-400/10 px-2 py-0.5 rounded-full border border-blue-400/20">
         <Clock className="w-3 h-3" />Titular en descanso
@@ -232,21 +252,41 @@ function ModalArma({
     fecha_emision_portacion:    arma?.fecha_emision_portacion
       ? arma.fecha_emision_portacion.slice(0, 10)
       : "",
+    ubicacion_interna:          (arma?.ubicacion_interna ?? "armeria") as "armeria" | "jefatura_servicios",
+    custodio_employee_id:       arma?.custodio_employee_id ? String(arma.custodio_employee_id) : "",
   });
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
 
   const selectedPuesto = puestos.find(p => String(p.id) === form.puesto_id);
+  const isCustodiaPuesto = selectedPuesto?.tipo_puesto === "custodia";
+
+  // Empleados activos para el selector de custodio (solo se cargan si el puesto es custodia)
+  const { data: empleados = [] } = useQuery<EmpleadoOpcion[]>({
+    queryKey: ["empleados-activos-armeria"],
+    queryFn: () => apiFetch<EmpleadoOpcion[]>("/api/employees?estadoLaboral=activo"),
+    enabled: isCustodiaPuesto,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Agrupa puestos en el dropdown: primero normales, luego custodia (rutas)
+  const puestosNormales = puestos.filter(p => p.tipo_puesto !== "custodia");
+  const puestosCustodia = puestos.filter(p => p.tipo_puesto === "custodia");
 
   async function save() {
     setSaving(true);
     try {
       // El código del arma lo genera el sistema; nunca lo enviamos al backend.
       const { codigo: _ignorado, ...rest } = form;
-      const body = {
+      const body: any = {
         ...rest,
         puesto_id: form.puesto_id ? Number(form.puesto_id) : null,
         usuario,
       };
+      // El custodio_employee_id solo aplica cuando el puesto es de tipo 'custodia'.
+      // Si no es custodia, lo enviamos como null para limpiar cualquier valor previo.
+      body.custodio_employee_id = isCustodiaPuesto && form.custodio_employee_id
+        ? Number(form.custodio_employee_id)
+        : null;
       if (arma) {
         await apiPatch(`${API}/armas/${arma.id}`, body);
         toast({ title: "Arma actualizada" });
@@ -364,23 +404,104 @@ function ModalArma({
           {/* Puesto operativo */}
           <div>
             <label className="block text-xs font-medium text-gray-400 mb-1">Puesto operativo asignado</label>
-            <select value={form.puesto_id} onChange={e => set("puesto_id", e.target.value)}
+            <select value={form.puesto_id} onChange={e => {
+              const nuevoId = e.target.value;
+              const nuevoPuesto = puestos.find(p => String(p.id) === nuevoId);
+              const nuevoEsCustodia = nuevoPuesto?.tipo_puesto === "custodia";
+              setForm(f => ({
+                ...f,
+                puesto_id: nuevoId,
+                // Al elegir un puesto custodia, precarga explícitamente el titular
+                // como custodio (puede sobrescribirse). Al cambiar a no-custodia,
+                // limpia cualquier override previo para mantener consistencia.
+                custodio_employee_id: nuevoEsCustodia
+                  ? (f.custodio_employee_id || (nuevoPuesto?.titular_id ? String(nuevoPuesto.titular_id) : ""))
+                  : "",
+              }));
+            }}
               className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
-              <option value="">— En Armería (sin puesto) —</option>
-              {puestos.map(p => (
-                <option key={p.id} value={String(p.id)}>
-                  {p.cliente_nombre ? `${p.cliente_nombre} — ` : ""}{p.nombre}
-                  {p.agente_nombre ? ` (Titular: ${p.agente_nombre})` : ""}
-                </option>
-              ))}
+              <option value="">— Sin puesto (ubicación interna) —</option>
+              {puestosNormales.length > 0 && (
+                <optgroup label="Puestos operativos">
+                  {puestosNormales.map(p => (
+                    <option key={p.id} value={String(p.id)}>
+                      {p.cliente_nombre ? `${p.cliente_nombre} — ` : ""}{p.nombre}
+                      {p.titular_nombre ? ` (Titular: ${p.titular_nombre})` : ""}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {puestosCustodia.length > 0 && (
+                <optgroup label="Custodias / Rutas">
+                  {puestosCustodia.map(p => (
+                    <option key={p.id} value={String(p.id)}>
+                      {p.cliente_nombre ? `${p.cliente_nombre} — ` : ""}{p.nombre}
+                      {p.titular_nombre ? ` (Titular: ${p.titular_nombre})` : ""}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
-            {selectedPuesto?.agente_nombre && (
+            {selectedPuesto && !isCustodiaPuesto && selectedPuesto.titular_nombre && (
               <p className="text-xs text-teal-400 mt-1 flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3" />
-                Titular del puesto: {selectedPuesto.agente_nombre} — el responsable del arma se calculará automáticamente.
+                Titular del puesto: {selectedPuesto.titular_nombre} — el responsable del arma se calculará automáticamente.
+              </p>
+            )}
+            {isCustodiaPuesto && (
+              <p className="text-xs text-violet-400 mt-1 flex items-center gap-1">
+                <Shield className="w-3 h-3" />
+                Puesto de tipo Custodia (ruta) — debes asignar el custodio a continuación.
               </p>
             )}
           </div>
+
+          {/* Ubicación interna (solo cuando NO hay puesto) */}
+          {!form.puesto_id && (
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Ubicación del arma</label>
+              <select
+                value={form.ubicacion_interna}
+                onChange={e => set("ubicacion_interna", e.target.value as "armeria" | "jefatura_servicios")}
+                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                <option value="armeria">En Armería</option>
+                <option value="jefatura_servicios">En Jefatura de Servicios</option>
+              </select>
+              <p className="text-[11px] text-gray-500 mt-1">
+                Indica dónde está físicamente el arma cuando no está en un puesto.
+              </p>
+            </div>
+          )}
+
+          {/* Custodio asignado (solo cuando el puesto es de tipo custodia) */}
+          {isCustodiaPuesto && (
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">
+                Custodio asignado <span className="text-violet-400">*</span>
+              </label>
+              <select
+                value={form.custodio_employee_id || (selectedPuesto?.titular_id ? String(selectedPuesto.titular_id) : "")}
+                onChange={e => set("custodio_employee_id", e.target.value)}
+                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                <option value="">— Selecciona un custodio —</option>
+                {selectedPuesto?.titular_id && selectedPuesto.titular_nombre && (
+                  <option value={String(selectedPuesto.titular_id)}>
+                    {selectedPuesto.titular_nombre} (Titular del puesto)
+                  </option>
+                )}
+                {empleados
+                  .filter(e => e.id !== selectedPuesto?.titular_id)
+                  .map(e => (
+                    <option key={e.id} value={String(e.id)}>
+                      {e.nombreCompleto}{e.tipoPersonal ? ` · ${e.tipoPersonal}` : ""}
+                    </option>
+                  ))}
+              </select>
+              <p className="text-[11px] text-gray-500 mt-1">
+                Por defecto se asigna al titular del puesto. Puedes elegir otro empleado.
+              </p>
+            </div>
+          )}
 
           {/* Tenencia de arma */}
           <div className="border-t border-gray-700/60 pt-4">
@@ -976,6 +1097,7 @@ function TabEstado({ fecha, onFicha }: { fecha: string; onFicha: (a: EstadoArma)
                   responsable={arma.responsable_turno}
                   descansa={arma.descanso_por_ciclo}
                   enArmeria={!arma.puesto_id}
+                  ubicacion={arma.ubicacion_interna}
                 />
                 <button
                   onClick={() => onFicha(arma)}

@@ -79,7 +79,12 @@ interface Arma {
   calibre: string | null; serie: string | null; estado: string; activo: boolean;
   observaciones: string | null; puesto_id: number | null;
   puesto_nombre: string | null; cliente_nombre: string | null; puesto_direccion: string | null;
+  tipo_puesto: "normal" | "custodia" | null;
   titular_id: number | null; titular_nombre: string | null;
+  /** 'armeria' (default) | 'jefatura_servicios' — solo aplica cuando puesto_id es null */
+  ubicacion_interna: "armeria" | "jefatura_servicios" | null;
+  custodio_employee_id: number | null;
+  custodio_asignado_nombre: string | null;
   custodia_id: number | null; custodio_id: number | null;
   custodio_nombre: string | null; custodio_tipo: string | null;
   custodia_desde: string | null; custodia_tipo_origen: string | null;
@@ -182,7 +187,16 @@ export function ModalFichaArma({ armaId, onClose, onEdit }: {
                       title="Esta arma no está asignada a ningún puesto operativo"
                       className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-indigo-300 bg-indigo-500/15 border border-indigo-400/30 px-2 py-0.5 rounded-full"
                     >
-                      <Shield className="w-3 h-3" />En Armería
+                      <Shield className="w-3 h-3" />
+                      {arma.ubicacion_interna === "jefatura_servicios" ? "En Jefatura de Servicios" : "En Armería"}
+                    </span>
+                  )}
+                  {arma.puesto_id && arma.tipo_puesto === "custodia" && (
+                    <span
+                      title="Puesto de tipo Custodia (ruta)"
+                      className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-violet-300 bg-violet-500/15 border border-violet-400/30 px-2 py-0.5 rounded-full"
+                    >
+                      <Shield className="w-3 h-3" />Custodia
                     </span>
                   )}
                 </div>
@@ -288,11 +302,24 @@ export function ModalFichaArma({ armaId, onClose, onEdit }: {
               {arma.puesto_nombre ? (
                 <div className="bg-gray-800/50 rounded-lg px-3 py-2.5 flex items-center gap-3">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white font-medium truncate">{arma.puesto_nombre}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm text-white font-medium truncate">{arma.puesto_nombre}</p>
+                      {arma.tipo_puesto === "custodia" && (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-violet-300 bg-violet-500/15 border border-violet-400/30 px-1.5 py-0.5 rounded">
+                          Custodia
+                        </span>
+                      )}
+                    </div>
                     {arma.cliente_nombre && <p className="text-xs text-gray-400 truncate">{arma.cliente_nombre}</p>}
                     {arma.puesto_direccion && (
                       <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
                         <MapPin className="w-3 h-3 flex-shrink-0" />{arma.puesto_direccion}
+                      </p>
+                    )}
+                    {arma.tipo_puesto === "custodia" && arma.custodio_asignado_nombre && (
+                      <p className="text-[11px] text-violet-300/80 mt-1 flex items-center gap-1">
+                        <User className="w-3 h-3 flex-shrink-0" />
+                        Custodio asignado: <span className="font-medium">{arma.custodio_asignado_nombre}</span>
                       </p>
                     )}
                   </div>
@@ -312,7 +339,9 @@ export function ModalFichaArma({ armaId, onClose, onEdit }: {
                 <div className="bg-indigo-500/5 border border-indigo-500/15 rounded-lg px-3 py-2.5 flex items-center gap-2">
                   <Shield className="w-4 h-4 text-indigo-400/60 flex-shrink-0" />
                   <div>
-                    <p className="text-sm font-medium text-indigo-300/80">En Armería</p>
+                    <p className="text-sm font-medium text-indigo-300/80">
+                      {arma.ubicacion_interna === "jefatura_servicios" ? "En Jefatura de Servicios" : "En Armería"}
+                    </p>
                     <p className="text-xs text-indigo-300/40">Sin puesto operativo asignado</p>
                   </div>
                 </div>
