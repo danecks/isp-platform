@@ -787,12 +787,38 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
           [armaId, empId]
         ).catch(() => {});
       }
-      // Asignar puesto
+      // Asignar puesto (ARM-09: respeta la regla "1 puesto = 1 arma").
+      // El UPDATE solo se aplica si el puesto destino no tiene ya otra arma
+      // activa. Si ya está ocupado, registramos warning en el detalle para
+      // que el operador lo resuelva manualmente desde la armería.
       const pNombre = trim(row["puesto_nombre"]);
       if (pNombre) {
         const pId = puestoIdByNombre[pNombre.toLowerCase()] ?? null;
         if (pId) {
-          await pool.query(`UPDATE armas SET puesto_id = $1 WHERE id = $2`, [pId, armaId]).catch(() => {});
+          try {
+            const { rowCount } = await pool.query(
+              `UPDATE armas SET puesto_id = $1
+                 WHERE id = $2
+                   AND NOT EXISTS (
+                     SELECT 1 FROM armas a2
+                      WHERE a2.puesto_id = $1 AND a2.activo = TRUE AND a2.id <> $2
+                   )`,
+              [pId, armaId]
+            );
+            if (!rowCount) {
+              rArmas.detalle.push({
+                fila,
+                estado: "warning",
+                mensaje: `Puesto "${pNombre}" ya tenía un arma asignada; arma queda en bodega para reasignación manual.`,
+              });
+            }
+          } catch (e: any) {
+            rArmas.detalle.push({
+              fila,
+              estado: "warning",
+              mensaje: `No se pudo asignar al puesto "${pNombre}": ${e.message}`,
+            });
+          }
         }
       }
     } catch (e: any) {

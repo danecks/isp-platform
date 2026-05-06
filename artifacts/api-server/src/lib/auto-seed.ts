@@ -5099,6 +5099,79 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: ARM-08 — error (no bloqueante)");
   }
 
+  // ── ARM-09: Regla "1 puesto = 1 arma" ──────────────────────────────────────
+  // Limpieza idempotente de armas excedentes en puestos con >1 arma activa,
+  // luego CREATE UNIQUE INDEX parcial para que la BD impida nuevos duplicados.
+  // Criterio: por puesto se conserva la primera arma asignada (la de fecha
+  // de custodia inicial más antigua, o la de menor created_at como fallback).
+  // Las demás se desasignan (puesto_id=NULL, ubicacion_interna='armeria') y
+  // sus custodias activas se cierran. El arma sigue existiendo y queda en
+  // bodega para ser reasignada manualmente al puesto correcto por el armero.
+  try {
+    // Nota: el ranking se calcula sobre `armas` SIN filtrar por estado del
+    // puesto (puestos_operativos.activo). El índice único parcial solo mira
+    // `armas.activo=TRUE`, así que cualquier puesto con >1 arma activa, esté
+    // o no activo el puesto, debe limpiarse — de lo contrario el CREATE
+    // INDEX falla en el paso 3.
+    // Paso 1: cerrar arma_custodia activas de las armas que perderán su puesto
+    await pool.query(`
+      WITH ranked AS (
+        SELECT a.id,
+          ROW_NUMBER() OVER (
+            PARTITION BY a.puesto_id
+            ORDER BY COALESCE(
+              (SELECT MIN(ac.fecha_inicio) FROM arma_custodia ac WHERE ac.arma_id = a.id),
+              a.created_at
+            ) ASC NULLS LAST,
+            a.id ASC
+          ) AS rn
+        FROM armas a
+        WHERE a.activo = TRUE AND a.puesto_id IS NOT NULL
+      )
+      UPDATE arma_custodia
+         SET fecha_fin = NOW(),
+             notas = COALESCE(notas || ' | ', '') || 'ARM-09: arma desasignada del puesto (regla 1 puesto = 1 arma)'
+       WHERE arma_id IN (SELECT id FROM ranked WHERE rn > 1)
+         AND fecha_fin IS NULL
+    `);
+
+    // Paso 2: desasignar armas excedentes (mover a bodega/armería)
+    const { rowCount: limpiadas } = await pool.query(`
+      WITH ranked AS (
+        SELECT a.id,
+          ROW_NUMBER() OVER (
+            PARTITION BY a.puesto_id
+            ORDER BY COALESCE(
+              (SELECT MIN(ac.fecha_inicio) FROM arma_custodia ac WHERE ac.arma_id = a.id),
+              a.created_at
+            ) ASC NULLS LAST,
+            a.id ASC
+          ) AS rn
+        FROM armas a
+        WHERE a.activo = TRUE AND a.puesto_id IS NOT NULL
+      )
+      UPDATE armas
+         SET puesto_id = NULL,
+             ubicacion_interna = 'armeria',
+             custodio_employee_id = NULL,
+             updated_at = NOW()
+       WHERE id IN (SELECT id FROM ranked WHERE rn > 1)
+    `);
+    if (limpiadas && limpiadas > 0) {
+      logger.info(`Auto-migrate: ARM-09 — ${limpiadas} armas excedentes desasignadas a bodega`);
+    }
+
+    // Paso 3: crear índice único parcial — 1 sola arma activa por puesto
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS armas_puesto_uq
+        ON armas (puesto_id)
+        WHERE puesto_id IS NOT NULL AND activo = TRUE
+    `);
+    logger.info("Auto-migrate: ARM-09 índice único 'armas_puesto_uq' verificado (1 arma por puesto)");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: ARM-09 — error (no bloqueante)");
+  }
+
   // ── BARR-01: Barracas (vivienda empresarial) ──────────────────────────────
   try {
     await pool.query(`

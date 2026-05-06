@@ -843,7 +843,35 @@ function traducirErrorUnicoArma(err: any): string | null {
   if (c === "armas_serie_uq")            return "Ya existe un arma con ese número de serie. No se permiten duplicados.";
   if (c === "armas_numero_tenencia_uq")  return "Ya existe un arma con ese número de tenencia. No se permiten duplicados.";
   if (c === "armas_numero_portacion_uq") return "Ya existe un arma con ese número de portación. No se permiten duplicados.";
+  if (c === "armas_puesto_uq")           return "Este puesto ya tiene un arma asignada. Solo se permite un arma activa por puesto.";
   return null;
+}
+
+// ── ARM-09: validar que el puesto no tenga ya otra arma activa ──────────────
+// Regla operativa: 1 puesto = 1 arma. Los agentes que rotan en el puesto se
+// pasan la misma arma entre sí (la custodia se transfiere en cada cambio de
+// turno). Si el puesto ya tiene un arma activa, devuelve mensaje en español
+// con el código del arma existente para que el operador retire/mueva primero.
+async function validarPuestoSinArmaActiva(
+  db: { query: (...a: any[]) => Promise<any> },
+  puestoId: number,
+  excluirArmaId?: number,
+): Promise<string | null> {
+  const params: any[] = [puestoId];
+  let sql = `
+    SELECT a.codigo, e.nombre_completo AS titular
+    FROM armas a
+    LEFT JOIN puesto_slots ps ON ps.puesto_id = a.puesto_id AND ps.slot_numero = 1 AND COALESCE(ps.activo, TRUE)
+    LEFT JOIN employees e ON e.id = ps.empleado_id
+    WHERE a.puesto_id = $1 AND a.activo = TRUE
+  `;
+  if (excluirArmaId) { params.push(excluirArmaId); sql += ` AND a.id <> $${params.length}`; }
+  sql += ` LIMIT 1`;
+  const { rows } = await db.query(sql, params);
+  if (rows.length === 0) return null;
+  const cod = rows[0].codigo ?? "?";
+  const tit = rows[0].titular ? ` (${rows[0].titular})` : "";
+  return `Este puesto ya tiene asignada el arma ${cod}${tit}. Para asignar otra arma, primero retira o mueve la actual a otro puesto.`;
 }
 
 // ── Helper: validar unicidad de identificadores del arma ────────────────────
@@ -910,6 +938,13 @@ armeriaRouter.post("/armas", async (req, res) => {
   // Validación de unicidad: serie / tenencia / portación no pueden repetirse.
   const errUnico = await validarUnicidadArma(pool, { serie, numero_tenencia, numero_portacion });
   if (errUnico) return res.status(409).json({ error: errUnico });
+
+  // ARM-09: 1 puesto = 1 arma. Si el puesto ya tiene otra arma activa, rechazar.
+  // Solo se valida cuando el arma se crea como activa (activo !== false) y con puesto.
+  if (puestoIdNum && activo !== false) {
+    const errPuesto = await validarPuestoSinArmaActiva(pool, puestoIdNum);
+    if (errPuesto) return res.status(409).json({ error: errPuesto });
+  }
 
   const client = await pool.connect();
   try {
@@ -1030,11 +1065,12 @@ armeriaRouter.patch("/armas/:id", async (req, res) => {
   try {
     await client.query("BEGIN");
     const { rows: prevRows } = await client.query(
-      `SELECT puesto_id, custodio_employee_id FROM armas WHERE id=$1`, [id]
+      `SELECT puesto_id, custodio_employee_id, activo FROM armas WHERE id=$1`, [id]
     );
     if (!prevRows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "No encontrada" }); }
     const puestoAnterior = prevRows[0].puesto_id;
     const custodioAnterior = prevRows[0].custodio_employee_id;
+    const activoAnterior  = prevRows[0].activo;
     const puestoNuevo = puesto_id !== undefined ? (puesto_id ? Number(puesto_id) : null) : puestoAnterior;
     let custodioNuevo: number | null = 'custodio_employee_id' in req.body
       ? (custodio_employee_id != null && custodio_employee_id !== "" ? Number(custodio_employee_id) : null)
@@ -1055,6 +1091,21 @@ armeriaRouter.patch("/armas/:id", async (req, res) => {
     // Si la normalización vació el override pero no estaba en el body, igual
     // necesitamos persistirlo para limpiar valores residuales.
     const custodioCambio = custodioNuevo !== custodioAnterior;
+
+    // ARM-09: 1 puesto = 1 arma. Si está cambiando a un puesto que ya tiene
+    // otra arma activa, o si está cambiando 'activo' a TRUE estando en un
+    // puesto ocupado, rechazar con 409 (excluyendo el arma actual).
+    // El estado 'activo' efectivo se calcula a partir del payload; si no vino,
+    // se conserva el valor actual de la BD para no rechazar PATCHes no
+    // relacionados sobre armas ya inactivas.
+    const armaQuedaraActiva = activo !== undefined ? activo !== false : activoAnterior !== false;
+    if (puestoNuevo && armaQuedaraActiva) {
+      const errPuesto = await validarPuestoSinArmaActiva(client, puestoNuevo, id);
+      if (errPuesto) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ error: errPuesto });
+      }
+    }
 
     const params: any[] = [
       null, // codigo: placeholder para mantener los índices de los $N existentes; el SET COALESCE($1, codigo) deja el código intacto
