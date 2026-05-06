@@ -5172,6 +5172,35 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: ARM-09 — error (no bloqueante)");
   }
 
+  // ── ARM-10: Backfill tipo_puesto='custodia' por tipo_servicio del cliente ──
+  // Si un cliente tiene clients.tipo_servicio='custodia' (100% rutas), todos
+  // sus puestos operativos son rutas de custodia por definición. Los marcamos
+  // automáticamente como tipo_puesto='custodia' para que aparezcan en el
+  // selector de "Rutas / Custodia" de la Armería y permitan asignar custodio.
+  // NO se tocan los clientes 'mixto' (vigilancia + custodia) — esos requieren
+  // marcado manual puesto por puesto desde Operaciones.
+  // Idempotente: solo afecta puestos que aún están como 'normal' o NULL.
+  try {
+    const { rowCount: marcados } = await pool.query(`
+      UPDATE puestos_operativos po
+         SET tipo_puesto = 'custodia',
+             updated_at  = NOW()
+       WHERE COALESCE(po.tipo_puesto, 'normal') = 'normal'
+         AND EXISTS (
+           SELECT 1 FROM clients c
+            WHERE c.id = po.cliente_id
+              AND c.tipo_servicio = 'custodia'
+         )
+    `);
+    if (marcados && marcados > 0) {
+      logger.info(`Auto-migrate: ARM-10 — ${marcados} puestos marcados como 'custodia' por tipo_servicio del cliente`);
+    } else {
+      logger.info("Auto-migrate: ARM-10 backfill tipo_puesto verificado (sin cambios)");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: ARM-10 — error (no bloqueante)");
+  }
+
   // ── BARR-01: Barracas (vivienda empresarial) ──────────────────────────────
   try {
     await pool.query(`
