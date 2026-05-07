@@ -786,6 +786,24 @@ export default function AgenteInicio() {
     return () => clearInterval(t);
   }, [estado, turnoActivo?.tipo, turnoActivo?.fichaje_id, cargarRondas]);
 
+  // Resetea la sesión local del kiosko de puesto fijo y vuelve a la pantalla
+  // inicial. Lo usamos cuando el backend confirma que la sesión está cerrada
+  // (HTTP 410) o cuando el operador pide salir manualmente para destrabar la
+  // PWA si quedó atrapada en la pantalla del puesto sin agentes activos.
+  const resetSesionKiosco = useCallback((mensaje?: { kind: "ok" | "error"; texto: string }) => {
+    try { localStorage.removeItem(TRACKING_KEY); } catch { /* noop */ }
+    try { localStorage.removeItem(BUFFER_KEY); } catch { /* noop */ }
+    setTurnoActivo(null);
+    turnoActivoRef.current = null;
+    setAgentesActivos(null);
+    setAgentesActivosError(null);
+    setPuestoSubVista("main");
+    setCerrarTarget(null);
+    setEstado("inicio");
+    if (mensaje) setAccionMsg(mensaje);
+    if (esKiosco) void cargarPuestoDelDia();
+  }, [esKiosco, cargarPuestoDelDia]);
+
   // ── MULTI-AGENTE PUESTO FIJO (kiosco) ──
   // Lista de agentes con turno abierto en este puesto + acciones de gestión.
   const cargarAgentesActivos = useCallback(async () => {
@@ -797,6 +815,17 @@ export default function AgenteInicio() {
           `?tracking_token=${encodeURIComponent(turno.tracking_token)}`,
       );
       if (!r.ok) {
+        // 410 = la sesión del kiosko ya fue cerrada (forzar-cierre admin,
+        // expiración, último agente cerrado por otro flujo). El frontend
+        // estaba quedando atrapado mostrando "Sin agentes activos" sin
+        // forma de salir. Limpiamos local y volvemos a la pantalla inicial.
+        if (r.status === 410) {
+          resetSesionKiosco({
+            kind: "ok",
+            texto: "La sesión del kiosko ya estaba cerrada. Volvé a escanear el QR del puesto para reabrir.",
+          });
+          return;
+        }
         const data = await r.json().catch(() => ({}));
         setAgentesActivosError(data.error || "No se pudieron cargar los agentes");
         return;
@@ -807,7 +836,7 @@ export default function AgenteInicio() {
     } catch {
       setAgentesActivosError("Sin conexión, reintentando…");
     }
-  }, []);
+  }, [resetSesionKiosco]);
 
   // Auto-refresh cada 30s cuando estamos en main del puesto fijo
   // (la nueva botonería operativa no depende del modo kiosko).
@@ -1925,6 +1954,28 @@ export default function AgenteInicio() {
                         <span className="text-sm">Visitas</span>
                       </button>
                     </div>
+
+                    {/* Salida manual del kiosko: red de seguridad para cuando
+                        la pantalla queda atrapada (último agente cerrado por
+                        otro flujo, sesión zombie, etc.). NO cierra ningún
+                        turno — solo libera la sesión local y vuelve al inicio
+                        para volver a escanear el QR del puesto. */}
+                    <button
+                      onClick={() => {
+                        if (agentesActivos && agentesActivos.length > 0) {
+                          if (!window.confirm("Hay agentes en servicio en este puesto. ¿Salir igual del kiosko sin cerrar sus turnos?")) return;
+                        }
+                        resetSesionKiosco({
+                          kind: "ok",
+                          texto: "Sesión del kiosko cerrada. Volvé a escanear el QR del puesto cuando lo necesites.",
+                        });
+                      }}
+                      disabled={accionLoading}
+                      className="w-full mt-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 disabled:cursor-not-allowed text-slate-300 text-sm py-2.5 rounded-lg flex items-center justify-center gap-2"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                      Volver al inicio
+                    </button>
                   </>
                 )}
 
