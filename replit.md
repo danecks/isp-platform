@@ -84,3 +84,6 @@ The project uses a pnpm workspace monorepo, organizing deployable applications (
 - **shadcn/ui:** UI component library.
 - **Meta Cloud API:** For WhatsApp integration.
 - **Trello:** Task management platform.
+
+# User preferences
+- **Archivos pequeños y modulares:** Evitar archivos gigantes (anti-patrón `Operaciones.tsx` 10k líneas / `Empleados.tsx` 9k líneas). Para módulos nuevos: separar por archivo cada pestaña/sub-vista (objetivo <300 líneas por archivo), un router REST por recurso, componentes reutilizables aislados, tipos compartidos en archivo dedicado. Facilita administración y cambios futuros.
