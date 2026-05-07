@@ -54,6 +54,8 @@ import { puestoSlotsRouter } from "./puesto-slots";
 import { personalSlotsRouter } from "./personal-slots";
 import { supervisionProgramacionesRouter } from "./supervision-programaciones";
 import { supervisionZonasRouter } from "./supervision-zonas";
+import { supervisionDashboardRouter } from "./supervision-dashboard";
+import { agenteSupervisionRouter } from "./agente-supervision";
 import { solicitudesTurnoRouter } from "./solicitudes-turno";
 import { rolesRouter } from "./roles";
 import { tiposPersonalConfigRouter } from "./tipos-personal-config";
@@ -140,5 +142,7 @@ router.use(plantillasContratoRouter);
 router.use(visitasRouter);
 router.use(supervisionProgramacionesRouter);
 router.use(supervisionZonasRouter);
+router.use(supervisionDashboardRouter);
+router.use(agenteSupervisionRouter);
 
 export default router;

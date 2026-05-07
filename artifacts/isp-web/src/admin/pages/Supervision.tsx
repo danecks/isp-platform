@@ -1,24 +1,26 @@
 import { useState } from "react";
-import { ClipboardList, Map } from "lucide-react";
+import { ClipboardList, Map, BarChart3 } from "lucide-react";
 import { AdminLayout } from "@/admin/layout/AdminLayout";
 import { TabProgramacion } from "./supervision/TabProgramacion";
 import { TabAsignacionZonas } from "./supervision/TabAsignacionZonas";
+import { TabDashboard } from "./supervision/TabDashboard";
 
-type TabKey = "programacion" | "zonas";
+type TabKey = "dashboard" | "programacion" | "zonas";
 
 const TABS: Array<{ key: TabKey; label: string; icon: React.ComponentType<any> }> = [
-  { key: "programacion", label: "Programación", icon: ClipboardList },
+  { key: "dashboard",    label: "Dashboard",          icon: BarChart3 },
+  { key: "programacion", label: "Programación",       icon: ClipboardList },
   { key: "zonas",        label: "Asignación de Zonas", icon: Map },
 ];
 
 export default function Supervision() {
-  const [tab, setTab] = useState<TabKey>("programacion");
+  const [tab, setTab] = useState<TabKey>("dashboard");
 
   return (
     <AdminLayout title="Supervisión">
       <div className="p-4 space-y-3">
         <p className="text-xs text-white/50">
-          Programa visitas de supervisores y administra qué supervisor cubre cada zona operativa.
+          Programa visitas de supervisores, mide cumplimiento y administra qué supervisor cubre cada zona.
         </p>
 
         <div className="flex gap-1 border-b border-white/10">
@@ -42,8 +44,9 @@ export default function Supervision() {
         </div>
 
         <div>
+          {tab === "dashboard"    && <TabDashboard />}
           {tab === "programacion" && <TabProgramacion />}
-          {tab === "zonas" && <TabAsignacionZonas />}
+          {tab === "zonas"        && <TabAsignacionZonas />}
         </div>
       </div>
     </AdminLayout>

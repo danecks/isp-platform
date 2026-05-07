@@ -5950,5 +5950,24 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SUPERV-PROG-01 — error (no bloqueante)");
   }
 
+  // ── SUPERV-BON-01: monto de bono opcional para visitas extraordinaria/comision ──
+  // El admin captura un monto al programar; al completarse queda registrado.
+  // bono_pagado=TRUE indica que el admin ya lo incluyó en planilla (manual, no automático).
+  try {
+    await pool.query(`ALTER TABLE supervision_visitas_programadas ADD COLUMN IF NOT EXISTS bono_monto NUMERIC(10,2)`);
+    await pool.query(`ALTER TABLE supervision_visitas_programadas ADD COLUMN IF NOT EXISTS bono_pagado BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE supervision_visitas_programadas ADD COLUMN IF NOT EXISTS bono_pagado_at TIMESTAMPTZ`);
+    await pool.query(`ALTER TABLE supervision_visitas_programadas ADD COLUMN IF NOT EXISTS bono_pagado_por_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE supervision_visitas_programadas ADD COLUMN IF NOT EXISTS observaciones TEXT`);
+    await pool.query(`ALTER TABLE supervision_visitas_programadas ADD COLUMN IF NOT EXISTS fichaje_supervisor_id INTEGER REFERENCES agente_fichajes(id) ON DELETE SET NULL`);
+    // Vínculo TOFU dispositivo ↔ supervisor: el device se "casa" con el primer
+    // empleado que escanee su carnet en él (tipo='supervisor'); luego cualquier
+    // QR distinto es rechazado. Evita impersonación entre supervisores.
+    await pool.query(`ALTER TABLE supervisor_devices ADD COLUMN IF NOT EXISTS supervisor_employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL`);
+    logger.info("Auto-migrate: SUPERV-BON-01 columnas de bono, trazabilidad y vínculo device↔supervisor verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SUPERV-BON-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

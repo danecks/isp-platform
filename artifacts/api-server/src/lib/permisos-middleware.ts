@@ -28,6 +28,7 @@ const ROUTE_MODULO_MAP: Record<string, string> = {
   "/personal-slots":         "pizarron",
   "/supervision-programaciones": "supervision",
   "/supervision-zonas":      "supervision",
+  "/supervision-dashboard":  "supervision",
   "/personal/empleados":     "pizarron",
   "/solicitudes-turno":      "pizarron",
   "/planificacion-futura":   "pizarron",
@@ -176,6 +177,15 @@ function isPublicPath(path: string, method: string): boolean {
   if (method === "GET" && (
     path === "/agente/puesto-del-dia" ||
     /^\/agente\/puesto\/\d+\/equipo-asignado$/.test(path)
+  )) return true;
+
+  // PWA del supervisor — Fase B. Todo POST con credenciales en body
+  // (device_uuid + device_token + qr_token); cada handler valida + amarra TOFU.
+  if (method === "POST" && (
+    path === "/agente/supervision/mi-agenda" ||
+    path === "/agente/supervision/iniciar" ||
+    path === "/agente/supervision/completar" ||
+    path === "/agente/supervision/no-realizada"
   )) return true;
 
   // POSTs públicos de la PWA del agente y validación de supervisor-device
