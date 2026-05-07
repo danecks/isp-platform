@@ -55,7 +55,9 @@ async function autenticar(
   );
   const emp = empRows[0];
   if (!emp) return { status: 403, error: "carnet_invalido" };
-  if (emp.tipo_personal !== "supervisor") return { status: 403, error: "no_es_supervisor" };
+  if (emp.tipo_personal !== "supervisor" && emp.tipo_personal !== "jefe_servicio") {
+    return { status: 403, error: "no_es_supervisor" };
+  }
 
   // Vínculo TOFU. Primer uso: amarra device.supervisor_employee_id de forma atómica
   // (UPDATE ... WHERE supervisor_employee_id IS NULL). Si otro proceso ya lo ató antes,

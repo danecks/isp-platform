@@ -43,11 +43,16 @@ const ESTADO_LABEL: Record<Visita["estado"], string> = {
 };
 
 function getDevice(): DeviceCreds | null {
+  // Tolera ambos shapes históricos en localStorage:
+  //   { uuid, token }              ← SupervisorActivar / AgenteInicio / AgenteVisitas
+  //   { device_uuid, device_token } ← formato legado
   try {
     const raw = localStorage.getItem(DEVICE_KEY);
     if (!raw) return null;
     const j = JSON.parse(raw);
-    if (j.device_uuid && j.device_token) return j;
+    const uuid = j?.device_uuid ?? j?.uuid;
+    const token = j?.device_token ?? j?.token;
+    if (uuid && token) return { device_uuid: String(uuid), device_token: String(token) };
   } catch {}
   return null;
 }

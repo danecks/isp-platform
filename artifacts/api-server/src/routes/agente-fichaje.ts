@@ -980,6 +980,22 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
     }
 
     if (!servicio) {
+      // Supervisores y jefes de servicio sin puesto/custodia asignado NO son un error:
+      // su flujo operativo es la agenda de supervisión (/agente/supervision), no el
+      // fichaje de turno de guardia. Devolvemos 200 con bandera para que el frontend
+      // muestre el menú propio del supervisor en lugar de un mensaje de error.
+      const tp = String(agente.tipo_personal || "");
+      if (tp === "supervisor" || tp === "jefe_servicio") {
+        return res.status(200).json({
+          ok: true,
+          es_supervisor: true,
+          rol: tp,
+          mensaje: tp === "supervisor"
+            ? "Sos supervisor. Abrí tu agenda de supervisión."
+            : "Sos jefe de servicio. Abrí tu agenda de supervisión.",
+          agente,
+        });
+      }
       return res.status(404).json({
         error: "sin_servicio",
         mensaje: "No tienes un puesto o slot de custodia asignado. Avise al supervisor.",

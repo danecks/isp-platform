@@ -79,10 +79,18 @@ type Estado =
   | "gps_denegado"
   | "enviando"
   | "ok"
+  | "supervisor_menu"
   | "turno_activo"
   | "cerrando_turno"
   | "error"
   | "error_cierre";
+
+interface SupervisorIdent {
+  nombre: string;
+  cargo: string | null;
+  rol: "supervisor" | "jefe_servicio";
+  mensaje: string;
+}
 
 interface Servicio {
   tipo: "puesto" | "custodia";
@@ -137,6 +145,7 @@ export default function AgenteInicio() {
   const [estado, setEstado] = useState<Estado>("inicio");
   const [mensajeError, setMensajeError] = useState("");
   const [resultado, setResultado] = useState<Resultado | null>(null);
+  const [supervisorIdent, setSupervisorIdent] = useState<SupervisorIdent | null>(null);
   const [carnetToken, setCarnetToken] = useState<string | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -876,6 +885,15 @@ export default function AgenteInicio() {
           if (turnoActivoRef.current?.tipo === "puesto") setEstado("turno_activo");
           return;
         }
+        if (data.es_supervisor) {
+          setAccionMsg({
+            kind: "error",
+            texto: `${data.agente?.nombre ?? "Esta persona"} es ${data.rol === "jefe_servicio" ? "jefe de servicio" : "supervisor"}. No fichan turno en este puesto.`,
+          });
+          setPuestoSubVista("main");
+          if (turnoActivoRef.current?.tipo === "puesto") setEstado("turno_activo");
+          return;
+        }
         setAccionMsg({
           kind: "ok",
           texto: `${data.agente?.nombre ?? "Agente"} entró en servicio.`,
@@ -1289,6 +1307,21 @@ export default function AgenteInicio() {
         setEstado("error");
         return;
       }
+      // Supervisor / jefe de servicio sin puesto/custodia: no es turno operativo,
+      // mostramos su menú propio para que vaya a la agenda de supervisión.
+      if (data.es_supervisor) {
+        // Guardamos su qr_token en sessionStorage para que /agente/supervision
+        // no le pida re-escanearlo al abrir su agenda.
+        try { sessionStorage.setItem("isp_supervisor_qr", token); } catch { /* noop */ }
+        setSupervisorIdent({
+          nombre: data.agente?.nombre ?? "Supervisor",
+          cargo: data.agente?.cargo ?? null,
+          rol: (data.rol === "jefe_servicio" ? "jefe_servicio" : "supervisor"),
+          mensaje: data.mensaje || "Sos personal de supervisión.",
+        });
+        setEstado("supervisor_menu");
+        return;
+      }
       setResultado(data);
       // Si es custodia y vino tracking_token → este custodio es el LÍDER del recorrido (arranca rastreo).
       if (data.tracking_token && data.servicio?.tipo === "custodia") {
@@ -1377,15 +1410,23 @@ export default function AgenteInicio() {
     await detenerScanner();
     setCarnetToken(null);
     setResultado(null);
+    setSupervisorIdent(null);
     setMensajeError("");
     setEstado("inicio");
     if (esKiosco) void cargarPuestoDelDia();
   }, [detenerScanner, esKiosco, cargarPuestoDelDia]);
 
-  // Auto-reset en modo kiosco después de un éxito o error
+  // Auto-reset en modo kiosco después de un éxito, error o pantalla informativa
+  // de supervisor (la pantalla anuncia "vuelve solo en N s", así que el effect debe
+  // cubrir ese estado también para no quedar colgada).
   useEffect(() => {
     if (!esKiosco) return;
-    if (estado !== "ok" && estado !== "error" && estado !== "error_cierre") return;
+    if (
+      estado !== "ok" &&
+      estado !== "error" &&
+      estado !== "error_cierre" &&
+      estado !== "supervisor_menu"
+    ) return;
     const t = setTimeout(() => { void reiniciar(); }, AUTO_RESET_MS);
     return () => clearTimeout(t);
   }, [estado, esKiosco, reiniciar]);
@@ -2486,6 +2527,50 @@ export default function AgenteInicio() {
                 Marcar otro agente
               </button>
             )}
+            <button
+              onClick={reiniciar}
+              className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-3 rounded-lg flex items-center justify-center gap-2"
+            >
+              <RotateCcw className="w-4 h-4" />
+              {esKiosco ? "Listo (vuelve solo)" : "Listo"}
+            </button>
+            {esKiosco && (
+              <p className="text-center text-[11px] text-slate-500">
+                Esta pantalla volverá al inicio en {Math.round(AUTO_RESET_MS / 1000)} s.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Menú propio para supervisores y jefes de servicio (sin puesto/custodia) */}
+        {estado === "supervisor_menu" && supervisorIdent && (
+          <div className="space-y-5 pt-4 text-center">
+            <div className="mx-auto w-20 h-20 rounded-full bg-violet-600/20 flex items-center justify-center">
+              <ShieldAlert className="w-10 h-10 text-violet-300" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold">{supervisorIdent.nombre}</h2>
+              <p className="text-xs text-violet-300/80 mt-1 uppercase tracking-wider">
+                {supervisorIdent.rol === "jefe_servicio" ? "Jefe de Servicio" : "Supervisor"}
+                {supervisorIdent.cargo ? ` · ${supervisorIdent.cargo}` : ""}
+              </p>
+              <p className="text-sm text-slate-300 mt-3">{supervisorIdent.mensaje}</p>
+            </div>
+
+            <button
+              onClick={() => { window.location.href = "/agente/supervision"; }}
+              className="w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold py-4 rounded-lg flex items-center justify-center gap-2 transition"
+            >
+              <Activity className="w-5 h-5" /> Mi agenda de supervisión
+            </button>
+
+            <button
+              onClick={() => { window.location.href = "/agente/visitas"; }}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-lg flex items-center justify-center gap-2 transition"
+            >
+              <Users className="w-5 h-5" /> Visitas (entradas / salidas)
+            </button>
+
             <button
               onClick={reiniciar}
               className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-3 rounded-lg flex items-center justify-center gap-2"
