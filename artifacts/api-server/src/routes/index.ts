@@ -52,6 +52,8 @@ import { qrRondasRouter } from "./qr-rondas";
 import { agenteFichajeRouter } from "./agente-fichaje";
 import { puestoSlotsRouter } from "./puesto-slots";
 import { personalSlotsRouter } from "./personal-slots";
+import { supervisionProgramacionesRouter } from "./supervision-programaciones";
+import { supervisionZonasRouter } from "./supervision-zonas";
 import { solicitudesTurnoRouter } from "./solicitudes-turno";
 import { rolesRouter } from "./roles";
 import { tiposPersonalConfigRouter } from "./tipos-personal-config";
@@ -136,5 +138,7 @@ router.use(amonestacionesRouter);
 router.use(docsRouter);
 router.use(plantillasContratoRouter);
 router.use(visitasRouter);
+router.use(supervisionProgramacionesRouter);
+router.use(supervisionZonasRouter);
 
 export default router;

@@ -110,6 +110,13 @@ export const NAV_SECTIONS: NavSection[] = [
         roles: ["admin", "operaciones", "supervisor"],
       },
       {
+        path: "/admin/supervision",
+        label: "Supervisión",
+        icon: ClipboardList,
+        clave: "supervision",
+        roles: ["admin", "operaciones", "supervisor"],
+      },
+      {
         path: "/admin/tablero-servicios",
         label: "Seguimiento SSA",
         icon: Kanban,

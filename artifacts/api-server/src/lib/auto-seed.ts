@@ -5903,5 +5903,52 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: VIS-02 — error (no bloqueante)");
   }
 
+  // ── SUPERV-PROG-01: tabla supervision_visitas_programadas + permisos ──────
+  // Agenda planificada del supervisor (rutina/extraordinaria/comision).
+  // La PWA del supervisor leerá su agenda al escanear su carnet.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS supervision_visitas_programadas (
+        id                       SERIAL PRIMARY KEY,
+        supervisor_employee_id   INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        cliente_id               INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+        puesto_id                INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        zona_id                  INTEGER REFERENCES operational_zones(id) ON DELETE SET NULL,
+        fecha_planificada        DATE NOT NULL,
+        ventana_inicio           TIME,
+        ventana_fin              TIME,
+        tipo                     VARCHAR(20) NOT NULL DEFAULT 'rutina'
+                                   CHECK (tipo IN ('rutina','extraordinaria','comision')),
+        prioridad                VARCHAR(10) NOT NULL DEFAULT 'normal'
+                                   CHECK (prioridad IN ('baja','normal','alta','urgente')),
+        instrucciones            TEXT,
+        estado                   VARCHAR(20) NOT NULL DEFAULT 'pendiente'
+                                   CHECK (estado IN ('pendiente','en_curso','completada','cancelada','no_realizada')),
+        visita_id                INTEGER REFERENCES visitas(id) ON DELETE SET NULL,
+        recorrido_padre_id       INTEGER,
+        iniciada_at              TIMESTAMPTZ,
+        completada_at            TIMESTAMPTZ,
+        created_by_user_id       INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS svp_sup_fecha_idx    ON supervision_visitas_programadas(supervisor_employee_id, fecha_planificada)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS svp_fecha_estado_idx ON supervision_visitas_programadas(fecha_planificada, estado)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS svp_zona_idx         ON supervision_visitas_programadas(zona_id) WHERE zona_id IS NOT NULL`);
+
+    // Permisos por rol (el catálogo de módulos se infiere desde NAV_SECTIONS en el frontend)
+    await pool.query(`
+      INSERT INTO rol_permisos (rol_clave, modulo_clave) VALUES
+        ('admin',       'supervision'),
+        ('operaciones', 'supervision'),
+        ('supervisor',  'supervision')
+      ON CONFLICT DO NOTHING
+    `);
+    logger.info("Auto-migrate: SUPERV-PROG-01 tabla supervision_visitas_programadas + permisos verificados/creados");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SUPERV-PROG-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

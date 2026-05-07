@@ -40,6 +40,7 @@ import AdminCMS from "@/admin/pages/CMS";
 import AdminSimulador from "@/admin/pages/SimuladorWhatsApp";
 import AdminEmpleados from "@/admin/pages/Empleados";
 import AdminOperaciones from "@/admin/pages/Operaciones";
+import AdminSupervision from "@/admin/pages/Supervision";
 import AdminCierresHistorico from "@/admin/pages/CierresHistorico";
 import AdminPizarronHistorico from "@/admin/pages/PizarronHistorico";
 import AdminZonasOperativas from "@/admin/pages/ZonasOperativas";
@@ -243,6 +244,9 @@ function Router() {
       </Route>
       <Route path="/admin/operaciones">
         {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminOperaciones /></AuthGuard>}
+      </Route>
+      <Route path="/admin/supervision">
+        {() => <AuthGuard requiredRoles={["admin", "operaciones", "supervisor"]}><AdminSupervision /></AuthGuard>}
       </Route>
       <Route path="/admin/rrhh/eventos">
         {() => <AuthGuard requiredRoles={["admin", "rrhh", "operaciones"]}><AdminRrhhEventos /></AuthGuard>}
