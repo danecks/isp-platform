@@ -4756,6 +4756,27 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SOL-EXPAND-01 — error (no bloqueante)");
   }
 
+  // ── SOL-PRETENSION-TEXT-01: pretension_salarial pasa a TEXT ──────────────
+  // RRHH necesita aceptar valores no numéricos como "Q. 5,000.00" o
+  // "A convenir". La columna originalmente era NUMERIC; convertimos a TEXT
+  // preservando los valores existentes.
+  try {
+    const { rows } = await pool.query(
+      `SELECT data_type FROM information_schema.columns
+       WHERE table_name='solicitudes_empleo' AND column_name='pretension_salarial'`
+    );
+    if (rows[0] && rows[0].data_type !== "text") {
+      await pool.query(
+        `ALTER TABLE solicitudes_empleo
+           ALTER COLUMN pretension_salarial TYPE TEXT
+           USING pretension_salarial::TEXT`
+      );
+      logger.info("Auto-migrate: SOL-PRETENSION-TEXT-01 columna pretension_salarial convertida a TEXT");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SOL-PRETENSION-TEXT-01 — error (no bloqueante)");
+  }
+
   // ── SOL-MERGE-01: sistema de merge de reingresos ──────────────────────────
   try {
     await pool.query(`ALTER TABLE solicitudes_empleo ADD COLUMN IF NOT EXISTS es_reingreso BOOLEAN NOT NULL DEFAULT FALSE`);

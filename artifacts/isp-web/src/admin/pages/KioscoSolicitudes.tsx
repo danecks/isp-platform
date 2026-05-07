@@ -267,6 +267,68 @@ interface SolicitudDetalle extends Solicitud {
   ref3_nombre: string | null; ref3_relacion: string | null; ref3_tel: string | null; ref3_anios: string | null;
 }
 
+// Lista blanca de campos editables desde el panel de RRHH. Debe coincidir
+// 1:1 con el whitelist del backend en
+// `artifacts/api-server/src/routes/solicitudes-empleo.ts` (CAMPOS_EDITABLES
+// + CAMPOS_EXTENDIDOS_TEXT). Si agregás un nuevo `<EField>` editable al
+// modal, agregá la clave también acá y en el backend.
+const EDITABLE_FIELDS: readonly string[] = [
+  // Datos personales
+  "nombre_completo", "dpi", "fecha_nacimiento", "genero", "estado_civil",
+  "telefono", "correo", "nombre_contacto_emergencia", "telefono_emergencia",
+  // Dirección y familia básica
+  "direccion", "municipio", "departamento",
+  "nombre_padre", "nombre_madre", "num_dependientes",
+  "familiar_en_empresa", "nombre_familiar_empresa",
+  // Educación / experiencia básica
+  "grado_estudios", "experiencia_seguridad", "anios_experiencia",
+  "empresa_anterior", "licencia_armas", "tiene_vehiculo",
+  // Puesto
+  "puesto_solicitado", "disponibilidad_horario", "disponible_exterior",
+  "pretension_salarial",
+  // Vivienda
+  "tipo_vivienda", "tiempo_residencia", "renta_mensual",
+  // Banco
+  "banco", "tipo_cuenta", "num_cuenta", "forma_pago",
+  // Licencia conducir
+  "tiene_licencia", "tipo_licencia", "vigencia_licencia",
+  // Familia extendida y redes
+  "tel_padre", "tel_madre",
+  "nombre_conyuge", "ocup_conyuge", "tel_conyuge",
+  "hermano1_nombre", "hermano1_tel", "hermano2_nombre", "hermano2_tel",
+  "facebook", "instagram", "parentesco_emergencia",
+  // Salud
+  "estatura", "peso",
+  "enfermedad_cronica", "enfermedad_det",
+  "medicamento", "medicamento_det",
+  "impedimento_fisico", "impedimento_det",
+  "consume_alcohol", "consume_drogas",
+  "tiene_tatuajes", "tatuajes_det",
+  // Antecedentes y finanzas
+  "proceso_judicial", "proceso_det",
+  "detenido", "detencion_det",
+  "tiene_deudas", "estado_deuda", "gastos_mensuales",
+  "tiene_prestamo", "monto_prestamo",
+  // Educación detallada
+  "prim_escuela", "prim_lugar", "prim_titulo",
+  "bas_escuela",  "bas_lugar",  "bas_titulo",
+  "div_escuela",  "div_lugar",  "div_titulo",
+  "uni_escuela",  "uni_lugar",  "uni_titulo",
+  // Experiencia laboral
+  "emp1_nombre", "emp1_puesto", "emp1_salario", "emp1_inicio", "emp1_fin", "emp1_motivo",
+  "emp2_nombre", "emp2_puesto", "emp2_salario", "emp2_inicio", "emp2_fin", "emp2_motivo",
+  "emp3_nombre", "emp3_puesto", "emp3_salario", "emp3_inicio", "emp3_fin", "emp3_motivo",
+  // Seguridad / militar / disponibilidad
+  "servicio_militar", "rango_militar", "unidad_militar",
+  "fue_policia", "motivo_baja_policial",
+  "habilidades", "tipos_seguridad",
+  "disp_rotativo", "disp_nocturno", "disp_fds",
+  // Referencias personales
+  "ref1_nombre", "ref1_relacion", "ref1_tel", "ref1_anios",
+  "ref2_nombre", "ref2_relacion", "ref2_tel", "ref2_anios",
+  "ref3_nombre", "ref3_relacion", "ref3_tel", "ref3_anios",
+];
+
 const ESTADOS: (Estado | "todos")[] = ["todos", "pendiente", "en_revision", "entrevista", "aprobada", "rechazada", "contratada"];
 
 const ESTADO_LABEL: Record<Estado | "todos", string> = {
@@ -282,6 +344,22 @@ const ESTADO_COLOR: Record<Estado, string> = {
   rechazada: "bg-red-500/20 text-red-300 border-red-700",
   contratada: "bg-emerald-500/20 text-emerald-300 border-emerald-700",
 };
+
+/**
+ * Formatea la pretensión salarial para mostrar en pantalla. Como la columna
+ * acepta tanto valores numéricos puros ("5000") como texto libre
+ * ("Q. 5,000.00", "A convenir"), intentamos parsear como número y, si no es
+ * numérico, devolvemos el texto tal cual lo escribió RRHH.
+ */
+function fmtPretensionSalarial(raw: string | null | undefined): string | null {
+  if (raw == null || String(raw).trim() === "") return null;
+  const s = String(raw).trim();
+  // Si toda la cadena es un número (incluyendo decimales), formateamos como Q.
+  if (/^-?\d+(\.\d+)?$/.test(s)) {
+    return `Q ${parseFloat(s).toLocaleString("es-GT")}`;
+  }
+  return s;
+}
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("es-GT", { day: "2-digit", month: "short", year: "numeric" });
@@ -416,19 +494,33 @@ export default function KioscoSolicitudes() {
       alert("El nombre completo es obligatorio.");
       return;
     }
+    // Construimos el body únicamente con las claves de la lista blanca de
+    // campos editables (debe coincidir con CAMPOS_EDITABLES + CAMPOS_EXTENDIDOS_TEXT
+    // del backend). Esto evita enviar al PATCH claves de solo-lectura como
+    // foto_url, dpi_*_url, estado, employee_id, created_at, etc., que ahora
+    // serían rechazadas con 400 por el backend.
+    const body: Record<string, unknown> = { revisado_por: currentUser?.name || "Admin" };
+    for (const f of EDITABLE_FIELDS) {
+      if (f in editado) body[f] = (editado as Record<string, unknown>)[f];
+    }
     setGuardando(true);
     try {
       const r = await fetch(`${API}/solicitudes-empleo/${detalle.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
-        body: JSON.stringify({ ...editado, revisado_por: currentUser?.name || "Admin" }),
+        body: JSON.stringify(body),
       });
       if (!r.ok) {
         const data = await r.json().catch(() => ({}));
         throw new Error(data.error || "Error al guardar");
       }
-      qc.invalidateQueries({ queryKey: ["kiosco-solicitudes"] });
-      qc.invalidateQueries({ queryKey: ["kiosco-solicitud-detalle", detalle.id] });
+      // Invalidar y refetch inmediato del detalle para que el panel se
+      // re-renderice con los datos frescos sin esperar al refetchInterval.
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["kiosco-solicitudes"] }),
+        qc.invalidateQueries({ queryKey: ["kiosco-solicitud-detalle", detalle.id] }),
+      ]);
+      await qc.refetchQueries({ queryKey: ["kiosco-solicitud-detalle", detalle.id] });
       setEditando(false);
       setEditado({});
     } catch (err) {
@@ -781,9 +873,10 @@ export default function KioscoSolicitudes() {
                     <EField label="Disponible fuera de ciudad" tipo="bool" editando={editando}
                       display={detalle.disponible_exterior ? "Sí" : "No"}
                       value={editado.disponible_exterior} onChange={v => setCampo("disponible_exterior", v as boolean)} />
-                    <EField label="Pretensión salarial (Q)" tipo="number" editando={editando}
-                      display={detalle.pretension_salarial ? `Q ${parseFloat(detalle.pretension_salarial).toLocaleString("es-GT")}` : null}
-                      value={editado.pretension_salarial} onChange={v => setCampo("pretension_salarial", v as string | null)} />
+                    <EField label="Pretensión salarial" editando={editando}
+                      display={fmtPretensionSalarial(detalle.pretension_salarial)}
+                      value={editado.pretension_salarial} onChange={v => setCampo("pretension_salarial", v as string | null)}
+                      placeholder='Ej: "5000", "Q. 5,000.00" o "A convenir"' />
                   </Grid2>
                 </Section>
 

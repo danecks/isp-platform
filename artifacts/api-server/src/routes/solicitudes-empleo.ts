@@ -470,7 +470,7 @@ solicitudesEmpleoRouter.patch("/solicitudes-empleo/:id", async (req: Request, re
     puesto_solicitado: "text",
     disponibilidad_horario: "text",
     disponible_exterior: "bool",
-    pretension_salarial: "num",
+    pretension_salarial: "text",
   };
   // Agregar todos los campos extendidos como "text" (incluye tipo_vivienda,
   // banco, salud, antecedentes, hermanos, cónyuge, redes, educación, exp.
@@ -480,6 +480,37 @@ solicitudesEmpleoRouter.patch("/solicitudes-empleo/:id", async (req: Request, re
   }
 
   const body = req.body ?? {};
+
+  // Claves "meta" permitidas en el body pero que no se persisten directamente
+  // como campos editables (revisado_por se maneja aparte abajo).
+  const META_KEYS = new Set<string>(["revisado_por"]);
+
+  // Validar que no vengan claves desconocidas. Esto evita la
+  // desincronización silenciosa que causaba que cambios "guardados" no se
+  // reflejaran: si el frontend envía una clave que el backend no reconoce,
+  // ahora respondemos con 400 explicando qué claves se rechazaron en lugar
+  // de descartarlas en silencio.
+  const clavesRechazadas: string[] = [];
+  for (const k of Object.keys(body)) {
+    if (META_KEYS.has(k)) continue;
+    if (!(k in CAMPOS_EDITABLES)) clavesRechazadas.push(k);
+  }
+  if (clavesRechazadas.length > 0) {
+    return res.status(400).json({
+      error: "Campos desconocidos en la solicitud",
+      claves_rechazadas: clavesRechazadas,
+    });
+  }
+
+  // Validación: dirección no puede quedar vacía si se incluyó en el body
+  if ("direccion" in body && (body.direccion == null || String(body.direccion).trim() === "")) {
+    return res.status(400).json({ error: "La dirección es obligatoria" });
+  }
+  // Validación: nombre no puede quedar vacío
+  if ("nombre_completo" in body && (body.nombre_completo == null || String(body.nombre_completo).trim() === "")) {
+    return res.status(400).json({ error: "El nombre completo es obligatorio" });
+  }
+
   const sets: string[] = [];
   const params: unknown[] = [];
 
@@ -503,17 +534,11 @@ solicitudesEmpleoRouter.patch("/solicitudes-empleo/:id", async (req: Request, re
     sets.push(`${campo} = $${params.length}`);
   }
 
+  // Si no llegó ningún campo editable simplemente respondemos OK sin tocar
+  // la fila. El frontend cierra el modal sin mostrar error rojo de
+  // "Sin cambios" cuando el usuario abre y cierra sin editar nada.
   if (sets.length === 0) {
-    return res.status(400).json({ error: "Sin cambios" });
-  }
-
-  // Validación: dirección no puede quedar vacía si se incluyó en el body
-  if ("direccion" in body && (body.direccion == null || String(body.direccion).trim() === "")) {
-    return res.status(400).json({ error: "La dirección es obligatoria" });
-  }
-  // Validación: nombre no puede quedar vacío
-  if ("nombre_completo" in body && (body.nombre_completo == null || String(body.nombre_completo).trim() === "")) {
-    return res.status(400).json({ error: "El nombre completo es obligatorio" });
+    return res.json({ ok: true, sinCambios: true });
   }
 
   // Normalizar nombre si se envió
