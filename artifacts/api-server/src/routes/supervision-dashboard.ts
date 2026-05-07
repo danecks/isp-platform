@@ -83,6 +83,67 @@ supervisionDashboardRouter.get("/supervision-dashboard", async (req, res) => {
   }
 });
 
+// ── GET /api/supervision-tracking/en-vivo ──
+// Última posición conocida (≤ 30 min) de cada supervisor con turno activo.
+supervisionDashboardRouter.get("/supervision-tracking/en-vivo", async (req, res) => {
+  if (!auth(req, res)) return;
+  try {
+    const { rows } = await pool.query(`
+      WITH activos AS (
+        SELECT DISTINCT ON (f.employee_id)
+               f.id AS fichaje_id, f.employee_id, f.registrado_en AS turno_inicio
+          FROM agente_fichajes f
+          JOIN employees e ON e.id = f.employee_id
+         WHERE f.tipo = 'inicio_turno'
+           AND f.turno_cerrado_en IS NULL
+           AND e.tipo_personal = 'supervisor'
+           AND f.registrado_en >= NOW() - INTERVAL '24 hours'
+         ORDER BY f.employee_id, f.registrado_en DESC
+      ),
+      ultimo AS (
+        SELECT DISTINCT ON (g.fichaje_id)
+               g.fichaje_id, g.latitud, g.longitud, g.precision_metros,
+               g.velocidad_mps, g.capturado_en
+          FROM agente_recorrido_gps g
+          JOIN activos a ON a.fichaje_id = g.fichaje_id
+         WHERE g.capturado_en >= NOW() - INTERVAL '30 minutes'
+         ORDER BY g.fichaje_id, g.capturado_en DESC
+      ),
+      visita_activa AS (
+        SELECT DISTINCT ON (sp.supervisor_employee_id)
+               sp.supervisor_employee_id, sp.id AS programacion_id,
+               sp.cliente_id, sp.puesto_id, sp.zona_id,
+               c.nombre  AS cliente_nombre,
+               po.nombre AS puesto_nombre,
+               z.nombre  AS zona_nombre
+          FROM supervision_visitas_programadas sp
+          LEFT JOIN clients c             ON c.id  = sp.cliente_id
+          LEFT JOIN puestos_operativos po ON po.id = sp.puesto_id
+          LEFT JOIN operational_zones z   ON z.id  = sp.zona_id
+         WHERE sp.estado = 'en_curso'
+         ORDER BY sp.supervisor_employee_id, sp.iniciada_at DESC
+      )
+      SELECT
+        a.employee_id        AS supervisor_id,
+        e.nombre_completo    AS supervisor_nombre,
+        a.fichaje_id,
+        a.turno_inicio,
+        u.latitud, u.longitud, u.precision_metros, u.velocidad_mps, u.capturado_en,
+        v.programacion_id, v.cliente_nombre, v.puesto_nombre, v.zona_nombre,
+        EXTRACT(EPOCH FROM (NOW() - u.capturado_en))::int AS hace_segundos
+      FROM activos a
+      JOIN employees e ON e.id = a.employee_id
+      LEFT JOIN ultimo u        ON u.fichaje_id = a.fichaje_id
+      LEFT JOIN visita_activa v ON v.supervisor_employee_id = a.employee_id
+      ORDER BY e.nombre_completo
+    `);
+    res.json({ supervisores: rows, server_now: new Date().toISOString() });
+  } catch (err) {
+    logger.error({ err }, "GET /supervision-tracking/en-vivo error");
+    res.status(500).json({ error: "Error al cargar tracking" });
+  }
+});
+
 // ── GET /api/supervision-programaciones/:id/gps ──
 // Devuelve puntos GPS del recorrido del supervisor entre iniciada_at y completada_at.
 supervisionDashboardRouter.get("/supervision-programaciones/:id/gps", async (req, res) => {

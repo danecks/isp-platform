@@ -38,6 +38,40 @@ const SELECT_BASE = `
   LEFT JOIN operational_zones z   ON z.id  = sp.zona_id
 `;
 
+// ─── GET /api/supervision-programaciones/catalogos ──────────────────────────
+// Devuelve clientes activos + sus puestos + zonas, en una sola llamada,
+// para alimentar los selects del formulario "Nueva visita programada".
+supervisionProgramacionesRouter.get("/supervision-programaciones/catalogos", async (req, res) => {
+  if (!auth(req, res)) return;
+  try {
+    const [{ rows: clientes }, { rows: puestos }, { rows: zonas }] = await Promise.all([
+      pool.query(
+        `SELECT id, COALESCE(nombre, nombre_comercial, 'Cliente ' || id::text) AS nombre
+           FROM clients
+          WHERE COALESCE(estado, 'activo') = 'activo'
+          ORDER BY nombre`
+      ),
+      pool.query(
+        `SELECT po.id, po.nombre, po.cliente_id
+           FROM puestos_operativos po
+           JOIN clients c ON c.id = po.cliente_id
+          WHERE COALESCE(po.estado, 'activo') = 'activo'
+            AND COALESCE(c.estado,  'activo') = 'activo'
+          ORDER BY po.nombre`
+      ),
+      pool.query(
+        `SELECT id AS zona_id, nombre AS zona_nombre
+           FROM operational_zones
+          ORDER BY nombre`
+      ),
+    ]);
+    res.json({ clientes, puestos, zonas });
+  } catch (err) {
+    logger.error({ err }, "GET /supervision-programaciones/catalogos error");
+    res.status(500).json({ error: "Error al cargar catálogos" });
+  }
+});
+
 // ─── GET /api/supervision-programaciones ────────────────────────────────────
 // Filtros: ?supervisor=ID&desde=YYYY-MM-DD&hasta=YYYY-MM-DD&estado=...&tipo=...
 supervisionProgramacionesRouter.get("/supervision-programaciones", async (req, res) => {

@@ -46,19 +46,12 @@ export function TabProgramacion() {
 
   async function cargarCatalogos() {
     try {
-      const [cs, ps, zs] = await Promise.all([
-        api<any>("/clients").catch(() => ({ clients: [] })),
-        api<any>("/puestos-operativos").catch(() => ({ puestos: [] })),
-        api<{ zonas: ZonaSlim[] }>("/supervision-zonas").catch(() => ({ zonas: [] })),
-      ]);
-      const cArr = Array.isArray(cs) ? cs : (cs.clients || cs.clientes || []);
-      const pArr = Array.isArray(ps) ? ps : (ps.puestos || []);
-      setClientes(cArr.map((c: any) => ({
-        id: c.id,
-        nombre: c.nombre || c.nombre_comercial || c.razon_social || `Cliente ${c.id}`,
-      })));
-      setPuestos(pArr.map((p: any) => ({ id: p.id, nombre: p.nombre, cliente_id: p.cliente_id })));
-      setZonas(zs.zonas || []);
+      const r = await api<{ clientes: ClienteSlim[]; puestos: PuestoSlim[]; zonas: ZonaSlim[] }>(
+        "/supervision-programaciones/catalogos"
+      );
+      setClientes(r.clientes || []);
+      setPuestos(r.puestos || []);
+      setZonas(r.zonas || []);
     } catch { /* opcional */ }
   }
 

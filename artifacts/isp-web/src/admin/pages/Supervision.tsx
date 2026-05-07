@@ -1,14 +1,16 @@
 import { useState } from "react";
-import { ClipboardList, Map, BarChart3 } from "lucide-react";
+import { ClipboardList, Map, BarChart3, MapPin } from "lucide-react";
 import { AdminLayout } from "@/admin/layout/AdminLayout";
 import { TabProgramacion } from "./supervision/TabProgramacion";
 import { TabAsignacionZonas } from "./supervision/TabAsignacionZonas";
 import { TabDashboard } from "./supervision/TabDashboard";
+import { TabMapaEnVivo } from "./supervision/TabMapaEnVivo";
 
-type TabKey = "dashboard" | "programacion" | "zonas";
+type TabKey = "dashboard" | "mapa" | "programacion" | "zonas";
 
 const TABS: Array<{ key: TabKey; label: string; icon: React.ComponentType<any> }> = [
   { key: "dashboard",    label: "Dashboard",          icon: BarChart3 },
+  { key: "mapa",         label: "Mapa en vivo",       icon: MapPin },
   { key: "programacion", label: "Programación",       icon: ClipboardList },
   { key: "zonas",        label: "Asignación de Zonas", icon: Map },
 ];
@@ -45,6 +47,7 @@ export default function Supervision() {
 
         <div>
           {tab === "dashboard"    && <TabDashboard />}
+          {tab === "mapa"         && <TabMapaEnVivo />}
           {tab === "programacion" && <TabProgramacion />}
           {tab === "zonas"        && <TabAsignacionZonas />}
         </div>
