@@ -362,7 +362,15 @@ function fmtPretensionSalarial(raw: string | null | undefined): string | null {
 }
 
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("es-GT", { day: "2-digit", month: "short", year: "numeric" });
+  // Para strings "YYYY-MM-DD" (date column) construimos la fecha como local
+  // para evitar el corrimiento de un día por zona horaria.
+  // Anclado a fin de string: sólo aplica a date-only ("YYYY-MM-DD"), no a
+  // timestamps ISO completos (created_at, etc.).
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const d = m
+    ? new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]))
+    : new Date(iso);
+  return d.toLocaleDateString("es-GT", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function fmtDateTime(iso: string) {
@@ -512,7 +520,13 @@ export default function KioscoSolicitudes() {
       });
       if (!r.ok) {
         const data = await r.json().catch(() => ({}));
-        throw new Error(data.error || "Error al guardar");
+        // Si el backend rechazó campos desconocidos, los incluimos en el
+        // mensaje para diagnosticar rápido (útil cuando el navegador tiene
+        // JS cacheado de una versión vieja).
+        const detalleErr = Array.isArray(data?.claves_rechazadas) && data.claves_rechazadas.length > 0
+          ? `${data.error}: ${data.claves_rechazadas.join(", ")}`
+          : (data?.error || "Error al guardar");
+        throw new Error(detalleErr);
       }
       // Invalidar y refetch inmediato del detalle para que el panel se
       // re-renderice con los datos frescos sin esperar al refetchInterval.

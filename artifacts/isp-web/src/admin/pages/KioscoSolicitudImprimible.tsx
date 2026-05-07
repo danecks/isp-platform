@@ -85,7 +85,16 @@ interface Detalle {
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
   try {
-    return new Date(iso).toLocaleDateString("es-GT", { day: "2-digit", month: "long", year: "numeric" });
+    // Para strings "YYYY-MM-DD" (date column de Postgres) construimos la fecha
+    // como local para evitar el corrimiento de un día por zona horaria
+    // (new Date("2004-08-31") se interpreta como UTC y en GT-6 muestra el 30).
+    // Anclado a fin de string: sólo aplica a date-only ("YYYY-MM-DD"), no a
+    // timestamps ISO completos como "2026-05-07T01:30:00.000Z".
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    const d = m
+      ? new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]))
+      : new Date(iso);
+    return d.toLocaleDateString("es-GT", { day: "2-digit", month: "long", year: "numeric" });
   } catch { return "—"; }
 }
 
@@ -457,7 +466,11 @@ function SignatureBox({ label, subtitle }: { label: string; subtitle: string }) 
 function edadFrom(iso: string | null): string {
   if (!iso) return "—";
   try {
-    const nac = new Date(iso);
+    // Mismo tratamiento que fmtDate: parseamos "YYYY-MM-DD" como local.
+    const mm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    const nac = mm
+      ? new Date(parseInt(mm[1]), parseInt(mm[2]) - 1, parseInt(mm[3]))
+      : new Date(iso);
     const hoy = new Date();
     let edad = hoy.getFullYear() - nac.getFullYear();
     const m = hoy.getMonth() - nac.getMonth();
