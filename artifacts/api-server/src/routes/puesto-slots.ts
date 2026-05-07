@@ -8,6 +8,9 @@ import {
 
 export const puestoSlotsRouter = Router();
 
+// SLOT-FIC-MON-01: ver lib/fecha-lunes.ts para la regla completa.
+import { normalizarFechaALunesString as normalizarFechaALunes } from "../lib/fecha-lunes";
+
 const authCheck = (req: any, res: any): boolean => {
   const session = req.headers["x-isp-session"];
   if (!session) { res.status(401).json({ error: "No autorizado" }); return false; }
@@ -223,7 +226,7 @@ puestoSlotsRouter.post("/puestos/:puestoId/slots", async (req, res) => {
                    to_char(fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
                    empleado_id, notas, activo, created_at`,
         [puestoId, newSlotNum, horasTurno, hora_entrada,
-         diasAuto, longitudCicloFinal, fecha_inicio_ciclo || null, empleado_id || null, notas || null,
+         diasAuto, longitudCicloFinal, normalizarFechaALunes(fecha_inicio_ciclo), empleado_id || null, notas || null,
          horaEntradaPorSemanaFinal]
       );
       await client.query("COMMIT");
@@ -336,7 +339,7 @@ puestoSlotsRouter.put("/slots/:id", async (req, res) => {
     }
   }
   if (fecha_inicio_ciclo !== undefined) {
-    updates.push(`fecha_inicio_ciclo = $${p++}`); params.push(fecha_inicio_ciclo || null);
+    updates.push(`fecha_inicio_ciclo = $${p++}`); params.push(normalizarFechaALunes(fecha_inicio_ciclo));
   }
   if (empleado_id !== undefined) { updates.push(`empleado_id = $${p++}`); params.push(empleado_id || null); }
   if (notas !== undefined) { updates.push(`notas = $${p++}`); params.push(notas || null); }

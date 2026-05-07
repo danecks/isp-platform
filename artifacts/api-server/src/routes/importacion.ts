@@ -14,6 +14,7 @@
 
 import { Router } from "express";
 import { pool } from "@workspace/db";
+import { normalizarFechaALunesString } from "../lib/fecha-lunes";
 
 export const importacionRouter = Router();
 
@@ -1411,7 +1412,8 @@ importacionRouter.post("/importacion/plantilla-turnos/aplicar", async (req: any,
         [
           f.despues.horas_turno,
           f.despues.longitud_ciclo,
-          f.despues.fecha_inicio_ciclo,
+          // SLOT-FIC-MON-01: normalizar al lunes anterior antes de persistir.
+          normalizarFechaALunesString(f.despues.fecha_inicio_ciclo),
           f.despues.dias_trabajo,
           f.despues.dias_medio_turno,
           f.despues.hora_entrada || "07:00",

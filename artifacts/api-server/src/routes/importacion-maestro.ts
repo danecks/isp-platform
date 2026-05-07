@@ -16,6 +16,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import bcrypt from "bcryptjs";
+import { normalizarFechaALunesDate } from "../lib/fecha-lunes";
 
 export const importacionMaestroRouter = Router();
 
@@ -580,7 +581,8 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
           //   slot 1 → [1,3,5,7,9,11,13]   (días impares del ciclo de 14)
           //   slot 2 → [2,4,6,8,10,12,14]  (días pares del ciclo de 14)
           // NO se aplica offset por orden — eso rompería el cálculo del ciclo.
-          const fechaSlot: Date | null = p.fecha_inicio_ciclo ?? null;
+          // SLOT-FIC-MON-01: anclar al lunes anterior (la grilla asume D1=Lun).
+          const fechaSlot: Date | null = normalizarFechaALunesDate(p.fecha_inicio_ciclo ?? null);
 
           await pool.query(
             `INSERT INTO puesto_slots

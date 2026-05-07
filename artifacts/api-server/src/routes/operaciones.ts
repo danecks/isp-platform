@@ -20,6 +20,7 @@ import {
 } from "./operaciones/_helpers/cierre-sync";
 import { getActorFromReq } from "../lib/auth-helpers";
 import { validarEmpleadoAsignable } from "../lib/empleado-fecha-ingreso";
+import { normalizarFechaALunesString } from "../lib/fecha-lunes";
 
 const operacionesRouter = Router();
 
@@ -4385,6 +4386,11 @@ operacionesRouter.patch("/operaciones/puestos/:id/turno", async (req, res) => {
     return res.status(400).json({ error: "fecha_inicio_ciclo debe tener formato YYYY-MM-DD" });
   }
 
+  // SLOT-FIC-MON-01: normalizar al LUNES anterior antes de persistir.
+  // La grilla del modal asume D1=Lun; cualquier fecha distinta desfasaría el
+  // motor del pizarrón. Ver lib/fecha-lunes.ts.
+  const ficNormalizada = normalizarFechaALunesString(fecha_inicio_ciclo);
+
   // Validar hora_entrada: si se provee, debe ser HH:MM
   if (hora_entrada != null && hora_entrada !== "" && !/^\d{2}:\d{2}$/.test(hora_entrada)) {
     return res.status(400).json({ error: "hora_entrada debe tener formato HH:MM" });
@@ -4438,14 +4444,14 @@ operacionesRouter.patch("/operaciones/puestos/:id/turno", async (req, res) => {
         WHERE id = $4
       `, [
         tipo_turno_id ?? null,
-        tipo_turno_id != null ? fecha_inicio_ciclo : null,
+        tipo_turno_id != null ? ficNormalizada : null,
         horaEntradaFinal,
         puestoId,
       ]);
 
       // Propagar fecha_inicio_ciclo a los slots activos del puesto
       // (solo si el turno sigue asignado y la fecha viene del cliente).
-      if (tipo_turno_id != null && fecha_inicio_ciclo) {
+      if (tipo_turno_id != null && ficNormalizada) {
         const { rowCount } = await client.query(
           `UPDATE puesto_slots
               SET fecha_inicio_ciclo = $1,
@@ -4453,7 +4459,7 @@ operacionesRouter.patch("/operaciones/puestos/:id/turno", async (req, res) => {
             WHERE puesto_id = $2
               AND activo    = TRUE
               AND (fecha_inicio_ciclo IS DISTINCT FROM $1::date)`,
-          [fecha_inicio_ciclo, puestoId]
+          [ficNormalizada, puestoId]
         );
         slotsActualizados = rowCount ?? 0;
       }

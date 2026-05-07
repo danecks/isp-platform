@@ -5201,6 +5201,41 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: ARM-10 — error (no bloqueante)");
   }
 
+  // ── SLOT-FIC-MON-01: re-anclar puesto_slots.fecha_inicio_ciclo al lunes ───
+  // La grilla del modal de Plantilla de Turnos asume que D1=Lun, D2=Mar, ...,
+  // D7=Dom (función `semanasCiclo` en Operaciones.tsx). Si el slot tiene
+  // fecha_inicio_ciclo en cualquier otro día (p.ej. viernes), el motor
+  // `calcTrabajaPorSlot` del backend calcula correctamente el día del ciclo
+  // basado en la fecha real, pero el modal pinta los días bajo etiquetas
+  // equivocadas → el operador ve el descanso en el slot/día equivocado del
+  // cuadro operativo (ej: Oliver descansa jueves pero aparece Angel descansando
+  // jueves).
+  //
+  // Solución idempotente: para todo slot cuya fecha_inicio_ciclo NO sea lunes,
+  // moverla al lunes anterior SIN tocar dias_trabajo. Como el operador
+  // configuró los dias_trabajo asumiendo D1=Lun (lo que pinta el modal), esto
+  // alinea el motor con la plantilla visual.
+  //
+  // Postgres EXTRACT(DOW): 0=Dom, 1=Lun, ..., 6=Sáb.
+  // offset al lunes anterior = (DOW + 6) % 7.
+  try {
+    const { rowCount: reanclados } = await pool.query(`
+      UPDATE puesto_slots
+         SET fecha_inicio_ciclo = fecha_inicio_ciclo
+           - ((EXTRACT(DOW FROM fecha_inicio_ciclo)::int + 6) % 7) * INTERVAL '1 day',
+             updated_at = NOW()
+       WHERE fecha_inicio_ciclo IS NOT NULL
+         AND EXTRACT(DOW FROM fecha_inicio_ciclo)::int <> 1
+    `);
+    if (reanclados && reanclados > 0) {
+      logger.info(`Auto-migrate: SLOT-FIC-MON-01 — ${reanclados} slot(s) re-anclados al lunes anterior (alineación con grilla D1=Lun)`);
+    } else {
+      logger.info("Auto-migrate: SLOT-FIC-MON-01 verificado (todos los slots ya están anclados a lunes)");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SLOT-FIC-MON-01 — error (no bloqueante)");
+  }
+
   // ── BARR-01: Barracas (vivienda empresarial) ──────────────────────────────
   try {
     await pool.query(`
