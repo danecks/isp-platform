@@ -23,7 +23,7 @@ import {
   ChevronRight, ChevronLeft, Info, Building2, Circle, GripVertical,
   UserMinus, UserPlus, UserCheck, XCircle, RotateCcw, FileText,
   Lock, Unlock, Calendar, CalendarDays, AlertCircle, CheckSquare,
-  Layers, Timer, Moon, Settings2, Repeat, Sun, ExternalLink, Search, DollarSign, Truck, Briefcase,
+  Layers, Timer, Moon, Settings2, Repeat, Sun, ExternalLink, Search, DollarSign, Truck, Briefcase, Edit2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -31,6 +31,7 @@ import { useDeleteMode } from "@/contexts/DeleteModeContext";
 import { ModalFichaArma } from "@/admin/components/ModalFichaArma";
 import { ModalFichaVehiculo } from "@/admin/components/ModalFichaVehiculo";
 import RegresosVacacionesBanner from "@/admin/components/RegresosVacacionesBanner";
+import { EditarPlantillaPersonalModal } from "./operaciones/EditarPlantillaPersonalModal";
 
 const API_BASE = "/api";
 
@@ -6733,6 +6734,9 @@ export default function Operaciones() {
   const [ssaTabActivo, setSsaTabActivo]              = useState<"sin_asignar" | "cubierta">("sin_asignar");
   const [fichaVehiculoId, setFichaVehiculoId]        = useState<number | null>(null);
   const [modalCierrePendiente, setModalCierrePendiente] = useState(false);
+  const [editarPlantilla, setEditarPlantilla]        = useState<{
+    empleadoId: number; empleadoNombre: string; tipo: "supervisor" | "administrativo";
+  } | null>(null);
 
   // ── Estado de colapso de paneles (persiste en sessionStorage) ─────────────
   function initCollapse(key: string, defaultVal = false) {
@@ -8733,6 +8737,12 @@ export default function Operaciones() {
                   {(sv as any).vehiculos_zona?.length > 0 && ((sv as any).vehiculos_zona as Array<{ id: number; placa: string; estado: string }>).filter(v => v.estado === "activo").slice(0,1).map(veh => (
                     <button key={veh.id} onClick={e => { e.stopPropagation(); setFichaVehiculoId(veh.id); }} className="text-[8px] text-sky-300/60 border border-sky-500/20 bg-sky-500/8 px-1 py-0.5 rounded shrink-0">🚗</button>
                   ))}
+                  <button
+                    onClick={e => { e.stopPropagation(); setEditarPlantilla({ empleadoId: sv.id, empleadoNombre: sv.nombre_completo, tipo: "supervisor" }); }}
+                    title="Editar plantilla de turno"
+                    className="text-violet-300/60 hover:text-violet-200 hover:bg-violet-500/15 border border-violet-500/20 rounded p-0.5 shrink-0">
+                    <Edit2 className="w-2.5 h-2.5" />
+                  </button>
                 </div>
               );
             };
@@ -8863,6 +8873,12 @@ export default function Operaciones() {
                   {ec === "trabajando" && ad.ps_hora_entrada && (
                     <span className="text-[8px] text-white/30 shrink-0">{String(ad.ps_hora_entrada).slice(0,5)}</span>
                   )}
+                  <button
+                    onClick={e => { e.stopPropagation(); setEditarPlantilla({ empleadoId: ad.id, empleadoNombre: ad.nombre_completo, tipo: "administrativo" }); }}
+                    title="Editar plantilla de turno"
+                    className="text-cyan-300/60 hover:text-cyan-200 hover:bg-cyan-500/15 border border-cyan-500/20 rounded p-0.5 shrink-0">
+                    <Edit2 className="w-2.5 h-2.5" />
+                  </button>
                 </div>
               );
             };
@@ -9378,6 +9394,19 @@ export default function Operaciones() {
         <ModalFichaVehiculo
           vehiculoId={fichaVehiculoId}
           onClose={() => setFichaVehiculoId(null)}
+        />
+      )}
+
+      {editarPlantilla && (
+        <EditarPlantillaPersonalModal
+          empleadoId={editarPlantilla.empleadoId}
+          empleadoNombre={editarPlantilla.empleadoNombre}
+          tipo={editarPlantilla.tipo}
+          onClose={() => setEditarPlantilla(null)}
+          onChanged={() => {
+            qc.invalidateQueries({ queryKey: ["operaciones-pool"] });
+            qc.invalidateQueries({ queryKey: ["operaciones-admin"] });
+          }}
         />
       )}
 
