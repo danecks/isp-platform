@@ -23,7 +23,7 @@ import {
   ChevronRight, ChevronLeft, Info, Building2, Circle, GripVertical,
   UserMinus, UserPlus, UserCheck, XCircle, RotateCcw, FileText,
   Lock, Unlock, Calendar, CalendarDays, AlertCircle, CheckSquare,
-  Layers, Timer, Moon, Settings2, Repeat, Sun, ExternalLink, Search, DollarSign, Truck,
+  Layers, Timer, Moon, Settings2, Repeat, Sun, ExternalLink, Search, DollarSign, Truck, Briefcase,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
