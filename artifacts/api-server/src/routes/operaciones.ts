@@ -1445,6 +1445,7 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       SELECT
         e.id, e.nombre_completo, e.estado_laboral, e.puesto, e.area, e.sede,
         e.telefono, e.wa_autorizado,
+        e.tipo_personal,
         ps.dias_trabajo                                AS ps_dias_trabajo,
         to_char(ps.fecha_inicio_ciclo, 'YYYY-MM-DD')   AS ps_fecha_inicio_ciclo,
         ps.longitud_ciclo                              AS ps_longitud_ciclo,
@@ -1463,9 +1464,17 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         ORDER BY slot_numero ASC
         LIMIT 1
       ) ps ON TRUE
-      WHERE COALESCE(e.tipo_personal, 'guardia') = 'administrativo'
+      WHERE COALESCE(e.tipo_personal, 'guardia') IN ('administrativo', 'administrativo_rrhh', 'administrativo_bodega', 'gerencia')
         AND e.estado_laboral IN ('activo', 'licencia', 'suspendido')
-      ORDER BY e.area NULLS LAST, e.nombre_completo
+      ORDER BY
+        CASE COALESCE(e.tipo_personal, 'administrativo')
+          WHEN 'gerencia'              THEN 1
+          WHEN 'administrativo_rrhh'   THEN 2
+          WHEN 'administrativo_bodega' THEN 3
+          WHEN 'administrativo'        THEN 4
+          ELSE 5
+        END,
+        e.area NULLS LAST, e.nombre_completo
     `);
 
     const administrativosEnriquecidos = administrativosRows.map((ad: any) => {

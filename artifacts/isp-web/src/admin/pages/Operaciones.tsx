@@ -308,6 +308,7 @@ interface AdministrativoPool {
   area: string | null;
   sede: string | null;
   telefono: string | null;
+  tipo_personal: string | null;
   estado_display: string;
   ps_horas_turno: number | null;
   ps_hora_entrada: string | null;
@@ -315,6 +316,13 @@ interface AdministrativoPool {
   trabaja_mañana: boolean | null;
   estado_ciclo: "trabajando" | "descansando_ciclo" | "sin_turno" | "licencia" | "suspendido" | null;
 }
+
+const SUBAREA_LABELS: Record<string, { label: string; cls: string }> = {
+  gerencia:              { label: "Gerencia", cls: "text-amber-300/80 bg-amber-500/10 border-amber-500/25" },
+  administrativo_rrhh:   { label: "RRHH",     cls: "text-sky-300/80 bg-sky-500/10 border-sky-500/25" },
+  administrativo_bodega: { label: "Bodega",   cls: "text-teal-300/80 bg-teal-500/10 border-teal-500/25" },
+  administrativo:        { label: "Admin",    cls: "text-slate-200/80 bg-slate-500/15 border-slate-400/25" },
+};
 
 interface Pool {
   trabajando: Agente[];
@@ -6855,34 +6863,8 @@ export default function Operaciones() {
     refetchInterval: 30_000,
   });
 
-  interface AdminPersonal {
-    id: number; nombre_completo: string; estado_laboral: string;
-    puesto: string | null; area: string | null; sede: string | null;
-    tipo_personal: string; turno_nombre: string | null;
-    trabaja_hoy: boolean | null; estado_ciclo: string;
-  }
-  interface AdminTablero {
-    fecha: string;
-    empleados: AdminPersonal[];
-    grupos: {
-      gerencia: AdminPersonal[];
-      administrativo_rrhh: AdminPersonal[];
-      administrativo_bodega: AdminPersonal[];
-      administrativo: AdminPersonal[];
-    };
-  }
-  const { data: adminTablero } = useQuery<AdminTablero>({
-    queryKey: ["operaciones-admin", esOtraFecha ? fechaVista : "hoy"],
-    queryFn: async () => {
-      const url = esOtraFecha
-        ? `${API_BASE}/operaciones/tablero/administracion?fecha=${fechaVista}`
-        : `${API_BASE}/operaciones/tablero/administracion`;
-      const r = await fetch(url, { headers: { "x-isp-session": getSession() } });
-      if (!r.ok) throw new Error(`tablero/administracion ${r.status}`);
-      return r.json();
-    },
-    refetchInterval: esOtraFecha ? false : 60_000,
-  });
+  // Panel "Administración" eliminado: consolidado en "Personal Administrativo" (cyan).
+  // El endpoint /operaciones/tablero/administracion sigue existiendo pero ya no se consume aquí.
 
   const { data: historial = [], isLoading: loadingHistorial } = useQuery<Movimiento[]>({
     queryKey: ["operaciones-historial"],
@@ -8868,6 +8850,10 @@ export default function Operaciones() {
                     {iniciales(ad.nombre_completo)}
                   </div>
                   <p className={`text-[11px] font-medium truncate max-w-[100px] ${ec === "trabajando" ? "text-white/85" : "text-white/40"}`}>{ad.nombre_completo.split(" ").slice(0,2).join(" ")}</p>
+                  {(() => {
+                    const sa = SUBAREA_LABELS[ad.tipo_personal ?? "administrativo"] ?? SUBAREA_LABELS.administrativo;
+                    return <span className={`text-[8px] font-bold px-1 py-0.5 rounded border shrink-0 ${sa.cls}`}>{sa.label}</span>;
+                  })()}
                   {ad.area && <span className="text-[9px] text-cyan-300/50 truncate max-w-[60px]">· {ad.area}</span>}
                   <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${badge.cls}`}>{badge.label}</span>
                   {ec === "trabajando" && ad.ps_hora_entrada && (
@@ -8989,75 +8975,6 @@ export default function Operaciones() {
             );
           })()}
 
-          {/* ── Panel Administración / Backoffice ─────────────────────── */}
-          {adminTablero && Array.isArray(adminTablero.empleados) && adminTablero.empleados.length > 0 && (() => {
-            const GRUPOS_LABELS: Record<string, { label: string; color: string; bg: string; border: string }> = {
-              gerencia:             { label: "Gerencia",  color: "text-amber-300/80",  bg: "bg-amber-500/10",  border: "border-amber-500/25" },
-              administrativo_rrhh:  { label: "RRHH",     color: "text-sky-300/80",    bg: "bg-sky-500/10",    border: "border-sky-500/25" },
-              administrativo_bodega:{ label: "Bodega",   color: "text-teal-300/80",   bg: "bg-teal-500/10",   border: "border-teal-500/25" },
-              administrativo:       { label: "Admin",    color: "text-slate-200/80",  bg: "bg-slate-500/15",  border: "border-slate-400/25" },
-            };
-            const totalTrabajando = adminTablero.empleados.filter(e => e.estado_ciclo === "trabajando").length;
-            const totalDesc       = adminTablero.empleados.filter(e => e.estado_ciclo === "descansando_ciclo").length;
-            const totalAusente    = adminTablero.empleados.filter(e => ["licencia","suspendido"].includes(e.estado_ciclo)).length;
-            const totalSinTurno   = adminTablero.empleados.filter(e => e.estado_ciclo === "sin_turno").length;
-
-            const AdminChip = ({ p, grupoKey }: { p: AdminPersonal; grupoKey: string }) => {
-              const trabajando  = p.estado_ciclo === "trabajando";
-              const descansando = p.estado_ciclo === "descansando_ciclo";
-              const ausente     = ["licencia","suspendido"].includes(p.estado_ciclo);
-              const badgeTxt    = trabajando ? "HOY" : descansando ? "DESCANSO" : ausente ? "AUSENTE" : "S/T";
-              const badgeCls    = trabajando
-                ? "text-emerald-300 bg-emerald-500/15 border-emerald-500/30"
-                : descansando
-                ? "text-white/30 bg-white/4 border-white/8"
-                : ausente
-                ? "text-yellow-300/70 bg-yellow-500/10 border-yellow-500/20"
-                : "text-white/20 bg-white/3 border-white/6";
-              const cardBorder  = trabajando ? "border-emerald-500/20" : descansando ? "border-white/5" : ausente ? "border-yellow-500/10" : "border-white/5";
-              const meta        = GRUPOS_LABELS[grupoKey] ?? GRUPOS_LABELS["gerencia"];
-              return (
-                <div className={`inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg border ${cardBorder}`}>
-                  <div className={`w-5 h-5 rounded flex items-center justify-center text-[8px] font-bold text-white shrink-0 ${trabajando ? "" : "opacity-50"} ${avatarColor(p.nombre_completo)}`}>
-                    {iniciales(p.nombre_completo)}
-                  </div>
-                  <p className={`text-[11px] font-medium truncate max-w-[80px] ${trabajando ? "text-white/85" : "text-white/40"}`}>{p.nombre_completo.split(" ").slice(0,2).join(" ")}</p>
-                  <span className={`text-[8px] font-bold px-1 py-0.5 rounded border shrink-0 ${meta.color} ${meta.bg} ${meta.border}`}>{meta.label}</span>
-                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${badgeCls}`}>{badgeTxt}</span>
-                </div>
-              );
-            };
-
-            return (
-              <div className="bg-[#060f1a] border border-slate-500/15 rounded-xl overflow-hidden">
-                <button
-                  onClick={() => togglePanel("piz_col_admin", colAdmin, setColAdmin)}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-left group hover:bg-slate-500/5 transition-colors"
-                >
-                  <Building2 className="w-3 h-3 text-slate-400/60 shrink-0" />
-                  <span className="text-[11px] font-bold text-slate-300/65 uppercase tracking-widest">Administración</span>
-                  <span className="text-[9px] text-slate-400/45 font-bold bg-slate-500/10 border border-slate-500/15 px-1 py-0.5 rounded-full">{adminTablero.empleados.length}</span>
-                  <div className="flex-1" />
-                  <div className="flex items-center gap-2 text-[10px]">
-                    {totalTrabajando > 0 && <span className="text-emerald-400/80 font-semibold">🟢 {totalTrabajando} trabajan</span>}
-                    {totalDesc > 0 && <span className="text-blue-400/60">🔵 {totalDesc} descanso</span>}
-                    {totalAusente > 0 && <span className="text-yellow-300/60">⚠ {totalAusente} ausentes</span>}
-                  </div>
-                  <ChevronRight className={`w-3 h-3 text-slate-400/25 group-hover:text-slate-400/50 ml-2 shrink-0 transition-transform ${colAdmin ? "" : "rotate-90"}`} />
-                </button>
-
-                {!colAdmin && (
-                  <div className="border-t border-slate-500/8 p-2 flex flex-wrap gap-2 max-h-28 overflow-y-auto">
-                    {(["gerencia","administrativo_rrhh","administrativo_bodega","administrativo"] as const).flatMap(key =>
-                      (adminTablero.grupos[key] ?? []).map(p => (
-                        <AdminChip key={p.id} p={p} grupoKey={key} />
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
 
           {/* ── Panel SSA: Servicios Especiales — todas las etapas activas ─ */}
           {tarjetasSSA.length > 0 && (
@@ -9405,7 +9322,6 @@ export default function Operaciones() {
           onClose={() => setEditarPlantilla(null)}
           onChanged={() => {
             qc.invalidateQueries({ queryKey: ["operaciones-pool"] });
-            qc.invalidateQueries({ queryKey: ["operaciones-admin"] });
           }}
         />
       )}
