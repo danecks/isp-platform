@@ -27,10 +27,12 @@ function semanasGrid(longitudCiclo: number) {
   return Array.from({ length: numSem }, (_, si) => dias.slice(si * 7, (si + 1) * 7));
 }
 
+type TipoPlantilla = "supervisor" | "administrativo" | "jefe_servicio";
+
 interface PersonalSlot {
   id: number;
   employee_id: number;
-  tipo: "supervisor" | "administrativo";
+  tipo: TipoPlantilla;
   slot_numero: number;
   horas_turno: number;
   hora_entrada: string;
@@ -45,7 +47,7 @@ interface Theme {
   border: string; bg: string; text: string; tag: string;
   btn: string; addBtn: string;
 }
-const THEMES: Record<"supervisor" | "administrativo", Theme> = {
+const THEMES: Record<TipoPlantilla, Theme> = {
   supervisor: {
     border: "border-violet-500/25",
     bg:     "bg-violet-500/5",
@@ -62,12 +64,20 @@ const THEMES: Record<"supervisor" | "administrativo", Theme> = {
     btn:    "bg-cyan-600/40 hover:bg-cyan-600/60 border-cyan-500/40",
     addBtn: "text-cyan-200 bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30",
   },
+  jefe_servicio: {
+    border: "border-orange-500/25",
+    bg:     "bg-orange-500/5",
+    text:   "text-orange-300/80",
+    tag:    "border-orange-500/15",
+    btn:    "bg-orange-600/40 hover:bg-orange-600/60 border-orange-500/40",
+    addBtn: "text-orange-200 bg-orange-500/10 hover:bg-orange-500/20 border-orange-500/30",
+  },
 };
 
 interface Props {
   empleadoId: number;
   empleadoNombre: string;
-  tipo: "supervisor" | "administrativo";
+  tipo: TipoPlantilla;
   onClose: () => void;
   onChanged?: () => void;
 }
@@ -151,6 +161,7 @@ export function EditarPlantillaPersonalModal({ empleadoId, empleadoNombre, tipo,
         method: "PUT",
         headers: { "Content-Type": "application/json", ...sessionHeader() },
         body: JSON.stringify({
+          tipo,
           hora_entrada: buf.hora_entrada,
           dias_trabajo: buf.dias_trabajo,
           horas_turno: buf.horas_turno,
@@ -189,7 +200,7 @@ export function EditarPlantillaPersonalModal({ empleadoId, empleadoNombre, tipo,
             <CalendarClock className={`w-4 h-4 ${t.text} shrink-0`} />
             <div className="min-w-0">
               <p className="text-xs text-white/50 uppercase tracking-wider">
-                Plantilla de turno · {tipo === "supervisor" ? "Supervisor" : "Administrativo"}
+                Plantilla de turno · {tipo === "supervisor" ? "Supervisor" : tipo === "jefe_servicio" ? "Jefe de Servicio" : "Administrativo"}
               </p>
               <p className="text-sm text-white font-semibold truncate">{empleadoNombre}</p>
             </div>

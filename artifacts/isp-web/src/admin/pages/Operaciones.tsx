@@ -6743,7 +6743,7 @@ export default function Operaciones() {
   const [fichaVehiculoId, setFichaVehiculoId]        = useState<number | null>(null);
   const [modalCierrePendiente, setModalCierrePendiente] = useState(false);
   const [editarPlantilla, setEditarPlantilla]        = useState<{
-    empleadoId: number; empleadoNombre: string; tipo: "supervisor" | "administrativo";
+    empleadoId: number; empleadoNombre: string; tipo: "supervisor" | "administrativo" | "jefe_servicio";
   } | null>(null);
 
   // ── Estado de colapso de paneles (persiste en sessionStorage) ─────────────
@@ -8790,6 +8790,12 @@ export default function Operaciones() {
                   <p className={`text-[11px] font-medium truncate max-w-[88px] ${variante === "hoy" ? "text-white/90" : "text-white/40"}`}>{js.nombre_completo.split(" ").slice(0,2).join(" ")}</p>
                   <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${badgeCls}`}>{badgeLabel}</span>
                   {esSeleccionado && <span className="text-[8px] text-orange-300 animate-pulse shrink-0">✓</span>}
+                  <button
+                    onClick={e => { e.stopPropagation(); setEditarPlantilla({ empleadoId: js.id, empleadoNombre: js.nombre_completo, tipo: "jefe_servicio" }); }}
+                    title="Editar plantilla de turno"
+                    className="text-orange-300/60 hover:text-orange-200 hover:bg-orange-500/15 border border-orange-500/20 rounded p-0.5 shrink-0">
+                    <Edit2 className="w-2.5 h-2.5" />
+                  </button>
                 </div>
               );
             };

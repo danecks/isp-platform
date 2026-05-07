@@ -15,7 +15,8 @@ const authCheck = (req: any, res: any): boolean => {
   return true;
 };
 
-const TIPOS_VALIDOS = new Set(["supervisor", "administrativo"]);
+const TIPOS_VALIDOS = new Set(["supervisor", "administrativo", "jefe_servicio"]);
+const TIPOS_LABEL = "'supervisor', 'administrativo' o 'jefe_servicio'";
 
 // ─── GET /api/personal/empleados/:empleadoId/slots ───────────────────────────
 personalSlotsRouter.get("/personal/empleados/:empleadoId/slots", async (req, res) => {
@@ -56,7 +57,7 @@ personalSlotsRouter.get("/personal-slots", async (req, res) => {
   if (!authCheck(req, res)) return;
   const tipo = String(req.query.tipo || "").trim();
   if (tipo && !TIPOS_VALIDOS.has(tipo)) {
-    return res.status(400).json({ error: "tipo debe ser 'supervisor' o 'administrativo'" });
+    return res.status(400).json({ error: `tipo debe ser ${TIPOS_LABEL}` });
   }
 
   try {
@@ -109,7 +110,7 @@ personalSlotsRouter.post("/personal/empleados/:empleadoId/slots", async (req, re
 
   if (!hora_entrada) return res.status(400).json({ error: "hora_entrada requerida" });
   if (!tipo || !TIPOS_VALIDOS.has(tipo)) {
-    return res.status(400).json({ error: "tipo debe ser 'supervisor' o 'administrativo'" });
+    return res.status(400).json({ error: `tipo debe ser ${TIPOS_LABEL}` });
   }
 
   // Validar longitud_ciclo (default 7 para administrativos, valores 7/14/21/28)
@@ -171,6 +172,9 @@ personalSlotsRouter.post("/personal/empleados/:empleadoId/slots", async (req, re
     const tp = String(empCheck[0].tipo_personal || "guardia");
     if (tipo === "supervisor" && tp !== "supervisor") {
       return res.status(409).json({ error: `El empleado no es supervisor (tipo_personal='${tp}'). Cambia su tipo en su ficha antes de configurar plantilla de supervisor.` });
+    }
+    if (tipo === "jefe_servicio" && tp !== "jefe_servicio") {
+      return res.status(409).json({ error: `El empleado no es jefe de servicio (tipo_personal='${tp}'). Cambia su tipo en su ficha antes de configurar plantilla de jefe de servicio.` });
     }
     if (tipo === "administrativo" && tp === "guardia") {
       return res.status(409).json({ error: "Los guardias usan plantilla por puesto (puesto_slots), no plantilla administrativa. Si es personal administrativo, cambia su tipo en su ficha primero." });
@@ -272,7 +276,7 @@ personalSlotsRouter.put("/personal-slots/:id", async (req, res) => {
   }
 
   if (tipo !== undefined) {
-    if (!TIPOS_VALIDOS.has(tipo)) return res.status(400).json({ error: "tipo debe ser 'supervisor' o 'administrativo'" });
+    if (!TIPOS_VALIDOS.has(tipo)) return res.status(400).json({ error: `tipo debe ser ${TIPOS_LABEL}` });
     // Validar coherencia tipo↔employees.tipo_personal
     try {
       const { rows: empRow } = await pool.query(
