@@ -26,9 +26,6 @@ export interface SupervisionProgramacion {
   iniciada_at: string | null;
   completada_at: string | null;
   observaciones: string | null;
-  bono_monto: string | number | null;
-  bono_pagado: boolean;
-  bono_pagado_at: string | null;
   created_at: string;
   updated_at: string;
 }

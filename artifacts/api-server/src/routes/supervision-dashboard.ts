@@ -47,11 +47,9 @@ supervisionDashboardRouter.get("/supervision-dashboard", async (req, res) => {
          SUM(CASE WHEN sp.estado = 'completada'   THEN 1 ELSE 0 END)::int AS completadas,
          SUM(CASE WHEN sp.estado = 'no_realizada' THEN 1 ELSE 0 END)::int AS no_realizadas,
          SUM(CASE WHEN sp.estado = 'cancelada'    THEN 1 ELSE 0 END)::int AS canceladas,
+         SUM(CASE WHEN sp.tipo  = 'rutina'          THEN 1 ELSE 0 END)::int AS rutinas,
          SUM(CASE WHEN sp.tipo  = 'comision'        THEN 1 ELSE 0 END)::int AS comisiones,
-         SUM(CASE WHEN sp.tipo  = 'extraordinaria'  THEN 1 ELSE 0 END)::int AS extraordinarias,
-         COALESCE(SUM(CASE WHEN sp.estado = 'completada' THEN sp.bono_monto ELSE 0 END), 0)::numeric AS bonos_completados,
-         COALESCE(SUM(CASE WHEN sp.bono_pagado = TRUE  THEN sp.bono_monto ELSE 0 END), 0)::numeric AS bonos_pagados,
-         COALESCE(SUM(CASE WHEN sp.estado = 'completada' AND sp.bono_pagado = FALSE THEN sp.bono_monto ELSE 0 END), 0)::numeric AS bonos_pendientes_pago
+         SUM(CASE WHEN sp.tipo  = 'extraordinaria'  THEN 1 ELSE 0 END)::int AS extraordinarias
        FROM supervision_visitas_programadas sp ${W}`,
       params
     );
@@ -66,8 +64,7 @@ supervisionDashboardRouter.get("/supervision-dashboard", async (req, res) => {
          SUM(CASE WHEN sp.estado = 'completada' THEN 1 ELSE 0 END)::int AS completadas,
          SUM(CASE WHEN sp.estado = 'pendiente'  THEN 1 ELSE 0 END)::int AS pendientes,
          SUM(CASE WHEN sp.estado = 'en_curso'   THEN 1 ELSE 0 END)::int AS en_curso,
-         SUM(CASE WHEN sp.estado = 'no_realizada' THEN 1 ELSE 0 END)::int AS no_realizadas,
-         COALESCE(SUM(CASE WHEN sp.estado='completada' THEN sp.bono_monto ELSE 0 END),0)::numeric AS bonos_completados
+         SUM(CASE WHEN sp.estado = 'no_realizada' THEN 1 ELSE 0 END)::int AS no_realizadas
        FROM supervision_visitas_programadas sp
        JOIN employees e ON e.id = sp.supervisor_employee_id
        ${W}
@@ -135,30 +132,5 @@ supervisionDashboardRouter.get("/supervision-programaciones/:id/gps", async (req
   } catch (err) {
     logger.error({ err }, "GET /supervision-programaciones/:id/gps error");
     res.status(500).json({ error: "Error al cargar GPS" });
-  }
-});
-
-// ── PUT /api/supervision-programaciones/:id/bono-pagado — admin marca bono incluido en planilla ──
-supervisionDashboardRouter.put("/supervision-programaciones/:id/bono-pagado", async (req, res) => {
-  if (!auth(req, res)) return;
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "id inválido" });
-  const pagado = !!(req.body?.pagado);
-
-  try {
-    const { rowCount } = await pool.query(
-      `UPDATE supervision_visitas_programadas
-          SET bono_pagado = $2,
-              bono_pagado_at = CASE WHEN $2 THEN NOW() ELSE NULL END,
-              bono_pagado_por_user_id = CASE WHEN $2 THEN $3 ELSE NULL END,
-              updated_at = NOW()
-        WHERE id = $1`,
-      [id, pagado, (req as any).user?.id || null]
-    );
-    if (!rowCount) return res.status(404).json({ error: "No encontrada" });
-    res.json({ ok: true, bono_pagado: pagado });
-  } catch (err) {
-    logger.error({ err }, "PUT /supervision-programaciones/:id/bono-pagado error");
-    res.status(500).json({ error: "Error al actualizar bono" });
   }
 });

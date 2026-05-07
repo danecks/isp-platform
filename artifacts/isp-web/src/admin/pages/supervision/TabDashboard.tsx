@@ -1,22 +1,18 @@
 import { useEffect, useState } from "react";
-import { Activity, CheckCircle2, Clock, AlertTriangle, Coins, MapPin, Loader2 } from "lucide-react";
+import { Activity, CheckCircle2, Clock, AlertTriangle, MapPin, Loader2, Repeat, Star } from "lucide-react";
 import { api, hoyISO } from "./api";
 import type { SupervisorDisponible } from "./types";
 
 interface Kpis {
   total: number; pendientes: number; en_curso: number;
   completadas: number; no_realizadas: number; canceladas: number;
-  comisiones: number; extraordinarias: number;
-  bonos_completados: string | number;
-  bonos_pagados: string | number;
-  bonos_pendientes_pago: string | number;
+  rutinas: number; comisiones: number; extraordinarias: number;
   cumplimiento_pct: number;
 }
 interface PorSupervisor {
   id: number; nombre: string;
   total: number; completadas: number; pendientes: number;
   en_curso: number; no_realizadas: number;
-  bonos_completados: string | number;
 }
 
 function hace7DiasISO(): string {
@@ -24,12 +20,6 @@ function hace7DiasISO(): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${d.getFullYear()}-${m}-${day}`;
-}
-
-function fmtQ(v: string | number): string {
-  const n = typeof v === "string" ? Number(v) : v;
-  if (!Number.isFinite(n)) return "Q 0.00";
-  return `Q ${n.toFixed(2)}`;
 }
 
 export function TabDashboard() {
@@ -90,17 +80,16 @@ export function TabDashboard() {
       {!loading && kpis && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <Kpi icon={Activity}    label="Total programadas" value={kpis.total} />
-            <Kpi icon={CheckCircle2} label="Completadas"      value={kpis.completadas} accent="emerald"
+            <Kpi icon={Activity}     label="Total programadas"   value={kpis.total} />
+            <Kpi icon={CheckCircle2} label="Completadas"         value={kpis.completadas} accent="emerald"
                  hint={`${kpis.cumplimiento_pct}% cumplimiento`} />
-            <Kpi icon={Clock}       label="Pendientes / En curso" value={kpis.pendientes + kpis.en_curso}
+            <Kpi icon={Clock}        label="Pendientes / En curso" value={kpis.pendientes + kpis.en_curso}
                  hint={`${kpis.pendientes} pend · ${kpis.en_curso} en curso`} />
-            <Kpi icon={AlertTriangle} label="No realizadas"   value={kpis.no_realizadas} accent="rose" />
-            <Kpi icon={Coins} label="Bonos completados"   value={fmtQ(kpis.bonos_completados)} accent="amber"
-                 hint={`${kpis.comisiones + kpis.extraordinarias} visitas con bono`} />
-            <Kpi icon={Coins} label="Bonos pagados (planilla)" value={fmtQ(kpis.bonos_pagados)} accent="emerald" />
-            <Kpi icon={Coins} label="Bonos pendientes de pago" value={fmtQ(kpis.bonos_pendientes_pago)} accent="rose" />
-            <Kpi icon={MapPin} label="Comisiones / Extraord." value={`${kpis.comisiones} / ${kpis.extraordinarias}`} />
+            <Kpi icon={AlertTriangle} label="No realizadas"      value={kpis.no_realizadas} accent="rose" />
+            <Kpi icon={Repeat}       label="Rutinas"             value={kpis.rutinas} />
+            <Kpi icon={Star}         label="Extraordinarias"     value={kpis.extraordinarias} accent="amber" />
+            <Kpi icon={MapPin}       label="Comisiones"          value={kpis.comisiones} />
+            <Kpi icon={AlertTriangle} label="Canceladas"         value={kpis.canceladas} />
           </div>
 
           <div className="border border-white/10 rounded-lg overflow-hidden">
@@ -115,12 +104,11 @@ export function TabDashboard() {
                   <th className="px-2 py-1.5 text-right">Pendientes</th>
                   <th className="px-2 py-1.5 text-right">No realizadas</th>
                   <th className="px-2 py-1.5 text-right">% cumpl.</th>
-                  <th className="px-2 py-1.5 text-right">Bonos (Q)</th>
                 </tr>
               </thead>
               <tbody>
                 {porSup.length === 0 && (
-                  <tr><td colSpan={8} className="text-white/40 text-center p-4">Sin programaciones en el rango.</td></tr>
+                  <tr><td colSpan={7} className="text-white/40 text-center p-4">Sin programaciones en el rango.</td></tr>
                 )}
                 {porSup.map(s => {
                   const cump = s.total > 0 ? Math.round((s.completadas / s.total) * 1000) / 10 : 0;
@@ -133,7 +121,6 @@ export function TabDashboard() {
                       <td className="px-2 py-1.5 text-right text-amber-300">{s.pendientes}</td>
                       <td className="px-2 py-1.5 text-right text-rose-300">{s.no_realizadas}</td>
                       <td className="px-2 py-1.5 text-right text-white/80">{cump}%</td>
-                      <td className="px-2 py-1.5 text-right text-amber-200">{fmtQ(s.bonos_completados)}</td>
                     </tr>
                   );
                 })}

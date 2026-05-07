@@ -29,7 +29,6 @@ export function FormProgramacion({ supervisores, clientes, puestos, zonas, onClo
   const [puestoId, setPuestoId] = useState<string>("");
   const [zonaId, setZonaId] = useState<string>("");
   const [instr, setInstr] = useState("");
-  const [bono, setBono] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const titleId = useId();
@@ -48,10 +47,6 @@ export function FormProgramacion({ supervisores, clientes, puestos, zonas, onClo
     if (vIni && vFin && vFin < vIni) {
       setErr("La hora fin debe ser posterior a la hora inicio"); return;
     }
-    if (bono) {
-      const m = Number(bono);
-      if (!Number.isFinite(m) || m < 0) { setErr("Monto de bono inválido"); return; }
-    }
     try {
       setSaving(true);
       await api("/supervision-programaciones", {
@@ -66,7 +61,6 @@ export function FormProgramacion({ supervisores, clientes, puestos, zonas, onClo
           puesto_id: puestoId ? Number(puestoId) : null,
           zona_id: zonaId ? Number(zonaId) : null,
           instrucciones: instr || null,
-          bono_monto: bono ? Number(bono) : null,
         }),
       });
       onSaved();
@@ -153,17 +147,6 @@ export function FormProgramacion({ supervisores, clientes, puestos, zonas, onClo
             <textarea id="instr" value={instr} onChange={e => setInstr(e.target.value)} rows={3}
               className={inputCls + " resize-none"} placeholder="Observaciones, objetivos, contactos…" />
           </Field>
-
-          {(tipo === "extraordinaria" || tipo === "comision") && (
-            <Field label="Bono al supervisor (Q) — opcional" htmlForId="bono">
-              <input id="bono" type="number" min="0" step="0.01"
-                value={bono} onChange={e => setBono(e.target.value)}
-                className={inputCls} placeholder="0.00" />
-              <p className="text-[10px] text-white/40 mt-0.5">
-                Se registra como pendiente de incluir en planilla; no genera línea automática.
-              </p>
-            </Field>
-          )}
 
           {err && <p role="alert" className="text-rose-300 text-xs">{err}</p>}
         </div>

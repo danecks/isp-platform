@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import {
   CheckCircle2, XCircle, Loader2, Clock, MapPin, ClipboardList,
-  PlayCircle, AlertTriangle, RefreshCw, QrCode, ArrowLeft, Coins,
+  PlayCircle, AlertTriangle, RefreshCw, QrCode, ArrowLeft,
 } from "lucide-react";
 
 const API = "/api";
@@ -25,7 +25,6 @@ interface Visita {
   zona_nombre: string | null;
   instrucciones: string | null;
   observaciones: string | null;
-  bono_monto: string | number | null;
 }
 
 const TIPO_LABEL: Record<Visita["tipo"], string> = {
@@ -262,11 +261,6 @@ export default function AgenteSupervision() {
 
             <div className="flex flex-wrap gap-2 mt-2 text-[10px]">
               <span className="px-1.5 py-0.5 bg-white/5 rounded text-white/60">{TIPO_LABEL[v.tipo]}</span>
-              {v.bono_monto != null && Number(v.bono_monto) > 0 && (
-                <span className="px-1.5 py-0.5 bg-amber-500/15 text-amber-200 border border-amber-500/30 rounded inline-flex items-center gap-1">
-                  <Coins className="w-3 h-3" /> Q {Number(v.bono_monto).toFixed(2)}
-                </span>
-              )}
             </div>
 
             {v.instrucciones && (

@@ -25,7 +25,6 @@ const SELECT_BASE = `
     sp.tipo, sp.prioridad, sp.instrucciones, sp.estado,
     sp.visita_id, sp.iniciada_at, sp.completada_at,
     sp.observaciones,
-    sp.bono_monto, sp.bono_pagado, sp.bono_pagado_at,
     sp.created_by_user_id, sp.created_at, sp.updated_at,
     e.nombre_completo AS supervisor_nombre,
     e.tipo_personal   AS supervisor_tipo_personal,
@@ -141,18 +140,12 @@ supervisionProgramacionesRouter.post("/supervision-programaciones", async (req, 
       return res.status(400).json({ error: "El empleado no es supervisor" });
     }
 
-    let bonoMonto: number | null = null;
-    if (b.bono_monto != null && b.bono_monto !== "") {
-      const m = Number(b.bono_monto);
-      if (!Number.isFinite(m) || m < 0) return res.status(400).json({ error: "bono_monto inválido" });
-      bonoMonto = m;
-    }
     const { rows } = await pool.query(
       `INSERT INTO supervision_visitas_programadas
         (supervisor_employee_id, cliente_id, puesto_id, zona_id,
          fecha_planificada, ventana_inicio, ventana_fin,
-         tipo, prioridad, instrucciones, bono_monto, created_by_user_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         tipo, prioridad, instrucciones, created_by_user_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING id`,
       [
         supId,
@@ -164,7 +157,6 @@ supervisionProgramacionesRouter.post("/supervision-programaciones", async (req, 
         b.ventana_fin || null,
         tipo, prioridad,
         b.instrucciones || null,
-        bonoMonto,
         (req as any).user?.id || null,
       ]
     );
@@ -215,14 +207,6 @@ supervisionProgramacionesRouter.put("/supervision-programaciones/:id", async (re
     if (b.zona_id       !== undefined) push("zona_id", intOrNull(b.zona_id));
     if (b.instrucciones !== undefined) push("instrucciones", b.instrucciones || null);
     if (b.observaciones !== undefined) push("observaciones", b.observaciones || null);
-    if (b.bono_monto !== undefined) {
-      if (b.bono_monto === null || b.bono_monto === "") push("bono_monto", null);
-      else {
-        const m = Number(b.bono_monto);
-        if (!Number.isFinite(m) || m < 0) return res.status(400).json({ error: "bono_monto inválido" });
-        push("bono_monto", m);
-      }
-    }
     if (b.tipo !== undefined) {
       if (!TIPOS.has(String(b.tipo))) return res.status(400).json({ error: "tipo inválido" });
       push("tipo", b.tipo);
