@@ -29,6 +29,7 @@ export const SYSTEM_MODULOS = [
   { clave: "dashboard",           label: "Dashboard",                  seccion: "General" },
   // Operaciones
   { clave: "pizarron",            label: "Pizarrón Operativo",         seccion: "Operaciones" },
+  { clave: "supervision",         label: "Supervisión",                seccion: "Operaciones" },
   { clave: "seguimiento_ssa",     label: "Seguimiento SSA",            seccion: "Operaciones" },
   { clave: "pipeline_ssa",        label: "Pipeline SSA",               seccion: "Operaciones" },
   { clave: "tareas",              label: "Tareas",                     seccion: "Operaciones" },
