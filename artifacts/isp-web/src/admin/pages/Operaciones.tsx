@@ -298,6 +298,23 @@ interface JefeServicioPool {
   estado_ciclo: "trabajando" | "descansando_ciclo" | "sin_turno" | "licencia" | "suspendido" | null;
 }
 
+// PERS-SLOT-01: Personal administrativo con plantilla en personal_slots
+interface AdministrativoPool {
+  id: number;
+  nombre_completo: string;
+  estado_laboral: string;
+  puesto: string | null;
+  area: string | null;
+  sede: string | null;
+  telefono: string | null;
+  estado_display: string;
+  ps_horas_turno: number | null;
+  ps_hora_entrada: string | null;
+  trabaja_hoy: boolean | null;
+  trabaja_mañana: boolean | null;
+  estado_ciclo: "trabajando" | "descansando_ciclo" | "sin_turno" | "licencia" | "suspendido" | null;
+}
+
 interface Pool {
   trabajando: Agente[];
   descansandoCiclo: Agente[];
@@ -313,6 +330,7 @@ interface Pool {
   enVacaciones: Agente[];
   supervisores: SupervisorPool[];
   jefes_servicio: JefeServicioPool[];
+  administrativos?: AdministrativoPool[];
   fecha_hoy: string;
   fecha_mañana: string;
   total: number;
@@ -6731,7 +6749,7 @@ export default function Operaciones() {
   const [colSupers,    setColSupers]    = useState(() => initCollapse("piz_col_supers"));
   const [colJefes,     setColJefes]     = useState(() => initCollapse("piz_col_jefes"));
   const [colPool,      setColPool]      = useState(() => initCollapse("piz_col_pool"));
-  const [colAdmin,     setColAdmin]     = useState(() => initCollapse("piz_col_admin", true));
+  const [colAdmin,     setColAdmin]     = useState(() => initCollapse("piz_col_admin"));
 
   // ── Planificación futura ───────────────────────────────────────────────────
   const hoyISO = toISODate(new Date());
@@ -8810,6 +8828,66 @@ export default function Operaciones() {
                 <div className="border-t border-orange-500/8 p-2 flex flex-wrap gap-2 max-h-28 overflow-y-auto">
                   {[...jefesHoy.map(js => ({ js, variante: "hoy" as const })), ...jefesMañana.map(js => ({ js, variante: "mañana" as const })), ...jefesDescanso.map(js => ({ js, variante: "descanso" as const })), ...jefesOtros.map(js => ({ js, variante: "otro" as const }))].map(({ js, variante }) => (
                     <JefeCard key={js.id} js={js} variante={variante} />
+                  ))}
+                </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* ── PERS-SLOT-01: Personal Administrativo (solo en vista de hoy) ─── */}
+          {!esFuturo && (pool?.administrativos?.length ?? 0) > 0 && (() => {
+            const adTrabajando = pool!.administrativos!.filter(ad => ad.estado_ciclo === "trabajando");
+            const adDescanso   = pool!.administrativos!.filter(ad => ad.estado_ciclo === "descansando_ciclo");
+            const adOtros      = pool!.administrativos!.filter(ad => !["trabajando","descansando_ciclo"].includes(ad.estado_ciclo ?? ""));
+
+            const AdCard = ({ ad }: { ad: AdministrativoPool }) => {
+              const ec = ad.estado_ciclo;
+              const badge = ec === "trabajando"
+                ? { cls: "text-emerald-300/90 bg-emerald-500/15 border-emerald-500/30", label: "EN TURNO" }
+                : ec === "descansando_ciclo"
+                  ? { cls: "text-white/25 bg-white/3 border-white/8", label: "DESCANSO" }
+                  : ec === "licencia"
+                    ? { cls: "text-indigo-300/70 bg-indigo-500/10 border-indigo-500/20", label: "LICENCIA" }
+                    : ec === "suspendido"
+                      ? { cls: "text-red-300/70 bg-red-500/10 border-red-500/20", label: "SUSP." }
+                      : { cls: "text-white/20 bg-white/3 border-white/6", label: "SIN PLANTILLA" };
+              return (
+                <div className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-white/5 bg-transparent">
+                  <div className={`w-5 h-5 rounded flex items-center justify-center text-[8px] font-bold text-white shrink-0 ${avatarColor(ad.nombre_completo)} ${ec === "trabajando" ? "" : "opacity-60"}`}>
+                    {iniciales(ad.nombre_completo)}
+                  </div>
+                  <p className={`text-[11px] font-medium truncate max-w-[100px] ${ec === "trabajando" ? "text-white/85" : "text-white/40"}`}>{ad.nombre_completo.split(" ").slice(0,2).join(" ")}</p>
+                  {ad.area && <span className="text-[9px] text-cyan-300/50 truncate max-w-[60px]">· {ad.area}</span>}
+                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${badge.cls}`}>{badge.label}</span>
+                  {ec === "trabajando" && ad.ps_hora_entrada && (
+                    <span className="text-[8px] text-white/30 shrink-0">{String(ad.ps_hora_entrada).slice(0,5)}</span>
+                  )}
+                </div>
+              );
+            };
+
+            return (
+              <div className="bg-[#060f1a] border border-cyan-500/15 rounded-xl overflow-hidden">
+                <button
+                  onClick={() => togglePanel("piz_col_admin", colAdmin, setColAdmin)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left group hover:bg-cyan-500/5 transition-colors"
+                >
+                  <Briefcase className="w-3 h-3 text-cyan-400/60 shrink-0" />
+                  <span className="text-[11px] font-bold text-cyan-300/65 uppercase tracking-widest">Personal Administrativo</span>
+                  <span className="text-[9px] text-cyan-400/45 font-bold bg-cyan-500/10 border border-cyan-500/15 px-1 py-0.5 rounded-full">{pool!.administrativos!.length}</span>
+                  <div className="flex-1" />
+                  <div className="flex items-center gap-2 text-[10px]">
+                    {adTrabajando.length > 0 && <span className="text-emerald-400/80 font-semibold">🟢 {adTrabajando.length} hoy</span>}
+                    {adDescanso.length > 0 && <span className="text-blue-400/60">🔵 {adDescanso.length} descanso</span>}
+                    {adOtros.length > 0 && <span className="text-white/30">⚪ {adOtros.length} sin plantilla</span>}
+                  </div>
+                  <ChevronRight className={`w-3 h-3 text-cyan-400/25 group-hover:text-cyan-400/50 ml-2 shrink-0 transition-transform ${colAdmin ? "" : "rotate-90"}`} />
+                </button>
+                {!colAdmin && (
+                <div className="border-t border-cyan-500/8 p-2 flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                  {[...adTrabajando, ...adDescanso, ...adOtros].map(ad => (
+                    <AdCard key={ad.id} ad={ad} />
                   ))}
                 </div>
                 )}

@@ -273,6 +273,19 @@ personalSlotsRouter.put("/personal-slots/:id", async (req, res) => {
 
   if (tipo !== undefined) {
     if (!TIPOS_VALIDOS.has(tipo)) return res.status(400).json({ error: "tipo debe ser 'supervisor' o 'administrativo'" });
+    // Validar coherencia tipo↔employees.tipo_personal
+    try {
+      const { rows: empRow } = await pool.query(
+        `SELECT e.tipo_personal FROM personal_slots ps JOIN employees e ON e.id = ps.employee_id WHERE ps.id = $1`,
+        [id],
+      );
+      if (empRow.length > 0) {
+        const tp = String(empRow[0].tipo_personal || "").toLowerCase();
+        if (tp && tp !== tipo) {
+          return res.status(400).json({ error: `tipo='${tipo}' incompatible con tipo_personal='${tp}' del empleado` });
+        }
+      }
+    } catch {}
     updates.push(`tipo = $${p++}`); params.push(tipo);
   }
   if (horas_turno !== undefined) {

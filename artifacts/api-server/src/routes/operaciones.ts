@@ -24,6 +24,25 @@ import { normalizarFechaALunesString } from "../lib/fecha-lunes";
 
 const operacionesRouter = Router();
 
+// ─── Helper PERS-SLOT-01: motor de ciclo basado en personal_slots ────────────
+// Mismo cálculo que calcTrabajaPorSlot del bloque de puestos: días laborables
+// dentro de un ciclo de longitud fija (7/14/21/28), anclado a un lunes.
+function calcTrabajaPorSlotPersonal(
+  diasTrabajo: number[],
+  fechaInicioStr: string,
+  fechaConsulta: string,
+  longitudCiclo: number = 14,
+): boolean {
+  const lc = (longitudCiclo && longitudCiclo > 0) ? longitudCiclo : 14;
+  const [iy, im, id] = fechaInicioStr.split("-").map(Number);
+  const [cy, cm, cd] = fechaConsulta.split("-").map(Number);
+  const inicio   = Date.UTC(iy, im - 1, id);
+  const consulta = Date.UTC(cy, cm - 1, cd);
+  const daysElapsed = Math.floor((consulta - inicio) / 86400000);
+  const cycleDay = ((daysElapsed % lc) + lc) % lc + 1;
+  return diasTrabajo.includes(cycleDay);
+}
+
 // ─── GET /api/operaciones/tablero ─────────────────────────────────────────────
 // Devuelve: clientes con sus puestos, agente actual, titular y datos de sede/horario
 // ?fecha=YYYY-MM-DD — opcional; si se omite usa CURRENT_DATE.
@@ -1265,6 +1284,11 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
         t.horas_trabajo                                        AS horas_trabajo_turno,
         t.horas_descanso                                       AS horas_descanso_turno,
         eoa.fecha_inicio                                       AS fecha_inicio_ciclo_turno,
+        ps.dias_trabajo                                        AS ps_dias_trabajo,
+        to_char(ps.fecha_inicio_ciclo, 'YYYY-MM-DD')           AS ps_fecha_inicio_ciclo,
+        ps.longitud_ciclo                                      AS ps_longitud_ciclo,
+        ps.horas_turno                                         AS ps_horas_turno,
+        ps.hora_entrada                                        AS ps_hora_entrada,
         CASE
           WHEN e.estado_laboral = 'licencia'   THEN 'licencia'
           WHEN e.estado_laboral = 'suspendido' THEN 'suspendido'
@@ -1276,6 +1300,13 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       LEFT JOIN operational_zones oz_eoa   ON oz_eoa.id  = eoa.zona_operativa_id
       LEFT JOIN operational_zones oz_formal ON oz_formal.supervisor_employee_id = e.id
       LEFT JOIN turnos t ON t.id = eoa.tipo_turno_id
+      LEFT JOIN LATERAL (
+        SELECT dias_trabajo, fecha_inicio_ciclo, longitud_ciclo, horas_turno, hora_entrada
+        FROM personal_slots
+        WHERE employee_id = e.id AND tipo = 'supervisor' AND activo = TRUE
+        ORDER BY slot_numero ASC
+        LIMIT 1
+      ) ps ON TRUE
       LEFT JOIN LATERAL (
         SELECT json_agg(json_build_object(
           'id',     v.id,
@@ -1298,6 +1329,23 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
     const supervisoresEnriquecidos = supervisoresRows.map((sv: any) => {
       if (sv.estado_display !== 'activo') {
         return { ...sv, trabaja_hoy: false, trabaja_mañana: false, estado_ciclo: sv.estado_display, puede_cubrir: false, disponible_he: false };
+      }
+      // Prioridad PERS-SLOT-01: si el supervisor tiene plantilla en personal_slots,
+      // se usa el motor de slots (mismo que puestos: dias_trabajo + longitud_ciclo).
+      // Si no, fallback al motor de turnos legacy basado en eoa+turno.
+      if (Array.isArray(sv.ps_dias_trabajo) && sv.ps_dias_trabajo.length > 0 && sv.ps_fecha_inicio_ciclo) {
+        const dias = (sv.ps_dias_trabajo as any[]).map((d) => Number(d)).filter((d) => Number.isFinite(d));
+        const lc = Number(sv.ps_longitud_ciclo) || 14;
+        const trabajaHoy    = calcTrabajaPorSlotPersonal(dias, sv.ps_fecha_inicio_ciclo, hoy, lc);
+        const trabajaMañana = calcTrabajaPorSlotPersonal(dias, sv.ps_fecha_inicio_ciclo, mañana, lc);
+        return {
+          ...sv,
+          trabaja_hoy:    trabajaHoy,
+          trabaja_mañana: trabajaMañana,
+          disponible_he:  false,
+          estado_ciclo:   trabajaHoy ? "trabajando" : "descansando_ciclo",
+          puede_cubrir:   trabajaHoy,
+        };
       }
       if (sv.tipo_ciclo_turno && sv.horas_trabajo_turno && sv.fecha_inicio_ciclo_turno) {
         const turnoObj = {
@@ -1388,6 +1436,55 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       }
       // Sin datos de ciclo → disponible pero sin estado de turno conocido
       return { ...js, trabaja_hoy: null, trabaja_mañana: null, estado_ciclo: "sin_turno" };
+    });
+
+    // ─── Personal Administrativo (PERS-SLOT-01) ───────────────────────────────
+    // Solo se calcula trabaja_hoy/mañana cuando hay plantilla en personal_slots.
+    // Sin plantilla → se muestra como "sin_turno" (no participa en cobertura).
+    const { rows: administrativosRows } = await pool.query(`
+      SELECT
+        e.id, e.nombre_completo, e.estado_laboral, e.puesto, e.area, e.sede,
+        e.telefono, e.wa_autorizado,
+        ps.dias_trabajo                                AS ps_dias_trabajo,
+        to_char(ps.fecha_inicio_ciclo, 'YYYY-MM-DD')   AS ps_fecha_inicio_ciclo,
+        ps.longitud_ciclo                              AS ps_longitud_ciclo,
+        ps.horas_turno                                 AS ps_horas_turno,
+        ps.hora_entrada                                AS ps_hora_entrada,
+        CASE
+          WHEN e.estado_laboral = 'licencia'   THEN 'licencia'
+          WHEN e.estado_laboral = 'suspendido' THEN 'suspendido'
+          ELSE 'activo'
+        END AS estado_display
+      FROM employees e
+      LEFT JOIN LATERAL (
+        SELECT dias_trabajo, fecha_inicio_ciclo, longitud_ciclo, horas_turno, hora_entrada
+        FROM personal_slots
+        WHERE employee_id = e.id AND tipo = 'administrativo' AND activo = TRUE
+        ORDER BY slot_numero ASC
+        LIMIT 1
+      ) ps ON TRUE
+      WHERE COALESCE(e.tipo_personal, 'guardia') = 'administrativo'
+        AND e.estado_laboral IN ('activo', 'licencia', 'suspendido')
+      ORDER BY e.area NULLS LAST, e.nombre_completo
+    `);
+
+    const administrativosEnriquecidos = administrativosRows.map((ad: any) => {
+      if (ad.estado_display !== 'activo') {
+        return { ...ad, trabaja_hoy: false, trabaja_mañana: false, estado_ciclo: ad.estado_display };
+      }
+      if (Array.isArray(ad.ps_dias_trabajo) && ad.ps_dias_trabajo.length > 0 && ad.ps_fecha_inicio_ciclo) {
+        const dias = (ad.ps_dias_trabajo as any[]).map((d) => Number(d)).filter((d) => Number.isFinite(d));
+        const lc = Number(ad.ps_longitud_ciclo) || 14;
+        const trabajaHoy    = calcTrabajaPorSlotPersonal(dias, ad.ps_fecha_inicio_ciclo, hoy, lc);
+        const trabajaMañana = calcTrabajaPorSlotPersonal(dias, ad.ps_fecha_inicio_ciclo, mañana, lc);
+        return {
+          ...ad,
+          trabaja_hoy:    trabajaHoy,
+          trabaja_mañana: trabajaMañana,
+          estado_ciclo:   trabajaHoy ? "trabajando" : "descansando_ciclo",
+        };
+      }
+      return { ...ad, trabaja_hoy: null, trabaja_mañana: null, estado_ciclo: "sin_turno" };
     });
 
     // ── Post-proceso: reclasificar "disponible" con el motor de turnos ────────
@@ -1642,6 +1739,7 @@ operacionesRouter.get("/operaciones/pool", async (req, res) => {
       enVacaciones,
       supervisores: supervisoresEnriquecidos,
       jefes_servicio: jefesServicioEnriquecidos,
+      administrativos: administrativosEnriquecidos,
       fecha_hoy: hoy,
       fecha_mañana: mañana,
       total: agentes.length,
