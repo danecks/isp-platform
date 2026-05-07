@@ -2,7 +2,16 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "./schema";
 
-const { Pool } = pg;
+const { Pool, types } = pg;
+
+// ── Parsear columnas DATE como string "YYYY-MM-DD" ────────────────────────────
+// Por defecto node-postgres convierte `date` a un objeto JS Date a UTC
+// medianoche. Al serializar a JSON eso da "2004-08-31T00:00:00.000Z" y al
+// reinterpretarlo en zonas horarias negativas (GT-6) se corre un día atrás
+// (mostraría "30 de agosto"). Devolvemos el string crudo de Postgres para
+// que las fechas-puras (fecha_nacimiento, vigencia_licencia, emp*_inicio,
+// etc.) viajen sin contaminación de zona horaria. OID 1082 = DATE.
+types.setTypeParser(1082, (val: string) => val);
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
