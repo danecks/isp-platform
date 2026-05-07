@@ -25,6 +25,8 @@ const ROUTE_MODULO_MAP: Record<string, string> = {
   "/rrhh-alertas":           "alertas_rrhh",
   "/operaciones":            "pizarron",
   "/puesto-slots":           "pizarron",
+  "/personal-slots":         "pizarron",
+  "/personal/empleados":     "pizarron",
   "/solicitudes-turno":      "pizarron",
   "/planificacion-futura":   "pizarron",
   "/qr-rondas":              "control_qr",

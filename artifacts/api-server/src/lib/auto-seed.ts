@@ -5236,6 +5236,66 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SLOT-FIC-MON-01 — error (no bloqueante)");
   }
 
+  // ── PERS-SLOT-01: personal_slots (clon de puesto_slots para supervisores y administrativos) ──
+  // Reutiliza EXACTAMENTE el mismo modelo de ciclos que puesto_slots, pero
+  // anclado a un employee_id (no a un puesto_operativo). Permite que supervisores
+  // y personal administrativo tengan grilla "trabaja/descansa" igual que los
+  // guardias en puestos. Misma regla SLOT-FIC-MON-01 (fecha_inicio_ciclo en LUNES).
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS personal_slots (
+        id                      SERIAL PRIMARY KEY,
+        employee_id             INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        tipo                    VARCHAR(20) NOT NULL DEFAULT 'supervisor',
+        slot_numero             INTEGER NOT NULL DEFAULT 1,
+        horas_turno             INTEGER NOT NULL DEFAULT 8,
+        hora_entrada            TIME    NOT NULL DEFAULT '07:00:00',
+        hora_entrada_por_semana TEXT[],
+        dias_trabajo            INTEGER[] NOT NULL DEFAULT '{1,2,3,4,5}',
+        dias_medio_turno        INTEGER[] NOT NULL DEFAULT '{}',
+        longitud_ciclo          SMALLINT NOT NULL DEFAULT 7,
+        fecha_inicio_ciclo      DATE,
+        notas                   TEXT,
+        activo                  BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT personal_slots_tipo_chk CHECK (tipo IN ('supervisor','administrativo'))
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS persslot_emp    ON personal_slots(employee_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS persslot_tipo   ON personal_slots(tipo) WHERE activo = TRUE`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS persslot_activo ON personal_slots(activo) WHERE activo = TRUE`);
+    // Sanity: solo aceptar longitudes válidas {7,14,21,28}
+    await pool.query(`UPDATE personal_slots SET longitud_ciclo = 7 WHERE longitud_ciclo NOT IN (7,14,21,28)`);
+    logger.info("Auto-migrate: PERS-SLOT-01 tabla personal_slots verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PERS-SLOT-01 — error (no bloqueante)");
+  }
+
+  // ── PERS-SLOT-MON-01: re-anclar personal_slots.fecha_inicio_ciclo al lunes ──
+  // Misma regla que SLOT-FIC-MON-01 para puesto_slots. La grilla del modal
+  // semanasCiclo() asume D1=Lun.
+  try {
+    const { rowCount: rec } = await pool.query(`
+      UPDATE personal_slots
+         SET fecha_inicio_ciclo = fecha_inicio_ciclo
+           - ((EXTRACT(DOW FROM fecha_inicio_ciclo)::int + 6) % 7) * INTERVAL '1 day',
+             updated_at = NOW()
+       WHERE fecha_inicio_ciclo IS NOT NULL
+         AND EXTRACT(DOW FROM fecha_inicio_ciclo)::int <> 1
+    `);
+    if (rec && rec > 0) {
+      logger.info(`Auto-migrate: PERS-SLOT-MON-01 — ${rec} personal_slot(s) re-anclados al lunes`);
+    } else {
+      logger.info("Auto-migrate: PERS-SLOT-MON-01 verificado (todos los personal_slots anclados a lunes)");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: PERS-SLOT-MON-01 — error (no bloqueante)");
+  }
+
+  // Nota: las rutas /personal-slots y /personal/empleados quedan bajo el módulo
+  // 'pizarron' en lib/permisos-middleware.ts (mismo permiso que puesto-slots).
+
   // ── BARR-01: Barracas (vivienda empresarial) ──────────────────────────────
   try {
     await pool.query(`
