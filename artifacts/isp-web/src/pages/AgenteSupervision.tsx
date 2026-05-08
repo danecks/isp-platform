@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Html5Qrcode } from "html5-qrcode";
+import { useCallback, useEffect, useState } from "react";
 import {
   CheckCircle2, XCircle, Loader2, Clock, MapPin, ClipboardList,
   PlayCircle, AlertTriangle, RefreshCw, QrCode, ArrowLeft,
@@ -8,6 +7,7 @@ import {
 import { useSupervisorJornada } from "../components/SupervisorJornada/useSupervisorJornada";
 import { ModalInspeccion } from "../components/SupervisorJornada/ModalInspeccion";
 import { ModalVisitaPuesto } from "../components/SupervisorJornada/ModalVisitaPuesto";
+import { QrCarnetReader } from "../components/SupervisorJornada/QrCarnetReader";
 
 const API = "/api";
 const DEVICE_KEY = "isp_device";          // mismo key que AgenteInicio / SupervisorActivar
@@ -152,8 +152,6 @@ export default function AgenteSupervision() {
   }, [pegado]);
 
   const [qrToken, setQrToken] = useState(getStoredQr());
-  const [scanning, setScanning] = useState(false);
-  const scannerRef = useRef<Html5Qrcode | null>(null);
 
   const [supervisor, setSupervisor] = useState<{ id: number; nombre: string } | null>(null);
   const [agenda, setAgenda] = useState<Visita[]>([]);
@@ -206,41 +204,10 @@ export default function AgenteSupervision() {
 
   useEffect(() => { if (qrToken) cargar(); }, [qrToken, cargar]);
 
-  const startScan = useCallback(async () => {
-    setError(null); setScanning(true);
-    try {
-      const scanner = new Html5Qrcode("isp-superv-scanner");
-      scannerRef.current = scanner;
-      await scanner.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 240, height: 240 } },
-        (decoded) => {
-          let token = decoded.trim();
-          // Soporta URLs tipo https://.../agente/scan/<token>
-          const m = token.match(/\/agente\/scan\/([^/?#]+)/);
-          if (m) token = m[1];
-          scanner.stop().catch(() => {});
-          scanner.clear();
-          scannerRef.current = null;
-          setScanning(false);
-          setStoredQr(token, { fresh: true });
-          setQrToken(token);
-        },
-        () => {}
-      );
-    } catch (e: any) {
-      setScanning(false);
-      setError("No se pudo abrir la cámara: " + (e.message || e));
-    }
+  const recibirCarnetSupervisor = useCallback((token: string) => {
+    setStoredQr(token, { fresh: true });
+    setQrToken(token);
   }, []);
-
-  const stopScan = useCallback(async () => {
-    try { await scannerRef.current?.stop(); scannerRef.current?.clear(); } catch {}
-    scannerRef.current = null;
-    setScanning(false);
-  }, []);
-
-  useEffect(() => () => { void stopScan(); }, [stopScan]);
 
   async function accion(prog: Visita, accion: "iniciar" | "completar" | "no-realizada") {
     if (!device || !qrToken) return;
@@ -369,26 +336,15 @@ export default function AgenteSupervision() {
         <h1 className="text-lg font-bold flex items-center gap-2">
           <ClipboardList className="w-5 h-5 text-primary" /> Mi agenda de supervisión
         </h1>
-        <p className="text-xs text-white/60 mt-1">
+        <p className="text-xs text-white/60 mt-1 mb-4">
           Escanee su carnet QR para identificarse y ver sus visitas asignadas.
         </p>
 
-        <div id="isp-superv-scanner" className="mt-4 max-w-sm mx-auto rounded overflow-hidden border border-white/10" />
-
-        <div className="mt-4 flex flex-col items-center gap-3">
-          {!scanning ? (
-            <button onClick={startScan}
-              className="px-4 py-2 bg-primary text-black text-sm font-bold rounded inline-flex items-center gap-2">
-              <QrCode className="w-4 h-4" /> Escanear carnet
-            </button>
-          ) : (
-            <button onClick={stopScan}
-              className="px-4 py-2 bg-white/10 text-white text-sm rounded">
-              Cancelar
-            </button>
-          )}
-          {error && <p role="alert" className="text-rose-300 text-xs text-center max-w-sm">{error}</p>}
-        </div>
+        <QrCarnetReader
+          onToken={recibirCarnetSupervisor}
+          labelIniciar="Escanear carnet"
+          errorExterno={error}
+        />
       </div>
     );
   }

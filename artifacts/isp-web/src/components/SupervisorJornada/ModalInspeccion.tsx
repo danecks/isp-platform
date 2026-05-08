@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Html5Qrcode } from "html5-qrcode";
+import { useCallback, useEffect, useState } from "react";
 import {
-  X, QrCode, Loader2, ShieldCheck, AlertTriangle, CheckCircle2, FileWarning,
+  X, Loader2, ShieldCheck, CheckCircle2, FileWarning,
 } from "lucide-react";
+import { QrCarnetReader } from "./QrCarnetReader";
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
@@ -45,7 +45,6 @@ const TIPOS_ALERTA_ARMA = [
 ] as const;
 
 export function ModalInspeccion({ abierto, onCerrar, auth, onRegistrado, gpsActual, prefillAgenteId }: Props) {
-  const [scanning, setScanning] = useState(false);
   const [info, setInfo] = useState<InfoResp | null>(null);
   const [datos, setDatos] = useState<Record<string, any>>({});
   const [observaciones, setObservaciones] = useState("");
@@ -54,28 +53,15 @@ export function ModalInspeccion({ abierto, onCerrar, auth, onRegistrado, gpsActu
   const [armaDescripcion, setArmaDescripcion] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const scannerRef = useRef<Html5Qrcode | null>(null);
 
   const reset = useCallback(() => {
     setInfo(null); setDatos({}); setObservaciones("");
     setArmaAbierta(false); setAlertasArma(new Set()); setArmaDescripcion("");
-    setError(null); setScanning(false);
+    setError(null);
   }, []);
 
-  const stopScan = useCallback(async () => {
-    try { await scannerRef.current?.stop(); scannerRef.current?.clear(); } catch {}
-    scannerRef.current = null;
-    setScanning(false);
-  }, []);
-
-  // Al cerrar el modal: detener cámara antes de resetear estado.
-  useEffect(() => {
-    if (!abierto) {
-      void (async () => { await stopScan(); reset(); })();
-    }
-  }, [abierto, reset, stopScan]);
-
-  useEffect(() => () => { void stopScan(); }, [stopScan]);
+  // Al cerrar el modal: el QrCarnetReader se desmonta y limpia su cámara solo.
+  useEffect(() => { if (!abierto) reset(); }, [abierto, reset]);
 
   const cargarAgente = useCallback(async (opts: { token?: string; id?: number }) => {
     if (!auth) return;
@@ -101,29 +87,6 @@ export function ModalInspeccion({ abierto, onCerrar, auth, onRegistrado, gpsActu
       void cargarAgente({ id: prefillAgenteId });
     }
   }, [abierto, prefillAgenteId, info, auth, cargarAgente]);
-
-  const startScan = useCallback(async () => {
-    setError(null); setScanning(true);
-    try {
-      const sc = new Html5Qrcode("isp-insp-scanner");
-      scannerRef.current = sc;
-      await sc.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 240, height: 240 } },
-        async (decoded) => {
-          let token = decoded.trim();
-          const m = token.match(/\/agente\/scan\/([^/?#]+)/);
-          if (m) token = m[1];
-          await stopScan();
-          await cargarAgente({ token });
-        },
-        () => {}
-      );
-    } catch (e: any) {
-      setScanning(false);
-      setError("No se pudo abrir la cámara: " + (e.message || e));
-    }
-  }, [cargarAgente, stopScan]);
 
   const toggleAlerta = (tipo: string) => {
     setAlertasArma(prev => {
@@ -189,19 +152,11 @@ export function ModalInspeccion({ abierto, onCerrar, auth, onRegistrado, gpsActu
               <p className="text-xs text-white/60">
                 Escanee el carnet QR del agente que va a supervisar.
               </p>
-              <div id="isp-insp-scanner" className="w-full max-w-xs mx-auto rounded overflow-hidden border border-white/10" />
-              <div className="flex justify-center">
-                {!scanning ? (
-                  <button onClick={startScan}
-                    className="px-4 py-2 bg-primary text-black text-sm font-bold rounded inline-flex items-center gap-2">
-                    <QrCode className="w-4 h-4" /> Escanear carnet del agente
-                  </button>
-                ) : (
-                  <button onClick={stopScan} className="px-4 py-2 bg-white/10 text-white text-sm rounded">
-                    Cancelar
-                  </button>
-                )}
-              </div>
+              <QrCarnetReader
+                onToken={(token) => { void cargarAgente({ token }); }}
+                labelIniciar="Escanear carnet del agente"
+                errorExterno={error}
+              />
             </>
           )}
 
@@ -296,9 +251,9 @@ export function ModalInspeccion({ abierto, onCerrar, auth, onRegistrado, gpsActu
             </>
           )}
 
-          {error && !info && <p className="text-xs text-rose-300 flex items-center gap-1">
-            <AlertTriangle className="w-3.5 h-3.5" /> {error}
-          </p>}
+          {/* Cuando !info el error ya lo muestra QrCarnetReader vía
+              errorExterno; cuando hay info, el error se muestra arriba del
+              botón "Guardar inspección". Evitamos doble feedback visual. */}
         </div>
       </div>
     </div>
