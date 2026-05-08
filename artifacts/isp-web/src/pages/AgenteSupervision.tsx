@@ -65,7 +65,58 @@ function setStoredQr(v: string) {
 }
 
 export default function AgenteSupervision() {
-  const [device] = useState<DeviceCreds | null>(getDevice());
+  const [device, setDevice] = useState<DeviceCreds | null>(getDevice());
+  const [pegado, setPegado] = useState("");
+  const [activando, setActivando] = useState(false);
+  const [activarError, setActivarError] = useState<string | null>(null);
+
+  // Activar este navegador/PWA pegando el enlace de activación recibido del admin.
+  // Útil cuando el teléfono se activó originalmente en Safari pero se usa la PWA
+  // instalada (cada contexto tiene su propio localStorage en iOS).
+  const activarConEnlace = useCallback(async () => {
+    setActivarError(null);
+    let uuid = "", token = "";
+    try {
+      const txt = pegado.trim();
+      if (!txt) { setActivarError("Pegá el enlace o los códigos."); return; }
+      // Aceptamos: URL completa con ?uuid=...&token=...   |   "uuid|token"   |   JSON
+      if (txt.startsWith("http")) {
+        const u = new URL(txt);
+        uuid = u.searchParams.get("uuid") || "";
+        token = u.searchParams.get("token") || "";
+      } else if (txt.includes("|")) {
+        [uuid, token] = txt.split("|").map(s => s.trim());
+      } else {
+        const j = JSON.parse(txt);
+        uuid = j.uuid || j.device_uuid || "";
+        token = j.token || j.device_token || "";
+      }
+      if (!uuid || !token) { setActivarError("No encontré uuid/token en lo que pegaste."); return; }
+    } catch {
+      setActivarError("Formato no reconocido. Pegá el enlace completo del admin.");
+      return;
+    }
+    setActivando(true);
+    try {
+      const r = await fetch(`${API}/supervisor-devices/validate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ device_uuid: uuid, device_token: token }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) {
+        setActivarError(j.error || "El enlace no es válido o ya venció. Pedí uno nuevo al admin.");
+        return;
+      }
+      localStorage.setItem(DEVICE_KEY, JSON.stringify({ uuid, token }));
+      setDevice({ device_uuid: uuid, device_token: token });
+    } catch {
+      setActivarError("No hay conexión. Probá de nuevo.");
+    } finally {
+      setActivando(false);
+    }
+  }, [pegado]);
+
   const [qrToken, setQrToken] = useState(getStoredQr());
   const [scanning, setScanning] = useState(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
@@ -198,11 +249,37 @@ export default function AgenteSupervision() {
             </p>
           </div>
 
+          <div className="bg-emerald-500/5 border border-emerald-500/30 rounded-xl p-4 space-y-3">
+            <p className="font-semibold text-emerald-300 text-sm">Activá esta app pegando el enlace</p>
+            <p className="text-xs text-emerald-100/70">
+              Pedile al admin el enlace de activación (botón QR en la fila del dispositivo) y pegalo abajo.
+              Esto activa este navegador/PWA sin tener que abrirlo en Safari.
+            </p>
+            <textarea
+              value={pegado}
+              onChange={e => setPegado(e.target.value)}
+              placeholder="https://ispsa.net/supervisor/activar?uuid=…&token=…"
+              rows={3}
+              className="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-xs font-mono text-white/90 placeholder-white/20 focus:border-emerald-500/40 focus:outline-none"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+            {activarError && (
+              <p className="text-xs text-rose-300">{activarError}</p>
+            )}
+            <button
+              onClick={() => void activarConEnlace()}
+              disabled={activando || !pegado.trim()}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-sm transition"
+            >
+              {activando ? "Activando…" : "Activar este navegador"}
+            </button>
+          </div>
+
           <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 text-xs text-amber-100/80 space-y-1.5">
-            <p className="font-semibold text-amber-300">¿Qué hacer?</p>
-            <p>1. Pedile al admin que regenere el enlace de activación (botón QR en la fila del dispositivo).</p>
-            <p>2. Abrí el enlace <b>en este mismo navegador</b> donde estás viendo esto ahora.</p>
-            <p>3. Si usás la app instalada (icono en pantalla de inicio), abrí el enlace <b>desde la app instalada</b>, no desde Safari.</p>
+            <p className="font-semibold text-amber-300">¿Por qué pasa esto?</p>
+            <p>En iOS, Safari y la app instalada (icono en home) tienen memoria separada. Si activaste en uno, el otro no lo "ve". Con el campo de arriba activás directamente este contexto.</p>
           </div>
 
           <details className="bg-black/40 border border-white/10 rounded-xl p-3">
