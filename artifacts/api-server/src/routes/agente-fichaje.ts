@@ -564,6 +564,14 @@ agenteFichajeRouter.get("/agente/puesto-del-dia", async (req, res) => {
     if (devRows[0].device_token_hash !== hashToken(device_token)) {
       return res.status(403).json({ error: "token_incorrecto" });
     }
+    // Si es un teléfono de supervisor (no es kiosco de puesto/custodia),
+    // devolvemos un modo informativo en vez de error: el frontend no debe
+    // mostrar pantalla de error, simplemente no activa el modo kiosco y
+    // espera a que el supervisor escanee su carnet.
+    if (devRows[0].tipo === "supervisor") {
+      await pool.query(`UPDATE supervisor_devices SET ultimo_uso = NOW() WHERE id = $1`, [devRows[0].id]);
+      return res.json({ ok: true, modo: "supervisor" });
+    }
     if (!["puesto", "maestro", "custodia"].includes(devRows[0].tipo)) {
       return res.status(403).json({ error: "tipo_incorrecto", mensaje: "Este dispositivo no está configurado como teléfono de puesto o de custodia." });
     }

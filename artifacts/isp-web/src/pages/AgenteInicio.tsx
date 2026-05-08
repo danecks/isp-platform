@@ -269,6 +269,13 @@ export default function AgenteInicio() {
         setErrorKiosco(data.mensaje || data.error || "Dispositivo no autorizado");
         return;
       }
+      // Teléfono de supervisor: no es kiosco, no mostrar error.
+      // El supervisor escanea su carnet y entra al supervisor_menu.
+      if (data.modo === "supervisor") {
+        setErrorKiosco(null);
+        setPuestoDelDia(null);
+        return;
+      }
       setErrorKiosco(null);
       setPuestoDelDia(data);
     } catch {
