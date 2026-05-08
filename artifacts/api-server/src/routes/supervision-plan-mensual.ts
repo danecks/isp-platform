@@ -33,7 +33,7 @@ supervisionPlanMensualRouter.get("/supervision-plan-mensual/catalogos", async (r
         `SELECT s.id, s.nombre, s.client_id,
                 COALESCE(c.nombre, c.nombre_comercial, 'Cliente '||c.id::text) AS cliente_nombre,
                 (SELECT COUNT(*)::int FROM puestos_operativos po
-                  WHERE po.sede_id = s.id AND COALESCE(po.estado,'activo')='activo') AS puestos_activos
+                  WHERE po.sede_id = s.id AND po.activo = TRUE) AS puestos_activos
            FROM client_sedes s
            JOIN clients c ON c.id = s.client_id
           WHERE s.activo = TRUE
@@ -165,7 +165,7 @@ supervisionPlanMensualRouter.get("/supervision-plan-mensual/cobertura", async (r
               s.client_id AS cliente_id,
               COALESCE(c.nombre, c.nombre_comercial, 'Cliente '||c.id::text) AS cliente_nombre,
               (SELECT COUNT(*)::int FROM puestos_operativos po
-                WHERE po.sede_id = s.id AND COALESCE(po.estado,'activo')='activo') AS puestos_activos
+                WHERE po.sede_id = s.id AND po.activo = TRUE) AS puestos_activos
          FROM client_sedes s
          JOIN clients c ON c.id = s.client_id
         WHERE s.activo = TRUE
