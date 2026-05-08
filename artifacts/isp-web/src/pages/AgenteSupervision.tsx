@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useSupervisorJornada } from "../components/SupervisorJornada/useSupervisorJornada";
 import { ModalInspeccion } from "../components/SupervisorJornada/ModalInspeccion";
+import { ModalVisitaPuesto } from "../components/SupervisorJornada/ModalVisitaPuesto";
 
 const API = "/api";
 const DEVICE_KEY = "isp_device";          // mismo key que AgenteInicio / SupervisorActivar
@@ -144,8 +145,9 @@ export default function AgenteSupervision() {
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState<number | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
+  const [prefillAgenteId, setPrefillAgenteId] = useState<number | null>(null);
+  const [visitaActiva, setVisitaActiva] = useState<Visita | null>(null);
   const [agendaAbierta, setAgendaAbierta] = useState(false);
-  const [generandoNovedad, setGenerandoNovedad] = useState(false);
   const jornada = useSupervisorJornada(device, qrToken);
 
   const cargar = useCallback(async () => {
@@ -369,28 +371,11 @@ export default function AgenteSupervision() {
   // Próxima visita pendiente: la primera no completada/cancelada/no_realizada.
   const proxima = jornada.proxima || agenda.find(v => v.estado === "pendiente" || v.estado === "en_curso") || null;
 
-  const handleGenerarNovedad = async () => {
-    if (generandoNovedad) return;
-    // prompt devuelve null si el usuario cancela: en ese caso no enviamos nada.
-    const obsRaw = prompt("Observaciones para la novedad (opcional):");
-    if (obsRaw === null) return;
-    const obs = obsRaw.trim() || undefined;
-    if (!confirm("¿Confirmar y generar la novedad consolidada de esta jornada?")) return;
-    setGenerandoNovedad(true);
-    try {
-      const ids = await jornada.generarNovedad(obs);
-      if (ids && ids.length > 0) {
-        alert(`Novedad generada (${ids.length} ${ids.length === 1 ? "puesto" : "puestos"}).`);
-      }
-    } catch (e: any) {
-      if (String(e?.message).includes("sin_inspecciones")) {
-        alert("Aún no ha registrado inspecciones para consolidar.");
-      } else {
-        alert("Error al generar novedad: " + (e?.message || ""));
-      }
-    } finally {
-      setGenerandoNovedad(false);
-    }
+  const abrirVisita = (v: Visita) => {
+    // Si la visita está pendiente, la pasamos a en_curso silenciosamente
+    // (best-effort; no bloqueamos la apertura del modal si falla).
+    if (v.estado === "pendiente") void accion(v, "iniciar").catch(() => {});
+    setVisitaActiva(v);
   };
 
   const handleTerminarJornada = async () => {
@@ -485,16 +470,12 @@ export default function AgenteSupervision() {
             {proxima.instrucciones && (
               <p className="text-[11px] text-white/70 mt-2 whitespace-pre-wrap">{proxima.instrucciones}</p>
             )}
-            <div className="flex gap-2 mt-3">
-              {proxima.estado === "pendiente" && (
-                <Btn onClick={() => accion(proxima as Visita, "iniciar")} disabled={working === proxima.id}
-                  icon={PlayCircle} label="Iniciar" tone="blue" />
-              )}
-              <Btn onClick={() => accion(proxima as Visita, "completar")} disabled={working === proxima.id}
-                icon={CheckCircle2} label="Completar" tone="emerald" />
-              <Btn onClick={() => accion(proxima as Visita, "no-realizada")} disabled={working === proxima.id}
-                icon={XCircle} label="No realizada" tone="rose" />
-            </div>
+            <button
+              onClick={() => abrirVisita(proxima as Visita)}
+              disabled={working === proxima.id}
+              className="mt-3 w-full bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-semibold py-3 rounded inline-flex items-center justify-center gap-2 text-sm">
+              <ShieldCheck className="w-4 h-4" /> Supervisar este puesto
+            </button>
           </article>
         ) : (
           <p className="text-white/40 text-xs text-center py-4 bg-white/5 rounded">
@@ -504,15 +485,13 @@ export default function AgenteSupervision() {
 
         {/* Acciones principales */}
         <div className="grid grid-cols-1 gap-2">
-          <button onClick={() => setModalAbierto(true)}
-            className="bg-primary text-black font-bold py-4 rounded-lg inline-flex items-center justify-center gap-2 text-sm">
-            <QrCode className="w-5 h-5" /> Escanear agente
+          <button onClick={() => { setPrefillAgenteId(null); setModalAbierto(true); }}
+            className="bg-primary/90 hover:bg-primary text-black font-bold py-3 rounded-lg inline-flex items-center justify-center gap-2 text-sm">
+            <QrCode className="w-5 h-5" /> Escanear agente (carnet QR)
           </button>
-          <button onClick={handleGenerarNovedad} disabled={generandoNovedad}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg inline-flex items-center justify-center gap-2 text-sm">
-            {generandoNovedad ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-            Generar novedad
-          </button>
+          <p className="text-[11px] text-white/40 text-center -mt-1">
+            La novedad se genera al completar cada visita del puesto.
+          </p>
           <button onClick={handleTerminarJornada}
             className="bg-rose-600/20 border border-rose-500/40 hover:bg-rose-600/30 text-rose-100 font-semibold py-3 rounded-lg inline-flex items-center justify-center gap-2 text-sm">
             <LogOut className="w-4 h-4" /> Terminar jornada
@@ -565,17 +544,12 @@ export default function AgenteSupervision() {
                   <p className="text-[11px] text-amber-200/80 mt-1 italic whitespace-pre-wrap">Obs: {v.observaciones}</p>
                 )}
                 {(v.estado === "pendiente" || v.estado === "en_curso") && (
-                  <div className="flex gap-2 mt-3">
-                    {v.estado === "pendiente" && (
-                      <Btn onClick={() => accion(v, "iniciar")} disabled={working === v.id}
-                        icon={PlayCircle} label="Iniciar" tone="blue" />
-                    )}
-                    <Btn onClick={() => accion(v, "completar")} disabled={working === v.id}
-                      icon={CheckCircle2} label="Completar" tone="emerald" />
-                    <Btn onClick={() => accion(v, "no-realizada")} disabled={working === v.id}
-                      icon={XCircle} label="No realizada" tone="rose" />
-                    {working === v.id && <Loader2 className="w-4 h-4 animate-spin text-white/50 self-center" />}
-                  </div>
+                  <button
+                    onClick={() => abrirVisita(v)}
+                    disabled={working === v.id}
+                    className="mt-3 w-full bg-violet-600/80 hover:bg-violet-600 disabled:opacity-50 text-white font-medium py-2 rounded inline-flex items-center justify-center gap-1.5 text-xs">
+                    <ShieldCheck className="w-3.5 h-3.5" /> Supervisar puesto
+                  </button>
                 )}
               </article>
             ))}
@@ -590,10 +564,25 @@ export default function AgenteSupervision() {
 
       <ModalInspeccion
         abierto={modalAbierto}
-        onCerrar={() => setModalAbierto(false)}
+        onCerrar={() => { setModalAbierto(false); setPrefillAgenteId(null); }}
         auth={jornada.auth}
-        onRegistrado={() => { /* podrías recargar contadores si los hubiera */ }}
+        onRegistrado={() => { /* refresco silencioso al volver al modal de puesto */ }}
         gpsActual={jornada.gpsActual}
+        prefillAgenteId={prefillAgenteId}
+      />
+
+      <ModalVisitaPuesto
+        abierto={!!visitaActiva}
+        onCerrar={() => setVisitaActiva(null)}
+        visita={visitaActiva}
+        auth={jornada.auth}
+        onInspeccionar={(agenteId) => {
+          // Mantenemos el modal de puesto montado pero ocultamos visualmente
+          // abriendo el de inspección encima.
+          setPrefillAgenteId(agenteId);
+          setModalAbierto(true);
+        }}
+        onFinalizada={() => { setVisitaActiva(null); void cargar(); }}
       />
     </div>
   );

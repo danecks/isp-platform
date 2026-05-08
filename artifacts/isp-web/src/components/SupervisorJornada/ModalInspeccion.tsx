@@ -31,6 +31,9 @@ interface Props {
   auth: { device_uuid: string; device_token: string; qr_token: string } | null;
   onRegistrado: () => void;
   gpsActual: { lat: number; lng: number } | null;
+  // Si se pasa, se carga ese agente directo por id (sin escanear QR).
+  // Útil cuando el agente todavía no tiene carnet impreso.
+  prefillAgenteId?: number | null;
 }
 
 const TIPOS_ALERTA_ARMA = [
@@ -41,7 +44,7 @@ const TIPOS_ALERTA_ARMA = [
   { tipo: "tenencia_no_legible",   label: "Tenencia no legible (copia ilegible)" },
 ] as const;
 
-export function ModalInspeccion({ abierto, onCerrar, auth, onRegistrado, gpsActual }: Props) {
+export function ModalInspeccion({ abierto, onCerrar, auth, onRegistrado, gpsActual, prefillAgenteId }: Props) {
   const [scanning, setScanning] = useState(false);
   const [info, setInfo] = useState<InfoResp | null>(null);
   const [datos, setDatos] = useState<Record<string, any>>({});
@@ -74,20 +77,30 @@ export function ModalInspeccion({ abierto, onCerrar, auth, onRegistrado, gpsActu
 
   useEffect(() => () => { void stopScan(); }, [stopScan]);
 
-  const cargarAgente = useCallback(async (token: string) => {
+  const cargarAgente = useCallback(async (opts: { token?: string; id?: number }) => {
     if (!auth) return;
     setError(null);
     try {
+      const body: any = { ...auth };
+      if (opts.token) body.agente_qr_token = opts.token;
+      else if (opts.id) body.agente_employee_id = opts.id;
       const r = await fetch(`${API}/agente/supervision/inspeccion/agente-info`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...auth, agente_qr_token: token }),
+        body: JSON.stringify(body),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j?.error || "No se pudo cargar el agente");
       setInfo(j);
     } catch (e: any) { setError(e.message || "Error"); }
   }, [auth]);
+
+  // Auto-carga por id cuando se abre el modal con prefillAgenteId.
+  useEffect(() => {
+    if (abierto && prefillAgenteId && !info && auth) {
+      void cargarAgente({ id: prefillAgenteId });
+    }
+  }, [abierto, prefillAgenteId, info, auth, cargarAgente]);
 
   const startScan = useCallback(async () => {
     setError(null); setScanning(true);
@@ -102,7 +115,7 @@ export function ModalInspeccion({ abierto, onCerrar, auth, onRegistrado, gpsActu
           const m = token.match(/\/agente\/scan\/([^/?#]+)/);
           if (m) token = m[1];
           await stopScan();
-          await cargarAgente(token);
+          await cargarAgente({ token });
         },
         () => {}
       );
@@ -158,7 +171,7 @@ export function ModalInspeccion({ abierto, onCerrar, auth, onRegistrado, gpsActu
   const itemsPres   = info?.catalogo.filter(c => c.categoria === "presentacion") || [];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 flex items-end sm:items-center justify-center">
+    <div className="fixed inset-0 z-[60] bg-black/80 flex items-end sm:items-center justify-center">
       <div className="w-full sm:max-w-lg max-h-[95vh] overflow-y-auto bg-[#0b1424] sm:rounded-xl border-t sm:border border-white/10">
         <header className="sticky top-0 bg-[#0b1424] border-b border-white/10 px-4 py-3 flex items-center justify-between">
           <h2 className="text-sm font-bold flex items-center gap-2">
@@ -171,7 +184,7 @@ export function ModalInspeccion({ abierto, onCerrar, auth, onRegistrado, gpsActu
         </header>
 
         <div className="p-4 space-y-4">
-          {!info && (
+          {!info && !prefillAgenteId && (
             <>
               <p className="text-xs text-white/60">
                 Escanee el carnet QR del agente que va a supervisar.
@@ -190,6 +203,12 @@ export function ModalInspeccion({ abierto, onCerrar, auth, onRegistrado, gpsActu
                 )}
               </div>
             </>
+          )}
+
+          {!info && prefillAgenteId && (
+            <p className="text-xs text-white/60 inline-flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Cargando datos del agente…
+            </p>
           )}
 
           {info && (

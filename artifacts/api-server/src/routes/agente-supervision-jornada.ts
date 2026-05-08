@@ -202,22 +202,54 @@ agenteSupervisionJornadaRouter.post("/agente/supervision/inspeccion/agente-info"
   const a = await autenticarSupervisor(b.device_uuid, b.device_token, b.qr_token);
   if (!a.ctx) return res.status(a.status || 403).json({ error: a.error });
 
+  // Soporta dos modos: por QR escaneado (agente_qr_token) o por id directo
+  // (agente_employee_id) cuando el agente todavía no tiene carnet impreso.
+  // En modo "por id" validamos que el agente sea titular activo de algún puesto
+  // del supervisor autenticado para evitar IDOR.
   const agenteToken = String(b.agente_qr_token || "").trim();
-  if (!agenteToken) return res.status(400).json({ error: "agente_qr_token requerido" });
+  const agenteIdDirecto = Number(b.agente_employee_id);
+  const usarId = !agenteToken && Number.isInteger(agenteIdDirecto) && agenteIdDirecto > 0;
+  if (!agenteToken && !usarId) {
+    return res.status(400).json({ error: "agente_qr_token o agente_employee_id requerido" });
+  }
 
   try {
-    const { rows: empRows } = await pool.query(
-      `SELECT e.id, e.nombre_completo, e.tipo_personal,
-              pt.puesto_id, po.nombre AS puesto_nombre, po.cliente_id, c.nombre AS cliente_nombre
-         FROM agente_qr_tokens aqt
-         JOIN employees e ON e.id = aqt.employee_id
-         LEFT JOIN puesto_titulares pt ON pt.employee_id = e.id AND pt.activo = TRUE
-         LEFT JOIN puestos_operativos po ON po.id = pt.puesto_id
-         LEFT JOIN clients c ON c.id = po.cliente_id
-        WHERE aqt.qr_token = $1 AND aqt.activo = TRUE
-        ORDER BY pt.id ASC LIMIT 1`,
-      [agenteToken]
-    );
+    let empRows: any[];
+    if (usarId) {
+      // Validar pertenencia: el agente debe ser titular activo de algún puesto
+      // que esté programado para visita por este supervisor (en cualquier estado).
+      const r = await pool.query(
+        `SELECT e.id, e.nombre_completo, e.tipo_personal,
+                pt.puesto_id, po.nombre AS puesto_nombre,
+                po.cliente_id, c.nombre AS cliente_nombre
+           FROM employees e
+           JOIN puesto_titulares pt ON pt.employee_id = e.id AND pt.activo = TRUE
+           JOIN puestos_operativos po ON po.id = pt.puesto_id
+           LEFT JOIN clients c ON c.id = po.cliente_id
+          WHERE e.id = $1
+            AND EXISTS (
+              SELECT 1 FROM supervision_visitas_programadas sp
+               WHERE sp.supervisor_employee_id = $2 AND sp.puesto_id = pt.puesto_id
+            )
+          ORDER BY pt.id ASC LIMIT 1`,
+        [agenteIdDirecto, a.ctx.employee_id]
+      );
+      empRows = r.rows;
+    } else {
+      const r = await pool.query(
+        `SELECT e.id, e.nombre_completo, e.tipo_personal,
+                pt.puesto_id, po.nombre AS puesto_nombre, po.cliente_id, c.nombre AS cliente_nombre
+           FROM agente_qr_tokens aqt
+           JOIN employees e ON e.id = aqt.employee_id
+           LEFT JOIN puesto_titulares pt ON pt.employee_id = e.id AND pt.activo = TRUE
+           LEFT JOIN puestos_operativos po ON po.id = pt.puesto_id
+           LEFT JOIN clients c ON c.id = po.cliente_id
+          WHERE aqt.qr_token = $1 AND aqt.activo = TRUE
+          ORDER BY pt.id ASC LIMIT 1`,
+        [agenteToken]
+      );
+      empRows = r.rows;
+    }
     const emp = empRows[0];
     if (!emp) return res.status(404).json({ error: "agente_no_encontrado" });
 
@@ -287,6 +319,25 @@ agenteSupervisionJornadaRouter.post("/agente/supervision/inspeccion/registrar", 
   // Pre-validaciones (sin client del pool para no filtrar conexiones en early-return).
   const sesion = await sesionActiva(a.ctx.employee_id);
   if (!sesion) return res.status(409).json({ error: "sin_sesion_activa" });
+
+  // Anti-IDOR: validar que el agente sea titular activo de algún puesto que
+  // este supervisor tenga programado para visitar. Sin esto, un cliente
+  // malicioso podría POSTear inspecciones contra agentes ajenos saltándose
+  // /agente-info (que sí valida pertenencia).
+  const { rows: pertRows } = await pool.query(
+    `SELECT 1
+       FROM puesto_titulares pt
+      WHERE pt.employee_id = $1 AND pt.activo = TRUE
+        AND EXISTS (
+          SELECT 1 FROM supervision_visitas_programadas sp
+           WHERE sp.supervisor_employee_id = $2 AND sp.puesto_id = pt.puesto_id
+        )
+      LIMIT 1`,
+    [agenteId, a.ctx.employee_id]
+  );
+  if (pertRows.length === 0) {
+    return res.status(403).json({ error: "agente_no_pertenece_a_puesto_del_supervisor" });
+  }
 
   // Validar que el arma (si vino) realmente pertenezca a este agente.
   // Evita IDOR: un supervisor no puede crear inspecciones/alertas sobre
@@ -452,5 +503,213 @@ agenteSupervisionJornadaRouter.post("/agente/supervision/novedad/generar", async
   } catch (err) {
     logger.error({ err }, "POST /agente/supervision/novedad/generar error");
     res.status(500).json({ error: "Error al generar novedad" });
+  }
+});
+
+// ── POST /agente/supervision/visita/agentes ─────────────────────────────────
+// Devuelve los agentes titulares activos del puesto de una visita programada,
+// para permitir al supervisor inspeccionarlos sin escanear el carnet QR
+// (útil mientras los carnets aún no están impresos para todo el personal).
+// body: ...auth + { programacion_id }
+agenteSupervisionJornadaRouter.post("/agente/supervision/visita/agentes", async (req, res) => {
+  const b = req.body || {};
+  const a = await autenticarSupervisor(b.device_uuid, b.device_token, b.qr_token);
+  if (!a.ctx) return res.status(a.status || 403).json({ error: a.error });
+
+  const progId = Number(b.programacion_id);
+  if (!Number.isInteger(progId) || progId <= 0) {
+    return res.status(400).json({ error: "programacion_id inválido" });
+  }
+
+  try {
+    const { rows: visitaRows } = await pool.query(
+      `SELECT sp.id, sp.cliente_id, sp.puesto_id, sp.estado,
+              c.nombre AS cliente_nombre, po.nombre AS puesto_nombre,
+              po.direccion AS puesto_direccion
+         FROM supervision_visitas_programadas sp
+         LEFT JOIN clients c             ON c.id  = sp.cliente_id
+         LEFT JOIN puestos_operativos po ON po.id = sp.puesto_id
+        WHERE sp.id = $1 AND sp.supervisor_employee_id = $2
+        LIMIT 1`,
+      [progId, a.ctx.employee_id]
+    );
+    const visita = visitaRows[0];
+    if (!visita) return res.status(404).json({ error: "visita_no_encontrada" });
+
+    // Titulares activos del puesto. Si la visita no tiene puesto asociado,
+    // devolvemos lista vacía (no se puede inspeccionar sin puesto).
+    let agentes: any[] = [];
+    if (visita.puesto_id) {
+      const { rows } = await pool.query(
+        `SELECT e.id, e.nombre_completo AS nombre, e.tipo_personal,
+                pt.orden,
+                EXISTS (
+                  SELECT 1 FROM agente_qr_tokens aqt
+                   WHERE aqt.employee_id = e.id AND aqt.activo = TRUE
+                ) AS tiene_carnet,
+                (
+                  SELECT COUNT(*)::int FROM supervision_inspecciones i
+                   WHERE i.agente_employee_id = e.id
+                     AND i.sesion_id = (
+                       SELECT id FROM supervision_sesiones
+                        WHERE supervisor_employee_id = $2 AND estado = 'activa'
+                        ORDER BY id DESC LIMIT 1
+                     )
+                ) AS inspecciones_hoy
+           FROM puesto_titulares pt
+           JOIN employees e ON e.id = pt.employee_id
+          WHERE pt.puesto_id = $1 AND pt.activo = TRUE
+          ORDER BY pt.orden ASC, e.nombre_completo ASC`,
+        [visita.puesto_id, a.ctx.employee_id]
+      );
+      agentes = rows;
+    }
+
+    res.json({ ok: true, visita, agentes });
+  } catch (err) {
+    logger.error({ err }, "POST /agente/supervision/visita/agentes error");
+    res.status(500).json({ error: "Error al cargar agentes del puesto" });
+  }
+});
+
+// ── POST /agente/supervision/visita/completar-con-novedad ───────────────────
+// Marca la visita como completada Y genera (o actualiza) la novedad consolidada
+// del puesto correspondiente, agrupando las inspecciones de la sesión activa
+// que pertenezcan a ese puesto. Esto reemplaza el botón global "Generar
+// novedad" por una novedad por-puesto al cerrar cada visita.
+// body: ...auth + { programacion_id, observaciones? }
+agenteSupervisionJornadaRouter.post("/agente/supervision/visita/completar-con-novedad", async (req, res) => {
+  const b = req.body || {};
+  const a = await autenticarSupervisor(b.device_uuid, b.device_token, b.qr_token);
+  if (!a.ctx) return res.status(a.status || 403).json({ error: a.error });
+
+  const progId = Number(b.programacion_id);
+  if (!Number.isInteger(progId) || progId <= 0) {
+    return res.status(400).json({ error: "programacion_id inválido" });
+  }
+  const obsTxt = String(b.observaciones || "").trim() || null;
+
+  await autoCerrarVencidas(a.ctx.employee_id);
+  const sesion = await sesionActiva(a.ctx.employee_id);
+  if (!sesion) return res.status(409).json({ error: "sin_sesion_activa" });
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // 1) Cerrar la visita (idempotente vía estado guard).
+    const { rows: visitaRows } = await client.query(
+      `UPDATE supervision_visitas_programadas
+          SET estado = 'completada',
+              iniciada_at   = COALESCE(iniciada_at, NOW()),
+              completada_at = COALESCE(completada_at, NOW()),
+              observaciones = COALESCE($3, observaciones),
+              updated_at = NOW()
+        WHERE id = $1
+          AND supervisor_employee_id = $2
+          AND estado IN ('pendiente','en_curso')
+       RETURNING id, puesto_id, cliente_id`,
+      [progId, a.ctx.employee_id, obsTxt]
+    );
+    let puestoId: number | null = null;
+    let clienteId: number | null = null;
+    if (visitaRows[0]) {
+      puestoId = visitaRows[0].puesto_id;
+      clienteId = visitaRows[0].cliente_id;
+    } else {
+      // Verificar pertenencia para devolver error claro.
+      const chk = await client.query(
+        `SELECT supervisor_employee_id, estado, puesto_id, cliente_id
+           FROM supervision_visitas_programadas WHERE id = $1`,
+        [progId]
+      );
+      if (!chk.rows[0]) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "visita_no_encontrada" });
+      }
+      if (chk.rows[0].supervisor_employee_id !== a.ctx.employee_id) {
+        await client.query("ROLLBACK");
+        return res.status(403).json({ error: "visita_ajena" });
+      }
+      // Ya estaba completada/cancelada/etc. Permitimos regenerar la novedad.
+      puestoId = chk.rows[0].puesto_id;
+      clienteId = chk.rows[0].cliente_id;
+    }
+
+    // 2) Consolidar inspecciones de este puesto en la sesión activa.
+    const { rows: inspecciones } = await client.query(
+      `SELECT i.id, i.agente_employee_id, e.nombre_completo AS agente_nombre,
+              po.nombre AS puesto_nombre, c.nombre AS cliente_nombre,
+              i.arma_id, ar.codigo AS arma_codigo,
+              i.datos, i.arma_estado, i.observaciones,
+              to_char(i.realizada_at, 'YYYY-MM-DD HH24:MI') AS realizada_at
+         FROM supervision_inspecciones i
+         JOIN employees e ON e.id = i.agente_employee_id
+         LEFT JOIN puestos_operativos po ON po.id = i.puesto_id
+         LEFT JOIN clients c ON c.id = i.cliente_id
+         LEFT JOIN armas ar ON ar.id = i.arma_id
+        WHERE i.sesion_id = $1
+          AND i.puesto_id IS NOT DISTINCT FROM $2
+        ORDER BY i.realizada_at ASC`,
+      [sesion.id, puestoId]
+    );
+
+    let novedadId: number | null = null;
+    if (inspecciones.length > 0) {
+      const consolidado = {
+        sesion_id: sesion.id,
+        programacion_id: progId,
+        puesto_nombre: inspecciones[0].puesto_nombre,
+        cliente_nombre: inspecciones[0].cliente_nombre,
+        agentes: inspecciones.map(it => ({
+          agente_id: it.agente_employee_id,
+          agente_nombre: it.agente_nombre,
+          arma_id: it.arma_id, arma_codigo: it.arma_codigo,
+          datos: it.datos, arma_estado: it.arma_estado,
+          observaciones: it.observaciones,
+          realizada_at: it.realizada_at,
+        })),
+      };
+      const upd = await client.query(
+        `UPDATE supervision_novedades
+            SET datos_consolidados = $4,
+                observaciones      = COALESCE($5, observaciones),
+                generada_at        = NOW()
+          WHERE sesion_id = $1
+            AND puesto_id IS NOT DISTINCT FROM $2
+            AND supervisor_employee_id = $3
+          RETURNING id`,
+        [sesion.id, puestoId, a.ctx.employee_id, JSON.stringify(consolidado), obsTxt]
+      );
+      if (upd.rowCount && upd.rowCount > 0) {
+        novedadId = upd.rows[0].id;
+      } else {
+        const ins = await client.query(
+          `INSERT INTO supervision_novedades
+             (sesion_id, supervisor_employee_id, fecha, puesto_id, cliente_id,
+              observaciones, datos_consolidados)
+           VALUES ($1,$2,CURRENT_DATE,$3,$4,$5,$6)
+           RETURNING id`,
+          [sesion.id, a.ctx.employee_id, puestoId, clienteId, obsTxt,
+           JSON.stringify(consolidado)]
+        );
+        novedadId = ins.rows[0].id;
+      }
+    }
+
+    await client.query("COMMIT");
+    res.json({
+      ok: true,
+      programacion_id: progId,
+      novedad_id: novedadId,
+      inspecciones: inspecciones.length,
+      sin_inspecciones: inspecciones.length === 0,
+    });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    logger.error({ err }, "POST /agente/supervision/visita/completar-con-novedad error");
+    res.status(500).json({ error: "Error al completar visita" });
+  } finally {
+    client.release();
   }
 });

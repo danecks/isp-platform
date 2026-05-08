@@ -195,7 +195,10 @@ function isPublicPath(path: string, method: string): boolean {
     path === "/agente/supervision/inspeccion/agente-info" ||
     path === "/agente/supervision/inspeccion/registrar" ||
     // Fase C: novedad consolidada de jornada
-    path === "/agente/supervision/novedad/generar"
+    path === "/agente/supervision/novedad/generar" ||
+    // Fase C: visita por-puesto sin escanear QR del agente (carnets pendientes)
+    path === "/agente/supervision/visita/agentes" ||
+    path === "/agente/supervision/visita/completar-con-novedad"
   )) return true;
 
   // POSTs públicos de la PWA del agente y validación de supervisor-device
