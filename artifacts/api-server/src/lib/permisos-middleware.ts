@@ -179,13 +179,23 @@ function isPublicPath(path: string, method: string): boolean {
     /^\/agente\/puesto\/\d+\/equipo-asignado$/.test(path)
   )) return true;
 
-  // PWA del supervisor — Fase B. Todo POST con credenciales en body
-  // (device_uuid + device_token + qr_token); cada handler valida + amarra TOFU.
+  // PWA del supervisor — Fase B + C. Todo POST con credenciales en body
+  // (device_uuid + device_token + qr_token); cada handler valida la identidad.
   if (method === "POST" && (
     path === "/agente/supervision/mi-agenda" ||
     path === "/agente/supervision/iniciar" ||
     path === "/agente/supervision/completar" ||
-    path === "/agente/supervision/no-realizada"
+    path === "/agente/supervision/no-realizada" ||
+    // Fase C: jornada del supervisor (clock-in/out + GPS continuo)
+    path === "/agente/supervision/jornada/estado" ||
+    path === "/agente/supervision/jornada/clock-in" ||
+    path === "/agente/supervision/jornada/clock-out" ||
+    path === "/agente/supervision/jornada/gps" ||
+    // Fase C: inspección de agentes desde el teléfono del supervisor
+    path === "/agente/supervision/inspeccion/agente-info" ||
+    path === "/agente/supervision/inspeccion/registrar" ||
+    // Fase C: novedad consolidada de jornada
+    path === "/agente/supervision/novedad/generar"
   )) return true;
 
   // POSTs públicos de la PWA del agente y validación de supervisor-device
