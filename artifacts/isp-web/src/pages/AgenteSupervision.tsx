@@ -406,7 +406,10 @@ export default function AgenteSupervision() {
 
   return (
     <div className="min-h-screen bg-[#060e1c] text-white">
-      <header className="sticky top-0 bg-[#0b1424] border-b border-white/10 px-4 py-3 z-10">
+      <header
+        className="sticky top-0 bg-[#0b1424] border-b border-white/10 px-4 pb-3 z-10"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.75rem)" }}
+      >
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0 flex items-center gap-2">
             <div className="w-9 h-9 rounded-full bg-violet-600/20 flex items-center justify-center shrink-0">
