@@ -67,6 +67,13 @@ const ESTADO_CONFIG: Record<string, { label: string; cls: string }> = {
   mal_estado:      { label: "Inservible",        cls: "text-gray-400 bg-gray-400/10 border-gray-400/20" },
   baja:            { label: "Baja",              cls: "text-red-400 bg-red-400/10 border-red-400/20" },
 };
+// Mapa de estados legacy → estado canónico (mismo label que muestra EstadoBadge)
+// Sin esto el filtro por Estado dejaría fuera registros antiguos que el badge sí reconoce.
+const ESTADO_LEGACY_MAP: Record<string, string> = {
+  robado: "robada",
+  consignado: "consignada",
+  mal_estado: "inservible",
+};
 const ORIGEN_LABELS: Record<string, string> = {
   turno_normal:       "Turno normal",
   relevo:             "Relevo",
@@ -1172,7 +1179,10 @@ function TabArmas({ onEdit, onFicha }: {
   const filtered = armas.filter(a => {
     if (soloActivas && !a.activo) return false;
     if (filtroTipo !== "todos" && a.tipo !== filtroTipo) return false;
-    if (filtroEstado !== "todos" && a.estado !== filtroEstado) return false;
+    // Normaliza estados legacy (robado→robada, consignado→consignada, mal_estado→inservible)
+    // para que el filtro coincida con el label visible del badge.
+    const estadoNorm = ESTADO_LEGACY_MAP[a.estado] ?? a.estado;
+    if (filtroEstado !== "todos" && estadoNorm !== filtroEstado) return false;
     if (!matchDocumental(a.estado_documental, filtroTenencia)) return false;
     if (!matchDocumental(a.estado_documental_portacion, filtroPortacion)) return false;
     if (filtroUbicacion === "en_puesto" && !a.puesto_id) return false;
@@ -1345,7 +1355,7 @@ function TabArmas({ onEdit, onFicha }: {
                   <td className="px-4 py-3 text-gray-400 text-xs">
                     {arma.puesto_nombre
                       ? <><p className="text-gray-300">{arma.puesto_nombre}</p><p className="text-gray-500">{arma.cliente_nombre}</p></>
-                      : <span className="text-indigo-300/60 flex items-center gap-1"><Shield className="w-3 h-3" />En Armería</span>}
+                      : <span className="text-indigo-300/60 flex items-center gap-1"><Shield className="w-3 h-3" />{arma.ubicacion_interna === "jefatura_servicios" ? "En Jefatura de Servicios" : "En Armería"}</span>}
                   </td>
                   <td className="px-4 py-3 text-xs">
                     {arma.custodio_nombre
