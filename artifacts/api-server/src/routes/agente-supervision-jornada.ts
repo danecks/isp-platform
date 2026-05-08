@@ -413,24 +413,37 @@ agenteSupervisionJornadaRouter.post("/agente/supervision/novedad/generar", async
           realizada_at: it.realizada_at,
         })),
       };
-      // Idempotente: si ya existe una novedad para esta (sesion, puesto),
-      // re-consolidamos sus datos en lugar de duplicar el registro.
-      const { rows: nov } = await pool.query(
-        `INSERT INTO supervision_novedades
-           (sesion_id, supervisor_employee_id, fecha, puesto_id, cliente_id,
-            observaciones, datos_consolidados)
-         VALUES ($1,$2,CURRENT_DATE,$3,$4,$5,$6)
-         ON CONFLICT (sesion_id, COALESCE(puesto_id, 0))
-         DO UPDATE SET
-           datos_consolidados = EXCLUDED.datos_consolidados,
-           observaciones      = EXCLUDED.observaciones,
-           generada_at        = NOW()
-         RETURNING id`,
-        [sesion.id, a.ctx.employee_id, puestoId, clienteId,
-         String(b.observaciones || "").trim() || null,
-         JSON.stringify(consolidado)]
+      // Idempotente: UPDATE-then-INSERT, compatible con índices parciales
+      // (uno para puesto_id NOT NULL, otro para puesto_id NULL). Evita
+      // ON CONFLICT con expresiones (que el introspector no puede mirrorear).
+      const obsTxt = String(b.observaciones || "").trim() || null;
+      const upd = await pool.query(
+        `UPDATE supervision_novedades
+            SET datos_consolidados = $4,
+                observaciones      = $5,
+                generada_at        = NOW()
+          WHERE sesion_id = $1
+            AND puesto_id IS NOT DISTINCT FROM $2
+            AND supervisor_employee_id = $3
+          RETURNING id`,
+        [sesion.id, puestoId, a.ctx.employee_id, JSON.stringify(consolidado), obsTxt]
       );
-      creadas.push(nov[0].id);
+      let novId: number;
+      if (upd.rowCount && upd.rowCount > 0) {
+        novId = upd.rows[0].id;
+      } else {
+        const ins = await pool.query(
+          `INSERT INTO supervision_novedades
+             (sesion_id, supervisor_employee_id, fecha, puesto_id, cliente_id,
+              observaciones, datos_consolidados)
+           VALUES ($1,$2,CURRENT_DATE,$3,$4,$5,$6)
+           RETURNING id`,
+          [sesion.id, a.ctx.employee_id, puestoId, clienteId, obsTxt,
+           JSON.stringify(consolidado)]
+        );
+        novId = ins.rows[0].id;
+      }
+      creadas.push(novId);
     }
     res.json({ ok: true, novedades_creadas: creadas });
   } catch (err) {

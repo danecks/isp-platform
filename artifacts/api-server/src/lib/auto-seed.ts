@@ -6052,8 +6052,16 @@ Por favor ingresa al sistema o responde para continuar.',
         created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
-    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS supcat_uniq
-                       ON supervision_catalogo_items(COALESCE(cliente_id,0), clave)`);
+    // Índice antiguo de expresión (COALESCE) — el introspector del publicador
+    // no sabe inferir su operator class y falla. Lo dropeamos y usamos dos
+    // índices parciales planos (mismo efecto, columnas simples).
+    await pool.query(`DROP INDEX IF EXISTS supcat_uniq`);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS supcat_uniq_global
+                       ON supervision_catalogo_items(clave)
+                       WHERE cliente_id IS NULL`);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS supcat_uniq_cliente
+                       ON supervision_catalogo_items(cliente_id, clave)
+                       WHERE cliente_id IS NOT NULL`);
 
     // Seed inicial del catálogo global (cliente_id NULL).
     const { rows: cnt } = await pool.query(
@@ -6170,11 +6178,19 @@ Por favor ingresa al sistema o responde para continuar.',
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS supnov_fecha ON supervision_novedades(fecha DESC)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS supnov_puesto ON supervision_novedades(puesto_id, fecha DESC)`);
-    // Idempotencia: una novedad por (sesion, puesto). COALESCE para tratar NULL como 0
-    // y permitir UPSERT también cuando puesto_id es NULL ("sin puesto").
+    // Idempotencia: una novedad por (sesion, puesto). Usamos dos índices
+    // parciales planos en vez de COALESCE para que el introspector del
+    // publicador pueda mirrorearlos sin operator class incorrecto.
+    await pool.query(`DROP INDEX IF EXISTS supnov_uniq_sesion_puesto`);
     await pool.query(
-      `CREATE UNIQUE INDEX IF NOT EXISTS supnov_uniq_sesion_puesto
-         ON supervision_novedades (sesion_id, COALESCE(puesto_id, 0))`
+      `CREATE UNIQUE INDEX IF NOT EXISTS supnov_uniq_sesion_puesto_v2
+         ON supervision_novedades (sesion_id, puesto_id)
+         WHERE puesto_id IS NOT NULL`
+    );
+    await pool.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS supnov_uniq_sesion_sin_puesto
+         ON supervision_novedades (sesion_id)
+         WHERE puesto_id IS NULL`
     );
     logger.info("Auto-migrate: SUPERV-NOV-01 novedades verificada/creada");
   } catch (err) {
