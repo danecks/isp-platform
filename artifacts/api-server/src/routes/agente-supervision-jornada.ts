@@ -41,7 +41,11 @@ async function horarioPlanificado(employeeId: number): Promise<{
   }
 }
 
-// Auto-cierra sesiones del supervisor que ya pasaron su hora_fin_planificada.
+// Auto-cierra sesiones del supervisor que quedaron abiertas de DÍAS ANTERIORES
+// (típicamente porque olvidó pulsar "Terminar jornada"). NUNCA cierra una sesión
+// del día actual aunque ya haya pasado la hora_fin_planificada — los supervisores
+// con frecuencia trabajan más allá de su horario planificado y deben poder seguir
+// transmitiendo GPS y registrando inspecciones hasta que cierren manualmente.
 async function autoCerrarVencidas(employeeId: number): Promise<void> {
   try {
     await pool.query(
@@ -49,8 +53,7 @@ async function autoCerrarVencidas(employeeId: number): Promise<void> {
           SET estado = 'cerrada_auto', hora_fin_real = NOW()
         WHERE supervisor_employee_id = $1
           AND estado = 'activa'
-          AND hora_fin_planificada IS NOT NULL
-          AND ((fecha + hora_fin_planificada) AT TIME ZONE 'America/Guatemala') < NOW()`,
+          AND fecha < (NOW() AT TIME ZONE 'America/Guatemala')::date`,
       [employeeId]
     );
   } catch (err) {
