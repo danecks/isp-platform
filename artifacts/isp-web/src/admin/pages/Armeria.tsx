@@ -1144,21 +1144,69 @@ function TabArmas({ onEdit, onFicha }: {
   const { active: deleteModeActive, requestDelete } = useDeleteMode();
   const [search, setSearch] = useState("");
   const [soloActivas, setSoloActivas] = useState(true);
+  const [filtroTipo, setFiltroTipo] = useState<string>("todos");
+  const [filtroEstado, setFiltroEstado] = useState<string>("todos");
+  const [filtroTenencia, setFiltroTenencia] = useState<string>("todos");
+  const [filtroPortacion, setFiltroPortacion] = useState<string>("todos");
+  const [filtroUbicacion, setFiltroUbicacion] = useState<"todos" | "en_puesto" | "armeria" | "jefatura_servicios">("todos");
+  const [filtroCliente, setFiltroCliente] = useState<string>("todos");
 
   const { data: armas = [], isLoading, refetch } = useQuery<Arma[]>({
     queryKey: ["armas"],
     queryFn: () => apiFetch(`${API}/armas`),
   });
 
+  // Lista única de clientes (ordenada) para el select dinámico
+  const clientesDisponibles = Array.from(
+    new Set(armas.map(a => a.cliente_nombre).filter((c): c is string => !!c))
+  ).sort((a, b) => a.localeCompare(b, "es"));
+
+  // Estado documental "pendiente" agrupa pendiente + sin_registro (mismo color rosa)
+  const matchDocumental = (estado: EstadoDocumental | null | undefined, filtro: string): boolean => {
+    if (filtro === "todos") return true;
+    const ed = estado ?? "sin_registro";
+    if (filtro === "pendiente") return ed === "pendiente" || ed === "sin_registro";
+    return ed === filtro;
+  };
+
   const filtered = armas.filter(a => {
     if (soloActivas && !a.activo) return false;
+    if (filtroTipo !== "todos" && a.tipo !== filtroTipo) return false;
+    if (filtroEstado !== "todos" && a.estado !== filtroEstado) return false;
+    if (!matchDocumental(a.estado_documental, filtroTenencia)) return false;
+    if (!matchDocumental(a.estado_documental_portacion, filtroPortacion)) return false;
+    if (filtroUbicacion === "en_puesto" && !a.puesto_id) return false;
+    if (filtroUbicacion === "armeria" && (a.puesto_id || a.ubicacion_interna === "jefatura_servicios")) return false;
+    if (filtroUbicacion === "jefatura_servicios" && (a.puesto_id || a.ubicacion_interna !== "jefatura_servicios")) return false;
+    if (filtroCliente !== "todos" && a.cliente_nombre !== filtroCliente) return false;
     if (!search) return true;
-    return a.codigo.toLowerCase().includes(search.toLowerCase())
-      || (a.marca ?? "").toLowerCase().includes(search.toLowerCase())
-      || (a.modelo ?? "").toLowerCase().includes(search.toLowerCase())
-      || (a.puesto_nombre ?? "").toLowerCase().includes(search.toLowerCase())
-      || (a.custodio_nombre ?? "").toLowerCase().includes(search.toLowerCase());
+    const q = search.toLowerCase();
+    return a.codigo.toLowerCase().includes(q)
+      || (a.marca ?? "").toLowerCase().includes(q)
+      || (a.modelo ?? "").toLowerCase().includes(q)
+      || (a.serie ?? "").toLowerCase().includes(q)
+      || (a.puesto_nombre ?? "").toLowerCase().includes(q)
+      || (a.custodio_nombre ?? "").toLowerCase().includes(q);
   });
+
+  const filtrosActivos =
+    filtroTipo !== "todos" ||
+    filtroEstado !== "todos" ||
+    filtroTenencia !== "todos" ||
+    filtroPortacion !== "todos" ||
+    filtroUbicacion !== "todos" ||
+    filtroCliente !== "todos";
+
+  function limpiarFiltros() {
+    setFiltroTipo("todos");
+    setFiltroEstado("todos");
+    setFiltroTenencia("todos");
+    setFiltroPortacion("todos");
+    setFiltroUbicacion("todos");
+    setFiltroCliente("todos");
+  }
+
+  const selectCls = "bg-gray-800/60 border border-gray-700 rounded-lg px-2.5 py-2 text-xs text-white focus:outline-none focus:border-blue-500 cursor-pointer hover:border-gray-600 transition-colors";
 
   async function syncArma(arma: Arma) {
     try {
@@ -1179,26 +1227,96 @@ function TabArmas({ onEdit, onFicha }: {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por código, marca, puesto..."
-            className="w-full bg-gray-800/60 border border-gray-700 rounded-lg pl-9 pr-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500" />
+      <div className="space-y-2">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar por código, marca, serie, puesto, custodio..."
+              className="w-full bg-gray-800/60 border border-gray-700 rounded-lg pl-9 pr-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500" />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer select-none">
+            <input type="checkbox" checked={soloActivas} onChange={e => setSoloActivas(e.target.checked)} className="accent-blue-500" />
+            Solo activas
+          </label>
+          <button onClick={() => refetch()} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors">
+            <RefreshCw className="w-4 h-4" />
+          </button>
         </div>
-        <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer select-none">
-          <input type="checkbox" checked={soloActivas} onChange={e => setSoloActivas(e.target.checked)} className="accent-blue-500" />
-          Solo activas
-        </label>
-        <button onClick={() => refetch()} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors">
-          <RefreshCw className="w-4 h-4" />
-        </button>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)} className={selectCls} title="Filtrar por tipo de arma">
+            <option value="todos">Tipo: todos</option>
+            {TIPO_ARMA.map(t => <option key={t} value={t}>{TIPO_LABELS[t] ?? t}</option>)}
+          </select>
+
+          <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)} className={selectCls} title="Filtrar por estado del arma">
+            <option value="todos">Estado: todos</option>
+            <option value="activo">Activa</option>
+            <option value="en_mantenimiento">En mantenimiento</option>
+            <option value="hurtada">Hurtada</option>
+            <option value="robada">Robada</option>
+            <option value="extraviada">Extraviada</option>
+            <option value="consignada">Consignada</option>
+            <option value="omision_huella">Omisión de huella</option>
+            <option value="inservible">Inservible</option>
+            <option value="baja">Baja</option>
+          </select>
+
+          <select value={filtroTenencia} onChange={e => setFiltroTenencia(e.target.value)} className={selectCls} title="Filtrar por estado de tenencia">
+            <option value="todos">Tenencia: todas</option>
+            <option value="vigente">Vigente</option>
+            <option value="proximo_a_vencer">Por vencer</option>
+            <option value="vencida">Vencida</option>
+            <option value="pendiente">Pendiente</option>
+            <option value="en_tramite">En trámite</option>
+          </select>
+
+          <select value={filtroPortacion} onChange={e => setFiltroPortacion(e.target.value)} className={selectCls} title="Filtrar por estado de portación">
+            <option value="todos">Portación: todas</option>
+            <option value="vigente">Vigente</option>
+            <option value="proximo_a_vencer">Por vencer</option>
+            <option value="vencida">Vencida</option>
+            <option value="pendiente">Pendiente</option>
+            <option value="en_tramite">En trámite</option>
+          </select>
+
+          <select value={filtroUbicacion} onChange={e => setFiltroUbicacion(e.target.value as any)} className={selectCls} title="Filtrar por ubicación física">
+            <option value="todos">Ubicación: todas</option>
+            <option value="en_puesto">En puesto</option>
+            <option value="armeria">En Armería</option>
+            <option value="jefatura_servicios">En Jefatura de Servicios</option>
+          </select>
+
+          <select value={filtroCliente} onChange={e => setFiltroCliente(e.target.value)} className={selectCls} title="Filtrar por cliente">
+            <option value="todos">Cliente: todos</option>
+            {clientesDisponibles.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+
+          {filtrosActivos && (
+            <button onClick={limpiarFiltros}
+              className="flex items-center gap-1.5 px-2.5 py-2 text-xs text-rose-300 hover:text-rose-200 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 rounded-lg transition-colors">
+              <X className="w-3.5 h-3.5" /> Limpiar filtros
+            </button>
+          )}
+        </div>
       </div>
 
       {filtered.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
           <Package className="w-10 h-10 mx-auto mb-3 opacity-30" />
-          <p>No hay armas registradas aún.</p>
+          {armas.length === 0
+            ? <p>No hay armas registradas aún.</p>
+            : <>
+                <p>Ninguna arma coincide con los filtros aplicados.</p>
+                {(filtrosActivos || search) && (
+                  <button onClick={() => { limpiarFiltros(); setSearch(""); }}
+                    className="mt-3 text-xs text-blue-400 hover:text-blue-300 underline">
+                    Limpiar búsqueda y filtros
+                  </button>
+                )}
+              </>
+          }
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-gray-700/60">
