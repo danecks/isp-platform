@@ -723,13 +723,19 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
       if (devRows[0].device_token_hash !== hashToken(device_token)) {
         return res.status(403).json({ error: "token_incorrecto" });
       }
-      if (!["puesto", "maestro", "custodia"].includes(devRows[0].tipo)) {
+      // Teléfono de supervisor: NO es kiosco. Dejamos pasar sin setear kiosco*
+      // para que el flujo siga normal y, si el carnet pertenece a un supervisor,
+      // responda con es_supervisor:true (menú de supervisión).
+      if (devRows[0].tipo === "supervisor") {
+        // no kiosco; sigue el flujo normal
+      } else if (!["puesto", "maestro", "custodia"].includes(devRows[0].tipo)) {
         return res.status(403).json({ error: "tipo_incorrecto" });
+      } else {
+        kioscoTipo = devRows[0].tipo;
+        kioscoPuestoId = devRows[0].puesto_id ?? null;
+        kioscoClienteId = devRows[0].cliente_id ?? null;
+        kioscoSlotNumero = devRows[0].slot_numero ?? null;
       }
-      kioscoTipo = devRows[0].tipo;
-      kioscoPuestoId = devRows[0].puesto_id ?? null;
-      kioscoClienteId = devRows[0].cliente_id ?? null;
-      kioscoSlotNumero = devRows[0].slot_numero ?? null;
     } catch (err) {
       logger.error({ err }, "agente/iniciar-turno: error validando device");
       return res.status(500).json({ error: "Error validando dispositivo" });
