@@ -67,39 +67,18 @@ async function autenticar(
     return { status: 403, error: "no_es_supervisor" };
   }
 
-  // Vínculo TOFU. Primer uso: amarra device.supervisor_employee_id de forma atómica
-  // (UPDATE ... WHERE supervisor_employee_id IS NULL). Si otro proceso ya lo ató antes,
-  // re-leemos y validamos. Después de eso, cualquier mismatch → 403.
-  let boundId: number | null = dev.supervisor_employee_id;
-  let boundNow = false;
-  if (boundId == null) {
-    const r = await pool.query(
-      `UPDATE supervisor_devices
-          SET supervisor_employee_id = $2
-        WHERE id = $1 AND supervisor_employee_id IS NULL
-       RETURNING supervisor_employee_id`,
-      [dev.id, emp.id]
-    );
-    if (r.rowCount && r.rows[0]) {
-      boundId = r.rows[0].supervisor_employee_id;
-      boundNow = true;
-    } else {
-      const re = await pool.query(
-        `SELECT supervisor_employee_id FROM supervisor_devices WHERE id = $1`,
-        [dev.id]
-      );
-      boundId = re.rows[0]?.supervisor_employee_id ?? null;
-    }
-  }
-  if (boundId !== emp.id) {
-    logger.warn(
-      { device_id: dev.id, intento: emp.id, dueño: boundId },
-      "agente-supervision: intento de uso con carnet ajeno"
-    );
-    return { status: 403, error: "carnet_no_corresponde_a_este_dispositivo" };
-  }
-
-  await pool.query(`UPDATE supervisor_devices SET ultimo_uso = NOW() WHERE id = $1`, [dev.id]);
+  // Los teléfonos de supervisor se rotan entre el equipo según quién trabaja hoy.
+  // No usamos TOFU device↔supervisor: el carnet QR es la prueba de identidad
+  // (solo el supervisor tiene su propio carnet) y el device ya quedó autenticado
+  // por uuid + hash de token. Solo trackeamos último uso para auditoría.
+  const boundNow = dev.supervisor_employee_id !== emp.id;
+  await pool.query(
+    `UPDATE supervisor_devices
+        SET ultimo_uso = NOW(),
+            supervisor_employee_id = $2
+      WHERE id = $1`,
+    [dev.id, emp.id]
+  );
   return { ctx: { device_id: dev.id, employee_id: emp.id, supervisor_nombre: emp.nombre_completo, bound_now: boundNow } };
 }
 
