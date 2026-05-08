@@ -60,7 +60,21 @@ function getDevice(): DeviceCreds | null {
   return null;
 }
 function getStoredQr(): string {
-  return sessionStorage.getItem(QR_KEY) || "";
+  // Prioridad: hash (#qr=...) → sessionStorage. El hash sirve como fallback
+  // para PWAs instaladas en iOS donde sessionStorage no siempre sobrevive
+  // la navegación entre /agente/inicio y /agente/supervision.
+  try {
+    const h = (typeof window !== "undefined" ? window.location.hash : "") || "";
+    const m = h.match(/[#&]qr=([^&]+)/);
+    if (m && m[1]) {
+      const tok = decodeURIComponent(m[1]);
+      try { sessionStorage.setItem(QR_KEY, tok); } catch { /* noop */ }
+      // Limpiamos el hash para no dejar el token en la URL visible/historial.
+      try { history.replaceState(null, "", window.location.pathname + window.location.search); } catch { /* noop */ }
+      return tok;
+    }
+  } catch { /* noop */ }
+  try { return sessionStorage.getItem(QR_KEY) || ""; } catch { return ""; }
 }
 function setStoredQr(v: string) {
   if (v) sessionStorage.setItem(QR_KEY, v);
@@ -303,6 +317,18 @@ export default function AgenteSupervision() {
             Volver al kiosco
           </a>
         </div>
+      </div>
+    );
+  }
+
+  // Si ya tenemos qr_token (vino del flujo /agente/inicio o sessionStorage)
+  // y aún se está autenticando contra mi-agenda, mostrar "Cargando…" en vez
+  // del scanner para que el usuario no piense que tiene que escanear de nuevo.
+  if (qrToken && !supervisor && (loading || !error)) {
+    return (
+      <div className="min-h-screen bg-[#060e1c] text-white p-4 flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        <p className="text-sm text-white/70">Cargando tu agenda…</p>
       </div>
     );
   }

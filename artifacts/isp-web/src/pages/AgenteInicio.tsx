@@ -2565,7 +2565,14 @@ export default function AgenteInicio() {
             </div>
 
             <button
-              onClick={() => { window.location.href = "/agente/supervision"; }}
+              onClick={() => {
+                // Pasamos el qr_token también en el hash como fallback:
+                // en iOS standalone (PWA instalada) sessionStorage puede no
+                // sobrevivir la navegación, así que el hash garantiza que
+                // /agente/supervision lo recibe sin pedir re-escanear.
+                const qr = (() => { try { return sessionStorage.getItem("isp_supervisor_qr") || ""; } catch { return ""; } })();
+                window.location.href = qr ? `/agente/supervision#qr=${encodeURIComponent(qr)}` : "/agente/supervision";
+              }}
               className="w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold py-4 rounded-lg flex items-center justify-center gap-2 transition"
             >
               <Activity className="w-5 h-5" /> Iniciar supervisión
