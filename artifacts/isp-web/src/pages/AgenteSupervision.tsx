@@ -175,11 +175,52 @@ export default function AgenteSupervision() {
   }
 
   if (!device) {
-    return <Centered>
-      <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto" />
-      <p className="text-white text-sm">Este teléfono no está registrado como dispositivo de supervisor.</p>
-      <a href="/agente/inicio" className="text-primary text-xs underline">Volver al kiosco</a>
-    </Centered>;
+    // Diagnóstico: mostramos qué hay realmente en este navegador para que
+    // el admin/usuario pueda ver si el problema es localStorage vacío vs
+    // formato inesperado vs context-split (Safari ↔ PWA instalada en iOS).
+    let rawLs = "";
+    try { rawLs = localStorage.getItem(DEVICE_KEY) || ""; } catch { rawLs = "(localStorage bloqueado)"; }
+    const tieneQr = (() => { try { return !!sessionStorage.getItem(QR_KEY); } catch { return false; } })();
+    const ua = (typeof navigator !== "undefined" ? navigator.userAgent : "") || "";
+    const esStandalone = (typeof window !== "undefined" &&
+      (window.matchMedia?.("(display-mode: standalone)").matches ||
+       (navigator as any).standalone === true));
+
+    return (
+      <div className="min-h-screen bg-[#060e1c] text-white p-4 flex flex-col items-center justify-center">
+        <div className="w-full max-w-md space-y-4">
+          <div className="text-center space-y-2">
+            <AlertTriangle className="w-12 h-12 text-amber-400 mx-auto" />
+            <h2 className="text-lg font-bold">Este navegador no tiene credenciales de supervisor</h2>
+            <p className="text-sm text-white/60">
+              El teléfono puede estar registrado en el admin, pero <b>este navegador en particular</b>
+              {" "}no tiene guardadas las credenciales de activación.
+            </p>
+          </div>
+
+          <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 text-xs text-amber-100/80 space-y-1.5">
+            <p className="font-semibold text-amber-300">¿Qué hacer?</p>
+            <p>1. Pedile al admin que regenere el enlace de activación (botón QR en la fila del dispositivo).</p>
+            <p>2. Abrí el enlace <b>en este mismo navegador</b> donde estás viendo esto ahora.</p>
+            <p>3. Si usás la app instalada (icono en pantalla de inicio), abrí el enlace <b>desde la app instalada</b>, no desde Safari.</p>
+          </div>
+
+          <details className="bg-black/40 border border-white/10 rounded-xl p-3">
+            <summary className="text-xs text-white/50 cursor-pointer select-none">Ver diagnóstico técnico</summary>
+            <div className="mt-3 space-y-1.5 text-[11px] font-mono text-white/60 break-all">
+              <p><span className="text-white/30">localStorage[isp_device]:</span> {rawLs ? rawLs : <span className="text-rose-400">(vacío)</span>}</p>
+              <p><span className="text-white/30">sessionStorage[isp_supervisor_qr]:</span> {tieneQr ? <span className="text-emerald-400">presente</span> : <span className="text-rose-400">ausente</span>}</p>
+              <p><span className="text-white/30">Modo:</span> {esStandalone ? <span className="text-violet-300">PWA instalada (standalone)</span> : "navegador (Safari/Chrome)"}</p>
+              <p><span className="text-white/30">UA:</span> {ua.slice(0, 90)}</p>
+            </div>
+          </details>
+
+          <a href="/agente/inicio" className="block text-center text-primary text-sm underline py-2">
+            Volver al kiosco
+          </a>
+        </div>
+      </div>
+    );
   }
 
   if (!qrToken || !supervisor) {
