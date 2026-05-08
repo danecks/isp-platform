@@ -1,0 +1,163 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+
+const API = import.meta.env.VITE_API_URL || "/api";
+const GPS_INTERVAL_MS = 30_000;
+
+export interface DeviceCreds { device_uuid: string; device_token: string; }
+
+export interface SesionActiva {
+  id: number;
+  fecha: string;
+  hora_inicio_real: string;
+  hora_inicio_planificada: string | null;
+  hora_fin_planificada: string | null;
+  estado: "activa" | "cerrada_manual" | "cerrada_auto";
+}
+
+export interface ProximaVisita {
+  id: number;
+  cliente_id: number | null;
+  puesto_id: number | null;
+  fecha_planificada: string;
+  ventana_inicio: string | null;
+  ventana_fin: string | null;
+  tipo: string;
+  prioridad: string;
+  estado: string;
+  instrucciones: string | null;
+  cliente_nombre: string | null;
+  puesto_nombre: string | null;
+  puesto_direccion: string | null;
+}
+
+interface EstadoResp {
+  ok: true;
+  supervisor: { id: number; nombre: string };
+  sesion: SesionActiva | null;
+  horario_planificado: { hora_inicio: string | null; hora_fin: string | null };
+  proxima_visita: ProximaVisita | null;
+}
+
+async function postJson<T>(url: string, body: unknown): Promise<T> {
+  const r = await fetch(`${API}${url}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j?.error || `Error HTTP ${r.status}`);
+  return j as T;
+}
+
+export function useSupervisorJornada(device: DeviceCreds | null, qrToken: string) {
+  const [supervisor, setSupervisor] = useState<{ id: number; nombre: string } | null>(null);
+  const [sesion, setSesion] = useState<SesionActiva | null>(null);
+  const [proxima, setProxima] = useState<ProximaVisita | null>(null);
+  const [horario, setHorario] = useState<{ hora_inicio: string | null; hora_fin: string | null }>({
+    hora_inicio: null, hora_fin: null,
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const auth = device && qrToken
+    ? { device_uuid: device.device_uuid, device_token: device.device_token, qr_token: qrToken }
+    : null;
+
+  const recargar = useCallback(async () => {
+    if (!auth) return;
+    setLoading(true); setError(null);
+    try {
+      const j = await postJson<EstadoResp>("/agente/supervision/jornada/estado", auth);
+      setSupervisor(j.supervisor);
+      setSesion(j.sesion);
+      setProxima(j.proxima_visita);
+      setHorario(j.horario_planificado);
+    } catch (e: any) {
+      setError(e.message || "Error al cargar");
+    } finally { setLoading(false); }
+  }, [device?.device_uuid, device?.device_token, qrToken]);
+
+  // Carga inicial + clock-in automático si no hay sesión.
+  useEffect(() => {
+    if (!auth) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        const j = await postJson<EstadoResp>("/agente/supervision/jornada/estado", auth);
+        if (cancelado) return;
+        setSupervisor(j.supervisor);
+        setHorario(j.horario_planificado);
+        setProxima(j.proxima_visita);
+        if (!j.sesion) {
+          // Auto clock-in al entrar.
+          const ci = await postJson<{ ok: true; sesion: SesionActiva }>(
+            "/agente/supervision/jornada/clock-in", auth
+          );
+          if (cancelado) return;
+          setSesion(ci.sesion);
+        } else {
+          setSesion(j.sesion);
+        }
+      } catch (e: any) {
+        if (!cancelado) setError(e.message || "Error al cargar");
+      }
+    })();
+    return () => { cancelado = true; };
+  }, [device?.device_uuid, device?.device_token, qrToken]);
+
+  // GPS cada 30s mientras hay sesión activa y la app está abierta.
+  const gpsRef = useRef<{ lat: number; lng: number } | null>(null);
+  useEffect(() => {
+    if (!auth || !sesion || sesion.estado !== "activa") return;
+    if (typeof navigator === "undefined" || !navigator.geolocation) return;
+
+    let detenido = false;
+    const enviar = () => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (detenido) return;
+          const { latitude, longitude, accuracy } = pos.coords;
+          gpsRef.current = { lat: latitude, lng: longitude };
+          postJson("/agente/supervision/jornada/gps", {
+            ...auth, lat: latitude, lng: longitude, accuracy_m: accuracy,
+          }).catch((e) => {
+            if (String(e?.message).includes("sin_sesion_activa")) {
+              setSesion(null); // se cerró por horario; refrescar
+              void recargar();
+            }
+          });
+        },
+        () => { /* sin permiso o falló: silencioso */ },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+      );
+    };
+    enviar();
+    const t = setInterval(enviar, GPS_INTERVAL_MS);
+    return () => { detenido = true; clearInterval(t); };
+  }, [auth?.device_uuid, sesion?.id, sesion?.estado]);
+
+  const terminarJornada = useCallback(async () => {
+    if (!auth) return;
+    try {
+      await postJson("/agente/supervision/jornada/clock-out", auth);
+      setSesion(null);
+      await recargar();
+    } catch (e: any) { setError(e.message || "Error al terminar jornada"); }
+  }, [device?.device_uuid, qrToken, recargar]);
+
+  const generarNovedad = useCallback(async (observaciones?: string) => {
+    if (!auth) return null;
+    const j = await postJson<{ ok: true; novedades_creadas: number[] }>(
+      "/agente/supervision/novedad/generar",
+      { ...auth, observaciones: observaciones || undefined }
+    );
+    return j.novedades_creadas;
+  }, [device?.device_uuid, qrToken]);
+
+  return {
+    supervisor, sesion, proxima, horario, loading, error,
+    setError, recargar, terminarJornada, generarNovedad,
+    gpsActual: gpsRef.current,
+    auth,
+  };
+}

@@ -2561,14 +2561,7 @@ export default function AgenteInicio() {
               onClick={() => { window.location.href = "/agente/supervision"; }}
               className="w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold py-4 rounded-lg flex items-center justify-center gap-2 transition"
             >
-              <Activity className="w-5 h-5" /> Mi agenda de supervisión
-            </button>
-
-            <button
-              onClick={() => { window.location.href = "/agente/visitas"; }}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-lg flex items-center justify-center gap-2 transition"
-            >
-              <Users className="w-5 h-5" /> Visitas (entradas / salidas)
+              <Activity className="w-5 h-5" /> Iniciar supervisión
             </button>
 
             <button

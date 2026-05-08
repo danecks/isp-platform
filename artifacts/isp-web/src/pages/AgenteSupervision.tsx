@@ -3,7 +3,10 @@ import { Html5Qrcode } from "html5-qrcode";
 import {
   CheckCircle2, XCircle, Loader2, Clock, MapPin, ClipboardList,
   PlayCircle, AlertTriangle, RefreshCw, QrCode, ArrowLeft,
+  ShieldCheck, FileText, LogOut, ChevronDown, ChevronUp, Activity,
 } from "lucide-react";
+import { useSupervisorJornada } from "../components/SupervisorJornada/useSupervisorJornada";
+import { ModalInspeccion } from "../components/SupervisorJornada/ModalInspeccion";
 
 const API = "/api";
 const DEVICE_KEY = "isp_device";          // mismo key que AgenteInicio / SupervisorActivar
@@ -126,6 +129,10 @@ export default function AgenteSupervision() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState<number | null>(null);
+  const [modalAbierto, setModalAbierto] = useState(false);
+  const [agendaAbierta, setAgendaAbierta] = useState(false);
+  const [generandoNovedad, setGenerandoNovedad] = useState(false);
+  const jornada = useSupervisorJornada(device, qrToken);
 
   const cargar = useCallback(async () => {
     if (!device || !qrToken) return;
@@ -333,82 +340,214 @@ export default function AgenteSupervision() {
     );
   }
 
+  // Próxima visita pendiente: la primera no completada/cancelada/no_realizada.
+  const proxima = jornada.proxima || agenda.find(v => v.estado === "pendiente" || v.estado === "en_curso") || null;
+
+  const handleGenerarNovedad = async () => {
+    if (generandoNovedad) return;
+    // prompt devuelve null si el usuario cancela: en ese caso no enviamos nada.
+    const obsRaw = prompt("Observaciones para la novedad (opcional):");
+    if (obsRaw === null) return;
+    const obs = obsRaw.trim() || undefined;
+    if (!confirm("¿Confirmar y generar la novedad consolidada de esta jornada?")) return;
+    setGenerandoNovedad(true);
+    try {
+      const ids = await jornada.generarNovedad(obs);
+      if (ids && ids.length > 0) {
+        alert(`Novedad generada (${ids.length} ${ids.length === 1 ? "puesto" : "puestos"}).`);
+      }
+    } catch (e: any) {
+      if (String(e?.message).includes("sin_inspecciones")) {
+        alert("Aún no ha registrado inspecciones para consolidar.");
+      } else {
+        alert("Error al generar novedad: " + (e?.message || ""));
+      }
+    } finally {
+      setGenerandoNovedad(false);
+    }
+  };
+
+  const handleTerminarJornada = async () => {
+    if (!confirm("¿Terminar la jornada de supervisión?")) return;
+    await jornada.terminarJornada();
+    setStoredQr(""); setQrToken(""); setSupervisor(null);
+  };
+
+  const sesion = jornada.sesion;
+  const horaInicio = sesion ? new Date(sesion.hora_inicio_real).toLocaleTimeString("es-GT", {
+    hour: "2-digit", minute: "2-digit",
+  }) : null;
+
   return (
     <div className="min-h-screen bg-[#060e1c] text-white">
       <header className="sticky top-0 bg-[#0b1424] border-b border-white/10 px-4 py-3 z-10">
         <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-[10px] text-white/50 uppercase tracking-wide">Supervisor</p>
-            <h1 className="text-sm font-bold truncate">{supervisor.nombre}</h1>
+          <div className="min-w-0 flex items-center gap-2">
+            <div className="w-9 h-9 rounded-full bg-violet-600/20 flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-5 h-5 text-violet-300" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] text-white/50 uppercase tracking-wide">Supervisor</p>
+              <h1 className="text-sm font-bold truncate">{supervisor.nombre}</h1>
+            </div>
           </div>
-          <div className="flex items-center gap-1">
-            <button onClick={cargar} aria-label="Recargar" className="p-2 text-white/70 hover:text-white">
-              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            </button>
-            <button onClick={() => { setStoredQr(""); setQrToken(""); setSupervisor(null); }}
-              className="px-2 py-1 text-[10px] bg-white/5 rounded text-white/70 hover:text-white">
-              Cambiar
-            </button>
-          </div>
+          <button onClick={cargar} aria-label="Recargar" className="p-2 text-white/70 hover:text-white">
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          </button>
         </div>
+
+        {sesion && (
+          <div className="mt-2 flex items-center justify-between text-[11px] bg-emerald-500/10 border border-emerald-500/30 rounded px-2.5 py-1.5">
+            <span className="text-emerald-200 inline-flex items-center gap-1">
+              <Activity className="w-3 h-3" />
+              Jornada activa desde {horaInicio}
+            </span>
+            {sesion.hora_fin_planificada && (
+              <span className="text-emerald-200/70">cierre prog. {sesion.hora_fin_planificada.slice(0,5)}</span>
+            )}
+          </div>
+        )}
       </header>
 
-      <main className="p-3 space-y-2 max-w-2xl mx-auto">
+      <main className="p-3 space-y-3 max-w-2xl mx-auto pb-24">
         {error && <div role="alert" className="text-rose-300 text-xs p-2 bg-rose-500/10 border border-rose-500/30 rounded">{error}</div>}
-        {loading && agenda.length === 0 && <p className="text-white/50 text-sm text-center py-6">Cargando…</p>}
-        {!loading && agenda.length === 0 && (
-          <p className="text-white/40 text-sm text-center py-10">No tiene visitas programadas en los próximos días.</p>
-        )}
-        {agenda.map(v => (
-          <article key={v.id} className="p-3 bg-[#0b1424] border border-white/10 rounded-lg">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-xs text-white/60 inline-flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {v.fecha_planificada}
-                  {v.ventana_inicio ? ` · ${v.ventana_inicio}${v.ventana_fin ? `–${v.ventana_fin}` : ""}` : ""}
-                </p>
-                <h3 className="text-sm font-bold mt-0.5">
-                  {[v.cliente_nombre, v.puesto_nombre, v.zona_nombre].filter(Boolean).join(" · ") || "Sin destino"}
-                </h3>
-                {v.puesto_direccion && (
-                  <p className="text-[11px] text-white/50 inline-flex items-center gap-1 mt-0.5">
-                    <MapPin className="w-3 h-3" /> {v.puesto_direccion}
-                  </p>
-                )}
-              </div>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap ${ESTADO_COLOR[v.estado]}`}>
-                {ESTADO_LABEL[v.estado]}
+        {jornada.error && <div role="alert" className="text-rose-300 text-xs p-2 bg-rose-500/10 border border-rose-500/30 rounded">{jornada.error}</div>}
+
+        {/* Próxima visita destacada */}
+        {proxima ? (
+          <article className="p-3 bg-violet-500/10 border border-violet-500/40 rounded-lg">
+            <div className="flex items-start justify-between gap-2 mb-1">
+              <p className="text-[10px] text-violet-200 uppercase tracking-wide">Siguiente punto de la agenda</p>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap ${ESTADO_COLOR[proxima.estado as Visita["estado"]]}`}>
+                {ESTADO_LABEL[proxima.estado as Visita["estado"]]}
               </span>
             </div>
-
-            <div className="flex flex-wrap gap-2 mt-2 text-[10px]">
-              <span className="px-1.5 py-0.5 bg-white/5 rounded text-white/60">{TIPO_LABEL[v.tipo]}</span>
+            <p className="text-xs text-white/70 inline-flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              {proxima.fecha_planificada}
+              {proxima.ventana_inicio ? ` · ${proxima.ventana_inicio}${proxima.ventana_fin ? `–${proxima.ventana_fin}` : ""}` : ""}
+            </p>
+            <h3 className="text-base font-bold mt-1">
+              {[proxima.cliente_nombre, proxima.puesto_nombre].filter(Boolean).join(" · ") || "Sin destino"}
+            </h3>
+            {proxima.puesto_direccion && (
+              <p className="text-[11px] text-white/60 inline-flex items-center gap-1 mt-0.5">
+                <MapPin className="w-3 h-3" /> {proxima.puesto_direccion}
+              </p>
+            )}
+            {proxima.instrucciones && (
+              <p className="text-[11px] text-white/70 mt-2 whitespace-pre-wrap">{proxima.instrucciones}</p>
+            )}
+            <div className="flex gap-2 mt-3">
+              {proxima.estado === "pendiente" && (
+                <Btn onClick={() => accion(proxima as Visita, "iniciar")} disabled={working === proxima.id}
+                  icon={PlayCircle} label="Iniciar" tone="blue" />
+              )}
+              <Btn onClick={() => accion(proxima as Visita, "completar")} disabled={working === proxima.id}
+                icon={CheckCircle2} label="Completar" tone="emerald" />
+              <Btn onClick={() => accion(proxima as Visita, "no-realizada")} disabled={working === proxima.id}
+                icon={XCircle} label="No realizada" tone="rose" />
             </div>
-
-            {v.instrucciones && (
-              <p className="text-[11px] text-white/70 mt-2 whitespace-pre-wrap">{v.instrucciones}</p>
-            )}
-            {v.observaciones && (
-              <p className="text-[11px] text-amber-200/80 mt-1 italic whitespace-pre-wrap">Obs: {v.observaciones}</p>
-            )}
-
-            {(v.estado === "pendiente" || v.estado === "en_curso") && (
-              <div className="flex gap-2 mt-3">
-                {v.estado === "pendiente" && (
-                  <Btn onClick={() => accion(v, "iniciar")} disabled={working === v.id}
-                    icon={PlayCircle} label="Iniciar" tone="blue" />
-                )}
-                <Btn onClick={() => accion(v, "completar")} disabled={working === v.id}
-                  icon={CheckCircle2} label="Completar" tone="emerald" />
-                <Btn onClick={() => accion(v, "no-realizada")} disabled={working === v.id}
-                  icon={XCircle} label="No realizada" tone="rose" />
-                {working === v.id && <Loader2 className="w-4 h-4 animate-spin text-white/50 self-center" />}
-              </div>
-            )}
           </article>
-        ))}
+        ) : (
+          <p className="text-white/40 text-xs text-center py-4 bg-white/5 rounded">
+            No tiene puntos pendientes en la agenda.
+          </p>
+        )}
+
+        {/* Acciones principales */}
+        <div className="grid grid-cols-1 gap-2">
+          <button onClick={() => setModalAbierto(true)}
+            className="bg-primary text-black font-bold py-4 rounded-lg inline-flex items-center justify-center gap-2 text-sm">
+            <QrCode className="w-5 h-5" /> Escanear agente
+          </button>
+          <button onClick={handleGenerarNovedad} disabled={generandoNovedad}
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg inline-flex items-center justify-center gap-2 text-sm">
+            {generandoNovedad ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+            Generar novedad
+          </button>
+          <button onClick={handleTerminarJornada}
+            className="bg-rose-600/20 border border-rose-500/40 hover:bg-rose-600/30 text-rose-100 font-semibold py-3 rounded-lg inline-flex items-center justify-center gap-2 text-sm">
+            <LogOut className="w-4 h-4" /> Terminar jornada
+          </button>
+        </div>
+
+        {/* Agenda completa colapsable */}
+        <button onClick={() => setAgendaAbierta(v => !v)}
+          className="w-full text-left flex items-center justify-between bg-white/5 px-3 py-2 rounded text-xs text-white/70">
+          <span className="inline-flex items-center gap-1">
+            <ClipboardList className="w-3.5 h-3.5" /> Toda mi agenda ({agenda.length})
+          </span>
+          {agendaAbierta ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+
+        {agendaAbierta && (
+          <div className="space-y-2">
+            {agenda.length === 0 && (
+              <p className="text-white/40 text-xs text-center py-4">Sin visitas próximas.</p>
+            )}
+            {agenda.map(v => (
+              <article key={v.id} className="p-3 bg-[#0b1424] border border-white/10 rounded-lg">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs text-white/60 inline-flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {v.fecha_planificada}
+                      {v.ventana_inicio ? ` · ${v.ventana_inicio}${v.ventana_fin ? `–${v.ventana_fin}` : ""}` : ""}
+                    </p>
+                    <h3 className="text-sm font-bold mt-0.5">
+                      {[v.cliente_nombre, v.puesto_nombre, v.zona_nombre].filter(Boolean).join(" · ") || "Sin destino"}
+                    </h3>
+                    {v.puesto_direccion && (
+                      <p className="text-[11px] text-white/50 inline-flex items-center gap-1 mt-0.5">
+                        <MapPin className="w-3 h-3" /> {v.puesto_direccion}
+                      </p>
+                    )}
+                  </div>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap ${ESTADO_COLOR[v.estado]}`}>
+                    {ESTADO_LABEL[v.estado]}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2 mt-2 text-[10px]">
+                  <span className="px-1.5 py-0.5 bg-white/5 rounded text-white/60">{TIPO_LABEL[v.tipo]}</span>
+                </div>
+                {v.instrucciones && (
+                  <p className="text-[11px] text-white/70 mt-2 whitespace-pre-wrap">{v.instrucciones}</p>
+                )}
+                {v.observaciones && (
+                  <p className="text-[11px] text-amber-200/80 mt-1 italic whitespace-pre-wrap">Obs: {v.observaciones}</p>
+                )}
+                {(v.estado === "pendiente" || v.estado === "en_curso") && (
+                  <div className="flex gap-2 mt-3">
+                    {v.estado === "pendiente" && (
+                      <Btn onClick={() => accion(v, "iniciar")} disabled={working === v.id}
+                        icon={PlayCircle} label="Iniciar" tone="blue" />
+                    )}
+                    <Btn onClick={() => accion(v, "completar")} disabled={working === v.id}
+                      icon={CheckCircle2} label="Completar" tone="emerald" />
+                    <Btn onClick={() => accion(v, "no-realizada")} disabled={working === v.id}
+                      icon={XCircle} label="No realizada" tone="rose" />
+                    {working === v.id && <Loader2 className="w-4 h-4 animate-spin text-white/50 self-center" />}
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+
+        <button onClick={() => { setStoredQr(""); setQrToken(""); setSupervisor(null); }}
+          className="w-full text-[11px] text-white/40 hover:text-white/70 py-2">
+          Cerrar carnet (cambiar de supervisor)
+        </button>
       </main>
+
+      <ModalInspeccion
+        abierto={modalAbierto}
+        onCerrar={() => setModalAbierto(false)}
+        auth={jornada.auth}
+        onRegistrado={() => { /* podrías recargar contadores si los hubiera */ }}
+        gpsActual={jornada.gpsActual}
+      />
     </div>
   );
 }

@@ -5990,5 +5990,196 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SUPERV-BON-01 — error (no bloqueante)");
   }
 
+  // ── SUPERV-JOR-01: jornada del supervisor (clock-in/out + GPS + auto-cierre) ──
+  // Cuando el supervisor escanea su carnet en /agente/supervision se crea una
+  // sesión activa. La PWA reporta GPS cada 30s. Se cierra con botón explícito
+  // o automáticamente cuando se pasa de hora_fin_planificada.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS supervision_sesiones (
+        id                       SERIAL PRIMARY KEY,
+        supervisor_employee_id   INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        fecha                    DATE NOT NULL,
+        hora_inicio_real         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        hora_fin_real            TIMESTAMPTZ,
+        hora_inicio_planificada  TIME,
+        hora_fin_planificada     TIME,
+        estado                   VARCHAR(20) NOT NULL DEFAULT 'activa'
+                                   CHECK (estado IN ('activa','cerrada_manual','cerrada_auto')),
+        device_id                INTEGER REFERENCES supervisor_devices(id) ON DELETE SET NULL,
+        created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS supjor_uniq_activa
+                       ON supervision_sesiones(supervisor_employee_id, fecha)
+                       WHERE estado = 'activa'`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS supjor_sup_fecha
+                       ON supervision_sesiones(supervisor_employee_id, fecha)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS supervision_gps_tracks (
+        id            BIGSERIAL PRIMARY KEY,
+        sesion_id     INTEGER NOT NULL REFERENCES supervision_sesiones(id) ON DELETE CASCADE,
+        lat           DOUBLE PRECISION NOT NULL,
+        lng           DOUBLE PRECISION NOT NULL,
+        accuracy_m    DOUBLE PRECISION,
+        registrado_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS supgps_sesion_at
+                       ON supervision_gps_tracks(sesion_id, registrado_at)`);
+    logger.info("Auto-migrate: SUPERV-JOR-01 sesiones + gps tracks verificados/creados");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SUPERV-JOR-01 — error (no bloqueante)");
+  }
+
+  // ── SUPERV-CAT-01: catálogo configurable de items de inspección por cliente ──
+  // cliente_id NULL = catálogo global por defecto. El admin puede sobreescribir
+  // por cliente para agregar/quitar items (ej. linterna, chaleco, etc).
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS supervision_catalogo_items (
+        id          SERIAL PRIMARY KEY,
+        cliente_id  INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+        categoria   VARCHAR(20) NOT NULL
+                      CHECK (categoria IN ('equipo','presentacion','arma','otro')),
+        clave       VARCHAR(40) NOT NULL,
+        etiqueta    TEXT NOT NULL,
+        tipo        VARCHAR(15) NOT NULL DEFAULT 'boolean'
+                      CHECK (tipo IN ('boolean','numero','texto')),
+        orden       INTEGER NOT NULL DEFAULT 0,
+        activo      BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS supcat_uniq
+                       ON supervision_catalogo_items(COALESCE(cliente_id,0), clave)`);
+
+    // Seed inicial del catálogo global (cliente_id NULL).
+    const { rows: cnt } = await pool.query(
+      `SELECT COUNT(*)::int AS c FROM supervision_catalogo_items WHERE cliente_id IS NULL`
+    );
+    if (cnt[0].c === 0) {
+      const seed: Array<[string, string, string, string, number]> = [
+        ["equipo",       "gorgorito",          "Gorgorito",                "boolean", 10],
+        ["equipo",       "baton",              "Batón",                    "boolean", 20],
+        ["equipo",       "municion_cantidad",  "Munición (cantidad)",      "numero",  30],
+        ["equipo",       "gafete_buen_estado", "Gafete en buen estado",    "boolean", 40],
+        ["equipo",       "uniforme_completo",  "Uniforme completo",        "boolean", 50],
+        ["presentacion", "higiene_personal",   "Higiene personal",         "boolean", 60],
+        ["presentacion", "cabello",            "Cabello presentable",      "boolean", 70],
+        ["presentacion", "presentacion_general","Presentación general",    "boolean", 80],
+      ];
+      for (const [cat, clave, etiqueta, tipo, orden] of seed) {
+        await pool.query(
+          `INSERT INTO supervision_catalogo_items (cliente_id, categoria, clave, etiqueta, tipo, orden)
+           VALUES (NULL, $1, $2, $3, $4, $5)
+           ON CONFLICT DO NOTHING`,
+          [cat, clave, etiqueta, tipo, orden]
+        );
+      }
+      logger.info("Auto-seed: SUPERV-CAT-01 catálogo global de inspección sembrado");
+    }
+    logger.info("Auto-migrate: SUPERV-CAT-01 catalogo_items verificado/creado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SUPERV-CAT-01 — error (no bloqueante)");
+  }
+
+  // ── SUPERV-INS-01: inspecciones realizadas por el supervisor a cada agente ──
+  // Una fila por cada vez que el supervisor escanea a un agente y llena el form.
+  // datos = JSONB con todas las claves del catálogo (boolean/numero/texto).
+  // arma_estado = JSONB con estado físico/visual del arma y sus documentos.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS supervision_inspecciones (
+        id                       SERIAL PRIMARY KEY,
+        sesion_id                INTEGER NOT NULL REFERENCES supervision_sesiones(id) ON DELETE CASCADE,
+        supervisor_employee_id   INTEGER NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
+        agente_employee_id       INTEGER NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
+        puesto_id                INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        cliente_id               INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+        arma_id                  INTEGER REFERENCES armas(id) ON DELETE SET NULL,
+        datos                    JSONB NOT NULL DEFAULT '{}'::jsonb,
+        arma_estado              JSONB,
+        observaciones            TEXT,
+        lat                      DOUBLE PRECISION,
+        lng                      DOUBLE PRECISION,
+        realizada_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS supins_sesion ON supervision_inspecciones(sesion_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS supins_agente ON supervision_inspecciones(agente_employee_id, realizada_at DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS supins_puesto ON supervision_inspecciones(puesto_id, realizada_at DESC)`);
+    logger.info("Auto-migrate: SUPERV-INS-01 inspecciones verificadas/creadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SUPERV-INS-01 — error (no bloqueante)");
+  }
+
+  // ── ARM-ALERT-01: alertas sobre armas (estado físico/documentos) ──────────
+  // Generadas por el supervisor durante la inspección. Aparecen en módulo Armería.
+  // No modifican los datos del arma; solo reportan estado físico/visual.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS armas_alertas (
+        id                      SERIAL PRIMARY KEY,
+        arma_id                 INTEGER NOT NULL REFERENCES armas(id) ON DELETE CASCADE,
+        inspeccion_id           INTEGER REFERENCES supervision_inspecciones(id) ON DELETE SET NULL,
+        sesion_id               INTEGER REFERENCES supervision_sesiones(id) ON DELETE SET NULL,
+        supervisor_employee_id  INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        agente_employee_id      INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+        tipo                    VARCHAR(40) NOT NULL
+                                  CHECK (tipo IN (
+                                    'arma_mal_estado',
+                                    'portacion_extraviada','portacion_no_legible',
+                                    'tenencia_extraviada','tenencia_no_legible',
+                                    'otro'
+                                  )),
+        descripcion             TEXT,
+        estado                  VARCHAR(15) NOT NULL DEFAULT 'abierta'
+                                  CHECK (estado IN ('abierta','cerrada')),
+        abierta_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        cerrada_at              TIMESTAMPTZ,
+        cerrada_por_user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        nota_cierre             TEXT
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS armalert_arma ON armas_alertas(arma_id, estado)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS armalert_abiertas ON armas_alertas(abierta_at DESC) WHERE estado='abierta'`);
+    logger.info("Auto-migrate: ARM-ALERT-01 armas_alertas verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: ARM-ALERT-01 — error (no bloqueante)");
+  }
+
+  // ── SUPERV-NOV-01: novedades de supervisión (consolidan inspecciones) ─────
+  // El supervisor toca "Generar novedad" en la PWA. Consolidamos todas las
+  // inspecciones de la sesión actual filtradas por puesto. Visible en módulo
+  // Supervisión > Novedades.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS supervision_novedades (
+        id                       SERIAL PRIMARY KEY,
+        sesion_id                INTEGER REFERENCES supervision_sesiones(id) ON DELETE SET NULL,
+        supervisor_employee_id   INTEGER NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
+        fecha                    DATE NOT NULL,
+        puesto_id                INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        cliente_id               INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+        observaciones            TEXT,
+        datos_consolidados       JSONB NOT NULL DEFAULT '{}'::jsonb,
+        generada_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS supnov_fecha ON supervision_novedades(fecha DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS supnov_puesto ON supervision_novedades(puesto_id, fecha DESC)`);
+    // Idempotencia: una novedad por (sesion, puesto). COALESCE para tratar NULL como 0
+    // y permitir UPSERT también cuando puesto_id es NULL ("sin puesto").
+    await pool.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS supnov_uniq_sesion_puesto
+         ON supervision_novedades (sesion_id, COALESCE(puesto_id, 0))`
+    );
+    logger.info("Auto-migrate: SUPERV-NOV-01 novedades verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SUPERV-NOV-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

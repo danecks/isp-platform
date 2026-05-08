@@ -25,6 +25,14 @@ interface AuthCtx {
   bound_now: boolean;
 }
 
+export async function autenticarSupervisor(
+  device_uuid: string,
+  device_token: string,
+  qr_token: string
+) {
+  return autenticar(device_uuid, device_token, qr_token);
+}
+
 async function autenticar(
   device_uuid: string,
   device_token: string,
