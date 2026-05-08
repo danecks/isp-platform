@@ -55,6 +55,7 @@ import { personalSlotsRouter } from "./personal-slots";
 import { supervisionProgramacionesRouter } from "./supervision-programaciones";
 import { supervisionZonasRouter } from "./supervision-zonas";
 import { supervisionDashboardRouter } from "./supervision-dashboard";
+import { supervisionReportesRouter } from "./supervision-reportes";
 import { agenteSupervisionRouter } from "./agente-supervision";
 import { agenteSupervisionJornadaRouter } from "./agente-supervision-jornada";
 import { solicitudesTurnoRouter } from "./solicitudes-turno";
@@ -144,6 +145,7 @@ router.use(visitasRouter);
 router.use(supervisionProgramacionesRouter);
 router.use(supervisionZonasRouter);
 router.use(supervisionDashboardRouter);
+router.use(supervisionReportesRouter);
 router.use(agenteSupervisionRouter);
 router.use(agenteSupervisionJornadaRouter);
 
