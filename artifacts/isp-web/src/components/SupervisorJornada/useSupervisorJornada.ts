@@ -107,9 +107,18 @@ export function useSupervisorJornada(device: DeviceCreds | null, qrToken: string
 
   // GPS cada 30s mientras hay sesión activa y la app está abierta.
   const gpsRef = useRef<{ lat: number; lng: number } | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<{
+    ultimo_envio_at: number | null;
+    enviados: number;
+    error: string | null;
+  }>({ ultimo_envio_at: null, enviados: 0, error: null });
+
   useEffect(() => {
     if (!auth || !sesion || sesion.estado !== "activa") return;
-    if (typeof navigator === "undefined" || !navigator.geolocation) return;
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setGpsStatus(s => ({ ...s, error: "Este dispositivo no soporta GPS." }));
+      return;
+    }
 
     let detenido = false;
     const enviar = () => {
@@ -120,14 +129,37 @@ export function useSupervisorJornada(device: DeviceCreds | null, qrToken: string
           gpsRef.current = { lat: latitude, lng: longitude };
           postJson("/agente/supervision/jornada/gps", {
             ...auth, lat: latitude, lng: longitude, accuracy_m: accuracy,
-          }).catch((e) => {
-            if (String(e?.message).includes("sin_sesion_activa")) {
-              setSesion(null); // se cerró por horario; refrescar
-              void recargar();
-            }
-          });
+          })
+            .then(() => {
+              if (detenido) return;
+              setGpsStatus(s => ({
+                ultimo_envio_at: Date.now(),
+                enviados: s.enviados + 1,
+                error: null,
+              }));
+            })
+            .catch((e) => {
+              if (detenido) return;
+              if (String(e?.message).includes("sin_sesion_activa")) {
+                setSesion(null);
+                void recargar();
+                return;
+              }
+              setGpsStatus(s => ({ ...s, error: "No se pudo enviar GPS al servidor." }));
+            });
         },
-        () => { /* sin permiso o falló: silencioso */ },
+        (err) => {
+          if (detenido) return;
+          // 1=PERMISSION_DENIED, 2=POSITION_UNAVAILABLE, 3=TIMEOUT
+          const msg = err.code === 1
+            ? "Permiso de ubicación denegado. Activá GPS en ajustes del navegador/PWA."
+            : err.code === 2
+            ? "GPS no disponible (sin señal). Salí a un lugar abierto."
+            : err.code === 3
+            ? "GPS tardó demasiado en responder. Reintentando…"
+            : "No se pudo obtener la ubicación.";
+          setGpsStatus(s => ({ ...s, error: msg }));
+        },
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
       );
     };
@@ -158,6 +190,7 @@ export function useSupervisorJornada(device: DeviceCreds | null, qrToken: string
     supervisor, sesion, proxima, horario, loading, error,
     setError, recargar, terminarJornada, generarNovedad,
     gpsActual: gpsRef.current,
+    gpsStatus,
     auth,
   };
 }

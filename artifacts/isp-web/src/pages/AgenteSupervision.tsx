@@ -433,6 +433,24 @@ export default function AgenteSupervision() {
             )}
           </div>
         )}
+        {sesion && (
+          <div className={`mt-1.5 flex items-center justify-between text-[11px] rounded px-2.5 py-1.5 border ${
+            jornada.gpsStatus.error
+              ? "bg-rose-500/10 border-rose-500/40 text-rose-200"
+              : jornada.gpsStatus.ultimo_envio_at
+              ? "bg-sky-500/10 border-sky-500/30 text-sky-200"
+              : "bg-amber-500/10 border-amber-500/30 text-amber-200"
+          }`}>
+            <span className="inline-flex items-center gap-1">
+              <MapPin className="w-3 h-3" />
+              {jornada.gpsStatus.error
+                ? jornada.gpsStatus.error
+                : jornada.gpsStatus.ultimo_envio_at
+                ? `GPS ok · ${jornada.gpsStatus.enviados} envíos · último ${new Date(jornada.gpsStatus.ultimo_envio_at).toLocaleTimeString("es-GT",{hour:"2-digit",minute:"2-digit"})}`
+                : "Esperando primera lectura GPS…"}
+            </span>
+          </div>
+        )}
       </header>
 
       <main className="p-3 space-y-3 max-w-2xl mx-auto pb-24">
