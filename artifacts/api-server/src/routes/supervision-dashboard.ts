@@ -84,14 +84,29 @@ supervisionDashboardRouter.get("/supervision-dashboard", async (req, res) => {
 });
 
 // ── GET /api/supervision-tracking/en-vivo ──
-// Última posición conocida (≤ 30 min) de cada supervisor con turno activo.
+// Última posición conocida (≤ 30 min) de cada supervisor con jornada activa.
+// UNIFICA dos fuentes de jornada/GPS:
+//   (a) Sistema NUEVO (PWA supervisor): supervision_sesiones + supervision_gps_tracks
+//   (b) Sistema LEGACY (fichaje turno):  agente_fichajes + agente_recorrido_gps
+// Si un supervisor tiene actividad en ambos, gana la lectura GPS más reciente.
 supervisionDashboardRouter.get("/supervision-tracking/en-vivo", async (req, res) => {
   if (!auth(req, res)) return;
   try {
     const { rows } = await pool.query(`
-      WITH activos AS (
+      WITH activos_nuevo AS (
+        SELECT DISTINCT ON (s.supervisor_employee_id)
+               s.supervisor_employee_id AS employee_id,
+               s.id                     AS sesion_id,
+               s.hora_inicio_real       AS turno_inicio
+          FROM supervision_sesiones s
+         WHERE s.estado = 'activa'
+         ORDER BY s.supervisor_employee_id, s.hora_inicio_real DESC
+      ),
+      activos_legacy AS (
         SELECT DISTINCT ON (f.employee_id)
-               f.id AS fichaje_id, f.employee_id, f.registrado_en AS turno_inicio
+               f.employee_id,
+               f.id                AS fichaje_id,
+               f.registrado_en     AS turno_inicio
           FROM agente_fichajes f
           JOIN employees e ON e.id = f.employee_id
          WHERE f.tipo = 'inicio_turno'
@@ -100,14 +115,59 @@ supervisionDashboardRouter.get("/supervision-tracking/en-vivo", async (req, res)
            AND f.registrado_en >= NOW() - INTERVAL '24 hours'
          ORDER BY f.employee_id, f.registrado_en DESC
       ),
-      ultimo AS (
+      activos AS (
+        SELECT employee_id,
+               MIN(turno_inicio) AS turno_inicio,
+               MAX(sesion_id)    AS sesion_id,
+               MAX(fichaje_id)   AS fichaje_id
+          FROM (
+            SELECT employee_id, turno_inicio, sesion_id, NULL::int AS fichaje_id
+              FROM activos_nuevo
+            UNION ALL
+            SELECT employee_id, turno_inicio, NULL::int AS sesion_id, fichaje_id
+              FROM activos_legacy
+          ) u
+         GROUP BY employee_id
+      ),
+      ultimo_nuevo AS (
+        SELECT DISTINCT ON (g.sesion_id)
+               g.sesion_id,
+               g.lat                 AS latitud,
+               g.lng                 AS longitud,
+               g.accuracy_m          AS precision_metros,
+               NULL::double precision AS velocidad_mps,
+               g.registrado_at       AS capturado_en
+          FROM supervision_gps_tracks g
+          JOIN activos_nuevo a ON a.sesion_id = g.sesion_id
+         WHERE g.registrado_at >= NOW() - INTERVAL '30 minutes'
+         ORDER BY g.sesion_id, g.registrado_at DESC
+      ),
+      ultimo_legacy AS (
         SELECT DISTINCT ON (g.fichaje_id)
-               g.fichaje_id, g.latitud, g.longitud, g.precision_metros,
+               g.fichaje_id,
+               g.latitud, g.longitud, g.precision_metros,
                g.velocidad_mps, g.capturado_en
           FROM agente_recorrido_gps g
-          JOIN activos a ON a.fichaje_id = g.fichaje_id
+          JOIN activos_legacy a ON a.fichaje_id = g.fichaje_id
          WHERE g.capturado_en >= NOW() - INTERVAL '30 minutes'
          ORDER BY g.fichaje_id, g.capturado_en DESC
+      ),
+      ultimo AS (
+        SELECT DISTINCT ON (employee_id)
+               employee_id, latitud, longitud, precision_metros,
+               velocidad_mps, capturado_en
+          FROM (
+            SELECT a.employee_id, n.latitud, n.longitud, n.precision_metros,
+                   n.velocidad_mps, n.capturado_en
+              FROM activos_nuevo a
+              JOIN ultimo_nuevo n ON n.sesion_id = a.sesion_id
+            UNION ALL
+            SELECT a.employee_id, l.latitud, l.longitud, l.precision_metros,
+                   l.velocidad_mps, l.capturado_en
+              FROM activos_legacy a
+              JOIN ultimo_legacy l ON l.fichaje_id = a.fichaje_id
+          ) u
+         ORDER BY employee_id, capturado_en DESC
       ),
       visita_activa AS (
         SELECT DISTINCT ON (sp.supervisor_employee_id)
@@ -127,14 +187,15 @@ supervisionDashboardRouter.get("/supervision-tracking/en-vivo", async (req, res)
         a.employee_id        AS supervisor_id,
         e.nombre_completo    AS supervisor_nombre,
         a.fichaje_id,
+        a.sesion_id,
         a.turno_inicio,
         u.latitud, u.longitud, u.precision_metros, u.velocidad_mps, u.capturado_en,
         v.programacion_id, v.cliente_nombre, v.puesto_nombre, v.zona_nombre,
         EXTRACT(EPOCH FROM (NOW() - u.capturado_en))::int AS hace_segundos
       FROM activos a
       JOIN employees e ON e.id = a.employee_id
-      LEFT JOIN ultimo u        ON u.fichaje_id = a.fichaje_id
-      LEFT JOIN visita_activa v ON v.supervisor_employee_id = a.employee_id
+      LEFT JOIN ultimo u        ON u.employee_id              = a.employee_id
+      LEFT JOIN visita_activa v ON v.supervisor_employee_id   = a.employee_id
       ORDER BY e.nombre_completo
     `);
     res.json({ supervisores: rows, server_now: new Date().toISOString() });
