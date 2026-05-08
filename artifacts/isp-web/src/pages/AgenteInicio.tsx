@@ -1319,7 +1319,12 @@ export default function AgenteInicio() {
       if (data.es_supervisor) {
         // Guardamos su qr_token en sessionStorage para que /agente/supervision
         // no le pida re-escanearlo al abrir su agenda.
-        try { sessionStorage.setItem("isp_supervisor_qr", token); } catch { /* noop */ }
+        // Persistimos en localStorage para que el qr_token sobreviva cold
+        // start / OS killing de la pestaña, y dejamos un flag volátil
+        // "fresh" en sessionStorage para que /agente/supervision sepa que
+        // este qr acaba de escanearse y puede hacer clock-in automático.
+        try { localStorage.setItem("isp_supervisor_qr", token); } catch { /* noop */ }
+        try { sessionStorage.setItem("isp_supervisor_qr_fresh", "1"); } catch { /* noop */ }
         setSupervisorIdent({
           nombre: data.agente?.nombre ?? "Supervisor",
           cargo: data.agente?.cargo ?? null,
@@ -2570,7 +2575,7 @@ export default function AgenteInicio() {
                 // en iOS standalone (PWA instalada) sessionStorage puede no
                 // sobrevivir la navegación, así que el hash garantiza que
                 // /agente/supervision lo recibe sin pedir re-escanear.
-                const qr = (() => { try { return sessionStorage.getItem("isp_supervisor_qr") || ""; } catch { return ""; } })();
+                const qr = (() => { try { return localStorage.getItem("isp_supervisor_qr") || ""; } catch { return ""; } })();
                 window.location.href = qr ? `/agente/supervision#qr=${encodeURIComponent(qr)}` : "/agente/supervision";
               }}
               className="w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold py-4 rounded-lg flex items-center justify-center gap-2 transition"

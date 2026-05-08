@@ -49,7 +49,28 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   return j as T;
 }
 
-export function useSupervisorJornada(device: DeviceCreds | null, qrToken: string) {
+// Flag volátil escrito por AgenteSupervision al hacer un escaneo NUEVO
+// del carnet (o al consumir el #qr= venido de /agente/inicio). Si el flag
+// está presente cuando boot detecta sesion=null, hacemos clock-in automático.
+// Si NO está, significa que el qr fue restaurado de localStorage de otra
+// sesión del browser → no hacemos clock-in silencioso, llamamos
+// onSesionAusente para que la UI limpie el qr y pida re-escaneo (caso de
+// dispositivo compartido entre supervisores y entre días).
+const QR_FRESH_KEY = "isp_supervisor_qr_fresh";
+
+function consumirFreshFlag(): boolean {
+  try {
+    const v = sessionStorage.getItem(QR_FRESH_KEY);
+    if (v) sessionStorage.removeItem(QR_FRESH_KEY);
+    return v === "1";
+  } catch { return false; }
+}
+
+export function useSupervisorJornada(
+  device: DeviceCreds | null,
+  qrToken: string,
+  onSesionAusente?: () => void,
+) {
   const [supervisor, setSupervisor] = useState<{ id: number; nombre: string } | null>(null);
   const [sesion, setSesion] = useState<SesionActiva | null>(null);
   const [proxima, setProxima] = useState<ProximaVisita | null>(null);
@@ -81,6 +102,13 @@ export function useSupervisorJornada(device: DeviceCreds | null, qrToken: string
   useEffect(() => {
     if (!auth) return;
     let cancelado = false;
+    // Consumimos el flag "fresh" UNA SOLA VEZ al inicio del effect, antes de
+    // saber si hay sesión o no. Hacerlo aquí garantiza que no quede pegado en
+    // sessionStorage si el boot encuentra sesión activa (caso cold start a
+    // media jornada). Si lo dejáramos pegado, una apertura futura con
+    // sesion=null podría gatillar clock-in automático sin re-escaneo,
+    // heredando silenciosamente el carnet entre supervisores.
+    const esFresco = consumirFreshFlag();
     (async () => {
       try {
         const j = await postJson<EstadoResp>("/agente/supervision/jornada/estado", auth);
@@ -89,12 +117,22 @@ export function useSupervisorJornada(device: DeviceCreds | null, qrToken: string
         setHorario(j.horario_planificado);
         setProxima(j.proxima_visita);
         if (!j.sesion) {
-          // Auto clock-in al entrar.
-          const ci = await postJson<{ ok: true; sesion: SesionActiva }>(
-            "/agente/supervision/jornada/clock-in", auth
-          );
-          if (cancelado) return;
-          setSesion(ci.sesion);
+          // Sólo hacemos clock-in automático si el qr_token recién se escaneó
+          // en esta sesión del browser. Si vino de localStorage (boot/cold
+          // start), tratamos sesion=null como "ya cerró turno o cambió de día"
+          // y pedimos a la UI re-escaneo (el dispositivo es compartido entre
+          // supervisores y entre días).
+          if (esFresco) {
+            const ci = await postJson<{ ok: true; sesion: SesionActiva }>(
+              "/agente/supervision/jornada/clock-in", auth
+            );
+            if (cancelado) return;
+            setSesion(ci.sesion);
+          } else {
+            if (cancelado) return;
+            setSesion(null);
+            onSesionAusente?.();
+          }
         } else {
           setSesion(j.sesion);
         }

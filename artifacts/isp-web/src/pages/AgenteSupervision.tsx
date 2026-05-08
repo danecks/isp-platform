@@ -11,7 +11,14 @@ import { ModalVisitaPuesto } from "../components/SupervisorJornada/ModalVisitaPu
 
 const API = "/api";
 const DEVICE_KEY = "isp_device";          // mismo key que AgenteInicio / SupervisorActivar
-const QR_KEY = "isp_supervisor_qr";       // qr_token del supervisor (sessionStorage)
+const QR_KEY = "isp_supervisor_qr";       // qr_token del supervisor (localStorage)
+// Marca volátil que indica "este qr_token acaba de escanearse en esta sesión
+// del navegador" (no es un restore de localStorage). Si el flag está, el hook
+// puede hacer clock-in automático. Si no está, significa que la app reabrió
+// con un qr restaurado y debemos pedirle al server confirmar que la jornada
+// sigue activa antes de hacer nada (evita clock-in silencioso al día siguiente
+// cuando OTRO supervisor agarra la tablet compartida).
+const QR_FRESH_KEY = "isp_supervisor_qr_fresh";
 
 interface DeviceCreds { device_uuid: string; device_token: string }
 
@@ -61,25 +68,34 @@ function getDevice(): DeviceCreds | null {
   return null;
 }
 function getStoredQr(): string {
-  // Prioridad: hash (#qr=...) → sessionStorage. El hash sirve como fallback
-  // para PWAs instaladas en iOS donde sessionStorage no siempre sobrevive
-  // la navegación entre /agente/inicio y /agente/supervision.
+  // Prioridad: hash (#qr=...) → localStorage. El hash llega cuando el flujo
+  // viene de /agente/inicio (kiosco) y se trata como un "fresh scan", por eso
+  // levantamos QR_FRESH_KEY al consumirlo. localStorage cubre cold start,
+  // tab killing por el OS y restart del browser dentro de una jornada activa.
   try {
     const h = (typeof window !== "undefined" ? window.location.hash : "") || "";
     const m = h.match(/[#&]qr=([^&]+)/);
     if (m && m[1]) {
       const tok = decodeURIComponent(m[1]);
-      try { sessionStorage.setItem(QR_KEY, tok); } catch { /* noop */ }
+      try { localStorage.setItem(QR_KEY, tok); } catch { /* noop */ }
+      try { sessionStorage.setItem(QR_FRESH_KEY, "1"); } catch { /* noop */ }
       // Limpiamos el hash para no dejar el token en la URL visible/historial.
       try { history.replaceState(null, "", window.location.pathname + window.location.search); } catch { /* noop */ }
       return tok;
     }
   } catch { /* noop */ }
-  try { return sessionStorage.getItem(QR_KEY) || ""; } catch { return ""; }
+  try { return localStorage.getItem(QR_KEY) || ""; } catch { return ""; }
 }
-function setStoredQr(v: string) {
-  if (v) sessionStorage.setItem(QR_KEY, v);
-  else sessionStorage.removeItem(QR_KEY);
+function setStoredQr(v: string, opts?: { fresh?: boolean }) {
+  try {
+    if (v) {
+      localStorage.setItem(QR_KEY, v);
+      if (opts?.fresh) sessionStorage.setItem(QR_FRESH_KEY, "1");
+    } else {
+      localStorage.removeItem(QR_KEY);
+      sessionStorage.removeItem(QR_FRESH_KEY);
+    }
+  } catch { /* storage bloqueado: ignorar */ }
 }
 
 export default function AgenteSupervision() {
@@ -148,7 +164,16 @@ export default function AgenteSupervision() {
   const [prefillAgenteId, setPrefillAgenteId] = useState<number | null>(null);
   const [visitaActiva, setVisitaActiva] = useState<Visita | null>(null);
   const [agendaAbierta, setAgendaAbierta] = useState(false);
-  const jornada = useSupervisorJornada(device, qrToken);
+  // Cuando el server confirma que NO hay jornada activa para este qr y este
+  // qr_token vino de un restore (no de un escaneo recién hecho en esta sesión
+  // del browser), forzamos re-escaneo. Esto cubre:
+  //  - Día siguiente: la jornada se cerró en medianoche (autoCerrarVencidas)
+  //    y al día siguiente puede ser OTRO supervisor con el mismo dispositivo.
+  //  - Tablet apagada y prendida después de un clock-out hecho en otra sesión.
+  const sesionAusente = useCallback(() => {
+    setStoredQr(""); setQrToken(""); setSupervisor(null);
+  }, []);
+  const jornada = useSupervisorJornada(device, qrToken, sesionAusente);
 
   const cargar = useCallback(async () => {
     if (!device || !qrToken) return;
@@ -198,7 +223,7 @@ export default function AgenteSupervision() {
           scanner.clear();
           scannerRef.current = null;
           setScanning(false);
-          setStoredQr(token);
+          setStoredQr(token, { fresh: true });
           setQrToken(token);
         },
         () => {}
@@ -254,7 +279,7 @@ export default function AgenteSupervision() {
     // formato inesperado vs context-split (Safari ↔ PWA instalada en iOS).
     let rawLs = "";
     try { rawLs = localStorage.getItem(DEVICE_KEY) || ""; } catch { rawLs = "(localStorage bloqueado)"; }
-    const tieneQr = (() => { try { return !!sessionStorage.getItem(QR_KEY); } catch { return false; } })();
+    const tieneQr = (() => { try { return !!localStorage.getItem(QR_KEY); } catch { return false; } })();
     const ua = (typeof navigator !== "undefined" ? navigator.userAgent : "") || "";
     const esStandalone = (typeof window !== "undefined" &&
       (window.matchMedia?.("(display-mode: standalone)").matches ||
@@ -309,7 +334,7 @@ export default function AgenteSupervision() {
             <summary className="text-xs text-white/50 cursor-pointer select-none">Ver diagnóstico técnico</summary>
             <div className="mt-3 space-y-1.5 text-[11px] font-mono text-white/60 break-all">
               <p><span className="text-white/30">localStorage[isp_device]:</span> {rawLs ? rawLs : <span className="text-rose-400">(vacío)</span>}</p>
-              <p><span className="text-white/30">sessionStorage[isp_supervisor_qr]:</span> {tieneQr ? <span className="text-emerald-400">presente</span> : <span className="text-rose-400">ausente</span>}</p>
+              <p><span className="text-white/30">localStorage[isp_supervisor_qr]:</span> {tieneQr ? <span className="text-emerald-400">presente</span> : <span className="text-rose-400">ausente</span>}</p>
               <p><span className="text-white/30">Modo:</span> {esStandalone ? <span className="text-violet-300">PWA instalada (standalone)</span> : "navegador (Safari/Chrome)"}</p>
               <p><span className="text-white/30">UA:</span> {ua.slice(0, 90)}</p>
             </div>
