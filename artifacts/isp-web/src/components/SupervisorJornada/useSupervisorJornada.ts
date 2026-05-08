@@ -105,6 +105,40 @@ export function useSupervisorJornada(device: DeviceCreds | null, qrToken: string
     return () => { cancelado = true; };
   }, [device?.device_uuid, device?.device_token, qrToken]);
 
+  // Wake Lock: mantiene la pantalla encendida mientras hay sesión activa.
+  // Funciona en Android Chrome y iOS 16.4+. Se re-adquiere si el sistema lo
+  // libera al volver al primer plano (visibilitychange).
+  useEffect(() => {
+    if (!sesion || sesion.estado !== "activa") return;
+    if (typeof navigator === "undefined") return;
+    const wl = (navigator as any).wakeLock;
+    if (!wl || typeof wl.request !== "function") return;
+
+    let lock: any = null;
+    let cancelado = false;
+
+    const adquirir = async () => {
+      try {
+        if (cancelado) return;
+        if (document.visibilityState !== "visible") return;
+        lock = await wl.request("screen");
+        lock?.addEventListener?.("release", () => { lock = null; });
+      } catch { /* sin permiso o no soportado: silencioso */ }
+    };
+    const onVis = () => {
+      if (document.visibilityState === "visible" && !lock) void adquirir();
+    };
+
+    void adquirir();
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelado = true;
+      document.removeEventListener("visibilitychange", onVis);
+      try { lock?.release?.(); } catch { /* noop */ }
+      lock = null;
+    };
+  }, [sesion?.id, sesion?.estado]);
+
   // GPS cada 30s mientras hay sesión activa y la app está abierta.
   const gpsRef = useRef<{ lat: number; lng: number } | null>(null);
   const [gpsStatus, setGpsStatus] = useState<{
