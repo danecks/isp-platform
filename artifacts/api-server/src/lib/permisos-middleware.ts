@@ -29,6 +29,8 @@ const ROUTE_MODULO_MAP: Record<string, string> = {
   "/supervision-programaciones": "supervision",
   "/supervision-zonas":      "supervision",
   "/supervision-dashboard":  "supervision",
+  "/supervision-plan-mensual": "supervision",
+  "/supervision-reportes":   "supervision",
   "/personal/empleados":     "pizarron",
   "/solicitudes-turno":      "pizarron",
   "/planificacion-futura":   "pizarron",

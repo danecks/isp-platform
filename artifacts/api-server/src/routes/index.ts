@@ -56,6 +56,7 @@ import { supervisionProgramacionesRouter } from "./supervision-programaciones";
 import { supervisionZonasRouter } from "./supervision-zonas";
 import { supervisionDashboardRouter } from "./supervision-dashboard";
 import { supervisionReportesRouter } from "./supervision-reportes";
+import { supervisionPlanMensualRouter } from "./supervision-plan-mensual";
 import { agenteSupervisionRouter } from "./agente-supervision";
 import { agenteSupervisionJornadaRouter } from "./agente-supervision-jornada";
 import { solicitudesTurnoRouter } from "./solicitudes-turno";
@@ -146,6 +147,7 @@ router.use(supervisionProgramacionesRouter);
 router.use(supervisionZonasRouter);
 router.use(supervisionDashboardRouter);
 router.use(supervisionReportesRouter);
+router.use(supervisionPlanMensualRouter);
 router.use(agenteSupervisionRouter);
 router.use(agenteSupervisionJornadaRouter);
 

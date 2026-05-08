@@ -1,17 +1,19 @@
 import { useState } from "react";
-import { ClipboardList, Map, BarChart3, MapPin, FileBarChart2 } from "lucide-react";
+import { ClipboardList, Map, BarChart3, MapPin, FileBarChart2, CalendarRange } from "lucide-react";
 import { AdminLayout } from "@/admin/layout/AdminLayout";
 import { TabProgramacion } from "./supervision/TabProgramacion";
 import { TabAsignacionZonas } from "./supervision/TabAsignacionZonas";
 import { TabDashboard } from "./supervision/TabDashboard";
 import { TabMapaEnVivo } from "./supervision/TabMapaEnVivo";
 import { TabReportes } from "./supervision/TabReportes";
+import { TabPlanMensual } from "./supervision/TabPlanMensual";
 
-type TabKey = "dashboard" | "mapa" | "programacion" | "zonas" | "reportes";
+type TabKey = "dashboard" | "mapa" | "plan_mensual" | "programacion" | "zonas" | "reportes";
 
 const TABS: Array<{ key: TabKey; label: string; icon: React.ComponentType<any> }> = [
   { key: "dashboard",    label: "Dashboard",          icon: BarChart3 },
   { key: "mapa",         label: "Mapa en vivo",       icon: MapPin },
+  { key: "plan_mensual", label: "Plan mensual",       icon: CalendarRange },
   { key: "programacion", label: "Programación",       icon: ClipboardList },
   { key: "reportes",     label: "Reportes",           icon: FileBarChart2 },
   { key: "zonas",        label: "Asignación de Zonas", icon: Map },
@@ -50,6 +52,7 @@ export default function Supervision() {
         <div>
           {tab === "dashboard"    && <TabDashboard />}
           {tab === "mapa"         && <TabMapaEnVivo />}
+          {tab === "plan_mensual" && <TabPlanMensual />}
           {tab === "programacion" && <TabProgramacion />}
           {tab === "reportes"     && <TabReportes />}
           {tab === "zonas"        && <TabAsignacionZonas />}

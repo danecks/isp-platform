@@ -6197,5 +6197,35 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SUPERV-NOV-01 — error (no bloqueante)");
   }
 
+  // ── SUPERV-PLAN-MES-01: plantilla mensual de supervisión por SEDE×SEMANA ──
+  // Declara qué supervisor cubre cada sede en qué semana(s) del mes (1..5,
+  // semanas ISO lun-dom). Convive con supervision_visitas_programadas
+  // (visitas de fecha exacta, extraordinarias o comisiones).
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS supervision_plan_mensual (
+        id                       SERIAL PRIMARY KEY,
+        sede_id                  INTEGER NOT NULL REFERENCES client_sedes(id) ON DELETE CASCADE,
+        semana_mes               SMALLINT NOT NULL CHECK (semana_mes BETWEEN 1 AND 5),
+        supervisor_employee_id   INTEGER NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
+        notas                    TEXT,
+        activo                   BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS supplanmes_uniq_sede_semana
+         ON supervision_plan_mensual(sede_id, semana_mes)`
+    );
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS supplanmes_supervisor_idx
+         ON supervision_plan_mensual(supervisor_employee_id) WHERE activo = TRUE`
+    );
+    logger.info("Auto-migrate: SUPERV-PLAN-MES-01 plantilla mensual sede×semana verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SUPERV-PLAN-MES-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }
