@@ -52,6 +52,7 @@ import { logger } from "../lib/logger";
 import { calcularBruto, calcularBonificacionIncentivo, calcularISRQuincenal, toNum, toInt } from "../lib/nomina-calc";
 import { buildUniformeCuotaMap, descontarCuotaUniforme } from "./uniformes";
 import { buildBarracaCuotaMap } from "./barracas";
+import { clasificarIgssDesdeRow } from "../lib/igss-clasificacion";
 
 export const planillaRouter = Router();
 
@@ -234,21 +235,8 @@ async function clasificarIgss(employeeId: number | null): Promise<{
     if (!rows.length) {
       return { aplica_igss: false, motivo_exclusion_igss: "Empleado no encontrado" };
     }
-    const r = rows[0];
-
-    if (!r.aplica_igss_general) {
-      return { aplica_igss: false, motivo_exclusion_igss: "Colaborador sin IGSS activado" };
-    }
-    if (r.estado_igss === "pendiente_regularizacion") {
-      return { aplica_igss: false, motivo_exclusion_igss: "Colaborador en proceso de regularización IGSS" };
-    }
-    if (r.estado_igss !== "activo") {
-      return { aplica_igss: false, motivo_exclusion_igss: "Estado IGSS del colaborador: no activo" };
-    }
-    if (!r.puesto_aplica_igss) {
-      return { aplica_igss: false, motivo_exclusion_igss: "Servicio/puesto no incluye IGSS (tarifa)" };
-    }
-    return { aplica_igss: true, motivo_exclusion_igss: null };
+    // Reglas centralizadas en lib/igss-clasificacion.ts (clasificarIgssDesdeRow).
+    return clasificarIgssDesdeRow(rows[0]);
   } catch {
     return { aplica_igss: false, motivo_exclusion_igss: "Error al verificar elegibilidad IGSS" };
   }
@@ -344,21 +332,9 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         WHERE e.id = ANY($1::int[])
       `, [empIds]);
 
+      // Reglas centralizadas en lib/igss-clasificacion.ts (clasificarIgssDesdeRow).
       for (const r of igssRows) {
-        let aplica = false;
-        let motivo: string | null = null;
-        if (!r.aplica_igss_general) {
-          motivo = "Colaborador sin IGSS activado";
-        } else if (r.estado_igss === "pendiente_regularizacion") {
-          motivo = "Colaborador en proceso de regularización IGSS";
-        } else if (r.estado_igss !== "activo") {
-          motivo = "Estado IGSS del colaborador: no activo";
-        } else if (!r.puesto_aplica_igss) {
-          motivo = "Servicio/puesto no incluye IGSS (tarifa)";
-        } else {
-          aplica = true;
-        }
-        igssMap.set(r.employee_id as number, { aplica_igss: aplica, motivo_exclusion_igss: motivo });
+        igssMap.set(r.employee_id as number, clasificarIgssDesdeRow(r));
       }
     }
 

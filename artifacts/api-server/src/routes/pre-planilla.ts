@@ -44,6 +44,7 @@ import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { calcularBruto, toNum, toInt } from "../lib/nomina-calc";
 import { calcularProvisionPeriodo, diasEntreFechas } from "../lib/prestaciones-calc";
+import { IGSS_APLICA_CASE_SQL, IGSS_MOTIVO_CASE_SQL } from "../lib/igss-clasificacion";
 
 export const prePlanillaRouter = Router();
 
@@ -240,27 +241,9 @@ const QUERY_CONSOLIDADO = `
     COALESCE(po.regimen_igss, 'no_aplica')                                      AS puesto_regimen_igss,
 
     -- IGSS — clasificación final para este período
-    CASE
-      WHEN COALESCE(e.aplica_igss_general, FALSE) = FALSE
-        THEN FALSE
-      WHEN COALESCE(e.estado_igss, 'no_activo') != 'activo'
-        THEN FALSE
-      WHEN COALESCE(po.aplica_igss, FALSE) = FALSE
-        THEN FALSE
-      ELSE TRUE
-    END                                                                         AS aplica_igss,
-
-    CASE
-      WHEN COALESCE(e.aplica_igss_general, FALSE) = FALSE
-        THEN 'Colaborador sin IGSS activado'
-      WHEN COALESCE(e.estado_igss, 'no_activo') = 'pendiente_regularizacion'
-        THEN 'Colaborador en proceso de regularización IGSS'
-      WHEN COALESCE(e.estado_igss, 'no_activo') != 'activo'
-        THEN 'Estado IGSS del colaborador: no activo'
-      WHEN COALESCE(po.aplica_igss, FALSE) = FALSE
-        THEN 'Servicio/puesto no incluye IGSS (tarifa)'
-      ELSE NULL
-    END                                                                         AS motivo_exclusion_igss,
+    -- (Reglas centralizadas en lib/igss-clasificacion.ts; ver IGSS_*_CASE_SQL)
+    ${IGSS_APLICA_CASE_SQL}                                                     AS aplica_igss,
+    ${IGSS_MOTIVO_CASE_SQL}                                                     AS motivo_exclusion_igss,
 
     -- Amonestaciones económicas activas y pendientes de descuento (AMON-01)
     COALESCE((
