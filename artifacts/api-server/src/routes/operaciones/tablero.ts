@@ -701,6 +701,52 @@ router.get("/operaciones/tablero", async (req, res) => {
       }
     }
 
+    // ── Enriquecer puestos con recursos integrados (vehículo del agente + equipos bodega) ──
+    // Permite que el Pizarrón muestre indicadores agregados de recursos asignados
+    // por puesto sin requerir consultas individuales al endpoint /recursos-puesto/:id.
+    {
+      const puestoIds = puestosFinales.map((p) => Number(p.id)).filter(Number.isFinite);
+      const agenteIds = puestosFinales
+        .map((p) => Number((p as any).agente_id))
+        .filter((id) => Number.isFinite(id) && id > 0);
+
+      // Vehículos en custodia activa por empleado
+      const vehiculoMap = new Map<number, { id: number; placa: string }>();
+      if (agenteIds.length > 0) {
+        const { rows: vehRows } = await pool.query(
+          `SELECT vc.employee_id, v.id, v.placa
+             FROM vehiculo_custodia vc
+             JOIN vehiculos v ON v.id = vc.vehiculo_id
+            WHERE vc.fecha_fin IS NULL AND vc.employee_id = ANY($1::int[])`,
+          [agenteIds],
+        );
+        for (const r of vehRows) {
+          vehiculoMap.set(Number(r.employee_id), { id: Number(r.id), placa: r.placa });
+        }
+      }
+
+      // Conteo de unidades de bodega asignadas al puesto
+      const equiposCountMap = new Map<number, number>();
+      if (puestoIds.length > 0) {
+        const { rows: eqRows } = await pool.query(
+          `SELECT puesto_id, COUNT(*)::int AS total
+             FROM bodega_unidades
+            WHERE estado IN ('asignado_puesto', 'asignado_colaborador')
+              AND puesto_id = ANY($1::int[])
+            GROUP BY puesto_id`,
+          [puestoIds],
+        );
+        for (const r of eqRows) equiposCountMap.set(Number(r.puesto_id), Number(r.total));
+      }
+
+      for (const p of puestosFinales) {
+        const veh = (p as any).agente_id ? vehiculoMap.get(Number((p as any).agente_id)) : null;
+        (p as any).vehiculo_id    = veh?.id ?? null;
+        (p as any).vehiculo_placa = veh?.placa ?? null;
+        (p as any).equipos_count  = equiposCountMap.get(Number(p.id)) ?? 0;
+      }
+    }
+
     // Agrupar por cliente
     const mapaClientes: Record<string, {
       clienteId: number | null;

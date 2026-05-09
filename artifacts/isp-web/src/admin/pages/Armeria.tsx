@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
 import { AdminLayout } from "../layout/AdminLayout";
-import { TabReportes } from "./ArmeriaReportes";
+import { TabReportes } from "../components/armeria/TabReportes";
 import { getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";

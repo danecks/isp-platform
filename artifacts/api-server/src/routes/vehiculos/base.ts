@@ -1,14 +1,11 @@
 import { Router } from "express";
-import { pool } from "@workspace/db";
-import { calcularEstadoCiclo } from "../lib/turno-calc";
+import { pool, todayGT } from "@workspace/db";
+import { calcularEstadoCiclo } from "../../lib/turno-calc";
+import { logger } from "../../lib/logger";
 
-export const vehiculosRouter = Router();
+export const vehiculosBaseRouter = Router();
 
-const getSession = (req: any) =>
-  (req.headers["x-isp-session"] as string) ?? "";
-
-// ── GET /api/vehiculos ────────────────────────────────────────────────────────
-vehiculosRouter.get("/vehiculos", async (req, res) => {
+vehiculosBaseRouter.get("/vehiculos", async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT
@@ -47,7 +44,7 @@ vehiculosRouter.get("/vehiculos", async (req, res) => {
 
 // ── GET /api/vehiculos/estado-operativo ───────────────────────────────────────
 // Incluye el responsable_turno calculado dinámicamente para cada zona.
-vehiculosRouter.get("/vehiculos/estado-operativo", async (req, res) => {
+vehiculosBaseRouter.get("/vehiculos/estado-operativo", async (req, res) => {
   const fecha = (req.query.fecha as string) || new Date().toISOString().slice(0, 10);
   try {
     // Zonas + vehículos + custodio registrado
@@ -149,7 +146,7 @@ vehiculosRouter.get("/vehiculos/estado-operativo", async (req, res) => {
 });
 
 // ── GET /api/vehiculos/:id ────────────────────────────────────────────────────
-vehiculosRouter.get("/vehiculos/:id", async (req, res) => {
+vehiculosBaseRouter.get("/vehiculos/:id", async (req, res) => {
   const id = Number(req.params.id);
   try {
     const { rows } = await pool.query(`
@@ -175,7 +172,7 @@ vehiculosRouter.get("/vehiculos/:id", async (req, res) => {
 });
 
 // ── GET /api/vehiculos/:id/custodia ───────────────────────────────────────────
-vehiculosRouter.get("/vehiculos/:id/custodia", async (req, res) => {
+vehiculosBaseRouter.get("/vehiculos/:id/custodia", async (req, res) => {
   const id = Number(req.params.id);
   try {
     const { rows } = await pool.query(`
@@ -198,7 +195,7 @@ vehiculosRouter.get("/vehiculos/:id/custodia", async (req, res) => {
 });
 
 // ── GET /api/vehiculos/historial/global ───────────────────────────────────────
-vehiculosRouter.get("/vehiculos/historial/global", async (req, res) => {
+vehiculosBaseRouter.get("/vehiculos/historial/global", async (req, res) => {
   const { limite = "100", vehiculo_id, employee_id } = req.query as any;
   try {
     const conds: string[] = [];
@@ -229,7 +226,7 @@ vehiculosRouter.get("/vehiculos/historial/global", async (req, res) => {
 });
 
 // ── POST /api/vehiculos ───────────────────────────────────────────────────────
-vehiculosRouter.post("/vehiculos", async (req, res) => {
+vehiculosBaseRouter.post("/vehiculos", async (req, res) => {
   const { placa, tipo, marca, modelo, color, anio, estado, activo, zona_operativa_id, observaciones, usuario } = req.body;
   if (!placa || !tipo) return res.status(400).json({ error: "placa y tipo son requeridos" });
   const client = await pool.connect();
@@ -277,7 +274,7 @@ vehiculosRouter.post("/vehiculos", async (req, res) => {
 });
 
 // ── PATCH /api/vehiculos/:id ──────────────────────────────────────────────────
-vehiculosRouter.patch("/vehiculos/:id", async (req, res) => {
+vehiculosBaseRouter.patch("/vehiculos/:id", async (req, res) => {
   const id = Number(req.params.id);
   const { placa, tipo, marca, modelo, color, anio, estado, activo, zona_operativa_id, observaciones, usuario } = req.body;
   const client = await pool.connect();
@@ -350,259 +347,3 @@ vehiculosRouter.patch("/vehiculos/:id", async (req, res) => {
 // ── GET /api/vehiculos/zona/:zonaId/supervisores-turno ────────────────────────
 // Devuelve los supervisores asignados a la zona con su estado de turno para la fecha dada.
 // Permite saber quién está trabajando HOY en esa zona (herencia automática).
-vehiculosRouter.get("/vehiculos/zona/:zonaId/supervisores-turno", async (req, res) => {
-  const zonaId = Number(req.params.zonaId);
-  const fecha  = (req.query.fecha as string) || new Date().toISOString().slice(0, 10);
-
-  try {
-    // Todos los supervisores/jefes de servicio asignados a esta zona vía eoa
-    const { rows } = await pool.query(`
-      SELECT
-        e.id,
-        e.nombre_completo,
-        e.tipo_personal,
-        e.telefono,
-        e.estado_laboral,
-        t.id             AS tipo_turno_id,
-        t.nombre         AS turno_nombre,
-        t.tipo_ciclo,
-        t.horas_trabajo,
-        t.horas_descanso,
-        eoa.fecha_inicio AS fecha_inicio_ciclo
-      FROM employee_operational_assignments eoa
-      JOIN employees e ON e.id = eoa.employee_id
-      LEFT JOIN turnos t ON t.id = eoa.tipo_turno_id
-      WHERE eoa.zona_operativa_id = $1
-        AND eoa.activa = TRUE
-        AND e.estado_laboral IN ('activo')
-        AND e.tipo_personal IN ('supervisor','jefe_servicio')
-      ORDER BY e.nombre_completo
-    `, [zonaId]);
-
-    // Aplicar motor de ciclos a cada supervisor
-    const enriquecidos = rows.map((sv: any) => {
-      if (!sv.tipo_ciclo || !sv.horas_trabajo || !sv.fecha_inicio_ciclo) {
-        return { ...sv, trabaja_hoy: null, estado_ciclo: "sin_turno" };
-      }
-      const turnoObj = {
-        id: sv.tipo_turno_id ?? 0,
-        nombre: sv.turno_nombre ?? "",
-        tipo_ciclo: sv.tipo_ciclo,
-        horas_trabajo:  Number(sv.horas_trabajo),
-        horas_descanso: Number(sv.horas_descanso ?? sv.horas_trabajo),
-      };
-      const fechaStr = sv.fecha_inicio_ciclo instanceof Date
-        ? sv.fecha_inicio_ciclo.toISOString().slice(0, 10)
-        : String(sv.fecha_inicio_ciclo).slice(0, 10);
-
-      const estado = calcularEstadoCiclo(turnoObj, fechaStr, fecha);
-      return {
-        ...sv,
-        trabaja_hoy:  estado.trabaja,
-        estado_ciclo: estado.trabaja
-          ? "trabajando"
-          : (estado.disponibleHE ? "disponible_he" : "descansando"),
-      };
-    });
-
-    // El responsable actual es el que trabaja hoy (primer match)
-    const responsableActual = enriquecidos.find((s: any) => s.trabaja_hoy) ?? null;
-
-    res.json({
-      zona_id:           zonaId,
-      fecha,
-      responsable_actual: responsableActual,
-      supervisores:       enriquecidos,
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── POST /api/vehiculos/:id/sync-custodia ─────────────────────────────────────
-// Sincroniza la custodia de UN vehículo con el supervisor que trabaja HOY en su zona.
-vehiculosRouter.post("/vehiculos/:id/sync-custodia", async (req, res) => {
-  const vehiculoId = Number(req.params.id);
-  const fecha   = (req.body.fecha as string) || new Date().toISOString().slice(0, 10);
-  const usuario = (req.body.usuario as string) || "sistema";
-  try {
-    const resultado = await syncCustodiaVehiculo(vehiculoId, fecha, usuario);
-    if (resultado.motivo === "Vehículo no encontrado") return res.status(404).json(resultado);
-    res.json(resultado);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── Función utilitaria: calcula el responsable de turno para una zona en una fecha ──
-async function calcularResponsableTurno(zonaId: number, fecha: string): Promise<any | null> {
-  const { rows } = await pool.query(`
-    SELECT
-      e.id, e.nombre_completo, e.tipo_personal,
-      t.id AS tipo_turno_id, t.nombre AS turno_nombre,
-      t.tipo_ciclo, t.horas_trabajo, t.horas_descanso,
-      eoa.fecha_inicio AS fecha_inicio_ciclo
-    FROM employee_operational_assignments eoa
-    JOIN employees e ON e.id = eoa.employee_id
-    LEFT JOIN turnos t ON t.id = eoa.tipo_turno_id
-    WHERE eoa.zona_operativa_id = $1
-      AND eoa.activa = TRUE
-      AND e.estado_laboral = 'activo'
-      AND e.tipo_personal IN ('supervisor','jefe_servicio')
-    ORDER BY e.nombre_completo
-  `, [zonaId]);
-
-  for (const sv of rows) {
-    if (!sv.tipo_ciclo || !sv.horas_trabajo || !sv.fecha_inicio_ciclo) continue;
-    const turno = {
-      id: sv.tipo_turno_id ?? 0, nombre: sv.turno_nombre ?? "",
-      tipo_ciclo: sv.tipo_ciclo,
-      horas_trabajo:  Number(sv.horas_trabajo),
-      horas_descanso: Number(sv.horas_descanso ?? sv.horas_trabajo),
-    };
-    const fechaStr = sv.fecha_inicio_ciclo instanceof Date
-      ? sv.fecha_inicio_ciclo.toISOString().slice(0, 10)
-      : String(sv.fecha_inicio_ciclo).slice(0, 10);
-    const estado = calcularEstadoCiclo(turno, fechaStr, fecha);
-    if (estado.trabaja) return sv;
-  }
-  return null;
-}
-
-// ── Función utilitaria: sincroniza la custodia de un vehículo (sin HTTP) ──────
-async function syncCustodiaVehiculo(
-  vehiculoId: number, fecha: string, usuario: string
-): Promise<any> {
-  const { rows: vRows } = await pool.query(
-    `SELECT id, placa, zona_operativa_id FROM vehiculos WHERE id=$1`, [vehiculoId]
-  );
-  if (!vRows[0]) return { cambio: false, motivo: "Vehículo no encontrado" };
-  const zona_id = vRows[0].zona_operativa_id;
-  if (!zona_id) return { cambio: false, placa: vRows[0].placa, motivo: "Sin zona asignada" };
-
-  const responsable = await calcularResponsableTurno(zona_id, fecha);
-
-  const { rows: custodiaRows } = await pool.query(
-    `SELECT id, employee_id FROM vehiculo_custodia WHERE vehiculo_id=$1 AND fecha_fin IS NULL`,
-    [vehiculoId]
-  );
-  const custodiaActual = custodiaRows[0] ?? null;
-
-  const mismoResponsable = custodiaActual && responsable
-    && Number(custodiaActual.employee_id) === Number(responsable.id);
-
-  if (mismoResponsable) {
-    return {
-      cambio: false, placa: vRows[0].placa,
-      motivo: "El responsable de turno ya coincide con la custodia actual",
-      responsable_actual: { id: responsable.id, nombre: responsable.nombre_completo },
-    };
-  }
-
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    if (custodiaActual) {
-      await client.query(
-        `UPDATE vehiculo_custodia SET fecha_fin=NOW()
-         WHERE id=$1`,
-        [custodiaActual.id]
-      );
-    }
-    let nuevaCustodia: any = null;
-    if (responsable) {
-      const { rows: nc } = await client.query(`
-        INSERT INTO vehiculo_custodia
-          (vehiculo_id, employee_id, zona_operativa_id, tipo_relevo, notas, registrado_por)
-        VALUES ($1,$2,$3,'automatico_turno',$4,$5)
-        RETURNING *
-      `, [
-        vehiculoId, responsable.id, zona_id,
-        `Custodia automática por turno — ${fecha}`, usuario,
-      ]);
-      nuevaCustodia = nc[0];
-    }
-    await client.query("COMMIT");
-    return {
-      cambio: true, placa: vRows[0].placa,
-      responsable_nuevo: responsable
-        ? { id: responsable.id, nombre: responsable.nombre_completo }
-        : null,
-      sin_responsable: !responsable,
-      nueva_custodia: nuevaCustodia,
-    };
-  } catch (e: any) {
-    await client.query("ROLLBACK").catch(() => {});
-    return { cambio: false, placa: vRows[0].placa, error: e.message };
-  } finally {
-    client.release();
-  }
-}
-
-// ── POST /api/vehiculos/sync-custodias ────────────────────────────────────────
-// Sincroniza TODOS los vehículos con zona asignada para la fecha indicada.
-vehiculosRouter.post("/vehiculos/sync-custodias", async (req, res) => {
-  const fecha   = (req.body.fecha as string) || new Date().toISOString().slice(0, 10);
-  const usuario = (req.body.usuario as string) || "sistema";
-
-  try {
-    const { rows: vehiculos } = await pool.query(
-      `SELECT id FROM vehiculos WHERE activo=TRUE AND zona_operativa_id IS NOT NULL`
-    );
-    const resultados = await Promise.all(
-      vehiculos.map((v: any) => syncCustodiaVehiculo(v.id, fecha, usuario))
-    );
-    const cambios = resultados.filter((r: any) => r.cambio).length;
-    res.json({ fecha, total: vehiculos.length, cambios, resultados });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── POST /api/vehiculos/:id/relevo ────────────────────────────────────────────
-// Transfiere custodia a otro supervisor (relevo manual, override excepcional)
-vehiculosRouter.post("/vehiculos/:id/relevo", async (req, res) => {
-  const vehiculoId = Number(req.params.id);
-  const { nuevo_employee_id, zona_operativa_id, notas, tipo_relevo, usuario } = req.body;
-  if (!nuevo_employee_id) return res.status(400).json({ error: "nuevo_employee_id es requerido" });
-
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
-    // Cerrar custodia actual
-    await client.query(
-      `UPDATE vehiculo_custodia SET fecha_fin = NOW() WHERE vehiculo_id=$1 AND fecha_fin IS NULL`,
-      [vehiculoId]
-    );
-
-    // Obtener zona del vehículo si no se pasa
-    let zona = zona_operativa_id ? Number(zona_operativa_id) : null;
-    if (!zona) {
-      const { rows: vRows } = await client.query(`SELECT zona_operativa_id FROM vehiculos WHERE id=$1`, [vehiculoId]);
-      zona = vRows[0]?.zona_operativa_id ?? null;
-    }
-
-    // Crear nueva custodia
-    const { rows } = await client.query(`
-      INSERT INTO vehiculo_custodia (vehiculo_id, employee_id, zona_operativa_id, tipo_relevo, notas, registrado_por)
-      VALUES ($1,$2,$3,$4,$5,$6)
-      RETURNING *
-    `, [
-      vehiculoId,
-      Number(nuevo_employee_id),
-      zona,
-      tipo_relevo ?? "manual",
-      notas ?? null,
-      usuario ?? "sistema",
-    ]);
-
-    await client.query("COMMIT");
-    res.status(201).json(rows[0]);
-  } catch (err: any) {
-    await client.query("ROLLBACK");
-    res.status(500).json({ error: err.message });
-  } finally {
-    client.release();
-  }
-});

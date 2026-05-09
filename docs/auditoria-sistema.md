@@ -183,7 +183,7 @@ Componentes en `admin/pages/` que **no están importados desde `App.tsx`**:
 
 | Página                        | Estado                                                      |
 |-------------------------------|-------------------------------------------------------------|
-| `ArmeriaReportes.tsx`         | Sin referencias — candidato a eliminar o re-conectar        |
+| `ArmeriaReportes.tsx`         | **Sí se usa** — importada como `TabReportes` desde `Armeria.tsx` (no es huérfana, solo no es ruta directa) |
 | `EstadisticasRondas.tsx`      | Sin referencias — candidato a eliminar o re-conectar        |
 | `FichajeQR.tsx` (1 261 líneas)| Sin referencias — sospechoso por su tamaño                  |
 | `RecorridosCustodia.tsx`      | Sin referencias                                             |

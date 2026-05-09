@@ -70,6 +70,7 @@ import { amonestacionesRouter } from "./amonestaciones";
 import docsRouter from "./docs";
 import plantillasContratoRouter from "./plantillas-contrato";
 import { visitasRouter } from "./visitas";
+import { asignacionesRecursosRouter } from "./asignaciones-recursos";
 
 const router: IRouter = Router();
 
@@ -140,6 +141,7 @@ router.use(amonestacionesRouter);
 router.use(docsRouter);
 router.use(plantillasContratoRouter);
 router.use(visitasRouter);
+router.use(asignacionesRecursosRouter);
 router.use(supervisionProgramacionesRouter);
 router.use(supervisionZonasRouter);
 router.use(supervisionDashboardRouter);
