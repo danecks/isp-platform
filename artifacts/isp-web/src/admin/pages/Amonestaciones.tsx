@@ -406,7 +406,7 @@ function NuevaAmonestacionModal({ esRRHH, esSupervisor, onClose, onCreada }: {
   const [monto, setMonto] = useState<string>("");
   const [descripcion, setDescripcion] = useState("");
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
-  const [causalCodigo, setCausalCodigo] = useState<string>("");
+  const [causalCodigos, setCausalCodigos] = useState<string[]>([]);
   const [aplicaDescuento, setAplicaDescuento] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -447,7 +447,7 @@ function NuevaAmonestacionModal({ esRRHH, esSupervisor, onClose, onCreada }: {
   // Limpiar campos no aplicables al cambiar de tipo
   useEffect(() => {
     if (tipo !== "acta_administrativa") {
-      setCausalCodigo(""); setAplicaDescuento(false);
+      setCausalCodigos([]); setAplicaDescuento(false);
     }
     if (tipo === "llamada_atencion") setMonto("");
   }, [tipo]);
@@ -459,8 +459,8 @@ function NuevaAmonestacionModal({ esRRHH, esSupervisor, onClose, onCreada }: {
       if (!empSel) throw new Error("Selecciona un colaborador");
       const motivoFinal = motivoSel || motivoLibre.trim();
       if (!motivoFinal) throw new Error("Indica un motivo");
-      if (tipo === "acta_administrativa" && !causalCodigo) {
-        throw new Error("Selecciona una causal del Art. 77 para el acta");
+      if (tipo === "acta_administrativa" && causalCodigos.length === 0) {
+        throw new Error("Selecciona al menos una causal del Art. 77 para el acta");
       }
       if (requiereMonto && (Number(monto) || 0) <= 0) {
         throw new Error("El monto debe ser mayor a 0");
@@ -478,7 +478,7 @@ function NuevaAmonestacionModal({ esRRHH, esSupervisor, onClose, onCreada }: {
           body: JSON.stringify({
             ...baseBody,
             tipo_solicitado: tipo,
-            causal_legal_codigo: tipo === "acta_administrativa" ? causalCodigo : null,
+            causal_legal_codigos: tipo === "acta_administrativa" ? causalCodigos : null,
             monto_sugerido: requiereMonto ? Number(monto) : 0,
             fecha_incidente: fecha,
           }),
@@ -491,7 +491,7 @@ function NuevaAmonestacionModal({ esRRHH, esSupervisor, onClose, onCreada }: {
           tipo,
           monto: requiereMonto ? Number(monto) : 0,
           fecha,
-          causal_legal_codigo: tipo === "acta_administrativa" ? causalCodigo : null,
+          causal_legal_codigos: tipo === "acta_administrativa" ? causalCodigos : null,
           aplica_descuento: tipo === "acta_administrativa" ? aplicaDescuento : false,
         }),
       });
@@ -500,7 +500,10 @@ function NuevaAmonestacionModal({ esRRHH, esSupervisor, onClose, onCreada }: {
     onError: (e: Error) => setError(e.message),
   });
 
-  const causalSel = causales.data?.find(c => c.codigo === causalCodigo);
+  const causalesSel = (causales.data || []).filter(c => causalCodigos.includes(c.codigo));
+  const toggleCausal = (codigo: string) => {
+    setCausalCodigos(prev => prev.includes(codigo) ? prev.filter(c => c !== codigo) : [...prev, codigo]);
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 overflow-y-auto">
@@ -587,18 +590,34 @@ function NuevaAmonestacionModal({ esRRHH, esSupervisor, onClose, onCreada }: {
           {tipo === "acta_administrativa" && (
             <div className="space-y-2">
               <div>
-                <label className="text-xs text-purple-300 font-medium">Causal legal Art. 77 Código de Trabajo *</label>
-                <select value={causalCodigo} onChange={e => setCausalCodigo(e.target.value)}
-                  className="w-full mt-1 bg-black/30 border border-purple-500/30 rounded-lg px-3 py-2 text-sm text-white">
-                  <option value="">— Selecciona la causal aplicable —</option>
-                  {causales.data?.map(c => (
-                    <option key={c.codigo} value={c.codigo}>{c.inciso} {c.titulo}</option>
-                  ))}
-                </select>
-                {causalSel && (
-                  <div className="mt-2 text-xs text-purple-200/80 bg-purple-500/5 border border-purple-500/20 rounded-lg p-2">
-                    <div className="font-medium text-purple-300">{causalSel.articulo} — inciso {causalSel.inciso}</div>
-                    <div className="mt-1 leading-relaxed">{causalSel.descripcion}</div>
+                <label className="text-xs text-purple-300 font-medium">
+                  Causales legales Art. 77 Código de Trabajo * <span className="text-purple-200/60">(puedes seleccionar varias)</span>
+                </label>
+                <div className="mt-1 max-h-56 overflow-y-auto bg-black/30 border border-purple-500/30 rounded-lg divide-y divide-purple-500/10">
+                  {causales.data?.map(c => {
+                    const checked = causalCodigos.includes(c.codigo);
+                    return (
+                      <label key={c.codigo}
+                        className={`flex items-start gap-2 px-3 py-2 cursor-pointer hover:bg-purple-500/10 transition ${checked ? "bg-purple-500/15" : ""}`}>
+                        <input type="checkbox" checked={checked} onChange={() => toggleCausal(c.codigo)}
+                          className="mt-0.5 rounded border-purple-500/30 bg-black/40 accent-purple-500" />
+                        <span className="text-sm text-white">
+                          <span className="text-purple-300 font-medium">{c.inciso}</span> {c.titulo}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {causalesSel.length > 0 && (
+                  <div className="mt-2 text-xs text-purple-200/80 bg-purple-500/5 border border-purple-500/20 rounded-lg p-2 space-y-2">
+                    <div className="font-medium text-purple-300">
+                      {causalesSel[0].articulo} — {causalesSel.length} {causalesSel.length === 1 ? "causal seleccionada" : "causales seleccionadas"}
+                    </div>
+                    <ul className="list-disc list-inside space-y-1 leading-relaxed">
+                      {causalesSel.map(c => (
+                        <li key={c.codigo}><b>{c.inciso}</b> {c.descripcion}</li>
+                      ))}
+                    </ul>
                   </div>
                 )}
               </div>
@@ -1131,7 +1150,9 @@ function BandejaSolicitudesCreacion({ esRRHH, onAbrirAmon, onActualizada }: {
                     <div className="text-white">{s.solicitada_por_username} <span className="text-white/40 text-xs">({s.solicitada_por_rol})</span></div>
                     <div className="text-white/40 text-xs mt-1">{fmtFecha(s.created_at)}</div>
                     {s.tipo_solicitado === "acta_administrativa" && s.causal_legal_codigo && (
-                      <div className="text-purple-300/80 text-xs mt-1">Causal: {s.causal_legal_codigo}</div>
+                      <div className="text-purple-300/80 text-xs mt-1">
+                        {s.causal_legal_codigo.split(",").length > 1 ? "Causales" : "Causal"}: {s.causal_legal_codigo}
+                      </div>
                     )}
                   </div>
                 </div>

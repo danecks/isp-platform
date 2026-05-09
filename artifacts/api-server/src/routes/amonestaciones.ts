@@ -259,8 +259,13 @@ router.post("/amonestaciones", async (req: Request, res: Response) => {
     const {
       employee_id, tipo, motivo, descripcion, monto, evidencia_url,
       cliente_id, cliente_nombre, puesto_id, puesto_nombre, fecha,
-      causal_legal_codigo, aplica_descuento,
+      causal_legal_codigo, causal_legal_codigos, aplica_descuento,
     } = req.body ?? {};
+
+    // Normalizar a array (compat con singular antiguo)
+    const causalCodigos: string[] = Array.isArray(causal_legal_codigos)
+      ? causal_legal_codigos.map((c: unknown) => String(c)).filter(Boolean)
+      : (causal_legal_codigo ? [String(causal_legal_codigo)] : []);
 
     if (!employee_id) return res.status(400).json({ error: "employee_id requerido" });
     if (!["llamada_atencion", "economica", "acta_administrativa"].includes(tipo)) {
@@ -272,8 +277,8 @@ router.post("/amonestaciones", async (req: Request, res: Response) => {
     if (!motivo || String(motivo).trim() === "") {
       return res.status(400).json({ error: "motivo requerido" });
     }
-    if (tipo === "acta_administrativa" && !causal_legal_codigo) {
-      return res.status(400).json({ error: "causal_legal_codigo requerido para acta administrativa" });
+    if (tipo === "acta_administrativa" && causalCodigos.length === 0) {
+      return res.status(400).json({ error: "Debe seleccionar al menos una causal legal para el acta administrativa" });
     }
     const montoNum = (tipo === "economica" || (tipo === "acta_administrativa" && aplica_descuento))
       ? Math.max(0, Number(monto) || 0)
@@ -298,16 +303,17 @@ router.post("/amonestaciones", async (req: Request, res: Response) => {
     let actaNumero: number | null = null;
     if (tipo === "acta_administrativa") {
       const { rows: causalRows } = await client.query(
-        `SELECT inciso, articulo, titulo, descripcion
+        `SELECT codigo, inciso, articulo, titulo, descripcion
            FROM amonestacion_causales_legales
-          WHERE codigo = $1 AND activo = TRUE`,
-        [String(causal_legal_codigo)]
+          WHERE codigo = ANY($1::text[]) AND activo = TRUE
+          ORDER BY orden`,
+        [causalCodigos]
       );
-      if (causalRows.length === 0) {
+      if (causalRows.length !== causalCodigos.length) {
         await client.query("ROLLBACK");
-        return res.status(400).json({ error: "Causal legal inválida" });
+        return res.status(400).json({ error: "Una o más causales legales son inválidas" });
       }
-      causalLegalTexto = `${causalRows[0].inciso} ${causalRows[0].titulo}`;
+      causalLegalTexto = causalRows.map(r => `${r.inciso} ${r.titulo}`).join("; ");
       articuloLegal = causalRows[0].articulo;
       // Asignar correlativo desde config_empresa.acta_correlativo
       const { rows: corrRows } = await client.query(
@@ -705,10 +711,14 @@ router.post("/amonestaciones/solicitudes-creacion", async (req: Request, res: Re
       return res.status(403).json({ error: "Rol no autorizado" });
     }
     const {
-      employee_id, tipo_solicitado, motivo, descripcion, causal_legal_codigo,
+      employee_id, tipo_solicitado, motivo, descripcion,
+      causal_legal_codigo, causal_legal_codigos,
       monto_sugerido, evidencia_url,
       cliente_id, cliente_nombre, puesto_id, puesto_nombre, fecha_incidente,
     } = req.body ?? {};
+    const causalCodigos: string[] = Array.isArray(causal_legal_codigos)
+      ? causal_legal_codigos.map((c: unknown) => String(c)).filter(Boolean)
+      : (causal_legal_codigo ? [String(causal_legal_codigo)] : []);
     if (!employee_id) return res.status(400).json({ error: "employee_id requerido" });
     if (!["llamada_atencion", "economica", "acta_administrativa"].includes(tipo_solicitado)) {
       return res.status(400).json({ error: "tipo_solicitado inválido" });
@@ -716,9 +726,11 @@ router.post("/amonestaciones/solicitudes-creacion", async (req: Request, res: Re
     if (!motivo || String(motivo).trim() === "") {
       return res.status(400).json({ error: "motivo requerido" });
     }
-    if (tipo_solicitado === "acta_administrativa" && !causal_legal_codigo) {
-      return res.status(400).json({ error: "causal_legal_codigo requerido para acta" });
+    if (tipo_solicitado === "acta_administrativa" && causalCodigos.length === 0) {
+      return res.status(400).json({ error: "Debe seleccionar al menos una causal legal" });
     }
+    // Persistir como CSV en columna TEXT existente
+    const causalCsv = causalCodigos.length > 0 ? causalCodigos.join(",") : null;
     const { rows: empRows } = await pool.query(
       `SELECT nombre_completo FROM employees WHERE id = $1`, [employee_id]
     );
@@ -738,7 +750,7 @@ router.post("/amonestaciones/solicitudes-creacion", async (req: Request, res: Re
        ) RETURNING id`,
       [
         employee_id, empRows[0].nombre_completo, tipo_solicitado, String(motivo).trim(), descripcion || null,
-        causal_legal_codigo || null, Math.max(0, Number(monto_sugerido) || 0), evidencia_url || null,
+        causalCsv, Math.max(0, Number(monto_sugerido) || 0), evidencia_url || null,
         cliente_id || null, cliente_nombre || null, puesto_id || null, puesto_nombre || null,
         fecha_incidente || null,
         session.user_id ?? null, session.username ?? null, session.rol ?? null,
@@ -822,15 +834,22 @@ router.post("/amonestaciones/solicitudes-creacion/:id/resolver", async (req: Req
       let articuloLegal: string | null = null;
       let actaNumero: number | null = null;
       if (sol.tipo_solicitado === "acta_administrativa") {
-        const { rows: causalRows } = await client.query(
-          `SELECT inciso, articulo, titulo FROM amonestacion_causales_legales WHERE codigo = $1`,
-          [sol.causal_legal_codigo]
-        );
-        if (causalRows.length === 0) {
+        const codigos: string[] = String(sol.causal_legal_codigo || "").split(",").map(s => s.trim()).filter(Boolean);
+        if (codigos.length === 0) {
           await client.query("ROLLBACK");
-          return res.status(400).json({ error: "Causal de la solicitud ya no es válida" });
+          return res.status(400).json({ error: "La solicitud no tiene causales legales" });
         }
-        causalLegalTexto = `${causalRows[0].inciso} ${causalRows[0].titulo}`;
+        const { rows: causalRows } = await client.query(
+          `SELECT inciso, articulo, titulo FROM amonestacion_causales_legales
+            WHERE codigo = ANY($1::text[]) AND activo = TRUE
+            ORDER BY orden`,
+          [codigos]
+        );
+        if (causalRows.length !== codigos.length) {
+          await client.query("ROLLBACK");
+          return res.status(400).json({ error: "Una o más causales de la solicitud ya no son válidas" });
+        }
+        causalLegalTexto = causalRows.map(r => `${r.inciso} ${r.titulo}`).join("; ");
         articuloLegal = causalRows[0].articulo;
         const { rows: corrRows } = await client.query(
           `UPDATE config_empresa SET acta_correlativo = COALESCE(acta_correlativo,0) + 1, updated_at = NOW()
