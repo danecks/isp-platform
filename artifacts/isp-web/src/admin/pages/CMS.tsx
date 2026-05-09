@@ -33,11 +33,12 @@ import {
   Key,
   Layers,
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API_BASE = "/api";
 
 // Header de sesión admin para todos los fetches del archivo.
-const sessionHeader = () => ({ "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" });
+const sessionHeader = () => ({ "x-isp-session": getSessionToken() });
 
 interface CmsAdminData {
   page_key: string;

@@ -8,12 +8,13 @@ import {
   Calendar, Save, Printer, Plus, X, Search, ChevronDown, ChevronUp,
   Check, Clock, UserPlus, UserMinus,
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
 const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
 // Header de sesión admin para todos los fetches del archivo.
-const sessionHeader = () => ({ "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" });
+const sessionHeader = () => ({ "x-isp-session": getSessionToken() });
 
 interface ClienteCustodia {
   clienteId: number;
@@ -313,7 +314,7 @@ function RemoveButton({ clienteId, employeeId, fecha, nombre, onRemoved }: {
         method: "DELETE", credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "",
+          "x-isp-session": getSessionToken(),
         },
         body: JSON.stringify({ fecha, employeeId }),
       });
@@ -360,7 +361,7 @@ function AsignarTitularChip({ clienteId, employeeId, nombre, fecha, onAsignado }
         method: "POST", credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "",
+          "x-isp-session": getSessionToken(),
         },
         body: JSON.stringify({ fecha, employeeId }),
       });
@@ -412,7 +413,7 @@ function AsignarTitularesPendientesButton({ clienteId, fecha, total, onAsignado 
         method: "POST", credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "",
+          "x-isp-session": getSessionToken(),
         },
         body: JSON.stringify({ fecha }),
       });

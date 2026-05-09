@@ -13,6 +13,7 @@ import {
   X, Shield, Users, Clock, TrendingUp, AlertTriangle,
   CheckCircle2, UserX, Zap, Filter, User,
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -89,7 +90,7 @@ interface ReporteData {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const API = "/api";
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 const h = () => ({ "x-isp-session": getSession() });
 
 function fmtNum(n: unknown) {

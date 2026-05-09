@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { BookOpen, FileText, Loader2, AlertCircle, Search } from "lucide-react";
 import { AdminLayout } from "@/admin/layout/AdminLayout";
+import { getSessionToken } from "@/lib/httpClient";
 
 interface DocItem {
   slug: string;
@@ -13,7 +14,7 @@ interface DocItem {
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "";
 
 // Header de sesión admin para todos los fetches del archivo.
-const sessionHeader = () => ({ "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" });
+const sessionHeader = () => ({ "x-isp-session": getSessionToken() });
 
 export default function Documentacion() {
   const [items, setItems] = useState<DocItem[]>([]);

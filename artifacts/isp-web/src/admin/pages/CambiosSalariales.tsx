@@ -2,9 +2,10 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "../layout/AdminLayout";
 import { useToast } from "@/hooks/use-toast";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 const hdr = () => ({ "x-isp-session": getSession(), "Content-Type": "application/json" });
 
 function fmtQ(n: number | null | undefined) {

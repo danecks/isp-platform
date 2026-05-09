@@ -8,9 +8,10 @@ import {
   ExternalLink, Plus, RefreshCw, Shield, X,
   FileText, Download, Eye, Users, DollarSign, Calendar
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 const h = () => ({ "x-isp-session": getSession(), "Content-Type": "application/json" });
 
 const DEPTOS_GT: Record<number, string> = {

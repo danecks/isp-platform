@@ -6,7 +6,7 @@
  * - Otros sin cuenta de sistema (solo registro de empleado)
  * - Un registro marcado como proveniente de sistema externo (para demostrar el campo externalId)
  *
- * Uso: cd artifacts/api-server && pnpm exec tsx src/seed-employees.ts
+ * Uso: cd artifacts/api-server && pnpm exec tsx src/seed/rrhh.ts
  */
 
 import { db, employeesTable, usersTable } from "@workspace/db";

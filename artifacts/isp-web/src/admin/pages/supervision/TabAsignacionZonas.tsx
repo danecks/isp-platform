@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Trash2, UserPlus, Users } from "lucide-react";
 import type { ZonaConSupervisores, SupervisorDisponible } from "./types";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API_BASE = "/api";
 
 function getSession(): string {
   return (typeof sessionStorage !== "undefined"
-    ? sessionStorage.getItem("isp_admin_session_v2")
+    ? getSessionToken()
     : null) || "";
 }
 

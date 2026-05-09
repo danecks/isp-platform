@@ -12,9 +12,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
 import { AdminLayout } from "../layout/AdminLayout";
 import { TabReportes } from "./ArmeriaReportes";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 
 async function apiFetch<T>(url: string): Promise<T> {
   const res = await fetch(url, { headers: { "x-isp-session": getSession() } });

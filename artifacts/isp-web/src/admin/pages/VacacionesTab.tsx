@@ -9,9 +9,10 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import RegresosVacacionesBanner from "@/admin/components/RegresosVacacionesBanner";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 
 async function apiFetch<T>(url: string): Promise<T> {
   const r = await fetch(url, { headers: { "x-isp-session": getSession() } });

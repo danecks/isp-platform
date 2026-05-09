@@ -9,9 +9,10 @@ import {
   X, Loader2, CheckCircle, AlertTriangle, Hash, RefreshCw, Layers,
   Shield, Users, Clock, ExternalLink, DollarSign, Pencil, Check, TrendingUp
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 const getRole = (): string => {
   try { return JSON.parse(getSession())?.rol ?? ""; } catch { return ""; }
 };

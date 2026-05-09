@@ -23,9 +23,10 @@ import {
   generarAvisoInspector,
   MOTIVO_ANULACION_LABELS,
 } from "@/lib/pdfRrhh";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 
 async function construirDatosActa(evento: EventoRrhh): Promise<DatosActa> {
   const hdr = { "x-isp-session": getSession() };
@@ -230,7 +231,7 @@ function ModalNuevoEvento({
     queryKey: ["empleados-activos"],
     queryFn: async () => {
       const r = await fetch(`${API}/employees?estado=activo&limit=300`, {
-        headers: { "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" },
+        headers: { "x-isp-session": getSessionToken() },
       });
       if (!r.ok) throw new Error("Error cargando empleados");
       return r.json();

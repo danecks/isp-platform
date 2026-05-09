@@ -15,11 +15,12 @@ import {
   AlertTriangle,
   RefreshCw,
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";
 
 function getSession() {
-  return sessionStorage.getItem("isp_admin_session_v2") || "";
+  return getSessionToken();
 }
 
 async function fetchKPI() {

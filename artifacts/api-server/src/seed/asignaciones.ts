@@ -5,7 +5,7 @@
  * - 4 asignaciones de agentes para CLI-001 (Distribuidora Nacional)
  * - 8 incidencias de demostración vinculadas a CLI-001 (clienteRefId)
  *
- * Uso: cd artifacts/api-server && pnpm exec tsx src/seed-assignments.ts
+ * Uso: cd artifacts/api-server && pnpm exec tsx src/seed/asignaciones.ts
  */
 
 import { db, agentAssignmentsTable, incidentsTable, employeesTable } from "@workspace/db";

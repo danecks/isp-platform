@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 import { createPortal } from "react-dom";
 import { Trash2, X, AlertTriangle, Loader2, SendHorizontal } from "lucide-react";
 import { useAuth } from "./AuthContext";
+import { getSessionToken } from "@/lib/httpClient";
 
 interface DeleteRequest {
   entidad: string;
@@ -18,7 +19,7 @@ interface DeleteModeContextType {
 
 const DeleteModeContext = createContext<DeleteModeContextType | null>(null);
 
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 
 const ENTIDAD_LABELS: Record<string, string> = {
   arma:              "Arma",

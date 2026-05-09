@@ -32,6 +32,7 @@ import { ModalFichaArma } from "@/admin/components/ModalFichaArma";
 import { ModalFichaVehiculo } from "@/admin/components/ModalFichaVehiculo";
 import RegresosVacacionesBanner from "@/admin/components/RegresosVacacionesBanner";
 import { EditarPlantillaPersonalModal } from "./operaciones/EditarPlantillaPersonalModal";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API_BASE = "/api";
 
@@ -592,7 +593,7 @@ function fmtHora(iso: string) {
   });
 }
 
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 
 async function apiPost(url: string, body: object) {
   const r = await fetch(url, {
@@ -7119,7 +7120,7 @@ export default function Operaciones() {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "",
+          "x-isp-session": getSessionToken(),
         },
         body: JSON.stringify({ motivo: motivo ?? null, notas: notas ?? null }),
       });

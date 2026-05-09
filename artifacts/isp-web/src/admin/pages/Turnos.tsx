@@ -31,9 +31,10 @@ import {
   CheckCircle2, Loader2, X, ChevronDown, ChevronUp, Trash2,
 } from "lucide-react";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
+import { getSessionToken } from "@/lib/httpClient";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 
 async function apiFetch(path: string, init?: RequestInit) {
   const res = await fetch(`${BASE}${path}`, {

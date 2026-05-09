@@ -9,11 +9,12 @@ import {
 import { AdminLayout } from "../layout/AdminLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLocation } from "wouter";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API_BASE = "/api";
 
 // Header de sesión admin para todos los fetches del archivo.
-const sessionHeader = () => ({ "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" });
+const sessionHeader = () => ({ "x-isp-session": getSessionToken() });
 
 interface CierreListItem {
   id: number;
@@ -287,7 +288,7 @@ function ModalReabrirHistorico({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") ?? "",
+          "x-isp-session": getSessionToken(),
         },
         body: JSON.stringify({
           confirmacion,

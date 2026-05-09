@@ -10,9 +10,10 @@ import {
 import { AdminLayout } from "../layout/AdminLayout";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 const h = () => ({ "x-isp-session": getSession(), "Content-Type": "application/json" });
 
 // Helper: garantiza que la respuesta sea siempre un array (defensa contra

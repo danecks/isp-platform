@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, MapPin } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 interface PuestoRegreso {
   id: number;
@@ -23,7 +24,7 @@ interface RegresosResponse {
 }
 
 const API_BASE = "/api";
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 
 export function useProximosRegresos(fecha?: string, dias = 5) {
   return useQuery<RegresosResponse>({

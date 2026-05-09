@@ -3,10 +3,11 @@ import { BookOpen, Users, User, Search, Download, ChevronDown, ChevronUp, FileSp
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AdminLayout } from "../layout/AdminLayout";
+import { getSessionToken } from "@/lib/httpClient";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function getSession() {
-  return sessionStorage.getItem("isp_admin_session_v2") || "";
+  return getSessionToken();
 }
 
 function fmtQ(v: number | string | null | undefined): string {

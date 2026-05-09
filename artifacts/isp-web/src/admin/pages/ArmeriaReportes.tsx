@@ -4,9 +4,10 @@ import {
   Calendar, Download, Loader2, Shield, ArrowRightLeft,
   Target, RefreshCw, Package, FileText, Search,
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 
 async function apiFetch<T>(url: string): Promise<T> {
   const res = await fetch(url, { headers: { "x-isp-session": getSession() } });

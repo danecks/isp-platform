@@ -7,10 +7,11 @@ import {
   LayoutGrid, CheckCircle, Clock, AlertTriangle, XCircle, DollarSign,
   Users, Settings, FileText, RefreshCw, ChevronRight, Info, Building2,
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API_BASE = "/api";
 
-function getSession() { return sessionStorage.getItem("isp_admin_session_v2") || ""; }
+function getSession() { return getSessionToken(); }
 
 async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {

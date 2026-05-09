@@ -11,9 +11,10 @@ import {
   ChevronLeft, History, UserCog, Mail, Phone, Power, PowerOff,
   KeyRound, Lock, AlertCircle, Check, Landmark, ToggleLeft, ToggleRight
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 const h = () => ({ "x-isp-session": getSession(), "Content-Type": "application/json" });
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────

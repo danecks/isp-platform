@@ -8,9 +8,10 @@ import {
   Activity, AlertTriangle, CheckCircle, Clock, Users,
   TrendingUp, MapPin, Zap,
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";
-function getSession() { return sessionStorage.getItem("isp_admin_session_v2") || ""; }
+function getSession() { return getSessionToken(); }
 const f = (path: string) => fetch(`${API}${path}`, {
   headers: { Authorization: `Bearer ${getSession()}` },
 }).then(r => r.json());

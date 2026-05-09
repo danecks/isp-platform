@@ -8,9 +8,10 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 const h = () => ({ "x-isp-session": getSession(), "Content-Type": "application/json" });
 
 type Estado = "pendiente_rrhh" | "pendiente_operaciones" | "escalado_admin" | "aprobado" | "rechazado";

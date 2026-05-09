@@ -26,9 +26,10 @@ import {
   FileText,
 } from "lucide-react";
 import { generarContratoLaboral } from "@/lib/pdfRrhh";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 const h = () => ({ "x-isp-session": getSession(), "Content-Type": "application/json" });
 
 type Tipo = "inicial" | "post_prueba";

@@ -16,6 +16,7 @@ import { ROL_LABELS, ROL_COLORES } from "@/config/permissions";
 import { useToast } from "@/hooks/use-toast";
 import { RolesTab } from "./tabs/RolesTab";
 import { TiposPersonalTab } from "./tabs/TiposPersonalTab";
+import { getSessionToken } from "@/lib/httpClient";
 
 type Rol = "admin" | "operaciones" | "rrhh" | "comercial" | "supervisor" | "guardia" | "cliente";
 const ROLES: Rol[] = ["admin", "operaciones", "rrhh", "comercial", "supervisor", "guardia", "cliente"];
@@ -28,7 +29,7 @@ interface SystemRoleOption { clave: string; label: string; activo: boolean; }
 
 function getAdminSessionHeader(): Record<string, string> {
   try {
-    const raw = sessionStorage.getItem("isp_admin_session_v2");
+    const raw = getSessionToken();
     return raw ? { "x-isp-session": raw } : {};
   } catch { return {}; }
 }

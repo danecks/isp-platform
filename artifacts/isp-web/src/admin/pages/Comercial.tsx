@@ -5,6 +5,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { leadsApi } from "@/lib/api";
 import { Briefcase, Filter, Loader2, RefreshCw, ExternalLink, Send, CheckCircle2, UserPlus, X, Calendar, Plus, Banknote, TrendingUp, AlertTriangle, ChevronRight } from "lucide-react";
 import LeadDetallePanel from "../components/LeadDetallePanel";
+import { getSessionToken } from "@/lib/httpClient";
 
 type EstadoLead = "nuevo" | "contactado" | "cotizado" | "ganado" | "perdido";
 type CanalFilter = "todos" | "whatsapp" | "web" | "otro";
@@ -171,7 +172,7 @@ function ModalNuevoLead({ onClose, onCreated }: { onClose: () => void; onCreated
 
 const fmtQG = (n: number) => n.toLocaleString("es-GT", { style: "currency", currency: "GTQ", minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
-const getSessionC = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSessionC = () => getSessionToken();
 
 function PanelRentabilidadGlobal() {
   const [data, setData] = useState<any>(null);

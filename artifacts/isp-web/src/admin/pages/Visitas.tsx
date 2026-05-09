@@ -5,6 +5,7 @@ import {
   TrendingUp, TrendingDown, ArrowRight, Filter, Image as ImageIcon, X,
   ArrowUpRight,
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 interface Visita {
   id: number;
@@ -50,7 +51,7 @@ const MESES = [
 ];
 
 function getSessionRaw() {
-  return sessionStorage.getItem("isp_admin_session_v2") || "";
+  return getSessionToken();
 }
 function getRol() {
   try {

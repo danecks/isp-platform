@@ -6,8 +6,9 @@
  */
 import { useState, useEffect, useRef } from "react";
 import { ChevronDown, Search, User, X } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 

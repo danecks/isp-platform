@@ -4,10 +4,11 @@ import { KeyRound, X, Lock, AlertCircle, Check, Loader2, Eye, EyeOff } from "luc
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getSessionToken } from "@/lib/httpClient";
 
 function getAdminSessionHeader(): Record<string, string> {
   try {
-    const raw = sessionStorage.getItem("isp_admin_session_v2");
+    const raw = getSessionToken();
     return raw ? { "x-isp-session": raw } : {};
   } catch { return {}; }
 }

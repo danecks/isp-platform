@@ -64,26 +64,21 @@ export const usersApi = {
   }>) => apiFetch<UserSafe>(`/users/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
 };
 
+// Delegamos en `httpClient.apiRequest` (Fase 0 — refactor de fundaciones)
+// para que exista una única implementación de fetch + sesión + manejo de
+// errores. Este wrapper se conserva para no romper a los ~30 callers que
+// usan `employeesApi`, `usersApi`, `leadsApi`, `incidentsApi`, etc.
+import { apiRequest, ApiError } from "@/lib/httpClient";
+
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  // El middleware de permisos exige el header x-isp-session (ver
-  // artifacts/api-server/src/lib/permisos-middleware.ts). Sin él, todos los
-  // módulos admin que pasan por este wrapper devuelven 401.
-  const session = (typeof sessionStorage !== "undefined"
-    ? sessionStorage.getItem("isp_admin_session_v2")
-    : null) || "";
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(session ? { "x-isp-session": session } : {}),
-      ...(options?.headers ?? {}),
-    },
-  });
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
-    throw new Error(error.error ?? `Error ${res.status}`);
+  try {
+    return await apiRequest<T>(path, options as Parameters<typeof apiRequest>[1]);
+  } catch (err) {
+    // Mantengo la firma histórica: throw new Error(message) para que los
+    // componentes existentes que hacen `catch (e: any)` sigan funcionando.
+    if (err instanceof ApiError) throw new Error(err.message);
+    throw err;
   }
-  return res.json();
 }
 
 // --- LEADS ---

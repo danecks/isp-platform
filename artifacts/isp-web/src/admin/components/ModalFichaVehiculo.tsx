@@ -4,8 +4,9 @@ import {
   Car, X, MapPin, History, User, Clock,
   Loader2, AlertTriangle, ExternalLink,
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 async function apiFetch<T>(url: string): Promise<T> {
   const res = await fetch(url, { headers: { "x-isp-session": getSession() } });
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw e; }

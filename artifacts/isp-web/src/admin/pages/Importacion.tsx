@@ -8,9 +8,10 @@ import {
   Wand2, HelpCircle, Shield, Database, RefreshCw, ToggleLeft, ToggleRight,
   FileSpreadsheet, BarChart3, Upload, X, Clock, ExternalLink,
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API_BASE = "/api";
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 
 // ─── CSV Parser ──────────────────────────────────────────────────────────────
 function parseCSV(text: string): Record<string, string>[] {

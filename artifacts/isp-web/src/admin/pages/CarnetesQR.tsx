@@ -19,11 +19,12 @@ import {
   Download, Search, CheckCircle, Users, CreditCard, BadgeCheck,
   MapPin, X, Camera, Loader2, Eye, RotateCcw,
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 // ── API ───────────────────────────────────────────────────────────────────────
 const API = "/api";
 const getSession = () => {
-  try { return sessionStorage.getItem("isp_admin_session_v2") ?? ""; } catch { return ""; }
+  try { return getSessionToken(); } catch { return ""; }
 };
 const apiFetch = (path: string, opts?: RequestInit) =>
   fetch(`${API}${path}`, {

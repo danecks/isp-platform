@@ -21,13 +21,14 @@ import { useToast } from "@/hooks/use-toast";
 import { generarContratoLaboral, cargarPatronoDesdeConfig, type DatosContratoLaboral } from "@/lib/pdfRrhh";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
 import DescansoSemanalEditor from "../components/DescansoSemanalEditor";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API_BASE = "/api";
 
 // Helper para enviar el header de sesión admin en todos los fetches.
 // Centralizado a nivel de archivo para que cualquier componente del archivo
 // pueda usarlo sin redefinirlo.
-const sessionHeader = () => ({ "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" });
+const sessionHeader = () => ({ "x-isp-session": getSessionToken() });
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -377,7 +378,7 @@ function useTiposPersonal() {
     queryKey: ["tipos-personal-config"],
     queryFn: async () => {
       const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-      const sess = sessionStorage.getItem("isp_admin_session_v2") ?? "";
+      const sess = getSessionToken();
       const r = await fetch(`${base}/api/tipos-personal-config`, {
         headers: { "x-isp-session": sess },
       });
@@ -733,7 +734,7 @@ function ActaDesdeKPI({ empId }: { empId: number }) {
   const [hechosCustom, setHechosCustom] = useState("");
   const [generando, setGenerando] = useState(false);
   const { toast } = useToast();
-  const getSession = () => sessionStorage.getItem("isp_admin_session_v2") ?? "";
+  const getSession = () => getSessionToken();
 
   const handleGenerar = async () => {
     if (causales.length === 0) {
@@ -1197,7 +1198,7 @@ function ContratosSection({ empId }: { empId: number }) {
     queryKey: ["contratos", empId],
     queryFn: async () => {
       const r = await fetch(`${API_BASE}/employees/${empId}/contratos`, {
-        headers: { "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" },
+        headers: { "x-isp-session": getSessionToken() },
       });
       if (!r.ok) throw new Error("Error al cargar contratos");
       return r.json();
@@ -1427,7 +1428,7 @@ function useFotoSegura(fotoUrl: string | null): string | null {
     if (fotoUrl.startsWith("data:")) { setSrc(fotoUrl); return; }
     if (/^https?:\/\//i.test(fotoUrl)) { setSrc(fotoUrl); return; }
     let active = true;
-    const session = sessionStorage.getItem("isp_admin_session_v2") ?? "";
+    const session = getSessionToken();
     fetch(`${API_BASE}/storage${fotoUrl}`, { headers: { "x-isp-session": session } })
       .then((r) => (r.ok ? r.blob() : Promise.reject(new Error("foto no disponible"))))
       .then((blob) => { if (active) setSrc(URL.createObjectURL(blob)); })
@@ -1460,7 +1461,7 @@ function FotoEmpleadoEditor({ emp, onUpdated }: { emp: Empleado; onUpdated?: (fo
     }
     setSubiendo(true);
     try {
-      const session = sessionStorage.getItem("isp_admin_session_v2") ?? "";
+      const session = getSessionToken();
       // El servidor recibe la foto cruda y la procesa con sharp:
       // auto-orient EXIF, resize a 480 px, JPEG q82 → guarda data URL en BD.
       // No usa Object Storage (evita el bug del sidecar en producción).
@@ -1774,7 +1775,7 @@ function ModalCrearUsuarioColaborador({ emp, onClose, onCreated }: {
     try {
       const r = await fetch(`${API_BASE}/users`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" },
+        headers: { "Content-Type": "application/json", "x-isp-session": getSessionToken() },
         body: JSON.stringify({ nombre: form.nombre, username: form.username, password: form.password, rol: form.rol, employeeId: emp.id, estado: "activo" }),
       });
       if (!r.ok) { const d = await r.json(); throw new Error(d.error ?? "Error al crear usuario"); }
@@ -2581,7 +2582,7 @@ function TabVacaciones({ emp }: { emp: Empleado }) {
   const qc = useQueryClient();
   const { toast } = useToast();
 
-  const sess       = () => sessionStorage.getItem("isp_admin_session_v2") ?? "";
+  const sess       = () => getSessionToken();
   const userNombre = (() => { try { return JSON.parse(sess()).nombre ?? "rrhh"; } catch { return "rrhh"; } })();
 
   const [modalOpen, setModalOpen]     = useState(false);
@@ -3103,7 +3104,7 @@ function fmtFechaCorta(iso: string | null | undefined): string {
 }
 
 function HistorialTitularEmp({ empId }: { empId: number }) {
-  const getSession = () => sessionStorage.getItem("isp_admin_session_v2") ?? "";
+  const getSession = () => getSessionToken();
   const [rows, setRows] = useState<TitularHistorialRow[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -3171,7 +3172,7 @@ function HistorialTitularEmp({ empId }: { empId: number }) {
 }
 
 function TabAsignacionOperativa({ empId }: { empId: number }) {
-  const getSession = () => sessionStorage.getItem("isp_admin_session_v2") ?? "";
+  const getSession = () => getSessionToken();
   const h = () => ({ "Content-Type": "application/json", "x-isp-session": getSession() });
 
   const [asig, setAsig] = useState<AsignacionOperativa | null>(null);
@@ -3481,7 +3482,7 @@ const LABEL_TIPO_EVENTO: Record<string, string> = {
 
 function TabIndemnizacion({ emp }: { emp: Empleado }) {
   const { toast } = useToast();
-  const hdr = () => ({ "Content-Type": "application/json", "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") ?? "" });
+  const hdr = () => ({ "Content-Type": "application/json", "x-isp-session": getSessionToken() });
   const [evalData, setEvalData] = useState<EvalCausaJusta | null>(null);
   const [historial, setHistorial] = useState<HistDisciplinario[]>([]);
   const [loading, setLoading] = useState(true);
@@ -3789,7 +3790,7 @@ function ModalBajaEmpleado({
   const [sim, setSim]             = useState<SimBaja | null>(null);
   const [evalCausa, setEvalCausa] = useState<EvalCausaJusta | null>(null);
   const [evalLoading, setEvalLoading] = useState(false);
-  const sess = () => sessionStorage.getItem("isp_admin_session_v2") ?? "";
+  const sess = () => getSessionToken();
   const hdr  = () => ({ "Content-Type": "application/json", "x-isp-session": sess() });
 
   useEffect(() => {
@@ -4016,7 +4017,7 @@ function TabAmonestacionesEmpleado({ empId }: { empId: number }) {
   const [data, setData] = useState<any[] | "loading" | null>("loading");
   useEffect(() => {
     let cancel = false;
-    fetch(`/api/amonestaciones/empleado/${empId}`, { headers: { "x-isp-session": sessionStorage.getItem("isp_admin_session_v2") || "" } })
+    fetch(`/api/amonestaciones/empleado/${empId}`, { headers: { "x-isp-session": getSessionToken() } })
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(j => { if (!cancel) setData(j); })
       .catch(() => { if (!cancel) setData(null); });
@@ -4297,7 +4298,7 @@ function TabContratos({ emp }: { emp: Empleado }) {
     setGenerando(tipo);
     try {
       // Cargar datos del empleado, contratos previos y patrono en paralelo
-      const sess = sessionStorage.getItem("isp_admin_session_v2") || "";
+      const sess = getSessionToken();
       const [resEmp, resContratos, patrono] = await Promise.all([
         fetch(`${API_BASE}/employees/${emp.id}`),
         fetch(`${API_BASE}/employees/${emp.id}/contratos`, { headers: { "x-isp-session": sess } }),

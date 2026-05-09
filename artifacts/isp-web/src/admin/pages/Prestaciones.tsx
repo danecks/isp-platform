@@ -27,13 +27,14 @@ import { useToast } from "@/hooks/use-toast";
 import { AdminLayout } from "@/admin/layout/AdminLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import VacacionesTab from "@/admin/pages/VacacionesTab";
+import { getSessionToken } from "@/lib/httpClient";
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 
 const API = "/api";
 
 function getSession() {
-  return sessionStorage.getItem("isp_admin_session_v2") || "";
+  return getSessionToken();
 }
 
 async function apiFetch(url: string, opts: RequestInit = {}) {

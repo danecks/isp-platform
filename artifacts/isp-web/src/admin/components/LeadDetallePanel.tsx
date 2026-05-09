@@ -5,9 +5,10 @@ import {
   ChevronDown, Building2, Phone, Mail, MapPin,
   UserCheck, RefreshCw,
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 function getSession() {
-  return sessionStorage.getItem("isp_admin_session_v2") || "";
+  return getSessionToken();
 }
 function api(path: string, opts?: RequestInit) {
   return fetch(path, {

@@ -6,11 +6,12 @@ import {
   MapPin, Clock, RefreshCw, Activity, CheckCircle2, User, Building2,
   Loader2, AlertTriangle, XCircle, Calendar,
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";
 
 function getSession() {
-  return sessionStorage.getItem("isp_admin_session_v2") || "";
+  return getSessionToken();
 }
 
 // Fecha en zona horaria GT con offset en días (0 = hoy, -1 = ayer). Devuelve YYYY-MM-DD.

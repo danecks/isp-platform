@@ -19,11 +19,12 @@ import {
   ShieldCheck, Download, Pencil, AlertCircle, Loader2, History, Users, Wallet,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { getSessionToken } from "@/lib/httpClient";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
 function getSession() {
-  return sessionStorage.getItem("isp_admin_session_v2") || "";
+  return getSessionToken();
 }
 
 async function apiFetch<T = unknown>(url: string, opts: RequestInit = {}): Promise<T> {

@@ -1,4 +1,17 @@
-const SESSION_KEY = "isp_admin_session_v2";
+/**
+ * Parche de `window.fetch` para inyectar el header `x-isp-session` en
+ * cualquier llamada hacia `/api/...` que NO pase por `httpClient.apiRequest`.
+ *
+ * Este parche existe como red de seguridad para componentes y librerías de
+ * terceros que llaman `fetch()` directamente. La fuente única de verdad para
+ * el header sigue siendo `httpClient.getSessionToken()`.
+ *
+ * ROADMAP: una vez todas las páginas migren a `apiRequest()` (fases 1-6),
+ * este monkey-patch debe eliminarse.
+ */
+
+import { getSessionToken } from "@/lib/httpClient";
+
 const SESSION_HEADER = "x-isp-session";
 
 function isApiRequest(input: RequestInfo | URL): boolean {
@@ -26,14 +39,6 @@ function isApiRequest(input: RequestInfo | URL): boolean {
     }
   }
   return false;
-}
-
-function getSession(): string {
-  try {
-    return sessionStorage.getItem(SESSION_KEY) ?? "";
-  } catch {
-    return "";
-  }
 }
 
 function headersAlreadyHas(
@@ -65,7 +70,7 @@ export function installFetchSessionPatch() {
       return originalFetch(input, init);
     }
 
-    const session = getSession();
+    const session = getSessionToken();
     if (!session) {
       return originalFetch(input, init);
     }

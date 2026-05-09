@@ -34,13 +34,14 @@ import {
   CalendarDays, TrendingUp, Info, Lock, Undo2, Link, Settings, Save, Pencil,
   Building2, Banknote,
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
 function getSession() {
-  return sessionStorage.getItem("isp_admin_session_v2") || "";
+  return getSessionToken();
 }
 
 async function apiFetch(url: string, opts: RequestInit = {}) {
@@ -1360,7 +1361,7 @@ export default function AdminPlanilla() {
   // Leer usuario de la sesión
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem("isp_admin_session_v2") || "";
+      const raw = getSessionToken();
       if (raw) {
         const decoded = JSON.parse(atob(raw.split(".")[1] ?? "") || "{}");
         if (decoded.username) setSesionUsuario(decoded.username);

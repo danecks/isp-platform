@@ -11,9 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { AdminLayout } from "../layout/AdminLayout";
 import { useToast } from "@/hooks/use-toast";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
+import { getSessionToken } from "@/lib/httpClient";
 
 function getSession() {
-  return sessionStorage.getItem("isp_admin_session_v2") || "";
+  return getSessionToken();
 }
 function api(path: string, opts?: RequestInit) {
   return fetch(path, { ...opts, headers: { "x-isp-session": getSession(), "Content-Type": "application/json", ...(opts?.headers ?? {}) } });

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { brand } from "@/config/branding";
+import { getSessionToken } from "@/lib/httpClient";
 
 const RAW_TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
 const IS_REPLIT_PREVIEW = typeof window !== "undefined"
@@ -108,7 +109,7 @@ export default function AdminLogin() {
     }
     if (result.ok) {
       try {
-        const raw = sessionStorage.getItem("isp_admin_session_v2");
+        const raw = getSessionToken();
         const user = raw ? JSON.parse(raw) : null;
         navigate(user?.rol === "cliente" ? "/portal/dashboard" : "/admin/dashboard");
       } catch {

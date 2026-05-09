@@ -6,11 +6,12 @@ import {
   Trash2, Clock, CheckCircle2, XCircle, Filter,
   User, Calendar, FileText, Loader2, AlertTriangle,
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";
 
 function apiFetch(url: string, opts?: RequestInit) {
-  const session = sessionStorage.getItem("isp_admin_session_v2") || "";
+  const session = getSessionToken();
   return fetch(url, {
     ...opts,
     headers: { "Content-Type": "application/json", "x-isp-session": session, ...(opts?.headers ?? {}) },

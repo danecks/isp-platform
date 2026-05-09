@@ -6,10 +6,11 @@ import {
   Smartphone, Plus, Copy, Check, MapPinned, ShieldCheck, Footprints, Bell, X,
   ShieldAlert, AlertTriangle, Pencil, Truck,
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";
 const getSession = () => {
-  try { return sessionStorage.getItem("isp_admin_session_v2") ?? ""; } catch { return ""; }
+  try { return getSessionToken(); } catch { return ""; }
 };
 
 const CHECK_LABELS: Record<string, string> = {

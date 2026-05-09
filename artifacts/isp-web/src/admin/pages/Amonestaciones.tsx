@@ -7,11 +7,12 @@ import {
   Gavel, Download, PenLine, Send,
 } from "lucide-react";
 import { generarActaPdf, type DatosActaPdf } from "../../lib/actaPdf";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";
 
 function getSession() {
-  return sessionStorage.getItem("isp_admin_session_v2") || "";
+  return getSessionToken();
 }
 
 function getRol(): string {

@@ -17,8 +17,9 @@ import {
   CheckCircle2, AlertCircle, Clock, ChevronDown, ChevronUp,
   Users, Loader2, Info,
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
 function apiFetch(path: string, init?: RequestInit) {

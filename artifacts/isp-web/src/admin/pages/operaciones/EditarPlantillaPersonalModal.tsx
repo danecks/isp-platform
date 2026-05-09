@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, Save, Trash2, X, Plus, CalendarClock } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API_BASE = "/api";
 const DIAS_SEM = ["L", "M", "M", "J", "V", "S", "D"];
 
 function getSession(): string {
   return (typeof sessionStorage !== "undefined"
-    ? sessionStorage.getItem("isp_admin_session_v2")
+    ? getSessionToken()
     : null) || "";
 }
 function sessionHeader() { return { "x-isp-session": getSession() }; }

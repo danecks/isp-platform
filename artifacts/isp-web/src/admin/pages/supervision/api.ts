@@ -1,8 +1,9 @@
+import { getSessionToken } from "@/lib/httpClient";
 const API_BASE = "/api";
 
 function getSession(): string {
   return (typeof sessionStorage !== "undefined"
-    ? sessionStorage.getItem("isp_admin_session_v2")
+    ? getSessionToken()
     : null) || "";
 }
 

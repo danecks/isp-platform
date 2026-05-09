@@ -36,9 +36,10 @@ import {
   Loader2,
   ExternalLink,
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";
-const getSession = () => sessionStorage.getItem("isp_admin_session_v2") || "";
+const getSession = () => getSessionToken();
 const h = () => ({ "Content-Type": "application/json", "x-isp-session": getSession() });
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

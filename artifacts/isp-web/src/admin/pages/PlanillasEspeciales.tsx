@@ -19,11 +19,12 @@ import {
   Landmark, Plus, ChevronLeft, AlertCircle, CheckCircle2, Clock,
   Users, Wallet, CalendarDays, Eye, Loader2, RefreshCcw, BadgeCheck,
 } from "lucide-react";
+import { getSessionToken } from "@/lib/httpClient";
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
 function getSession() {
-  return sessionStorage.getItem("isp_admin_session_v2") || "";
+  return getSessionToken();
 }
 
 async function apiFetch(url: string, opts: RequestInit = {}) {
