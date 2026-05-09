@@ -1,0 +1,37 @@
+Fase 1 — Refactor Operaciones
+What & Why
+El módulo de Operaciones (Pizarrón Operativo, Supervisión, Zonas, Cierres, Fichaje QR) es el corazón del sistema y también donde está la mayor deuda técnica: Operaciones.tsx tiene más de 10.000 líneas en un solo archivo, las consultas SQL del tablero usan múltiples LEFT JOIN LATERAL calculados al vuelo, y hay lógica de turnos duplicada entre SQL, backend TS y frontend.
+
+Esta fase reescribe el dominio de operaciones aprovechando las fundaciones de la Fase 0, dejándolo modular, performante y mantenible.
+
+Done looks like
+El Pizarrón Operativo está dividido en componentes pequeños (TableroGrid, PoolDeAgentes, ModalesDeAsignacion, BannerRegresos, etc.), ningún archivo supera ~500 líneas.
+Las consultas SQL del tablero están optimizadas (índices revisados, eliminación de cálculos al vuelo donde sea posible, posible tabla de "estado actual" denormalizada si se justifica).
+Toda la lógica de cycles/turnos viene del motor unificado creado en Fase 0 (no hay duplicación entre SQL, backend y frontend).
+Drag-and-drop, asignación de coberturas, ranking de candidatos, cierre operativo diario funcionan exactamente igual que antes desde el punto de vista del usuario.
+El módulo de Supervisión (mapa en vivo, planificación, reportes) queda integrado limpiamente con el Pizarrón.
+Fichaje QR y Zonas Operativas quedan dentro del mismo dominio refactorizado.
+El tablero carga notablemente más rápido con muchos clientes/agentes (virtualización donde aplique).
+Las pantallas viejas se eliminan; queda solo la versión refactorizada.
+Out of scope
+Cambios funcionales o nuevas features (solo refactor).
+Refactor de RRHH, Comercial, Logística (sus propias fases).
+Reescribir la lógica de cierre operativo en sí (solo reorganizarla; el comportamiento queda igual).
+Steps
+Descomposición del Pizarrón — Partir Operaciones.tsx en componentes y hooks por responsabilidad.
+Optimización de queries del tablero — Revisar el SQL del tablero, agregar índices necesarios, evaluar tabla de estado actual.
+Migración al motor de turnos unificado — Eliminar la lógica de turnos duplicada y usar la librería compartida de Fase 0.
+Refactor de Supervisión, Zonas y Fichaje QR — Reorganizar estos submódulos dentro del dominio de operaciones.
+Virtualización y performance del frontend — Aplicar virtualización al pool de agentes y al tablero según sea necesario.
+Validación de paridad funcional — Verificar que todos los flujos del Pizarrón funcionan exactamente igual que la versión anterior.
+Relevant files
+artifacts/isp-web/src/admin/pages/Operaciones.tsx
+artifacts/api-server/src/routes/operaciones.ts
+artifacts/api-server/src/routes/operaciones/_helpers
+artifacts/api-server/src/routes/supervision-*.ts
+artifacts/api-server/src/routes/agente-fichaje.ts
+artifacts/api-server/src/routes/zonas.ts
+artifacts/api-server/src/routes/custodias.ts
+Dependencies
+
+Refactor Fase 0 — Fundaciones y auditoría
