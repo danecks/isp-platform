@@ -680,24 +680,26 @@ function NuevaAmonestacionModal({ esRRHH, esSupervisor, onClose, onCreada }: {
               className="w-full mt-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white" />
           </div>
 
+        </div>
+        <div className="p-4 border-t border-white/10 sticky bottom-0 bg-[#0d1117] rounded-b-2xl space-y-2">
           {error && (
             <div className="text-red-400 text-sm bg-red-500/10 border border-red-500/30 rounded-lg p-2">
               {error}
             </div>
           )}
-        </div>
-        <div className="p-4 border-t border-white/10 flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white/70 rounded-lg text-sm">
-            Cancelar
-          </button>
-          <button
-            onClick={() => { setError(null); crear.mutate(); }}
-            disabled={crear.isPending || !empSel}
-            className="px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black font-semibold rounded-lg text-sm"
-            data-action="crear-o-solicitar"
-          >
-            {crear.isPending ? "Guardando…" : "Guardar amonestación"}
-          </button>
+          <div className="flex justify-end gap-2">
+            <button onClick={onClose} className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white/70 rounded-lg text-sm">
+              Cancelar
+            </button>
+            <button
+              onClick={() => { setError(null); crear.mutate(); }}
+              disabled={crear.isPending || !empSel}
+              className="px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black font-semibold rounded-lg text-sm"
+              data-action="crear-o-solicitar"
+            >
+              {crear.isPending ? "Guardando…" : (modoSolicitud ? "Enviar solicitud" : "Guardar amonestación")}
+            </button>
+          </div>
         </div>
       </div>
     </div>
