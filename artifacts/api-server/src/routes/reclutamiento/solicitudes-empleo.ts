@@ -16,8 +16,8 @@
 import { Router, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import { pool } from "@workspace/db";
-import { logger } from "../lib/logger";
-import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+import { logger } from "../../lib/logger";
+import { ObjectStorageService, ObjectNotFoundError } from "../../lib/objectStorage";
 
 const MAX_FOTO_BYTES = 5 * 1024 * 1024; // 5 MB
 

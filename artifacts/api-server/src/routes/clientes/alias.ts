@@ -29,7 +29,7 @@ import {
   positionAliasesTable,
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { resolverAlias } from "../services/alias/resolver";
+import { resolverAlias } from "../../services/alias/resolver";
 
 export const aliasRouter = Router();
 

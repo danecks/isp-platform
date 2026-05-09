@@ -1,7 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { runAutoMigrations, runAutoSeed } from "./lib/auto-seed";
-import { limpiarFotosExpiradas } from "./routes/solicitudes-empleo";
+import { limpiarFotosExpiradas } from "./routes/reclutamiento";
 
 const rawPort = process.env["PORT"];
 

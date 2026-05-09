@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
-import { logger } from "../lib/logger";
+import { logger } from "../../lib/logger";
 
 const fichaRouter = Router();
 

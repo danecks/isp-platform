@@ -471,3 +471,61 @@ acotado y testeable, en vez de un mega-cambio que afecte 100+ archivos.
       inventario cruzado FE↔BE y secciones de riesgos / validación.
 - [x] Funcionalidad visible: sin cambios. Typecheck mantiene el mismo
       número de errores pre-existentes en ambos paquetes.
+
+---
+
+## 13. Fase 3 — Comercial, Clientes y Reclutamiento
+
+**Reorganización backend** (`artifacts/api-server/src/routes/`):
+
+- `routes/comercial/` — `leads.ts` + `applications.ts` (postulaciones del
+  sitio público). Barrel `comercial/index.ts` re-exporta los routers.
+- `routes/clientes/` — `alias.ts` + `ficha.ts` + `sedes.ts` (ficha maestra
+  del cliente: datos, contractuales, puestos, sedes, aliases). Barrel
+  `clientes/index.ts` re-exporta los routers.
+- `routes/reclutamiento/` — `solicitudes-empleo.ts` (kiosco interno,
+  reemplazo moderno de `applications`). Barrel `reclutamiento/index.ts`
+  re-exporta el router y la tarea `limpiarFotosExpiradas`.
+
+`routes/index.ts` y `src/index.ts` se actualizan para importar desde los
+barrels nuevos. Comportamiento idéntico al previo.
+
+**Reorganización frontend** (`artifacts/isp-web/src/admin/pages/`):
+
+- `clientes/TabRentabilidad.tsx` — extraída de `FichaCliente.tsx`
+  (tab autocontenida con sus propios tipos `RentaData / RentaPuesto /
+  BajaDetalle` y formateo `fmtQr`). `FichaCliente.tsx` baja de 2995 a
+  ~2790 líneas.
+
+**Aliases integrados (no son módulo aparte):**
+
+- `client_aliases` y `position_aliases` se administran exclusivamente
+  desde la pantalla `Clientes` (tabs Resolver/Sedes y modal de cliente);
+  no existe una pantalla independiente de aliases. Confirmado en
+  Fase 3 — el alcance era solo verificar la integración.
+
+**Solapamiento `applications` ↔ `solicitudes_empleo`:**
+
+- `POST /api/applications` se sigue usando desde el formulario público
+  `pages/reclutamiento.tsx` (vía `applicationsApi.create`).
+- El resto de endpoints de `applications` (`GET`, `PATCH /:id`,
+  `POST /:id/contratar`) están **huérfanos en frontend**: la pantalla
+  admin `KioscoSolicitudes` opera contra `solicitudes-empleo`, que
+  expone el flujo completo con merge requests por DPI.
+- Acción para una fase futura: o bien migrar el formulario público a
+  `solicitudes-empleo` y eliminar `applications` por completo, o
+  recortar `applications` al único endpoint usado (POST). Se deja
+  documentado y no se elimina aún para no perder datos históricos.
+
+**Pendientes — propuestos como follow-ups:**
+
+- Dividir `FichaCliente.tsx` (~2790 líneas) extrayendo tabs restantes
+  (`TabTitulares`, `TabPlantillaTurnos`, `TabIGSSCentro`,
+  `TabUsuariosCliente`) y modales (`ModalPuesto`, `ModalEditarCliente`,
+  `ModalNuevaSede`, `ModalCrearSlot`).
+- Dividir `Clientes.tsx` (1439 líneas) en pestañas separadas
+  (`TabResolver`, `TabSedes`, `TabSalarios`, `TabRentabilidadClientes`).
+- Dividir `KioscoSolicitudes.tsx` (1571 líneas) extrayendo el panel de
+  detalle/edición y el flujo de contratación.
+- Migrar `pages/reclutamiento.tsx` al endpoint `solicitudes-empleo`
+  para eliminar `applications` por completo.
