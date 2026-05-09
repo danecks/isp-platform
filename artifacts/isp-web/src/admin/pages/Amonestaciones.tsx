@@ -4,7 +4,9 @@ import { AdminLayout } from "../layout/AdminLayout";
 import {
   AlertTriangle, DollarSign, FileText, Plus, Search, X,
   Inbox, Check, Ban, MessageSquareWarning, RefreshCw, Calendar,
+  Gavel, Download, PenLine, Send,
 } from "lucide-react";
+import { generarActaPdf, type DatosActaPdf } from "../../lib/actaPdf";
 
 const API = "/api";
 
@@ -38,13 +40,18 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
 interface Motivo { id: number; nombre: string; monto_sugerido: number }
 interface Empleado { id: number; nombreCompleto: string; dpi: string | null; estadoLaboral: string }
+interface CausalLegal {
+  id: number; codigo: string; inciso: string; articulo: string;
+  titulo: string; descripcion: string; orden: number;
+}
+type TipoAmon = "llamada_atencion" | "economica" | "acta_administrativa";
 interface Amonestacion {
   id: number;
   employee_id: number;
   empleado_nombre: string;
   creado_por_username: string | null;
   creado_por_rol: string;
-  tipo: "llamada_atencion" | "economica";
+  tipo: TipoAmon;
   motivo: string;
   descripcion: string | null;
   monto: number;
@@ -59,6 +66,36 @@ interface Amonestacion {
   anulada_at: string | null;
   created_at: string;
   notas_rrhh?: string | null;
+  causal_legal?: string | null;
+  articulo_legal?: string | null;
+  acta_numero?: number | null;
+  acta_pdf_url?: string | null;
+  aplica_descuento?: boolean;
+  amon_economica_id?: number | null;
+  firma_colaborador?: string | null;
+  firma_levanta?: string | null;
+  firmada_at?: string | null;
+}
+interface SolicitudCrea {
+  id: number;
+  employee_id: number;
+  empleado_nombre: string;
+  tipo_solicitado: TipoAmon;
+  motivo: string;
+  descripcion: string | null;
+  causal_legal_codigo: string | null;
+  monto_sugerido: number;
+  cliente_nombre: string | null;
+  puesto_nombre: string | null;
+  fecha_incidente: string | null;
+  solicitada_por_username: string;
+  solicitada_por_rol: string;
+  estado: "pendiente" | "aprobada" | "rechazada";
+  respuesta_rrhh: string | null;
+  amonestacion_creada_id: number | null;
+  resuelta_por: string | null;
+  resuelta_at: string | null;
+  created_at: string;
 }
 interface SolicitudMod {
   id: number;
@@ -93,7 +130,8 @@ function fmtQ(n?: number | null) {
 export default function Amonestaciones() {
   const rol = getRol();
   const esRRHH = rol === "rrhh" || rol === "admin";
-  const [tab, setTab] = useState<"listado" | "bandeja">("listado");
+  const esSupervisor = rol === "supervisor" || rol === "operaciones";
+  const [tab, setTab] = useState<"listado" | "bandeja" | "solicitudes_creacion">("listado");
   const [showNueva, setShowNueva] = useState(false);
   const [detalleId, setDetalleId] = useState<number | null>(null);
 
@@ -168,6 +206,17 @@ export default function Amonestaciones() {
                 <Inbox className="w-4 h-4 inline mr-2" /> Solicitudes de modificación
               </button>
             )}
+            <button
+              onClick={() => setTab("solicitudes_creacion")}
+              className={`px-4 py-2 rounded-lg text-sm font-medium border transition ${
+                tab === "solicitudes_creacion"
+                  ? "bg-amber-500/20 border-amber-500/40 text-amber-200"
+                  : "bg-white/5 border-white/10 text-white/60 hover:text-white"
+              }`}
+            >
+              <Send className="w-4 h-4 inline mr-2" />
+              {esRRHH ? "Solicitudes de creación" : "Mis solicitudes a RRHH"}
+            </button>
           </div>
 
           <div className="flex gap-2">
@@ -182,7 +231,8 @@ export default function Amonestaciones() {
               onClick={() => setShowNueva(true)}
               className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-semibold rounded-lg text-sm flex items-center gap-2"
             >
-              <Plus className="w-4 h-4" /> Levantar amonestación
+              <Plus className="w-4 h-4" />
+              {esRRHH ? "Levantar amonestación" : "Enviar solicitud a RRHH"}
             </button>
           </div>
         </div>
@@ -220,6 +270,7 @@ export default function Amonestaciones() {
                 <option value="">Todos los tipos</option>
                 <option value="llamada_atencion">Llamada de atención</option>
                 <option value="economica">Económica</option>
+                <option value="acta_administrativa">Acta administrativa</option>
               </select>
               <select value={fAutorRol} onChange={e => setFAutorRol(e.target.value)}
                 className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white">
@@ -257,7 +308,7 @@ export default function Amonestaciones() {
                         <td className="px-3 py-2 text-white/70 whitespace-nowrap">{fmtFecha(a.fecha)}</td>
                         <td className="px-3 py-2 text-white">{a.empleado_nombre}</td>
                         <td className="px-3 py-2">
-                          <TipoBadge tipo={a.tipo} />
+                          <TipoBadge tipo={a.tipo} actaNumero={a.acta_numero} />
                         </td>
                         <td className="px-3 py-2 text-white/80">{a.motivo}</td>
                         <td className="px-3 py-2 text-right text-white tabular-nums">
@@ -281,10 +332,19 @@ export default function Amonestaciones() {
         )}
 
         {tab === "bandeja" && esRRHH && <BandejaSolicitudes onAbrirAmon={(id) => setDetalleId(id)} />}
+        {tab === "solicitudes_creacion" && (
+          <BandejaSolicitudesCreacion
+            esRRHH={esRRHH}
+            onAbrirAmon={(id) => setDetalleId(id)}
+            onActualizada={() => lista.refetch()}
+          />
+        )}
       </div>
 
       {showNueva && (
         <NuevaAmonestacionModal
+          esRRHH={esRRHH}
+          esSupervisor={esSupervisor}
           onClose={() => setShowNueva(false)}
           onCreada={() => { setShowNueva(false); lista.refetch(); }}
         />
@@ -311,7 +371,10 @@ function StatBox({ label, value, icon, color }: { label: string; value: number |
   );
 }
 
-function TipoBadge({ tipo }: { tipo: string }) {
+function TipoBadge({ tipo, actaNumero }: { tipo: string; actaNumero?: number | null }) {
+  if (tipo === "acta_administrativa") {
+    return <span className="px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/30 text-xs font-medium inline-flex items-center gap-1"><Gavel className="w-3 h-3" /> Acta Administrativa{actaNumero ? ` #${actaNumero}` : ""}</span>;
+  }
   if (tipo === "economica") {
     return <span className="px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-300 border border-orange-500/30 text-xs font-medium">Económica</span>;
   }
@@ -332,16 +395,23 @@ function EstadoBadge({ a }: { a: Amonestacion }) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-function NuevaAmonestacionModal({ onClose, onCreada }: { onClose: () => void; onCreada: () => void }) {
+function NuevaAmonestacionModal({ esRRHH, esSupervisor, onClose, onCreada }: {
+  esRRHH: boolean; esSupervisor: boolean; onClose: () => void; onCreada: () => void;
+}) {
   const [empBusq, setEmpBusq] = useState("");
   const [empSel, setEmpSel] = useState<Empleado | null>(null);
-  const [tipo, setTipo] = useState<"llamada_atencion" | "economica">("llamada_atencion");
+  const [tipo, setTipo] = useState<TipoAmon>("llamada_atencion");
   const [motivoSel, setMotivoSel] = useState<string>("");
   const [motivoLibre, setMotivoLibre] = useState<string>("");
   const [monto, setMonto] = useState<string>("");
   const [descripcion, setDescripcion] = useState("");
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
+  const [causalCodigo, setCausalCodigo] = useState<string>("");
+  const [aplicaDescuento, setAplicaDescuento] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Modo: RRHH levanta directo. Operaciones/Supervisor envían solicitud a RRHH.
+  const modoSolicitud = !esRRHH;
 
   const empleados = useQuery({
     queryKey: ["empleados-slim-amon"],
@@ -350,6 +420,11 @@ function NuevaAmonestacionModal({ onClose, onCreada }: { onClose: () => void; on
   const motivos = useQuery({
     queryKey: ["amon-motivos"],
     queryFn: () => api<Motivo[]>("/amonestaciones/motivos"),
+  });
+  const causales = useQuery({
+    queryKey: ["amon-causales-legales"],
+    queryFn: () => api<CausalLegal[]>("/amonestaciones/causales-legales"),
+    enabled: tipo === "acta_administrativa",
   });
 
   const filtrados = useMemo(() => {
@@ -369,24 +444,55 @@ function NuevaAmonestacionModal({ onClose, onCreada }: { onClose: () => void; on
       setMonto(String(motivoSugMonto));
     }
   }, [motivoSel, tipo, motivoSugMonto, monto]);
+  // Limpiar campos no aplicables al cambiar de tipo
+  useEffect(() => {
+    if (tipo !== "acta_administrativa") {
+      setCausalCodigo(""); setAplicaDescuento(false);
+    }
+    if (tipo === "llamada_atencion") setMonto("");
+  }, [tipo]);
+
+  const requiereMonto = tipo === "economica" || (tipo === "acta_administrativa" && aplicaDescuento);
 
   const crear = useMutation({
     mutationFn: async () => {
       if (!empSel) throw new Error("Selecciona un colaborador");
       const motivoFinal = motivoSel || motivoLibre.trim();
       if (!motivoFinal) throw new Error("Indica un motivo");
-      if (tipo === "economica" && (Number(monto) || 0) <= 0) {
-        throw new Error("El monto debe ser mayor a 0 para amonestación económica");
+      if (tipo === "acta_administrativa" && !causalCodigo) {
+        throw new Error("Selecciona una causal del Art. 77 para el acta");
+      }
+      if (requiereMonto && (Number(monto) || 0) <= 0) {
+        throw new Error("El monto debe ser mayor a 0");
+      }
+      const baseBody = {
+        employee_id: empSel.id,
+        motivo: motivoFinal,
+        descripcion: descripcion || null,
+        cliente_id: null, cliente_nombre: null,
+        puesto_id: null, puesto_nombre: null,
+      };
+      if (modoSolicitud) {
+        return api("/amonestaciones/solicitudes-creacion", {
+          method: "POST",
+          body: JSON.stringify({
+            ...baseBody,
+            tipo_solicitado: tipo,
+            causal_legal_codigo: tipo === "acta_administrativa" ? causalCodigo : null,
+            monto_sugerido: requiereMonto ? Number(monto) : 0,
+            fecha_incidente: fecha,
+          }),
+        });
       }
       return api("/amonestaciones", {
         method: "POST",
         body: JSON.stringify({
-          employee_id: empSel.id,
+          ...baseBody,
           tipo,
-          motivo: motivoFinal,
-          descripcion: descripcion || null,
-          monto: tipo === "economica" ? Number(monto) : 0,
+          monto: requiereMonto ? Number(monto) : 0,
           fecha,
+          causal_legal_codigo: tipo === "acta_administrativa" ? causalCodigo : null,
+          aplica_descuento: tipo === "acta_administrativa" ? aplicaDescuento : false,
         }),
       });
     },
@@ -394,12 +500,15 @@ function NuevaAmonestacionModal({ onClose, onCreada }: { onClose: () => void; on
     onError: (e: Error) => setError(e.message),
   });
 
+  const causalSel = causales.data?.find(c => c.codigo === causalCodigo);
+
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-[#0d1117] border border-white/10 rounded-2xl w-full max-w-2xl my-8">
         <div className="flex items-center justify-between p-4 border-b border-white/10">
           <h3 className="text-white font-semibold flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-amber-400" /> Levantar amonestación
+            <AlertTriangle className="w-5 h-5 text-amber-400" />
+            {modoSolicitud ? "Enviar solicitud a RRHH" : "Levantar amonestación"}
           </h3>
           <button onClick={onClose} className="text-white/40 hover:text-white"><X className="w-5 h-5" /></button>
         </div>
@@ -444,7 +553,7 @@ function NuevaAmonestacionModal({ onClose, onCreada }: { onClose: () => void; on
           {/* Tipo */}
           <div>
             <label className="text-xs text-white/50 font-medium">Tipo *</label>
-            <div className="grid grid-cols-2 gap-2 mt-1">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-1">
               <button onClick={() => setTipo("llamada_atencion")}
                 className={`p-3 rounded-lg border text-sm text-left transition ${
                   tipo === "llamada_atencion" ? "bg-blue-500/15 border-blue-500/40 text-blue-200" : "bg-white/5 border-white/10 text-white/60"
@@ -459,8 +568,49 @@ function NuevaAmonestacionModal({ onClose, onCreada }: { onClose: () => void; on
                 <div className="font-semibold">Económica</div>
                 <div className="text-xs opacity-70">Se descuenta en planilla</div>
               </button>
+              <button onClick={() => setTipo("acta_administrativa")}
+                className={`p-3 rounded-lg border text-sm text-left transition ${
+                  tipo === "acta_administrativa" ? "bg-purple-500/15 border-purple-500/40 text-purple-200" : "bg-white/5 border-white/10 text-white/60"
+                }`}>
+                <div className="font-semibold flex items-center gap-1"><Gavel className="w-3.5 h-3.5" /> Acta Administrativa</div>
+                <div className="text-xs opacity-70">Documento legal (Art. 77)</div>
+              </button>
             </div>
+            {modoSolicitud && (
+              <div className="text-xs text-amber-300/80 mt-2 bg-amber-500/5 border border-amber-500/20 rounded-lg p-2">
+                Como {esSupervisor ? "supervisor/operaciones" : "usuario"} no levantas la amonestación directamente: tu solicitud llegará a RRHH para revisión y aprobación.
+              </div>
+            )}
           </div>
+
+          {/* Causal legal — solo acta */}
+          {tipo === "acta_administrativa" && (
+            <div className="space-y-2">
+              <div>
+                <label className="text-xs text-purple-300 font-medium">Causal legal Art. 77 Código de Trabajo *</label>
+                <select value={causalCodigo} onChange={e => setCausalCodigo(e.target.value)}
+                  className="w-full mt-1 bg-black/30 border border-purple-500/30 rounded-lg px-3 py-2 text-sm text-white">
+                  <option value="">— Selecciona la causal aplicable —</option>
+                  {causales.data?.map(c => (
+                    <option key={c.codigo} value={c.codigo}>{c.inciso} {c.titulo}</option>
+                  ))}
+                </select>
+                {causalSel && (
+                  <div className="mt-2 text-xs text-purple-200/80 bg-purple-500/5 border border-purple-500/20 rounded-lg p-2">
+                    <div className="font-medium text-purple-300">{causalSel.articulo} — inciso {causalSel.inciso}</div>
+                    <div className="mt-1 leading-relaxed">{causalSel.descripcion}</div>
+                  </div>
+                )}
+              </div>
+              {!modoSolicitud && (
+                <label className="flex items-center gap-2 text-sm text-white/80 cursor-pointer">
+                  <input type="checkbox" checked={aplicaDescuento} onChange={e => setAplicaDescuento(e.target.checked)}
+                    className="rounded border-white/20 bg-black/30" />
+                  Aplicar también descuento económico vinculado al acta
+                </label>
+              )}
+            </div>
+          )}
 
           {/* Motivo */}
           <div>
@@ -481,10 +631,12 @@ function NuevaAmonestacionModal({ onClose, onCreada }: { onClose: () => void; on
             )}
           </div>
 
-          {/* Monto (solo económica) */}
-          {tipo === "economica" && (
+          {/* Monto (económica o acta+descuento) */}
+          {requiereMonto && (
             <div>
-              <label className="text-xs text-white/50 font-medium">Monto a descontar (Q) *</label>
+              <label className="text-xs text-white/50 font-medium">
+                {modoSolicitud ? "Monto sugerido (Q) *" : "Monto a descontar (Q) *"}
+              </label>
               <input type="number" min="0" step="0.01" value={monto} onChange={e => setMonto(e.target.value)}
                 className="w-full mt-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white" />
               <div className="text-xs text-white/30 mt-1">
@@ -523,6 +675,7 @@ function NuevaAmonestacionModal({ onClose, onCreada }: { onClose: () => void; on
             onClick={() => { setError(null); crear.mutate(); }}
             disabled={crear.isPending || !empSel}
             className="px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black font-semibold rounded-lg text-sm"
+            data-action="crear-o-solicitar"
           >
             {crear.isPending ? "Guardando…" : "Guardar amonestación"}
           </button>
@@ -547,6 +700,8 @@ function DetalleAmonestacionModal({
   const [editNotas, setEditNotas] = useState<string>("");
   const [showSolicitar, setShowSolicitar] = useState(false);
   const [showAnular, setShowAnular] = useState(false);
+  const [showFirmas, setShowFirmas] = useState(false);
+  const [descargandoPdf, setDescargandoPdf] = useState(false);
 
   useEffect(() => {
     if (detalle.data) {
@@ -606,12 +761,44 @@ function DetalleAmonestacionModal({
 
         <div className="p-4 space-y-4">
           <div className="flex items-center gap-2 flex-wrap">
-            <TipoBadge tipo={a.tipo} />
+            <TipoBadge tipo={a.tipo} actaNumero={a.acta_numero} />
             <EstadoBadge a={a} />
             {a.descontado && a.planilla_id && (
               <span className="text-xs text-emerald-300/70">Descontada en planilla #{a.planilla_id}</span>
             )}
+            {a.tipo === "acta_administrativa" && a.aplica_descuento && a.amon_economica_id && (
+              <span className="text-xs text-orange-300/80">+ descuento económico vinculado #{a.amon_economica_id}</span>
+            )}
+            {a.tipo === "acta_administrativa" && (
+              a.firmada_at ? (
+                <span className="text-xs text-emerald-300/80 inline-flex items-center gap-1"><Check className="w-3 h-3" /> Firmada</span>
+              ) : (
+                <span className="text-xs text-amber-300/80 inline-flex items-center gap-1"><PenLine className="w-3 h-3" /> Pendiente de firma</span>
+              )
+            )}
           </div>
+
+          {a.tipo === "acta_administrativa" && (
+            <div className="bg-purple-500/5 border border-purple-500/20 rounded-lg p-3 space-y-1">
+              <div>
+                <div className="text-xs text-purple-300/80 uppercase">Causal legal</div>
+                <div className="text-purple-100 text-sm font-medium">{a.causal_legal || "—"}</div>
+                <div className="text-purple-300/60 text-xs">{a.articulo_legal || "Art. 77 Código de Trabajo de Guatemala"}</div>
+              </div>
+              {(a.firma_colaborador || a.firma_levanta) && (
+                <div className="grid grid-cols-2 gap-2 pt-2 mt-2 border-t border-purple-500/20 text-xs">
+                  <div>
+                    <div className="text-purple-300/70">Firma colaborador</div>
+                    <div className="text-white">{a.firma_colaborador || "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-purple-300/70">Firma quien levanta</div>
+                    <div className="text-white">{a.firma_levanta || "—"}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3 text-sm">
             <Info label="Colaborador" value={a.empleado_nombre} />
@@ -708,6 +895,32 @@ function DetalleAmonestacionModal({
         </div>
 
         <div className="p-4 border-t border-white/10 flex justify-end gap-2 flex-wrap">
+          {a.tipo === "acta_administrativa" && (
+            <button
+              onClick={async () => {
+                try {
+                  setDescargandoPdf(true);
+                  const datos = await api<DatosActaPdf>(`/amonestaciones/${id}/datos-pdf`);
+                  const doc = generarActaPdf(datos);
+                  doc.save(`acta_administrativa_${a.acta_numero ?? a.id}_${a.empleado_nombre.replace(/\s+/g, "_")}.pdf`);
+                } catch (e) {
+                  alert("No se pudo generar el PDF: " + (e as Error).message);
+                } finally {
+                  setDescargandoPdf(false);
+                }
+              }}
+              disabled={descargandoPdf}
+              className="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-500/30 rounded-lg text-sm flex items-center gap-1 disabled:opacity-50"
+            >
+              <Download className="w-4 h-4" /> {descargandoPdf ? "Generando…" : "Descargar PDF"}
+            </button>
+          )}
+          {esRRHH && a.tipo === "acta_administrativa" && a.estado === "activa" && (
+            <button onClick={() => setShowFirmas(true)}
+              className="px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-500/30 rounded-lg text-sm flex items-center gap-1">
+              <PenLine className="w-4 h-4" /> {a.firmada_at ? "Editar firmas" : "Registrar firmas"}
+            </button>
+          )}
           {esRRHH && a.estado === "activa" && !editando && (
             <>
               <button onClick={() => setEditando(true)} className="px-3 py-2 bg-white/5 hover:bg-white/10 text-white/80 rounded-lg text-sm">
@@ -745,6 +958,248 @@ function DetalleAmonestacionModal({
           onClose={() => setShowSolicitar(false)}
           onEnviada={() => { setShowSolicitar(false); detalle.refetch(); }}
         />
+      )}
+      {showFirmas && (
+        <FirmasModal
+          amon={a}
+          onClose={() => setShowFirmas(false)}
+          onFirmada={() => {
+            setShowFirmas(false);
+            qc.invalidateQueries({ queryKey: ["amon-detalle", id] });
+            onActualizada();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+function FirmasModal({ amon, onClose, onFirmada }: {
+  amon: Amonestacion; onClose: () => void; onFirmada: () => void;
+}) {
+  const [firmaCol, setFirmaCol] = useState(amon.firma_colaborador || amon.empleado_nombre);
+  const [firmaLev, setFirmaLev] = useState(amon.firma_levanta || amon.creado_por_username || "");
+  const [error, setError] = useState<string | null>(null);
+
+  const guardar = useMutation({
+    mutationFn: async () => {
+      if (!firmaCol.trim() || !firmaLev.trim()) {
+        throw new Error("Ambas firmas son requeridas");
+      }
+      // Generar PDF firmado y descargarlo
+      const datos = await api<DatosActaPdf>(`/amonestaciones/${amon.id}/datos-pdf`);
+      const datosFirmados: DatosActaPdf = {
+        ...datos,
+        amonestacion: {
+          ...datos.amonestacion,
+          firma_colaborador: firmaCol.trim(),
+          firma_levanta: firmaLev.trim(),
+          firmada_at: new Date().toISOString(),
+        },
+      };
+      const doc = generarActaPdf(datosFirmados);
+      doc.save(`acta_administrativa_${amon.acta_numero ?? amon.id}_FIRMADA_${amon.empleado_nombre.replace(/\s+/g, "_")}.pdf`);
+      return api(`/amonestaciones/${amon.id}/firmar`, {
+        method: "POST",
+        body: JSON.stringify({
+          firma_colaborador: firmaCol.trim(),
+          firma_levanta: firmaLev.trim(),
+        }),
+      });
+    },
+    onSuccess: onFirmada,
+    onError: (e: Error) => setError(e.message),
+  });
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4">
+      <div className="bg-[#0d1117] border border-white/10 rounded-2xl w-full max-w-md p-4">
+        <h4 className="text-white font-semibold flex items-center gap-2">
+          <PenLine className="w-5 h-5 text-emerald-300" /> Registrar firmas del acta
+        </h4>
+        <p className="text-white/50 text-xs mt-1">
+          Confirma el nombre del colaborador firmante y de quien levanta. El PDF se descargará y queda registrado el momento de la firma.
+        </p>
+        <div className="space-y-3 mt-3">
+          <div>
+            <label className="text-xs text-white/50 font-medium">Nombre completo del colaborador *</label>
+            <input type="text" value={firmaCol} onChange={e => setFirmaCol(e.target.value)}
+              className="w-full mt-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white" />
+          </div>
+          <div>
+            <label className="text-xs text-white/50 font-medium">Nombre de quien levanta (RRHH/Supervisor) *</label>
+            <input type="text" value={firmaLev} onChange={e => setFirmaLev(e.target.value)}
+              className="w-full mt-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white" />
+          </div>
+          {error && <div className="text-red-400 text-sm">{error}</div>}
+        </div>
+        <div className="flex justify-end gap-2 mt-3">
+          <button onClick={onClose} className="px-3 py-2 bg-white/5 text-white/70 rounded-lg text-sm">Cancelar</button>
+          <button onClick={() => { setError(null); guardar.mutate(); }} disabled={guardar.isPending}
+            className="px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-semibold rounded-lg text-sm">
+            {guardar.isPending ? "Guardando…" : "Firmar y descargar PDF"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+function BandejaSolicitudesCreacion({ esRRHH, onAbrirAmon, onActualizada }: {
+  esRRHH: boolean; onAbrirAmon: (id: number) => void; onActualizada: () => void;
+}) {
+  const [estado, setEstado] = useState<"pendiente" | "todas">("pendiente");
+  const sols = useQuery({
+    queryKey: ["amon-sols-creacion", estado],
+    queryFn: () => api<SolicitudCrea[]>(`/amonestaciones/solicitudes-creacion?estado=${estado}`),
+  });
+  const qc = useQueryClient();
+  const [respuestas, setRespuestas] = useState<Record<number, string>>({});
+  const [montos, setMontos] = useState<Record<number, string>>({});
+  const [aplicaDescs, setAplicaDescs] = useState<Record<number, boolean>>({});
+
+  const resolver = useMutation({
+    mutationFn: ({ id, accion, body }: { id: number; accion: "aprobada" | "rechazada"; body: Record<string, unknown> }) =>
+      api(`/amonestaciones/solicitudes-creacion/${id}/resolver`, {
+        method: "POST",
+        body: JSON.stringify({ accion, ...body }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["amon-sols-creacion"] });
+      onActualizada();
+    },
+  });
+
+  const tipoLabel = (t: TipoAmon) =>
+    t === "acta_administrativa" ? "Acta Administrativa"
+    : t === "economica" ? "Económica"
+    : "Llamada de atención";
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <button onClick={() => setEstado("pendiente")}
+          className={`px-3 py-1.5 rounded-lg text-sm border ${estado === "pendiente" ? "bg-amber-500/20 border-amber-500/40 text-amber-200" : "bg-white/5 border-white/10 text-white/60"}`}>
+          Pendientes
+        </button>
+        <button onClick={() => setEstado("todas")}
+          className={`px-3 py-1.5 rounded-lg text-sm border ${estado === "todas" ? "bg-amber-500/20 border-amber-500/40 text-amber-200" : "bg-white/5 border-white/10 text-white/60"}`}>
+          Todas
+        </button>
+      </div>
+
+      {sols.isLoading ? (
+        <div className="text-white/40 text-sm">Cargando…</div>
+      ) : !sols.data?.length ? (
+        <div className="bg-white/5 border border-white/10 rounded-xl p-8 text-center text-white/40 text-sm">
+          No hay solicitudes {estado === "pendiente" ? "pendientes" : ""}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {sols.data.map(s => {
+            const monto = montos[s.id] ?? String(s.monto_sugerido || 0);
+            const aplica = aplicaDescs[s.id] ?? false;
+            return (
+              <div key={s.id} className="bg-white/5 border border-white/10 rounded-xl p-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <div className="text-white font-medium">{s.empleado_nombre}</div>
+                    <div className="text-xs text-white/40 flex items-center gap-2 mt-0.5 flex-wrap">
+                      <Calendar className="w-3 h-3" /> {fmtFecha(s.fecha_incidente)}
+                      <span>•</span>
+                      <TipoBadge tipo={s.tipo_solicitado} />
+                      {s.monto_sugerido > 0 && (<><span>•</span><span>Sugerido {fmtQ(s.monto_sugerido)}</span></>)}
+                    </div>
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    s.estado === "pendiente" ? "bg-amber-500/15 text-amber-300" :
+                    s.estado === "aprobada" ? "bg-emerald-500/15 text-emerald-300" :
+                    "bg-red-500/15 text-red-300"
+                  }`}>{s.estado}</span>
+                </div>
+
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                  <div className="bg-black/30 rounded-lg p-2">
+                    <div className="text-white/40 text-xs">Motivo</div>
+                    <div className="text-white">{s.motivo}</div>
+                    {s.descripcion && <div className="text-white/60 text-xs mt-1">{s.descripcion}</div>}
+                  </div>
+                  <div className="bg-black/30 rounded-lg p-2">
+                    <div className="text-white/40 text-xs">Solicitada por</div>
+                    <div className="text-white">{s.solicitada_por_username} <span className="text-white/40 text-xs">({s.solicitada_por_rol})</span></div>
+                    <div className="text-white/40 text-xs mt-1">{fmtFecha(s.created_at)}</div>
+                    {s.tipo_solicitado === "acta_administrativa" && s.causal_legal_codigo && (
+                      <div className="text-purple-300/80 text-xs mt-1">Causal: {s.causal_legal_codigo}</div>
+                    )}
+                  </div>
+                </div>
+
+                {s.estado === "pendiente" && esRRHH && (
+                  <div className="mt-3 space-y-2">
+                    {(s.tipo_solicitado === "economica" || s.tipo_solicitado === "acta_administrativa") && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs text-white/50">Monto a aplicar (Q)</label>
+                          <input type="number" min="0" step="0.01" value={monto}
+                            onChange={e => setMontos(m => ({ ...m, [s.id]: e.target.value }))}
+                            className="w-full mt-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white" />
+                        </div>
+                        {s.tipo_solicitado === "acta_administrativa" && (
+                          <label className="flex items-center gap-2 text-sm text-white/80 mt-5">
+                            <input type="checkbox" checked={aplica}
+                              onChange={e => setAplicaDescs(a => ({ ...a, [s.id]: e.target.checked }))} />
+                            Aplicar descuento económico vinculado
+                          </label>
+                        )}
+                      </div>
+                    )}
+                    <textarea
+                      value={respuestas[s.id] || ""}
+                      onChange={e => setRespuestas(r => ({ ...r, [s.id]: e.target.value }))}
+                      rows={2}
+                      placeholder="Respuesta al solicitante (opcional)"
+                      className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white resize-none"
+                    />
+                    <div className="flex gap-2 justify-end">
+                      <button onClick={() => resolver.mutate({
+                        id: s.id, accion: "rechazada",
+                        body: { respuesta: respuestas[s.id] || "" },
+                      })}
+                        className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 rounded-lg text-sm flex items-center gap-1">
+                        <X className="w-4 h-4" /> Rechazar
+                      </button>
+                      <button onClick={() => resolver.mutate({
+                        id: s.id, accion: "aprobada",
+                        body: {
+                          respuesta: respuestas[s.id] || "",
+                          monto: Number(monto) || 0,
+                          aplica_descuento: s.tipo_solicitado === "acta_administrativa" ? aplica : false,
+                        },
+                      })}
+                        className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-lg text-sm flex items-center gap-1">
+                        <Check className="w-4 h-4" /> Aprobar y crear
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {s.respuesta_rrhh && (
+                  <div className="mt-2 text-xs text-emerald-300/80">
+                    <b>RRHH ({s.resuelta_por}):</b> {s.respuesta_rrhh}
+                  </div>
+                )}
+                {s.amonestacion_creada_id && (
+                  <button onClick={() => onAbrirAmon(s.amonestacion_creada_id!)}
+                    className="mt-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white/80 rounded-lg text-xs">
+                    Abrir amonestación creada #{s.amonestacion_creada_id}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );

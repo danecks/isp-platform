@@ -5713,6 +5713,129 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: AMON-01 — error (no bloqueante)");
   }
 
+  // ── AMON-02: amonestaciones tipo 'acta_administrativa' + columnas extras ─────
+  try {
+    // Ampliar el CHECK constraint para aceptar 'acta_administrativa'
+    await pool.query(`
+      ALTER TABLE amonestaciones DROP CONSTRAINT IF EXISTS amonestaciones_tipo_check
+    `);
+    await pool.query(`
+      ALTER TABLE amonestaciones
+        ADD CONSTRAINT amonestaciones_tipo_check
+        CHECK (tipo IN ('llamada_atencion','economica','acta_administrativa'))
+    `);
+    // Columnas adicionales
+    await pool.query(`
+      ALTER TABLE amonestaciones
+        ADD COLUMN IF NOT EXISTS causal_legal       TEXT,
+        ADD COLUMN IF NOT EXISTS articulo_legal     TEXT,
+        ADD COLUMN IF NOT EXISTS acta_numero        INTEGER,
+        ADD COLUMN IF NOT EXISTS acta_pdf_url       TEXT,
+        ADD COLUMN IF NOT EXISTS aplica_descuento   BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS amon_economica_id  INTEGER,
+        ADD COLUMN IF NOT EXISTS firma_colaborador  TEXT,
+        ADD COLUMN IF NOT EXISTS firma_levanta      TEXT,
+        ADD COLUMN IF NOT EXISTS firmada_at         TIMESTAMP
+    `);
+    logger.info("Auto-migrate: AMON-02 amonestaciones ampliada (acta_administrativa + columnas) verificado/creado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: AMON-02 — error (no bloqueante)");
+  }
+
+  // ── AMON-03: catálogo de causales del Art. 77 Código de Trabajo Guatemala ────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS amonestacion_causales_legales (
+        id           SERIAL PRIMARY KEY,
+        codigo       TEXT UNIQUE NOT NULL,
+        inciso       TEXT NOT NULL,
+        articulo     TEXT NOT NULL DEFAULT 'Art. 77 Código de Trabajo de Guatemala',
+        titulo       TEXT NOT NULL,
+        descripcion  TEXT NOT NULL,
+        activo       BOOLEAN DEFAULT TRUE,
+        orden        INTEGER DEFAULT 0,
+        created_at   TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      INSERT INTO amonestacion_causales_legales (codigo, inciso, titulo, descripcion, orden) VALUES
+        ('art77_a','a)','Falta de probidad u honradez',
+         'Cuando el trabajador se conduzca durante sus labores en forma abiertamente inmoral o acuda a la injuria, a la calumnia o a las vías de hecho contra su patrono o los representantes de éste en la dirección de las labores.', 1),
+        ('art77_b','b)','Indisciplina o desobediencia',
+         'Cuando el trabajador cometa alguno de los actos enumerados en el inciso anterior contra algún compañero de trabajo, durante el tiempo que se ejecuten las labores, siempre que como consecuencia de ello se altere gravemente la disciplina o se interrumpan las labores.', 2),
+        ('art77_c','c)','Violencia o malos tratos en el trabajo',
+         'Cuando el trabajador, fuera del lugar donde se ejecutan las labores y en horas que no sean de trabajo, acuda a la injuria, a la calumnia o a las vías de hecho contra su patrono o contra los representantes de éste en la dirección de las labores, siempre que dichos actos no hayan sido provocados y que como consecuencia de ellos se haga imposible la convivencia y armonía para la realización del trabajo.', 3),
+        ('art77_d','d)','Daño material a bienes del patrono',
+         'Cuando el trabajador cause intencionalmente, por descuido o negligencia, daño material en las máquinas, herramientas, materias primas, productos y demás objetos relacionados, en forma inmediata o indudable con el trabajo.', 4),
+        ('art77_e','e)','Peligro grave o accidente por inobservancia de medidas',
+         'Cuando el trabajador ponga en grave peligro, por descuido o impericia inexcusable, la seguridad del lugar donde se realizan las labores o de las personas que allí se encuentren.', 5),
+        ('art77_f','f)','Acoso sexual / hostigamiento',
+         'Cuando el trabajador, fuera del lugar donde se ejecutan las labores y en horas que no sean de trabajo, incurra en hechos que de haberse realizado en el lugar de trabajo justificarían la terminación del contrato; o cuando hostigue sexualmente a sus compañeros o subordinados.', 6),
+        ('art77_g','g)','Revelar secretos de la empresa',
+         'Cuando el trabajador deje de asistir al trabajo sin permiso del patrono o sin causa justificada, durante dos días laborales completos y consecutivos, o durante seis medios días laborales en un mismo mes calendario.', 7),
+        ('art77_h','h)','Inasistencia injustificada (2 días consecutivos / 6 medios mes)',
+         'Cuando el trabajador deje de asistir al trabajo sin permiso del patrono o sin causa justificada, durante dos días laborales completos y consecutivos, o durante seis medios días laborales en un mismo mes calendario. La justificación de la inasistencia se debe hacer en el momento de reanudar sus labores, si no se hubiere hecho antes.', 8),
+        ('art77_i','i)','Negarse manifiesta y reiteradamente a adoptar medidas preventivas',
+         'Cuando el trabajador se niegue de manera manifiesta a adoptar las medidas preventivas o a seguir los procedimientos indicados para evitar accidentes o enfermedades; o cuando el trabajador se niegue en igual forma a acatar las normas o instrucciones que el patrono o sus representantes en la dirección de los trabajos le indiquen con claridad para obtener la mayor eficacia y rendimiento en las labores que se están ejecutando.', 9),
+        ('art77_j','j)','Embriaguez consuetudinaria o uso de drogas en el trabajo',
+         'Cuando infrinja cualquiera de las prohibiciones del artículo 64, o de las que se hayan pactado en el contrato, después de que el patrono lo aperciba una vez por escrito; salvo lo dispuesto en el inciso final, que es causa inmediata de despido (presentarse en estado de embriaguez o bajo influencia de drogas estupefacientes).', 10),
+        ('art77_k','k)','Cuando el trabajador, al celebrar el contrato, induzca en error al patrono',
+         'Cuando el trabajador, al celebrar el contrato, haya inducido en error al patrono pretendiendo tener cualidades, condiciones o conocimientos que evidentemente no posee, o presentándole referencias o atestados personales cuya falsedad éste compruebe luego, o ejecutando su trabajo en forma que demuestre claramente su incapacidad en la realización de las labores para las cuales fue contratado.', 11),
+        ('art77_l','l)','Sentencia condenatoria o pena privativa de libertad',
+         'Cuando el trabajador sufra prisión por sentencia ejecutoriada.', 12),
+        ('art77_otra','—','Otra causal (especificar)',
+         'Otra falta no contemplada en los incisos anteriores. Detallar la conducta y la justificación legal en la descripción del acta.', 99)
+      ON CONFLICT (codigo) DO UPDATE
+        SET titulo = EXCLUDED.titulo,
+            descripcion = EXCLUDED.descripcion,
+            inciso = EXCLUDED.inciso,
+            orden = EXCLUDED.orden
+    `);
+    logger.info("Auto-migrate: AMON-03 catálogo causales Art.77 (13 causales) verificado/creado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: AMON-03 — error (no bloqueante)");
+  }
+
+  // ── AMON-04: solicitudes de creación (supervisor → RRHH) ─────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS amonestacion_solicitudes_creacion (
+        id                       SERIAL PRIMARY KEY,
+        employee_id              INTEGER NOT NULL,
+        empleado_nombre          TEXT NOT NULL,
+        tipo_solicitado          TEXT NOT NULL CHECK (tipo_solicitado IN ('llamada_atencion','economica','acta_administrativa')),
+        motivo                   TEXT NOT NULL,
+        descripcion              TEXT,
+        causal_legal_codigo      TEXT,
+        monto_sugerido           NUMERIC(12,2) DEFAULT 0,
+        evidencia_url            TEXT,
+        cliente_id               INTEGER,
+        cliente_nombre           TEXT,
+        puesto_id                INTEGER,
+        puesto_nombre            TEXT,
+        fecha_incidente          DATE,
+        solicitada_por_user_id   INTEGER,
+        solicitada_por_username  TEXT,
+        solicitada_por_rol       TEXT,
+        estado                   TEXT DEFAULT 'pendiente' CHECK (estado IN ('pendiente','aprobada','rechazada')),
+        respuesta_rrhh           TEXT,
+        amonestacion_creada_id   INTEGER,
+        resuelta_por             TEXT,
+        resuelta_at              TIMESTAMP,
+        created_at               TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_amon_sol_crea_estado ON amonestacion_solicitudes_creacion(estado);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_amon_sol_crea_solicitante ON amonestacion_solicitudes_creacion(solicitada_por_username);
+    `);
+    logger.info("Auto-migrate: AMON-04 amonestacion_solicitudes_creacion (supervisor→RRHH) verificado/creado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: AMON-04 — error (no bloqueante)");
+  }
+
   // ── WIPE-PROD-01: limpieza total de producción (solo cuando bandera activa) ──
   // Activar con:  INSERT INTO system_config (key, value) VALUES ('wipe_prod_requested', 'true')
   //               ON CONFLICT (key) DO UPDATE SET value = 'true';
