@@ -7,22 +7,10 @@ import {
   MapPin, Clock, RefreshCw, Activity, CheckCircle2, User, Building2,
   Loader2, AlertTriangle, Calendar,
 } from "lucide-react";
-
-// Fecha en zona horaria GT con offset en días (0 = hoy, -1 = ayer). Devuelve YYYY-MM-DD.
-function dateGT(offsetDays = 0): string {
-  const now = new Date();
-  now.setUTCDate(now.getUTCDate() + offsetDays);
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Guatemala", year: "numeric", month: "2-digit", day: "2-digit",
-  }).format(now);
-}
-
-function fmtFechaLarga(yyyymmdd: string): string {
-  const [y, m, d] = yyyymmdd.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("es-GT", {
-    weekday: "long", day: "numeric", month: "long", year: "numeric",
-  });
-}
+import {
+  dateGT, fmtFechaLarga, fmtHora, fmtDuracion, distanciaTotalKm,
+  type PuntoGPS,
+} from "@/shared/operaciones";
 
 const iconoInicio = L.divIcon({
   className: "",
@@ -56,16 +44,6 @@ interface RecorridoListItem {
   ultimo_ping: string | null;
 }
 
-interface PuntoGPS {
-  lat: number;
-  lng: number;
-  precision_metros: number | null;
-  velocidad_mps: number | null;
-  rumbo_grados: number | null;
-  bateria_pct: number | null;
-  capturado_en: string;
-}
-
 interface RecorridoDetalle {
   turno: {
     id: number;
@@ -90,35 +68,6 @@ function FitBounds({ puntos }: { puntos: PuntoGPS[] }) {
     map.fitBounds(bounds, { padding: [40, 40] });
   }, [puntos, map]);
   return null;
-}
-
-function fmtHora(iso: string): string {
-  return new Date(iso).toLocaleTimeString("es-GT", {
-    hour: "2-digit", minute: "2-digit", timeZone: "America/Guatemala",
-  });
-}
-function fmtDuracion(desde: string, hasta: string | null): string {
-  const ini = new Date(desde).getTime();
-  const fin = hasta ? new Date(hasta).getTime() : Date.now();
-  const min = Math.max(0, Math.floor((fin - ini) / 60000));
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
-function distanciaTotalKm(puntos: PuntoGPS[]): number {
-  if (puntos.length < 2) return 0;
-  const R = 6371;
-  let km = 0;
-  for (let i = 1; i < puntos.length; i++) {
-    const a = puntos[i - 1], b = puntos[i];
-    const dLat = ((b.lat - a.lat) * Math.PI) / 180;
-    const dLng = ((b.lng - a.lng) * Math.PI) / 180;
-    const lat1 = (a.lat * Math.PI) / 180;
-    const lat2 = (b.lat * Math.PI) / 180;
-    const x = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-    km += 2 * R * Math.asin(Math.sqrt(x));
-  }
-  return km;
 }
 
 export default function PortalRecorridos() {

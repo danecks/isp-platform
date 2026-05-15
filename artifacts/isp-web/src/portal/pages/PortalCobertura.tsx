@@ -5,22 +5,7 @@ import {
   Shield, ShieldCheck, ShieldAlert, MapPin, Clock, User, Sun, Moon,
   CheckCircle2, AlertCircle, Building2, Activity,
 } from "lucide-react";
-
-interface Puesto {
-  puesto_id: number;
-  puesto_nombre: string;
-  turno: string | null;
-  jornada: string | null;
-  horario: string | null;
-  estado: string | null;
-  sede_nombre: string | null;
-  sede_direccion: string | null;
-  zona_nombre: string | null;
-  titular_nombre: string | null;
-  titular_area: string | null;
-  en_servicio_nombre?: string | null;
-  en_servicio_desde?: string | null;
-}
+import type { PuestoCobertura as Puesto } from "@/shared/operaciones";
 
 interface CoberturaData {
   puestos: Puesto[];

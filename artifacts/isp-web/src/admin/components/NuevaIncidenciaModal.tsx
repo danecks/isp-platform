@@ -5,31 +5,7 @@ import { incidentsApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { X, AlertTriangle, Loader2, Siren } from "lucide-react";
 import { ResponsableSelector } from "./ResponsableSelector";
-
-const TIPOS_INCIDENCIA = [
-  "Intrusión detectada",
-  "Robo / Intento de robo",
-  "Vandalismo",
-  "Alerta médica",
-  "Incendio / Emergencia",
-  "Comportamiento sospechoso",
-  "Falla en sistema de acceso",
-  "Accidente de tránsito",
-  "Conflicto entre personas",
-  "Pérdida de material",
-  "Otro",
-];
-
-const TIPOS_EMERGENCIA = [
-  "Emergencia — Robo / Asalto",
-  "Emergencia — Intrusión no autorizada",
-  "Emergencia — Incidente armado",
-  "Emergencia — Emergencia médica",
-  "Emergencia — Incendio",
-  "Emergencia — Evacuación",
-  "Emergencia — Disturbio / Altercado",
-  "Emergencia — Otro",
-];
+import { TIPOS_INCIDENCIA_ADMIN as TIPOS_INCIDENCIA, TIPOS_EMERGENCIA } from "@/shared/operaciones";
 
 interface FormState {
   cliente: string;

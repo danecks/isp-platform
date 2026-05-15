@@ -6,6 +6,10 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 import { getSessionToken } from "@/lib/httpClient";
+import {
+  fechaGT, inicioDeMesGT, hoyGT, fmtFechaHora, fmtDuracion, pctChange,
+  MESES,
+} from "@/shared/operaciones";
 
 interface Visita {
   id: number;
@@ -45,11 +49,6 @@ interface EstadisticasResp {
   top_puestos: Array<{ puesto_id: number; puesto_nombre: string; cliente_nombre: string; total: number; personas: number; vehiculos: number }>;
 }
 
-const MESES = [
-  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
-];
-
 function getSessionRaw() {
   return getSessionToken();
 }
@@ -76,41 +75,6 @@ async function apiFetch<T>(path: string): Promise<T> {
     throw new Error(e.error ?? `Error ${res.status}`);
   }
   return res.json() as Promise<T>;
-}
-
-function fechaGT(): { anio: number; mes: number } {
-  const ahora = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Guatemala" }));
-  return { anio: ahora.getFullYear(), mes: ahora.getMonth() + 1 };
-}
-
-function inicioDeMesGT(): string {
-  const { anio, mes } = fechaGT();
-  return `${anio}-${String(mes).padStart(2, "0")}-01`;
-}
-
-function hoyGT(): string {
-  const ahora = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Guatemala" }));
-  const y = ahora.getFullYear();
-  const m = String(ahora.getMonth() + 1).padStart(2, "0");
-  const d = String(ahora.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function fmtFechaHora(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("es-GT", {
-    day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
-    timeZone: "America/Guatemala",
-  });
-}
-
-function fmtDuracion(entrada: string, salida: string | null): string {
-  const e = new Date(entrada).getTime();
-  const s = (salida ? new Date(salida).getTime() : Date.now());
-  const min = Math.max(0, Math.floor((s - e) / 60000));
-  if (min < 60) return `${min} min`;
-  const h = Math.floor(min / 60); const r = min % 60;
-  return `${h}h ${r}min`;
 }
 
 export function VisitasContent({ embedded = false }: { embedded?: boolean } = {}) {
@@ -266,13 +230,6 @@ export function VisitasContent({ embedded = false }: { embedded?: boolean } = {}
     a.href = url; a.download = `visitas-${hoyGT()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }
-
-  // KPIs comparación
-  function pctChange(act: number, ant: number): { val: number; up: boolean } {
-    if (ant === 0) return { val: act > 0 ? 100 : 0, up: act >= 0 };
-    const v = ((act - ant) / ant) * 100;
-    return { val: Math.round(v), up: v >= 0 };
   }
 
   const personasAdentro = useMemo(() => visitas.filter(v => v.tipo === "persona"), [visitas]);

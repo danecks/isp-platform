@@ -3,6 +3,7 @@ import {
   ArrowLeft, Camera, UserCheck, Car, Loader2, CheckCircle2, XCircle,
   Search, Clock, AlertTriangle, RefreshCw, Trash2, X,
 } from "lucide-react";
+import { fmtHora, fmtDuracion as fmtDuracionShared } from "@/shared/operaciones";
 
 const API = "/api";
 const DEVICE_KEY = "isp_device";
@@ -35,15 +36,10 @@ function leerDeviceCreds(): DeviceCreds | null {
   } catch { return null; }
 }
 
-function fmtHora(iso: string): string {
-  return new Date(iso).toLocaleTimeString("es-GT", {
-    hour: "2-digit", minute: "2-digit", timeZone: "America/Guatemala",
-  });
-}
+// Wrapper para preservar la firma `fmtDuracion(iso)` que usaban las llamadas
+// previas en este archivo: la versión compartida acepta (entrada, salida|null).
 function fmtDuracion(iso: string): string {
-  const min = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
-  if (min < 60) return `${min} min`;
-  return `${Math.floor(min/60)}h ${min%60}min`;
+  return fmtDuracionShared(iso, null);
 }
 
 type Vista = "menu" | "elegir_tipo" | "entrada_persona" | "entrada_vehiculo" | "salida_lista";

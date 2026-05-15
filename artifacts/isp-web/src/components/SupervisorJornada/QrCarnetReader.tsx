@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { QrCode } from "lucide-react";
+import { parseQrToken } from "@/shared/operaciones/qrToken";
 
 // Lector QR de carnet unificado para todo el flujo del supervisor móvil:
 //   - Login del supervisor (AgenteSupervision: escanea su propio carnet)
@@ -57,11 +58,9 @@ export function QrCarnetReader({
         (decoded) => {
           if (consumidoRef.current) return;
           consumidoRef.current = true;
-          let token = decoded.trim();
           // Acepta URLs del tipo https://…/agente/scan/<token> y devuelve
           // sólo el token. El backend valida el token, no la URL.
-          const m = token.match(/\/agente\/scan\/([^/?#]+)/);
-          if (m) token = m[1];
+          const token = parseQrToken(decoded);
           // Detenemos en background; no bloqueamos al consumidor del token.
           void stopScan();
           onToken(token);

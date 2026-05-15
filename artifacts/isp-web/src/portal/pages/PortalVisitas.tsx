@@ -5,25 +5,12 @@ import {
   UserCheck, Car, Search, Download, RefreshCw, BarChart3,
   TrendingUp, TrendingDown, Calendar, Filter, ArrowUpRight,
 } from "lucide-react";
+import {
+  fechaGT, inicioDeMesGT, hoyGT, fmtFechaHora, fmtDuracion, pctChange,
+  MESES, type VisitaCore,
+} from "@/shared/operaciones";
 
-interface Visita {
-  id: number;
-  tipo: "persona" | "vehiculo";
-  puesto_id: number;
-  puesto_nombre: string | null;
-  dpi_numero: string | null;
-  nombre_completo: string | null;
-  placa: string | null;
-  marca_vehiculo: string | null;
-  color_vehiculo: string | null;
-  conductor_nombre: string | null;
-  motivo: string | null;
-  a_quien_visita: string | null;
-  entrada_at: string;
-  entrada_employee_nombre: string | null;
-  salida_at: string | null;
-  salida_employee_nombre: string | null;
-}
+type Visita = VisitaCore;
 
 interface EstadisticasResp {
   anio: number;
@@ -32,32 +19,6 @@ interface EstadisticasResp {
   kpis_mes_anterior: { personas_mes: number; vehiculos_mes: number; total_mes: number };
   por_dia: Array<{ dia: number; personas: number | string; vehiculos: number | string }>;
   top_puestos: Array<{ puesto_id: number; puesto_nombre: string; total: number; personas: number; vehiculos: number }>;
-}
-
-const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-
-function fechaGT() {
-  const a = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Guatemala" }));
-  return { anio: a.getFullYear(), mes: a.getMonth() + 1 };
-}
-function inicioDeMesGT() {
-  const { anio, mes } = fechaGT();
-  return `${anio}-${String(mes).padStart(2,"0")}-01`;
-}
-function hoyGT() {
-  const a = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Guatemala" }));
-  return `${a.getFullYear()}-${String(a.getMonth()+1).padStart(2,"0")}-${String(a.getDate()).padStart(2,"0")}`;
-}
-function fmtFechaHora(iso: string | null) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("es-GT", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit", timeZone:"America/Guatemala" });
-}
-function fmtDuracion(entrada: string, salida: string | null) {
-  const e = new Date(entrada).getTime();
-  const s = salida ? new Date(salida).getTime() : Date.now();
-  const min = Math.max(0, Math.floor((s - e) / 60000));
-  if (min < 60) return `${min} min`;
-  return `${Math.floor(min/60)}h ${min%60}min`;
 }
 
 export default function PortalVisitas() {
@@ -124,12 +85,6 @@ export default function PortalVisitas() {
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
-
-  function pctChange(act: number, ant: number) {
-    if (ant === 0) return { val: act > 0 ? 100 : 0, up: act >= 0 };
-    const v = ((act - ant) / ant) * 100;
-    return { val: Math.round(v), up: v >= 0 };
-  }
 
   function exportarCSV() {
     const cols = ["Tipo","Puesto","Visitante","DPI","Placa","Marca","A quién visita","Motivo","Entrada","Salida","Tiempo"];

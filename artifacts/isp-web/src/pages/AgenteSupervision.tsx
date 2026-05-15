@@ -7,7 +7,9 @@ import {
 import { useSupervisorJornada } from "../components/SupervisorJornada/useSupervisorJornada";
 import { ModalInspeccion } from "../components/SupervisorJornada/ModalInspeccion";
 import { ModalVisitaPuesto } from "../components/SupervisorJornada/ModalVisitaPuesto";
-import { QrCarnetReader } from "../components/SupervisorJornada/QrCarnetReader";
+// QrCarnetReader vive en components/SupervisorJornada pero se re-exporta desde
+// la librería compartida para que el resto del producto use el mismo lector.
+import { QrCarnetReader, fmtHora } from "@/shared/operaciones";
 
 const API = "/api";
 const DEVICE_KEY = "isp_device";          // mismo key que AgenteInicio / SupervisorActivar
@@ -366,9 +368,7 @@ export default function AgenteSupervision() {
   };
 
   const sesion = jornada.sesion;
-  const horaInicio = sesion ? new Date(sesion.hora_inicio_real).toLocaleTimeString("es-GT", {
-    hour: "2-digit", minute: "2-digit",
-  }) : null;
+  const horaInicio = sesion ? fmtHora(sesion.hora_inicio_real) : null;
 
   return (
     <div className="min-h-screen bg-[#060e1c] text-white">
@@ -415,7 +415,7 @@ export default function AgenteSupervision() {
               {jornada.gpsStatus.error
                 ? jornada.gpsStatus.error
                 : jornada.gpsStatus.ultimo_envio_at
-                ? `GPS ok · ${jornada.gpsStatus.enviados} envíos · último ${new Date(jornada.gpsStatus.ultimo_envio_at).toLocaleTimeString("es-GT",{hour:"2-digit",minute:"2-digit"})}`
+                ? `GPS ok · ${jornada.gpsStatus.enviados} envíos · último ${fmtHora(jornada.gpsStatus.ultimo_envio_at)}`
                 : "Esperando primera lectura GPS…"}
             </span>
           </div>

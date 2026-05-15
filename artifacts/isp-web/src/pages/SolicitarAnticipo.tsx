@@ -8,6 +8,15 @@
  *  2 → Ingresar monto deseado
  *  3 → Confirmación y envío
  *  4 → Éxito
+ *
+ * Integración con AdminAnticipos (artifacts/isp-web/src/admin/pages/Anticipos.tsx):
+ *  - Este kiosco hace POST a `${API}/anticipos` (mismo endpoint que `anticiposApi.create`).
+ *  - El registro queda en la cola de admin con estado=`pendiente` y aparece en la
+ *    pestaña "Pendientes" de AdminAnticipos para aprobación / rechazo.
+ *  - El cálculo de límite se basa en `${API}/anticipos/config` y
+ *    `${API}/anticipos/limite/:empleadoId?periodo=...`, que admin también consume,
+ *    por lo que cualquier cambio de regla en AdminAnticipos se refleja acá sin
+ *    duplicación de lógica.
  */
 import { useState, useRef, useCallback, useEffect } from "react";
 import type React from "react";

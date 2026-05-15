@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import jsQR from "jsqr";
+import { parseQrToken, fmtHora } from "@/shared/operaciones";
 import {
   CheckCircle, XCircle, Loader2, MapPin, AlertTriangle,
   QrCode, ShieldAlert, RotateCcw, Smartphone, Users, Clock,
@@ -334,11 +335,10 @@ export default function AgenteInicio() {
       const handleDecoded = (raw: string) => {
         if (yaDecodificado) return;
         yaDecodificado = true;
-        let token = raw.trim();
-        try {
-          const u = new URL(token);
-          token = u.searchParams.get("token") || u.pathname.split("/").pop() || token;
-        } catch { /* token directo */ }
+        // parseQrToken centraliza el reconocimiento del token cuando viene
+        // como URL completa /agente/scan/<token>. Si no lo es, devuelve la
+        // cadena ya recortada — comportamiento equivalente al try/URL anterior.
+        const token = parseQrToken(raw);
         setCarnetToken(token);
         void detenerScanner();
         // Despacho: si hay un handler custom (agregar agente, cerrar verificado),
@@ -1548,9 +1548,7 @@ export default function AgenteInicio() {
                               <CheckCircle className="w-3.5 h-3.5" /> Iniciado
                             </div>
                             <div className="text-[10px] text-slate-500">
-                              {new Date(a.inicio_turno_hoy.registrado_en).toLocaleTimeString("es-GT", {
-                                hour: "2-digit", minute: "2-digit", timeZone: "America/Guatemala",
-                              })}
+                              {fmtHora(a.inicio_turno_hoy.registrado_en)}
                             </div>
                           </div>
                         ) : (
@@ -1747,9 +1745,7 @@ export default function AgenteInicio() {
                 <div>
                   <div className="text-slate-500 uppercase tracking-wide text-[10px]">Inicio</div>
                   <div className="text-slate-200">
-                    {new Date(turnoActivo.iniciado_en).toLocaleTimeString("es-GT", {
-                      hour: "2-digit", minute: "2-digit", timeZone: "America/Guatemala",
-                    })}
+                    {fmtHora(turnoActivo.iniciado_en)}
                   </div>
                 </div>
                 <div>
@@ -1863,9 +1859,7 @@ export default function AgenteInicio() {
               </div>
               <h2 className="text-xl font-bold mt-3 text-emerald-300">En servicio</h2>
               <p className="text-xs text-slate-400 mt-1">
-                Desde {new Date(turnoActivo.iniciado_en).toLocaleTimeString("es-GT", {
-                  timeZone: "America/Guatemala", hour: "2-digit", minute: "2-digit",
-                })}
+                Desde {fmtHora(turnoActivo.iniciado_en)}
               </p>
             </div>
 
@@ -1957,9 +1951,7 @@ export default function AgenteInicio() {
                               </div>
                               <div className="text-[11px] text-slate-400 flex items-center gap-1 flex-shrink-0">
                                 <Clock className="w-3 h-3" />
-                                {new Date(a.iniciado_en).toLocaleTimeString("es-GT", {
-                                  timeZone: "America/Guatemala", hour: "2-digit", minute: "2-digit",
-                                })}
+                                {fmtHora(a.iniciado_en)}
                               </div>
                             </div>
                           ))}
@@ -2064,9 +2056,7 @@ export default function AgenteInicio() {
                               <div className="text-xs text-slate-400 truncate">{a.cargo}</div>
                             )}
                             <div className="text-[11px] text-slate-500 mt-0.5">
-                              Desde {new Date(a.iniciado_en).toLocaleTimeString("es-GT", {
-                                timeZone: "America/Guatemala", hour: "2-digit", minute: "2-digit",
-                              })}
+                              Desde {fmtHora(a.iniciado_en)}
                             </div>
                           </div>
                           <LogOut className="w-5 h-5 text-rose-400 flex-shrink-0 ml-2" />
@@ -2304,9 +2294,7 @@ export default function AgenteInicio() {
                                     {p.a_quien_visita && <span> · visita {p.a_quien_visita}</span>}
                                   </div>
                                   <div className="text-[10px] text-slate-500">
-                                    Entró {new Date(p.entrada_at).toLocaleTimeString("es-GT", {
-                                      timeZone: "America/Guatemala", hour: "2-digit", minute: "2-digit",
-                                    })}
+                                    Entró {fmtHora(p.entrada_at)}
                                   </div>
                                 </div>
                                 <button
@@ -2348,9 +2336,7 @@ export default function AgenteInicio() {
                                     {v.a_quien_visita && <span> · visita {v.a_quien_visita}</span>}
                                   </div>
                                   <div className="text-[10px] text-slate-500">
-                                    Entró {new Date(v.entrada_at).toLocaleTimeString("es-GT", {
-                                      timeZone: "America/Guatemala", hour: "2-digit", minute: "2-digit",
-                                    })}
+                                    Entró {fmtHora(v.entrada_at)}
                                   </div>
                                 </div>
                                 <button
@@ -2438,9 +2424,7 @@ export default function AgenteInicio() {
                                   </div>
                                   {p.escaneado_hoy && p.ultimo_escaneo && (
                                     <div className="text-[10px] text-slate-500">
-                                      {new Date(p.ultimo_escaneo).toLocaleTimeString("es-GT", {
-                                        timeZone: "America/Guatemala", hour: "2-digit", minute: "2-digit",
-                                      })}
+                                      {fmtHora(p.ultimo_escaneo)}
                                       {p.ultimo_distancia_metros != null && ` · ${p.ultimo_distancia_metros} m`}
                                     </div>
                                   )}

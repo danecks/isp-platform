@@ -3,20 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PortalLayout } from "@/portal/layout/PortalLayout";
 import { portalGet, portalPost } from "@/lib/portalApi";
 import { AlertTriangle, Filter, Search, Plus, X, Loader2 } from "lucide-react";
-
-const TIPOS_INCIDENCIA = [
-  "Robo / Hurto",
-  "Intrusión / Acceso no autorizado",
-  "Vandalismo",
-  "Daño a propiedad",
-  "Persona sospechosa",
-  "Vehículo sospechoso",
-  "Falla de equipo / sistema",
-  "Falla de servicio del agente",
-  "Emergencia médica",
-  "Incendio / amago de incendio",
-  "Otro",
-];
+import { TIPOS_INCIDENCIA, fmtFechaHora } from "@/shared/operaciones";
 
 interface Incident {
   id: string;
@@ -47,12 +34,6 @@ const ESTADO_LABEL: Record<string, string> = {
   en_proceso: "En Proceso",
   cerrada: "Cerrada",
 };
-
-function formatFecha(str: string) {
-  return new Date(str).toLocaleDateString("es-GT", {
-    day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
-  });
-}
 
 export default function PortalIncidencias() {
   const [filtroEstado, setFiltroEstado] = useState("");
@@ -184,7 +165,7 @@ export default function PortalIncidencias() {
                     {ESTADO_LABEL[inc.estado] ?? inc.estado}
                   </span>
                   <span className="text-[10px] text-white/30 whitespace-nowrap">
-                    {formatFecha(inc.fecha)}
+                    {fmtFechaHora(inc.fecha)}
                   </span>
                 </div>
               </div>
