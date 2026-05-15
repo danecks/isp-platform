@@ -20,7 +20,9 @@ export function fmtHora(iso: string) {
   });
 }
 
-const getSession = () => getSessionToken();
+export const API_BASE = "/api";
+
+export const getSession = () => getSessionToken();
 
 export async function apiPost(url: string, body: object) {
   const r = await fetch(url, {
@@ -96,4 +98,66 @@ export function fmt2(n: number) {
 export function minToHM(min: number): string {
   const m = ((min % 1440) + 1440) % 1440;
   return `${fmt2(m / 60)}:${fmt2(m % 60)}`;
+}
+
+// ─── Helpers de turno/timeline ────────────────────────────────────────────────
+
+export function turnoBounds(
+  turno: string,
+  horaEntrada?: string | null,
+  horaSalida?: string | null,
+): { inicioMin: number; finMin: number; totalMin: number } {
+  if (horaEntrada && horaSalida) {
+    const i = parseHM(horaEntrada);
+    let f = parseHM(horaSalida);
+    if (f <= i) f += 1440;
+    return { inicioMin: i, finMin: f, totalMin: f - i };
+  }
+  const esNoche = (turno ?? "").toLowerCase() === "noche";
+  return esNoche
+    ? { inicioMin: 18 * 60, finMin: 30 * 60, totalMin: 12 * 60 }
+    : { inicioMin: 6 * 60, finMin: 18 * 60, totalMin: 12 * 60 };
+}
+
+// Devuelve el lunes más cercano hacia atrás (o la fecha actual si ya es lunes).
+// Garantiza que D1=Lun, D2=Mar, ... D7=Dom en el ciclo.
+export function lastMondayDate(fromDate?: string | null): string {
+  const dateStr = fromDate ? String(fromDate).slice(0, 10) : null;
+  const d = dateStr ? new Date(dateStr + "T12:00:00") : new Date();
+  const day = d.getDay();
+  const diff = day === 0 ? 6 : day - 1;
+  d.setDate(d.getDate() - diff);
+  return d.toISOString().slice(0, 10);
+}
+
+export const DIAS_SEM_OP = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+
+// Construye las "semanas" del ciclo según longitud_ciclo (7/14/21/28).
+export function semanasCiclo(longitudCiclo: number): Array<Array<{ n: number; label: string }>> {
+  const lc = [7, 14, 21, 28].includes(longitudCiclo) ? longitudCiclo : 14;
+  const total = lc;
+  const dias = Array.from({ length: total }, (_, i) => ({ n: i + 1, label: DIAS_SEM_OP[i % 7] }));
+  const numSem = Math.ceil(total / 7);
+  return Array.from({ length: numSem }, (_, si) => dias.slice(si * 7, (si + 1) * 7));
+}
+
+// Hora de entrada efectiva para una semana del ciclo (0-indexed).
+export function horaSemanaSlot(
+  slot: { hora_entrada_por_semana: string[] | null; hora_entrada: string },
+  semanaIdx: number,
+): string {
+  const hps = slot.hora_entrada_por_semana;
+  if (Array.isArray(hps) && hps[semanaIdx]) return hps[semanaIdx];
+  return slot.hora_entrada || "07:00";
+}
+
+// Devuelve YYYY-MM-DD en zona horaria de Guatemala (America/Guatemala, UTC-6).
+export function toISODate(d: Date): string {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Guatemala",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return fmt.format(d);
 }

@@ -478,4 +478,213 @@ export interface EmpleadoBusqueda {
   area: string | null;
   estadoLaboral?: string | null;
 }
+
+// ─── Selector Agrupado por Estado Operativo ──────────────────────────────────
+
+export type GrupoEstado = "disponible" | "descansando" | "en_puesto" | "en_ssa" | "ausente";
+
+export interface AgenteAgrupado {
+  id: number;
+  nombre: string;
+  grupo: GrupoEstado;
+  detalle: string | null;
+}
+
+export const GRUPO_CONFIG: Record<GrupoEstado, {
+  label: string;
+  color: string;
+  dot: string;
+  badge: string | null;
+  seleccionable: boolean;
+  advertencia: string | null;
+}> = {
+  disponible:  { label: "Disponibles",  color: "text-green-400",       dot: "bg-green-500",    badge: null,  seleccionable: true,  advertencia: null },
+  descansando: { label: "Descansando",  color: "text-blue-400",        dot: "bg-blue-400",     badge: "HE",  seleccionable: true,  advertencia: "Este agente está en período de descanso. Se asignará como horas extra." },
+  en_puesto:   { label: "En puesto",    color: "text-teal-400",        dot: "bg-teal-400",     badge: null,  seleccionable: true,  advertencia: "Este agente ya está cubriendo un puesto activo. ¿Confirmar doble asignación?" },
+  en_ssa:      { label: "En SSA",       color: "text-amber-400",       dot: "bg-amber-400",    badge: null,  seleccionable: true,  advertencia: "Este agente ya está asignado a otro servicio especial. ¿Confirmar igualmente?" },
+  ausente:     { label: "Ausentes",     color: "text-red-400/60",      dot: "bg-red-400/50",   badge: null,  seleccionable: false, advertencia: null },
+};
+
+export function normalizarPoolActual(p: Pool): AgenteAgrupado[] {
+  const r: AgenteAgrupado[] = [];
+  for (const a of (p.disponibles ?? []))              r.push({ id: a.id, nombre: a.nombre_completo, grupo: "disponible",  detalle: null });
+  for (const a of (p.disponiblesCubriendo ?? []))     r.push({ id: a.id, nombre: a.nombre_completo, grupo: "disponible",  detalle: "Cubriendo hoy" });
+  for (const a of (p.descansandoCiclo ?? []))         r.push({ id: a.id, nombre: a.nombre_completo, grupo: "descansando", detalle: a.turno_nombre ?? null });
+  for (const a of (p.trabajando ?? []))               r.push({ id: a.id, nombre: a.nombre_completo, grupo: "en_puesto",   detalle: a.nombre_puesto_titular ?? null });
+  for (const a of (p.enDescanso ?? []))               r.push({ id: a.id, nombre: a.nombre_completo, grupo: "descansando", detalle: "Licencia" });
+  for (const a of (p.enPuesto ?? []))                 r.push({ id: a.id, nombre: a.nombre_completo, grupo: "en_puesto",   detalle: a.nombre_puesto_titular ?? null });
+  for (const a of (p.enSSA ?? []))                    r.push({ id: a.id, nombre: a.nombre_completo, grupo: "en_ssa",      detalle: null });
+  for (const a of [...(p.suspendidos ?? []), ...(p.faltando ?? [])]) r.push({ id: a.id, nombre: a.nombre_completo, grupo: "ausente", detalle: null });
+  return r;
+}
+
+export function poolFuturoToAgente(a: AgentePoolFuturo): Agente {
+  return {
+    id: a.id,
+    nombre_completo: a.nombre_completo,
+    estado_laboral: a.estado_laboral,
+    puesto: a.puesto_nombre,
+    area: null,
+    sede: null,
+    telefono: null,
+    wa_autorizado: false,
+    supervisor_id: null,
+    tipo_asignacion_eoa: a.puesto_id ? "titular" : "disponible",
+    tipo_personal: a.tipo_personal,
+    turno_nombre: a.turno_nombre,
+    disponibleHE: false,
+  };
+}
+
+export function normalizarPoolFuturo(p: PoolFuturoData): AgenteAgrupado[] {
+  const r: AgenteAgrupado[] = [];
+  for (const a of p.disponible)        r.push({ id: a.id, nombre: a.nombre_completo, grupo: "disponible",  detalle: null });
+  for (const a of p.relevoProgramado)  r.push({ id: a.id, nombre: a.nombre_completo, grupo: "disponible",  detalle: "Relevo programado" });
+  for (const a of p.descansando)       r.push({ id: a.id, nombre: a.nombre_completo, grupo: "descansando", detalle: a.turno_nombre ?? null });
+  for (const a of p.trabajando)        r.push({ id: a.id, nombre: a.nombre_completo, grupo: "en_puesto",   detalle: a.puesto_nombre ?? null });
+  for (const a of p.ausenteProgramado) r.push({ id: a.id, nombre: a.nombre_completo, grupo: "ausente",     detalle: a.plan_tipo_ausencia ?? null });
+  for (const a of p.noElegible)        r.push({ id: a.id, nombre: a.nombre_completo, grupo: "ausente",     detalle: a.razon_no_elegible ?? null });
+  return r;
+}
+
+// ─── Configuración de turnos / plantilla ─────────────────────────────────────
+
+export interface TurnoApiItem {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+  horas_trabajo: number;
+  horas_descanso: number;
+  ciclo_horas: number;
+  tipo_ciclo: "diario" | "alternado";
+  dias_trabajo: number;
+  dias_descanso: number;
+  puestos_count: number;
+  num_titulares: number;
+}
+
+export interface SlotItem {
+  id: number;
+  slot_numero: number;
+  horas_turno: number;
+  hora_entrada: string;
+  hora_entrada_por_semana: string[] | null;
+  dias_trabajo: number[];
+  dias_medio_turno: number[];
+  longitud_ciclo: number;
+  fecha_inicio_ciclo: string | null;
+  empleado_id: number | null;
+  empleado_nombre: string | null;
+  empleado_estado: string | null;
+}
+
+export type OldTitularAccion = "disponible" | "pool_relevo" | "sin_asignacion";
+
+export const MOTIVOS_TITULAR = [
+  { value: "cobertura_definitiva",    label: "Cobertura definitiva" },
+  { value: "reemplazo_permanente",    label: "Reemplazo permanente" },
+  { value: "baja_titular_anterior",   label: "Baja del titular anterior" },
+  { value: "reestructuracion",        label: "Reestructuración" },
+  { value: "ascenso",                 label: "Ascenso / promoción" },
+  { value: "otro",                    label: "Otro" },
+];
+
+export type PreviewCustodia = {
+  tipo: "arma" | "vehiculo";
+  id: number;
+  codigo: string;
+  referencaNombre: string;
+  custodioAnteriorNombre: string;
+  custodioNuevoNombre: string;
+};
+
+// ─── Catálogos de etiquetas y motivos compartidos ────────────────────────────
+
+export const TIPOS_AUSENCIA_FUTURO = [
+  { value: "permiso_con_goce",  label: "Permiso con goce" },
+  { value: "permiso_sin_goce",  label: "Permiso sin goce" },
+  { value: "vacaciones",        label: "Vacaciones" },
+  { value: "incapacidad",       label: "Incapacidad" },
+  { value: "suspension",        label: "Suspensión programada" },
+  { value: "otro",              label: "Otro" },
+];
+
+export const LABELS_AUSENCIA_FUTURO: Record<string, string> = {
+  permiso_con_goce: "Permiso c/goce",
+  permiso_sin_goce: "Permiso s/goce",
+  vacaciones:       "Vacaciones",
+  incapacidad:      "Incapacidad",
+  suspension:       "Suspensión",
+  otro:             "Ausencia",
+};
+
+export const LABELS_FUENTE_AUSENCIA: Record<string, string> = {
+  rrhh:                "RRHH",
+  planificacion_futura: "Planificado",
+};
+
+export const LABELS_AUSENCIA_RRHH: Record<string, string> = {
+  permiso:          "Permiso",
+  vacaciones:       "Vacaciones",
+  incapacidad:      "Incapacidad",
+  suspension:       "Suspensión",
+  falta:            "Falta",
+  permiso_sin_goce: "Permiso s/goce",
+};
+
+export const MOTIVOS_SALIDA: {
+  value: string;
+  label: string;
+  desc: string;
+  grupo: "descuento" | "sin_descuento";
+  genera_rrhh?: boolean;
+  requiere_hora_abandono?: boolean;
+  requiere_aprobacion_rrhh?: boolean;
+}[] = [
+  { value: "falta_total",        label: "Falta total",            desc: "No se presentó sin justificación. Descuento de 3 días (24h) o 2 días (12h).",                     grupo: "descuento",     genera_rrhh: true },
+  { value: "abandono_parcial",   label: "Abandono parcial",       desc: "Se retiró antes de terminar su turno sin autorización. Descuento proporcional.",                  grupo: "descuento",     genera_rrhh: true, requiere_hora_abandono: true },
+  { value: "permiso_sin_goce",   label: "Permiso s/goce",         desc: "Permiso solicitado sin pago. Requiere aprobación de RRHH; si se rechaza, se convierte en falta.", grupo: "descuento",     genera_rrhh: true, requiere_aprobacion_rrhh: true },
+  { value: "incapacidad",        label: "Incapacidad IGSS",       desc: "Suspensión médica del IGSS. Genera evento en RRHH para seguimiento.",                             grupo: "sin_descuento", genera_rrhh: true },
+  { value: "permiso_con_goce",   label: "Permiso c/goce",         desc: "Permiso autorizado con goce de sueldo (duelo, matrimonio, etc.).",                                grupo: "sin_descuento" },
+];
+
+export const TIPOS_NOVEDAD = MOTIVOS_SALIDA;
+
+export const GRUPO_COLORS: Record<string, string> = {
+  descuento:     "text-red-300 bg-red-500/10 border-red-500/25 data-[active]:bg-red-500/25 data-[active]:border-red-500/60",
+  sin_descuento: "text-emerald-300 bg-emerald-500/10 border-emerald-500/25 data-[active]:bg-emerald-500/25 data-[active]:border-emerald-500/60",
+};
+
+export const TIPOS_COBERTURA: { value: string; label: string }[] = [
+  { value: "disponible",        label: "Agente disponible del pool" },
+  { value: "relevo",            label: "Relevo temporal" },
+  { value: "horas_extra",       label: "Horas extra al titular" },
+  { value: "cambio_titular",    label: "Cambio de titular" },
+  { value: "contratacion_nueva", label: "Contratación nueva" },
+];
+
+export const TIPO_SSA_LABELS: Record<string, string> = {
+  guardia_extra: "Guardia Extra",
+  ampliacion_horario: "Ampliación de Horario",
+  cobertura_evento: "Cobertura de Evento",
+  custodia_extra: "Custodia Extra",
+  apoyo_temporal: "Apoyo Temporal",
+};
+
+export const MOTIVOS_REMOCION = [
+  { value: "error_asignacion", label: "Error de asignación", color: "text-orange-400 bg-orange-500/12 border-orange-500/25" },
+  { value: "agente_declino",   label: "Agente declinó",      color: "text-red-400 bg-red-500/12 border-red-500/25" },
+  { value: "cambio_operativo", label: "Cambio operativo",    color: "text-blue-400 bg-blue-500/12 border-blue-500/25" },
+  { value: "no_disponible",    label: "No disponible",       color: "text-yellow-400 bg-yellow-500/12 border-yellow-500/25" },
+  { value: "otro",             label: "Otro",                color: "text-white/40 bg-white/5 border-white/15" },
+] as const;
+
+export const ESTADO_PUESTO_BADGE: Record<string, { label: string; cls: string }> = {
+  relevo_completo:  { label: "Falta",       cls: "bg-red-500/20 text-red-300" },
+  relevo_parcial:   { label: "Parcial",     cls: "bg-amber-500/20 text-amber-300" },
+  abandono_parcial: { label: "Abandono",    cls: "bg-red-500/20 text-red-300" },
+  suspension:       { label: "Suspendido",  cls: "bg-orange-500/20 text-orange-300" },
+  vacaciones:       { label: "Vacaciones",  cls: "bg-blue-500/20 text-blue-300" },
+  incapacidad:      { label: "Incapacidad", cls: "bg-purple-500/20 text-purple-300" },
+};
   
