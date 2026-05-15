@@ -529,3 +529,88 @@ barrels nuevos. Comportamiento idéntico al previo.
   detalle/edición y el flujo de contratación.
 - Migrar `pages/reclutamiento.tsx` al endpoint `solicitudes-empleo`
   para eliminar `applications` por completo.
+
+---
+
+## 14. Fase 6 — Soporte, WhatsApp y CMS
+
+Última fase de refactor. Cierra los módulos transversales y de soporte
+dejando una huella consistente con el resto del sistema.
+
+### 14.1 Refactor de Usuarios
+
+`artifacts/isp-web/src/admin/pages/Usuarios.tsx` baja de **1 376 → 399
+líneas**. Se extrae la siguiente carpeta:
+
+```
+admin/pages/usuarios/
+├── shared.tsx                  (104) Tipos Rol, ROLES, useSystemRoles,
+│                                     RolBadge, EstadoBadge, PermisoBadge,
+│                                     PermToggle, getAdminSessionHeader
+├── EmpleadoPicker.tsx          (165) Combo de búsqueda de empleados
+├── NuevoUsuarioModal.tsx       (297) Modal de alta de usuario
+├── EditarUsuarioModal.tsx      (364) Modal de edición (tabs Datos/Permisos/Pwd)
+└── PermisosReferenceTable.tsx  (74)  Tabla informativa de permisos por rol
+```
+
+`Usuarios.tsx` queda como orquestador (header, tabs, filtros, tabla,
+inconsistencias). El comportamiento visible no cambia.
+
+### 14.2 Documentación del bot de WhatsApp
+
+Se añade `docs/whatsapp-bot-flow.md` con:
+
+- Mapa de rutas (`whatsapp-webhook`, `wa-config`, `simulador`) y servicios
+  (`classifier`, `wa-sender`, `wa-config.service`, sesiones de anticipo y
+  registro de teléfono, emergencias, notificaciones).
+- Diagrama del flujo de un mensaje entrante (carnet público → sesiones
+  activas → lookup `users.telefono` → clasificación de intención).
+- Tablas Drizzle involucradas (`wa_config`, `wa_messages`,
+  `wa_menu_options`, `wa_audit_log`) y tablas auxiliares
+  (`phone_auth_log`, `wa_notificaciones_log`).
+- Cómo se administra desde `/admin/whatsapp-config` y cómo funciona el
+  simulador en modo dry-run vs real.
+
+El código de WhatsApp ya estaba modularizado correctamente
+(`services/whatsapp/*` por dominio) — esta fase no introduce cambios de
+estructura, solo el documento que faltaba para entenderlo end-to-end.
+
+### 14.3 CMS y Documentación
+
+`CMS.tsx` (654) y `Documentacion.tsx` (185) se confirman como módulos
+**ya prolijos**: ambos usan schemas tipados (`lib/cmsSchema`), endpoints
+acotados (`/api/cms`, `/api/docs`) y componentes compactos. No requieren
+refactor estructural en esta fase.
+
+### 14.4 Decisión sobre módulos a medio terminar
+
+| Módulo            | Decisión                                                      |
+|-------------------|---------------------------------------------------------------|
+| **Seguros**       | **Mantener** — funcional (config histórica + reportes mensuales con export CSV). No es stub. |
+| **MergeRequests** | **Mantener** — funcional (panel de verificación de identidad por DPI duplicado contra `employees`). |
+| **HR-Sync**       | **Stub explícito** — `services/hr-sync/index.ts` define `IHRAdapter`, `HRSyncService` y un `HR-SYNC-README.md` describiendo cómo conectarlo cuando exista una base externa. No hay scheduler activo, no se importa desde `routes/index.ts`, no expone endpoints. Queda documentado y listo para ser activado en una fase futura de integración. |
+
+### 14.5 Limpieza de huérfanos remanentes
+
+Estado al cierre de Fase 6:
+
+- `routes/comercial/applications.ts` — sólo `POST /api/applications`
+  (formulario público de reclutamiento) y `GET /api/applications`
+  (Dashboard) están en uso. Los demás endpoints quedan como deuda menor;
+  para no romper datos históricos se mantienen y se documentan en §13.
+- Páginas `EstadisticasRondas.tsx`, `FichajeQR.tsx`, `RecorridosCustodia.tsx`
+  y `RondasQR.tsx`: revisadas en esta fase, **no son huérfanas** — son las
+  pestañas de `ControlOperativoQR.tsx` (importadas explícitamente desde ese
+  contenedor, que a su vez se monta en `App.tsx`). Se quitan de la lista de
+  candidatas a borrado.
+
+### 14.6 Resumen de acciones — Fase 6
+
+- [x] `Usuarios.tsx` partido en 5 componentes bajo
+      `admin/pages/usuarios/`. La página principal pasa de 1 376 a 399 líneas.
+- [x] `docs/whatsapp-bot-flow.md` creado con el flujo end-to-end del bot.
+- [x] HR-Sync confirmado como stub explícito (sin endpoints, sin scheduler,
+      con README y comentarios `TODO`).
+- [x] Seguros, MergeRequests, CMS y Documentación validados como
+      módulos completos y prolijos — no requieren cambios.
+- [x] Documento de auditoría actualizado con el estado final.
