@@ -4951,6 +4951,38 @@ Por favor ingresa al sistema o responde para continuar.',
     await pool.query(`ALTER TABLE config_empresa ADD COLUMN IF NOT EXISTS nit_empresa VARCHAR(30)`);
     await pool.query(`ALTER TABLE config_empresa ADD COLUMN IF NOT EXISTS patente_comercio VARCHAR(50)`);
     await pool.query(`ALTER TABLE config_empresa ADD COLUMN IF NOT EXISTS telefono_empresa VARCHAR(30)`);
+    await pool.query(`ALTER TABLE config_empresa ADD COLUMN IF NOT EXISTS dominio_correo_interno VARCHAR(120) DEFAULT 'ispsa.net'`);
+    await pool.query(`UPDATE config_empresa SET dominio_correo_interno = 'ispsa.net' WHERE id = 1 AND (dominio_correo_interno IS NULL OR dominio_correo_interno = '')`);
+    // USR-CORREO-01: backfill correo institucional para usuarios internos sin correo @dominio
+    // Usa el helper central (mismas reglas que validación y modal) para evitar divergencia.
+    try {
+      const { generarCorreoInterno, ROLES_INTERNOS } = await import("./correo-interno");
+      const { rows: cfg } = await pool.query(`SELECT dominio_correo_interno FROM config_empresa WHERE id = 1 LIMIT 1`);
+      const dom = String(cfg[0]?.dominio_correo_interno || "ispsa.net").trim().toLowerCase();
+      const rolesInt = Array.from(ROLES_INTERNOS);
+      const { rows: faltantes } = await pool.query(
+        `SELECT id, username FROM users
+          WHERE rol = ANY($1::text[])
+            AND (correo IS NULL OR correo = '' OR LOWER(correo) NOT LIKE '%@' || $2)`,
+        [rolesInt, dom],
+      );
+      let backfilled = 0;
+      for (const u of faltantes) {
+        const nuevo = generarCorreoInterno(String(u.username || ""), dom);
+        // Saltar si la normalización deja parte local vacía (username con sólo símbolos)
+        if (nuevo.startsWith("@")) continue;
+        await pool.query(
+          `UPDATE users SET correo = $1, updated_at = NOW() WHERE id = $2`,
+          [nuevo, u.id],
+        );
+        backfilled++;
+      }
+      if (backfilled > 0) {
+        logger.info(`Auto-migrate: USR-CORREO-01 correos institucionales asignados a ${backfilled} usuarios internos (@${dom})`);
+      }
+    } catch (e) {
+      logger.error({ err: e }, "Auto-migrate: USR-CORREO-01 backfill — error (no bloqueante)");
+    }
     logger.info("Auto-migrate: ACTAS-01 tabla config_empresa verificada/creada");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: ACTAS-01 config_empresa — error (no bloqueante)");

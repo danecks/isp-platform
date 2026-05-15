@@ -37,7 +37,19 @@ actasRouter.put("/config-empresa", async (req, res) => {
     nit_empresa,
     patente_comercio,
     telefono_empresa,
+    dominio_correo_interno,
   } = req.body;
+  // USR-CORREO-01: validar formato del dominio institucional antes de guardar
+  if (dominio_correo_interno !== undefined && dominio_correo_interno !== null && dominio_correo_interno !== "") {
+    const dom = String(dominio_correo_interno).trim().toLowerCase();
+    const RE_DOMINIO = /^(?!-)[a-z0-9-]{1,63}(?<!-)(\.[a-z]{2,})+$/;
+    if (!RE_DOMINIO.test(dom) || dom.includes("@") || dom.includes(" ")) {
+      return res.status(400).json({
+        error: "Dominio inválido. Use formato 'empresa.com' (sin '@', sin espacios, con TLD válido)",
+      });
+    }
+  }
+
   try {
     // Permitir limpiar la fecha de nacimiento del representante pasando ""
     const fechaNacRep =
@@ -57,6 +69,7 @@ actasRouter.put("/config-empresa", async (req, res) => {
          nit_empresa                    = COALESCE($7, nit_empresa),
          patente_comercio               = COALESCE($8, patente_comercio),
          telefono_empresa               = COALESCE($9, telefono_empresa),
+         dominio_correo_interno         = COALESCE($12, dominio_correo_interno),
          representante_fecha_nacimiento = CASE
            WHEN $11::boolean THEN $10::date
            ELSE representante_fecha_nacimiento
@@ -76,8 +89,16 @@ actasRouter.put("/config-empresa", async (req, res) => {
         telefono_empresa ?? null,
         fechaNacRep,
         representante_fecha_nacimiento !== undefined,
+        dominio_correo_interno
+          ? String(dominio_correo_interno).trim().toLowerCase()
+          : null,
       ]
     );
+    // Invalida cache del dominio en módulo de correo institucional
+    try {
+      const m = await import("../lib/correo-interno");
+      m.invalidarCacheDominio();
+    } catch { /* noop */ }
     res.json({ ok: true, config: rows[0] });
   } catch (err) {
     logger.error({ err }, "PUT /config-empresa error");

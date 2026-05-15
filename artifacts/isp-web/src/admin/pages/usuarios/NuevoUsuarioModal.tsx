@@ -12,6 +12,7 @@ import { ROL_LABELS } from "@/config/permissions";
 import { useToast } from "@/hooks/use-toast";
 import { ROLES, useSystemRoles, PermToggle, type Rol } from "./shared";
 import { EmpleadoPicker } from "./EmpleadoPicker";
+import { useDominioInterno, esRolInterno, generarCorreoInterno, validarCorreoInterno } from "@/lib/correoInterno";
 
 interface NuevoModalProps {
   onClose: () => void;
@@ -21,6 +22,7 @@ interface NuevoModalProps {
 export function NuevoUsuarioModal({ onClose, onCreated }: NuevoModalProps) {
   const { toast } = useToast();
   const { data: systemRoles = [] } = useSystemRoles();
+  const { data: dominio = "ispsa.net" } = useDominioInterno();
   const rolesOpciones = systemRoles.filter(r => r.activo).length > 0
     ? systemRoles.filter(r => r.activo)
     : ROLES.map(r => ({ clave: r, label: ROL_LABELS[r] ?? r, activo: true }));
@@ -36,6 +38,36 @@ export function NuevoUsuarioModal({ onClose, onCreated }: NuevoModalProps) {
   const [usernameError, setUsernameError] = useState("");
 
   const set = (key: string, val: string | boolean) => setForm(f => ({ ...f, [key]: val }));
+
+  const correoEsInterno = esRolInterno(form.rol);
+  // Auto-completar el correo institucional al teclear username (sólo si el usuario no lo editó manualmente todavía o si sigue siendo el correo generado)
+  function onChangeUsername(raw: string) {
+    const u = raw.toLowerCase();
+    setUsernameError("");
+    setForm(f => {
+      const correoGenerado = generarCorreoInterno(f.username, dominio);
+      const debeAutocompletar =
+        esRolInterno(f.rol) && (f.correo === "" || f.correo === correoGenerado);
+      return {
+        ...f,
+        username: u,
+        correo: debeAutocompletar ? generarCorreoInterno(u, dominio) : f.correo,
+      };
+    });
+  }
+  function onChangeRol(nuevoRol: string) {
+    setForm(f => {
+      const correoGenerado = generarCorreoInterno(f.username, dominio);
+      const eraGenerado = f.correo === "" || f.correo === correoGenerado;
+      return {
+        ...f,
+        rol: nuevoRol as Rol,
+        correo: esRolInterno(nuevoRol) && eraGenerado
+          ? generarCorreoInterno(f.username, dominio)
+          : (esRolInterno(nuevoRol) ? f.correo : (nuevoRol === "cliente" && eraGenerado ? "" : f.correo)),
+      };
+    });
+  }
 
   async function checkUsername(username: string) {
     if (!username.trim()) return;
@@ -63,6 +95,11 @@ export function NuevoUsuarioModal({ onClose, onCreated }: NuevoModalProps) {
     }
     if (form.password.length < 4) {
       setError("La contraseña debe tener al menos 4 caracteres");
+      return;
+    }
+    const valCorreo = validarCorreoInterno(form.correo, dominio, form.rol);
+    if (!valCorreo.ok) {
+      setError(valCorreo.error || "Correo inválido");
       return;
     }
     setLoading(true);
@@ -130,7 +167,7 @@ export function NuevoUsuarioModal({ onClose, onCreated }: NuevoModalProps) {
               <Label className="text-xs text-white/60 font-medium">Username *</Label>
               <Input
                 value={form.username}
-                onChange={e => { set("username", e.target.value.toLowerCase()); setUsernameError(""); }}
+                onChange={e => onChangeUsername(e.target.value)}
                 onBlur={e => checkUsername(e.target.value)}
                 placeholder="carlos.lopez"
                 className={`bg-[#060e1c] border-white/10 text-white text-sm h-10 ${usernameError ? "border-red-500/60" : ""}`}
@@ -147,7 +184,7 @@ export function NuevoUsuarioModal({ onClose, onCreated }: NuevoModalProps) {
               <div className="relative">
                 <select
                   value={form.rol}
-                  onChange={e => set("rol", e.target.value)}
+                  onChange={e => onChangeRol(e.target.value)}
                   className="w-full h-10 bg-[#060e1c] border border-white/10 text-white text-sm rounded-md px-3 appearance-none pr-8 focus:outline-none focus:border-primary/50"
                 >
                   {rolesOpciones.map(r => (
@@ -181,17 +218,26 @@ export function NuevoUsuarioModal({ onClose, onCreated }: NuevoModalProps) {
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs text-white/60 font-medium">Correo electrónico</Label>
+            <Label className="text-xs text-white/60 font-medium">
+              {correoEsInterno ? `Correo institucional * (@${dominio})` : "Correo electrónico"}
+            </Label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
               <Input
                 type="email"
                 value={form.correo}
-                onChange={e => set("correo", e.target.value)}
-                placeholder="correo@empresa.gt"
+                onChange={e => set("correo", e.target.value.toLowerCase())}
+                placeholder={correoEsInterno ? `${form.username || "usuario"}@${dominio}` : "correo@empresa.gt"}
                 className="pl-9 bg-[#060e1c] border-white/10 text-white text-sm h-10"
+                required={correoEsInterno}
               />
             </div>
+            {correoEsInterno && (
+              <p className="text-[10px] text-white/30 flex items-start gap-1">
+                <Info className="w-3 h-3 shrink-0 mt-0.5" />
+                Se asigna automáticamente al teclear el username. Editable, pero debe terminar en <strong className="text-white/50">@{dominio}</strong>.
+              </p>
+            )}
           </div>
 
           {esCliente && (

@@ -4,6 +4,7 @@ import { pool } from "@workspace/db";
 import { eq, asc } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { invalidatePermCache } from "../lib/permisos-middleware";
+import { obtenerDominioInterno, validarCorreoInterno } from "../lib/correo-interno";
 
 const usersRouter = Router();
 
@@ -249,6 +250,13 @@ usersRouter.post("/users", async (req, res) => {
     return res.status(400).json({ error: "Nombre, username y contraseña son requeridos" });
   }
 
+  // USR-CORREO-01: validar correo institucional para roles internos
+  const dominio = await obtenerDominioInterno();
+  const valCorreo = validarCorreoInterno(correo, dominio, rol || "operaciones");
+  if (!valCorreo.ok) {
+    return res.status(400).json({ error: valCorreo.error });
+  }
+
   const telefonoNorm = telefono ? normalizePhone(String(telefono)) : null;
 
   // M-01: Validar que el employeeId existe en la tabla employees
@@ -304,6 +312,23 @@ usersRouter.patch("/users/:id", async (req, res) => {
     employeeId, canReportEmergency, canRequestAdvance, password,
   } = req.body ?? {};
   const updates: Record<string, unknown> = { updatedAt: new Date() };
+
+  // USR-CORREO-01: validar correo institucional si cambia el correo o el rol
+  if (correo !== undefined || rol !== undefined) {
+    const [actual] = await db
+      .select({ correo: usersTable.correo, rol: usersTable.rol })
+      .from(usersTable)
+      .where(eq(usersTable.id, id))
+      .limit(1);
+    if (!actual) return res.status(404).json({ error: "Usuario no encontrado" });
+    const nuevoRol = rol !== undefined ? String(rol) : actual.rol;
+    const nuevoCorreo = correo !== undefined ? (correo || null) : actual.correo;
+    const dominio = await obtenerDominioInterno();
+    const valCorreo = validarCorreoInterno(nuevoCorreo, dominio, nuevoRol);
+    if (!valCorreo.ok) {
+      return res.status(400).json({ error: valCorreo.error });
+    }
+  }
 
   if (nombre !== undefined) updates.nombre = String(nombre);
   if (correo !== undefined) updates.correo = correo || null;

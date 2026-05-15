@@ -12,6 +12,7 @@ import { ROL_LABELS } from "@/config/permissions";
 import { useToast } from "@/hooks/use-toast";
 import { ROLES, useSystemRoles, RolBadge, PermToggle, type Rol } from "./shared";
 import { EmpleadoPicker } from "./EmpleadoPicker";
+import { useDominioInterno, esRolInterno, generarCorreoInterno, validarCorreoInterno } from "@/lib/correoInterno";
 
 interface EditarModalProps {
   user: UserSafe;
@@ -22,6 +23,7 @@ interface EditarModalProps {
 export function EditarUsuarioModal({ user, onClose, onUpdated }: EditarModalProps) {
   const { toast } = useToast();
   const { data: systemRoles = [] } = useSystemRoles();
+  const { data: dominio = "ispsa.net" } = useDominioInterno();
   const rolesOpciones = systemRoles.filter(r => r.activo).length > 0
     ? systemRoles.filter(r => r.activo)
     : ROLES.map(r => ({ clave: r, label: ROL_LABELS[r] ?? r, activo: true }));
@@ -44,9 +46,30 @@ export function EditarUsuarioModal({ user, onClose, onUpdated }: EditarModalProp
 
   const set = (key: string, val: string | boolean) => setForm(f => ({ ...f, [key]: val }));
 
+  const correoEsInterno = esRolInterno(form.rol);
+
+  function onChangeRol(nuevoRol: string) {
+    setForm(f => {
+      const correoGenerado = generarCorreoInterno(user.username, dominio);
+      const eraGenerado = !f.correo || f.correo === correoGenerado;
+      return {
+        ...f,
+        rol: nuevoRol as Rol,
+        correo: esRolInterno(nuevoRol) && eraGenerado
+          ? generarCorreoInterno(user.username, dominio)
+          : f.correo,
+      };
+    });
+  }
+
   const handleDatos = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    const valCorreo = validarCorreoInterno(form.correo, dominio, form.rol);
+    if (!valCorreo.ok) {
+      setError(valCorreo.error || "Correo inválido");
+      return;
+    }
     setLoading(true);
     try {
       await usersApi.update(user.id, {
@@ -166,7 +189,7 @@ export function EditarUsuarioModal({ user, onClose, onUpdated }: EditarModalProp
                 <div className="relative">
                   <select
                     value={form.rol}
-                    onChange={e => set("rol", e.target.value)}
+                    onChange={e => onChangeRol(e.target.value)}
                     className="w-full h-10 bg-[#060e1c] border border-white/10 text-white text-sm rounded-md px-3 appearance-none pr-8 focus:outline-none focus:border-primary/50"
                   >
                     {rolesOpciones.map(r => (
@@ -210,13 +233,22 @@ export function EditarUsuarioModal({ user, onClose, onUpdated }: EditarModalProp
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs text-white/60 font-medium">Correo electrónico</Label>
+              <Label className="text-xs text-white/60 font-medium">
+                {correoEsInterno ? `Correo institucional * (@${dominio})` : "Correo electrónico"}
+              </Label>
               <Input
                 type="email"
                 value={form.correo}
-                onChange={e => set("correo", e.target.value)}
+                onChange={e => set("correo", e.target.value.toLowerCase())}
+                placeholder={correoEsInterno ? `${user.username}@${dominio}` : "correo@empresa.gt"}
                 className="bg-[#060e1c] border-white/10 text-white text-sm h-10"
+                required={correoEsInterno}
               />
+              {correoEsInterno && (
+                <p className="text-[10px] text-white/30">
+                  Debe terminar en <strong className="text-white/50">@{dominio}</strong>.
+                </p>
+              )}
             </div>
 
             {esCliente && (
