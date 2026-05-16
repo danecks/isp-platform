@@ -1,14 +1,10 @@
-import { getSessionToken } from "@/lib/httpClient";
+import { apiFetch, getSessionToken } from "@/lib/httpClient";
 import type { EventoRrhh, DatosActa } from "@/lib/pdfRrhh";
 
 export const API = "/api";
 export const getSession = () => getSessionToken();
 
-export async function apiFetch<T>(url: string): Promise<T> {
-  const r = await fetch(url, { headers: { "x-isp-session": getSession() } });
-  if (!r.ok) throw new Error(`Error ${r.status}`);
-  return r.json();
-}
+export { apiFetch };
 
 export async function apiPatch(url: string, body: object): Promise<unknown> {
   const r = await fetch(url, {

@@ -1,4 +1,4 @@
-import { getSessionToken } from "@/lib/httpClient";
+import { apiFetch, getSessionToken } from "@/lib/httpClient";
 
 export const API = "/api";
 
@@ -6,21 +6,7 @@ export function getSession() {
   return getSessionToken();
 }
 
-export async function apiFetch(url: string, opts: RequestInit = {}) {
-  const res = await fetch(`${API}${url}`, {
-    ...opts,
-    headers: {
-      "x-isp-session": getSession(),
-      "Content-Type": "application/json",
-      ...(opts.headers ?? {}),
-    },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error ?? res.statusText);
-  }
-  return res.json();
-}
+export { apiFetch };
 
 export function apiGet(url: string) {
   return apiFetch(url);

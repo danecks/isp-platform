@@ -1,20 +1,4 @@
-import { getSessionToken } from "@/lib/httpClient";
-
-export async function apiFetch(url: string, opts: RequestInit = {}) {
-  const res = await fetch(`/api${url}`, {
-    ...opts,
-    headers: {
-      "x-isp-session": getSessionToken(),
-      "Content-Type": "application/json",
-      ...(opts.headers ?? {}),
-    },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error ?? res.statusText);
-  }
-  return res.json();
-}
+export { apiFetch } from "@/lib/httpClient";
 
 const fmt = new Intl.NumberFormat("es-GT", { style: "currency", currency: "GTQ" });
 export const fmtNum = (v: string | number) => fmt.format(parseFloat(String(v)));

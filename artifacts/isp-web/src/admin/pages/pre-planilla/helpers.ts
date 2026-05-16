@@ -1,25 +1,11 @@
 import { Clock, CheckCircle2, AlertCircle, ShieldCheck } from "lucide-react";
-import { getSessionToken } from "@/lib/httpClient";
+import { apiFetch, getSessionToken } from "@/lib/httpClient";
 import type { ColaboradorPre } from "./types";
 
 export const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 export const getSession = () => getSessionToken();
 
-export async function apiFetch(path: string, init?: RequestInit) {
-  const res = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: {
-      "x-isp-session": getSession(),
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error ?? "Error de API");
-  }
-  return res.json();
-}
+export { apiFetch };
 
 export function getPeriodPresets() {
   const hoy = new Date();

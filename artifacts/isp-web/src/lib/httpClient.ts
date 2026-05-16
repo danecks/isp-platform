@@ -25,6 +25,20 @@ const API_BASE = "/api";
 const SESSION_KEY = "isp_admin_session_v2";
 const SESSION_HEADER = "x-isp-session";
 
+/**
+ * Prefijo de URL del artifact (p. ej. "" cuando se sirve en `/`, o
+ * "/admin" cuando se monta bajo un sub-path). Lo respetamos para que las
+ * llamadas al API funcionen tanto en root como bajo un base path.
+ */
+const BASE_URL_PREFIX = (() => {
+  try {
+    const raw = (import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL;
+    return raw ? raw.replace(/\/$/, "") : "";
+  } catch {
+    return "";
+  }
+})();
+
 export function getSessionToken(): string {
   if (typeof sessionStorage === "undefined") return "";
   try {
@@ -34,8 +48,24 @@ export function getSessionToken(): string {
   }
 }
 
+/**
+ * Construye la URL final hacia el API.
+ *
+ * - Si `path` ya es absoluta (`http...`), se devuelve tal cual.
+ * - Si ya incluye el prefijo `/api`, se usa como está y solo se le antepone
+ *   el `BASE_URL` del artifact (para deployments bajo sub-path).
+ * - En caso contrario se prepende `${BASE_URL}/api`.
+ *
+ * Esto permite que el mismo helper sirva a llamadores que pasan
+ * `"/leads"` (estilo `apiRequest` / `helpers.ts` de planilla) y a los que
+ * pasan `"/api/nomina/..."` (estilo pre-planilla / rrhh-eventos).
+ */
 export function apiUrl(path: string): string {
-  return path.startsWith("http") ? path : `${API_BASE}${path}`;
+  if (path.startsWith("http")) return path;
+  const withApi = path.startsWith(`${API_BASE}/`) || path === API_BASE
+    ? path
+    : `${API_BASE}${path}`;
+  return `${BASE_URL_PREFIX}${withApi}`;
 }
 
 export class ApiError extends Error {
@@ -91,4 +121,36 @@ export async function apiRequest<T = unknown>(
   // 204 No Content y similares
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+/**
+ * Helper compartido usado por los `helpers.ts` de cada subcarpeta de admin
+ * (planilla, planillas-especiales, prestaciones, amonestaciones, etc.).
+ *
+ * Hace `fetch(/api${url})` con header `x-isp-session`, fuerza
+ * `Content-Type: application/json` y lanza un `Error` con el mensaje del
+ * cuerpo cuando el status no es 2xx. Devuelve la respuesta parseada como
+ * JSON.
+ *
+ * Para nuevo código preferí `apiRequest`, que tiene mejor manejo de JSON
+ * vs FormData y lanza `ApiError` con status. `apiFetch` se mantiene para
+ * preservar el contrato histórico de los helpers existentes.
+ */
+export async function apiFetch<T = any>(
+  url: string,
+  opts: RequestInit = {},
+): Promise<T> {
+  const res = await fetch(apiUrl(url), {
+    ...opts,
+    headers: {
+      "x-isp-session": getSessionToken(),
+      "Content-Type": "application/json",
+      ...(opts.headers ?? {}),
+    },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error ?? res.statusText);
+  }
+  return res.json();
 }
