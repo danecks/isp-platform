@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Plus, X } from "lucide-react";
 import { horaDelDiaSlot, horaSemanaSlot, semanasCiclo } from "../utils";
 
@@ -38,7 +38,7 @@ function calcSalida(horaEntrada: string, horasTurno: number): string {
   return `${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}${overflow ? " +1d" : ""}`;
 }
 
-function modoActual(props: Props): Modo {
+function modoDerivado(props: Props): Modo {
   const hpd = props.horasPorDia;
   if (hpd && Object.keys(hpd).length > 0) return "dia";
   if (Array.isArray(props.horasPorSemana) && props.horasPorSemana.length > 0) return "semana";
@@ -47,7 +47,13 @@ function modoActual(props: Props): Modo {
 
 export function EditorHoraEntrada(props: Props) {
   const { longitudCiclo, horasTurno, diasTrabajo, horaEntrada, horasPorSemana, horasPorDia, disabled, onChange, onCommit } = props;
-  const modo = modoActual(props);
+  const derivado = modoDerivado(props);
+  // Permitimos que el usuario fuerce el modo "día" aunque el mapa esté vacío
+  // (de lo contrario el botón "Por día" parecería no funcionar al primer clic).
+  const [modoLocal, setModoLocal] = useState<Modo>(derivado);
+  // Si los props cambian a un modo definitivo (con datos), sincronizamos.
+  useEffect(() => { setModoLocal(derivado); }, [derivado]);
+  const modo = modoLocal;
   const [agregando, setAgregando] = useState(false);
 
   const semanas = Math.ceil(longitudCiclo / 7);
@@ -66,9 +72,14 @@ export function EditorHoraEntrada(props: Props) {
 
   function cambiarModo(nuevo: Modo) {
     if (nuevo === modo) return;
+    setModoLocal(nuevo);
+    setAgregando(false);
     if (nuevo === "igual") {
       onChange({ hora_entrada_por_semana: null, hora_entrada_por_dia: null });
-      onCommit?.({ hora_entrada_por_semana: null, hora_entrada_por_dia: null });
+      // Solo persistir si había algo activo; si ya estaba todo limpio, no hace falta hit al backend.
+      if ((horasPorSemana && horasPorSemana.length) || (horasPorDia && Object.keys(horasPorDia).length)) {
+        onCommit?.({ hora_entrada_por_semana: null, hora_entrada_por_dia: null });
+      }
     } else if (nuevo === "semana") {
       const nuevasHps = Array.from({ length: semanas }, (_, i) =>
         horasPorSemana?.[i] || horaEntrada || "07:00"
@@ -76,11 +87,14 @@ export function EditorHoraEntrada(props: Props) {
       onChange({ hora_entrada_por_semana: nuevasHps, hora_entrada_por_dia: null });
       onCommit?.({ hora_entrada_por_semana: nuevasHps, hora_entrada_por_dia: null });
     } else {
-      // → "dia": empieza vacío; el usuario agrega excepciones puntuales.
-      onChange({ hora_entrada_por_semana: null, hora_entrada_por_dia: {} });
-      onCommit?.({ hora_entrada_por_semana: null, hora_entrada_por_dia: {} });
+      // → "dia": NO persistir aún (el mapa está vacío y el backend lo rechazaría
+      // como "ningún cambio útil"). Solo limpiamos por_semana si estaba activo.
+      // El primer commit ocurre cuando el usuario agrega su primera excepción.
+      if (horasPorSemana && horasPorSemana.length > 0) {
+        onChange({ hora_entrada_por_semana: null });
+        onCommit?.({ hora_entrada_por_semana: null });
+      }
     }
-    setAgregando(false);
   }
 
   function commitHoraBase(val: string) {
@@ -154,31 +168,34 @@ export function EditorHoraEntrada(props: Props) {
         </div>
       )}
 
-      {/* Modo semana: N inputs */}
-      {modo === "semana" && semanasCiclo(longitudCiclo).map((_sem, si) => {
-        const horaSem = horasPorSemana?.[si] || horaEntrada || "07:00";
-        return (
-          <div key={si} className="flex items-center gap-1.5 pl-7">
-            <span className="text-[8px] w-6 shrink-0 text-white/30">S{si + 1}</span>
-            <input
-              type="time"
-              value={horaSem}
-              disabled={disabled}
-              onChange={e => {
-                const nuevasHps = Array.from({ length: semanas }, (_, i) =>
-                  i === si ? e.target.value : (horasPorSemana?.[i] || horaEntrada || "07:00")
-                );
-                onChange({ hora_entrada_por_semana: nuevasHps });
-              }}
-              onBlur={e => commitHoraSemana(si, e.target.value)}
-              className="bg-[#0d1e38] border border-white/10 text-white/60 text-[10px] rounded px-1.5 py-0.5 focus:outline-none focus:border-indigo-500/40 w-[68px]"
-              title={`Hora de entrada de la semana ${si + 1}`}
-            />
-            <span className="text-[8px] text-white/20">→</span>
-            <span className="text-[9px] text-white/35 font-mono">{calcSalida(horaSem, horasTurno)}</span>
-          </div>
-        );
-      })}
+      {/* Modo semana: una fila horizontal con un input por semana del ciclo */}
+      {modo === "semana" && (
+        <div className="flex items-center gap-2 flex-wrap pl-7">
+          {semanasCiclo(longitudCiclo).map((_sem, si) => {
+            const horaSem = horasPorSemana?.[si] || horaEntrada || "07:00";
+            return (
+              <div key={si} className="flex items-center gap-1 bg-white/3 border border-white/8 rounded px-1.5 py-0.5">
+                <span className="text-[8px] text-white/35 font-medium">S{si + 1}</span>
+                <input
+                  type="time"
+                  value={horaSem}
+                  disabled={disabled}
+                  onChange={e => {
+                    const nuevasHps = Array.from({ length: semanas }, (_, i) =>
+                      i === si ? e.target.value : (horasPorSemana?.[i] || horaEntrada || "07:00")
+                    );
+                    onChange({ hora_entrada_por_semana: nuevasHps });
+                  }}
+                  onBlur={e => commitHoraSemana(si, e.target.value)}
+                  className="bg-transparent border-0 text-white/70 text-[10px] focus:outline-none w-[60px] p-0"
+                  title={`Semana ${si + 1}: entra ${horaSem} → sale ${calcSalida(horaSem, horasTurno)}`}
+                />
+                <span className="text-[8px] text-white/30 font-mono">→ {calcSalida(horaSem, horasTurno)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Modo día: hora normal + lista de excepciones */}
       {modo === "dia" && (
