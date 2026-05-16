@@ -12,16 +12,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
 import { AdminLayout } from "../layout/AdminLayout";
 import { TabReportes } from "../components/armeria/TabReportes";
-import { getSessionToken } from "@/lib/httpClient";
+import { apiFetch, getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";
 const getSession = () => getSessionToken();
 
-async function apiFetch<T>(url: string): Promise<T> {
-  const res = await fetch(url, { headers: { "x-isp-session": getSession() } });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw e; }
-  return res.json();
-}
 async function apiPost<T>(url: string, body: any): Promise<T> {
   const res = await fetch(url, {
     method: "POST", headers: { "Content-Type": "application/json", "x-isp-session": getSession() },

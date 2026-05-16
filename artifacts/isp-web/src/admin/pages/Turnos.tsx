@@ -31,24 +31,7 @@ import {
   CheckCircle2, Loader2, X, ChevronDown, ChevronUp, Trash2,
 } from "lucide-react";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
-import { getSessionToken } from "@/lib/httpClient";
-
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-const getSession = () => getSessionToken();
-
-async function apiFetch(path: string, init?: RequestInit) {
-  const res = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: {
-      "x-isp-session": getSession(),
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error ?? res.statusText);
-  return body;
-}
+import { apiFetch } from "@/lib/httpClient";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 

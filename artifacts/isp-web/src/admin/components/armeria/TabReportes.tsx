@@ -4,16 +4,9 @@ import {
   Calendar, Download, Loader2, Shield, ArrowRightLeft,
   Target, RefreshCw, Package, FileText, Search,
 } from "lucide-react";
-import { getSessionToken } from "@/lib/httpClient";
+import { apiFetch } from "@/lib/httpClient";
 
 const API = "/api";
-const getSession = () => getSessionToken();
-
-async function apiFetch<T>(url: string): Promise<T> {
-  const res = await fetch(url, { headers: { "x-isp-session": getSession() } });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw e; }
-  return res.json();
-}
 
 // Fecha en formato YYYY-MM-DD según la zona horaria de Guatemala (UTC-6, sin DST).
 const _gtFmt = new Intl.DateTimeFormat("en-CA", {

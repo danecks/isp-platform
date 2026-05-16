@@ -5,7 +5,7 @@ import {
   TrendingUp, TrendingDown, ArrowRight, Filter, Image as ImageIcon, X,
   ArrowUpRight,
 } from "lucide-react";
-import { getSessionToken } from "@/lib/httpClient";
+import { apiFetch, getSessionToken } from "@/lib/httpClient";
 import {
   fechaGT, inicioDeMesGT, hoyGT, fmtFechaHora, fmtDuracion, pctChange,
   MESES,
@@ -49,12 +49,9 @@ interface EstadisticasResp {
   top_puestos: Array<{ puesto_id: number; puesto_nombre: string; cliente_nombre: string; total: number; personas: number; vehiculos: number }>;
 }
 
-function getSessionRaw() {
-  return getSessionToken();
-}
 function getRol() {
   try {
-    const raw = getSessionRaw();
+    const raw = getSessionToken();
     if (!raw) return "";
     const u = JSON.parse(raw);
     return u?.rol ?? "";
@@ -63,18 +60,8 @@ function getRol() {
   }
 }
 
-async function apiFetch<T>(path: string): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    headers: {
-      "x-isp-session": getSessionRaw(),
-      "x-isp-role": getRol() || "admin",
-    },
-  });
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    throw new Error(e.error ?? `Error ${res.status}`);
-  }
-  return res.json() as Promise<T>;
+function apiVisitas<T>(path: string): Promise<T> {
+  return apiFetch<T>(path, { headers: { "x-isp-role": getRol() || "admin" } });
 }
 
 export function VisitasContent({ embedded = false }: { embedded?: boolean } = {}) {
@@ -117,7 +104,7 @@ export function VisitasContent({ embedded = false }: { embedded?: boolean } = {}
         if (filtros.estado) params.set("estado", filtros.estado);
         if (filtros.q) params.set("q", filtros.q);
       }
-      const r = await apiFetch<{ visitas: Visita[]; total: number }>(`/admin/visitas?${params.toString()}`);
+      const r = await apiVisitas<{ visitas: Visita[]; total: number }>(`/admin/visitas?${params.toString()}`);
       setVisitas(r.visitas);
     } catch (err: any) {
       console.error("Error cargando visitas", err);
@@ -133,7 +120,7 @@ export function VisitasContent({ embedded = false }: { embedded?: boolean } = {}
       const params = new URLSearchParams({ anio: String(anio), mes: String(mes) });
       if (statsClienteId) params.set("cliente_id", statsClienteId);
       if (statsPuestoId) params.set("puesto_id", statsPuestoId);
-      const r = await apiFetch<EstadisticasResp>(`/admin/visitas/estadisticas?${params.toString()}`);
+      const r = await apiVisitas<EstadisticasResp>(`/admin/visitas/estadisticas?${params.toString()}`);
       setStats(r);
     } catch (err) {
       console.error("Error cargando estadísticas", err);
@@ -146,7 +133,7 @@ export function VisitasContent({ embedded = false }: { embedded?: boolean } = {}
   async function cargarFiltrosStats(clienteId?: string) {
     try {
       const qs = clienteId ? `?cliente_id=${clienteId}` : "";
-      const r = await apiFetch<{ clientes: { id: number; nombre: string }[]; puestos: { id: number; nombre: string }[] }>(
+      const r = await apiVisitas<{ clientes: { id: number; nombre: string }[]; puestos: { id: number; nombre: string }[] }>(
         `/admin/visitas/filtros${qs}`
       );
       setStatsClientes(r.clientes);
@@ -192,7 +179,7 @@ export function VisitasContent({ embedded = false }: { embedded?: boolean } = {}
     setFotoModal({ visitaId: visita_id, tipo: tipoFoto, titulo });
     setFotoUrl(null);
     try {
-      const r = await apiFetch<{ url: string }>(`/admin/visitas/foto/${visita_id}/${tipoFoto}`);
+      const r = await apiVisitas<{ url: string }>(`/admin/visitas/foto/${visita_id}/${tipoFoto}`);
       setFotoUrl(r.url);
     } catch {
       setFotoUrl(null);

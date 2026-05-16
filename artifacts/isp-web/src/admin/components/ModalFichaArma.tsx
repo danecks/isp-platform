@@ -5,14 +5,9 @@ import {
   Shield, X, Edit, FileText, MapPin, History, User, Clock,
   Loader2, AlertTriangle, Target, Hash,
 } from "lucide-react";
-import { getSessionToken } from "@/lib/httpClient";
+import { apiFetch, getSessionToken } from "@/lib/httpClient";
 
 const getSession = () => getSessionToken();
-async function apiFetch<T>(url: string): Promise<T> {
-  const res = await fetch(url, { headers: { "x-isp-session": getSession() } });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw e; }
-  return res.json();
-}
 async function apiPatch<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, {
     method: "PATCH",

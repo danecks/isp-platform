@@ -19,25 +19,7 @@ import {
   ShieldCheck, Download, Pencil, AlertCircle, Loader2, History, Users, Wallet,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { getSessionToken } from "@/lib/httpClient";
-
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-
-function getSession() {
-  return getSessionToken();
-}
-
-async function apiFetch<T = unknown>(url: string, opts: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${BASE}/api${url}`, {
-    ...opts,
-    headers: { "x-isp-session": getSession(), "Content-Type": "application/json", ...(opts.headers ?? {}) },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error ?? res.statusText);
-  }
-  return res.json() as Promise<T>;
-}
+import { apiFetch, apiUrl } from "@/lib/httpClient";
 
 function fmtQ(v: string | number | null | undefined) {
   const n = Number(v ?? 0);
@@ -132,7 +114,7 @@ export default function AdminSeguros() {
   useEffect(() => { cargarReporte(); }, [mes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleDescargarCSV() {
-    const url = `${BASE}/api/seguros/reporte/csv?mes=${mes}`;
+    const url = apiUrl(`/seguros/reporte/csv?mes=${mes}`);
     window.open(url, "_blank");
   }
 

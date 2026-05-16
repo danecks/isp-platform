@@ -9,16 +9,11 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import RegresosVacacionesBanner from "@/admin/components/RegresosVacacionesBanner";
-import { getSessionToken } from "@/lib/httpClient";
+import { apiFetch, getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";
 const getSession = () => getSessionToken();
 
-async function apiFetch<T>(url: string): Promise<T> {
-  const r = await fetch(url, { headers: { "x-isp-session": getSession() } });
-  if (!r.ok) throw new Error(`Error ${r.status}`);
-  return r.json();
-}
 async function apiPost(url: string, body: object): Promise<any> {
   const r = await fetch(url, {
     method: "POST",
