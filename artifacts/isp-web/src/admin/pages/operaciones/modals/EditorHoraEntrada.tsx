@@ -197,27 +197,23 @@ export function EditorHoraEntrada(props: Props) {
         </div>
       )}
 
-      {/* Modo día: hora normal + lista de excepciones */}
+      {/* Modo día: lista de excepciones puntuales sobre la hora base */}
       {modo === "dia" && (
         <div className="space-y-1.5 pl-7">
-          {/* Hora normal (la que se aplica a los días sin excepción) */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[9px] text-white/30">Normal</span>
-            <input
-              type="time"
-              value={horaEntrada}
-              disabled={disabled}
-              onChange={e => onChange({ hora_entrada: e.target.value })}
-              onBlur={e => commitHoraBase(e.target.value)}
-              className="bg-[#0d1e38] border border-white/10 text-white/60 text-[10px] rounded px-1.5 py-0.5 focus:outline-none focus:border-indigo-500/40 w-[68px]"
-            />
-            <span className="text-[8px] text-white/20">→</span>
-            <span className="text-[9px] text-white/35 font-mono">{calcSalida(horaEntrada, horasTurno)}</span>
+          {/* Banner explicativo + hora base de referencia (read-only aquí; se edita en "Igual") */}
+          <div className="rounded border border-amber-500/20 bg-amber-500/5 px-2 py-1.5 space-y-1">
+            <p className="text-[9px] text-amber-200/80 leading-snug">
+              Marcá días que entran a una hora distinta de la habitual. Los demás días usan la hora base.
+            </p>
+            <p className="text-[9px] text-white/45">
+              Hora base: <span className="font-mono text-white/70">{horaEntrada || "—"}</span>
+              <span className="text-white/25"> (cambiala en la pestaña «Igual»)</span>
+            </p>
           </div>
 
           {/* Excepciones */}
           {diasConExcepcion.length === 0 && (
-            <p className="text-[9px] text-white/25 italic">Sin excepciones. Todos los días usan la hora normal.</p>
+            <p className="text-[9px] text-white/30 italic">Aún no hay excepciones cargadas.</p>
           )}
           {diasConExcepcion.map(dia => {
             const semIdx = Math.floor((dia - 1) / 7);
