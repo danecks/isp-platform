@@ -151,6 +151,29 @@ prestacionesRouter.put("/prestaciones/config", async (req, res) => {
   }
 });
 
+// ─── GET /api/prestaciones/config/impacto ─────────────────────────────────────
+// Devuelve cuántas liquidaciones confirmadas existen, para advertir en la UI
+// que un cambio de bases NO recalcula liquidaciones ya pagadas.
+prestacionesRouter.get("/prestaciones/config/impacto", async (_req, res) => {
+  try {
+    const { rows } = await pool.query<{
+      total: string;
+      ultima_fecha: string | null;
+    }>(
+      `SELECT COUNT(*)::int AS total,
+              MAX(fecha_egreso)::text AS ultima_fecha
+         FROM prestaciones_liquidaciones
+        WHERE estado = 'confirmada'`
+    );
+    return res.json({
+      liquidacionesConfirmadas: parseInt(String(rows[0]?.total ?? 0)),
+      ultimaFecha:              rows[0]?.ultima_fecha ?? null,
+    });
+  } catch (err: unknown) {
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
 // ─── GET /api/prestaciones/vacaciones/saldo/:employeeId ───────────────────────
 prestacionesRouter.get("/prestaciones/vacaciones/saldo/:employeeId", async (req, res) => {
   try {
@@ -466,6 +489,9 @@ async function buildLiquidacion(empId: number, body: Record<string, unknown>) {
   }
   const diasVac       = parseFloat(String(vacSaldo[0]?.dias_disponibles ?? body.dias_vacaciones_pendientes ?? 0));
 
+  const configOverride = (body.config_override ?? body.configOverride) as
+    Partial<PrestacionesConfig> | undefined;
+
   const result = calcularLiquidacionFinal({
     sueldoMensual:            sueldo,
     promedioUltimos6Meses:    body.promedio_ultimos_6_meses ? parseFloat(String(body.promedio_ultimos_6_meses)) : undefined,
@@ -478,6 +504,7 @@ async function buildLiquidacion(empId: number, body: Record<string, unknown>) {
     periodoAguinaldoFin:      body.periodo_aguinaldo_fin   as string ?? aguPeriodo.fin,
     periodoBono14Inicio:      body.periodo_bono14_inicio   as string ?? b14Periodo.inicio,
     periodoBono14Fin:         body.periodo_bono14_fin      as string ?? b14Periodo.fin,
+    config:                   configOverride,
   });
 
   // ── Descontar pagos ya realizados vía planillas especiales ───────────────────
