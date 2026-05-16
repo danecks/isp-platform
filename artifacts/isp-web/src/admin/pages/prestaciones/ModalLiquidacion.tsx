@@ -9,7 +9,7 @@ import {
 import { AlertTriangle, UserX } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiGet, apiPost, fmt, fmtDate, TIPO_EGRESO_LABELS } from "./helpers";
-import type { Employee, SimulacionLiquidacion } from "./types";
+import type { Employee, SimulacionLiquidacion, SimularLiquidacionResponse } from "./types";
 
 export function ModalLiquidacion({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const { toast } = useToast();
@@ -26,7 +26,7 @@ export function ModalLiquidacion({ onClose, onDone }: { onClose: () => void; onD
 
   const { data: empleados = [] } = useQuery<Employee[]>({
     queryKey: ["employees-activos"],
-    queryFn: () => apiGet("/employees?estado_laboral=activo"),
+    queryFn: () => apiGet<Employee[]>("/employees?estado_laboral=activo"),
     staleTime: 60_000,
   });
 
@@ -38,7 +38,7 @@ export function ModalLiquidacion({ onClose, onDone }: { onClose: () => void; onD
     if (!empId) return;
     setLoading(true);
     try {
-      const r = await apiPost("/prestaciones/simular-liquidacion", {
+      const r = await apiPost<SimularLiquidacionResponse>("/prestaciones/simular-liquidacion", {
         employee_id: Number(empId),
         tipo_egreso: tipoEgreso,
         fecha_egreso: fechaEgreso,
@@ -68,7 +68,7 @@ export function ModalLiquidacion({ onClose, onDone }: { onClose: () => void; onD
     if (!empId) return;
     setLoading(true);
     try {
-      await apiPost("/prestaciones/liquidaciones", {
+      await apiPost<{ id: number }>("/prestaciones/liquidaciones", {
         employee_id: Number(empId),
         tipo_egreso: tipoEgreso,
         fecha_egreso: fechaEgreso,

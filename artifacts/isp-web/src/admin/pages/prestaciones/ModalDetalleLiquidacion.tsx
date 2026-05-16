@@ -6,18 +6,18 @@ import {
 import { FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiGet, apiPatch, fmt, fmtDate, TIPO_EGRESO_LABELS } from "./helpers";
-import type { RubroLiquidacion } from "./types";
+import type { LiquidacionDetalleResponse, RubroLiquidacion } from "./types";
 
 export function ModalDetalleLiquidacion({ liqId, onClose }: { liqId: number; onClose: () => void }) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading } = useQuery<LiquidacionDetalleResponse>({
     queryKey: ["liq-detalle", liqId],
-    queryFn: () => apiGet(`/prestaciones/liquidaciones/${liqId}`),
+    queryFn: () => apiGet<LiquidacionDetalleResponse>(`/prestaciones/liquidaciones/${liqId}`),
   });
 
   const anularMut = useMutation({
-    mutationFn: () => apiPatch(`/prestaciones/liquidaciones/${liqId}/anular`),
+    mutationFn: () => apiPatch<{ ok: boolean }>(`/prestaciones/liquidaciones/${liqId}/anular`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["prestaciones-liqlist"] });
       qc.invalidateQueries({ queryKey: ["liq-detalle", liqId] });

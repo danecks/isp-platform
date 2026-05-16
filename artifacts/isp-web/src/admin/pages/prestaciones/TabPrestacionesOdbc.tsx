@@ -4,18 +4,14 @@ import {
   AlertTriangle, CheckCircle2, Clock, Coins, Loader2, Search,
 } from "lucide-react";
 import { apiRequest } from "./helpers";
-import type { OdbcEmpleadoRow } from "./types";
+import type { OdbcEmpleadoRow, ResumenOdbcResponse } from "./types";
 
 export function TabPrestacionesOdbc({ tipo }: { tipo: "bono14" | "aguinaldo" | "vacaciones" }) {
   const [search, setSearch] = useState("");
 
-  const { data, isLoading, isError } = useQuery<{
-    ok: boolean;
-    resumen: { empleados: string; bono14: string; aguinaldo: string; vacaciones: string; indem: string; filas: string };
-    empleados: OdbcEmpleadoRow[];
-  }>({
+  const { data, isLoading, isError } = useQuery<ResumenOdbcResponse>({
     queryKey: ["prestaciones-resumen-odbc"],
-    queryFn: () => apiRequest("/prestaciones/resumen-odbc"),
+    queryFn: () => apiRequest<ResumenOdbcResponse>("/prestaciones/resumen-odbc"),
     staleTime: 60_000,
   });
 

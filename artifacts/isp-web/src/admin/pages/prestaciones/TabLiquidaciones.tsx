@@ -23,7 +23,7 @@ export function TabLiquidaciones() {
 
   const { data, isLoading } = useQuery<{ rows: LiquidacionItem[]; total: number }>({
     queryKey: ["prestaciones-liqlist"],
-    queryFn: () => apiGet("/prestaciones/liquidaciones"),
+    queryFn: () => apiGet<{ rows: LiquidacionItem[]; total: number }>("/prestaciones/liquidaciones"),
     staleTime: 30_000,
   });
 

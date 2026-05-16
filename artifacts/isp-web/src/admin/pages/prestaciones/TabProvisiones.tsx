@@ -24,14 +24,18 @@ export function TabProvisiones() {
   const [queryDesde, setQueryDesde] = useState<string | null>(null);
   const [queryHasta, setQueryHasta] = useState<string | null>(null);
 
-  const { data: provisionesData, isFetching } = useQuery<{
+  type ProvisionesResponse = {
     rows: Provision[];
     total: number;
     total_por_tipo: Record<string, number>;
     total_general: number;
-  }>({
+  };
+  const { data: provisionesData, isFetching } = useQuery<ProvisionesResponse>({
     queryKey: ["prest-provisiones", queryDesde, queryHasta],
-    queryFn: () => apiGet(`/prestaciones/provisiones?periodo_desde=${queryDesde}&periodo_hasta=${queryHasta}`),
+    queryFn: () =>
+      apiGet<ProvisionesResponse>(
+        `/prestaciones/provisiones?periodo_desde=${queryDesde}&periodo_hasta=${queryHasta}`,
+      ),
     enabled: !!queryDesde && !!queryHasta,
   });
 

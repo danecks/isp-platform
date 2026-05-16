@@ -55,6 +55,50 @@ export interface Employee {
   estadoLaboral: string;
 }
 
+export interface PrestacionesConfigResponse {
+  config: PrestacionesConfig;
+  source: "db" | "default" | string;
+}
+
+export interface ImpactoConfigResponse {
+  liquidacionesConfirmadas: number;
+  ultimaFecha: string | null;
+}
+
+export interface SimularLiquidacionResponse {
+  simulacion: boolean;
+  employee_id: number;
+  nombre_completo: string;
+  liquidacion: {
+    rubros: RubroLiquidacion[];
+    totalGeneral: number;
+  };
+}
+
+export interface LiquidacionDetalleResponse {
+  liquidacion: {
+    empleado_nombre: string;
+    causal_egreso: string;
+    fecha_egreso: string;
+    estado: string;
+    total_general: string;
+  };
+  detalle: RubroLiquidacion[];
+}
+
+export interface ResumenOdbcResponse {
+  ok: boolean;
+  resumen: {
+    empleados: string;
+    bono14: string;
+    aguinaldo: string;
+    vacaciones: string;
+    indem: string;
+    filas: string;
+  };
+  empleados: OdbcEmpleadoRow[];
+}
+
 export interface OdbcEmpleadoRow {
   empl_numero: string;
   nombre_completo: string | null;

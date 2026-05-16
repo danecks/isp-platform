@@ -7,7 +7,14 @@ import { Separator } from "@/components/ui/separator";
 import { BookOpen, Palmtree, Eye, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiGet, apiPost, apiPut, fmt, TIPO_EGRESO_LABELS } from "./helpers";
-import type { Employee, PrestacionesConfig, RubroLiquidacion } from "./types";
+import type {
+  Employee,
+  ImpactoConfigResponse,
+  PrestacionesConfig,
+  PrestacionesConfigResponse,
+  RubroLiquidacion,
+  SimularLiquidacionResponse,
+} from "./types";
 
 interface PreviewSim {
   rubros: RubroLiquidacion[];
@@ -15,18 +22,15 @@ interface PreviewSim {
   empleadoNombre: string;
 }
 
-interface ImpactoConfig {
-  liquidacionesConfirmadas: number;
-  ultimaFecha: string | null;
-}
+type ImpactoConfig = ImpactoConfigResponse;
 
 export function TabConfiguracion() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading } = useQuery<PrestacionesConfigResponse>({
     queryKey: ["prest-config"],
-    queryFn: () => apiGet("/prestaciones/config"),
+    queryFn: () => apiGet<PrestacionesConfigResponse>("/prestaciones/config"),
   });
 
   const cfg: PrestacionesConfig = data?.config ?? {
@@ -54,13 +58,13 @@ export function TabConfiguracion() {
 
   const { data: empleados = [] } = useQuery<Employee[]>({
     queryKey: ["employees-activos"],
-    queryFn: () => apiGet("/employees?estado_laboral=activo"),
+    queryFn: () => apiGet<Employee[]>("/employees?estado_laboral=activo"),
     staleTime: 60_000,
   });
 
   const { data: impacto } = useQuery<ImpactoConfig>({
     queryKey: ["prest-config-impacto"],
-    queryFn: () => apiGet("/prestaciones/config/impacto"),
+    queryFn: () => apiGet<ImpactoConfig>("/prestaciones/config/impacto"),
     staleTime: 30_000,
   });
 
@@ -86,7 +90,7 @@ export function TabConfiguracion() {
 
   const saveMut = useMutation({
     mutationFn: (body: PrestacionesConfig) =>
-      apiPut("/prestaciones/config", {
+      apiPut<PrestacionesConfigResponse>("/prestaciones/config", {
         aguinaldo_base: body.aguinaldoBase,
         bono14_base: body.bono14Base,
         vacaciones_dias_primer_anio: body.vacacionesDiasPrimerAnio,
@@ -125,12 +129,12 @@ export function TabConfiguracion() {
           tipo_egreso: previewTipoEgreso,
           fecha_egreso: previewFecha,
         };
-        const requests: Promise<unknown>[] = [
-          apiPost("/prestaciones/simular-liquidacion", baseBody),
+        const requests: Promise<SimularLiquidacionResponse>[] = [
+          apiPost<SimularLiquidacionResponse>("/prestaciones/simular-liquidacion", baseBody),
         ];
         if (formChanged) {
           requests.push(
-            apiPost("/prestaciones/simular-liquidacion", {
+            apiPost<SimularLiquidacionResponse>("/prestaciones/simular-liquidacion", {
               ...baseBody,
               config_override: current,
             }),
@@ -138,20 +142,14 @@ export function TabConfiguracion() {
         }
         const results = await Promise.all(requests);
         if (cancelled) return;
-        const savedRes = results[0] as {
-          nombre_completo: string;
-          liquidacion: { rubros: RubroLiquidacion[]; totalGeneral: number };
-        };
+        const savedRes = results[0];
         setPreviewSaved({
           rubros: savedRes.liquidacion?.rubros ?? [],
           totalGeneral: savedRes.liquidacion?.totalGeneral ?? 0,
           empleadoNombre: savedRes.nombre_completo,
         });
         if (formChanged && results[1]) {
-          const liveRes = results[1] as {
-            nombre_completo: string;
-            liquidacion: { rubros: RubroLiquidacion[]; totalGeneral: number };
-          };
+          const liveRes = results[1];
           setPreviewLive({
             rubros: liveRes.liquidacion?.rubros ?? [],
             totalGeneral: liveRes.liquidacion?.totalGeneral ?? 0,

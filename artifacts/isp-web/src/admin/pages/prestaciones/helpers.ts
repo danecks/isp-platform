@@ -8,19 +8,19 @@ export function getSession() {
 
 export { apiRequest };
 
-export function apiGet<T = any>(url: string) {
+export function apiGet<T = unknown>(url: string) {
   return apiRequest<T>(url);
 }
 
-export function apiPost<T = any>(url: string, body: unknown) {
+export function apiPost<T = unknown>(url: string, body: unknown) {
   return apiRequest<T>(url, { method: "POST", json: body });
 }
 
-export function apiPut<T = any>(url: string, body: unknown) {
+export function apiPut<T = unknown>(url: string, body: unknown) {
   return apiRequest<T>(url, { method: "PUT", json: body });
 }
 
-export function apiPatch<T = any>(url: string, body?: unknown) {
+export function apiPatch<T = unknown>(url: string, body?: unknown) {
   return apiRequest<T>(url, { method: "PATCH", json: body });
 }
 
