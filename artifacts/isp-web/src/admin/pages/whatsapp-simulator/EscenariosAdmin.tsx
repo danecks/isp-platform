@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from "react";
 import { AdminLayout } from "@/admin/layout/AdminLayout";
-import { Plus, Save, Trash2, X, RefreshCw, ToggleLeft, ToggleRight } from "lucide-react";
+import { Plus, Save, Trash2, X, RefreshCw, ToggleLeft, ToggleRight, GripVertical } from "lucide-react";
 import { API } from "./constants";
 import type { QuickScenario } from "./types";
 
@@ -64,6 +64,8 @@ export default function EscenariosAdmin() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftScenario | null>(null);
+  const [dragId, setDragId] = useState<number | null>(null);
+  const [dragOverId, setDragOverId] = useState<number | null>(null);
 
   async function cargar() {
     setLoading(true);
@@ -135,6 +137,53 @@ export default function EscenariosAdmin() {
     if (res.ok) cargar();
   }
 
+  async function reordenar(grupo: Grupo, draggedId: number, targetId: number) {
+    if (draggedId === targetId) return;
+    const items = rows
+      .filter(r => r.grupo === grupo)
+      .sort((a, b) => a.orden - b.orden || a.id - b.id);
+    const fromIdx = items.findIndex(r => r.id === draggedId);
+    const toIdx = items.findIndex(r => r.id === targetId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const next = items.slice();
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+
+    // Asignar órdenes secuenciales 10, 20, 30, ... y detectar cambios
+    const updates: { id: number; orden: number }[] = [];
+    const nextById = new Map<number, number>();
+    next.forEach((r, i) => {
+      const newOrden = (i + 1) * 10;
+      nextById.set(r.id, newOrden);
+      if (r.orden !== newOrden) updates.push({ id: r.id, orden: newOrden });
+    });
+    if (updates.length === 0) return;
+
+    // Optimista
+    setRows(prev => prev.map(r =>
+      r.grupo === grupo && nextById.has(r.id)
+        ? { ...r, orden: nextById.get(r.id)! }
+        : r,
+    ));
+
+    try {
+      const results = await Promise.all(updates.map(u =>
+        fetch(`${API}/simulador/escenarios/${u.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orden: u.orden }),
+        }),
+      ));
+      if (results.some(r => !r.ok)) {
+        setError("Error al guardar el nuevo orden");
+        cargar();
+      }
+    } catch {
+      setError("Error al guardar el nuevo orden");
+      cargar();
+    }
+  }
+
   function startEdit(row: QuickScenario) {
     setDraft({
       id: row.id,
@@ -187,7 +236,9 @@ export default function EscenariosAdmin() {
         )}
 
         {grupos.map(g => {
-          const items = rows.filter(r => r.grupo === g);
+          const items = rows
+            .filter(r => r.grupo === g)
+            .sort((a, b) => a.orden - b.orden || a.id - b.id);
           return (
             <section key={g} className="space-y-2">
               <h3 className="text-xs uppercase tracking-widest text-gray-500 font-semibold">
@@ -197,6 +248,7 @@ export default function EscenariosAdmin() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-800/40 text-gray-400 text-xs">
                     <tr>
+                      <th className="px-2 py-2 w-8"></th>
                       <th className="text-left px-3 py-2 w-16">Orden</th>
                       <th className="text-left px-3 py-2">Botón</th>
                       <th className="text-left px-3 py-2">Mensaje</th>
@@ -207,12 +259,47 @@ export default function EscenariosAdmin() {
                   </thead>
                   <tbody>
                     {items.length === 0 && (
-                      <tr><td colSpan={6} className="px-3 py-4 text-center text-gray-600 text-xs">
+                      <tr><td colSpan={7} className="px-3 py-4 text-center text-gray-600 text-xs">
                         Sin escenarios en este grupo.
                       </td></tr>
                     )}
                     {items.map(r => (
-                      <tr key={r.id} className="border-t border-gray-700/30 hover:bg-gray-800/20">
+                      <tr
+                        key={r.id}
+                        draggable
+                        onDragStart={e => {
+                          setDragId(r.id);
+                          e.dataTransfer.effectAllowed = "move";
+                          e.dataTransfer.setData("text/plain", String(r.id));
+                        }}
+                        onDragOver={e => {
+                          if (dragId == null) return;
+                          const dragged = rows.find(x => x.id === dragId);
+                          if (!dragged || dragged.grupo !== r.grupo) return;
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                          if (dragOverId !== r.id) setDragOverId(r.id);
+                        }}
+                        onDragLeave={() => {
+                          if (dragOverId === r.id) setDragOverId(null);
+                        }}
+                        onDrop={e => {
+                          e.preventDefault();
+                          const draggedId = dragId ?? Number(e.dataTransfer.getData("text/plain"));
+                          setDragOverId(null);
+                          setDragId(null);
+                          if (Number.isFinite(draggedId)) reordenar(g, draggedId, r.id);
+                        }}
+                        onDragEnd={() => { setDragId(null); setDragOverId(null); }}
+                        className={
+                          "border-t border-gray-700/30 hover:bg-gray-800/20 " +
+                          (dragId === r.id ? "opacity-40 " : "") +
+                          (dragOverId === r.id && dragId !== r.id ? "outline outline-1 outline-emerald-400/60 " : "")
+                        }
+                      >
+                        <td className="px-2 py-2 text-gray-600 cursor-grab active:cursor-grabbing select-none" title="Arrastrar para reordenar">
+                          <GripVertical size={14} />
+                        </td>
                         <td className="px-3 py-2 text-gray-500 text-xs">{r.orden}</td>
                         <td className="px-3 py-2">
                           <span className={`inline-block text-xs px-2.5 py-1 rounded-lg border ${r.color}`}>
