@@ -1,20 +1,16 @@
 import { Zap, ChevronRight, Building2, Shield, ExternalLink } from "lucide-react";
-import type { InicioProyecto } from "../types";
 import { TIPO_SSA_LABELS } from "../types";
+import { useOperacionesContext } from "../OperacionesContext";
 
-interface Props {
-  arranques: InicioProyecto[];
-  total: number;
-  colArranques: boolean;
-  onToggleArranques: () => void;
-  onIrAFecha: (fecha: string, clienteId?: number) => void;
-}
+export function PanelProximosArranques() {
+  const { proximosArranques, esFuturo, colArranques, toggleColArranques, irAFecha } = useOperacionesContext();
+  if (esFuturo || !proximosArranques || proximosArranques.total === 0) return null;
+  const { arranques, total } = proximosArranques;
 
-export function PanelProximosArranques({ arranques, total, colArranques, onToggleArranques, onIrAFecha }: Props) {
   return (
     <div className="bg-amber-500/4 border border-amber-500/20 rounded-xl overflow-hidden">
       <button
-        onClick={onToggleArranques}
+        onClick={toggleColArranques}
         className="w-full flex items-center gap-2 px-4 py-2.5 border-b border-amber-500/15 text-left group hover:bg-amber-500/4 transition-colors"
       >
         <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
@@ -47,7 +43,7 @@ export function PanelProximosArranques({ arranques, total, colArranques, onToggl
               return (
                 <button
                   key={itemKey}
-                  onClick={() => onIrAFecha(fechaInicio, esSSA ? undefined : ip.cliente_id)}
+                  onClick={() => irAFecha(fechaInicio, esSSA ? undefined : ip.cliente_id)}
                   title={esSSA ? `SSA — ${TIPO_SSA_LABELS[ip.tipo_solicitud ?? ""] ?? ip.tipo_solicitud} — ${fechaInicio}` : `Arranque nuevo — ${fechaInicio}`}
                   className={`group flex items-center gap-2 text-[11px] w-full text-left rounded-lg px-1.5 py-1 -mx-1.5 ${hoverBg} transition-colors cursor-pointer`}
                 >

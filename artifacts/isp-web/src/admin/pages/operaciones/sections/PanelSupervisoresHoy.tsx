@@ -1,23 +1,15 @@
 import { Shield, ChevronRight, Edit2 } from "lucide-react";
-import type { Pool, Agente, SupervisorPool } from "../types";
+import type { SupervisorPool } from "../types";
 import { avatarColor, iniciales } from "../utils";
+import { useOperacionesContext } from "../OperacionesContext";
 
-interface Props {
-  pool: Pool;
-  agenteSeleccionado: Agente | null;
-  onSelectAgente: (a: Agente | ((prev: Agente | null) => Agente | null)) => void;
-  fechaVistaCerrada: boolean;
-  colSupers: boolean;
-  onToggleSupers: () => void;
-  onEditarPlantilla: (data: { empleadoId: number; empleadoNombre: string; tipo: "supervisor" }) => void;
-  onAbrirVehiculo: (id: number) => void;
-}
+export function PanelSupervisoresHoy() {
+  const {
+    pool, esFuturo, agenteSeleccionado, setAgenteSeleccionado, fechaVistaCerrada,
+    colSupers, toggleColSupers, setEditarPlantilla, setFichaVehiculoId,
+  } = useOperacionesContext();
+  if (esFuturo || !pool || (pool.supervisores?.length ?? 0) === 0) return null;
 
-export function PanelSupervisoresHoy({
-  pool, agenteSeleccionado, onSelectAgente, fechaVistaCerrada,
-  colSupers, onToggleSupers, onEditarPlantilla, onAbrirVehiculo,
-}: Props) {
-  if ((pool.supervisores?.length ?? 0) === 0) return null;
   const svTrabajando  = pool.supervisores.filter(sv => sv.estado_ciclo === "trabajando");
   const svDisponHE    = pool.supervisores.filter(sv => sv.estado_ciclo === "disponible_he");
   const svDescanso    = pool.supervisores.filter(sv => sv.estado_ciclo === "descansando_ciclo");
@@ -44,7 +36,7 @@ export function PanelSupervisoresHoy({
 
     const handleClick = seleccionable ? () => {
       const agente = pool.descansandoCiclo.find(a => a.id === sv.id);
-      if (agente) onSelectAgente(prev => prev?.id === agente.id ? null : agente);
+      if (agente) setAgenteSeleccionado(prev => prev?.id === agente.id ? null : agente);
     } : undefined;
 
     return (
@@ -59,10 +51,10 @@ export function PanelSupervisoresHoy({
         <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${estadoBadge.cls}`}>{estadoBadge.label}</span>
         {esSeleccionado && <span className="text-[8px] text-violet-300 animate-pulse shrink-0">✓</span>}
         {(sv as any).vehiculos_zona?.length > 0 && ((sv as any).vehiculos_zona as Array<{ id: number; placa: string; estado: string }>).filter(v => v.estado === "activo").slice(0,1).map(veh => (
-          <button key={veh.id} onClick={e => { e.stopPropagation(); onAbrirVehiculo(veh.id); }} className="text-[8px] text-sky-300/60 border border-sky-500/20 bg-sky-500/8 px-1 py-0.5 rounded shrink-0">🚗</button>
+          <button key={veh.id} onClick={e => { e.stopPropagation(); setFichaVehiculoId(veh.id); }} className="text-[8px] text-sky-300/60 border border-sky-500/20 bg-sky-500/8 px-1 py-0.5 rounded shrink-0">🚗</button>
         ))}
         <button
-          onClick={e => { e.stopPropagation(); onEditarPlantilla({ empleadoId: sv.id, empleadoNombre: sv.nombre_completo, tipo: "supervisor" }); }}
+          onClick={e => { e.stopPropagation(); setEditarPlantilla({ empleadoId: sv.id, empleadoNombre: sv.nombre_completo, tipo: "supervisor" }); }}
           title="Editar plantilla de turno"
           className="text-violet-300/60 hover:text-violet-200 hover:bg-violet-500/15 border border-violet-500/20 rounded p-0.5 shrink-0">
           <Edit2 className="w-2.5 h-2.5" />
@@ -74,7 +66,7 @@ export function PanelSupervisoresHoy({
   return (
     <div className="bg-[#060f1a] border border-violet-500/15 rounded-xl overflow-hidden">
       <button
-        onClick={onToggleSupers}
+        onClick={toggleColSupers}
         className="w-full flex items-center gap-2 px-3 py-2 text-left group hover:bg-violet-500/5 transition-colors"
       >
         <Shield className="w-3 h-3 text-violet-400/60 shrink-0" />

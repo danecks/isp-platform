@@ -1,18 +1,12 @@
 import { AlertTriangle, Lock } from "lucide-react";
-import type { DiaPendienteCierre } from "../types";
 import { formatFechaVista } from "../helpers";
+import { useOperacionesContext } from "../OperacionesContext";
 
-interface Props {
-  diasPendientesCierre: DiaPendienteCierre[];
-  fechaVista: string;
-  esPasado: boolean;
-  onIrAFecha: (fecha: string) => void;
-  onCerrarDia: (dia: DiaPendienteCierre) => void;
-}
-
-export function AlertaDiasSinCerrar({ diasPendientesCierre, fechaVista, esPasado, onIrAFecha, onCerrarDia }: Props) {
+export function AlertaDiasSinCerrar() {
+  const { diasPendientesCierre, fechaVista, esPasado, irAFecha, cierre } = useOperacionesContext();
   if (diasPendientesCierre.length === 0) return null;
   const primerDiaPendiente = diasPendientesCierre[0];
+  const onCerrarDia = (dia: typeof diasPendientesCierre[number]) => cierre.setDiaPendienteSeleccionado(dia);
 
   return (
     <div className="shrink-0 rounded-xl border border-amber-500/40 bg-amber-950/30 px-4 py-3 flex flex-col gap-3">
@@ -37,7 +31,7 @@ export function AlertaDiasSinCerrar({ diasPendientesCierre, fechaVista, esPasado
           return (
             <div key={dia.fecha} className={`flex items-center gap-1 rounded-lg border text-xs font-medium overflow-hidden ${esViendo ? "border-amber-400/60 bg-amber-500/20" : "border-white/10 bg-white/5"}`}>
               <button
-                onClick={() => onIrAFecha(dia.fecha)}
+                onClick={() => irAFecha(dia.fecha)}
                 className={`px-3 py-1.5 transition-colors ${esViendo ? "text-amber-200" : "text-white/70 hover:text-white"}`}
               >
                 {esViendo && <span className="mr-1 text-amber-400">▶</span>}

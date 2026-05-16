@@ -1,30 +1,14 @@
 import { MapPin, Building2, X } from "lucide-react";
+import { useOperacionesContext } from "../OperacionesContext";
 
-interface ZonaItem { id: string; nombre: string; }
-interface ClienteItem { id: string; nombre: string; }
-
-interface Props {
-  zonasDisponibles: ZonaItem[];
-  clientesDisponiblesFiltro: ClienteItem[];
-  filtroZona: string;
-  filtroCliente: string;
-  totalPuestosFiltrados: number;
-  onCambiarZona: (z: string) => void;
-  onCambiarCliente: (c: string) => void;
-  onLimpiar: () => void;
-}
-
-export function FiltrosZonaCliente({
-  zonasDisponibles,
-  clientesDisponiblesFiltro,
-  filtroZona,
-  filtroCliente,
-  totalPuestosFiltrados,
-  onCambiarZona,
-  onCambiarCliente,
-  onLimpiar,
-}: Props) {
+export function FiltrosZonaCliente() {
+  const {
+    zonasDisponibles, clientesDisponiblesFiltro,
+    filtroZona, setFiltroZona, filtroCliente, setFiltroCliente,
+    totalPuestosFiltrados,
+  } = useOperacionesContext();
   if (zonasDisponibles.length === 0 && clientesDisponiblesFiltro.length <= 1) return null;
+  const onLimpiar = () => { setFiltroZona(""); setFiltroCliente(""); };
   return (
     <div className="flex items-center gap-2 flex-wrap">
       {zonasDisponibles.length > 0 && (
@@ -32,7 +16,7 @@ export function FiltrosZonaCliente({
           <MapPin className="w-3 h-3 text-white/20 ml-1" />
           <select
             value={filtroZona}
-            onChange={(e) => onCambiarZona(e.target.value)}
+            onChange={(e) => setFiltroZona(e.target.value)}
             className="bg-transparent text-xs text-white/60 outline-none pr-1"
           >
             <option value="">Todas las zonas</option>
@@ -47,7 +31,7 @@ export function FiltrosZonaCliente({
           <Building2 className="w-3 h-3 text-white/20 ml-1" />
           <select
             value={filtroCliente}
-            onChange={(e) => onCambiarCliente(e.target.value)}
+            onChange={(e) => setFiltroCliente(e.target.value)}
             className="bg-transparent text-xs text-white/60 outline-none pr-1"
           >
             <option value="">Todos los clientes</option>

@@ -1,30 +1,22 @@
 import { Zap, ChevronRight, AlertCircle, CheckCircle2, Info } from "lucide-react";
-import type { TarjetaSSAPendiente } from "../types";
 import { TarjetaSSACard } from "../components/TarjetaSSACard";
+import { useOperacionesContext } from "../OperacionesContext";
 
-interface Props {
-  tarjetasSSA: TarjetaSSAPendiente[];
-  ssaSinAgente: TarjetaSSAPendiente[];
-  ssaCubierta: TarjetaSSAPendiente[];
-  ssaTabActivo: "sin_asignar" | "cubierta";
-  onSetSsaTab: (t: "sin_asignar" | "cubierta") => void;
-  colSSA: boolean;
-  onToggleSSA: () => void;
-  fechaVistaCerrada: boolean;
-  onAsignar: (t: TarjetaSSAPendiente) => void;
-  onRemover: (t: TarjetaSSAPendiente, motivo: string, notas?: string) => void;
-}
-
-export function PanelSSA({
-  tarjetasSSA, ssaSinAgente, ssaCubierta, ssaTabActivo, onSetSsaTab,
-  colSSA, onToggleSSA, fechaVistaCerrada, onAsignar, onRemover,
-}: Props) {
+export function PanelSSA() {
+  const {
+    tarjetasSSA, ssaSinAgente, ssaCubierta, ssaTabActivo, setSsaTabActivo,
+    colSSA, toggleColSSA, fechaVistaCerrada, setModalAsignarSSA, assignment,
+  } = useOperacionesContext();
   if (tarjetasSSA.length === 0) return null;
+  const onAsignar = (t: typeof tarjetasSSA[number]) => setModalAsignarSSA(t);
+  const onRemover = (t: typeof tarjetasSSA[number], motivo: string, notas?: string) =>
+    assignment.removerAgenteSSA(t, motivo, notas);
+
   return (
     <div className="bg-[#06101c] border border-white/8 rounded-xl overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-2 border-b border-white/6">
         <button
-          onClick={onToggleSSA}
+          onClick={toggleColSSA}
           className="flex items-center gap-2 flex-1 text-left group"
         >
           <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
@@ -44,7 +36,7 @@ export function PanelSSA({
         <>
           <div className="flex border-b border-white/6">
             <button
-              onClick={() => onSetSsaTab("sin_asignar")}
+              onClick={() => setSsaTabActivo("sin_asignar")}
               className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-semibold transition-colors border-b-2 ${
                 ssaTabActivo === "sin_asignar"
                   ? "border-amber-400 text-amber-300 bg-amber-500/5"
@@ -60,7 +52,7 @@ export function PanelSSA({
               )}
             </button>
             <button
-              onClick={() => onSetSsaTab("cubierta")}
+              onClick={() => setSsaTabActivo("cubierta")}
               className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-semibold transition-colors border-b-2 ${
                 ssaTabActivo === "cubierta"
                   ? "border-green-400 text-green-300 bg-green-500/5"

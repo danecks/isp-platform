@@ -1,6 +1,6 @@
 import type { Agente, ClienteBoard, PlanFuturo, Pool, Puesto } from "../types";
 import { rankCandidatos } from "../ranking";
-import type { PoolTab } from "../sections/PanelPool";
+import type { PoolTab } from "../types";
 
 interface Args {
   pool: Pool | undefined;

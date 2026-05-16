@@ -1,22 +1,14 @@
 import { Search, X, ChevronRight } from "lucide-react";
+import { useOperacionesContext } from "../OperacionesContext";
 
-interface Props {
-  busquedaPersona: string;
-  onBusquedaChange: (v: string) => void;
-  totalPuestosFiltrados: number;
-  hayTablero: boolean;
-  colGlobalVal: boolean;
-  onToggleColGlobal: () => void;
-}
+export function BuscadorColaborador() {
+  const {
+    busquedaPersona, setBusquedaPersona, totalPuestosFiltrados,
+    tableroFiltrado, colGlobal, toggleColGlobal,
+  } = useOperacionesContext();
+  const hayTablero = tableroFiltrado.length > 0;
+  const colGlobalVal = colGlobal.val;
 
-export function BuscadorColaborador({
-  busquedaPersona,
-  onBusquedaChange,
-  totalPuestosFiltrados,
-  hayTablero,
-  colGlobalVal,
-  onToggleColGlobal,
-}: Props) {
   return (
     <div className="flex items-center gap-2 shrink-0 flex-wrap">
       <div className={`relative flex items-center transition-all ${busquedaPersona ? "w-72" : "w-52"}`}>
@@ -24,7 +16,7 @@ export function BuscadorColaborador({
         <input
           type="text"
           value={busquedaPersona}
-          onChange={(e) => onBusquedaChange(e.target.value)}
+          onChange={(e) => setBusquedaPersona(e.target.value)}
           placeholder="Buscar colaborador en el pizarrón…"
           className={`w-full bg-[#0c1929] border rounded-xl pl-8 pr-8 py-1.5 text-xs text-white placeholder-white/20 outline-none transition-all ${
             busquedaPersona ? "border-primary/40 bg-primary/5" : "border-white/8 focus:border-white/20"
@@ -32,7 +24,7 @@ export function BuscadorColaborador({
         />
         {busquedaPersona && (
           <button
-            onClick={() => onBusquedaChange("")}
+            onClick={() => setBusquedaPersona("")}
             className="absolute right-2.5 text-white/30 hover:text-white transition-colors"
             title="Limpiar búsqueda"
           >
@@ -52,7 +44,7 @@ export function BuscadorColaborador({
 
       {hayTablero && (
         <button
-          onClick={onToggleColGlobal}
+          onClick={toggleColGlobal}
           className="flex items-center gap-1.5 text-[11px] text-white/40 hover:text-white/80 transition-colors px-2.5 py-1.5 border border-white/8 hover:border-white/20 rounded-xl whitespace-nowrap"
           title={colGlobalVal ? "Expandir todas las columnas" : "Colapsar todas las columnas"}
         >

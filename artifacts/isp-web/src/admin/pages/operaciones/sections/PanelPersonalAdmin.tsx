@@ -1,17 +1,12 @@
 import { Briefcase, ChevronRight, Edit2 } from "lucide-react";
-import type { Pool, AdministrativoPool } from "../types";
+import type { AdministrativoPool } from "../types";
 import { SUBAREA_LABELS } from "../types";
 import { avatarColor, iniciales } from "../utils";
+import { useOperacionesContext } from "../OperacionesContext";
 
-interface Props {
-  pool: Pool;
-  colAdmin: boolean;
-  onToggleAdmin: () => void;
-  onEditarPlantilla: (data: { empleadoId: number; empleadoNombre: string; tipo: "administrativo" }) => void;
-}
-
-export function PanelPersonalAdmin({ pool, colAdmin, onToggleAdmin, onEditarPlantilla }: Props) {
-  if ((pool.administrativos?.length ?? 0) === 0) return null;
+export function PanelPersonalAdmin() {
+  const { pool, esFuturo, colAdmin, toggleColAdmin, setEditarPlantilla } = useOperacionesContext();
+  if (esFuturo || !pool || (pool.administrativos?.length ?? 0) === 0) return null;
   const adTrabajando = pool.administrativos!.filter(ad => ad.estado_ciclo === "trabajando");
   const adDescanso   = pool.administrativos!.filter(ad => ad.estado_ciclo === "descansando_ciclo");
   const adOtros      = pool.administrativos!.filter(ad => !["trabajando","descansando_ciclo"].includes(ad.estado_ciclo ?? ""));
@@ -43,7 +38,7 @@ export function PanelPersonalAdmin({ pool, colAdmin, onToggleAdmin, onEditarPlan
           <span className="text-[8px] text-white/30 shrink-0">{String(ad.ps_hora_entrada).slice(0,5)}</span>
         )}
         <button
-          onClick={e => { e.stopPropagation(); onEditarPlantilla({ empleadoId: ad.id, empleadoNombre: ad.nombre_completo, tipo: "administrativo" }); }}
+          onClick={e => { e.stopPropagation(); setEditarPlantilla({ empleadoId: ad.id, empleadoNombre: ad.nombre_completo, tipo: "administrativo" }); }}
           title="Editar plantilla de turno"
           className="text-cyan-300/60 hover:text-cyan-200 hover:bg-cyan-500/15 border border-cyan-500/20 rounded p-0.5 shrink-0">
           <Edit2 className="w-2.5 h-2.5" />
@@ -55,7 +50,7 @@ export function PanelPersonalAdmin({ pool, colAdmin, onToggleAdmin, onEditarPlan
   return (
     <div className="bg-[#060f1a] border border-cyan-500/15 rounded-xl overflow-hidden">
       <button
-        onClick={onToggleAdmin}
+        onClick={toggleColAdmin}
         className="w-full flex items-center gap-2 px-3 py-2 text-left group hover:bg-cyan-500/5 transition-colors"
       >
         <Briefcase className="w-3 h-3 text-cyan-400/60 shrink-0" />

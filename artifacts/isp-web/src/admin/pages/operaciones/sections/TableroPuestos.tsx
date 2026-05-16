@@ -1,63 +1,30 @@
 import { Loader2, Lock, Unlock, Shield, Plus, MapPin } from "lucide-react";
-import type { ClienteBoard, Puesto, Agente, PlanFuturo } from "../types";
+import type { Puesto } from "../types";
 import { ClienteColumna } from "../components/ClienteColumna";
 import { formatFechaVista } from "../helpers";
+import { useOperacionesContext } from "../OperacionesContext";
 
-interface Props {
-  loadingTablero: boolean;
-  tablero: ClienteBoard[];
-  tableroFiltrado: ClienteBoard[];
-  fechaVistaCerrada: boolean;
-  fechaVista: string;
-  esAdmin: boolean;
-  esFuturo: boolean;
-  isDeleteMode: boolean;
-  agenteSeleccionado: Agente | null;
-  cambiosFuturosProximos: Record<number, PlanFuturo[]>;
-  planFuturoPorPuesto: Record<number, PlanFuturo>;
-  clienteResaltado: number | null;
-  colGlobal: { v: number; val: boolean };
-  puestoContextoId: number | null;
-  puedeQuitarTitular: boolean;
-  onPuestoClick: (p: Puesto) => void;
-  onLiberar: (p: Puesto) => void;
-  onRegistrarFalta: (p: Puesto, titularId: number, titularNombre: string) => void;
-  onNuevoPuesto: (c: ClienteBoard | "nuevo") => void;
-  onEliminarPuesto: (p: Puesto) => void;
-  onAbrirSegmentos: (p: Puesto) => void;
-  onConfigTurno: (p: Puesto) => void;
-  onQuitarTitular: (p: Puesto, employeeId: number, employeeNombre: string) => void;
-  onAbrirReabrir: () => void;
-  onLimpiarFiltros: () => void;
-}
+export function TableroPuestos() {
+  const {
+    loadingTablero, tablero, tableroFiltrado, fechaVistaCerrada, fechaVista,
+    esAdmin, esFuturo, isDeleteMode, agenteSeleccionado,
+    cambiosFuturosProximos, planFuturoPorPuesto, clienteResaltado, colGlobal, puestoContexto,
+    puedeQuitarTitular, handlePuestoClick, setNuevoPuestoData, eliminarPuesto,
+    setModalSegmentos, setPuestoParaTurno, planFuturoFlow, assignment, cierre,
+    handleLimpiarFiltros,
+  } = useOperacionesContext();
 
-export function TableroPuestos({
-  loadingTablero,
-  tablero,
-  tableroFiltrado,
-  fechaVistaCerrada,
-  fechaVista,
-  esAdmin,
-  esFuturo,
-  isDeleteMode,
-  agenteSeleccionado,
-  cambiosFuturosProximos,
-  planFuturoPorPuesto,
-  clienteResaltado,
-  colGlobal,
-  puestoContextoId,
-  puedeQuitarTitular,
-  onPuestoClick,
-  onLiberar,
-  onRegistrarFalta,
-  onNuevoPuesto,
-  onEliminarPuesto,
-  onAbrirSegmentos,
-  onConfigTurno,
-  onQuitarTitular,
-  onAbrirReabrir,
-  onLimpiarFiltros,
-}: Props) {
+  const onLiberar = (p: Puesto) => esFuturo
+    ? planFuturoFlow.setModalPlanFuturo({ puesto: p, plan: planFuturoPorPuesto[p.id] ?? null })
+    : assignment.setModalLiberar(p);
+  const onRegistrarFalta = (p: Puesto, titularId: number, titularNombre: string) =>
+    assignment.setModalFalta({ puesto: p, titularId, titularNombre });
+  const onConfigTurno = (p: Puesto) => esFuturo
+    ? planFuturoFlow.setModalPlanFuturo({ puesto: p, plan: planFuturoPorPuesto[p.id] ?? null })
+    : setPuestoParaTurno(p);
+  const onQuitarTitular = (p: Puesto, employeeId: number, employeeNombre: string) =>
+    assignment.setModalQuitarTitular({ puesto: p, employeeId, employeeNombre });
+
   return (
     <div className="flex-1 overflow-auto relative" style={{ minHeight: 0 }}>
       {fechaVistaCerrada && (
@@ -72,7 +39,7 @@ export function TableroPuestos({
               </div>
               {esAdmin && (
                 <button
-                  onClick={onAbrirReabrir}
+                  onClick={() => cierre.setModalReabrir(true)}
                   className="pointer-events-auto flex items-center gap-1.5 text-xs font-semibold text-white bg-red-600/80 hover:bg-red-600 rounded-xl px-3 py-1.5 ml-2 transition-colors"
                 >
                   <Unlock className="w-3 h-3" /> Reabrir
@@ -92,7 +59,7 @@ export function TableroPuestos({
           <Shield className="w-12 h-12 text-white/10" />
           <p className="text-white/30 text-sm">No hay puestos operativos configurados</p>
           <button
-            onClick={() => onNuevoPuesto("nuevo")}
+            onClick={() => setNuevoPuestoData("nuevo")}
             className="flex items-center gap-2 text-xs text-primary hover:text-primary/80 transition-colors border border-primary/20 rounded-xl px-4 py-2"
           >
             <Plus className="w-3.5 h-3.5" /> Crear primer puesto
@@ -103,7 +70,7 @@ export function TableroPuestos({
           <MapPin className="w-12 h-12 text-white/10" />
           <p className="text-white/30 text-sm">Ningún puesto coincide con los filtros aplicados</p>
           <button
-            onClick={onLimpiarFiltros}
+            onClick={handleLimpiarFiltros}
             className="text-xs text-amber-400/60 hover:text-amber-400 transition-colors"
           >
             Limpiar filtros
@@ -116,20 +83,20 @@ export function TableroPuestos({
               key={cliente.clienteNombre}
               cliente={cliente}
               agenteSeleccionadoId={agenteSeleccionado?.id ?? null}
-              onPuestoClick={onPuestoClick}
+              onPuestoClick={handlePuestoClick}
               onLiberar={onLiberar}
               onRegistrarFalta={!esFuturo ? onRegistrarFalta : undefined}
-              onNuevoPuesto={(c) => onNuevoPuesto(c)}
-              onEliminarPuesto={onEliminarPuesto}
+              onNuevoPuesto={(c) => setNuevoPuestoData(c)}
+              onEliminarPuesto={eliminarPuesto}
               isDeleteMode={isDeleteMode}
-              onAbrirSegmentos={(p) => { if (!esFuturo) onAbrirSegmentos(p); }}
+              onAbrirSegmentos={(p) => { if (!esFuturo) setModalSegmentos(p); }}
               onConfigTurno={onConfigTurno}
               onQuitarTitular={puedeQuitarTitular ? onQuitarTitular : undefined}
               cambiosFuturosProximos={!esFuturo ? cambiosFuturosProximos : undefined}
               planFuturoPorPuesto={esFuturo ? planFuturoPorPuesto : undefined}
               resaltado={clienteResaltado !== null && cliente.clienteId === clienteResaltado}
               colGlobal={colGlobal}
-              puestoContextoId={puestoContextoId}
+              puestoContextoId={puestoContexto?.id ?? null}
             />
           ))}
         </div>

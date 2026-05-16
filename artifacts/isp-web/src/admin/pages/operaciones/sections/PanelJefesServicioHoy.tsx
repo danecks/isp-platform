@@ -1,22 +1,15 @@
 import { Shield, ChevronRight, Edit2 } from "lucide-react";
-import type { Pool, Agente, JefeServicioPool } from "../types";
+import type { JefeServicioPool } from "../types";
 import { avatarColor, iniciales } from "../utils";
+import { useOperacionesContext } from "../OperacionesContext";
 
-interface Props {
-  pool: Pool;
-  agenteSeleccionado: Agente | null;
-  onSelectAgente: (a: Agente | ((prev: Agente | null) => Agente | null)) => void;
-  fechaVistaCerrada: boolean;
-  colJefes: boolean;
-  onToggleJefes: () => void;
-  onEditarPlantilla: (data: { empleadoId: number; empleadoNombre: string; tipo: "jefe_servicio" }) => void;
-}
+export function PanelJefesServicioHoy() {
+  const {
+    pool, esFuturo, agenteSeleccionado, setAgenteSeleccionado, fechaVistaCerrada,
+    colJefes, toggleColJefes, setEditarPlantilla,
+  } = useOperacionesContext();
+  if (esFuturo || !pool || (pool.jefes_servicio?.length ?? 0) === 0) return null;
 
-export function PanelJefesServicioHoy({
-  pool, agenteSeleccionado, onSelectAgente, fechaVistaCerrada,
-  colJefes, onToggleJefes, onEditarPlantilla,
-}: Props) {
-  if ((pool.jefes_servicio?.length ?? 0) === 0) return null;
   const jefesHoy     = pool.jefes_servicio.filter(js => js.trabaja_hoy === true);
   const jefesMañana  = pool.jefes_servicio.filter(js => js.trabaja_mañana === true && js.trabaja_hoy !== true);
   const jefesDescanso = pool.jefes_servicio.filter(js => js.trabaja_hoy === false && js.estado_ciclo === "descansando_ciclo");
@@ -34,7 +27,7 @@ export function PanelJefesServicioHoy({
 
     const handleClick = seleccionable ? () => {
       const agente = pool.descansandoCiclo.find(a => a.id === js.id);
-      if (agente) onSelectAgente(prev => prev?.id === agente.id ? null : agente);
+      if (agente) setAgenteSeleccionado(prev => prev?.id === agente.id ? null : agente);
     } : undefined;
 
     return (
@@ -49,7 +42,7 @@ export function PanelJefesServicioHoy({
         <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${badgeCls}`}>{badgeLabel}</span>
         {esSeleccionado && <span className="text-[8px] text-orange-300 animate-pulse shrink-0">✓</span>}
         <button
-          onClick={e => { e.stopPropagation(); onEditarPlantilla({ empleadoId: js.id, empleadoNombre: js.nombre_completo, tipo: "jefe_servicio" }); }}
+          onClick={e => { e.stopPropagation(); setEditarPlantilla({ empleadoId: js.id, empleadoNombre: js.nombre_completo, tipo: "jefe_servicio" }); }}
           title="Editar plantilla de turno"
           className="text-orange-300/60 hover:text-orange-200 hover:bg-orange-500/15 border border-orange-500/20 rounded p-0.5 shrink-0">
           <Edit2 className="w-2.5 h-2.5" />
@@ -61,7 +54,7 @@ export function PanelJefesServicioHoy({
   return (
     <div className="bg-[#060f1a] border border-orange-500/15 rounded-xl overflow-hidden">
       <button
-        onClick={onToggleJefes}
+        onClick={toggleColJefes}
         className="w-full flex items-center gap-2 px-3 py-2 text-left group hover:bg-orange-500/5 transition-colors"
       >
         <Shield className="w-3 h-3 text-orange-400/60 shrink-0" />

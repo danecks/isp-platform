@@ -1,56 +1,26 @@
 import { Fragment } from "react";
 import { Users, Loader2, X, ChevronRight, MapPin, CheckCircle2, Circle, ArrowLeftRight, XCircle } from "lucide-react";
-import type { Agente, AgenteRankeado, GrupoRanking, Pool, Puesto } from "../types";
+import type { GrupoRanking } from "../types";
 import { RANKING_GRUPO_CONFIG } from "../types";
 import { DraggableAgente } from "../components/DraggableAgente";
+import { useOperacionesContext } from "../OperacionesContext";
 
-type PoolTab =
-  | "disponibles" | "disponiblesCubriendo" | "vacacionistasCubriendo" | "trabajando"
-  | "descansandoCiclo" | "haciendoHE" | "enDescanso" | "suspendidos"
-  | "enPuesto" | "enSSA" | "faltando" | "enVacaciones";
+export function PanelPool() {
+  const {
+    pool, loadingPool, poolActual, poolTab, setPoolTab,
+    busquedaPool, setBusquedaPool, colPool, toggleColPool,
+    agenteSeleccionado, setAgenteSeleccionado,
+    puestoContexto, setPuestoContexto,
+    candidatosRankeados, fechaVistaCerrada,
+  } = useOperacionesContext();
 
-interface Props {
-  pool: Pool | undefined;
-  loadingPool: boolean;
-  poolActual: Agente[];
-  poolTab: PoolTab;
-  onSetPoolTab: (t: PoolTab) => void;
-  busquedaPool: string;
-  onBusquedaPoolChange: (v: string) => void;
-  colPool: boolean;
-  onToggleColPool: () => void;
-  agenteSeleccionado: Agente | null;
-  onSelectAgente: (a: Agente) => void;
-  puestoContexto: Puesto | null;
-  onLimpiarContexto: () => void;
-  candidatosRankeados: AgenteRankeado[];
-  fechaVistaCerrada: boolean;
-}
-
-export function PanelPool({
-  pool,
-  loadingPool,
-  poolActual,
-  poolTab,
-  onSetPoolTab,
-  busquedaPool,
-  onBusquedaPoolChange,
-  colPool,
-  onToggleColPool,
-  agenteSeleccionado,
-  onSelectAgente,
-  puestoContexto,
-  onLimpiarContexto,
-  candidatosRankeados,
-  fechaVistaCerrada,
-}: Props) {
   return (
     <div className="shrink-0 bg-[#060f1a] border border-white/8 rounded-2xl overflow-hidden">
       {/* Header pool */}
       <div className="border-b border-white/8">
         <div className="flex items-center gap-2 px-4 py-2.5">
           <button
-            onClick={onToggleColPool}
+            onClick={toggleColPool}
             className="flex items-center gap-2 group shrink-0"
             title={colPool ? "Expandir pool" : "Minimizar pool"}
           >
@@ -75,12 +45,12 @@ export function PanelPool({
               <input
                 type="text"
                 value={busquedaPool}
-                onChange={(e) => onBusquedaPoolChange(e.target.value)}
+                onChange={(e) => setBusquedaPool(e.target.value)}
                 placeholder="Buscar agente…"
                 className="bg-[#060e1c] border border-white/8 rounded-lg px-3 py-1.5 text-xs text-white placeholder-white/20 outline-none focus:border-primary/40 w-40"
               />
               {busquedaPool && (
-                <button onClick={() => onBusquedaPoolChange("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-white/20 hover:text-white">
+                <button onClick={() => setBusquedaPool("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-white/20 hover:text-white">
                   <X className="w-3 h-3" />
                 </button>
               )}
@@ -110,7 +80,7 @@ export function PanelPool({
               <Fragment key={key}>
                 {sep && idx > 0 && <span className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />}
                 <button
-                  onClick={() => onSetPoolTab(key)}
+                  onClick={() => setPoolTab(key)}
                   className={`shrink-0 flex items-center gap-1.5 text-xs px-3 py-1 rounded-lg transition-colors whitespace-nowrap ${
                     poolTab === key ? "bg-white/8 text-white" : "text-white/35 hover:text-white/65"
                   }`}
@@ -133,7 +103,7 @@ export function PanelPool({
             {puestoContexto.zona_nombre && (
               <span className="text-[10px] text-primary/50 shrink-0">· {puestoContexto.zona_nombre}</span>
             )}
-            <button onClick={onLimpiarContexto} className="ml-auto text-white/25 hover:text-white shrink-0 transition-colors">
+            <button onClick={() => setPuestoContexto(null)} className="ml-auto text-white/25 hover:text-white shrink-0 transition-colors">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -171,7 +141,7 @@ export function PanelPool({
                             agente={agente}
                             isSelected={agenteSeleccionado?.id === agente.id}
                             motivos={agente.motivos}
-                            onClick={() => { if (fechaVistaCerrada) return; onSelectAgente(agente); }}
+                            onClick={() => { if (fechaVistaCerrada) return; setAgenteSeleccionado(prev => prev?.id === agente.id ? null : agente); }}
                             disabled={fechaVistaCerrada}
                           />
                         </div>
@@ -263,7 +233,7 @@ export function PanelPool({
                     isSelected={agenteSeleccionado?.id === agente.id}
                     onClick={() => {
                       if (fechaVistaCerrada) return;
-                      onSelectAgente(agente);
+                      setAgenteSeleccionado(prev => prev?.id === agente.id ? null : agente);
                     }}
                     disabled={
                       seccion
@@ -289,5 +259,3 @@ export function PanelPool({
     </div>
   );
 }
-
-export type { PoolTab };

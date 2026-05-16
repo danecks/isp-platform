@@ -1,21 +1,17 @@
 import { Shield, ChevronRight } from "lucide-react";
-import type { PoolFuturoData } from "../types";
 import { avatarColor, iniciales } from "../utils";
+import { useOperacionesContext } from "../OperacionesContext";
 
-interface Props {
-  poolFuturo: PoolFuturoData;
-  colJefes: boolean;
-  onToggleJefes: () => void;
-}
-
-export function PanelJefesFuturo({ poolFuturo, colJefes, onToggleJefes }: Props) {
+export function PanelJefesFuturo() {
+  const { poolFuturo, esFuturo, colJefes, toggleColJefes } = useOperacionesContext();
+  if (!esFuturo || !poolFuturo) return null;
   const jfTurno    = poolFuturo.trabajando.filter(a => a.tipo_personal === "jefe_servicio");
   const jfDescanso = poolFuturo.descansando.filter(a => a.tipo_personal === "jefe_servicio");
   if (jfTurno.length + jfDescanso.length === 0) return null;
   return (
     <div className="bg-[#060f1a] border border-orange-500/15 rounded-xl overflow-hidden">
       <button
-        onClick={onToggleJefes}
+        onClick={toggleColJefes}
         className="w-full flex items-center gap-2 px-3 py-2 text-left group hover:bg-orange-500/5 transition-colors"
       >
         <Shield className="w-3 h-3 text-orange-400/60 shrink-0" />

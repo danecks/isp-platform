@@ -1,11 +1,8 @@
 import { AlertTriangle } from "lucide-react";
+import { useOperacionesContext } from "../OperacionesContext";
 
-interface Props {
-  puestosSinZonaCount: number;
-  esSupervisorOAdmin: boolean;
-}
-
-export function AlertaPuestosSinZona({ puestosSinZonaCount, esSupervisorOAdmin }: Props) {
+export function AlertaPuestosSinZona() {
+  const { puestosSinZonaCount, esSupervisorOAdmin } = useOperacionesContext();
   if (puestosSinZonaCount === 0 || !esSupervisorOAdmin) return null;
   return (
     <div className="shrink-0 flex items-start gap-2.5 bg-amber-500/8 border border-amber-500/25 rounded-xl px-4 py-2.5">

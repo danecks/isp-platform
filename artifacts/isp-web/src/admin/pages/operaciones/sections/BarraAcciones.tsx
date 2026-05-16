@@ -1,53 +1,17 @@
 import { X, Lock, Unlock, AlertTriangle, Plus, History, FileText, MapPin, RefreshCw } from "lucide-react";
-import type { Agente, DiaPendienteCierre, Pool } from "../types";
 import { avatarColor, iniciales } from "../utils";
 import { formatFechaVista } from "../helpers";
+import { useOperacionesContext } from "../OperacionesContext";
 
-interface Props {
-  totalPuestos: number;
-  puestosCubiertos: number;
-  puestosDescubiertos: number;
-  coberturaGlobal: number;
-  pool: Pool | undefined;
-  agenteSeleccionado: Agente | null;
-  onLimpiarSeleccion: () => void;
-  esFuturo: boolean;
-  fechaVista: string;
-  fechaVistaCerrada: boolean;
-  bloqueadoPorPendientes: boolean;
-  primerDiaPendiente: DiaPendienteCierre | null;
-  esAdmin: boolean;
-  esSupervisorOAdmin: boolean;
-  historialAbierto: boolean;
-  onAbrirReabrir: () => void;
-  onAbrirCierre: () => void;
-  onNuevoPuesto: () => void;
-  onToggleHistorial: () => void;
-  onRefrescar: () => void;
-}
+export function BarraAcciones() {
+  const {
+    puestosCubiertos, puestosDescubiertos, coberturaGlobal,
+    pool, agenteSeleccionado, setAgenteSeleccionado,
+    esFuturo, fechaVista, fechaVistaCerrada, bloqueadoPorPendientes, primerDiaPendiente,
+    esAdmin, esSupervisorOAdmin, historialAbierto, setHistorialAbierto,
+    setNuevoPuestoData, handleRefrescar, cierre,
+  } = useOperacionesContext();
 
-export function BarraAcciones({
-  totalPuestos: _totalPuestos,
-  puestosCubiertos,
-  puestosDescubiertos,
-  coberturaGlobal,
-  pool,
-  agenteSeleccionado,
-  onLimpiarSeleccion,
-  esFuturo,
-  fechaVista,
-  fechaVistaCerrada,
-  bloqueadoPorPendientes,
-  primerDiaPendiente,
-  esAdmin,
-  esSupervisorOAdmin,
-  historialAbierto,
-  onAbrirReabrir,
-  onAbrirCierre,
-  onNuevoPuesto,
-  onToggleHistorial,
-  onRefrescar,
-}: Props) {
   return (
     <div className="flex flex-wrap items-center gap-2 shrink-0">
       <div className="flex items-center gap-3 bg-[#0c1929] border border-white/8 rounded-xl px-4 py-2">
@@ -81,7 +45,7 @@ export function BarraAcciones({
           </div>
           <span className="text-xs text-white/80 font-medium">{agenteSeleccionado.nombre_completo}</span>
           <span className="text-[10px] text-primary/70">seleccionado → toca un puesto</span>
-          <button onClick={onLimpiarSeleccion} className="text-white/30 hover:text-white ml-1">
+          <button onClick={() => setAgenteSeleccionado(null)} className="text-white/30 hover:text-white ml-1">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -98,7 +62,7 @@ export function BarraAcciones({
             </div>
             {esAdmin && (
               <button
-                onClick={onAbrirReabrir}
+                onClick={() => cierre.setModalReabrir(true)}
                 className="flex items-center gap-1.5 text-xs font-semibold text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-xl px-3 py-2 transition-colors"
               >
                 <Unlock className="w-3.5 h-3.5" /> Reabrir
@@ -114,7 +78,7 @@ export function BarraAcciones({
           </div>
         ) : esSupervisorOAdmin ? (
           <button
-            onClick={onAbrirCierre}
+            onClick={() => cierre.setModalCierre(true)}
             className="flex items-center gap-1.5 text-xs font-semibold text-amber-300/80 bg-amber-500/8 hover:bg-amber-500/15 border border-amber-500/20 hover:border-amber-500/40 rounded-xl px-3 py-2 transition-colors"
           >
             <Lock className="w-3.5 h-3.5" /> Cerrar {formatFechaVista(fechaVista)}
@@ -124,7 +88,7 @@ export function BarraAcciones({
 
       {!fechaVistaCerrada && !esFuturo && (
         <button
-          onClick={onNuevoPuesto}
+          onClick={() => setNuevoPuestoData("nuevo")}
           className="flex items-center gap-1.5 text-xs font-semibold text-white bg-primary hover:bg-primary/90 rounded-xl px-3 py-2 transition-colors"
         >
           <Plus className="w-3.5 h-3.5" /> Nuevo puesto
@@ -132,7 +96,7 @@ export function BarraAcciones({
       )}
 
       <button
-        onClick={onToggleHistorial}
+        onClick={() => setHistorialAbierto(!historialAbierto)}
         className={`flex items-center gap-1.5 text-xs rounded-xl px-3 py-2 border transition-colors
           ${historialAbierto
             ? "bg-white/8 border-white/15 text-white"
@@ -158,7 +122,7 @@ export function BarraAcciones({
       </a>
 
       <button
-        onClick={onRefrescar}
+        onClick={handleRefrescar}
         className="text-white/30 hover:text-white border border-white/8 rounded-xl px-2.5 py-2 bg-[#0c1929] transition-colors"
         title="Refrescar"
       >

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { DndContext, DragOverlay } from "@dnd-kit/core";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
@@ -6,7 +6,7 @@ import RegresosVacacionesBanner from "@/admin/components/RegresosVacacionesBanne
 import { useToast } from "@/hooks/use-toast";
 import { AdminLayout } from "../layout/AdminLayout";
 import { fechaHoyStr, API_BASE, apiPost } from "./operaciones/utils";
-import { Puesto, ClienteBoard, Agente, DiaPendienteCierre, PlanFuturo, TarjetaSSAPendiente } from "./operaciones/types";
+import type { Puesto, ClienteBoard, Agente, DiaPendienteCierre, PlanFuturo, TarjetaSSAPendiente, PoolTab } from "./operaciones/types";
 import { PoolFuturoPanel } from "./operaciones/components/PoolFuturoPanel";
 import { initCollapse, persistCollapse, limpiarURLPizarron } from "./operaciones/helpers";
 import { useOperacionesData } from "./operaciones/hooks/use-operaciones-data";
@@ -17,6 +17,7 @@ import { useAssignmentFlow } from "./operaciones/hooks/use-assignment-flow";
 import { useCierreFlow } from "./operaciones/hooks/use-cierre-flow";
 import { usePlanFuturoFlow } from "./operaciones/hooks/use-plan-futuro-flow";
 import { OperacionesModales } from "./operaciones/OperacionesModales";
+import { OperacionesProvider, type OperacionesContextValue, type EditarPlantillaData } from "./operaciones/OperacionesContext";
 import { AlertaDiasSinCerrar } from "./operaciones/sections/AlertaDiasSinCerrar";
 import { BarraAcciones } from "./operaciones/sections/BarraAcciones";
 import { BarraNavegacionFecha } from "./operaciones/sections/BarraNavegacionFecha";
@@ -24,7 +25,7 @@ import { FiltrosZonaCliente } from "./operaciones/sections/FiltrosZonaCliente";
 import { BuscadorColaborador } from "./operaciones/sections/BuscadorColaborador";
 import { AlertaPoolDescubiertos } from "./operaciones/sections/AlertaPoolDescubiertos";
 import { AlertaPuestosSinZona } from "./operaciones/sections/AlertaPuestosSinZona";
-import { PanelPool, type PoolTab } from "./operaciones/sections/PanelPool";
+import { PanelPool } from "./operaciones/sections/PanelPool";
 import { TableroPuestos } from "./operaciones/sections/TableroPuestos";
 import { PanelSupervisoresHoy } from "./operaciones/sections/PanelSupervisoresHoy";
 import { PanelJefesServicioHoy } from "./operaciones/sections/PanelJefesServicioHoy";
@@ -60,9 +61,7 @@ export default function Operaciones() {
   const [ssaTabActivo, setSsaTabActivo]             = useState<"sin_asignar" | "cubierta">("sin_asignar");
   const [fichaVehiculoId, setFichaVehiculoId]       = useState<number | null>(null);
   const [puestoParaTurno, setPuestoParaTurno]       = useState<Puesto | null>(null);
-  const [editarPlantilla, setEditarPlantilla]       = useState<{
-    empleadoId: number; empleadoNombre: string; tipo: "supervisor" | "administrativo" | "jefe_servicio";
-  } | null>(null);
+  const [editarPlantilla, setEditarPlantilla]       = useState<EditarPlantillaData | null>(null);
 
   function togglePanel(key: string, cur: boolean, setter: (v: boolean) => void) {
     const next = !cur;
@@ -214,276 +213,179 @@ export default function Operaciones() {
   });
   const totalPuestosFiltrados = totalPuestos;
 
+  const ctx: OperacionesContextValue = useMemo(() => ({
+    esAdmin: !!esAdmin,
+    esSupervisorOAdmin: !!esSupervisorOAdmin,
+    puedeQuitarTitular,
+    isDeleteMode,
+
+    agenteSeleccionado, setAgenteSeleccionado,
+    historialAbierto, setHistorialAbierto,
+    nuevoPuestoData, setNuevoPuestoData,
+    poolTab, setPoolTab,
+    busquedaPool, setBusquedaPool,
+    busquedaPersona, setBusquedaPersona,
+    colGlobal,
+    toggleColGlobal: () => setColGlobal(prev => ({ v: prev.v + 1, val: !prev.val })),
+    puestoContexto, setPuestoContexto,
+    filtroZona, setFiltroZona,
+    filtroCliente, setFiltroCliente,
+    modalSegmentos, setModalSegmentos,
+    modalAsignarSSA, setModalAsignarSSA,
+    ssaTabActivo, setSsaTabActivo,
+    fichaVehiculoId, setFichaVehiculoId,
+    puestoParaTurno, setPuestoParaTurno,
+    editarPlantilla, setEditarPlantilla,
+
+    colSSA,       toggleColSSA:       () => togglePanel("piz_col_ssa",    colSSA,       setColSSA),
+    colArranques, toggleColArranques: () => togglePanel("piz_col_arr",    colArranques, setColArranques),
+    colSupers,    toggleColSupers:    () => togglePanel("piz_col_supers", colSupers,    setColSupers),
+    colJefes,     toggleColJefes:     () => togglePanel("piz_col_jefes",  colJefes,     setColJefes),
+    colPool,      toggleColPool:      () => togglePanel("piz_col_pool",   colPool,      setColPool),
+    colAdmin,     toggleColAdmin:     () => togglePanel("piz_col_admin",  colAdmin,     setColAdmin),
+
+    hoyISO, fechaVista, setFechaVista, esFuturo, esPasado, esOtraFecha,
+    clienteResaltado, irAFecha, navFecha, volverHoy,
+    onCambiarFecha: (f: string) => { setFechaVista(f); limpiarURLPizarron(); },
+
+    qc,
+    tablero, loadingTablero, refetchTablero,
+    pool, loadingPool, refetchPool,
+    historial, loadingHistorial,
+    clientesDisponibles,
+    cierreHoy, refetchCierre,
+    tarjetasSSA,
+    planFuturoDia,
+    cambiosFuturosProximos,
+    poolFuturo, loadingPoolFuturo,
+    proximosArranques,
+    invalidate, invalidateFuture,
+
+    puestosSinZonaCount,
+    planFuturoPorPuesto,
+    ssaSinAgente, ssaCubierta,
+    diaHoyCerrado, fechaActivaStr, diasPendientesCierre, hayDiasPendientes, primerDiaPendiente,
+    diasCerrados, hoyCerrado, bloqueadoPorPendientes, fechaVistaCerrada,
+    fechaVistaStr, fechaCierreParaReabrir,
+
+    poolActual, candidatosRankeados, zonasDisponibles, clientesDisponiblesFiltro,
+    tableroFiltrado, totalPuestos, puestosCubiertos, puestosDescubiertos, coberturaGlobal,
+    totalPuestosFiltrados,
+
+    assignment, cierre, planFuturoFlow,
+
+    handlePuestoClick,
+    crearPuesto,
+    eliminarPuesto,
+    handleRefrescar: () => { refetchTablero(); refetchPool(); refetchCierre(); },
+    handleLimpiarFiltros: () => { setFiltroZona(""); setFiltroCliente(""); setBusquedaPersona(""); },
+
+    currentUserNombre: currentUser?.nombre ?? currentUser?.username ?? "",
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [
+    esAdmin, esSupervisorOAdmin, puedeQuitarTitular, isDeleteMode,
+    agenteSeleccionado, historialAbierto, nuevoPuestoData, poolTab, busquedaPool, busquedaPersona,
+    colGlobal, puestoContexto, filtroZona, filtroCliente, modalSegmentos, modalAsignarSSA,
+    ssaTabActivo, fichaVehiculoId, puestoParaTurno, editarPlantilla,
+    colSSA, colArranques, colSupers, colJefes, colPool, colAdmin,
+    hoyISO, fechaVista, esFuturo, esPasado, esOtraFecha, clienteResaltado,
+    qc, tablero, loadingTablero, pool, loadingPool, historial, loadingHistorial,
+    clientesDisponibles, cierreHoy, tarjetasSSA, planFuturoDia, cambiosFuturosProximos,
+    poolFuturo, loadingPoolFuturo, proximosArranques,
+    puestosSinZonaCount, diaHoyCerrado, fechaActivaStr, fechaVistaCerrada, fechaVistaStr, fechaCierreParaReabrir,
+    poolActual, candidatosRankeados, zonasDisponibles, clientesDisponiblesFiltro,
+    tableroFiltrado, totalPuestos, puestosCubiertos, puestosDescubiertos, coberturaGlobal,
+    assignment, cierre, planFuturoFlow,
+    currentUser,
+  ]);
+
   return (
     <AdminLayout title="Pizarrón Operativo">
-      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div className="flex flex-col h-full gap-4" style={{ minHeight: 0 }}>
+      <OperacionesProvider value={ctx}>
+        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+          <div className="flex flex-col h-full gap-4" style={{ minHeight: 0 }}>
 
-          <RegresosVacacionesBanner fecha={fechaVista} dias={5} />
+            <RegresosVacacionesBanner fecha={fechaVista} dias={5} />
 
-          {hayDiasPendientes && (
-            <AlertaDiasSinCerrar
-              diasPendientesCierre={diasPendientesCierre}
-              fechaVista={fechaVista}
-              esPasado={esPasado}
-              onIrAFecha={irAFecha}
-              onCerrarDia={(dia) => cierre.setDiaPendienteSeleccionado(dia)}
-            />
-          )}
+            <AlertaDiasSinCerrar />
+            <BarraAcciones />
+            <BarraNavegacionFecha />
+            <FiltrosZonaCliente />
+            <BuscadorColaborador />
+            <AlertaPoolDescubiertos />
+            <AlertaPuestosSinZona />
 
-          <BarraAcciones
-            totalPuestos={totalPuestos}
-            puestosCubiertos={puestosCubiertos}
-            puestosDescubiertos={puestosDescubiertos}
-            coberturaGlobal={coberturaGlobal}
-            pool={pool}
-            agenteSeleccionado={agenteSeleccionado}
-            onLimpiarSeleccion={() => setAgenteSeleccionado(null)}
-            esFuturo={esFuturo}
-            fechaVista={fechaVista}
-            fechaVistaCerrada={fechaVistaCerrada}
-            bloqueadoPorPendientes={bloqueadoPorPendientes}
-            primerDiaPendiente={primerDiaPendiente}
-            esAdmin={!!esAdmin}
-            esSupervisorOAdmin={!!esSupervisorOAdmin}
-            historialAbierto={historialAbierto}
-            onAbrirReabrir={() => cierre.setModalReabrir(true)}
-            onAbrirCierre={() => cierre.setModalCierre(true)}
-            onNuevoPuesto={() => setNuevoPuestoData("nuevo")}
-            onToggleHistorial={() => setHistorialAbierto(!historialAbierto)}
-            onRefrescar={() => { refetchTablero(); refetchPool(); refetchCierre(); }}
-          />
+            <div className="flex flex-col flex-1 gap-3 min-h-0">
+              {esFuturo && poolFuturo ? (
+                <PoolFuturoPanel
+                  data={poolFuturo}
+                  onPlanSSA={(ip) => planFuturoFlow.setModalPlanSSA(ip)}
+                  onSelectAgente={(ag) => setAgenteSeleccionado(prev => prev?.id === ag.id ? null : ag)}
+                  agenteSeleccionadoId={agenteSeleccionado?.id ?? null}
+                />
+              ) : esFuturo && loadingPoolFuturo ? (
+                <div className="shrink-0 bg-[#060f1a] border border-indigo-500/15 rounded-2xl flex items-center justify-center px-6 py-4 gap-2 text-xs text-indigo-300/50">
+                  Calculando disponibilidad futura…
+                </div>
+              ) : (
+                <PanelPool />
+              )}
 
-          <BarraNavegacionFecha
-            fechaVista={fechaVista}
-            esFuturo={esFuturo}
-            esPasado={esPasado}
-            esOtraFecha={esOtraFecha}
-            diasPendientesCierre={diasPendientesCierre}
-            onNavFecha={navFecha}
-            onCambiarFecha={(f) => { setFechaVista(f); limpiarURLPizarron(); }}
-            onVolverHoy={volverHoy}
-          />
+              <TableroPuestos />
 
-          {(zonasDisponibles.length > 0 || clientesDisponiblesFiltro.length > 1) && (
-            <FiltrosZonaCliente
-              zonasDisponibles={zonasDisponibles}
-              clientesDisponiblesFiltro={clientesDisponiblesFiltro}
-              filtroZona={filtroZona}
-              filtroCliente={filtroCliente}
-              totalPuestosFiltrados={totalPuestosFiltrados}
-              onCambiarZona={setFiltroZona}
-              onCambiarCliente={setFiltroCliente}
-              onLimpiar={() => { setFiltroZona(""); setFiltroCliente(""); }}
-            />
-          )}
-
-          <BuscadorColaborador
-            busquedaPersona={busquedaPersona}
-            onBusquedaChange={setBusquedaPersona}
-            totalPuestosFiltrados={totalPuestosFiltrados}
-            hayTablero={tableroFiltrado.length > 0}
-            colGlobalVal={colGlobal.val}
-            onToggleColGlobal={() => setColGlobal(prev => ({ v: prev.v + 1, val: !colGlobal.val }))}
-          />
-
-          <AlertaPoolDescubiertos
-            puestosDescubiertos={puestosDescubiertos}
-            poolDisponiblesCount={pool?.disponibles?.length ?? 0}
-            fechaVistaCerrada={fechaVistaCerrada}
-          />
-
-          <AlertaPuestosSinZona
-            puestosSinZonaCount={puestosSinZonaCount}
-            esSupervisorOAdmin={!!esSupervisorOAdmin}
-          />
-
-          <div className="flex flex-col flex-1 gap-3 min-h-0">
-
-          {esFuturo && poolFuturo ? (
-            <PoolFuturoPanel
-              data={poolFuturo}
-              onPlanSSA={(ip) => planFuturoFlow.setModalPlanSSA(ip)}
-              onSelectAgente={(ag) => setAgenteSeleccionado(prev => prev?.id === ag.id ? null : ag)}
-              agenteSeleccionadoId={agenteSeleccionado?.id ?? null}
-            />
-          ) : esFuturo && loadingPoolFuturo ? (
-            <div className="shrink-0 bg-[#060f1a] border border-indigo-500/15 rounded-2xl flex items-center justify-center px-6 py-4 gap-2 text-xs text-indigo-300/50">
-              Calculando disponibilidad futura…
+              <div className="shrink-0 flex flex-col gap-1.5 pb-1">
+                <PanelSupervisoresHoy />
+                <PanelJefesServicioHoy />
+                <PanelPersonalAdmin />
+                <PanelSupervisoresFuturo />
+                <PanelJefesFuturo />
+                <PanelSSA />
+                <PanelProximosArranques />
+              </div>
             </div>
-          ) : (
-            <PanelPool
-              pool={pool}
-              loadingPool={loadingPool}
-              poolActual={poolActual}
-              poolTab={poolTab}
-              onSetPoolTab={setPoolTab}
-              busquedaPool={busquedaPool}
-              onBusquedaPoolChange={setBusquedaPool}
-              colPool={colPool}
-              onToggleColPool={() => togglePanel("piz_col_pool", colPool, setColPool)}
-              agenteSeleccionado={agenteSeleccionado}
-              onSelectAgente={(ag) => setAgenteSeleccionado(agenteSeleccionado?.id === ag.id ? null : ag)}
-              puestoContexto={puestoContexto}
-              onLimpiarContexto={() => setPuestoContexto(null)}
-              candidatosRankeados={candidatosRankeados}
-              fechaVistaCerrada={fechaVistaCerrada}
-            />
-          )}
-
-          <TableroPuestos
-            loadingTablero={loadingTablero}
-            tablero={tablero}
-            tableroFiltrado={tableroFiltrado}
-            fechaVistaCerrada={fechaVistaCerrada}
-            fechaVista={fechaVista}
-            esAdmin={!!esAdmin}
-            esFuturo={esFuturo}
-            isDeleteMode={isDeleteMode}
-            agenteSeleccionado={agenteSeleccionado}
-            cambiosFuturosProximos={cambiosFuturosProximos}
-            planFuturoPorPuesto={planFuturoPorPuesto}
-            clienteResaltado={clienteResaltado}
-            colGlobal={colGlobal}
-            puestoContextoId={puestoContexto?.id ?? null}
-            puedeQuitarTitular={puedeQuitarTitular}
-            onPuestoClick={handlePuestoClick}
-            onLiberar={(p) => esFuturo
-              ? planFuturoFlow.setModalPlanFuturo({ puesto: p, plan: planFuturoPorPuesto[p.id] ?? null })
-              : assignment.setModalLiberar(p)}
-            onRegistrarFalta={(p, titularId, titularNombre) => assignment.setModalFalta({ puesto: p, titularId, titularNombre })}
-            onNuevoPuesto={(c) => setNuevoPuestoData(c)}
-            onEliminarPuesto={eliminarPuesto}
-            onAbrirSegmentos={(p) => setModalSegmentos(p)}
-            onConfigTurno={(p) => esFuturo
-              ? planFuturoFlow.setModalPlanFuturo({ puesto: p, plan: planFuturoPorPuesto[p.id] ?? null })
-              : setPuestoParaTurno(p)}
-            onQuitarTitular={(p, employeeId, employeeNombre) => assignment.setModalQuitarTitular({ puesto: p, employeeId, employeeNombre })}
-            onAbrirReabrir={() => cierre.setModalReabrir(true)}
-            onLimpiarFiltros={() => { setFiltroZona(""); setFiltroCliente(""); setBusquedaPersona(""); }}
-          />
-
-          <div className="shrink-0 flex flex-col gap-1.5 pb-1">
-
-          {!esFuturo && pool && (pool.supervisores?.length ?? 0) > 0 && (
-            <PanelSupervisoresHoy
-              pool={pool}
-              agenteSeleccionado={agenteSeleccionado}
-              onSelectAgente={setAgenteSeleccionado}
-              fechaVistaCerrada={fechaVistaCerrada}
-              colSupers={colSupers}
-              onToggleSupers={() => togglePanel("piz_col_supers", colSupers, setColSupers)}
-              onEditarPlantilla={(data) => setEditarPlantilla(data)}
-              onAbrirVehiculo={(id) => setFichaVehiculoId(id)}
-            />
-          )}
-
-          {!esFuturo && pool && (pool.jefes_servicio?.length ?? 0) > 0 && (
-            <PanelJefesServicioHoy
-              pool={pool}
-              agenteSeleccionado={agenteSeleccionado}
-              onSelectAgente={setAgenteSeleccionado}
-              fechaVistaCerrada={fechaVistaCerrada}
-              colJefes={colJefes}
-              onToggleJefes={() => togglePanel("piz_col_jefes", colJefes, setColJefes)}
-              onEditarPlantilla={(data) => setEditarPlantilla(data)}
-            />
-          )}
-
-          {!esFuturo && pool && (pool.administrativos?.length ?? 0) > 0 && (
-            <PanelPersonalAdmin
-              pool={pool}
-              colAdmin={colAdmin}
-              onToggleAdmin={() => togglePanel("piz_col_admin", colAdmin, setColAdmin)}
-              onEditarPlantilla={(data) => setEditarPlantilla(data)}
-            />
-          )}
-
-          {esFuturo && poolFuturo && (
-            <PanelSupervisoresFuturo
-              poolFuturo={poolFuturo}
-              colSupers={colSupers}
-              onToggleSupers={() => togglePanel("piz_col_supers", colSupers, setColSupers)}
-            />
-          )}
-
-          {esFuturo && poolFuturo && (
-            <PanelJefesFuturo
-              poolFuturo={poolFuturo}
-              colJefes={colJefes}
-              onToggleJefes={() => togglePanel("piz_col_jefes", colJefes, setColJefes)}
-            />
-          )}
-
-          {tarjetasSSA.length > 0 && (
-            <PanelSSA
-              tarjetasSSA={tarjetasSSA}
-              ssaSinAgente={ssaSinAgente}
-              ssaCubierta={ssaCubierta}
-              ssaTabActivo={ssaTabActivo}
-              onSetSsaTab={setSsaTabActivo}
-              colSSA={colSSA}
-              onToggleSSA={() => togglePanel("piz_col_ssa", colSSA, setColSSA)}
-              fechaVistaCerrada={fechaVistaCerrada}
-              onAsignar={(t) => setModalAsignarSSA(t)}
-              onRemover={(t, motivo, notas) => assignment.removerAgenteSSA(t, motivo, notas)}
-            />
-          )}
-
-          {(proximosArranques?.total ?? 0) > 0 && !esFuturo && proximosArranques && (
-            <PanelProximosArranques
-              arranques={proximosArranques.arranques}
-              total={proximosArranques.total}
-              colArranques={colArranques}
-              onToggleArranques={() => togglePanel("piz_col_arr", colArranques, setColArranques)}
-              onIrAFecha={irAFecha}
-            />
-          )}
 
           </div>
-          </div>
 
-        </div>
+          <DragOverlay>
+            {draggingAgente && <DragOverlayAgente agente={draggingAgente} />}
+          </DragOverlay>
+        </DndContext>
 
-        <DragOverlay>
-          {draggingAgente && <DragOverlayAgente agente={draggingAgente} />}
-        </DragOverlay>
-      </DndContext>
-
-      <OperacionesModales
-        qc={qc}
-        pool={pool}
-        cierreHoy={cierreHoy}
-        hoyISO={hoyISO}
-        fechaVista={fechaVista}
-        esOtraFecha={esOtraFecha}
-        esPasado={esPasado}
-        diaHoyCerrado={diaHoyCerrado}
-        fechaCierreParaReabrir={fechaCierreParaReabrir}
-        primerDiaPendiente={primerDiaPendiente}
-        clientesDisponibles={clientesDisponibles}
-        currentUserNombre={currentUser?.nombre ?? currentUser?.username ?? ""}
-        historialAbierto={historialAbierto}
-        onCloseHistorial={() => setHistorialAbierto(false)}
-        historial={historial}
-        loadingHistorial={loadingHistorial}
-        nuevoPuestoData={nuevoPuestoData}
-        onCloseNuevoPuesto={() => setNuevoPuestoData(null)}
-        onCrearPuesto={crearPuesto}
-        modalSegmentos={modalSegmentos}
-        onCloseSegmentos={() => setModalSegmentos(null)}
-        modalAsignarSSA={modalAsignarSSA}
-        onCloseAsignarSSA={() => setModalAsignarSSA(null)}
-        fichaVehiculoId={fichaVehiculoId}
-        onCloseVehiculo={() => setFichaVehiculoId(null)}
-        editarPlantilla={editarPlantilla}
-        onCloseEditarPlantilla={() => setEditarPlantilla(null)}
-        puestoParaTurno={puestoParaTurno}
-        onCloseConfigTurno={() => setPuestoParaTurno(null)}
-        assignment={assignment}
-        cierre={cierre}
-        planFuturoFlow={planFuturoFlow}
-      />
+        <OperacionesModales
+          qc={qc}
+          pool={pool}
+          cierreHoy={cierreHoy}
+          hoyISO={hoyISO}
+          fechaVista={fechaVista}
+          esOtraFecha={esOtraFecha}
+          esPasado={esPasado}
+          diaHoyCerrado={diaHoyCerrado}
+          fechaCierreParaReabrir={fechaCierreParaReabrir}
+          primerDiaPendiente={primerDiaPendiente}
+          clientesDisponibles={clientesDisponibles}
+          currentUserNombre={currentUser?.nombre ?? currentUser?.username ?? ""}
+          historialAbierto={historialAbierto}
+          onCloseHistorial={() => setHistorialAbierto(false)}
+          historial={historial}
+          loadingHistorial={loadingHistorial}
+          nuevoPuestoData={nuevoPuestoData}
+          onCloseNuevoPuesto={() => setNuevoPuestoData(null)}
+          onCrearPuesto={crearPuesto}
+          modalSegmentos={modalSegmentos}
+          onCloseSegmentos={() => setModalSegmentos(null)}
+          modalAsignarSSA={modalAsignarSSA}
+          onCloseAsignarSSA={() => setModalAsignarSSA(null)}
+          fichaVehiculoId={fichaVehiculoId}
+          onCloseVehiculo={() => setFichaVehiculoId(null)}
+          editarPlantilla={editarPlantilla}
+          onCloseEditarPlantilla={() => setEditarPlantilla(null)}
+          puestoParaTurno={puestoParaTurno}
+          onCloseConfigTurno={() => setPuestoParaTurno(null)}
+          assignment={assignment}
+          cierre={cierre}
+          planFuturoFlow={planFuturoFlow}
+        />
+      </OperacionesProvider>
     </AdminLayout>
   );
 }

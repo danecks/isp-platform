@@ -1,10 +1,8 @@
-interface Props {
-  puestosDescubiertos: number;
-  poolDisponiblesCount: number;
-  fechaVistaCerrada: boolean;
-}
+import { useOperacionesContext } from "../OperacionesContext";
 
-export function AlertaPoolDescubiertos({ puestosDescubiertos, poolDisponiblesCount, fechaVistaCerrada }: Props) {
+export function AlertaPoolDescubiertos() {
+  const { puestosDescubiertos, pool, fechaVistaCerrada } = useOperacionesContext();
+  const poolDisponiblesCount = pool?.disponibles?.length ?? 0;
   if (poolDisponiblesCount > 0 || puestosDescubiertos === 0 || fechaVistaCerrada) return null;
   return (
     <div className="shrink-0 flex items-center gap-2.5 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-2.5">

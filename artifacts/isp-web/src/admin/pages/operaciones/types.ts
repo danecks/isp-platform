@@ -1,4 +1,9 @@
 
+export type PoolTab =
+  | "disponibles" | "disponiblesCubriendo" | "vacacionistasCubriendo" | "trabajando"
+  | "descansandoCiclo" | "haciendoHE" | "enDescanso" | "suspendidos"
+  | "enPuesto" | "enSSA" | "faltando" | "enVacaciones";
+
 export interface Puesto {
   id: number;
   cliente_id: number | null;

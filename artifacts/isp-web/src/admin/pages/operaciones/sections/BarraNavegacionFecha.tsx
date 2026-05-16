@@ -1,31 +1,16 @@
 import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
-import type { DiaPendienteCierre } from "../types";
+import { useOperacionesContext } from "../OperacionesContext";
 
-interface Props {
-  fechaVista: string;
-  esFuturo: boolean;
-  esPasado: boolean;
-  esOtraFecha: boolean;
-  diasPendientesCierre: DiaPendienteCierre[];
-  onNavFecha: (delta: number) => void;
-  onCambiarFecha: (fecha: string) => void;
-  onVolverHoy: () => void;
-}
+export function BarraNavegacionFecha() {
+  const {
+    fechaVista, esFuturo, esPasado, esOtraFecha,
+    diasPendientesCierre, navFecha, onCambiarFecha, volverHoy,
+  } = useOperacionesContext();
 
-export function BarraNavegacionFecha({
-  fechaVista,
-  esFuturo,
-  esPasado,
-  esOtraFecha,
-  diasPendientesCierre,
-  onNavFecha,
-  onCambiarFecha,
-  onVolverHoy,
-}: Props) {
   return (
     <div className="flex items-center gap-2 shrink-0">
       <button
-        onClick={() => onNavFecha(-1)}
+        onClick={() => navFecha(-1)}
         disabled={fechaVista <= "2026-04-01"}
         className="text-white/30 hover:text-white disabled:opacity-20 border border-white/8 rounded-xl px-2 py-1.5 bg-[#0c1929] transition-colors"
         title="Día anterior"
@@ -55,7 +40,7 @@ export function BarraNavegacionFecha({
       </div>
 
       <button
-        onClick={() => onNavFecha(1)}
+        onClick={() => navFecha(1)}
         className="text-white/30 hover:text-white border border-white/8 rounded-xl px-2 py-1.5 bg-[#0c1929] transition-colors"
         title="Día siguiente"
       >
@@ -64,7 +49,7 @@ export function BarraNavegacionFecha({
 
       {esOtraFecha && (
         <button
-          onClick={onVolverHoy}
+          onClick={volverHoy}
           className="flex items-center gap-1.5 text-xs font-semibold text-white/50 hover:text-white bg-[#0c1929] border border-white/8 hover:border-white/20 rounded-xl px-3 py-1.5 transition-colors"
         >
           Hoy
