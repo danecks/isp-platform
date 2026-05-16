@@ -50,6 +50,8 @@ interface SlotPlantilla {
   dias_medio_turno: number[] | null;
   longitud_ciclo: number;
   hora_entrada_por_semana: string[] | null;
+  /** TURNOS-05: excepciones puntuales por día del ciclo. */
+  hora_entrada_por_dia: Record<string, string> | null;
   fecha_inicio_ciclo: string | null;
   notas: string | null;
   slot_updated_ts: number | string | null;
@@ -802,17 +804,23 @@ function SlotRow({ slot }: { slot: SlotPlantilla }) {
                   d.estado === "trabajo" ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
                   : d.estado === "medio"  ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
                   : "bg-white/3 border-white/8 text-white/25";
-                const title =
+                const horaExc = slot.hora_entrada_por_dia?.[String(d.dia)];
+                const tieneExc = !!horaExc && (d.estado === "trabajo" || d.estado === "medio");
+                const baseTitle =
                   d.estado === "trabajo" ? `Día ${d.dia}: trabaja`
                   : d.estado === "medio"  ? `Día ${d.dia}: medio turno`
                   : `Día ${d.dia}: descanso`;
+                const title = tieneExc ? `${baseTitle} · entra ${horaExc} (excepción)` : baseTitle;
                 return (
                   <span
                     key={i}
                     title={title}
-                    className={`w-6 text-center text-[10px] font-mono rounded border ${cls}`}
+                    className={`relative w-6 text-center text-[10px] font-mono rounded border ${cls} ${tieneExc ? "ring-1 ring-amber-400/40" : ""}`}
                   >
                     {d.label}
+                    {tieneExc && (
+                      <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-amber-400/90" />
+                    )}
                   </span>
                 );
               })}

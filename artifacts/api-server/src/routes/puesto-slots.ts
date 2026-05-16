@@ -17,6 +17,30 @@ const authCheck = (req: any, res: any): boolean => {
   return true;
 };
 
+// TURNOS-05: valida un mapa { dia → "HH:MM" } contra la longitud del ciclo.
+// Devuelve null si el mapa queda vacío (sin excepciones).
+function validarHoraPorDia(
+  value: any,
+  longitudCiclo: number,
+): { ok: true; val: Record<string, string> | null } | { ok: false; error: string } {
+  if (value === null) return { ok: true, val: null };
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, error: "hora_entrada_por_dia debe ser objeto {dia:HH:MM} o null" };
+  }
+  const result: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value)) {
+    const dia = Number(k);
+    if (!Number.isInteger(dia) || dia < 1 || dia > longitudCiclo) {
+      return { ok: false, error: `hora_entrada_por_dia: día ${k} fuera del rango 1..${longitudCiclo}` };
+    }
+    if (typeof v !== "string" || !/^\d{2}:\d{2}$/.test(v)) {
+      return { ok: false, error: `hora_entrada_por_dia: hora inválida para día ${k} (esperado HH:MM)` };
+    }
+    result[String(dia)] = v;
+  }
+  return { ok: true, val: Object.keys(result).length ? result : null };
+}
+
 // ─── GET /api/puestos/:puestoId/slots ────────────────────────────────────────
 puestoSlotsRouter.get("/puestos/:puestoId/slots", async (req, res) => {
   if (!authCheck(req, res)) return;
@@ -29,6 +53,7 @@ puestoSlotsRouter.get("/puestos/:puestoId/slots", async (req, res) => {
          ps.id, ps.puesto_id, ps.slot_numero, ps.horas_turno,
          to_char(ps.hora_entrada, 'HH24:MI') AS hora_entrada,
          ps.hora_entrada_por_semana,
+         ps.hora_entrada_por_dia,
          ps.dias_trabajo, ps.dias_medio_turno, ps.longitud_ciclo,
          to_char(ps.fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
          ps.empleado_id, ps.notas, ps.activo,
@@ -61,6 +86,7 @@ puestoSlotsRouter.get("/clientes/:clienteId/slots", async (req, res) => {
          ps.id, ps.puesto_id, ps.slot_numero, ps.horas_turno,
          to_char(ps.hora_entrada, 'HH24:MI') AS hora_entrada,
          ps.hora_entrada_por_semana,
+         ps.hora_entrada_por_dia,
          ps.dias_trabajo, ps.dias_medio_turno, ps.longitud_ciclo,
          to_char(ps.fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
          ps.empleado_id, ps.notas, ps.activo,
@@ -95,7 +121,7 @@ puestoSlotsRouter.post("/puestos/:puestoId/slots", async (req, res) => {
   const puestoId = Number(req.params.puestoId);
   if (!puestoId) return res.status(400).json({ error: "puestoId inválido" });
 
-  const { hora_entrada, fecha_inicio_ciclo, empleado_id, notas, longitud_ciclo, hora_entrada_por_semana, dias_trabajo: diasReq } = req.body;
+  const { hora_entrada, fecha_inicio_ciclo, empleado_id, notas, longitud_ciclo, hora_entrada_por_semana, hora_entrada_por_dia, dias_trabajo: diasReq } = req.body;
 
   if (!hora_entrada) return res.status(400).json({ error: "hora_entrada requerida" });
 
@@ -109,9 +135,17 @@ puestoSlotsRouter.post("/puestos/:puestoId/slots", async (req, res) => {
     longitudCicloFinal = lc;
   }
 
-  // TURNOS-04: validar hora_entrada_por_semana si se provee
+  // TURNOS-05: validar hora_entrada_por_dia si se provee (excluyente con _por_semana)
+  let horaEntradaPorDiaFinal: Record<string, string> | null = null;
+  if (hora_entrada_por_dia !== undefined && hora_entrada_por_dia !== null) {
+    const v = validarHoraPorDia(hora_entrada_por_dia, longitudCicloFinal);
+    if (!v.ok) return res.status(400).json({ error: v.error });
+    horaEntradaPorDiaFinal = v.val;
+  }
+
+  // TURNOS-04: validar hora_entrada_por_semana si se provee (ignorada si hay _por_dia activo).
   let horaEntradaPorSemanaFinal: string[] | null = null;
-  if (hora_entrada_por_semana !== undefined && hora_entrada_por_semana !== null) {
+  if (horaEntradaPorDiaFinal === null && hora_entrada_por_semana !== undefined && hora_entrada_por_semana !== null) {
     if (!Array.isArray(hora_entrada_por_semana)) {
       return res.status(400).json({ error: "hora_entrada_por_semana debe ser array" });
     }
@@ -217,17 +251,19 @@ puestoSlotsRouter.post("/puestos/:puestoId/slots", async (req, res) => {
 
       const { rows } = await client.query(
         `INSERT INTO puesto_slots
-           (puesto_id, slot_numero, horas_turno, hora_entrada, dias_trabajo, longitud_ciclo, fecha_inicio_ciclo, empleado_id, notas, hora_entrada_por_semana)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           (puesto_id, slot_numero, horas_turno, hora_entrada, dias_trabajo, longitud_ciclo, fecha_inicio_ciclo, empleado_id, notas, hora_entrada_por_semana, hora_entrada_por_dia)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING id, puesto_id, slot_numero, horas_turno,
                    to_char(hora_entrada, 'HH24:MI') AS hora_entrada,
                    hora_entrada_por_semana,
+                   hora_entrada_por_dia,
                    dias_trabajo, dias_medio_turno, longitud_ciclo,
                    to_char(fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
                    empleado_id, notas, activo, created_at`,
         [puestoId, newSlotNum, horasTurno, hora_entrada,
          diasAuto, longitudCicloFinal, normalizarFechaALunes(fecha_inicio_ciclo), empleado_id || null, notas || null,
-         horaEntradaPorSemanaFinal]
+         horaEntradaPorSemanaFinal,
+         horaEntradaPorDiaFinal ? JSON.stringify(horaEntradaPorDiaFinal) : null]
       );
       await client.query("COMMIT");
       res.status(201).json({ slot: rows[0] });
@@ -249,20 +285,20 @@ puestoSlotsRouter.put("/slots/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: "id inválido" });
 
-  const { horas_turno, hora_entrada, dias_trabajo, dias_medio_turno, fecha_inicio_ciclo, empleado_id, notas, slot_numero, longitud_ciclo, hora_entrada_por_semana } = req.body;
+  const { horas_turno, hora_entrada, dias_trabajo, dias_medio_turno, fecha_inicio_ciclo, empleado_id, notas, slot_numero, longitud_ciclo, hora_entrada_por_semana, hora_entrada_por_dia } = req.body;
 
   const updates: string[] = [];
   const params: any[] = [];
   let p = 1;
 
-  // TURNOS-04: longitud_ciclo efectiva para validar dias_trabajo y hora_entrada_por_semana.
+  // TURNOS-04/05: longitud_ciclo efectiva para validar dias_trabajo / hora_entrada_por_*.
   // Si viene en este PUT se usa; si no, hay que leer la actual del slot para validar.
   let longitudCicloEfectiva: number | null = null;
   let cambioLongitudCiclo = false;
-  let estadoPrevio: { dias_trabajo: number[] | null; dias_medio_turno: number[] | null; hora_entrada_por_semana: string[] | null } | null = null;
+  let estadoPrevio: { dias_trabajo: number[] | null; dias_medio_turno: number[] | null; hora_entrada_por_semana: string[] | null; hora_entrada_por_dia: Record<string, string> | null } | null = null;
   try {
     const { rows: cur } = await pool.query(
-      `SELECT longitud_ciclo, dias_trabajo, dias_medio_turno, hora_entrada_por_semana FROM puesto_slots WHERE id = $1`,
+      `SELECT longitud_ciclo, dias_trabajo, dias_medio_turno, hora_entrada_por_semana, hora_entrada_por_dia FROM puesto_slots WHERE id = $1`,
       [id],
     );
     if (cur.length > 0) {
@@ -270,6 +306,7 @@ puestoSlotsRouter.put("/slots/:id", async (req, res) => {
         dias_trabajo: Array.isArray(cur[0].dias_trabajo) ? cur[0].dias_trabajo : null,
         dias_medio_turno: Array.isArray(cur[0].dias_medio_turno) ? cur[0].dias_medio_turno : null,
         hora_entrada_por_semana: Array.isArray(cur[0].hora_entrada_por_semana) ? cur[0].hora_entrada_por_semana : null,
+        hora_entrada_por_dia: cur[0].hora_entrada_por_dia && typeof cur[0].hora_entrada_por_dia === "object" ? cur[0].hora_entrada_por_dia : null,
       };
       longitudCicloEfectiva = Number(cur[0].longitud_ciclo) || 14;
     }
@@ -298,7 +335,15 @@ puestoSlotsRouter.put("/slots/:id", async (req, res) => {
   }
   // Defensa similar para hora_entrada_por_semana: si cambia longitud_ciclo y el slot
   // tenía rotación de horarios pero no se manda nuevo array → forzar a enviarlo.
-  if (cambioLongitudCiclo && hora_entrada_por_semana === undefined && estadoPrevio?.hora_entrada_por_semana) {
+  // Excepción: si el caller está cambiando a modo "por_dia" (hora_entrada_por_dia presente),
+  // el por_semana previo se auto-limpiará más abajo, así que no debe fallar.
+  const switchingToPorDia = hora_entrada_por_dia !== undefined && hora_entrada_por_dia !== null;
+  if (
+    cambioLongitudCiclo &&
+    hora_entrada_por_semana === undefined &&
+    estadoPrevio?.hora_entrada_por_semana &&
+    !switchingToPorDia
+  ) {
     const semanasEsperadas = Math.ceil(longitudCicloEfectiva / 7);
     if (estadoPrevio.hora_entrada_por_semana.length !== semanasEsperadas) {
       return res.status(400).json({
@@ -324,10 +369,40 @@ puestoSlotsRouter.put("/slots/:id", async (req, res) => {
     if (!diasValidos) return res.status(400).json({ error: `dias_medio_turno debe contener números del 1 al ${longitudCicloEfectiva}` });
     updates.push(`dias_medio_turno = $${p++}`); params.push(dias_medio_turno);
   }
+  // TURNOS-05: validar por_dia ANTES que por_semana para resolver exclusividad.
+  // Si ambos vienen no-null en el mismo request → error explícito (no adivinar intención).
+  // Si solo uno viene no-null → el otro se auto-limpia para mantener la regla "uno u otro".
+  let porDiaPropuesto: Record<string, string> | null | undefined = undefined; // undefined = sin cambio
+  if (hora_entrada_por_dia !== undefined) {
+    const v = validarHoraPorDia(hora_entrada_por_dia, longitudCicloEfectiva!);
+    if (!v.ok) return res.status(400).json({ error: v.error });
+    porDiaPropuesto = v.val;
+  }
+  // Si cambia longitud_ciclo y había por_dia previo, exigir nuevo mapa o null para limpiar.
+  // Excepción: si el caller está cambiando a modo "por_semana" (array no-null presente),
+  // el por_dia previo se auto-limpiará más abajo, así que no debe fallar.
+  const switchingToPorSemana = Array.isArray(hora_entrada_por_semana);
+  if (
+    cambioLongitudCiclo &&
+    porDiaPropuesto === undefined &&
+    estadoPrevio?.hora_entrada_por_dia &&
+    !switchingToPorSemana
+  ) {
+    const claves = Object.keys(estadoPrevio.hora_entrada_por_dia).map(Number);
+    if (claves.some(d => d > longitudCicloEfectiva!)) {
+      return res.status(400).json({
+        error: `Al cambiar longitud_ciclo a ${longitudCicloEfectiva} debes enviar hora_entrada_por_dia válido (estado actual contiene días fuera del rango 1..${longitudCicloEfectiva})`,
+      });
+    }
+  }
+
   if (hora_entrada_por_semana !== undefined) {
     if (hora_entrada_por_semana === null) {
       updates.push(`hora_entrada_por_semana = $${p++}`); params.push(null);
     } else {
+      if (porDiaPropuesto && porDiaPropuesto !== null) {
+        return res.status(400).json({ error: "hora_entrada_por_dia y hora_entrada_por_semana son excluyentes; envía solo uno" });
+      }
       if (!Array.isArray(hora_entrada_por_semana)) return res.status(400).json({ error: "hora_entrada_por_semana debe ser array o null" });
       const semanasEsperadas = Math.ceil(longitudCicloEfectiva! / 7);
       if (hora_entrada_por_semana.length !== semanasEsperadas) {
@@ -336,6 +411,18 @@ puestoSlotsRouter.put("/slots/:id", async (req, res) => {
       const formatoOk = hora_entrada_por_semana.every((h: any) => typeof h === "string" && /^\d{2}:\d{2}$/.test(h));
       if (!formatoOk) return res.status(400).json({ error: "hora_entrada_por_semana debe contener strings HH:MM" });
       updates.push(`hora_entrada_por_semana = $${p++}`); params.push(hora_entrada_por_semana);
+      // Exclusividad: activar por_semana → limpiar por_dia (a menos que el caller ya pidiera otra cosa).
+      if (porDiaPropuesto === undefined) {
+        updates.push(`hora_entrada_por_dia = NULL`);
+      }
+    }
+  }
+  if (porDiaPropuesto !== undefined) {
+    updates.push(`hora_entrada_por_dia = $${p++}`);
+    params.push(porDiaPropuesto ? JSON.stringify(porDiaPropuesto) : null);
+    // Exclusividad: activar por_dia (no-null) → limpiar por_semana si el caller no lo tocó.
+    if (porDiaPropuesto !== null && hora_entrada_por_semana === undefined) {
+      updates.push(`hora_entrada_por_semana = NULL`);
     }
   }
   if (fecha_inicio_ciclo !== undefined) {
@@ -407,6 +494,7 @@ puestoSlotsRouter.put("/slots/:id", async (req, res) => {
                  to_char(hora_entrada, 'HH24:MI') AS hora_entrada,
                  dias_trabajo, dias_medio_turno, longitud_ciclo,
                  hora_entrada_por_semana,
+                 hora_entrada_por_dia,
                  to_char(fecha_inicio_ciclo, 'YYYY-MM-DD') AS fecha_inicio_ciclo,
                  empleado_id, notas, activo, updated_at`,
       params

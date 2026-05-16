@@ -3746,6 +3746,18 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: TURNOS-04 — error (no bloqueante)");
   }
 
+  // ── TURNOS-05: Hora de entrada por día (excepciones puntuales) ───────────────
+  // Mapa JSONB { "1": "08:00", "2": "22:00", ... } con día del ciclo → HH:MM.
+  // Excluyente con hora_entrada_por_semana (al usar uno se limpia el otro).
+  // Prioridad de lectura: hora_entrada_por_dia[d] > hora_entrada_por_semana[s] > hora_entrada.
+  // NULL = sin excepciones por día (comportamiento histórico).
+  try {
+    await pool.query(`ALTER TABLE puesto_slots ADD COLUMN IF NOT EXISTS hora_entrada_por_dia JSONB`);
+    logger.info("Auto-migrate: TURNOS-05 hora_entrada_por_dia agregada en puesto_slots");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: TURNOS-05 — error (no bloqueante)");
+  }
+
   // ── TURNOS-03: Corregir slots con fecha_inicio_ciclo desfasada ───────────────
   // Bug histórico: al importar, el slot 2 recibía fecha_inicio_ciclo + 1 día.
   // Esto rompe el cálculo del ciclo porque cycleDay de slot1 y slot2 nunca se complementan.

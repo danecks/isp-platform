@@ -151,6 +151,27 @@ export function horaSemanaSlot(
   return slot.hora_entrada || "07:00";
 }
 
+// TURNOS-05: hora de entrada efectiva para un día puntual del ciclo (1..longitud_ciclo).
+// Prioridad: hora_entrada_por_dia[d] > hora_entrada_por_semana[semana(d)] > hora_entrada.
+// El helper centraliza la regla para que todos los consumidores (modal, reporte, etc.)
+// la apliquen igual y respeten las excepciones por día puntuales.
+export function horaDelDiaSlot(
+  slot: {
+    hora_entrada_por_dia?: Record<string, string> | null;
+    hora_entrada_por_semana: string[] | null;
+    hora_entrada: string;
+  },
+  diaCiclo: number,
+): string {
+  const hpd = slot.hora_entrada_por_dia;
+  if (hpd && typeof hpd === "object") {
+    const v = hpd[String(diaCiclo)];
+    if (typeof v === "string" && /^\d{2}:\d{2}$/.test(v)) return v;
+  }
+  const semIdx = Math.max(0, Math.floor((diaCiclo - 1) / 7));
+  return horaSemanaSlot(slot, semIdx);
+}
+
 // Devuelve YYYY-MM-DD en zona horaria de Guatemala (America/Guatemala, UTC-6).
 export function toISODate(d: Date): string {
   const fmt = new Intl.DateTimeFormat("en-CA", {

@@ -575,6 +575,9 @@ export interface SlotItem {
   horas_turno: number;
   hora_entrada: string;
   hora_entrada_por_semana: string[] | null;
+  // TURNOS-05: excepciones puntuales por día del ciclo. Mapa { "1": "08:00", "2": "22:00" }.
+  // Excluyente con hora_entrada_por_semana (solo uno activo a la vez).
+  hora_entrada_por_dia?: Record<string, string> | null;
   dias_trabajo: number[];
   dias_medio_turno: number[];
   longitud_ciclo: number;
