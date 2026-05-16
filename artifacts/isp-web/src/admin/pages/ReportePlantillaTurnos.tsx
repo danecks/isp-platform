@@ -534,7 +534,7 @@ export default function ReportePlantillaTurnos() {
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <AdminLayout>
+    <AdminLayout title="Reporte de Plantilla de Turnos">
       <div className="max-w-[1600px] mx-auto p-4 space-y-4">
 
         {/* Header */}

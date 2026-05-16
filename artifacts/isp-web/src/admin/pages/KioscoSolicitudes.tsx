@@ -556,7 +556,7 @@ export default function KioscoSolicitudes() {
   }, {} as Record<string, number>);
 
   return (
-    <AdminLayout>
+    <AdminLayout title="Kiosco de Solicitudes">
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">

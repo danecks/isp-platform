@@ -99,7 +99,7 @@ export default function PlanillasEspeciales() {
   }
 
   return (
-    <AdminLayout>
+    <AdminLayout title="Planillas Especiales">
       {selectedId == null ? (
         <ListaPlanillasEspeciales
           planillas={planillas}

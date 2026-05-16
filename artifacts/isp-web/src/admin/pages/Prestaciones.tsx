@@ -20,7 +20,7 @@ import { TabLiquidaciones } from "./prestaciones/TabLiquidaciones";
 
 export default function Prestaciones() {
   return (
-    <AdminLayout>
+    <AdminLayout title="Prestaciones Laborales">
       <div className="min-h-screen bg-[#050d1a] text-white">
         {/* Header */}
         <div className="border-b border-white/8 bg-[#060e1c]/80 backdrop-blur-sm px-6 py-5 flex items-center gap-4">

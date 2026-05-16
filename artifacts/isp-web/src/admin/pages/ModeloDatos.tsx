@@ -332,7 +332,7 @@ export default function ModeloDatos() {
   };
 
   return (
-    <AdminLayout>
+    <AdminLayout title="Modelo de Datos">
       <div className="min-h-screen bg-slate-950 text-slate-100">
         <header className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-6 py-4">
           <div className="flex items-start justify-between gap-4 flex-wrap">

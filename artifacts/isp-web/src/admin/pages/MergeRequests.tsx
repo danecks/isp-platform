@@ -122,7 +122,7 @@ export default function MergeRequests() {
   const pendientes = (data as MergeRequest[]).filter(m => m.estado === "pendiente").length;
 
   return (
-    <AdminLayout>
+    <AdminLayout title="Reingresos">
       <div className="p-6 max-w-6xl mx-auto">
         {/* Encabezado */}
         <div className="flex items-center justify-between mb-6">

@@ -139,7 +139,7 @@ export default function AdminSeguros() {
   const primaActual = Number(config?.prima_mensual ?? 0);
 
   return (
-    <AdminLayout>
+    <AdminLayout title="Seguros">
       <div className="px-4 sm:px-6 py-6 max-w-7xl mx-auto space-y-6">
 
         {/* Header */}
