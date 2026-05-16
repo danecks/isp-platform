@@ -2,7 +2,10 @@
  * ANTICIPO SESSION MANAGER — Conversaciones multi-turno de WhatsApp
  *
  * Mantiene el estado de la conversación de anticipo por número de teléfono.
- * Estado en memoria (Phase 1). Las sesiones expiran en SESSION_TTL_MS.
+ * Persistido en Postgres (tabla wa_anticipo_sessions) para sobrevivir
+ * reinicios y permitir escalado horizontal. Las sesiones expiran en
+ * SESSION_TTL_MS y se limpian de forma perezosa al leer + por GC periódico
+ * (ver wa-session-gc.ts).
  *
  * Flujo normal:
  *   WAIT_DPI       → colaborador proporciona su DPI
@@ -17,14 +20,19 @@
  *                        3. Cancelar
  */
 
-import { db, employeesTable, anticiposTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import {
+  db,
+  employeesTable,
+  anticiposTable,
+  waAnticipoSessionsTable,
+} from "@workspace/db";
+import { eq, and, lt } from "drizzle-orm";
 import { calcularLimiteAnticipo } from "../anticipo-limite";
 
 // ── Configuración de períodos ───────────────────────────────────────────────
 export const DIAS_HABILITADOS = [10, 25];
 const TOLERANCIA_DIAS = 1;
-const SESSION_TTL_MS = 30 * 60 * 1000;
+export const ANTICIPO_SESSION_TTL_MS = 30 * 60 * 1000;
 
 // ── Estado de sesión ────────────────────────────────────────────────────────
 export type SessionState = "WAIT_DPI" | "WAIT_CANTIDAD" | "WAIT_LIMITE_OPCION";
@@ -43,8 +51,6 @@ export interface AnticipoSession {
   limiteTotal?: number;
   montoSolicitado?: number;
 }
-
-const sessions = new Map<string, AnticipoSession>();
 
 // ── Utilidades de período ───────────────────────────────────────────────────
 
@@ -65,7 +71,6 @@ export function getProximosDiasHabilitados(): string {
   const dia = hoy.getDate();
   const diasPendientes = DIAS_HABILITADOS.filter((d) => d > dia);
   if (diasPendientes.length > 0) return `el día ${diasPendientes[0]} de este mes`;
-  const mesProx = new Date(hoy.getFullYear(), hoy.getMonth() + 1, DIAS_HABILITADOS[0]);
   return `el día ${DIAS_HABILITADOS[0]} del próximo mes`;
 }
 
@@ -98,35 +103,127 @@ export async function existeSolicitudPendiente(employeeId: number, periodo: stri
   return existente.length > 0;
 }
 
-// ── Gestión de sesiones ─────────────────────────────────────────────────────
+// ── Mapeo fila DB ↔ AnticipoSession ─────────────────────────────────────────
 
-export function getSession(telefono: string): AnticipoSession | null {
-  const s = sessions.get(normalizarTelefono(telefono));
-  if (!s) return null;
-  if (Date.now() - s.lastActivity > SESSION_TTL_MS) {
-    sessions.delete(normalizarTelefono(telefono));
+type SessionRow = typeof waAnticipoSessionsTable.$inferSelect;
+
+function rowToSession(r: SessionRow): AnticipoSession {
+  return {
+    state: r.state as SessionState,
+    telefono: r.telefono,
+    employeeId: r.employeeId,
+    nombre: r.nombre,
+    puesto: r.puesto,
+    dpi: r.dpi,
+    periodo: r.periodo,
+    lastActivity: r.lastActivity.getTime(),
+    limiteRestante: r.limiteRestante ?? undefined,
+    limiteTotal: r.limiteTotal ?? undefined,
+    montoSolicitado: r.montoSolicitado ?? undefined,
+  };
+}
+
+// ── Gestión de sesiones (persistente en DB) ─────────────────────────────────
+
+export async function getSession(telefono: string): Promise<AnticipoSession | null> {
+  const key = normalizarTelefono(telefono);
+  const rows = await db
+    .select()
+    .from(waAnticipoSessionsTable)
+    .where(eq(waAnticipoSessionsTable.telefono, key))
+    .limit(1);
+  const r = rows[0];
+  if (!r) return null;
+  if (r.expiresAt.getTime() <= Date.now()) {
+    // Expirada: GC perezoso
+    await db.delete(waAnticipoSessionsTable).where(eq(waAnticipoSessionsTable.telefono, key));
     return null;
   }
-  return s;
+  return rowToSession(r);
 }
 
-export function createSession(data: Omit<AnticipoSession, "lastActivity">): AnticipoSession {
-  const session: AnticipoSession = { ...data, lastActivity: Date.now() };
-  sessions.set(normalizarTelefono(data.telefono), session);
-  return session;
+export async function createSession(
+  data: Omit<AnticipoSession, "lastActivity">
+): Promise<AnticipoSession> {
+  const key = normalizarTelefono(data.telefono);
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + ANTICIPO_SESSION_TTL_MS);
+  const values = {
+    telefono: key,
+    state: data.state,
+    employeeId: data.employeeId,
+    nombre: data.nombre,
+    puesto: data.puesto,
+    dpi: data.dpi,
+    periodo: data.periodo,
+    limiteRestante: data.limiteRestante ?? null,
+    limiteTotal: data.limiteTotal ?? null,
+    montoSolicitado: data.montoSolicitado ?? null,
+    lastActivity: now,
+    expiresAt,
+  };
+  await db
+    .insert(waAnticipoSessionsTable)
+    .values(values)
+    .onConflictDoUpdate({
+      target: waAnticipoSessionsTable.telefono,
+      set: {
+        state: values.state,
+        employeeId: values.employeeId,
+        nombre: values.nombre,
+        puesto: values.puesto,
+        dpi: values.dpi,
+        periodo: values.periodo,
+        limiteRestante: values.limiteRestante,
+        limiteTotal: values.limiteTotal,
+        montoSolicitado: values.montoSolicitado,
+        lastActivity: values.lastActivity,
+        expiresAt: values.expiresAt,
+      },
+    });
+  return { ...data, telefono: key, lastActivity: now.getTime() };
 }
 
-export function updateSession(telefono: string, updates: Partial<AnticipoSession>): void {
+export async function updateSession(
+  telefono: string,
+  updates: Partial<AnticipoSession>
+): Promise<void> {
   const key = normalizarTelefono(telefono);
-  const s = sessions.get(key);
-  if (s) {
-    Object.assign(s, updates, { lastActivity: Date.now() });
-    sessions.set(key, s);
-  }
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + ANTICIPO_SESSION_TTL_MS);
+  const set: Record<string, unknown> = {
+    lastActivity: now,
+    expiresAt,
+  };
+  if (updates.state !== undefined) set.state = updates.state;
+  if (updates.employeeId !== undefined) set.employeeId = updates.employeeId;
+  if (updates.nombre !== undefined) set.nombre = updates.nombre;
+  if (updates.puesto !== undefined) set.puesto = updates.puesto;
+  if (updates.dpi !== undefined) set.dpi = updates.dpi;
+  if (updates.periodo !== undefined) set.periodo = updates.periodo;
+  if (updates.limiteRestante !== undefined) set.limiteRestante = updates.limiteRestante;
+  if (updates.limiteTotal !== undefined) set.limiteTotal = updates.limiteTotal;
+  if (updates.montoSolicitado !== undefined) set.montoSolicitado = updates.montoSolicitado;
+
+  await db
+    .update(waAnticipoSessionsTable)
+    .set(set)
+    .where(eq(waAnticipoSessionsTable.telefono, key));
 }
 
-export function deleteSession(telefono: string): void {
-  sessions.delete(normalizarTelefono(telefono));
+export async function deleteSession(telefono: string): Promise<void> {
+  const key = normalizarTelefono(telefono);
+  await db
+    .delete(waAnticipoSessionsTable)
+    .where(eq(waAnticipoSessionsTable.telefono, key));
+}
+
+/** Borra todas las sesiones de anticipo cuyo TTL ya venció. */
+export async function cleanupExpiredAnticipoSessions(): Promise<number> {
+  const result = await db
+    .delete(waAnticipoSessionsTable)
+    .where(lt(waAnticipoSessionsTable.expiresAt, new Date()));
+  return result.rowCount ?? 0;
 }
 
 // ── Guardar anticipo en DB ──────────────────────────────────────────────────
@@ -191,7 +288,7 @@ export async function iniciarAnticipo(nombre: string, telefono: string): Promise
   }
 
   const necesitaDpi = !empleado.dpi;
-  createSession({
+  await createSession({
     state: necesitaDpi ? "WAIT_DPI" : "WAIT_CANTIDAD",
     telefono,
     employeeId: empleado.id,
@@ -237,7 +334,7 @@ export async function continuarAnticipo(
         completada: false,
       };
     }
-    updateSession(session.telefono, { dpi: soloDigitos, state: "WAIT_CANTIDAD" });
+    await updateSession(session.telefono, { dpi: soloDigitos, state: "WAIT_CANTIDAD" });
     return {
       respuesta:
         "✅ DPI registrado.\n\n" +
@@ -262,13 +359,13 @@ export async function continuarAnticipo(
       };
     }
 
-    const sesActual = getSession(session.telefono) ?? session;
+    const sesActual = (await getSession(session.telefono)) ?? session;
 
     // Verificar límite del colaborador
     const limite = await calcularLimiteAnticipo(sesActual.employeeId, sesActual.periodo);
     if (limite.tieneLimite && limite.restante !== null && cantidad > limite.restante) {
       if (limite.restante <= 0) {
-        deleteSession(session.telefono);
+        await deleteSession(session.telefono);
         return {
           respuesta:
             "⛔ Ya no tienes *saldo disponible* para este período.\n\n" +
@@ -280,7 +377,7 @@ export async function continuarAnticipo(
       }
 
       // Ofrecer opciones al colaborador
-      updateSession(session.telefono, {
+      await updateSession(session.telefono, {
         state: "WAIT_LIMITE_OPCION",
         limiteRestante: limite.restante,
         limiteTotal: limite.limite ?? 0,
@@ -301,7 +398,7 @@ export async function continuarAnticipo(
 
     // Sin límite o dentro del límite — guardar
     const anticipo = await guardarAnticipo(sesActual, cantidad);
-    deleteSession(session.telefono);
+    await deleteSession(session.telefono);
     return {
       respuesta:
         `✅ *Solicitud registrada correctamente*\n\n` +
@@ -316,7 +413,7 @@ export async function continuarAnticipo(
 
   // ── WAIT_LIMITE_OPCION ──────────────────────────────────────────────────
   if (session.state === "WAIT_LIMITE_OPCION") {
-    const sesActual = getSession(session.telefono) ?? session;
+    const sesActual = (await getSession(session.telefono)) ?? session;
     const restante = sesActual.limiteRestante ?? 0;
     const textoNorm = texto.toLowerCase().replace(/[áéíóúü]/g, (c) =>
       ({ á: "a", é: "e", í: "i", ó: "o", ú: "u", ü: "u" }[c] ?? c)
@@ -324,7 +421,7 @@ export async function continuarAnticipo(
 
     // Opción 3 — cancelar
     if (["3", "cancelar", "cancel", "no", "salir"].includes(textoNorm)) {
-      deleteSession(session.telefono);
+      await deleteSession(session.telefono);
       return {
         respuesta: "✅ Solicitud cancelada. Puedes iniciar una nueva cuando desees.",
         completada: false,
@@ -333,7 +430,7 @@ export async function continuarAnticipo(
 
     // Opción 2 — ingresar monto menor (vuelve a WAIT_CANTIDAD)
     if (["2", "otro", "otro monto", "menor", "cambiar"].includes(textoNorm)) {
-      updateSession(session.telefono, { state: "WAIT_CANTIDAD" });
+      await updateSession(session.telefono, { state: "WAIT_CANTIDAD" });
       return {
         respuesta:
           `Indica el monto que deseas solicitar (máximo *Q${restante.toLocaleString("es-GT")}*):`,
@@ -363,7 +460,7 @@ export async function continuarAnticipo(
 
     if (montoAceptado !== null) {
       const anticipo = await guardarAnticipo(sesActual, montoAceptado);
-      deleteSession(session.telefono);
+      await deleteSession(session.telefono);
       return {
         respuesta:
           `✅ *Solicitud registrada correctamente*\n\n` +

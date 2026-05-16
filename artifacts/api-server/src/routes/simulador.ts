@@ -167,8 +167,8 @@ router.delete("/simulador/sesion", async (req, res) => {
     const { telefono } = req.body;
     if (!telefono) return res.status(400).json({ error: "Teléfono requerido" });
     const tel = normalizarTelefono(telefono);
-    deleteSession(tel);
-    clearPhoneRegSession(tel);
+    await deleteSession(tel);
+    await clearPhoneRegSession(tel);
     logger.info({ telefono: tel }, "[Simulador] Sesiones anticipo y DPI limpiadas");
     res.json({ ok: true, telefono: tel });
   } catch (err) {

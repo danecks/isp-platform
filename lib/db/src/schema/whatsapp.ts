@@ -68,6 +68,46 @@ export const waSimulatorScenariosTable = pgTable("wa_simulator_scenarios", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// WA_ANTICIPO_SESSIONS — sesiones multi-turno del flujo de anticipo del bot.
+// Persistidas en DB para sobrevivir reinicios y permitir escalado horizontal.
+// La columna `telefono` (normalizado) es la PK natural; `expires_at` se usa
+// para invalidar/limpiar sesiones inactivas (TTL).
+// ─────────────────────────────────────────────────────────────────────────────
+export const waAnticipoSessionsTable = pgTable("wa_anticipo_sessions", {
+  telefono: varchar("telefono", { length: 32 }).primaryKey(),
+  state: varchar("state", { length: 32 }).notNull(),
+  employeeId: integer("employee_id").notNull(),
+  nombre: varchar("nombre", { length: 255 }).notNull(),
+  puesto: varchar("puesto", { length: 255 }),
+  dpi: varchar("dpi", { length: 32 }),
+  periodo: varchar("periodo", { length: 32 }).notNull(),
+  limiteRestante: integer("limite_restante"),
+  limiteTotal: integer("limite_total"),
+  montoSolicitado: integer("monto_solicitado"),
+  lastActivity: timestamp("last_activity", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WA_PHONE_REG_SESSIONS — sesiones del flujo de registro de teléfono por DPI.
+// Mismo patrón que wa_anticipo_sessions: PK por teléfono normalizado y TTL.
+// ─────────────────────────────────────────────────────────────────────────────
+export const waPhoneRegSessionsTable = pgTable("wa_phone_reg_sessions", {
+  telefono: varchar("telefono", { length: 32 }).primaryKey(),
+  nombre: varchar("nombre", { length: 255 }).notNull(),
+  state: varchar("state", { length: 32 }).notNull(),
+  intentos: integer("intentos").notNull().default(0),
+  empleadoId: integer("empleado_id"),
+  empleadoNombre: varchar("empleado_nombre", { length: 255 }),
+  userId: integer("user_id"),
+  dpiValidado: varchar("dpi_validado", { length: 32 }),
+  telefonoAnterior: varchar("telefono_anterior", { length: 32 }),
+  intencionOriginal: varchar("intencion_original", { length: 64 }).notNull(),
+  lastActivity: timestamp("last_activity", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
 export type WaConfig = typeof waConfigTable.$inferSelect;
 export type WaMessage = typeof waMessagesTable.$inferSelect;
 export type WaMenuOption = typeof waMenuOptionsTable.$inferSelect;

@@ -30,7 +30,7 @@ export async function handlePhoneRegSession(
   debug: DebugInfo,
   t0: number,
 ): Promise<SimularResult | null> {
-  const regSession = getPhoneRegSession(telefono);
+  const regSession = await getPhoneRegSession(telefono);
   if (!regSession) return null;
 
   debug.validacion.autorizado = false;
@@ -43,7 +43,7 @@ export async function handlePhoneRegSession(
   debug.clasificacion.intencion = resultado.tipo;
 
   // Refrescar estado de sesión después del paso (puede haberse limpiado)
-  const sesionPostProceso = getPhoneRegSession(telefono);
+  const sesionPostProceso = await getPhoneRegSession(telefono);
   debug.sesion.activa = !!sesionPostProceso;
   debug.sesion.estado = sesionPostProceso ? `REG:${sesionPostProceso.state}` : null;
   debug.duracionMs = Date.now() - t0;
@@ -93,7 +93,7 @@ export async function handleUnknownUser(
       "🔐 Para acceder a funciones exclusivas de colaboradores, necesitas verificar tu identidad.\n\n" +
       "Envía tu número de *DPI* (Documento Personal de Identificación) para continuar."
     );
-    startPhoneRegSession(telefono, nombre, intencionPrevia);
+    await startPhoneRegSession(telefono, nombre, intencionPrevia);
     debug.clasificacion.intencion = "dpi_solicitado";
     debug.sesion.activa = true;
     debug.sesion.estado = "REG:WAIT_DPI";

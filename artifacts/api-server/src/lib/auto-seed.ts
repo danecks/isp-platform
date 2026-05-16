@@ -220,6 +220,52 @@ export async function runAutoMigrations(): Promise<void> {
     `);
     logger.info("Auto-migrate: tabla 'wa_simulator_scenarios' verificada");
 
+    // Sesiones multi-turno del bot WhatsApp persistidas en DB (Task #30)
+    // para sobrevivir reinicios y permitir escalado horizontal.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS wa_anticipo_sessions (
+        telefono          VARCHAR(32) PRIMARY KEY,
+        state             VARCHAR(32) NOT NULL,
+        employee_id       INTEGER NOT NULL,
+        nombre            VARCHAR(255) NOT NULL,
+        puesto            VARCHAR(255),
+        dpi               VARCHAR(32),
+        periodo           VARCHAR(32) NOT NULL,
+        limite_restante   INTEGER,
+        limite_total      INTEGER,
+        monto_solicitado  INTEGER,
+        last_activity     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        expires_at        TIMESTAMPTZ NOT NULL
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS wa_anticipo_sessions_expires_idx
+      ON wa_anticipo_sessions(expires_at)
+    `);
+    logger.info("Auto-migrate: tabla 'wa_anticipo_sessions' verificada");
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS wa_phone_reg_sessions (
+        telefono            VARCHAR(32) PRIMARY KEY,
+        nombre              VARCHAR(255) NOT NULL,
+        state               VARCHAR(32) NOT NULL,
+        intentos            INTEGER NOT NULL DEFAULT 0,
+        empleado_id         INTEGER,
+        empleado_nombre     VARCHAR(255),
+        user_id             INTEGER,
+        dpi_validado        VARCHAR(32),
+        telefono_anterior   VARCHAR(32),
+        intencion_original  VARCHAR(64) NOT NULL,
+        last_activity       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        expires_at          TIMESTAMPTZ NOT NULL
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS wa_phone_reg_sessions_expires_idx
+      ON wa_phone_reg_sessions(expires_at)
+    `);
+    logger.info("Auto-migrate: tabla 'wa_phone_reg_sessions' verificada");
+
     // BONIF-INCENTIVO-01: nivelar bonificación incentivo a Q250 mínimo
     // (Decreto 78-89). Idempotente: solo afecta a quienes están abajo.
     const bonifFix = await pool.query(`

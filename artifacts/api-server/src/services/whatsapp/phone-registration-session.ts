@@ -4,6 +4,12 @@
  * Flujo de autenticación por DPI y registro de número de WhatsApp
  * para colaboradores que acceden desde un número no registrado.
  *
+ * Persistencia: las sesiones viven en la tabla `wa_phone_reg_sessions`
+ * (Postgres) para sobrevivir reinicios del API server y permitir escalado
+ * horizontal. Cada sesión tiene un TTL (`SESSION_TTL_MS`); las expiradas
+ * se limpian de forma perezosa al leer y por GC periódico
+ * (ver `wa-session-gc.ts`).
+ *
  * ─── FLUJO COMPLETO ──────────────────────────────────────────────────────────
  *
  *  1. Número desconocido intenta función interna (anticipo, incidencia, etc.)
@@ -41,7 +47,8 @@
  *   validando la identidad con DPI en lugar de requerir intervención manual.
  */
 
-import { pool } from "@workspace/db";
+import { db, pool, waPhoneRegSessionsTable } from "@workspace/db";
+import { eq, lt } from "drizzle-orm";
 import { getWaMessage } from "./wa-config.service";
 import { logger } from "../../lib/logger";
 
@@ -58,17 +65,15 @@ export interface PhoneRegSession {
   empleadoNombre?: string;
   userId?: number;           // users.id si existe vínculo
   dpiValidado?: string;      // DPI exitoso (parcial en logs)
-  telefonoAnterior?: string; // Teléfono previo (si lo había)
+  telefonoAnterior?: string | null; // Teléfono previo (si lo había)
   intencionOriginal: string; // anticipo | incidencia | etc.
   lastActivity: number;
 }
 
 // ─── Configuración ────────────────────────────────────────────────────────────
 
-const SESSION_TTL_MS = 20 * 60 * 1000; // 20 min inactividad
+export const PHONE_REG_SESSION_TTL_MS = 20 * 60 * 1000; // 20 min inactividad
 const MAX_INTENTOS = 3;
-
-const regSessions = new Map<string, PhoneRegSession>();
 
 // ─── Normalización ────────────────────────────────────────────────────────────
 
@@ -84,48 +89,135 @@ function normResp(texto: string): string {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-// ─── Gestión de sesiones ──────────────────────────────────────────────────────
+// ─── Mapeo fila DB ↔ PhoneRegSession ─────────────────────────────────────────
 
-export function getPhoneRegSession(telefono: string): PhoneRegSession | null {
-  const key = normTel(telefono);
-  const s = regSessions.get(key);
-  if (!s) return null;
-  if (Date.now() - s.lastActivity > SESSION_TTL_MS) {
-    regSessions.delete(key);
-    return null;
-  }
-  return s;
+type RegRow = typeof waPhoneRegSessionsTable.$inferSelect;
+
+function rowToSession(r: RegRow): PhoneRegSession {
+  return {
+    telefono: r.telefono,
+    nombre: r.nombre,
+    state: r.state as PhoneRegState,
+    intentos: r.intentos,
+    empleadoId: r.empleadoId ?? undefined,
+    empleadoNombre: r.empleadoNombre ?? undefined,
+    userId: r.userId ?? undefined,
+    dpiValidado: r.dpiValidado ?? undefined,
+    telefonoAnterior: r.telefonoAnterior ?? undefined,
+    intencionOriginal: r.intencionOriginal,
+    lastActivity: r.lastActivity.getTime(),
+  };
 }
 
-export function startPhoneRegSession(
+// ─── Gestión de sesiones (persistente en DB) ──────────────────────────────────
+
+export async function getPhoneRegSession(telefono: string): Promise<PhoneRegSession | null> {
+  const key = normTel(telefono);
+  const rows = await db
+    .select()
+    .from(waPhoneRegSessionsTable)
+    .where(eq(waPhoneRegSessionsTable.telefono, key))
+    .limit(1);
+  const r = rows[0];
+  if (!r) return null;
+  if (r.expiresAt.getTime() <= Date.now()) {
+    await db.delete(waPhoneRegSessionsTable).where(eq(waPhoneRegSessionsTable.telefono, key));
+    return null;
+  }
+  return rowToSession(r);
+}
+
+export async function startPhoneRegSession(
   telefono: string,
   nombre: string,
-  intencionOriginal: string
-): PhoneRegSession {
-  const session: PhoneRegSession = {
-    telefono: normTel(telefono),
+  intencionOriginal: string,
+): Promise<PhoneRegSession> {
+  const key = normTel(telefono);
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + PHONE_REG_SESSION_TTL_MS);
+  await db
+    .insert(waPhoneRegSessionsTable)
+    .values({
+      telefono: key,
+      nombre,
+      state: "WAIT_DPI",
+      intentos: 0,
+      empleadoId: null,
+      empleadoNombre: null,
+      userId: null,
+      dpiValidado: null,
+      telefonoAnterior: null,
+      intencionOriginal,
+      lastActivity: now,
+      expiresAt,
+    })
+    .onConflictDoUpdate({
+      target: waPhoneRegSessionsTable.telefono,
+      set: {
+        nombre,
+        state: "WAIT_DPI",
+        intentos: 0,
+        empleadoId: null,
+        empleadoNombre: null,
+        userId: null,
+        dpiValidado: null,
+        telefonoAnterior: null,
+        intencionOriginal,
+        lastActivity: now,
+        expiresAt,
+      },
+    });
+  logger.info({ telefono: key, intencionOriginal }, "[PhoneReg] Sesión iniciada");
+  return {
+    telefono: key,
     nombre,
     state: "WAIT_DPI",
     intentos: 0,
     intencionOriginal,
-    lastActivity: Date.now(),
+    lastActivity: now.getTime(),
   };
-  regSessions.set(normTel(telefono), session);
-  logger.info({ telefono: normTel(telefono), intencionOriginal }, "[PhoneReg] Sesión iniciada");
-  return session;
 }
 
-function updatePhoneReg(telefono: string, updates: Partial<PhoneRegSession>): void {
+async function updatePhoneReg(
+  telefono: string,
+  updates: Partial<PhoneRegSession>,
+): Promise<void> {
   const key = normTel(telefono);
-  const s = regSessions.get(key);
-  if (s) {
-    Object.assign(s, updates, { lastActivity: Date.now() });
-    regSessions.set(key, s);
-  }
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + PHONE_REG_SESSION_TTL_MS);
+  const set: Record<string, unknown> = {
+    lastActivity: now,
+    expiresAt,
+  };
+  if (updates.nombre !== undefined) set.nombre = updates.nombre;
+  if (updates.state !== undefined) set.state = updates.state;
+  if (updates.intentos !== undefined) set.intentos = updates.intentos;
+  if (updates.empleadoId !== undefined) set.empleadoId = updates.empleadoId;
+  if (updates.empleadoNombre !== undefined) set.empleadoNombre = updates.empleadoNombre;
+  if (updates.userId !== undefined) set.userId = updates.userId;
+  if (updates.dpiValidado !== undefined) set.dpiValidado = updates.dpiValidado;
+  if (updates.telefonoAnterior !== undefined) set.telefonoAnterior = updates.telefonoAnterior;
+  if (updates.intencionOriginal !== undefined) set.intencionOriginal = updates.intencionOriginal;
+
+  await db
+    .update(waPhoneRegSessionsTable)
+    .set(set)
+    .where(eq(waPhoneRegSessionsTable.telefono, key));
 }
 
-export function clearPhoneRegSession(telefono: string): void {
-  regSessions.delete(normTel(telefono));
+export async function clearPhoneRegSession(telefono: string): Promise<void> {
+  const key = normTel(telefono);
+  await db
+    .delete(waPhoneRegSessionsTable)
+    .where(eq(waPhoneRegSessionsTable.telefono, key));
+}
+
+/** Borra todas las sesiones de phone-reg cuyo TTL ya venció. */
+export async function cleanupExpiredPhoneRegSessions(): Promise<number> {
+  const result = await db
+    .delete(waPhoneRegSessionsTable)
+    .where(lt(waPhoneRegSessionsTable.expiresAt, new Date()));
+  return result.rowCount ?? 0;
 }
 
 // ─── DB: buscar empleado por DPI ─────────────────────────────────────────────
@@ -319,9 +411,9 @@ export async function procesarPhoneRegStep(
     // Validar formato
     if (!/^\d{8,15}$/.test(dpiInput)) {
       const intentos = session.intentos + 1;
-      updatePhoneReg(session.telefono, { intentos });
+      await updatePhoneReg(session.telefono, { intentos });
       if (intentos >= MAX_INTENTOS) {
-        clearPhoneRegSession(session.telefono);
+        await clearPhoneRegSession(session.telefono);
         return {
           tipo: "dpi_max_intentos",
           respuesta: await getWaMessage(
@@ -345,10 +437,10 @@ export async function procesarPhoneRegStep(
 
     if (!empleado) {
       const intentos = session.intentos + 1;
-      updatePhoneReg(session.telefono, { intentos });
+      await updatePhoneReg(session.telefono, { intentos });
 
       if (intentos >= MAX_INTENTOS) {
-        clearPhoneRegSession(session.telefono);
+        await clearPhoneRegSession(session.telefono);
         await logPhoneAuth({
           userId: null, empleadoId: 0, dpi: dpiInput,
           numeroAnterior: null, numeroNuevo: session.telefono,
@@ -375,7 +467,7 @@ export async function procesarPhoneRegStep(
     const usuarioVinculado = await buscarUsuarioPorEmpleadoId(empleado.id);
 
     if (usuarioVinculado && usuarioVinculado.estado !== "activo") {
-      clearPhoneRegSession(session.telefono);
+      await clearPhoneRegSession(session.telefono);
       return {
         tipo: "empleado_inactivo",
         respuesta:
@@ -389,7 +481,7 @@ export async function procesarPhoneRegStep(
 
     if (hayTelPrevio) {
       // Tiene número diferente → preguntar
-      updatePhoneReg(session.telefono, {
+      await updatePhoneReg(session.telefono, {
         state: "WAIT_REPLACE",
         empleadoId: empleado.id,
         empleadoNombre: empleado.nombre_completo,
@@ -417,7 +509,7 @@ export async function procesarPhoneRegStep(
     }
 
     // Sin número previo → preguntar SI/NO
-    updatePhoneReg(session.telefono, {
+    await updatePhoneReg(session.telefono, {
       state: "WAIT_CONFIRM",
       empleadoId: empleado.id,
       empleadoNombre: empleado.nombre_completo,
@@ -450,7 +542,7 @@ export async function procesarPhoneRegStep(
       await guardarTelefonoPrincipal(
         session.empleadoId!, userId, session.telefono, session.dpiValidado!, null
       );
-      clearPhoneRegSession(session.telefono);
+      await clearPhoneRegSession(session.telefono);
       return {
         tipo: "numero_registrado",
         respuesta: await getWaMessage(
@@ -472,7 +564,7 @@ export async function procesarPhoneRegStep(
         accion: "no_autorizado",
         notas: "Colaborador declinó registrar el número",
       });
-      clearPhoneRegSession(session.telefono);
+      await clearPhoneRegSession(session.telefono);
       return {
         tipo: "numero_no_guardado",
         respuesta: await getWaMessage(
@@ -502,7 +594,7 @@ export async function procesarPhoneRegStep(
         session.empleadoId!, userId, session.telefono,
         session.dpiValidado!, session.telefonoAnterior!
       );
-      clearPhoneRegSession(session.telefono);
+      await clearPhoneRegSession(session.telefono);
       const mask = `***${session.telefonoAnterior!.slice(-4)}`;
       return {
         tipo: "numero_reemplazado",
@@ -524,7 +616,7 @@ export async function procesarPhoneRegStep(
         session.empleadoId!, userId, session.telefono,
         session.dpiValidado!, session.telefonoAnterior!
       );
-      clearPhoneRegSession(session.telefono);
+      await clearPhoneRegSession(session.telefono);
       return {
         tipo: "numero_secundario",
         respuesta: await getWaMessage(
@@ -544,7 +636,7 @@ export async function procesarPhoneRegStep(
         accion: "cancelado",
         notas: "Colaborador canceló el registro",
       });
-      clearPhoneRegSession(session.telefono);
+      await clearPhoneRegSession(session.telefono);
       return {
         tipo: "registro_cancelado",
         respuesta: await getWaMessage(
@@ -560,7 +652,7 @@ export async function procesarPhoneRegStep(
     };
   }
 
-  clearPhoneRegSession(session.telefono);
+  await clearPhoneRegSession(session.telefono);
   return {
     tipo: "estado_desconocido",
     respuesta: "Sesión de verificación expirada. Intenta nuevamente.",

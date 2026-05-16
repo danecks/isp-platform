@@ -268,7 +268,7 @@ async function handleIncomingMessage(
   //     Se verifica ANTES de la validación para permitir que números desconocidos
   //     continúen el flujo multi-turno de registro.
   if (!skipValidation) {
-    const regSession = getPhoneRegSession(telefono);
+    const regSession = await getPhoneRegSession(telefono);
     if (regSession) {
       console.log(`[WA-Webhook] Sesión PhoneReg activa (${telefono}), estado=${regSession.state}`);
       const resultado = await procesarPhoneRegStep(regSession, texto);
@@ -304,7 +304,7 @@ async function handleIncomingMessage(
             "🔐 Para acceder a funciones exclusivas de colaboradores, necesitas verificar tu identidad.\n\n" +
             "Envía tu número de *DPI* (Documento Personal de Identificación) para continuar."
           );
-          startPhoneRegSession(telefono, nombre, intencion);
+          await startPhoneRegSession(telefono, nombre, intencion);
           console.log(`[WA-Webhook] Externo con intención interna (${intencion}) → iniciando flujo DPI: ${telefono}`);
           return { tipo: "dpi_solicitado", respuesta: msg };
         }
@@ -335,7 +335,7 @@ async function handleIncomingMessage(
   }
 
   // 1. ¿Hay sesión de anticipo activa para este número?
-  const sesionActiva = getSession(telefono);
+  const sesionActiva = await getSession(telefono);
   if (sesionActiva) {
     const { respuesta, completada } = await continuarAnticipo(sesionActiva, texto);
     console.log(`[WA-Webhook] Anticipo en curso (${telefono}): estado=${sesionActiva.state}, completada=${completada}`);

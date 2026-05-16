@@ -78,7 +78,7 @@ export async function simularMensaje(params: SimularParams): Promise<SimularResu
   debug.alias = await buscarAlias(mensaje);
 
   // 4. Sesión de anticipo activa
-  const sesionActiva = getSession(telefono);
+  const sesionActiva = await getSession(telefono);
   if (sesionActiva) {
     debug.sesion.activa = true;
     debug.sesion.estado = sesionActiva.state;
@@ -96,7 +96,7 @@ export async function simularMensaje(params: SimularParams): Promise<SimularResu
     };
 
     if (!persistir && completada) {
-      deleteSession(telefono);
+      await deleteSession(telefono);
     }
 
     debug.duracionMs = Date.now() - t0;
@@ -122,7 +122,7 @@ export async function simularMensaje(params: SimularParams): Promise<SimularResu
       tipo = "anticipo_inicio";
 
       if (!persistir) {
-        deleteSession(telefono);
+        await deleteSession(telefono);
         debug.entidad = { creada: false, tabla: "anticipos", id: null, dryRun: true };
       } else {
         debug.entidad = { creada: false, tabla: "anticipos", id: null, dryRun: false };
