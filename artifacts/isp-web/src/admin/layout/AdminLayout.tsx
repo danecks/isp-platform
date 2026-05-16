@@ -10,6 +10,7 @@ import { useIdleTimeout } from "@/hooks/useIdleTimeout";
 interface AdminLayoutProps {
   children: React.ReactNode;
   title: string;
+  subtitle?: string;
 }
 
 function DeleteModeBanner() {
@@ -129,7 +130,7 @@ function IdleWarningModal({ onStay, onLogout }: { onStay: () => void; onLogout: 
   );
 }
 
-export function AdminLayout({ children, title }: AdminLayoutProps) {
+export function AdminLayout({ children, title, subtitle }: AdminLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showIdleWarning, setShowIdleWarning] = useState(false);
   const { logout } = useAuth();
@@ -160,7 +161,7 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
       <AdminSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       <div className="flex-1 flex flex-col lg:ml-64 min-w-0">
-        <AdminTopbar title={title} onMenuOpen={() => setSidebarOpen(true)} />
+        <AdminTopbar title={title} subtitle={subtitle} onMenuOpen={() => setSidebarOpen(true)} />
         <DeleteModeBanner />
         <main className="flex-1 p-4 md:p-6 overflow-auto">
           {children}

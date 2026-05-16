@@ -7,10 +7,11 @@ import { CambiarPasswordModal } from "@/components/CambiarPasswordModal";
 
 interface AdminTopbarProps {
   title: string;
+  subtitle?: string;
   onMenuOpen: () => void;
 }
 
-export function AdminTopbar({ title, onMenuOpen }: AdminTopbarProps) {
+export function AdminTopbar({ title, subtitle, onMenuOpen }: AdminTopbarProps) {
   const { currentUser, logout } = useAuth();
   const [, navigate] = useLocation();
   const [showChangePass, setShowChangePass] = useState(false);
@@ -38,7 +39,11 @@ export function AdminTopbar({ title, onMenuOpen }: AdminTopbarProps) {
 
       <div className="flex-1 min-w-0">
         <h1 className="text-sm font-bold text-white truncate">{title}</h1>
-        <p className="text-[10px] text-white/30 capitalize truncate">{now}</p>
+        {subtitle ? (
+          <p className="text-[10px] text-white/50 truncate">{subtitle}</p>
+        ) : (
+          <p className="text-[10px] text-white/30 capitalize truncate">{now}</p>
+        )}
       </div>
 
       <div className="flex items-center gap-3">
