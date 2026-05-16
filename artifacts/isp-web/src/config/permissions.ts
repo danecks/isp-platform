@@ -386,6 +386,15 @@ export const NAV_SECTIONS: NavSection[] = [
         roles: ["admin"],
       },
       {
+        path: "/admin/simulador-whatsapp/escenarios",
+        label: "Escenarios del Simulador",
+        icon: FlaskConical,
+        // Reutiliza el permiso existente del simulador (mismo módulo en
+        // backend: ROUTE_MODULO_MAP "/simulador" → "simulador_wa").
+        clave: "simulador_wa",
+        roles: ["admin"],
+      },
+      {
         path: "/admin/modelo-datos",
         label: "Modelo de Datos (ERD)",
         icon: FlaskConical,

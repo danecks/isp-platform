@@ -45,11 +45,17 @@ export interface ChatMessage {
   error?: boolean;
 }
 
+// Forma del escenario tal como llega de `GET /api/simulador/escenarios`.
+// Coincide con la fila de `wa_simulator_scenarios` (camelCase para skip/orden).
 export interface QuickScenario {
+  id: number;
+  grupo: "interno" | "externo" | "dpi";
   label: string;
-  icon: string;
-  msg: string;
+  icono: string;
+  mensaje: string;
   color: string;
-  group: "interno" | "externo" | "dpi";
-  skipValidacion?: boolean;
+  skipValidacion: boolean;
+  activo: boolean;
+  orden: number;
+  updatedAt?: string;
 }

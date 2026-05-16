@@ -11,6 +11,7 @@ import {
   waConfigTable,
   waMessagesTable,
   waMenuOptionsTable,
+  waSimulatorScenariosTable,
   tareasTable,
 } from "@workspace/db";
 import { pool } from "@workspace/db";
@@ -202,6 +203,22 @@ export async function runAutoMigrations(): Promise<void> {
       )
     `);
     logger.info("Auto-migrate: tabla 'wa_audit_log' verificada");
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS wa_simulator_scenarios (
+        id              SERIAL PRIMARY KEY,
+        grupo           VARCHAR(20) NOT NULL,
+        label           VARCHAR(120) NOT NULL,
+        icono           VARCHAR(16) NOT NULL DEFAULT '',
+        mensaje         TEXT NOT NULL,
+        color           VARCHAR(200) NOT NULL DEFAULT '',
+        skip_validacion BOOLEAN NOT NULL DEFAULT FALSE,
+        activo          BOOLEAN NOT NULL DEFAULT TRUE,
+        orden           INTEGER NOT NULL DEFAULT 0,
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("Auto-migrate: tabla 'wa_simulator_scenarios' verificada");
 
     // BONIF-INCENTIVO-01: nivelar bonificación incentivo a Q250 mínimo
     // (Decreto 78-89). Idempotente: solo afecta a quienes están abajo.
@@ -781,6 +798,46 @@ export async function runAutoSeed(): Promise<void> {
     logger.info("Auto-migrate: mensajes de emergencia verificados en wa_messages");
   } catch (err) {
     logger.error({ err }, "Auto-seed: error en wa_config/mensajes/menús");
+  }
+
+  // ── 6.b WA Simulator Scenarios — escenarios rápidos del simulador ─────
+  try {
+    const [{ total: scnCount }] = await db
+      .select({ total: count() })
+      .from(waSimulatorScenariosTable);
+    if (Number(scnCount) === 0) {
+      logger.info("Auto-seed: creando escenarios rápidos del simulador WA...");
+      await db.insert(waSimulatorScenariosTable).values([
+        // Internos
+        { grupo: "interno", label: "Anticipo",            icono: "💸", mensaje: "quiero solicitar anticipo",                  color: "bg-yellow-500/10 border-yellow-500/30 text-yellow-300", orden: 10 },
+        { grupo: "interno", label: "Emergencia",          icono: "🚨", mensaje: "emergencia en custodia, persona sospechosa", color: "bg-red-500/10 border-red-500/30 text-red-300",          orden: 20 },
+        { grupo: "interno", label: "Incidencia",          icono: "⚠️", mensaje: "reporto incidencia en planta norte, intruso", color: "bg-orange-500/10 border-orange-500/30 text-orange-300", orden: 30 },
+        { grupo: "interno", label: "Alias cliente",       icono: "🏢", mensaje: "custodio gallo necesita apoyo urgente",      color: "bg-teal-500/10 border-teal-500/30 text-teal-300",       orden: 40 },
+        // Externos
+        { grupo: "externo", label: "Externo comercial",   icono: "💼", mensaje: "buenos días, necesito cotización para seguridad de mi empresa", color: "bg-green-500/10 border-green-500/30 text-green-300",   orden: 10 },
+        { grupo: "externo", label: "Externo empleo",      icono: "👷", mensaje: "kisiera trabajo como guardia de seguridad",                     color: "bg-blue-500/10 border-blue-500/30 text-blue-300",     orden: 20 },
+        { grupo: "externo", label: "Externo info",        icono: "ℹ️", mensaje: "hola quiero informacion sobre sus servicios de seguridad",      color: "bg-indigo-500/10 border-indigo-500/30 text-indigo-300", orden: 30 },
+        { grupo: "externo", label: "Externo asesor",      icono: "📞", mensaje: "quiero hablar con un asesor de ventas",                         color: "bg-purple-500/10 border-purple-500/30 text-purple-300", orden: 40 },
+        { grupo: "externo", label: "🔐 Anticipo externo", icono: "🔐", mensaje: "quiero mi anticipo salarial",                                    color: "bg-amber-500/10 border-amber-500/30 text-amber-300",    orden: 50 },
+        { grupo: "externo", label: "🔐 Emergencia externo", icono: "🔐", mensaje: "emergencia hay un intruso en las instalaciones",              color: "bg-amber-500/10 border-amber-500/30 text-amber-300",    orden: 60 },
+        { grupo: "externo", label: "Saludo / menú",       icono: "👋", mensaje: "hola",                                                          color: "bg-gray-500/10 border-gray-500/30 text-gray-300",       orden: 70 },
+        // Flujo DPI
+        { grupo: "dpi", label: "DPI Carlos (OPS)",  icono: "🪪", mensaje: "1234567890101", color: "bg-blue-500/10 border-blue-500/30 text-blue-300",       orden: 10 },
+        { grupo: "dpi", label: "DPI Marco Tzoc",    icono: "🪪", mensaje: "2345678901202", color: "bg-cyan-500/10 border-cyan-500/30 text-cyan-300",       orden: 20 },
+        { grupo: "dpi", label: "DPI Lucía Ajú",     icono: "🪪", mensaje: "3456789012303", color: "bg-cyan-500/10 border-cyan-500/30 text-cyan-300",       orden: 30 },
+        { grupo: "dpi", label: "DPI inválido",      icono: "❌", mensaje: "00000000",       color: "bg-red-500/10 border-red-500/30 text-red-300",          orden: 40 },
+        { grupo: "dpi", label: "✅ SI (registrar)", icono: "✅", mensaje: "SI",            color: "bg-emerald-500/10 border-emerald-500/30 text-emerald-300", orden: 50 },
+        { grupo: "dpi", label: "❌ NO (temporal)",  icono: "❌", mensaje: "NO",            color: "bg-gray-500/10 border-gray-500/30 text-gray-300",       orden: 60 },
+        { grupo: "dpi", label: "1 Reemplazar",      icono: "🔄", mensaje: "1",             color: "bg-orange-500/10 border-orange-500/30 text-orange-300", orden: 70 },
+        { grupo: "dpi", label: "2 Secundario",      icono: "📎", mensaje: "2",             color: "bg-blue-500/10 border-blue-500/30 text-blue-300",       orden: 80 },
+        { grupo: "dpi", label: "3 Cancelar",        icono: "↩️", mensaje: "3",             color: "bg-gray-500/10 border-gray-500/30 text-gray-300",       orden: 90 },
+      ]);
+      logger.info("Auto-seed: wa_simulator_scenarios creados (20 escenarios)");
+    } else {
+      logger.info({ count: scnCount }, "Auto-seed: wa_simulator_scenarios ya existe");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-seed: error en wa_simulator_scenarios");
   }
 
   // ═══════════════════════════════════════════════════════════════════════

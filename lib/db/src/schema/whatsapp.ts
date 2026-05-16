@@ -49,7 +49,27 @@ export const waAuditLogTable = pgTable("wa_audit_log", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// WA_SIMULATOR_SCENARIOS — escenarios rápidos del simulador de WhatsApp.
+// Cada fila representa un botón en la barra de "Escenarios rápidos" del
+// simulador admin. Permite a los responsables del bot agregar / editar /
+// ocultar pruebas sin pasar por el equipo de desarrollo.
+// ─────────────────────────────────────────────────────────────────────────────
+export const waSimulatorScenariosTable = pgTable("wa_simulator_scenarios", {
+  id: serial("id").primaryKey(),
+  grupo: varchar("grupo", { length: 20 }).notNull(), // 'interno' | 'externo' | 'dpi'
+  label: varchar("label", { length: 120 }).notNull(),
+  icono: varchar("icono", { length: 16 }).notNull().default(""),
+  mensaje: text("mensaje").notNull(),
+  color: varchar("color", { length: 200 }).notNull().default(""),
+  skipValidacion: boolean("skip_validacion").notNull().default(false),
+  activo: boolean("activo").notNull().default(true),
+  orden: integer("orden").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type WaConfig = typeof waConfigTable.$inferSelect;
 export type WaMessage = typeof waMessagesTable.$inferSelect;
 export type WaMenuOption = typeof waMenuOptionsTable.$inferSelect;
 export type WaAuditLog = typeof waAuditLogTable.$inferSelect;
+export type WaSimulatorScenario = typeof waSimulatorScenariosTable.$inferSelect;

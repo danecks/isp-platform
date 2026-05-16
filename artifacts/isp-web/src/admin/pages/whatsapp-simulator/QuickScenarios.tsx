@@ -1,18 +1,33 @@
 /**
  * Barra de escenarios rápidos sobre el input. Se muestra agrupada por
  * "internos / externos / DPI" para facilitar pruebas frecuentes.
+ *
+ * Los escenarios se cargan desde `GET /api/simulador/escenarios` (tabla
+ * `wa_simulator_scenarios`) y se administran desde
+ * `/admin/simulador-whatsapp/escenarios`.
  */
 
-import { QUICK_SCENARIOS } from "./constants";
+import { useEffect, useState } from "react";
+import { API } from "./constants";
+import type { QuickScenario } from "./types";
 
 interface Props {
   onEnviar: (msg: string, opts?: { skipVal?: boolean }) => void;
 }
 
 export function QuickScenarios({ onEnviar }: Props) {
-  const internos = QUICK_SCENARIOS.filter(s => s.group === "interno");
-  const externos = QUICK_SCENARIOS.filter(s => s.group === "externo");
-  const dpis = QUICK_SCENARIOS.filter(s => s.group === "dpi");
+  const [escenarios, setEscenarios] = useState<QuickScenario[]>([]);
+
+  useEffect(() => {
+    fetch(`${API}/simulador/escenarios`)
+      .then(r => r.json())
+      .then((rows: QuickScenario[]) => setEscenarios(Array.isArray(rows) ? rows : []))
+      .catch(() => setEscenarios([]));
+  }, []);
+
+  const internos = escenarios.filter(s => s.grupo === "interno");
+  const externos = escenarios.filter(s => s.grupo === "externo");
+  const dpis = escenarios.filter(s => s.grupo === "dpi");
 
   return (
     <div className="bg-[#111b21] border-t border-gray-700/20 px-4 py-2.5 shrink-0">
@@ -20,12 +35,12 @@ export function QuickScenarios({ onEnviar }: Props) {
         <Group title="Internos (registrado)">
           {internos.map(s => (
             <button
-              key={s.label}
-              onClick={() => onEnviar(s.msg, { skipVal: s.skipValidacion })}
+              key={s.id}
+              onClick={() => onEnviar(s.mensaje, { skipVal: s.skipValidacion })}
               className={`text-xs px-2.5 py-1 rounded-lg border transition-all hover:opacity-80 ${s.color}`}
-              title={s.msg}
+              title={s.mensaje}
             >
-              {s.icon} {s.label}
+              {s.icono} {s.label}
             </button>
           ))}
         </Group>
@@ -35,12 +50,12 @@ export function QuickScenarios({ onEnviar }: Props) {
         <Group title="Externos (número desconocido)">
           {externos.map(s => (
             <button
-              key={s.label}
-              onClick={() => onEnviar(s.msg, { skipVal: s.skipValidacion })}
+              key={s.id}
+              onClick={() => onEnviar(s.mensaje, { skipVal: s.skipValidacion })}
               className={`text-xs px-2.5 py-1 rounded-lg border transition-all hover:opacity-80 ${s.color}`}
-              title={s.msg}
+              title={s.mensaje}
             >
-              {s.icon} {s.label}
+              {s.icono} {s.label}
             </button>
           ))}
         </Group>
@@ -54,12 +69,12 @@ export function QuickScenarios({ onEnviar }: Props) {
           <div className="flex flex-wrap gap-1.5">
             {dpis.map(s => (
               <button
-                key={s.label}
-                onClick={() => onEnviar(s.msg)}
+                key={s.id}
+                onClick={() => onEnviar(s.mensaje)}
                 className={`text-xs px-2.5 py-1 rounded-lg border transition-all hover:opacity-80 ${s.color}`}
-                title={`Enviar: "${s.msg}"`}
+                title={`Enviar: "${s.mensaje}"`}
               >
-                {s.icon} {s.label}
+                {s.icono} {s.label}
               </button>
             ))}
           </div>

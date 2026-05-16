@@ -39,6 +39,7 @@ import AdminPlantillasContrato from "@/admin/pages/configuracion/PlantillasContr
 import AdminReportes from "@/admin/pages/Reportes";
 import AdminCMS from "@/admin/pages/CMS";
 import AdminSimulador from "@/admin/pages/SimuladorWhatsApp";
+import AdminSimuladorEscenarios from "@/admin/pages/whatsapp-simulator/EscenariosAdmin";
 import AdminEmpleados from "@/admin/pages/Empleados";
 import AdminOperaciones from "@/admin/pages/Operaciones";
 import AdminSupervision from "@/admin/pages/Supervision";
@@ -227,6 +228,9 @@ function Router() {
       </Route>
       <Route path="/admin/cms">
         {() => <AuthGuard requiredRoles={["admin"]}><AdminCMS /></AuthGuard>}
+      </Route>
+      <Route path="/admin/simulador-whatsapp/escenarios">
+        {() => <AuthGuard requiredRoles={["admin"]}><AdminSimuladorEscenarios /></AuthGuard>}
       </Route>
       <Route path="/admin/simulador-whatsapp">
         {() => <AuthGuard requiredRoles={["admin"]}><AdminSimulador /></AuthGuard>}
