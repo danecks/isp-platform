@@ -451,6 +451,7 @@ export interface CierreHoyData {
   resumen: CierreResumen;
   advertencias: string[];
   diasPendientesCierre: DiaPendienteCierre[];
+  diasCerrados?: string[];
 }
 
 export interface Segmento {
