@@ -14,7 +14,7 @@
 |------------------------|--------------------------------------|--------------------------------------------------------------|
 | `whatsapp-webhook.ts`  | `GET/POST /api/webhooks/whatsapp`    | Punto de entrada de Meta (verify token + recepción mensajes) |
 | `wa-config.ts`         | `/api/wa-config/*`                   | API admin para editar config, mensajes, menús, auditoría     |
-| `simulador.ts`         | `/api/simulador/*`                   | Backend del simulador (modo dry-run / real)                  |
+| `simulador.ts`         | `/api/simulador/*`                   | Capa HTTP del simulador (delega en `services/whatsapp/simulator/*`) |
 
 ### 1.2 Servicios (`artifacts/api-server/src/services/whatsapp/`)
 
@@ -27,6 +27,28 @@
 | `anticipo-session.ts`            | Sesión multi-paso para solicitar anticipo de nómina                         |
 | `emergencias.service.ts`         | Crea incidencias con `esEmergencia=true`                                    |
 | `notificaciones.service.ts`      | Envía notificaciones salientes (tareas asignadas, alertas operativas)       |
+| `simulator/`                     | Lógica del simulador admin (ver detalle abajo)                              |
+
+#### 1.2.1 Submódulo `services/whatsapp/simulator/`
+
+El simulador (modo dry-run vs. real) está dividido por responsabilidad para
+poder agregar nuevos escenarios o intenciones sin tocar un único archivo
+gigante:
+
+| Archivo          | Rol                                                                                |
+|------------------|------------------------------------------------------------------------------------|
+| `types.ts`       | `DebugInfo`, `SimularParams`, `SimularResult` y la fábrica `makeDebug()`           |
+| `utils.ts`       | `normalizarTelefono`, `buscarUsuarioPorTelefono`, `buscarAlias`, `generarIdIncidencia` |
+| `validation.ts`  | Sesión DPI activa, usuario inactivo y flujo de número desconocido                  |
+| `real.ts`        | Handlers que **persisten en DB** (incidencia, postulación, leads, tareas, …)       |
+| `dry-run.ts`     | Handlers equivalentes que **NO escriben** (mismo shape de retorno)                 |
+| `simulate.ts`    | Orquestador `simularMensaje()` que arma debug, valida y despacha al handler        |
+| `index.ts`       | Re-export público (`simularMensaje`, `normalizarTelefono`, tipos)                  |
+
+La UI admin vive en `artifacts/isp-web/src/admin/pages/whatsapp-simulator/`
+con un orquestador (`index.tsx`) y paneles separados (`ConfigPanel`,
+`ChatPanel`, `QuickScenarios`, `DebugSidePanel`, `MsgBubble`) más el hook
+`use-simulador.ts` que centraliza el estado y los llamados a la API.
 
 ### 1.3 Tablas en Drizzle (`lib/db/src/schema/whatsapp.ts`)
 
