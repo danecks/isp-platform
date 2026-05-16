@@ -1,10 +1,10 @@
-import { apiFetch, apiPatch, apiPost, getSessionToken } from "@/lib/httpClient";
+import { apiRequest, apiPatch, apiPost, getSessionToken } from "@/lib/httpClient";
 import type { EventoRrhh, DatosActa } from "@/lib/pdfRrhh";
 
 export const API = "/api";
 export const getSession = () => getSessionToken();
 
-export { apiFetch, apiPatch, apiPost };
+export { apiRequest, apiPatch, apiPost };
 
 export function fmtFecha(iso: string): string {
   try {

@@ -12,7 +12,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
 import { AdminLayout } from "../layout/AdminLayout";
 import { TabReportes } from "../components/armeria/TabReportes";
-import { apiFetch, apiPatch, apiPost, apiRequest, ApiError } from "@/lib/httpClient";
+import { apiRequest, apiPatch, apiPost, ApiError } from "@/lib/httpClient";
 
 const API = "/api";
 
@@ -248,7 +248,7 @@ function ModalArma({
   // Empleados activos para el selector de custodio (solo se cargan si el puesto es custodia)
   const { data: empleados = [] } = useQuery<EmpleadoOpcion[]>({
     queryKey: ["empleados-activos-armeria"],
-    queryFn: () => apiFetch<EmpleadoOpcion[]>("/api/employees?estadoLaboral=activo"),
+    queryFn: () => apiRequest<EmpleadoOpcion[]>("/api/employees?estadoLaboral=activo"),
     enabled: isCustodiaPuesto,
     staleTime: 5 * 60 * 1000,
   });
@@ -585,12 +585,12 @@ function ModalFichaArma({ arma, onClose, onEdit }: {
   const { toast } = useToast();
   const { data: detalle } = useQuery<Arma>({
     queryKey: ["arma-detalle", arma.id],
-    queryFn: () => apiFetch(`${API}/armas/${arma.id}`),
+    queryFn: () => apiRequest(`${API}/armas/${arma.id}`),
     initialData: arma,
   });
   const { data: historial = [], isLoading } = useQuery<CustodiaEntry[]>({
     queryKey: ["arma-custodia", arma.id],
-    queryFn: () => apiFetch(`${API}/armas/${arma.id}/custodia`),
+    queryFn: () => apiRequest(`${API}/armas/${arma.id}/custodia`),
   });
 
   const a = detalle ?? arma;
@@ -927,7 +927,7 @@ function TabEstado({ fecha, onFicha }: { fecha: string; onFicha: (a: EstadoArma)
 
   const { data: estado = [], isLoading, refetch } = useQuery<EstadoArma[]>({
     queryKey: ["armas-estado", fecha],
-    queryFn: () => apiFetch(`${API}/armas/estado-operativo?fecha=${fecha}`),
+    queryFn: () => apiRequest(`${API}/armas/estado-operativo?fecha=${fecha}`),
     refetchInterval: 60_000,
   });
 
@@ -1140,7 +1140,7 @@ function TabArmas({ onEdit, onFicha }: {
 
   const { data: armas = [], isLoading, refetch } = useQuery<Arma[]>({
     queryKey: ["armas"],
-    queryFn: () => apiFetch(`${API}/armas`),
+    queryFn: () => apiRequest(`${API}/armas`),
   });
 
   // Lista única de clientes (ordenada) para el select dinámico
@@ -1388,7 +1388,7 @@ function TabHistorial() {
 
   const { data: historial = [], isLoading } = useQuery<CustodiaEntry[]>({
     queryKey: ["armas-historial"],
-    queryFn: () => apiFetch(`${API}/armas/historial/global?limite=200`),
+    queryFn: () => apiRequest(`${API}/armas/historial/global?limite=200`),
     refetchInterval: 60_000,
   });
 
@@ -1493,7 +1493,7 @@ function TabDuplicados({ onEdit }: { onEdit: (a: any) => void }) {
   const { toast } = useToast();
   const { data, isLoading, refetch } = useQuery<{ total: number; grupos: DupGrupo[] }>({
     queryKey: ["armas-duplicados"],
-    queryFn: () => apiFetch(`${API}/armas/duplicados`),
+    queryFn: () => apiRequest(`${API}/armas/duplicados`),
   });
 
   async function eliminar(arma: DupArma) {
@@ -1647,7 +1647,7 @@ export default function Armeria() {
 
   const { data: puestos = [] } = useQuery<Puesto[]>({
     queryKey: ["armas-puestos"],
-    queryFn: () => apiFetch(`${API}/armas/puestos/disponibles`),
+    queryFn: () => apiRequest(`${API}/armas/puestos/disponibles`),
   });
 
   interface Sugerencia {
@@ -1657,7 +1657,7 @@ export default function Armeria() {
   }
   const { data: sugerencias = [], refetch: refetchSugerencias } = useQuery<Sugerencia[]>({
     queryKey: ["arma-sugerencias"],
-    queryFn: () => apiFetch(`${API}/armeria/sugerencias`),
+    queryFn: () => apiRequest(`${API}/armeria/sugerencias`),
     refetchInterval: 30_000,
   });
 
@@ -1678,7 +1678,7 @@ export default function Armeria() {
   // Cargamos la cuenta de duplicados para mostrarla como insignia en el tab.
   const { data: dupData } = useQuery<{ total: number; grupos: any[] }>({
     queryKey: ["armas-duplicados"],
-    queryFn: () => apiFetch(`${API}/armas/duplicados`),
+    queryFn: () => apiRequest(`${API}/armas/duplicados`),
     refetchInterval: 60_000,
   });
   const totalDup = dupData?.total ?? 0;

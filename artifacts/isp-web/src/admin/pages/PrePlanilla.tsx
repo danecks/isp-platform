@@ -4,7 +4,7 @@
  * Esta pantalla está dividida en módulos por sección dentro de
  * `./pre-planilla/`:
  *   - types.ts                 — Interfaces / tipos compartidos
- *   - helpers.ts               — apiFetch, formateadores, IGSS, ISR,
+ *   - helpers.ts               — apiRequest, formateadores, IGSS, ISR,
  *                                cálculo de total estimado y REVISION_CFG
  *   - badges.tsx               — RevisionBadge, TipoCobBadge, TablaVacia
  *   - DetalleModal.tsx         — Drawer detalle por colaborador
@@ -35,7 +35,7 @@ import {
 
 import {
   BASE,
-  apiFetch,
+  apiRequest,
   fmtFecha,
   fmtQ,
   getPeriodPresets,
@@ -107,7 +107,7 @@ export default function PrePlanilla() {
     setValidacion(null);
     setShowValidacion(false);
     try {
-      const data = await apiFetch(`/api/nomina/pre-planilla?desde=${d}&hasta=${h}`);
+      const data = await apiRequest<ColaboradorPre[]>(`/api/nomina/pre-planilla?desde=${d}&hasta=${h}`);
       setRows(data);
       setLoaded(true);
     } catch (e: unknown) {
@@ -121,7 +121,7 @@ export default function PrePlanilla() {
     setValidacionLoading(true);
     setShowValidacion(true);
     try {
-      const data = await apiFetch(`/api/nomina/pre-planilla/validacion?desde=${desde}&hasta=${hasta}`);
+      const data = await apiRequest<Validacion>(`/api/nomina/pre-planilla/validacion?desde=${desde}&hasta=${hasta}`);
       setValidacion(data);
     } catch (e: unknown) {
       toast({ title: "Error al validar", description: (e as Error).message, variant: "destructive" });
@@ -289,7 +289,7 @@ export default function PrePlanilla() {
                     <button onClick={async () => {
                       if (!confirm("¿Reabrir el período? Podrás editar y volver a cerrar.")) return;
                       try {
-                        await apiFetch("/api/nomina/pre-planilla/reabrir", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ desde, hasta, usuario: "admin" }) });
+                        await apiRequest("/api/nomina/pre-planilla/reabrir", { method: "POST", json: { desde, hasta, usuario: "admin" } });
                         toast({ title: "Período reabierto" });
                         cargar(desde, hasta);
                       } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }

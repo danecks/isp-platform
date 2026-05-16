@@ -1,11 +1,11 @@
 import { Clock, CheckCircle2, AlertCircle, ShieldCheck } from "lucide-react";
-import { apiFetch, getSessionToken } from "@/lib/httpClient";
+import { apiRequest, getSessionToken } from "@/lib/httpClient";
 import type { ColaboradorPre } from "./types";
 
 export const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 export const getSession = () => getSessionToken();
 
-export { apiFetch };
+export { apiRequest };
 
 export function getPeriodPresets() {
   const hoy = new Date();

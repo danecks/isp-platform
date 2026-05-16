@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AdminLayout } from "../layout/AdminLayout";
-import { apiFetch } from "./planillas-especiales/helpers";
+import { apiRequest } from "./planillas-especiales/helpers";
 import { ListaPlanillasEspeciales } from "./planillas-especiales/ListaPlanillasEspeciales";
 import { DetallePlanillaEspecial } from "./planillas-especiales/DetallePlanillaEspecial";
 import { GenerarPlanillaEspecialModal } from "./planillas-especiales/GenerarPlanillaEspecialModal";
@@ -31,7 +31,7 @@ export default function PlanillasEspeciales() {
     try {
       setLoading(true);
       setError(null);
-      const data = await apiFetch("/nomina/planillas-especiales");
+      const data = await apiRequest<{ planillas?: PlanillaEspecial[] }>("/nomina/planillas-especiales");
       setPlanillas(data.planillas ?? []);
     } catch (e) {
       setError(String(e));
@@ -45,7 +45,7 @@ export default function PlanillasEspeciales() {
   const loadDetalle = useCallback(async (id: number) => {
     setDetalleLoading(true);
     try {
-      const data = await apiFetch(`/nomina/planillas-especiales/${id}`);
+      const data = await apiRequest<PlanillaEspecialDetalle>(`/nomina/planillas-especiales/${id}`);
       setDetalle(data);
     } catch (e) {
       setError(String(e));
@@ -62,9 +62,9 @@ export default function PlanillasEspeciales() {
   async function handleAprobar(id: number) {
     setAprobandoId(id);
     try {
-      await apiFetch(`/nomina/planillas-especiales/${id}/estado`, {
+      await apiRequest(`/nomina/planillas-especiales/${id}/estado`, {
         method: "PATCH",
-        body: JSON.stringify({ estado: "aprobada" }),
+        json: { estado: "aprobada" },
       });
       await loadPlanillas();
       if (selectedId === id) loadDetalle(id);
@@ -78,7 +78,7 @@ export default function PlanillasEspeciales() {
   async function handleAnular(id: number) {
     if (!confirm("¿Anular esta planilla especial? Esta acción no se puede deshacer.")) return;
     try {
-      await apiFetch(`/nomina/planillas-especiales/${id}`, { method: "DELETE" });
+      await apiRequest(`/nomina/planillas-especiales/${id}`, { method: "DELETE" });
       setSelectedId(null);
       loadPlanillas();
     } catch (e) {

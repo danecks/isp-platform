@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, AlertTriangle, MinusCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiFetch, fmtFecha } from "./helpers";
+import { apiRequest, fmtFecha } from "./helpers";
 import { TablaVacia } from "./badges";
 import type { AnexoFalta } from "./types";
 
@@ -12,7 +12,7 @@ export function AnexoFaltas({ desde, hasta }: { desde: string; hasta: string }) 
 
   useEffect(() => {
     setLoading(true);
-    apiFetch(`/api/nomina/pre-planilla/anexo/faltas?desde=${desde}&hasta=${hasta}`)
+    apiRequest(`/api/nomina/pre-planilla/anexo/faltas?desde=${desde}&hasta=${hasta}`)
       .then(setRows)
       .catch((e) => toast({ title: "Error", description: e.message, variant: "destructive" }))
       .finally(() => setLoading(false));

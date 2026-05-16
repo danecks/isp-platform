@@ -5,7 +5,7 @@ import {
   TrendingUp, TrendingDown, ArrowRight, Filter, Image as ImageIcon, X,
   ArrowUpRight,
 } from "lucide-react";
-import { apiFetch, getSessionToken } from "@/lib/httpClient";
+import { apiRequest, getSessionToken } from "@/lib/httpClient";
 import {
   fechaGT, inicioDeMesGT, hoyGT, fmtFechaHora, fmtDuracion, pctChange,
   MESES,
@@ -61,7 +61,7 @@ function getRol() {
 }
 
 function apiVisitas<T>(path: string): Promise<T> {
-  return apiFetch<T>(path, { headers: { "x-isp-role": getRol() || "admin" } });
+  return apiRequest<T>(path, { headers: { "x-isp-role": getRol() || "admin" } });
 }
 
 export function VisitasContent({ embedded = false }: { embedded?: boolean } = {}) {

@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
 import { AdminLayout } from "../layout/AdminLayout";
-import { apiFetch, apiPatch, apiPost, ApiError } from "@/lib/httpClient";
+import { apiRequest, apiPatch, apiPost, ApiError } from "@/lib/httpClient";
 
 const API = "/api";
 
@@ -434,27 +434,27 @@ export default function Vehiculos() {
 
   const { data: vehiculos = [], isLoading: loadingVeh, refetch: refetchVeh } = useQuery<Vehiculo[]>({
     queryKey: ["vehiculos"],
-    queryFn: () => apiFetch(`${API}/vehiculos`),
+    queryFn: () => apiRequest(`${API}/vehiculos`),
     staleTime: 30_000,
   });
 
   const { data: estadoOp = [], isLoading: loadingEstado, refetch: refetchEstado } = useQuery<EstadoOpZona[]>({
     queryKey: ["vehiculos-estado"],
-    queryFn: () => apiFetch(`${API}/vehiculos/estado-operativo`),
+    queryFn: () => apiRequest(`${API}/vehiculos/estado-operativo`),
     staleTime: 30_000,
     enabled: subTab === "estado",
   });
 
   const { data: historial = [], isLoading: loadingHistorial, refetch: refetchHistorial } = useQuery<CustodiaRow[]>({
     queryKey: ["vehiculos-historial"],
-    queryFn: () => apiFetch(`${API}/vehiculos/historial/global?limite=200`),
+    queryFn: () => apiRequest(`${API}/vehiculos/historial/global?limite=200`),
     staleTime: 30_000,
     enabled: subTab === "historial",
   });
 
   const { data: zonas = [] } = useQuery<{ id: number; nombre: string; supervisor_id: number | null; supervisor_nombre: string | null }[]>({
     queryKey: ["zonas-activas"],
-    queryFn: () => apiFetch<any[]>(`${API}/operaciones/zonas`).then(list =>
+    queryFn: () => apiRequest<any[]>(`${API}/operaciones/zonas`).then(list =>
       list
         .filter((z: any) => z.estado === "activo" || !z.estado)
         .map((z: any) => ({
@@ -469,7 +469,7 @@ export default function Vehiculos() {
 
   const { data: supervisores = [] } = useQuery<{ id: number; nombre_completo: string; tipo_personal: string }[]>({
     queryKey: ["empleados-para-relevo"],
-    queryFn: () => apiFetch<any[]>(`${API}/employees`).then(list => {
+    queryFn: () => apiRequest<any[]>(`${API}/employees`).then(list => {
       const TIPOS_PERMITIDOS = ["supervisor", "jefe_servicio", "administrativo_rrhh", "administrativo_bodega", "gerencia"];
       return list
         .filter((e: any) => {

@@ -1,4 +1,4 @@
-import { apiFetch, getSessionToken } from "@/lib/httpClient";
+import { apiRequest, getSessionToken } from "@/lib/httpClient";
 
 export function getSession() {
   return getSessionToken();
@@ -12,7 +12,7 @@ export function getRol(): string {
   } catch { return ""; }
 }
 
-export const api = apiFetch;
+export const api = apiRequest;
 
 export function fmtFecha(s?: string | null) {
   if (!s) return "—";

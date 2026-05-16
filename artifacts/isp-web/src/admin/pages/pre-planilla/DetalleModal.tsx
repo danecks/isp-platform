@@ -4,7 +4,7 @@ import {
   X, Loader2, Check, AlertTriangle, Building2, MapPin,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiFetch, fmtFecha, fmtQ, calcularTotalEstimado, REVISION_CFG } from "./helpers";
+import { apiRequest, fmtFecha, fmtQ, calcularTotalEstimado, REVISION_CFG } from "./helpers";
 import type { ColaboradorPre, DetalleNovedad, DetalleAnticipo, DetalleIncentivo } from "./types";
 
 export function DetalleModal({
@@ -36,7 +36,9 @@ export function DetalleModal({
 
   React.useEffect(() => {
     setLoading(true);
-    apiFetch(`/api/nomina/pre-planilla/detalle/${col.employee_id}?desde=${desde}&hasta=${hasta}`)
+    apiRequest<{ novedades: DetalleNovedad[]; anticipos: DetalleAnticipo[]; incentivos: DetalleIncentivo[] }>(
+      `/api/nomina/pre-planilla/detalle/${col.employee_id}?desde=${desde}&hasta=${hasta}`,
+    )
       .then((d) => setData(d))
       .catch((e) => toast({ title: "Error", description: e.message, variant: "destructive" }))
       .finally(() => setLoading(false));
@@ -45,9 +47,9 @@ export function DetalleModal({
   async function guardarRevision() {
     setSavingRev(true);
     try {
-      await apiFetch(`/api/nomina/pre-planilla/revision/${col.employee_id}`, {
+      await apiRequest(`/api/nomina/pre-planilla/revision/${col.employee_id}`, {
         method: "PATCH",
-        body: JSON.stringify({ desde, hasta, estado: revEstado, observaciones: revObs }),
+        json: { desde, hasta, estado: revEstado, observaciones: revObs },
       });
       onRevisionChange(col.employee_id, revEstado, revObs);
       toast({ title: "Revisión guardada" });

@@ -4,7 +4,7 @@ import {
   Calendar, Download, Loader2, Shield, ArrowRightLeft,
   Target, RefreshCw, Package, FileText, Search,
 } from "lucide-react";
-import { apiFetch } from "@/lib/httpClient";
+import { apiRequest } from "@/lib/httpClient";
 
 const API = "/api";
 
@@ -76,7 +76,7 @@ function SubCustodia() {
   const [search, setSearch] = useState("");
   const { data, isLoading, refetch } = useQuery<{ fecha: string; total: number; registros: RegCustodia[] }>({
     queryKey: ["arm-rep-custodia", fecha],
-    queryFn: () => apiFetch(`${API}/armeria/reportes/custodia-diaria?fecha=${fecha}`),
+    queryFn: () => apiRequest(`${API}/armeria/reportes/custodia-diaria?fecha=${fecha}`),
   });
   const filtered = (data?.registros ?? []).filter(r =>
     !search
@@ -194,7 +194,7 @@ function SubMovimientos() {
   const [hasta, setHasta] = useState(hoy());
   const { data, isLoading, refetch } = useQuery<{ desde: string; hasta: string; total: number; registros: RegMov[] }>({
     queryKey: ["arm-rep-mov", desde, hasta],
-    queryFn: () => apiFetch(`${API}/armeria/reportes/movimientos?desde=${desde}&hasta=${hasta}`),
+    queryFn: () => apiRequest(`${API}/armeria/reportes/movimientos?desde=${desde}&hasta=${hasta}`),
   });
   const filas = data?.registros ?? [];
   const altas   = filas.filter(f => f.evento === "alta_custodia").length;
@@ -297,7 +297,7 @@ function SubMunicion() {
   const [hasta, setHasta] = useState(hoy());
   const { data, isLoading, refetch } = useQuery<{ desde: string; hasta: string; total: number; registros: RegMunicion[] }>({
     queryKey: ["arm-rep-municion", desde, hasta],
-    queryFn: () => apiFetch(`${API}/armeria/reportes/municion?desde=${desde}&hasta=${hasta}`),
+    queryFn: () => apiRequest(`${API}/armeria/reportes/municion?desde=${desde}&hasta=${hasta}`),
   });
   const filas = data?.registros ?? [];
   return (
@@ -387,7 +387,7 @@ function SubSincronizaciones() {
   const [hasta, setHasta] = useState(hoy());
   const { data, isLoading, refetch } = useQuery<{ desde: string; hasta: string; total: number; registros: RegSync[] }>({
     queryKey: ["arm-rep-sync", desde, hasta],
-    queryFn: () => apiFetch(`${API}/armeria/reportes/sincronizaciones?desde=${desde}&hasta=${hasta}`),
+    queryFn: () => apiRequest(`${API}/armeria/reportes/sincronizaciones?desde=${desde}&hasta=${hasta}`),
   });
   const filas = data?.registros ?? [];
   return (
@@ -482,7 +482,7 @@ function SubInventario() {
     registros: RegInventario[];
   }>({
     queryKey: ["arm-rep-inv", fecha],
-    queryFn: () => apiFetch(`${API}/armeria/reportes/inventario?fecha=${fecha}`),
+    queryFn: () => apiRequest(`${API}/armeria/reportes/inventario?fecha=${fecha}`),
   });
   const filas = (data?.registros ?? []).filter(r =>
     !search

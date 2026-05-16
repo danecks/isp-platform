@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Info, Pencil, Save, Settings } from "lucide-react";
-import { apiFetch } from "./helpers";
+import { apiRequest } from "./helpers";
 import type { TarifaHE } from "./types";
 
 export function TabTarifasHE() {
@@ -18,7 +18,7 @@ export function TabTarifasHE() {
 
   const cargar = useCallback(async () => {
     try {
-      const data = await apiFetch("/nomina/tarifas-he");
+      const data = await apiRequest<TarifaHE[]>("/nomina/tarifas-he");
       setTarifas(data);
     } catch { /* ignore */ }
     setLoading(false);
@@ -29,9 +29,9 @@ export function TabTarifasHE() {
   async function guardar(id: number) {
     setSaving(true);
     try {
-      await apiFetch(`/nomina/tarifas-he/${id}`, {
+      await apiRequest(`/nomina/tarifas-he/${id}`, {
         method: "PUT",
-        body: JSON.stringify({ tarifa: Number(editTarifa), descripcion: editDesc || null }),
+        json: { tarifa: Number(editTarifa), descripcion: editDesc || null },
       });
       setEditId(null);
       await cargar();

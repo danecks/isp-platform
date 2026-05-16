@@ -1,16 +1,17 @@
 /**
- * Cliente HTTP centralizado para el frontend (Fase 0 — refactor).
+ * Cliente HTTP centralizado para el frontend.
  *
  * Antes había varios patrones distintos para llamar al API:
  *   - `fetch()` directo en cada componente (sin headers de sesión)
- *   - `apiFetch()` privado en `lib/api.ts`
+ *   - `apiFetch()` privado en `lib/api.ts` y un `apiFetch` legado aquí
  *   - `getSession()` repetido en cada caller
  *   - `fetchSessionPatch.ts` parchando `window.fetch` global
  *
- * Este módulo unifica todo:
- *   - `apiRequest(path, options)` — fetch con `Content-Type` JSON, header
- *     `x-isp-session` y manejo de errores consistente. Devuelve la respuesta
- *     ya parseada como JSON.
+ * Este módulo unifica todo en una sola entrada:
+ *   - `apiRequest(path, options)` — fetch con header `x-isp-session`,
+ *     `Content-Type` JSON automático cuando se usa `json:`, y manejo de
+ *     errores consistente vía `ApiError` (con `status` y `body`).
+ *   - `apiPost` / `apiPatch` — wrappers finos para los verbos más comunes.
  *   - `apiUrl(path)` — construye la URL completa contra `/api`.
  *   - `getSessionToken()` — lee la sesión persistida en `sessionStorage`.
  *
@@ -138,35 +139,3 @@ export const apiPost = <T = unknown>(url: string, body: unknown) =>
 
 export const apiPatch = <T = unknown>(url: string, body: unknown) =>
   apiRequest<T>(url, { method: "PATCH", json: body });
-
-/**
- * Helper compartido usado por los `helpers.ts` de cada subcarpeta de admin
- * (planilla, planillas-especiales, prestaciones, amonestaciones, etc.).
- *
- * Hace `fetch(/api${url})` con header `x-isp-session`, fuerza
- * `Content-Type: application/json` y lanza un `Error` con el mensaje del
- * cuerpo cuando el status no es 2xx. Devuelve la respuesta parseada como
- * JSON.
- *
- * Para nuevo código preferí `apiRequest`, que tiene mejor manejo de JSON
- * vs FormData y lanza `ApiError` con status. `apiFetch` se mantiene para
- * preservar el contrato histórico de los helpers existentes.
- */
-export async function apiFetch<T = any>(
-  url: string,
-  opts: RequestInit = {},
-): Promise<T> {
-  const res = await fetch(apiUrl(url), {
-    ...opts,
-    headers: {
-      "x-isp-session": getSessionToken(),
-      "Content-Type": "application/json",
-      ...(opts.headers ?? {}),
-    },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error ?? res.statusText);
-  }
-  return res.json();
-}

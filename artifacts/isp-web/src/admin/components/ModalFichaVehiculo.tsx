@@ -4,7 +4,7 @@ import {
   Car, X, MapPin, History, User, Clock,
   Loader2, AlertTriangle, ExternalLink,
 } from "lucide-react";
-import { apiFetch } from "@/lib/httpClient";
+import { apiRequest } from "@/lib/httpClient";
 
 function fmtDatetime(s: string | null) {
   if (!s) return "—";
@@ -68,11 +68,11 @@ export function ModalFichaVehiculo({ vehiculoId, onClose }: {
 }) {
   const { data: veh, isLoading: loadingVeh } = useQuery<Vehiculo>({
     queryKey: ["vehiculo-detalle", vehiculoId],
-    queryFn: () => apiFetch<Vehiculo>(`/api/vehiculos/${vehiculoId}`),
+    queryFn: () => apiRequest<Vehiculo>(`/api/vehiculos/${vehiculoId}`),
   });
   const { data: historial = [], isLoading: loadingHist } = useQuery<CustodiaEntry[]>({
     queryKey: ["vehiculo-custodia", vehiculoId],
-    queryFn: () => apiFetch<CustodiaEntry[]>(`/api/vehiculos/${vehiculoId}/custodia`),
+    queryFn: () => apiRequest<CustodiaEntry[]>(`/api/vehiculos/${vehiculoId}/custodia`),
   });
 
   return createPortal(

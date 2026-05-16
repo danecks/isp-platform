@@ -5,7 +5,7 @@ import {
   Shield, X, Edit, FileText, MapPin, History, User, Clock,
   Loader2, AlertTriangle, Target, Hash,
 } from "lucide-react";
-import { apiFetch, apiPatch } from "@/lib/httpClient";
+import { apiRequest, apiPatch } from "@/lib/httpClient";
 
 function fmtDatetime(s: string | null) {
   if (!s) return "—";
@@ -117,11 +117,11 @@ export function ModalFichaArma({ armaId, onClose, onEdit }: {
   const [togglingPort, setTogglingPort] = useState(false);
   const { data: arma, isLoading: loadingArma } = useQuery<Arma>({
     queryKey: ["arma-detalle", armaId],
-    queryFn: () => apiFetch<Arma>(`/api/armas/${armaId}`),
+    queryFn: () => apiRequest<Arma>(`/api/armas/${armaId}`),
   });
   const { data: historial = [], isLoading: loadingHist } = useQuery<CustodiaEntry[]>({
     queryKey: ["arma-custodia", armaId],
-    queryFn: () => apiFetch<CustodiaEntry[]>(`/api/armas/${armaId}/custodia`),
+    queryFn: () => apiRequest<CustodiaEntry[]>(`/api/armas/${armaId}/custodia`),
   });
 
   async function togglePortacionTramite() {

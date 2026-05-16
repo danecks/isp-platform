@@ -19,7 +19,7 @@ import {
   ShieldCheck, Download, Pencil, AlertCircle, Loader2, History, Users, Wallet,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiFetch, apiUrl } from "@/lib/httpClient";
+import { apiRequest, apiUrl } from "@/lib/httpClient";
 
 function fmtQ(v: string | number | null | undefined) {
   const n = Number(v ?? 0);
@@ -89,7 +89,7 @@ export default function AdminSeguros() {
 
   async function cargarConfig() {
     try {
-      const cfg = await apiFetch<SegurosConfig>("/seguros/config");
+      const cfg = await apiRequest<SegurosConfig>("/seguros/config");
       setConfig(cfg);
     } catch (e) {
       toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
@@ -100,7 +100,7 @@ export default function AdminSeguros() {
     setLoadingReporte(true);
     setErrorReporte(null);
     try {
-      const r = await apiFetch<Reporte>(`/seguros/reporte?mes=${mes}`);
+      const r = await apiRequest<Reporte>(`/seguros/reporte?mes=${mes}`);
       setReporte(r);
     } catch (e) {
       setErrorReporte((e as Error).message);
@@ -314,13 +314,13 @@ function ModalEditarPrima({
   async function handleGuardar() {
     setGuardando(true);
     try {
-      await apiFetch("/seguros/config", {
+      await apiRequest("/seguros/config", {
         method: "POST",
-        body: JSON.stringify({
+        json: {
           prima_mensual: Number(prima),
           vigente_desde: vigenteDesde,
           notas: notas.trim() || null,
-        }),
+        },
       });
       toast({ title: "Prima actualizada", description: `Nueva prima Q${Number(prima).toFixed(2)} desde ${vigenteDesde}` });
       onGuardado();
@@ -388,7 +388,7 @@ function ModalHistorial({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    apiFetch<SegurosConfig[]>("/seguros/config/historial")
+    apiRequest<SegurosConfig[]>("/seguros/config/historial")
       .then(setRows)
       .catch((e: Error) => setError(e.message));
   }, []);

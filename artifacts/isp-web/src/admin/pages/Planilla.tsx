@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AdminLayout } from "@/admin/layout/AdminLayout";
 import { getSessionToken } from "@/lib/httpClient";
-import { apiFetch } from "./planilla/helpers";
+import { apiRequest } from "./planilla/helpers";
 import { CambiarEstadoModal } from "./planilla/CambiarEstadoModal";
 import { DetallePlanilla } from "./planilla/DetallePlanilla";
 import { GenerarPlanillaModal } from "./planilla/GenerarPlanillaModal";
@@ -46,7 +46,7 @@ export default function AdminPlanilla() {
   const cargarPlanillas = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch("/nomina/planillas");
+      const data = await apiRequest<PlanillaResumen[]>("/nomina/planillas");
       setPlanillas(data);
     } catch {
       setPlanillas([]);
@@ -57,7 +57,7 @@ export default function AdminPlanilla() {
 
   const cargarDetalle = useCallback(async (id: number) => {
     try {
-      const data = await apiFetch(`/nomina/planilla/${id}`);
+      const data = await apiRequest<PlanillaDetalle>(`/nomina/planilla/${id}`);
       setSelected(data);
     } catch {
       setSelected(null);

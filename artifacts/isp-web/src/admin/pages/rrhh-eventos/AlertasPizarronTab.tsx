@@ -5,7 +5,7 @@ import {
   MapPin, RefreshCw, ThumbsDown, ThumbsUp,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { API, apiFetch, apiPatch } from "./helpers";
+import { API, apiRequest, apiPatch } from "./helpers";
 
 interface AlertaItem {
   id: number;
@@ -48,7 +48,7 @@ export function AlertasPizarronTab() {
     alertas: AlertaItem[]; totales: { faltantes: number; horasExtra: number };
   }>({
     queryKey: ["rrhh-alertas-pizarron"],
-    queryFn: () => apiFetch(`${API}/rrhh/alertas-pizarron?estado=pendiente`),
+    queryFn: () => apiRequest(`${API}/rrhh/alertas-pizarron?estado=pendiente`),
     staleTime: 20_000,
     refetchInterval: 30_000,
   });
@@ -57,13 +57,13 @@ export function AlertasPizarronTab() {
     pendientes: HEItem[]; total: number;
   }>({
     queryKey: ["rrhh-he-pendientes"],
-    queryFn: () => apiFetch(`${API}/rrhh/horas-extra-pendientes`),
+    queryFn: () => apiRequest(`${API}/rrhh/horas-extra-pendientes`),
     staleTime: 20_000,
   });
 
   const { data: kpiData } = useQuery<KpiData>({
     queryKey: ["rrhh-kpi", kpiId],
-    queryFn: () => apiFetch(`${API}/rrhh/empleado/${kpiId}/kpi`),
+    queryFn: () => apiRequest(`${API}/rrhh/empleado/${kpiId}/kpi`),
     enabled: !!kpiId,
     staleTime: 30_000,
   });

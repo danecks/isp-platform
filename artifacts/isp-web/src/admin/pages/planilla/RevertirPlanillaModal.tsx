@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertCircle, Undo2 } from "lucide-react";
-import { apiFetch } from "./helpers";
+import { apiRequest } from "./helpers";
 import type { PlanillaDetalle } from "./types";
 
 export function RevertirPlanillaModal({
@@ -33,9 +33,9 @@ export function RevertirPlanillaModal({
     setError(null);
     setLoading(true);
     try {
-      await apiFetch(`/nomina/planilla/${planilla.id}`, {
+      await apiRequest(`/nomina/planilla/${planilla.id}`, {
         method: "DELETE",
-        body: JSON.stringify({ anuladoPor: sesionUsuario, motivo }),
+        json: { anuladoPor: sesionUsuario, motivo },
       });
       onSuccess();
       onClose();

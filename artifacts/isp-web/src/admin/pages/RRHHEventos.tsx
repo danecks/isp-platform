@@ -22,7 +22,7 @@ import {
   generarConstanciaHorasExtra, generarDocumentoAnulacion,
 } from "@/lib/pdfRrhh";
 
-import { API, apiFetch, apiPatch, apiPost, construirDatosActa } from "./rrhh-eventos/helpers";
+import { API, apiRequest, apiPatch, apiPost, construirDatosActa } from "./rrhh-eventos/helpers";
 import { ApiError } from "@/lib/httpClient";
 import { ESTADO_CONFIG } from "./rrhh-eventos/constants";
 import { AlertasPizarronTab } from "./rrhh-eventos/AlertasPizarronTab";
@@ -71,7 +71,7 @@ export default function RRHHEventos() {
 
   const { data: eventos = [], isLoading, refetch } = useQuery<EventoRrhh[]>({
     queryKey: ["rrhh-eventos", filtroTipo, filtroEstado, busqueda],
-    queryFn: () => apiFetch(buildUrl()),
+    queryFn: () => apiRequest(buildUrl()),
     staleTime: 30_000,
   });
 
@@ -81,7 +81,7 @@ export default function RRHHEventos() {
     suspensiones: string; ultimos_7_dias: string; ultimos_30_dias: string;
   }>({
     queryKey: ["rrhh-stats"],
-    queryFn: () => apiFetch(`${API}/rrhh/stats`),
+    queryFn: () => apiRequest(`${API}/rrhh/stats`),
     staleTime: 60_000,
   });
 
@@ -92,7 +92,7 @@ export default function RRHHEventos() {
     resumen: { totalAlto: number; totalMedio: number; totalBajo: number };
   }>({
     queryKey: ["rrhh-disciplinario"],
-    queryFn: () => apiFetch(`${API}/rrhh/disciplinario`),
+    queryFn: () => apiRequest(`${API}/rrhh/disciplinario`),
     staleTime: 60_000,
   });
 
@@ -100,7 +100,7 @@ export default function RRHHEventos() {
 
   const { data: alertasPizarronCount } = useQuery<{ alertas: AlertaPizarronItem[]; totales: { faltantes: number; horasExtra: number } }>({
     queryKey: ["rrhh-alertas-count"],
-    queryFn: () => apiFetch(`${API}/rrhh/alertas-pizarron?estado=pendiente`),
+    queryFn: () => apiRequest(`${API}/rrhh/alertas-pizarron?estado=pendiente`),
     staleTime: 30_000,
     refetchInterval: 45_000,
   });

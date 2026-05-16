@@ -4,7 +4,7 @@ import {
   Lock, X, Loader2, AlertOctagon, AlertTriangle, CheckCheck, XCircle, ChevronRight,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiFetch } from "./helpers";
+import { apiRequest } from "./helpers";
 import type { Validacion } from "./types";
 
 export function CierreModal({
@@ -33,9 +33,9 @@ export function CierreModal({
     setCerrando(true);
     try {
       const cerradoPor = sessionStorage.getItem("isp_admin_usuario") ?? "admin";
-      await apiFetch("/api/nomina/pre-planilla/cierre", {
+      await apiRequest("/api/nomina/pre-planilla/cierre", {
         method: "POST",
-        body: JSON.stringify({ desde, hasta, cerradoPor, observaciones: obs || null, forzar }),
+        json: { desde, hasta, cerradoPor, observaciones: obs || null, forzar },
       });
       toast({ title: "Pre-planilla cerrada", description: `Período ${desde} — ${hasta} congelado correctamente.` });
       onCerrado();

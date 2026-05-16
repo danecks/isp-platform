@@ -1,4 +1,4 @@
-import { apiFetch, getSessionToken } from "@/lib/httpClient";
+import { apiRequest, getSessionToken } from "@/lib/httpClient";
 
 export const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
@@ -6,7 +6,7 @@ export function getSession() {
   return getSessionToken();
 }
 
-export { apiFetch };
+export { apiRequest };
 
 export function fmtQ(v: string | number | null | undefined) {
   const n = parseFloat(String(v ?? 0));

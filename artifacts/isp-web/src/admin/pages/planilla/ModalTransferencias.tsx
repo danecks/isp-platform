@@ -4,7 +4,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { AlertCircle, Banknote, Building2, Download } from "lucide-react";
-import { apiFetch, BASE, fmtQ } from "./helpers";
+import { apiRequest, BASE, fmtQ } from "./helpers";
 import type { ResumenTransferencias } from "./types";
 
 const API = `${BASE}/api`;
@@ -16,7 +16,7 @@ export function ModalTransferencias({ planillaId, onClose }: { planillaId: numbe
 
   useEffect(() => {
     setLoading(true);
-    apiFetch(`/nomina/planilla/${planillaId}/transferencias-resumen`)
+    apiRequest(`/nomina/planilla/${planillaId}/transferencias-resumen`)
       .then((r: ResumenTransferencias) => setResumen(r))
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));

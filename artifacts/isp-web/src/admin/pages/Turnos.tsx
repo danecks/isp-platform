@@ -31,7 +31,7 @@ import {
   CheckCircle2, Loader2, X, ChevronDown, ChevronUp, Trash2,
 } from "lucide-react";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
-import { apiFetch } from "@/lib/httpClient";
+import { apiRequest } from "@/lib/httpClient";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -112,8 +112,8 @@ function TurnoModal({
         horas_descanso: hd,
       };
       const saved = turno
-        ? await apiFetch(`/api/turnos/${turno.id}`, { method: "PATCH", body: JSON.stringify(body) })
-        : await apiFetch("/api/turnos", { method: "POST", body: JSON.stringify(body) });
+        ? await apiRequest<Turno>(`/api/turnos/${turno.id}`, { method: "PATCH", json: body })
+        : await apiRequest<Turno>("/api/turnos", { method: "POST", json: body });
       onSave(saved);
       toast({ title: turno ? "Turno actualizado" : "Turno creado" });
       onClose();
@@ -234,7 +234,7 @@ export default function Turnos() {
   async function cargar() {
     setLoading(true);
     try {
-      const data = await apiFetch("/api/turnos");
+      const data = await apiRequest<Turno[]>("/api/turnos");
       setTurnos(data);
     } catch (e: unknown) {
       toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
@@ -265,15 +265,15 @@ export default function Turnos() {
     setToggling(t.id);
     try {
       if (t.activo) {
-        const saved = await apiFetch(`/api/turnos/${t.id}`, {
+        const saved = await apiRequest(`/api/turnos/${t.id}`, {
           method: "DELETE",
         });
         setTurnos((prev) => prev.map((x) => x.id === t.id ? { ...x, activo: false } : x));
         toast({ title: `Turno "${t.nombre}" desactivado` });
       } else {
-        const saved = await apiFetch(`/api/turnos/${t.id}`, {
+        const saved = await apiRequest(`/api/turnos/${t.id}`, {
           method: "PATCH",
-          body: JSON.stringify({ activo: true }),
+          json: { activo: true },
         });
         setTurnos((prev) => prev.map((x) => x.id === t.id ? { ...x, activo: true } : x));
         toast({ title: `Turno "${t.nombre}" activado` });

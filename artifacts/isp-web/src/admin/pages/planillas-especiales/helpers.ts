@@ -1,4 +1,4 @@
-export { apiFetch } from "@/lib/httpClient";
+export { apiRequest } from "@/lib/httpClient";
 
 const fmt = new Intl.NumberFormat("es-GT", { style: "currency", currency: "GTQ" });
 export const fmtNum = (v: string | number) => fmt.format(parseFloat(String(v)));

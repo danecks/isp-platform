@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle, CheckCircle2, Clock, Coins, Loader2, Search,
 } from "lucide-react";
-import { apiFetch } from "./helpers";
+import { apiRequest } from "./helpers";
 import type { OdbcEmpleadoRow } from "./types";
 
 export function TabPrestacionesOdbc({ tipo }: { tipo: "bono14" | "aguinaldo" | "vacaciones" }) {
@@ -15,7 +15,7 @@ export function TabPrestacionesOdbc({ tipo }: { tipo: "bono14" | "aguinaldo" | "
     empleados: OdbcEmpleadoRow[];
   }>({
     queryKey: ["prestaciones-resumen-odbc"],
-    queryFn: () => apiFetch("/prestaciones/resumen-odbc"),
+    queryFn: () => apiRequest("/prestaciones/resumen-odbc"),
     staleTime: 60_000,
   });
 

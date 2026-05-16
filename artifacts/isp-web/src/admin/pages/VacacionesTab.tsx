@@ -9,7 +9,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import RegresosVacacionesBanner from "@/admin/components/RegresosVacacionesBanner";
-import { apiFetch, apiPatch, apiPost, ApiError } from "@/lib/httpClient";
+import { apiRequest, apiPatch, apiPost, ApiError } from "@/lib/httpClient";
 
 const API = "/api";
 
@@ -125,7 +125,7 @@ function ModalNuevoVacaciones({
 
   const { data: empleados = [] } = useQuery<Array<{ id: number; nombre_completo: string; tipo_personal: string; es_elegible: boolean; dias_vacaciones_usados_anio: number }>>({
     queryKey: ["vacaciones-elegibilidad"],
-    queryFn: () => apiFetch(`${API}/vacaciones/elegibilidad`),
+    queryFn: () => apiRequest(`${API}/vacaciones/elegibilidad`),
     staleTime: 60_000,
   });
 
@@ -592,19 +592,19 @@ export default function VacacionesTab() {
     alertasDB: any[];
   }>({
     queryKey: ["vacaciones-alertas"],
-    queryFn: () => apiFetch(`${API}/vacaciones/alertas`),
+    queryFn: () => apiRequest(`${API}/vacaciones/alertas`),
     staleTime: 120_000,
   });
 
   const { data: vacaciones = [], isLoading: loadingVac, refetch: refetchVac } = useQuery<VacacionEvento[]>({
     queryKey: ["vacaciones-lista", anio],
-    queryFn: () => apiFetch(`${API}/vacaciones?year=${anio}`),
+    queryFn: () => apiRequest(`${API}/vacaciones?year=${anio}`),
     staleTime: 60_000,
   });
 
   const { data: elegibilidad = [], isLoading: loadingEleg } = useQuery<ElegibilidadRow[]>({
     queryKey: ["vacaciones-elegibilidad"],
-    queryFn: () => apiFetch(`${API}/vacaciones/elegibilidad`),
+    queryFn: () => apiRequest(`${API}/vacaciones/elegibilidad`),
     staleTime: 120_000,
     enabled: subTab === "elegibilidad",
   });
@@ -614,7 +614,7 @@ export default function VacacionesTab() {
     alertas_proximas_30d: string;
   }>({
     queryKey: ["vacaciones-resumen"],
-    queryFn: () => apiFetch(`${API}/vacaciones/resumen`),
+    queryFn: () => apiRequest(`${API}/vacaciones/resumen`),
     staleTime: 60_000,
   });
 

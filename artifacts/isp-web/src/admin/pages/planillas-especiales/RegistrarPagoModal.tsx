@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
-import { apiFetch, fmtDate, fmtNum } from "./helpers";
+import { apiRequest, fmtDate, fmtNum } from "./helpers";
 import type { PlanillaPago } from "./types";
 
 interface Props {
@@ -26,9 +26,9 @@ export function RegistrarPagoModal({ pago, onClose, onSuccess, onError }: Props)
     setSaving(true);
     setModalError(null);
     try {
-      await apiFetch(`/nomina/planillas-especiales/pagos/${pago.id}/pagar`, {
+      await apiRequest(`/nomina/planillas-especiales/pagos/${pago.id}/pagar`, {
         method: "PATCH",
-        body: JSON.stringify({ observaciones: obs || null }),
+        json: { observaciones: obs || null },
       });
       setObs("");
       onSuccess();

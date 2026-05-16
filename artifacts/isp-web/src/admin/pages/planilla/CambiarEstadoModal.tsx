@@ -6,7 +6,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertCircle, ArrowRight } from "lucide-react";
-import { apiFetch } from "./helpers";
+import { apiRequest } from "./helpers";
 import { ACCION_LABEL, EstadoBadge, SIGUIENTE_ESTADO } from "./badges";
 import type { PlanillaDetalle } from "./types";
 
@@ -30,9 +30,9 @@ export function CambiarEstadoModal({
     setError(null);
     setLoading(true);
     try {
-      await apiFetch(`/nomina/planilla/${planilla.id}/estado`, {
+      await apiRequest(`/nomina/planilla/${planilla.id}/estado`, {
         method: "PATCH",
-        body: JSON.stringify({ estado: siguienteEstado, aprobadoPor: sesionUsuario, observaciones: obs || null }),
+        json: { estado: siguienteEstado, aprobadoPor: sesionUsuario, observaciones: obs || null },
       });
       onSuccess();
       onClose();

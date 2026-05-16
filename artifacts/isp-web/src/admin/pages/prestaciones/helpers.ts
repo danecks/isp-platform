@@ -1,4 +1,4 @@
-import { apiFetch, getSessionToken } from "@/lib/httpClient";
+import { apiRequest, getSessionToken } from "@/lib/httpClient";
 
 export const API = "/api";
 
@@ -6,22 +6,22 @@ export function getSession() {
   return getSessionToken();
 }
 
-export { apiFetch };
+export { apiRequest };
 
-export function apiGet(url: string) {
-  return apiFetch(url);
+export function apiGet<T = any>(url: string) {
+  return apiRequest<T>(url);
 }
 
-export function apiPost(url: string, body: unknown) {
-  return apiFetch(url, { method: "POST", body: JSON.stringify(body) });
+export function apiPost<T = any>(url: string, body: unknown) {
+  return apiRequest<T>(url, { method: "POST", json: body });
 }
 
-export function apiPut(url: string, body: unknown) {
-  return apiFetch(url, { method: "PUT", body: JSON.stringify(body) });
+export function apiPut<T = any>(url: string, body: unknown) {
+  return apiRequest<T>(url, { method: "PUT", json: body });
 }
 
-export function apiPatch(url: string, body?: unknown) {
-  return apiFetch(url, { method: "PATCH", body: body ? JSON.stringify(body) : undefined });
+export function apiPatch<T = any>(url: string, body?: unknown) {
+  return apiRequest<T>(url, { method: "PATCH", json: body });
 }
 
 export function fmt(n: number | string | null | undefined) {

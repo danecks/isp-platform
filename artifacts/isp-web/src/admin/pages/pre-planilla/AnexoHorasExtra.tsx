@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiFetch, fmtFecha } from "./helpers";
+import { apiRequest, fmtFecha } from "./helpers";
 import { TablaVacia, TipoCobBadge } from "./badges";
 import type { AnexoHE } from "./types";
 
@@ -12,7 +12,7 @@ export function AnexoHorasExtra({ desde, hasta }: { desde: string; hasta: string
 
   useEffect(() => {
     setLoading(true);
-    apiFetch(`/api/nomina/pre-planilla/anexo/horas-extra?desde=${desde}&hasta=${hasta}`)
+    apiRequest(`/api/nomina/pre-planilla/anexo/horas-extra?desde=${desde}&hasta=${hasta}`)
       .then(setRows)
       .catch((e) => toast({ title: "Error", description: e.message, variant: "destructive" }))
       .finally(() => setLoading(false));
@@ -60,10 +60,10 @@ export function AnexoHorasExtra({ desde, hasta }: { desde: string; hasta: string
                 : "Pendiente";
               const handleCash = async () => {
                 try {
-                  await apiFetch(`/api/rrhh/horas-extra/${r.id}/cash`, {
+                  await apiRequest(`/api/rrhh/horas-extra/${r.id}/cash`, {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ aprobado_por: "RRHH" }),
+                    json: { aprobado_por: "RRHH" },
                   });
                   toast({ title: "HE marcada como pagada en efectivo" });
                   setRows(prev => prev?.map(x => x.id === r.id ? { ...x, horas_extra_estado: "pagado_efectivo" } : x) ?? null);

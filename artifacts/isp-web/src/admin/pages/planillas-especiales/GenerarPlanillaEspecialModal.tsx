@@ -15,7 +15,7 @@ import {
 import {
   Landmark, Plus, AlertCircle, Eye, Loader2, RefreshCcw,
 } from "lucide-react";
-import { apiFetch, fmtDate, fmtNum } from "./helpers";
+import { apiRequest, fmtDate, fmtNum } from "./helpers";
 import type { PreviewResult } from "./types";
 
 interface Props {
@@ -56,9 +56,9 @@ export function GenerarPlanillaEspecialModal({ open, onClose, onSuccess }: Props
     setPreviewLoading(true);
     setModalError(null);
     try {
-      const data = await apiFetch("/nomina/planillas-especiales/preview", {
+      const data = await apiRequest<PreviewResult>("/nomina/planillas-especiales/preview", {
         method: "POST",
-        body: JSON.stringify({ tipo: genTipo, anio: genAnio, num_pagos: genNumPagos }),
+        json: { tipo: genTipo, anio: genAnio, num_pagos: genNumPagos },
       });
       setPreview(data);
     } catch (e) {
@@ -73,13 +73,13 @@ export function GenerarPlanillaEspecialModal({ open, onClose, onSuccess }: Props
     setModalError(null);
     try {
       const fechasFilled = genFechas.slice(0, genNumPagos).map((f) => f || null);
-      const { id } = await apiFetch("/nomina/planillas-especiales", {
+      const { id } = await apiRequest<{ id: number }>("/nomina/planillas-especiales", {
         method: "POST",
-        body: JSON.stringify({
+        json: {
           tipo: genTipo, anio: genAnio, num_pagos: genNumPagos,
           fechas_programadas: fechasFilled,
           observaciones: genObs || null,
-        }),
+        },
       });
       reset();
       onSuccess(id);

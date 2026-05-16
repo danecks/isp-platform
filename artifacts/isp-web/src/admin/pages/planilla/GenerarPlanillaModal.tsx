@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertCircle, Info } from "lucide-react";
-import { apiFetch } from "./helpers";
+import { apiRequest } from "./helpers";
 
 export function GenerarPlanillaModal({
   open, onClose, onSuccess, sesionUsuario,
@@ -24,9 +24,9 @@ export function GenerarPlanillaModal({
     setError(null);
     setLoading(true);
     try {
-      const res = await apiFetch("/nomina/planilla", {
+      const res = await apiRequest<{ id: number }>("/nomina/planilla", {
         method: "POST",
-        body: JSON.stringify({ desde, hasta, generadoPor: sesionUsuario, observaciones: obs || null }),
+        json: { desde, hasta, generadoPor: sesionUsuario, observaciones: obs || null },
       });
       onSuccess(res.id);
       onClose();
