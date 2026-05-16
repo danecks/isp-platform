@@ -12,27 +12,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
 import { AdminLayout } from "../layout/AdminLayout";
 import { TabReportes } from "../components/armeria/TabReportes";
-import { apiFetch, getSessionToken } from "@/lib/httpClient";
+import { apiFetch, apiPatch, apiPost, apiRequest, ApiError } from "@/lib/httpClient";
 
 const API = "/api";
-const getSession = () => getSessionToken();
-
-async function apiPost<T>(url: string, body: any): Promise<T> {
-  const res = await fetch(url, {
-    method: "POST", headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw e; }
-  return res.json();
-}
-async function apiPatch<T>(url: string, body: any): Promise<T> {
-  const res = await fetch(url, {
-    method: "PATCH", headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw e; }
-  return res.json();
-}
 
 function fmtFecha(s: string | null) {
   if (!s) return "—";
@@ -298,8 +280,9 @@ function ModalArma({
         toast({ title: "Arma registrada", description: "El código se asignó automáticamente." });
       }
       onSaved();
-    } catch (e: any) {
-      toast({ title: e.error || "Error al guardar", variant: "destructive" });
+    } catch (e: unknown) {
+      const msg = e instanceof ApiError ? (e.body as { error?: string })?.error : undefined;
+      toast({ title: msg || "Error al guardar", variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -627,8 +610,9 @@ function ModalFichaArma({ arma, onClose, onEdit }: {
           ? (campo === "tenencia_en_tramite" ? "Tenencia marcada en trámite" : "Portación marcada en trámite")
           : (campo === "tenencia_en_tramite" ? "Tenencia ya no está en trámite" : "Portación ya no está en trámite"),
       });
-    } catch (e: any) {
-      toast({ title: e.error || "No se pudo actualizar", variant: "destructive" });
+    } catch (e: unknown) {
+      const msg = e instanceof ApiError ? (e.body as { error?: string })?.error : undefined;
+      toast({ title: msg || "No se pudo actualizar", variant: "destructive" });
     } finally {
       setter(false);
     }
@@ -981,7 +965,7 @@ function TabEstado({ fecha, onFicha }: { fecha: string; onFicha: (a: EstadoArma)
       toast({ title: `Sync completado: ${r.cambios} cambio(s) de custodia aplicado(s)` });
       qc.invalidateQueries({ queryKey: ["armas-estado"] });
       qc.invalidateQueries({ queryKey: ["armas"] });
-    } catch (e: any) {
+    } catch {
       toast({ title: "Error al sincronizar", variant: "destructive" });
     } finally {
       setSyncing(false);
@@ -1524,17 +1508,14 @@ function TabDuplicados({ onEdit }: { onEdit: (a: any) => void }) {
     );
     if (!confirma) return;
     try {
-      const r = await fetch(`${API}/armas/${arma.id}`, {
-        method: "DELETE",
-        headers: { "x-isp-session": getSession() },
-      });
-      if (!r.ok) { const e = await r.json().catch(() => ({})); throw e; }
+      await apiRequest(`${API}/armas/${arma.id}`, { method: "DELETE" });
       toast({ title: `Arma ${arma.codigo} eliminada`, description: "Conflicto resuelto." });
       refetch();
       qc.invalidateQueries({ queryKey: ["armas"] });
       qc.invalidateQueries({ queryKey: ["armas-estado"] });
-    } catch (e: any) {
-      toast({ title: "No se pudo eliminar", description: e?.message ?? "Error desconocido", variant: "destructive" });
+    } catch (e: unknown) {
+      const msg = e instanceof ApiError ? ((e.body as { error?: string })?.error ?? e.message) : "Error desconocido";
+      toast({ title: "No se pudo eliminar", description: msg, variant: "destructive" });
     }
   }
 

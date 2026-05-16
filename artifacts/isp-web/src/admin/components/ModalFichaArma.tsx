@@ -5,18 +5,7 @@ import {
   Shield, X, Edit, FileText, MapPin, History, User, Clock,
   Loader2, AlertTriangle, Target, Hash,
 } from "lucide-react";
-import { apiFetch, getSessionToken } from "@/lib/httpClient";
-
-const getSession = () => getSessionToken();
-async function apiPatch<T>(url: string, body: unknown): Promise<T> {
-  const res = await fetch(url, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw e; }
-  return res.json();
-}
+import { apiFetch, apiPatch } from "@/lib/httpClient";
 
 function fmtDatetime(s: string | null) {
   if (!s) return "—";

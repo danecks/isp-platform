@@ -23,6 +23,7 @@ import {
 } from "@/lib/pdfRrhh";
 
 import { API, apiFetch, apiPatch, apiPost, construirDatosActa } from "./rrhh-eventos/helpers";
+import { ApiError } from "@/lib/httpClient";
 import { ESTADO_CONFIG } from "./rrhh-eventos/constants";
 import { AlertasPizarronTab } from "./rrhh-eventos/AlertasPizarronTab";
 import { BatchActasPanel } from "./rrhh-eventos/BatchActasPanel";
@@ -126,8 +127,8 @@ export default function RRHHEventos() {
       qc.invalidateQueries({ queryKey: ["rrhh-disciplinario"] });
       toast({ title: "Evento registrado", description: `Tipo: ${data.tipoEvento}` });
     } catch (e: unknown) {
-      const err = e as { error?: string };
-      toast({ title: "Error al crear evento", description: err?.error || "Intenta de nuevo", variant: "destructive" });
+      const msg = e instanceof ApiError ? (e.body as { error?: string })?.error : undefined;
+      toast({ title: "Error al crear evento", description: msg || "Intenta de nuevo", variant: "destructive" });
       throw e;
     }
   }
@@ -138,8 +139,8 @@ export default function RRHHEventos() {
       invalidar();
       toast({ title: "Estado actualizado", description: `"${ESTADO_CONFIG[estado]?.label ?? estado}"` });
     } catch (e: unknown) {
-      const err = e as { error?: string };
-      toast({ title: "Error", description: err?.error || "No se pudo actualizar", variant: "destructive" });
+      const msg = e instanceof ApiError ? (e.body as { error?: string })?.error : undefined;
+      toast({ title: "Error", description: msg || "No se pudo actualizar", variant: "destructive" });
     }
   }
 
@@ -161,8 +162,8 @@ export default function RRHHEventos() {
         description: `ERH-${String(modalAnulacion.id).padStart(4, "0")} marcado como ANULADO.${parMsg}`,
       });
     } catch (e: unknown) {
-      const err = e as { error?: string };
-      toast({ title: "Error al anular", description: err?.error || "Intenta de nuevo", variant: "destructive" });
+      const msg = e instanceof ApiError ? (e.body as { error?: string })?.error : undefined;
+      toast({ title: "Error al anular", description: msg || "Intenta de nuevo", variant: "destructive" });
       throw e;
     }
   }

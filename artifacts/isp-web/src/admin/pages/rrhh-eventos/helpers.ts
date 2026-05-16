@@ -1,32 +1,10 @@
-import { apiFetch, getSessionToken } from "@/lib/httpClient";
+import { apiFetch, apiPatch, apiPost, getSessionToken } from "@/lib/httpClient";
 import type { EventoRrhh, DatosActa } from "@/lib/pdfRrhh";
 
 export const API = "/api";
 export const getSession = () => getSessionToken();
 
-export { apiFetch };
-
-export async function apiPatch(url: string, body: object): Promise<unknown> {
-  const r = await fetch(url, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
-    body: JSON.stringify(body),
-  });
-  const data = await r.json();
-  if (!r.ok) throw data;
-  return data;
-}
-
-export async function apiPost(url: string, body: object): Promise<unknown> {
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
-    body: JSON.stringify(body),
-  });
-  const data = await r.json();
-  if (!r.ok) throw data;
-  return data;
-}
+export { apiFetch, apiPatch, apiPost };
 
 export function fmtFecha(iso: string): string {
   try {

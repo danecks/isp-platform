@@ -124,6 +124,22 @@ export async function apiRequest<T = unknown>(
 }
 
 /**
+ * Wrappers finos para POST/PATCH con cuerpo JSON. Equivalentes a
+ * `apiRequest(url, { method, json: body })` — existen sólo para que los
+ * call sites se vean más cortos y para deduplicar las decenas de
+ * `apiPost`/`apiPatch` que históricamente cada página admin definía
+ * inline (cada uno con su propia forma de error).
+ *
+ * Lanzan `ApiError`; el cuerpo parseado del backend está disponible en
+ * `error.body` (p. ej. `(err as ApiError).body?.error`).
+ */
+export const apiPost = <T = unknown>(url: string, body: unknown) =>
+  apiRequest<T>(url, { method: "POST", json: body });
+
+export const apiPatch = <T = unknown>(url: string, body: unknown) =>
+  apiRequest<T>(url, { method: "PATCH", json: body });
+
+/**
  * Helper compartido usado por los `helpers.ts` de cada subcarpeta de admin
  * (planilla, planillas-especiales, prestaciones, amonestaciones, etc.).
  *

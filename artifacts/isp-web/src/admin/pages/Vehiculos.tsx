@@ -10,27 +10,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
 import { AdminLayout } from "../layout/AdminLayout";
-import { apiFetch, getSessionToken } from "@/lib/httpClient";
+import { apiFetch, apiPatch, apiPost, ApiError } from "@/lib/httpClient";
 
 const API = "/api";
-const getSession = () => getSessionToken();
-
-async function apiPost<T>(url: string, body: any): Promise<T> {
-  const res = await fetch(url, {
-    method: "POST", headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw e; }
-  return res.json();
-}
-async function apiPatch<T>(url: string, body: any): Promise<T> {
-  const res = await fetch(url, {
-    method: "PATCH", headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw e; }
-  return res.json();
-}
 
 function fmtFecha(s: string | null) {
   if (!s) return "—";
@@ -179,8 +161,9 @@ function ModalVehiculo({
       qc.invalidateQueries({ queryKey: ["vehiculos"] });
       qc.invalidateQueries({ queryKey: ["vehiculos-estado"] });
       onClose();
-    } catch (e: any) {
-      toast({ title: "Error", description: e?.error || "Intenta de nuevo", variant: "destructive" });
+    } catch (e: unknown) {
+      const msg = e instanceof ApiError ? (e.body as { error?: string })?.error : undefined;
+      toast({ title: "Error", description: msg || "Intenta de nuevo", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -342,8 +325,9 @@ function ModalRelevo({
       qc.invalidateQueries({ queryKey: ["vehiculos-estado"] });
       qc.invalidateQueries({ queryKey: ["vehiculos-historial"] });
       onClose();
-    } catch (e: any) {
-      toast({ title: "Error en relevo", description: e?.error || "Intenta de nuevo", variant: "destructive" });
+    } catch (e: unknown) {
+      const msg = e instanceof ApiError ? (e.body as { error?: string })?.error : undefined;
+      toast({ title: "Error en relevo", description: msg || "Intenta de nuevo", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -430,12 +414,10 @@ export default function Vehiculos() {
   async function syncTodasCustodias() {
     setSyncing(true);
     try {
-      const res = await fetch(`${API}/vehiculos/sync-custodias`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
-        body: JSON.stringify({ usuario }),
-      });
-      const data = await res.json();
+      const data = await apiPost<{ cambios: number; total: number }>(
+        `${API}/vehiculos/sync-custodias`,
+        { usuario },
+      );
       toast({
         title: `Custodias sincronizadas`,
         description: `${data.cambios} cambio(s) aplicado(s) sobre ${data.total} vehículo(s) en turno.`,

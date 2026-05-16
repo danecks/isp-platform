@@ -9,31 +9,9 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import RegresosVacacionesBanner from "@/admin/components/RegresosVacacionesBanner";
-import { apiFetch, getSessionToken } from "@/lib/httpClient";
+import { apiFetch, apiPatch, apiPost, ApiError } from "@/lib/httpClient";
 
 const API = "/api";
-const getSession = () => getSessionToken();
-
-async function apiPost(url: string, body: object): Promise<any> {
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
-    body: JSON.stringify(body),
-  });
-  const data = await r.json();
-  if (!r.ok) throw data;
-  return data;
-}
-async function apiPatch(url: string, body: object): Promise<any> {
-  const r = await fetch(url, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
-    body: JSON.stringify(body),
-  });
-  const data = await r.json();
-  if (!r.ok) throw data;
-  return data;
-}
 
 function fmtFecha(iso: string | null): string {
   if (!iso) return "—";
@@ -176,10 +154,11 @@ function ModalNuevoVacaciones({
       qc.invalidateQueries({ queryKey: ["vacaciones-resumen"] });
       toast({ title: "Vacaciones registradas correctamente" });
       onClose();
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const msg = e instanceof ApiError ? (e.body as { error?: string })?.error : undefined;
       toast({
         title: "Error al registrar",
-        description: e?.error || "Intenta de nuevo",
+        description: msg || "Intenta de nuevo",
         variant: "destructive",
       });
     } finally {
@@ -651,8 +630,9 @@ export default function VacacionesTab() {
       await apiPost(`${API}/vacaciones/${id}/aprobar`, { usuario });
       invalidar();
       toast({ title: "Vacaciones aprobadas" });
-    } catch (e: any) {
-      toast({ title: "Error al aprobar", description: e?.error ?? "Intenta de nuevo", variant: "destructive" });
+    } catch (e: unknown) {
+      const msg = e instanceof ApiError ? (e.body as { error?: string })?.error : undefined;
+      toast({ title: "Error al aprobar", description: msg ?? "Intenta de nuevo", variant: "destructive" });
     }
   }
 
@@ -662,8 +642,9 @@ export default function VacacionesTab() {
       await apiPatch(`${API}/vacaciones/${id}`, { estado: "cancelado", usuario });
       invalidar();
       toast({ title: "Vacaciones canceladas" });
-    } catch (e: any) {
-      toast({ title: "Error al cancelar", description: e?.error ?? "Intenta de nuevo", variant: "destructive" });
+    } catch (e: unknown) {
+      const msg = e instanceof ApiError ? (e.body as { error?: string })?.error : undefined;
+      toast({ title: "Error al cancelar", description: msg ?? "Intenta de nuevo", variant: "destructive" });
     }
   }
 
