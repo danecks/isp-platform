@@ -144,7 +144,23 @@ export default function AjustesVersion() {
           {estado.tone === "ok" ? <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
             : estado.tone === "error" ? <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
             : <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />}
-          <span className="break-words">{estado.label}</span>
+          <div className="flex-1 min-w-0 space-y-2">
+            <p className="break-words">{estado.label}</p>
+            {last?.result.status === "downloaded" && last.result.releasedAt && (
+              <p className="text-[11px] opacity-80" data-testid="text-released-at">
+                Publicada: {fmtFecha(last.result.releasedAt)}
+              </p>
+            )}
+            {last?.result.status === "downloaded" && last.result.notes && (
+              <div
+                className="text-xs whitespace-pre-wrap break-words rounded-md border border-current/20 bg-black/20 p-2"
+                data-testid="text-update-notes"
+              >
+                <p className="text-[10px] uppercase tracking-wider opacity-70 mb-1">Novedades</p>
+                {last.result.notes}
+              </div>
+            )}
+          </div>
         </section>
 
         <button
