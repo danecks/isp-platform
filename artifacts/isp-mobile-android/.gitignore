@@ -23,3 +23,8 @@ key.properties
 # OTA bundles intermedios
 ota-out/
 *.zip
+
+# Android signing keystore — NEVER commit
+keystore.jks
+*.jks
+*.keystore
