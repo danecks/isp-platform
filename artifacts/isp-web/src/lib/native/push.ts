@@ -15,7 +15,8 @@ export type PushPermission = "granted" | "denied" | "prompt" | "unsupported";
 export async function requestPermission(): Promise<PushPermission> {
   if (!isNative()) return "unsupported";
   try {
-    const { PushNotifications } = await import("@capacitor/push-notifications");
+    const mod = "@capacitor/push-notifications";
+    const { PushNotifications } = await import(/* @vite-ignore */ mod);
     const r = await PushNotifications.requestPermissions();
     if (r.receive === "granted") return "granted";
     if (r.receive === "denied") return "denied";
@@ -32,7 +33,8 @@ export async function requestPermission(): Promise<PushPermission> {
 export async function getDeviceToken(): Promise<string | null> {
   if (!isNative()) return null;
   try {
-    const { PushNotifications } = await import("@capacitor/push-notifications");
+    const mod = "@capacitor/push-notifications";
+    const { PushNotifications } = await import(/* @vite-ignore */ mod);
     return new Promise<string | null>((resolve) => {
       const timer = setTimeout(() => resolve(null), 5000);
       PushNotifications.addListener("registration", (t) => {

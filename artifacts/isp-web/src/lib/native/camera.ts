@@ -22,7 +22,8 @@ export type CaptureOptions = {
 export async function capturePhoto(opts: CaptureOptions = {}): Promise<CapturedPhoto | null> {
   if (!isNative()) return null;
 
-  const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
+  const mod = "@capacitor/camera";
+  const { Camera, CameraResultType, CameraSource } = await import(/* @vite-ignore */ mod);
   const r = await Camera.getPhoto({
     quality: opts.quality ?? 80,
     allowEditing: opts.allowEdit ?? false,

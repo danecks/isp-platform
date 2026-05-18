@@ -12,7 +12,8 @@ import { isNative } from "./platform";
 
 export async function getItem(key: string): Promise<string | null> {
   if (isNative()) {
-    const { Preferences } = await import("@capacitor/preferences");
+    const mod = "@capacitor/preferences";
+    const { Preferences } = await import(/* @vite-ignore */ mod);
     const r = await Preferences.get({ key });
     return r.value ?? null;
   }
@@ -25,7 +26,8 @@ export async function getItem(key: string): Promise<string | null> {
 
 export async function setItem(key: string, value: string): Promise<void> {
   if (isNative()) {
-    const { Preferences } = await import("@capacitor/preferences");
+    const mod = "@capacitor/preferences";
+    const { Preferences } = await import(/* @vite-ignore */ mod);
     await Preferences.set({ key, value });
     return;
   }
@@ -38,7 +40,8 @@ export async function setItem(key: string, value: string): Promise<void> {
 
 export async function removeItem(key: string): Promise<void> {
   if (isNative()) {
-    const { Preferences } = await import("@capacitor/preferences");
+    const mod = "@capacitor/preferences";
+    const { Preferences } = await import(/* @vite-ignore */ mod);
     await Preferences.remove({ key });
     return;
   }

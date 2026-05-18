@@ -47,7 +47,8 @@ export async function checkForUpdate(): Promise<OtaCheckResult> {
   if (!isNative()) return { status: "unsupported" };
 
   try {
-    const { CapacitorUpdater } = await import("@capgo/capacitor-updater");
+    const mod = "@capgo/capacitor-updater";
+    const { CapacitorUpdater } = await import(/* @vite-ignore */ mod);
     const manifest = await fetchManifest();
     if (!manifest) return { status: "error", message: "No se pudo leer el manifest OTA" };
 
@@ -78,7 +79,8 @@ export function initLiveUpdate(onResult?: (r: OtaCheckResult) => void): void {
   if (!isNative()) return;
   void (async () => {
     try {
-      const { CapacitorUpdater } = await import("@capgo/capacitor-updater");
+      const mod = "@capgo/capacitor-updater";
+      const { CapacitorUpdater } = await import(/* @vite-ignore */ mod);
       try {
         await CapacitorUpdater.notifyAppReady();
       } catch {

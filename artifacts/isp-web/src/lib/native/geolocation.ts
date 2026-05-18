@@ -23,7 +23,8 @@ export type GeoOptions = {
 
 export async function getCurrentPosition(opts: GeoOptions = {}): Promise<GeoCoords> {
   if (isNative()) {
-    const { Geolocation } = await import("@capacitor/geolocation");
+    const mod = "@capacitor/geolocation";
+    const { Geolocation } = await import(/* @vite-ignore */ mod);
     const p = await Geolocation.getCurrentPosition({
       enableHighAccuracy: opts.enableHighAccuracy ?? true,
       timeout: opts.timeoutMs ?? 15000,
