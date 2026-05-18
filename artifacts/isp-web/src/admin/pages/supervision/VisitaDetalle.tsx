@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, TileLayer, Marker, Polyline, Popup, Circle, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { X, Loader2, LogIn, LogOut, Clock, Activity, Zap, MapPin } from "lucide-react";
+import { X, Loader2, LogIn, LogOut, Clock, Activity, Zap, MapPin, FileDown } from "lucide-react";
 import { api } from "./api";
 import type { SupervisionProgramacion } from "./types";
 import { TIPO_LABEL, ESTADO_LABEL, ESTADO_COLOR } from "./types";
+import { exportVisitaPdf } from "./exportVisitaPdf";
 
 interface PuntoGps {
   latitud: number; longitud: number;
@@ -104,6 +105,30 @@ export function VisitaDetalle({ visita, onClose }: { visita: SupervisionPrograma
   const [geo, setGeo] = useState<GeofenceResp | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exportando, setExportando] = useState(false);
+  const mapWrapperRef = useRef<HTMLDivElement | null>(null);
+
+  async function handleExportarPdf() {
+    if (exportando) return;
+    setExportando(true);
+    try {
+      await exportVisitaPdf({
+        visita,
+        iniciada_at: geo?.iniciada_at ?? gps?.iniciada_at ?? null,
+        completada_at: geo?.completada_at ?? gps?.completada_at ?? null,
+        permanencia_segundos: geo?.permanencia_segundos || 0,
+        auto_iniciada: !!geo?.auto_iniciada,
+        eventos: geo?.eventos || [],
+        puntosGps: gps?.puntos || [],
+        mapElement: mapWrapperRef.current,
+      });
+    } catch (err) {
+      console.error("Error al exportar PDF:", err);
+      setError(err instanceof Error ? err.message : "Error al exportar PDF");
+    } finally {
+      setExportando(false);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -156,6 +181,15 @@ export function VisitaDetalle({ visita, onClose }: { visita: SupervisionPrograma
             <span className={`text-[10px] px-2 py-0.5 rounded border ${ESTADO_COLOR[visita.estado]}`}>
               {ESTADO_LABEL[visita.estado]}
             </span>
+            <button
+              onClick={handleExportarPdf}
+              disabled={loading || exportando}
+              aria-label="Exportar PDF"
+              className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded border border-cyan-500/40 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {exportando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}
+              {exportando ? "Generando…" : "Exportar PDF"}
+            </button>
             <button onClick={onClose} aria-label="Cerrar"
               className="text-white/60 hover:text-white p-1 rounded hover:bg-white/10">
               <X className="w-4 h-4" />
@@ -213,7 +247,7 @@ export function VisitaDetalle({ visita, onClose }: { visita: SupervisionPrograma
               )}
 
               {/* Mapa */}
-              <div className="border border-white/10 rounded-lg overflow-hidden" style={{ height: 380 }}>
+              <div ref={mapWrapperRef} className="border border-white/10 rounded-lg overflow-hidden" style={{ height: 380 }}>
                 {todosPuntos.length === 0 ? (
                   <div className="h-full flex items-center justify-center text-white/40 text-xs">
                     Sin recorrido ni eventos de geofence para mostrar.
