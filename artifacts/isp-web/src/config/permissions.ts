@@ -365,6 +365,15 @@ export const NAV_SECTIONS: NavSection[] = [
         roles: ["admin"],
       },
       {
+        path: "/admin/configuracion/notificaciones",
+        label: "Notificaciones Push",
+        icon: BellRing,
+        // Reutiliza el permiso "usuarios" (igual que el backend en
+        // ROUTE_MODULO_MAP "/push" → "usuarios"). Sólo admin lo ve.
+        clave: "usuarios",
+        roles: ["admin"],
+      },
+      {
         path: "/admin/configuracion/plantillas-contrato",
         label: "Plantillas de Contrato",
         icon: BookOpen,
