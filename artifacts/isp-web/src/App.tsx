@@ -85,6 +85,7 @@ import AdminKioscoSolicitudImprimible from "@/admin/pages/KioscoSolicitudImprimi
 import AdminMergeRequests from "@/admin/pages/MergeRequests";
 import AdminModeloDatos from "@/admin/pages/ModeloDatos";
 import AdminDocumentacion from "@/admin/pages/Documentacion";
+import AjustesVersion from "@/pages/AjustesVersion";
 
 // Portal de clientes
 import PortalDashboard from "@/portal/pages/PortalDashboard";
@@ -124,6 +125,7 @@ function Router() {
       <Route path="/agente/inicio" component={AgenteInicio} />
       <Route path="/agente/visitas" component={AgenteVisitas} />
       <Route path="/agente/supervision" component={AgenteSupervision} />
+      <Route path="/ajustes/version" component={AjustesVersion} />
 
       {/* ── Redirecciones de acceso directo ────────────────────────────── */}
       <Route path="/admin">

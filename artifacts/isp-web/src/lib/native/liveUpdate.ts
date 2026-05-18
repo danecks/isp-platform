@@ -43,31 +43,101 @@ async function fetchManifest(): Promise<OtaManifest | null> {
   }
 }
 
-export async function checkForUpdate(): Promise<OtaCheckResult> {
-  if (!isNative()) return { status: "unsupported" };
+const LAST_CHECK_KEY = "isp_ota_last_check";
 
+export type OtaLastCheck = {
+  at: string; // ISO
+  result: OtaCheckResult;
+};
+
+function persistLastCheck(result: OtaCheckResult): void {
+  try {
+    const entry: OtaLastCheck = { at: new Date().toISOString(), result };
+    localStorage.setItem(LAST_CHECK_KEY, JSON.stringify(entry));
+  } catch {
+    /* noop */
+  }
+}
+
+export function getLastCheck(): OtaLastCheck | null {
+  try {
+    const raw = localStorage.getItem(LAST_CHECK_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as OtaLastCheck;
+  } catch {
+    return null;
+  }
+}
+
+export type AppVersionInfo = {
+  native: string | null; // versión del APK instalado
+  bundle: string | null; // versión del bundle OTA activo
+  bundleId: string | null; // id interno del bundle
+  builtin: boolean; // true si está corriendo el bundle empaquetado
+};
+
+/**
+ * Lee la versión nativa (APK) y la versión del bundle OTA activo desde el
+ * plugin CapacitorUpdater. En navegador devuelve todo null.
+ */
+export async function getAppVersionInfo(): Promise<AppVersionInfo> {
+  if (!isNative()) {
+    return { native: null, bundle: null, bundleId: null, builtin: false };
+  }
+  try {
+    const mod = "@capgo/capacitor-updater";
+    const { CapacitorUpdater } = await import(/* @vite-ignore */ mod);
+    const current = await CapacitorUpdater.current();
+    const bundle = current?.bundle ?? null;
+    return {
+      native: typeof current?.native === "string" ? current.native : null,
+      bundle: typeof bundle?.version === "string" ? bundle.version : null,
+      bundleId: typeof bundle?.id === "string" ? bundle.id : null,
+      builtin: bundle?.id === "builtin" || bundle?.version === "builtin",
+    };
+  } catch {
+    return { native: null, bundle: null, bundleId: null, builtin: false };
+  }
+}
+
+export async function checkForUpdate(): Promise<OtaCheckResult> {
+  if (!isNative()) {
+    const r: OtaCheckResult = { status: "unsupported" };
+    persistLastCheck(r);
+    return r;
+  }
+
+  let result: OtaCheckResult;
   try {
     const mod = "@capgo/capacitor-updater";
     const { CapacitorUpdater } = await import(/* @vite-ignore */ mod);
     const manifest = await fetchManifest();
-    if (!manifest) return { status: "error", message: "No se pudo leer el manifest OTA" };
-
-    const current = await CapacitorUpdater.current();
-    if (current?.bundle?.version === manifest.version) return { status: "no-update" };
-
-    const dl = await CapacitorUpdater.download({
-      url: manifest.url,
-      version: manifest.version,
-      ...(manifest.checksum ? { checksum: manifest.checksum } : {}),
-    });
-    if (!dl?.id) return { status: "error", message: "Descarga OTA falló" };
-
-    await CapacitorUpdater.next({ id: dl.id });
-    return { status: "downloaded", version: manifest.version, notes: manifest.notes };
+    if (!manifest) {
+      result = { status: "error", message: "No se pudo leer el manifest OTA" };
+    } else {
+      const current = await CapacitorUpdater.current();
+      if (current?.bundle?.version === manifest.version) {
+        result = { status: "no-update" };
+      } else {
+        const dl = await CapacitorUpdater.download({
+          url: manifest.url,
+          version: manifest.version,
+          ...(manifest.checksum ? { checksum: manifest.checksum } : {}),
+        });
+        if (!dl?.id) {
+          result = { status: "error", message: "Descarga OTA falló" };
+        } else {
+          await CapacitorUpdater.next({ id: dl.id });
+          result = { status: "downloaded", version: manifest.version, notes: manifest.notes };
+        }
+      }
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return { status: "error", message };
+    result = { status: "error", message };
   }
+  persistLastCheck(result);
+  return result;
 }
 
 /**

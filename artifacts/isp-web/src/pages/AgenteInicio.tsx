@@ -2641,8 +2641,17 @@ export default function AgenteInicio() {
         )}
       </main>
 
-      <footer className="px-4 py-3 text-center text-[11px] text-slate-600 border-t border-slate-900">
-        ISP, S.A. · Investigaciones y Seguridad Profesional
+      <footer className="px-4 py-3 text-center text-[11px] text-slate-600 border-t border-slate-900 space-y-1">
+        <div>ISP, S.A. · Investigaciones y Seguridad Profesional</div>
+        <div>
+          <a
+            href="/ajustes/version"
+            className="text-slate-500 hover:text-slate-300 underline underline-offset-2"
+            data-testid="link-ajustes-version"
+          >
+            Acerca de · Versión
+          </a>
+        </div>
       </footer>
 
       {/* Modal lightbox para ver la foto del DPI de una visita */}
