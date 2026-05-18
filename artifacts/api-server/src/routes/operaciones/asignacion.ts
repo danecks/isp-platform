@@ -3,6 +3,7 @@ import { pool, todayGT } from "@workspace/db";
 import { logger } from "../../lib/logger";
 
 import { calcularEstadoCiclo } from "../../lib/turno-calc";
+import { notificarAsignacionTurnoPush } from "../../services/push-notificaciones";
 import {
   liberarTitularidadAgente,
   lockTitularidadAgente,
@@ -402,6 +403,20 @@ router.post("/operaciones/asignar", async (req, res) => {
     let rolSesion = "";
     try { rolSesion = JSON.parse(req.headers["x-isp-session"] as string ?? "")?.rol ?? ""; } catch {}
     const puedeVerImpacto = rolSesion === "admin" || rolSesion === "rrhh";
+
+    // Push al colaborador asignado — fire and forget para no bloquear la respuesta.
+    notificarAsignacionTurnoPush({
+      agenteId,
+      agenteNombre: agente.nombre_completo,
+      puestoId,
+      puestoNombre: puesto.nombre,
+      clienteNombre: puesto.cliente_nombre ?? null,
+      fecha: fechaCobertura,
+      soloCobertura: Boolean(soloCobertura),
+      horaInicio: horaInstalacion ?? null,
+    }).catch((err) => {
+      logger.warn({ err, agenteId, puestoId }, "Push de asignación falló (no bloqueante)");
+    });
 
     res.json({
       ok: true,
