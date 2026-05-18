@@ -26,8 +26,8 @@ export type OtaManifest = {
 
 export type OtaCheckResult =
   | { status: "no-update" }
-  | { status: "available"; version: string; notes?: string }
-  | { status: "downloaded"; version: string; notes?: string }
+  | { status: "available"; version: string; notes?: string; releasedAt?: string }
+  | { status: "downloaded"; version: string; notes?: string; releasedAt?: string }
   | { status: "error"; message: string }
   | { status: "unsupported" };
 
@@ -128,7 +128,7 @@ export async function checkForUpdate(): Promise<OtaCheckResult> {
           result = { status: "error", message: "Descarga OTA falló" };
         } else {
           await CapacitorUpdater.next({ id: dl.id });
-          result = { status: "downloaded", version: manifest.version, notes: manifest.notes };
+          result = { status: "downloaded", version: manifest.version, notes: manifest.notes, releasedAt: manifest.releasedAt };
         }
       }
     }
