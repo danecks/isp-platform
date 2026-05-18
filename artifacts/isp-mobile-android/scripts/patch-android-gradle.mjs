@@ -163,13 +163,61 @@ async function patchAppBuildGradle() {
   }
   if (src !== before) {
     await writeFile(appBuildGradle, src, "utf8");
-    return true;
   }
-  return false;
+
+  // Fuerza bruta: appendear bloque override al final del archivo. En Gradle,
+  // los bloques `android { defaultConfig { ... } }` repetidos se mergean y
+  // el último valor escalar gana. Esto garantiza que min/target/compile
+  // queden en los valores que necesitamos, sin importar qué hizo el regex
+  // de arriba ni qué referenciaba el template original (rootProject.ext.*).
+  const MARKER = "// ── ISP sdk override ─────────────────────────────";
+  if (!src.includes(MARKER)) {
+    const block = [
+      "",
+      MARKER,
+      "android {",
+      "    compileSdk " + COMPILE_SDK_TARGET,
+      "    defaultConfig {",
+      "        minSdkVersion " + MIN_SDK_TARGET,
+      "        targetSdkVersion " + TARGET_SDK_TARGET,
+      "    }",
+      "}",
+      "",
+    ].join("\n");
+    await writeFile(appBuildGradle, src + block, "utf8");
+    console.log(
+      `[patch-android-gradle] override block appendeado a app/build.gradle`,
+    );
+  } else {
+    console.log(`[patch-android-gradle] override block ya presente`);
+  }
+  return true;
+}
+
+// Algunos templates de Capacitor escriben <uses-sdk> directamente en el
+// AndroidManifest, lo que invalida lo que diga build.gradle. Borramos
+// cualquier <uses-sdk> del manifest del app para que sólo gobierne gradle.
+const appManifest = resolve(root, "android/app/src/main/AndroidManifest.xml");
+async function stripUsesSdkFromManifest() {
+  if (!(await exists(appManifest))) {
+    console.log(`[patch-android-gradle] SKIP manifest: no existe`);
+    return false;
+  }
+  const src = await readFile(appManifest, "utf8");
+  const re = /<uses-sdk\b[^/>]*\/>\s*|<uses-sdk\b[\s\S]*?<\/uses-sdk>\s*/g;
+  if (!re.test(src)) {
+    console.log(`[patch-android-gradle] manifest: sin <uses-sdk>, OK`);
+    return false;
+  }
+  const out = src.replace(re, "");
+  await writeFile(appManifest, out, "utf8");
+  console.log(`[patch-android-gradle] manifest: <uses-sdk> removido`);
+  return true;
 }
 
 await patchAgp();
 await patchGradleWrapper();
 await patchVariablesGradle();
 await patchAppBuildGradle();
+await stripUsesSdkFromManifest();
 console.log("[patch-android-gradle] OK");
