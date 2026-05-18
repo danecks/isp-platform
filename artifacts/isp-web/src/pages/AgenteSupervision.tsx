@@ -3,6 +3,7 @@ import {
   CheckCircle2, XCircle, Loader2, Clock, MapPin, ClipboardList,
   PlayCircle, AlertTriangle, RefreshCw, QrCode, ArrowLeft,
   ShieldCheck, FileText, LogOut, ChevronDown, ChevronUp, Activity,
+  Smartphone, Power,
 } from "lucide-react";
 import { useSupervisorJornada } from "../components/SupervisorJornada/useSupervisorJornada";
 import { ModalInspeccion } from "../components/SupervisorJornada/ModalInspeccion";
@@ -415,9 +416,44 @@ export default function AgenteSupervision() {
               {jornada.gpsStatus.error
                 ? jornada.gpsStatus.error
                 : jornada.gpsStatus.ultimo_envio_at
-                ? `GPS ok · ${jornada.gpsStatus.enviados} envíos · último ${fmtHora(jornada.gpsStatus.ultimo_envio_at)}`
+                ? `GPS ${jornada.bgEnabled ? (jornada.bgIsNative ? "(2do plano)" : "(navegador)") : "(pantalla activa)"} · ${jornada.gpsStatus.enviados} envíos · último ${fmtHora(jornada.gpsStatus.ultimo_envio_at)}`
                 : "Esperando primera lectura GPS…"}
             </span>
+          </div>
+        )}
+        {sesion && (
+          <div className={`mt-1.5 flex items-center justify-between gap-2 text-[11px] rounded px-2.5 py-1.5 border ${
+            jornada.bgEnabled
+              ? "bg-violet-500/15 border-violet-500/40 text-violet-100"
+              : "bg-white/5 border-white/10 text-white/70"
+          }`}>
+            <div className="min-w-0">
+              <p className="inline-flex items-center gap-1 font-medium">
+                <Smartphone className="w-3 h-3" />
+                {jornada.bgEnabled
+                  ? (jornada.bgIsNative
+                      ? "GPS en segundo plano activo"
+                      : "GPS en segundo plano (sólo pantalla visible)")
+                  : "GPS en segundo plano apagado"}
+              </p>
+              <p className="text-[10px] text-white/60 mt-0.5">
+                {jornada.bgEnabled
+                  ? (jornada.bgIsNative
+                      ? "Verás una notificación persistente mientras dure la jornada."
+                      : "En navegador el GPS se pausa si cerrás la pestaña. Instalá el APK para tracking real.")
+                  : "Activalo para reportar tu ubicación aunque cierres la app."}
+              </p>
+            </div>
+            <button
+              onClick={() => jornada.setBackgroundTracking(!jornada.bgEnabled)}
+              className={`shrink-0 px-2 py-1 rounded border inline-flex items-center gap-1 text-[11px] font-medium ${
+                jornada.bgEnabled
+                  ? "bg-rose-500/20 border-rose-500/40 text-rose-100 hover:bg-rose-500/30"
+                  : "bg-violet-500/20 border-violet-500/40 text-violet-100 hover:bg-violet-500/30"
+              }`}>
+              <Power className="w-3 h-3" />
+              {jornada.bgEnabled ? "Apagar" : "Activar"}
+            </button>
           </div>
         )}
       </header>

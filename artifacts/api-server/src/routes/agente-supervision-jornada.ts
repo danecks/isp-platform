@@ -194,6 +194,198 @@ agenteSupervisionJornadaRouter.post("/agente/supervision/jornada/gps", async (re
   }
 });
 
+// ── POST /agente/supervision/jornada/gps-batch ──────────────────────────────
+// body: ...auth + { puntos: [{ lat, lng, accuracy_m?, timestamp? }] }
+// Versión batch del endpoint /gps para el plugin de background-geolocation,
+// que en APK acumula lecturas mientras la app está sin red y las descarga
+// todas juntas al reconectar. Máx 200 puntos por request.
+agenteSupervisionJornadaRouter.post("/agente/supervision/jornada/gps-batch", async (req, res) => {
+  const b = req.body || {};
+  const a = await autenticarSupervisor(b.device_uuid, b.device_token, b.qr_token);
+  if (!a.ctx) return res.status(a.status || 403).json({ error: a.error });
+
+  const puntos = Array.isArray(b.puntos) ? b.puntos : [];
+  if (puntos.length === 0) return res.status(400).json({ error: "puntos vacío" });
+  if (puntos.length > 200) return res.status(400).json({ error: "máx 200 puntos por request" });
+
+  await autoCerrarVencidas(a.ctx.employee_id);
+  try {
+    const sesion = await sesionActiva(a.ctx.employee_id);
+    if (!sesion) return res.status(409).json({ error: "sin_sesion_activa" });
+
+    let insertados = 0;
+    for (const p of puntos) {
+      const lat = Number(p?.lat), lng = Number(p?.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      const acc = Number.isFinite(Number(p?.accuracy_m)) ? Number(p.accuracy_m) : null;
+      // Si vino timestamp del cliente lo respetamos (útil para puntos
+      // descargados offline). Si no, usamos NOW() default.
+      const ts = Number(p?.timestamp);
+      if (Number.isFinite(ts) && ts > 0) {
+        await pool.query(
+          `INSERT INTO supervision_gps_tracks (sesion_id, lat, lng, accuracy_m, registrado_at)
+           VALUES ($1,$2,$3,$4, to_timestamp($5/1000.0))`,
+          [sesion.id, lat, lng, acc, ts]
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO supervision_gps_tracks (sesion_id, lat, lng, accuracy_m)
+           VALUES ($1,$2,$3,$4)`,
+          [sesion.id, lat, lng, acc]
+        );
+      }
+      insertados++;
+    }
+    res.json({ ok: true, sesion_id: sesion.id, insertados });
+  } catch (err) {
+    logger.error({ err }, "POST /agente/supervision/jornada/gps-batch error");
+    res.status(500).json({ error: "Error al guardar GPS batch" });
+  }
+});
+
+// ── POST /agente/supervision/jornada/puestos-geofence ────────────────────────
+// Devuelve las coords + radio de los puestos en la agenda del supervisor
+// (próximos 7 días) para que el cliente haga detección local de geofencing.
+// Hacemos esto en el cliente — y no con un PostGIS server-side — porque el
+// servicio en primer plano del APK ya recibe la corriente de GPS y un
+// round-trip por punto agregaría latencia y consumo de batería innecesarios.
+agenteSupervisionJornadaRouter.post("/agente/supervision/jornada/puestos-geofence", async (req, res) => {
+  const b = req.body || {};
+  const a = await autenticarSupervisor(b.device_uuid, b.device_token, b.qr_token);
+  if (!a.ctx) return res.status(a.status || 403).json({ error: a.error });
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT
+              po.id              AS puesto_id,
+              po.nombre          AS puesto_nombre,
+              po.cliente_id,
+              c.nombre           AS cliente_nombre,
+              pg.latitud         AS lat,
+              pg.longitud        AS lng,
+              pg.radio_metros    AS radio_m
+         FROM supervision_visitas_programadas sp
+         JOIN puestos_operativos po ON po.id = sp.puesto_id
+         JOIN puestos_gps pg        ON pg.puesto_id = po.id
+         LEFT JOIN clients c        ON c.id = po.cliente_id
+        WHERE sp.supervisor_employee_id = $1
+          AND sp.fecha_planificada BETWEEN CURRENT_DATE - INTERVAL '1 day'
+                                       AND CURRENT_DATE + INTERVAL '7 days'`,
+      [a.ctx.employee_id]
+    );
+    res.json({ ok: true, puestos: rows });
+  } catch (err) {
+    logger.error({ err }, "POST /agente/supervision/jornada/puestos-geofence error");
+    res.status(500).json({ error: "Error al cargar geofences" });
+  }
+});
+
+// ── POST /agente/supervision/jornada/geofence-evento ─────────────────────────
+// body: ...auth + { puesto_id, tipo: 'entry'|'exit', lat, lng,
+//                   accuracy_m?, distancia_m?, radio_m?, timestamp? }
+// Idempotencia: el cliente puede reintentar el mismo evento; descartamos
+// duplicados consecutivos del mismo (sesion, puesto, tipo) en una ventana
+// corta para evitar parpadeos por jitter del GPS en el borde del perímetro.
+agenteSupervisionJornadaRouter.post("/agente/supervision/jornada/geofence-evento", async (req, res) => {
+  const b = req.body || {};
+  const a = await autenticarSupervisor(b.device_uuid, b.device_token, b.qr_token);
+  if (!a.ctx) return res.status(a.status || 403).json({ error: a.error });
+
+  const puestoId = Number(b.puesto_id);
+  const tipo = String(b.tipo || "");
+  const lat = Number(b.lat), lng = Number(b.lng);
+  if (!Number.isInteger(puestoId) || puestoId <= 0) {
+    return res.status(400).json({ error: "puesto_id inválido" });
+  }
+  if (tipo !== "entry" && tipo !== "exit") {
+    return res.status(400).json({ error: "tipo debe ser 'entry' o 'exit'" });
+  }
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return res.status(400).json({ error: "lat/lng inválidos" });
+  }
+
+  await autoCerrarVencidas(a.ctx.employee_id);
+  try {
+    const sesion = await sesionActiva(a.ctx.employee_id);
+    if (!sesion) return res.status(409).json({ error: "sin_sesion_activa" });
+
+    // Anti-jitter: ignoramos un evento si el último evento de ese mismo
+    // (sesion, puesto, tipo) ocurrió hace menos de 60s. El cliente igual
+    // hace su propio debounce por histéresis (radio*1.15), pero acá
+    // duplicamos la guarda para tolerar reintentos por red.
+    const { rows: dup } = await pool.query(
+      `SELECT 1 FROM supervision_geofence_eventos
+        WHERE sesion_id = $1 AND puesto_id = $2 AND tipo = $3
+          AND ocurrido_at >= NOW() - INTERVAL '60 seconds'
+        LIMIT 1`,
+      [sesion.id, puestoId, tipo]
+    );
+    if (dup.length > 0) {
+      return res.json({ ok: true, duplicado: true });
+    }
+
+    // Resolvemos cliente_id + programación activa del supervisor para ese puesto.
+    const { rows: ctx } = await pool.query(
+      `SELECT po.cliente_id,
+              (SELECT id FROM supervision_visitas_programadas
+                WHERE supervisor_employee_id = $2
+                  AND puesto_id = $1
+                  AND estado IN ('pendiente','en_curso')
+                ORDER BY fecha_planificada ASC LIMIT 1) AS programacion_id
+         FROM puestos_operativos po WHERE po.id = $1`,
+      [puestoId, a.ctx.employee_id]
+    );
+    const clienteId = ctx[0]?.cliente_id ?? null;
+    const programacionId = ctx[0]?.programacion_id ?? null;
+
+    const accuracy = Number.isFinite(Number(b.accuracy_m)) ? Number(b.accuracy_m) : null;
+    const distancia = Number.isFinite(Number(b.distancia_m)) ? Number(b.distancia_m) : null;
+    const radio = Number.isFinite(Number(b.radio_m)) ? Number(b.radio_m) : null;
+    const ts = Number(b.timestamp);
+
+    let insertSql: string;
+    let params: any[];
+    if (Number.isFinite(ts) && ts > 0) {
+      insertSql = `INSERT INTO supervision_geofence_eventos
+        (sesion_id, supervisor_employee_id, puesto_id, cliente_id, programacion_id,
+         tipo, lat, lng, accuracy_m, distancia_m, radio_m, ocurrido_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, to_timestamp($12/1000.0))
+       RETURNING id`;
+      params = [sesion.id, a.ctx.employee_id, puestoId, clienteId, programacionId,
+                tipo, lat, lng, accuracy, distancia, radio, ts];
+    } else {
+      insertSql = `INSERT INTO supervision_geofence_eventos
+        (sesion_id, supervisor_employee_id, puesto_id, cliente_id, programacion_id,
+         tipo, lat, lng, accuracy_m, distancia_m, radio_m)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`;
+      params = [sesion.id, a.ctx.employee_id, puestoId, clienteId, programacionId,
+                tipo, lat, lng, accuracy, distancia, radio];
+    }
+    const { rows: ins } = await pool.query(insertSql, params);
+
+    // Auto-iniciar la visita programada en 'entry' (best-effort, no bloquea
+    // si ya está iniciada). Esto cumple el flujo "el supervisor llega al
+    // puesto → la visita arranca sola" sin que tenga que tocar la pantalla.
+    if (tipo === "entry" && programacionId) {
+      await pool.query(
+        `UPDATE supervision_visitas_programadas
+            SET estado = 'en_curso',
+                iniciada_at = COALESCE(iniciada_at, NOW()),
+                updated_at = NOW()
+          WHERE id = $1
+            AND supervisor_employee_id = $2
+            AND estado = 'pendiente'`,
+        [programacionId, a.ctx.employee_id]
+      ).catch(() => {});
+    }
+
+    res.json({ ok: true, evento_id: ins[0].id, programacion_id: programacionId });
+  } catch (err) {
+    logger.error({ err }, "POST /agente/supervision/jornada/geofence-evento error");
+    res.status(500).json({ error: "Error al registrar evento de geofence" });
+  }
+});
+
 // ── POST /agente/supervision/inspeccion/agente-info ─────────────────────────
 // Recibe el qr_token del AGENTE escaneado y devuelve sus datos + arma + catálogo
 // del cliente (o global si el cliente no tiene catálogo propio).

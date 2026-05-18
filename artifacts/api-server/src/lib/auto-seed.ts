@@ -6303,6 +6303,42 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SUPERV-JOR-01 — error (no bloqueante)");
   }
 
+  // ── SUPERV-GEO-01: eventos de geofencing del supervisor ───────────────────
+  // El cliente (PWA / APK) hace detección local de cruce de perímetro contra
+  // las coords de puestos_gps de su agenda y postea acá los eventos
+  // (entry/exit). Persistimos para auditoría y para mostrar en el dashboard
+  // (TabMapaEnVivo) qué supervisor entró/salió de qué puesto y a qué hora.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS supervision_geofence_eventos (
+        id                       BIGSERIAL PRIMARY KEY,
+        sesion_id                INTEGER NOT NULL REFERENCES supervision_sesiones(id) ON DELETE CASCADE,
+        supervisor_employee_id   INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        puesto_id                INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL,
+        cliente_id               INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+        programacion_id          INTEGER REFERENCES supervision_visitas_programadas(id) ON DELETE SET NULL,
+        tipo                     VARCHAR(10) NOT NULL CHECK (tipo IN ('entry','exit')),
+        lat                      DOUBLE PRECISION NOT NULL,
+        lng                      DOUBLE PRECISION NOT NULL,
+        accuracy_m               DOUBLE PRECISION,
+        distancia_m              DOUBLE PRECISION,
+        radio_m                  DOUBLE PRECISION,
+        ocurrido_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        recibido_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS supgeo_sesion_at
+                       ON supervision_geofence_eventos(sesion_id, ocurrido_at DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS supgeo_puesto_at
+                       ON supervision_geofence_eventos(puesto_id, ocurrido_at DESC)
+                       WHERE puesto_id IS NOT NULL`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS supgeo_sup_at
+                       ON supervision_geofence_eventos(supervisor_employee_id, ocurrido_at DESC)`);
+    logger.info("Auto-migrate: SUPERV-GEO-01 geofence_eventos verificado/creado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: SUPERV-GEO-01 — error (no bloqueante)");
+  }
+
   // ── SUPERV-CAT-01: catálogo configurable de items de inspección por cliente ──
   // cliente_id NULL = catálogo global por defecto. El admin puede sobreescribir
   // por cliente para agregar/quitar items (ej. linterna, chaleco, etc).

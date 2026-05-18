@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { Loader2, MapPin, RefreshCw, Clock, Activity } from "lucide-react";
+import { Loader2, MapPin, RefreshCw, Clock, Activity, LogIn, LogOut } from "lucide-react";
 import { api } from "./api";
 
 interface SupTracking {
@@ -197,6 +197,104 @@ export function TabMapaEnVivo() {
           </div>
         </div>
       </div>
+
+      <GeofenceEventosPanel />
+    </div>
+  );
+}
+
+interface GeofenceEvento {
+  id: number;
+  tipo: "entry" | "exit";
+  supervisor_nombre: string;
+  puesto_nombre: string | null;
+  cliente_nombre: string | null;
+  distancia_m: number | null;
+  radio_m: number | null;
+  ocurrido_at: string;
+  hace_segundos: number;
+}
+
+function GeofenceEventosPanel() {
+  const [eventos, setEventos] = useState<GeofenceEvento[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  async function cargar() {
+    try {
+      setErr(null);
+      const r = await api<{ eventos: GeofenceEvento[] }>("/supervision-geofence-eventos?limit=50");
+      setEventos(r.eventos || []);
+    } catch (e: any) {
+      setErr(e.message || "Error al cargar eventos");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    cargar();
+    const t = setInterval(cargar, POLL_MS);
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <div className="border border-white/10 rounded-lg bg-[#0b1424] overflow-hidden">
+      <div className="px-3 py-2 bg-white/5 text-xs font-bold text-white/80 border-b border-white/10 flex items-center justify-between">
+        <span className="inline-flex items-center gap-1.5">
+          <MapPin className="w-3.5 h-3.5 text-violet-300" />
+          Llegadas y salidas a puestos (últimas 24h)
+        </span>
+        <button onClick={cargar}
+          className="px-2 py-0.5 text-[11px] bg-white/5 hover:bg-white/10 text-white/70 rounded inline-flex items-center gap-1">
+          <RefreshCw className="w-3 h-3" /> Actualizar
+        </button>
+      </div>
+      {err && <div role="alert" className="text-rose-300 text-xs p-3">{err}</div>}
+      {loading && eventos.length === 0 && (
+        <div className="text-white/40 text-xs p-4 inline-flex items-center gap-2">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Cargando…
+        </div>
+      )}
+      {!loading && eventos.length === 0 && !err && (
+        <p className="text-white/40 text-xs p-4 text-center">
+          Sin eventos de geofencing recientes. Los supervisores con GPS en
+          segundo plano activo dispararán eventos automáticamente al llegar
+          o salir de cada puesto.
+        </p>
+      )}
+      {eventos.length > 0 && (
+        <div className="overflow-y-auto" style={{ maxHeight: 320 }}>
+          <ul className="divide-y divide-white/5">
+            {eventos.map(e => (
+              <li key={e.id} className="px-3 py-2 hover:bg-white/5 flex items-start gap-2">
+                <span className={`mt-0.5 inline-flex items-center justify-center w-6 h-6 rounded-full shrink-0 ${
+                  e.tipo === "entry"
+                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                    : "bg-amber-500/20 text-amber-200 border border-amber-500/40"
+                }`}>
+                  {e.tipo === "entry" ? <LogIn className="w-3 h-3" /> : <LogOut className="w-3 h-3" />}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-white">
+                    <strong>{e.supervisor_nombre}</strong>{" "}
+                    <span className="text-white/60">{e.tipo === "entry" ? "llegó a" : "salió de"}</span>{" "}
+                    <span className="text-cyan-200">
+                      {[e.cliente_nombre, e.puesto_nombre].filter(Boolean).join(" · ") || "(puesto desconocido)"}
+                    </span>
+                  </p>
+                  <p className="text-[10px] text-white/40 mt-0.5">
+                    {fmtHaceSeg(e.hace_segundos)} · {new Date(e.ocurrido_at).toLocaleTimeString("es-GT", { hour: "2-digit", minute: "2-digit" })}
+                    {e.distancia_m != null && e.radio_m != null && (
+                      <> · a {Math.round(e.distancia_m)}m del centro (radio {Math.round(e.radio_m)}m)</>
+                    )}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

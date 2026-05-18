@@ -5,21 +5,45 @@
 
   - INTERNET / ACCESS_NETWORK_STATE: comunicación con api-server y OTA.
   - ACCESS_FINE/COARSE_LOCATION: rondas, supervisión, fichaje GPS.
+  - ACCESS_BACKGROUND_LOCATION: tracking GPS continuo del supervisor cuando
+    la app está en segundo plano (Android 10+). Sólo se solicita después de
+    que el usuario ya concedió FINE_LOCATION y activó manualmente el botón
+    "Activar GPS en segundo plano".
   - CAMERA: lectura de QR de carnet y captura de evidencias.
   - READ/WRITE EXTERNAL: descarga de PDFs/Excel exportados.
-  - FOREGROUND_SERVICE: requerido cuando se haga GPS en background (fase
-    posterior; declarado ahora para no requerir APK nueva al activarlo).
-  - POST_NOTIFICATIONS: Android 13+ para notificaciones push.
+  - FOREGROUND_SERVICE + FOREGROUND_SERVICE_LOCATION: requerido por el plugin
+    @capacitor-community/background-geolocation para correr un servicio en
+    primer plano con notificación persistente que mantiene el WebView vivo
+    mientras el supervisor está en jornada (sin esto Android mata la app a
+    los pocos minutos de quedar en background).
+  - POST_NOTIFICATIONS: Android 13+ para notificaciones push y para la
+    notificación persistente del servicio de GPS.
 -->
 <uses-permission android:name="android.permission.INTERNET" />
 <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 <uses-permission android:name="android.permission.CAMERA" />
 <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+<uses-permission android:name="android.permission.WAKE_LOCK" />
 
 <uses-feature android:name="android.hardware.camera" android:required="false" />
 <uses-feature android:name="android.hardware.location" android:required="false" />
+<uses-feature android:name="android.hardware.location.gps" android:required="false" />
+
+<!--
+  Service declarado por @capacitor-community/background-geolocation. Hay que
+  pegarlo dentro de <application>...</application> en AndroidManifest.xml.
+  El foregroundServiceType="location" es obligatorio en Android 14+
+  (targetSdk 34) cuando el servicio accede al GPS.
+
+  <service
+    android:name="com.equimaps.capacitorblbackgroundgeolocation.BackgroundGeolocationService"
+    android:foregroundServiceType="location"
+    android:exported="false" />
+-->

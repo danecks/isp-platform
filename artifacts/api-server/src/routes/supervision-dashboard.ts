@@ -205,6 +205,60 @@ supervisionDashboardRouter.get("/supervision-tracking/en-vivo", async (req, res)
   }
 });
 
+// ── GET /api/supervision-geofence-eventos?supervisor=&desde=&hasta=&limit= ──
+// Eventos de geofencing recientes (entry/exit en puestos). Por defecto las
+// últimas 24h. Sirve para el panel del admin (TabMapaEnVivo) que muestra
+// "X llegó al puesto Y a las HH:MM".
+supervisionDashboardRouter.get("/supervision-geofence-eventos", async (req, res) => {
+  if (!auth(req, res)) return;
+
+  const sup = req.query.supervisor ? Number(req.query.supervisor) : null;
+  const desde = String(req.query.desde ?? "");
+  const hasta = String(req.query.hasta ?? "");
+  const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 1000);
+  if (sup !== null && (!Number.isInteger(sup) || sup <= 0)) {
+    return res.status(400).json({ error: "supervisor inválido" });
+  }
+  if (desde && !ISO_DATE.test(desde)) return res.status(400).json({ error: "desde inválido" });
+  if (hasta && !ISO_DATE.test(hasta)) return res.status(400).json({ error: "hasta inválido" });
+
+  try {
+    const params: any[] = [];
+    const where: string[] = [];
+    if (sup) { params.push(sup); where.push(`g.supervisor_employee_id = $${params.length}`); }
+    if (desde) { params.push(desde); where.push(`g.ocurrido_at >= $${params.length}::date`); }
+    if (hasta) { params.push(hasta); where.push(`g.ocurrido_at <  ($${params.length}::date + INTERVAL '1 day')`); }
+    if (!desde && !hasta) {
+      where.push(`g.ocurrido_at >= NOW() - INTERVAL '24 hours'`);
+    }
+    const W = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    params.push(limit);
+
+    const { rows } = await pool.query(
+      `SELECT g.id, g.sesion_id, g.tipo,
+              g.supervisor_employee_id, e.nombre_completo AS supervisor_nombre,
+              g.puesto_id, po.nombre AS puesto_nombre,
+              g.cliente_id, c.nombre AS cliente_nombre,
+              g.programacion_id,
+              g.lat, g.lng, g.accuracy_m, g.distancia_m, g.radio_m,
+              g.ocurrido_at,
+              EXTRACT(EPOCH FROM (NOW() - g.ocurrido_at))::int AS hace_segundos
+         FROM supervision_geofence_eventos g
+         JOIN employees e             ON e.id  = g.supervisor_employee_id
+         LEFT JOIN puestos_operativos po ON po.id = g.puesto_id
+         LEFT JOIN clients c           ON c.id  = g.cliente_id
+         ${W}
+        ORDER BY g.ocurrido_at DESC
+        LIMIT $${params.length}`,
+      params
+    );
+    res.json({ eventos: rows, server_now: new Date().toISOString() });
+  } catch (err) {
+    logger.error({ err }, "GET /supervision-geofence-eventos error");
+    res.status(500).json({ error: "Error al cargar eventos de geofence" });
+  }
+});
+
 // ── GET /api/supervision-programaciones/:id/gps ──
 // Devuelve puntos GPS del recorrido del supervisor entre iniciada_at y completada_at.
 supervisionDashboardRouter.get("/supervision-programaciones/:id/gps", async (req, res) => {

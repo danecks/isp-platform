@@ -10,6 +10,7 @@
  */
 export * from "./platform";
 export * as Geo from "./geolocation";
+export * as BgGeo from "./backgroundLocation";
 export * as Cam from "./camera";
 export * as Store from "./storage";
 export * as Push from "./push";

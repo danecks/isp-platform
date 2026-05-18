@@ -22,6 +22,41 @@ se publican en `ispsa.net/app-updates/` y el APK los descarga al próximo arranq
 | Cambio de `appId`, `minSdkVersion`, etc. |     |     ✔     |
 | Versión nueva de `@capacitor/*`          |     |     ✔     |
 
+### Background GPS + geofencing (TASK #51)
+
+A partir de la versión que incluye `@capacitor-community/background-geolocation`,
+el supervisor puede activar **GPS en segundo plano** desde el header de su
+pantalla de jornada. Mientras está activo:
+
+- Android muestra una **notificación persistente** ("ISP Operaciones —
+  Supervisión activa") que no se puede deslizar para descartar; tocarla
+  abre la app.
+- Las lecturas se acumulan en el WebView y se descargan al servidor en
+  lotes (`POST /agente/supervision/jornada/gps-batch`, máx 200 puntos).
+- En cada lectura el cliente computa distancia a los puestos de la agenda
+  (haversine local) y dispara eventos `entry`/`exit`
+  (`POST /agente/supervision/jornada/geofence-evento`). Cruzar el
+  perímetro al entrar **auto-inicia la visita programada**.
+- El admin ve las llegadas/salidas en `Supervisión → Mapa en vivo`, panel
+  inferior "Llegadas y salidas a puestos".
+
+Pre-requisitos para que esto funcione en el APK:
+
+1. `pnpm install` en `artifacts/isp-mobile-android/` instala el plugin
+   nuevo (`@capacitor-community/background-geolocation`).
+2. Reemplazar (o mergear) `AndroidManifest.xml` con el contenido de
+   `android-templates/AndroidManifest-permissions.xml`. Cambios clave:
+   - permisos `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE`,
+     `FOREGROUND_SERVICE_LOCATION`, `WAKE_LOCK`.
+   - dentro de `<application>`, agregar el `<service>`
+     `com.equimaps.capacitorblbackgroundgeolocation.BackgroundGeolocationService`
+     con `android:foregroundServiceType="location"`.
+3. `npx cap sync android` y rebuild.
+4. La primera vez que el usuario active el botón, Android pedirá ubicación
+   "todo el tiempo" — el supervisor debe aceptar; si elige "sólo mientras
+   se usa la app", el servicio igual arranca pero deja de reportar al
+   minimizar.
+
 > Regla simple: si tocás algo de `artifacts/isp-mobile-android/` que no sea web,
 > probablemente necesitás APK nueva.
 

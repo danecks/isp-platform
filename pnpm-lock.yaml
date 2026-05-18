@@ -179,6 +179,9 @@ importers:
 
   artifacts/isp-mobile-android:
     dependencies:
+      '@capacitor-community/background-geolocation':
+        specifier: ^1.2.23
+        version: 1.2.26(@capacitor/core@6.2.1)
       '@capacitor/android':
         specifier: ^6.2.1
         version: 6.2.1(@capacitor/core@6.2.1)
@@ -826,6 +829,11 @@ packages:
   '@bramus/specificity@2.4.2':
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
+
+  '@capacitor-community/background-geolocation@1.2.26':
+    resolution: {integrity: sha512-kuva8VQ6zM+uIKgHUJTP87IYbmGKhX7DZw62JYfGZ888h4Xr5zeN+UTR6KBRHQVrGBpzSfbv+6/HQVuHYa7W5A==}
+    peerDependencies:
+      '@capacitor/core': '>=3.0.0'
 
   '@capacitor/android@6.2.1':
     resolution: {integrity: sha512-8gd4CIiQO5LAIlPIfd5mCuodBRxMMdZZEdj8qG8m+dQ1sQ2xyemVpzHmRK8qSCHorsBUCg3D62j2cp6bEBAkdw==}
@@ -2996,6 +3004,7 @@ packages:
   '@xmldom/xmldom@0.8.12':
     resolution: {integrity: sha512-9k/gHF6n/pAi/9tqr3m3aqkuiNosYTurLLUtc7xQ9sxB/wm7WPygCv8GYa6mS0fLJEHhqMC1ATYhz++U/lRHqg==}
     engines: {node: '>=10.0.0'}
+    deprecated: this version has critical issues, please update to the latest version
 
   '@xmldom/xmldom@0.9.10':
     resolution: {integrity: sha512-A9gOqLdi6cV4ibazAjcQufGj0B1y/vDqYrcuP6d/6x8P27gRS8643Dj9o1dEKtB6O7fwxb2FgBmJS2mX7gpvdw==}
@@ -6085,6 +6094,10 @@ snapshots:
   '@bramus/specificity@2.4.2':
     dependencies:
       css-tree: 3.2.1
+
+  '@capacitor-community/background-geolocation@1.2.26(@capacitor/core@6.2.1)':
+    dependencies:
+      '@capacitor/core': 6.2.1
 
   '@capacitor/android@6.2.1(@capacitor/core@6.2.1)':
     dependencies:
