@@ -310,3 +310,110 @@ supervisionDashboardRouter.get("/supervision-programaciones/:id/gps", async (req
     res.status(500).json({ error: "Error al cargar GPS" });
   }
 });
+
+// ── GET /api/supervision-programaciones/:id/geofence-eventos ────────────────
+// Devuelve los eventos entry/exit asociados a una visita programada con la
+// información necesaria para dibujar markers sobre el mapa: timestamp, lat/lng,
+// distancia al centro del puesto y radio. También calcula la permanencia total
+// dentro del geofence (suma de pares entry → exit) y detecta si la visita fue
+// auto-iniciada por un entry (cuando el primer entry coincide con iniciada_at).
+supervisionDashboardRouter.get("/supervision-programaciones/:id/geofence-eventos", async (req, res) => {
+  if (!auth(req, res)) return;
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "id inválido" });
+
+  try {
+    const { rows: prog } = await pool.query(
+      `SELECT id, supervisor_employee_id, puesto_id, iniciada_at, completada_at
+         FROM supervision_visitas_programadas WHERE id = $1`,
+      [id]
+    );
+    if (!prog[0]) return res.status(404).json({ error: "No encontrada" });
+
+    // Filtramos eventos por programacion_id directo y, como fallback (para
+    // datos antiguos donde el evento se guardó sin programacion_id), también
+    // por supervisor + puesto dentro de la ventana de la visita. El fallback
+    // SÓLO se activa si la visita ya tiene iniciada_at — si está pendiente
+    // (iniciada_at = NULL), correlacionar por supervisor+puesto traería
+    // eventos históricos de visitas anteriores, contaminando la permanencia
+    // y la lista de llegadas/salidas.
+    const desde: Date | null = prog[0].iniciada_at ? new Date(prog[0].iniciada_at) : null;
+    const hasta: Date = prog[0].completada_at ? new Date(prog[0].completada_at) : new Date();
+
+    type EventoRow = {
+      id: number;
+      tipo: "entry" | "exit";
+      lat: number;
+      lng: number;
+      accuracy_m: number | null;
+      distancia_m: number | null;
+      radio_m: number | null;
+      ocurrido_at: string;
+      puesto_id: number | null;
+      puesto_nombre: string | null;
+    };
+
+    const { rows: eventos } = await pool.query<EventoRow>(
+      `SELECT g.id, g.tipo, g.lat, g.lng, g.accuracy_m, g.distancia_m, g.radio_m,
+              g.ocurrido_at, g.puesto_id,
+              po.nombre AS puesto_nombre
+         FROM supervision_geofence_eventos g
+         LEFT JOIN puestos_operativos po ON po.id = g.puesto_id
+        WHERE g.programacion_id = $1
+           OR (
+             $2::int IS NOT NULL
+             AND $4::timestamptz IS NOT NULL
+             AND g.programacion_id IS NULL
+             AND g.supervisor_employee_id = $3
+             AND g.puesto_id = $2
+             AND g.ocurrido_at >= $4::timestamptz - INTERVAL '5 minutes'
+             AND g.ocurrido_at <= $5::timestamptz + INTERVAL '5 minutes'
+           )
+        ORDER BY g.ocurrido_at ASC`,
+      [id, prog[0].puesto_id, prog[0].supervisor_employee_id, desde, hasta]
+    );
+
+    // Permanencia: emparejamos entry → exit consecutivos. Si la visita sigue
+    // abierta y el último evento es entry, sumamos hasta NOW.
+    let permanenciaSeg = 0;
+    let abierto: Date | null = null;
+    for (const ev of eventos) {
+      const t = new Date(ev.ocurrido_at).getTime();
+      if (ev.tipo === "entry" && abierto == null) {
+        abierto = new Date(t);
+      } else if (ev.tipo === "exit" && abierto != null) {
+        permanenciaSeg += Math.max(0, Math.round((t - abierto.getTime()) / 1000));
+        abierto = null;
+      }
+    }
+    if (abierto != null) {
+      const fin = prog[0].completada_at ? new Date(prog[0].completada_at).getTime() : Date.now();
+      permanenciaSeg += Math.max(0, Math.round((fin - abierto.getTime()) / 1000));
+    }
+
+    // Auto-iniciada: el primer entry está a ≤ 60s de iniciada_at (el handler
+    // de geofence-evento es quien marca iniciada_at en ese caso).
+    let autoIniciada = false;
+    if (prog[0].iniciada_at && eventos.length > 0) {
+      const primerEntry = eventos.find((e) => e.tipo === "entry");
+      if (primerEntry) {
+        const dt = Math.abs(
+          new Date(primerEntry.ocurrido_at).getTime() -
+          new Date(prog[0].iniciada_at).getTime()
+        );
+        autoIniciada = dt <= 60_000;
+      }
+    }
+
+    res.json({
+      eventos,
+      permanencia_segundos: permanenciaSeg,
+      auto_iniciada: autoIniciada,
+      iniciada_at: prog[0].iniciada_at,
+      completada_at: prog[0].completada_at,
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /supervision-programaciones/:id/geofence-eventos error");
+    res.status(500).json({ error: "Error al cargar eventos de geofence" });
+  }
+});

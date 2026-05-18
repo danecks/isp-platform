@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, MapPin } from "lucide-react";
 import type {
   SupervisionProgramacion, SupervisorDisponible, ProgEstado,
 } from "./types";
 import { TIPO_LABEL, ESTADO_LABEL, PRIORIDAD_LABEL, ESTADO_COLOR, PRIORIDAD_COLOR } from "./types";
 import { api, hoyISO, en7DiasISO } from "./api";
 import { FormProgramacion, type ClienteSlim, type PuestoSlim, type ZonaSlim } from "./FormProgramacion";
+import { VisitaDetalle } from "./VisitaDetalle";
 
 export function TabProgramacion() {
   const [items, setItems] = useState<SupervisionProgramacion[]>([]);
@@ -16,6 +17,7 @@ export function TabProgramacion() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [detalle, setDetalle] = useState<SupervisionProgramacion | null>(null);
 
   const [fSupervisor, setFSupervisor] = useState<string>("");
   const [fDesde, setFDesde] = useState(hoyISO());
@@ -147,7 +149,12 @@ export function TabProgramacion() {
                       ))}
                     </select>
                   </td>
-                  <td className="px-2 py-1.5 text-right">
+                  <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                    <button aria-label="Ver detalle" title="Ver recorrido y llegadas"
+                      onClick={() => setDetalle(p)}
+                      className="text-cyan-300 hover:text-cyan-200 p-1 mr-1">
+                      <MapPin className="w-3.5 h-3.5" />
+                    </button>
                     <button aria-label="Eliminar" onClick={() => eliminar(p.id)}
                       className="text-rose-400 hover:text-rose-300 p-1">
                       <Trash2 className="w-3.5 h-3.5" />
@@ -158,6 +165,10 @@ export function TabProgramacion() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {detalle && (
+        <VisitaDetalle visita={detalle} onClose={() => setDetalle(null)} />
       )}
 
       {showForm && (
