@@ -12,6 +12,8 @@ import { db, anticiposTable } from "@workspace/db";
 import { eq, desc, and, gte, lte } from "drizzle-orm";
 import { DIAS_HABILITADOS, getPeriodoActivo } from "../services/whatsapp/anticipo-session";
 import { calcularLimiteAnticipo } from "../services/anticipo-limite";
+import { notificarAprobacionPendientePush } from "../services/push-notificaciones";
+import { logger as pushLogger } from "../lib/logger";
 
 const anticiposRouter = Router();
 
@@ -159,6 +161,18 @@ anticiposRouter.post("/anticipos", async (req, res) => {
         updatedAt: new Date(),
       })
       .returning();
+
+    // Push a aprobadores (admin/rrhh) — fire and forget.
+    if (created.estado === "pendiente") {
+      notificarAprobacionPendientePush({
+        tipo: "anticipo",
+        solicitudId: created.id,
+        empleadoNombre: created.nombre,
+        resumen: `Q${created.cantidad} (${created.origen})`,
+      }).catch((err) => {
+        pushLogger.warn({ err, anticipoId: created.id }, "Push de anticipo pendiente falló (no bloqueante)");
+      });
+    }
 
     res.status(201).json(created);
   } catch (err) {

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool, todayGT } from "@workspace/db";
 import pino from "pino";
+import { notificarAprobacionPendientePush } from "../services/push-notificaciones";
 
 const logger = pino({ name: "vacaciones" });
 export const vacacionesRouter = Router();
@@ -588,6 +589,22 @@ vacacionesRouter.post("/vacaciones", async (req, res) => {
     }
 
     await client.query("COMMIT");
+
+    // Push a aprobadores cuando queda pendiente (vacaciones_programadas) —
+    // fire and forget para no bloquear la respuesta.
+    if (evento.estado === "pendiente") {
+      const rango = fecha_fin && fecha_fin !== fecha_inicio
+        ? `${fecha_inicio} → ${fecha_fin}`
+        : fecha_inicio;
+      notificarAprobacionPendientePush({
+        tipo: "vacaciones",
+        solicitudId: evento.id,
+        empleadoNombre: emp.nombre_completo,
+        resumen: `Programadas ${rango}`,
+      }).catch((err) => {
+        logger.warn({ err, eventoId: evento.id }, "Push de vacaciones pendiente falló (no bloqueante)");
+      });
+    }
 
     res.status(201).json({
       ok: true,

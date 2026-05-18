@@ -1,6 +1,11 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
+import {
+  notificarAprobacionPendientePush,
+  ROLES_APROBADORES_RRHH,
+  ROLES_APROBADORES_OPERACIONES,
+} from "../services/push-notificaciones";
 
 export const solicitudesCambioRouter = Router();
 
@@ -140,7 +145,28 @@ solicitudesCambioRouter.post("/solicitudes-cambio", async (req, res) => {
       ]
     );
     const { rows: full } = await pool.query(`${SELECT_BASE} WHERE s.id = $1`, [rows[0].id]);
-    res.status(201).json(full[0]);
+    const solicitud = full[0];
+
+    // Push a aprobadores según el estado inicial — fire and forget.
+    const rolesAprob =
+      solicitud.estado === "pendiente_operaciones"
+        ? ROLES_APROBADORES_OPERACIONES
+        : solicitud.estado === "escalado_admin"
+          ? (["admin"] as const)
+          : ROLES_APROBADORES_RRHH;
+    if (["pendiente_rrhh", "pendiente_operaciones", "escalado_admin"].includes(solicitud.estado)) {
+      notificarAprobacionPendientePush({
+        tipo: "solicitud_cambio",
+        solicitudId: solicitud.id,
+        empleadoNombre: solicitud.employee_nombre,
+        resumen: `${solicitud.tipo_cambio} (${solicitud.origen_modulo})`,
+        roles: rolesAprob,
+      }).catch((err) => {
+        logger.warn({ err, solicitudId: solicitud.id }, "Push de solicitud-cambio pendiente falló (no bloqueante)");
+      });
+    }
+
+    res.status(201).json(solicitud);
   } catch (err) {
     logger.error({ err }, "POST /solicitudes-cambio error");
     res.status(500).json({ error: "Error al crear solicitud" });
