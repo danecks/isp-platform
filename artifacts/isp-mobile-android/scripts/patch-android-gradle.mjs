@@ -24,6 +24,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const buildGradle = resolve(root, "android/build.gradle");
 const variablesGradle = resolve(root, "android/variables.gradle");
+const appBuildGradle = resolve(root, "android/app/build.gradle");
 const wrapperProps = resolve(
   root,
   "android/gradle/wrapper/gradle-wrapper.properties",
@@ -130,7 +131,45 @@ async function patchVariablesGradle() {
   return false;
 }
 
+async function patchAppBuildGradle() {
+  if (!(await exists(appBuildGradle))) {
+    console.log(`[patch-android-gradle] SKIP: ${appBuildGradle} no existe`);
+    return false;
+  }
+  let src = await readFile(appBuildGradle, "utf8");
+  const before = src;
+  // Capacitor 6.x hardcodea `minSdkVersion 24` / `targetSdkVersion 34` /
+  // `compileSdk 34` directamente en defaultConfig (NO referenciando
+  // rootProject.ext). Forzamos los valores acá para el merger del manifest.
+  const bumps = [
+    { re: /(\bminSdkVersion\s+)(\d+)/, target: MIN_SDK_TARGET, name: "minSdkVersion" },
+    { re: /(\btargetSdkVersion\s+)(\d+)/, target: TARGET_SDK_TARGET, name: "targetSdkVersion" },
+    { re: /(\bcompileSdkVersion\s+)(\d+)/, target: COMPILE_SDK_TARGET, name: "compileSdkVersion" },
+    { re: /(\bcompileSdk\s+)(\d+)/, target: COMPILE_SDK_TARGET, name: "compileSdk" },
+  ];
+  for (const { re, target, name } of bumps) {
+    const m = src.match(re);
+    if (!m) {
+      console.log(`[patch-android-gradle] app/build.gradle: ${name} no encontrado`);
+      continue;
+    }
+    const cur = parseInt(m[2], 10);
+    if (cur < target) {
+      src = src.replace(re, `$1${target}`);
+      console.log(`[patch-android-gradle] app/build.gradle ${name} ${cur} → ${target}`);
+    } else {
+      console.log(`[patch-android-gradle] app/build.gradle ${name} ya en ${cur}`);
+    }
+  }
+  if (src !== before) {
+    await writeFile(appBuildGradle, src, "utf8");
+    return true;
+  }
+  return false;
+}
+
 await patchAgp();
 await patchGradleWrapper();
 await patchVariablesGradle();
+await patchAppBuildGradle();
 console.log("[patch-android-gradle] OK");
