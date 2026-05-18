@@ -31,12 +31,20 @@ interface GeofenceEv {
   puesto_id: number | null;
   puesto_nombre: string | null;
 }
+interface PuestoGeo {
+  id: number;
+  nombre: string | null;
+  lat: number;
+  lng: number;
+  radio_m: number | null;
+}
 interface GeofenceResp {
   eventos: GeofenceEv[];
   permanencia_segundos: number;
   auto_iniciada: boolean;
   iniciada_at: string | null;
   completada_at: string | null;
+  puesto: PuestoGeo | null;
 }
 
 const GT_CENTER: [number, number] = [14.6349, -90.5069];
@@ -60,6 +68,11 @@ const iconFin = L.divIcon({
   className: "",
   html: `<div style="background:#a78bfa;width:14px;height:14px;border-radius:50%;border:2px solid white;box-shadow:0 0 0 1px #4c1d95;"></div>`,
   iconSize: [18, 18], iconAnchor: [9, 9],
+});
+const iconPuesto = L.divIcon({
+  className: "",
+  html: `<div style="background:#0ea5e9;width:16px;height:16px;border-radius:3px;border:2px solid white;box-shadow:0 0 0 1px #0c4a6e;transform:rotate(45deg);"></div>`,
+  iconSize: [20, 20], iconAnchor: [10, 10],
 });
 
 function FitBounds({ puntos }: { puntos: [number, number][] }) {
@@ -113,10 +126,12 @@ export function VisitaDetalle({ visita, onClose }: { visita: SupervisionPrograma
     () => (geo?.eventos || []).map(e => [Number(e.lat), Number(e.lng)]),
     [geo]
   );
-  const todosPuntos = useMemo(
-    () => [...trackLatLng, ...eventosLatLng],
-    [trackLatLng, eventosLatLng]
-  );
+  const puesto = geo?.puesto ?? null;
+  const todosPuntos = useMemo(() => {
+    const arr: [number, number][] = [...trackLatLng, ...eventosLatLng];
+    if (puesto) arr.push([puesto.lat, puesto.lng]);
+    return arr;
+  }, [trackLatLng, eventosLatLng, puesto]);
 
   const numEntries = (geo?.eventos || []).filter(e => e.tipo === "entry").length;
   const numExits   = (geo?.eventos || []).filter(e => e.tipo === "exit").length;
@@ -210,6 +225,35 @@ export function VisitaDetalle({ visita, onClose }: { visita: SupervisionPrograma
                       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     />
                     <FitBounds puntos={todosPuntos} />
+
+                    {puesto && (
+                      <>
+                        {puesto.radio_m != null && puesto.radio_m > 0 && (
+                          <Circle
+                            center={[puesto.lat, puesto.lng]}
+                            radius={puesto.radio_m}
+                            pathOptions={{
+                              color: "#0ea5e9",
+                              fillColor: "#0ea5e9",
+                              fillOpacity: 0.12,
+                              weight: 2,
+                              opacity: 0.7,
+                            }}
+                          />
+                        )}
+                        <Marker position={[puesto.lat, puesto.lng]} icon={iconPuesto}>
+                          <Popup>
+                            <div style={{ fontSize: 12, minWidth: 180 }}>
+                              <strong style={{ color: "#0369a1" }}>Puesto</strong><br />
+                              {puesto.nombre || "—"}<br />
+                              {puesto.radio_m != null && puesto.radio_m > 0
+                                ? <>Radio del perímetro: {Math.round(puesto.radio_m)}m</>
+                                : <em style={{ color: "#64748b" }}>Sin radio configurado</em>}
+                            </div>
+                          </Popup>
+                        </Marker>
+                      </>
+                    )}
 
                     {trackLatLng.length >= 2 && (
                       <Polyline positions={trackLatLng} pathOptions={{ color: "#22d3ee", weight: 3, opacity: 0.75 }} />

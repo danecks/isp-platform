@@ -362,11 +362,28 @@ supervisionDashboardRouter.get("/supervision-programaciones/:id/geofence-eventos
 
   try {
     const { rows: prog } = await pool.query(
-      `SELECT id, supervisor_employee_id, puesto_id, iniciada_at, completada_at
-         FROM supervision_visitas_programadas WHERE id = $1`,
+      `SELECT vp.id, vp.supervisor_employee_id, vp.puesto_id, vp.iniciada_at, vp.completada_at,
+              po.nombre        AS puesto_nombre,
+              pg.latitud       AS puesto_lat,
+              pg.longitud      AS puesto_lng,
+              pg.radio_metros  AS puesto_radio_m
+         FROM supervision_visitas_programadas vp
+         LEFT JOIN puestos_operativos po ON po.id = vp.puesto_id
+         LEFT JOIN puestos_gps       pg ON pg.puesto_id = vp.puesto_id
+        WHERE vp.id = $1`,
       [id]
     );
     if (!prog[0]) return res.status(404).json({ error: "No encontrada" });
+
+    const puesto = prog[0].puesto_id != null && prog[0].puesto_lat != null && prog[0].puesto_lng != null
+      ? {
+          id: prog[0].puesto_id as number,
+          nombre: prog[0].puesto_nombre as string | null,
+          lat: Number(prog[0].puesto_lat),
+          lng: Number(prog[0].puesto_lng),
+          radio_m: prog[0].puesto_radio_m != null ? Number(prog[0].puesto_radio_m) : null,
+        }
+      : null;
 
     // Filtramos eventos por programacion_id directo y, como fallback (para
     // datos antiguos donde el evento se guardó sin programacion_id), también
@@ -449,6 +466,7 @@ supervisionDashboardRouter.get("/supervision-programaciones/:id/geofence-eventos
       auto_iniciada: autoIniciada,
       iniciada_at: prog[0].iniciada_at,
       completada_at: prog[0].completada_at,
+      puesto,
     });
   } catch (err) {
     logger.error({ err }, "GET /supervision-programaciones/:id/geofence-eventos error");
