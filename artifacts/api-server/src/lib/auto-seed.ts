@@ -6519,6 +6519,17 @@ Por favor ingresa al sistema o responde para continuar.',
          ON supervision_novedades (sesion_id)
          WHERE puesto_id IS NULL`
     );
+    // SUPERV-NOV-02: columna `tipo` para distinguir novedades de inspección
+    // ordinaria vs. alertas automáticas (p.ej. abandono de puesto detectado
+    // por geofence). Default 'inspeccion' para retrocompatibilidad.
+    await pool.query(
+      `ALTER TABLE supervision_novedades
+         ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'inspeccion'`
+    );
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS supnov_tipo_fecha
+         ON supervision_novedades(tipo, fecha DESC)`
+    );
     logger.info("Auto-migrate: SUPERV-NOV-01 novedades verificada/creada");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: SUPERV-NOV-01 — error (no bloqueante)");

@@ -56,6 +56,43 @@ supervisionDashboardRouter.get("/supervision-dashboard", async (req, res) => {
     const k = kpiRows[0] || {};
     const cumplimiento = k.total > 0 ? Math.round((k.completadas / k.total) * 1000) / 10 : 0;
 
+    // SUPERV-NOV-02: contador y listado breve de abandonos de puesto
+    // detectados en el rango (o últimos 7 días si no se filtra). Se
+    // calcula sobre supervision_novedades.tipo = 'abandono_puesto'
+    // aplicando los mismos filtros de fecha/supervisor del KPI principal.
+    const novParams: any[] = [];
+    const novWhere: string[] = [`n.tipo = 'abandono_puesto'`];
+    if (desde) { novParams.push(desde); novWhere.push(`n.fecha >= $${novParams.length}`); }
+    if (hasta) { novParams.push(hasta); novWhere.push(`n.fecha <= $${novParams.length}`); }
+    if (!desde && !hasta) {
+      novWhere.push(`n.fecha >= (CURRENT_DATE - INTERVAL '7 days')`);
+      novWhere.push(`n.fecha <= CURRENT_DATE`);
+    }
+    if (sup) { novParams.push(sup); novWhere.push(`n.supervisor_employee_id = $${novParams.length}`); }
+    const NW = `WHERE ${novWhere.join(" AND ")}`;
+
+    const { rows: abandonoRows } = await pool.query(
+      `SELECT n.id,
+              to_char(n.generada_at, 'YYYY-MM-DD HH24:MI') AS generada_at,
+              n.observaciones,
+              po.nombre AS puesto_nombre,
+              c.nombre  AS cliente_nombre,
+              e.nombre_completo AS supervisor_nombre,
+              n.datos_consolidados AS datos
+         FROM supervision_novedades n
+         LEFT JOIN puestos_operativos po ON po.id = n.puesto_id
+         LEFT JOIN clients c             ON c.id  = n.cliente_id
+         LEFT JOIN employees e           ON e.id  = n.supervisor_employee_id
+         ${NW}
+         ORDER BY n.generada_at DESC
+         LIMIT 10`,
+      novParams
+    );
+    const totalAbandonos = abandonoRows.length === 0 ? 0 : (await pool.query(
+      `SELECT COUNT(*)::int AS n FROM supervision_novedades n ${NW}`,
+      novParams
+    )).rows[0]?.n ?? 0;
+
     const { rows: porSupervisor } = await pool.query(
       `SELECT
          sp.supervisor_employee_id AS id,
@@ -74,8 +111,9 @@ supervisionDashboardRouter.get("/supervision-dashboard", async (req, res) => {
     );
 
     res.json({
-      kpis: { ...k, cumplimiento_pct: cumplimiento },
+      kpis: { ...k, cumplimiento_pct: cumplimiento, abandonos: totalAbandonos },
       por_supervisor: porSupervisor,
+      abandonos_recientes: abandonoRows,
     });
   } catch (err) {
     logger.error({ err }, "GET /supervision-dashboard error");
