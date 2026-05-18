@@ -1,0 +1,142 @@
+2026-05-18T23:46:17.6461591Z ##[group]Run ./gradlew assembleRelease --no-daemon
+2026-05-18T23:46:17.6462002Z [36;1m./gradlew assembleRelease --no-daemon[0m
+2026-05-18T23:46:17.6494717Z shell: /usr/bin/bash -e {0}
+2026-05-18T23:46:17.6495033Z env:
+2026-05-18T23:46:17.6495313Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-05-18T23:46:17.6495749Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.19-10/x64
+2026-05-18T23:46:17.6496238Z   JAVA_HOME_17_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.19-10/x64
+2026-05-18T23:46:17.6496630Z   ANDROID_HOME: /usr/local/lib/android/sdk
+2026-05-18T23:46:17.6496910Z   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+2026-05-18T23:46:17.6497396Z   KEYSTORE_PATH: /home/runner/work/isp-platform/isp-platform/artifacts/isp-mobile-android/keystore.jks
+2026-05-18T23:46:17.6497991Z   KEYSTORE_PASSWORD: ***
+
+2026-05-18T23:46:17.6498235Z   KEY_ALIAS: ***
+2026-05-18T23:46:17.6498463Z   KEY_PASSWORD: ***
+2026-05-18T23:46:17.6498664Z   MOBILE_VERSION_NAME: 0.1.0
+2026-05-18T23:46:17.6498912Z   MOBILE_VERSION_CODE: 29652464
+2026-05-18T23:46:17.6499129Z ##[endgroup]
+2026-05-18T23:46:17.7463680Z Downloading https://services.gradle.org/distributions/gradle-8.9-all.zip
+2026-05-18T23:46:20.0811263Z .....................10%......................20%.....................30%......................40%.....................50%......................60%.....................70%......................80%.....................90%......................100%
+2026-05-18T23:46:23.5363954Z 
+2026-05-18T23:46:23.5364833Z Welcome to Gradle 8.9!
+2026-05-18T23:46:23.5366766Z 
+2026-05-18T23:46:23.5367546Z Here are the highlights of this release:
+2026-05-18T23:46:23.5368175Z  - Enhanced Error and Warning Messages
+2026-05-18T23:46:23.5368731Z  - IDE Integration Improvements
+2026-05-18T23:46:23.5369529Z  - Daemon JVM Information
+2026-05-18T23:46:23.5369857Z 
+2026-05-18T23:46:23.5370445Z For more details see https://docs.gradle.org/8.9/release-notes.html
+2026-05-18T23:46:23.5370776Z 
+2026-05-18T23:46:23.6378053Z To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.9/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+2026-05-18T23:46:25.2354401Z Daemon will be stopped at the end of the build 
+2026-05-18T23:47:02.4349787Z 
+2026-05-18T23:47:02.4410379Z > Configure project :app
+2026-05-18T23:47:02.4430762Z WARNING: Using flatDir should be avoided because it doesn't support any meta-data formats.
+2026-05-18T23:47:32.5340710Z 
+2026-05-18T23:47:32.5360576Z > Configure project :capacitor-cordova-android-plugins
+2026-05-18T23:47:32.5380510Z WARNING: Using flatDir should be avoided because it doesn't support any meta-data formats.
+2026-05-18T23:47:37.0355583Z 
+2026-05-18T23:47:37.0373345Z > Task :app:preBuild UP-TO-DATE
+2026-05-18T23:47:37.0381565Z > Task :app:preReleaseBuild UP-TO-DATE
+2026-05-18T23:47:37.1350616Z > Task :capacitor-android:preBuild UP-TO-DATE
+2026-05-18T23:47:37.1355394Z > Task :capacitor-android:preReleaseBuild UP-TO-DATE
+2026-05-18T23:47:37.2358828Z > Task :app:javaPreCompileRelease
+2026-05-18T23:47:37.2390464Z > Task :capacitor-camera:preBuild UP-TO-DATE
+2026-05-18T23:47:37.2391600Z > Task :capacitor-camera:preReleaseBuild UP-TO-DATE
+2026-05-18T23:47:37.2414715Z > Task :capacitor-android:writeReleaseAarMetadata
+2026-05-18T23:47:37.2430293Z > Task :capacitor-community-background-geolocation:preBuild UP-TO-DATE
+2026-05-18T23:47:37.2450487Z > Task :capacitor-community-background-geolocation:preReleaseBuild UP-TO-DATE
+2026-05-18T23:47:37.2470114Z > Task :capacitor-camera:writeReleaseAarMetadata
+2026-05-18T23:47:37.2471388Z > Task :capacitor-cordova-android-plugins:preBuild UP-TO-DATE
+2026-05-18T23:47:37.2490310Z > Task :capacitor-cordova-android-plugins:preReleaseBuild UP-TO-DATE
+2026-05-18T23:47:37.2510411Z > Task :capacitor-community-background-geolocation:writeReleaseAarMetadata
+2026-05-18T23:47:37.3359645Z > Task :capacitor-geolocation:preBuild UP-TO-DATE
+2026-05-18T23:47:37.3385879Z > Task :capacitor-geolocation:preReleaseBuild UP-TO-DATE
+2026-05-18T23:47:37.3390875Z > Task :capacitor-cordova-android-plugins:writeReleaseAarMetadata
+2026-05-18T23:47:37.3392065Z > Task :capacitor-preferences:preBuild UP-TO-DATE
+2026-05-18T23:47:37.3393149Z > Task :capacitor-preferences:preReleaseBuild UP-TO-DATE
+2026-05-18T23:47:37.3394221Z > Task :capacitor-geolocation:writeReleaseAarMetadata
+2026-05-18T23:47:37.3395354Z > Task :capacitor-push-notifications:preBuild UP-TO-DATE
+2026-05-18T23:47:37.3396521Z > Task :capacitor-push-notifications:preReleaseBuild UP-TO-DATE
+2026-05-18T23:47:37.3397642Z > Task :capacitor-preferences:writeReleaseAarMetadata
+2026-05-18T23:47:37.3398771Z > Task :capgo-capacitor-updater:preBuild UP-TO-DATE
+2026-05-18T23:47:37.3400149Z > Task :capgo-capacitor-updater:preReleaseBuild UP-TO-DATE
+2026-05-18T23:47:37.3401339Z > Task :capacitor-push-notifications:writeReleaseAarMetadata
+2026-05-18T23:47:37.3402475Z > Task :capgo-capacitor-updater:writeReleaseAarMetadata
+2026-05-18T23:47:37.3403397Z > Task :app:generateReleaseResValues
+2026-05-18T23:47:48.2360498Z > Task :capacitor-android:generateReleaseResValues
+2026-05-18T23:47:48.2361767Z > Task :capacitor-android:generateReleaseResources
+2026-05-18T23:47:48.2380276Z > Task :app:checkReleaseAarMetadata
+2026-05-18T23:47:48.3351366Z > Task :capacitor-android:packageReleaseResources
+2026-05-18T23:47:48.3372051Z > Task :capacitor-camera:generateReleaseResValues
+2026-05-18T23:47:48.3400139Z > Task :capacitor-camera:generateReleaseResources
+2026-05-18T23:47:48.4363505Z > Task :capacitor-camera:packageReleaseResources
+2026-05-18T23:47:48.4473003Z > Task :capacitor-community-background-geolocation:generateReleaseResValues
+2026-05-18T23:47:48.4474369Z > Task :capacitor-community-background-geolocation:generateReleaseResources
+2026-05-18T23:47:48.4475652Z > Task :capacitor-community-background-geolocation:packageReleaseResources
+2026-05-18T23:47:48.4476877Z > Task :capacitor-cordova-android-plugins:generateReleaseResValues
+2026-05-18T23:47:48.4482975Z > Task :capacitor-cordova-android-plugins:generateReleaseResources
+2026-05-18T23:47:48.4484245Z > Task :capacitor-cordova-android-plugins:packageReleaseResources
+2026-05-18T23:47:48.4485406Z > Task :capacitor-geolocation:generateReleaseResValues
+2026-05-18T23:47:48.4509684Z > Task :capacitor-geolocation:generateReleaseResources
+2026-05-18T23:47:48.4510691Z > Task :capacitor-geolocation:packageReleaseResources
+2026-05-18T23:47:48.4511641Z > Task :capacitor-preferences:generateReleaseResValues
+2026-05-18T23:47:48.4512577Z > Task :capacitor-preferences:generateReleaseResources
+2026-05-18T23:47:48.4513535Z > Task :capacitor-preferences:packageReleaseResources
+2026-05-18T23:47:48.4514525Z > Task :capacitor-push-notifications:generateReleaseResValues
+2026-05-18T23:47:48.4515566Z > Task :capacitor-push-notifications:generateReleaseResources
+2026-05-18T23:47:48.4516923Z > Task :capacitor-push-notifications:packageReleaseResources
+2026-05-18T23:47:48.4517911Z > Task :capgo-capacitor-updater:generateReleaseResValues
+2026-05-18T23:47:48.4518852Z > Task :capgo-capacitor-updater:generateReleaseResources
+2026-05-18T23:47:48.5538849Z > Task :capgo-capacitor-updater:packageReleaseResources
+2026-05-18T23:47:48.6530288Z > Task :app:mapReleaseSourceSetPaths
+2026-05-18T23:47:48.6552467Z > Task :app:generateReleaseResources
+2026-05-18T23:47:50.9341494Z > Task :app:createReleaseCompatibleScreenManifests
+2026-05-18T23:47:50.9400328Z > Task :app:extractDeepLinksRelease
+2026-05-18T23:47:50.9420179Z > Task :capacitor-android:extractDeepLinksRelease
+2026-05-18T23:47:52.1340751Z > Task :capacitor-android:processReleaseManifest
+2026-05-18T23:47:52.1380239Z > Task :capacitor-camera:extractDeepLinksRelease
+2026-05-18T23:47:52.2351957Z > Task :capacitor-camera:processReleaseManifest
+2026-05-18T23:47:52.2384945Z > Task :capacitor-community-background-geolocation:extractDeepLinksRelease
+2026-05-18T23:47:52.2431689Z > Task :capacitor-community-background-geolocation:processReleaseManifest
+2026-05-18T23:47:52.2450292Z > Task :capacitor-cordova-android-plugins:extractDeepLinksRelease
+2026-05-18T23:47:52.2471316Z > Task :capacitor-cordova-android-plugins:processReleaseManifest
+2026-05-18T23:47:52.2492428Z > Task :capacitor-geolocation:extractDeepLinksRelease
+2026-05-18T23:47:52.2531449Z > Task :capacitor-geolocation:processReleaseManifest
+2026-05-18T23:47:52.3342914Z > Task :capacitor-preferences:extractDeepLinksRelease
+2026-05-18T23:47:52.3360265Z > Task :capacitor-preferences:processReleaseManifest
+2026-05-18T23:47:52.3380191Z > Task :capacitor-push-notifications:extractDeepLinksRelease
+2026-05-18T23:47:52.3381181Z > Task :capacitor-push-notifications:processReleaseManifest
+2026-05-18T23:47:52.3400153Z > Task :capgo-capacitor-updater:extractDeepLinksRelease
+2026-05-18T23:47:52.3419600Z > Task :capgo-capacitor-updater:processReleaseManifest
+2026-05-18T23:47:52.9367133Z 
+2026-05-18T23:47:52.9391315Z /home/runner/work/isp-platform/isp-platform/artifacts/isp-mobile-android/android/app/src/main/AndroidManifest.xml Error:
+2026-05-18T23:47:52.9392759Z > Task :app:processReleaseMainManifest FAILED
+2026-05-18T23:47:52.9429994Z 	uses-sdk:minSdkVersion 24 cannot be smaller than version 26 declared in library [:capacitor-geolocation] /home/runner/work/isp-platform/isp-platform/node_modules/.pnpm/@capacitor+geolocation@6.1.1_@capacitor+core@6.2.1/node_modules/@capacitor/geolocation/android/build/intermediates/merged_manifest/release/processReleaseManifest/AndroidManifest.xml as the library might be using APIs not available in 24
+2026-05-18T23:47:52.9432672Z 
+2026-05-18T23:47:52.9450150Z 	Suggestion: use a compatible library with a minSdk of at most 24,
+2026-05-18T23:47:52.9451059Z 		or increase this project's minSdk version to at least 26,
+2026-05-18T23:47:52.9452326Z 		or use tools:overrideLibrary="com.capacitorjs.plugins.geolocation" to force usage (may lead to runtime failures)
+2026-05-18T23:47:52.9454118Z See https://developer.android.com/r/studio-ui/build/manifest-merger for more information about the manifest merger.
+2026-05-18T23:47:52.9469543Z 
+2026-05-18T23:47:53.3340693Z 
+2026-05-18T23:47:53.3360294Z > Task :app:mergeReleaseResources
+2026-05-18T23:47:53.4345537Z 
+2026-05-18T23:47:53.4346232Z 57 actionable tasks: 57 executed
+2026-05-18T23:47:53.4370116Z FAILURE: Build failed with an exception.
+2026-05-18T23:47:53.4370672Z 
+2026-05-18T23:47:53.4370913Z * What went wrong:
+2026-05-18T23:47:53.4371692Z Execution failed for task ':app:processReleaseMainManifest'.
+2026-05-18T23:47:53.4376587Z > Manifest merger failed : uses-sdk:minSdkVersion 24 cannot be smaller than version 26 declared in library [:capacitor-geolocation] /home/runner/work/isp-platform/isp-platform/node_modules/.pnpm/@capacitor+geolocation@6.1.1_@capacitor+core@6.2.1/node_modules/@capacitor/geolocation/android/build/intermediates/merged_manifest/release/processReleaseManifest/AndroidManifest.xml as the library might be using APIs not available in 24
+2026-05-18T23:47:53.4380562Z   	Suggestion: use a compatible library with a minSdk of at most 24,
+2026-05-18T23:47:53.4381511Z   		or increase this project's minSdk version to at least 26,
+2026-05-18T23:47:53.4382921Z   		or use tools:overrideLibrary="com.capacitorjs.plugins.geolocation" to force usage (may lead to runtime failures)
+2026-05-18T23:47:53.4383744Z 
+2026-05-18T23:47:53.4383883Z * Try:
+2026-05-18T23:47:53.4384519Z > Run with --stacktrace option to get the stack trace.
+2026-05-18T23:47:53.4385410Z > Run with --info or --debug option to get more log output.
+2026-05-18T23:47:53.4386159Z > Run with --scan to get full insights.
+2026-05-18T23:47:53.4386860Z > Get more help at https://help.gradle.org.
+2026-05-18T23:47:53.4387216Z 
+2026-05-18T23:47:53.4387456Z BUILD FAILED in 1m 35s
+2026-05-18T23:47:53.6550200Z ##[error]Process completed with exit code 1.
