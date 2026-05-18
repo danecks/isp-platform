@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, ReactNode } from "react";
 import type { Rol } from "@/config/permissions";
+import { initPush, unregisterTokenFromServer } from "@/lib/native/push";
 
 export type { Rol };
 
@@ -54,6 +55,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const user = data.user as AuthUser;
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(user));
       setCurrentUser(user);
+      // En APK, asociar el token FCM de este dispositivo a la cuenta que
+      // acaba de loguearse. Fire-and-forget: si falla (sin red, sin
+      // Firebase) no bloqueamos el login.
+      void initPush({
+        userId: user.id,
+        navigate: (ruta) => {
+          try {
+            window.location.assign(ruta);
+          } catch {
+            /* noop */
+          }
+        },
+      });
       return { ok: true };
     } catch {
       return { ok: false, error: "Error de conexión con el servidor" };
@@ -61,6 +75,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    // Desasociar el token push de este dispositivo en el server para que
+    // la cuenta saliente deje de recibir notificaciones acá.
+    void unregisterTokenFromServer();
     sessionStorage.removeItem(STORAGE_KEY);
     setCurrentUser(null);
   };

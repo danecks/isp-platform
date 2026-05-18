@@ -47,3 +47,30 @@
     android:foregroundServiceType="location"
     android:exported="false" />
 -->
+
+<!--
+  Firebase Cloud Messaging (push notifications) — TASK #52.
+  El plugin @capacitor/push-notifications registra automáticamente su
+  FirebaseMessagingService al hacer `cap sync` (no requiere declaración
+  manual). Sólo hay que:
+
+  1. Copiar `google-services.json` a android/app/ (ver README-firebase.md).
+  2. Aplicar el plugin gradle en android/build.gradle:
+        classpath 'com.google.gms:google-services:4.4.2'
+     y al final de android/app/build.gradle:
+        apply plugin: 'com.google.gms.google-services'
+        implementation platform('com.google.firebase:firebase-bom:33.5.1')
+        implementation 'com.google.firebase:firebase-messaging'
+  3. Asegurar que `appId` en capacitor.config.ts == package name registrado
+     en Firebase (com.ispsa.operaciones).
+
+  Opcional — ícono y color por defecto de la notificación (dentro de
+  <application>...</application>):
+
+  <meta-data
+    android:name="com.google.firebase.messaging.default_notification_icon"
+    android:resource="@drawable/ic_notification" />
+  <meta-data
+    android:name="com.google.firebase.messaging.default_notification_color"
+    android:resource="@color/notification_color" />
+-->

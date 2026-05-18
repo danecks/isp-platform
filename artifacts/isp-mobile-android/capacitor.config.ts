@@ -33,6 +33,15 @@ const config: CapacitorConfig = {
       autoDeletePrevious: true,
       resetWhenUpdate: false,
     },
+    // PushNotifications — usa Firebase Cloud Messaging en Android.
+    // Requiere `google-services.json` en `android/app/` y el plugin
+    // `com.google.gms.google-services` en el `build.gradle` raíz
+    // (ver artifacts/isp-mobile-android/android-templates/README-firebase.md).
+    // `presentationOptions` controla cómo se muestran las notificaciones
+    // recibidas mientras la app está en foreground.
+    PushNotifications: {
+      presentationOptions: ["badge", "sound", "alert"],
+    },
   },
 };
 

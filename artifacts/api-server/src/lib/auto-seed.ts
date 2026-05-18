@@ -266,6 +266,27 @@ export async function runAutoMigrations(): Promise<void> {
     `);
     logger.info("Auto-migrate: tabla 'wa_phone_reg_sessions' verificada");
 
+    // PUSH_TOKENS — tokens FCM/APNs de dispositivos para notificaciones push.
+    // El cliente (APK) los registra después del login; el api-server los
+    // consulta cuando ocurre un evento (emergencia, asignación) para enviar
+    // la notificación vía Firebase Admin SDK.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS push_tokens (
+        id            SERIAL PRIMARY KEY,
+        token         VARCHAR(512) NOT NULL UNIQUE,
+        user_id       INTEGER NOT NULL,
+        platform      VARCHAR(20) NOT NULL DEFAULT 'android',
+        app_version   VARCHAR(50),
+        device_model  VARCHAR(100),
+        last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS push_tokens_user_idx ON push_tokens(user_id)
+    `);
+    logger.info("Auto-migrate: tabla 'push_tokens' verificada/creada");
+
     // BONIF-INCENTIVO-01: nivelar bonificación incentivo a Q250 mínimo
     // (Decreto 78-89). Idempotente: solo afecta a quienes están abajo.
     const bonifFix = await pool.query(`

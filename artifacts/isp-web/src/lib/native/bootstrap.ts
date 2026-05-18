@@ -10,7 +10,25 @@
  */
 import { isNative } from "./platform";
 import { initLiveUpdate } from "./liveUpdate";
+import { initPush } from "./push";
 import { toast } from "@/hooks/use-toast";
+
+/**
+ * Lee el usuario logueado desde sessionStorage. Se accede directamente
+ * (sin pasar por React context) porque bootstrap corre antes de montar
+ * el árbol. Si no hay sesión todavía, AuthContext volverá a invocar
+ * initPush al completar el login.
+ */
+function readUserIdFromSession(): number | null {
+  try {
+    const raw = sessionStorage.getItem("isp_admin_session_v2");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return typeof parsed?.id === "number" ? parsed.id : null;
+  } catch {
+    return null;
+  }
+}
 
 export function bootstrapNative(): void {
   if (!isNative()) return;
@@ -27,5 +45,19 @@ export function bootstrapNative(): void {
       // eslint-disable-next-line no-console
       console.warn("[OTA] check falló:", r.message);
     }
+  });
+
+  // Push notifications: pide permiso, registra el token y lo asocia al
+  // usuario logueado (si lo hay). El handler de "tocar notificación"
+  // navega a la ruta enviada en data.ruta (típico: emergencias).
+  void initPush({
+    userId: readUserIdFromSession(),
+    navigate: (ruta) => {
+      try {
+        window.location.assign(ruta);
+      } catch {
+        /* noop */
+      }
+    },
   });
 }

@@ -72,6 +72,7 @@ import docsRouter from "./docs";
 import plantillasContratoRouter from "./plantillas-contrato";
 import { visitasRouter } from "./visitas";
 import { asignacionesRecursosRouter } from "./asignaciones-recursos";
+import pushRouter from "./push";
 
 const router: IRouter = Router();
 
@@ -151,5 +152,6 @@ router.use(supervisionReportesRouter);
 router.use(supervisionPlanMensualRouter);
 router.use(agenteSupervisionRouter);
 router.use(agenteSupervisionJornadaRouter);
+router.use(pushRouter);
 
 export default router;

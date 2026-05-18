@@ -78,6 +78,13 @@ const ROUTE_MODULO_MAP: Record<string, string> = {
   "/solicitudes-cambio":     "pizarron",
   "/solicitudes-empleo":     "kiosco_solicitudes",  // los POST públicos viven en isPublicPath
   "/docs":                   "usuarios",            // documentación interna admin
+  // Push notifications (TASK #52). Por defecto sólo admin/operaciones pueden
+  // enviar push de prueba, ver tokens de otros usuarios o re-disparar
+  // emergencias. La excepción son los endpoints que el APK del usuario llama
+  // para registrar/borrar SU propio token, manejados en isPublicPath con
+  // override de método (cualquier sesión válida basta — el handler valida
+  // que el userId del body == sesión).
+  "/push":                   "usuarios",
 };
 
 // Rutas públicas legítimas (login, webhooks, portal, healthcheck).
@@ -334,6 +341,14 @@ export async function permisosMiddleware(req: any, res: any, next: any) {
   // global (RRHH la usa para generar contratos/actas/avisos). Las escrituras
   // siguen restringidas al módulo "usuarios" (admin) vía ROUTE_MODULO_MAP.
   if (req.method === "GET" && req.path === "/config-empresa") return next();
+
+  // Push notifications — el APK de cada usuario registra/borra SU token
+  // contra el servidor. Cualquier sesión válida puede hacerlo; el handler
+  // verifica que el userId del body coincida con la sesión. El resto de
+  // /push/* (test, listado, re-envío de emergencia, status) queda
+  // restringido al módulo "usuarios" (admin) vía ROUTE_MODULO_MAP.
+  if (req.method === "POST" && req.path === "/push/tokens") return next();
+  if (req.method === "DELETE" && req.path.startsWith("/push/tokens/")) return next();
 
   // Sesión válida + ruta sin módulo asociado → dejar pasar
   // (rutas internas no catalogadas, basta con que la sesión sea válida)

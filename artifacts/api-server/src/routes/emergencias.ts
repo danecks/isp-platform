@@ -21,6 +21,7 @@ import {
   buscarUsuarioPorTelefono,
   TIPOS_EMERGENCIA_DEFAULT,
 } from "../services/whatsapp/emergencias.service";
+import { notificarEmergenciaPush } from "../services/push-emergencias";
 
 const router = Router();
 
@@ -177,6 +178,12 @@ router.post("/emergencias", async (req, res) => {
       descripcion: descripcion?.trim() || "Sin descripción adicional",
       reportadoPor: reportadoPor.trim(),
       origen: origen || "manual",
+    });
+
+    // Disparar push a admins/supervisores. Fire-and-forget: si falla,
+    // no rompemos la creación de la emergencia — sólo se loggea.
+    notificarEmergenciaPush(incidencia).catch((err) => {
+      console.error("[emergencias] push notify error:", err);
     });
 
     res.status(201).json({
