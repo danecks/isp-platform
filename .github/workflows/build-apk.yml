@@ -76,6 +76,13 @@ jobs:
           fi
           npx cap sync android
 
+      - name: Bumpear AGP + Gradle wrapper (soporte compileSdk 35)
+        # El template de @capacitor/android@6.x genera AGP 8.2.1 que solo
+        # soporta hasta compileSdk 34. Algunos plugins requieren 35 y el
+        # build falla. Este script bumpea a AGP 8.7.2 + Gradle 8.9.
+        working-directory: artifacts/isp-mobile-android
+        run: node ./scripts/patch-android-gradle.mjs
+
       - name: Aplicar signing-block
         working-directory: artifacts/isp-mobile-android
         run: |
