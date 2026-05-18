@@ -52,6 +52,11 @@ export interface PlanillaLinea {
   frecuencia_pago: string | null;
   revision_estado: string | null;
   observaciones_rrhh: string | null;
+  // Datos del empleado para impresión (cheques/acreditaciones)
+  banco?: string | null;
+  cuenta_bancaria?: string | null;
+  tipo_cuenta?: string | null;
+  forma_pago?: string | null;
 }
 
 export interface PlanillaDetalle extends PlanillaResumen {

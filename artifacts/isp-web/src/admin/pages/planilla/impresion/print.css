@@ -1,0 +1,130 @@
+/* Estilos de impresión para planilla, cheques y acreditaciones.
+ * Sólo se aplican al imprimir (window.print o Ctrl+P).
+ * Las vistas se renderizan ocultas en pantalla normal.
+ */
+
+.print-only { display: none; }
+
+@media print {
+  /* Ocultar TODA la UI normal cuando se imprime — incluye portales de Radix */
+  body > *:not(.print-root) { display: none !important; }
+  body > #root { display: none !important; }
+  body { background: white !important; color: black !important; }
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
+
+  /* Quitar fondos oscuros de la app durante impresión */
+  .print-root, .print-root * {
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+  }
+
+  /* === Planilla completa: hoja CARTA APAISADA === */
+  .print-planilla {
+    font-family: Arial, sans-serif;
+    font-size: 8.5pt;
+  }
+  @page planilla {
+    size: letter landscape;
+    margin: 10mm 8mm;
+  }
+  .print-planilla { page: planilla; }
+  .print-planilla table { width: 100%; border-collapse: collapse; }
+  .print-planilla thead { display: table-header-group; }
+  .print-planilla tfoot { display: table-footer-group; }
+  .print-planilla th, .print-planilla td {
+    border: 0.5pt solid #555;
+    padding: 2pt 3pt;
+    text-align: left;
+  }
+  .print-planilla th { background: #eee !important; font-size: 8pt; }
+  .print-planilla td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .print-planilla .firmas {
+    margin-top: 18mm;
+    display: flex;
+    justify-content: space-around;
+    page-break-inside: avoid;
+  }
+  .print-planilla .firmas .firma {
+    width: 30%; text-align: center; font-size: 9pt;
+  }
+  .print-planilla .firmas .linea {
+    border-top: 0.5pt solid #000; margin-bottom: 2mm;
+  }
+
+  /* === Cheques: layout absoluto sobre cheque físico === */
+  .print-cheques { font-family: Arial, sans-serif; }
+  @page cheques-continuo {
+    size: 216mm 280mm; /* tamaño base; alto real lo controla cada hoja */
+    margin: 0;
+  }
+  @page cheques-carta {
+    size: letter portrait;
+    margin: 0;
+  }
+  .print-cheques.formato-continuo { page: cheques-continuo; }
+  .print-cheques.formato-carta { page: cheques-carta; }
+  .cheque-hoja {
+    position: relative;
+    width: 216mm;          /* ancho carta */
+    page-break-after: always;
+    page-break-inside: avoid;
+    overflow: hidden;
+  }
+  .cheque-hoja:last-child { page-break-after: auto; }
+  .cheque-campo {
+    position: absolute;
+    font-family: "Courier New", monospace;
+    font-size: 11pt;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .cheque-campo.fecha { font-size: 10pt; }
+  .cheque-campo.beneficiario { max-width: 110mm; white-space: normal; line-height: 1.1; }
+  .cheque-campo.monto-numero { font-weight: 700; }
+  .cheque-campo.monto-letras { max-width: 160mm; white-space: normal; line-height: 1.1; }
+
+  /* === Acreditaciones: voucher por empleado === */
+  .print-acreditaciones { font-family: Arial, sans-serif; font-size: 10pt; }
+  @page acreditaciones {
+    size: letter portrait;
+    margin: 12mm;
+  }
+  .print-acreditaciones { page: acreditaciones; }
+  .voucher-acreditacion {
+    border: 0.5pt solid #000;
+    padding: 8mm;
+    margin-bottom: 8mm;
+    page-break-inside: avoid;
+  }
+  .voucher-acreditacion:nth-child(2n) { page-break-after: always; }
+  .voucher-acreditacion h3 { margin: 0 0 4mm 0; font-size: 12pt; text-align: center; }
+  .voucher-acreditacion .datos {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 2mm 6mm; margin-bottom: 4mm;
+  }
+  .voucher-acreditacion .datos label { font-weight: bold; }
+  .voucher-acreditacion .monto-grande {
+    font-size: 14pt; font-weight: bold; text-align: center;
+    border: 0.5pt solid #000; padding: 3mm; margin: 4mm 0;
+  }
+  .voucher-acreditacion .firma-empleado {
+    margin-top: 12mm; display: flex; justify-content: space-around;
+  }
+  .voucher-acreditacion .firma-empleado .col {
+    width: 40%; text-align: center; font-size: 9pt;
+  }
+  .voucher-acreditacion .firma-empleado .linea {
+    border-top: 0.5pt solid #000; margin-bottom: 2mm;
+  }
+
+  /* Encabezado común de empresa */
+  .print-header {
+    display: flex; align-items: center; gap: 6mm;
+    border-bottom: 1pt solid #000; padding-bottom: 4mm; margin-bottom: 4mm;
+  }
+  .print-header img { height: 18mm; }
+  .print-header .titulo { flex: 1; }
+  .print-header h1 { margin: 0; font-size: 13pt; }
+  .print-header .meta { font-size: 8.5pt; color: #444 !important; }
+}

@@ -608,7 +608,15 @@ planillaRouter.get("/nomina/planilla/:id", async (req, res) => {
     if (!plan.length) return res.status(404).json({ error: "Planilla no encontrada" });
 
     const { rows: lineas } = await pool.query(`
-      SELECT * FROM planilla_lineas WHERE planilla_id = $1 ORDER BY nombre_completo
+      SELECT pl.*,
+             e.banco            AS banco,
+             e.cuenta_bancaria  AS cuenta_bancaria,
+             e.tipo_cuenta      AS tipo_cuenta,
+             e.forma_pago       AS forma_pago
+      FROM planilla_lineas pl
+      LEFT JOIN employees e ON e.id = pl.employee_id
+      WHERE pl.planilla_id = $1
+      ORDER BY pl.nombre_completo
     `, [id]);
 
     res.json({ ...plan[0], lineas });

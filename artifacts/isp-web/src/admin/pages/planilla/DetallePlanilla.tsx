@@ -5,10 +5,11 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ArrowRight, Banknote, CalendarDays, CheckCircle2, ChevronLeft, Download,
-  FileSpreadsheet, Lock, Settings, TrendingUp, Undo2, Users, Wallet,
+  FileSpreadsheet, Lock, Printer, Settings, TrendingUp, Undo2, Users, Wallet,
 } from "lucide-react";
 import { BASE, fmtFecha, fmtQ } from "./helpers";
 import { ACCION_LABEL, EstadoBadge, KpiCard, SIGUIENTE_ESTADO } from "./badges";
+import { ModalImprimir } from "./impresion";
 import { ModalTransferencias } from "./ModalTransferencias";
 import { TabAnticipos } from "./TabAnticipos";
 import { TabFaltas } from "./TabFaltas";
@@ -33,6 +34,7 @@ export function DetallePlanilla({
   }
 
   const [modalTransferencias, setModalTransferencias] = useState(false);
+  const [modalImprimir, setModalImprimir] = useState(false);
 
   const siguienteEstado = SIGUIENTE_ESTADO[planilla.estado];
   const puedeRevertir = planilla.estado !== "pagada";
@@ -60,6 +62,11 @@ export function DetallePlanilla({
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <Button onClick={() => setModalImprimir(true)} variant="outline"
+            className="border-[#1e3a5f] text-[#8bacc8] hover:text-white gap-2">
+            <Printer className="h-4 w-4" />
+            Imprimir
+          </Button>
           <Button onClick={handleExportCSV} variant="outline"
             className="border-[#1e3a5f] text-[#8bacc8] hover:text-white gap-2">
             <Download className="h-4 w-4" />
@@ -188,6 +195,10 @@ export function DetallePlanilla({
           planillaId={planilla.id}
           onClose={() => setModalTransferencias(false)}
         />
+      )}
+
+      {modalImprimir && (
+        <ModalImprimir planilla={planilla} onClose={() => setModalImprimir(false)} />
       )}
     </div>
   );
