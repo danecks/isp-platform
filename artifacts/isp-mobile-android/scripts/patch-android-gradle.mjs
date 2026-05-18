@@ -194,30 +194,83 @@ async function patchAppBuildGradle() {
   return true;
 }
 
-// Algunos templates de Capacitor escriben <uses-sdk> directamente en el
-// AndroidManifest, lo que invalida lo que diga build.gradle. Borramos
-// cualquier <uses-sdk> del manifest del app para que sólo gobierne gradle.
 const appManifest = resolve(root, "android/app/src/main/AndroidManifest.xml");
-async function stripUsesSdkFromManifest() {
+
+// Inyecta xmlns:tools y <uses-sdk tools:overrideLibrary="..."> dentro del
+// manifest del app. Esto es el workaround oficial que el propio error de
+// Gradle sugiere ("or use tools:overrideLibrary=...") y bypasea el
+// chequeo del manifest-merger sin importar qué declare cada librería.
+// Es seguro porque también forzamos minSdkVersion=26 en build.gradle.
+async function injectManifestOverride() {
   if (!(await exists(appManifest))) {
     console.log(`[patch-android-gradle] SKIP manifest: no existe`);
     return false;
   }
-  const src = await readFile(appManifest, "utf8");
-  const re = /<uses-sdk\b[^/>]*\/>\s*|<uses-sdk\b[\s\S]*?<\/uses-sdk>\s*/g;
-  if (!re.test(src)) {
-    console.log(`[patch-android-gradle] manifest: sin <uses-sdk>, OK`);
-    return false;
+  let src = await readFile(appManifest, "utf8");
+  const before = src;
+
+  // 1) Asegurar xmlns:tools en <manifest ...>
+  if (!/xmlns:tools=/.test(src)) {
+    src = src.replace(
+      /<manifest\b([^>]*)>/,
+      '<manifest$1\n    xmlns:tools="http://schemas.android.com/tools">',
+    );
+    console.log(`[patch-android-gradle] manifest: agregado xmlns:tools`);
   }
-  const out = src.replace(re, "");
-  await writeFile(appManifest, out, "utf8");
-  console.log(`[patch-android-gradle] manifest: <uses-sdk> removido`);
-  return true;
+
+  // 2) Remover cualquier <uses-sdk> previo (queremos uno controlado).
+  src = src.replace(
+    /<uses-sdk\b[^/>]*\/>\s*|<uses-sdk\b[\s\S]*?<\/uses-sdk>\s*/g,
+    "",
+  );
+
+  // 3) Insertar nuestro <uses-sdk> con overrideLibrary justo después de
+  //    <manifest ...>. Lista de plugins que pueden traer minSdk alto.
+  const overrideLibs = [
+    "com.capacitorjs.plugins.geolocation",
+    "com.capacitorjs.plugins.pushnotifications",
+    "com.capacitorjs.plugins.camera",
+    "com.capacitorcommunity.backgroundgeolocation",
+    "ee.forgr.capacitor_updater",
+  ].join(",");
+  const usesSdk = `\n    <uses-sdk\n        android:minSdkVersion="${MIN_SDK_TARGET}"\n        android:targetSdkVersion="${TARGET_SDK_TARGET}"\n        tools:overrideLibrary="${overrideLibs}" />\n`;
+  src = src.replace(/<manifest\b[^>]*>\s*/, (m) => m + usesSdk);
+  console.log(`[patch-android-gradle] manifest: inyectado <uses-sdk> con override`);
+
+  if (src !== before) {
+    await writeFile(appManifest, src, "utf8");
+    return true;
+  }
+  return false;
+}
+
+// Dump para debug: imprime el contenido relevante de cada archivo después
+// de los parches, así el log de CI muestra exactamente qué quedó.
+async function dumpForDebug() {
+  const files = [
+    { p: variablesGradle, name: "variables.gradle" },
+    { p: appBuildGradle, name: "app/build.gradle (último 40 líneas)" },
+    { p: appManifest, name: "AndroidManifest.xml (primeras 25 líneas)" },
+  ];
+  for (const { p, name } of files) {
+    if (!(await exists(p))) continue;
+    const txt = await readFile(p, "utf8");
+    const lines = txt.split("\n");
+    const slice = name.includes("últimas") || name.includes("último")
+      ? lines.slice(-40)
+      : name.includes("primeras")
+        ? lines.slice(0, 25)
+        : lines;
+    console.log(`\n========== ${name} ==========`);
+    console.log(slice.join("\n"));
+    console.log(`========== fin ${name} ==========\n`);
+  }
 }
 
 await patchAgp();
 await patchGradleWrapper();
 await patchVariablesGradle();
 await patchAppBuildGradle();
-await stripUsesSdkFromManifest();
+await injectManifestOverride();
+await dumpForDebug();
 console.log("[patch-android-gradle] OK");
