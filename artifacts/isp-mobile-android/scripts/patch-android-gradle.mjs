@@ -23,6 +23,7 @@ import { dirname, resolve } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const buildGradle = resolve(root, "android/build.gradle");
+const variablesGradle = resolve(root, "android/variables.gradle");
 const wrapperProps = resolve(
   root,
   "android/gradle/wrapper/gradle-wrapper.properties",
@@ -30,6 +31,9 @@ const wrapperProps = resolve(
 
 const AGP_TARGET = "8.7.2";
 const GRADLE_TARGET = "8.9";
+const COMPILE_SDK_TARGET = 35;
+const TARGET_SDK_TARGET = 35;
+const MIN_SDK_TARGET = 26;
 
 async function exists(p) {
   try {
@@ -93,6 +97,40 @@ async function patchGradleWrapper() {
   return true;
 }
 
+async function patchVariablesGradle() {
+  if (!(await exists(variablesGradle))) {
+    console.log(`[patch-android-gradle] SKIP: ${variablesGradle} no existe`);
+    return false;
+  }
+  let src = await readFile(variablesGradle, "utf8");
+  const before = src;
+  // Cada línea suele ser: `compileSdkVersion = 34` / `targetSdkVersion = 34`
+  // / `minSdkVersion = 22`. Reemplazamos sólo si están por debajo del target.
+  const bumps = [
+    { name: "minSdkVersion", target: MIN_SDK_TARGET },
+    { name: "compileSdkVersion", target: COMPILE_SDK_TARGET },
+    { name: "targetSdkVersion", target: TARGET_SDK_TARGET },
+  ];
+  for (const { name, target } of bumps) {
+    const re = new RegExp(`(${name}\\s*=\\s*)(\\d+)`);
+    const m = src.match(re);
+    if (!m) continue;
+    const cur = parseInt(m[2], 10);
+    if (cur < target) {
+      src = src.replace(re, `$1${target}`);
+      console.log(`[patch-android-gradle] ${name} ${cur} → ${target}`);
+    } else {
+      console.log(`[patch-android-gradle] ${name} ya en ${cur} (>= ${target})`);
+    }
+  }
+  if (src !== before) {
+    await writeFile(variablesGradle, src, "utf8");
+    return true;
+  }
+  return false;
+}
+
 await patchAgp();
 await patchGradleWrapper();
+await patchVariablesGradle();
 console.log("[patch-android-gradle] OK");
