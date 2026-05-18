@@ -40,6 +40,10 @@ supervisionReportesRouter.get("/supervision/reportes", async (req, res) => {
          (SELECT COUNT(*)::int FROM supervision_novedades
             WHERE fecha BETWEEN $1 AND $2
               AND ($3::int IS NULL OR cliente_id = $3))                     AS total_novedades,
+         (SELECT COUNT(*)::int FROM supervision_novedades
+            WHERE fecha BETWEEN $1 AND $2
+              AND tipo = 'abandono_puesto'
+              AND ($3::int IS NULL OR cliente_id = $3))                     AS total_abandonos,
          (SELECT COUNT(*)::int FROM armas_alertas aa
             JOIN supervision_inspecciones si ON si.id = aa.inspeccion_id
             WHERE si.realizada_at::date BETWEEN $1 AND $2
@@ -147,7 +151,7 @@ supervisionReportesRouter.get("/supervision/reportes", async (req, res) => {
 
     // ── Novedades recientes ───────────────────────────────────────────────
     const { rows: novedades } = await pool.query(
-      `SELECT n.id, n.fecha,
+      `SELECT n.id, n.fecha, n.tipo,
               n.observaciones,
               po.nombre AS puesto_nombre,
               c.nombre  AS cliente_nombre,
@@ -160,7 +164,7 @@ supervisionReportesRouter.get("/supervision/reportes", async (req, res) => {
          LEFT JOIN employees e           ON e.id  = n.supervisor_employee_id
         WHERE n.fecha BETWEEN $1 AND $2
           AND ($3::int IS NULL OR n.cliente_id = $3)
-        ORDER BY n.generada_at DESC
+        ORDER BY (n.tipo = 'abandono_puesto') DESC, n.generada_at DESC
         LIMIT 30`,
       [desde, hasta, filtroCliente]
     );

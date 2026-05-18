@@ -379,7 +379,127 @@ agenteSupervisionJornadaRouter.post("/agente/supervision/jornada/geofence-evento
       ).catch(() => {});
     }
 
-    res.json({ ok: true, evento_id: ins[0].id, programacion_id: programacionId });
+    // SUPERV-NOV-02: detectar abandono de puesto. Si el supervisor SALE
+    // (exit) con la visita aún en estado 'en_curso' y SIN haber registrado
+    // inspecciones ni completado la visita, generamos una novedad
+    // automática tipo 'abandono_puesto' para alertar al panel de
+    // supervisión. Para evitar falsas alarmas por jitter del GPS en el
+    // borde del perímetro, exigimos un mínimo de permanencia adentro
+    // (configurable vía SUPERVISION_ABANDONO_MIN_SEGUNDOS, default 300s).
+    let abandonoGenerado: { novedad_id: number; permanencia_segundos: number } | null = null;
+    if (tipo === "exit" && programacionId) {
+      try {
+        const minSeg = Math.max(
+          0,
+          Number(process.env.SUPERVISION_ABANDONO_MIN_SEGUNDOS) || 300
+        );
+        const { rows: visitaRows } = await pool.query(
+          `SELECT estado, iniciada_at FROM supervision_visitas_programadas
+            WHERE id = $1 AND supervisor_employee_id = $2 LIMIT 1`,
+          [programacionId, a.ctx.employee_id]
+        );
+        const visita = visitaRows[0];
+        if (visita && visita.estado === "en_curso") {
+          // Acotamos al ciclo de ESTA visita: sólo consideramos inspecciones
+          // registradas a partir de visita.iniciada_at (si existe). Así, si
+          // el supervisor revisita más tarde el mismo puesto en la misma
+          // sesión, las inspecciones previas no enmascaran un abandono real.
+          const { rows: insp } = await pool.query(
+            `SELECT COUNT(*)::int AS n FROM supervision_inspecciones
+              WHERE sesion_id = $1
+                AND puesto_id IS NOT DISTINCT FROM $2
+                AND ($3::timestamptz IS NULL OR realizada_at >= $3::timestamptz)`,
+            [sesion.id, puestoId, visita.iniciada_at ?? null]
+          );
+          const sinInspecciones = (insp[0]?.n ?? 0) === 0;
+          if (sinInspecciones) {
+            // Permanencia: sumar pares entry→exit del par (sesion, puesto)
+            // incluyendo este exit recién insertado. Acotado al ciclo de
+            // ESTA visita (ocurrido_at >= visita.iniciada_at) para no
+            // arrastrar tiempo de visitas anteriores al mismo puesto en
+            // la misma sesión.
+            const { rows: evs } = await pool.query(
+              `SELECT tipo, ocurrido_at
+                 FROM supervision_geofence_eventos
+                WHERE sesion_id = $1
+                  AND puesto_id = $2
+                  AND ($3::timestamptz IS NULL OR ocurrido_at >= $3::timestamptz)
+                ORDER BY ocurrido_at ASC`,
+              [sesion.id, puestoId, visita.iniciada_at ?? null]
+            );
+            let permanenciaSeg = 0;
+            let abierto: number | null = null;
+            for (const ev of evs) {
+              const t = new Date(ev.ocurrido_at).getTime();
+              if (ev.tipo === "entry" && abierto == null) abierto = t;
+              else if (ev.tipo === "exit" && abierto != null) {
+                permanenciaSeg += Math.max(0, Math.round((t - abierto) / 1000));
+                abierto = null;
+              }
+            }
+            if (permanenciaSeg >= minSeg) {
+              const consolidado = {
+                tipo: "abandono_puesto",
+                sesion_id: sesion.id,
+                programacion_id: programacionId,
+                exit_evento_id: ins[0].id,
+                permanencia_segundos: permanenciaSeg,
+                umbral_segundos: minSeg,
+                distancia_m: distancia,
+                radio_m: radio,
+                lat, lng,
+                detectado_at: new Date().toISOString(),
+              };
+              const observaciones = `Salida del perímetro sin completar la visita ni registrar inspecciones (permanencia: ${Math.round(permanenciaSeg / 60)} min).`;
+              // UPDATE-then-INSERT compatible con índice parcial por (sesion, puesto).
+              const upd = await pool.query(
+                `UPDATE supervision_novedades
+                    SET tipo = 'abandono_puesto',
+                        datos_consolidados = $4,
+                        observaciones      = $5,
+                        generada_at        = NOW()
+                  WHERE sesion_id = $1
+                    AND puesto_id IS NOT DISTINCT FROM $2
+                    AND supervisor_employee_id = $3
+                    AND tipo <> 'inspeccion'
+                  RETURNING id`,
+                [sesion.id, puestoId, a.ctx.employee_id,
+                 JSON.stringify(consolidado), observaciones]
+              );
+              let novId: number | null = upd.rows[0]?.id ?? null;
+              if (!novId) {
+                const insN = await pool.query(
+                  `INSERT INTO supervision_novedades
+                     (sesion_id, supervisor_employee_id, fecha, puesto_id, cliente_id,
+                      tipo, observaciones, datos_consolidados)
+                   VALUES ($1,$2,CURRENT_DATE,$3,$4,'abandono_puesto',$5,$6)
+                   RETURNING id`,
+                  [sesion.id, a.ctx.employee_id, puestoId, clienteId,
+                   observaciones, JSON.stringify(consolidado)]
+                );
+                novId = insN.rows[0]?.id ?? null;
+              }
+              if (novId) {
+                abandonoGenerado = { novedad_id: novId, permanencia_segundos: permanenciaSeg };
+                logger.warn(
+                  { sesionId: sesion.id, puestoId, programacionId, supervisor: a.ctx.employee_id, novedadId: novId, permanenciaSeg },
+                  "Abandono de puesto detectado: novedad creada"
+                );
+              }
+            }
+          }
+        }
+      } catch (errAb) {
+        logger.error({ err: errAb }, "Detección de abandono de puesto: error no bloqueante");
+      }
+    }
+
+    res.json({
+      ok: true,
+      evento_id: ins[0].id,
+      programacion_id: programacionId,
+      abandono: abandonoGenerado,
+    });
   } catch (err) {
     logger.error({ err }, "POST /agente/supervision/jornada/geofence-evento error");
     res.status(500).json({ error: "Error al registrar evento de geofence" });

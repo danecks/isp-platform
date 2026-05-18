@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Loader2, AlertTriangle, ShieldAlert, Shirt, Sparkles,
-  ClipboardCheck, FileWarning, MapPin, Users,
+  ClipboardCheck, FileWarning, MapPin, Users, LogOut,
 } from "lucide-react";
 import { api, hoyISO, inputCls } from "./api";
 
@@ -11,6 +11,7 @@ interface Kpis {
   total_inspecciones: number;
   agentes_inspeccionados: number;
   total_novedades: number;
+  total_abandonos: number;
   total_alertas_armas: number;
   alertas_armas_abiertas: number;
 }
@@ -25,10 +26,14 @@ interface PuestoProb {
   inspecciones: number; fallas_equipo: number; alertas_armas: number; total_problemas: number;
 }
 interface NovedadRec {
-  id: number; fecha: string; observaciones: string | null;
+  id: number; fecha: string; tipo?: string; observaciones: string | null;
   puesto_nombre: string | null; cliente_nombre: string | null;
   supervisor_nombre: string | null; generada_at: string;
-  datos: { agentes?: Array<{ agente_nombre: string }> } | null;
+  datos: {
+    agentes?: Array<{ agente_nombre: string }>;
+    permanencia_segundos?: number;
+    umbral_segundos?: number;
+  } | null;
 }
 interface AlertaArmaRec {
   id: number; tipo: string; descripcion: string | null; estado: string;
@@ -179,11 +184,19 @@ function Kpi({ icon, label, value, hint }: { icon: React.ReactNode; label: strin
 }
 
 function KpisGrid({ k }: { k: Kpis }) {
+  const abandonos = k.total_abandonos || 0;
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+    <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
       <Kpi icon={<ClipboardCheck className="w-3.5 h-3.5" />} label="Inspecciones" value={k.total_inspecciones || 0} />
       <Kpi icon={<Users className="w-3.5 h-3.5" />} label="Agentes únicos" value={k.agentes_inspeccionados || 0} />
       <Kpi icon={<FileWarning className="w-3.5 h-3.5" />} label="Novedades" value={k.total_novedades || 0} />
+      <div className={`bg-[#0b1424] border rounded p-3 ${abandonos > 0 ? "border-rose-500/60 ring-1 ring-rose-500/40 animate-pulse" : "border-white/10"}`}>
+        <div className={`flex items-center gap-2 text-[11px] uppercase tracking-wide ${abandonos > 0 ? "text-rose-200" : "text-white/60"}`}>
+          <LogOut className="w-3.5 h-3.5" /> Abandonos de puesto
+        </div>
+        <div className={`text-2xl font-bold mt-1 ${abandonos > 0 ? "text-rose-300" : "text-white"}`}>{abandonos}</div>
+        <div className="text-[10px] text-white/40 mt-0.5">salidas sin completar visita</div>
+      </div>
       <Kpi icon={<ShieldAlert className="w-3.5 h-3.5" />} label="Alertas armas" value={k.total_alertas_armas || 0}
         hint={`${k.alertas_armas_abiertas || 0} abiertas`} />
       <Kpi icon={<AlertTriangle className="w-3.5 h-3.5" />} label="Pendientes" value={k.alertas_armas_abiertas || 0}
@@ -297,30 +310,54 @@ function CardTopPuestos({ items }: { items: PuestoProb[] }) {
 }
 
 function CardNovedades({ items }: { items: NovedadRec[] }) {
+  const abandonos = items.filter(n => n.tipo === "abandono_puesto").length;
   return (
     <div className="bg-[#0b1424] border border-white/10 rounded p-3">
       <h3 className="text-xs font-semibold text-white/80 mb-2 inline-flex items-center gap-1.5">
         <FileWarning className="w-4 h-4" /> Novedades recientes
+        {abandonos > 0 && (
+          <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 inline-flex items-center gap-1">
+            <LogOut className="w-3 h-3" /> {abandonos} abandono(s)
+          </span>
+        )}
       </h3>
       {items.length === 0 ? (
         <p className="text-[11px] text-white/40 italic">Sin novedades en el rango.</p>
       ) : (
         <ul className="space-y-2 max-h-96 overflow-y-auto pr-1">
           {items.map(n => {
+            const esAbandono = n.tipo === "abandono_puesto";
             const nAg = n.datos?.agentes?.length || 0;
+            const permMin = n.datos?.permanencia_segundos != null
+              ? Math.round(n.datos.permanencia_segundos / 60) : null;
             return (
-              <li key={n.id} className="text-xs border-l-2 border-violet-500/40 pl-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-white/90">
+              <li key={n.id}
+                  className={`text-xs border-l-2 pl-2 ${
+                    esAbandono
+                      ? "border-rose-500 bg-rose-500/5 rounded-r py-1"
+                      : "border-violet-500/40"
+                  }`}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-white/90 inline-flex items-center gap-1.5">
+                    {esAbandono && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/25 text-rose-200 border border-rose-500/50 inline-flex items-center gap-1 uppercase tracking-wide">
+                        <LogOut className="w-3 h-3" /> Abandono
+                      </span>
+                    )}
                     {n.puesto_nombre || "Sin puesto"}
                   </span>
-                  <span className="text-[10px] text-white/40">{n.generada_at}</span>
+                  <span className="text-[10px] text-white/40 shrink-0">{n.generada_at}</span>
                 </div>
                 <div className="text-[11px] text-white/50">
-                  {n.cliente_nombre || "—"} · {n.supervisor_nombre || "—"} · {nAg} agente(s)
+                  {n.cliente_nombre || "—"} · {n.supervisor_nombre || "—"}
+                  {esAbandono
+                    ? (permMin != null ? ` · permanencia ${permMin} min` : "")
+                    : ` · ${nAg} agente(s)`}
                 </div>
                 {n.observaciones && (
-                  <p className="text-[11px] text-white/70 mt-0.5 line-clamp-2 whitespace-pre-wrap">{n.observaciones}</p>
+                  <p className={`text-[11px] mt-0.5 line-clamp-2 whitespace-pre-wrap ${
+                    esAbandono ? "text-rose-200/90" : "text-white/70"
+                  }`}>{n.observaciones}</p>
                 )}
               </li>
             );
