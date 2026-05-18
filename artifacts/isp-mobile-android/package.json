@@ -1,0 +1,28 @@
+{
+  "name": "@workspace/isp-mobile-android",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Wrapper Capacitor (Android) de ISP Operaciones — empaqueta el bundle de @workspace/isp-web como APK distribuible.",
+  "scripts": {
+    "sync": "cap sync android",
+    "open:android": "cap open android",
+    "build:web": "pnpm --filter @workspace/isp-web build",
+    "copy:web": "node ./scripts/copy-web-bundle.mjs",
+    "prebuild": "pnpm run build:web && pnpm run copy:web",
+    "build:apk": "pnpm run prebuild && pnpm run sync && cd android && ./gradlew assembleRelease",
+    "bundle:ota": "pnpm run build:web && node ./scripts/pack-ota.mjs",
+    "keystore:gen": "bash ./scripts/generate-keystore.sh"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/core": "^6.2.1",
+    "@capacitor/geolocation": "^6.1.0",
+    "@capacitor/camera": "^6.1.2",
+    "@capacitor/preferences": "^6.0.3",
+    "@capacitor/push-notifications": "^6.0.4",
+    "@capgo/capacitor-updater": "^6.6.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.1"
+  }
+}

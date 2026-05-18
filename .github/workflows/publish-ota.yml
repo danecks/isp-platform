@@ -1,0 +1,103 @@
+name: Publish OTA bundle (ISP Operaciones)
+
+# Se dispara al pushear un tag `web-vX.Y.Z`. Empaqueta el bundle web actual
+# y lo publica en ispsa.net/app-updates/. El APK instalado lo descarga al
+# próximo arranque vía @capgo/capacitor-updater.
+#
+# Dos modos de publicación — elegí UNO según tu acceso a ispsa.net:
+#
+#  A) SSH/SCP a ispsa.net (default). Secrets:
+#       OTA_SSH_HOST, OTA_SSH_USER, OTA_SSH_KEY, OTA_SSH_PATH
+#     (OTA_SSH_PATH ej: /var/www/ispsa.net/app-updates)
+#
+#  B) Webhook al api-server (alternativa). Setear el secret
+#     OTA_PUBLISH_URL apuntando a un endpoint que suba el zip a Object
+#     Storage bajo `app-updates/`. Si OTA_PUBLISH_URL está seteado, se usa
+#     este modo en vez de SSH.
+on:
+  push:
+    tags:
+      - "web-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versión semántica (ej: 1.4.2)"
+        required: true
+        default: "1.0.0"
+      notes:
+        description: "Notas de release (opcional)"
+        required: false
+        default: ""
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derivar versión
+        id: ver
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/web-v* ]]; then
+            V="${GITHUB_REF#refs/tags/web-v}"
+          else
+            V="${{ inputs.version }}"
+          fi
+          echo "name=$V" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build web bundle
+        run: pnpm --filter @workspace/isp-web build
+        env:
+          PORT: "5173"
+          BASE_PATH: "/"
+
+      - name: Empaquetar OTA
+        env:
+          OTA_VERSION: ${{ steps.ver.outputs.name }}
+          OTA_BASE_URL: "https://ispsa.net/app-updates"
+          OTA_NOTES: ${{ inputs.notes }}
+        run: pnpm --filter @workspace/isp-mobile-android run bundle:ota
+
+      - name: Publicar por SSH
+        if: ${{ env.OTA_PUBLISH_URL == '' }}
+        env:
+          OTA_PUBLISH_URL: ${{ secrets.OTA_PUBLISH_URL }}
+          SSH_HOST: ${{ secrets.OTA_SSH_HOST }}
+          SSH_USER: ${{ secrets.OTA_SSH_USER }}
+          SSH_KEY: ${{ secrets.OTA_SSH_KEY }}
+          SSH_PATH: ${{ secrets.OTA_SSH_PATH }}
+        run: |
+          if [ -z "$SSH_HOST" ]; then
+            echo "::error::Faltan secrets de SSH (OTA_SSH_HOST, OTA_SSH_USER, OTA_SSH_KEY, OTA_SSH_PATH)"
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+          scp -i ~/.ssh/id_ed25519 \
+            artifacts/isp-mobile-android/ota-out/*.zip \
+            artifacts/isp-mobile-android/ota-out/manifest.json \
+            "$SSH_USER@$SSH_HOST:$SSH_PATH/"
+
+      - name: Publicar vía api-server
+        if: ${{ env.OTA_PUBLISH_URL != '' }}
+        env:
+          OTA_PUBLISH_URL: ${{ secrets.OTA_PUBLISH_URL }}
+          OTA_PUBLISH_TOKEN: ${{ secrets.OTA_PUBLISH_TOKEN }}
+        working-directory: artifacts/isp-mobile-android/ota-out
+        run: |
+          ZIP=$(ls *.zip | head -n1)
+          curl -fSL -X POST "$OTA_PUBLISH_URL" \
+            -H "Authorization: Bearer $OTA_PUBLISH_TOKEN" \
+            -F "manifest=@manifest.json;type=application/json" \
+            -F "bundle=@$ZIP;type=application/zip"

@@ -1,0 +1,45 @@
+// ────────────────────────────────────────────────────────────────────────────
+// signing-block.gradle — pegar este bloque dentro de android/app/build.gradle
+// después de generar el proyecto Android con `npx cap add android`.
+//
+// Lee las credenciales del keystore desde variables de entorno (idealmente
+// inyectadas por GitHub Actions). Si no están seteadas, hace build sin firmar
+// (debug). Esto evita romper builds locales de desarrollo.
+// ────────────────────────────────────────────────────────────────────────────
+
+android {
+    signingConfigs {
+        release {
+            def ksPath = System.getenv("KEYSTORE_PATH") ?: "${rootProject.projectDir}/keystore.jks"
+            def ksFile = file(ksPath)
+            if (ksFile.exists() && System.getenv("KEYSTORE_PASSWORD") != null) {
+                storeFile ksFile
+                storePassword System.getenv("KEYSTORE_PASSWORD")
+                keyAlias System.getenv("KEY_ALIAS") ?: "ispsa"
+                keyPassword System.getenv("KEY_PASSWORD") ?: System.getenv("KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
+    defaultConfig {
+        // Parametrizable desde CI: el workflow inyecta MOBILE_VERSION_CODE y
+        // MOBILE_VERSION_NAME al hacer el tag mobile-v*.
+        def vCode = (System.getenv("MOBILE_VERSION_CODE") ?: "1") as Integer
+        def vName = System.getenv("MOBILE_VERSION_NAME") ?: "1.0.0"
+        versionCode vCode
+        versionName vName
+        minSdkVersion 24      // Android 7.0
+        targetSdkVersion 34
+    }
+
+    buildTypes {
+        release {
+            def ksFile = file(System.getenv("KEYSTORE_PATH") ?: "${rootProject.projectDir}/keystore.jks")
+            if (ksFile.exists() && System.getenv("KEYSTORE_PASSWORD") != null) {
+                signingConfig signingConfigs.release
+            }
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+}

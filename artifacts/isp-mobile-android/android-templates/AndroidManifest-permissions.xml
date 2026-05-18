@@ -1,0 +1,25 @@
+<!--
+  Permisos mínimos para ISP Operaciones. Pegar dentro de
+  android/app/src/main/AndroidManifest.xml (sección <manifest>, antes de
+  <application>), o reemplazar los que pone `cap add android` por defecto.
+
+  - INTERNET / ACCESS_NETWORK_STATE: comunicación con api-server y OTA.
+  - ACCESS_FINE/COARSE_LOCATION: rondas, supervisión, fichaje GPS.
+  - CAMERA: lectura de QR de carnet y captura de evidencias.
+  - READ/WRITE EXTERNAL: descarga de PDFs/Excel exportados.
+  - FOREGROUND_SERVICE: requerido cuando se haga GPS en background (fase
+    posterior; declarado ahora para no requerir APK nueva al activarlo).
+  - POST_NOTIFICATIONS: Android 13+ para notificaciones push.
+-->
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+<uses-permission android:name="android.permission.CAMERA" />
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+<uses-feature android:name="android.hardware.camera" android:required="false" />
+<uses-feature android:name="android.hardware.location" android:required="false" />
