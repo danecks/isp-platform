@@ -88,12 +88,14 @@ jobs:
               echo "$BLOCK"
             } >> android/app/build.gradle
           fi
-          # Permisos mínimos
-          if ! grep -q "com.ispsa.operaciones permisos" android/app/src/main/AndroidManifest.xml; then
-            sed -i '/<manifest /a\    <!-- com.ispsa.operaciones permisos -->' android/app/src/main/AndroidManifest.xml
-            # Los permisos reales se gestionan al ajustar el manifest a mano;
-            # el workflow no parchea XML por evitar ediciones frágiles.
-          fi
+
+      - name: Aplicar permisos + <service> al AndroidManifest
+        # Inserta de forma idempotente los <uses-permission> y el <service>
+        # de @capacitor-community/background-geolocation. Sin esto, el APK
+        # buildeado por CI no tiene los permisos de background GPS y el
+        # plugin no funciona al minimizar la app.
+        working-directory: artifacts/isp-mobile-android
+        run: node ./scripts/apply-android-manifest.mjs
 
       - name: Decodificar keystore
         run: |

@@ -44,13 +44,15 @@ Pre-requisitos para que esto funcione en el APK:
 
 1. `pnpm install` en `artifacts/isp-mobile-android/` instala el plugin
    nuevo (`@capacitor-community/background-geolocation`).
-2. Reemplazar (o mergear) `AndroidManifest.xml` con el contenido de
-   `android-templates/AndroidManifest-permissions.xml`. Cambios clave:
-   - permisos `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE`,
-     `FOREGROUND_SERVICE_LOCATION`, `WAKE_LOCK`.
-   - dentro de `<application>`, agregar el `<service>`
-     `com.equimaps.capacitorblbackgroundgeolocation.BackgroundGeolocationService`
-     con `android:foregroundServiceType="location"`.
+2. El merge del `AndroidManifest.xml` está **automatizado**: el script
+   `scripts/apply-android-manifest.mjs` inserta los permisos
+   (`ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE`,
+   `FOREGROUND_SERVICE_LOCATION`, `WAKE_LOCK`, etc.) y el `<service>`
+   `com.equimaps.capacitorblbackgroundgeolocation.BackgroundGeolocationService`
+   con `android:foregroundServiceType="location"` de forma idempotente.
+   Lo invoca tanto `pnpm run build:apk` como el workflow de CI; no hace
+   falta editar el XML a mano. El template de referencia sigue en
+   `android-templates/AndroidManifest-permissions.xml`.
 3. `npx cap sync android` y rebuild.
 4. La primera vez que el usuario active el botón, Android pedirá ubicación
    "todo el tiempo" — el supervisor debe aceptar; si elige "sólo mientras
@@ -94,9 +96,9 @@ npx cap add android
 # Pegar el signing block en android/app/build.gradle:
 cat android-templates/signing-block.gradle >> android/app/build.gradle
 
-# Añadir permisos al AndroidManifest.xml (sección <manifest>):
-cat android-templates/AndroidManifest-permissions.xml
-# → copiar a android/app/src/main/AndroidManifest.xml a mano.
+# Aplicar permisos + <service> al AndroidManifest (automatizado, idempotente):
+pnpm run apply:manifest
+# (el template de referencia está en android-templates/AndroidManifest-permissions.xml)
 
 # Generar la keystore (sólo la primera vez):
 bash scripts/generate-keystore.sh
