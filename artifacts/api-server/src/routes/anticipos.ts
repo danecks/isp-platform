@@ -12,7 +12,7 @@ import { db, anticiposTable } from "@workspace/db";
 import { eq, desc, and, gte, lte } from "drizzle-orm";
 import { DIAS_HABILITADOS, getPeriodoActivo } from "../services/whatsapp/anticipo-session";
 import { calcularLimiteAnticipo } from "../services/anticipo-limite";
-import { notificarAprobacionPendientePush } from "../services/push-notificaciones";
+import { notificarAprobacionPendientePush, notificarResolucionPush } from "../services/push-notificaciones";
 import { logger as pushLogger } from "../lib/logger";
 
 const anticiposRouter = Router();
@@ -243,6 +243,26 @@ anticiposRouter.patch("/anticipos/:id", async (req, res) => {
       .returning();
 
     if (!updated) return res.status(404).json({ error: "Anticipo no encontrado" });
+
+    // Push al colaborador cuando la solicitud cambia a un estado terminal.
+    const ESTADOS_RESUELTO = ["aprobada", "rechazada", "pagada"] as const;
+    if (
+      estado &&
+      ESTADOS_RESUELTO.includes(estado as typeof ESTADOS_RESUELTO[number]) &&
+      existing[0].estado !== estado &&
+      updated.employeeId
+    ) {
+      notificarResolucionPush({
+        tipo: "anticipo",
+        solicitudId: updated.id,
+        employeeId: updated.employeeId,
+        estado: estado as typeof ESTADOS_RESUELTO[number],
+        resumen: `Q${updated.cantidad}${observaciones ? ` — ${String(observaciones).slice(0, 80)}` : ""}`,
+      }).catch((err) => {
+        pushLogger.warn({ err, anticipoId: updated.id }, "Push de resolución de anticipo falló (no bloqueante)");
+      });
+    }
+
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: "Error al actualizar anticipo" });

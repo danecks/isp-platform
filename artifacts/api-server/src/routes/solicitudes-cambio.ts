@@ -3,6 +3,7 @@ import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
 import {
   notificarAprobacionPendientePush,
+  notificarResolucionPush,
   ROLES_APROBADORES_RRHH,
   ROLES_APROBADORES_OPERACIONES,
 } from "../services/push-notificaciones";
@@ -220,7 +221,29 @@ solicitudesCambioRouter.patch("/solicitudes-cambio/:id/aprobar", async (req, res
     }
 
     const { rows } = await pool.query(`${SELECT_BASE} WHERE s.id = $1`, [id]);
-    res.json(rows[0]);
+    const solFull = rows[0];
+
+    // Push al colaborador sólo cuando la solicitud queda totalmente aprobada
+    // en esta llamada (evita duplicar el push si /aprobar se invoca otra vez
+    // sobre una solicitud ya aprobada).
+    if (
+      solFull &&
+      solFull.estado === "aprobado" &&
+      sol.estado !== "aprobado" &&
+      solFull.employee_id
+    ) {
+      notificarResolucionPush({
+        tipo: "solicitud_cambio",
+        solicitudId: solFull.id,
+        employeeId: Number(solFull.employee_id),
+        estado: "aprobado",
+        resumen: `${solFull.tipo_cambio} (${solFull.origen_modulo})`,
+      }).catch((err) => {
+        logger.warn({ err, solicitudId: solFull.id }, "Push de resolución de solicitud-cambio falló (no bloqueante)");
+      });
+    }
+
+    res.json(solFull);
   } catch (err) {
     logger.error({ err }, "PATCH /solicitudes-cambio/:id/aprobar error");
     res.status(500).json({ error: "Error al aprobar" });
@@ -233,6 +256,13 @@ solicitudesCambioRouter.patch("/solicitudes-cambio/:id/rechazar", async (req, re
   const { area, usuario, notas } = req.body;
 
   try {
+    const { rows: prev } = await pool.query(
+      `SELECT estado FROM solicitudes_cambio_operativo WHERE id = $1`,
+      [id]
+    );
+    if (!prev.length) return res.status(404).json({ error: "No encontrada" });
+    const estadoAnterior = prev[0].estado;
+
     if (area === "rrhh") {
       await pool.query(
         `UPDATE solicitudes_cambio_operativo
@@ -259,7 +289,21 @@ solicitudesCambioRouter.patch("/solicitudes-cambio/:id/rechazar", async (req, re
     }
     const { rows } = await pool.query(`${SELECT_BASE} WHERE s.id = $1`, [id]);
     if (!rows.length) return res.status(404).json({ error: "No encontrada" });
-    res.json(rows[0]);
+    const sol = rows[0];
+
+    if (sol.employee_id && sol.estado === "rechazado" && estadoAnterior !== "rechazado") {
+      notificarResolucionPush({
+        tipo: "solicitud_cambio",
+        solicitudId: sol.id,
+        employeeId: Number(sol.employee_id),
+        estado: "rechazado",
+        resumen: `${sol.tipo_cambio} (${sol.origen_modulo})`,
+      }).catch((err) => {
+        logger.warn({ err, solicitudId: sol.id }, "Push de resolución de solicitud-cambio falló (no bloqueante)");
+      });
+    }
+
+    res.json(sol);
   } catch (err) {
     logger.error({ err }, "PATCH /solicitudes-cambio/:id/rechazar error");
     res.status(500).json({ error: "Error al rechazar" });
@@ -295,6 +339,13 @@ solicitudesCambioRouter.patch("/solicitudes-cambio/:id/decidir", async (req, res
     return res.status(400).json({ error: "decision debe ser 'aprobado' o 'rechazado'" });
   }
   try {
+    const { rows: prev } = await pool.query(
+      `SELECT estado FROM solicitudes_cambio_operativo WHERE id = $1`,
+      [id]
+    );
+    if (!prev.length) return res.status(404).json({ error: "No encontrada" });
+    const estadoAnterior = prev[0].estado;
+
     await pool.query(
       `UPDATE solicitudes_cambio_operativo
        SET estado = $1, decidido_por_admin = $2, notas_admin = $3,
@@ -304,7 +355,25 @@ solicitudesCambioRouter.patch("/solicitudes-cambio/:id/decidir", async (req, res
     );
     const { rows } = await pool.query(`${SELECT_BASE} WHERE s.id = $1`, [id]);
     if (!rows.length) return res.status(404).json({ error: "No encontrada" });
-    res.json(rows[0]);
+    const sol = rows[0];
+
+    if (
+      sol.employee_id &&
+      (decision === "aprobado" || decision === "rechazado") &&
+      estadoAnterior !== decision
+    ) {
+      notificarResolucionPush({
+        tipo: "solicitud_cambio",
+        solicitudId: sol.id,
+        employeeId: Number(sol.employee_id),
+        estado: decision,
+        resumen: `${sol.tipo_cambio} (${sol.origen_modulo})`,
+      }).catch((err) => {
+        logger.warn({ err, solicitudId: sol.id }, "Push de resolución de solicitud-cambio falló (no bloqueante)");
+      });
+    }
+
+    res.json(sol);
   } catch (err) {
     logger.error({ err }, "PATCH /solicitudes-cambio/:id/decidir error");
     res.status(500).json({ error: "Error al decidir" });
