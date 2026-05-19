@@ -87,6 +87,7 @@ import AdminKioscoSolicitudImprimible from "@/admin/pages/KioscoSolicitudImprimi
 import AdminMergeRequests from "@/admin/pages/MergeRequests";
 import AdminModeloDatos from "@/admin/pages/ModeloDatos";
 import AdminDocumentacion from "@/admin/pages/Documentacion";
+import AdminDispositivosOTA from "@/admin/pages/DispositivosOTA";
 import AjustesVersion from "@/pages/AjustesVersion";
 
 // Portal de clientes
@@ -349,6 +350,10 @@ function Router() {
       </Route>
       <Route path="/admin/rrhh/reingresos">
         {() => <AuthGuard><AdminMergeRequests /></AuthGuard>}
+      </Route>
+
+      <Route path="/admin/configuracion/dispositivos">
+        {() => <AuthGuard requiredRoles={["admin"]}><AdminDispositivosOTA /></AuthGuard>}
       </Route>
 
       <Route component={NotFound} />

@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, ReactNode } from "react";
 import type { Rol } from "@/config/permissions";
 import { initPush, unregisterTokenFromServer } from "@/lib/native/push";
+import { reportDevice } from "@/lib/native/deviceReport";
 
 export type { Rol };
 
@@ -58,6 +59,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // En APK, asociar el token FCM de este dispositivo a la cuenta que
       // acaba de loguearse. Fire-and-forget: si falla (sin red, sin
       // Firebase) no bloqueamos el login.
+      // TASK #97: reportar al backend la versión nativa/OTA de este dispositivo
+      // así el panel admin sabe qué celular se quedó en qué versión.
+      void reportDevice({ userId: user.id });
       void initPush({
         userId: user.id,
         navigate: (ruta) => {

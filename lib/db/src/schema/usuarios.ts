@@ -97,3 +97,32 @@ export const insertPushEnvioSchema = createInsertSchema(pushEnviosTable).omit({ 
 
 export type PushEnvio = typeof pushEnviosTable.$inferSelect;
 export type InsertPushEnvio = z.infer<typeof insertPushEnvioSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DEVICE_REPORTS — qué versión nativa (APK) y bundle OTA corre cada dispositivo.
+//
+// Cada cliente (APK o navegador) genera un `deviceId` aleatorio que persiste en
+// almacenamiento local y lo reporta al backend al hacer login y luego de cada
+// chequeo OTA. Permite al panel admin ver de un vistazo qué celulares se
+// quedaron en una versión vieja y a qué usuario contactar.
+//
+// Esta tabla NO reemplaza a push_tokens — un dispositivo puede no tener token
+// FCM (Firebase no configurado, permiso denegado, navegador) pero igual
+// queremos saber su versión.
+// ─────────────────────────────────────────────────────────────────────────────
+export const deviceReportsTable = pgTable("device_reports", {
+  id: serial("id").primaryKey(),
+  deviceId: varchar("device_id", { length: 100 }).notNull().unique(),
+  userId: integer("user_id"),
+  platform: varchar("platform", { length: 20 }).notNull().default("web"),
+  nativeVersion: varchar("native_version", { length: 50 }),
+  bundleVersion: varchar("bundle_version", { length: 50 }),
+  bundleId: varchar("bundle_id", { length: 100 }),
+  deviceModel: varchar("device_model", { length: 100 }),
+  lastOtaCheckAt: timestamp("last_ota_check_at", { withTimezone: true }),
+  lastOtaStatus: varchar("last_ota_status", { length: 50 }),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type DeviceReport = typeof deviceReportsTable.$inferSelect;

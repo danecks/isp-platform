@@ -318,6 +318,34 @@ export async function runAutoMigrations(): Promise<void> {
     `);
     logger.info("Auto-migrate: tabla 'push_envios' verificada/creada");
 
+    // DEVICE_REPORTS — qué versión nativa (APK) y bundle OTA corre cada
+    // dispositivo. El cliente reporta deviceId + versiones al login y luego
+    // de cada chequeo OTA (TASK #97). Permite al panel admin ver qué celulares
+    // se quedaron en una versión vieja sin tener que preguntarle al usuario.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS device_reports (
+        id                SERIAL PRIMARY KEY,
+        device_id         VARCHAR(100) NOT NULL UNIQUE,
+        user_id           INTEGER,
+        platform          VARCHAR(20) NOT NULL DEFAULT 'web',
+        native_version    VARCHAR(50),
+        bundle_version    VARCHAR(50),
+        bundle_id         VARCHAR(100),
+        device_model      VARCHAR(100),
+        last_ota_check_at TIMESTAMPTZ,
+        last_ota_status   VARCHAR(50),
+        last_seen_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS device_reports_user_idx ON device_reports(user_id)`
+    );
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS device_reports_last_seen_idx ON device_reports(last_seen_at DESC)`
+    );
+    logger.info("Auto-migrate: tabla 'device_reports' verificada/creada");
+
     // BONIF-INCENTIVO-01: nivelar bonificación incentivo a Q250 mínimo
     // (Decreto 78-89). Idempotente: solo afecta a quienes están abajo.
     const bonifFix = await pool.query(`

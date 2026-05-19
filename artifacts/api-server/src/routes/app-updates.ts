@@ -39,7 +39,7 @@ function parsePath(p: string): { bucket: string; objectPath: string } | null {
   return { bucket: trimmed.slice(0, slash), objectPath: trimmed.slice(slash + 1) };
 }
 
-async function readManifest(): Promise<unknown | null> {
+export async function readManifest(): Promise<unknown | null> {
   for (const base of getSearchPaths()) {
     const parsed = parsePath(`${base.replace(/\/$/, "")}/${OTA_PREFIX}/manifest.json`);
     if (!parsed) continue;

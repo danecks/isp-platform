@@ -28,6 +28,7 @@ import {
   Calendar,
   Kanban,
   Trash2,
+  Smartphone,
   ArrowUpDown,
   Landmark,
   Gift,
@@ -370,6 +371,15 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: BellRing,
         // Reutiliza el permiso "usuarios" (igual que el backend en
         // ROUTE_MODULO_MAP "/push" → "usuarios"). Sólo admin lo ve.
+        clave: "usuarios",
+        roles: ["admin"],
+      },
+      {
+        path: "/admin/configuracion/dispositivos",
+        label: "Dispositivos y versión OTA",
+        icon: Smartphone,
+        // Reutiliza el permiso "usuarios" (igual que el backend en
+        // ROUTE_MODULO_MAP "/device-reports" → "usuarios"). Sólo admin lo ve.
         clave: "usuarios",
         roles: ["admin"],
       },

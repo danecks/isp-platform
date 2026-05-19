@@ -85,6 +85,10 @@ const ROUTE_MODULO_MAP: Record<string, string> = {
   // override de método (cualquier sesión válida basta — el handler valida
   // que el userId del body == sesión).
   "/push":                   "usuarios",
+  // TASK #97: GET /device-reports lo consume el panel admin (sólo admin).
+  // El POST queda abierto a cualquier sesión vía isPublicPath (cada usuario
+  // reporta SU dispositivo al loguearse).
+  "/device-reports":         "usuarios",
 };
 
 // Rutas públicas legítimas (login, webhooks, portal, healthcheck).
@@ -360,6 +364,11 @@ export async function permisosMiddleware(req: any, res: any, next: any) {
   // restringido al módulo "usuarios" (admin) vía ROUTE_MODULO_MAP.
   if (req.method === "POST" && req.path === "/push/tokens") return next();
   if (req.method === "DELETE" && req.path.startsWith("/push/tokens/")) return next();
+
+  // Device reports (TASK #97) — cualquier sesión válida reporta SU propio
+  // dispositivo. El handler enforce que userId == sesión (salvo admin).
+  // El GET queda restringido al módulo "usuarios" (admin) vía ROUTE_MODULO_MAP.
+  if (req.method === "POST" && req.path === "/device-reports") return next();
 
   // Sesión válida + ruta sin módulo asociado → dejar pasar
   // (rutas internas no catalogadas, basta con que la sesión sea válida)

@@ -10,6 +10,7 @@
  */
 import { isNative } from "./platform";
 import { initLiveUpdate } from "./liveUpdate";
+import { reportDevice } from "./deviceReport";
 import { initPush } from "./push";
 import { installNativeFetchPatch } from "./fetchPatch";
 import { toast } from "@/hooks/use-toast";
@@ -81,7 +82,16 @@ export function bootstrapNative(): void {
   // con "error de conexión con el servidor".
   installNativeFetchPatch();
   redirigirSiEsMarketing();
+  // TASK #97: reportar la versión nativa/OTA actual al backend en el arranque
+  // (fire-and-forget). Si todavía no hay sesión, el backend igual guarda el
+  // reporte como anónimo y se reasocia en el siguiente login.
+  void reportDevice();
   initLiveUpdate((r) => {
+    // Cada vez que cambia el estado OTA, refrescamos el reporte para que el
+    // panel admin vea la última verificación sin esperar al próximo login.
+    if (r.status === "downloaded" || r.status === "no-update" || r.status === "error") {
+      void reportDevice();
+    }
     if (r.status === "downloading") {
       toast({
         title: "Actualizando la app…",

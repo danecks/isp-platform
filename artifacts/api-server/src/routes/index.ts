@@ -74,6 +74,7 @@ import plantillasContratoRouter from "./plantillas-contrato";
 import { visitasRouter } from "./visitas";
 import { asignacionesRecursosRouter } from "./asignaciones-recursos";
 import pushRouter from "./push";
+import deviceReportsRouter from "./device-reports";
 
 const router: IRouter = Router();
 
@@ -155,5 +156,6 @@ router.use(supervisionPlanMensualRouter);
 router.use(agenteSupervisionRouter);
 router.use(agenteSupervisionJornadaRouter);
 router.use(pushRouter);
+router.use(deviceReportsRouter);
 
 export default router;
