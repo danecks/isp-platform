@@ -32,6 +32,8 @@
 
 import { pool, db, waNotificacionesLogTable } from "@workspace/db";
 import { getWaMessage } from "./wa-config.service";
+import { enviarTextoWA } from "./wa-sender";
+import { ROLES_SUPERVISION } from "../push-notificaciones";
 import { logger } from "../../lib/logger";
 
 // ─── Tipo interno ─────────────────────────────────────────────────────────────
@@ -234,4 +236,150 @@ async function registrarLog(entry: LogEntry): Promise<void> {
   } catch (err) {
     logger.error({ err }, "notifyTareaAsignada: error guardando log");
   }
+}
+
+// ─── Recordatorio de abandono sin reconocer (canal WhatsApp) ──────────────────
+//
+// Se dispara desde `services/recordatorio-abandono.ts` en paralelo con el push.
+// El anti-spam de 1h ya lo garantiza el UPDATE condicional sobre
+// supervision_novedades.recordatorio_enviado_at, así que aquí sólo enviamos.
+//
+// Destinatarios: usuarios con rol de supervisión (admin/operaciones/supervisor)
+// que tengan teléfono registrado y `wa_autorizado = TRUE`, restringidos al
+// cliente afectado (un supervisor con cliente_id sólo recibe alertas de su
+// propio cliente; los globales sin cliente_id reciben todas).
+//
+// Configuración por env:
+//   RECORDATORIO_ABANDONO_WA_ENABLED  — "true"/"1" activa el canal (default true).
+//                                        Cualquier otro valor lo desactiva.
+
+export interface RecordatorioAbandonoWaArgs {
+  novedadId: number;
+  clienteId: number | null;
+  puestoNombre?: string | null;
+  clienteNombre?: string | null;
+  minutosSinReconocer: number;
+}
+
+interface SupervisorWaRow {
+  id: number;
+  telefono: string;
+}
+
+function waRecordatorioHabilitado(): boolean {
+  const raw = process.env.RECORDATORIO_ABANDONO_WA_ENABLED;
+  if (raw === undefined || raw === "") return true;
+  const v = raw.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
+async function resolverSupervisoresWa(
+  clienteId: number | null
+): Promise<SupervisorWaRow[]> {
+  if (clienteId === null) {
+    const { rows } = await pool.query<SupervisorWaRow>(
+      `SELECT id, telefono
+         FROM users
+        WHERE rol = ANY($1::text[])
+          AND cliente_id IS NULL
+          AND estado = 'activo'
+          AND wa_autorizado = TRUE
+          AND telefono IS NOT NULL
+          AND telefono <> ''`,
+      [ROLES_SUPERVISION as readonly string[]]
+    );
+    return rows;
+  }
+  const { rows } = await pool.query<SupervisorWaRow>(
+    `SELECT u.id, u.telefono
+       FROM users u
+       LEFT JOIN clients c ON c.id = $1::int
+      WHERE u.rol = ANY($2::text[])
+        AND u.estado = 'activo'
+        AND u.wa_autorizado = TRUE
+        AND u.telefono IS NOT NULL
+        AND u.telefono <> ''
+        AND (
+          u.cliente_id IS NULL
+          OR (c.portal_cliente_id IS NOT NULL AND u.cliente_id = c.portal_cliente_id)
+        )`,
+    [clienteId, ROLES_SUPERVISION as readonly string[]]
+  );
+  return rows;
+}
+
+export async function notificarRecordatorioAbandonoWhatsApp(
+  args: RecordatorioAbandonoWaArgs
+): Promise<{ enviados: number; fallidos: number; omitidos: number }> {
+  if (!waRecordatorioHabilitado()) {
+    return { enviados: 0, fallidos: 0, omitidos: 0 };
+  }
+
+  const supervisores = await resolverSupervisoresWa(args.clienteId);
+  if (supervisores.length === 0) {
+    return { enviados: 0, fallidos: 0, omitidos: 0 };
+  }
+
+  const plantilla = await getWaMessage(
+    "abandono_recordatorio",
+    "⏰ ISP, S.A. — Alerta de abandono sin atender\n📍 Puesto: {puesto}\n🏢 Cliente: {cliente}\n⌛ Sin reconocer hace {minutos} min\nIngresa al panel de supervisión para revisarla."
+  );
+
+  const mensaje = plantilla
+    .replace(/\{puesto\}/g, args.puestoNombre ?? "—")
+    .replace(/\{cliente\}/g, args.clienteNombre ?? "—")
+    .replace(/\{minutos\}/g, String(args.minutosSinReconocer));
+
+  let enviados = 0;
+  let fallidos = 0;
+  let omitidos = 0;
+
+  for (const sup of supervisores) {
+    let estado = "enviado";
+    let errorMsg: string | null = null;
+    try {
+      const res = await enviarTextoWA(sup.telefono, mensaje);
+      if (res.skipped) {
+        estado = "simulado";
+        omitidos++;
+      } else if (res.ok) {
+        enviados++;
+      } else {
+        estado = "error";
+        errorMsg = res.error ?? "envío fallido";
+        fallidos++;
+      }
+    } catch (err) {
+      estado = "error";
+      errorMsg = err instanceof Error ? err.message : String(err);
+      fallidos++;
+      logger.error(
+        { err, novedadId: args.novedadId, userId: sup.id },
+        "[Recordatorio-Abandono-WA] error enviando mensaje"
+      );
+    }
+
+    await registrarLog({
+      tareaId: `NOV-${args.novedadId}`,
+      usuarioId: sup.id,
+      telefono: sup.telefono,
+      mensaje,
+      evento: "abandono_puesto_recordatorio",
+      estado,
+      errorMsg,
+    });
+  }
+
+  logger.info(
+    {
+      novedadId: args.novedadId,
+      destinatarios: supervisores.length,
+      enviados,
+      fallidos,
+      omitidos,
+    },
+    "[Recordatorio-Abandono-WA] tanda enviada"
+  );
+
+  return { enviados, fallidos, omitidos };
 }
