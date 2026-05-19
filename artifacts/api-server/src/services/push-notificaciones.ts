@@ -173,3 +173,54 @@ function rutaPorDefecto(tipo: TipoAprobacion, id: number | string): string {
     case "solicitud_cambio":  return `/solicitudes-cambio/${id}`;
   }
 }
+
+// ─── Abandono de puesto (supervisión) ─────────────────────────────────────────
+
+// Roles con permiso de supervisión (mismos que abren el dashboard).
+// Se mantienen aquí para que un cambio en el menú no rompa el push.
+export const ROLES_SUPERVISION = ["admin", "operaciones", "supervisor"] as const;
+
+export interface AbandonoPuestoPushArgs {
+  novedadId: number;
+  supervisorNombre?: string | null;
+  puestoNombre?: string | null;
+  clienteNombre?: string | null;
+  permanenciaSegundos: number;
+}
+
+export async function notificarAbandonoPuestoPush(
+  args: AbandonoPuestoPushArgs
+): Promise<PushResult> {
+  const minutos = Math.max(0, Math.round(args.permanenciaSegundos / 60));
+  const titulo = "🚨 Abandono de puesto detectado";
+  const partes = [
+    args.supervisorNombre ? `Supervisor: ${args.supervisorNombre}` : null,
+    args.puestoNombre ? `Puesto: ${args.puestoNombre}` : null,
+    args.clienteNombre ? `Cliente: ${args.clienteNombre}` : null,
+    `Permanencia: ${minutos} min`,
+  ].filter(Boolean) as string[];
+  const cuerpo = partes.join(" · ");
+
+  const result = await sendPushToRoles({
+    roles: [...ROLES_SUPERVISION],
+    title: titulo,
+    body: cuerpo,
+    priority: "high",
+    data: {
+      tipo: "abandono_puesto",
+      novedadId: String(args.novedadId),
+      ruta: `/admin/supervision/novedades/${args.novedadId}`,
+    },
+  });
+
+  logger.info(
+    {
+      novedadId: args.novedadId,
+      sent: result.sent,
+      failed: result.failed,
+      simulated: result.simulated ?? false,
+    },
+    "[Push-Abandono] resultado de notificación"
+  );
+  return result;
+}
