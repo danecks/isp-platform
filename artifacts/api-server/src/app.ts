@@ -4,6 +4,7 @@ import helmet from "helmet";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import pinoHttp from "pino-http";
 import router from "./routes";
+import { appUpdatesRootRouter } from "./routes/app-updates";
 import { logger } from "./lib/logger";
 import { permisosMiddleware } from "./lib/permisos-middleware";
 
@@ -109,6 +110,12 @@ const loginLimiter = rateLimit({
 
 app.use("/api", generalLimiter);
 app.use("/api/auth/login", loginLimiter);
+
+// Alias raíz para OTA. El APK v0.2.0 tiene baked la URL
+// `https://ispsa.net/app-updates/manifest.json` (sin /api). Montamos aquí,
+// FUERA de /api y FUERA del middleware de permisos, porque la ruta tiene que
+// ser pública por diseño (el APK no tiene sesión admin).
+app.use("/app-updates", appUpdatesRootRouter);
 
 app.use("/api", permisosMiddleware as any);
 app.use("/api", router);
