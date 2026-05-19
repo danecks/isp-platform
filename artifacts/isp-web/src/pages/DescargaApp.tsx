@@ -10,8 +10,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
-const APK_URL = "https://ispsa.net/api/descarga-apk/0.2.0";
-const VERSION = "v0.2.0";
+const APK_URL = "https://ispsa.net/api/descarga-apk/1.0.0";
+const VERSION = "v1.0.0";
 
 export default function DescargaApp() {
   return (

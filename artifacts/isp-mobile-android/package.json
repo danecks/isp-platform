@@ -1,6 +1,6 @@
 {
   "name": "@workspace/isp-mobile-android",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Wrapper Capacitor (Android) de ISP Operaciones — empaqueta el bundle de @workspace/isp-web como APK distribuible.",
   "scripts": {

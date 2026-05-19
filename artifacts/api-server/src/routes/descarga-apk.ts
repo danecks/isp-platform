@@ -5,7 +5,7 @@
  * sí debe poder descargarse desde cualquier teléfono.
  *
  *   GET /api/descarga-apk           → última versión (DEFAULT_VERSION)
- *   GET /api/descarga-apk/0.2.0     → versión específica
+ *   GET /api/descarga-apk/1.0.0     → versión específica
  *
  * Implementación:
  *   1. Resuelve el release por tag `mobile-v{version}` (con caché en memoria).
@@ -32,7 +32,7 @@ import { logger } from "../lib/logger";
 const router: IRouter = Router();
 
 const REPO = "danecks/isp-platform";
-const DEFAULT_VERSION = "0.2.0";
+const DEFAULT_VERSION = "1.0.0";
 const TAG_PREFIX = "mobile-v";
 const SEMVER_RE = /^[0-9]+\.[0-9]+\.[0-9]+$/;
 const ASSET_CACHE_TTL_MS = 5 * 60 * 1000;
