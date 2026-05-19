@@ -42,7 +42,10 @@ const r = spawnSync("zip", ["-r", "-q", resolve(out, zipName), "."], { cwd: src,
 if (r.status !== 0) { console.error("Falló zip"); process.exit(r.status ?? 1); }
 
 const buf = await readFile(resolve(out, zipName));
-const checksum = "sha256-" + createHash("sha256").update(buf).digest("hex");
+// Capgo @capgo/capacitor-updater v6 espera SHA-256 en hex plano (sin prefijo
+// `sha256-`). Si se manda con prefijo, el nativo invalida el bundle bajado y
+// nunca lo aplica (síntoma: HEAD al .zip y ningún GET — el plugin desiste).
+const checksum = createHash("sha256").update(buf).digest("hex");
 const manifest = {
   version,
   url: `${baseUrl}/${zipName}`,

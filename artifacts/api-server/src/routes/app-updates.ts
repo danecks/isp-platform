@@ -82,25 +82,74 @@ async function handleManifest(_req: Request, res: Response): Promise<void> {
   }
 }
 
-async function handleBundle(req: Request, res: Response): Promise<void> {
-  const name = req.params["bundle"] ?? "";
+/**
+ * Resuelve el nombre del bundle a un objeto de Object Storage y, si existe,
+ * devuelve el `file` junto con los metadatos (tamaño + etag) necesarios para
+ * responder HEAD y GET con `Content-Length` correcto.
+ */
+async function resolveBundle(name: string): Promise<
+  | { error: "invalid" }
+  | { error: "notfound" }
+  | { file: ReturnType<ReturnType<typeof objectStorageClient.bucket>["file"]>; size: number; etag: string | undefined; version: string }
+> {
   const match = /^v([A-Za-z0-9._-]+)\.zip$/.exec(name);
-  if (!match || !VERSION_RE.test(match[1]!)) {
-    res.status(400).json({ error: "nombre de bundle inválido" });
-    return;
-  }
+  if (!match || !VERSION_RE.test(match[1]!)) return { error: "invalid" };
+  const version = match[1]!;
+  const file = await findBundle(version);
+  if (!file) return { error: "notfound" };
+  const [meta] = await file.getMetadata();
+  const sizeRaw = meta?.size;
+  const size = typeof sizeRaw === "number" ? sizeRaw : parseInt(String(sizeRaw ?? "0"), 10) || 0;
+  const etag = typeof meta?.etag === "string" ? meta.etag : undefined;
+  return { file, size, etag, version };
+}
+
+function setBundleHeaders(res: Response, size: number, etag: string | undefined): void {
+  res.set("Content-Type", "application/zip");
+  res.set("Content-Length", String(size));
+  res.set("Accept-Ranges", "bytes");
+  // OJO: NO usar `immutable` ni cache largo. El plugin @capgo/capacitor-updater
+  // hace HEAD periódico al .zip antes de descargar; con `immutable` algunos
+  // stacks HTTP nativos cachean el HEAD fallido y nunca llegan a hacer el GET.
+  // Cache corto + must-revalidate evita ese deadlock manteniendo CDN-friendly.
+  res.set("Cache-Control", "public, max-age=60, must-revalidate");
+  if (etag) res.set("ETag", etag);
+}
+
+async function handleBundleHead(req: Request, res: Response): Promise<void> {
+  const name = req.params["bundle"] ?? "";
   try {
-    const file = await findBundle(match[1]!);
-    if (!file) {
-      res.status(404).json({ error: "bundle no encontrado" });
+    const r = await resolveBundle(name);
+    if ("error" in r) {
+      res.status(r.error === "invalid" ? 400 : 404).end();
       return;
     }
-    res.set("Content-Type", "application/zip");
-    res.set("Cache-Control", "public, max-age=31536000, immutable");
-    file.createReadStream().on("error", (err) => {
-      logger.error({ err, version: match[1] }, "[OTA] error streaming bundle");
-      if (!res.headersSent) res.status(500).end();
-    }).pipe(res);
+    setBundleHeaders(res, r.size, r.etag);
+    res.status(200).end();
+  } catch (err) {
+    logger.error({ err }, "[OTA] error en HEAD bundle");
+    res.status(500).end();
+  }
+}
+
+async function handleBundle(req: Request, res: Response): Promise<void> {
+  const name = req.params["bundle"] ?? "";
+  try {
+    const r = await resolveBundle(name);
+    if ("error" in r) {
+      res.status(r.error === "invalid" ? 400 : 404).json({
+        error: r.error === "invalid" ? "nombre de bundle inválido" : "bundle no encontrado",
+      });
+      return;
+    }
+    setBundleHeaders(res, r.size, r.etag);
+    r.file
+      .createReadStream()
+      .on("error", (err) => {
+        logger.error({ err, version: r.version }, "[OTA] error streaming bundle");
+        if (!res.headersSent) res.status(500).end();
+      })
+      .pipe(res);
   } catch (err) {
     logger.error({ err }, "[OTA] error sirviendo bundle");
     res.status(500).json({ error: "error interno" });
@@ -110,12 +159,16 @@ async function handleBundle(req: Request, res: Response): Promise<void> {
 // Router montado bajo /api (vía routes/index.ts) → expone /api/app-updates/*
 const router: IRouter = Router();
 router.get("/app-updates/manifest.json", handleManifest);
+router.head("/app-updates/manifest.json", handleManifest);
+router.head("/app-updates/:bundle", handleBundleHead);
 router.get("/app-updates/:bundle", handleBundle);
 
 // Router montado en la raíz (vía app.ts) → expone /app-updates/* sin /api.
 // Es la URL que el APK v0.2.0 tiene baked en capacitor.config.ts y liveUpdate.ts.
 export const appUpdatesRootRouter: IRouter = Router();
 appUpdatesRootRouter.get("/manifest.json", handleManifest);
+appUpdatesRootRouter.head("/manifest.json", handleManifest);
+appUpdatesRootRouter.head("/:bundle", handleBundleHead);
 appUpdatesRootRouter.get("/:bundle", handleBundle);
 
 export default router;

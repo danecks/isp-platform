@@ -146,8 +146,12 @@ export async function checkForUpdate(
 
 /**
  * Llamar UNA vez al montar la app (App.tsx). Marca el bundle actual como
- * "ready" para que el plugin no haga rollback al boot siguiente, y dispara
- * un check OTA en background sin bloquear el render.
+ * "ready" para que el plugin no haga rollback al boot siguiente, registra
+ * listeners de progreso/error y dispara un check OTA en background.
+ *
+ * Los listeners nativos (download/downloadFailed/updateAvailable) son la única
+ * forma de enterarnos de fallas cuando el plugin usa `autoUpdate: true` y
+ * descarga por su cuenta sin pasar por `checkForUpdate()` del JS.
  */
 export function initLiveUpdate(onResult?: (r: OtaCheckResult) => void): void {
   if (!isNative()) return;
@@ -159,6 +163,35 @@ export function initLiveUpdate(onResult?: (r: OtaCheckResult) => void): void {
         await CapacitorUpdater.notifyAppReady();
       } catch {
         /* primer boot — ignorar */
+      }
+      try {
+        await CapacitorUpdater.addListener?.("download", (info: { percent?: number; version?: string }) => {
+          const pct = typeof info?.percent === "number" ? info.percent : -1;
+          const ver = typeof info?.version === "string" ? info.version : "?";
+          if (pct === 100) {
+            onResult?.({ status: "downloaded", version: ver });
+          } else if (pct >= 0) {
+            onResult?.({ status: "downloading", version: ver });
+          }
+        });
+        await CapacitorUpdater.addListener?.("downloadFailed", (info: { version?: string }) => {
+          const ver = typeof info?.version === "string" ? info.version : "?";
+          const r: OtaCheckResult = { status: "error", message: `download failed v${ver}` };
+          persistLastCheck(r);
+          onResult?.(r);
+        });
+        await CapacitorUpdater.addListener?.("updateAvailable", (info: { bundle?: { version?: string } }) => {
+          const ver = info?.bundle?.version;
+          if (typeof ver === "string") onResult?.({ status: "available", version: ver });
+        });
+        await CapacitorUpdater.addListener?.("updateFailed", (info: { bundle?: { version?: string } }) => {
+          const ver = info?.bundle?.version ?? "?";
+          const r: OtaCheckResult = { status: "error", message: `update failed v${ver}` };
+          persistLastCheck(r);
+          onResult?.(r);
+        });
+      } catch {
+        /* listeners no soportados — seguir igual */
       }
       const r = await checkForUpdate(onResult);
       onResult?.(r);
