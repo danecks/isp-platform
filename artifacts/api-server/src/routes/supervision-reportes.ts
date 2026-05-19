@@ -215,6 +215,106 @@ supervisionReportesRouter.get("/supervision/reportes", async (req, res) => {
   }
 });
 
+// GET /api/supervision-reportes/abandonos
+// Historial completo y paginado de novedades tipo='abandono_puesto'.
+// Filtros: estado (todos|reconocida|pendiente), cliente_id, desde, hasta,
+// reconocida_por (user id). Devuelve { rows, total, page, page_size }.
+supervisionReportesRouter.get("/supervision-reportes/abandonos", async (req, res) => {
+  const desde = parseFecha(req.query.desde, hace30());
+  const hasta = parseFecha(req.query.hasta, hoy());
+  const clienteIdNum = Number(req.query.cliente_id);
+  const clienteId = Number.isInteger(clienteIdNum) && clienteIdNum > 0 ? clienteIdNum : null;
+  const reconocidaPorNum = Number(req.query.reconocida_por);
+  const reconocidaPor =
+    Number.isInteger(reconocidaPorNum) && reconocidaPorNum > 0 ? reconocidaPorNum : null;
+  const estadoRaw = String(req.query.estado || "todos").toLowerCase();
+  const estado: "todos" | "reconocida" | "pendiente" =
+    estadoRaw === "reconocida" || estadoRaw === "pendiente" ? estadoRaw : "todos";
+
+  const pageNum = Number(req.query.page);
+  const page = Number.isInteger(pageNum) && pageNum > 0 ? pageNum : 1;
+  const sizeNum = Number(req.query.page_size);
+  const pageSize =
+    Number.isInteger(sizeNum) && sizeNum > 0 && sizeNum <= 200 ? sizeNum : 25;
+  const offset = (page - 1) * pageSize;
+
+  const filtroEstadoSql =
+    estado === "reconocida"
+      ? "AND n.reconocida_at IS NOT NULL"
+      : estado === "pendiente"
+        ? "AND n.reconocida_at IS NULL"
+        : "";
+
+  try {
+    const params: [string, string, number | null, number | null] = [desde, hasta, clienteId, reconocidaPor];
+    const baseWhere = `
+      WHERE n.tipo = 'abandono_puesto'
+        AND n.fecha BETWEEN $1 AND $2
+        AND ($3::int IS NULL OR n.cliente_id = $3)
+        AND ($4::int IS NULL OR n.reconocida_por_user_id = $4)
+        ${filtroEstadoSql}
+    `;
+
+    const { rows: countRows } = await pool.query(
+      `SELECT COUNT(*)::int AS total
+         FROM supervision_novedades n
+         ${baseWhere}`,
+      params
+    );
+    const total = countRows[0]?.total || 0;
+
+    const { rows } = await pool.query(
+      `SELECT n.id,
+              n.fecha,
+              n.observaciones,
+              po.nombre AS puesto_nombre,
+              c.nombre  AS cliente_nombre,
+              e.nombre_completo AS supervisor_nombre,
+              n.datos_consolidados AS datos,
+              to_char(n.generada_at, 'YYYY-MM-DD HH24:MI') AS generada_at,
+              (n.datos_consolidados->>'permanencia_segundos')::int AS permanencia_segundos,
+              n.reconocida_at IS NOT NULL AS reconocida,
+              to_char(n.reconocida_at, 'YYYY-MM-DD HH24:MI') AS reconocida_at,
+              u_rec.username AS reconocida_por,
+              u_rec.id       AS reconocida_por_user_id
+         FROM supervision_novedades n
+         LEFT JOIN puestos_operativos po ON po.id = n.puesto_id
+         LEFT JOIN clients c             ON c.id  = n.cliente_id
+         LEFT JOIN employees e           ON e.id  = n.supervisor_employee_id
+         LEFT JOIN users u_rec           ON u_rec.id = n.reconocida_por_user_id
+         ${baseWhere}
+        ORDER BY n.generada_at DESC
+        LIMIT $5 OFFSET $6`,
+      [...params, pageSize, offset]
+    );
+
+    const { rows: usuariosRows } = await pool.query(
+      `SELECT DISTINCT u.id, u.username
+         FROM supervision_novedades n
+         JOIN users u ON u.id = n.reconocida_por_user_id
+        WHERE n.tipo = 'abandono_puesto'
+          AND n.fecha BETWEEN $1 AND $2
+          AND ($3::int IS NULL OR n.cliente_id = $3)
+        ORDER BY u.username ASC`,
+      [desde, hasta, clienteId]
+    );
+
+    res.json({
+      ok: true,
+      rango: { desde, hasta },
+      filtros: { estado, cliente_id: clienteId, reconocida_por: reconocidaPor },
+      page,
+      page_size: pageSize,
+      total,
+      rows,
+      usuarios_reconocedores: usuariosRows,
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /supervision-reportes/abandonos error");
+    res.status(500).json({ error: "Error al cargar historial de abandonos" });
+  }
+});
+
 // PATCH /api/supervision-reportes/novedades/:id/reconocer
 // Marca (o desmarca) una novedad de abandono como reconocida por el usuario
 // actual. Ruta bajo /supervision-reportes para que el middleware de permisos
