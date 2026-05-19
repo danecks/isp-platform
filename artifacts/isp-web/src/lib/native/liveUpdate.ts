@@ -27,6 +27,7 @@ export type OtaManifest = {
 export type OtaCheckResult =
   | { status: "no-update" }
   | { status: "available"; version: string; notes?: string; releasedAt?: string }
+  | { status: "downloading"; version: string }
   | { status: "downloaded"; version: string; notes?: string; releasedAt?: string }
   | { status: "error"; message: string }
   | { status: "unsupported" };
@@ -100,7 +101,9 @@ export async function getAppVersionInfo(): Promise<AppVersionInfo> {
   }
 }
 
-export async function checkForUpdate(): Promise<OtaCheckResult> {
+export async function checkForUpdate(
+  onProgress?: (r: OtaCheckResult) => void,
+): Promise<OtaCheckResult> {
   if (!isNative()) {
     const r: OtaCheckResult = { status: "unsupported" };
     persistLastCheck(r);
@@ -119,6 +122,7 @@ export async function checkForUpdate(): Promise<OtaCheckResult> {
       if (current?.bundle?.version === manifest.version) {
         result = { status: "no-update" };
       } else {
+        onProgress?.({ status: "downloading", version: manifest.version });
         const dl = await CapacitorUpdater.download({
           url: manifest.url,
           version: manifest.version,
@@ -156,7 +160,7 @@ export function initLiveUpdate(onResult?: (r: OtaCheckResult) => void): void {
       } catch {
         /* primer boot — ignorar */
       }
-      const r = await checkForUpdate();
+      const r = await checkForUpdate(onResult);
       onResult?.(r);
     } catch {
       /* silenciar — la app sigue corriendo con el bundle actual */
