@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Loader2, AlertTriangle, ShieldAlert, Shirt, Sparkles,
-  ClipboardCheck, FileWarning, MapPin, Users, LogOut,
+  ClipboardCheck, FileWarning, MapPin, Users, LogOut, Check, RotateCcw,
 } from "lucide-react";
 import { api, hoyISO, inputCls } from "./api";
 
@@ -34,6 +34,9 @@ interface NovedadRec {
     permanencia_segundos?: number;
     umbral_segundos?: number;
   } | null;
+  reconocida?: boolean;
+  reconocida_at?: string | null;
+  reconocida_por?: string | null;
 }
 interface AlertaArmaRec {
   id: number; tipo: string; descripcion: string | null; estado: string;
@@ -82,6 +85,7 @@ export function TabReportes() {
       .catch(() => {});
   }, []);
 
+  const [reloadKey, setReloadKey] = useState(0);
   useEffect(() => {
     setLoading(true); setError(null);
     const params = new URLSearchParams();
@@ -92,7 +96,8 @@ export function TabReportes() {
       .then(setData)
       .catch(e => setError(e.message || "Error"))
       .finally(() => setLoading(false));
-  }, [desde, hasta, clienteId]);
+  }, [desde, hasta, clienteId, reloadKey]);
+  const recargar = () => setReloadKey(k => k + 1);
 
   const fallasUniformeEquipo = useMemo(
     () => (data?.fallas_por_item || []).filter(f => f.categoria === "equipo"),
@@ -160,7 +165,7 @@ export function TabReportes() {
           <CardTopPuestos items={data.top_puestos_problematicos} />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <CardNovedades items={data.novedades_recientes} />
+            <CardNovedades items={data.novedades_recientes} onCambio={recargar} />
             <CardAlertasRecientes items={data.alertas_armas_recientes} />
           </div>
         </>
@@ -309,39 +314,72 @@ function CardTopPuestos({ items }: { items: PuestoProb[] }) {
   );
 }
 
-function CardNovedades({ items }: { items: NovedadRec[] }) {
-  const abandonos = items.filter(n => n.tipo === "abandono_puesto").length;
+function CardNovedades({ items, onCambio }: { items: NovedadRec[]; onCambio: () => void }) {
+  const abandonos = items.filter(n => n.tipo === "abandono_puesto" && !n.reconocida).length;
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [errId, setErrId] = useState<string | null>(null);
+
+  async function toggleReconocer(n: NovedadRec) {
+    setBusyId(n.id); setErrId(null);
+    try {
+      await api(`/supervision-reportes/novedades/${n.id}/reconocer`, {
+        method: "PATCH",
+        body: JSON.stringify({ reconocida: !n.reconocida }),
+      });
+      onCambio();
+    } catch (e: any) {
+      setErrId(e?.message || "Error al actualizar");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <div className="bg-[#0b1424] border border-white/10 rounded p-3">
       <h3 className="text-xs font-semibold text-white/80 mb-2 inline-flex items-center gap-1.5">
         <FileWarning className="w-4 h-4" /> Novedades recientes
         {abandonos > 0 && (
           <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 inline-flex items-center gap-1">
-            <LogOut className="w-3 h-3" /> {abandonos} abandono(s)
+            <LogOut className="w-3 h-3" /> {abandonos} abandono(s) sin atender
           </span>
         )}
       </h3>
+      {errId && (
+        <div role="alert" className="text-rose-300 text-[11px] mb-2">{errId}</div>
+      )}
       {items.length === 0 ? (
         <p className="text-[11px] text-white/40 italic">Sin novedades en el rango.</p>
       ) : (
         <ul className="space-y-2 max-h-96 overflow-y-auto pr-1">
           {items.map(n => {
             const esAbandono = n.tipo === "abandono_puesto";
+            const reconocida = !!n.reconocida;
             const nAg = n.datos?.agentes?.length || 0;
             const permMin = n.datos?.permanencia_segundos != null
               ? Math.round(n.datos.permanencia_segundos / 60) : null;
             return (
               <li key={n.id}
-                  className={`text-xs border-l-2 pl-2 ${
+                  className={`text-xs border-l-2 pl-2 transition-opacity ${
                     esAbandono
-                      ? "border-rose-500 bg-rose-500/5 rounded-r py-1"
+                      ? (reconocida
+                          ? "border-white/15 bg-white/5 rounded-r py-1 opacity-60"
+                          : "border-rose-500 bg-rose-500/5 rounded-r py-1")
                       : "border-violet-500/40"
                   }`}>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-white/90 inline-flex items-center gap-1.5">
+                  <span className="font-semibold text-white/90 inline-flex items-center gap-1.5 flex-wrap">
                     {esAbandono && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/25 text-rose-200 border border-rose-500/50 inline-flex items-center gap-1 uppercase tracking-wide">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 uppercase tracking-wide border ${
+                        reconocida
+                          ? "bg-white/5 text-white/60 border-white/15 line-through"
+                          : "bg-rose-500/25 text-rose-200 border-rose-500/50"
+                      }`}>
                         <LogOut className="w-3 h-3" /> Abandono
+                      </span>
+                    )}
+                    {esAbandono && reconocida && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 inline-flex items-center gap-1 uppercase tracking-wide">
+                        <Check className="w-3 h-3" /> Reconocida
                       </span>
                     )}
                     {n.puesto_nombre || "Sin puesto"}
@@ -356,8 +394,32 @@ function CardNovedades({ items }: { items: NovedadRec[] }) {
                 </div>
                 {n.observaciones && (
                   <p className={`text-[11px] mt-0.5 line-clamp-2 whitespace-pre-wrap ${
-                    esAbandono ? "text-rose-200/90" : "text-white/70"
+                    esAbandono && !reconocida ? "text-rose-200/90" : "text-white/70"
                   }`}>{n.observaciones}</p>
+                )}
+                {esAbandono && (
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-white/40">
+                      {reconocida
+                        ? `Reconocida por ${n.reconocida_por || "—"} · ${n.reconocida_at || ""}`
+                        : "Pendiente de reconocer"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => toggleReconocer(n)}
+                      disabled={busyId === n.id}
+                      className={`text-[10px] px-2 py-0.5 rounded border inline-flex items-center gap-1 transition ${
+                        reconocida
+                          ? "border-white/15 text-white/60 hover:bg-white/5"
+                          : "border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/10"
+                      } ${busyId === n.id ? "opacity-50 cursor-wait" : ""}`}
+                    >
+                      {busyId === n.id
+                        ? <Loader2 className="w-3 h-3 animate-spin" />
+                        : (reconocida ? <RotateCcw className="w-3 h-3" /> : <Check className="w-3 h-3" />)}
+                      {reconocida ? "Reabrir" : "Reconocer"}
+                    </button>
+                  </div>
                 )}
               </li>
             );
