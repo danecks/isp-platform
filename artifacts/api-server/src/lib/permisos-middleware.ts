@@ -163,10 +163,11 @@ function isPublicPath(path: string, method: string): boolean {
   // /descarga-app debe funcionar para cualquier teléfono.
   if (method === "GET" && (path === "/descarga-apk" || path.startsWith("/descarga-apk/"))) return true;
 
-  // GET /api/app-updates/* — manifest y bundles OTA del wrapper Capacitor.
-  // El APK consulta sin sesión (no tiene una). El alias raíz /app-updates/*
-  // se monta fuera de /api (ver app.ts), así que no pasa por aquí.
-  if (method === "GET" && path.startsWith("/app-updates/")) return true;
+  // GET/HEAD /api/app-updates/* — manifest y bundles OTA del wrapper Capacitor.
+  // El APK consulta sin sesión (no tiene una). capgo manda HEAD antes del GET
+  // para verificar el bundle, por eso hay que permitir ambos. El alias raíz
+  // /app-updates/* se monta fuera de /api (ver app.ts), así que no pasa por aquí.
+  if ((method === "GET" || method === "HEAD") && path.startsWith("/app-updates/")) return true;
 
   // GET /api/agente/co-custodios/:fichaje_id — handler exige tracking_token
   if (method === "GET" && /^\/agente\/co-custodios\/\d+$/.test(path)) return true;
