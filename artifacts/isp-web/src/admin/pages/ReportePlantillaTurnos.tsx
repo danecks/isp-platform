@@ -21,6 +21,7 @@ import {
   Filter, Users, Clock, AlertTriangle, Map as MapIcon,
 } from "lucide-react";
 import { getSessionToken } from "@/lib/httpClient";
+import { horaDelDiaSlot } from "./operaciones/utils";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -100,36 +101,100 @@ function fmtFecha(iso: string | null | undefined) {
 
 const NOMBRE_DIA = ["L", "M", "X", "J", "V", "S", "D"]; // Lun..Dom (1..7 en una semana)
 
+type DiaSemana = {
+  dia: number;
+  label: string;
+  estado: "trabajo" | "medio" | "descanso";
+  /** Hora de entrada efectiva del día (HH:MM) o "" si descansa. */
+  hora: string;
+  /** Hora de salida derivada (entrada + horas_turno, wrap 24h) o "" si descansa. */
+  horaSalida: string;
+  /** true si la hora del día difiere de la hora base de la semana. */
+  esExcepcion: boolean;
+};
+
+type SemanaSlot = {
+  semana: number;
+  /** Hora base de la semana (HH:MM) o "—". Útil cuando NO hay mezcla. */
+  hora: string;
+  /** Hora de salida derivada de la hora base de la semana. */
+  horaSalida: string;
+  /** true cuando entre los días laborables de la semana hay más de una hora distinta. */
+  hayMezcla: boolean;
+  dias: DiaSemana[];
+};
+
+/** Suma horas a un HH:MM y vuelve a HH:MM, con wrap a 24h. */
+function sumarHoras(hhmm: string, horas: number): string {
+  if (!/^\d{2}:\d{2}$/.test(hhmm)) return "";
+  const [h, m] = hhmm.split(":").map(Number);
+  const total = h * 60 + m + (Number(horas) || 0) * 60;
+  const wrap = ((Math.round(total) % (24 * 60)) + 24 * 60) % (24 * 60);
+  const hh = Math.floor(wrap / 60);
+  const mm = wrap % 60;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
 /**
  * Construye una matriz semanas×días con marcas de Trabajo/Descanso/Medio turno.
  * - longitud_ciclo: 7, 14, 21 o 28
  * - dias_trabajo: array de días 1..longitud_ciclo
  * - dias_medio_turno: subset de dias_trabajo
- * Retorna: array de N semanas, cada una con 7 entradas { d, label, estado }.
+ * Retorna: array de N semanas, cada una con 7 entradas { d, label, estado, hora, horaSalida, esExcepcion }.
+ *
+ * La hora efectiva por día sale de `horaDelDiaSlot` (utils), que aplica la
+ * prioridad hora_entrada_por_dia > hora_entrada_por_semana > hora_entrada,
+ * y `hayMezcla` marca semanas con más de una hora entre sus días laborables.
  */
-function construirSemanas(slot: SlotPlantilla) {
+function construirSemanas(slot: SlotPlantilla): SemanaSlot[] {
   const lc = Number(slot.longitud_ciclo) || 14;
   const semanas = Math.ceil(lc / 7);
   const trabajo = new Set((slot.dias_trabajo ?? []).map(Number));
   const medio = new Set((slot.dias_medio_turno ?? []).map(Number));
-  const out: { semana: number; hora: string; dias: { dia: number; label: string; estado: "trabajo" | "medio" | "descanso" }[] }[] = [];
+  const horasTurno = Number(slot.horas_turno) || 0;
+  const slotHoras = {
+    hora_entrada_por_dia: slot.hora_entrada_por_dia,
+    hora_entrada_por_semana: slot.hora_entrada_por_semana,
+    hora_entrada: slot.hora_entrada ?? "",
+  };
+  const out: SemanaSlot[] = [];
   for (let s = 0; s < semanas; s++) {
-    const dias: { dia: number; label: string; estado: "trabajo" | "medio" | "descanso" }[] = [];
+    const horaBaseSemRaw = (slot.hora_entrada_por_semana?.[s]) || slot.hora_entrada || "";
+    const horaBaseSem = String(horaBaseSemRaw).slice(0, 5);
+    const dias: DiaSemana[] = [];
     for (let i = 0; i < 7; i++) {
       const dia = s * 7 + i + 1;
       if (dia > lc) {
-        dias.push({ dia, label: NOMBRE_DIA[i], estado: "descanso" });
+        dias.push({ dia, label: NOMBRE_DIA[i], estado: "descanso", hora: "", horaSalida: "", esExcepcion: false });
         continue;
       }
       const estado = medio.has(dia) ? "medio" : trabajo.has(dia) ? "trabajo" : "descanso";
-      dias.push({ dia, label: NOMBRE_DIA[i], estado });
+      const horaEf = String(horaDelDiaSlot(slotHoras, dia) || "").slice(0, 5);
+      const esExcepcion = estado !== "descanso" && !!horaBaseSem && !!horaEf && horaEf !== horaBaseSem;
+      const horaSalida = estado !== "descanso" && horaEf ? sumarHoras(horaEf, horasTurno) : "";
+      dias.push({ dia, label: NOMBRE_DIA[i], estado, hora: estado === "descanso" ? "" : horaEf, horaSalida, esExcepcion });
     }
-    const hora = (slot.hora_entrada_por_semana?.[s])
-      || slot.hora_entrada
-      || "—";
-    out.push({ semana: s + 1, hora: String(hora).slice(0, 5), dias });
+    const horasLaborables = new Set(
+      dias.filter(d => d.estado !== "descanso" && d.hora).map(d => d.hora),
+    );
+    const hayMezcla = horasLaborables.size > 1;
+    const horaSalidaSem = horaBaseSem ? sumarHoras(horaBaseSem, horasTurno) : "";
+    out.push({
+      semana: s + 1,
+      hora: horaBaseSem || "—",
+      horaSalida: horaSalidaSem,
+      hayMezcla,
+      dias,
+    });
   }
   return out;
+}
+
+/** True si el slot tiene al menos una excepción por día configurada (no vacía). */
+function tieneHorarioPorDia(slot: SlotPlantilla): boolean {
+  const hpd = slot.hora_entrada_por_dia;
+  if (!hpd || typeof hpd !== "object") return false;
+  return Object.values(hpd).some(v => typeof v === "string" && /^\d{2}:\d{2}$/.test(v));
 }
 
 /** Marca textual por día para CSV / PDF de carga masiva: T=Trabaja, M=Medio, D=Descansa. */
@@ -167,6 +232,11 @@ function celdasPlanasSlot(slot: SlotPlantilla): Record<string, string> {
   const { lc, semsActivas } = normalizarLongitudCiclo(slot);
   const trabajo = new Set((slot.dias_trabajo ?? []).map(Number));
   const medio = new Set((slot.dias_medio_turno ?? []).map(Number));
+  const slotHoras = {
+    hora_entrada_por_dia: slot.hora_entrada_por_dia,
+    hora_entrada_por_semana: slot.hora_entrada_por_semana,
+    hora_entrada: slot.hora_entrada ?? "",
+  };
 
   for (let s = 1; s <= MAX_SEMANAS; s++) {
     const dentroCiclo = s <= semsActivas;
@@ -176,10 +246,16 @@ function celdasPlanasSlot(slot: SlotPlantilla): Record<string, string> {
     NOMBRE_DIA.forEach((label, i) => {
       const dia = (s - 1) * 7 + i + 1;
       let valor = "";
+      let hora = "";
       if (dentroCiclo && dia <= lc) {
+        const esTrabajo = medio.has(dia) || trabajo.has(dia);
         valor = medio.has(dia) ? "M" : trabajo.has(dia) ? "T" : "D";
+        if (esTrabajo) {
+          hora = String(horaDelDiaSlot(slotHoras, dia) || "").slice(0, 5);
+        }
       }
       out[`S${s}-${label}`] = valor;
+      out[`S${s}-${label}-Hora`] = hora;
     });
   }
   return out;
@@ -273,9 +349,11 @@ export default function ReportePlantillaTurnos() {
 
     const diaCols: string[] = [];
     const horaCols: string[] = [];
+    const horaDiaCols: string[] = [];
     for (let s = 1; s <= MAX_SEMANAS; s++) {
       horaCols.push(`S${s}-Hora`);
       for (const d of NOMBRE_DIA) diaCols.push(`S${s}-${d}`);
+      for (const d of NOMBRE_DIA) horaDiaCols.push(`S${s}-${d}-Hora`);
     }
 
     const headers = [
@@ -288,10 +366,14 @@ export default function ReportePlantillaTurnos() {
       "Slot #", "Titular",
       // Configuración del slot (editable al re-importar)
       "Horas Turno", "Longitud Ciclo (días)", "Rotación (sem)", "Fecha Inicio Ciclo",
-      // Horario por semana (editable)
+      // Horario por semana (editable). La carga masiva consume estas columnas.
       ...horaCols,
       // Plantilla por día (editable: T=Trabaja, M=Medio turno, D=Descansa, vacío=fuera de ciclo)
       ...diaCols,
+      // Hora de entrada efectiva por día (HH:MM). Hoy son INFORMATIVAS: la
+      // carga masiva sólo mira SX-Hora; estas columnas sirven para no perder
+      // la mezcla por día al exportar a Excel y revisarlo offline.
+      ...horaDiaCols,
       // Sello de concurrencia (NO editar): epoch seg de cuando se modificó el slot por última vez
       "_actualizado_ts",
       // Notas
@@ -327,6 +409,7 @@ export default function ReportePlantillaTurnos() {
         s.fecha_inicio_ciclo ?? "",
         ...horaCols.map((c) => cels[c] ?? ""),
         ...diaCols.map((c) => cels[c] ?? ""),
+        ...horaDiaCols.map((c) => cels[c] ?? ""),
         s.slot_updated_ts != null ? String(s.slot_updated_ts) : "",
         (s.notas ?? "").replace(/[\r\n]/g, " "),
       ];
@@ -386,7 +469,7 @@ export default function ReportePlantillaTurnos() {
       pdf.addSeccionTitulo("PLANTILLA DETALLADA POR SLOT");
 
       // Leyenda visual
-      pdf.addCustomBlock(8, ({ doc, x, y, colors }) => {
+      pdf.addCustomBlock(14, ({ doc, x, y, colors }) => {
         const labels: { letra: "T" | "M" | "D"; texto: string; color: [number, number, number] }[] = [
           { letra: "T", texto: "Trabaja",      color: colors.green },
           { letra: "M", texto: "Medio turno",  color: colors.yellow },
@@ -413,7 +496,16 @@ export default function ReportePlantillaTurnos() {
           doc.text(l.texto, cx + cellSize + 1.5, cy + 3.5);
           cx += cellSize + 1.5 + doc.getTextWidth(l.texto) + 6;
         }
-        return 7;
+        // Segunda línea: explicación de horarios por día
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "italic");
+        doc.setTextColor(...colors.darkGray);
+        doc.text(
+          "Horarios: se muestra la hora de la semana a la izquierda. Si los días entran a distintas horas, " +
+          "cada celda muestra entrada/salida del día y un punto ámbar marca las excepciones a la hora base.",
+          x, cy + 11,
+        );
+        return 13;
       });
 
       // Tarjeta visual por cada slot
@@ -423,9 +515,15 @@ export default function ReportePlantillaTurnos() {
 
       for (const s of slotsAImprimir) {
         const sems = construirSemanas(s);
-        const totalSem = sems.length;
-        // Altura estimada: cabecera (12) + cada fila de semana (5.5) + padding (4)
-        const altura = 12 + totalSem * 5.5 + 4;
+        const lcSlot = Number(s.longitud_ciclo) || 14;
+        const porDia = tieneHorarioPorDia(s);
+        // Altura por semana: 4.6mm si simple, 9.5mm si hay mezcla (para encajar
+        // las dos líneas entrada/salida dentro de cada celda).
+        const rowGap = 0.9;
+        const altoFila = (sem: SemanaSlot) => (sem.hayMezcla ? 9.5 : 4.6);
+        const altoGrid = sems.reduce((acc, sem, i) => acc + altoFila(sem) + (i > 0 ? rowGap : 0), 0);
+        // Altura total: cabecera (12) + encabezado días (2) + grid + padding
+        const altura = 12 + 2 + altoGrid + 4;
 
         pdf.addCustomBlock(altura + 2, ({ doc, x, y, width, colors }) => {
           // Marco de la tarjeta
@@ -440,33 +538,53 @@ export default function ReportePlantillaTurnos() {
           doc.setFont("helvetica", "bold");
           const titularTxt = s.titular_nombre ?? "(Vacante)";
           const cabIzq = `${s.cliente_nombre ?? "Sin cliente"} · ${s.sede_nombre ?? "—"} · ${s.puesto_nombre} · #${s.slot_numero ?? "—"}`;
-          doc.text(doc.splitTextToSize(cabIzq, width * 0.65)[0], x + 3, y + 5);
+          doc.text(doc.splitTextToSize(cabIzq, width * 0.55)[0], x + 3, y + 5);
 
           doc.setFont("helvetica", "normal");
           doc.setFontSize(7.5);
           doc.setTextColor(s.titular_nombre ? 50 : 220, s.titular_nombre ? 60 : 60, s.titular_nombre ? 75 : 60);
           doc.text(`Titular: ${titularTxt}`, x + 3, y + 9.2);
 
+          // Chip "Horario por día" cuando aplica
+          let chipRight = x + width - 3;
+          if (porDia) {
+            const chipTxt = "Horario por día";
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(6.5);
+            const chipW = doc.getTextWidth(chipTxt) + 4;
+            const chipH = 3.6;
+            const chipX = chipRight - chipW;
+            const chipY = y + 2.4;
+            doc.setFillColor(254, 243, 199);            // ámbar suave
+            doc.setDrawColor(217, 119, 6);
+            doc.setLineWidth(0.2);
+            doc.roundedRect(chipX, chipY, chipW, chipH, 0.8, 0.8, "FD");
+            doc.setTextColor(146, 64, 14);
+            doc.text(chipTxt, chipX + chipW / 2, chipY + chipH / 2 + 1.1, { align: "center" });
+            chipRight = chipX - 2;
+          }
+
           // Cabecera derecha: turno · rotación · ciclo
-          const rot = Math.ceil((Number(s.longitud_ciclo) || 14) / 7);
+          const rot = Math.ceil(lcSlot / 7);
           const cabDer = `${s.horas_turno ?? "—"}h · Rotación ${rot} sem · Ciclo ${s.longitud_ciclo}d`;
           doc.setTextColor(...colors.darkGray);
           doc.setFontSize(7);
-          doc.text(cabDer, x + width - 3, y + 5, { align: "right" });
+          doc.setFont("helvetica", "normal");
+          doc.text(cabDer, chipRight, y + 5, { align: "right" });
           if (s.fecha_inicio_ciclo) {
             const [yy, mm, dd] = s.fecha_inicio_ciclo.split("-");
             doc.text(`Inicio ciclo: ${dd}/${mm}/${yy}`, x + width - 3, y + 9.2, { align: "right" });
           }
 
           // ── Mini-grid ──
-          const gridTop = y + 12.5;
+          const gridTop = y + 12.5 + 2; // +2 para encabezado de días
           const labelSemW = 8;
+          // Reservamos siempre la columna de hora a la izquierda; en semanas con
+          // mezcla la dejamos vacía y mostramos las horas dentro de cada celda.
           const labelHoraW = 12;
           const cellGap = 0.6;
           const availForCells = width - 6 - labelSemW - labelHoraW;
           const cellW = (availForCells - cellGap * 6) / 7;
-          const cellH = 4.6;
-          const rowGap = 0.9;
 
           // Encabezado de días (L M X J V S D)
           doc.setFontSize(6.5);
@@ -478,23 +596,38 @@ export default function ReportePlantillaTurnos() {
           });
 
           // Filas por semana
-          sems.forEach((sem, idx) => {
-            const ry = gridTop + idx * (cellH + rowGap);
+          let ry = gridTop;
+          sems.forEach((sem) => {
+            const cellH = altoFila(sem);
             // Etiqueta semana
             doc.setFontSize(7);
             doc.setFont("helvetica", "bold");
             doc.setTextColor(...colors.navy);
             doc.text(`S${sem.semana}`, x + 3, ry + cellH / 2 + 1);
-            // Hora de entrada
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(6.5);
-            doc.setTextColor(...colors.darkGray);
-            doc.text(sem.hora || "—", x + 3 + labelSemW, ry + cellH / 2 + 1);
+
+            // Hora a la izquierda: única cuando NO hay mezcla; en mezcla
+            // mostramos solo "—" como referencia visual ya que las horas van
+            // dentro de cada celda.
+            if (!sem.hayMezcla) {
+              doc.setFont("helvetica", "normal");
+              doc.setFontSize(6.5);
+              doc.setTextColor(...colors.darkGray);
+              const txt = sem.hora && sem.horaSalida
+                ? `${sem.hora}→${sem.horaSalida}`
+                : (sem.hora || "—");
+              doc.text(txt, x + 3 + labelSemW, ry + cellH / 2 + 1);
+            } else {
+              doc.setFont("helvetica", "italic");
+              doc.setFontSize(6);
+              doc.setTextColor(146, 64, 14);
+              doc.text("mixto", x + 3 + labelSemW, ry + cellH / 2 + 1);
+            }
+
             // Celdas
             sem.dias.forEach((d, i) => {
               const cx = x + 3 + labelSemW + labelHoraW + i * (cellW + cellGap);
               let fill: [number, number, number];
-              if (d.dia > (Number(s.longitud_ciclo) || 14)) {
+              if (d.dia > lcSlot) {
                 fill = [240, 242, 246];
               } else if (d.estado === "trabajo") {
                 fill = colors.green;
@@ -505,13 +638,43 @@ export default function ReportePlantillaTurnos() {
               }
               doc.setFillColor(...fill);
               doc.roundedRect(cx, ry, cellW, cellH, 0.3, 0.3, "F");
-              if (d.dia <= (Number(s.longitud_ciclo) || 14)) {
-                doc.setTextColor(255, 255, 255);
-                doc.setFont("helvetica", "bold");
-                doc.setFontSize(6);
-                doc.text(MARCA[d.estado], cx + cellW / 2, ry + cellH / 2 + 1.1, { align: "center" });
+
+              if (d.dia <= lcSlot) {
+                const trabajable = d.estado !== "descanso";
+                // En semanas con mezcla, los días de descanso quedan vacíos
+                // (sólo el chip de color) para que las celdas de trabajo con
+                // entrada/salida resalten visualmente.
+                if (sem.hayMezcla && !trabajable) {
+                  // intencionalmente sin texto
+                } else if (sem.hayMezcla && trabajable && d.hora) {
+                  // Layout vertical: marca pequeña arriba + entrada → salida
+                  doc.setTextColor(255, 255, 255);
+                  doc.setFont("helvetica", "bold");
+                  doc.setFontSize(5.2);
+                  doc.text(MARCA[d.estado], cx + cellW / 2, ry + 2.1, { align: "center" });
+                  doc.setFont("helvetica", "bold");
+                  doc.setFontSize(5.8);
+                  doc.text(d.hora, cx + cellW / 2, ry + 5.0, { align: "center" });
+                  if (d.horaSalida) {
+                    doc.setFont("helvetica", "normal");
+                    doc.setFontSize(5.4);
+                    doc.text(`→${d.horaSalida}`, cx + cellW / 2, ry + 7.8, { align: "center" });
+                  }
+                  // Punto ámbar para días-excepción
+                  if (d.esExcepcion) {
+                    doc.setFillColor(245, 158, 11);
+                    doc.circle(cx + cellW - 1.1, ry + 1.1, 0.7, "F");
+                  }
+                } else {
+                  doc.setTextColor(255, 255, 255);
+                  doc.setFont("helvetica", "bold");
+                  doc.setFontSize(6);
+                  doc.text(MARCA[d.estado], cx + cellW / 2, ry + cellH / 2 + 1.1, { align: "center" });
+                }
               }
             });
+
+            ry += cellH + rowGap;
           });
 
           return altura + 2;
