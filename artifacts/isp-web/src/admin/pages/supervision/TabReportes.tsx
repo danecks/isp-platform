@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Loader2, AlertTriangle, ShieldAlert, Shirt, Sparkles,
-  ClipboardCheck, FileWarning, MapPin, Users,
+  ClipboardCheck, FileWarning, MapPin, Users, LogOut, Check, RotateCcw,
+  History, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { api, hoyISO, inputCls } from "./api";
 
@@ -11,6 +12,7 @@ interface Kpis {
   total_inspecciones: number;
   agentes_inspeccionados: number;
   total_novedades: number;
+  total_abandonos: number;
   total_alertas_armas: number;
   alertas_armas_abiertas: number;
 }
@@ -25,10 +27,17 @@ interface PuestoProb {
   inspecciones: number; fallas_equipo: number; alertas_armas: number; total_problemas: number;
 }
 interface NovedadRec {
-  id: number; fecha: string; observaciones: string | null;
+  id: number; fecha: string; tipo?: string; observaciones: string | null;
   puesto_nombre: string | null; cliente_nombre: string | null;
   supervisor_nombre: string | null; generada_at: string;
-  datos: { agentes?: Array<{ agente_nombre: string }> } | null;
+  datos: {
+    agentes?: Array<{ agente_nombre: string }>;
+    permanencia_segundos?: number;
+    umbral_segundos?: number;
+  } | null;
+  reconocida?: boolean;
+  reconocida_at?: string | null;
+  reconocida_por?: string | null;
 }
 interface AlertaArmaRec {
   id: number; tipo: string; descripcion: string | null; estado: string;
@@ -63,6 +72,7 @@ function hace30ISO(): string {
 }
 
 export function TabReportes() {
+  const [subTab, setSubTab] = useState<"resumen" | "historial">("resumen");
   const [desde, setDesde] = useState(hace30ISO());
   const [hasta, setHasta] = useState(hoyISO());
   const [clienteId, setClienteId] = useState("");
@@ -77,6 +87,7 @@ export function TabReportes() {
       .catch(() => {});
   }, []);
 
+  const [reloadKey, setReloadKey] = useState(0);
   useEffect(() => {
     setLoading(true); setError(null);
     const params = new URLSearchParams();
@@ -87,7 +98,8 @@ export function TabReportes() {
       .then(setData)
       .catch(e => setError(e.message || "Error"))
       .finally(() => setLoading(false));
-  }, [desde, hasta, clienteId]);
+  }, [desde, hasta, clienteId, reloadKey]);
+  const recargar = () => setReloadKey(k => k + 1);
 
   const fallasUniformeEquipo = useMemo(
     () => (data?.fallas_por_item || []).filter(f => f.categoria === "equipo"),
@@ -98,6 +110,69 @@ export function TabReportes() {
     [data]
   );
 
+  return (
+    <div className="space-y-3">
+      {/* Sub-pestañas */}
+      <div className="flex gap-1 border-b border-white/10">
+        <button
+          type="button"
+          onClick={() => setSubTab("resumen")}
+          className={`text-xs px-3 py-1.5 -mb-px border-b-2 inline-flex items-center gap-1.5 ${
+            subTab === "resumen"
+              ? "border-emerald-400 text-white"
+              : "border-transparent text-white/50 hover:text-white/80"
+          }`}
+        >
+          <ClipboardCheck className="w-3.5 h-3.5" /> Resumen
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubTab("historial")}
+          className={`text-xs px-3 py-1.5 -mb-px border-b-2 inline-flex items-center gap-1.5 ${
+            subTab === "historial"
+              ? "border-emerald-400 text-white"
+              : "border-transparent text-white/50 hover:text-white/80"
+          }`}
+        >
+          <History className="w-3.5 h-3.5" /> Historial de abandonos
+        </button>
+      </div>
+
+      {subTab === "historial" ? (
+        <HistorialAbandonos clientes={clientes} />
+      ) : (
+        <ResumenView
+          desde={desde} setDesde={setDesde}
+          hasta={hasta} setHasta={setHasta}
+          clienteId={clienteId} setClienteId={setClienteId}
+          clientes={clientes}
+          data={data} loading={loading} error={error}
+          recargar={recargar}
+          fallasUniformeEquipo={fallasUniformeEquipo}
+          fallasPresentacion={fallasPresentacion}
+        />
+      )}
+    </div>
+  );
+}
+
+interface ResumenViewProps {
+  desde: string; setDesde: (s: string) => void;
+  hasta: string; setHasta: (s: string) => void;
+  clienteId: string; setClienteId: (s: string) => void;
+  clientes: ClienteSlim[];
+  data: ReporteResp | null;
+  loading: boolean;
+  error: string | null;
+  recargar: () => void;
+  fallasUniformeEquipo: FallaItem[];
+  fallasPresentacion: FallaItem[];
+}
+
+function ResumenView({
+  desde, setDesde, hasta, setHasta, clienteId, setClienteId, clientes,
+  data, loading, error, recargar, fallasUniformeEquipo, fallasPresentacion,
+}: ResumenViewProps) {
   return (
     <div className="space-y-3">
       {/* Filtros */}
@@ -155,7 +230,7 @@ export function TabReportes() {
           <CardTopPuestos items={data.top_puestos_problematicos} />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <CardNovedades items={data.novedades_recientes} />
+            <CardNovedades items={data.novedades_recientes} onCambio={recargar} />
             <CardAlertasRecientes items={data.alertas_armas_recientes} />
           </div>
         </>
@@ -179,11 +254,19 @@ function Kpi({ icon, label, value, hint }: { icon: React.ReactNode; label: strin
 }
 
 function KpisGrid({ k }: { k: Kpis }) {
+  const abandonos = k.total_abandonos || 0;
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+    <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
       <Kpi icon={<ClipboardCheck className="w-3.5 h-3.5" />} label="Inspecciones" value={k.total_inspecciones || 0} />
       <Kpi icon={<Users className="w-3.5 h-3.5" />} label="Agentes únicos" value={k.agentes_inspeccionados || 0} />
       <Kpi icon={<FileWarning className="w-3.5 h-3.5" />} label="Novedades" value={k.total_novedades || 0} />
+      <div className={`bg-[#0b1424] border rounded p-3 ${abandonos > 0 ? "border-rose-500/60 ring-1 ring-rose-500/40 animate-pulse" : "border-white/10"}`}>
+        <div className={`flex items-center gap-2 text-[11px] uppercase tracking-wide ${abandonos > 0 ? "text-rose-200" : "text-white/60"}`}>
+          <LogOut className="w-3.5 h-3.5" /> Abandonos de puesto
+        </div>
+        <div className={`text-2xl font-bold mt-1 ${abandonos > 0 ? "text-rose-300" : "text-white"}`}>{abandonos}</div>
+        <div className="text-[10px] text-white/40 mt-0.5">salidas sin completar visita</div>
+      </div>
       <Kpi icon={<ShieldAlert className="w-3.5 h-3.5" />} label="Alertas armas" value={k.total_alertas_armas || 0}
         hint={`${k.alertas_armas_abiertas || 0} abiertas`} />
       <Kpi icon={<AlertTriangle className="w-3.5 h-3.5" />} label="Pendientes" value={k.alertas_armas_abiertas || 0}
@@ -296,37 +379,313 @@ function CardTopPuestos({ items }: { items: PuestoProb[] }) {
   );
 }
 
-function CardNovedades({ items }: { items: NovedadRec[] }) {
+function CardNovedades({ items, onCambio }: { items: NovedadRec[]; onCambio: () => void }) {
+  const abandonos = items.filter(n => n.tipo === "abandono_puesto" && !n.reconocida).length;
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [errId, setErrId] = useState<string | null>(null);
+
+  async function toggleReconocer(n: NovedadRec) {
+    setBusyId(n.id); setErrId(null);
+    try {
+      await api(`/supervision-reportes/novedades/${n.id}/reconocer`, {
+        method: "PATCH",
+        body: JSON.stringify({ reconocida: !n.reconocida }),
+      });
+      onCambio();
+    } catch (e: any) {
+      setErrId(e?.message || "Error al actualizar");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <div className="bg-[#0b1424] border border-white/10 rounded p-3">
       <h3 className="text-xs font-semibold text-white/80 mb-2 inline-flex items-center gap-1.5">
         <FileWarning className="w-4 h-4" /> Novedades recientes
+        {abandonos > 0 && (
+          <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 inline-flex items-center gap-1">
+            <LogOut className="w-3 h-3" /> {abandonos} abandono(s) sin atender
+          </span>
+        )}
       </h3>
+      {errId && (
+        <div role="alert" className="text-rose-300 text-[11px] mb-2">{errId}</div>
+      )}
       {items.length === 0 ? (
         <p className="text-[11px] text-white/40 italic">Sin novedades en el rango.</p>
       ) : (
         <ul className="space-y-2 max-h-96 overflow-y-auto pr-1">
           {items.map(n => {
+            const esAbandono = n.tipo === "abandono_puesto";
+            const reconocida = !!n.reconocida;
             const nAg = n.datos?.agentes?.length || 0;
+            const permMin = n.datos?.permanencia_segundos != null
+              ? Math.round(n.datos.permanencia_segundos / 60) : null;
             return (
-              <li key={n.id} className="text-xs border-l-2 border-violet-500/40 pl-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-white/90">
+              <li key={n.id}
+                  className={`text-xs border-l-2 pl-2 transition-opacity ${
+                    esAbandono
+                      ? (reconocida
+                          ? "border-white/15 bg-white/5 rounded-r py-1 opacity-60"
+                          : "border-rose-500 bg-rose-500/5 rounded-r py-1")
+                      : "border-violet-500/40"
+                  }`}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-white/90 inline-flex items-center gap-1.5 flex-wrap">
+                    {esAbandono && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 uppercase tracking-wide border ${
+                        reconocida
+                          ? "bg-white/5 text-white/60 border-white/15 line-through"
+                          : "bg-rose-500/25 text-rose-200 border-rose-500/50"
+                      }`}>
+                        <LogOut className="w-3 h-3" /> Abandono
+                      </span>
+                    )}
+                    {esAbandono && reconocida && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 inline-flex items-center gap-1 uppercase tracking-wide">
+                        <Check className="w-3 h-3" /> Reconocida
+                      </span>
+                    )}
                     {n.puesto_nombre || "Sin puesto"}
                   </span>
-                  <span className="text-[10px] text-white/40">{n.generada_at}</span>
+                  <span className="text-[10px] text-white/40 shrink-0">{n.generada_at}</span>
                 </div>
                 <div className="text-[11px] text-white/50">
-                  {n.cliente_nombre || "—"} · {n.supervisor_nombre || "—"} · {nAg} agente(s)
+                  {n.cliente_nombre || "—"} · {n.supervisor_nombre || "—"}
+                  {esAbandono
+                    ? (permMin != null ? ` · permanencia ${permMin} min` : "")
+                    : ` · ${nAg} agente(s)`}
                 </div>
                 {n.observaciones && (
-                  <p className="text-[11px] text-white/70 mt-0.5 line-clamp-2 whitespace-pre-wrap">{n.observaciones}</p>
+                  <p className={`text-[11px] mt-0.5 line-clamp-2 whitespace-pre-wrap ${
+                    esAbandono && !reconocida ? "text-rose-200/90" : "text-white/70"
+                  }`}>{n.observaciones}</p>
+                )}
+                {esAbandono && (
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-white/40">
+                      {reconocida
+                        ? `Reconocida por ${n.reconocida_por || "—"} · ${n.reconocida_at || ""}`
+                        : "Pendiente de reconocer"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => toggleReconocer(n)}
+                      disabled={busyId === n.id}
+                      className={`text-[10px] px-2 py-0.5 rounded border inline-flex items-center gap-1 transition ${
+                        reconocida
+                          ? "border-white/15 text-white/60 hover:bg-white/5"
+                          : "border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/10"
+                      } ${busyId === n.id ? "opacity-50 cursor-wait" : ""}`}
+                    >
+                      {busyId === n.id
+                        ? <Loader2 className="w-3 h-3 animate-spin" />
+                        : (reconocida ? <RotateCcw className="w-3 h-3" /> : <Check className="w-3 h-3" />)}
+                      {reconocida ? "Reabrir" : "Reconocer"}
+                    </button>
+                  </div>
                 )}
               </li>
             );
           })}
         </ul>
       )}
+    </div>
+  );
+}
+
+// ───────────────────────────────────────── Historial de abandonos ──
+
+interface HistorialRow {
+  id: number;
+  fecha: string;
+  observaciones: string | null;
+  puesto_nombre: string | null;
+  cliente_nombre: string | null;
+  supervisor_nombre: string | null;
+  generada_at: string;
+  permanencia_segundos: number | null;
+  reconocida: boolean;
+  reconocida_at: string | null;
+  reconocida_por: string | null;
+  reconocida_por_user_id: number | null;
+}
+interface UsuarioRecon { id: number; username: string }
+interface HistorialResp {
+  ok: true;
+  rango: { desde: string; hasta: string };
+  page: number;
+  page_size: number;
+  total: number;
+  rows: HistorialRow[];
+  usuarios_reconocedores: UsuarioRecon[];
+}
+
+function HistorialAbandonos({ clientes }: { clientes: ClienteSlim[] }) {
+  const [desde, setDesde] = useState(hace30ISO());
+  const [hasta, setHasta] = useState(hoyISO());
+  const [clienteId, setClienteId] = useState("");
+  type EstadoFiltro = "todos" | "pendiente" | "reconocida";
+  const [estado, setEstado] = useState<EstadoFiltro>("todos");
+  function parseEstado(v: string): EstadoFiltro {
+    return v === "pendiente" || v === "reconocida" ? v : "todos";
+  }
+  const [reconocidaPor, setReconocidaPor] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [data, setData] = useState<HistorialResp | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => { setPage(1); }, [desde, hasta, clienteId, estado, reconocidaPor, pageSize]);
+
+  useEffect(() => {
+    setLoading(true); setError(null);
+    const p = new URLSearchParams();
+    if (desde) p.set("desde", desde);
+    if (hasta) p.set("hasta", hasta);
+    if (clienteId) p.set("cliente_id", clienteId);
+    if (estado !== "todos") p.set("estado", estado);
+    if (reconocidaPor) p.set("reconocida_por", reconocidaPor);
+    p.set("page", String(page));
+    p.set("page_size", String(pageSize));
+    api<HistorialResp>(`/supervision-reportes/abandonos?${p}`)
+      .then(setData)
+      .catch(e => setError(e?.message || "Error"))
+      .finally(() => setLoading(false));
+  }, [desde, hasta, clienteId, estado, reconocidaPor, page, pageSize]);
+
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / data.page_size)) : 1;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2 items-end p-3 bg-[#0b1424] border border-white/10 rounded">
+        <div>
+          <label className="block text-[10px] text-white/40 mb-1">Desde</label>
+          <input type="date" value={desde} onChange={e => setDesde(e.target.value)} className={inputCls} />
+        </div>
+        <div>
+          <label className="block text-[10px] text-white/40 mb-1">Hasta</label>
+          <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className={inputCls} />
+        </div>
+        <div>
+          <label className="block text-[10px] text-white/40 mb-1">Cliente</label>
+          <select value={clienteId} onChange={e => setClienteId(e.target.value)}
+            className={inputCls} style={{ minWidth: 180 }}>
+            <option value="">Todos</option>
+            {clientes.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] text-white/40 mb-1">Estado</label>
+          <select value={estado} onChange={e => setEstado(parseEstado(e.target.value))} className={inputCls}>
+            <option value="todos">Todos</option>
+            <option value="pendiente">Pendientes</option>
+            <option value="reconocida">Reconocidas</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] text-white/40 mb-1">Reconocida por</label>
+          <select value={reconocidaPor} onChange={e => setReconocidaPor(e.target.value)}
+            className={inputCls} style={{ minWidth: 160 }}>
+            <option value="">Cualquiera</option>
+            {(data?.usuarios_reconocedores || []).map(u => (
+              <option key={u.id} value={u.id}>{u.username}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] text-white/40 mb-1">Por página</label>
+          <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className={inputCls}>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+        </div>
+      </div>
+
+      {error && (
+        <div role="alert" className="text-rose-300 text-sm p-3 border border-rose-500/30 rounded bg-rose-500/10">
+          {error}
+        </div>
+      )}
+
+      <div className="bg-[#0b1424] border border-white/10 rounded">
+        <div className="flex items-center justify-between p-2 text-[11px] text-white/50">
+          <span>
+            {loading
+              ? <span className="inline-flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Cargando…</span>
+              : data ? `${data.total} abandono(s) en el rango` : ""}
+          </span>
+          {data && data.total > 0 && (
+            <div className="inline-flex items-center gap-1">
+              <button type="button" disabled={page <= 1}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                className="p-1 border border-white/10 rounded disabled:opacity-30 hover:bg-white/5">
+                <ChevronLeft className="w-3 h-3" />
+              </button>
+              <span className="px-2">Página {page} de {totalPages}</span>
+              <button type="button" disabled={page >= totalPages}
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                className="p-1 border border-white/10 rounded disabled:opacity-30 hover:bg-white/5">
+                <ChevronRight className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="text-white/40 text-[10px] uppercase bg-white/[0.02]">
+              <tr>
+                <th className="text-left py-1.5 px-2">Fecha evento</th>
+                <th className="text-left py-1.5 px-2">Generada</th>
+                <th className="text-left py-1.5 px-2">Puesto</th>
+                <th className="text-left py-1.5 px-2">Cliente</th>
+                <th className="text-right py-1.5 px-2">Permanencia</th>
+                <th className="text-left py-1.5 px-2">Estado</th>
+                <th className="text-left py-1.5 px-2">Reconocida por</th>
+                <th className="text-left py-1.5 px-2">Reconocida el</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(!loading && data && data.rows.length === 0) && (
+                <tr><td colSpan={8} className="py-6 text-center text-white/40 italic">
+                  Sin abandonos para los filtros seleccionados.
+                </td></tr>
+              )}
+              {data?.rows.map(r => {
+                const permMin = r.permanencia_segundos != null
+                  ? Math.round(r.permanencia_segundos / 60) : null;
+                return (
+                  <tr key={r.id} className={`border-t border-white/5 ${r.reconocida ? "" : "bg-rose-500/[0.04]"}`}>
+                    <td className="py-1.5 px-2 whitespace-nowrap text-white/80">{r.fecha}</td>
+                    <td className="py-1.5 px-2 whitespace-nowrap text-white/50">{r.generada_at}</td>
+                    <td className="py-1.5 px-2">{r.puesto_nombre || "—"}</td>
+                    <td className="py-1.5 px-2 text-white/60">{r.cliente_nombre || "—"}</td>
+                    <td className="py-1.5 px-2 text-right text-white/70">
+                      {permMin != null ? `${permMin} min` : "—"}
+                    </td>
+                    <td className="py-1.5 px-2">
+                      {r.reconocida ? (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 inline-flex items-center gap-1 uppercase tracking-wide">
+                          <Check className="w-3 h-3" /> Reconocida
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/40 inline-flex items-center gap-1 uppercase tracking-wide">
+                          <LogOut className="w-3 h-3" /> Pendiente
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-1.5 px-2 text-white/80">{r.reconocida_por || "—"}</td>
+                    <td className="py-1.5 px-2 text-white/60 whitespace-nowrap">{r.reconocida_at || "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
