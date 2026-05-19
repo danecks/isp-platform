@@ -29,6 +29,7 @@ function describeResult(r: OtaCheckResult | null): { label: string; tone: "ok" |
   if (!r) return { label: "Sin chequeos aún", tone: "info" };
   switch (r.status) {
     case "no-update": return { label: "Al día (no hay actualización)", tone: "ok" };
+    case "downloading": return { label: `Descargando v${r.version}…`, tone: "info" };
     case "downloaded": return { label: `Descargada v${r.version} — se aplicará al próximo arranque`, tone: "ok" };
     case "available": return { label: `Disponible v${r.version}`, tone: "info" };
     case "error": return { label: `Error: ${r.message}`, tone: "error" };

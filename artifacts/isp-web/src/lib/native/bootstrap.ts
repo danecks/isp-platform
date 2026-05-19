@@ -79,11 +79,19 @@ export function bootstrapNative(): void {
   installNativeFetchPatch();
   redirigirSiEsMarketing();
   initLiveUpdate((r) => {
-    if (r.status === "downloaded") {
+    if (r.status === "downloading") {
+      toast({
+        title: "Actualizando la app…",
+        description:
+          `Descargando versión ${r.version}. No cierres la app, esto puede tardar 1-2 minutos.`,
+        duration: 120000,
+      });
+    } else if (r.status === "downloaded") {
       toast({
         title: "Actualización lista",
         description:
-          "Se descargó una versión nueva. Se aplicará la próxima vez que abras la app.",
+          "Se descargó una versión nueva. Cerrá y reabrí la app para aplicarla.",
+        duration: 30000,
       });
     } else if (r.status === "error") {
       // Silencioso para el usuario — sólo se loggea en consola para que un
