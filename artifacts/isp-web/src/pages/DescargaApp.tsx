@@ -10,8 +10,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
-const APK_URL =
-  "https://github.com/danecks/isp-platform/releases/download/mobile-v0.2.0/ISP-Operaciones-v0.2.0.apk";
+const APK_URL = "https://ispsa.net/api/descarga-apk/0.2.0";
 const VERSION = "v0.2.0";
 
 export default function DescargaApp() {

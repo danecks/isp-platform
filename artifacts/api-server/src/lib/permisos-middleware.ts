@@ -158,6 +158,11 @@ function isPublicPath(path: string, method: string): boolean {
   // (página pública /ronda escanea puntos de ronda — handler valida token)
   if (path === "/qr-rondas/scan" || path.startsWith("/qr-rondas/scan/")) return true;
 
+  // GET /api/descarga-apk[/:version] — descarga pública del APK móvil
+  // (proxy al release privado de GitHub). No requiere sesión: el QR de
+  // /descarga-app debe funcionar para cualquier teléfono.
+  if (method === "GET" && (path === "/descarga-apk" || path.startsWith("/descarga-apk/"))) return true;
+
   // GET /api/agente/co-custodios/:fichaje_id — handler exige tracking_token
   if (method === "GET" && /^\/agente\/co-custodios\/\d+$/.test(path)) return true;
 
