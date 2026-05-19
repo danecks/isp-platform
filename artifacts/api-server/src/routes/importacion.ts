@@ -981,7 +981,13 @@ importacionRouter.post("/importacion/crear-puestos-legacy", async (req: any, res
 //
 // Columnas EDITABLES re-importadas:
 //   Horas Turno · Longitud Ciclo (días) · Fecha Inicio Ciclo
-//   S{1..4}-Hora · S{1..4}-{L,M,X,J,V,S,D} · Notas
+//   S{1..4}-Hora · S{1..4}-{L,M,X,J,V,S,D} · S{1..4}-{L,M,X,J,V,S,D}-Hora · Notas
+// Las columnas S{n}-{D}-Hora permiten editar la hora efectiva por día:
+//   - vacía o igual a S{n}-Hora → sin excepción (cae a la hora semanal)
+//   - distinta a S{n}-Hora      → se guarda como excepción en hora_entrada_por_dia
+//   - día marcado "D" (descanso) → se ignora aunque traiga valor
+//   - si el CSV no incluye ninguna columna S{n}-{D}-Hora (formato anterior),
+//     hora_entrada_por_dia no se toca (compat hacia atrás).
 // Columnas IGNORADAS (informativas o no editables en v1):
 //   ID Cliente, ID Empleado, Cliente, Sede, Zona, Supervisor, Puesto,
 //   Tipo Servicio, Turno Puesto, Jornada, Slot #, Titular, Rotación (sem)
@@ -1031,6 +1037,35 @@ function horasSemEqual(a: string[] | null | undefined, b: string[] | null | unde
   return true;
 }
 
+// Normaliza el mapa {dia → "HH:MM"} a un objeto canónico (claves string,
+// vacío → null) para comparar antes/después sin falsos positivos por orden.
+function normHoraPorDia(v: any): Record<string, string> | null {
+  if (!v || typeof v !== "object") return null;
+  const out: Record<string, string> = {};
+  for (const [k, val] of Object.entries(v)) {
+    const d = Number(k);
+    if (!Number.isInteger(d) || d < 1) continue;
+    const h = String(val ?? "").slice(0, 5);
+    if (/^\d{2}:\d{2}$/.test(h)) out[String(d)] = h;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+function horasPorDiaEqual(a: any, b: any): boolean {
+  const aa = normHoraPorDia(a);
+  const bb = normHoraPorDia(b);
+  if (aa === null && bb === null) return true;
+  if (aa === null || bb === null) return false;
+  const ak = Object.keys(aa).sort();
+  const bk = Object.keys(bb).sort();
+  if (ak.length !== bk.length) return false;
+  for (let i = 0; i < ak.length; i++) {
+    if (ak[i] !== bk[i]) return false;
+    if (aa[ak[i]] !== bb[bk[i]]) return false;
+  }
+  return true;
+}
+
 function normHora(s: any): string {
   return String(s ?? "").trim().slice(0, 5);
 }
@@ -1049,11 +1084,23 @@ type FilaParsed = {
     dias_medio_turno: number[];
     hora_entrada: string;
     hora_entrada_por_semana: string[] | null;
+    // undefined → CSV no incluye columnas S{n}-{D}-Hora; no tocar el campo en BD.
+    // null      → CSV incluye columnas pero sin excepciones; limpiar el campo.
+    // object    → mapa { "dia" → "HH:MM" } con las excepciones a guardar.
+    hora_entrada_por_dia: Record<string, string> | null | undefined;
     notas: string;
   } | null;
   errores: string[];
   ignorar: boolean; // ID Slot vacío → se ignora silenciosamente
 };
+
+/** True si el header del CSV trae al menos una columna S{n}-{D}-Hora. */
+function csvIncluyeHoraPorDia(row: Record<string, any>): boolean {
+  for (const k of Object.keys(row)) {
+    if (/^S[1-4]-[LMXJVSD]-Hora$/.test(k)) return true;
+  }
+  return false;
+}
 
 function parseFilaPlantillaTurnos(row: Record<string, any>, fila: number): FilaParsed {
   const errores: string[] = [];
@@ -1106,6 +1153,8 @@ function parseFilaPlantillaTurnos(row: Record<string, any>, fila: number): FilaP
 
   const dias_trabajo: number[] = [];
   const dias_medio_turno: number[] = [];
+  // Tracking de qué días son laborables (T o M) para procesar excepciones por día.
+  const diasLaborables = new Set<number>();
   for (let s = 1; s <= 4; s++) {
     if (s > semsActivas) continue;
     for (let i = 0; i < 7; i++) {
@@ -1113,8 +1162,8 @@ function parseFilaPlantillaTurnos(row: Record<string, any>, fila: number): FilaP
       if (dia > longitud_ciclo) continue;
       const col = `S${s}-${NOMBRE_DIA_SEM[i]}`;
       const v = String(row[col] ?? "").trim().toUpperCase();
-      if (v === "T") dias_trabajo.push(dia);
-      else if (v === "M") dias_medio_turno.push(dia);
+      if (v === "T") { dias_trabajo.push(dia); diasLaborables.add(dia); }
+      else if (v === "M") { dias_medio_turno.push(dia); diasLaborables.add(dia); }
       else if (v === "D") { /* descansa */ }
       else if (v === "") errores.push(`${col} vacía dentro del ciclo (use T/M/D)`);
       else errores.push(`${col} valor inválido "${v}" (use T, M o D)`);
@@ -1138,6 +1187,37 @@ function parseFilaPlantillaTurnos(row: Record<string, any>, fila: number): FilaP
     }
   }
 
+  // ── Excepciones de hora por día (S{n}-{D}-Hora) ───────────────────────────
+  // Si el CSV no incluye ninguna columna S{n}-{D}-Hora (export viejo), dejamos
+  // hora_entrada_por_dia = undefined → no se toca el campo en BD.
+  // Si las incluye, recorremos los días laborables del ciclo y guardamos como
+  // excepción cualquier valor distinto a la hora semanal correspondiente.
+  // Esto garantiza idempotencia del roundtrip exportar→editar→importar→exportar.
+  const incluyeHoraPorDia = csvIncluyeHoraPorDia(row);
+  let hora_entrada_por_dia: Record<string, string> | null | undefined = undefined;
+  if (incluyeHoraPorDia) {
+    const excepciones: Record<string, string> = {};
+    for (let s = 1; s <= 4; s++) {
+      if (s > semsActivas) continue;
+      const horaSem = horasSem[s - 1] || "";
+      for (let i = 0; i < 7; i++) {
+        const dia = (s - 1) * 7 + i + 1;
+        if (dia > longitud_ciclo) continue;
+        const col = `S${s}-${NOMBRE_DIA_SEM[i]}-Hora`;
+        const cellRaw = String(row[col] ?? "").trim();
+        if (!cellRaw) continue;                   // vacío → sin excepción
+        if (!diasLaborables.has(dia)) continue;   // descanso → se ignora aunque traiga valor
+        const norm = parseHoraHHMM(cellRaw);
+        if (!norm) {
+          errores.push(`${col} inválida ("${cellRaw}"); use HH:MM`);
+          continue;
+        }
+        if (norm !== horaSem) excepciones[String(dia)] = norm;
+      }
+    }
+    hora_entrada_por_dia = Object.keys(excepciones).length > 0 ? excepciones : null;
+  }
+
   const notas = String(row["Notas"] ?? "").trim();
 
   const patch = {
@@ -1148,6 +1228,7 @@ function parseFilaPlantillaTurnos(row: Record<string, any>, fila: number): FilaP
     dias_medio_turno: dias_medio_turno.sort((a, b) => a - b),
     hora_entrada,
     hora_entrada_por_semana,
+    hora_entrada_por_dia,
     notas,
   };
 
@@ -1172,8 +1253,30 @@ type FilaPreview = {
     slot_numero: number | null;
     titular_nombre: string | null;
   };
-  antes: Record<string, any>;
-  despues: Record<string, any>;
+  antes: {
+    horas_turno: number;
+    longitud_ciclo: number;
+    fecha_inicio_ciclo: string | null;
+    dias_trabajo: number[];
+    dias_medio_turno: number[];
+    hora_entrada: string;
+    hora_entrada_por_semana: string[] | null;
+    hora_entrada_por_dia: Record<string, string> | null;
+    notas: string;
+  };
+  despues: {
+    horas_turno: number;
+    longitud_ciclo: number;
+    fecha_inicio_ciclo: string | null;
+    dias_trabajo: number[];
+    dias_medio_turno: number[];
+    hora_entrada: string;
+    hora_entrada_por_semana: string[] | null;
+    hora_entrada_por_dia: Record<string, string> | null;
+    /** Si false, `aplicar` no toca la columna hora_entrada_por_dia (compat CSV viejo). */
+    _aplicar_hora_por_dia: boolean;
+    notas: string;
+  };
   cambios: CambioCampo[];
 };
 
@@ -1196,6 +1299,7 @@ async function calcularDiff(parsed: FilaParsed[]): Promise<{
               ps.dias_trabajo, ps.dias_medio_turno,
               to_char(ps.hora_entrada, 'HH24:MI') AS hora_entrada,
               ps.hora_entrada_por_semana,
+              ps.hora_entrada_por_dia,
               ps.notas, ps.activo, ps.empleado_id, ps.slot_numero,
               EXTRACT(EPOCH FROM ps.updated_at)::bigint AS slot_updated_ts_db,
               ps.updated_at AS slot_updated_at_iso,
@@ -1262,6 +1366,16 @@ async function calcularDiff(parsed: FilaParsed[]): Promise<{
     if (!horasSemEqual(actual.hora_entrada_por_semana, p.patch.hora_entrada_por_semana)) {
       cambios.push({ campo: "Hora por Semana", antes: actual.hora_entrada_por_semana ?? null, despues: p.patch.hora_entrada_por_semana });
     }
+    // hora_entrada_por_dia: si el patch trae undefined (CSV viejo sin columnas),
+    // omitimos la comparación. Si trae null o un mapa, comparamos contra la BD.
+    if (p.patch.hora_entrada_por_dia !== undefined &&
+        !horasPorDiaEqual(actual.hora_entrada_por_dia, p.patch.hora_entrada_por_dia)) {
+      cambios.push({
+        campo: "Hora por Día",
+        antes: normHoraPorDia(actual.hora_entrada_por_dia),
+        despues: normHoraPorDia(p.patch.hora_entrada_por_dia),
+      });
+    }
     if (String(actual.notas ?? "") !== p.patch.notas) {
       cambios.push({ campo: "Notas", antes: actual.notas ?? "", despues: p.patch.notas });
     }
@@ -1311,6 +1425,7 @@ async function calcularDiff(parsed: FilaParsed[]): Promise<{
         dias_medio_turno: actual.dias_medio_turno ?? [],
         hora_entrada: normHora(actual.hora_entrada),
         hora_entrada_por_semana: actual.hora_entrada_por_semana ?? null,
+        hora_entrada_por_dia: normHoraPorDia(actual.hora_entrada_por_dia),
         notas: actual.notas ?? "",
       },
       despues: {
@@ -1321,6 +1436,13 @@ async function calcularDiff(parsed: FilaParsed[]): Promise<{
         dias_medio_turno: p.patch.dias_medio_turno,
         hora_entrada: p.patch.hora_entrada,
         hora_entrada_por_semana: p.patch.hora_entrada_por_semana,
+        // Si patch.hora_entrada_por_dia es undefined (CSV viejo), preservamos
+        // el valor actual en el preview para que el frontend no sugiera un cambio.
+        hora_entrada_por_dia: p.patch.hora_entrada_por_dia === undefined
+          ? normHoraPorDia(actual.hora_entrada_por_dia)
+          : normHoraPorDia(p.patch.hora_entrada_por_dia),
+        // Flag para el endpoint de aplicar: indica si debe tocar o no la columna.
+        _aplicar_hora_por_dia: p.patch.hora_entrada_por_dia !== undefined,
         notas: p.patch.notas,
       },
       cambios,
@@ -1395,6 +1517,26 @@ importacionRouter.post("/importacion/plantilla-turnos/aplicar", async (req: any,
       // Lock optimista atómico: si $10 (csv ts) no es null, exigimos que la BD
       // no haya sido modificada después de la descarga (con tolerancia 2s). Si
       // alguien tocó el slot entre preview y aplicar, rowCount=0 y abortamos.
+      // Si el CSV no traía columnas S{n}-{D}-Hora (compat) no tocamos la columna.
+      const aplicarHpd = f.despues._aplicar_hora_por_dia;
+      const hpdSql = aplicarHpd ? `hora_entrada_por_dia = $11::jsonb,` : ``;
+      const hpdVal = aplicarHpd && f.despues.hora_entrada_por_dia
+        ? JSON.stringify(f.despues.hora_entrada_por_dia)
+        : null;
+      const params: unknown[] = [
+        f.despues.horas_turno,
+        f.despues.longitud_ciclo,
+        // SLOT-FIC-MON-01: normalizar al lunes anterior antes de persistir.
+        normalizarFechaALunesString(f.despues.fecha_inicio_ciclo),
+        f.despues.dias_trabajo,
+        f.despues.dias_medio_turno,
+        f.despues.hora_entrada || "07:00",
+        f.despues.hora_entrada_por_semana,
+        f.despues.notas,
+        f.slot_id,
+        f.slot_updated_ts_csv,
+      ];
+      if (aplicarHpd) params.push(hpdVal);
       const upd = await client.query(
         `UPDATE puesto_slots
             SET horas_turno = $1,
@@ -1405,23 +1547,12 @@ importacionRouter.post("/importacion/plantilla-turnos/aplicar", async (req: any,
                 hora_entrada = $6,
                 hora_entrada_por_semana = $7,
                 notas = $8,
+                ${hpdSql}
                 updated_at = NOW()
           WHERE id = $9
             AND activo = TRUE
             AND ($10::bigint IS NULL OR EXTRACT(EPOCH FROM updated_at)::bigint <= $10::bigint + 2)`,
-        [
-          f.despues.horas_turno,
-          f.despues.longitud_ciclo,
-          // SLOT-FIC-MON-01: normalizar al lunes anterior antes de persistir.
-          normalizarFechaALunesString(f.despues.fecha_inicio_ciclo),
-          f.despues.dias_trabajo,
-          f.despues.dias_medio_turno,
-          f.despues.hora_entrada || "07:00",
-          f.despues.hora_entrada_por_semana,
-          f.despues.notas,
-          f.slot_id,
-          f.slot_updated_ts_csv,
-        ]
+        params
       );
       if ((upd.rowCount ?? 0) === 0) {
         throw new Error(
