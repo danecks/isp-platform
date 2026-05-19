@@ -56,7 +56,7 @@ const buf = await zip.generateAsync({
 const zipName = `v${VERSION}.zip`;
 await writeFile(join(OUT, zipName), buf);
 
-const checksum = "sha256-" + createHash("sha256").update(buf).digest("hex");
+const checksum = createHash("sha256").update(buf).digest("hex");
 const manifest = {
   version: VERSION,
   url: `${BASE_URL}/${zipName}`,

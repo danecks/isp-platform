@@ -58,9 +58,14 @@ const extraOrigins = (process.env.ALLOWED_ORIGINS ?? "")
   .filter(Boolean);
 
 // Dominios corporativos siempre permitidos (independiente de ENV).
+// `https://localhost` y `capacitor://localhost` son los orígenes del APK
+// Capacitor (Android usa https con androidScheme=https). Sin esto el
+// WebView no puede llamar al API por CORS.
 const CORPORATE_ORIGINS = [
   "https://ispsa.net",
   "https://www.ispsa.net",
+  "https://localhost",
+  "capacitor://localhost",
 ];
 
 const REPLIT_HOST_RE = /^https?:\/\/([a-z0-9-]+\.)*replit\.(dev|app|com)$/i;

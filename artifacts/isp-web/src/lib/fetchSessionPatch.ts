@@ -31,8 +31,17 @@ function isApiRequest(input: RequestInfo | URL): boolean {
   if (typeof window !== "undefined") {
     try {
       const parsed = new URL(url, window.location.origin);
+      // Mismo origen (web): /api/...
       if (parsed.origin === window.location.origin) {
         return parsed.pathname.startsWith("/api/") || parsed.pathname === "/api";
+      }
+      // APK Capacitor: fetchPatch.ts reescribe a https://ispsa.net/api/...
+      // → seguimos siendo "API request" y necesitamos inyectar la sesión.
+      if (
+        (parsed.hostname === "ispsa.net" || parsed.hostname === "www.ispsa.net") &&
+        (parsed.pathname.startsWith("/api/") || parsed.pathname === "/api")
+      ) {
+        return true;
       }
     } catch {
       return false;
