@@ -6530,6 +6530,13 @@ Por favor ingresa al sistema o responde para continuar.',
       `CREATE INDEX IF NOT EXISTS supnov_tipo_fecha
          ON supervision_novedades(tipo, fecha DESC)`
     );
+    // SUPERV-NOV-03: timestamp del último push enviado por esta novedad.
+    // Lo usa el handler de geofence-evento para evitar reenviar el push de
+    // "abandono_puesto" más de una vez por hora para el mismo (sesion, puesto).
+    await pool.query(
+      `ALTER TABLE supervision_novedades
+         ADD COLUMN IF NOT EXISTS push_enviado_at TIMESTAMPTZ`
+    );
     logger.info("Auto-migrate: SUPERV-NOV-01 novedades verificada/creada");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: SUPERV-NOV-01 — error (no bloqueante)");
