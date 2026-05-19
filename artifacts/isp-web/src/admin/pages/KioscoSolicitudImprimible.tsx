@@ -5,7 +5,7 @@
  *
  * El usuario presiona "Descargar PDF" → window.print() → "Guardar como PDF" del navegador.
  */
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Printer, ArrowLeft } from "lucide-react";
@@ -118,25 +118,32 @@ function siNo(v: boolean | string | null | undefined): string {
   return String(v);
 }
 
-/** Carga una imagen privada y devuelve un object URL. */
-function useSecureImage(url: string | null | undefined): string | null {
-  const [src, setSrc] = useState<string | null>(null);
+type SecureImageState = { src: string | null; ready: boolean };
+
+/** Carga una imagen privada y devuelve un object URL + flag de "listo". */
+function useSecureImage(url: string | null | undefined): SecureImageState {
+  const [state, setState] = useState<SecureImageState>({ src: null, ready: !url });
   useEffect(() => {
-    if (!url) { setSrc(null); return; }
-    if (url.startsWith("data:") || url.startsWith("http")) { setSrc(url); return; }
+    if (!url) { setState({ src: null, ready: true }); return; }
+    if (url.startsWith("data:") || url.startsWith("http")) {
+      setState({ src: url, ready: true });
+      return;
+    }
     let obj: string | null = null;
     let cancelled = false;
+    setState({ src: null, ready: false });
     fetch(`${API}/storage${url}`, { headers: { "x-isp-session": getSession() } })
       .then(r => r.ok ? r.blob() : null)
       .then(blob => {
-        if (!blob || cancelled) return;
+        if (cancelled) return;
+        if (!blob) { setState({ src: null, ready: true }); return; }
         obj = URL.createObjectURL(blob);
-        setSrc(obj);
+        setState({ src: obj, ready: true });
       })
-      .catch(() => {});
+      .catch(() => { if (!cancelled) setState({ src: null, ready: true }); });
     return () => { cancelled = true; if (obj) URL.revokeObjectURL(obj); };
   }, [url]);
-  return src;
+  return state;
 }
 
 export default function KioscoSolicitudImprimible() {
@@ -155,11 +162,56 @@ export default function KioscoSolicitudImprimible() {
     enabled: !!id,
   });
 
-  const fotoSrc        = useSecureImage(d?.foto_url);
-  const dpiFrenteSrc   = useSecureImage(d?.dpi_frente_url);
-  const dpiReversoSrc  = useSecureImage(d?.dpi_reverso_url);
+  const foto        = useSecureImage(d?.foto_url);
+  const dpiFrente   = useSecureImage(d?.dpi_frente_url);
+  const dpiReverso  = useSecureImage(d?.dpi_reverso_url);
+
+  const fotoSrc       = foto.src;
+  const dpiFrenteSrc  = dpiFrente.src;
+  const dpiReversoSrc = dpiReverso.src;
 
   const folio = useMemo(() => `SOL-${String(d?.id ?? 0).padStart(5, "0")}`, [d]);
+
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const [printing, setPrinting] = useState(false);
+
+  // Espera a que todas las <img> dentro de la hoja terminen de cargar (o fallen).
+  // Tiene un timeout global para que el botón nunca quede "atascado" si una
+  // imagen no responde por red lenta.
+  const waitForImages = useCallback(async (timeoutMs = 5000) => {
+    const root = sheetRef.current;
+    if (!root) return;
+    const imgs = Array.from(root.querySelectorAll("img"));
+    const all = Promise.all(imgs.map(img => {
+      if (img.complete) return Promise.resolve(); // ya cargó (con o sin error)
+      return new Promise<void>(resolve => {
+        const done = () => {
+          img.removeEventListener("load", done);
+          img.removeEventListener("error", done);
+          resolve();
+        };
+        img.addEventListener("load", done);
+        img.addEventListener("error", done);
+      });
+    }));
+    const timeout = new Promise<void>(resolve => setTimeout(resolve, timeoutMs));
+    await Promise.race([all, timeout]);
+  }, []);
+
+  const imagesReady = foto.ready && dpiFrente.ready && dpiReverso.ready;
+
+  const handlePrint = useCallback(async () => {
+    if (printing) return;
+    setPrinting(true);
+    try {
+      await waitForImages();
+      // Un frame extra para que el layout termine de calcularse con las imágenes ya decodificadas.
+      await new Promise(r => requestAnimationFrame(() => r(null)));
+      window.print();
+    } finally {
+      setPrinting(false);
+    }
+  }, [printing, waitForImages]);
 
   if (isLoading) {
     return <div className="p-10 text-center text-gray-600">Cargando solicitud…</div>;
@@ -169,7 +221,7 @@ export default function KioscoSolicitudImprimible() {
   }
 
   return (
-    <div className="bg-gray-200 min-h-screen print:bg-white">
+    <div className="print-root bg-gray-200 min-h-screen print:bg-white">
       {/* Barra de acciones (no se imprime) */}
       <div className="no-print sticky top-0 z-50 bg-white border-b shadow-sm">
         <div className="max-w-[820px] mx-auto px-4 py-3 flex items-center justify-between">
@@ -183,10 +235,11 @@ export default function KioscoSolicitudImprimible() {
             Folio <span className="font-mono font-semibold text-gray-800">{folio}</span>
           </div>
           <button
-            onClick={() => window.print()}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+            onClick={handlePrint}
+            disabled={printing}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-wait text-white px-4 py-2 rounded-lg text-sm font-medium"
           >
-            <Printer size={16} /> Descargar PDF
+            <Printer size={16} /> {printing ? "Preparando…" : (imagesReady ? "Descargar PDF" : "Cargando imágenes…")}
           </button>
         </div>
         <div className="max-w-[820px] mx-auto px-4 pb-2 text-xs text-gray-500">
@@ -195,7 +248,7 @@ export default function KioscoSolicitudImprimible() {
       </div>
 
       {/* Hoja imprimible */}
-      <div className="max-w-[820px] mx-auto bg-white shadow-md my-6 print:shadow-none print:my-0 print:max-w-full">
+      <div ref={sheetRef} className="print-sheet max-w-[820px] mx-auto bg-white shadow-md my-6 print:shadow-none print:my-0 print:max-w-full">
         <div className="hoja px-10 py-8 text-[11px] leading-snug text-gray-900">
 
           {/* ── MEMBRETE ── */}
@@ -400,10 +453,37 @@ export default function KioscoSolicitudImprimible() {
         @media print {
           .no-print { display: none !important; }
           @page { size: Letter; margin: 12mm; }
-          html, body { background: #fff !important; }
-          .hoja { padding: 0 !important; }
+          html, body {
+            background: #fff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            min-height: 0 !important;
+            height: auto !important;
+          }
+          /* Neutralizamos el contenedor exterior: sin min-height de pantalla,
+             sin fondos, sin márgenes que empujen contenido fuera de la primera página. */
+          .print-root {
+            background: #fff !important;
+            min-height: 0 !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            display: block !important;
+          }
+          .print-sheet {
+            max-width: 100% !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+          }
+          .hoja {
+            padding: 0 !important;
+            margin: 0 !important;
+          }
           .hoja section { break-inside: avoid; page-break-inside: avoid; }
           .hoja img { break-inside: avoid; page-break-inside: avoid; }
+          .hoja header { break-inside: avoid; page-break-inside: avoid; break-after: avoid; page-break-after: avoid; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
