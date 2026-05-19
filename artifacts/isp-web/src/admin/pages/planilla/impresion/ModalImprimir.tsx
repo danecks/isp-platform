@@ -38,6 +38,15 @@ export function ModalImprimir({
     saveCalibracion("generico", formatoCheque, calibracion);
   }, [calibracion, formatoCheque]);
 
+  // Mientras este modal está montado, marcamos el body con `printing-planilla`
+  // para activar las reglas @media print de print.css que ocultan #root y
+  // dejan visible sólo el portal `.print-root`. La clase se quita al cerrar
+  // para no contaminar otras vistas imprimibles del sistema.
+  useEffect(() => {
+    document.body.classList.add("printing-planilla");
+    return () => { document.body.classList.remove("printing-planilla"); };
+  }, []);
+
   const cheques = useMemo(
     () => planilla.lineas.filter(l => (l.forma_pago ?? "").toLowerCase() === "cheque"),
     [planilla.lineas]
