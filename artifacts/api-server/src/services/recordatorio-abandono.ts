@@ -25,6 +25,7 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { notificarRecordatorioAbandonoPush } from "./push-notificaciones";
+import { notificarRecordatorioAbandonoWhatsApp } from "./whatsapp/notificaciones.service";
 
 function envInt(name: string, def: number): number {
   const raw = process.env[name];
@@ -111,6 +112,23 @@ export async function ejecutarRecordatorioAbandono(): Promise<{
       logger.error(
         { err, novedadId: row.id },
         "[Recordatorio-Abandono] error enviando push (no bloqueante)"
+      );
+    }
+    // Canal paralelo: WhatsApp. Comparte el anti-spam de
+    // `recordatorio_enviado_at` (ya marcado arriba), así que sólo se
+    // dispara una vez por hora por novedad, igual que el push.
+    try {
+      await notificarRecordatorioAbandonoWhatsApp({
+        novedadId: row.id,
+        clienteId: row.cliente_id,
+        puestoNombre: row.puesto_nombre,
+        clienteNombre: row.cliente_nombre,
+        minutosSinReconocer: row.minutos_sin_reconocer,
+      });
+    } catch (err) {
+      logger.error(
+        { err, novedadId: row.id },
+        "[Recordatorio-Abandono] error enviando WhatsApp (no bloqueante)"
       );
     }
   }

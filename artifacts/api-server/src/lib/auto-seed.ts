@@ -1179,6 +1179,24 @@ Por favor ingresa al sistema o responde para continuar.',
       ON CONFLICT (clave) DO NOTHING
     `);
     logger.info("Auto-seed: mensaje 'tarea_nueva_asignada' verificado");
+
+    // Plantilla del recordatorio por WhatsApp cuando una alerta de
+    // abandono de puesto lleva mucho tiempo sin reconocerse.
+    // Lo consume services/whatsapp/notificaciones.service.ts.
+    await pool.query(`
+      INSERT INTO wa_messages (clave, texto, descripcion)
+      VALUES (
+        'abandono_recordatorio',
+        '⏰ ISP, S.A. — Alerta de abandono sin atender
+📍 Puesto: {puesto}
+🏢 Cliente: {cliente}
+⌛ Sin reconocer hace {minutos} min
+Ingresa al panel de supervisión para revisarla.',
+        'Recordatorio por WhatsApp a supervisores cuando una alerta de abandono lleva tiempo sin atender'
+      )
+      ON CONFLICT (clave) DO NOTHING
+    `);
+    logger.info("Auto-seed: mensaje 'abandono_recordatorio' verificado");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: error en wa_notificaciones_log");
   }
