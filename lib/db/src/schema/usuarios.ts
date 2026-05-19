@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, varchar, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, varchar, text, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -60,3 +60,40 @@ export const insertPushTokenSchema = createInsertSchema(pushTokensTable).omit({ 
 
 export type PushToken = typeof pushTokensTable.$inferSelect;
 export type InsertPushToken = z.infer<typeof insertPushTokenSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PUSH_ENVIOS — historial de notificaciones push enviadas (auditoría).
+//
+// Cada vez que el api-server intenta enviar una push (vía sendPushToTokens),
+// se inserta una fila por token destino con el resultado de FCM. Permite al
+// admin diagnosticar "¿se envió la push de la emergencia X?" desde el panel,
+// sin necesidad de abrir los logs del servidor.
+//
+// - userId: cuenta destinataria (null si el token no se pudo mapear).
+// - tokenPreview: token enmascarado (primeros 12 + últimos 6 chars) para no
+//   exponer el token completo en el panel.
+// - evento: clasificación del envío ("test", "emergencia", "anticipo", etc.).
+// - estado: "ok" | "error" | "simulated" (modo stub sin credenciales).
+// - errorCode / errorMessage: detalle del error de FCM cuando estado="error".
+// - messageId: id devuelto por FCM cuando estado="ok".
+// - data: payload data adjunto (JSON serializado) por si hay que reproducirlo.
+// ─────────────────────────────────────────────────────────────────────────────
+export const pushEnviosTable = pgTable("push_envios", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id"),
+  tokenPreview: varchar("token_preview", { length: 64 }),
+  title: varchar("title", { length: 200 }).notNull(),
+  body: varchar("body", { length: 500 }).notNull(),
+  evento: varchar("evento", { length: 50 }).notNull().default("manual"),
+  estado: varchar("estado", { length: 20 }).notNull(),
+  errorCode: varchar("error_code", { length: 100 }),
+  errorMessage: text("error_message"),
+  messageId: varchar("message_id", { length: 255 }),
+  data: text("data"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertPushEnvioSchema = createInsertSchema(pushEnviosTable).omit({ id: true, createdAt: true });
+
+export type PushEnvio = typeof pushEnviosTable.$inferSelect;
+export type InsertPushEnvio = z.infer<typeof insertPushEnvioSchema>;

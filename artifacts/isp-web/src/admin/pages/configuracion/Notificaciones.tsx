@@ -16,7 +16,7 @@
  *   GET  /api/incidents  (lista de emergencias para re-enviar)
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/admin/layout/AdminLayout";
 import { usersApi, incidentsApi, type UserSafe, type Incident } from "@/lib/api";
@@ -29,6 +29,10 @@ import {
   AlertCircle,
   AlertTriangle,
   Search,
+  History,
+  ChevronLeft,
+  ChevronRight,
+  XCircle,
 } from "lucide-react";
 
 const API = "/api";
@@ -55,6 +59,31 @@ interface SendResult {
   reason?: string;
   [key: string]: unknown;
 }
+
+interface EnvioRow {
+  id: number;
+  userId: number | null;
+  userName: string | null;
+  tokenPreview: string | null;
+  title: string;
+  body: string;
+  evento: string;
+  estado: "ok" | "error" | "simulated" | string;
+  errorCode: string | null;
+  errorMessage: string | null;
+  messageId: string | null;
+  data: string | null;
+  createdAt: string;
+}
+
+interface EnviosResponse {
+  rows: EnvioRow[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+type TabKey = "envio" | "historial";
 
 function Toast({
   msg,
@@ -106,12 +135,21 @@ export default function Notificaciones() {
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(
     null,
   );
+  const [activeTab, setActiveTab] = useState<TabKey>("envio");
   const [userSearch, setUserSearch] = useState("");
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [testTitle, setTestTitle] = useState("");
   const [testBody, setTestBody] = useState("");
   const [sendingTest, setSendingTest] = useState(false);
   const [resendingId, setResendingId] = useState<string | null>(null);
+
+  // Filtros del historial
+  const [filterUserId, setFilterUserId] = useState<number | "">("");
+  const [filterEvento, setFilterEvento] = useState<string>("");
+  const [filterEstado, setFilterEstado] = useState<string>("");
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 25;
+  const [expandedRow, setExpandedRow] = useState<number | null>(null);
 
   // ── Estado de Firebase ──────────────────────────────────────────────────
   const {
@@ -181,6 +219,40 @@ export default function Notificaciones() {
         .filter((i) => i.esEmergencia && i.estado !== "cerrada")
         .slice(0, 30),
     [incidencias],
+  );
+
+  // ── Historial de envíos ─────────────────────────────────────────────────
+  const enviosQueryKey = [
+    "push-envios",
+    filterUserId,
+    filterEvento,
+    filterEstado,
+    page,
+  ] as const;
+  const {
+    data: enviosData,
+    isLoading: enviosLoading,
+    isFetching: enviosFetching,
+    refetch: refetchEnvios,
+  } = useQuery<EnviosResponse>({
+    queryKey: enviosQueryKey,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set("limit", String(PAGE_SIZE));
+      params.set("offset", String(page * PAGE_SIZE));
+      if (filterUserId !== "") params.set("userId", String(filterUserId));
+      if (filterEvento) params.set("evento", filterEvento);
+      if (filterEstado) params.set("estado", filterEstado);
+      const r = await fetch(`${API}/push/envios?${params.toString()}`);
+      if (!r.ok) throw new Error("envios");
+      return r.json();
+    },
+    enabled: activeTab === "historial",
+  });
+
+  const filteredUsersForFilter = useMemo(
+    () => users.filter((u) => u.estado === "activo"),
+    [users],
   );
 
   // ── Acciones ────────────────────────────────────────────────────────────
@@ -325,6 +397,33 @@ export default function Notificaciones() {
         )}
       </div>
 
+      {/* Tabs */}
+      <div className="mb-5 flex items-center gap-1 border-b border-white/10">
+        <button
+          onClick={() => setActiveTab("envio")}
+          className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 flex items-center gap-2 transition-colors ${
+            activeTab === "envio"
+              ? "border-primary text-primary"
+              : "border-transparent text-white/50 hover:text-white/80"
+          }`}
+        >
+          <Send className="w-3.5 h-3.5" />
+          Envío manual
+        </button>
+        <button
+          onClick={() => setActiveTab("historial")}
+          className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 flex items-center gap-2 transition-colors ${
+            activeTab === "historial"
+              ? "border-primary text-primary"
+              : "border-transparent text-white/50 hover:text-white/80"
+          }`}
+        >
+          <History className="w-3.5 h-3.5" />
+          Historial
+        </button>
+      </div>
+
+      {activeTab === "envio" && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* ── Columna 1: Push de prueba + tokens ──────────────────────── */}
         <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
@@ -553,6 +652,263 @@ export default function Notificaciones() {
           )}
         </section>
       </div>
+      )}
+
+      {activeTab === "historial" && (
+        <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <History className="w-4 h-4 text-primary" />
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider">
+                Historial de envíos
+              </h2>
+              {enviosData && (
+                <span className="text-[11px] text-white/40">
+                  ({enviosData.total} total)
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => refetchEnvios()}
+              className="text-white/40 hover:text-white"
+              title="Recargar"
+            >
+              <RefreshCw
+                className={`w-3.5 h-3.5 ${enviosFetching ? "animate-spin" : ""}`}
+              />
+            </button>
+          </div>
+
+          {/* Filtros */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            <div>
+              <label className="block text-[10px] uppercase tracking-wider text-white/40 mb-1">
+                Usuario
+              </label>
+              <select
+                value={filterUserId}
+                onChange={(e) => {
+                  setPage(0);
+                  setFilterUserId(e.target.value === "" ? "" : Number(e.target.value));
+                }}
+                className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-xs text-white focus:outline-none focus:border-primary/50"
+              >
+                <option value="">Todos</option>
+                {filteredUsersForFilter.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.nombre} (@{u.username})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase tracking-wider text-white/40 mb-1">
+                Evento
+              </label>
+              <select
+                value={filterEvento}
+                onChange={(e) => {
+                  setPage(0);
+                  setFilterEvento(e.target.value);
+                }}
+                className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-xs text-white focus:outline-none focus:border-primary/50"
+              >
+                <option value="">Todos</option>
+                <option value="test">Prueba</option>
+                <option value="emergencia">Emergencia</option>
+                <option value="manual">Manual</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase tracking-wider text-white/40 mb-1">
+                Estado
+              </label>
+              <select
+                value={filterEstado}
+                onChange={(e) => {
+                  setPage(0);
+                  setFilterEstado(e.target.value);
+                }}
+                className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-xs text-white focus:outline-none focus:border-primary/50"
+              >
+                <option value="">Todos</option>
+                <option value="ok">Entregada</option>
+                <option value="error">Error</option>
+                <option value="simulated">Simulada (stub)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Tabla */}
+          {enviosLoading ? (
+            <p className="text-xs text-white/40 px-3 py-6 text-center">
+              Cargando historial…
+            </p>
+          ) : !enviosData || enviosData.rows.length === 0 ? (
+            <div className="rounded-lg border border-white/5 bg-black/20 px-3 py-8 text-center">
+              <Bell className="w-6 h-6 text-white/20 mx-auto mb-2" />
+              <p className="text-xs text-white/50">
+                No hay envíos registrados con esos filtros.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-white/5 bg-black/20 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-white/5 text-white/50 text-[10px] uppercase tracking-wider">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Fecha</th>
+                      <th className="px-3 py-2 text-left">Usuario</th>
+                      <th className="px-3 py-2 text-left">Evento</th>
+                      <th className="px-3 py-2 text-left">Título</th>
+                      <th className="px-3 py-2 text-left">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {enviosData.rows.map((row) => {
+                      const isExpanded = expandedRow === row.id;
+                      const stateCls =
+                        row.estado === "ok"
+                          ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                          : row.estado === "simulated"
+                            ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                            : "bg-red-500/15 text-red-300 border-red-500/30";
+                      const StateIcon =
+                        row.estado === "ok"
+                          ? CheckCircle2
+                          : row.estado === "simulated"
+                            ? AlertTriangle
+                            : XCircle;
+                      return (
+                        <Fragment key={row.id}>
+                          <tr
+                            onClick={() =>
+                              setExpandedRow(isExpanded ? null : row.id)
+                            }
+                            className="text-white/80 hover:bg-white/[0.03] cursor-pointer"
+                          >
+                            <td className="px-3 py-2 whitespace-nowrap text-white/60">
+                              {formatDate(row.createdAt)}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              {row.userName ?? (
+                                <span className="text-white/40 italic">
+                                  (sin usuario)
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-white/5 text-white/60 border border-white/10">
+                                {row.evento}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 max-w-[280px] truncate">
+                              {row.title}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              <span
+                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase border ${stateCls}`}
+                              >
+                                <StateIcon className="w-3 h-3" />
+                                {row.estado}
+                              </span>
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <tr className="bg-black/30">
+                              <td colSpan={5} className="px-4 py-3">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
+                                  <div>
+                                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">
+                                      Cuerpo
+                                    </p>
+                                    <p className="text-white/80 whitespace-pre-wrap">
+                                      {row.body}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">
+                                      Token destino
+                                    </p>
+                                    <p className="font-mono text-white/70">
+                                      {row.tokenPreview ?? "—"}
+                                    </p>
+                                  </div>
+                                  {row.messageId && (
+                                    <div>
+                                      <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">
+                                        Message ID (FCM)
+                                      </p>
+                                      <p className="font-mono text-white/70 break-all">
+                                        {row.messageId}
+                                      </p>
+                                    </div>
+                                  )}
+                                  {(row.errorCode || row.errorMessage) && (
+                                    <div className="md:col-span-2">
+                                      <p className="text-red-400/70 uppercase tracking-wider text-[10px] mb-1">
+                                        Error
+                                      </p>
+                                      {row.errorCode && (
+                                        <p className="font-mono text-red-300">
+                                          {row.errorCode}
+                                        </p>
+                                      )}
+                                      {row.errorMessage && (
+                                        <p className="text-red-300/80 mt-0.5">
+                                          {row.errorMessage}
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+                                  {row.data && (
+                                    <div className="md:col-span-2">
+                                      <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">
+                                        Data
+                                      </p>
+                                      <pre className="font-mono text-[10px] text-white/60 bg-black/40 p-2 rounded overflow-x-auto">
+                                        {row.data}
+                                      </pre>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Paginación */}
+              <div className="flex items-center justify-between px-3 py-2.5 border-t border-white/5 bg-white/[0.02]">
+                <span className="text-[11px] text-white/40">
+                  Página {page + 1} de{" "}
+                  {Math.max(1, Math.ceil(enviosData.total / PAGE_SIZE))}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage((p) => Math.max(0, p - 1))}
+                    disabled={page === 0}
+                    className="px-2 py-1 rounded bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed text-white/70"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setPage((p) => p + 1)}
+                    disabled={(page + 1) * PAGE_SIZE >= enviosData.total}
+                    className="px-2 py-1 rounded bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed text-white/70"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
     </AdminLayout>
   );
 }

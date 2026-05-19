@@ -13,9 +13,8 @@
  */
 
 import { Router } from "express";
-import { db, pushTokensTable, usersTable, incidentsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
-import { sql } from "drizzle-orm";
+import { db, pushTokensTable, pushEnviosTable, usersTable, incidentsTable } from "@workspace/db";
+import { eq, and, desc, sql } from "drizzle-orm";
 import {
   sendPushToUsers,
   pushIsConfigured,
@@ -181,6 +180,7 @@ router.post("/push/test", async (req, res) => {
       title: title?.trim() || "Notificación de prueba",
       body: body?.trim() || "Si recibís esta notificación, las push están funcionando.",
       data: { tipo: "test" },
+      evento: "test",
     });
     res.json(result);
   } catch (err) {
@@ -207,6 +207,76 @@ router.post("/push/emergencia/:id", async (req, res) => {
   } catch (err) {
     console.error("[push] EMERGENCIA error:", err);
     res.status(500).json({ error: "Error enviando push de emergencia" });
+  }
+});
+
+// GET /push/envios — historial paginado de notificaciones push enviadas
+// Query params:
+//   ?limit=N (1..200, default 50)
+//   ?offset=N (default 0)
+//   ?userId=N    — filtrar por usuario destinatario
+//   ?evento=str  — filtrar por tipo de evento (test, emergencia, ...)
+//   ?estado=str  — filtrar por estado (ok, error, simulated)
+// Devuelve { rows, total } con join opcional al nombre del usuario.
+router.get("/push/envios", async (req, res) => {
+  try {
+    const limitRaw = parseInt(String(req.query["limit"] ?? "50"), 10);
+    const offsetRaw = parseInt(String(req.query["offset"] ?? "0"), 10);
+    const limit = Math.min(Math.max(Number.isFinite(limitRaw) ? limitRaw : 50, 1), 200);
+    const offset = Math.max(Number.isFinite(offsetRaw) ? offsetRaw : 0, 0);
+
+    const filters = [];
+    const userIdRaw = req.query["userId"];
+    if (userIdRaw !== undefined && userIdRaw !== "") {
+      const uid = parseInt(String(userIdRaw), 10);
+      if (Number.isFinite(uid)) filters.push(eq(pushEnviosTable.userId, uid));
+    }
+    const eventoRaw = req.query["evento"];
+    if (typeof eventoRaw === "string" && eventoRaw.trim()) {
+      filters.push(eq(pushEnviosTable.evento, eventoRaw.trim()));
+    }
+    const estadoRaw = req.query["estado"];
+    if (typeof estadoRaw === "string" && estadoRaw.trim()) {
+      filters.push(eq(pushEnviosTable.estado, estadoRaw.trim()));
+    }
+    const where = filters.length ? and(...filters) : undefined;
+
+    const baseQuery = db
+      .select({
+        id: pushEnviosTable.id,
+        userId: pushEnviosTable.userId,
+        userName: usersTable.nombre,
+        tokenPreview: pushEnviosTable.tokenPreview,
+        title: pushEnviosTable.title,
+        body: pushEnviosTable.body,
+        evento: pushEnviosTable.evento,
+        estado: pushEnviosTable.estado,
+        errorCode: pushEnviosTable.errorCode,
+        errorMessage: pushEnviosTable.errorMessage,
+        messageId: pushEnviosTable.messageId,
+        data: pushEnviosTable.data,
+        createdAt: pushEnviosTable.createdAt,
+      })
+      .from(pushEnviosTable)
+      .leftJoin(usersTable, eq(usersTable.id, pushEnviosTable.userId));
+
+    const rows = await (where
+      ? baseQuery.where(where)
+      : baseQuery)
+      .orderBy(desc(pushEnviosTable.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    const countQuery = db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(pushEnviosTable);
+    const totalRows = await (where ? countQuery.where(where) : countQuery);
+    const total = totalRows[0]?.n ?? 0;
+
+    res.json({ rows, total, limit, offset });
+  } catch (err) {
+    console.error("[push] GET envios error:", err);
+    res.status(500).json({ error: "Error consultando historial de envíos" });
   }
 });
 

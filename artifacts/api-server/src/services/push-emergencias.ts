@@ -34,6 +34,7 @@ export async function notificarEmergenciaPush(incidencia: Incident): Promise<Pus
     title: titulo,
     body: cuerpo || "Nueva emergencia reportada — revisar panel",
     priority: "high",
+    evento: "emergencia",
     data: {
       tipo: "emergencia",
       incidenciaId: incidencia.id,

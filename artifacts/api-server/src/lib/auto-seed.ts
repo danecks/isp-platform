@@ -287,6 +287,37 @@ export async function runAutoMigrations(): Promise<void> {
     `);
     logger.info("Auto-migrate: tabla 'push_tokens' verificada/creada");
 
+    // PUSH_ENVIOS — historial de notificaciones push enviadas (auditoría)
+    // Una fila por token destino por intento de envío. Permite al admin
+    // ver desde el panel qué pushes se enviaron, a quién y si llegaron,
+    // sin necesidad de abrir los logs del servidor.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS push_envios (
+        id             SERIAL PRIMARY KEY,
+        user_id        INTEGER,
+        token_preview  VARCHAR(64),
+        title          VARCHAR(200) NOT NULL,
+        body           VARCHAR(500) NOT NULL,
+        evento         VARCHAR(50) NOT NULL DEFAULT 'manual',
+        estado         VARCHAR(20) NOT NULL,
+        error_code     VARCHAR(100),
+        error_message  TEXT,
+        message_id     VARCHAR(255),
+        data           TEXT,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS push_envios_created_idx ON push_envios(created_at DESC)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS push_envios_user_idx ON push_envios(user_id)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS push_envios_evento_idx ON push_envios(evento)
+    `);
+    logger.info("Auto-migrate: tabla 'push_envios' verificada/creada");
+
     // BONIF-INCENTIVO-01: nivelar bonificación incentivo a Q250 mínimo
     // (Decreto 78-89). Idempotente: solo afecta a quienes están abajo.
     const bonifFix = await pool.query(`
