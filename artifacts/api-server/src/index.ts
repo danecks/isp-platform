@@ -4,6 +4,7 @@ import { runAutoMigrations, runAutoSeed } from "./lib/auto-seed";
 import { limpiarFotosExpiradas } from "./routes/reclutamiento";
 import { cleanupExpiredAnticipoSessions } from "./services/whatsapp/anticipo-session";
 import { cleanupExpiredPhoneRegSessions } from "./services/whatsapp/phone-registration-session";
+import { startRecordatorioAbandonoJob } from "./services/recordatorio-abandono";
 
 const rawPort = process.env["PORT"];
 
@@ -47,5 +48,11 @@ runAutoMigrations().then(() => runAutoSeed()).then(() => {
     };
     gcSesionesWa();
     setInterval(gcSesionesWa, 5 * 60 * 1000);
+
+    // Recordatorios push de alertas de abandono de puesto sin reconocer.
+    // Corre cada RECORDATORIO_ABANDONO_INTERVAL_MIN (default 5 min) y
+    // notifica las novedades cuyo `generada_at` lleve más del umbral
+    // configurable (default 30 min) sin que nadie las reconozca.
+    startRecordatorioAbandonoJob();
   });
 });

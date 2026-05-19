@@ -6584,6 +6584,15 @@ Por favor ingresa al sistema o responde para continuar.',
          ON supervision_novedades(tipo, reconocida_at)
          WHERE tipo = 'abandono_puesto'`
     );
+    // SUPERV-NOV-05: timestamp del último PUSH RECORDATORIO enviado por el
+    // job periódico (services/recordatorio-abandono.ts). Se mantiene aparte
+    // de `push_enviado_at` para que el primer recordatorio dispare en cuanto
+    // se cumple el umbral configurable, incluso si el push inicial salió
+    // hace menos de una hora.
+    await pool.query(
+      `ALTER TABLE supervision_novedades
+         ADD COLUMN IF NOT EXISTS recordatorio_enviado_at TIMESTAMPTZ`
+    );
     logger.info("Auto-migrate: SUPERV-NOV-01 novedades verificada/creada");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: SUPERV-NOV-01 — error (no bloqueante)");

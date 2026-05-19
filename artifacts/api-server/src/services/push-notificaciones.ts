@@ -18,7 +18,7 @@
  * para no bloquear la respuesta HTTP — los errores sólo se loggean.
  */
 
-import { db, usersTable } from "@workspace/db";
+import { db, pool, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { sendPushToUsers, sendPushToRoles, type PushResult } from "./push.service";
 import { logger } from "../lib/logger";
@@ -343,6 +343,111 @@ export async function notificarAbandonoPuestoPush(
       simulated: result.simulated ?? false,
     },
     "[Push-Abandono] resultado de notificación"
+  );
+  return result;
+}
+
+// ─── Recordatorio de abandono sin reconocer ───────────────────────────────────
+
+export interface RecordatorioAbandonoPushArgs {
+  novedadId: number;
+  /** Cliente afectado por la alerta. Si es null, sólo notifica a roles cross-cliente (admin/operaciones sin restricción). */
+  clienteId: number | null;
+  puestoNombre?: string | null;
+  clienteNombre?: string | null;
+  supervisorNombre?: string | null;
+  /** Minutos transcurridos desde que se generó la alerta. */
+  minutosSinReconocer: number;
+}
+
+/**
+ * Resuelve la lista de `users.id` que deben recibir notificaciones de
+ * supervisión para un cliente concreto.
+ *
+ * Reglas (acordadas con el esquema actual, donde no existe una tabla
+ * explícita supervisor↔cliente):
+ *   - Usuarios con rol en ROLES_SUPERVISION (admin / operaciones / supervisor).
+ *   - Si el usuario tiene `users.cliente_id` (TEXT = clients.portal_cliente_id),
+ *     sólo se incluye cuando coincide con el `portal_cliente_id` del cliente
+ *     afectado. Esto evita que un supervisor restringido a un cliente reciba
+ *     alertas de otro.
+ *   - Si el usuario tiene `users.cliente_id` NULL (admins / operaciones
+ *     globales, o supervisores sin restricción), se incluye siempre porque
+ *     su alcance es transversal.
+ */
+async function resolverUsuariosSupervisionDeCliente(
+  clienteId: number | null
+): Promise<number[]> {
+  if (clienteId === null) {
+    // Sin cliente conocido: sólo notificar a usuarios cross-cliente.
+    const { rows } = await pool.query<{ id: number }>(
+      `SELECT id FROM users
+        WHERE rol = ANY($1::text[])
+          AND cliente_id IS NULL`,
+      [ROLES_SUPERVISION as readonly string[]]
+    );
+    return rows.map((r) => r.id);
+  }
+  const { rows } = await pool.query<{ id: number }>(
+    `SELECT u.id
+       FROM users u
+       LEFT JOIN clients c ON c.id = $1::int
+      WHERE u.rol = ANY($2::text[])
+        AND (
+          u.cliente_id IS NULL
+          OR (c.portal_cliente_id IS NOT NULL AND u.cliente_id = c.portal_cliente_id)
+        )`,
+    [clienteId, ROLES_SUPERVISION as readonly string[]]
+  );
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Recordatorio para los supervisores cuando una alerta de abandono lleva
+ * mucho tiempo sin reconocerse desde el dashboard. Lo dispara el job
+ * periódico `recordatorio-abandono` (ver services/recordatorio-abandono.ts).
+ *
+ * Sólo notifica a usuarios con permiso de supervisión del cliente afectado
+ * (ver resolverUsuariosSupervisionDeCliente). Si no se puede determinar el
+ * cliente (raro pero posible para novedades viejas), cae a los roles
+ * cross-cliente.
+ */
+export async function notificarRecordatorioAbandonoPush(
+  args: RecordatorioAbandonoPushArgs
+): Promise<PushResult> {
+  const titulo = "⏰ Alerta de abandono sin atender";
+  const partes = [
+    args.puestoNombre ? `Puesto: ${args.puestoNombre}` : null,
+    args.clienteNombre ? `Cliente: ${args.clienteNombre}` : null,
+    args.supervisorNombre ? `Supervisor: ${args.supervisorNombre}` : null,
+    `Sin reconocer hace ${args.minutosSinReconocer} min`,
+  ].filter(Boolean) as string[];
+  const cuerpo = partes.join(" · ");
+
+  const userIds = await resolverUsuariosSupervisionDeCliente(args.clienteId);
+  const result = await sendPushToUsers({
+    userIds,
+    title: titulo,
+    body: cuerpo,
+    priority: "high",
+    evento: "abandono_puesto_recordatorio",
+    data: {
+      tipo: "abandono_puesto_recordatorio",
+      novedadId: String(args.novedadId),
+      clienteId: args.clienteId !== null ? String(args.clienteId) : "",
+      ruta: `/admin/supervision/novedades/${args.novedadId}`,
+    },
+  });
+
+  logger.info(
+    {
+      novedadId: args.novedadId,
+      minutosSinReconocer: args.minutosSinReconocer,
+      sent: result.sent,
+      failed: result.failed,
+      simulated: result.simulated ?? false,
+    },
+    "[Push-Abandono-Recordatorio] resultado de notificación"
   );
   return result;
 }
