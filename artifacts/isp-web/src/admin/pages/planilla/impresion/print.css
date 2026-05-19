@@ -1,6 +1,10 @@
 /* Estilos de impresión para planilla, cheques y acreditaciones.
  * Sólo se aplican al imprimir (window.print o Ctrl+P).
  * Las vistas se renderizan ocultas en pantalla normal.
+ *
+ * Convención: todas las reglas globales (html/body/#root/*) están scopeadas
+ * con `body.printing-planilla` para no pisar otras vistas imprimibles. Ver
+ * `./PRINT_CONVENTIONS.md` para la convención completa del sistema.
  */
 
 .print-only { display: none; }
