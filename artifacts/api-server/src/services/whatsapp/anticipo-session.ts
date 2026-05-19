@@ -28,6 +28,8 @@ import {
 } from "@workspace/db";
 import { eq, and, lt } from "drizzle-orm";
 import { calcularLimiteAnticipo } from "../anticipo-limite";
+import { notificarAnticipoCreadoPush } from "../push-notificaciones";
+import { logger } from "../../lib/logger";
 
 // ── Configuración de períodos ───────────────────────────────────────────────
 export const DIAS_HABILITADOS = [10, 25];
@@ -244,6 +246,25 @@ async function guardarAnticipo(sesActual: AnticipoSession, cantidad: number) {
       observaciones: `Solicitud vía WhatsApp. Período: ${sesActual.periodo}.`,
     })
     .returning();
+
+  // Push a aprobadores (admin/rrhh) — fire and forget.
+  // El POST /api/anticipos hace lo mismo via el mismo helper; replicamos
+  // aquí porque el bot de WhatsApp inserta directo en DB sin pasar por ese
+  // endpoint. El origen ("whatsapp") queda reflejado en el resumen.
+  if (anticipo.estado === "pendiente") {
+    notificarAnticipoCreadoPush({
+      anticipoId: anticipo.id,
+      nombre: anticipo.nombre,
+      cantidad: anticipo.cantidad,
+      origen: anticipo.origen,
+    }).catch((err) => {
+      logger.warn(
+        { err, anticipoId: anticipo.id },
+        "[WA-Anticipo] push de aprobación pendiente falló (no bloqueante)"
+      );
+    });
+  }
+
   return anticipo;
 }
 

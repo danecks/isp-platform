@@ -174,6 +174,43 @@ function rutaPorDefecto(tipo: TipoAprobacion, id: number | string): string {
   }
 }
 
+// ─── Helpers por canal (REST / WhatsApp / Kiosco) ────────────────────────────
+//
+// Estos wrappers existen para garantizar que cualquier punto que cree una
+// solicitud aprobable (anticipo) — independientemente de si llega por el
+// POST REST clásico, por el bot de WhatsApp (services/whatsapp/*) o por el
+// kiosco público (web SolicitarAnticipo → POST /api/anticipos) — dispare
+// el mismo push a los aprobadores con el `origen` reflejado en el cuerpo.
+//
+// Si en el futuro aparece otro canal de entrada (otro kiosco, importación
+// interactiva, integración externa, etc.) debe llamar a este helper para
+// no volver a quedarse sin notificar.
+
+export type OrigenAnticipoSolicitud = "manual" | "kiosco" | "whatsapp" | string;
+
+export interface AnticipoCreadoPushArgs {
+  anticipoId: number | string;
+  nombre: string;
+  cantidad: number;
+  origen: OrigenAnticipoSolicitud;
+}
+
+/**
+ * Dispara push de "anticipo pendiente" para aprobadores (admin/rrhh).
+ * Incluye el canal de origen en el resumen para que RRHH sepa de dónde
+ * llegó la solicitud (REST manual / kiosco / WhatsApp).
+ */
+export async function notificarAnticipoCreadoPush(
+  args: AnticipoCreadoPushArgs,
+): Promise<PushResult> {
+  return notificarAprobacionPendientePush({
+    tipo: "anticipo",
+    solicitudId: args.anticipoId,
+    empleadoNombre: args.nombre,
+    resumen: `Q${args.cantidad} (${args.origen})`,
+  });
+}
+
 // ─── Resolución de solicitudes (aviso al colaborador) ────────────────────────
 
 /**

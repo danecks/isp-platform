@@ -12,7 +12,10 @@ import { db, anticiposTable } from "@workspace/db";
 import { eq, desc, and, gte, lte } from "drizzle-orm";
 import { DIAS_HABILITADOS, getPeriodoActivo } from "../services/whatsapp/anticipo-session";
 import { calcularLimiteAnticipo } from "../services/anticipo-limite";
-import { notificarAprobacionPendientePush, notificarResolucionPush } from "../services/push-notificaciones";
+import {
+  notificarAnticipoCreadoPush,
+  notificarResolucionPush,
+} from "../services/push-notificaciones";
 import { logger as pushLogger } from "../lib/logger";
 
 const anticiposRouter = Router();
@@ -163,12 +166,15 @@ anticiposRouter.post("/anticipos", async (req, res) => {
       .returning();
 
     // Push a aprobadores (admin/rrhh) — fire and forget.
+    // Cubre REST manual y kiosco web (SolicitarAnticipo POSTea aquí con
+    // origen="kiosco"). El bot de WhatsApp insert directo y notifica
+    // desde services/whatsapp/anticipo-session.ts.
     if (created.estado === "pendiente") {
-      notificarAprobacionPendientePush({
-        tipo: "anticipo",
-        solicitudId: created.id,
-        empleadoNombre: created.nombre,
-        resumen: `Q${created.cantidad} (${created.origen})`,
+      notificarAnticipoCreadoPush({
+        anticipoId: created.id,
+        nombre: created.nombre,
+        cantidad: created.cantidad,
+        origen: created.origen,
       }).catch((err) => {
         pushLogger.warn({ err, anticipoId: created.id }, "Push de anticipo pendiente falló (no bloqueante)");
       });
