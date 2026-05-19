@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
+import { getActorFromReq } from "../lib/auth-helpers";
 
 // Reportería del módulo Supervisión.
 // GET /api/supervision/reportes?desde=YYYY-MM-DD&hasta=YYYY-MM-DD&cliente_id?
@@ -43,6 +44,7 @@ supervisionReportesRouter.get("/supervision/reportes", async (req, res) => {
          (SELECT COUNT(*)::int FROM supervision_novedades
             WHERE fecha BETWEEN $1 AND $2
               AND tipo = 'abandono_puesto'
+              AND reconocida_at IS NULL
               AND ($3::int IS NULL OR cliente_id = $3))                     AS total_abandonos,
          (SELECT COUNT(*)::int FROM armas_alertas aa
             JOIN supervision_inspecciones si ON si.id = aa.inspeccion_id
@@ -157,14 +159,19 @@ supervisionReportesRouter.get("/supervision/reportes", async (req, res) => {
               c.nombre  AS cliente_nombre,
               e.nombre_completo AS supervisor_nombre,
               n.datos_consolidados AS datos,
-              to_char(n.generada_at, 'YYYY-MM-DD HH24:MI') AS generada_at
+              to_char(n.generada_at, 'YYYY-MM-DD HH24:MI') AS generada_at,
+              n.reconocida_at IS NOT NULL AS reconocida,
+              to_char(n.reconocida_at, 'YYYY-MM-DD HH24:MI') AS reconocida_at,
+              u_rec.username AS reconocida_por
          FROM supervision_novedades n
          LEFT JOIN puestos_operativos po ON po.id = n.puesto_id
          LEFT JOIN clients c             ON c.id  = n.cliente_id
          LEFT JOIN employees e           ON e.id  = n.supervisor_employee_id
+         LEFT JOIN users u_rec           ON u_rec.id = n.reconocida_por_user_id
         WHERE n.fecha BETWEEN $1 AND $2
           AND ($3::int IS NULL OR n.cliente_id = $3)
-        ORDER BY (n.tipo = 'abandono_puesto') DESC, n.generada_at DESC
+        ORDER BY (n.tipo = 'abandono_puesto' AND n.reconocida_at IS NULL) DESC,
+                 n.generada_at DESC
         LIMIT 30`,
       [desde, hasta, filtroCliente]
     );
@@ -205,5 +212,54 @@ supervisionReportesRouter.get("/supervision/reportes", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "GET /supervision/reportes error");
     res.status(500).json({ error: "Error al cargar reportes de supervisión" });
+  }
+});
+
+// PATCH /api/supervision-reportes/novedades/:id/reconocer
+// Marca (o desmarca) una novedad de abandono como reconocida por el usuario
+// actual. Ruta bajo /supervision-reportes para que el middleware de permisos
+// la cubra con el módulo "supervision". Restringido a tipo='abandono_puesto'.
+// Body: { reconocida: boolean }. Defaults a true si no se envía.
+supervisionReportesRouter.patch("/supervision-reportes/novedades/:id/reconocer", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: "id inválido" });
+  }
+  const actor = await getActorFromReq(req);
+  if (!actor) {
+    return res.status(401).json({ error: "No autorizado" });
+  }
+  const reconocida = req.body?.reconocida !== false;
+  try {
+    const { rows } = await pool.query(
+      reconocida
+        ? `UPDATE supervision_novedades
+              SET reconocida_por_user_id = $2,
+                  reconocida_at          = NOW()
+            WHERE id = $1
+              AND tipo = 'abandono_puesto'
+            RETURNING id,
+                      to_char(reconocida_at, 'YYYY-MM-DD HH24:MI') AS reconocida_at`
+        : `UPDATE supervision_novedades
+              SET reconocida_por_user_id = NULL,
+                  reconocida_at          = NULL
+            WHERE id = $1
+              AND tipo = 'abandono_puesto'
+            RETURNING id, NULL::text AS reconocida_at`,
+      reconocida ? [id, actor.id] : [id]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Novedad no encontrada" });
+    }
+    res.json({
+      ok: true,
+      id: rows[0].id,
+      reconocida,
+      reconocida_at: rows[0].reconocida_at,
+      reconocida_por: reconocida ? actor.username : null,
+    });
+  } catch (err) {
+    logger.error({ err, id }, "PATCH /supervision-reportes/novedades/:id/reconocer error");
+    res.status(500).json({ error: "Error al actualizar el reconocimiento" });
   }
 });

@@ -6537,6 +6537,22 @@ Por favor ingresa al sistema o responde para continuar.',
       `ALTER TABLE supervision_novedades
          ADD COLUMN IF NOT EXISTS push_enviado_at TIMESTAMPTZ`
     );
+    // SUPERV-NOV-04: reconocimiento de novedades (especialmente alertas de
+    // abandono de puesto). Permite que un jefe marque la alerta como vista /
+    // atendida desde el dashboard, atenuando la fila y sacándola del KPI rojo.
+    await pool.query(
+      `ALTER TABLE supervision_novedades
+         ADD COLUMN IF NOT EXISTS reconocida_por_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`
+    );
+    await pool.query(
+      `ALTER TABLE supervision_novedades
+         ADD COLUMN IF NOT EXISTS reconocida_at TIMESTAMPTZ`
+    );
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS supnov_reconocida
+         ON supervision_novedades(tipo, reconocida_at)
+         WHERE tipo = 'abandono_puesto'`
+    );
     logger.info("Auto-migrate: SUPERV-NOV-01 novedades verificada/creada");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: SUPERV-NOV-01 — error (no bloqueante)");
