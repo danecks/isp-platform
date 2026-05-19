@@ -4,9 +4,11 @@ import {
   checkForUpdate,
   getAppVersionInfo,
   getLastCheck,
+  getPublishedInfo,
   type AppVersionInfo,
   type OtaCheckResult,
   type OtaLastCheck,
+  type OtaPublishedInfo,
 } from "@/lib/native/liveUpdate";
 import { isNative, getPlatform } from "@/lib/native/platform";
 import { useToast } from "@/hooks/use-toast";
@@ -41,14 +43,20 @@ export default function AjustesVersion() {
   const { toast } = useToast();
   const [info, setInfo] = useState<AppVersionInfo | null>(null);
   const [last, setLast] = useState<OtaLastCheck | null>(null);
+  const [pub, setPub] = useState<OtaPublishedInfo | null>(null);
   const [checking, setChecking] = useState(false);
   const plataforma = getPlatform();
   const nativo = isNative();
 
   const recargar = useCallback(async () => {
-    const [v, l] = await Promise.all([getAppVersionInfo(), Promise.resolve(getLastCheck())]);
+    const [v, l, p] = await Promise.all([
+      getAppVersionInfo(),
+      Promise.resolve(getLastCheck()),
+      Promise.resolve(getPublishedInfo()),
+    ]);
     setInfo(v);
     setLast(l);
+    setPub(p);
   }, []);
 
   useEffect(() => { void recargar(); }, [recargar]);
@@ -123,6 +131,27 @@ export default function AjustesVersion() {
               </p>
               {info?.bundleId && (
                 <p className="text-[11px] text-slate-500 mt-0.5">ID: {info.bundleId}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 border-t border-slate-800 pt-3">
+            <Package className="w-5 h-5 text-amber-400 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-xs uppercase tracking-wider text-slate-400">Versión publicada</p>
+              <p className="text-lg font-bold" data-testid="text-published-version">
+                {pub?.version ?? "—"}
+                {pub && info?.bundle && pub.version === info.bundle && (
+                  <span className="ml-2 text-[10px] font-medium text-emerald-300 uppercase">al día</span>
+                )}
+                {pub && info?.bundle && pub.version !== info.bundle && (
+                  <span className="ml-2 text-[10px] font-medium text-amber-300 uppercase">hay versión nueva</span>
+                )}
+              </p>
+              {pub?.releasedAt && (
+                <p className="text-[11px] text-slate-500 mt-0.5" data-testid="text-published-released-at">
+                  Publicada: {fmtFecha(pub.releasedAt)}
+                </p>
               )}
             </div>
           </div>

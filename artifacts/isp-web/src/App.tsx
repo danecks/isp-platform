@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { DeleteModeProvider } from "@/contexts/DeleteModeContext";
 import { AuthGuard } from "@/components/AuthGuard";
 import { PortalGuard } from "@/components/PortalGuard";
+import { OtaUpdateBanner } from "@/components/OtaUpdateBanner";
 
 // Public pages
 import Home from "@/pages/home";
@@ -368,6 +369,7 @@ function App() {
         <AuthProvider>
           <DeleteModeProvider>
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+              <OtaUpdateBanner />
               <Router />
             </WouterRouter>
             <Toaster />
