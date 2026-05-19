@@ -2,7 +2,6 @@ import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { autenticarSupervisor } from "./agente-supervision";
-import { notificarAbandonoPuestoPush } from "../services/push-notificaciones";
 
 // Fase C — Jornada del supervisor: clock-in/out, GPS continuo, inspección de
 // agentes con catálogo configurable, alertas de armas y novedades.
@@ -486,51 +485,6 @@ agenteSupervisionJornadaRouter.post("/agente/supervision/jornada/geofence-evento
                   { sesionId: sesion.id, puestoId, programacionId, supervisor: a.ctx.employee_id, novedadId: novId, permanenciaSeg },
                   "Abandono de puesto detectado: novedad creada"
                 );
-
-                // SUPERV-NOV-03: notificar por push a los admins con permiso
-                // de supervisión. Anti-spam: marcamos push_enviado_at vía
-                // UPDATE condicional (NULL o > 1h) y sólo enviamos si la
-                // marca se aplicó efectivamente. Esto evita reenvíos por
-                // el mismo (sesion, puesto) dentro de la última hora.
-                try {
-                  const marca = await pool.query(
-                    `UPDATE supervision_novedades
-                        SET push_enviado_at = NOW()
-                      WHERE id = $1
-                        AND (push_enviado_at IS NULL
-                             OR push_enviado_at < NOW() - INTERVAL '1 hour')
-                      RETURNING id`,
-                    [novId]
-                  );
-                  if (marca.rowCount && marca.rowCount > 0) {
-                    // Resolvemos los nombres para el cuerpo del push.
-                    const { rows: nm } = await pool.query(
-                      `SELECT
-                         (SELECT nombre_completo FROM employees WHERE id = $1) AS supervisor_nombre,
-                         (SELECT nombre FROM puestos_operativos WHERE id = $2) AS puesto_nombre,
-                         (SELECT nombre FROM clients WHERE id = $3)            AS cliente_nombre`,
-                      [a.ctx.employee_id, puestoId, clienteId]
-                    );
-                    const nombres = nm[0] || {};
-                    // Fire-and-forget — no bloquea la respuesta.
-                    notificarAbandonoPuestoPush({
-                      novedadId: novId,
-                      supervisorNombre: nombres.supervisor_nombre ?? a.ctx.supervisor_nombre ?? null,
-                      puestoNombre: nombres.puesto_nombre ?? null,
-                      clienteNombre: nombres.cliente_nombre ?? null,
-                      permanenciaSegundos: permanenciaSeg,
-                    }).catch((err) =>
-                      logger.error({ err, novedadId: novId }, "Push abandono_puesto: error no bloqueante")
-                    );
-                  } else {
-                    logger.info(
-                      { novedadId: novId },
-                      "Push abandono_puesto: omitido (ya enviado en la última hora)"
-                    );
-                  }
-                } catch (errPush) {
-                  logger.error({ err: errPush, novedadId: novId }, "Push abandono_puesto: error marcando envío");
-                }
               }
             }
           }

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, TileLayer, Marker, Circle, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { Loader2, MapPin, Save, Crosshair, Search } from "lucide-react";
+import { Loader2, MapPin, Save, Crosshair } from "lucide-react";
 import { API, h } from "./_shared";
 
 const GT_CENTER: [number, number] = [14.6349, -90.5069];
@@ -48,10 +48,6 @@ export function PuestoUbicacionInline({ puestoId }: { puestoId: number }) {
   const [pos, setPos] = useState<[number, number]>(GT_CENTER);
   const [radio, setRadio] = useState<number>(50);
   const [hasInitial, setHasInitial] = useState(false);
-  const [query, setQuery] = useState("");
-  const [searching, setSearching] = useState(false);
-  const [results, setResults] = useState<Array<{ display_name: string; lat: string; lon: string }>>([]);
-  const [showResults, setShowResults] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,47 +80,6 @@ export function PuestoUbicacionInline({ puestoId }: { puestoId: number }) {
     if (!hasInitial) return "Sin ubicación guardada";
     return `Lat ${pos[0].toFixed(6)} · Lng ${pos[1].toFixed(6)}`;
   }, [hasInitial, pos]);
-
-  const searchAbortRef = useRef<AbortController | null>(null);
-  async function searchAddress(e?: FormEvent) {
-    if (e) e.preventDefault();
-    const q = query.trim();
-    if (!q) return;
-    if (searchAbortRef.current) searchAbortRef.current.abort();
-    const ctrl = new AbortController();
-    searchAbortRef.current = ctrl;
-    setSearching(true);
-    setMsg(null);
-    try {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=gt&q=${encodeURIComponent(q)}`;
-      const r = await fetch(url, { headers: { "Accept": "application/json" }, signal: ctrl.signal });
-      if (!r.ok) throw new Error(String(r.status));
-      const data: Array<{ display_name: string; lat: string; lon: string }> = await r.json();
-      if (ctrl.signal.aborted) return;
-      setResults(data);
-      setShowResults(true);
-      if (data.length === 0) setMsg({ type: "err", text: "No se encontraron resultados para esa dirección." });
-    } catch (err) {
-      if ((err as { name?: string })?.name === "AbortError") return;
-      setMsg({ type: "err", text: "No se pudo buscar la dirección." });
-      setResults([]);
-    } finally {
-      if (searchAbortRef.current === ctrl) {
-        setSearching(false);
-        searchAbortRef.current = null;
-      }
-    }
-  }
-
-  function pickResult(r: { display_name: string; lat: string; lon: string }) {
-    const lat = Number(r.lat);
-    const lng = Number(r.lon);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) {
-      setPos([lat, lng]);
-      setShowResults(false);
-      setQuery(r.display_name);
-    }
-  }
 
   async function locateMe() {
     if (!navigator.geolocation) {
@@ -172,43 +127,6 @@ export function PuestoUbicacionInline({ puestoId }: { puestoId: number }) {
           Mi ubicación
         </button>
       </div>
-
-      <form onSubmit={searchAddress} className="relative">
-        <div className="flex items-center gap-1.5">
-          <div className="relative flex-1">
-            <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30" />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => { setQuery(e.target.value); setShowResults(false); }}
-              placeholder='Buscar dirección — ej. "5a Av 10-25 Zona 1"'
-              className="w-full bg-[#060e1c] border border-white/10 focus:border-primary/40 outline-none rounded-lg pl-7 pr-2 py-1.5 text-[11px] text-white placeholder:text-white/25"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={searching || !query.trim()}
-            className="flex items-center gap-1 text-[10px] text-white/60 hover:text-white border border-white/10 hover:border-white/20 px-2 py-1.5 rounded-lg disabled:opacity-50"
-          >
-            {searching ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
-            Buscar
-          </button>
-        </div>
-        {showResults && results.length > 0 && (
-          <div className="absolute z-[1000] left-0 right-0 mt-1 bg-[#0a1424] border border-white/10 rounded-lg shadow-xl overflow-hidden max-h-56 overflow-y-auto">
-            {results.map((r, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => pickResult(r)}
-                className="w-full text-left px-3 py-2 text-[11px] text-white/70 hover:bg-white/5 border-b border-white/5 last:border-b-0"
-              >
-                {r.display_name}
-              </button>
-            ))}
-          </div>
-        )}
-      </form>
 
       <div className="rounded-xl overflow-hidden border border-white/10" style={{ height: 240 }}>
         {loading ? (

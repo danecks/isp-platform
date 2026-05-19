@@ -11,7 +11,6 @@
 import { isNative } from "./platform";
 import { initLiveUpdate } from "./liveUpdate";
 import { initPush } from "./push";
-import { installNativeFetchPatch } from "./fetchPatch";
 import { toast } from "@/hooks/use-toast";
 
 /**
@@ -33,14 +32,9 @@ function readUserIdFromSession(): number | null {
 
 /**
  * Rutas "marketing" del sitio web público que NO tienen sentido dentro del
- * APK. La app móvil es para personal de campo (agentes, custodios y
- * supervisores) que se identifica escaneando su carnet QR — esa es la
- * pantalla de entrada universal en /agente. Si el WebView aterriza en una
- * marketing al abrir el APK, lo enviamos directo al escáner.
- *
- * /admin/login también se considera marketing dentro del APK: los admins
- * usan el sitio desde una computadora, no la app móvil. El personal de
- * campo nunca debe ver el formulario de usuario/contraseña.
+ * APK (la app móvil es para guardias y supervisores, no para visitantes que
+ * miran servicios). Si el WebView aterriza en una de estas al abrir el APK
+ * lo redirigimos al login operativo.
  */
 const RUTAS_MARKETING = new Set<string>([
   "",
@@ -55,16 +49,13 @@ const RUTAS_MARKETING = new Set<string>([
   "/contacto",
   "/acceso-clientes",
   "/descarga-app",
-  "/admin/login",
 ]);
-
-const RUTA_ENTRADA_APK = "/agente";
 
 function redirigirSiEsMarketing(): void {
   try {
     const path = window.location.pathname.replace(/\/+$/, "") || "/";
     if (RUTAS_MARKETING.has(path)) {
-      window.location.replace(RUTA_ENTRADA_APK);
+      window.location.replace("/admin/login");
     }
   } catch {
     /* noop */
@@ -73,25 +64,13 @@ function redirigirSiEsMarketing(): void {
 
 export function bootstrapNative(): void {
   if (!isNative()) return;
-  // PRIMERO: parchar fetch global para que las llamadas /api/... resuelvan
-  // contra el dominio corporativo. Sin esto cualquier petición HTTP falla
-  // con "error de conexión con el servidor".
-  installNativeFetchPatch();
   redirigirSiEsMarketing();
   initLiveUpdate((r) => {
-    if (r.status === "downloading") {
-      toast({
-        title: "Actualizando la app…",
-        description:
-          `Descargando versión ${r.version}. No cierres la app, esto puede tardar 1-2 minutos.`,
-        duration: 120000,
-      });
-    } else if (r.status === "downloaded") {
+    if (r.status === "downloaded") {
       toast({
         title: "Actualización lista",
         description:
-          "Se descargó una versión nueva. Cerrá y reabrí la app para aplicarla.",
-        duration: 30000,
+          "Se descargó una versión nueva. Se aplicará la próxima vez que abras la app.",
       });
     } else if (r.status === "error") {
       // Silencioso para el usuario — sólo se loggea en consola para que un

@@ -1179,24 +1179,6 @@ Por favor ingresa al sistema o responde para continuar.',
       ON CONFLICT (clave) DO NOTHING
     `);
     logger.info("Auto-seed: mensaje 'tarea_nueva_asignada' verificado");
-
-    // Plantilla del recordatorio por WhatsApp cuando una alerta de
-    // abandono de puesto lleva mucho tiempo sin reconocerse.
-    // Lo consume services/whatsapp/notificaciones.service.ts.
-    await pool.query(`
-      INSERT INTO wa_messages (clave, texto, descripcion)
-      VALUES (
-        'abandono_recordatorio',
-        '⏰ ISP, S.A. — Alerta de abandono sin atender
-📍 Puesto: {puesto}
-🏢 Cliente: {cliente}
-⌛ Sin reconocer hace {minutos} min
-Ingresa al panel de supervisión para revisarla.',
-        'Recordatorio por WhatsApp a supervisores cuando una alerta de abandono lleva tiempo sin atender'
-      )
-      ON CONFLICT (clave) DO NOTHING
-    `);
-    logger.info("Auto-seed: mensaje 'abandono_recordatorio' verificado");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: error en wa_notificaciones_log");
   }
@@ -6601,15 +6583,6 @@ Ingresa al panel de supervisión para revisarla.',
       `CREATE INDEX IF NOT EXISTS supnov_reconocida
          ON supervision_novedades(tipo, reconocida_at)
          WHERE tipo = 'abandono_puesto'`
-    );
-    // SUPERV-NOV-05: timestamp del último PUSH RECORDATORIO enviado por el
-    // job periódico (services/recordatorio-abandono.ts). Se mantiene aparte
-    // de `push_enviado_at` para que el primer recordatorio dispare en cuanto
-    // se cumple el umbral configurable, incluso si el push inicial salió
-    // hace menos de una hora.
-    await pool.query(
-      `ALTER TABLE supervision_novedades
-         ADD COLUMN IF NOT EXISTS recordatorio_enviado_at TIMESTAMPTZ`
     );
     logger.info("Auto-migrate: SUPERV-NOV-01 novedades verificada/creada");
   } catch (err) {
