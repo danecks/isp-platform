@@ -11,6 +11,7 @@
 import { isNative } from "./platform";
 import { initLiveUpdate } from "./liveUpdate";
 import { initPush } from "./push";
+import { installNativeFetchPatch } from "./fetchPatch";
 import { toast } from "@/hooks/use-toast";
 
 /**
@@ -72,6 +73,10 @@ function redirigirSiEsMarketing(): void {
 
 export function bootstrapNative(): void {
   if (!isNative()) return;
+  // PRIMERO: parchar fetch global para que las llamadas /api/... resuelvan
+  // contra el dominio corporativo. Sin esto cualquier petición HTTP falla
+  // con "error de conexión con el servidor".
+  installNativeFetchPatch();
   redirigirSiEsMarketing();
   initLiveUpdate((r) => {
     if (r.status === "downloaded") {

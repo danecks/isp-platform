@@ -27,11 +27,33 @@ const SESSION_KEY = "isp_admin_session_v2";
 const SESSION_HEADER = "x-isp-session";
 
 /**
+ * Prefijo absoluto cuando corre en el APK (WebView Capacitor).
+ * Dentro del APK las rutas relativas como `/api/...` resuelven contra
+ * `https://localhost` (androidScheme), que no existe → "error de conexión".
+ * Detectamos el global `Capacitor` que el WebView inyecta y prefijamos con el
+ * dominio corporativo. En navegador queda "" (relativo, mismo origen).
+ */
+const NATIVE_ORIGIN = "https://ispsa.net";
+const ABS_PREFIX = (() => {
+  try {
+    if (typeof window === "undefined") return "";
+    const cap = (window as unknown as {
+      Capacitor?: { isNativePlatform?: () => boolean };
+    }).Capacitor;
+    return cap?.isNativePlatform?.() === true ? NATIVE_ORIGIN : "";
+  } catch {
+    return "";
+  }
+})();
+
+/**
  * Prefijo de URL del artifact (p. ej. "" cuando se sirve en `/`, o
  * "/admin" cuando se monta bajo un sub-path). Lo respetamos para que las
  * llamadas al API funcionen tanto en root como bajo un base path.
+ * En contexto nativo se ignora — usamos el dominio corporativo absoluto.
  */
 const BASE_URL_PREFIX = (() => {
+  if (ABS_PREFIX) return "";
   try {
     const raw = (import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL;
     return raw ? raw.replace(/\/$/, "") : "";
@@ -66,7 +88,7 @@ export function apiUrl(path: string): string {
   const withApi = path.startsWith(`${API_BASE}/`) || path === API_BASE
     ? path
     : `${API_BASE}${path}`;
-  return `${BASE_URL_PREFIX}${withApi}`;
+  return `${ABS_PREFIX}${BASE_URL_PREFIX}${withApi}`;
 }
 
 export class ApiError extends Error {
@@ -109,7 +131,15 @@ export async function apiRequest<T = unknown>(
     headers.set(SESSION_HEADER, session);
   }
 
-  const res = await fetch(apiUrl(path), { ...options, headers, body });
+  // En APK Capacitor (origen https://localhost) el dominio del API es
+  // distinto → necesitamos `credentials: "include"` para mantener cookies
+  // del API origin. En web mismo-origen, el valor por defecto basta, pero
+  // tampoco molesta.
+  const fetchOptions: RequestInit = { ...options, headers, body };
+  if (ABS_PREFIX && fetchOptions.credentials === undefined) {
+    fetchOptions.credentials = "include";
+  }
+  const res = await fetch(apiUrl(path), fetchOptions);
   if (!res.ok) {
     const errBody = await res.json().catch(() => ({}));
     const msg =
