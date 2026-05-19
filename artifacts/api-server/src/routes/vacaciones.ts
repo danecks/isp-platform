@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { pool, todayGT } from "@workspace/db";
 import pino from "pino";
-import { notificarAprobacionPendientePush } from "../services/push-notificaciones";
+import { notificarAprobacionPendientePush, notificarResolucionPush } from "../services/push-notificaciones";
 
 const logger = pino({ name: "vacaciones" });
 export const vacacionesRouter = Router();
@@ -685,6 +685,29 @@ vacacionesRouter.patch("/vacaciones/:id", async (req, res) => {
       logger.info({ id, empleado: ev.employee_id }, "Novedades y planificación futura revertidas por cancelación");
     }
 
+    // Push al colaborador cuando la vacación pasa a aprobado o cancelado.
+    if (
+      estado &&
+      (estado === "aprobado" || estado === "cancelado") &&
+      ev.estado !== estado &&
+      ev.employee_id
+    ) {
+      const fInicio = ev.fecha ? new Date(ev.fecha).toISOString().slice(0, 10) : null;
+      const fFin = ev.fecha_fin ? new Date(ev.fecha_fin).toISOString().slice(0, 10) : null;
+      const periodo = fInicio && fFin && fFin !== fInicio
+        ? `${fInicio} → ${fFin}`
+        : fInicio ?? "";
+      notificarResolucionPush({
+        tipo: "vacaciones",
+        solicitudId: id,
+        employeeId: Number(ev.employee_id),
+        estado,
+        resumen: periodo || null,
+      }).catch((err) => {
+        logger.warn({ err, vacacionesId: id }, "Push de resolución de vacaciones falló (no bloqueante)");
+      });
+    }
+
     res.json({ ok: true, evento: rows[0] });
   } catch (err) {
     logger.error({ err }, "PATCH /vacaciones/:id error");
@@ -777,6 +800,23 @@ vacacionesRouter.post("/vacaciones/:id/aprobar", async (req, res) => {
     `, [ev.employee_id, fechaInicio, fechaFin]);
 
     await client.query("COMMIT");
+
+    // Push al colaborador — vacaciones programadas que pasan a aprobadas.
+    if (ev.employee_id) {
+      const periodo = fechaFin !== fechaInicio
+        ? `${fechaInicio} → ${fechaFin}`
+        : fechaInicio;
+      notificarResolucionPush({
+        tipo: "vacaciones",
+        solicitudId: id,
+        employeeId: Number(ev.employee_id),
+        estado: "aprobado",
+        resumen: periodo,
+      }).catch((err) => {
+        logger.warn({ err, vacacionesId: id }, "Push de resolución de vacaciones falló (no bloqueante)");
+      });
+    }
+
     res.json({ ok: true, mensaje: `Vacaciones aprobadas para ${ev.emp_nombre}`, dias_generados: dias.length });
   } catch (err) {
     await client.query("ROLLBACK");

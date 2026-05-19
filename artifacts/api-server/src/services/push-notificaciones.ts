@@ -174,6 +174,91 @@ function rutaPorDefecto(tipo: TipoAprobacion, id: number | string): string {
   }
 }
 
+// ─── Resolución de solicitudes (aviso al colaborador) ────────────────────────
+
+/**
+ * Resultados finales que recibe el colaborador cuando su solicitud se mueve
+ * de "pendiente" a un estado terminal. No incluimos "pendiente" porque el
+ * push de creación ya cubre ese caso.
+ */
+export type ResolucionEstado =
+  | "aprobada"
+  | "rechazada"
+  | "pagada"
+  | "aprobado"
+  | "rechazado"
+  | "cancelado";
+
+export interface ResolucionPushArgs {
+  tipo: TipoAprobacion;
+  solicitudId: number | string;
+  /** Empleado afectado por la solicitud. Si no hay user vinculado, no se envía. */
+  employeeId: number;
+  estado: ResolucionEstado;
+  /** Resumen corto opcional (ej. monto, fechas, tipo de cambio). */
+  resumen?: string | null;
+  /** Ruta a abrir en la app al tocar la notificación. */
+  ruta?: string;
+}
+
+function tituloResolucion(tipo: TipoAprobacion, estado: ResolucionEstado): string {
+  const etiquetaTipo =
+    tipo === "anticipo" ? "Anticipo" :
+    tipo === "vacaciones" ? "Vacaciones" :
+    "Solicitud de cambio";
+  switch (estado) {
+    case "aprobada":
+    case "aprobado":   return `✅ ${etiquetaTipo} aprobad${estado.endsWith("o") ? "o" : "a"}`;
+    case "rechazada":
+    case "rechazado":  return `❌ ${etiquetaTipo} rechazad${estado.endsWith("o") ? "o" : "a"}`;
+    case "pagada":     return `💵 ${etiquetaTipo} pagado`;
+    case "cancelado":  return `🚫 ${etiquetaTipo} cancelad${tipo === "vacaciones" ? "as" : "o"}`;
+  }
+}
+
+export async function notificarResolucionPush(
+  args: ResolucionPushArgs
+): Promise<PushResult> {
+  const userIds = await userIdsForEmployee(args.employeeId);
+  if (userIds.length === 0) {
+    return { ok: true, sent: 0, failed: 0, invalidTokensRemoved: 0 };
+  }
+
+  const titulo = tituloResolucion(args.tipo, args.estado);
+  const cuerpo = args.resumen
+    ? args.resumen
+    : "Revisa el detalle en la app.";
+  const ruta = args.ruta ?? rutaPorDefecto(args.tipo, args.solicitudId);
+
+  const result = await sendPushToUsers({
+    userIds,
+    title: titulo,
+    body: cuerpo,
+    priority: "high",
+    data: {
+      tipo: `resolucion_${args.tipo}`,
+      estado: args.estado,
+      solicitudId: String(args.solicitudId),
+      ruta,
+    },
+  });
+
+  logger.info(
+    {
+      tipo: args.tipo,
+      solicitudId: args.solicitudId,
+      employeeId: args.employeeId,
+      estado: args.estado,
+      userIds,
+      sent: result.sent,
+      failed: result.failed,
+      simulated: result.simulated ?? false,
+    },
+    "[Push-Resolucion] resultado de notificación"
+  );
+  return result;
+}
+
 // ─── Abandono de puesto (supervisión) ─────────────────────────────────────────
 
 // Roles con permiso de supervisión (mismos que abren el dashboard).
