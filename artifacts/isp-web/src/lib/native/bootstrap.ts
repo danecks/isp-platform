@@ -32,15 +32,17 @@ function readUserIdFromSession(): number | null {
 }
 
 /**
- * Rutas "marketing" del sitio web público que NO tienen sentido dentro del
- * APK. La app móvil es para personal de campo (agentes, custodios y
- * supervisores) que se identifica escaneando su carnet QR — esa es la
- * pantalla de entrada universal en /agente. Si el WebView aterriza en una
- * marketing al abrir el APK, lo enviamos directo al escáner.
+ * Rutas que NO tienen sentido como pantalla inicial del APK. La app móvil
+ * es para personal de campo (agentes, custodios y supervisores) que se
+ * identifica escaneando su carnet QR — el carnet determina el rol y
+ * AgenteInicio rutea solo (al flujo de turno para agentes/custodios o al
+ * menú del supervisor cuando corresponde). La entrada universal del APK
+ * es el escáner kiosco en /agente/inicio.
  *
- * /admin/login también se considera marketing dentro del APK: los admins
- * usan el sitio desde una computadora, no la app móvil. El personal de
- * campo nunca debe ver el formulario de usuario/contraseña.
+ * - /admin/login: los admins usan el sitio desde una computadora.
+ * - /agente (sin token): es la vista pública del carnet que muestra
+ *   "No se pudo leer el carnet" si la abrís sin ?token=. No es escáner.
+ * - resto: páginas marketing del sitio web público.
  */
 const RUTAS_MARKETING = new Set<string>([
   "",
@@ -56,9 +58,10 @@ const RUTAS_MARKETING = new Set<string>([
   "/acceso-clientes",
   "/descarga-app",
   "/admin/login",
+  "/agente",
 ]);
 
-const RUTA_ENTRADA_APK = "/agente";
+const RUTA_ENTRADA_APK = "/agente/inicio";
 
 function redirigirSiEsMarketing(): void {
   try {
