@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { Loader2, MapPin, RefreshCw, Clock, Activity, LogIn, LogOut } from "lucide-react";
+import { Loader2, MapPin, RefreshCw, Clock, Activity, LogIn, LogOut, AlertTriangle } from "lucide-react";
 import { api } from "./api";
 
 interface SupTracking {
@@ -16,21 +16,38 @@ interface SupTracking {
   velocidad_mps: number | null;
   capturado_en: string | null;
   programacion_id: number | null;
+  puesto_id: number | null;
   cliente_nombre: string | null;
   puesto_nombre: string | null;
   zona_nombre: string | null;
+  puesto_lat: number | null;
+  puesto_lng: number | null;
+  puesto_radio_m: number | null;
   hace_segundos: number | null;
+}
+
+function distanciaMetros(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
 }
 
 const POLL_MS = 15000;
 const GT_CENTER: [number, number] = [14.6349, -90.5069];
 
-function iconSupervisor(stale: boolean) {
-  const color = stale ? "#f59e0b" : "#22d3ee";
-  const ring  = stale ? "#78350f" : "#0e7490";
+function iconSupervisor(stale: boolean, fueraDePerimetro: boolean) {
+  const color = fueraDePerimetro ? "#ef4444" : stale ? "#f59e0b" : "#22d3ee";
+  const ring  = fueraDePerimetro ? "#7f1d1d" : stale ? "#78350f" : "#0e7490";
+  const pulse = fueraDePerimetro
+    ? `<div style="position:absolute;inset:-6px;border-radius:50%;border:2px solid ${color};opacity:0.6;animation:pulse-fuera 1.4s ease-out infinite;"></div>`
+    : "";
   return L.divIcon({
     className: "",
-    html: `<div style="background:${color};width:18px;height:18px;border-radius:50%;border:3px solid white;box-shadow:0 0 0 1px ${ring};"></div>`,
+    html: `<div style="position:relative;">${pulse}<div style="background:${color};width:18px;height:18px;border-radius:50%;border:3px solid white;box-shadow:0 0 0 1px ${ring};"></div></div>`,
     iconSize: [24, 24], iconAnchor: [12, 12],
   });
 }
@@ -88,19 +105,65 @@ export function TabMapaEnVivo() {
     () => data.filter(d => d.latitud == null || d.longitud == null),
     [data]
   );
-  const puntos = useMemo<[number, number][]>(
-    () => conGps.map(d => [Number(d.latitud), Number(d.longitud)] as [number, number]),
+
+  function distanciaAlPuesto(s: SupTracking): number | null {
+    if (s.latitud == null || s.longitud == null) return null;
+    if (s.puesto_lat == null || s.puesto_lng == null) return null;
+    return distanciaMetros(
+      Number(s.latitud), Number(s.longitud),
+      Number(s.puesto_lat), Number(s.puesto_lng)
+    );
+  }
+  function estaFueraPerimetro(s: SupTracking): boolean {
+    const d = distanciaAlPuesto(s);
+    if (d == null || s.puesto_radio_m == null) return false;
+    return d > Number(s.puesto_radio_m);
+  }
+
+  const fueraCount = useMemo(
+    () => conGps.filter(estaFueraPerimetro).length,
     [conGps]
   );
 
+  const perimetros = useMemo(() => {
+    const seen = new Set<number>();
+    const out: { puesto_id: number; lat: number; lng: number; radio: number; nombre: string; cliente: string | null }[] = [];
+    for (const s of data) {
+      if (s.puesto_id == null || s.puesto_lat == null || s.puesto_lng == null || s.puesto_radio_m == null) continue;
+      if (seen.has(s.puesto_id)) continue;
+      seen.add(s.puesto_id);
+      out.push({
+        puesto_id: s.puesto_id,
+        lat: Number(s.puesto_lat),
+        lng: Number(s.puesto_lng),
+        radio: Number(s.puesto_radio_m),
+        nombre: s.puesto_nombre || "Puesto",
+        cliente: s.cliente_nombre,
+      });
+    }
+    return out;
+  }, [data]);
+
+  const puntos = useMemo<[number, number][]>(() => {
+    const arr: [number, number][] = conGps.map(d => [Number(d.latitud), Number(d.longitud)] as [number, number]);
+    for (const p of perimetros) arr.push([p.lat, p.lng]);
+    return arr;
+  }, [conGps, perimetros]);
+
   return (
     <div className="space-y-3">
+      <style>{`@keyframes pulse-fuera { 0% { transform: scale(0.8); opacity: 0.7; } 100% { transform: scale(1.8); opacity: 0; } }`}</style>
       <div className="flex flex-wrap items-center gap-3 p-3 bg-[#0b1424] border border-white/10 rounded">
         <div className="text-xs text-white/70 inline-flex items-center gap-1.5">
           <Activity className="w-3.5 h-3.5 text-cyan-300" />
           <strong className="text-white">{data.length}</strong> supervisor(es) con turno activo —
           <span className="text-cyan-300 ml-1"><strong>{conGps.length}</strong> con GPS reciente</span>
           {sinGps.length > 0 && <span className="text-amber-300 ml-1">· {sinGps.length} sin señal</span>}
+          {fueraCount > 0 && (
+            <span className="text-rose-300 ml-1 inline-flex items-center gap-0.5">
+              · <AlertTriangle className="w-3 h-3" /> {fueraCount} fuera del perímetro
+            </span>
+          )}
         </div>
         <button onClick={cargar}
           className="ml-auto px-2 py-1 text-[11px] bg-white/5 hover:bg-white/10 text-white/80 rounded inline-flex items-center gap-1">
@@ -126,12 +189,36 @@ export function TabMapaEnVivo() {
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
             <FitBounds puntos={puntos} />
+            {perimetros.map(p => (
+              <Circle
+                key={`per-${p.puesto_id}`}
+                center={[p.lat, p.lng]}
+                radius={p.radio}
+                pathOptions={{
+                  color: "#22d3ee",
+                  weight: 1.5,
+                  fillColor: "#22d3ee",
+                  fillOpacity: 0.08,
+                  dashArray: "4 4",
+                }}
+              >
+                <Popup>
+                  <div style={{ fontSize: 12, minWidth: 160 }}>
+                    <strong>{p.nombre}</strong>
+                    {p.cliente && <><br /><span style={{ color: "#666" }}>{p.cliente}</span></>}
+                    <br />Radio del puesto: {Math.round(p.radio)}m
+                  </div>
+                </Popup>
+              </Circle>
+            ))}
             {conGps.map(s => {
               const stale = (s.hace_segundos ?? 0) > 300;
+              const dist = distanciaAlPuesto(s);
+              const fuera = estaFueraPerimetro(s);
               return (
                 <Marker key={s.supervisor_id}
                   position={[Number(s.latitud), Number(s.longitud)]}
-                  icon={iconSupervisor(stale)}>
+                  icon={iconSupervisor(stale, fuera)}>
                   <Popup>
                     <div style={{ fontSize: 12, minWidth: 180 }}>
                       <strong>{s.supervisor_nombre}</strong><br />
@@ -141,6 +228,13 @@ export function TabMapaEnVivo() {
                         <span style={{ color: "#0369a1" }}>
                           En visita: {[s.cliente_nombre, s.puesto_nombre, s.zona_nombre].filter(Boolean).join(" · ")}
                         </span>
+                      )}
+                      {dist != null && s.puesto_radio_m != null && (
+                        <div style={{ marginTop: 4, color: fuera ? "#b91c1c" : "#15803d", fontWeight: 600 }}>
+                          {fuera
+                            ? `⚠ Fuera del perímetro: a ${Math.round(dist)}m (radio ${Math.round(Number(s.puesto_radio_m))}m)`
+                            : `Dentro del perímetro (${Math.round(dist)}m / ${Math.round(Number(s.puesto_radio_m))}m)`}
+                        </div>
                       )}
                     </div>
                   </Popup>
@@ -164,8 +258,10 @@ export function TabMapaEnVivo() {
               {data.map(s => {
                 const conPos = s.latitud != null && s.longitud != null;
                 const stale = (s.hace_segundos ?? 99999) > 300;
+                const fuera = estaFueraPerimetro(s);
+                const dist = distanciaAlPuesto(s);
                 return (
-                  <li key={s.supervisor_id} className="p-2.5 hover:bg-white/5">
+                  <li key={s.supervisor_id} className={`p-2.5 hover:bg-white/5 ${fuera ? "bg-rose-500/5" : ""}`}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <p className="text-xs text-white font-medium truncate">{s.supervisor_nombre}</p>
@@ -181,14 +277,27 @@ export function TabMapaEnVivo() {
                             </span>
                           </p>
                         )}
+                        {fuera && dist != null && s.puesto_radio_m != null && (
+                          <p className="text-[10px] text-rose-300 inline-flex items-center gap-1 mt-0.5 font-medium">
+                            <AlertTriangle className="w-2.5 h-2.5" />
+                            Fuera del perímetro: {Math.round(dist)}m (radio {Math.round(Number(s.puesto_radio_m))}m)
+                          </p>
+                        )}
                       </div>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${
-                        !conPos ? "bg-rose-500/15 text-rose-300 border border-rose-500/30" :
-                        stale   ? "bg-amber-500/15 text-amber-200 border border-amber-500/30" :
-                                  "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30"
-                      }`}>
-                        {conPos ? fmtHaceSeg(s.hace_segundos) : "Sin GPS"}
-                      </span>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                          !conPos ? "bg-rose-500/15 text-rose-300 border border-rose-500/30" :
+                          stale   ? "bg-amber-500/15 text-amber-200 border border-amber-500/30" :
+                                    "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30"
+                        }`}>
+                          {conPos ? fmtHaceSeg(s.hace_segundos) : "Sin GPS"}
+                        </span>
+                        {fuera && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-200 border border-rose-500/40">
+                            Fuera zona
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </li>
                 );

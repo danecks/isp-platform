@@ -213,11 +213,15 @@ supervisionDashboardRouter.get("/supervision-tracking/en-vivo", async (req, res)
                sp.cliente_id, sp.puesto_id, sp.zona_id,
                c.nombre  AS cliente_nombre,
                po.nombre AS puesto_nombre,
-               z.nombre  AS zona_nombre
+               z.nombre  AS zona_nombre,
+               pg.latitud     AS puesto_lat,
+               pg.longitud    AS puesto_lng,
+               pg.radio_metros AS puesto_radio_m
           FROM supervision_visitas_programadas sp
           LEFT JOIN clients c             ON c.id  = sp.cliente_id
           LEFT JOIN puestos_operativos po ON po.id = sp.puesto_id
           LEFT JOIN operational_zones z   ON z.id  = sp.zona_id
+          LEFT JOIN puestos_gps pg        ON pg.puesto_id = sp.puesto_id
          WHERE sp.estado = 'en_curso'
          ORDER BY sp.supervisor_employee_id, sp.iniciada_at DESC
       )
@@ -228,7 +232,8 @@ supervisionDashboardRouter.get("/supervision-tracking/en-vivo", async (req, res)
         a.sesion_id,
         a.turno_inicio,
         u.latitud, u.longitud, u.precision_metros, u.velocidad_mps, u.capturado_en,
-        v.programacion_id, v.cliente_nombre, v.puesto_nombre, v.zona_nombre,
+        v.programacion_id, v.puesto_id, v.cliente_nombre, v.puesto_nombre, v.zona_nombre,
+        v.puesto_lat, v.puesto_lng, v.puesto_radio_m,
         EXTRACT(EPOCH FROM (NOW() - u.capturado_en))::int AS hace_segundos
       FROM activos a
       JOIN employees e ON e.id = a.employee_id
