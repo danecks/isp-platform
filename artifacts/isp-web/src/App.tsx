@@ -19,6 +19,7 @@ import Reclutamiento from "@/pages/reclutamiento";
 import SolicitarServicio from "@/pages/solicitar-servicio";
 import Contacto from "@/pages/contacto";
 import AccesoClientes from "@/pages/acceso-clientes";
+import DescargaApp from "@/pages/DescargaApp";
 import AnuncioPlazas from "@/pages/AnuncioPlazas";
 import NotFound from "@/pages/not-found";
 
@@ -35,6 +36,7 @@ import AdminUsuarios from "@/admin/pages/Usuarios";
 import AdminAnticipos from "@/admin/pages/Anticipos";
 import AdminSeguros from "@/admin/pages/Seguros";
 import AdminWhatsappConfig from "@/admin/pages/configuracion/WhatsappConfig";
+import AdminNotificaciones from "@/admin/pages/configuracion/Notificaciones";
 import AdminPlantillasContrato from "@/admin/pages/configuracion/PlantillasContrato";
 import AdminReportes from "@/admin/pages/Reportes";
 import AdminCMS from "@/admin/pages/CMS";
@@ -117,6 +119,7 @@ function Router() {
       <Route path="/solicitar-servicio" component={SolicitarServicio} />
       <Route path="/contacto" component={Contacto} />
       <Route path="/acceso-clientes" component={AccesoClientes} />
+      <Route path="/descarga-app" component={DescargaApp} />
 
       {/* ── Login unificado (admin + clientes) ─────────────────────────── */}
       <Route path="/admin/login" component={AdminLogin} />
@@ -215,6 +218,9 @@ function Router() {
       </Route>
       <Route path="/admin/configuracion/whatsapp">
         {() => <AuthGuard requiredRoles={["admin"]}><AdminWhatsappConfig /></AuthGuard>}
+      </Route>
+      <Route path="/admin/configuracion/notificaciones">
+        {() => <AuthGuard requiredRoles={["admin"]}><AdminNotificaciones /></AuthGuard>}
       </Route>
       <Route path="/admin/configuracion/plantillas-contrato">
         {() => <AuthGuard requiredRoles={["admin", "rrhh"]}><AdminPlantillasContrato /></AuthGuard>}

@@ -30,8 +30,41 @@ function readUserIdFromSession(): number | null {
   }
 }
 
+/**
+ * Rutas "marketing" del sitio web público que NO tienen sentido dentro del
+ * APK (la app móvil es para guardias y supervisores, no para visitantes que
+ * miran servicios). Si el WebView aterriza en una de estas al abrir el APK
+ * lo redirigimos al login operativo.
+ */
+const RUTAS_MARKETING = new Set<string>([
+  "",
+  "/",
+  "/nosotros",
+  "/servicios",
+  "/servicios/seguridad-fisica",
+  "/servicios/custodia-transporte",
+  "/sectores",
+  "/reclutamiento",
+  "/solicitar-servicio",
+  "/contacto",
+  "/acceso-clientes",
+  "/descarga-app",
+]);
+
+function redirigirSiEsMarketing(): void {
+  try {
+    const path = window.location.pathname.replace(/\/+$/, "") || "/";
+    if (RUTAS_MARKETING.has(path)) {
+      window.location.replace("/admin/login");
+    }
+  } catch {
+    /* noop */
+  }
+}
+
 export function bootstrapNative(): void {
   if (!isNative()) return;
+  redirigirSiEsMarketing();
   initLiveUpdate((r) => {
     if (r.status === "downloaded") {
       toast({

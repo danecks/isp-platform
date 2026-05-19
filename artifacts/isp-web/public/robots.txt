@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /portal/
+Disallow: /agente/
+Disallow: /ajustes/
+
+Sitemap: https://ispsa.net/sitemap.xml
