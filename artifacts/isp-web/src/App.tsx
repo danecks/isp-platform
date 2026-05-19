@@ -19,6 +19,7 @@ import Reclutamiento from "@/pages/reclutamiento";
 import SolicitarServicio from "@/pages/solicitar-servicio";
 import Contacto from "@/pages/contacto";
 import AccesoClientes from "@/pages/acceso-clientes";
+import DescargaApp from "@/pages/DescargaApp";
 import AnuncioPlazas from "@/pages/AnuncioPlazas";
 import NotFound from "@/pages/not-found";
 
@@ -118,6 +119,7 @@ function Router() {
       <Route path="/solicitar-servicio" component={SolicitarServicio} />
       <Route path="/contacto" component={Contacto} />
       <Route path="/acceso-clientes" component={AccesoClientes} />
+      <Route path="/descarga-app" component={DescargaApp} />
 
       {/* ── Login unificado (admin + clientes) ─────────────────────────── */}
       <Route path="/admin/login" component={AdminLogin} />
