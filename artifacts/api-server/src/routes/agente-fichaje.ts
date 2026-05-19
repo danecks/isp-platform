@@ -2638,19 +2638,49 @@ agenteFichajeRouter.get("/puestos-gps", async (req, res) => {
   }
 });
 
+// GET /api/puestos-gps/:puesto_id — datos GPS de un puesto puntual
+agenteFichajeRouter.get("/puestos-gps/:puesto_id", async (req, res) => {
+  const puestoId = Number(req.params.puesto_id);
+  if (!Number.isFinite(puestoId)) return res.status(400).json({ error: "puesto_id inválido" });
+  try {
+    const { rows } = await pool.query(
+      `SELECT puesto_id, latitud, longitud, radio_metros, updated_at
+         FROM puestos_gps WHERE puesto_id = $1`,
+      [puestoId]
+    );
+    if (!rows.length) return res.json(null);
+    const r = rows[0];
+    res.json({
+      puesto_id: Number(r.puesto_id),
+      latitud: Number(r.latitud),
+      longitud: Number(r.longitud),
+      radio_metros: Number(r.radio_metros),
+      updated_at: r.updated_at,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Error obteniendo GPS del puesto" });
+  }
+});
+
 // PUT /api/puestos-gps/:puesto_id
 agenteFichajeRouter.put("/puestos-gps/:puesto_id", async (req, res) => {
   const { latitud, longitud, radio_metros = 50 } = req.body;
   const puestoId = Number(req.params.puesto_id);
-  if (!latitud || !longitud) return res.status(400).json({ error: "latitud y longitud requeridos" });
+  const lat = Number(latitud);
+  const lng = Number(longitud);
+  const radio = Math.max(50, Math.min(500, Math.round(Number(radio_metros) || 50)));
+  if (!Number.isFinite(puestoId)) return res.status(400).json({ error: "puesto_id inválido" });
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return res.status(400).json({ error: "latitud y longitud requeridos" });
+  }
   try {
     await pool.query(`
       INSERT INTO puestos_gps (puesto_id, latitud, longitud, radio_metros, updated_at)
       VALUES ($1,$2,$3,$4,NOW())
       ON CONFLICT (puesto_id)
       DO UPDATE SET latitud=$2, longitud=$3, radio_metros=$4, updated_at=NOW()
-    `, [puestoId, latitud, longitud, radio_metros]);
-    res.json({ ok: true });
+    `, [puestoId, lat, lng, radio]);
+    res.json({ ok: true, latitud: lat, longitud: lng, radio_metros: radio });
   } catch (err) {
     res.status(500).json({ error: "Error guardando GPS del puesto" });
   }

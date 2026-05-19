@@ -354,10 +354,21 @@ export async function permisosMiddleware(req: any, res: any, next: any) {
   // (rutas internas no catalogadas, basta con que la sesión sea válida)
   if (!moduloClave) return next();
 
+  // ── Módulos alternativos permitidos por ruta ──────────────────────────────
+  // Algunas rutas pueden ser usadas desde más de un módulo. Ej: /puestos-gps
+  // se consume desde el panel de Puestos (módulo "pizarron") para configurar
+  // ubicación/perímetro y también desde Control QR / Supervisor (módulo
+  // "control_qr"). Se permite el acceso si el rol tiene cualquiera.
+  const MODULOS_ALTERNATIVOS: Record<string, string[]> = {
+    "control_qr": ["pizarron"],
+  };
+  const modulosPermitidos = new Set<string>([moduloClave, ...(MODULOS_ALTERNATIVOS[moduloClave] ?? [])]);
+
   // Si hay username en la sesión, verificar rol ACTUAL desde BD (evita sesión desactualizada)
   if (session.username) {
     const { rol, modulos } = await getPermisosForUsername(session.username);
-    if (rol === "admin" || modulos.has("*") || modulos.has(moduloClave)) return next();
+    if (rol === "admin" || modulos.has("*")) return next();
+    for (const m of modulosPermitidos) if (modulos.has(m)) return next();
     return res.status(403).json({
       error: "Acceso no autorizado a este módulo",
       modulo: moduloClave,
@@ -368,7 +379,7 @@ export async function permisosMiddleware(req: any, res: any, next: any) {
   // Fallback: verificar por rol de sesión (compatibilidad con sesiones sin username)
   if (session.rol === "admin") return next();
   const permisos = await getPermisosForRol(session.rol);
-  if (permisos.has(moduloClave)) return next();
+  for (const m of modulosPermitidos) if (permisos.has(m)) return next();
 
   return res.status(403).json({
     error: "Acceso no autorizado a este módulo",

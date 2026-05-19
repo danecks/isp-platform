@@ -4,6 +4,7 @@ import {
   X, Loader2, AlertTriangle, Calendar, ChevronDown, ChevronRight, Trash2,
 } from "lucide-react";
 import { API, getSession, h, Sede, Puesto, PuestoSlot, SEMANA1, SEMANA2 } from "./_shared";
+import { PuestoUbicacionInline } from "./PuestoUbicacion";
 
 // ─── Sección inline: Titulares del puesto (slots) ─────────────────────────────
 function PuestoSlotsInline({ puestoId }: { puestoId: number; puestoNombre: string }) {
@@ -352,6 +353,10 @@ export function ModalPuesto({
 
           {isEdit && puesto && (
             <PuestoSlotsInline puestoId={puesto.id} puestoNombre={puesto.nombre} />
+          )}
+
+          {isEdit && puesto && (
+            <PuestoUbicacionInline puestoId={puesto.id} />
           )}
 
           {/* Tarifa */}
