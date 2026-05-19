@@ -34,9 +34,51 @@
  *   para no seguir intentando enviarle.
  */
 
-import { db, pushTokensTable, usersTable } from "@workspace/db";
+import { db, pushTokensTable, pushEnviosTable, usersTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
+
+// Enmascara un token FCM (largo) para no exponerlo completo en el historial.
+function maskToken(t: string): string {
+  if (t.length <= 20) return t;
+  return `${t.slice(0, 12)}…${t.slice(-6)}`;
+}
+
+// Inserta filas en push_envios sin tirar el envío si falla la auditoría.
+async function registrarEnvios(
+  rows: Array<{
+    userId: number | null;
+    tokenPreview: string | null;
+    title: string;
+    body: string;
+    evento: string;
+    estado: "ok" | "error" | "simulated";
+    errorCode?: string | null;
+    errorMessage?: string | null;
+    messageId?: string | null;
+    data?: Record<string, string> | undefined;
+  }>
+): Promise<void> {
+  if (rows.length === 0) return;
+  try {
+    await db.insert(pushEnviosTable).values(
+      rows.map((r) => ({
+        userId: r.userId,
+        tokenPreview: r.tokenPreview,
+        title: r.title.slice(0, 200),
+        body: r.body.slice(0, 500),
+        evento: r.evento.slice(0, 50),
+        estado: r.estado,
+        errorCode: r.errorCode ? r.errorCode.slice(0, 100) : null,
+        errorMessage: r.errorMessage ?? null,
+        messageId: r.messageId ? r.messageId.slice(0, 255) : null,
+        data: r.data ? JSON.stringify(r.data) : null,
+      }))
+    );
+  } catch (err) {
+    logger.error({ err }, "[Push] No se pudo persistir push_envios (auditoría)");
+  }
+}
 
 // firebase-admin se importa dinámicamente para que el bundler no lo arrastre
 // cuando la credencial no está presente (evita warnings de módulos node
@@ -117,13 +159,21 @@ export interface PushResult {
 
 /**
  * Envía una notificación push a una lista de tokens. Borra tokens que el
- * servicio reporte como inválidos.
+ * servicio reporte como inválidos. Persiste cada envío en push_envios para
+ * que el panel admin pueda auditar el historial.
+ *
+ * `context` permite clasificar el envío (evento) y mapear cada token a su
+ * usuario destinatario para enriquecer la auditoría.
  */
 export async function sendPushToTokens(
   tokens: string[],
-  msg: PushMessage
+  msg: PushMessage,
+  context?: { evento?: string; tokenToUserId?: Map<string, number> }
 ): Promise<PushResult> {
   const unique = Array.from(new Set(tokens.filter((t) => !!t?.trim())));
+  const evento = context?.evento ?? "manual";
+  const tokenToUserId = context?.tokenToUserId ?? new Map<string, number>();
+
   if (unique.length === 0) {
     return { ok: true, sent: 0, failed: 0, invalidTokensRemoved: 0 };
   }
@@ -140,6 +190,18 @@ export async function sendPushToTokens(
         data: msg.data,
       },
       "[Push] STUB — habría enviado push (Firebase no configurado)"
+    );
+    await registrarEnvios(
+      unique.map((t) => ({
+        userId: tokenToUserId.get(t) ?? null,
+        tokenPreview: maskToken(t),
+        title: msg.title,
+        body: msg.body,
+        evento,
+        estado: "simulated" as const,
+        errorMessage: "Firebase no configurado (modo stub)",
+        data: msg.data,
+      }))
     );
     return {
       ok: false,
@@ -165,19 +227,44 @@ export async function sendPushToTokens(
     android: { priority: msg.priority ?? "high" },
   });
 
-  // Recolectar tokens inválidos para borrarlos.
+  // Recolectar tokens inválidos para borrarlos + filas de auditoría.
   const tokensToDelete: string[] = [];
+  const auditRows: Parameters<typeof registrarEnvios>[0] = [];
   resp.responses.forEach((r, idx) => {
-    if (r.success) return;
+    const token = unique[idx]!;
+    const baseRow = {
+      userId: tokenToUserId.get(token) ?? null,
+      tokenPreview: maskToken(token),
+      title: msg.title,
+      body: msg.body,
+      evento,
+      data: msg.data,
+    };
+    if (r.success) {
+      auditRows.push({
+        ...baseRow,
+        estado: "ok" as const,
+        messageId: r.messageId ?? null,
+      });
+      return;
+    }
     const code = r.error?.code ?? "";
+    auditRows.push({
+      ...baseRow,
+      estado: "error" as const,
+      errorCode: code || null,
+      errorMessage: r.error?.message ?? null,
+    });
     if (
       code.includes("registration-token-not-registered") ||
       code.includes("invalid-argument") ||
       code.includes("invalid-registration-token")
     ) {
-      tokensToDelete.push(unique[idx]!);
+      tokensToDelete.push(token);
     }
   });
+
+  await registrarEnvios(auditRows);
 
   if (tokensToDelete.length > 0) {
     try {
@@ -211,18 +298,23 @@ export async function sendPushToUsers(args: {
   body: string;
   data?: Record<string, string>;
   priority?: "normal" | "high";
+  /** Clasificación del envío para el historial (ej. "emergencia", "test"). */
+  evento?: string;
 }): Promise<PushResult> {
-  const { userIds, ...msg } = args;
+  const { userIds, evento, ...msg } = args;
   if (userIds.length === 0) {
     return { ok: true, sent: 0, failed: 0, invalidTokensRemoved: 0 };
   }
   const rows = await db
-    .select({ token: pushTokensTable.token })
+    .select({ token: pushTokensTable.token, userId: pushTokensTable.userId })
     .from(pushTokensTable)
     .where(inArray(pushTokensTable.userId, userIds));
+  const tokenToUserId = new Map<string, number>();
+  for (const r of rows) tokenToUserId.set(r.token, r.userId);
   return sendPushToTokens(
     rows.map((r) => r.token),
-    msg
+    msg,
+    { evento, tokenToUserId }
   );
 }
 
@@ -237,6 +329,8 @@ export async function sendPushToRoles(args: {
   body: string;
   data?: Record<string, string>;
   priority?: "normal" | "high";
+  /** Clasificación del envío para el historial (ej. "emergencia"). */
+  evento?: string;
 }): Promise<PushResult> {
   const { roles, ...msg } = args;
   if (roles.length === 0) {
