@@ -28,8 +28,8 @@ android {
         def vName = System.getenv("MOBILE_VERSION_NAME") ?: "1.0.0"
         versionCode vCode
         versionName vName
-        minSdkVersion 24      // Android 7.0
-        targetSdkVersion 34
+        minSdkVersion 26      // Android 8.0 (requerido por @capacitor/geolocation 6.1+)
+        targetSdkVersion 35
     }
 
     buildTypes {
