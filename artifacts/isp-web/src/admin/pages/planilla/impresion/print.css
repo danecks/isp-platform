@@ -6,15 +6,25 @@
 .print-only { display: none; }
 
 @media print {
-  /* Ocultar TODA la UI normal cuando se imprime — incluye portales de Radix */
-  body > *:not(.print-root) { display: none !important; }
-  body > #root { display: none !important; }
-  body { background: white !important; color: black !important; }
+  /* Ocultar TODA la UI normal cuando se imprime planilla — incluye portales de Radix.
+   * IMPORTANTE: estos selectores están limitados con `body.printing-planilla`
+   * porque hay otras vistas imprimibles (ej. KioscoSolicitudImprimible) cuyo
+   * `.print-root` vive dentro de `#root`. Si ocultáramos `#root` globalmente,
+   * el PDF de esas vistas saldría en blanco. La clase la pone/quita ModalImprimir.
+   */
+  body.printing-planilla > *:not(.print-root) { display: none !important; }
+  body.printing-planilla > #root { display: none !important; }
+  body.printing-planilla { background: white !important; color: black !important; }
+
+  /* Reglas genéricas, seguras de aplicar globalmente */
   .no-print { display: none !important; }
   .print-only { display: block !important; }
 
-  /* Quitar fondos oscuros de la app durante impresión */
-  .print-root, .print-root * {
+  /* Quitar fondos oscuros sólo del print-root portaleado por ModalImprimir.
+   * Otras vistas imprimibles definen sus propios estilos y no deben ser
+   * forzadas a blanco/negro. */
+  body.printing-planilla .print-root,
+  body.printing-planilla .print-root * {
     background: white !important;
     color: black !important;
     box-shadow: none !important;
