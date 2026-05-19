@@ -175,6 +175,16 @@ export default function KioscoSolicitudImprimible() {
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const [printing, setPrinting] = useState(false);
 
+  // Mientras esta pantalla esté montada, marcamos el body con `printing-solicitud`.
+  // Todas las reglas `@media print` de esta vista (más abajo en <style>) están
+  // limitadas con ese selector para que no se filtren a otras pantallas
+  // imprimibles del sistema (planilla, custodias, rondas QR). Ver
+  // `artifacts/isp-web/src/admin/pages/planilla/impresion/PRINT_CONVENTIONS.md`.
+  useEffect(() => {
+    document.body.classList.add("printing-solicitud");
+    return () => { document.body.classList.remove("printing-solicitud"); };
+  }, []);
+
   // Espera a que todas las <img> dentro de la hoja terminen de cargar (o fallen).
   // Tiene un timeout global para que el botón nunca quede "atascado" si una
   // imagen no responde por red lenta.
@@ -451,9 +461,14 @@ export default function KioscoSolicitudImprimible() {
       <style>{`
         .hoja section, .hoja .signature-row, .hoja header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         @media print {
-          .no-print { display: none !important; }
+          /* IMPORTANTE: todas las reglas están limitadas con
+             body.printing-solicitud para no pisar otras vistas imprimibles
+             (planilla, custodias, rondas QR). La clase se pone/quita arriba
+             en un useEffect mientras esta pantalla está montada. */
           @page { size: Letter; margin: 12mm; }
-          html, body {
+          body.printing-solicitud .no-print { display: none !important; }
+          body.printing-solicitud,
+          html:has(body.printing-solicitud) {
             background: #fff !important;
             margin: 0 !important;
             padding: 0 !important;
@@ -462,7 +477,7 @@ export default function KioscoSolicitudImprimible() {
           }
           /* Neutralizamos el contenedor exterior: sin min-height de pantalla,
              sin fondos, sin márgenes que empujen contenido fuera de la primera página. */
-          .print-root {
+          body.printing-solicitud .print-root {
             background: #fff !important;
             min-height: 0 !important;
             height: auto !important;
@@ -470,21 +485,21 @@ export default function KioscoSolicitudImprimible() {
             padding: 0 !important;
             display: block !important;
           }
-          .print-sheet {
+          body.printing-solicitud .print-sheet {
             max-width: 100% !important;
             width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
             box-shadow: none !important;
           }
-          .hoja {
+          body.printing-solicitud .hoja {
             padding: 0 !important;
             margin: 0 !important;
           }
-          .hoja section { break-inside: avoid; page-break-inside: avoid; }
-          .hoja img { break-inside: avoid; page-break-inside: avoid; }
-          .hoja header { break-inside: avoid; page-break-inside: avoid; break-after: avoid; page-break-after: avoid; }
-          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          body.printing-solicitud .hoja section { break-inside: avoid; page-break-inside: avoid; }
+          body.printing-solicitud .hoja img { break-inside: avoid; page-break-inside: avoid; }
+          body.printing-solicitud .hoja header { break-inside: avoid; page-break-inside: avoid; break-after: avoid; page-break-after: avoid; }
+          body.printing-solicitud * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
     </div>
