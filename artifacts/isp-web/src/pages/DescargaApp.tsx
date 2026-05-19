@@ -11,8 +11,8 @@ import {
 } from "lucide-react";
 
 const APK_URL =
-  "https://github.com/danecks/isp-platform/releases/download/mobile-v0.1.0/ISP-Operaciones-v0.1.0.apk";
-const VERSION = "v0.1.0";
+  "https://github.com/danecks/isp-platform/releases/download/mobile-v0.2.0/ISP-Operaciones-v0.2.0.apk";
+const VERSION = "v0.2.0";
 
 export default function DescargaApp() {
   return (
