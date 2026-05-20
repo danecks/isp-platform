@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Firma corporativa · ISP, S.A.</title>
+<style>
+  :root{
+    --bg:#0b1220; --card:#fff; --ink:#0f172a; --muted:#64748b;
+    --line:#e5e7eb; --brand:#0b3d2e; --accent:#16a34a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#f1f5f9;color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:920px;margin:24px auto;padding:0 16px}
+  h1{font-size:20px;margin:0 0 4px}
+  p.lead{margin:0 0 20px;color:var(--muted)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media (max-width:780px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:18px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;
+    color:var(--muted);margin:0 0 12px;font-weight:600}
+  label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+  input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;
+    font:inherit;color:var(--ink);background:#fff}
+  input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+  button{appearance:none;border:0;border-radius:8px;padding:10px 14px;font:inherit;
+    font-weight:600;cursor:pointer}
+  .btn-primary{background:var(--brand);color:#fff}
+  .btn-primary:hover{background:#0a2f23}
+  .btn-ghost{background:#f1f5f9;color:var(--ink)}
+  .preview{background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:18px;overflow:auto}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+    background:#0f172a;color:#fff;padding:10px 16px;border-radius:8px;
+    opacity:0;transition:opacity .2s;pointer-events:none;font-size:14px}
+  .toast.show{opacity:1}
+  details{margin-top:12px;font-size:13px;color:var(--muted)}
+  summary{cursor:pointer;color:var(--ink);font-weight:600}
+  code{background:#f1f5f9;padding:1px 6px;border-radius:4px;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Firma corporativa ISP, S.A.</h1>
+  <p class="lead">Llená tus datos, copiá la firma y pegala en Gmail → Configuración → Firma.</p>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Tus datos</h2>
+      <label>Nombre completo</label>
+      <input id="f-nombre" value="Daniel Pérez" />
+      <label>Cargo</label>
+      <input id="f-cargo" value="Director General" />
+      <div class="row">
+        <div><label>Teléfono</label><input id="f-tel" value="+502 2222-3333" /></div>
+        <div><label>WhatsApp (opcional)</label><input id="f-wa" value="+502 5555-6666" /></div>
+      </div>
+      <label>Correo</label>
+      <input id="f-mail" value="daniel@ispsa.net" />
+      <label>Dirección (opcional)</label>
+      <input id="f-dir" value="Ciudad de Guatemala, Guatemala" />
+
+      <div class="actions">
+        <button class="btn-primary" id="btn-copy">Copiar firma</button>
+        <button class="btn-ghost" id="btn-copy-html">Copiar como HTML</button>
+      </div>
+
+      <details>
+        <summary>¿Cómo la pego en Gmail?</summary>
+        <ol style="margin:8px 0 0 18px;padding:0">
+          <li>Hacé clic en <b>Copiar firma</b>.</li>
+          <li>En Gmail abrí <b>Configuración</b> (engranaje) → <b>Ver toda la configuración</b>.</li>
+          <li>Bajá a <b>Firma</b> → <b>Crear nueva</b> (o editá la existente).</li>
+          <li>Pegá con <code>Ctrl+V</code> (o <code>⌘+V</code>) en el cuadro.</li>
+          <li><b>Guardar cambios</b> al final de la página.</li>
+        </ol>
+      </details>
+    </section>
+
+    <section class="preview">
+      <div id="preview-host"></div>
+    </section>
+  </div>
+</div>
+
+<div class="toast" id="toast">Firma copiada</div>
+
+<script>
+const LOGO_URL = location.origin + "/images/logo-isp.png";
+const SITE = "www.ispsa.net";
+const SITE_URL = "https://www.ispsa.net";
+
+function esc(s){return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]))}
+function telHref(t){return "tel:"+String(t||"").replace(/[^\d+]/g,"")}
+function waHref(t){return "https://wa.me/"+String(t||"").replace(/[^\d]/g,"")}
+
+function buildSignature(d){
+  const row = (icon, html) => `
+    <tr><td style="padding:2px 8px 2px 0;vertical-align:middle;width:18px;line-height:0">
+      <span style="display:inline-block;width:14px;height:14px;color:#0b3d2e;font-size:12px;line-height:14px;text-align:center">${icon}</span>
+    </td><td style="padding:2px 0;vertical-align:middle;font:13px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937">${html}</td></tr>`;
+  const lines = [];
+  if(d.tel)   lines.push(row("&#9742;", `<a href="${telHref(d.tel)}" style="color:#1f2937;text-decoration:none">${esc(d.tel)}</a>`));
+  if(d.wa)    lines.push(row("&#128241;", `<a href="${waHref(d.wa)}" style="color:#1f2937;text-decoration:none">WhatsApp ${esc(d.wa)}</a>`));
+  if(d.mail)  lines.push(row("&#9993;", `<a href="mailto:${esc(d.mail)}" style="color:#1f2937;text-decoration:none">${esc(d.mail)}</a>`));
+  lines.push(row("&#127760;", `<a href="${SITE_URL}" style="color:#1f2937;text-decoration:none">${SITE}</a>`));
+  if(d.dir) lines.push(row("&#128205;", esc(d.dir)));
+
+  return `
+<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0f172a;max-width:560px">
+  <tr>
+    <td style="padding:0 18px 0 0;vertical-align:middle;border-right:2px solid #0b3d2e">
+      <img src="${LOGO_URL}" alt="ISP, S.A." width="84" height="84" style="display:block;width:84px;height:84px;object-fit:contain"/>
+    </td>
+    <td style="padding:0 0 0 18px;vertical-align:middle">
+      <div style="font:600 16px/1.25 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0f172a">${esc(d.nombre||"")}</div>
+      <div style="font:13px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#64748b;margin-bottom:8px">${esc(d.cargo||"")}</div>
+      <div style="font:600 12px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0b3d2e;letter-spacing:.04em;text-transform:uppercase;margin-bottom:6px">Investigaciones y Seguridad Profesional, S.A.</div>
+      <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse">${lines.join("")}</table>
+    </td>
+  </tr>
+  <tr><td colspan="2" style="padding:12px 0 0 0"><div style="height:1px;background:#e5e7eb;line-height:1px;font-size:0">&nbsp;</div></td></tr>
+  <tr><td colspan="2" style="padding:8px 0 0 0">
+    <div style="font:10px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#94a3b8">
+      Este mensaje puede contener informaci&oacute;n confidencial y es exclusivamente para el destinatario autorizado. Si lo recibi&oacute; por error, por favor notif&iacute;quenos y elim&iacute;nelo de su sistema.
+    </div>
+  </td></tr>
+</table>`;
+}
+
+function readData(){
+  return {
+    nombre: document.getElementById("f-nombre").value,
+    cargo:  document.getElementById("f-cargo").value,
+    tel:    document.getElementById("f-tel").value,
+    wa:     document.getElementById("f-wa").value,
+    mail:   document.getElementById("f-mail").value,
+    dir:    document.getElementById("f-dir").value,
+  };
+}
+
+function render(){
+  document.getElementById("preview-host").innerHTML = buildSignature(readData());
+}
+
+function toast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"), 1800);
+}
+
+async function copyRich(){
+  const html = buildSignature(readData());
+  const text = document.getElementById("preview-host").innerText;
+  try{
+    if(navigator.clipboard && window.ClipboardItem){
+      await navigator.clipboard.write([new ClipboardItem({
+        "text/html": new Blob([html], {type:"text/html"}),
+        "text/plain": new Blob([text], {type:"text/plain"}),
+      })]);
+      toast("Firma copiada — pegala en Gmail"); return;
+    }
+  }catch(e){}
+  const host = document.getElementById("preview-host");
+  const sel = window.getSelection(); const range = document.createRange();
+  range.selectNodeContents(host); sel.removeAllRanges(); sel.addRange(range);
+  document.execCommand("copy"); sel.removeAllRanges();
+  toast("Firma copiada — pegala en Gmail");
+}
+
+async function copyHtml(){
+  const html = buildSignature(readData());
+  try{ await navigator.clipboard.writeText(html); toast("HTML copiado"); }
+  catch(e){ toast("No se pudo copiar"); }
+}
+
+document.querySelectorAll("input").forEach(i=>i.addEventListener("input", render));
+document.getElementById("btn-copy").addEventListener("click", copyRich);
+document.getElementById("btn-copy-html").addEventListener("click", copyHtml);
+render();
+</script>
+</body>
+</html>

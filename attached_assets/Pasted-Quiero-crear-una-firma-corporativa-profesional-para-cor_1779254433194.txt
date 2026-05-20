@@ -1,0 +1,182 @@
+Quiero crear una firma corporativa profesional para correos electrónicos de Investigaciones y Seguridad Profesional, S.A. (ISP, S.A.) siguiendo una estructura moderna y elegante tipo empresa corporativa seria.
+
+NO quiero un banner gigante tipo publicidad.
+Quiero algo limpio, premium, ligero y profesional.
+
+## Objetivo
+
+Crear una firma corporativa HTML responsive para correo electrónico que funcione bien en:
+
+* Gmail
+* Outlook
+* Apple Mail
+* móviles
+
+Debe verse elegante y no aumentar demasiado el riesgo de spam.
+
+---
+
+## Estructura recomendada (MUY IMPORTANTE)
+
+### 1. Parte visual / branding
+
+Un header limpio con:
+
+* logo ISP
+* nombre corporativo
+* slogan opcional
+
+Diseño:
+
+* moderno
+* minimalista
+* corporativo
+* estilo high-end security company
+
+NO usar:
+
+* demasiados colores
+* gradientes exagerados
+* efectos pesados
+* diseño tipo flyer publicitario
+
+---
+
+### 2. Información corporativa
+
+Debajo del branding:
+
+* Nombre
+* Cargo
+* Teléfono
+* Sitio web
+* Dirección opcional
+* WhatsApp opcional
+
+Diseño limpio con:
+
+* íconos pequeños
+* buena jerarquía visual
+* tipografía moderna
+
+---
+
+### 3. Línea divisoria elegante
+
+Separador sutil entre:
+
+* firma visual
+* disclaimer legal
+
+---
+
+### 4. Disclaimer corto y profesional
+
+NO usar el disclaimer gigante actual.
+
+Quiero una versión más corta, profesional y elegante.
+
+Ejemplo de estilo:
+“Este mensaje puede contener información confidencial y es exclusivamente para el destinatario autorizado…”
+
+Debe verse:
+
+* pequeño
+* gris
+* discreto
+* profesional
+
+---
+
+## Diseño visual esperado
+
+Estilo:
+
+* seguridad corporativa premium
+* tecnología + operaciones
+* limpio
+* ejecutivo
+* moderno
+
+Inspiración:
+
+* firmas de bancos
+* empresas de seguridad internacionales
+* compañías corporativas B2B
+
+---
+
+## Colores
+
+Usar tonos:
+
+* negro
+* gris oscuro
+* blanco
+* azul corporativo sutil
+* o verde oscuro elegante
+
+NO usar colores saturados o demasiados elementos visuales.
+
+---
+
+## Tamaño y optimización
+
+Muy importante:
+
+* optimizado para correo
+* ligero
+* imágenes pequeñas
+* responsive
+* compatible con dark mode
+
+El banner/logo:
+
+* máximo ~600px ancho
+* altura moderada
+* peso optimizado
+
+---
+
+## Entregables
+
+Quiero:
+
+1. Diseño HTML listo para email
+2. CSS inline compatible con Gmail
+3. Versión responsive
+4. Espacio para reemplazar:
+
+   * nombre
+   * cargo
+   * teléfono
+   * correo
+5. Banner/logo optimizado
+6. Disclaimer corto elegante
+
+---
+
+## Extra
+
+Agregar opcionalmente:
+
+* botón pequeño “[www.ispsa.net”](http://www.ispsa.net”)
+* íconos discretos
+* QR pequeño opcional
+
+---
+
+## Resultado esperado
+
+Quiero que cuando un cliente reciba un correo:
+
+* se vea moderno
+* elegante
+* corporativo
+* seguro
+* profesional
+
+y NO como publicidad pesada o spam.
+
+La firma debe transmitir:
+“empresa seria, organizada y tecnológica”.
