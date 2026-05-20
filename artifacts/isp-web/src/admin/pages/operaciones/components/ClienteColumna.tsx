@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Plus, X, ChevronRight, Truck } from "lucide-react";
 import { Puesto, ClienteBoard, PlanFuturo } from "../types";
-import { DroppableCustodiaSlot } from "../components/DroppableCustodiaSlot";
+import { CustodiaGrupo } from "../components/CustodiaGrupo";
 import { DroppablePuesto } from "../components/DroppablePuesto";
 
 export function ClienteColumna({
@@ -69,6 +69,8 @@ export function ClienteColumna({
       && !p.titular_dado_de_baja;
     return cubiertoManual || cubiertoTitular;
   };
+  const slotsCustodia  = cliente.puestos.filter((p) => p.es_custodia === true);
+  const puestosRegulares = cliente.puestos.filter((p) => !p.es_custodia);
   const cubiertos      = cliente.puestos.filter(esPuestoCubierto).length;
   const descansoCicloN = cliente.puestos.filter((p) => p.descanso_por_ciclo === true && !esPuestoCubierto(p)).length;
   const descubiertoN   = cliente.puestos.filter((p) => !esPuestoCubierto(p) && !p.descanso_por_ciclo).length;
@@ -173,32 +175,33 @@ export function ClienteColumna({
 
       {/* Puestos */}
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
-        {cliente.puestos.map((p) => (
+        {slotsCustodia.length > 0 && (
+          <CustodiaGrupo
+            slots={slotsCustodia}
+            isAgenteSeleccionado={agenteSeleccionadoId !== null}
+            onPuestoClick={onPuestoClick}
+            onLiberar={onLiberar}
+            onRegistrarFalta={onRegistrarFalta}
+            onQuitarTitular={onQuitarTitular}
+          />
+        )}
+        {puestosRegulares.map((p) => (
           <div key={p.id} className="group/puesto relative">
-            {p.es_custodia ? (
-              <DroppableCustodiaSlot
-                puesto={p}
-                isAgenteSeleccionado={agenteSeleccionadoId !== null}
-                onClick={() => onPuestoClick(p)}
-                onRegistrarFalta={onRegistrarFalta}
-              />
-            ) : (
-              <DroppablePuesto
-                puesto={p}
-                isAgenteSeleccionado={agenteSeleccionadoId !== null}
-                onClick={() => onPuestoClick(p)}
-                onLiberar={() => onLiberar(p)}
-                onRegistrarFalta={onRegistrarFalta}
-                onAbrirSegmentos={() => onAbrirSegmentos(p)}
-                onConfigTurno={onConfigTurno ? () => onConfigTurno(p) : undefined}
-                onQuitarTitular={onQuitarTitular}
-                cambiosProximos={cambiosFuturosProximos?.[p.id]}
-                planFuturo={planFuturoPorPuesto?.[p.id] ?? null}
-                puestoContextoId={puestoContextoId}
-              />
-            )}
+            <DroppablePuesto
+              puesto={p}
+              isAgenteSeleccionado={agenteSeleccionadoId !== null}
+              onClick={() => onPuestoClick(p)}
+              onLiberar={() => onLiberar(p)}
+              onRegistrarFalta={onRegistrarFalta}
+              onAbrirSegmentos={() => onAbrirSegmentos(p)}
+              onConfigTurno={onConfigTurno ? () => onConfigTurno(p) : undefined}
+              onQuitarTitular={onQuitarTitular}
+              cambiosProximos={cambiosFuturosProximos?.[p.id]}
+              planFuturo={planFuturoPorPuesto?.[p.id] ?? null}
+              puestoContextoId={puestoContextoId}
+            />
             {/* Botón eliminar puesto — solo visible en modo eliminación */}
-            {isDeleteMode && !p.es_custodia && (
+            {isDeleteMode && (
               <button
                 onClick={(e) => { e.stopPropagation(); onEliminarPuesto(p); }}
                 className="absolute -top-1.5 -right-1.5 opacity-0 group-hover/puesto:opacity-100 bg-red-500/80 hover:bg-red-500 text-white rounded-full p-0.5 transition-all z-10"

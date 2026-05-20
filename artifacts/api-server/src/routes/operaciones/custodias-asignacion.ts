@@ -183,6 +183,84 @@ router.post("/operaciones/cambiar-titular-custodia", async (req, res) => {
   }
 });
 
+router.post("/operaciones/quitar-titularidad-custodia", async (req, res) => {
+  const sessionRaw = req.headers["x-isp-session"];
+  let userRole = "";
+  try { userRole = JSON.parse(sessionRaw as string)?.rol ?? ""; } catch {}
+  if (!["admin", "operaciones"].includes(userRole)) {
+    return res.status(403).json({ error: "Solo Operaciones o administradores pueden quitar la titularidad" });
+  }
+
+  const { clienteId, slotNumero, employeeId, motivo, usuario } = req.body as {
+    clienteId: number; slotNumero: number; employeeId: number; motivo?: string; usuario?: string;
+  };
+  if (!clienteId || !slotNumero || !employeeId) {
+    return res.status(400).json({ error: "clienteId, slotNumero y employeeId son requeridos" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await lockTitularidadAgente(client, Number(employeeId));
+
+    const { rows: ctRows } = await client.query(
+      `SELECT id FROM custodia_titulares
+        WHERE cliente_id = $1 AND slot_numero = $2 AND employee_id = $3 AND activo = TRUE`,
+      [clienteId, slotNumero, employeeId]
+    );
+    if (ctRows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "El colaborador no es titular activo de este slot de custodia" });
+    }
+
+    const { rows: empRows } = await client.query(
+      `SELECT nombre_completo FROM employees WHERE id = $1`, [employeeId]
+    );
+    const empNombre = empRows[0]?.nombre_completo ?? "";
+
+    // 1) Desactivar titularidad
+    await client.query(
+      `UPDATE custodia_titulares SET activo = FALSE
+        WHERE cliente_id = $1 AND slot_numero = $2 AND employee_id = $3`,
+      [clienteId, slotNumero, employeeId]
+    );
+
+    // 2) Borrar asignación diaria de hoy si era de ese empleado
+    const fechaHoy = todayGT();
+    await client.query(
+      `DELETE FROM custodia_asignacion_diaria
+        WHERE cliente_id = $1 AND slot_numero = $2 AND fecha = $3::date AND employee_id = $4`,
+      [clienteId, slotNumero, fechaHoy, employeeId]
+    );
+
+    // 3) Devolver al pool: EOA → disponible
+    await client.query(
+      `UPDATE employee_operational_assignments
+          SET activa = FALSE, updated_at = NOW()
+        WHERE employee_id = $1 AND activa = TRUE`,
+      [employeeId]
+    );
+    await client.query(
+      `INSERT INTO employee_operational_assignments
+         (employee_id, puesto_id, sede_id, cliente_id, zona_operativa_id, tipo_turno_id,
+          tipo_asignacion, activa, fecha_inicio, notas, created_at, updated_at)
+       VALUES ($1, NULL, NULL, NULL, NULL, NULL, 'disponible', TRUE, NOW(),
+               'Quitado de titularidad de custodia desde pizarrón', NOW(), NOW())`,
+      [employeeId]
+    );
+
+    await client.query("COMMIT");
+    logger.info({ clienteId, slotNumero, employeeId, usuario, motivo }, "Titularidad custodia removida");
+    return res.json({ ok: true, mensaje: `${empNombre} ya no es titular del Custodio ${slotNumero}` });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    logger.error({ err }, "POST /operaciones/quitar-titularidad-custodia error");
+    return res.status(500).json({ error: "Error al quitar titularidad de custodia" });
+  } finally {
+    client.release();
+  }
+});
+
 // ─── GET /api/custodias/puestos ──────────────────────────────────────────────
 // Lista titulares en vacaciones que regresan a su puesto en N días o menos.
 // Sirve para alertar a Operaciones y RRHH con cuenta regresiva (5,4,3,2,1 días).

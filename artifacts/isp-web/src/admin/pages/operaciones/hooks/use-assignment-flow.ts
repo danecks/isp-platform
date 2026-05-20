@@ -486,14 +486,26 @@ export function useAssignmentFlow({
   async function confirmarLiberar(motivo: string, horaFin?: string, generarEventoFalta?: boolean) {
     if (!modalLiberar) return;
     try {
-      await apiPost(`${API_BASE}/operaciones/liberar`, {
-        puestoId: modalLiberar.id,
-        motivo,
-        horaFin: horaFin ?? null,
-        generarEventoFalta: generarEventoFalta ?? false,
-        usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
-      });
-      const extra = generarEventoFalta ? " · Falta registrada en RRHH" : "";
+      if (modalLiberar.es_custodia) {
+        const parts = String(modalLiberar.id).split("-");
+        const clienteId = Number(parts[1]);
+        const slotNumero = Number(parts[2]);
+        await apiPost(`${API_BASE}/operaciones/asignar-custodia`, {
+          clienteId,
+          slotNumero,
+          employeeId: null,
+          fecha: fechaVista || undefined,
+        });
+      } else {
+        await apiPost(`${API_BASE}/operaciones/liberar`, {
+          puestoId: modalLiberar.id,
+          motivo,
+          horaFin: horaFin ?? null,
+          generarEventoFalta: generarEventoFalta ?? false,
+          usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+        });
+      }
+      const extra = !modalLiberar.es_custodia && generarEventoFalta ? " · Falta registrada en RRHH" : "";
       toast({ title: "Puesto liberado", description: `${modalLiberar.agente_nombre} removido de ${modalLiberar.nombre}${extra}` });
       setModalLiberar(null);
       invalidate();
@@ -505,12 +517,25 @@ export function useAssignmentFlow({
   async function confirmarQuitarTitular(motivo: string) {
     if (!modalQuitarTitular) return;
     try {
-      await apiPost(`${API_BASE}/operaciones/quitar-titularidad`, {
-        puestoId: modalQuitarTitular.puesto.id,
-        employeeId: modalQuitarTitular.employeeId,
-        motivo,
-        usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
-      });
+      if (modalQuitarTitular.puesto.es_custodia) {
+        const parts = String(modalQuitarTitular.puesto.id).split("-");
+        const clienteId = Number(parts[1]);
+        const slotNumero = Number(parts[2]);
+        await apiPost(`${API_BASE}/operaciones/quitar-titularidad-custodia`, {
+          clienteId,
+          slotNumero,
+          employeeId: modalQuitarTitular.employeeId,
+          motivo,
+          usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+        });
+      } else {
+        await apiPost(`${API_BASE}/operaciones/quitar-titularidad`, {
+          puestoId: modalQuitarTitular.puesto.id,
+          employeeId: modalQuitarTitular.employeeId,
+          motivo,
+          usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+        });
+      }
       toast({
         title: "Titularidad removida",
         description: `${modalQuitarTitular.employeeNombre} ya no es titular de ${modalQuitarTitular.puesto.nombre}. Vuelve a Disponibles.`,

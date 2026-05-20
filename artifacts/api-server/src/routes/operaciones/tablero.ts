@@ -605,9 +605,21 @@ router.get("/operaciones/tablero", async (req, res) => {
       for (const f of faltasRows) custodiaFaltaSet.add(Number(f.employee_id));
     }
 
+    // Excepciones del día (Fase 1): { cliente_id -> cantidad }
+    const excepcionMap = new Map<number, number>();
+    {
+      const { rows: excRows } = await pool.query(`
+        SELECT cliente_id, cantidad
+          FROM custodia_excepciones
+         WHERE fecha = $1::date
+           AND cliente_id = ANY($2::int[])
+      `, [fechaConsultada, custodiaClientes.map((c: any) => c.id)]);
+      for (const r of excRows) excepcionMap.set(Number(r.cliente_id), Number(r.cantidad));
+    }
+
     for (const cl of custodiaClientes) {
-      const fuerzaHoy = Number(cl.fuerza_hoy);
-      if (fuerzaHoy <= 0) continue;
+      const excepcion = excepcionMap.get(Number(cl.id));
+      const fuerzaHoy = excepcion !== undefined ? excepcion : Number(cl.fuerza_hoy);
 
       const { rows: titularesRows } = await pool.query(`
         SELECT ct.slot_numero, ct.employee_id, e.nombre_completo
@@ -618,9 +630,16 @@ router.get("/operaciones/tablero", async (req, res) => {
       `, [cl.id]);
 
       const titularMap = new Map<number, { employee_id: number; nombre: string }>();
+      let maxSlotTitular = 0;
       for (const t of titularesRows) {
-        titularMap.set(Number(t.slot_numero), { employee_id: t.employee_id, nombre: t.nombre_completo });
+        const sn = Number(t.slot_numero);
+        titularMap.set(sn, { employee_id: t.employee_id, nombre: t.nombre_completo });
+        if (sn > maxSlotTitular) maxSlotTitular = sn;
       }
+
+      // N = max(demanda del día, slot más alto con titular fijo)
+      const N = Math.max(fuerzaHoy, maxSlotTitular);
+      if (N <= 0) continue;
 
       const { rows: asignaciones } = await pool.query(`
         SELECT cad.employee_id, cad.slot_numero, cad.notas, e.nombre_completo
@@ -645,11 +664,13 @@ router.get("/operaciones/tablero", async (req, res) => {
         armaMap.set(Number(ar.custodia_slot_numero), ar);
       }
 
-      for (let i = 1; i <= fuerzaHoy; i++) {
+      for (let i = 1; i <= N; i++) {
         const titular = titularMap.get(i) ?? null;
         const asig = asignacionMap.get(i);
         const arma = armaMap.get(i) ?? null;
         const titularFaltando = titular && custodiaFaltaSet.has(titular.employee_id);
+        // Slot por sobre la demanda del día: si hay titular fijo, cuenta como descanso.
+        const enDescansoExcedente = i > fuerzaHoy && !!titular && !asig;
 
         let agente_id: number | null = null;
         let agente_nombre: string | null = null;
@@ -663,7 +684,7 @@ router.get("/operaciones/tablero", async (req, res) => {
           if (titular && asig.employee_id !== titular.employee_id) {
             es_relevo_dia = true;
           }
-        } else if (titular && !titularFaltando) {
+        } else if (titular && !titularFaltando && !enDescansoExcedente) {
           agente_id = titular.employee_id;
           agente_nombre = titular.nombre;
           estado = "cubierto";
@@ -692,7 +713,7 @@ router.get("/operaciones/tablero", async (req, res) => {
           arma_serie: arma?.arma_serie ?? null,
           titulares: [],
           es_par_24x24: false,
-          descanso_por_ciclo: false,
+          descanso_por_ciclo: enDescansoExcedente,
           es_inicio_hoy: false,
           tiene_slot_vacio: !titular,
           jornada: "12h",
