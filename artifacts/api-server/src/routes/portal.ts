@@ -19,7 +19,7 @@ import { eq, and, desc, gte, count, sql } from "drizzle-orm";
 const portalRouter = Router();
 
 // ─── Middleware de autenticación del portal — C-02 (valida contra DB) ─────────
-async function requirePortalAuth(req: Request, res: Response, next: NextFunction) {
+export async function requirePortalAuth(req: Request, res: Response, next: NextFunction) {
   const rol = (req.headers["x-isp-role"] as string)?.toLowerCase();
   const clienteId = req.headers["x-isp-clienteid"] as string;
 

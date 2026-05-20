@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { X, LayoutDashboard, AlertTriangle, BarChart3, Users, LogOut, ExternalLink, ShieldCheck, Zap, Shield, Clock, QrCode, Route, UserCheck } from "lucide-react";
+import { X, LayoutDashboard, AlertTriangle, BarChart3, Users, LogOut, ExternalLink, ShieldCheck, Zap, Shield, Clock, QrCode, Route, UserCheck, Activity } from "lucide-react";
 import { brand } from "@/config/branding";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -7,6 +7,7 @@ const logoImg = `${import.meta.env.BASE_URL}images/logo-isp.png`;
 
 const portalNav = [
   { path: "/portal/dashboard",   label: "Panel General",        icon: LayoutDashboard },
+  { path: "/portal/operativo",   label: "Operativo en vivo",    icon: Activity },
   { path: "/portal/cobertura",   label: "Cobertura de Puestos", icon: Shield },
   { path: "/portal/fichajes",    label: "Fichajes QR",          icon: Clock },
   { path: "/portal/rondas",      label: "Rondas QR",            icon: QrCode },

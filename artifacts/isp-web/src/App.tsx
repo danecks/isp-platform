@@ -98,6 +98,7 @@ import PortalKPI from "@/portal/pages/PortalKPI";
 import PortalAgentes from "@/portal/pages/PortalAgentes";
 import PortalSolicitudes from "@/portal/pages/PortalSolicitudes";
 import PortalCobertura from "@/portal/pages/PortalCobertura";
+import PortalOperativo from "@/portal/pages/PortalOperativo";
 import PortalFichajes from "@/portal/pages/PortalFichajes";
 import PortalRecorridos from "@/portal/pages/PortalRecorridos";
 import PortalRondas from "@/portal/pages/PortalRondas";
@@ -158,6 +159,9 @@ function Router() {
       </Route>
       <Route path="/portal/cobertura">
         {() => <PortalGuard><PortalCobertura /></PortalGuard>}
+      </Route>
+      <Route path="/portal/operativo">
+        {() => <PortalGuard><PortalOperativo /></PortalGuard>}
       </Route>
       <Route path="/portal/fichajes">
         {() => <PortalGuard><PortalFichajes /></PortalGuard>}
