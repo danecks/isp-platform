@@ -1,10 +1,21 @@
+import { useState } from "react";
 import { Loader2, Lock, Unlock, Shield, Plus, MapPin } from "lucide-react";
 import type { Puesto } from "../types";
 import { ClienteColumna } from "../components/ClienteColumna";
+import { ModalRutaCustodia } from "../components/ModalRutaCustodia";
 import { formatFechaVista } from "../helpers";
 import { useOperacionesContext } from "../OperacionesContext";
 
+interface RutaModalState {
+  clienteId: number;
+  clienteNombre: string;
+  employeeId: number;
+  employeeNombre: string;
+  slotNumero?: number | null;
+}
+
 export function TableroPuestos() {
+  const [rutaModal, setRutaModal] = useState<RutaModalState | null>(null);
   const {
     loadingTablero, tablero, tableroFiltrado, fechaVistaCerrada, fechaVista,
     esAdmin, esFuturo, isDeleteMode, agenteSeleccionado,
@@ -24,6 +35,16 @@ export function TableroPuestos() {
     : setPuestoParaTurno(p);
   const onQuitarTitular = (p: Puesto, employeeId: number, employeeNombre: string) =>
     assignment.setModalQuitarTitular({ puesto: p, employeeId, employeeNombre });
+  const onRegistrarRuta = (p: Puesto, employeeId: number, employeeNombre: string) => {
+    if (!p.cliente_id) return;
+    setRutaModal({
+      clienteId: p.cliente_id,
+      clienteNombre: (p as any).cliente_nombre ?? `Cliente ${p.cliente_id}`,
+      employeeId,
+      employeeNombre,
+      slotNumero: p.slot_numero ?? null,
+    });
+  };
 
   return (
     <div className="flex-1 overflow-auto relative" style={{ minHeight: 0 }}>
@@ -92,6 +113,7 @@ export function TableroPuestos() {
               onAbrirSegmentos={(p) => { if (!esFuturo) setModalSegmentos(p); }}
               onConfigTurno={onConfigTurno}
               onQuitarTitular={puedeQuitarTitular ? onQuitarTitular : undefined}
+              onRegistrarRuta={!esFuturo ? onRegistrarRuta : undefined}
               cambiosFuturosProximos={!esFuturo ? cambiosFuturosProximos : undefined}
               planFuturoPorPuesto={esFuturo ? planFuturoPorPuesto : undefined}
               resaltado={clienteResaltado !== null && cliente.clienteId === clienteResaltado}
@@ -100,6 +122,17 @@ export function TableroPuestos() {
             />
           ))}
         </div>
+      )}
+      {rutaModal && (
+        <ModalRutaCustodia
+          clienteId={rutaModal.clienteId}
+          clienteNombre={rutaModal.clienteNombre}
+          fecha={fechaVista}
+          employeeId={rutaModal.employeeId}
+          employeeNombre={rutaModal.employeeNombre}
+          slotNumero={rutaModal.slotNumero ?? null}
+          onClose={() => setRutaModal(null)}
+        />
       )}
     </div>
   );

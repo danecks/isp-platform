@@ -1,5 +1,5 @@
 import { useDroppable } from "@dnd-kit/core";
-import { Truck, XCircle, UserMinus, Moon } from "lucide-react";
+import { Truck, XCircle, UserMinus, Moon, MapPin } from "lucide-react";
 import { iniciales, avatarColor } from "../utils";
 import { Puesto } from "../types";
 
@@ -10,6 +10,7 @@ export function CustodiaSlotItem({
   onLiberar,
   onRegistrarFalta,
   onQuitarTitular,
+  onRegistrarRuta,
 }: {
   puesto: Puesto;
   isAgenteSeleccionado: boolean;
@@ -17,6 +18,7 @@ export function CustodiaSlotItem({
   onLiberar?: (puesto: Puesto) => void;
   onRegistrarFalta?: (puesto: Puesto, titularId: number, titularNombre: string) => void;
   onQuitarTitular?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
+  onRegistrarRuta?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: `puesto-${puesto.id}` });
   const cubierto = puesto.estado === "cubierto" && !!puesto.agente_id;
@@ -128,6 +130,15 @@ export function CustodiaSlotItem({
                 title={`Quitar titularidad de ${puesto.titular_nombre}`}
               >
                 <UserMinus className="w-3 h-3" /><span>Quitar</span>
+              </button>
+            )}
+            {cubierto && onRegistrarRuta && puesto.agente_id && puesto.agente_nombre && (
+              <button
+                onClick={e => { e.stopPropagation(); onRegistrarRuta(puesto, puesto.agente_id!, puesto.agente_nombre!); }}
+                className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold text-sky-300/80 bg-sky-500/10 border border-sky-500/25 hover:bg-sky-500/20 hover:text-sky-300 rounded-md transition-colors"
+                title={`Registrar ruta del día de ${puesto.agente_nombre}`}
+              >
+                <MapPin className="w-3 h-3" /><span>Ruta</span>
               </button>
             )}
           </div>

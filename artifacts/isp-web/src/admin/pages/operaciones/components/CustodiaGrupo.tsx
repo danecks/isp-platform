@@ -9,6 +9,7 @@ export function CustodiaGrupo({
   onLiberar,
   onRegistrarFalta,
   onQuitarTitular,
+  onRegistrarRuta,
 }: {
   slots: Puesto[];
   isAgenteSeleccionado: boolean;
@@ -16,6 +17,7 @@ export function CustodiaGrupo({
   onLiberar?: (puesto: Puesto) => void;
   onRegistrarFalta?: (puesto: Puesto, titularId: number, titularNombre: string) => void;
   onQuitarTitular?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
+  onRegistrarRuta?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
 }) {
   if (slots.length === 0) return null;
 
@@ -49,6 +51,7 @@ export function CustodiaGrupo({
             onLiberar={onLiberar}
             onRegistrarFalta={onRegistrarFalta}
             onQuitarTitular={onQuitarTitular}
+            onRegistrarRuta={onRegistrarRuta}
           />
         ))}
       </div>

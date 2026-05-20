@@ -11,8 +11,9 @@ import {
 import { getSessionToken } from "@/lib/httpClient";
 import PlanificacionPanel from "./custodias/PlanificacionPanel";
 import ReporteDemandaPanel from "./custodias/ReporteDemandaPanel";
+import AsignacionesDelDiaPanel from "./custodias/AsignacionesDelDiaPanel";
 
-type CustodiasTab = "operativo" | "planificacion" | "reporte";
+type CustodiasTab = "operativo" | "asignaciones" | "planificacion" | "reporte";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
 const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
@@ -92,9 +93,10 @@ export default function Custodias() {
   const totalPendientes = dashboard.reduce((s, c) => s + c.pendientes, 0);
 
   const tabs: { id: CustodiasTab; label: string; icon: any }[] = [
-    { id: "operativo",     label: "Operativo",     icon: Truck },
-    { id: "planificacion", label: "Planificación", icon: ClipboardList },
-    { id: "reporte",       label: "Reporte demanda", icon: FileBarChart2 },
+    { id: "operativo",     label: "Operativo",          icon: Truck },
+    { id: "asignaciones",  label: "Asignaciones del día", icon: User },
+    { id: "planificacion", label: "Planificación",      icon: ClipboardList },
+    { id: "reporte",       label: "Reporte demanda",    icon: FileBarChart2 },
   ];
 
   return (
@@ -117,6 +119,7 @@ export default function Custodias() {
           })}
         </div>
 
+        {tab === "asignaciones" && <AsignacionesDelDiaPanel />}
         {tab === "planificacion" && <PlanificacionPanel />}
         {tab === "reporte" && <ReporteDemandaPanel />}
 

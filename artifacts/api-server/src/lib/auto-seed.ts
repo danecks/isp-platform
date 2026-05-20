@@ -5325,6 +5325,16 @@ Por favor ingresa al sistema o responde para continuar.',
     await pool.query(`ALTER TABLE custodia_asignacion_diaria ADD COLUMN IF NOT EXISTS slot_numero INTEGER NOT NULL DEFAULT 1`);
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS custodia_asig_diaria_cliente_fecha_slot_uq ON custodia_asignacion_diaria(cliente_id, fecha, slot_numero)`);
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS custodia_asig_diaria_cliente_fecha_emp_uq ON custodia_asignacion_diaria(cliente_id, fecha, employee_id)`);
+    // CUST-FASE3: ruta del día por agente (texto libre + horarios + bitácora).
+    // Capturado desde el pizarrón (modal "Ruta") o desde la vista
+    // "Asignaciones del día". Sirve de fuente para el portal cliente en vivo.
+    await pool.query(`ALTER TABLE custodia_asignacion_diaria ADD COLUMN IF NOT EXISTS ruta_texto TEXT`);
+    await pool.query(`ALTER TABLE custodia_asignacion_diaria ADD COLUMN IF NOT EXISTS hora_salida TIME`);
+    await pool.query(`ALTER TABLE custodia_asignacion_diaria ADD COLUMN IF NOT EXISTS hora_regreso TIME`);
+    await pool.query(`ALTER TABLE custodia_asignacion_diaria ADD COLUMN IF NOT EXISTS observaciones TEXT`);
+    await pool.query(`ALTER TABLE custodia_asignacion_diaria ADD COLUMN IF NOT EXISTS registrado_por VARCHAR(100)`);
+    await pool.query(`ALTER TABLE custodia_asignacion_diaria ADD COLUMN IF NOT EXISTS registrado_at TIMESTAMPTZ`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS custodia_asig_diaria_emp_cli_fecha_idx ON custodia_asignacion_diaria(employee_id, cliente_id, fecha DESC)`);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS custodia_titulares (
         id SERIAL PRIMARY KEY,

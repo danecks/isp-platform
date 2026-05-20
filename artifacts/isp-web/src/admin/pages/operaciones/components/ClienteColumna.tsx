@@ -15,6 +15,7 @@ export function ClienteColumna({
   onAbrirSegmentos,
   onConfigTurno,
   onQuitarTitular,
+  onRegistrarRuta,
   cambiosFuturosProximos,
   planFuturoPorPuesto,
   resaltado,
@@ -32,6 +33,7 @@ export function ClienteColumna({
   onAbrirSegmentos: (puesto: Puesto) => void;
   onConfigTurno?: (puesto: Puesto) => void;
   onQuitarTitular?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
+  onRegistrarRuta?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
   cambiosFuturosProximos?: Record<number, PlanFuturo[]>;
   planFuturoPorPuesto?: Record<number, PlanFuturo>;
   resaltado?: boolean;
@@ -183,6 +185,7 @@ export function ClienteColumna({
             onLiberar={onLiberar}
             onRegistrarFalta={onRegistrarFalta}
             onQuitarTitular={onQuitarTitular}
+            onRegistrarRuta={onRegistrarRuta}
           />
         )}
         {puestosRegulares.map((p) => (
