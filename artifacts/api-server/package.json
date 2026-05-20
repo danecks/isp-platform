@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:e2e-payroll-april": "tsx src/test/e2e-abril/run.ts",
     "test:prestaciones": "tsx src/test/prestaciones/run.ts",
-    "test:prestaciones-unit": "tsx -e \"import('./src/test/prestaciones/unit-tests.ts').then(m=>m.runUnitTests()).then(r=>{console.log(JSON.stringify(r));process.exit(r.fail>0?1:0)})\""
+    "test:prestaciones-unit": "tsx -e \"import('./src/test/prestaciones/unit-tests.ts').then(m=>m.runUnitTests()).then(r=>{console.log(JSON.stringify(r));process.exit(r.fail>0?1:0)})\"",
+    "test:portal-aislamiento": "tsx src/test/portal-aislamiento/run.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",
