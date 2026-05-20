@@ -11,6 +11,7 @@ import { ModalSustitucion } from "./modals/ModalSustitucion";
 import { ModalNuevoPuesto } from "./modals/ModalNuevoPuesto";
 import { ModalLiberar } from "./modals/ModalLiberar";
 import { ModalRegistrarFalta } from "./modals/ModalRegistrarFalta";
+import { ModalAnularFalta } from "./modals/ModalAnularFalta";
 import { ModalCierre } from "./modals/ModalCierre";
 import { ModalReabrir } from "./modals/ModalReabrir";
 import { ModalQuitarTitularidad } from "./modals/ModalQuitarTitularidad";
@@ -147,6 +148,15 @@ export function OperacionesModales(p: Props) {
           titularNombre={assignment.modalFalta.titularNombre}
           onConfirm={assignment.confirmarFalta}
           onClose={() => assignment.setModalFalta(null)}
+        />
+      )}
+
+      {assignment.modalAnularFalta && (
+        <ModalAnularFalta
+          puestoNombre={assignment.modalAnularFalta.puesto.nombre}
+          titularNombre={assignment.modalAnularFalta.titularNombre}
+          onConfirm={assignment.confirmarAnularFalta}
+          onClose={() => assignment.setModalAnularFalta(null)}
         />
       )}
 

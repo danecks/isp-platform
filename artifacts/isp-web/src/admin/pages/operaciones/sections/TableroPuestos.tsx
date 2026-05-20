@@ -30,6 +30,8 @@ export function TableroPuestos() {
     : assignment.setModalLiberar(p);
   const onRegistrarFalta = (p: Puesto, titularId: number, titularNombre: string) =>
     assignment.setModalFalta({ puesto: p, titularId, titularNombre });
+  const onAnularFalta = (p: Puesto, titularNombre: string) =>
+    assignment.setModalAnularFalta({ puesto: p, titularNombre });
   const onConfigTurno = (p: Puesto) => esFuturo
     ? planFuturoFlow.setModalPlanFuturo({ puesto: p, plan: planFuturoPorPuesto[p.id] ?? null })
     : setPuestoParaTurno(p);
@@ -107,6 +109,7 @@ export function TableroPuestos() {
               onPuestoClick={handlePuestoClick}
               onLiberar={onLiberar}
               onRegistrarFalta={!esFuturo ? onRegistrarFalta : undefined}
+              onAnularFalta={!esFuturo && puedeQuitarTitular && !fechaVistaCerrada ? onAnularFalta : undefined}
               onNuevoPuesto={(c) => setNuevoPuestoData(c)}
               onEliminarPuesto={eliminarPuesto}
               isDeleteMode={isDeleteMode}

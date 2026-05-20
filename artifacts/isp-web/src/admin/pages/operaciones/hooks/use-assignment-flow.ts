@@ -60,6 +60,7 @@ export function useAssignmentFlow({
   const [modalLiberar, setModalLiberar] = useState<Puesto | null>(null);
   const [modalFalta, setModalFalta] = useState<{ puesto: Puesto; titularId: number; titularNombre: string } | null>(null);
   const [modalQuitarTitular, setModalQuitarTitular] = useState<{ puesto: Puesto; employeeId: number; employeeNombre: string } | null>(null);
+  const [modalAnularFalta, setModalAnularFalta] = useState<{ puesto: Puesto; titularNombre: string } | null>(null);
 
   function esAgentePool(agente: Agente) {
     const eoa = agente.tipo_asignacion_eoa ?? "sin_asignacion";
@@ -583,6 +584,26 @@ export function useAssignmentFlow({
     }
   }
 
+  async function confirmarAnularFalta(motivo: string) {
+    if (!modalAnularFalta) return;
+    try {
+      await apiPost(`${API_BASE}/operaciones/anular-falta`, {
+        puestoId: modalAnularFalta.puesto.id,
+        motivo,
+        usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+        fecha: fechaVista,
+      });
+      toast({
+        title: "Anulación solicitada",
+        description: `Pendiente de aprobación de RRHH — ${modalAnularFalta.puesto.nombre}`,
+      });
+      setModalAnularFalta(null);
+      invalidate();
+    } catch (e: any) {
+      toast({ title: "Error", description: e?.error ?? "Error al anular la falta", variant: "destructive" });
+    }
+  }
+
   async function removerAgenteSSA(t: TarjetaSSAPendiente, motivo?: string, notas?: string) {
     try {
       const r = await fetch(`${API_BASE}/solicitudes-servicio/${t.id}/remover-agente`, {
@@ -617,6 +638,8 @@ export function useAssignmentFlow({
     modalLiberar, setModalLiberar,
     modalFalta, setModalFalta,
     modalQuitarTitular, setModalQuitarTitular,
+    modalAnularFalta, setModalAnularFalta,
+    confirmarAnularFalta,
     asignarCustodia,
     ejecutarAsignarCustodia,
     iniciarAsignacion,

@@ -62,6 +62,7 @@ export const TIPO_CONFIG: Record<string, { label: string; className: string }> =
   permiso_con_goce:     { label: "Permiso con goce de sueldo",   className: "text-green-400 bg-green-400/10 border-green-400/20" },
   abandono_parcial:     { label: "Abandono parcial",             className: "text-orange-400 bg-orange-400/10 border-orange-400/20" },
   suspension_disciplinaria: { label: "Suspensión disciplinaria", className: "text-red-500 bg-red-500/10 border-red-500/20" },
+  anulacion_falta:      { label: "Anulación de falta",          className: "text-cyan-400 bg-cyan-400/10 border-cyan-400/20" },
 };
 
 export const TIPOS_EVENTO = [

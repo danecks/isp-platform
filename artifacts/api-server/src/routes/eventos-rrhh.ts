@@ -394,7 +394,7 @@ eventosRrhhRouter.patch("/rrhh/eventos/:id/estado", async (req, res) => {
     await client.query("BEGIN");
 
     const { rows: check } = await client.query(
-      `SELECT id, estado, tipo_evento, employee_id, evento_par_id FROM eventos_rrhh WHERE id=$1`,
+      `SELECT id, estado, tipo_evento, employee_id, evento_par_id, metadata_json FROM eventos_rrhh WHERE id=$1`,
       [id],
     );
     if (!check.length) {
@@ -415,8 +415,33 @@ eventosRrhhRouter.patch("/rrhh/eventos/:id/estado", async (req, res) => {
       [estado, notas || null, id],
     );
 
-    if (estado === "aprobado" || estado === "rechazado") {
+    if ((estado === "aprobado" || estado === "rechazado") && evento.tipo_evento !== "anulacion_falta") {
       await propagarEstadoANovedades(evento, estado, usuario, client);
+    }
+
+    // Anulación de falta: rechazar = restaurar el slot a 'faltando' con los datos previos
+    if (evento.tipo_evento === "anulacion_falta" && estado === "rechazado") {
+      const meta = evento.metadata_json ?? {};
+      const snap = typeof meta === "string" ? JSON.parse(meta) : meta;
+      if (snap?.puesto_id && snap?.falta_employee_id) {
+        await client.query(`
+          UPDATE puestos_operativos
+             SET estado_operativo_puesto = 'faltando',
+                 falta_employee_id       = $2,
+                 falta_motivo            = $3,
+                 falta_notas             = $4,
+                 falta_usuario           = $5,
+                 updated_at              = NOW()
+           WHERE id = $1
+        `, [
+          snap.puesto_id,
+          snap.falta_employee_id,
+          snap.falta_motivo ?? null,
+          snap.falta_notas ?? null,
+          snap.falta_usuario ?? null,
+        ]);
+        logger.info({ eventoId: id, puestoId: snap.puesto_id }, "Anulación de falta rechazada → slot restaurado a 'faltando'");
+      }
     }
 
     // Si se rechaza un permiso (sin goce o con goce), crear evento de falta automático

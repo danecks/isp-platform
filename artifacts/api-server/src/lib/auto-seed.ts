@@ -1429,7 +1429,8 @@ Por favor ingresa al sistema o responde para continuar.',
     await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS motivo_anulacion  TEXT`);
     await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS estado_anterior   VARCHAR(30)`);
     await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS evento_par_id    INTEGER REFERENCES eventos_rrhh(id) ON DELETE SET NULL`);
-    logger.info("Auto-migrate: columnas de anulación y evento_par_id verificadas/creadas");
+    await pool.query(`ALTER TABLE eventos_rrhh ADD COLUMN IF NOT EXISTS metadata_json    JSONB NOT NULL DEFAULT '{}'::jsonb`);
+    logger.info("Auto-migrate: columnas de anulación, evento_par_id y metadata_json verificadas/creadas");
   } catch (err) {
     logger.error({ err }, "Auto-migrate: error en tabla eventos_rrhh");
   }

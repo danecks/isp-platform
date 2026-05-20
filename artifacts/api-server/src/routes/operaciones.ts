@@ -5,6 +5,7 @@ import asignacionRouter from "./operaciones/asignacion";
 import puestosRouter from "./operaciones/puestos";
 import custodiasAsignacionRouter from "./operaciones/custodias-asignacion";
 import cierreRouter from "./operaciones/cierre";
+import anularFaltaRouter from "./operaciones/anular-falta";
 
 const operacionesRouter = Router();
 
@@ -15,5 +16,6 @@ operacionesRouter.use(asignacionRouter);
 operacionesRouter.use(puestosRouter);
 operacionesRouter.use(custodiasAsignacionRouter);
 operacionesRouter.use(cierreRouter);
+operacionesRouter.use(anularFaltaRouter);
 
 export default operacionesRouter;

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
-import { AlertTriangle, CheckCircle2, User, Shield, Circle, UserMinus, XCircle, Calendar, AlertCircle, Layers, Moon, Settings2, Repeat } from "lucide-react";
+import { AlertTriangle, CheckCircle2, User, Shield, Circle, UserMinus, XCircle, Calendar, AlertCircle, Layers, Moon, Settings2, Repeat, Undo2 } from "lucide-react";
 import { ModalFichaArma } from "@/admin/components/ModalFichaArma";
 import { iniciales, avatarColor } from "../utils";
 import { Puesto, PlanFuturo, LABELS_AUSENCIA_FUTURO } from "../types";
@@ -11,6 +11,7 @@ export function DroppablePuesto({
   onClick,
   onLiberar,
   onRegistrarFalta,
+  onAnularFalta,
   onAbrirSegmentos,
   onConfigTurno,
   onQuitarTitular,
@@ -23,6 +24,7 @@ export function DroppablePuesto({
   onClick: () => void;
   onLiberar: () => void;
   onRegistrarFalta?: (puesto: Puesto, titularId: number, titularNombre: string) => void;
+  onAnularFalta?: (puesto: Puesto, titularNombre: string) => void;
   onAbrirSegmentos: () => void;
   onConfigTurno?: () => void;
   onQuitarTitular?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
@@ -495,6 +497,16 @@ export function DroppablePuesto({
                   title="Registrar inasistencia del titular"
                 >
                   <AlertTriangle className="w-3 h-3" /><span>Registrar falta</span>
+                </button>
+              )}
+              {/* Anular falta — restaura el slot sin afectar nómina (requiere aprobación RRHH) */}
+              {onAnularFalta && puesto.titular_faltando && !puesto.es_custodia && (
+                <button
+                  onClick={e => { e.stopPropagation(); onAnularFalta(puesto, puesto.titular_nombre ?? "—"); }}
+                  className="flex items-center gap-1 text-[9px] font-semibold text-cyan-300/80 bg-cyan-500/10 border border-cyan-500/25 hover:bg-cyan-500/20 hover:text-cyan-300 rounded-md px-2 py-1 transition-colors"
+                  title="Anular esta falta (pendiente de aprobación RRHH)"
+                >
+                  <Undo2 className="w-3 h-3" /><span>Anular falta</span>
                 </button>
               )}
               {/* Quitar titularidad — solo rol Operaciones/Admin */}
