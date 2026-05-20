@@ -5337,6 +5337,22 @@ Por favor ingresa al sistema o responde para continuar.',
       )
     `);
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS custodia_titulares_slot_activo_uq ON custodia_titulares(cliente_id, slot_numero) WHERE activo = TRUE`);
+    // CUST-FASE1: excepciones puntuales a la demanda semanal (por fecha).
+    // La cantidad puede ser MENOR o MAYOR que la base semanal — ambas
+    // direcciones son válidas (feriado con menos agentes, evento con más).
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS custodia_excepciones (
+        id SERIAL PRIMARY KEY,
+        cliente_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+        fecha DATE NOT NULL,
+        cantidad INTEGER NOT NULL CHECK (cantidad >= 0),
+        motivo TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(cliente_id, fecha)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS custodia_excepciones_fecha_idx ON custodia_excepciones(fecha)`);
     await pool.query(`ALTER TABLE armas ADD COLUMN IF NOT EXISTS custodia_cliente_id INTEGER REFERENCES clients(id) ON DELETE SET NULL`);
     await pool.query(`ALTER TABLE armas ADD COLUMN IF NOT EXISTS custodia_slot_numero INTEGER`);
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS armas_custodia_slot_uq ON armas(custodia_cliente_id, custodia_slot_numero) WHERE custodia_cliente_id IS NOT NULL AND custodia_slot_numero IS NOT NULL`);

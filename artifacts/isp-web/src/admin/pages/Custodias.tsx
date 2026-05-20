@@ -6,9 +6,13 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Truck, AlertTriangle, Shield, Loader2, RefreshCw, User, Users,
   Calendar, Save, Printer, Plus, X, Search, ChevronDown, ChevronUp,
-  Check, Clock, UserPlus, UserMinus,
+  Check, Clock, UserPlus, UserMinus, FileBarChart2, ClipboardList,
 } from "lucide-react";
 import { getSessionToken } from "@/lib/httpClient";
+import PlanificacionPanel from "./custodias/PlanificacionPanel";
+import ReporteDemandaPanel from "./custodias/ReporteDemandaPanel";
+
+type CustodiasTab = "operativo" | "planificacion" | "reporte";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
 const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
@@ -65,6 +69,7 @@ function todayLocal() {
 
 export default function Custodias() {
   const qc = useQueryClient();
+  const [tab, setTab] = useState<CustodiasTab>("operativo");
   const [fecha, setFecha] = useState(todayLocal());
   const [expandedClient, setExpandedClient] = useState<number | null>(null);
   const [showFuerzaEditor, setShowFuerzaEditor] = useState<number | null>(null);
@@ -86,9 +91,37 @@ export default function Custodias() {
   const totalAsignados = dashboard.reduce((s, c) => s + c.totalAsignados, 0);
   const totalPendientes = dashboard.reduce((s, c) => s + c.pendientes, 0);
 
+  const tabs: { id: CustodiasTab; label: string; icon: any }[] = [
+    { id: "operativo",     label: "Operativo",     icon: Truck },
+    { id: "planificacion", label: "Planificación", icon: ClipboardList },
+    { id: "reporte",       label: "Reporte demanda", icon: FileBarChart2 },
+  ];
+
   return (
     <AdminLayout title="Control de Custodias">
       <div className="space-y-5 max-w-[1400px]">
+        <div className="flex flex-wrap items-center gap-2 border-b border-white/8 pb-1">
+          {tabs.map(t => {
+            const Icon = t.icon;
+            const active = tab === t.id;
+            return (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-t-lg border-b-2 transition-colors ${
+                  active
+                    ? "border-primary text-white"
+                    : "border-transparent text-white/40 hover:text-white/70"
+                }`}>
+                <Icon className="w-3.5 h-3.5" /> {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {tab === "planificacion" && <PlanificacionPanel />}
+        {tab === "reporte" && <ReporteDemandaPanel />}
+
+        {tab === "operativo" && (
+        <>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div>
@@ -162,6 +195,8 @@ export default function Custodias() {
             onRefresh={() => qc.invalidateQueries({ queryKey: ["custodias-dashboard"] })}
           />
         ))}
+        </>
+        )}
       </div>
     </AdminLayout>
   );
