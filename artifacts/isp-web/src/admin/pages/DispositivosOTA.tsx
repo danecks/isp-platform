@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { AdminLayout } from "@/admin/layout/AdminLayout";
-import { RefreshCw, Smartphone, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import { RefreshCw, Smartphone, AlertTriangle, CheckCircle2, Loader2, Trash2 } from "lucide-react";
 
 type DeviceRow = {
   id: number;
@@ -28,9 +28,17 @@ type DeviceRow = {
   createdAt: string;
 };
 
+type CleanupInfo = {
+  runAt: string;
+  purgedCount: number;
+  cutoffDays: number;
+};
+
 type ApiResponse = {
   rows: DeviceRow[];
   manifestVersion: string | null;
+  lastCleanup: CleanupInfo | null;
+  retentionDays: number;
 };
 
 function fmtFecha(iso: string | null): string {
@@ -59,9 +67,13 @@ function platformLabel(p: string): string {
 export default function DispositivosOTA() {
   const [rows, setRows] = useState<DeviceRow[]>([]);
   const [manifestVersion, setManifestVersion] = useState<string | null>(null);
+  const [lastCleanup, setLastCleanup] = useState<CleanupInfo | null>(null);
+  const [retentionDays, setRetentionDays] = useState<number>(90);
   const [soloDesactualizados, setSoloDesactualizados] = useState(false);
   const [busqueda, setBusqueda] = useState("");
   const [loading, setLoading] = useState(true);
+  const [purging, setPurging] = useState(false);
+  const [purgeMsg, setPurgeMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function cargar(): Promise<void> {
@@ -74,10 +86,28 @@ export default function DispositivosOTA() {
       const data = (await r.json()) as ApiResponse;
       setRows(data.rows ?? []);
       setManifestVersion(data.manifestVersion ?? null);
+      setLastCleanup(data.lastCleanup ?? null);
+      if (typeof data.retentionDays === "number") setRetentionDays(data.retentionDays);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function purgarAhora(): Promise<void> {
+    setPurging(true);
+    setPurgeMsg(null);
+    try {
+      const r = await fetch(`/api/device-reports/cleanup`, { method: "POST" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = (await r.json()) as { purgedCount: number; cutoffDays: number };
+      setPurgeMsg(`Se purgaron ${data.purgedCount} dispositivo(s) sin actividad en ${data.cutoffDays} días.`);
+      await cargar();
+    } catch (e) {
+      setPurgeMsg(`Error: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setPurging(false);
     }
   }
 
@@ -118,6 +148,17 @@ export default function DispositivosOTA() {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => void purgarAhora()}
+              disabled={purging || loading}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-sm disabled:opacity-50"
+              data-testid="button-purgar"
+              title={`Borra dispositivos con último ping mayor a ${retentionDays} días`}
+            >
+              {purging ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              Purgar inactivos
+            </button>
+            <button
+              type="button"
               onClick={() => void cargar()}
               disabled={loading}
               className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-sm disabled:opacity-50"
@@ -128,6 +169,28 @@ export default function DispositivosOTA() {
             </button>
           </div>
         </header>
+
+        <section className="rounded-xl border border-white/10 bg-white/5 p-4 flex flex-wrap items-center gap-6 text-sm" data-testid="section-cleanup">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-white/40">Retención configurada</p>
+            <p className="font-semibold text-white" data-testid="text-retention-days">{retentionDays} días sin actividad</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wider text-white/40">Último cleanup</p>
+            <p className="font-semibold text-white" data-testid="text-last-cleanup-at">
+              {lastCleanup ? fmtFecha(lastCleanup.runAt) : "— (sin corridas aún)"}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wider text-white/40">Dispositivos purgados</p>
+            <p className="font-semibold text-white" data-testid="text-last-cleanup-purged">
+              {lastCleanup ? lastCleanup.purgedCount : 0}
+            </p>
+          </div>
+          {purgeMsg && (
+            <p className="ml-auto text-xs text-white/70" data-testid="text-purge-msg">{purgeMsg}</p>
+          )}
+        </section>
 
         <section className="rounded-xl border border-white/10 bg-white/5 p-4 flex flex-wrap items-center gap-4">
           <div className="text-sm">

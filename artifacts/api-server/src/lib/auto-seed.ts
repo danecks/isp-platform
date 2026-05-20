@@ -346,6 +346,21 @@ export async function runAutoMigrations(): Promise<void> {
     );
     logger.info("Auto-migrate: tabla 'device_reports' verificada/creada");
 
+    // DEVICE_REPORTS_CLEANUP — bitácora del job que purga reportes viejos
+    // (TASK #101). Una fila por corrida; el panel admin muestra la última.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS device_reports_cleanup (
+        id            SERIAL PRIMARY KEY,
+        run_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        purged_count  INTEGER NOT NULL DEFAULT 0,
+        cutoff_days   INTEGER NOT NULL
+      )
+    `);
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS device_reports_cleanup_run_idx ON device_reports_cleanup(run_at DESC)`
+    );
+    logger.info("Auto-migrate: tabla 'device_reports_cleanup' verificada/creada");
+
     // BONIF-INCENTIVO-01: nivelar bonificación incentivo a Q250 mínimo
     // (Decreto 78-89). Idempotente: solo afecta a quienes están abajo.
     const bonifFix = await pool.query(`

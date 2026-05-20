@@ -5,6 +5,7 @@ import { limpiarFotosExpiradas } from "./routes/reclutamiento";
 import { cleanupExpiredAnticipoSessions } from "./services/whatsapp/anticipo-session";
 import { cleanupExpiredPhoneRegSessions } from "./services/whatsapp/phone-registration-session";
 import { startRecordatorioAbandonoJob } from "./services/recordatorio-abandono";
+import { startDeviceReportsCleanupJob } from "./services/device-reports-cleanup";
 
 const rawPort = process.env["PORT"];
 
@@ -54,5 +55,12 @@ runAutoMigrations().then(() => runAutoSeed()).then(() => {
     // notifica las novedades cuyo `generada_at` lleve más del umbral
     // configurable (default 30 min) sin que nadie las reconozca.
     startRecordatorioAbandonoJob();
+
+    // Cleanup periódico de reportes de dispositivos sin actividad (TASK #101).
+    // Borra filas de `device_reports` cuyo `last_seen_at` sea más viejo que
+    // DEVICE_REPORTS_RETENTION_DAYS (default 90) para que el filtro de
+    // "desactualizados" no se llene de celulares perdidos o de empleados que
+    // ya no están. Corre al arrancar y luego cada 24h.
+    startDeviceReportsCleanupJob();
   });
 });

@@ -18,6 +18,11 @@ import { db, deviceReportsTable, usersTable } from "@workspace/db";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { readManifest } from "./app-updates";
 import { logger } from "../lib/logger";
+import {
+  getLastCleanup,
+  getRetentionDays,
+  cleanupOldDeviceReports,
+} from "../services/device-reports-cleanup";
 
 const router: IRouter = Router();
 
@@ -166,10 +171,39 @@ router.get("/device-reports", async (req, res) => {
       .orderBy(desc(deviceReportsTable.lastSeenAt))
       .limit(500);
 
-    res.json({ rows, manifestVersion });
+    const lastCleanup = await getLastCleanup().catch(() => null);
+    const retentionDays = getRetentionDays();
+
+    res.json({ rows, manifestVersion, lastCleanup, retentionDays });
   } catch (err) {
     logger.error({ err }, "[device-reports] GET error");
     res.status(500).json({ error: "Error listando reportes de dispositivos" });
+  }
+});
+
+// POST /device-reports/cleanup — fuerza una corrida manual del job (admin).
+// Útil para que el admin pueda purgar al momento desde el panel sin esperar
+// al ciclo de 24h.
+router.post("/device-reports/cleanup", async (req, res) => {
+  try {
+    let sessionRol = "";
+    try {
+      const raw = req.headers["x-isp-session"] as string | undefined;
+      const session = raw ? JSON.parse(raw) : null;
+      sessionRol = String(session?.rol ?? "");
+    } catch {
+      /* sesión malformada */
+    }
+    if (sessionRol !== "admin") {
+      res.status(403).json({ error: "Sólo admin puede ejecutar el cleanup" });
+      return;
+    }
+
+    const { purgedCount, cutoffDays } = await cleanupOldDeviceReports();
+    res.json({ ok: true, purgedCount, cutoffDays });
+  } catch (err) {
+    logger.error({ err }, "[device-reports] cleanup manual error");
+    res.status(500).json({ error: "Error ejecutando cleanup" });
   }
 });
 

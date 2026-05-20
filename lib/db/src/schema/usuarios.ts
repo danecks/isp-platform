@@ -126,3 +126,20 @@ export const deviceReportsTable = pgTable("device_reports", {
 });
 
 export type DeviceReport = typeof deviceReportsTable.$inferSelect;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DEVICE_REPORTS_CLEANUP — registro de corridas del job de purga (TASK #101).
+//
+// El job periódico borra filas de `device_reports` cuyo `last_seen_at` sea más
+// viejo que N días. Persistimos cada corrida para que el panel admin pueda
+// mostrar cuántos dispositivos se purgaron y cuándo fue la última limpieza,
+// sin tener que mirar logs.
+// ─────────────────────────────────────────────────────────────────────────────
+export const deviceReportsCleanupTable = pgTable("device_reports_cleanup", {
+  id: serial("id").primaryKey(),
+  runAt: timestamp("run_at", { withTimezone: true }).notNull().defaultNow(),
+  purgedCount: integer("purged_count").notNull().default(0),
+  cutoffDays: integer("cutoff_days").notNull(),
+});
+
+export type DeviceReportsCleanup = typeof deviceReportsCleanupTable.$inferSelect;
