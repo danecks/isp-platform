@@ -41,8 +41,13 @@ export default function Empleados() {
 
   const { data: empleados = [], isLoading, isError, refetch } = useQuery<Empleado[]>({
     queryKey: ["empleados"],
-    queryFn: () => fetch(`${API_BASE}/employees`, { headers: sessionHeader() }).then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/employees`, { headers: sessionHeader() });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    },
     staleTime: 60_000,
+    retry: 1,
   });
 
   // Abre automáticamente la ficha si la URL tiene ?id=<employeeId>

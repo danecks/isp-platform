@@ -39,14 +39,19 @@ router.get("/employees", async (req, res) => {
 
     const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
 
+    // PERF: solo columnas que usa el listado (Empleados.tsx + EmpleadoCard/Row).
+    // El detalle completo se carga al abrir ficha vía GET /employees/:id.
     const { rows } = await pool.query(`
-      SELECT e.*,
+      SELECT e.id, e.nombre_completo, e.dpi, e.telefono, e.correo,
+             e.puesto, e.area, e.sede, e.estado_laboral,
+             e.cliente_id, e.supervisor_id, e.supervisor_nombre,
+             e.sync_status, e.source_system, e.foto_url,
+             e.sueldo_base, e.fecha_ingreso, e.fecha_baja,
              COALESCE(e.tipo_personal, 'guardia') AS tipo_personal,
              COALESCE(e.elegible_pool, TRUE) AS elegible_pool,
              COALESCE(e.aplica_igss_general, FALSE) AS aplica_igss_general,
              COALESCE(e.estado_igss, 'no_activo') AS estado_igss,
              e.fecha_inicio_igss,
-             e.observaciones_igss,
              COALESCE(e.frecuencia_pago, 'quincenal') AS frecuencia_pago,
              c.nombre AS cliente_nombre
       FROM employees e
@@ -57,6 +62,7 @@ router.get("/employees", async (req, res) => {
 
     res.json(rows.map(snakeToCamel));
   } catch (err) {
+    logger.error({ err }, "GET /employees error");
     res.status(500).json({ error: "Error al obtener empleados" });
   }
 });
