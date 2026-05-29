@@ -17,12 +17,6 @@ interface MiCliente {
   nombre: string;
 }
 
-const RESULTADO_LABEL: Record<string, string> = {
-  ok: "OK",
-  fuera_de_rango: "Fuera de rango",
-  sin_gps: "Sin GPS",
-};
-
 export default function PortalRondas() {
   const [periodo, setPeriodo] = useState<Periodo>("7d");
   const [generando, setGenerando] = useState(false);
@@ -71,22 +65,6 @@ export default function PortalRondas() {
             p.punto_nombre,
             p.escaneos,
             p.ultimo ? fmtFechaHora(p.ultimo) : "Sin escaneos",
-          ]),
-        );
-      }
-
-      pdf.addSeccionTitulo("Detalle de escaneos");
-      if (eventos.length === 0) {
-        pdf.addTextoResumen("No se registraron escaneos en el período seleccionado.");
-      } else {
-        pdf.addTabla(
-          ["Fecha y hora", "Punto", "Ronda", "Agente", "Resultado"],
-          eventos.map((ev) => [
-            fmtFechaHora(ev.escaneado_en),
-            ev.punto_nombre,
-            ev.ronda_nombre,
-            ev.user_nombre ?? "—",
-            RESULTADO_LABEL[ev.resultado] ?? ev.resultado,
           ]),
         );
       }
