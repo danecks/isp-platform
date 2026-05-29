@@ -1,18 +1,31 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PortalLayout } from "@/portal/layout/PortalLayout";
-import { portalGet } from "@/lib/portalApi";
-import { QrCode, Info } from "lucide-react";
+import { portalGet, getActivePortalClienteId } from "@/lib/portalApi";
+import { IspPdf } from "@/lib/pdfExport";
+import { QrCode, Info, Download } from "lucide-react";
 import {
   PeriodoToggle, CumplimientoCard, QrEventListItem,
-  PERIODO_LABEL,
+  PERIODO_LABEL, fmtFechaHora,
   type Periodo, type RondaEventoCore, type CumplimientoRondas,
 } from "@/shared/operaciones";
 
 interface CumplimientoResp { rondas: CumplimientoRondas | null }
 
+interface MiCliente {
+  portal_cliente_id: string;
+  nombre: string;
+}
+
+const RESULTADO_LABEL: Record<string, string> = {
+  ok: "OK",
+  fuera_de_rango: "Fuera de rango",
+  sin_gps: "Sin GPS",
+};
+
 export default function PortalRondas() {
   const [periodo, setPeriodo] = useState<Periodo>("7d");
+  const [generando, setGenerando] = useState(false);
 
   const { data: eventos = [], isLoading } = useQuery<RondaEventoCore[]>({
     queryKey: ["portal-qr-rondas", periodo],
@@ -24,6 +37,67 @@ export default function PortalRondas() {
     queryFn: () => portalGet<CumplimientoResp>(`/portal/qr/cumplimiento?periodo=${periodo}`),
   });
 
+  const { data: clientes = [] } = useQuery<MiCliente[]>({
+    queryKey: ["portal-mis-clientes"],
+    queryFn: () => portalGet<MiCliente[]>("/portal/mis-clientes"),
+  });
+
+  const clienteNombre =
+    clientes.find((c) => c.portal_cliente_id === getActivePortalClienteId())?.nombre;
+
+  const sinDatos = eventos.length === 0 && !(cumpl?.rondas && cumpl.rondas.total_puntos > 0);
+
+  async function descargarReporte() {
+    setGenerando(true);
+    try {
+      const pdf = await new IspPdf({
+        titulo: "Reporte de Rondas QR",
+        subtitulo: PERIODO_LABEL[periodo],
+        cliente: clienteNombre,
+      }).build();
+
+      const r = cumpl?.rondas;
+      pdf.addResumenCards([
+        { label: "Cumplimiento", valor: r?.pct_cumplimiento != null ? `${r.pct_cumplimiento}%` : "—", color: "green" },
+        { label: "Puntos cubiertos", valor: r ? `${r.puntos_con_escaneo}/${r.total_puntos}` : "—", color: "blue" },
+        { label: "Escaneos totales", valor: eventos.length, color: "yellow" },
+      ]);
+
+      if (r && r.detalle.length > 0) {
+        pdf.addSeccionTitulo("Cumplimiento por punto");
+        pdf.addTabla(
+          ["Punto de control", "Escaneos", "Último escaneo"],
+          r.detalle.map((p) => [
+            p.punto_nombre,
+            p.escaneos,
+            p.ultimo ? fmtFechaHora(p.ultimo) : "Sin escaneos",
+          ]),
+        );
+      }
+
+      pdf.addSeccionTitulo("Detalle de escaneos");
+      if (eventos.length === 0) {
+        pdf.addTextoResumen("No se registraron escaneos en el período seleccionado.");
+      } else {
+        pdf.addTabla(
+          ["Fecha y hora", "Punto", "Ronda", "Agente", "Resultado"],
+          eventos.map((ev) => [
+            fmtFechaHora(ev.escaneado_en),
+            ev.punto_nombre,
+            ev.ronda_nombre,
+            ev.user_nombre ?? "—",
+            RESULTADO_LABEL[ev.resultado] ?? ev.resultado,
+          ]),
+        );
+      }
+
+      const fecha = new Date().toISOString().slice(0, 10);
+      pdf.save(`reporte-rondas-${fecha}.pdf`);
+    } finally {
+      setGenerando(false);
+    }
+  }
+
   return (
     <PortalLayout title="Rondas QR">
       <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
@@ -33,7 +107,17 @@ export default function PortalRondas() {
             Recorridos QR escaneados por los agentes en sus puestos
           </p>
         </div>
-        <PeriodoToggle value={periodo} onChange={setPeriodo} />
+        <div className="flex items-center gap-2">
+          <PeriodoToggle value={periodo} onChange={setPeriodo} />
+          <button
+            onClick={descargarReporte}
+            disabled={generando || sinDatos}
+            className="flex items-center gap-2 px-3 py-2 bg-primary/15 hover:bg-primary/25 disabled:opacity-40 disabled:cursor-not-allowed border border-primary/20 text-primary rounded-lg text-sm font-medium transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            {generando ? "Generando..." : "Descargar reporte"}
+          </button>
+        </div>
       </div>
 
       {cumpl?.rondas && cumpl.rondas.total_puntos > 0 && (
