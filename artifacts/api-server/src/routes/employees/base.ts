@@ -391,6 +391,8 @@ router.patch("/employees/:id", async (req, res) => {
     frecuenciaPago, tipoPersonal,
     bonificacionIncentivo, bonificacion1, bonificacion2, bonificacion3,
     banco, cuentaBancaria, tipoCuenta, formaPago,
+    // Datos personales (para contratos) — fuera del schema Drizzle
+    estadoCivil, direccion, sexo, nit, lugarNacimiento, municipio, departamento,
     // IGSS — elegibilidad por colaborador
     aplicaIgssGeneral, estadoIgss, fechaInicioIgss, observacionesIgss,
   } = req.body ?? {};
@@ -528,6 +530,27 @@ router.patch("/employees/:id", async (req, res) => {
       await pool.query(
         `UPDATE employees SET ${bancoUpdates.join(", ")} WHERE id = $1`,
         bancoParams
+      );
+    }
+
+    // Datos personales (fuera del schema Drizzle) — requeridos para contratos
+    const persoUpdates: string[] = [];
+    const persoParams: unknown[] = [id];
+    const pushPerso = (col: string, val: unknown) => {
+      persoParams.push(val === "" || val === undefined ? null : val);
+      persoUpdates.push(`${col} = $${persoParams.length}`);
+    };
+    if (estadoCivil !== undefined)     pushPerso("estado_civil", estadoCivil);
+    if (direccion !== undefined)       pushPerso("direccion", direccion);
+    if (sexo !== undefined)            pushPerso("sexo", sexo);
+    if (nit !== undefined)             pushPerso("nit", nit);
+    if (lugarNacimiento !== undefined) pushPerso("lugar_nacimiento", lugarNacimiento);
+    if (municipio !== undefined)       pushPerso("municipio", municipio);
+    if (departamento !== undefined)    pushPerso("departamento", departamento);
+    if (persoUpdates.length > 0) {
+      await pool.query(
+        `UPDATE employees SET ${persoUpdates.join(", ")} WHERE id = $1`,
+        persoParams
       );
     }
 

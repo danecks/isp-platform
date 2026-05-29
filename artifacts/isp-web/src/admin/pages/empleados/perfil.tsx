@@ -31,6 +31,7 @@ import { useState, useEffect, useRef, type ElementType } from "react";
     KpiCard, ProgressBar,
   } from "./shared";
 import { FotoEmpleadoEditor, IgssSection, ContratosSection } from "./contratos";
+import { DatosPersonalesSection } from "./datos-personales";
   
 export function TabPerfil({ emp }: { emp: Empleado }) {
   const qc = useQueryClient();
@@ -87,6 +88,7 @@ export function TabPerfil({ emp }: { emp: Empleado }) {
           <Row icon={Building2} label="Área / Depto."      value={emp.area} />
           <Row icon={Calendar}  label="Fecha de ingreso"   value={fmtFecha(emp.fechaIngreso)} />
         </div>
+        <DatosPersonalesSection emp={emp} />
       </div>
 
       {/* B — Datos laborales */}

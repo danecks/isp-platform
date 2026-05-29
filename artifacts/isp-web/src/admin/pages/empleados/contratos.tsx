@@ -460,6 +460,7 @@ export function TabContratos({ emp }: { emp: Empleado }) {
         empleado_dpi: emp.dpi ?? det.dpi ?? "",
         empleado_estado_civil: det.estado_civil ?? undefined,
         empleado_direccion: det.direccion ?? undefined,
+        empleado_nit: det.nit ?? undefined,
         empleado_telefono: emp.telefono ?? det.telefono ?? null,
         fecha_inicio: fechaInicio,
         puesto: emp.puesto ?? det.puesto ?? "Guardia de Seguridad",
