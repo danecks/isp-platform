@@ -316,10 +316,12 @@ function PrintView({ punto, rondaNombre, onClose }: { punto: Punto; rondaNombre:
 // ── Componente: detalle de ronda con mapa ─────────────────────────────────
 function RondaDetalle({
   ronda,
+  clients,
   onBack,
   onUpdate,
 }: {
   ronda: Ronda;
+  clients: { id: number; nombre: string }[];
   onBack: () => void;
   onUpdate: () => void;
 }) {
@@ -334,6 +336,39 @@ function RondaDetalle({
   const [tab, setTab] = useState<"mapa" | "lista" | "reporte">("mapa");
   const [eventos, setEventos] = useState<any[]>([]);
   const [seleccionados, setSeleccionados] = useState<Set<number>>(new Set());
+  const [showEditRonda, setShowEditRonda] = useState(false);
+  const [rondaForm, setRondaForm] = useState<RondaForm>(DEFAULT_RONDA);
+  const [savingRonda, setSavingRonda] = useState(false);
+  const [errorRonda, setErrorRonda] = useState("");
+
+  const abrirEditarRonda = () => {
+    setRondaForm({
+      nombre: ronda.nombre,
+      descripcion: ronda.descripcion || "",
+      cliente_id: ronda.cliente_id ? String(ronda.cliente_id) : "",
+    });
+    setErrorRonda("");
+    setShowEditRonda(true);
+  };
+
+  const handleSaveRonda = async () => {
+    if (!rondaForm.nombre.trim()) return setErrorRonda("Nombre requerido");
+    setSavingRonda(true); setErrorRonda("");
+    try {
+      const r = await f(`/qr-rondas/${ronda.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          nombre: rondaForm.nombre,
+          descripcion: rondaForm.descripcion,
+          cliente_id: rondaForm.cliente_id ? parseInt(rondaForm.cliente_id) : null,
+          activo: ronda.activo,
+        }),
+      });
+      if (r.ok) { setShowEditRonda(false); onUpdate(); onBack(); }
+      else { const e = await r.json().catch(() => ({})); setErrorRonda(e.error || "No se pudo guardar"); }
+    } catch { setErrorRonda("Error de conexión"); }
+    finally { setSavingRonda(false); }
+  };
 
   const toggleSel = (id: number) => {
     setSeleccionados(prev => {
@@ -533,6 +568,47 @@ function RondaDetalle({
     <div className="h-full flex flex-col">
       {printPunto && <PrintView punto={printPunto} rondaNombre={ronda.nombre} onClose={() => setPrintPunto(null)} />}
 
+      {/* Modal editar ronda / reasignar cliente */}
+      {showEditRonda && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-[#1a1f2e] border border-white/10 rounded-2xl p-6 w-full max-w-md">
+            <h2 className="text-lg font-semibold text-white mb-4">Editar ronda</h2>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-white/50 mb-1 block">Nombre *</label>
+                <input value={rondaForm.nombre} onChange={e => setRondaForm(f => ({ ...f, nombre: e.target.value }))}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-blue-500/50" />
+              </div>
+              <div>
+                <label className="text-xs text-white/50 mb-1 block">Descripción</label>
+                <textarea value={rondaForm.descripcion} onChange={e => setRondaForm(f => ({ ...f, descripcion: e.target.value }))}
+                  rows={2} className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-blue-500/50 resize-none" />
+              </div>
+              <div>
+                <label className="text-xs text-white/50 mb-1 block">Cliente</label>
+                <select value={rondaForm.cliente_id} onChange={e => setRondaForm(f => ({ ...f, cliente_id: e.target.value }))}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50">
+                  <option value="">— Sin asignar —</option>
+                  {clients.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </select>
+                <p className="text-[11px] text-white/30 mt-1">Al cambiar el cliente, los puntos y escaneos de esta ronda se mueven con ella.</p>
+              </div>
+              {errorRonda && <p className="text-xs text-red-400">{errorRonda}</p>}
+              <div className="flex gap-3 pt-2">
+                <button onClick={handleSaveRonda} disabled={savingRonda || !rondaForm.nombre.trim()}
+                  className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors">
+                  {savingRonda ? "Guardando..." : "Guardar"}
+                </button>
+                <button onClick={() => setShowEditRonda(false)}
+                  className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white/60 rounded-lg text-sm transition-colors">
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <button onClick={onBack} className="p-2 rounded-lg hover:bg-white/5">
@@ -543,6 +619,10 @@ function RondaDetalle({
           {ronda.cliente_nombre && <p className="text-sm text-white/40">{ronda.cliente_nombre}</p>}
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <button onClick={abrirEditarRonda} title="Editar ronda / reasignar cliente"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/8 rounded-lg text-xs text-white/70 hover:text-white transition-colors">
+            <Edit2 className="w-3.5 h-3.5" /> Editar / Reasignar
+          </button>
           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ronda.activo ? "bg-green-500/10 text-green-400 border border-green-500/20" : "bg-red-500/10 text-red-400 border border-red-500/20"}`}>
             {ronda.activo ? "Activa" : "Inactiva"}
           </span>
@@ -935,7 +1015,7 @@ export default function RondasQR() {
   if (selected) {
     return (
       <div className="h-full flex flex-col p-6">
-        <RondaDetalle ronda={selected} onBack={() => setSelected(null)} onUpdate={loadRondas} />
+        <RondaDetalle ronda={selected} clients={clients} onBack={() => setSelected(null)} onUpdate={loadRondas} />
       </div>
     );
   }
