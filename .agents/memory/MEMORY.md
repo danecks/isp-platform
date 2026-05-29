@@ -1,0 +1,2 @@
+- [Operativo en vivo y slots](operativo-slots.md) — el operativo del portal debe leer puesto_slots (modelo de turnos), no solo agente_id legacy; fórmula de ciclo con módulo positivo.
+- [Typecheck baseline api-server](typecheck-baseline.md) — el typecheck del api-server está rojo de base (no es regresión tuya); cómo distinguir errores propios.

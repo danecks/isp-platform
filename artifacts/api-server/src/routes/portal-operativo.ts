@@ -21,6 +21,107 @@ function normFecha(f: unknown): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
 }
 
+interface PuestoBase {
+  puesto_id: number;
+  puesto_nombre: string;
+  turno: string | null;
+  sede_nombre: string | null;
+  legacy_agente: string | null;
+}
+interface SlotRow {
+  puesto_id: number;
+  horas_turno: number | null;
+  empleado_id: number;
+  agente_nombre: string;
+  programado_hoy: boolean;
+}
+interface EnVivoRow {
+  puesto_id: number;
+  employee_id: number;
+  nombre: string;
+}
+interface AgenteLive {
+  nombre: string;
+  horas_turno: number | null;
+  programado_hoy: boolean;
+  en_servicio: boolean;
+}
+interface PuestoLive {
+  puesto_id: number;
+  nombre: string;
+  turno: string | null;
+  sede: string | null;
+  agentes: AgenteLive[];
+  estado: "cubierto" | "descubierto";
+}
+
+function agruparPor<T>(rows: T[], key: (r: T) => number): Map<number, T[]> {
+  const map = new Map<number, T[]>();
+  for (const r of rows) {
+    const k = key(r);
+    const arr = map.get(k) ?? [];
+    arr.push(r);
+    map.set(k, arr);
+  }
+  return map;
+}
+
+/**
+ * Combina puestos, slots y fichajes en vivo en la vista de operativo del portal.
+ * Cada puesto lista todos sus agentes asignados (modelo de slots) con su jornada,
+ * marcando quién está programado hoy y quién tiene turno abierto en vivo.
+ */
+function construirPuestosLive(
+  puestos: PuestoBase[],
+  slots: SlotRow[],
+  enVivo: EnVivoRow[],
+): PuestoLive[] {
+  const enVivoEmp = new Set(enVivo.map(v => `${v.puesto_id}:${v.employee_id}`));
+  const enVivoPorPuesto = agruparPor(enVivo, v => v.puesto_id);
+  const slotsPorPuesto = agruparPor(slots, s => s.puesto_id);
+
+  return puestos.map(p => {
+    const empleadosSlot = new Set<number>();
+    const agentes: AgenteLive[] = (slotsPorPuesto.get(p.puesto_id) ?? []).map(s => {
+      empleadosSlot.add(s.empleado_id);
+      return {
+        nombre: s.agente_nombre,
+        horas_turno: s.horas_turno != null ? Number(s.horas_turno) : null,
+        programado_hoy: !!s.programado_hoy,
+        en_servicio: enVivoEmp.has(`${p.puesto_id}:${s.empleado_id}`),
+      };
+    });
+
+    // Agentes con turno en vivo que no están en los slots (relevo/cobertura puntual)
+    for (const v of enVivoPorPuesto.get(p.puesto_id) ?? []) {
+      if (!empleadosSlot.has(v.employee_id)) {
+        agentes.push({ nombre: v.nombre, horas_turno: null, programado_hoy: false, en_servicio: true });
+      }
+    }
+
+    // Fallback legacy: puesto sin slots pero con agente fijo del modelo viejo
+    if (agentes.length === 0 && p.legacy_agente) {
+      agentes.push({ nombre: p.legacy_agente, horas_turno: null, programado_hoy: true, en_servicio: false });
+    }
+
+    agentes.sort((a, b) =>
+      Number(b.en_servicio) - Number(a.en_servicio) ||
+      Number(b.programado_hoy) - Number(a.programado_hoy) ||
+      (b.horas_turno ?? 0) - (a.horas_turno ?? 0)
+    );
+
+    const cubierto = agentes.some(a => a.en_servicio || a.programado_hoy);
+    return {
+      puesto_id: p.puesto_id,
+      nombre: p.puesto_nombre,
+      turno: p.turno,
+      sede: p.sede_nombre,
+      agentes,
+      estado: cubierto ? "cubierto" : "descubierto",
+    };
+  });
+}
+
 // ─── GET /portal/operativo/custodias ────────────────────────────────────────
 portalOperativoRouter.get("/portal/operativo/custodias", requirePortalAuth, async (req, res) => {
   const clienteIntId: number | null = (req as any).portalClienteIntId;
@@ -150,62 +251,87 @@ portalOperativoRouter.get("/portal/operativo/puestos", requirePortalAuth, async 
   }
 
   try {
+    // 1) Puestos fijos del cliente (modelo base + agente legacy de un solo titular)
     const { rows: puestos } = await pool.query<{
       puesto_id: number;
       puesto_nombre: string;
       turno: string | null;
       sede_nombre: string | null;
-      titular_nombre: string | null;
-      agente_nombre: string | null;
-      en_servicio_nombre: string | null;
-      estado: string | null;
+      legacy_agente: string | null;
     }>(`
-      WITH turnos_activos AS (
-        SELECT DISTINCT ON (af.puesto_id)
-               af.puesto_id,
-               COALESCE(e.nombre_completo, u.nombre, u.username) AS agente_nombre
-          FROM agente_fichajes af
-          LEFT JOIN employees e ON e.id = af.employee_id
-          LEFT JOIN users     u ON u.employee_id = af.employee_id
-         WHERE af.tipo = 'inicio_turno'
-           AND af.turno_cerrado_en IS NULL
-           AND af.registrado_en >= NOW() - INTERVAL '36 hours'
-         ORDER BY af.puesto_id, af.registrado_en DESC
-      )
       SELECT
-        po.id                                                    AS puesto_id,
-        po.nombre                                                AS puesto_nombre,
-        COALESCE(po.turno, po.jornada)                           AS turno,
-        cs.nombre                                                AS sede_nombre,
-        COALESCE(et.nombre_completo, po.titular_nombre)          AS titular_nombre,
-        COALESCE(ea.nombre_completo, po.agente_nombre)           AS agente_nombre,
-        ta.agente_nombre                                         AS en_servicio_nombre,
-        po.estado
+        po.id                                          AS puesto_id,
+        po.nombre                                      AS puesto_nombre,
+        COALESCE(po.turno, po.jornada)                 AS turno,
+        cs.nombre                                      AS sede_nombre,
+        COALESCE(ea.nombre_completo, po.agente_nombre) AS legacy_agente
       FROM puestos_operativos po
       LEFT JOIN client_sedes cs ON cs.id = po.sede_id
-      LEFT JOIN employees    et ON et.id = po.titular_employee_id
       LEFT JOIN employees    ea ON ea.id = po.agente_id
-      LEFT JOIN turnos_activos ta ON ta.puesto_id = po.id
       WHERE po.cliente_id = $1
         AND po.activo = TRUE
         AND COALESCE(po.tipo_puesto, 'fijo') <> 'custodia'
       ORDER BY cs.nombre NULLS LAST, po.nombre
     `, [clienteIntId]);
 
-    const result = puestos.map(p => {
-      const cubierto = !!p.en_servicio_nombre || !!p.agente_nombre;
-      return {
-        puesto_id: p.puesto_id,
-        nombre: p.puesto_nombre,
-        turno: p.turno,
-        sede: p.sede_nombre,
-        titular_nombre: p.titular_nombre,
-        agente_actual: p.en_servicio_nombre ?? p.agente_nombre,
-        en_servicio: !!p.en_servicio_nombre,
-        estado: cubierto ? "cubierto" : "descubierto",
-      };
-    });
+    // 2) Agentes asignados vía puesto_slots (modelo de turnos por slot).
+    //    programado_hoy: el día del ciclo cae dentro de los dias_trabajo del slot.
+    //    Misma fórmula canónica que usa el tablero de operaciones.
+    const { rows: slots } = await pool.query<{
+      puesto_id: number;
+      slot_numero: number;
+      horas_turno: number | null;
+      empleado_id: number;
+      agente_nombre: string;
+      programado_hoy: boolean;
+    }>(`
+      SELECT
+        ps.puesto_id,
+        ps.slot_numero,
+        ps.horas_turno,
+        ps.empleado_id,
+        e.nombre_completo AS agente_nombre,
+        (CASE
+           WHEN ps.fecha_inicio_ciclo IS NULL THEN
+             EXTRACT(ISODOW FROM $2::date)::int = ANY(ps.dias_trabajo)
+           ELSE
+             -- Día del ciclo con módulo normalizado a positivo (robusto si la
+             -- fecha es anterior a fecha_inicio_ciclo). Igual que el tablero admin.
+             (((((($2::date - ps.fecha_inicio_ciclo) % ps.longitud_ciclo) + ps.longitud_ciclo) % ps.longitud_ciclo)) + 1) = ANY(ps.dias_trabajo)
+         END) AS programado_hoy
+      FROM puesto_slots ps
+      JOIN puestos_operativos po ON po.id = ps.puesto_id
+      JOIN employees e ON e.id = ps.empleado_id
+      WHERE po.cliente_id = $1
+        AND po.activo = TRUE
+        AND ps.activo = TRUE
+        AND ps.empleado_id IS NOT NULL
+        AND COALESCE(po.tipo_puesto, 'fijo') <> 'custodia'
+        AND e.estado_laboral NOT IN ('baja', 'suspendido')
+      ORDER BY ps.puesto_id, ps.slot_numero
+    `, [clienteIntId, fecha]);
 
+    // 3) Agentes con turno abierto en vivo (fichaje sin cierre).
+    const { rows: enVivo } = await pool.query<{
+      puesto_id: number;
+      employee_id: number;
+      nombre: string;
+    }>(`
+      SELECT DISTINCT ON (af.puesto_id, af.employee_id)
+             af.puesto_id,
+             af.employee_id,
+             COALESCE(e.nombre_completo, u.nombre, u.username) AS nombre
+        FROM agente_fichajes af
+        LEFT JOIN employees e ON e.id = af.employee_id
+        LEFT JOIN users     u ON u.employee_id = af.employee_id
+       WHERE af.tipo = 'inicio_turno'
+         AND af.turno_cerrado_en IS NULL
+         AND af.registrado_en >= NOW() - INTERVAL '36 hours'
+         AND af.puesto_id IN (SELECT id FROM puestos_operativos WHERE cliente_id = $1)
+       ORDER BY af.puesto_id, af.employee_id, af.registrado_en DESC
+    `, [clienteIntId]);
+
+    const result = construirPuestosLive(puestos, slots, enVivo);
     const cubiertos = result.filter(p => p.estado === "cubierto").length;
     res.json({
       fecha,
