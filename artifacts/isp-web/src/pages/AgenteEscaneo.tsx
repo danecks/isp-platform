@@ -5,6 +5,7 @@ import {
   Footprints, ChevronRight, RotateCcw, Clock, Bell, Users, Package,
   Calendar, Phone, BadgeCheck, MessageCircle, Send, FileText,
 } from "lucide-react";
+import { EscanearCarnetPublico } from "@/components/EscanearCarnetPublico";
 
 const API = "/api";
 const DEVICE_KEY = "isp_device";
@@ -333,9 +334,12 @@ function CarnetPublico({
             ? "No se pudo conectar con el servidor."
             : "Este código QR no es válido o fue desactivado."}
         </p>
+        <div className="mt-5">
+          <EscanearCarnetPublico />
+        </div>
         <a
           href="/agente/inicio"
-          className="mt-5 inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-3 rounded-lg w-full"
+          className="mt-3 inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-3 rounded-lg w-full"
           data-testid="link-abrir-escaner"
         >
           <Smartphone className="w-5 h-5" /> Abrir escáner (uso interno)
@@ -1765,6 +1769,10 @@ export default function AgenteEscaneo() {
                 <p className="text-white/50 text-sm mt-2">
                   {mensajeError || (estado === "token_invalido" ? "Este QR no es reconocido o fue desactivado." : "No se pudo conectar.")}
                 </p>
+                <div className="mt-5">
+                  <p className="text-white/40 text-xs text-center mb-2">o escaneá el carnet con la cámara</p>
+                  <EscanearCarnetPublico />
+                </div>
                 {estado === "error" && (
                   <button onClick={() => window.location.reload()} className="mt-4 w-full py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm text-white/70 transition-colors">Reintentar</button>
                 )}
