@@ -838,11 +838,12 @@ portalRouter.get("/portal/qr/rondas", requirePortalAuth, async (req, res) => {
       `SELECT ev.id, ev.escaneado_en, ev.resultado, ev.distancia_metros,
               p.id AS punto_id, p.nombre AS punto_nombre,
               r.id AS ronda_id, r.nombre AS ronda_nombre,
-              u.id AS user_id, u.nombre AS user_nombre, u.username
+              u.id AS user_id, COALESCE(u.nombre, emp.nombre_completo) AS user_nombre, u.username
          FROM qr_ronda_eventos ev
          JOIN qr_ronda_puntos p ON p.id = ev.punto_id
          JOIN qr_rondas r ON r.id = p.ronda_id
          LEFT JOIN users u ON u.id = ev.user_id
+         LEFT JOIN employees emp ON emp.id = ev.employee_id
         WHERE r.cliente_id = $1
           AND ev.escaneado_en >= $2
         ORDER BY ev.escaneado_en DESC

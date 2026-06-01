@@ -1916,14 +1916,19 @@ agenteFichajeRouter.post("/agente/cerrar-turno-verificado", async (req, res) => 
 // Body: {
 //   fichaje_id_sesion: number,        // fichaje del que tiene la sesión kiosco
 //   tracking_token_sesion: string,    // tracking_token vigente del kiosco
-//   agente_user_id: number,           // user_id del agente que registra (debe estar activo en el mismo puesto)
+//   agente_employee_id: number,       // employee_id del agente que registra (debe estar activo en el mismo puesto)
+//   agente_user_id?: number,          // (legacy) si no se manda employee_id, se resuelve desde aquí
 //   qr_token: string,                 // token del punto de ronda escaneado
 //   latitud?, longitud?, precision_metros?: number
 // }
+//
+// La ronda se atribuye por agente (employee_id). El user_id web es opcional:
+// se guarda si el agente tiene cuenta, pero NO es requisito para marcar.
 agenteFichajeRouter.post("/agente/marcar-ronda-puesto", async (req, res) => {
   const {
     fichaje_id_sesion,
     tracking_token_sesion,
+    agente_employee_id,
     agente_user_id,
     qr_token,
     latitud,
@@ -1934,19 +1939,18 @@ agenteFichajeRouter.post("/agente/marcar-ronda-puesto", async (req, res) => {
   if (
     !Number.isFinite(Number(fichaje_id_sesion)) ||
     typeof tracking_token_sesion !== "string" || !tracking_token_sesion ||
-    !Number.isFinite(Number(agente_user_id)) ||
+    (!Number.isFinite(Number(agente_employee_id)) && !Number.isFinite(Number(agente_user_id))) ||
     typeof qr_token !== "string" || !qr_token
   ) {
     return res.status(400).json({ error: "parametros_invalidos" });
   }
 
   const fichajeIdSesion = Number(fichaje_id_sesion);
-  const agenteUserId = Number(agente_user_id);
 
   try {
     // 1) Validar la sesión del kiosco
     const { rows: sesionRows } = await pool.query(
-      `SELECT id, employee_id, puesto_id, tracking_token_hash, turno_cerrado_en
+      `SELECT id, employee_id, puesto_id, cliente_id, tracking_token_hash, turno_cerrado_en
          FROM agente_fichajes
         WHERE id = $1 AND tipo = 'inicio_turno'`,
       [fichajeIdSesion]
@@ -1960,25 +1964,32 @@ agenteFichajeRouter.post("/agente/marcar-ronda-puesto", async (req, res) => {
     if (!sesion.puesto_id) return res.status(409).json({ error: "sesion_sin_puesto" });
 
     // 2) Validar que el agente seleccionado esté entre los activos del mismo
-    //    puesto. Resolvemos su employee_id desde users.
+    //    puesto. Se valida por employee_id (todos los agentes pueden marcar,
+    //    tengan o no cuenta web). Por compatibilidad, si solo llega user_id se
+    //    resuelve el employee_id desde users.
+    const empParam = Number.isFinite(Number(agente_employee_id)) ? Number(agente_employee_id) : null;
+    const userParam = Number.isFinite(Number(agente_user_id)) ? Number(agente_user_id) : null;
     const { rows: activosRows } = await pool.query(
       `SELECT af.employee_id, u.id AS user_id
          FROM agente_fichajes af
-         JOIN users u ON u.employee_id = af.employee_id
+         LEFT JOIN users u ON u.employee_id = af.employee_id
         WHERE af.tipo = 'inicio_turno'
           AND af.puesto_id = $1
           AND af.turno_cerrado_en IS NULL
-          AND u.id = $2
+          AND ($2::int IS NOT NULL AND af.employee_id = $2
+               OR $2::int IS NULL AND u.id = $3)
         LIMIT 1`,
-      [sesion.puesto_id, agenteUserId]
+      [sesion.puesto_id, empParam, userParam]
     );
     if (!activosRows[0]) {
       return res.status(403).json({ error: "agente_no_activo_en_puesto" });
     }
+    const agenteEmployeeId: number = activosRows[0].employee_id;
+    const agenteUserId: number | null = activosRows[0].user_id ?? null;
 
     // 3) Resolver el punto de ronda por token
     const { rows: puntoRows } = await pool.query(
-      `SELECT p.*, r.activo AS ronda_activa
+      `SELECT p.*, r.activo AS ronda_activa, r.cliente_id AS ronda_cliente_id
          FROM qr_ronda_puntos p
          JOIN qr_rondas r ON r.id = p.ronda_id
         WHERE p.qr_token = $1`,
@@ -1988,6 +1999,12 @@ agenteFichajeRouter.post("/agente/marcar-ronda-puesto", async (req, res) => {
     if (!punto) return res.status(404).json({ error: "qr_no_valido" });
     if (!punto.activo || !punto.ronda_activa) {
       return res.status(403).json({ error: "punto_inactivo" });
+    }
+    // El punto debe pertenecer al mismo cliente de la sesión del kiosco; evita
+    // que se registren rondas de otro cliente con un QR ajeno.
+    if (sesion.cliente_id != null && punto.ronda_cliente_id != null &&
+        Number(punto.ronda_cliente_id) !== Number(sesion.cliente_id)) {
+      return res.status(403).json({ error: "punto_fuera_de_puesto" });
     }
 
     // 4) Calcular distancia / resultado (mismo criterio que /qr-rondas/scan)
@@ -2003,14 +2020,16 @@ agenteFichajeRouter.post("/agente/marcar-ronda-puesto", async (req, res) => {
       resultado = distancia_metros <= punto.radio_metros ? "ok" : "fuera_de_rango";
     }
 
-    // 5) Insertar el evento atribuido al agente seleccionado
+    // 5) Insertar el evento atribuido al agente seleccionado (por employee_id;
+    //    user_id se guarda solo si el agente tiene cuenta web).
     const { rows: eventoRows } = await pool.query(
       `INSERT INTO qr_ronda_eventos
-         (punto_id, user_id, latitud, longitud, precision_metros, distancia_metros, resultado)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, escaneado_en`,
+         (punto_id, user_id, employee_id, latitud, longitud, precision_metros, distancia_metros, resultado)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, escaneado_en`,
       [
         punto.id,
         agenteUserId,
+        agenteEmployeeId,
         latitud ?? null,
         longitud ?? null,
         precision_metros ?? null,

@@ -192,14 +192,15 @@ qrRondasRouter.get("/qr-rondas/estadisticas", async (req, res) => {
 
         // 4. Ranking de agentes
         pool.query(`
-          SELECT COALESCE(u.nombre, 'Sin identificar') AS guardia_nombre,
+          SELECT COALESCE(u.nombre, emp.nombre_completo, 'Sin identificar') AS guardia_nombre,
                  COUNT(*)::int AS total
           FROM qr_ronda_eventos e
           LEFT JOIN users u ON u.id = e.user_id
+          LEFT JOIN employees emp ON emp.id = e.employee_id
           JOIN qr_ronda_puntos p ON p.id = e.punto_id
           WHERE e.escaneado_en >= NOW() - INTERVAL '${dias} days'
             ${filtroEvento}
-          GROUP BY u.nombre ORDER BY total DESC LIMIT 15
+          GROUP BY COALESCE(u.nombre, emp.nombre_completo, 'Sin identificar') ORDER BY total DESC LIMIT 15
         `),
 
         // 5. Puntos sin actividad reciente (más de 12h sin escaneo)
@@ -374,10 +375,11 @@ qrRondasRouter.get("/qr-rondas/:id/eventos", async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT e.*, p.nombre AS punto_nombre, p.orden AS punto_orden,
-              u.nombre AS guardia_nombre
+              COALESCE(u.nombre, emp.nombre_completo) AS guardia_nombre
        FROM qr_ronda_eventos e
        JOIN qr_ronda_puntos p ON p.id = e.punto_id
        LEFT JOIN users u ON u.id = e.user_id
+       LEFT JOIN employees emp ON emp.id = e.employee_id
        WHERE p.ronda_id = $1
          AND ($2::timestamptz IS NULL OR e.escaneado_en >= $2::timestamptz)
          AND ($3::timestamptz IS NULL OR e.escaneado_en <= $3::timestamptz)

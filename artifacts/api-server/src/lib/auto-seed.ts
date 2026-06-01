@@ -4122,6 +4122,7 @@ Por favor ingresa al sistema o responde para continuar.',
         id               SERIAL PRIMARY KEY,
         punto_id         INTEGER NOT NULL REFERENCES qr_ronda_puntos(id) ON DELETE CASCADE,
         user_id          INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        employee_id      INTEGER REFERENCES employees(id) ON DELETE SET NULL,
         escaneado_en     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         latitud          NUMERIC(10,7),
         longitud         NUMERIC(10,7),
@@ -4134,6 +4135,10 @@ Por favor ingresa al sistema o responde para continuar.',
     await pool.query(`CREATE INDEX IF NOT EXISTS qr_re_punto ON qr_ronda_eventos(punto_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS qr_re_user  ON qr_ronda_eventos(user_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS qr_re_at    ON qr_ronda_eventos(escaneado_en DESC)`);
+    // RONDA-EMP-01: atribuir rondas por agente (employee_id) y no solo por
+    // usuario web, para que cualquier agente activo en el puesto pueda marcar.
+    await pool.query(`ALTER TABLE qr_ronda_eventos ADD COLUMN IF NOT EXISTS employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS qr_re_emp ON qr_ronda_eventos(employee_id)`);
 
     logger.info("Auto-migrate: QR-RONDAS-01 tablas de rondas QR creadas/verificadas");
   } catch (err) {

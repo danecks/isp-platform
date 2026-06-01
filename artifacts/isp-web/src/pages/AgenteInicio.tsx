@@ -229,7 +229,7 @@ export default function AgenteInicio() {
     fichaje_id: number; employee_id: number; nombre: string;
   } | null>(null);
   const [rondaTarget, setRondaTarget] = useState<{
-    user_id: number; nombre: string;
+    employee_id: number; nombre: string;
   } | null>(null);
   const rondaGpsRef = useRef<{
     latitud: number; longitud: number; precision_metros: number | null;
@@ -1016,7 +1016,7 @@ export default function AgenteInicio() {
   // Iniciar marcaje de ronda en nombre de un agente activo del puesto.
   // Sub-vista: rondas_scan. Pre-cachea GPS para enviarlo en el evento.
   const iniciarMarcarRonda = useCallback((target: {
-    user_id: number; nombre: string;
+    employee_id: number; nombre: string;
   }) => {
     setAccionMsg(null);
     setRondaTarget(target);
@@ -1048,7 +1048,7 @@ export default function AgenteInicio() {
           body: JSON.stringify({
             fichaje_id_sesion: turno.fichaje_id,
             tracking_token_sesion: turno.tracking_token,
-            agente_user_id: target.user_id,
+            agente_employee_id: target.employee_id,
             qr_token: token,
             latitud: rondaGpsRef.current?.latitud ?? null,
             longitud: rondaGpsRef.current?.longitud ?? null,
@@ -1061,6 +1061,7 @@ export default function AgenteInicio() {
             kind: "error",
             texto: data.error === "qr_no_valido" ? "QR no válido para una ronda."
                   : data.error === "punto_inactivo" ? "Este punto de control está inactivo."
+                  : data.error === "punto_fuera_de_puesto" ? "Este punto de control no pertenece a este puesto."
                   : data.error === "agente_no_activo_en_puesto" ? "El agente seleccionado ya no está en servicio."
                   : data.mensaje || data.error || "No se pudo marcar la ronda.",
           });
@@ -2096,32 +2097,21 @@ export default function AgenteInicio() {
                       </p>
                     </div>
                     <div className="space-y-2">
-                      {(agentesActivos ?? []).map((a) => {
-                        const sinUsuario = !a.user_id;
-                        return (
-                          <button
-                            key={a.fichaje_id}
-                            disabled={sinUsuario}
-                            onClick={() => {
-                              if (a.user_id) iniciarMarcarRonda({ user_id: a.user_id, nombre: a.nombre });
-                            }}
-                            className="w-full bg-slate-900 border border-slate-700 hover:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg p-3 text-left flex items-center justify-between"
-                          >
-                            <div className="flex-1 min-w-0">
-                              <div className="font-semibold truncate">{a.nombre}</div>
-                              {a.cargo && (
-                                <div className="text-xs text-slate-400 truncate">{a.cargo}</div>
-                              )}
-                              {sinUsuario && (
-                                <div className="text-[11px] text-amber-400 mt-0.5">
-                                  Sin usuario web — no puede marcar rondas
-                                </div>
-                              )}
-                            </div>
-                            <Navigation className="w-5 h-5 text-blue-400 flex-shrink-0 ml-2" />
-                          </button>
-                        );
-                      })}
+                      {(agentesActivos ?? []).map((a) => (
+                        <button
+                          key={a.fichaje_id}
+                          onClick={() => iniciarMarcarRonda({ employee_id: a.employee_id, nombre: a.nombre })}
+                          className="w-full bg-slate-900 border border-slate-700 hover:border-blue-500 rounded-lg p-3 text-left flex items-center justify-between"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold truncate">{a.nombre}</div>
+                            {a.cargo && (
+                              <div className="text-xs text-slate-400 truncate">{a.cargo}</div>
+                            )}
+                          </div>
+                          <Navigation className="w-5 h-5 text-blue-400 flex-shrink-0 ml-2" />
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
