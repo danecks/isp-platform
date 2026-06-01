@@ -333,6 +333,13 @@ function CarnetPublico({
             ? "No se pudo conectar con el servidor."
             : "Este código QR no es válido o fue desactivado."}
         </p>
+        <a
+          href="/agente/inicio"
+          className="mt-5 inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-3 rounded-lg w-full"
+          data-testid="link-abrir-escaner"
+        >
+          <Smartphone className="w-5 h-5" /> Abrir escáner (uso interno)
+        </a>
       </div>
     );
   }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import jsQR from "jsqr";
 import { parseQrToken, fmtHora } from "@/shared/operaciones";
+import { getAppVersionInfo } from "@/lib/native/liveUpdate";
 import {
   CheckCircle, XCircle, Loader2, MapPin, AlertTriangle,
   QrCode, ShieldAlert, RotateCcw, Smartphone, Users, Clock,
@@ -154,6 +155,19 @@ export default function AgenteInicio() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [linternaOn, setLinternaOn] = useState(false);
   const [linternaSoportada, setLinternaSoportada] = useState(false);
+
+  // Versión visible (OTA/APK) para que el personal pueda confirmar si su
+  // celular está actualizado. En navegador queda null y no se muestra.
+  const [verApp, setVerApp] = useState<string | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    void getAppVersionInfo().then((v) => {
+      if (!vivo) return;
+      const ver = v.bundle && v.bundle !== "builtin" ? v.bundle : v.native;
+      setVerApp(ver ? `Versión ${ver}` : null);
+    });
+    return () => { vivo = false; };
+  }, []);
 
   // Modo kiosco: si hay credenciales de dispositivo en localStorage
   const [device] = useState<DeviceCreds | null>(() => leerDeviceCreds());
@@ -2643,6 +2657,7 @@ export default function AgenteInicio() {
 
       <footer className="px-4 py-3 text-center text-[11px] text-slate-600 border-t border-slate-900 space-y-1">
         <div>ISP, S.A. · Investigaciones y Seguridad Profesional</div>
+        {verApp && <div className="text-slate-400 font-medium">{verApp}</div>}
         <div>
           <a
             href="/ajustes/version"
