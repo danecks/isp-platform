@@ -3388,6 +3388,26 @@ Por favor ingresa al sistema o responde para continuar.',
       )
     `);
 
+    // PRE-LIQ-EDIT: liquidaciones guardadas editables — conservar monto calculado + auditoría
+    await pool.query(`ALTER TABLE prestaciones_liquidacion_detalle ADD COLUMN IF NOT EXISTS monto_original NUMERIC(12,2)`);
+    await pool.query(`ALTER TABLE prestaciones_liquidaciones ADD COLUMN IF NOT EXISTS editado BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE prestaciones_liquidaciones ADD COLUMN IF NOT EXISTS editado_por TEXT`);
+    await pool.query(`ALTER TABLE prestaciones_liquidaciones ADD COLUMN IF NOT EXISTS editado_at TIMESTAMPTZ`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS prestaciones_liquidacion_ediciones (
+        id              SERIAL PRIMARY KEY,
+        liquidacion_id  INTEGER NOT NULL REFERENCES prestaciones_liquidaciones(id) ON DELETE CASCADE,
+        detalle_id      INTEGER,
+        rubro           VARCHAR(40),
+        monto_anterior  NUMERIC(12,2),
+        monto_nuevo     NUMERIC(12,2),
+        motivo          TEXT,
+        editado_por     TEXT,
+        editado_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_prest_liq_edic ON prestaciones_liquidacion_ediciones(liquidacion_id)`);
+
     // Saldo de vacaciones por empleado (tabla de estado actual)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS vacaciones_saldos (

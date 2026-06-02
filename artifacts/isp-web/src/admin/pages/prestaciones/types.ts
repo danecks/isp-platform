@@ -35,6 +35,16 @@ export interface RubroLiquidacion {
   rubro: string;
   descripcion: string;
   monto: number;
+  monto_original?: number | string | null;
+}
+
+export interface LiquidacionEdicion {
+  rubro: string;
+  monto_anterior: string | number;
+  monto_nuevo: string | number;
+  motivo: string | null;
+  editado_por: string | null;
+  editado_at: string;
 }
 
 export interface SimulacionLiquidacion {
@@ -82,8 +92,12 @@ export interface LiquidacionDetalleResponse {
     fecha_egreso: string;
     estado: string;
     total_general: string;
+    editado?: boolean;
+    editado_por?: string | null;
+    editado_at?: string | null;
   };
   detalle: RubroLiquidacion[];
+  ediciones?: LiquidacionEdicion[];
 }
 
 export interface ResumenOdbcResponse {

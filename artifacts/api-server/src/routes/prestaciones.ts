@@ -18,6 +18,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { getSaldoUniformePendiente } from "./uniformes";
+import { getPermisosForUsername } from "../lib/permisos-middleware";
 import {
   calcularAguinaldo,
   calcularBono14,
@@ -859,9 +860,152 @@ prestacionesRouter.get("/prestaciones/liquidaciones/:id", async (req, res) => {
       `SELECT * FROM prestaciones_liquidacion_detalle WHERE liquidacion_id = $1 ORDER BY id`, [id]
     );
 
-    return res.json({ liquidacion: liq, detalle });
+    const { rows: ediciones } = await pool.query(
+      `SELECT rubro, monto_anterior, monto_nuevo, motivo, editado_por, editado_at
+         FROM prestaciones_liquidacion_ediciones
+        WHERE liquidacion_id = $1 ORDER BY editado_at DESC`, [id]
+    );
+
+    return res.json({ liquidacion: liq, detalle, ediciones });
   } catch (err: unknown) {
     return res.status(500).json({ error: String(err) });
+  }
+});
+
+// ─── PATCH /api/prestaciones/liquidaciones/:id/editar-montos ───────────────────
+// Edita los montos de una liquidación YA GUARDADA (confirmada/activa). Conserva el
+// monto original calculado, registra auditoría (quién/cuándo/qué) y recalcula totales.
+// Gateado por el módulo de permiso específico "editar_liquidacion" (separado de
+// "prestaciones"): el middleware de ruta solo exige "prestaciones", así que aquí
+// se valida adicionalmente el permiso fino dentro del handler.
+prestacionesRouter.patch("/prestaciones/liquidaciones/:id/editar-montos", async (req, res) => {
+  // ── Verificación de permiso fino ──────────────────────────────────────────
+  let session: { rol?: string; username?: string; nombre?: string } | null = null;
+  try {
+    const raw = req.headers["x-isp-session"] as string;
+    if (raw) session = JSON.parse(raw);
+  } catch { /* sesión malformada → tratada como sin sesión abajo */ }
+  if (!session) return res.status(401).json({ error: "Sesión requerida" });
+
+  let autorizado = false;
+  if (session.username) {
+    const { rol, modulos } = await getPermisosForUsername(session.username);
+    autorizado = rol === "admin" || modulos.has("*") || modulos.has("editar_liquidacion");
+  } else {
+    autorizado = session.rol === "admin";
+  }
+  if (!autorizado) {
+    return res.status(403).json({ error: "No tiene permiso para editar liquidaciones" });
+  }
+
+  const id = parseInt(req.params.id);
+  const montos: Array<{ rubro: string; monto: number | string }> =
+    Array.isArray(req.body?.montos) ? req.body.montos : [];
+  const motivo = typeof req.body?.motivo === "string" && req.body.motivo.trim()
+    ? req.body.motivo.trim() : null;
+  if (montos.length === 0) {
+    return res.status(400).json({ error: "No se enviaron montos para actualizar" });
+  }
+  const editadoPor = session.nombre || session.username || "—";
+
+  const db = await pool.connect();
+  try {
+    await db.query("BEGIN");
+
+    const { rows: [liq] } = await db.query<{ id: number; estado: string }>(
+      `SELECT id, estado FROM prestaciones_liquidaciones WHERE id = $1 FOR UPDATE`, [id]
+    );
+    if (!liq) {
+      await db.query("ROLLBACK");
+      return res.status(404).json({ error: "Liquidación no encontrada" });
+    }
+    if (liq.estado !== "confirmada" && liq.estado !== "activa") {
+      await db.query("ROLLBACK");
+      return res.status(409).json({ error: "Solo se pueden editar liquidaciones activas" });
+    }
+
+    const { rows: detalle } = await db.query<{ id: number; rubro: string; monto: string }>(
+      `SELECT id, rubro, monto FROM prestaciones_liquidacion_detalle WHERE liquidacion_id = $1`, [id]
+    );
+    const byRubro = new Map(detalle.map((d) => [d.rubro, d]));
+
+    let cambios = 0;
+    for (const m of montos) {
+      const d = byRubro.get(m.rubro);
+      if (!d) continue;
+      const nuevo = Math.round(parseFloat(String(m.monto)) * 100) / 100;
+      if (!isFinite(nuevo) || nuevo < 0) continue;
+      const anterior = parseFloat(String(d.monto));
+      if (nuevo === anterior) continue;
+
+      // Conservar el monto calculado original solo la primera vez que se edita
+      await db.query(
+        `UPDATE prestaciones_liquidacion_detalle
+            SET monto = $1,
+                monto_original = COALESCE(monto_original, $2)
+          WHERE id = $3`,
+        [nuevo, d.monto, d.id]
+      );
+      await db.query(
+        `INSERT INTO prestaciones_liquidacion_ediciones
+           (liquidacion_id, detalle_id, rubro, monto_anterior, monto_nuevo, motivo, editado_por)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [id, d.id, d.rubro, anterior, nuevo, motivo, editadoPor]
+      );
+      cambios++;
+    }
+
+    if (cambios === 0) {
+      await db.query("ROLLBACK");
+      return res.status(400).json({ error: "Ningún monto cambió respecto al valor actual" });
+    }
+
+    // Recalcular totales del encabezado desde el detalle
+    const { rows: tot } = await db.query<{ rubro: string; s: string }>(
+      `SELECT rubro, SUM(monto) AS s FROM prestaciones_liquidacion_detalle
+        WHERE liquidacion_id = $1 GROUP BY rubro`, [id]
+    );
+    const known = new Set(["salario_pendiente", "vacaciones", "aguinaldo", "bono14", "indemnizacion"]);
+    const sum: Record<string, number> = {};
+    let general = 0, otros = 0;
+    for (const r of tot) {
+      const v = parseFloat(r.s);
+      sum[r.rubro] = v;
+      general += v;
+      if (!known.has(r.rubro)) otros += v;
+    }
+
+    await db.query(
+      `UPDATE prestaciones_liquidaciones SET
+         total_salario_pendiente = $1,
+         total_vacaciones        = $2,
+         total_aguinaldo         = $3,
+         total_bono14            = $4,
+         total_indemnizacion     = $5,
+         total_otros             = $6,
+         total_general           = $7,
+         editado     = TRUE,
+         editado_por = $8,
+         editado_at  = NOW(),
+         updated_at  = NOW()
+       WHERE id = $9`,
+      [
+        sum["salario_pendiente"] ?? 0,
+        sum["vacaciones"] ?? 0,
+        sum["aguinaldo"] ?? 0,
+        sum["bono14"] ?? 0,
+        sum["indemnizacion"] ?? 0,
+        otros, general, editadoPor, id,
+      ]
+    );
+
+    await db.query("COMMIT");
+    return res.json({ ok: true, id, cambios, total_general: general });
+  } catch (err: unknown) {
+    await db.query("ROLLBACK");
+    return res.status(500).json({ error: String(err) });
+  } finally {
+    db.release();
   }
 });
 

@@ -4,3 +4,4 @@
 - [Publicación móvil OTA/APK](mobile-release-publishing.md) — se publica por tags de git en GitHub Actions; APK release solo con tag `mobile-v*` (dispatch no crea release); el sandbox no puede pushear.
 - [Datos de contrato fuera del schema](datos-contrato-fuera-schema.md) — estado_civil/sexo/nit/direccion/etc. se persisten con UPDATE crudo (POST y PATCH); editar sin prellenar desde GET /:id los borra (""→NULL).
 - [Atribución de rondas QR](rondas-atribucion.md) — los eventos de ronda se atribuyen por employee_id (agente), no por user_id web; reportes resuelven nombre con COALESCE(u.nombre, emp.nombre_completo).
+- [Liquidaciones editables y permisos finos](liquidaciones-editables.md) — sub-permiso bajo prefijo ya catalogado (/prestaciones) se valida in-handler, no en middleware; monto_original con COALESCE 1ª vez; totales recalculados desde detalle.
