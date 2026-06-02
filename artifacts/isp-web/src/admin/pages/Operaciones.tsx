@@ -33,6 +33,7 @@ import { PanelPersonalAdmin } from "./operaciones/sections/PanelPersonalAdmin";
 import { PanelSupervisoresFuturo } from "./operaciones/sections/PanelSupervisoresFuturo";
 import { PanelJefesFuturo } from "./operaciones/sections/PanelJefesFuturo";
 import { PanelSSA } from "./operaciones/sections/PanelSSA";
+import { ModalCrearSSA } from "./operaciones/components/ModalCrearSSA";
 import { PanelProximosArranques } from "./operaciones/sections/PanelProximosArranques";
 import { DragOverlayAgente } from "./operaciones/sections/DragOverlayAgente";
 
@@ -58,7 +59,8 @@ export default function Operaciones() {
   const [filtroCliente, setFiltroCliente]           = useState<string>("");
   const [modalSegmentos, setModalSegmentos]         = useState<Puesto | null>(null);
   const [modalAsignarSSA, setModalAsignarSSA]       = useState<TarjetaSSAPendiente | null>(null);
-  const [ssaTabActivo, setSsaTabActivo]             = useState<"sin_asignar" | "cubierta">("sin_asignar");
+  const [ssaTabActivo, setSsaTabActivo]             = useState<"sin_asignar" | "cubierta" | "por_activar">("sin_asignar");
+  const [modalCrearSSA, setModalCrearSSA]           = useState(false);
   const [fichaVehiculoId, setFichaVehiculoId]       = useState<number | null>(null);
   const [puestoParaTurno, setPuestoParaTurno]       = useState<Puesto | null>(null);
   const [editarPlantilla, setEditarPlantilla]       = useState<EditarPlantillaData | null>(null);
@@ -90,6 +92,8 @@ export default function Operaciones() {
     clientesDisponibles,
     cierreHoy, refetchCierre,
     tarjetasSSA,
+    ssaPorActivar,
+    activarSSA,
     sinZonaData,
     planFuturoDia,
     cambiosFuturosProximos,
@@ -233,6 +237,7 @@ export default function Operaciones() {
     modalSegmentos, setModalSegmentos,
     modalAsignarSSA, setModalAsignarSSA,
     ssaTabActivo, setSsaTabActivo,
+    modalCrearSSA, setModalCrearSSA,
     fichaVehiculoId, setFichaVehiculoId,
     puestoParaTurno, setPuestoParaTurno,
     editarPlantilla, setEditarPlantilla,
@@ -255,6 +260,8 @@ export default function Operaciones() {
     clientesDisponibles,
     cierreHoy, refetchCierre,
     tarjetasSSA,
+    ssaPorActivar,
+    activarSSA,
     planFuturoDia,
     cambiosFuturosProximos,
     poolFuturo, loadingPoolFuturo,
@@ -286,11 +293,11 @@ export default function Operaciones() {
     esAdmin, esSupervisorOAdmin, puedeQuitarTitular, isDeleteMode,
     agenteSeleccionado, historialAbierto, nuevoPuestoData, poolTab, busquedaPool, busquedaPersona,
     colGlobal, puestoContexto, filtroZona, filtroCliente, modalSegmentos, modalAsignarSSA,
-    ssaTabActivo, fichaVehiculoId, puestoParaTurno, editarPlantilla,
+    ssaTabActivo, modalCrearSSA, fichaVehiculoId, puestoParaTurno, editarPlantilla,
     colSSA, colArranques, colSupers, colJefes, colPool, colAdmin,
     hoyISO, fechaVista, esFuturo, esPasado, esOtraFecha, clienteResaltado,
     qc, tablero, loadingTablero, pool, loadingPool, historial, loadingHistorial,
-    clientesDisponibles, cierreHoy, tarjetasSSA, planFuturoDia, cambiosFuturosProximos,
+    clientesDisponibles, cierreHoy, tarjetasSSA, ssaPorActivar, planFuturoDia, cambiosFuturosProximos,
     poolFuturo, loadingPoolFuturo, proximosArranques,
     puestosSinZonaCount, diaHoyCerrado, fechaActivaStr, fechaVistaCerrada, fechaVistaStr, fechaCierreParaReabrir,
     poolActual, candidatosRankeados, zonasDisponibles, clientesDisponiblesFiltro,
@@ -385,6 +392,13 @@ export default function Operaciones() {
           cierre={cierre}
           planFuturoFlow={planFuturoFlow}
         />
+
+        {modalCrearSSA && (
+          <ModalCrearSSA
+            onClose={() => setModalCrearSSA(false)}
+            onCreated={() => { setModalCrearSSA(false); invalidate(); }}
+          />
+        )}
       </OperacionesProvider>
     </AdminLayout>
   );

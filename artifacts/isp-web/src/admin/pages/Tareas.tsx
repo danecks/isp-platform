@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import { AdminLayout } from "../layout/AdminLayout";
 import { StatusBadge } from "../components/StatusBadge";
 import { tareasApi, type Tarea } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   CheckSquare, Filter, CheckCircle2, AlertCircle,
-  Ban, Lock, Loader2, RefreshCw, ChevronRight,
+  Ban, Lock, Loader2, RefreshCw, ChevronRight, Square,
 } from "lucide-react";
 
 type EstadoFiltro = "todos" | "pendiente" | "en_proceso" | "completada" | "cancelada";
@@ -58,6 +58,18 @@ export default function Tareas() {
       );
     } catch (e: any) {
       setError(e.message ?? "Error al actualizar tarea");
+    } finally {
+      setActualizando(null);
+    }
+  }, []);
+
+  const togglePaso = useCallback(async (tarea: Tarea, key: string, done: boolean) => {
+    setActualizando(tarea.id);
+    try {
+      const actualizada = await tareasApi.togglePaso(tarea.id, key, done);
+      setTareas((prev) => prev.map((t) => t.id === tarea.id ? { ...t, ...actualizada } : t));
+    } catch (e: any) {
+      setError(e.message ?? "Error al actualizar paso");
     } finally {
       setActualizando(null);
     }
@@ -186,11 +198,17 @@ export default function Tareas() {
                     const enProceso  = t.estado === "en_proceso";
                     const pendiente  = t.estado === "pendiente";
                     const cargando   = actualizando === t.id;
+                    const pasos      = t.pasos ?? [];
+                    const tienePasos = pasos.length > 0;
+                    const pasosHechos = pasos.filter((p) => p.done).length;
+                    const puedeEditarPasos = esSupervisorOAdmin && !completada && !cancelada;
 
                     return (
+                      <Fragment key={t.id}>
                       <tr
-                        key={t.id}
                         className={`border-b border-white/3 transition-colors ${
+                          tienePasos ? "border-b-0" : ""
+                        } ${
                           completada ? "opacity-50 hover:opacity-70" :
                           cancelada  ? "opacity-30" :
                           "hover:bg-white/2"
@@ -271,6 +289,41 @@ export default function Tareas() {
                           )}
                         </td>
                       </tr>
+                      {tienePasos && (
+                        <tr
+                          className={`border-b border-white/3 ${
+                            completada ? "opacity-50" : cancelada ? "opacity-30" : ""
+                          }`}
+                        >
+                          <td></td>
+                          <td colSpan={7} className="px-3 pb-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[10px] text-white/30 uppercase tracking-wide mr-1">
+                                Checklist {pasosHechos}/{pasos.length}
+                              </span>
+                              {pasos.map((p) => (
+                                <button
+                                  key={p.key}
+                                  onClick={() => puedeEditarPasos && togglePaso(t, p.key, !p.done)}
+                                  disabled={!puedeEditarPasos || cargando}
+                                  title={puedeEditarPasos ? (p.done ? "Desmarcar paso" : "Marcar paso") : "Solo supervisor/admin"}
+                                  className={`flex items-center gap-1.5 text-[10px] px-2.5 py-1.5 rounded-lg border transition-all ${
+                                    p.done
+                                      ? "text-green-300 bg-green-500/10 border-green-500/25"
+                                      : "text-white/50 bg-white/3 border-white/8 hover:border-white/20"
+                                  } ${puedeEditarPasos && !cargando ? "cursor-pointer" : "cursor-default"}`}
+                                >
+                                  {p.done
+                                    ? <CheckCircle2 className="w-3 h-3 shrink-0" />
+                                    : <Square className="w-3 h-3 shrink-0" />}
+                                  {p.label}
+                                </button>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     );
                   })}
                 </tbody>

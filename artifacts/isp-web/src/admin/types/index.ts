@@ -53,8 +53,6 @@ export interface Tarea {
   prioridad: PrioridadType;
   estado: EstadoTareaType;
   asignado: string;
-  trelloCardId?: string;
-  trelloList?: string;
   fecha: string;
 }
 

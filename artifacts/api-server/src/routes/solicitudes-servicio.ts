@@ -39,7 +39,14 @@ const PRIORIDAD_LABELS: Record<string, string> = {
   baja: "Baja",
 };
 
-// ── Auto-crear 3 tareas por solicitud ─────────────────────────────────────────
+// ── Pasos del checklist por solicitud (1 sola tarea con 3 pasos) ──────────────
+const PASOS_SSA: { key: string; label: string }[] = [
+  { key: "operaciones", label: "Operaciones — coordinar cobertura y asignar en el pizarrón" },
+  { key: "rrhh", label: "RRHH — validar disponibilidad de personal" },
+  { key: "comercial", label: "Comercial — registrar tarifa, monto y cobro" },
+];
+
+// ── Auto-crear 1 tarea con checklist de 3 pasos por solicitud ─────────────────
 async function crearTareasParaSolicitud(
   solicitudId: string,
   clienteNombre: string,
@@ -56,53 +63,26 @@ async function crearTareasParaSolicitud(
     day: "2-digit", month: "long", year: "numeric",
   });
 
-  const tareaOpsId = genTareaId();
-  const tareaRrhhId = genTareaId();
-  const tareaComercialId = genTareaId();
+  const tareaId = genTareaId();
+  const pasos = PASOS_SSA.map((p) => ({ ...p, done: false, doneAt: null }));
 
   await pool.query(
-    `INSERT INTO tareas (id, titulo, descripcion, prioridad, estado, asignado, canal, cliente_id, sede_id, puesto_id)
-     VALUES ($1, $2, $3, $4, 'pendiente', 'Operaciones', 'sistema', $5, $6, $7)`,
+    `INSERT INTO tareas (id, titulo, descripcion, prioridad, estado, asignado, canal, cliente_id, sede_id, puesto_id, pasos)
+     VALUES ($1, $2, $3, $4, 'pendiente', 'Operaciones', 'sistema', $5, $6, $7, $8::jsonb)`,
     [
-      tareaOpsId,
-      `[Ops] ${tipoLabel} — ${clienteNombre} (${fechaLabel})`,
-      `Solicitud ${solicitudId} | Prioridad: ${prioLabel}\nRevisar si puede cubrirse con personal disponible o relevos. Coordinar asignación en el pizarrón operativo.`,
+      tareaId,
+      `${tipoLabel} — ${clienteNombre} (${fechaLabel})`,
+      `Solicitud ${solicitudId} | Prioridad: ${prioLabel}\nServicio adicional con 3 pasos: Operaciones (cobertura), RRHH (personal) y Comercial (facturación). Marca cada paso al completarlo.`,
       prioridad === "urgente" ? "alta" : prioridad,
       clienteId,
       sedeId,
       puestoId,
+      JSON.stringify(pasos),
     ],
   );
 
-  await pool.query(
-    `INSERT INTO tareas (id, titulo, descripcion, prioridad, estado, asignado, canal, cliente_id, sede_id, puesto_id)
-     VALUES ($1, $2, $3, $4, 'pendiente', 'RRHH', 'sistema', $5, $6, $7)`,
-    [
-      tareaRrhhId,
-      `[RRHH] Validación personal — ${tipoLabel} | ${clienteNombre} (${fechaLabel})`,
-      `Solicitud ${solicitudId} | Prioridad: ${prioLabel}\nValidar disponibilidad de personal. Indicar si se cubre con pool, requiere contratación o reasignación.`,
-      prioridad === "urgente" ? "alta" : prioridad,
-      clienteId,
-      sedeId,
-      puestoId,
-    ],
-  );
-
-  await pool.query(
-    `INSERT INTO tareas (id, titulo, descripcion, prioridad, estado, asignado, canal, cliente_id, sede_id, puesto_id)
-     VALUES ($1, $2, $3, $4, 'pendiente', 'Comercial', 'sistema', $5, $6, $7)`,
-    [
-      tareaComercialId,
-      `[Comercial] Facturación servicio extra — ${clienteNombre} (${fechaLabel})`,
-      `Solicitud ${solicitudId} | Tipo: ${tipoLabel} | Prioridad: ${prioLabel}\nRegistrar tarifa, monto estimado y seguimiento de cobro del servicio adicional.`,
-      prioridad === "urgente" ? "alta" : prioridad,
-      clienteId,
-      sedeId,
-      puestoId,
-    ],
-  );
-
-  return { tareaOpsId, tareaRrhhId, tareaComercialId };
+  // Una sola tarea cubre las 3 áreas; los 3 vínculos del SSA apuntan a la misma.
+  return { tareaOpsId: tareaId, tareaRrhhId: tareaId, tareaComercialId: tareaId };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -215,13 +195,121 @@ solicitudesServicioRouter.get("/solicitudes-servicio/tablero", async (_req, res)
       ) ag ON ag.ssa_id = s.id
       WHERE s.tarjeta_activa = TRUE
         AND s.estado_general NOT IN ('cancelada', 'cerrada')
-        AND CURRENT_DATE BETWEEN s.fecha AND COALESCE(s.fecha_fin, s.fecha)
+        AND s.fecha <= CURRENT_DATE
       ORDER BY s.prioridad DESC, s.fecha ASC
     `);
     return res.json(rows);
   } catch (err) {
     logger.error({ err }, "solicitudes-servicio: GET tablero error");
     return res.status(500).json({ error: "Error al obtener tablero" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/solicitudes-servicio/por-activar — solicitudes nuevas sin activar
+// (recién creadas, aún no visibles en el pizarrón). Must be before /:id
+// ─────────────────────────────────────────────────────────────────────────────
+solicitudesServicioRouter.get("/solicitudes-servicio/por-activar", async (_req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        s.id, s.tipo_solicitud, s.fecha, s.fecha_fin, s.hora_inicio, s.hora_fin,
+        s.cantidad_guardias, s.prioridad, s.descripcion, s.estado_general,
+        s.contacto_solicitante, s.created_at,
+        c.nombre AS cliente_nombre,
+        cs.nombre AS sede_nombre,
+        po.nombre AS puesto_nombre
+      FROM solicitudes_servicio_adicional s
+      LEFT JOIN clients c ON c.id = s.cliente_id
+      LEFT JOIN client_sedes cs ON cs.id = s.sede_id
+      LEFT JOIN puestos_operativos po ON po.id = s.puesto_id
+      WHERE s.tarjeta_activa = FALSE
+        AND s.estado_general NOT IN ('cancelada', 'cerrada')
+      ORDER BY s.created_at DESC
+      LIMIT 50
+    `);
+    return res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "solicitudes-servicio: GET por-activar error");
+    return res.status(500).json({ error: "Error al obtener solicitudes por activar" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/solicitudes-servicio/:id/activar — activar tarjeta en el pizarrón
+// ─────────────────────────────────────────────────────────────────────────────
+solicitudesServicioRouter.patch("/solicitudes-servicio/:id/activar", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rows } = await pool.query(
+      `SELECT id, estado_general, tarjeta_activa FROM solicitudes_servicio_adicional WHERE id = $1`,
+      [id],
+    );
+    if (rows.length === 0) return res.status(404).json({ error: "Solicitud no encontrada" });
+    if (["cancelada", "cerrada"].includes(rows[0].estado_general)) {
+      return res.status(409).json({ error: "No se puede activar una solicitud cancelada o cerrada" });
+    }
+
+    await pool.query(
+      `UPDATE solicitudes_servicio_adicional
+       SET tarjeta_activa = TRUE,
+           estado_general = CASE WHEN estado_general = 'en_revision' THEN 'pendiente_operaciones' ELSE estado_general END,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [id],
+    );
+    return res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "solicitudes-servicio: PATCH activar error");
+    return res.status(500).json({ error: "Error al activar la solicitud" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/solicitudes-servicio/:id/facturacion — capturar/editar monto y tarifa
+// ─────────────────────────────────────────────────────────────────────────────
+solicitudesServicioRouter.patch("/solicitudes-servicio/:id/facturacion", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { montoEstimado, tarifaAplicada } = req.body as {
+      montoEstimado?: number | string | null;
+      tarifaAplicada?: string | null;
+    };
+
+    const { rows } = await pool.query(
+      `SELECT id FROM solicitudes_servicio_adicional WHERE id = $1`, [id],
+    );
+    if (rows.length === 0) return res.status(404).json({ error: "Solicitud no encontrada" });
+
+    const monto =
+      montoEstimado === undefined ? undefined
+      : montoEstimado === null || montoEstimado === "" ? null
+      : Number(montoEstimado);
+    if (monto !== undefined && monto !== null && Number.isNaN(monto)) {
+      return res.status(400).json({ error: "Monto inválido" });
+    }
+
+    await pool.query(
+      `UPDATE solicitudes_servicio_adicional
+       SET monto_estimado  = CASE WHEN $2::BOOLEAN THEN $3 ELSE monto_estimado END,
+           tarifa_aplicada = CASE WHEN $4::BOOLEAN THEN $5 ELSE tarifa_aplicada END,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [
+        id,
+        monto !== undefined, monto ?? null,
+        tarifaAplicada !== undefined, tarifaAplicada ?? null,
+      ],
+    );
+
+    const { rows: updated } = await pool.query(
+      `SELECT id, monto_estimado, tarifa_aplicada FROM solicitudes_servicio_adicional WHERE id = $1`,
+      [id],
+    );
+    return res.json(updated[0]);
+  } catch (err) {
+    logger.error({ err }, "solicitudes-servicio: PATCH facturacion error");
+    return res.status(500).json({ error: "Error al actualizar facturación" });
   }
 });
 

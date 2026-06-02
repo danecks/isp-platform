@@ -154,30 +154,6 @@ export const incidentsApi = {
   update: (id: string, data: Partial<Incident>) => apiFetch<Incident>(`/incidents/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
 };
 
-// --- TRELLO ---
-export interface TrelloCardResult {
-  incidenciaId: string;
-  card: { id: string; name: string; url: string; shortUrl: string };
-  checklistId: string;
-  checklistItems: string[];
-  membersAssigned: string[];
-  mockMode: boolean;
-}
-
-export interface TrelloConfigStatus {
-  configured: boolean;
-  hasMemberSupervisor: boolean;
-  hasMemberOperaciones: boolean;
-  checklistItems: string[];
-  mockMode: boolean;
-}
-
-export const trelloApi = {
-  getConfig: () => apiFetch<TrelloConfigStatus>("/trello/config"),
-  sendIncident: (id: string) =>
-    apiFetch<TrelloCardResult>(`/trello/send-incident/${id}`, { method: "POST" }),
-};
-
 // --- ANTICIPOS ---
 export interface Anticipo {
   id: number;
@@ -254,6 +230,13 @@ export interface TareaEvidencia {
   createdAt: string;
 }
 
+export interface TareaPaso {
+  key: string;
+  label: string;
+  done: boolean;
+  doneAt: string | null;
+}
+
 export interface Tarea {
   id: string;
   titulo: string;
@@ -263,8 +246,7 @@ export interface Tarea {
   estado: string;
   asignado: string | null;
   asignadoId: number | null;
-  trelloCardId: string | null;
-  trelloCardUrl: string | null;
+  pasos: TareaPaso[] | null;
   fechaVencimiento: string | null;
   canal: string;
   createdAt: string;
@@ -347,8 +329,6 @@ export const tareasApi = {
     estado?: string;
     asignado?: string;
     asignadoId?: number;
-    trelloCardId?: string;
-    trelloCardUrl?: string;
     fechaVencimiento?: string;
     canal?: string;
   }) => apiFetch<Tarea>("/tareas", { method: "POST", body: JSON.stringify(data) }),
@@ -358,8 +338,6 @@ export const tareasApi = {
     prioridad: string;
     estado: string;
     asignado: string;
-    trelloCardId: string;
-    trelloCardUrl: string;
   }>) => apiFetch<Tarea>(`/tareas/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   cerrar: (id: string, data: {
     supervisorNombre: string;
@@ -373,5 +351,7 @@ export const tareasApi = {
     body: JSON.stringify(data),
   }),
   cancelar: (id: string) => apiFetch<{ ok: boolean }>(`/tareas/${id}`, { method: "DELETE" }),
+  togglePaso: (id: string, key: string, done: boolean) =>
+    apiFetch<Tarea>(`/tareas/${id}/paso`, { method: "PATCH", body: JSON.stringify({ key, done }) }),
 };
 

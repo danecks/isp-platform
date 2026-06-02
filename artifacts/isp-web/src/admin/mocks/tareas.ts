@@ -8,8 +8,6 @@ export const mockTareas: Tarea[] = [
     prioridad: "alta",
     estado: "pendiente",
     asignado: "Sup. García",
-    trelloCardId: "trello-card-8821",
-    trelloList: "Por Atender",
     fecha: "2024-03-23",
   },
   {
@@ -19,8 +17,6 @@ export const mockTareas: Tarea[] = [
     prioridad: "alta",
     estado: "en_proceso",
     asignado: "Sup. Ramírez",
-    trelloCardId: "trello-card-8820",
-    trelloList: "En Proceso",
     fecha: "2024-03-25",
   },
   {
@@ -30,8 +26,6 @@ export const mockTareas: Tarea[] = [
     prioridad: "alta",
     estado: "en_proceso",
     asignado: "Sup. Ramírez",
-    trelloCardId: "trello-card-8819",
-    trelloList: "En Proceso",
     fecha: "2024-03-25",
   },
   {
@@ -41,8 +35,6 @@ export const mockTareas: Tarea[] = [
     prioridad: "media",
     estado: "completada",
     asignado: "Sup. López",
-    trelloCardId: "trello-card-8815",
-    trelloList: "Resuelto",
     fecha: "2024-03-25",
   },
   {
@@ -51,7 +43,6 @@ export const mockTareas: Tarea[] = [
     prioridad: "media",
     estado: "pendiente",
     asignado: "Ejecutivo A. Fuentes",
-    trelloList: "Comercial",
     fecha: "2024-03-24",
   },
   {
@@ -69,8 +60,6 @@ export const mockTareas: Tarea[] = [
     prioridad: "media",
     estado: "pendiente",
     asignado: "Sup. Morales",
-    trelloCardId: "trello-card-8810",
-    trelloList: "Por Atender",
     fecha: "2024-03-20",
   },
   {

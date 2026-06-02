@@ -996,8 +996,6 @@ export async function runAutoSeed(): Promise<void> {
         estado            VARCHAR(50) NOT NULL DEFAULT 'pendiente',
         asignado          VARCHAR(255),
         asignado_id       INTEGER,
-        trello_card_id    VARCHAR(100),
-        trello_card_url   VARCHAR(500),
         fecha_vencimiento TIMESTAMPTZ,
         canal             VARCHAR(50) NOT NULL DEFAULT 'manual',
         created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1074,8 +1072,6 @@ export async function runAutoSeed(): Promise<void> {
           prioridad: "alta",
           estado: "pendiente",
           asignado: "Sup. García",
-          trelloCardId: "trello-card-8821",
-          trelloCardUrl: null,
           canal: "manual",
         },
         {
@@ -1086,8 +1082,6 @@ export async function runAutoSeed(): Promise<void> {
           prioridad: "alta",
           estado: "en_proceso",
           asignado: "Sup. Ramírez",
-          trelloCardId: "trello-card-8820",
-          trelloCardUrl: null,
           canal: "manual",
         },
         {
@@ -1098,8 +1092,6 @@ export async function runAutoSeed(): Promise<void> {
           prioridad: "alta",
           estado: "en_proceso",
           asignado: "Sup. Ramírez",
-          trelloCardId: "trello-card-8819",
-          trelloCardUrl: null,
           canal: "manual",
         },
         {
@@ -1110,8 +1102,6 @@ export async function runAutoSeed(): Promise<void> {
           prioridad: "media",
           estado: "completada",
           asignado: "Sup. López",
-          trelloCardId: "trello-card-8815",
-          trelloCardUrl: null,
           canal: "manual",
         },
         {
@@ -1122,8 +1112,6 @@ export async function runAutoSeed(): Promise<void> {
           prioridad: "media",
           estado: "pendiente",
           asignado: "Ejecutivo A. Fuentes",
-          trelloCardId: null,
-          trelloCardUrl: null,
           canal: "manual",
         },
         {
@@ -1134,8 +1122,6 @@ export async function runAutoSeed(): Promise<void> {
           prioridad: "baja",
           estado: "en_proceso",
           asignado: "RRHH Coordinación",
-          trelloCardId: null,
-          trelloCardUrl: null,
           canal: "manual",
         },
         {
@@ -1146,8 +1132,6 @@ export async function runAutoSeed(): Promise<void> {
           prioridad: "media",
           estado: "pendiente",
           asignado: "Sup. Morales",
-          trelloCardId: "trello-card-8810",
-          trelloCardUrl: null,
           canal: "manual",
         },
         {
@@ -1158,8 +1142,6 @@ export async function runAutoSeed(): Promise<void> {
           prioridad: "baja",
           estado: "completada",
           asignado: "Coordinación Operativa",
-          trelloCardId: null,
-          trelloCardUrl: null,
           canal: "manual",
         },
       ]);
@@ -1744,6 +1726,7 @@ Por favor ingresa al sistema o responde para continuar.',
     await pool.query(`ALTER TABLE tareas ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clients(id) ON DELETE SET NULL`);
     await pool.query(`ALTER TABLE tareas ADD COLUMN IF NOT EXISTS puesto_id INTEGER REFERENCES puestos_operativos(id) ON DELETE SET NULL`);
     await pool.query(`ALTER TABLE tareas ADD COLUMN IF NOT EXISTS sede_id INTEGER REFERENCES client_sedes(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE tareas ADD COLUMN IF NOT EXISTS pasos JSONB NOT NULL DEFAULT '[]'::jsonb`);
     await pool.query(`CREATE INDEX IF NOT EXISTS tareas_cliente_id ON tareas(cliente_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS tareas_puesto_id ON tareas(puesto_id)`);
     logger.info("Auto-migrate: Fase2-A06 columnas cliente_id, puesto_id, sede_id en tareas verificadas");

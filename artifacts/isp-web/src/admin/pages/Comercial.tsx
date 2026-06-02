@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "../layout/AdminLayout";
 import { StatusBadge } from "../components/StatusBadge";
 import { leadsApi } from "@/lib/api";
-import { Briefcase, Filter, Loader2, RefreshCw, ExternalLink, Send, CheckCircle2, UserPlus, X, Calendar, Plus, Banknote, TrendingUp, AlertTriangle, ChevronRight } from "lucide-react";
+import { Briefcase, Filter, Loader2, RefreshCw, CheckCircle2, UserPlus, X, Calendar, Plus, Banknote, TrendingUp, AlertTriangle, ChevronRight } from "lucide-react";
 import LeadDetallePanel from "../components/LeadDetallePanel";
 import { getSessionToken } from "@/lib/httpClient";
 
@@ -17,18 +17,6 @@ function fmtDate(iso: string) {
 }
 
 const API = "/api";
-
-async function sendLeadToTrello(id: number): Promise<{ ok: boolean; url?: string; msg?: string }> {
-  try {
-    const r = await fetch(`${API}/trello/send-lead/${id}`, { method: "POST" });
-    const data = await r.json();
-    if (r.status === 409) return { ok: true, url: data.trelloUrl, msg: "Ya existe" };
-    if (!r.ok) throw new Error(data.error || "Error");
-    return { ok: true, url: data.card?.shortUrl };
-  } catch (err) {
-    return { ok: false, msg: (err as Error).message };
-  }
-}
 
 async function convertirCliente(id: number, fechaInicioContrato?: string): Promise<{ ok: boolean; clienteId?: number; msg?: string }> {
   try {
@@ -292,9 +280,7 @@ export default function Comercial() {
   const [comTab, setComTab] = useState<ComercialTab>("leads");
   const [filtro, setFiltro] = useState<EstadoLead | "todos">("todos");
   const [canalFiltro, setCanalFiltro] = useState<CanalFilter>("todos");
-  const [sendingId, setSendingId] = useState<number | null>(null);
   const [convirtiendo, setConvirtiendo] = useState<number | null>(null);
-  const [trelloUrls, setTrelloUrls] = useState<Record<number, string>>({});
   const [convertidos, setConvertidos] = useState<Record<number, number>>({});
   const [errores, setErrores] = useState<Record<number, string>>({});
   const [modalConvertir, setModalConvertir] = useState<ModalConvertirState | null>(null);
@@ -465,13 +451,11 @@ export default function Comercial() {
                     <th className="text-left px-3 py-3">Estado</th>
                     <th className="text-left px-3 py-3">Ejecutivo</th>
                     <th className="text-left px-3 py-3">Fecha</th>
-                    <th className="text-left px-3 py-3">Trello</th>
                     <th className="text-left px-3 py-3">Acción</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtrados.map((l) => {
-                    const trelloUrl = trelloUrls[l.id] || (l as any).tareaAsociada;
                     const clienteIdConv = convertidos[l.id];
                     const error = errores[l.id];
                     return (
@@ -491,30 +475,6 @@ export default function Comercial() {
                       <td className="px-3 py-3"><StatusBadge value={l.estado} /></td>
                       <td className="px-3 py-3 text-white/50">{l.ejecutivo}</td>
                       <td className="px-3 py-3 text-white/30 whitespace-nowrap">{fmtDate(l.createdAt)}</td>
-                      <td className="px-3 py-3 whitespace-nowrap">
-                        {trelloUrl ? (
-                          <a href={trelloUrl} target="_blank" rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[#0079BF] hover:text-blue-300 text-xs">
-                            <CheckCircle2 size={12} className="text-green-400" />
-                            <ExternalLink size={11} />
-                          </a>
-                        ) : (
-                          <button
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              setSendingId(l.id);
-                              const res = await sendLeadToTrello(l.id);
-                              if (res.ok && res.url) setTrelloUrls(p => ({ ...p, [l.id]: res.url! }));
-                              setSendingId(null);
-                            }}
-                            disabled={sendingId === l.id}
-                            className="inline-flex items-center gap-1 px-2 py-1 bg-[#0079BF]/20 hover:bg-[#0079BF]/30 text-[#0079BF] hover:text-blue-300 text-xs rounded-lg transition-colors disabled:opacity-50"
-                            title="Enviar a Trello"
-                          >
-                            {sendingId === l.id ? <RefreshCw size={11} className="animate-spin" /> : <Send size={11} />}
-                          </button>
-                        )}
-                      </td>
                       <td className="px-3 py-3 whitespace-nowrap">
                         {l.estado === "ganado" && (
                           clienteIdConv ? (

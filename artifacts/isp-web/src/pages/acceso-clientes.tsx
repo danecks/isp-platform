@@ -10,7 +10,7 @@ import {
   Activity,
   Server,
   MessageSquare,
-  Trello,
+  ClipboardList,
   AlertTriangle,
   Users,
   BarChart3,
@@ -358,19 +358,19 @@ export default function AccesoClientes() {
         </div>
       </section>
 
-      {/* VISIÓN: TRELLO INTEGRADO */}
+      {/* VISIÓN: GESTIÓN OPERATIVA */}
       <section className="py-24 bg-background">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
             <FadeIn delay={0.2} className="order-2 lg:order-1">
-              <div className="glass-panel rounded-2xl p-6 border border-blue-500/10">
+              <div className="glass-panel rounded-2xl p-6 border border-primary/10">
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center">
-                    <Trello className="w-5 h-5 text-blue-400" />
+                  <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center">
+                    <ClipboardList className="w-5 h-5 text-primary" />
                   </div>
                   <div>
                     <p className="font-bold text-white text-sm">Tablero: Incidencias Operativas</p>
-                    <p className="text-xs text-blue-400">ISP, S.A. · Integración futura con Trello</p>
+                    <p className="text-xs text-primary">ISP, S.A. · Seguimiento en plataforma</p>
                   </div>
                 </div>
 
@@ -418,7 +418,7 @@ export default function AccesoClientes() {
                 </div>
 
                 <p className="text-xs text-muted-foreground mt-4 text-center">
-                  Concepto visual · La integración real estará disponible en la plataforma
+                  Concepto visual · El seguimiento real está disponible en la plataforma
                 </p>
               </div>
             </FadeIn>
@@ -427,10 +427,10 @@ export default function AccesoClientes() {
               <div className="divider-gold" />
               <p className="text-xs uppercase tracking-widest text-primary font-semibold mb-3">Gestión Operativa</p>
               <h2 className="text-3xl md:text-4xl font-display font-bold text-white mb-6">
-                Incidencias vinculadas a Trello
+                Incidencias con seguimiento completo
               </h2>
               <p className="text-muted-foreground leading-relaxed mb-6">
-                Cada incidencia registrada en el sistema podrá convertirse automáticamente en una tarjeta dentro del tablero operativo de ISP, S.A. en Trello. El supervisor asignado, el tiempo de respuesta y la resolución quedan documentados en un solo lugar.
+                Cada incidencia registrada en el sistema se convierte en una tarea dentro del tablero operativo de ISP, S.A. El supervisor asignado, el tiempo de respuesta y la resolución quedan documentados en un solo lugar.
               </p>
 
               <ul className="space-y-4">

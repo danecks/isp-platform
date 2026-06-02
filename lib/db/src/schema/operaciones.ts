@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, varchar, text, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, varchar, text, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -63,8 +63,10 @@ export const tareasTable = pgTable("tareas", {
   estado: varchar("estado", { length: 50 }).notNull().default("pendiente"),
   asignado: varchar("asignado", { length: 255 }),
   asignadoId: integer("asignado_id"),
-  trelloCardId: varchar("trello_card_id", { length: 100 }),
-  trelloCardUrl: varchar("trello_card_url", { length: 500 }),
+  pasos: jsonb("pasos")
+    .$type<{ key: string; label: string; done: boolean; doneAt?: string | null }[]>()
+    .notNull()
+    .default([]),
   fechaVencimiento: timestamp("fecha_vencimiento", { withTimezone: true }),
   canal: varchar("canal", { length: 50 }).notNull().default("manual"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -56,8 +56,10 @@ export interface OperacionesContextValue {
   setModalSegmentos: Setter<Puesto | null>;
   modalAsignarSSA: TarjetaSSAPendiente | null;
   setModalAsignarSSA: Setter<TarjetaSSAPendiente | null>;
-  ssaTabActivo: "sin_asignar" | "cubierta";
-  setSsaTabActivo: Setter<"sin_asignar" | "cubierta">;
+  ssaTabActivo: "sin_asignar" | "cubierta" | "por_activar";
+  setSsaTabActivo: Setter<"sin_asignar" | "cubierta" | "por_activar">;
+  modalCrearSSA: boolean;
+  setModalCrearSSA: Setter<boolean>;
   fichaVehiculoId: number | null;
   setFichaVehiculoId: Setter<number | null>;
   puestoParaTurno: Puesto | null;
@@ -100,6 +102,8 @@ export interface OperacionesContextValue {
   cierreHoy: CierreHoyData | undefined;
   refetchCierre: () => void;
   tarjetasSSA: TarjetaSSAPendiente[];
+  ssaPorActivar: TarjetaSSAPendiente[];
+  activarSSA: (id: string) => Promise<void>;
   planFuturoDia: PlanFuturo[];
   cambiosFuturosProximos: Record<number, PlanFuturo[]>;
   poolFuturo: PoolFuturoData | undefined;

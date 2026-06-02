@@ -6,7 +6,8 @@ import {
   FileBarChart2, Download, FileText, RefreshCw, AlertCircle,
   Filter, Calendar, Building2, Loader2, BarChart3,
   AlertTriangle, CheckSquare, Users, Briefcase, TrendingUp,
-  FileDown, ChevronDown, X, Map, ArrowRight, CalendarClock
+  FileDown, ChevronDown, X, Map, ArrowRight, CalendarClock,
+  Receipt, Pencil, Check
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend
@@ -14,7 +15,7 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type TabId = "operaciones" | "emergencias" | "tareas" | "rrhh" | "comercial" | "kpi";
+type TabId = "operaciones" | "emergencias" | "tareas" | "rrhh" | "comercial" | "kpi" | "ssa";
 
 interface Filtros {
   desde: string;
@@ -145,6 +146,7 @@ const TABS: { id: TabId; label: string; icon: React.ElementType; roles?: string[
   { id: "rrhh", label: "RRHH", icon: Users },
   { id: "comercial", label: "Comercial", icon: Briefcase },
   { id: "kpi", label: "KPI Ejecutivo", icon: TrendingUp },
+  { id: "ssa", label: "Facturación SSA", icon: Receipt },
 ];
 
 // ─── REPORTE: Operaciones ─────────────────────────────────────────────────────
@@ -987,6 +989,370 @@ function FiltrosBar({ filtros, onChange, onReset }: { filtros: Filtros; onChange
   );
 }
 
+// ─── REPORTE: Facturación SSA mensual ─────────────────────────────────────────
+
+const FACT_LABEL: Record<string, string> = {
+  pendiente: "Pendiente",
+  facturado: "Facturado",
+  cobrado: "Cobrado",
+};
+
+function MesLabel({ mes }: { mes: string }) {
+  if (!/^\d{4}-\d{2}$/.test(mes)) return <>{mes}</>;
+  const [y, m] = mes.split("-").map(Number);
+  const nombre = new Date(y, m - 1, 1).toLocaleDateString("es-GT", { month: "long", year: "numeric" });
+  return <>{nombre.charAt(0).toUpperCase() + nombre.slice(1)}</>;
+}
+
+function ReporteSsaFacturacion({ nombre }: { nombre: string }) {
+  const mesActual = new Date().toISOString().slice(0, 7);
+  const [mes, setMes] = useState(mesActual);
+  const [clienteFiltro, setClienteFiltro] = useState("");
+  const clientes = useClientesLista();
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editMonto, setEditMonto] = useState("");
+  const [editTarifa, setEditTarifa] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const cargar = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      params.set("mes", mes);
+      if (clienteFiltro) params.set("cliente", clienteFiltro);
+      const res = await fetch(`${API_BASE}/reportes/ssa-facturacion?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      setData(await res.json());
+    } catch (e: any) {
+      setError(e.message ?? "Error al cargar el reporte SSA");
+    } finally {
+      setLoading(false);
+    }
+  }, [mes, clienteFiltro]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const iniciarEdicion = (row: any) => {
+    setEditId(row.id);
+    setEditMonto(row.monto_estimado != null ? String(row.monto_estimado) : "");
+    setEditTarifa(row.tarifa_aplicada != null ? String(row.tarifa_aplicada) : "");
+  };
+
+  const cancelarEdicion = () => {
+    setEditId(null);
+    setEditMonto("");
+    setEditTarifa("");
+  };
+
+  const guardarEdicion = async (id: number) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/solicitudes-servicio/${id}/facturacion`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          montoEstimado: editMonto === "" ? null : Number(editMonto),
+          tarifaAplicada: editTarifa === "" ? null : editTarifa,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      cancelarEdicion();
+      await cargar();
+    } catch (e: any) {
+      setError(e.message ?? "Error al guardar monto/tarifa");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const detalle: any[] = data?.detalle ?? [];
+  const porCliente: any[] = data?.porCliente ?? [];
+  const total = data?.total ?? { solicitudes: 0, monto_total: 0, monto_facturado: 0, monto_pendiente: 0 };
+
+  const exportPdf = async () => {
+    setPdfLoading(true);
+    try {
+      const pdf = await new IspPdf({
+        titulo: "Reporte de Facturación SSA",
+        subtitulo: "Servicios de Seguridad Adicional",
+        cliente: clienteFiltro,
+        preparedBy: nombre,
+      }).build();
+
+      pdf.addSeccionTitulo(`RESUMEN — ${mes}`);
+      pdf.addResumenCards([
+        { label: "Solicitudes", valor: total.solicitudes, color: "blue" },
+        { label: "Monto Total", valor: fmtQ(total.monto_total), color: "gold" },
+        { label: "Facturado", valor: fmtQ(total.monto_facturado), color: "green" },
+        { label: "Pendiente", valor: fmtQ(total.monto_pendiente), color: "yellow" },
+      ]);
+
+      pdf.addSeccionTitulo("TOTALES POR CLIENTE");
+      pdf.addTabla(
+        ["Cliente", "Solicitudes", "Monto Total", "Facturado", "Pendiente"],
+        porCliente.map((r: any) => [
+          r.cliente_nombre, r.solicitudes, fmtQ(r.monto_total), fmtQ(r.monto_facturado), fmtQ(r.monto_pendiente),
+        ])
+      );
+
+      pdf.addSeccionTitulo("DETALLE DE SOLICITUDES");
+      pdf.addTabla(
+        ["ID", "Cliente", "Tipo", "Fecha", "Guardias", "Monto", "Tarifa", "Facturación"],
+        detalle.map((r: any) => [
+          r.id, r.cliente_nombre, r.tipo_solicitud ?? "—", fmtFecha(r.fecha),
+          r.cantidad_guardias ?? "—", fmtQ(r.monto_estimado), r.tarifa_aplicada ?? "—",
+          FACT_LABEL[r.estado_facturacion] ?? r.estado_facturacion ?? "—",
+        ])
+      );
+
+      pdf.save(`reporte-ssa-${mes}.pdf`);
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const exportCsv = () => IspPdf.exportCsv(
+    ["ID", "Cliente", "Sede", "Tipo", "Fecha", "Guardias", "Monto Estimado", "Tarifa Aplicada", "Facturación"],
+    detalle.map((r: any) => [
+      r.id, r.cliente_nombre, r.sede_nombre ?? "", r.tipo_solicitud ?? "", fmtFecha(r.fecha),
+      r.cantidad_guardias ?? "", r.monto_estimado ?? "", r.tarifa_aplicada ?? "",
+      FACT_LABEL[r.estado_facturacion] ?? r.estado_facturacion ?? "",
+    ]),
+    `ssa-${mes}.csv`
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* Controles propios: mes + cliente */}
+      <div className="bg-[#0c1829] border border-white/5 rounded-xl p-4 flex flex-wrap items-end gap-3">
+        <div>
+          <label className="block text-[10px] text-white/40 mb-1">Mes de facturación</label>
+          <input
+            type="month"
+            value={mes}
+            onChange={(e) => setMes(e.target.value || mesActual)}
+            className="bg-white/4 border border-white/8 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-primary/40"
+          />
+        </div>
+        <div className="min-w-[180px]">
+          <label className="block text-[10px] text-white/40 mb-1">Cliente</label>
+          <select
+            value={clienteFiltro}
+            onChange={(e) => setClienteFiltro(e.target.value)}
+            className="w-full bg-white/4 border border-white/8 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-primary/40"
+          >
+            <option value="">Todos</option>
+            {clientes.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+          </select>
+        </div>
+        <button
+          onClick={cargar}
+          disabled={loading}
+          className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 bg-white/4 border border-white/8 px-3 py-1.5 rounded-lg transition-all disabled:opacity-40"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+          Actualizar
+        </button>
+        <div className="ml-auto">
+          <ExportBar onPdf={exportPdf} onCsv={exportCsv} loading={pdfLoading} />
+        </div>
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 bg-red-500/8 border border-red-500/20 rounded-xl px-4 py-3">
+          <AlertCircle className="w-4 h-4 text-red-400" />
+          <p className="text-sm text-red-300">{error}</p>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center py-20 gap-2 text-white/30">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          <span className="text-sm">Generando reporte SSA...</span>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-white/40">
+              <MesLabel mes={data?.mes ?? mes} /> · {fmtNum(total.solicitudes)} solicitud(es)
+            </p>
+          </div>
+
+          {/* Stat cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <StatCard label="Solicitudes" value={total.solicitudes} color="gold" />
+            <div className="border rounded-xl p-4 text-center text-primary border-primary/20 bg-primary/8">
+              <p className="text-2xl font-bold">{fmtQ(total.monto_total)}</p>
+              <p className="text-[10px] text-white/50 mt-0.5">Monto Total</p>
+            </div>
+            <div className="border rounded-xl p-4 text-center text-green-400 border-green-500/20 bg-green-500/8">
+              <p className="text-2xl font-bold">{fmtQ(total.monto_facturado)}</p>
+              <p className="text-[10px] text-white/50 mt-0.5">Facturado</p>
+            </div>
+            <div className="border rounded-xl p-4 text-center text-yellow-400 border-yellow-500/20 bg-yellow-500/8">
+              <p className="text-2xl font-bold">{fmtQ(total.monto_pendiente)}</p>
+              <p className="text-[10px] text-white/50 mt-0.5">Pendiente</p>
+            </div>
+          </div>
+
+          {/* Totales por cliente */}
+          <div className="bg-[#0c1829] border border-white/5 rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+              <p className="text-xs font-bold text-white/70">Totales por Cliente</p>
+              <span className="text-[10px] text-white/30">{porCliente.length} cliente(s)</span>
+            </div>
+            {porCliente.length === 0 ? (
+              <div className="text-center py-8 text-white/20 text-xs">Sin solicitudes en el mes seleccionado</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-white/30 border-b border-white/5 uppercase tracking-wide text-[10px]">
+                      <th className="text-left px-4 py-2">Cliente</th>
+                      <th className="text-right px-4 py-2">Solicitudes</th>
+                      <th className="text-right px-4 py-2">Monto Total</th>
+                      <th className="text-right px-4 py-2">Facturado</th>
+                      <th className="text-right px-4 py-2">Pendiente</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {porCliente.map((r: any, i: number) => (
+                      <tr key={i} className="border-b border-white/3 hover:bg-white/2 transition-colors">
+                        <td className="px-4 py-2 text-white/80">{r.cliente_nombre}</td>
+                        <td className="px-4 py-2 text-right text-white/60">{fmtNum(r.solicitudes)}</td>
+                        <td className="px-4 py-2 text-right font-bold text-primary">{fmtQ(r.monto_total)}</td>
+                        <td className="px-4 py-2 text-right text-green-400">{fmtQ(r.monto_facturado)}</td>
+                        <td className="px-4 py-2 text-right text-yellow-400">{fmtQ(r.monto_pendiente)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Detalle con edición inline */}
+          <div className="bg-[#0c1829] border border-white/5 rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+              <p className="text-xs font-bold text-white/70">Detalle de Solicitudes (editar monto y tarifa)</p>
+              <span className="text-[10px] text-white/30">{detalle.length} registro(s)</span>
+            </div>
+            {detalle.length === 0 ? (
+              <div className="text-center py-8 text-white/20 text-xs">Sin solicitudes en el mes seleccionado</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-white/30 border-b border-white/5 uppercase tracking-wide text-[10px]">
+                      <th className="text-left px-3 py-2">ID</th>
+                      <th className="text-left px-3 py-2">Cliente</th>
+                      <th className="text-left px-3 py-2">Tipo</th>
+                      <th className="text-left px-3 py-2">Fecha</th>
+                      <th className="text-right px-3 py-2">Guardias</th>
+                      <th className="text-right px-3 py-2">Monto (Q)</th>
+                      <th className="text-left px-3 py-2">Tarifa</th>
+                      <th className="text-left px-3 py-2">Facturación</th>
+                      <th className="text-right px-3 py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detalle.map((r: any) => {
+                      const editando = editId === r.id;
+                      return (
+                        <tr key={r.id} className="border-b border-white/3 hover:bg-white/2 transition-colors">
+                          <td className="px-3 py-2 font-mono text-primary/70 text-[10px]">{r.id}</td>
+                          <td className="px-3 py-2 text-white/70">
+                            {r.cliente_nombre}
+                            {r.sede_nombre && <span className="block text-[9px] text-white/30">{r.sede_nombre}</span>}
+                          </td>
+                          <td className="px-3 py-2 text-white/50">{r.tipo_solicitud ?? "—"}</td>
+                          <td className="px-3 py-2 text-white/50">{fmtFecha(r.fecha)}</td>
+                          <td className="px-3 py-2 text-right text-white/60">{r.cantidad_guardias ?? "—"}</td>
+                          <td className="px-3 py-2 text-right">
+                            {editando ? (
+                              <input
+                                type="number"
+                                value={editMonto}
+                                onChange={(e) => setEditMonto(e.target.value)}
+                                placeholder="0"
+                                className="w-24 bg-white/4 border border-primary/30 rounded px-2 py-1 text-xs text-white text-right focus:outline-none focus:border-primary/60"
+                              />
+                            ) : (
+                              <span className="text-white/80 font-medium">{fmtQ(r.monto_estimado)}</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            {editando ? (
+                              <input
+                                type="text"
+                                value={editTarifa}
+                                onChange={(e) => setEditTarifa(e.target.value)}
+                                placeholder="Tarifa"
+                                className="w-28 bg-white/4 border border-primary/30 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-primary/60"
+                              />
+                            ) : (
+                              <span className="text-white/50">{r.tarifa_aplicada ?? "—"}</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                              r.estado_facturacion === "facturado" ? "text-green-300 bg-green-500/10 border-green-500/25" :
+                              r.estado_facturacion === "cobrado" ? "text-blue-300 bg-blue-500/10 border-blue-500/25" :
+                              "text-yellow-300 bg-yellow-500/10 border-yellow-500/25"
+                            }`}>
+                              {FACT_LABEL[r.estado_facturacion] ?? r.estado_facturacion ?? "—"}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {editando ? (
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  onClick={() => guardarEdicion(r.id)}
+                                  disabled={saving}
+                                  title="Guardar"
+                                  className="p-1.5 rounded-lg text-green-300 bg-green-500/10 border border-green-500/25 hover:bg-green-500/20 transition-all disabled:opacity-40"
+                                >
+                                  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                                </button>
+                                <button
+                                  onClick={cancelarEdicion}
+                                  disabled={saving}
+                                  title="Cancelar"
+                                  className="p-1.5 rounded-lg text-white/40 bg-white/4 border border-white/8 hover:text-white/70 transition-all disabled:opacity-40"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => iniciarEdicion(r)}
+                                title="Editar monto y tarifa"
+                                className="p-1.5 rounded-lg text-primary/70 bg-primary/8 border border-primary/15 hover:bg-primary/15 hover:text-primary transition-all"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── PÁGINA PRINCIPAL ─────────────────────────────────────────────────────────
 
 const FILTROS_INICIAL: Filtros = { desde: "", hasta: "", cliente: "", estado: "", canal: "", prioridad: "" };
@@ -1000,6 +1366,7 @@ export default function Reportes() {
   const [error, setError] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
+    if (tab === "ssa") { setLoading(false); return; }
     setLoading(true);
     setError(null);
     setData(null);
@@ -1091,8 +1458,10 @@ export default function Reportes() {
           </a>
         )}
 
-        {/* FILTROS */}
-        <FiltrosBar filtros={filtros} onChange={setFiltros} onReset={() => setFiltros(FILTROS_INICIAL)} />
+        {/* FILTROS (la pestaña SSA usa sus propios controles de mes/cliente) */}
+        {tab !== "ssa" && (
+          <FiltrosBar filtros={filtros} onChange={setFiltros} onReset={() => setFiltros(FILTROS_INICIAL)} />
+        )}
 
         {/* TABS */}
         <div className="flex flex-wrap gap-1 border-b border-white/5 pb-0">
@@ -1117,30 +1486,38 @@ export default function Reportes() {
         </div>
 
         {/* CONTENIDO */}
-        {loading && (
-          <div className="flex items-center justify-center py-24 gap-2 text-white/30">
-            <Loader2 className="w-5 h-5 animate-spin" />
-            <span className="text-sm">Generando reporte...</span>
-          </div>
-        )}
-
-        {error && (
-          <div className="flex items-center gap-2 bg-red-500/8 border border-red-500/20 rounded-xl px-4 py-3">
-            <AlertCircle className="w-4 h-4 text-red-400" />
-            <p className="text-sm text-red-300">{error}</p>
-            <button onClick={cargar} className="ml-auto text-xs text-red-400">Reintentar</button>
-          </div>
-        )}
-
-        {!loading && !error && data && (
+        {tab === "ssa" ? (
           <div className="pb-8">
-            {tab === "operaciones" && <ReporteOperaciones data={data} filtros={filtros} nombre={nombreUsuario} />}
-            {tab === "emergencias" && <ReporteEmergencias data={data} filtros={filtros} nombre={nombreUsuario} />}
-            {tab === "tareas" && <ReporteTareas data={data} filtros={filtros} nombre={nombreUsuario} />}
-            {tab === "rrhh" && <ReporteRrhh data={data} filtros={filtros} nombre={nombreUsuario} />}
-            {tab === "comercial" && <ReporteComercial data={data} filtros={filtros} nombre={nombreUsuario} />}
-            {tab === "kpi" && <ReporteKpi data={data} filtros={filtros} nombre={nombreUsuario} />}
+            <ReporteSsaFacturacion nombre={nombreUsuario} />
           </div>
+        ) : (
+          <>
+            {loading && (
+              <div className="flex items-center justify-center py-24 gap-2 text-white/30">
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span className="text-sm">Generando reporte...</span>
+              </div>
+            )}
+
+            {error && (
+              <div className="flex items-center gap-2 bg-red-500/8 border border-red-500/20 rounded-xl px-4 py-3">
+                <AlertCircle className="w-4 h-4 text-red-400" />
+                <p className="text-sm text-red-300">{error}</p>
+                <button onClick={cargar} className="ml-auto text-xs text-red-400">Reintentar</button>
+              </div>
+            )}
+
+            {!loading && !error && data && (
+              <div className="pb-8">
+                {tab === "operaciones" && <ReporteOperaciones data={data} filtros={filtros} nombre={nombreUsuario} />}
+                {tab === "emergencias" && <ReporteEmergencias data={data} filtros={filtros} nombre={nombreUsuario} />}
+                {tab === "tareas" && <ReporteTareas data={data} filtros={filtros} nombre={nombreUsuario} />}
+                {tab === "rrhh" && <ReporteRrhh data={data} filtros={filtros} nombre={nombreUsuario} />}
+                {tab === "comercial" && <ReporteComercial data={data} filtros={filtros} nombre={nombreUsuario} />}
+                {tab === "kpi" && <ReporteKpi data={data} filtros={filtros} nombre={nombreUsuario} />}
+              </div>
+            )}
+          </>
         )}
 
       </div>

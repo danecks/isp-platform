@@ -211,8 +211,6 @@ router.post("/tareas", async (req, res) => {
       estado = "pendiente",
       asignado,
       asignadoId,
-      trelloCardId,
-      trelloCardUrl,
       fechaVencimiento,
       canal = "manual",
     } = req.body;
@@ -245,8 +243,6 @@ router.post("/tareas", async (req, res) => {
         estado,
         asignado: resolvedAsignado,
         asignadoId: parsedAsignadoId,
-        trelloCardId: trelloCardId?.trim() || null,
-        trelloCardUrl: trelloCardUrl?.trim() || null,
         fechaVencimiento: fechaVencimiento ? new Date(fechaVencimiento) : null,
         canal,
         createdAt: now,
@@ -284,7 +280,7 @@ router.patch("/tareas/:id", async (req, res) => {
     if (!existing) return res.status(404).json({ error: "Tarea no encontrada" });
 
     const allowed = ["titulo", "descripcion", "prioridad", "estado", "asignado",
-                     "asignadoId", "trelloCardId", "trelloCardUrl", "fechaVencimiento"] as const;
+                     "asignadoId", "fechaVencimiento"] as const;
 
     const patch: Record<string, unknown> = { updatedAt: new Date() };
     for (const key of allowed) {
@@ -337,6 +333,91 @@ router.patch("/tareas/:id", async (req, res) => {
   }
 });
 
+// ─── PATCH /api/tareas/:id/paso ───────────────────────────────────────────────
+/**
+ * Marca/desmarca un paso del checklist de una tarea (modelo SSA de 3 pasos).
+ * Body: { key: "operaciones"|"rrhh"|"comercial", done: boolean }
+ * Sincroniza el estado de la solicitud SSA vinculada y recalcula estado_general.
+ */
+router.patch("/tareas/:id/paso", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { key, done } = req.body as { key?: string; done?: boolean };
+    if (!key || typeof done !== "boolean") {
+      return res.status(400).json({ error: "key y done son obligatorios" });
+    }
+
+    const [tarea] = await db.select().from(tareasTable).where(eq(tareasTable.id, id));
+    if (!tarea) return res.status(404).json({ error: "Tarea no encontrada" });
+
+    const pasos = Array.isArray(tarea.pasos)
+      ? (tarea.pasos as Array<{ key: string; label: string; done: boolean; doneAt: string | null }>)
+      : [];
+    const idx = pasos.findIndex((p) => p.key === key);
+    if (idx === -1) return res.status(404).json({ error: "Paso no encontrado" });
+
+    pasos[idx] = { ...pasos[idx], done, doneAt: done ? new Date().toISOString() : null };
+
+    const total = pasos.length;
+    const hechos = pasos.filter((p) => p.done).length;
+    const nuevoEstadoTarea =
+      total > 0 && hechos === total ? "completada" : hechos > 0 ? "en_proceso" : "pendiente";
+
+    const [updated] = await db
+      .update(tareasTable)
+      .set({ pasos, estado: nuevoEstadoTarea, updatedAt: new Date() })
+      .where(eq(tareasTable.id, id))
+      .returning();
+
+    // ── Sincronizar SSA vinculada (no bloqueante) ──────────────────────────────
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, estado_operaciones, estado_rrhh, estado_comercial,
+                estado_facturacion, estado_general
+         FROM solicitudes_servicio_adicional
+         WHERE tarea_operaciones_id = $1 OR tarea_rrhh_id = $1 OR tarea_comercial_id = $1
+         LIMIT 1`,
+        [id],
+      );
+      if (rows.length > 0) {
+        const s = rows[0];
+        let newOps        = s.estado_operaciones;
+        let newRrhh       = s.estado_rrhh;
+        let newComercial  = s.estado_comercial;
+        let newFacturacion: string | null = null;
+
+        if (key === "operaciones") newOps = done ? "cubierta" : "en_proceso";
+        if (key === "rrhh") newRrhh = done ? "viable" : "pendiente";
+        if (key === "comercial") {
+          newComercial = done ? "facturado" : "pendiente";
+          newFacturacion = done ? "facturado" : "pendiente";
+        }
+
+        const nuevoEstadoGeneral = calcEstadoGeneralSSA(newOps, newRrhh, newComercial, s.estado_general);
+
+        await pool.query(
+          `UPDATE solicitudes_servicio_adicional
+           SET estado_operaciones = $2,
+               estado_rrhh        = $3,
+               estado_comercial   = $4,
+               estado_facturacion = COALESCE($5, estado_facturacion),
+               estado_general     = $6,
+               updated_at = NOW()
+           WHERE id = $1`,
+          [s.id, newOps, newRrhh, newComercial, newFacturacion, nuevoEstadoGeneral],
+        );
+      }
+    } catch (syncErr) {
+      logger.error({ syncErr, tareaId: id }, "SSA sync tras toggle de paso — error (no bloqueante)");
+    }
+
+    return res.json(updated);
+  } catch (err) {
+    logger.error({ err }, "PATCH /api/tareas/:id/paso error");
+    return res.status(500).json({ error: "Error al actualizar el paso" });
+  }
+});
+
 // ─── POST /api/tareas/:id/cerrar ──────────────────────────────────────────────
 /**
  * Cierra una tarea con evidencia real (foto + comentario).
@@ -360,11 +441,6 @@ router.patch("/tareas/:id", async (req, res) => {
  *   4. Solicitar comentario (mensaje: tarea_pedir_comentario)
  *   5. Llamar POST /api/tareas/:id/cerrar con canal="whatsapp"
  *   6. Responder con mensaje "tarea_cerrada_ok"
- *
- * INTEGRACIÓN TRELLO (futura):
- *   Al cerrar exitosamente, si tarea.trelloCardId existe, llamar a
- *   Trello API para mover la tarjeta a la lista "Resuelto" / "Done".
- *   Endpoint Trello: PUT /1/cards/{cardId} con { idList: LIST_ID_RESUELTO }
  */
 router.post("/tareas/:id/cerrar", async (req, res) => {
   try {
@@ -485,7 +561,17 @@ router.post("/tareas/:id/cerrar", async (req, res) => {
         let newComercial = s.estado_comercial;
         let newFacturacion: string | null = null;
 
-        if (s.tarea_operaciones_id === id) {
+        const combinada =
+          s.tarea_operaciones_id === id &&
+          s.tarea_rrhh_id === id &&
+          s.tarea_comercial_id === id;
+        if (combinada) {
+          // Tarea única con checklist: cerrarla completa las 3 áreas
+          newOps         = "cubierta";
+          newRrhh        = "viable";
+          newComercial   = "facturado";
+          newFacturacion = "facturado";
+        } else if (s.tarea_operaciones_id === id) {
           newOps = "cubierta";
         } else if (s.tarea_rrhh_id === id) {
           newRrhh = "viable";
@@ -517,11 +603,6 @@ router.post("/tareas/:id/cerrar", async (req, res) => {
       // No bloqueante — la tarea ya quedó completada
       logger.error({ syncErr, tareaId: id }, "SSA sync tras cierre de tarea — error (no bloqueante)");
     }
-
-    // TODO (Trello):
-    // if (tarea.trelloCardId && process.env.TRELLO_API_KEY) {
-    //   await moverTarjetaTrelloAResuelto(tarea.trelloCardId);
-    // }
 
     res.status(201).json({
       tarea: tareaActualizada,

@@ -98,6 +98,29 @@ export function useOperacionesData({ fechaVista, esOtraFecha, esFuturo, puestoCo
     refetchInterval: 30_000,
   });
 
+  const ssaPorActivarQ = useQuery<TarjetaSSAPendiente[]>({
+    queryKey: ["ssa-por-activar"],
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/solicitudes-servicio/por-activar`, {
+        headers: { "x-isp-session": getSession() },
+      });
+      if (!r.ok) throw new Error(`ssa/por-activar ${r.status}`);
+      const data = await r.json();
+      return Array.isArray(data) ? data : [];
+    },
+    refetchInterval: 30_000,
+  });
+
+  async function activarSSA(id: string) {
+    const r = await fetch(`${API_BASE}/solicitudes-servicio/${id}/activar`, {
+      method: "PATCH",
+      headers: { "x-isp-session": getSession(), "Content-Type": "application/json" },
+    });
+    if (!r.ok) throw new Error(`activar ${r.status}`);
+    qc.invalidateQueries({ queryKey: ["ssa-por-activar"] });
+    qc.invalidateQueries({ queryKey: ["ssa-tablero-pizarron"] });
+  }
+
   const sinZonaQ = useQuery<{ total: number; puestos: { id: number; nombre: string; cliente: string }[] }>({
     queryKey: ["puestos-sin-zona"],
     queryFn: async () => {
@@ -158,6 +181,7 @@ export function useOperacionesData({ fechaVista, esOtraFecha, esFuturo, puestoCo
     qc.invalidateQueries({ queryKey: ["operaciones-pool"] });
     qc.invalidateQueries({ queryKey: ["operaciones-historial"] });
     qc.invalidateQueries({ queryKey: ["ssa-tablero-pizarron"] });
+    qc.invalidateQueries({ queryKey: ["ssa-por-activar"] });
     qc.invalidateQueries({ queryKey: ["pool-disponibilidad"] });
   }
 
@@ -181,6 +205,8 @@ export function useOperacionesData({ fechaVista, esOtraFecha, esFuturo, puestoCo
     cierreHoy: cierreHoyQ.data,
     refetchCierre: cierreHoyQ.refetch,
     tarjetasSSA: tarjetasSSAQ.data ?? [] as TarjetaSSAPendiente[],
+    ssaPorActivar: ssaPorActivarQ.data ?? [] as TarjetaSSAPendiente[],
+    activarSSA,
     sinZonaData: sinZonaQ.data,
     planFuturoDia: planFuturoDiaQ.data ?? [] as PlanFuturo[],
     refetchPlanFuturo: planFuturoDiaQ.refetch,

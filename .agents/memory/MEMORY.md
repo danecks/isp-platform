@@ -1,4 +1,5 @@
 - [Operativo en vivo y slots](operativo-slots.md) — el operativo del portal debe leer puesto_slots (modelo de turnos), no solo agente_id legacy; fórmula de ciclo con módulo positivo.
+- [Tablero SSA visibilidad](tablero-ssa-visibilidad.md) — el tablero usa fecha <= CURRENT_DATE a propósito (no BETWEEN); SSA activada sigue visible mientras esté abierta aunque venza; salida por estado, no por fecha.
 - [Typecheck baseline api-server](typecheck-baseline.md) — el typecheck del api-server está rojo de base (no es regresión tuya); cómo distinguir errores propios.
 - [Publicación móvil OTA/APK](mobile-release-publishing.md) — se publica por tags de git en GitHub Actions; APK release solo con tag `mobile-v*` (dispatch no crea release); el sandbox no puede pushear.
 - [Datos de contrato fuera del schema](datos-contrato-fuera-schema.md) — estado_civil/sexo/nit/direccion/etc. se persisten con UPDATE crudo (POST y PATCH); editar sin prellenar desde GET /:id los borra (""→NULL).

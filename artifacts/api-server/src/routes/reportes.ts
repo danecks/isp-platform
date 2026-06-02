@@ -216,7 +216,7 @@ router.get("/reportes/tareas", async (req, res) => {
       `, params),
       pool.query(`
         SELECT t.id, t.titulo, t.estado, t.prioridad, t.asignado, t.incidencia_id,
-               t.trello_card_id, t.created_at, t.updated_at
+               t.created_at, t.updated_at
         FROM tareas t ${wClause}
         ORDER BY t.created_at DESC LIMIT 50
       `, params),
@@ -733,6 +733,95 @@ router.get("/reportes/cobertura-zonas", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "GET /reportes/cobertura-zonas error");
     res.status(500).json({ error: "Error al generar reporte de cobertura por zonas" });
+  }
+});
+
+// ─── GET /reportes/ssa-facturacion ────────────────────────────────────────────
+/**
+ * Reporte mensual de Servicios de Seguridad Adicional (SSA) para facturación.
+ * Query: mes=YYYY-MM (default: mes actual). Opcional: cliente (nombre parcial).
+ * Devuelve filas por solicitud con monto/tarifa/estado y totales por cliente.
+ */
+router.get("/reportes/ssa-facturacion", async (req, res) => {
+  try {
+    const mesRaw = typeof req.query.mes === "string" ? req.query.mes : "";
+    const mes = /^\d{4}-\d{2}$/.test(mesRaw)
+      ? mesRaw
+      : new Date().toISOString().slice(0, 7);
+    const cliente = typeof req.query.cliente === "string" ? req.query.cliente.trim() : "";
+
+    const params: unknown[] = [mes];
+    let clienteWhere = "";
+    if (cliente) {
+      params.push(`%${cliente}%`);
+      clienteWhere = ` AND c.nombre ILIKE $${params.length}`;
+    }
+
+    const detalleQ = await pool.query(
+      `
+      SELECT
+        s.id, s.tipo_solicitud, s.fecha, s.fecha_fin,
+        s.cantidad_guardias, s.descripcion,
+        s.monto_estimado, s.tarifa_aplicada,
+        s.estado_facturacion, s.estado_contabilidad, s.estado_general,
+        c.id AS cliente_id,
+        COALESCE(c.nombre, 'Sin cliente') AS cliente_nombre,
+        cs.nombre AS sede_nombre
+      FROM solicitudes_servicio_adicional s
+      LEFT JOIN clients c ON c.id = s.cliente_id
+      LEFT JOIN client_sedes cs ON cs.id = s.sede_id
+      WHERE to_char(s.fecha, 'YYYY-MM') = $1
+        AND s.estado_general <> 'cancelada'
+        ${clienteWhere}
+      ORDER BY c.nombre ASC, s.fecha ASC
+      `,
+      params,
+    );
+
+    const porClienteQ = await pool.query(
+      `
+      SELECT
+        COALESCE(c.nombre, 'Sin cliente') AS cliente_nombre,
+        COUNT(*) AS solicitudes,
+        COALESCE(SUM(s.monto_estimado), 0) AS monto_total,
+        COALESCE(SUM(s.monto_estimado) FILTER (WHERE s.estado_facturacion = 'facturado'), 0) AS monto_facturado,
+        COALESCE(SUM(s.monto_estimado) FILTER (WHERE s.estado_facturacion IS DISTINCT FROM 'facturado'), 0) AS monto_pendiente
+      FROM solicitudes_servicio_adicional s
+      LEFT JOIN clients c ON c.id = s.cliente_id
+      WHERE to_char(s.fecha, 'YYYY-MM') = $1
+        AND s.estado_general <> 'cancelada'
+        ${clienteWhere}
+      GROUP BY c.nombre
+      ORDER BY monto_total DESC
+      `,
+      params,
+    );
+
+    const totalQ = await pool.query(
+      `
+      SELECT
+        COUNT(*) AS solicitudes,
+        COALESCE(SUM(s.monto_estimado), 0) AS monto_total,
+        COALESCE(SUM(s.monto_estimado) FILTER (WHERE s.estado_facturacion = 'facturado'), 0) AS monto_facturado,
+        COALESCE(SUM(s.monto_estimado) FILTER (WHERE s.estado_facturacion IS DISTINCT FROM 'facturado'), 0) AS monto_pendiente
+      FROM solicitudes_servicio_adicional s
+      LEFT JOIN clients c ON c.id = s.cliente_id
+      WHERE to_char(s.fecha, 'YYYY-MM') = $1
+        AND s.estado_general <> 'cancelada'
+        ${clienteWhere}
+      `,
+      params,
+    );
+
+    res.json({
+      mes,
+      detalle: detalleQ.rows,
+      porCliente: porClienteQ.rows,
+      total: totalQ.rows[0],
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /reportes/ssa-facturacion error");
+    res.status(500).json({ error: "Error al generar reporte SSA de facturación" });
   }
 });
 
