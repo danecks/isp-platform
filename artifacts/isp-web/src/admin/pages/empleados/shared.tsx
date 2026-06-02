@@ -203,6 +203,14 @@ export interface FormState {
   fechaIngreso: string;
   fechaNacimiento: string;
   notas: string;
+  // Datos para contrato (fuera del schema Drizzle)
+  estadoCivil: string;
+  sexo: string;
+  nit: string;
+  direccion: string;
+  lugarNacimiento: string;
+  municipio: string;
+  departamento: string;
   // Datos laborales / nómina
   sueldoBase: string;
   tipoJornada: string;
@@ -314,6 +322,8 @@ export const FORM_EMPTY: FormState = {
   nombreCompleto: "", dpi: "", telefono: "", telefonoSecundario: "",
   correo: "", area: "", estadoLaboral: "activo",
   fechaIngreso: "", fechaNacimiento: "", notas: "",
+  estadoCivil: "", sexo: "", nit: "", direccion: "",
+  lugarNacimiento: "", municipio: "", departamento: "",
   sueldoBase: "", tipoJornada: "", diaDescanso: "", horasContrato: "",
   frecuenciaPago: "quincenal",
   limiteAnticipo: "", tipoLimitePeriodo: "quincenal",

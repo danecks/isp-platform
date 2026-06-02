@@ -56,6 +56,13 @@ export function FormModal({
     fechaIngreso: emp?.fechaIngreso ? emp.fechaIngreso.split("T")[0] : "",
     fechaNacimiento: emp?.fechaNacimiento ? String(emp.fechaNacimiento).split("T")[0] : "",
     notas: emp?.notas ?? "",
+    estadoCivil: "",
+    sexo: "",
+    nit: "",
+    direccion: "",
+    lugarNacimiento: "",
+    municipio: "",
+    departamento: "",
     sueldoBase: emp?.sueldoBase ?? "",
     tipoJornada: emp?.tipoJornada ?? "",
     diaDescanso: emp?.diaDescanso ?? "",
@@ -78,6 +85,35 @@ export function FormModal({
   const formScrollRef = useRef<HTMLFormElement>(null);
   const { toast } = useToast();
 
+  // En edición, los datos para contrato (estado civil, dirección, NIT, etc.)
+  // viven fuera del schema Drizzle y NO vienen en el objeto de la lista. Se
+  // cargan con el detalle para prellenar el formulario y evitar borrarlos al
+  // guardar (el PATCH interpreta "" como NULL).
+  const { data: detalleContrato } = useQuery<Record<string, string | null>>({
+    queryKey: ["employee-detalle", emp?.id],
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/employees/${emp!.id}`, { headers: sessionHeader() });
+      if (!r.ok) throw new Error("No se pudo cargar el detalle del colaborador");
+      return r.json();
+    },
+    enabled: !!emp?.id,
+    staleTime: 30_000,
+  });
+
+  useEffect(() => {
+    if (!detalleContrato) return;
+    setForm((prev) => ({
+      ...prev,
+      estadoCivil:     prev.estadoCivil     || (detalleContrato.estado_civil ?? ""),
+      sexo:            prev.sexo            || (detalleContrato.sexo ?? ""),
+      nit:             prev.nit             || (detalleContrato.nit ?? ""),
+      direccion:       prev.direccion       || (detalleContrato.direccion ?? ""),
+      lugarNacimiento: prev.lugarNacimiento || (detalleContrato.lugar_nacimiento ?? ""),
+      municipio:       prev.municipio       || (detalleContrato.municipio ?? ""),
+      departamento:    prev.departamento    || (detalleContrato.departamento ?? ""),
+    }));
+  }, [detalleContrato]);
+
   function showError(msg: string) {
     setError(msg);
     toast({ title: "No se pudo guardar", description: msg, variant: "destructive" });
@@ -94,6 +130,9 @@ export function FormModal({
     ev.preventDefault();
     if (!form.nombreCompleto.trim()) { showError("El nombre completo es requerido."); return; }
     if (!form.dpi.trim()) { showError("El DPI es requerido."); return; }
+    // En edición, no guardar hasta que cargue el detalle: enviar los campos de
+    // contrato vacíos antes de prellenarlos borraría datos existentes (PATCH "" => NULL).
+    if (emp?.id && !detalleContrato) { showError("Cargando datos del colaborador, intente de nuevo en un momento."); return; }
     setSaving(true);
     setError(null);
     try {
@@ -157,6 +196,57 @@ export function FormModal({
           </div>
           {field("Correo electrónico", "correo", "email", { placeholder: "correo@ejemplo.com" })}
           {field("Área / Departamento", "area", "text", { placeholder: "Ops, Administración…" })}
+
+          {/* Datos para contrato */}
+          <p className="text-[10px] text-white/30 uppercase tracking-widest pt-2">Datos para contrato</p>
+          <p className="text-[10px] text-white/30 -mt-2">
+            Se usan al generar el contrato laboral en PDF. Opcionales, pero si quedan vacíos el contrato sale con líneas en blanco.
+          </p>
+          <div className="space-y-1">
+            <label className="text-xs text-white/50 font-medium">Dirección</label>
+            <textarea
+              value={form.direccion}
+              onChange={(e) => set("direccion", e.target.value)}
+              rows={2}
+              placeholder="Dirección de residencia"
+              className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-primary/50 resize-none"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs text-white/50 font-medium">Sexo</label>
+              <select
+                value={form.sexo}
+                onChange={(e) => set("sexo", e.target.value)}
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50 appearance-none"
+              >
+                <option value="">— Sin especificar —</option>
+                <option value="Masculino">Masculino</option>
+                <option value="Femenino">Femenino</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-white/50 font-medium">Estado civil</label>
+              <select
+                value={form.estadoCivil}
+                onChange={(e) => set("estadoCivil", e.target.value)}
+                className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary/50 appearance-none"
+              >
+                <option value="">— Sin especificar —</option>
+                <option value="Soltero/a">Soltero/a</option>
+                <option value="Casado/a">Casado/a</option>
+                <option value="Unido/a">Unido/a</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {field("NIT", "nit", "text", { placeholder: "NIT o CF" })}
+            {field("Lugar de nacimiento", "lugarNacimiento", "text", { placeholder: "Ciudad / pueblo" })}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {field("Municipio", "municipio", "text")}
+            {field("Departamento", "departamento", "text")}
+          </div>
 
           {/* Estado */}
           <div className="space-y-1">

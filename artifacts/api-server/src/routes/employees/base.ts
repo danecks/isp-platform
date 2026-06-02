@@ -201,6 +201,8 @@ router.post("/employees", async (req, res) => {
     externalId, sourceSystem, syncStatus,
     sueldoBase, tipoJornada, diaDescanso, horasContrato,
     frecuenciaPago, tipoPersonal, fechaNacimiento,
+    // Datos personales (para contratos) — fuera del schema Drizzle
+    estadoCivil, direccion, sexo, nit, lugarNacimiento, municipio, departamento,
   } = req.body ?? {};
 
   if (!nombreCompleto || !String(nombreCompleto).trim()) {
@@ -288,6 +290,27 @@ router.post("/employees", async (req, res) => {
     // Fecha de nacimiento (fuera del schema Drizzle)
     if (fechaNacimiento !== undefined && fechaNacimiento !== null && fechaNacimiento !== "") {
       await pool.query(`UPDATE employees SET fecha_nacimiento = $1 WHERE id = $2`, [fechaNacimiento, emp.id]);
+    }
+
+    // Datos personales para contrato (fuera del schema Drizzle) — mismo manejo que el PATCH
+    {
+      const persoUpdates: string[] = [];
+      const persoParams: unknown[] = [emp.id];
+      const pushPerso = (col: string, val: unknown) => {
+        if (val === undefined) return;
+        persoParams.push(val === "" || val === null ? null : val);
+        persoUpdates.push(`${col} = $${persoParams.length}`);
+      };
+      pushPerso("estado_civil", estadoCivil);
+      pushPerso("direccion", direccion);
+      pushPerso("sexo", sexo);
+      pushPerso("nit", nit);
+      pushPerso("lugar_nacimiento", lugarNacimiento);
+      pushPerso("municipio", municipio);
+      pushPerso("departamento", departamento);
+      if (persoUpdates.length > 0) {
+        await pool.query(`UPDATE employees SET ${persoUpdates.join(", ")} WHERE id = $1`, persoParams);
+      }
     }
 
     // CONT: auto-generar 2 contratos al contratar
