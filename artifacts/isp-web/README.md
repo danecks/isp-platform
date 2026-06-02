@@ -140,7 +140,6 @@ Para conectarlos, los formularios usan `react-hook-form` + `zod` y están listos
 | Autenticación | ⬜ Pendiente | Integrar Replit Auth para acceso al dashboard |
 | Dashboard interno | ⬜ Pendiente | Nueva ruta `/dashboard` con acceso privado |
 | Integración WhatsApp | ⬜ Pendiente | Configurar WhatsApp Business API + webhook |
-| Integración Trello | ⬜ Pendiente | Configurar Trello API + sincronización de incidencias |
 
 ---
 

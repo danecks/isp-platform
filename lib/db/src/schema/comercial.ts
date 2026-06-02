@@ -17,7 +17,7 @@ export const leadsTable = pgTable("leads", {
   estado: varchar("estado", { length: 50 }).notNull().default("nuevo"),
   ejecutivo: varchar("ejecutivo", { length: 255 }).default("Sin asignar"),
   notas: text("notas"),
-  tareaAsociada: varchar("tarea_asociada", { length: 255 }),  // URL tarjeta Trello
+  tareaAsociada: varchar("tarea_asociada", { length: 255 }),  // referencia a tarea interna asociada
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -36,7 +36,7 @@ export const applicationsTable = pgTable("applications", {
   canal: varchar("canal", { length: 50 }).notNull().default("web"),
   estado: varchar("estado", { length: 50 }).notNull().default("recibido"),
   notas: text("notas"),
-  tareaAsociada: varchar("tarea_asociada", { length: 255 }),  // URL tarjeta Trello
+  tareaAsociada: varchar("tarea_asociada", { length: 255 }),  // referencia a tarea interna asociada
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

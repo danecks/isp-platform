@@ -15,7 +15,6 @@ Este documento describe los cuatro pilares del ecosistema digital planificado:
 1. **Web pública corporativa** (ya construida)
 2. **Dashboard interno de operaciones** (próxima fase)
 3. **Canal WhatsApp integrado** (próxima fase)
-4. **Seguimiento operativo con Trello** (próxima fase)
 
 > El sistema de pagos, contabilidad, bancos e inventario que ya existe en ISP **no forma parte de este ecosistema**. Seguirá funcionando de forma independiente. Esta plataforma cubre la operación de campo, los clientes y el crecimiento comercial.
 
@@ -150,40 +149,7 @@ Cliente o agente reporta emergencia → Clasificación automática como URGENTE
 
 ---
 
-## 4. Seguimiento con Trello (Fase 2)
-
-### Propósito
-Las incidencias operativas y tareas internas se gestionarán en tableros de Trello sincronizados con el sistema de ISP.
-
-### Flujo de sincronización
-
-```
-Incidente registrado en sistema 
-→ API de Trello crea tarjeta en tablero "Incidencias Activas"
-→ Tarjeta incluye: descripción, cliente, agente, urgencia, folio
-→ Supervisor actualiza la tarjeta con avances
-→ Al resolver: tarjeta se mueve a columna "Resuelto"
-→ Sistema registra tiempo de resolución y cierra el caso
-```
-
-### Estructura de tableros planificada
-
-| Tablero | Columnas |
-|---------|----------|
-| Incidencias Operativas | Por atender / En proceso / Escalado / Resuelto |
-| Seguimiento de Leads | Nuevo / Contactado / Cotización enviada / Ganado / Perdido |
-| Reclutamiento | Recibido / Revisión / Entrevista / Aprobado / Descartado |
-| Operaciones Generales | Pendiente / En ejecución / Completado |
-
-### Qué se necesita para la integración
-- Cuenta de Trello de la empresa (o Workspace)
-- API Key y Token de Trello
-- Configuración de webhooks en el backend de ISP
-- Mapeo de eventos del sistema a acciones de Trello
-
----
-
-## 5. Sistema Administrativo Separado
+## 4. Sistema Administrativo Separado
 
 > Este sistema existente **NO se modifica ni se integra en esta plataforma.**
 
@@ -193,7 +159,7 @@ Si en el futuro se desea integrar datos contables (ejemplo: estado de cuenta de 
 
 ---
 
-## 6. Hoja de Ruta
+## 5. Hoja de Ruta
 
 | Fase | Descripción | Estado |
 |------|-------------|--------|
@@ -202,13 +168,12 @@ Si en el futuro se desea integrar datos contables (ejemplo: estado de cuenta de 
 | **Fase 3** | Dashboard interno (incidencias, agentes, KPI) | 📋 Planificado |
 | **Fase 4** | Formularios web conectados a backend real | 📋 Planificado |
 | **Fase 5** | Integración WhatsApp Business API | 📋 Planificado |
-| **Fase 6** | Sincronización con Trello | 📋 Planificado |
-| **Fase 7** | Portal de clientes con login y reportes | 📋 Planificado |
-| **Fase 8** | KPIs avanzados y visualización de datos | 🔮 Futuro |
+| **Fase 6** | Portal de clientes con login y reportes | 📋 Planificado |
+| **Fase 7** | KPIs avanzados y visualización de datos | 🔮 Futuro |
 
 ---
 
-## 7. Arquitectura Técnica Actual
+## 6. Arquitectura Técnica Actual
 
 ```
 workspace/ (monorepo pnpm)

@@ -649,10 +649,10 @@ El código del arma es **inmutable** y lo asigna el sistema. Ya no se ingresa ma
         antes/después coloreados (T=verde, M=ámbar, D=gris) y tabla de diferencias por campo;
         panel separado para errores (naranja) y conflictos (rosa).
 
-### 7.37 Tareas (Trello-like) (`/api/tareas`, `/api/trello`)
-- **Archivos**: `routes/tareas.ts`, `routes/trello.ts`
+### 7.37 Tareas (`/api/tareas`)
+- **Archivos**: `routes/tareas.ts`
 - **Tablas**: `tareas`, `task_evidencias`
-- Ver `TRELLO-README.md`.
+- Tarea única por solicitud con checklist de 3 pasos (Operaciones / RRHH / Comercial).
 
 ### 7.38 Usuarios y Roles (`/api/users`, `/api/roles`)
 - **Archivos**: `routes/users.ts`, `routes/roles.ts`

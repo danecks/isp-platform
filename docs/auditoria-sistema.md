@@ -125,8 +125,7 @@ Routers por dominio (agrupación informativa — mismo orden que `index.ts`):
 - **Logística**: `vehiculos`, `armeria`, `bodega`, `dotacion`, `uniformes`
 - **Clientes / Portal**: `portal`, `ficha`, `sedes`, `alias`,
   `usuarios-clientes`
-- **WhatsApp / Soporte**: `whatsapp-webhook`, `wa-config`, `simulador`,
-  `trello`
+- **WhatsApp / Soporte**: `whatsapp-webhook`, `wa-config`, `simulador`
 - **CMS / docs**: `cms`, `docs`
 - **Admin**: `users`, `roles`, `dashboard`, `kpi`, `reportes`, `storage`,
   `solicitudes-eliminacion`, `admin-reset`, `reset-datos`, `importacion`,
@@ -271,7 +270,7 @@ en `httpClient.apiRequest`:
 - `lib/api.ts` → `apiFetch()` reemplaza su `fetch` interno por
   `apiRequest()`. Todos los `employeesApi`, `usersApi`, `leadsApi`,
   `applicationsApi`, `incidentsApi`, `tareasApi`, `anticiposApi`,
-  `dashboardApi`, `rrhhAlertasApi` y `trelloApi` quedan automáticamente
+  `dashboardApi` y `rrhhAlertasApi` quedan automáticamente
   centralizados.
 - `lib/portalApi.ts` → `portalGet`/`portalPost` siguen exponiendo la misma
   firma pero su cuerpo ahora es un thin wrapper que arma los headers de

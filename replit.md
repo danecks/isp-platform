@@ -6,7 +6,6 @@ Key capabilities include:
 - **Dynamic Roles & Permissions:** Configurable role-based access control.
 - **Robust Authentication & RBAC:** Granular role-based access control for various user roles.
 - **Client Portal:** Secure access for clients to view incidents and KPIs.
-- **Trello Integration:** Seamless integration for Incidencias, Leads, and Postulaciones.
 - **WhatsApp Integration:** Transforms WhatsApp messages into structured database records.
 - **Lead and Applicant Conversion:** Facilitates conversion of leads to clients and applicants to employees.
 - **Branding Consistency:** Centralized configuration for a uniform corporate identity.
@@ -83,7 +82,6 @@ The project uses a pnpm workspace monorepo, organizing deployable applications (
 - **Tailwind CSS:** Styling framework.
 - **shadcn/ui:** UI component library.
 - **Meta Cloud API:** For WhatsApp integration.
-- **Trello:** Task management platform.
 
 # User preferences
 - **Archivos pequeños y modulares:** Evitar archivos gigantes (anti-patrón `Operaciones.tsx` 10k líneas / `Empleados.tsx` 9k líneas). Para módulos nuevos: separar por archivo cada pestaña/sub-vista (objetivo <300 líneas por archivo), un router REST por recurso, componentes reutilizables aislados, tipos compartidos en archivo dedicado. Facilita administración y cambios futuros.
