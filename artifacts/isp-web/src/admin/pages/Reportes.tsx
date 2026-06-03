@@ -15,7 +15,7 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type TabId = "operaciones" | "emergencias" | "tareas" | "rrhh" | "comercial" | "kpi" | "ssa";
+type TabId = "operaciones" | "emergencias" | "tareas" | "rrhh" | "comercial" | "kpi" | "ssa" | "conciliacion-quincena";
 
 interface Filtros {
   desde: string;
@@ -147,6 +147,7 @@ const TABS: { id: TabId; label: string; icon: React.ElementType; roles?: string[
   { id: "comercial", label: "Comercial", icon: Briefcase },
   { id: "kpi", label: "KPI Ejecutivo", icon: TrendingUp },
   { id: "ssa", label: "Facturación SSA", icon: Receipt },
+  { id: "conciliacion-quincena", label: "Conciliación Quincena", icon: CalendarClock },
 ];
 
 // ─── REPORTE: Operaciones ─────────────────────────────────────────────────────
@@ -1355,6 +1356,271 @@ function ReporteSsaFacturacion({ nombre }: { nombre: string }) {
 
 // ─── PÁGINA PRINCIPAL ─────────────────────────────────────────────────────────
 
+// ─── REPORTE: Conciliación de Quincena ────────────────────────────────────────
+
+function fmtHoras(n: unknown) {
+  const num = Number(n ?? 0);
+  return isNaN(num) ? "0" : (Math.round(num * 10) / 10).toLocaleString("es-GT");
+}
+
+function EstadoBadge({ estado }: { estado: string }) {
+  const map: Record<string, string> = {
+    aprobado: "text-green-400 bg-green-500/10 border-green-500/20",
+    pagado_efectivo: "text-green-400 bg-green-500/10 border-green-500/20",
+    rechazado: "text-red-400 bg-red-500/10 border-red-500/20",
+    pendiente: "text-yellow-400 bg-yellow-500/10 border-yellow-500/20",
+    pendiente_aprobacion: "text-yellow-400 bg-yellow-500/10 border-yellow-500/20",
+  };
+  const cls = map[estado] ?? "text-white/50 bg-white/5 border-white/10";
+  return (
+    <span className={`text-[9px] px-1.5 py-0.5 rounded-full border whitespace-nowrap ${cls}`}>
+      {estado.replace(/_/g, " ")}
+    </span>
+  );
+}
+
+function ReporteConciliacion({ data, filtros, nombre }: { data: any; filtros: Filtros; nombre: string }) {
+  const [pdfLoading, setPdfLoading] = useState(false);
+  if (!data?.resumen || !Array.isArray(data?.detalle)) return null;
+
+  const r = data.resumen;
+  const detalle: any[] = data.detalle;
+  const huerfanas: any[] = data.huerfanasHE ?? [];
+  const porEmpleado: any[] = data.porEmpleado ?? [];
+  const periodo = `${fmtFecha(data.desde)} — ${fmtFecha(data.hasta)}`;
+
+  const exportPdf = async () => {
+    setPdfLoading(true);
+    try {
+      const pdf = await new IspPdf({
+        titulo: "Conciliación de Quincena",
+        subtitulo: "Faltas, coberturas y horas extra para verificación de pago",
+        desde: data.desde,
+        hasta: data.hasta,
+        cliente: filtros.cliente,
+        preparedBy: nombre,
+      }).build();
+
+      pdf.addSeccionTitulo("RESUMEN");
+      pdf.addResumenCards([
+        { label: "Faltas / ausencias", valor: r.faltas, color: "red" },
+        { label: "Faltas sin cubrir", valor: r.faltas_sin_cubrir, color: "yellow" },
+        { label: "Horas extra (h)", valor: r.he_horas, color: "blue" },
+        { label: "Inconsistencias", valor: r.inconsistencias_total, color: r.inconsistencias_total > 0 ? "red" : "green" },
+      ]);
+      pdf.addTextoResumen(
+        `Conciliación del período ${periodo}. Se registran ${r.faltas} faltas/ausencias ` +
+        `(${r.faltas_cubiertas} cubiertas con vínculo, ${r.faltas_sin_cubrir} sin cubrir), ` +
+        `${r.he_eventos} eventos de horas extra (${r.he_horas} h) y ${r.pendientes_aprobacion} pendientes de aprobación. ` +
+        `Se detectaron ${r.inconsistencias_total} inconsistencias a revisar antes del pago.`
+      );
+
+      pdf.addSeccionTitulo("RESUMEN POR EMPLEADO");
+      pdf.addTabla(
+        ["Empleado", "Faltas", "HE", "Horas HE", "Pendientes", "Inconsist."],
+        porEmpleado.map((e: any) => [e.empleado, e.faltas, e.he, fmtHoras(e.horas_he), e.pendientes, e.inconsistencias])
+      );
+
+      pdf.addSeccionTitulo("DETALLE DE CAMBIOS");
+      pdf.addTabla(
+        ["Fecha", "Empleado", "Tipo", "Estado", "Cliente/Puesto", "Horas", "Vinculado", "Nómina", "Observación"],
+        detalle.map((d: any) => [
+          fmtFecha(d.fecha), d.employee_nombre, d.tipo_label, d.estado,
+          [d.cliente_nombre, d.puesto_nombre].filter(Boolean).join(" / ") || "—",
+          d.cantidad_horas ? fmtHoras(d.cantidad_horas) : "—",
+          d.es_falta_like ? (d.cubierto ? "Sí" : "No") : (d.vinculado ? "Sí" : "—"),
+          d.impacto_nomina ?? "—",
+          d.inconsistencias.join("; ") || "OK",
+        ])
+      );
+
+      if (huerfanas.length > 0) {
+        pdf.addSeccionTitulo("HORAS EXTRA SIN BOLETA (REVISAR)");
+        pdf.addTabla(
+          ["Fecha", "Empleado", "Cliente/Puesto", "Horas", "Nómina"],
+          huerfanas.map((h: any) => [
+            fmtFecha(h.fecha), h.empleado_nombre,
+            [h.cliente_nombre, h.puesto_nombre].filter(Boolean).join(" / ") || "—",
+            fmtHoras(h.horas_calculadas), h.impacto_nomina ?? "—",
+          ])
+        );
+      }
+
+      pdf.save("conciliacion-quincena.pdf");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const exportCsv = () => {
+    IspPdf.exportCsv(
+      ["Fecha", "Empleado", "Tipo", "Estado", "Cliente", "Puesto", "Horas", "Vinculado", "Par", "Impacto Nomina", "Inconsistencias"],
+      detalle.map((d: any) => [
+        fmtFecha(d.fecha), d.employee_nombre, d.tipo_label, d.estado,
+        d.cliente_nombre ?? "", d.puesto_nombre ?? "",
+        d.cantidad_horas ?? "",
+        d.es_falta_like ? (d.cubierto ? "Si" : "No") : (d.vinculado ? "Si" : ""),
+        d.par_empleado ?? "",
+        d.impacto_nomina ?? "",
+        d.inconsistencias.join("; "),
+      ]),
+      "conciliacion-quincena.csv"
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center flex-wrap gap-2">
+        <p className="text-xs text-white/40">Período: <span className="text-white/70 font-medium">{periodo}</span></p>
+        <ExportBar onPdf={exportPdf} onCsv={exportCsv} loading={pdfLoading} />
+      </div>
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <StatCard label="Faltas / ausencias" value={r.faltas} color="red" />
+        <StatCard label="Cubiertas" value={r.faltas_cubiertas} color="green" />
+        <StatCard label="Sin cubrir" value={r.faltas_sin_cubrir} color="yellow" />
+        <StatCard label="Eventos HE" value={r.he_eventos} color="blue" />
+        <StatCard label="Pendientes aprob." value={r.pendientes_aprobacion} color="yellow" />
+        <StatCard label="Inconsistencias" value={r.inconsistencias_total} color={r.inconsistencias_total > 0 ? "red" : "green"} />
+      </div>
+
+      {/* Aviso inconsistencias */}
+      {r.inconsistencias_total > 0 && (
+        <div className="flex items-start gap-2 bg-red-500/8 border border-red-500/20 rounded-xl px-4 py-3">
+          <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+          <p className="text-xs text-red-300/90">
+            Hay <b>{r.inconsistencias_total}</b> registros que requieren revisión antes del pago
+            (faltas sin cobertura vinculada, HE sin aprobar o sin boleta, descuentos faltantes).
+            Revíselos en el detalle marcado en rojo.
+          </p>
+        </div>
+      )}
+
+      {/* Resumen por empleado */}
+      <div className="bg-[#0c1829] border border-white/5 rounded-xl p-4">
+        <SeccionTitulo>Resumen por Empleado</SeccionTitulo>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-white/40 border-b border-white/5">
+                <th className="text-left font-medium py-2 px-2">Empleado</th>
+                <th className="text-center font-medium py-2 px-2">Faltas</th>
+                <th className="text-center font-medium py-2 px-2">HE</th>
+                <th className="text-center font-medium py-2 px-2">Horas HE</th>
+                <th className="text-center font-medium py-2 px-2">Pendientes</th>
+                <th className="text-center font-medium py-2 px-2">Inconsist.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {porEmpleado.length === 0 && (
+                <tr><td colSpan={6} className="text-center py-6 text-white/20">Sin cambios en el período</td></tr>
+              )}
+              {porEmpleado.map((e: any, i: number) => (
+                <tr key={i} className="border-b border-white/3 hover:bg-white/2">
+                  <td className="py-2 px-2 text-white/80">{e.empleado}</td>
+                  <td className="text-center py-2 px-2 text-white/60">{e.faltas}</td>
+                  <td className="text-center py-2 px-2 text-white/60">{e.he}</td>
+                  <td className="text-center py-2 px-2 text-white/60">{fmtHoras(e.horas_he)}</td>
+                  <td className="text-center py-2 px-2 text-yellow-400/70">{e.pendientes || "—"}</td>
+                  <td className={`text-center py-2 px-2 font-medium ${e.inconsistencias > 0 ? "text-red-400" : "text-white/30"}`}>{e.inconsistencias || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Detalle por evento */}
+      <div className="bg-[#0c1829] border border-white/5 rounded-xl p-4">
+        <SeccionTitulo>Detalle de Cambios ({detalle.length})</SeccionTitulo>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-white/40 border-b border-white/5">
+                <th className="text-left font-medium py-2 px-2">Fecha</th>
+                <th className="text-left font-medium py-2 px-2">Empleado</th>
+                <th className="text-left font-medium py-2 px-2">Tipo</th>
+                <th className="text-left font-medium py-2 px-2">Estado</th>
+                <th className="text-left font-medium py-2 px-2">Cliente / Puesto</th>
+                <th className="text-center font-medium py-2 px-2">Horas</th>
+                <th className="text-left font-medium py-2 px-2">Cubierto / Vínculo</th>
+                <th className="text-left font-medium py-2 px-2">Nómina</th>
+                <th className="text-left font-medium py-2 px-2">Observación</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detalle.length === 0 && (
+                <tr><td colSpan={9} className="text-center py-6 text-white/20">Sin cambios en el período</td></tr>
+              )}
+              {detalle.map((d: any, i: number) => {
+                const malo = d.inconsistencias.length > 0;
+                return (
+                  <tr key={i} className={`border-b border-white/3 ${malo ? "bg-red-500/5" : "hover:bg-white/2"}`}>
+                    <td className="py-2 px-2 text-white/60 whitespace-nowrap">{fmtFecha(d.fecha)}</td>
+                    <td className="py-2 px-2 text-white/80">{d.employee_nombre}</td>
+                    <td className="py-2 px-2 text-white/70">{d.tipo_label}</td>
+                    <td className="py-2 px-2"><EstadoBadge estado={d.estado} /></td>
+                    <td className="py-2 px-2 text-white/50">{[d.cliente_nombre, d.puesto_nombre].filter(Boolean).join(" / ") || "—"}</td>
+                    <td className="text-center py-2 px-2 text-white/60">{d.cantidad_horas ? fmtHoras(d.cantidad_horas) : "—"}</td>
+                    <td className="py-2 px-2 text-white/60">
+                      {d.es_falta_like
+                        ? (d.cubierto
+                            ? <span className="text-green-400/80">Cubierta{d.par_empleado ? ` · ${d.par_empleado}` : ""}</span>
+                            : <span className="text-yellow-400/80">Sin cubrir</span>)
+                        : (d.vinculado
+                            ? <span className="text-green-400/80">Vinc.{d.par_empleado ? ` · ${d.par_empleado}` : ""}</span>
+                            : <span className="text-white/30">—</span>)}
+                    </td>
+                    <td className="py-2 px-2 text-white/50 whitespace-nowrap">{d.impacto_nomina ? d.impacto_nomina.replace(/_/g, " ") : "—"}</td>
+                    <td className="py-2 px-2">
+                      {malo
+                        ? <span className="text-[10px] text-red-300/90">{d.inconsistencias.join("; ")}</span>
+                        : <span className="text-[10px] text-green-400/60">OK</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Horas extra sin boleta */}
+      {huerfanas.length > 0 && (
+        <div className="bg-[#0c1829] border border-red-500/15 rounded-xl p-4">
+          <SeccionTitulo>Horas Extra sin Boleta — Revisar ({huerfanas.length})</SeccionTitulo>
+          <p className="text-[10px] text-white/35 mb-2">Cobertura que genera HE en nómina pero sin evento de horas extra registrado/aprobado.</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-white/40 border-b border-white/5">
+                  <th className="text-left font-medium py-2 px-2">Fecha</th>
+                  <th className="text-left font-medium py-2 px-2">Empleado</th>
+                  <th className="text-left font-medium py-2 px-2">Cliente / Puesto</th>
+                  <th className="text-center font-medium py-2 px-2">Horas</th>
+                  <th className="text-left font-medium py-2 px-2">Nómina</th>
+                </tr>
+              </thead>
+              <tbody>
+                {huerfanas.map((h: any, i: number) => (
+                  <tr key={i} className="border-b border-white/3 bg-red-500/5">
+                    <td className="py-2 px-2 text-white/60 whitespace-nowrap">{fmtFecha(h.fecha)}</td>
+                    <td className="py-2 px-2 text-white/80">{h.empleado_nombre}</td>
+                    <td className="py-2 px-2 text-white/50">{[h.cliente_nombre, h.puesto_nombre].filter(Boolean).join(" / ") || "—"}</td>
+                    <td className="text-center py-2 px-2 text-white/60">{fmtHoras(h.horas_calculadas)}</td>
+                    <td className="py-2 px-2 text-white/50">{h.impacto_nomina ? h.impacto_nomina.replace(/_/g, " ") : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const FILTROS_INICIAL: Filtros = { desde: "", hasta: "", cliente: "", estado: "", canal: "", prioridad: "" };
 
 export default function Reportes() {
@@ -1391,6 +1657,7 @@ export default function Reportes() {
     if (t.id === "comercial" && !["admin", "comercial"].includes(rolActual)) return false;
     if (t.id === "rrhh" && !["admin", "rrhh"].includes(rolActual)) return false;
     if (t.id === "kpi" && !["admin"].includes(rolActual)) return false;
+    if (t.id === "conciliacion-quincena" && !["admin", "rrhh", "operaciones"].includes(rolActual)) return false;
     return true;
   });
 
@@ -1515,6 +1782,7 @@ export default function Reportes() {
                 {tab === "rrhh" && <ReporteRrhh data={data} filtros={filtros} nombre={nombreUsuario} />}
                 {tab === "comercial" && <ReporteComercial data={data} filtros={filtros} nombre={nombreUsuario} />}
                 {tab === "kpi" && <ReporteKpi data={data} filtros={filtros} nombre={nombreUsuario} />}
+                {tab === "conciliacion-quincena" && <ReporteConciliacion data={data} filtros={filtros} nombre={nombreUsuario} />}
               </div>
             )}
           </>

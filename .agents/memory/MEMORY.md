@@ -4,4 +4,6 @@
 - [Publicación móvil OTA/APK](mobile-release-publishing.md) — se publica por tags de git en GitHub Actions; APK release solo con tag `mobile-v*` (dispatch no crea release); el sandbox no puede pushear.
 - [Datos de contrato fuera del schema](datos-contrato-fuera-schema.md) — estado_civil/sexo/nit/direccion/etc. se persisten con UPDATE crudo (POST y PATCH); editar sin prellenar desde GET /:id los borra (""→NULL).
 - [Atribución de rondas QR](rondas-atribucion.md) — los eventos de ronda se atribuyen por employee_id (agente), no por user_id web; reportes resuelven nombre con COALESCE(u.nombre, emp.nombre_completo).
+- [Timezone GT en TIMESTAMPTZ](timezone-gt-timestamptz.md) — filtrar/agrupar por día sobre col TIMESTAMPTZ requiere (col AT TIME ZONE 'America/Guatemala')::date, nunca col::date directo.
+- [Conciliación quincena](conciliacion-quincena.md) — reporte que cruza eventos_rrhh+novedades_nomina_diarias+cobertura_segmentos para verificar pago; "cubierto" exige par_tipo='horas_extra', no solo evento_par_id presente.
 - [Liquidaciones editables y permisos finos](liquidaciones-editables.md) — sub-permiso bajo prefijo ya catalogado (/prestaciones) se valida in-handler, no en middleware; monto_original con COALESCE 1ª vez; totales recalculados desde detalle.

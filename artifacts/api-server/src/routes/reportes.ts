@@ -25,6 +25,7 @@
 import { Router, type Request } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
+import { getPermisosForUsername } from "../lib/permisos-middleware";
 
 const router = Router();
 
@@ -822,6 +823,193 @@ router.get("/reportes/ssa-facturacion", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "GET /reportes/ssa-facturacion error");
     res.status(500).json({ error: "Error al generar reporte SSA de facturación" });
+  }
+});
+
+// ─── GET /reportes/conciliacion-quincena ──────────────────────────────────────
+// Reporte de conciliación quincenal: cruza los cambios operativos (eventos_rrhh:
+// faltas, horas extra, ausencias) con lo que efectivamente entra a nómina
+// (novedades_nomina_diarias) y la cobertura real (cobertura_segmentos).
+// Objetivo: al momento de pago, verificar que cada falta/HE tiene respaldo,
+// está vinculada (evento_par_id) y aprobada — y detectar inconsistencias.
+function quincenaActualGT(): { desde: string; hasta: string } {
+  const hoy = new Date(Date.now() - 6 * 3_600_000); // GT (UTC-6)
+  const y = hoy.getUTCFullYear();
+  const m = hoy.getUTCMonth(); // 0-based
+  const d = hoy.getUTCDate();
+  const mm = String(m + 1).padStart(2, "0");
+  if (d <= 15) {
+    return { desde: `${y}-${mm}-01`, hasta: `${y}-${mm}-15` };
+  }
+  const ultimoDia = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  return { desde: `${y}-${mm}-16`, hasta: `${y}-${mm}-${String(ultimoDia).padStart(2, "0")}` };
+}
+
+router.get("/reportes/conciliacion-quincena", async (req, res) => {
+  try {
+    // ── Autorización: dato sensible de nómina/ausencias ──────────────────────
+    let session: { rol?: string; username?: string } | null = null;
+    try {
+      const raw = req.headers["x-isp-session"] as string;
+      if (raw) session = JSON.parse(raw);
+    } catch { /* sesión malformada → sin sesión abajo */ }
+    if (!session) return res.status(401).json({ error: "Sesión requerida" });
+    const ROLES_OK = ["admin", "rrhh", "operaciones"];
+    let autorizado = false;
+    if (session.username) {
+      const { rol, modulos } = await getPermisosForUsername(session.username);
+      autorizado = rol === "admin" || modulos.has("*") || ROLES_OK.includes(rol);
+    } else {
+      autorizado = ROLES_OK.includes(session.rol ?? "");
+    }
+    if (!autorizado) {
+      return res.status(403).json({ error: "No tiene permiso para ver la conciliación de quincena" });
+    }
+
+    const f = parseFiltros(req);
+    const def = quincenaActualGT();
+    const desde = f.desde || def.desde;
+    const hasta = f.hasta || def.hasta;
+
+    const TIPOS = [
+      "falta", "horas_extra", "suspension_disciplinaria", "abandono_parcial",
+      "permiso_sin_goce", "permiso_con_goce", "incapacidad", "vacaciones_trabajadas",
+    ];
+    const LABELS: Record<string, string> = {
+      falta: "Falta", horas_extra: "Hora extra", suspension_disciplinaria: "Suspensión",
+      abandono_parcial: "Abandono parcial", permiso_sin_goce: "Permiso sin goce",
+      permiso_con_goce: "Permiso con goce", incapacidad: "Incapacidad",
+      vacaciones_trabajadas: "Vac. trabajadas",
+    };
+    const FALTA_LIKE = new Set([
+      "falta", "suspension_disciplinaria", "abandono_parcial",
+      "permiso_sin_goce", "permiso_con_goce", "incapacidad",
+    ]);
+    const PENDIENTE = new Set(["pendiente", "pendiente_aprobacion"]);
+
+    const params: unknown[] = [desde, hasta, TIPOS];
+    let extra = "";
+    if (f.cliente) { params.push(`%${f.cliente}%`); extra += ` AND e.cliente_nombre ILIKE $${params.length}`; }
+    if (f.estado)  { params.push(f.estado); extra += ` AND e.estado = $${params.length}`; }
+
+    const { rows: detalleRaw } = await pool.query(`
+      SELECT
+        e.id, (e.fecha AT TIME ZONE 'America/Guatemala')::date AS fecha, e.employee_id, e.employee_nombre,
+        e.tipo_evento, e.estado, e.cliente_nombre, e.puesto_nombre,
+        e.cantidad_horas, e.evento_par_id,
+        par.employee_nombre AS par_empleado, par.tipo_evento AS par_tipo, par.estado AS par_estado,
+        n.impacto_nomina, n.descuento_dia, n.dias_descuento,
+        n.horas_extra AS nom_horas_extra, n.falta AS nom_falta, n.requiere_revision_rrhh
+      FROM eventos_rrhh e
+      LEFT JOIN eventos_rrhh par ON par.id = e.evento_par_id
+      LEFT JOIN novedades_nomina_diarias n
+        ON n.employee_id = e.employee_id
+       AND n.fecha = (e.fecha AT TIME ZONE 'America/Guatemala')::date
+      WHERE (e.fecha AT TIME ZONE 'America/Guatemala')::date BETWEEN $1 AND $2
+        AND e.estado <> 'anulado'
+        AND e.tipo_evento = ANY($3)
+        ${extra}
+      ORDER BY (e.fecha AT TIME ZONE 'America/Guatemala')::date, e.employee_nombre, e.tipo_evento
+    `, params);
+
+    // HE generada operativamente (cobertura en descanso) SIN boleta de evento HE
+    // → exactamente el caso que se paga en nómina sin respaldo en Eventos RRHH.
+    const { rows: huerfanasHE } = await pool.query(`
+      SELECT cs.fecha::date AS fecha, cs.employee_id, cs.empleado_nombre,
+             po.nombre AS puesto_nombre, cl.nombre AS cliente_nombre,
+             cs.horas_calculadas, cs.tipo_cobertura,
+             n.horas_extra AS nom_horas_extra, n.impacto_nomina
+      FROM cobertura_segmentos cs
+      LEFT JOIN puestos_operativos po ON po.id = cs.puesto_id
+      LEFT JOIN clients cl ON cl.id = cs.client_id
+      LEFT JOIN novedades_nomina_diarias n
+        ON n.employee_id = cs.employee_id AND n.fecha = cs.fecha
+      WHERE cs.fecha BETWEEN $1 AND $2
+        AND cs.genera_horas_extra = TRUE
+        AND NOT EXISTS (
+          SELECT 1 FROM eventos_rrhh e2
+          WHERE e2.employee_id = cs.employee_id
+            AND (e2.fecha AT TIME ZONE 'America/Guatemala')::date = cs.fecha
+            AND e2.tipo_evento = 'horas_extra'
+            AND e2.estado <> 'anulado'
+        )
+      ORDER BY cs.fecha, cs.empleado_nombre
+    `, [desde, hasta]);
+
+    const PAR_INVALIDO = new Set(["rechazado", "anulado"]);
+    const detalle = detalleRaw.map((r: any) => {
+      const esFaltaLike = FALTA_LIKE.has(r.tipo_evento);
+      const esHE = r.tipo_evento === "horas_extra";
+      const tienePar = !!r.evento_par_id;
+      const parMalo = tienePar && PAR_INVALIDO.has(r.par_estado);
+      // Vínculo válido = existe par y NO está rechazado/anulado.
+      const vinculado = tienePar && !parMalo;
+      // Una falta se considera realmente cubierta solo si su par es una HE vigente.
+      const cubierto = r.tipo_evento === "falta"
+        ? (vinculado && r.par_tipo === "horas_extra")
+        : null;
+      const pendiente = PENDIENTE.has(r.estado);
+      const inconsistencias: string[] = [];
+      if (pendiente) inconsistencias.push("Pendiente de aprobación");
+      if (r.tipo_evento === "falta" && !cubierto) inconsistencias.push("Falta sin cobertura vinculada");
+      if (esHE && !vinculado) inconsistencias.push("HE sin falta vinculada");
+      if (tienePar && parMalo) inconsistencias.push("Vínculo a evento rechazado/anulado");
+      if (r.tipo_evento === "falta" && tienePar && r.par_tipo !== "horas_extra")
+        inconsistencias.push("Vínculo inválido (el par no es HE)");
+      if (r.tipo_evento === "falta" && r.nom_falta === true && r.descuento_dia === false)
+        inconsistencias.push("Falta registrada sin descuento");
+      if (esHE && r.estado === "aprobado" && (!r.nom_horas_extra || Number(r.nom_horas_extra) === 0))
+        inconsistencias.push("HE aprobada sin horas en nómina");
+      return {
+        ...r,
+        tipo_label: LABELS[r.tipo_evento] ?? r.tipo_evento,
+        es_falta_like: esFaltaLike,
+        es_he: esHE,
+        vinculado,
+        cubierto,
+        inconsistencias,
+      };
+    });
+
+    // Agregado por empleado
+    const mapEmp = new Map<string, any>();
+    for (const r of detalle) {
+      const k = String(r.employee_id ?? r.employee_nombre);
+      if (!mapEmp.has(k)) {
+        mapEmp.set(k, {
+          employee_id: r.employee_id, empleado: r.employee_nombre,
+          faltas: 0, he: 0, horas_he: 0, pendientes: 0, inconsistencias: 0,
+        });
+      }
+      const a = mapEmp.get(k);
+      if (r.es_falta_like) a.faltas++;
+      if (r.es_he) { a.he++; a.horas_he += Number(r.cantidad_horas) || 0; }
+      if (PENDIENTE.has(r.estado)) a.pendientes++;
+      a.inconsistencias += r.inconsistencias.length;
+    }
+    const porEmpleado = [...mapEmp.values()]
+      .map((a) => ({ ...a, horas_he: Math.round(a.horas_he * 10) / 10 }))
+      .sort((x, y) => y.inconsistencias - x.inconsistencias || y.faltas - x.faltas);
+
+    const faltas = detalle.filter((r) => r.es_falta_like);
+    const he = detalle.filter((r) => r.es_he);
+    const resumen = {
+      total: detalle.length,
+      faltas: faltas.length,
+      faltas_cubiertas: faltas.filter((r) => r.tipo_evento === "falta" && r.cubierto).length,
+      faltas_sin_cubrir: faltas.filter((r) => r.tipo_evento === "falta" && !r.cubierto).length,
+      he_eventos: he.length,
+      he_horas: Math.round(he.reduce((s, r) => s + (Number(r.cantidad_horas) || 0), 0) * 10) / 10,
+      pendientes_aprobacion: detalle.filter((r) => PENDIENTE.has(r.estado)).length,
+      he_sin_boleta: huerfanasHE.length,
+      inconsistencias_total:
+        detalle.reduce((s, r) => s + r.inconsistencias.length, 0) + huerfanasHE.length,
+    };
+
+    res.json({ desde, hasta, resumen, detalle, huerfanasHE, porEmpleado });
+  } catch (err) {
+    logger.error({ err }, "GET /reportes/conciliacion-quincena error");
+    res.status(500).json({ error: "Error al generar el reporte de conciliación quincenal" });
   }
 });
 
