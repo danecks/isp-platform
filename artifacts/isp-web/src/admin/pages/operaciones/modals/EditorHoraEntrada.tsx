@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Plus, X } from "lucide-react";
 import { horaDelDiaSlot, horaSemanaSlot, semanasCiclo } from "../utils";
 
@@ -55,6 +55,11 @@ export function EditorHoraEntrada(props: Props) {
   useEffect(() => { setModoLocal(derivado); }, [derivado]);
   const modo = modoLocal;
   const [agregando, setAgregando] = useState(false);
+  // Valor de la hora base al momento de enfocar el input. Se usa en el blur para
+  // decidir si hubo cambio real: NO podemos comparar contra el prop `horaEntrada`
+  // porque `onChange` ya lo actualizó en cada tecleo, dejándolo igual al valor
+  // nuevo y haciendo que el commit nunca dispare.
+  const horaBaseAlEnfocar = useRef<string | null>(null);
 
   const semanas = Math.ceil(longitudCiclo / 7);
 
@@ -99,7 +104,9 @@ export function EditorHoraEntrada(props: Props) {
 
   function commitHoraBase(val: string) {
     onChange({ hora_entrada: val });
-    if (val !== horaEntrada) onCommit?.({ hora_entrada: val });
+    const original = horaBaseAlEnfocar.current ?? horaEntrada;
+    horaBaseAlEnfocar.current = null;
+    if (val !== original) onCommit?.({ hora_entrada: val });
   }
 
   function commitHoraSemana(idx: number, val: string) {
@@ -159,6 +166,7 @@ export function EditorHoraEntrada(props: Props) {
             type="time"
             value={horaEntrada}
             disabled={disabled}
+            onFocus={() => { horaBaseAlEnfocar.current = horaEntrada; }}
             onChange={e => onChange({ hora_entrada: e.target.value })}
             onBlur={e => commitHoraBase(e.target.value)}
             className="bg-[#0d1e38] border border-white/10 text-white/60 text-[10px] rounded px-1.5 py-0.5 focus:outline-none focus:border-indigo-500/40 w-[68px]"
