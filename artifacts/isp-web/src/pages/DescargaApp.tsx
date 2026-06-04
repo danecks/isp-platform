@@ -10,9 +10,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
-const APK_URL =
-  "https://github.com/danecks/isp-platform/releases/download/mobile-v0.2.0/ISP-Operaciones-v0.2.0.apk";
-const VERSION = "v0.2.0";
+const APK_URL = "https://ispsa.net/api/descarga-apk";
 
 export default function DescargaApp() {
   return (
@@ -32,7 +30,7 @@ export default function DescargaApp() {
               aplicación.
             </p>
             <p className="text-sm text-muted-foreground mt-2">
-              Versión {VERSION} · Compatible con Android 8 o superior
+              Siempre la última versión · Compatible con Android 8 o superior
             </p>
           </FadeIn>
         </div>
@@ -174,8 +172,8 @@ export default function DescargaApp() {
                 </h3>
                 <p className="text-sm text-muted-foreground">
                   Este APK fue firmado digitalmente con el certificado de
-                  Investigaciones y Seguridad Profesional, S.A. y publicado
-                  desde nuestro repositorio oficial. Solo descargá la app
+                  Investigaciones y Seguridad Profesional, S.A. y se descarga
+                  desde nuestro propio sitio ispsa.net. Solo descargá la app
                   desde esta página o desde el link directo que aparece
                   arriba.
                 </p>

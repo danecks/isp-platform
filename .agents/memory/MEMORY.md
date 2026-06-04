@@ -3,6 +3,7 @@
 - [Tablero SSA visibilidad](tablero-ssa-visibilidad.md) — el tablero usa fecha <= CURRENT_DATE a propósito (no BETWEEN); SSA activada sigue visible mientras esté abierta aunque venza; salida por estado, no por fecha.
 - [Typecheck baseline api-server](typecheck-baseline.md) — el typecheck del api-server está rojo de base (no es regresión tuya); cómo distinguir errores propios.
 - [Publicación móvil OTA/APK](mobile-release-publishing.md) — se publica por tags de git en GitHub Actions; APK release solo con tag `mobile-v*` (dispatch no crea release); el sandbox no puede pushear.
+- [Descarga APK desde ispsa.net](descarga-apk-ispsa.md) — /api/descarga-apk sirve el APK desde Object Storage propio (espejo perezoso desde GitHub), no por redirect; resuelve última versión sola.
 - [Datos de contrato fuera del schema](datos-contrato-fuera-schema.md) — estado_civil/sexo/nit/direccion/etc. se persisten con UPDATE crudo (POST y PATCH); editar sin prellenar desde GET /:id los borra (""→NULL).
 - [Atribución de rondas QR](rondas-atribucion.md) — los eventos de ronda se atribuyen por employee_id (agente), no por user_id web; reportes resuelven nombre con COALESCE(u.nombre, emp.nombre_completo).
 - [Liquidación bono14/aguinaldo](liquidacion-bono-aguinaldo-periodo.md) — calcula UN solo período (año de baja), no acumula años atrás; bonos previos pagados por fuera no se registran, se ajusta caso por caso solo en bajas 2ª mitad 2026.
