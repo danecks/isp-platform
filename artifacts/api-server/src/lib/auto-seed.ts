@@ -147,6 +147,13 @@ export async function runAutoMigrations(): Promise<void> {
     await pool.query(`ALTER TABLE employees ALTER COLUMN tipo_personal TYPE VARCHAR(30)`);
     logger.info("Auto-migrate: columna 'employees.tipo_personal' verificada (VARCHAR(30))");
 
+    // Vacaciones: fecha de corte por empleado. Las vacaciones se computan SOLO a
+    // partir de esta fecha (los períodos previos ya fueron pagados/gozados fuera del
+    // sistema). NULL = aplica la regla general (último ciclo cumplido + proporcional
+    // del año en curso desde el aniversario de ingreso).
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS vacaciones_pagadas_hasta DATE`);
+    logger.info("Auto-migrate: columna 'employees.vacaciones_pagadas_hasta' verificada");
+
     // Columnas adicionales en users (WhatsApp identity management)
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS can_request_advance BOOLEAN`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS employee_id INTEGER`);

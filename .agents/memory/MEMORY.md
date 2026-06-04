@@ -9,4 +9,5 @@
 - [Liquidación bono14/aguinaldo](liquidacion-bono-aguinaldo-periodo.md) — calcula UN solo período (año de baja), no acumula años atrás; bonos previos pagados por fuera no se registran, se ajusta caso por caso solo en bajas 2ª mitad 2026.
 - [Timezone GT en TIMESTAMPTZ](timezone-gt-timestamptz.md) — filtrar/agrupar por día sobre col TIMESTAMPTZ requiere (col AT TIME ZONE 'America/Guatemala')::date, nunca col::date directo.
 - [Conciliación quincena](conciliacion-quincena.md) — reporte que cruza eventos_rrhh+novedades_nomina_diarias+cobertura_segmentos para verificar pago; "cubierto" exige par_tipo='horas_extra', no solo evento_par_id presente.
+- [Vacaciones por ciclo vigente](vacaciones-ciclo-vigente.md) — el saldo se computa desde vac_desde (corte por empleado o inicio del último ciclo), no desde fecha_ingreso; misma regla en pantalla y liquidación; no arrastra años pagados.
 - [Liquidaciones editables y permisos finos](liquidaciones-editables.md) — sub-permiso bajo prefijo ya catalogado (/prestaciones) se valida in-handler, no en middleware; monto_original con COALESCE 1ª vez; totales recalculados desde detalle.

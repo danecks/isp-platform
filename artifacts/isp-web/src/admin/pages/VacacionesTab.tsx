@@ -75,6 +75,8 @@ interface ElegibilidadRow {
   dias_trabajados_vac: number;
   /** Saldo disponible = ganados − gozados − programados */
   saldo_disponible: number;
+  /** Fecha de corte: vacaciones se computan desde aquí (null = regla general) */
+  vacaciones_pagadas_hasta: string | null;
 }
 
 interface VacacionEvento {
@@ -400,6 +402,28 @@ function VacacionCard({ ev, onAprobar, onCancelar }: {
 
 // ─── ElegibilidadCard ─────────────────────────────────────────────────────────
 function ElegibilidadRow({ emp, onProgramar }: { emp: ElegibilidadRow; onProgramar?: (id: number) => void }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [editingCorte, setEditingCorte] = useState(false);
+  const [corteInput, setCorteInput] = useState("");
+  const [savingCorte, setSavingCorte] = useState(false);
+
+  async function guardarCorte(clear = false) {
+    setSavingCorte(true);
+    try {
+      await apiPatch(`${API}/vacaciones/pagadas-hasta/${emp.id}`, {
+        fecha: clear ? null : (corteInput || null),
+      });
+      qc.invalidateQueries({ queryKey: ["vacaciones-elegibilidad"] });
+      toast({ title: clear ? "Corte de vacaciones quitado" : "Fecha de corte guardada" });
+      setEditingCorte(false);
+    } catch {
+      toast({ title: "No se pudo guardar la fecha de corte", variant: "destructive" });
+    } finally {
+      setSavingCorte(false);
+    }
+  }
+
   const diasRestantes = emp.dias_para_aniversario;
   const urgente = emp.es_elegible && emp.vacacion_activa_tipo === null && emp.proximas_programadas_inicio === null && (emp.saldo_disponible ?? 0) > 0;
 
@@ -552,6 +576,62 @@ function ElegibilidadRow({ emp, onProgramar }: { emp: ElegibilidadRow; onProgram
           {emp.faltas_ultimo_anio} falta{emp.faltas_ultimo_anio !== 1 ? "s" : ""} en el último año
         </div>
       )}
+
+      {/* ── Vacaciones pagadas hasta (fecha de corte) ────────────── */}
+      <div className="pt-1.5 border-t border-white/5 text-[10px]">
+        {!editingCorte ? (
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-white/30 truncate">
+              {emp.vacaciones_pagadas_hasta
+                ? <>Computa desde <span className="text-white/55">{fmtFecha(emp.vacaciones_pagadas_hasta)}</span> · corte manual</>
+                : <>Saldo del ciclo vigente · regla general</>}
+            </span>
+            <button
+              onClick={() => { setCorteInput(emp.vacaciones_pagadas_hasta ?? ""); setEditingCorte(true); }}
+              className="shrink-0 px-2 py-0.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-white/40 font-semibold transition-colors"
+            >
+              Ajustar
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-white/40">
+              Vacaciones pagadas hasta (dejar vacío = regla general):
+            </label>
+            <input
+              type="date"
+              value={corteInput}
+              onChange={(e) => setCorteInput(e.target.value)}
+              className="bg-[#0b1626] border border-white/12 rounded-md px-2 py-1 text-white/80 text-[11px]"
+            />
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                onClick={() => guardarCorte(false)}
+                disabled={savingCorte}
+                className="px-2.5 py-1 rounded-md bg-teal-500/15 hover:bg-teal-500/25 border border-teal-500/25 text-teal-300 font-semibold disabled:opacity-50 transition-colors"
+              >
+                Guardar
+              </button>
+              {emp.vacaciones_pagadas_hasta && (
+                <button
+                  onClick={() => guardarCorte(true)}
+                  disabled={savingCorte}
+                  className="px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-white/40 font-semibold disabled:opacity-50 transition-colors"
+                >
+                  Quitar corte
+                </button>
+              )}
+              <button
+                onClick={() => setEditingCorte(false)}
+                disabled={savingCorte}
+                className="px-2.5 py-1 rounded-md text-white/30 hover:text-white/50 font-semibold transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* ── Acción: programar vacaciones ─────────────────────────── */}
       {onProgramar && (

@@ -463,10 +463,6 @@ async function buildLiquidacion(empId: number, body: Record<string, unknown>) {
   if (!emp[0].sueldo_base || isNaN(parseFloat(emp[0].sueldo_base)) || parseFloat(emp[0].sueldo_base) <= 0)
     throw new Error("El colaborador no tiene sueldo base configurado. Actualice la ficha antes de calcular la liquidación.");
 
-  const { rows: vacSaldo } = await pool.query(
-    `SELECT dias_disponibles FROM vacaciones_saldos WHERE employee_id = $1`, [empId]
-  );
-
   const fechaEgreso  = body.fecha_egreso as string;
   const causal       = (body.causal_egreso ?? body.tipo_egreso ?? "renuncia") as CausalEgreso;
   const fechaIngreso = emp[0].fecha_ingreso.toISOString().slice(0, 10);
@@ -488,7 +484,50 @@ async function buildLiquidacion(empId: number, body: Record<string, unknown>) {
       : new Date(Date.UTC(anio, mes, 16));
     diasPendiente = Math.max(0, Math.floor((egresoDate.getTime() - inicioQuincena.getTime()) / 86_400_000) + 1);
   }
-  const diasVac       = parseFloat(String(vacSaldo[0]?.dias_disponibles ?? body.dias_vacaciones_pendientes ?? 0));
+  // ── Días de vacaciones pendientes según el ciclo vigente ─────────────────────
+  // Mismo criterio que la pantalla de vacaciones: se computa desde la fecha de corte
+  // (employees.vacaciones_pagadas_hasta) o, en su defecto, el inicio del último ciclo
+  // cumplido (aniversario de ingreso). Así NO se arrastra el backlog de años ya pagados.
+  const { rows: vacPend } = await pool.query(`
+    WITH base AS (
+      SELECT
+        -- Acotado (clamp) al rango [fecha_ingreso, fecha_egreso] por seguridad.
+        LEAST(
+          GREATEST(
+            COALESCE(
+              e.vacaciones_pagadas_hasta,
+              (e.fecha_ingreso + (
+                GREATEST(EXTRACT(YEAR FROM AGE($2::date, e.fecha_ingreso::date))::int - 1, 0)
+                || ' years')::interval)::date
+            ),
+            e.fecha_ingreso::date
+          ),
+          $2::date
+        ) AS vac_desde
+      FROM employees e WHERE e.id = $1
+    )
+    SELECT GREATEST(0,
+      GREATEST(0, ROUND(($2::date - b.vac_desde)::numeric / 365.0 * 15))::int
+      - COALESCE((
+          SELECT SUM(
+            (SELECT COUNT(*)::int
+             FROM generate_series(er.fecha::date, COALESCE(er.fecha_fin::date, er.fecha::date), '1 day'::interval) g(d)
+             WHERE EXTRACT(DOW FROM g.d) != 0)
+          )
+          FROM eventos_rrhh er
+          WHERE er.employee_id = $1
+            AND er.tipo_evento = 'vacaciones'
+            AND er.estado NOT IN ('anulado', 'cancelado')
+            AND er.fecha::date >= b.vac_desde
+            AND er.fecha::date <= $2::date
+        ), 0)::int
+    )::int AS dias_disponibles
+    FROM base b
+  `, [empId, fechaEgreso]);
+  // El valor manual del formulario (si se envía) tiene prioridad; si no, el calculado.
+  const diasVac = body.dias_vacaciones_pendientes != null
+    ? parseFloat(String(body.dias_vacaciones_pendientes))
+    : parseInt(String(vacPend[0]?.dias_disponibles ?? 0));
 
   const configOverride = (body.config_override ?? body.configOverride) as
     Partial<PrestacionesConfig> | undefined;

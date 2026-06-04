@@ -42,12 +42,41 @@ function sqlDiasLaborablesFn(fechaCol: string, fechaFinCol: string): string {
 vacacionesRouter.get("/vacaciones/elegibilidad", async (req, res) => {
   try {
     const { rows } = await pool.query(`
-      WITH employee_base AS (
+      WITH emp_calc AS (
+        SELECT
+          e.*,
+          -- Fecha desde la cual se computan vacaciones (S):
+          --   • Si hay corte manual (vacaciones_pagadas_hasta) se usa ese.
+          --   • Si no, el inicio del último ciclo cumplido = fecha_ingreso + (años-1).
+          --     Así el saldo = 15 del último ciclo + proporcional del año en curso,
+          --     sin arrastrar años anteriores ya pagados.
+          -- Se acota (clamp) al rango [fecha_ingreso, CURRENT_DATE] por seguridad
+          -- ante datos legacy fuera de rango.
+          LEAST(
+            GREATEST(
+              COALESCE(
+                e.vacaciones_pagadas_hasta,
+                (e.fecha_ingreso + (
+                  GREATEST(EXTRACT(YEAR FROM AGE(CURRENT_DATE, e.fecha_ingreso::date))::int - 1, 0)
+                  || ' years')::interval)::date
+              ),
+              e.fecha_ingreso::date
+            ),
+            CURRENT_DATE
+          ) AS vac_desde
+        FROM employees e
+        WHERE e.estado_laboral IN ('activo', 'licencia', 'suspendido')
+          AND e.fecha_ingreso IS NOT NULL
+          AND COALESCE(e.tipo_personal, 'guardia') NOT IN ('gerencia')
+      ),
+      employee_base AS (
         SELECT
           e.id,
           e.nombre_completo,
           COALESCE(e.tipo_personal, 'guardia') AS tipo_personal,
           e.fecha_ingreso,
+          e.vacaciones_pagadas_hasta,
+          e.vac_desde,
           e.puesto,
           e.area,
           e.sede,
@@ -65,10 +94,12 @@ vacacionesRouter.get("/vacaciones/elegibilidad", async (req, res) => {
               AND ev.estado != 'anulado'
               AND ev.fecha >= NOW() - INTERVAL '1 year'
           ), 0) AS faltas_ultimo_anio,
-          -- ── Saldo: días ganados (15 por año completo — Ley GT art. 130) ──────
-          GREATEST(0, EXTRACT(YEAR FROM AGE(CURRENT_DATE, e.fecha_ingreso::date))::int) * 15
+          -- ── Saldo: días ganados desde la fecha de cómputo (S = vac_desde) ──────
+          -- 15 días por año (Ley GT art. 130), proporcional al tiempo desde vac_desde.
+          -- vac_desde ya descarta los años previos pagados, así no se arrastra backlog.
+          GREATEST(0, ROUND((CURRENT_DATE - e.vac_desde)::numeric / 365.0 * 15))::int
             AS dias_ganados,
-          -- ── Saldo: días gozados (vacaciones normales aprobadas, todos los períodos) ──
+          -- ── Saldo: días gozados dentro del ciclo vigente (fecha >= vac_desde) ──
           -- NOTA: vacaciones_trabajadas NO descuentan saldo
           COALESCE((
             SELECT SUM(
@@ -80,6 +111,7 @@ vacacionesRouter.get("/vacaciones/elegibilidad", async (req, res) => {
             WHERE er.employee_id = e.id
               AND er.tipo_evento = 'vacaciones'
               AND er.estado NOT IN ('anulado', 'cancelado')
+              AND er.fecha::date >= e.vac_desde
           ), 0)::int AS dias_gozados,
           -- ── Saldo: días programados a futuro (aún no iniciados) ──────────────
           COALESCE((
@@ -152,10 +184,7 @@ vacacionesRouter.get("/vacaciones/elegibilidad", async (req, res) => {
               AND er3.fecha::date > CURRENT_DATE
             ORDER BY er3.fecha ASC LIMIT 1
           ) AS proximas_programadas_inicio
-        FROM employees e
-        WHERE e.estado_laboral IN ('activo', 'licencia', 'suspendido')
-          AND e.fecha_ingreso IS NOT NULL
-          AND COALESCE(e.tipo_personal, 'guardia') NOT IN ('gerencia')
+        FROM emp_calc e
       )
       SELECT *,
         -- Saldo disponible = ganados - gozados - programados
@@ -174,6 +203,53 @@ vacacionesRouter.get("/vacaciones/elegibilidad", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "GET /vacaciones/elegibilidad error");
     res.status(500).json({ error: "Error al calcular elegibilidad" });
+  }
+});
+
+// ─── PATCH /api/vacaciones/pagadas-hasta/:employeeId ──────────────────────────
+// Fija/limpia la fecha de corte de vacaciones de un empleado. A partir de esa
+// fecha el sistema computa el saldo (los períodos previos se asumen pagados).
+// body: { fecha: "YYYY-MM-DD" } para fijar, o { fecha: null } para limpiar.
+vacacionesRouter.patch("/vacaciones/pagadas-hasta/:employeeId", async (req, res) => {
+  const empId = parseInt(req.params.employeeId);
+  if (isNaN(empId)) return res.status(400).json({ error: "ID inválido" });
+
+  const { fecha } = req.body as { fecha?: string | null };
+  if (fecha !== null && fecha !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+    return res.status(400).json({ error: "Formato de fecha inválido (use YYYY-MM-DD)" });
+  }
+
+  try {
+    // Validar rango de negocio: la fecha de corte no puede ser futura ni anterior
+    // al ingreso del empleado (evita subpago/sobrepago en finiquitos).
+    const { rows: empRows } = await pool.query(
+      `SELECT fecha_ingreso::date::text AS fecha_ingreso, CURRENT_DATE::text AS hoy
+         FROM employees WHERE id = $1`,
+      [empId]
+    );
+    if (empRows.length === 0) return res.status(404).json({ error: "Empleado no encontrado" });
+
+    if (fecha) {
+      if (fecha > empRows[0].hoy) {
+        return res.status(400).json({ error: "La fecha de corte no puede ser futura" });
+      }
+      if (empRows[0].fecha_ingreso && fecha < empRows[0].fecha_ingreso) {
+        return res.status(400).json({ error: "La fecha de corte no puede ser anterior a la fecha de ingreso" });
+      }
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE employees
+          SET vacaciones_pagadas_hasta = $2::date
+        WHERE id = $1
+      RETURNING id, vacaciones_pagadas_hasta`,
+      [empId, fecha ?? null]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: "Empleado no encontrado" });
+    res.json({ ok: true, employee_id: empId, vacaciones_pagadas_hasta: rows[0].vacaciones_pagadas_hasta });
+  } catch (err) {
+    logger.error({ err }, "PATCH /vacaciones/pagadas-hasta error");
+    res.status(500).json({ error: "Error al actualizar la fecha de corte" });
   }
 });
 
