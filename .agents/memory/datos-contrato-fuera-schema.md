@@ -24,3 +24,11 @@ employees base, (1) el GET de detalle debe llevar `sessionHeader()` y validar
 `r.ok` (si no, react-query mantiene `data` undefined en error); (2) bloquear el
 guardado en modo edición hasta que el detalle haya cargado; (3) prellenar solo
 campos vacíos para no pisar lo que el usuario escribió.
+
+**Trampa de tipos de columna:** `employees.sexo` es `character(1)` (solo "M"/"F"),
+NO varchar. Cualquier `<select>` de sexo debe usar `value="M"/"F"` (etiquetas
+Masculino/Femenino), no la palabra completa: enviar "Masculino" provoca
+"value too long for type character(1)" → el PATCH/POST devuelve 500 "Error al
+actualizar empleado" y el form muestra "no se pudieron guardar los datos". El
+resto de campos personales son varchar/text sin límite. Hubo dos selects con este
+bug (datos-personales.tsx y form-modal.tsx).

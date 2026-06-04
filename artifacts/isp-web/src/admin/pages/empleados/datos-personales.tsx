@@ -138,8 +138,8 @@ export function DatosPersonalesSection({ emp }: { emp: Empleado }) {
             <Campo label="Sexo">
               <select value={form.sexo} onChange={(e) => set("sexo", e.target.value)} className={inputCls}>
                 <option value="">—</option>
-                <option value="Masculino">Masculino</option>
-                <option value="Femenino">Femenino</option>
+                <option value="M">Masculino</option>
+                <option value="F">Femenino</option>
               </select>
             </Campo>
             <Campo label="Estado civil">
@@ -191,7 +191,7 @@ export function DatosPersonalesSection({ emp }: { emp: Empleado }) {
             </div>
           )}
           <Lectura label="Dirección" value={det?.direccion ?? null} />
-          <Lectura label="Sexo" value={det?.sexo ?? null} />
+          <Lectura label="Sexo" value={det?.sexo === "M" ? "Masculino" : det?.sexo === "F" ? "Femenino" : (det?.sexo ?? null)} />
           <Lectura label="Estado civil" value={det?.estado_civil ?? null} />
           <Lectura label="NIT" value={det?.nit ?? null} />
           <Lectura label="Fecha de nacimiento" value={(det?.fecha_nacimiento ?? "").slice(0, 10) || null} />
