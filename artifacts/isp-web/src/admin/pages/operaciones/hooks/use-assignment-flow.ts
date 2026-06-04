@@ -61,6 +61,7 @@ export function useAssignmentFlow({
   const [modalFalta, setModalFalta] = useState<{ puesto: Puesto; titularId: number; titularNombre: string } | null>(null);
   const [modalQuitarTitular, setModalQuitarTitular] = useState<{ puesto: Puesto; employeeId: number; employeeNombre: string } | null>(null);
   const [modalAnularFalta, setModalAnularFalta] = useState<{ puesto: Puesto; titularNombre: string } | null>(null);
+  const [modalReactivarFalta, setModalReactivarFalta] = useState<{ puesto: Puesto; titularNombre: string } | null>(null);
 
   function esAgentePool(agente: Agente) {
     const eoa = agente.tipo_asignacion_eoa ?? "sin_asignacion";
@@ -604,6 +605,26 @@ export function useAssignmentFlow({
     }
   }
 
+  async function confirmarReactivarFalta(motivo: string) {
+    if (!modalReactivarFalta) return;
+    try {
+      await apiPost(`${API_BASE}/operaciones/reactivar-falta`, {
+        puestoId: modalReactivarFalta.puesto.id,
+        motivo,
+        usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+        fecha: fechaVista,
+      });
+      toast({
+        title: "Falta reactivada",
+        description: `El agente vuelve a "faltando" — ${modalReactivarFalta.puesto.nombre}`,
+      });
+      setModalReactivarFalta(null);
+      invalidate();
+    } catch (e: any) {
+      toast({ title: "Error", description: e?.error ?? "Error al reactivar la falta", variant: "destructive" });
+    }
+  }
+
   async function removerAgenteSSA(t: TarjetaSSAPendiente, motivo?: string, notas?: string) {
     try {
       const r = await fetch(`${API_BASE}/solicitudes-servicio/${t.id}/remover-agente`, {
@@ -640,6 +661,8 @@ export function useAssignmentFlow({
     modalQuitarTitular, setModalQuitarTitular,
     modalAnularFalta, setModalAnularFalta,
     confirmarAnularFalta,
+    modalReactivarFalta, setModalReactivarFalta,
+    confirmarReactivarFalta,
     asignarCustodia,
     ejecutarAsignarCustodia,
     iniciarAsignacion,

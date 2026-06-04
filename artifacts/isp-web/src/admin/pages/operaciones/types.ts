@@ -71,6 +71,7 @@ export interface Puesto {
   es_relevo_dia?: boolean;
   /** El titular que trabaja hoy tiene una falta registrada */
   titular_faltando?: boolean;
+  falta_anulada_reactivable?: boolean;
   /** El puesto tiene un slot vacío en la plantilla (puede auto-asignar) */
   tiene_slot_vacio?: boolean;
   /** El agente_id mostrado proviene del titular puro (no hay cobertura manual del día en BD).

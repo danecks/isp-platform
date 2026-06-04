@@ -440,7 +440,26 @@ eventosRrhhRouter.patch("/rrhh/eventos/:id/estado", async (req, res) => {
           snap.falta_notas ?? null,
           snap.falta_usuario ?? null,
         ]);
-        logger.info({ eventoId: id, puestoId: snap.puesto_id }, "Anulación de falta rechazada → slot restaurado a 'faltando'");
+        // Reponer también el evento de falta y su HE par que se habían anulado, para
+        // que las dos fuentes (slot y eventos_rrhh) queden consistentes.
+        const evsRestore = Array.isArray(snap.eventos_falta_anulados) ? snap.eventos_falta_anulados : [];
+        for (const e of evsRestore) {
+          await client.query(`
+            UPDATE eventos_rrhh
+               SET estado = $1, estado_anterior = NULL, anulado_por = NULL,
+                   anulado_at = NULL, motivo_anulacion = NULL, updated_at = NOW()
+             WHERE id = $2 AND estado = 'anulado'
+          `, [e.estado_anterior ?? "pendiente_aprobacion", e.id]);
+          if (e.par_id) {
+            await client.query(`
+              UPDATE eventos_rrhh
+                 SET estado = $1, estado_anterior = NULL, anulado_por = NULL,
+                     anulado_at = NULL, motivo_anulacion = NULL, updated_at = NOW()
+               WHERE id = $2 AND estado = 'anulado'
+            `, [e.par_estado_anterior ?? "pendiente_aprobacion", e.par_id]);
+          }
+        }
+        logger.info({ eventoId: id, puestoId: snap.puesto_id }, "Anulación de falta rechazada → slot y eventos restaurados");
       }
     }
 

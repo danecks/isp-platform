@@ -11,6 +11,7 @@ export function ClienteColumna({
   onLiberar,
   onRegistrarFalta,
   onAnularFalta,
+  onReactivarFalta,
   onNuevoPuesto,
   onEliminarPuesto,
   onAbrirSegmentos,
@@ -30,6 +31,7 @@ export function ClienteColumna({
   onLiberar: (puesto: Puesto) => void;
   onRegistrarFalta?: (puesto: Puesto, titularId: number, titularNombre: string) => void;
   onAnularFalta?: (puesto: Puesto, titularNombre: string) => void;
+  onReactivarFalta?: (puesto: Puesto, titularNombre: string) => void;
   onNuevoPuesto: (cliente: ClienteBoard) => void;
   onEliminarPuesto: (puesto: Puesto) => void;
   onAbrirSegmentos: (puesto: Puesto) => void;
@@ -199,6 +201,7 @@ export function ClienteColumna({
               onLiberar={() => onLiberar(p)}
               onRegistrarFalta={onRegistrarFalta}
               onAnularFalta={onAnularFalta}
+              onReactivarFalta={onReactivarFalta}
               onAbrirSegmentos={() => onAbrirSegmentos(p)}
               onConfigTurno={onConfigTurno ? () => onConfigTurno(p) : undefined}
               onQuitarTitular={onQuitarTitular}

@@ -458,6 +458,28 @@ router.get("/operaciones/tablero", async (req, res) => {
       }
     }
 
+    // ── Faltas anuladas reactivables (botón "Reactivar" en el pizarrón) ────────
+    // Si hay una anulación de falta pendiente para un puesto, ofrecemos reactivarla
+    // (por si se anuló por error). Se identifica el puesto por metadata_json->>'puesto_id'.
+    {
+      const { rows: reactRows } = await pool.query(`
+        SELECT (metadata_json->>'puesto_id')::int AS puesto_id
+          FROM eventos_rrhh
+         WHERE tipo_evento = 'anulacion_falta'
+           AND estado      = 'pendiente_aprobacion'
+           AND fecha::date  = $1::date
+           AND metadata_json->>'puesto_id' IS NOT NULL
+      `, [fechaConsultada]);
+      const reactSet = new Set(reactRows.map((r: any) => Number(r.puesto_id)));
+      if (reactSet.size > 0) {
+        for (const p of puestosFinales) {
+          if (!p.es_custodia && reactSet.has(Number(p.id))) {
+            (p as any).falta_anulada_reactivable = true;
+          }
+        }
+      }
+    }
+
     // ── Verificar VACACIONES del titular para la fecha consultada (PIZ-VAC-01) ──
     // Bug: cuando un titular entra de vacaciones (vacaciones normales, NO
     // 'vacaciones_trabajadas'), el pizarrón seguía mostrándolo cubriendo el

@@ -12,6 +12,7 @@ export function DroppablePuesto({
   onLiberar,
   onRegistrarFalta,
   onAnularFalta,
+  onReactivarFalta,
   onAbrirSegmentos,
   onConfigTurno,
   onQuitarTitular,
@@ -25,6 +26,7 @@ export function DroppablePuesto({
   onLiberar: () => void;
   onRegistrarFalta?: (puesto: Puesto, titularId: number, titularNombre: string) => void;
   onAnularFalta?: (puesto: Puesto, titularNombre: string) => void;
+  onReactivarFalta?: (puesto: Puesto, titularNombre: string) => void;
   onAbrirSegmentos: () => void;
   onConfigTurno?: () => void;
   onQuitarTitular?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
@@ -507,6 +509,16 @@ export function DroppablePuesto({
                   title="Anular esta falta (pendiente de aprobación RRHH)"
                 >
                   <Undo2 className="w-3 h-3" /><span>Anular falta</span>
+                </button>
+              )}
+              {/* Reactivar falta — deshace una anulación hecha por error (regresa a "faltando") */}
+              {onReactivarFalta && puesto.falta_anulada_reactivable && !puesto.es_custodia && (
+                <button
+                  onClick={e => { e.stopPropagation(); onReactivarFalta(puesto, puesto.titular_nombre ?? "—"); }}
+                  className="flex items-center gap-1 text-[9px] font-semibold text-emerald-300/80 bg-emerald-500/10 border border-emerald-500/25 hover:bg-emerald-500/20 hover:text-emerald-300 rounded-md px-2 py-1 transition-colors"
+                  title="Reactivar la falta que se anuló por error"
+                >
+                  <Repeat className="w-3 h-3" /><span>Reactivar</span>
                 </button>
               )}
               {/* Quitar titularidad — solo rol Operaciones/Admin */}
