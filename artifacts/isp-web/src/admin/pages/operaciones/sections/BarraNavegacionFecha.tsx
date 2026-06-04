@@ -11,7 +11,7 @@ export function BarraNavegacionFecha() {
     <div className="flex items-center gap-2 shrink-0">
       <button
         onClick={() => navFecha(-1)}
-        disabled={fechaVista <= "2026-04-01"}
+        disabled={fechaVista <= "2026-06-01"}
         className="text-white/30 hover:text-white disabled:opacity-20 border border-white/8 rounded-xl px-2 py-1.5 bg-[#0c1929] transition-colors"
         title="Día anterior"
       >
@@ -27,7 +27,7 @@ export function BarraNavegacionFecha() {
         <input
           type="date"
           value={fechaVista}
-          min="2026-04-01"
+          min="2026-06-01"
           onChange={(e) => onCambiarFecha(e.target.value)}
           className="bg-transparent outline-none cursor-pointer text-inherit font-mono"
         />

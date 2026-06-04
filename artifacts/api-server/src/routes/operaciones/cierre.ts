@@ -12,6 +12,11 @@ import { getActorFromReq } from "../../lib/auth-helpers";
 
 const router = Router();
 
+// Fecha de inicio de operación del sistema. Los "días sin cerrar" del pizarrón
+// nunca se muestran antes de esta fecha (el sistema empezó a operar el 1-jun-2026,
+// las filas previas son de pruebas). Si la fecha cambia, ajustar aquí.
+const FECHA_INICIO_OPERACION = "2026-06-01";
+
 router.get("/operaciones/cierre-hoy", async (req, res) => {
   try {
     const { fechaActivaISO, fechaActivaStr, esFechaFutura, cierreDeHoy } = await calcFechaActiva();
@@ -119,9 +124,12 @@ router.get("/operaciones/cierre-hoy", async (req, res) => {
     const { rows: pendientesRows } = await pool.query(`
       SELECT d::date::text AS fecha
       FROM generate_series(
-        COALESCE(
-          (SELECT MIN(fecha) FROM cierre_operativo_diario),
-          $1::date
+        GREATEST(
+          COALESCE(
+            (SELECT MIN(fecha) FROM cierre_operativo_diario),
+            $1::date
+          ),
+          $2::date
         ),
         $1::date - INTERVAL '1 day',
         '1 day'::interval
@@ -131,7 +139,7 @@ router.get("/operaciones/cierre-hoy", async (req, res) => {
         WHERE cod.fecha = d::date AND cod.estado = 'cerrado'
       )
       ORDER BY fecha
-    `, [todayGT()]);
+    `, [todayGT(), FECHA_INICIO_OPERACION]);
 
     const diasPendientesCierre = pendientesRows.map((r: any) => ({
       fecha:     r.fecha as string,
