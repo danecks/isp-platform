@@ -989,10 +989,10 @@ export default function KioscoSolicitudes() {
                 <Section titulo="Salud" icono={<AlertCircle size={16} />}>
                   <Grid2>
                     <EField label="Estatura" editando={editando}
-                      display={detalle.estatura}
+                      display={detalle.estatura ? `${detalle.estatura} m` : detalle.estatura}
                       value={editado.estatura} onChange={v => setCampo("estatura", v as string)} />
                     <EField label="Peso" editando={editando}
-                      display={detalle.peso}
+                      display={detalle.peso ? `${detalle.peso} lb` : detalle.peso}
                       value={editado.peso} onChange={v => setCampo("peso", v as string)} />
                     <EField label="Enfermedad crónica" tipo="yn" editando={editando}
                       display={detalle.enfermedad_cronica}

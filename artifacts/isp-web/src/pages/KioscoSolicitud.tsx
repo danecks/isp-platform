@@ -1519,8 +1519,8 @@ function PasoSalud({ form, setEv, set, onNext, onBack }: {
       <Field label="Estatura" hint="Sin zapatos, en metros. Ej: si mide 1 metro 75 cm, escriba 1.75">
         <ISPInput value={form.estatura} onChange={setEv("estatura")} placeholder="Ej: 1.75 (en metros)" />
       </Field>
-      <Field label="Peso" hint="En kilogramos. Ej: 80 kg, escriba 80.">
-        <ISPInput value={form.peso} onChange={setEv("peso")} type="number" placeholder="Ej: 80 (en kg)" />
+      <Field label="Peso" hint="En libras. Ej: 175 lb, escriba 175.">
+        <ISPInput value={form.peso} onChange={setEv("peso")} type="number" placeholder="Ej: 175 (en libras)" />
       </Field>
 
       <div className="col-span-2"><SiNo value={form.enfermedad_cronica} onChange={set("enfermedad_cronica")} label="Tiene alguna enfermedad cronica?" hint="Diabetes, hipertension, epilepsia, asma u otras que requieren control medico regular." /></div>
@@ -1937,7 +1937,7 @@ function PasoResumen({ form, fotoUrl, onBack, onNext, enviando }: {
 
       <ResumenSeccion titulo="Salud">
         <ResumenFila label="Estatura" value={form.estatura ? `${form.estatura} m` : ""} />
-        <ResumenFila label="Peso" value={form.peso ? `${form.peso} kg` : ""} />
+        <ResumenFila label="Peso" value={form.peso ? `${form.peso} lb` : ""} />
         <ResumenFila label="Enfermedad cronica" value={form.enfermedad_cronica === "si" ? `Si — ${form.enfermedad_det}` : ""} />
         <ResumenFila label="Medicamentos" value={form.medicamento === "si" ? `Si — ${form.medicamento_det}` : ""} />
         <ResumenFila label="Impedimento fisico" value={form.impedimento_fisico === "si" ? `Si — ${form.impedimento_det}` : ""} />

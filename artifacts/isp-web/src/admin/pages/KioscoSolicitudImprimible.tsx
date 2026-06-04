@@ -355,7 +355,7 @@ export default function KioscoSolicitudImprimible() {
           <Section title="5. Datos Físicos">
             <Grid cols={2}>
               <Field label="Estatura" value={d.estatura ? `${d.estatura} m` : null} />
-              <Field label="Peso" value={d.peso ? `${d.peso} kg` : null} />
+              <Field label="Peso" value={d.peso ? `${d.peso} lb` : null} />
             </Grid>
           </Section>
 

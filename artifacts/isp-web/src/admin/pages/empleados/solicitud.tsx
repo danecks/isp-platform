@@ -150,7 +150,7 @@ export function TabSolicitudEmpleo({ dpi, nombre }: { dpi: string; nombre: strin
 
       <SolSeccion titulo="Salud">
         <SolFila label="Estatura"             value={sol.estatura ? `${sol.estatura} m` : ""} />
-        <SolFila label="Peso"                 value={sol.peso ? `${sol.peso} kg` : ""} />
+        <SolFila label="Peso"                 value={sol.peso ? `${sol.peso} lb` : ""} />
         <SolFila label="Enfermedad crónica"   value={sol.enfermedad_cronica === "si" ? `Sí — ${sol.enfermedad_det ?? ""}` : ""} />
         <SolFila label="Medicamentos"         value={sol.medicamento === "si" ? `Sí — ${sol.medicamento_det ?? ""}` : ""} />
         <SolFila label="Impedimento físico"   value={sol.impedimento_fisico === "si" ? `Sí — ${sol.impedimento_det ?? ""}` : ""} />
