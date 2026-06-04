@@ -1,4 +1,4 @@
----
+si---
 name: Publicación móvil OTA/APK (CI por tags)
 description: Gotchas no obvios para publicar OTA y APK de la app del agente vía GitHub Actions.
 ---
