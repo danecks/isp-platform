@@ -124,6 +124,14 @@ function Router() {
       <Route path="/acceso-clientes" component={AccesoClientes} />
       <Route path="/descarga-app" component={DescargaApp} />
 
+      {/* ── Generador de firma de correo (archivo estático firma.html) ──── */}
+      <Route path="/firma">
+        {() => {
+          window.location.replace(`${import.meta.env.BASE_URL}firma.html`);
+          return null;
+        }}
+      </Route>
+
       {/* ── Login unificado (admin + clientes) ─────────────────────────── */}
       <Route path="/admin/login" component={AdminLogin} />
 
