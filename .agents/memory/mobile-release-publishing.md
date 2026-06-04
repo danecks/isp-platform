@@ -12,5 +12,9 @@ La app móvil (Capacitor wrapper de isp-web) se publica por GitHub Actions dispa
 - **El `main` de Replit y el de GitHub pueden divergir.** La CI compila desde GitHub: hay que pushear el commit primero y recién después el tag, o se construye código viejo.
 - La versión del APK/OTA la deriva la CI del nombre del tag (no hace falta bumpear archivos).
 
-**Why:** evita publicar con un disparo equivocado (dispatch sin release) o construir una versión sin los cambios recién hechos.
-**How to apply:** cuando el usuario pida "publicar app/APK/OTA", confirmá que su commit está en GitHub y usá tags `mobile-v*` (APK) y `web-v*` (OTA).
+- **ANTES de etiquetar un APK, verificá que el `main` de GitHub esté al día.** La conexión Replit→GitHub se rompe (panel "Failed to authenticate with the remote"; desde el sandbox el remoto `subrepl-*` git+ssh riker.replit.dev se CUELGA en `ls-remote --tags`). Cuando eso pasa, `main` en GitHub queda semanas atrás en silencio y un tag construye código viejo. Chequear el tip con `GET /repos/<repo>/commits/main` (con GITHUB_RELEASES_TOKEN, solo lectura de contents) y comparar fecha/mensaje con lo último de Replit.
+- **GITHUB_RELEASES_TOKEN es contents:read solamente.** Sirve para ver releases/commits, NO para Actions (`/actions/runs` devuelve vacío/None) ni para push. Para ver si el build corrió, el usuario debe mirar la pestaña Actions.
+- **Crear el Release/tag desde la web de GitHub** (Releases → Draft → Create new tag → Publish) dispara `build-apk.yml` por tag sin necesitar push de Replit, PERO compila el código que ya está en GitHub main (si está stale, sale viejo).
+
+**Why:** evita publicar con un disparo equivocado (dispatch sin release) o construir una versión sin los cambios recién hechos; la conexión Git rota es un fallo silencioso que reparte una app atrasada.
+**How to apply:** cuando el usuario pida "publicar app/APK/OTA", confirmá que su commit está en GitHub (verificá el tip de main por API) y usá tags `mobile-v*` (APK) y `web-v*` (OTA). Si el push falla, el arreglo (guía Replit) es desconectar y reconectar GitHub en Git Providers, no algo que el sandbox pueda hacer.
