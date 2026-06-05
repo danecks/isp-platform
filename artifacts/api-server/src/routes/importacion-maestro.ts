@@ -116,9 +116,10 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
   const zonaIdByNombre: Record<string, number> = {};
   const empleadoIdByDpi: Record<string, number> = {};
   const empleadoIdByNombre: Record<string, number> = {};
-  // IDs de empleados que YA tienen fecha_nacimiento (para que el preview refleje
-  // fielmente el import real, que solo rellena cuando está vacía).
+  // IDs de empleados que YA tienen fecha_nacimiento / sexo (para que el preview
+  // refleje fielmente el import real, que solo rellena cuando está vacío).
   const empleadoConFechaNac = new Set<number>();
+  const empleadoConSexo = new Set<number>();
   const puestoIdByNombre: Record<string, number> = {};
   // zona_nombre pendiente de asignar a puestos: puestoId -> zona_nombre_lower
   const puestoZonaPending: Record<number, string> = {};
@@ -137,11 +138,12 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
     const { rows: zonas } = await pool.query(`SELECT id, LOWER(nombre) AS n FROM operational_zones`);
     zonas.forEach((r: any) => { zonaIdByNombre[r.n] = r.id; });
 
-    const { rows: emps } = await pool.query(`SELECT id, dpi, fecha_nacimiento, LOWER(nombre_completo) AS n FROM employees WHERE dpi IS NOT NULL`);
+    const { rows: emps } = await pool.query(`SELECT id, dpi, fecha_nacimiento, sexo, LOWER(nombre_completo) AS n FROM employees WHERE dpi IS NOT NULL`);
     emps.forEach((r: any) => {
       if (r.dpi) empleadoIdByDpi[r.dpi] = r.id;
       empleadoIdByNombre[r.n] = r.id;
       if (r.fecha_nacimiento) empleadoConFechaNac.add(r.id);
+      if (r.sexo) empleadoConSexo.add(r.id);
     });
 
     const { rows: puestos } = await pool.query(`SELECT id, LOWER(nombre) AS n FROM puestos_operativos`);
@@ -403,38 +405,50 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
       rColab.errores++; continue;
     }
     if (dpi && empleadoIdByDpi[dpi]) {
-      // Colaborador ya existe. Si se pidió actualizar, rellenamos solo la fecha
-      // de nacimiento cuando esté vacía (COALESCE no pisa la existente) y
-      // saltando el comodín 01/01/2000. Si no, se omite como antes.
+      // Colaborador ya existe. Si se pidió actualizar, rellenamos la fecha de
+      // nacimiento y el sexo SOLO cuando estén vacíos (COALESCE no pisa lo que
+      // ya tienen) y saltando el comodín 01/01/2000. Si no, se omite como antes.
       if (actualizar) {
-        const fechaNac = parseDate(row["fecha_nacimiento"]);
-        const esComodin = fechaNac === "2000-01-01";
-        if (!fechaNac || esComodin) {
-          rColab.detalle.push({ fila, estado: "omitido", mensaje: esComodin ? `DPI ${dpi}: fecha 01/01/2000 omitida` : `DPI ${dpi}: sin fecha de nacimiento` });
+        const empId = empleadoIdByDpi[dpi];
+        // Fecha: solo válida y no comodín
+        const fechaNacRaw = parseDate(row["fecha_nacimiento"]);
+        const fechaNac = (fechaNacRaw && fechaNacRaw !== "2000-01-01") ? fechaNacRaw : null;
+        // Sexo: desde la columna "genero" de la plantilla
+        const rawGenero = trim(row["genero"]).toLowerCase();
+        const sexo =
+          rawGenero === "masculino" || rawGenero === "m" ? "M" :
+          rawGenero === "femenino"  || rawGenero === "f" ? "F" : null;
+
+        // Solo cuenta como rellenable si el archivo trae el dato y la BD lo tiene vacío
+        const rellenaFecha = !!fechaNac && !empleadoConFechaNac.has(empId);
+        const rellenaSexo  = !!sexo && !empleadoConSexo.has(empId);
+
+        if (!rellenaFecha && !rellenaSexo) {
+          rColab.detalle.push({ fila, estado: "omitido", mensaje: `DPI ${dpi}: nada que rellenar (ya tenía los datos)` });
           rColab.omitidos++; continue;
         }
+        const partes = [rellenaFecha ? "fecha de nacimiento" : null, rellenaSexo ? "sexo" : null].filter(Boolean).join(" y ");
         if (preview) {
-          if (empleadoConFechaNac.has(empleadoIdByDpi[dpi])) {
-            rColab.detalle.push({ fila, estado: "omitido", mensaje: `DPI ${dpi}: ya tenía fecha de nacimiento` });
-            rColab.omitidos++; continue;
-          }
-          rColab.detalle.push({ fila, estado: "actualizado", mensaje: `DPI ${dpi}: se rellenaría fecha de nacimiento` });
+          // Espejamos el import real: si el DPI se repitiera en el archivo, la 2ª
+          // fila ya no contaría como rellenable.
+          if (rellenaFecha) empleadoConFechaNac.add(empId);
+          if (rellenaSexo) empleadoConSexo.add(empId);
+          rColab.detalle.push({ fila, estado: "actualizado", mensaje: `DPI ${dpi}: se rellenaría ${partes}` });
           rColab.actualizados++; continue;
         }
         try {
-          const { rowCount } = await pool.query(
+          await pool.query(
             `UPDATE employees
-                SET fecha_nacimiento = $2::date
-              WHERE id = $1 AND fecha_nacimiento IS NULL`,
-            [empleadoIdByDpi[dpi], fechaNac]
+                SET fecha_nacimiento = COALESCE(fecha_nacimiento, $2::date),
+                    sexo             = COALESCE(sexo, $3)
+              WHERE id = $1`,
+            [empId, rellenaFecha ? fechaNac : null, rellenaSexo ? sexo : null]
           );
-          if (rowCount && rowCount > 0) {
-            rColab.detalle.push({ fila, estado: "actualizado", mensaje: `DPI ${dpi}: fecha de nacimiento rellenada` });
-            rColab.actualizados++;
-          } else {
-            rColab.detalle.push({ fila, estado: "omitido", mensaje: `DPI ${dpi}: ya tenía fecha de nacimiento` });
-            rColab.omitidos++;
-          }
+          // Mantener los sets consistentes por si el DPI se repitiera en el archivo
+          if (rellenaFecha) empleadoConFechaNac.add(empId);
+          if (rellenaSexo) empleadoConSexo.add(empId);
+          rColab.detalle.push({ fila, estado: "actualizado", mensaje: `DPI ${dpi}: rellenado ${partes}` });
+          rColab.actualizados++;
         } catch (e: any) {
           rColab.detalle.push({ fila, estado: "error", mensaje: e.message });
           rColab.errores++;

@@ -3481,8 +3481,9 @@ function CargaMaestraTab() {
           <strong className="text-amber-300">Actualizar/rellenar colaboradores existentes</strong>
           <br />
           Si un colaborador ya está registrado (mismo DPI), en vez de omitirlo se rellena su
-          <strong className="text-white/80"> fecha de nacimiento</strong> cuando esté vacía. No pisa
-          datos que ya tenga, y se saltan las fechas comodín 01/01/2000.
+          <strong className="text-white/80"> fecha de nacimiento</strong> y su
+          <strong className="text-white/80"> sexo</strong> cuando estén vacíos. No pisa datos que ya
+          tenga, y se saltan las fechas comodín 01/01/2000.
         </span>
       </label>
 
