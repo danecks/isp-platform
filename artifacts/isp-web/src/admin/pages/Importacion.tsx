@@ -3270,7 +3270,8 @@ interface SheetResult {
   exitosos: number;
   errores: number;
   omitidos: number;
-  detalle: { fila: number; estado: "ok" | "error" | "omitido"; mensaje?: string }[];
+  actualizados: number;
+  detalle: { fila: number; estado: "ok" | "error" | "omitido" | "actualizado"; mensaje?: string }[];
 }
 
 interface MaestroResult {
@@ -3279,6 +3280,7 @@ interface MaestroResult {
   exitosos: number;
   errores: number;
   omitidos: number;
+  actualizados: number;
   hojas: SheetResult[];
 }
 
@@ -3316,6 +3318,7 @@ function CargaMaestraTab() {
   const [step, setStep] = useState<CargaMaestraStep>("upload");
   const [sheets, setSheets] = useState<Record<string, Record<string, any>[]>>({});
   const [sheetNames, setSheetNames] = useState<string[]>([]);
+  const [actualizar, setActualizar] = useState(false);
   const [previewResult, setPreviewResult] = useState<MaestroResult | null>(null);
   const [importResult, setImportResult] = useState<MaestroResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -3368,7 +3371,7 @@ function CargaMaestraTab() {
     const r = await fetch(`${API_BASE}/importacion/maestro`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
-      body: JSON.stringify({ sheets, preview }),
+      body: JSON.stringify({ sheets, preview, actualizar }),
     });
     if (!r.ok) {
       const msg = await r.text();
@@ -3467,6 +3470,22 @@ function CargaMaestraTab() {
           ))}
         </div>
       </div>
+      <label className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={actualizar}
+          onChange={e => setActualizar(e.target.checked)}
+          className="mt-0.5 w-4 h-4 accent-amber-500"
+        />
+        <span className="text-xs text-white/70">
+          <strong className="text-amber-300">Actualizar/rellenar colaboradores existentes</strong>
+          <br />
+          Si un colaborador ya está registrado (mismo DPI), en vez de omitirlo se rellena su
+          <strong className="text-white/80"> fecha de nacimiento</strong> cuando esté vacía. No pisa
+          datos que ya tenga, y se saltan las fechas comodín 01/01/2000.
+        </span>
+      </label>
+
       <div className="flex gap-3">
         <button onClick={reset} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-white/10 hover:bg-white/15 text-white/60">
           <RotateCcw className="w-4 h-4" /> Cambiar archivo
@@ -3497,9 +3516,10 @@ function CargaMaestraTab() {
             {previewResult.errores === 0 ? "Todo listo para importar" : "Hay errores — revisa antes de importar"}
           </span>
         </div>
-        <div className="grid grid-cols-4 gap-4 text-center">
+        <div className="grid grid-cols-5 gap-4 text-center">
           <div><p className="text-2xl font-bold text-white/80">{previewResult.total}</p><p className="text-xs text-white/40">Registros</p></div>
           <div><p className="text-2xl font-bold text-emerald-400">{previewResult.exitosos}</p><p className="text-xs text-white/40">Se importarán</p></div>
+          <div><p className="text-2xl font-bold text-blue-400">{previewResult.actualizados}</p><p className="text-xs text-white/40">Se rellenarán</p></div>
           <div><p className="text-2xl font-bold text-orange-400">{previewResult.errores}</p><p className="text-xs text-white/40">Con error</p></div>
           <div><p className="text-2xl font-bold text-white/30">{previewResult.omitidos}</p><p className="text-xs text-white/40">Ya existen</p></div>
         </div>
@@ -3517,11 +3537,13 @@ function CargaMaestraTab() {
         </button>
         <button
           onClick={runImport}
-          disabled={loading || previewResult.exitosos === 0}
+          disabled={loading || (previewResult.exitosos === 0 && previewResult.actualizados === 0)}
           className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm bg-indigo-600/80 hover:bg-indigo-600 text-white font-medium disabled:opacity-50"
         >
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-          Importar {previewResult.exitosos} registros definitivamente
+          {previewResult.actualizados > 0
+            ? `Importar ${previewResult.exitosos} y rellenar ${previewResult.actualizados} definitivamente`
+            : `Importar ${previewResult.exitosos} registros definitivamente`}
         </button>
       </div>
     </div>
@@ -3545,9 +3567,10 @@ function CargaMaestraTab() {
           <CheckCircle2 className="w-5 h-5 text-emerald-400" />
           <span className="font-semibold text-white">Importación completada</span>
         </div>
-        <div className="grid grid-cols-4 gap-4 text-center">
+        <div className="grid grid-cols-5 gap-4 text-center">
           <div><p className="text-2xl font-bold text-white/80">{importResult.total}</p><p className="text-xs text-white/40">Registros</p></div>
           <div><p className="text-2xl font-bold text-emerald-400">{importResult.exitosos}</p><p className="text-xs text-white/40">Importados</p></div>
+          <div><p className="text-2xl font-bold text-blue-400">{importResult.actualizados}</p><p className="text-xs text-white/40">Rellenados</p></div>
           <div><p className="text-2xl font-bold text-orange-400">{importResult.errores}</p><p className="text-xs text-white/40">Con error</p></div>
           <div><p className="text-2xl font-bold text-white/30">{importResult.omitidos}</p><p className="text-xs text-white/40">Omitidos</p></div>
         </div>
