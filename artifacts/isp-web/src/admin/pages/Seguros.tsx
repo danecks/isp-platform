@@ -19,7 +19,7 @@ import {
   ShieldCheck, Download, Pencil, AlertCircle, Loader2, History, Users, Wallet,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, apiUrl } from "@/lib/httpClient";
+import { apiRequest, downloadFile } from "@/lib/httpClient";
 
 function fmtQ(v: string | number | null | undefined) {
   const n = Number(v ?? 0);
@@ -113,9 +113,12 @@ export default function AdminSeguros() {
   useEffect(() => { cargarConfig(); }, []);
   useEffect(() => { cargarReporte(); }, [mes]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function handleDescargarCSV() {
-    const url = apiUrl(`/seguros/reporte/csv?mes=${mes}`);
-    window.open(url, "_blank");
+  async function handleDescargarCSV() {
+    try {
+      await downloadFile(`/seguros/reporte/csv?mes=${mes}`, `seguros_${mes}.csv`);
+    } catch (e) {
+      toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
+    }
   }
 
   const primaActual = Number(config?.prima_mensual ?? 0);

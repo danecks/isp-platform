@@ -155,6 +155,49 @@ export async function apiRequest<T = unknown>(
 }
 
 /**
+ * Descarga un archivo del API enviando la sesión en el header.
+ *
+ * `window.open(url)` NO sirve para endpoints protegidos: una navegación del
+ * browser no puede adjuntar el header `x-isp-session`, así que el backend
+ * responde 401 "Sesión requerida". Aquí hacemos un `fetch` con la sesión,
+ * recibimos el cuerpo como Blob y forzamos la descarga con un enlace temporal.
+ *
+ * Lanza `ApiError` si el status no es 2xx (mismo contrato que `apiRequest`).
+ */
+export async function downloadFile(path: string, filename: string): Promise<void> {
+  const session = getSessionToken();
+  const headers = new Headers();
+  if (session) headers.set(SESSION_HEADER, session);
+  const fetchOptions: RequestInit = { headers };
+  if (ABS_PREFIX) fetchOptions.credentials = "include";
+
+  const res = await fetch(apiUrl(path), fetchOptions);
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    const msg =
+      typeof errBody === "object" && errBody && "error" in errBody
+        ? String((errBody as { error: unknown }).error)
+        : `Error ${res.status}`;
+    throw new ApiError(res.status, msg, errBody);
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    // Diferimos el revoke: algunos browsers cancelan la descarga si el object
+    // URL se libera demasiado pronto tras el click.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+}
+
+/**
  * Wrappers finos para POST/PATCH con cuerpo JSON. Equivalentes a
  * `apiRequest(url, { method, json: body })` — existen sólo para que los
  * call sites se vean más cortos y para deduplicar las decenas de
