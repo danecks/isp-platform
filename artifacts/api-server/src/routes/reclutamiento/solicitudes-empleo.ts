@@ -802,6 +802,18 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/:id/contratar", async (req: Re
       WHERE id = $2
     `, [empId, id]);
 
+    // CONT: auto-generar 2 contratos al contratar (mismo comportamiento que el alta manual en POST /employees)
+    const fechaBaseContrato: Date = fechaIngresoBody ? new Date(fechaIngresoBody) : new Date();
+    const fechaPostPrueba = new Date(fechaBaseContrato);
+    fechaPostPrueba.setMonth(fechaPostPrueba.getMonth() + 2);
+    await pool.query(`
+      INSERT INTO contratos_empleados
+        (employee_id, tipo_contrato, etiqueta, fecha_contrato, fecha_inicio, puesto, sueldo_base, observaciones, generado_automatico)
+      VALUES
+        ($1, 'inicial',    'Contrato inicial',                   $2, $2, $3, $4, 'Generado automáticamente al contratar desde reclutamiento.', TRUE),
+        ($1, 'post_prueba','Contrato post período de prueba',     $5, $5, $3, $4, 'Generado automáticamente. Fecha tentativa de confirmación (+2 meses).', TRUE)
+    `, [empId, fechaBaseContrato, puestoAsignado || null, sueldoAsignado, fechaPostPrueba]);
+
     logger.info({ solicitudId: id, employeeId: empId }, "kiosco: solicitud convertida en empleado");
     res.json({ ok: true, employee_id: empId });
   } catch (err) {
