@@ -14,3 +14,4 @@
 - [Carga maestra omite DPI existentes](carga-maestra-actualizar.md) — POST /importacion/maestro precarga DPI y los omite por defecto; flag `actualizar` rellena fecha_nacimiento y sexo vacíos (salta comodín 01/01/2000); preview debe espejar import real.
 - [Descargas de endpoints protegidos](descargas-sesion-header.md) — la sesión va en header x-isp-session, no cookie; window.open da 401 "Sesión requerida"; usar downloadFile() de httpClient.
 - [Wipe colaboradores preview](limpieza-colaboradores-preview.md) — borrar TODOS los employees y data operativa en una transacción; clasificación durable operativo(borrar) vs estructural/inventario(desligar); reclutamiento solo donde employee_id NOT NULL.
+- [Borrado de datos no se delega](borrado-datos-no-delegar.md) — limpiezas/borrados masivos sobre preview los corre el agente principal en Build; el task agent usa base aislada temporal y sus cambios de datos NO se fusionan.
