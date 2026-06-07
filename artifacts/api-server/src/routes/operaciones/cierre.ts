@@ -658,6 +658,58 @@ router.post("/operaciones/cierre", async (req, res) => {
               updated_at             = NOW()
           `, [fechaACerrarISO, pf.falta_employee_id, empNombre2, pf.id, pf.nombre, eventoId, diasDescFalta]);
 
+          // ── Enlazar horas extra generadas por la cobertura de esta falta ──────
+          // Opción 1: une TODAS las coberturas del puesto/día marcadas como hora extra.
+          // Usa genera_horas_extra (señal confiable: solo TRUE cuando de verdad es HE).
+          // Las HE creadas por /sustituir tienen genera_horas_extra=FALSE y su propio
+          // evento, por lo que no se duplican aquí.
+          if (eventoId) {
+            const { rows: coberturasHE } = await client.query(`
+              SELECT cs.employee_id, cs.empleado_nombre, cs.horas_calculadas, emp.dpi
+              FROM cobertura_segmentos cs
+              LEFT JOIN employees emp ON emp.id = cs.employee_id
+              WHERE cs.fecha = $1::date AND cs.puesto_id = $2 AND cs.genera_horas_extra = TRUE
+            `, [fechaACerrarISO, pf.id]);
+
+            for (const cov of coberturasHE) {
+              const { rows: heExiste } = await client.query(`
+                SELECT id, evento_par_id FROM eventos_rrhh
+                WHERE employee_id = $1 AND DATE(fecha) = $2 AND tipo_evento = 'horas_extra'
+                  AND puesto_nombre = $3 AND cliente_nombre = $4 AND estado != 'anulado'
+                ORDER BY id DESC
+                LIMIT 1
+              `, [cov.employee_id, fechaACerrarISO, pf.nombre, pf.cliente_nombre]);
+
+              let heId: number | null = null;
+              if (heExiste.length > 0) {
+                heId = heExiste[0].id;
+                if (!heExiste[0].evento_par_id) {
+                  await client.query(`UPDATE eventos_rrhh SET evento_par_id = $1 WHERE id = $2`, [eventoId, heId]);
+                }
+              } else {
+                const { rows: heRows } = await client.query(`
+                  INSERT INTO eventos_rrhh (employee_id, employee_nombre, employee_dpi, tipo_evento, fecha,
+                    cliente_nombre, puesto_nombre, generado_desde, estado, usuario_generador,
+                    observaciones, documentos_generados, evento_par_id, cantidad_horas)
+                  VALUES ($1,$2,$3,'horas_extra',$4::date,$5,$6,'cierre_operativo','pendiente_aprobacion',$7,$8,'[]',$9,$10)
+                  RETURNING id
+                `, [cov.employee_id, cov.empleado_nombre, cov.dpi ?? null, fechaACerrarISO,
+                    pf.cliente_nombre, pf.nombre, usuario ?? 'sistema',
+                    `Cobertura HE por falta de ${empNombre2} en ${pf.nombre} (${pf.cliente_nombre})`,
+                    eventoId, cov.horas_calculadas]);
+                heId = heRows[0]?.id ?? null;
+              }
+
+              // Back-compat 1:1: si la falta aún no tiene par, apúntala a la primera HE.
+              if (heId) {
+                await client.query(
+                  `UPDATE eventos_rrhh SET evento_par_id = COALESCE(evento_par_id, $1) WHERE id = $2`,
+                  [heId, eventoId]
+                );
+              }
+            }
+          }
+
           await client.query('COMMIT');
 
           if (yaExiste.length === 0) faltasDiferidas++;

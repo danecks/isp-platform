@@ -20,9 +20,8 @@ el agente sigue saliendo faltando porque el evento de RRHH sigue vivo.
 
 **How to apply:**
 - Anular falta (anular-falta.ts): limpia el slot + anula el evento `eventos_rrhh`
-  'falta' del employee+fecha (estado='anulado', estado_anterior) + cascada al HE
-  par (`evento_par_id`) + crea `anulacion_falta` pendiente con snapshot en
-  metadata_json.
+  'falta' del employee+fecha (estado='anulado', estado_anterior) + cascada a TODAS
+  las HE par + crea `anulacion_falta` pendiente con snapshot en metadata_json.
 - Reactivar falta (POST /operaciones/reactivar-falta): inverso desde el snapshot —
   slot→'faltando', reactiva evento+HE a su `estado_anterior`, marca el
   `anulacion_falta` como `'revertido'` (para que deje de ofrecerse Reactivar).
@@ -32,8 +31,26 @@ el agente sigue saliendo faltando porque el evento de RRHH sigue vivo.
   `anulacion_falta` estado='pendiente_aprobacion' para ese puesto
   (`metadata_json->>'puesto_id'`) y fecha.
 
-**Trampa del HE par (bug que ya mordió):** al anular, guardar `par_id` en el
-snapshot SOLO si esta operación realmente anuló el par (es decir, el par no estaba
-ya anulado). Si el par ya venía anulado de antes y lo registras igual, al
-reactivar/rechazar lo "revives" por error. Guardar `par_id=null` cuando
-`par_estado_anterior` es null.
+**Relación 1 falta : N HE (no 1:1).** Una falta puede tener VARIAS HE (relevo
+partido, o varias coberturas del puesto/día). El enlace es cada `HE.evento_par_id =
+falta.id`; por back-compat la falta apunta a la PRIMERA HE (`COALESCE`). Para
+seleccionar todas las HE de una falta: `WHERE tipo_evento='horas_extra' AND
+(evento_par_id = falta.id OR id = falta.evento_par_id)`. Anular/reactivar/rechazar
+deben operar sobre el CONJUNTO, no sobre un par único, o quedan HE huérfanas.
+
+**Snapshot de reactivación:** se guarda `pares: [{id, estado_anterior}]` (solo las
+que ESTA operación anuló). Los lectores (reactivar-falta y el rechazo de RRHH en
+eventos-rrhh.ts) aceptan `pares[]` y hacen fallback a `par_id`/`par_estado_anterior`
+de snapshots viejos.
+
+**Trampa del HE par (bug que ya mordió):** al anular, registrar en el snapshot SOLO
+las HE que esta operación realmente anuló (las que no estaban ya anuladas). Si
+incluyes una que ya venía anulada de antes, al reactivar/rechazar la "revives" por
+error.
+
+**Quién crea las HE par:** `/sustituir` crea falta+HE juntas en el acto
+(`genera_horas_extra=FALSE` en esa ruta). `/asignar` registra la cobertura con
+`genera_horas_extra` correcto pero NO crea el evento HE — ese hueco lo llena el
+CIERRE (cierre.ts), que por cada falta diferida busca `cobertura_segmentos` del
+puesto+fecha con `genera_horas_extra=TRUE` y crea/enlaza la HE (dedupe por
+employee+fecha+puesto+cliente).

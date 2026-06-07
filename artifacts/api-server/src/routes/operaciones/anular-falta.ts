@@ -82,7 +82,7 @@ router.post("/operaciones/anular-falta", async (req, res) => {
     // slot y este evento), por lo que sin esto el agente seguiría saliendo "faltando".
     // En cascada anulamos su HE par (la extra de quien cubrió), igual que /rrhh/eventos/:id/anular.
     // Guardamos el estado previo de cada evento para poder reactivarlo si fue por error.
-    const eventosFaltaAnulados: Array<{ id: number; estado_anterior: string; par_id: number | null; par_estado_anterior: string | null }> = [];
+    const eventosFaltaAnulados: Array<{ id: number; estado_anterior: string; pares: Array<{ id: number; estado_anterior: string }> }> = [];
     const { rows: faltaEvs } = await client.query(`
       SELECT id, estado, evento_par_id
         FROM eventos_rrhh
@@ -98,28 +98,27 @@ router.post("/operaciones/anular-falta", async (req, res) => {
                anulado_at = NOW(), motivo_anulacion = $3, updated_at = NOW()
          WHERE id = $4
       `, [ev.estado, usuario ?? "sistema", motivoTxt, ev.id]);
-      let parEstadoAnterior: string | null = null;
-      if (ev.evento_par_id) {
-        const { rows: parRows } = await client.query(
-          `SELECT id, estado FROM eventos_rrhh WHERE id = $1`, [ev.evento_par_id],
-        );
-        if (parRows.length && parRows[0].estado !== "anulado") {
-          parEstadoAnterior = parRows[0].estado;
-          await client.query(`
-            UPDATE eventos_rrhh
-               SET estado = 'anulado', estado_anterior = $1, anulado_por = $2,
-                   anulado_at = NOW(), motivo_anulacion = $3, updated_at = NOW()
-             WHERE id = $4
-          `, [parRows[0].estado, usuario ?? "sistema", motivoTxt, ev.evento_par_id]);
-        }
+      // Anular TODAS las HE enlazadas (1:N) + el par legacy 1:1, guardando el estado
+      // previo de SOLO las que esta operación anuló, para poder reactivarlas luego.
+      const { rows: parRows } = await client.query(`
+        SELECT id, estado FROM eventos_rrhh
+         WHERE tipo_evento = 'horas_extra' AND estado != 'anulado'
+           AND (evento_par_id = $1 OR id = $2)
+      `, [ev.id, ev.evento_par_id ?? -1]);
+      const pares: Array<{ id: number; estado_anterior: string }> = [];
+      for (const par of parRows) {
+        await client.query(`
+          UPDATE eventos_rrhh
+             SET estado = 'anulado', estado_anterior = $1, anulado_por = $2,
+                 anulado_at = NOW(), motivo_anulacion = $3, updated_at = NOW()
+           WHERE id = $4
+        `, [par.estado, usuario ?? "sistema", motivoTxt, par.id]);
+        pares.push({ id: Number(par.id), estado_anterior: par.estado });
       }
       eventosFaltaAnulados.push({
         id: Number(ev.id),
         estado_anterior: ev.estado,
-        // Solo registramos el par si ESTA operación lo anuló (parEstadoAnterior != null).
-        // Si el par ya estaba anulado de antes, lo dejamos como null para no reactivarlo por error.
-        par_id: parEstadoAnterior !== null ? Number(ev.evento_par_id) : null,
-        par_estado_anterior: parEstadoAnterior,
+        pares,
       });
     }
 
@@ -267,13 +266,17 @@ router.post("/operaciones/reactivar-falta", async (req, res) => {
                anulado_at = NULL, motivo_anulacion = NULL, updated_at = NOW()
          WHERE id = $2 AND estado = 'anulado'
       `, [e.estado_anterior ?? "pendiente_aprobacion", e.id]);
-      if (e.par_id) {
+      // Reactivar TODAS las HE par (1:N). Back-compat con snapshots viejos (par_id único).
+      const pares = Array.isArray(e.pares)
+        ? e.pares
+        : (e.par_id ? [{ id: e.par_id, estado_anterior: e.par_estado_anterior }] : []);
+      for (const p of pares) {
         await client.query(`
           UPDATE eventos_rrhh
              SET estado = $1, estado_anterior = NULL, anulado_por = NULL,
                  anulado_at = NULL, motivo_anulacion = NULL, updated_at = NOW()
            WHERE id = $2 AND estado = 'anulado'
-        `, [e.par_estado_anterior ?? "pendiente_aprobacion", e.par_id]);
+        `, [p.estado_anterior ?? "pendiente_aprobacion", p.id]);
       }
     }
 

@@ -584,21 +584,21 @@ export default function RRHHEventos() {
                 <div className="space-y-4">
                   {(() => {
                     const usedIds = new Set<number>();
-                    const paired: Array<{ falta: EventoRrhh; he: EventoRrhh; movId: number | null }> = [];
-                    const evById = new Map<number, EventoRrhh>();
-                    eventosFiltrados.forEach(ev => evById.set(ev.id, ev));
+                    // Opción 1: agrupa una falta con TODAS sus horas extra enlazadas
+                    // (he.evento_par_id === falta.id  ó  falta.evento_par_id === he.id).
+                    const grupos: Array<{ falta: EventoRrhh; hes: EventoRrhh[]; movId: number | null }> = [];
 
-                    eventosFiltrados.forEach(ev => {
-                      if (usedIds.has(ev.id)) return;
-                      if (ev.evento_par_id) {
-                        const par = evById.get(ev.evento_par_id);
-                        if (par && !usedIds.has(par.id)) {
-                          const falta = ev.tipo_evento !== 'horas_extra' ? ev : par;
-                          const he = ev.tipo_evento === 'horas_extra' ? ev : par;
-                          usedIds.add(falta.id);
-                          usedIds.add(he.id);
-                          paired.push({ falta, he, movId: ev.movimiento_id ?? par.movimiento_id ?? null });
-                        }
+                    eventosFiltrados.forEach(falta => {
+                      if (falta.tipo_evento === 'horas_extra') return; // las HE se agregan vía su falta
+                      const hes = eventosFiltrados.filter(h =>
+                        h.tipo_evento === 'horas_extra' &&
+                        !usedIds.has(h.id) &&
+                        (h.evento_par_id === falta.id || falta.evento_par_id === h.id)
+                      );
+                      if (hes.length > 0) {
+                        usedIds.add(falta.id);
+                        hes.forEach(h => usedIds.add(h.id));
+                        grupos.push({ falta, hes, movId: falta.movimiento_id ?? hes[0].movimiento_id ?? null });
                       }
                     });
 
@@ -606,35 +606,37 @@ export default function RRHHEventos() {
 
                     return (
                       <>
-                        {paired.map(({ falta, he, movId }) => (
-                          <div key={`pair-${movId}`} className="bg-[#060e1c] border border-purple-500/15 rounded-2xl overflow-hidden">
+                        {grupos.map(({ falta, hes, movId }) => (
+                          <div key={`pair-${falta.id}`} className="bg-[#060e1c] border border-purple-500/15 rounded-2xl overflow-hidden">
                             <div className="px-4 py-2 bg-purple-500/5 border-b border-purple-500/10 flex items-center gap-2">
-                              <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider">Sustitución #{movId}</span>
+                              <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider">
+                                {movId ? `Sustitución #${movId}` : "Falta con hora extra"}
+                              </span>
                               <span className="text-[10px] text-white/25">·</span>
                               <span className="text-[10px] text-white/30">
-                                {falta?.puesto_nombre} — {falta?.cliente_nombre || he?.cliente_nombre}
+                                {falta?.puesto_nombre} — {falta?.cliente_nombre || hes[0]?.cliente_nombre}
                               </span>
+                              {hes.length > 1 && (
+                                <span className="text-[10px] text-emerald-400/70 ml-auto">{hes.length} horas extra</span>
+                              )}
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-white/5">
                               <div className="p-2">
-                                {falta ? (
-                                  <EventoCard
-                                    evento={falta}
-                                    onEstadoChange={handleEstadoChange}
-                                    onDescargarBoleta={handleDescargarBoleta}
-                                    onDescargarActa={handleDescargarActa}
-                                    onDescargarAnulacion={handleDescargarAnulacion}
-                                    onAnular={(ev) => setModalAnulacion(ev)}
-                                    compact
-                                    label="TITULAR — Descuento"
-                                  />
-                                ) : (
-                                  <div className="flex items-center justify-center py-6 text-white/15 text-xs">Sin evento titular</div>
-                                )}
+                                <EventoCard
+                                  evento={falta}
+                                  onEstadoChange={handleEstadoChange}
+                                  onDescargarBoleta={handleDescargarBoleta}
+                                  onDescargarActa={handleDescargarActa}
+                                  onDescargarAnulacion={handleDescargarAnulacion}
+                                  onAnular={(ev) => setModalAnulacion(ev)}
+                                  compact
+                                  label="TITULAR — Descuento"
+                                />
                               </div>
-                              <div className="p-2">
-                                {he ? (
+                              <div className="p-2 space-y-2">
+                                {hes.map((he) => (
                                   <EventoCard
+                                    key={he.id}
                                     evento={he}
                                     onEstadoChange={handleEstadoChange}
                                     onDescargarBoleta={handleDescargarBoleta}
@@ -644,9 +646,7 @@ export default function RRHHEventos() {
                                     compact
                                     label="CUBRIENTE — Horas Extra"
                                   />
-                                ) : (
-                                  <div className="flex items-center justify-center py-6 text-white/15 text-xs">Sin evento HE</div>
-                                )}
+                                ))}
                               </div>
                             </div>
                           </div>

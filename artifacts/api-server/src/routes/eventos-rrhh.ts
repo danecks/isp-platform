@@ -450,13 +450,17 @@ eventosRrhhRouter.patch("/rrhh/eventos/:id/estado", async (req, res) => {
                    anulado_at = NULL, motivo_anulacion = NULL, updated_at = NOW()
              WHERE id = $2 AND estado = 'anulado'
           `, [e.estado_anterior ?? "pendiente_aprobacion", e.id]);
-          if (e.par_id) {
+          // Reactivar TODAS las HE par (1:N). Back-compat con snapshots viejos (par_id único).
+          const pares = Array.isArray(e.pares)
+            ? e.pares
+            : (e.par_id ? [{ id: e.par_id, estado_anterior: e.par_estado_anterior }] : []);
+          for (const p of pares) {
             await client.query(`
               UPDATE eventos_rrhh
                  SET estado = $1, estado_anterior = NULL, anulado_por = NULL,
                      anulado_at = NULL, motivo_anulacion = NULL, updated_at = NOW()
                WHERE id = $2 AND estado = 'anulado'
-            `, [e.par_estado_anterior ?? "pendiente_aprobacion", e.par_id]);
+            `, [p.estado_anterior ?? "pendiente_aprobacion", p.id]);
           }
         }
         logger.info({ eventoId: id, puestoId: snap.puesto_id }, "Anulación de falta rechazada → slot y eventos restaurados");
@@ -570,32 +574,31 @@ eventosRrhhRouter.post("/rrhh/eventos/:id/anular", async (req, res) => {
       "Evento RRHH anulado",
     );
 
-    // Cascada: si se anula una falta que tiene par (HE), anular también la HE
+    // Cascada: si se anula una falta, anular TODAS sus HE enlazadas (1:N) más el
+    // par legacy 1:1 (falta.evento_par_id), sin duplicar.
     let parAnulado = false;
     try {
       const evento = rows[0];
       const esFalta = evento.tipo_evento !== "horas_extra";
-      if (esFalta && evento.evento_par_id) {
-        const { rows: parRows } = await pool.query(
-          `SELECT id, estado FROM eventos_rrhh WHERE id = $1`,
-          [evento.evento_par_id],
-        );
-        if (parRows.length && parRows[0].estado !== "anulado") {
-          await pool.query(
-            `UPDATE eventos_rrhh
+      if (esFalta) {
+        const { rowCount } = await pool.query(
+          `UPDATE eventos_rrhh
              SET estado           = 'anulado',
-                 estado_anterior  = $1,
+                 estado_anterior  = estado,
                  anulado_por      = $2,
                  anulado_at       = NOW(),
                  motivo_anulacion = $3,
                  updated_at       = NOW()
-             WHERE id = $4`,
-            [parRows[0].estado, usuario, motivoAnulacion, evento.evento_par_id],
-          );
-          parAnulado = true;
+           WHERE tipo_evento = 'horas_extra'
+             AND estado != 'anulado'
+             AND (evento_par_id = $1 OR id = $4)`,
+          [evento.id, usuario, motivoAnulacion, evento.evento_par_id ?? -1],
+        );
+        parAnulado = (rowCount ?? 0) > 0;
+        if (parAnulado) {
           logger.info(
-            { parId: evento.evento_par_id, motivo: motivoAnulacion, por: usuario },
-            "Evento par (HE) anulado en cascada por anulación de falta",
+            { faltaId: evento.id, hesAnuladas: rowCount, motivo: motivoAnulacion, por: usuario },
+            "Evento(s) par (HE) anulado(s) en cascada por anulación de falta",
           );
         }
       }
