@@ -727,9 +727,14 @@ router.post("/operaciones/sustituir", async (req, res) => {
       const turno = (puesto.turno ?? "día").toLowerCase();
       const horaInicioDefault = turno === "noche" ? "20:00" : "08:00";
       const horaFinDefault    = turno === "noche" ? "06:00" : "18:00";
-      const usaParcial = coberturaTipo === "parcial" && horaInicioParcial && horaFinParcial;
+      // Relevo parcial: el fin toma como base la hora de salida del turno original del puesto.
+      // Si el puesto no la tiene configurada, cae al default por turno.
+      const esHHMM = (v: unknown): v is string => typeof v === "string" && /^\d{1,2}:\d{2}/.test(v.trim());
+      const finTurnoBase = esHHMM(puesto.hora_salida) ? String(puesto.hora_salida).trim() : horaFinDefault;
+      // Basta la hora de inicio para registrar el relevo parcial; el fin se deriva del turno.
+      const usaParcial = coberturaTipo === "parcial" && !!horaInicioParcial;
       const horaInicio = usaParcial ? horaInicioParcial : horaInicioDefault;
-      const horaFin    = usaParcial ? horaFinParcial    : horaFinDefault;
+      const horaFin    = usaParcial ? (horaFinParcial || finTurnoBase) : horaFinDefault;
       const calcHorasCobertura = (hi: string, hf: string) => {
         const [h1,m1] = hi.split(":").map(Number);
         const [h2,m2] = hf.split(":").map(Number);

@@ -29,7 +29,7 @@ export function ModalSustitucion({
   const [tipoSustitucion, setTipoSustitucion] = useState<"relevo" | "reasignacion">("relevo");
   const [horaAbandono, setHoraAbandono] = useState("");
   const [horaInicioParcial, setHoraInicioParcial] = useState(puesto.hora_entrada ?? "");
-  const [horaFinParcial, setHoraFinParcial] = useState("");
+  const [horaFinParcial, setHoraFinParcial] = useState(puesto.hora_salida ?? "");
   const [tarifaHE, setTarifaHE] = useState<{ tarifa: number; horas_turno: number } | null>(null);
   const esSustitucion = !!puesto.agente_id;
   const aplicaHE = agentePoolStatus === "descansando" || agentePoolStatus === "vacaciones";
@@ -75,7 +75,9 @@ export function ModalSustitucion({
     ? (() => { let d = parseMin(horaFinParcial) - parseMin(horaInicioParcial); if (d <= 0) d += 1440; return d; })()
     : 0;
   const parcialExcede = tipoCobertura === "parcial" && parcialMin > turnoMin;
-  const parcialIncompleto = tipoCobertura === "parcial" && (!horaInicioParcial || !horaFinParcial);
+  // En relevo parcial solo es obligatoria la hora de inicio; el fin toma como base
+  // la hora de salida del turno (se deriva en el servidor si se deja vacío).
+  const parcialIncompleto = tipoCobertura === "parcial" && !horaInicioParcial;
 
   const costoPorHora = tarifaHE ? tarifaHE.tarifa / tarifaHE.horas_turno : null;
   const costoTurnoCompleto = tarifaHE?.tarifa ?? null;
@@ -94,10 +96,10 @@ export function ModalSustitucion({
     }
     setLoading(true);
     try {
-      const notasFinal = tipoCobertura === "parcial" && horaInicioParcial && horaFinParcial
-        ? `${notas ? notas + " | " : ""}Cobertura parcial: ${horaInicioParcial} a ${horaFinParcial}`
+      const notasFinal = tipoCobertura === "parcial" && horaInicioParcial
+        ? `${notas ? notas + " | " : ""}Cobertura parcial: ${horaInicioParcial} a ${horaFinParcial || "salida del turno"}`
         : notas;
-      const horasParcialData = tipoCobertura === "parcial" && horaInicioParcial && horaFinParcial
+      const horasParcialData = tipoCobertura === "parcial" && horaInicioParcial
         ? { inicio: horaInicioParcial, fin: horaFinParcial }
         : undefined;
       const pagoEfectivoData = aplicaHE && modoPagoHE === "efectivo" && tipoSustitucion === "relevo"
@@ -365,6 +367,11 @@ export function ModalSustitucion({
                         </span>
                       )}
                     </div>
+                  )}
+                  {horaInicioParcial && !horaFinParcial && (
+                    <p className="text-[10px] text-white/40 mt-1">
+                      Sin hora fin: se usará la hora de salida del turno{puesto.hora_salida ? ` (${puesto.hora_salida})` : ""}.
+                    </p>
                   )}
                 </div>
               )}
