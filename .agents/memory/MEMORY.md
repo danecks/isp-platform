@@ -16,3 +16,4 @@
 - [Descargas de endpoints protegidos](descargas-sesion-header.md) — la sesión va en header x-isp-session, no cookie; window.open da 401 "Sesión requerida"; usar downloadFile() de httpClient.
 - [Wipe colaboradores preview](limpieza-colaboradores-preview.md) — borrar TODOS los employees y data operativa en una transacción; clasificación durable operativo(borrar) vs estructural/inventario(desligar); reclutamiento solo donde employee_id NOT NULL.
 - [Borrado de datos no se delega](borrado-datos-no-delegar.md) — limpiezas/borrados masivos sobre preview los corre el agente principal en Build; el task agent usa base aislada temporal y sus cambios de datos NO se fusionan.
+- [Cobro de anticipos (interés flat)](anticipo-cobro-modelo.md) — recargo sobre monto original: 10% 1ª cuota + 5% por cuota extra, cuotas niveladas; fórmula DUPLICADA en backend y frontend, cambiar en ambos.

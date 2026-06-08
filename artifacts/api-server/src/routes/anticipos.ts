@@ -20,6 +20,21 @@ import { logger as pushLogger } from "../lib/logger";
 
 const anticiposRouter = Router();
 
+/**
+ * Cálculo del cobro de un anticipo (modelo de interés fijo / "flat").
+ * Recargo sobre el MONTO ORIGINAL: 10% la primera cuota + 5% por cada cuota
+ * adicional => tasa = 0.10 + 0.05 * (cuotas - 1). Cuotas niveladas (iguales).
+ * Ej: Q500 en 4 cuotas → 25% → Q625 → 4 de Q156.25.
+ * Espejado en el frontend (isp-web/src/lib/anticipo-cobro.ts); cambiar en ambos.
+ */
+function calcularCobroAnticipo(monto: number, cuotas: number) {
+  const n = Math.max(1, Math.floor(cuotas) || 1);
+  const tasa = 0.1 + 0.05 * (n - 1);
+  const cuotaMonto = Math.round(((monto * (1 + tasa)) / n) * 100) / 100;
+  const montoCobro = Math.round(cuotaMonto * n * 100) / 100;
+  return { n, tasa, cuotaMonto, montoCobro };
+}
+
 // ── GET /api/anticipos/config ──────────────────────────────────────────────
 anticiposRouter.get("/anticipos/config", (_req, res) => {
   const periodoActual = getPeriodoActivo();
@@ -143,7 +158,9 @@ anticiposRouter.post("/anticipos", async (req, res) => {
       }
     }
 
-    const montoCobro = Math.round(monto * 1.1 * 100) / 100; // +10% de comisión
+    // Provisional: sin cuotas definidas se asume 1 pago (10%). Se recalcula al
+    // aprobar según el número de cuotas que indique RRHH.
+    const montoCobro = calcularCobroAnticipo(monto, 1).montoCobro;
 
     const [created] = await db
       .insert(anticiposTable)
@@ -234,9 +251,7 @@ anticiposRouter.patch("/anticipos/:id", async (req, res) => {
     // Cuando se aprueba: calcular cuotas si se indicó num_cuotas
     if (estado === "aprobada" && num_cuotas) {
       const cuotas = Math.max(1, parseInt(num_cuotas, 10) || 1);
-      const base = existing[0].cantidad;
-      const cuotaMonto = Math.round((base / cuotas) * 1.1 * 100) / 100;
-      const montoCobro = Math.round(cuotaMonto * cuotas * 100) / 100;
+      const { cuotaMonto, montoCobro } = calcularCobroAnticipo(existing[0].cantidad, cuotas);
       updates.numCuotas = cuotas;
       updates.cuotaMonto = String(cuotaMonto);
       updates.montoCobro = String(montoCobro);

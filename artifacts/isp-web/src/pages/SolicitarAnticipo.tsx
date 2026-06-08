@@ -25,6 +25,8 @@ import {
   AlertTriangle, Wallet, ChevronLeft, ShieldCheck,
 } from "lucide-react";
 
+import { calcularCobroAnticipo } from "@/lib/anticipo-cobro";
+
 const API = `${import.meta.env.BASE_URL}api`;
 
 // ── tipos ─────────────────────────────────────────────────────────────────────
@@ -377,9 +379,9 @@ function PasoMonto({ empleado, limite, monto, setMonto, onNext, onBack, errorMon
             {errorMonto && <p className="text-red-400 text-xs">{errorMonto}</p>}
             {montoNum > 0 && !excede && (
               <div className="bg-amber-950/30 border border-amber-500/30 rounded-xl px-4 py-3">
-                <p className="text-amber-300 text-xs font-semibold uppercase tracking-wider mb-1">Descuento de planilla</p>
-                <p className="text-amber-200 text-xl font-black">Q{(Math.round(montoNum * 1.1 * 100) / 100).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</p>
-                <p className="text-amber-400/70 text-xs mt-0.5">Incluye 10% de comisión sobre el monto solicitado</p>
+                <p className="text-amber-300 text-xs font-semibold uppercase tracking-wider mb-1">Descuento de planilla (1 pago)</p>
+                <p className="text-amber-200 text-xl font-black">Q{calcularCobroAnticipo(montoNum, 1).montoCobro.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</p>
+                <p className="text-amber-400/70 text-xs mt-0.5">Incluye 10% de comisión si se paga en 1 cuota. Aumenta 5% por cada cuota adicional que apruebe RRHH.</p>
               </div>
             )}
           </div>
@@ -532,11 +534,14 @@ function PasoConfirmacion({ empleado, monto, fotoUrl, onConfirmar, onBack, envia
             <span className="text-white text-xl font-black">Q{monto.toLocaleString("es-GT")}</span>
           </div>
           <div className="flex justify-between items-center">
-            <span className="text-amber-400/80 text-sm">Descuento de planilla (+10%)</span>
+            <span className="text-amber-400/80 text-sm">Descuento de planilla (1 pago, +10%)</span>
             <span className="text-amber-300 text-xl font-black">
-              Q{(Math.round(monto * 1.1 * 100) / 100).toLocaleString("es-GT", { minimumFractionDigits: 2 })}
+              Q{calcularCobroAnticipo(monto, 1).montoCobro.toLocaleString("es-GT", { minimumFractionDigits: 2 })}
             </span>
           </div>
+          <p className="text-[#64748b] text-xs">
+            Si RRHH lo aprueba en varias cuotas, la comisión sube 5% por cada cuota adicional.
+          </p>
         </div>
         <p className="text-[#64748b] text-xs text-center">
           Al confirmar, su solicitud quedará en estado <span className="text-yellow-400 font-semibold">Pendiente</span> hasta ser aprobada por Recursos Humanos.

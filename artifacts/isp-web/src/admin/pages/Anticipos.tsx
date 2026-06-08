@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import { AdminLayout } from "../layout/AdminLayout";
 import { StatusBadge } from "../components/StatusBadge";
 import { anticiposApi, employeesApi, type Anticipo, type EmpleadoSlim } from "@/lib/api";
+import { calcularCobroAnticipo } from "@/lib/anticipo-cobro";
 import {
   Wallet,
   Filter,
@@ -413,7 +414,7 @@ export default function Anticipos() {
                         {fmtQ(a.cantidad)}
                       </td>
                       <td className="px-4 py-3 text-right font-bold text-amber-400 hidden md:table-cell">
-                        {a.montoCobro ? fmtQ(Number(a.montoCobro)) : fmtQ(a.cantidad * 1.1)}
+                        {a.montoCobro ? fmtQ(Number(a.montoCobro)) : fmtQ(calcularCobroAnticipo(a.cantidad, 1).montoCobro)}
                       </td>
                       <td className="px-4 py-3">
                         {a.origen === "whatsapp" ? (
@@ -498,9 +499,9 @@ export default function Anticipos() {
                 <span className="text-white font-bold text-lg">{fmtQ(editando.cantidad)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-white/40">Monto a descontar (+10%)</span>
+                <span className="text-white/40">Monto a descontar</span>
                 <span className="text-amber-400 font-bold text-lg">
-                  {editando.montoCobro ? fmtQ(Number(editando.montoCobro)) : fmtQ(editando.cantidad * 1.1)}
+                  {editando.montoCobro ? fmtQ(Number(editando.montoCobro)) : fmtQ(calcularCobroAnticipo(editando.cantidad, 1).montoCobro)}
                 </span>
               </div>
               {editando.numCuotas && editando.numCuotas > 1 && (
@@ -552,9 +553,8 @@ export default function Anticipos() {
             {/* Selector de cuotas — visible solo al aprobar */}
             {nuevoEstado === "aprobada" && editando && (() => {
               const base = editando.cantidad;
-              const cuotaBase = base / numCuotas;
-              const cuotaCobro = Math.round(cuotaBase * 1.1 * 100) / 100;
-              const totalCobro = Math.round(cuotaCobro * numCuotas * 100) / 100;
+              const { tasa, cuotaMonto: cuotaCobro, montoCobro: totalCobro } = calcularCobroAnticipo(base, numCuotas);
+              const pctRecargo = Math.round(tasa * 100);
               return (
                 <div className="bg-amber-950/30 border border-amber-500/30 rounded-xl p-4 space-y-3">
                   <p className="text-amber-300 text-xs font-bold uppercase tracking-wider">Descuento en planilla</p>
@@ -579,11 +579,11 @@ export default function Anticipos() {
                       <span className="font-mono">Q{base.toLocaleString("es-GT")}</span>
                     </div>
                     <div className="flex justify-between text-white/50">
-                      <span>Base por cuota ({numCuotas} {numCuotas === 1 ? "pago" : "pagos"})</span>
-                      <span className="font-mono">Q{cuotaBase.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</span>
+                      <span>Recargo ({pctRecargo}%: 10% la 1ª + 5% por cuota extra)</span>
+                      <span className="font-mono">Q{(totalCobro - base).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</span>
                     </div>
                     <div className="flex justify-between text-amber-300 border-t border-amber-500/20 pt-1 mt-1">
-                      <span className="font-semibold">Descuento por cuota (+10%)</span>
+                      <span className="font-semibold">Cada cuota ({numCuotas} {numCuotas === 1 ? "pago" : "pagos"})</span>
                       <span className="font-mono font-bold">Q{cuotaCobro.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</span>
                     </div>
                     <div className="flex justify-between text-amber-200 font-bold text-base">
