@@ -194,12 +194,32 @@ export interface AnticipoPeriodoConfig {
   estadosValidos: string[];
 }
 
+export interface AnticipoPago {
+  planillaId: number;
+  periodoDesde: string;
+  periodoHasta: string;
+  fechaGeneracion: string;
+}
+
+export interface AnticipoPagosResumen {
+  id: number;
+  estado: string;
+  cantidad: number;
+  montoCobro: string | null;
+  cuotaMonto: string | null;
+  numCuotas: number;
+  cuotasPagadas: number;
+  cuotasPendientes: number;
+  pagos: AnticipoPago[];
+}
+
 export const anticiposApi = {
   getAll: (params?: { estado?: string; origen?: string; periodo?: string; desde?: string; hasta?: string }) => {
     const qs = new URLSearchParams(params as Record<string, string> ?? {}).toString();
     return apiFetch<{ anticipos: Anticipo[]; totales: AnticipoTotales }>(`/anticipos${qs ? "?" + qs : ""}`);
   },
   getConfig: () => apiFetch<AnticipoPeriodoConfig>("/anticipos/config"),
+  getPagos: (id: number) => apiFetch<AnticipoPagosResumen>(`/anticipos/${id}/pagos`),
   update: (id: number, data: { estado?: string; observaciones?: string; num_cuotas?: number }) =>
     apiFetch<Anticipo>(`/anticipos/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   create: (data: {

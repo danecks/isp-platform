@@ -8,8 +8,9 @@
  */
 
 import { Router } from "express";
-import { db, anticiposTable } from "@workspace/db";
+import { db, anticiposTable, pool } from "@workspace/db";
 import { eq, desc, and, gte, lte } from "drizzle-orm";
+import { getPermisosForUsername } from "../lib/permisos-middleware";
 import { DIAS_HABILITADOS, getPeriodoActivo } from "../services/whatsapp/anticipo-session";
 import { calcularLimiteAnticipo } from "../services/anticipo-limite";
 import {
@@ -221,6 +222,62 @@ anticiposRouter.get("/anticipos/:id", async (req, res) => {
   }
 });
 
+// ── GET /api/anticipos/:id/pagos ───────────────────────────────────────────
+// Resumen de cuotas: cuántas pagadas / pendientes, con la quincena y la fecha
+// EXACTA de cierre de planilla en que se descontó cada una. Se reconstruye desde
+// planilla_lineas (anticipo_ids JSONB) → planillas, SIN tocar el schema de
+// anticipos. Cada línea de planilla no anulada que contenga este anticipo es
+// una cuota efectivamente descontada.
+anticiposRouter.get("/anticipos/:id/pagos", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+  try {
+    const [ant] = await db
+      .select()
+      .from(anticiposTable)
+      .where(eq(anticiposTable.id, id))
+      .limit(1);
+    if (!ant) return res.status(404).json({ error: "Anticipo no encontrado" });
+
+    const { rows } = await pool.query(
+      `SELECT p.id               AS planilla_id,
+              p.periodo_desde    AS periodo_desde,
+              p.periodo_hasta    AS periodo_hasta,
+              p.fecha_generacion AS fecha_generacion
+         FROM planilla_lineas pl
+         JOIN planillas p ON p.id = pl.planilla_id
+        WHERE pl.anticipo_ids @> $1::jsonb
+          AND p.anulada = FALSE
+        ORDER BY p.fecha_generacion ASC`,
+      [JSON.stringify(id)]
+    );
+
+    const pagos = rows.map((r: Record<string, unknown>) => ({
+      planillaId: r.planilla_id as number,
+      periodoDesde: r.periodo_desde as string,
+      periodoHasta: r.periodo_hasta as string,
+      fechaGeneracion: r.fecha_generacion as string,
+    }));
+
+    const numCuotas = ant.numCuotas ?? 1;
+    const cuotasPagadas = ant.cuotasPagadas ?? 0;
+
+    return res.json({
+      id: ant.id,
+      estado: ant.estado,
+      cantidad: ant.cantidad,
+      montoCobro: ant.montoCobro,
+      cuotaMonto: ant.cuotaMonto,
+      numCuotas,
+      cuotasPagadas,
+      cuotasPendientes: Math.max(0, numCuotas - cuotasPagadas),
+      pagos,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "Error al obtener pagos del anticipo" });
+  }
+});
+
 // ── PATCH /api/anticipos/:id ───────────────────────────────────────────────
 anticiposRouter.patch("/anticipos/:id", async (req, res) => {
   const id = parseInt(req.params.id);
@@ -242,6 +299,57 @@ anticiposRouter.patch("/anticipos/:id", async (req, res) => {
         error: "Este anticipo está vinculado a una planilla y no puede modificarse. Para corregirlo, revierte la planilla primero.",
         planilla_id: existing[0].planillaId,
       });
+    }
+
+    // ── Bloqueo tras aprobación ───────────────────────────────────────────────
+    // Una vez aprobado, el número de cuotas y los montos quedan FIJOS para que
+    // nadie pueda alterarlos "porque me equivoqué". Única excepción: el DIRECTOR
+    // (rol admin) puede CANCELAR el anticipo, y SOLO si todavía no se descontó
+    // ninguna cuota (cuotas_pagadas === 0). Editar solo las observaciones
+    // siempre está permitido.
+    const actual = existing[0];
+    const ESTADOS_BLOQUEADOS = ["aprobada", "descontado", "pagada"];
+    if (ESTADOS_BLOQUEADOS.includes(actual.estado)) {
+      // ¿Quién edita? El director es el rol "admin".
+      let esDirector = false;
+      try {
+        const raw = req.headers["x-isp-session"] as string | undefined;
+        if (raw) {
+          const sess = JSON.parse(raw) as { rol?: string; username?: string };
+          if (sess?.username) {
+            const { rol } = await getPermisosForUsername(sess.username);
+            esDirector = rol === "admin";
+          } else {
+            esDirector = sess?.rol === "admin";
+          }
+        }
+      } catch {
+        esDirector = false;
+      }
+
+      const cuotasPagadas = actual.cuotasPagadas ?? 0;
+      const intentaCancelar = estado === "rechazada";
+      const cambiaSoloObservaciones =
+        (estado === undefined || estado === actual.estado) && num_cuotas === undefined;
+
+      if (intentaCancelar) {
+        if (!esDirector) {
+          return res.status(403).json({
+            error: "Este anticipo ya fue aprobado. Solo el director puede cancelarlo.",
+          });
+        }
+        if (cuotasPagadas > 0) {
+          return res.status(409).json({
+            error: "No se puede cancelar: ya se descontaron cuotas de este anticipo.",
+            cuotas_pagadas: cuotasPagadas,
+          });
+        }
+        // Permitido: el director cancela un anticipo aprobado sin cuotas pagadas.
+      } else if (!cambiaSoloObservaciones) {
+        return res.status(409).json({
+          error: "Este anticipo ya fue aprobado y sus cuotas/montos quedaron fijos. No se pueden modificar.",
+        });
+      }
     }
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };

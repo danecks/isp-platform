@@ -5,6 +5,7 @@ import { AdminLayout } from "../layout/AdminLayout";
 import { StatusBadge } from "../components/StatusBadge";
 import { anticiposApi, employeesApi, type Anticipo, type EmpleadoSlim } from "@/lib/api";
 import { calcularCobroAnticipo } from "@/lib/anticipo-cobro";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Wallet,
   Filter,
@@ -38,6 +39,27 @@ function fmtQ(n: number) {
   return `Q${n.toLocaleString("es-GT")}`;
 }
 
+function fmtQ2(n: number) {
+  return `Q${n.toLocaleString("es-GT", { minimumFractionDigits: 2 })}`;
+}
+
+// Estados en los que el anticipo ya quedó aprobado y sus cuotas/montos son fijos.
+// "descontado" se asigna automáticamente al terminar de pagarse en planilla.
+const ESTADOS_BLOQUEADOS = ["aprobada", "descontado", "pagada"];
+
+// Etiqueta de quincena a partir de la fecha de inicio del período de planilla.
+function quincenaLabel(periodoDesde: string) {
+  const d = new Date(periodoDesde);
+  const dia = d.getUTCDate();
+  const q = dia <= 15 ? "1ra" : "2da";
+  const mes = d.toLocaleDateString("es-GT", { month: "long", year: "numeric", timeZone: "UTC" });
+  return `${q} quincena de ${mes}`;
+}
+
+function fmtFechaCorta(iso: string) {
+  return new Date(iso).toLocaleDateString("es-GT", { day: "2-digit", month: "short", year: "numeric" });
+}
+
 const ESTADO_COLORES: Record<string, string> = {
   pendiente: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20",
   aprobada:  "text-green-400 bg-green-400/10 border-green-400/20",
@@ -59,6 +81,10 @@ export default function Anticipos() {
   const [nuevoEstado, setNuevoEstado] = useState<string>("");
   const [observacion, setObservacion] = useState<string>("");
   const [numCuotas, setNumCuotas] = useState<number>(1);
+  const [confirmacion, setConfirmacion] = useState<null | "aprobar" | "cancelar">(null);
+
+  const { currentUser } = useAuth();
+  const esDirector = currentUser?.rol === "admin";
 
   const [modalNuevo, setModalNuevo] = useState(false);
   const [formEmpleadoId, setFormEmpleadoId] = useState<number | null>(null);
@@ -184,6 +210,12 @@ export default function Anticipos() {
     },
   });
 
+  const { data: pagosResumen, isLoading: cargandoPagos } = useQuery({
+    queryKey: ["anticipo-pagos", editando?.id],
+    queryFn: () => anticiposApi.getPagos(editando!.id),
+    enabled: !!editando && ESTADOS_BLOQUEADOS.includes(editando.estado),
+  });
+
   const anticipos = data?.anticipos ?? [];
   const totales = data?.totales;
 
@@ -199,15 +231,24 @@ export default function Anticipos() {
     setNuevoEstado(a.estado);
     setObservacion(a.observaciones ?? "");
     setNumCuotas(a.numCuotas ?? 1);
+    setConfirmacion(null);
   }
 
   function guardarCambio() {
     if (!editando) return;
+    const bloqueado = ESTADOS_BLOQUEADOS.includes(editando.estado);
+    // Aprobar desde un estado abierto requiere confirmación: una vez aprobado
+    // queda fijo. La aprobación real se dispara desde el overlay de confirmación.
+    if (!bloqueado && nuevoEstado === "aprobada") {
+      setConfirmacion("aprobar");
+      return;
+    }
+    // Resto de cambios (rechazar/marcar pagada desde abierto, o editar solo
+    // observaciones en un anticipo ya aprobado) se guardan directo.
     actualizarEstado({
       id: editando.id,
       estado: nuevoEstado,
       observaciones: observacion,
-      ...(nuevoEstado === "aprobada" ? { num_cuotas: numCuotas } : {}),
     });
   }
 
@@ -529,7 +570,8 @@ export default function Anticipos() {
               </div>
             </div>
 
-            {/* Cambiar estado */}
+            {/* Cambiar estado — solo si el anticipo aún no está aprobado */}
+            {!ESTADOS_BLOQUEADOS.includes(editando.estado) && (
             <div>
               <label className="block text-xs text-white/40 uppercase tracking-wider mb-2">Estado</label>
               <div className="grid grid-cols-2 gap-2">
@@ -549,9 +591,56 @@ export default function Anticipos() {
                 ))}
               </div>
             </div>
+            )}
 
-            {/* Selector de cuotas — visible solo al aprobar */}
-            {nuevoEstado === "aprobada" && editando && (() => {
+            {/* Resumen de cuotas — anticipo ya aprobado (bloqueado): quincena + fecha exacta del cierre */}
+            {ESTADOS_BLOQUEADOS.includes(editando.estado) && (
+              <div className="space-y-3">
+                <div className="flex items-start gap-2 text-xs text-amber-300/90 bg-amber-950/30 border border-amber-500/30 rounded-xl p-3">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>Anticipo aprobado: el número de cuotas y los montos quedaron fijos y no se pueden modificar.</span>
+                </div>
+                <div>
+                  <p className="text-xs text-white/40 uppercase tracking-wider mb-2">Resumen de cuotas</p>
+                  {cargandoPagos ? (
+                    <p className="text-white/40 text-sm">Cargando...</p>
+                  ) : pagosResumen ? (
+                    <div className="space-y-1.5">
+                      {Array.from({ length: pagosResumen.numCuotas }).map((_, i) => {
+                        const pago = pagosResumen.pagos[i];
+                        return (
+                          <div key={i} className="flex items-start justify-between gap-3 text-sm border border-white/5 rounded-lg px-3 py-2">
+                            <span className="text-white/70 shrink-0">Cuota {i + 1}</span>
+                            {pago ? (
+                              <span className="text-right">
+                                <span className="text-green-400 font-medium flex items-center gap-1 justify-end">
+                                  <CheckCircle2 className="w-3 h-3" /> Pagada
+                                </span>
+                                <span className="block text-white/50 text-xs mt-0.5">{quincenaLabel(pago.periodoDesde)}</span>
+                                <span className="block text-white/40 text-xs">Cierre: {fmtFechaCorta(pago.fechaGeneracion)}</span>
+                              </span>
+                            ) : (
+                              <span className="text-yellow-400/80 text-xs flex items-center gap-1">
+                                <Clock className="w-3 h-3" /> Pendiente
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                      <div className="flex justify-between text-xs text-white/40 pt-1">
+                        <span>{pagosResumen.cuotasPagadas}/{pagosResumen.numCuotas} pagadas</span>
+                        <span>Cada cuota: {pagosResumen.cuotaMonto ? fmtQ2(Number(pagosResumen.cuotaMonto)) : "—"}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-white/40 text-sm">Sin información de pagos.</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Selector de cuotas — visible solo al aprobar un anticipo aún abierto */}
+            {!ESTADOS_BLOQUEADOS.includes(editando.estado) && nuevoEstado === "aprobada" && editando && (() => {
               const base = editando.cantidad;
               const { tasa, cuotaMonto: cuotaCobro, montoCobro: totalCobro } = calcularCobroAnticipo(base, numCuotas);
               const pctRecargo = Math.round(tasa * 100);
@@ -607,19 +696,104 @@ export default function Anticipos() {
               />
             </div>
 
+            <div className="space-y-3">
+              {ESTADOS_BLOQUEADOS.includes(editando.estado) && esDirector && (editando.cuotasPagadas ?? 0) === 0 && (
+                <button
+                  onClick={() => setConfirmacion("cancelar")}
+                  className="w-full py-2 rounded-xl bg-red-500/10 text-red-300 border border-red-500/30 text-sm font-medium hover:bg-red-500/20 transition-colors"
+                >
+                  Cancelar anticipo (solo director)
+                </button>
+              )}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setEditando(null)}
+                  className="flex-1 py-2 rounded-xl bg-white/5 text-white/50 text-sm hover:bg-white/10 transition-colors"
+                >
+                  Cerrar
+                </button>
+                <button
+                  onClick={guardarCambio}
+                  disabled={guardando}
+                  className="flex-1 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
+                >
+                  {guardando ? "Guardando..." : "Guardar cambios"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRMACIÓN: aprobar (queda fijo) o cancelar (solo director) */}
+      {confirmacion && editando && (
+        <div
+          className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setConfirmacion(null); }}
+        >
+          <div className="bg-[#0c1829] border border-white/10 rounded-2xl w-full max-w-sm p-6 space-y-4">
+            {confirmacion === "aprobar" ? (
+              <>
+                <div className="flex items-center gap-2 text-amber-300">
+                  <AlertTriangle className="w-5 h-5" />
+                  <h3 className="font-bold">Confirmar aprobación</h3>
+                </div>
+                <p className="text-sm text-white/70">
+                  Vas a aprobar este anticipo. Una vez aprobado, el número de cuotas y los montos quedan{" "}
+                  <span className="text-white font-semibold">fijos</span> y no se podrán modificar después.
+                </p>
+                {(() => {
+                  const { cuotaMonto, montoCobro } = calcularCobroAnticipo(editando.cantidad, numCuotas);
+                  return (
+                    <div className="bg-white/3 rounded-xl p-3 text-sm space-y-1">
+                      <div className="flex justify-between text-white/60">
+                        <span>Cuotas</span>
+                        <span className="text-white">{numCuotas} × {fmtQ2(cuotaMonto)}</span>
+                      </div>
+                      <div className="flex justify-between text-white/60">
+                        <span>Total a descontar</span>
+                        <span className="text-amber-300 font-bold">{fmtQ2(montoCobro)}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 text-red-300">
+                  <AlertTriangle className="w-5 h-5" />
+                  <h3 className="font-bold">Cancelar anticipo</h3>
+                </div>
+                <p className="text-sm text-white/70">
+                  Vas a cancelar (rechazar) este anticipo aprobado. Solo es posible porque todavía no se ha
+                  descontado ninguna cuota. Esta acción no se puede deshacer.
+                </p>
+              </>
+            )}
             <div className="flex gap-3">
               <button
-                onClick={() => setEditando(null)}
-                className="flex-1 py-2 rounded-xl bg-white/5 text-white/50 text-sm hover:bg-white/10 transition-colors"
+                onClick={() => setConfirmacion(null)}
+                className="flex-1 py-2 rounded-xl bg-white/5 text-white/60 text-sm hover:bg-white/10 transition-colors"
               >
-                Cancelar
+                Volver
               </button>
               <button
-                onClick={guardarCambio}
                 disabled={guardando}
-                className="flex-1 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
+                onClick={() => {
+                  if (confirmacion === "aprobar") {
+                    actualizarEstado({ id: editando.id, estado: "aprobada", observaciones: observacion, num_cuotas: numCuotas });
+                  } else {
+                    actualizarEstado({ id: editando.id, estado: "rechazada", observaciones: observacion });
+                  }
+                  setConfirmacion(null);
+                }}
+                className={`flex-1 py-2 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors ${
+                  confirmacion === "aprobar"
+                    ? "bg-green-500 text-black hover:bg-green-400"
+                    : "bg-red-500 text-white hover:bg-red-400"
+                }`}
               >
-                {guardando ? "Guardando..." : "Guardar cambios"}
+                {confirmacion === "aprobar" ? "Sí, aprobar" : "Sí, cancelar"}
               </button>
             </div>
           </div>
