@@ -159,6 +159,12 @@ export function DetalleModal({
                           <span className="text-orange-400">+{fmtQ(est.valorHE)}</span>
                         </div>
                       )}
+                      {est.pagoFeriados > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-sky-300/70">+ Feriados trabajados</span>
+                          <span className="text-sky-300">+{fmtQ(est.pagoFeriados)}</span>
+                        </div>
+                      )}
                       {est.anticipo > 0 && (
                         <div className="flex justify-between text-xs">
                           <span className="text-amber-400/70">— Anticipo del período</span>
@@ -253,6 +259,12 @@ export function DetalleModal({
                           <div className="flex justify-between text-xs">
                             <span className="text-orange-400/70">+ H. Extra ({heNum.toFixed(1)} h × 1.5x)</span>
                             <span className="text-orange-400">+{fmtQ(est.valorHE)}</span>
+                          </div>
+                        )}
+                        {est.pagoFeriados > 0 && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-sky-300/70">+ Feriados trabajados</span>
+                            <span className="text-sky-300">+{fmtQ(est.pagoFeriados)}</span>
                           </div>
                         )}
                         {est.anticipo > 0 && (

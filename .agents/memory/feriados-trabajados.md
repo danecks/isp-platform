@@ -38,6 +38,13 @@ a dos columnas la misma fecha, que la UI no soporta.
   deja de sumar al bruto.
 - POST/DELETE de feriados requieren desde/hasta y devuelven 409 si la quincena
   está cerrada (periodoCerrado()); el snapshot del cierre congela el monto.
+- Visibilidad en la pantalla: `pago_feriados` se SUMA al total/bruto en
+  `helpers.ts calcularTotalEstimado` (campo `est.pagoFeriados`), pero NO se ve solo
+  por eso. Hay que pintar su propia línea de desglose en DetalleModal (igual que
+  valorHE), en las DOS secciones: "Total real" y "Total estimado (proyección)".
+  **Why:** sin la línea el monto queda dentro del total y el usuario reporta "creé el
+  pago pero no aparece". El dato puede estar correcto en el backend (pago_feriados
+  devuelve el monto) y aun así ser invisible si falta la línea.
 - El feriado local se asigna a clientes desde el catálogo real
   (`/api/operaciones/clientes-disponibles` → `clients.nombre`), NO texto libre, y
   admite varios clientes: el POST acepta `clientes[]` y crea una fila por cliente
