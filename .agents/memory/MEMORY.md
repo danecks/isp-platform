@@ -1,5 +1,6 @@
 - [Operativo en vivo y slots](operativo-slots.md) — el operativo del portal debe leer puesto_slots (modelo de turnos), no solo agente_id legacy; fórmula de ciclo con módulo positivo.
 - [Anular/Reactivar falta dos fuentes](falta-dos-fuentes.md) — el pizarrón lee faltando de slot + eventos_rrhh (UNION); anular/reactivar deben tocar ambas; snapshot del HE par solo si esta op lo anuló.
+- [Falta personal de oficina](falta-personal-oficina.md) — supervisores/jefes/administrativos tienen su par de endpoints falta-personal/anular (sin puesto); guardias usan /liberar; validar TIPOS_PERSONAL_OFICINA en AMBAS rutas.
 - [Tablero SSA visibilidad](tablero-ssa-visibilidad.md) — el tablero usa fecha <= CURRENT_DATE a propósito (no BETWEEN); SSA activada sigue visible mientras esté abierta aunque venza; salida por estado, no por fecha.
 - [Typecheck baseline api-server](typecheck-baseline.md) — el typecheck del api-server está rojo de base (no es regresión tuya); cómo distinguir errores propios.
 - [Publicación móvil OTA/APK](mobile-release-publishing.md) — se publica por tags de git en GitHub Actions; APK release solo con tag `mobile-v*` (dispatch no crea release); el sandbox no puede pushear.

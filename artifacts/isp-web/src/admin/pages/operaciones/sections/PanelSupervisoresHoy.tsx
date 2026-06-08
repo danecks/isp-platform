@@ -1,13 +1,19 @@
-import { Shield, ChevronRight, Edit2 } from "lucide-react";
+import { useState } from "react";
+import { Shield, ChevronRight, Edit2, AlertTriangle, Undo2 } from "lucide-react";
 import type { SupervisorPool } from "../types";
-import { avatarColor, iniciales } from "../utils";
+import { avatarColor, iniciales, API_BASE, apiPost } from "../utils";
 import { useOperacionesContext } from "../OperacionesContext";
+import { ModalFaltaPersonal } from "../modals/ModalFaltaPersonal";
 
 export function PanelSupervisoresHoy() {
   const {
     pool, esFuturo, agenteSeleccionado, setAgenteSeleccionado, fechaVistaCerrada,
     colSupers, toggleColSupers, setEditarPlantilla, setFichaVehiculoId,
+    refetchPool, currentUserNombre, fechaVista, puedeQuitarTitular,
   } = useOperacionesContext();
+
+  const [faltaModal, setFaltaModal] = useState<{ sv: SupervisorPool; modo: "registrar" | "anular" } | null>(null);
+
   if (esFuturo || !pool || (pool.supervisores?.length ?? 0) === 0) return null;
 
   const svTrabajando  = pool.supervisores.filter(sv => sv.estado_ciclo === "trabajando");
@@ -15,6 +21,26 @@ export function PanelSupervisoresHoy() {
   const svDescanso    = pool.supervisores.filter(sv => sv.estado_ciclo === "descansando_ciclo");
   const svOtros       = pool.supervisores.filter(sv => !["trabajando","disponible_he","descansando_ciclo"].includes(sv.estado_ciclo ?? ""));
   const puedeCubrirCount = pool.supervisores.filter(sv => sv.puede_cubrir).length;
+
+  async function confirmarFalta(motivo: string, notas?: string) {
+    if (!faltaModal) return;
+    try {
+      const url = faltaModal.modo === "anular"
+        ? `${API_BASE}/operaciones/anular-falta-personal`
+        : `${API_BASE}/operaciones/falta-personal`;
+      await apiPost(url, {
+        employeeId: faltaModal.sv.id,
+        motivo,
+        notas,
+        usuario: currentUserNombre,
+        fecha: fechaVista,
+      });
+      setFaltaModal(null);
+      refetchPool();
+    } catch (e: any) {
+      alert(e?.error ?? "Error al procesar la falta");
+    }
+  }
 
   const SvCard = ({ sv }: { sv: SupervisorPool }) => {
     const estadoCiclo = sv.estado_ciclo;
@@ -29,6 +55,9 @@ export function PanelSupervisoresHoy() {
             : estadoCiclo === "suspendido"
               ? { cls: "text-red-300/70 bg-red-500/10 border-red-500/20", label: "SUSP." }
               : { cls: "text-white/20 bg-white/3 border-white/6", label: "SIN TURNO" };
+    const badgeFinal = sv.faltando
+      ? { cls: "text-red-300/90 bg-red-500/20 border-red-500/40", label: "FALTANDO" }
+      : estadoBadge;
 
     const esSeleccionado = agenteSeleccionado?.id === sv.id;
     const estaEnDescansoPool = pool.descansandoCiclo.some(a => a.id === sv.id);
@@ -48,11 +77,27 @@ export function PanelSupervisoresHoy() {
           {iniciales(sv.nombre_completo)}
         </div>
         <p className={`text-[11px] font-medium truncate max-w-[88px] ${sv.puede_cubrir || estadoCiclo === "trabajando" ? "text-white/80" : "text-white/35"}`}>{sv.nombre_completo.split(" ").slice(0,2).join(" ")}</p>
-        <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${estadoBadge.cls}`}>{estadoBadge.label}</span>
+        <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${badgeFinal.cls}`}>{badgeFinal.label}</span>
         {esSeleccionado && <span className="text-[8px] text-violet-300 animate-pulse shrink-0">✓</span>}
         {(sv as any).vehiculos_zona?.length > 0 && ((sv as any).vehiculos_zona as Array<{ id: number; placa: string; estado: string }>).filter(v => v.estado === "activo").slice(0,1).map(veh => (
           <button key={veh.id} onClick={e => { e.stopPropagation(); setFichaVehiculoId(veh.id); }} className="text-[8px] text-sky-300/60 border border-sky-500/20 bg-sky-500/8 px-1 py-0.5 rounded shrink-0">🚗</button>
         ))}
+        {!sv.faltando && estadoCiclo === "trabajando" && !fechaVistaCerrada && (
+          <button
+            onClick={e => { e.stopPropagation(); setFaltaModal({ sv, modo: "registrar" }); }}
+            title="Registrar falta"
+            className="text-amber-300/60 hover:text-amber-200 hover:bg-amber-500/15 border border-amber-500/20 rounded p-0.5 shrink-0">
+            <AlertTriangle className="w-2.5 h-2.5" />
+          </button>
+        )}
+        {sv.faltando && puedeQuitarTitular && !fechaVistaCerrada && (
+          <button
+            onClick={e => { e.stopPropagation(); setFaltaModal({ sv, modo: "anular" }); }}
+            title="Anular falta"
+            className="text-sky-300/60 hover:text-sky-200 hover:bg-sky-500/15 border border-sky-500/20 rounded p-0.5 shrink-0">
+            <Undo2 className="w-2.5 h-2.5" />
+          </button>
+        )}
         <button
           onClick={e => { e.stopPropagation(); setEditarPlantilla({ empleadoId: sv.id, empleadoNombre: sv.nombre_completo, tipo: "supervisor" }); }}
           title="Editar plantilla de turno"
@@ -86,6 +131,15 @@ export function PanelSupervisoresHoy() {
             <SvCard key={sv.id} sv={sv} />
           ))}
         </div>
+      )}
+      {faltaModal && (
+        <ModalFaltaPersonal
+          modo={faltaModal.modo}
+          nombre={faltaModal.sv.nombre_completo}
+          cargo="Supervisor"
+          onConfirm={confirmarFalta}
+          onClose={() => setFaltaModal(null)}
+        />
       )}
     </div>
   );

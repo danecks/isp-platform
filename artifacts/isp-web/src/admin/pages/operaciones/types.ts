@@ -190,6 +190,8 @@ export interface SupervisorPool {
   disponible_he: boolean;
   estado_ciclo: "trabajando" | "disponible_he" | "descansando_ciclo" | "sin_turno" | "licencia" | "suspendido" | null;
   puede_cubrir: boolean;
+  faltando?: boolean;
+  falta_evento_id?: number | null;
 }
 
 export interface JefeServicioPool {
@@ -211,6 +213,8 @@ export interface JefeServicioPool {
   trabaja_hoy: boolean | null;
   trabaja_mañana: boolean | null;
   estado_ciclo: "trabajando" | "descansando_ciclo" | "sin_turno" | "licencia" | "suspendido" | null;
+  faltando?: boolean;
+  falta_evento_id?: number | null;
 }
 
 // PERS-SLOT-01: Personal administrativo con plantilla en personal_slots
@@ -229,6 +233,8 @@ export interface AdministrativoPool {
   trabaja_hoy: boolean | null;
   trabaja_mañana: boolean | null;
   estado_ciclo: "trabajando" | "descansando_ciclo" | "sin_turno" | "licencia" | "suspendido" | null;
+  faltando?: boolean;
+  falta_evento_id?: number | null;
 }
 
 export const SUBAREA_LABELS: Record<string, { label: string; cls: string }> = {

@@ -1,19 +1,45 @@
-import { Shield, ChevronRight, Edit2 } from "lucide-react";
+import { useState } from "react";
+import { Shield, ChevronRight, Edit2, AlertTriangle, Undo2 } from "lucide-react";
 import type { JefeServicioPool } from "../types";
-import { avatarColor, iniciales } from "../utils";
+import { avatarColor, iniciales, API_BASE, apiPost } from "../utils";
 import { useOperacionesContext } from "../OperacionesContext";
+import { ModalFaltaPersonal } from "../modals/ModalFaltaPersonal";
 
 export function PanelJefesServicioHoy() {
   const {
     pool, esFuturo, agenteSeleccionado, setAgenteSeleccionado, fechaVistaCerrada,
     colJefes, toggleColJefes, setEditarPlantilla,
+    refetchPool, currentUserNombre, fechaVista, puedeQuitarTitular,
   } = useOperacionesContext();
+
+  const [faltaModal, setFaltaModal] = useState<{ js: JefeServicioPool; modo: "registrar" | "anular" } | null>(null);
+
   if (esFuturo || !pool || (pool.jefes_servicio?.length ?? 0) === 0) return null;
 
   const jefesHoy     = pool.jefes_servicio.filter(js => js.trabaja_hoy === true);
   const jefesMañana  = pool.jefes_servicio.filter(js => js.trabaja_mañana === true && js.trabaja_hoy !== true);
   const jefesDescanso = pool.jefes_servicio.filter(js => js.trabaja_hoy === false && js.estado_ciclo === "descansando_ciclo");
   const jefesOtros   = pool.jefes_servicio.filter(js => js.trabaja_hoy === null || js.estado_ciclo === "sin_turno");
+
+  async function confirmarFalta(motivo: string, notas?: string) {
+    if (!faltaModal) return;
+    try {
+      const url = faltaModal.modo === "anular"
+        ? `${API_BASE}/operaciones/anular-falta-personal`
+        : `${API_BASE}/operaciones/falta-personal`;
+      await apiPost(url, {
+        employeeId: faltaModal.js.id,
+        motivo,
+        notas,
+        usuario: currentUserNombre,
+        fecha: fechaVista,
+      });
+      setFaltaModal(null);
+      refetchPool();
+    } catch (e: any) {
+      alert(e?.error ?? "Error al procesar la falta");
+    }
+  }
 
   const JefeCard = ({ js, variante }: { js: JefeServicioPool; variante: "hoy" | "mañana" | "descanso" | "otro" }) => {
     const esSeleccionado = agenteSeleccionado?.id === js.id;
@@ -24,6 +50,7 @@ export function PanelJefesServicioHoy() {
         ? "text-amber-300/70 bg-amber-500/10 border-amber-500/20"
         : "text-white/25 bg-white/3 border-white/8";
     const badgeLabel = variante === "hoy" ? "EN TURNO" : variante === "mañana" ? "MAÑANA" : variante === "descanso" ? "DESCANSO" : "SIN TURNO";
+    const faltaCls = "text-red-300/90 bg-red-500/20 border-red-500/40";
 
     const handleClick = seleccionable ? () => {
       const agente = pool.descansandoCiclo.find(a => a.id === js.id);
@@ -39,8 +66,24 @@ export function PanelJefesServicioHoy() {
           {iniciales(js.nombre_completo)}
         </div>
         <p className={`text-[11px] font-medium truncate max-w-[88px] ${variante === "hoy" ? "text-white/90" : "text-white/40"}`}>{js.nombre_completo.split(" ").slice(0,2).join(" ")}</p>
-        <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${badgeCls}`}>{badgeLabel}</span>
+        <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${js.faltando ? faltaCls : badgeCls}`}>{js.faltando ? "FALTANDO" : badgeLabel}</span>
         {esSeleccionado && <span className="text-[8px] text-orange-300 animate-pulse shrink-0">✓</span>}
+        {!js.faltando && variante === "hoy" && !fechaVistaCerrada && (
+          <button
+            onClick={e => { e.stopPropagation(); setFaltaModal({ js, modo: "registrar" }); }}
+            title="Registrar falta"
+            className="text-amber-300/60 hover:text-amber-200 hover:bg-amber-500/15 border border-amber-500/20 rounded p-0.5 shrink-0">
+            <AlertTriangle className="w-2.5 h-2.5" />
+          </button>
+        )}
+        {js.faltando && puedeQuitarTitular && !fechaVistaCerrada && (
+          <button
+            onClick={e => { e.stopPropagation(); setFaltaModal({ js, modo: "anular" }); }}
+            title="Anular falta"
+            className="text-sky-300/60 hover:text-sky-200 hover:bg-sky-500/15 border border-sky-500/20 rounded p-0.5 shrink-0">
+            <Undo2 className="w-2.5 h-2.5" />
+          </button>
+        )}
         <button
           onClick={e => { e.stopPropagation(); setEditarPlantilla({ empleadoId: js.id, empleadoNombre: js.nombre_completo, tipo: "jefe_servicio" }); }}
           title="Editar plantilla de turno"
@@ -79,6 +122,15 @@ export function PanelJefesServicioHoy() {
             <JefeCard key={js.id} js={js} variante={variante} />
           ))}
         </div>
+      )}
+      {faltaModal && (
+        <ModalFaltaPersonal
+          modo={faltaModal.modo}
+          nombre={faltaModal.js.nombre_completo}
+          cargo="Jefe de servicio"
+          onConfirm={confirmarFalta}
+          onClose={() => setFaltaModal(null)}
+        />
       )}
     </div>
   );

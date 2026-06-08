@@ -348,7 +348,9 @@ router.get("/operaciones/pool", async (req, res) => {
           WHEN e.estado_laboral = 'suspendido' THEN 'suspendido'
           ELSE 'activo'
         END AS estado_display,
-        veh_zona.vehiculos_zona
+        veh_zona.vehiculos_zona,
+        ev_falta.evento_id               AS falta_evento_id,
+        (ev_falta.evento_id IS NOT NULL) AS faltando
       FROM employees e
       LEFT JOIN employee_operational_assignments eoa ON eoa.employee_id = e.id AND eoa.activa = TRUE
       LEFT JOIN operational_zones oz_eoa   ON oz_eoa.id  = eoa.zona_operativa_id
@@ -374,10 +376,18 @@ router.get("/operaciones/pool", async (req, res) => {
         WHERE v.zona_operativa_id = COALESCE(oz_formal.id, eoa.zona_operativa_id)
           AND v.activo = TRUE
       ) veh_zona ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT er.id AS evento_id
+        FROM eventos_rrhh er
+        WHERE er.employee_id = e.id AND er.tipo_evento = 'falta'
+          AND er.fecha::date = $1::date AND er.estado NOT IN ('anulado', 'cancelado')
+        ORDER BY er.id DESC
+        LIMIT 1
+      ) ev_falta ON TRUE
       WHERE COALESCE(e.tipo_personal, 'guardia') = 'supervisor'
         AND e.estado_laboral IN ('activo', 'licencia', 'suspendido')
       ORDER BY COALESCE(oz_formal.id, eoa.zona_operativa_id) NULLS LAST, e.nombre_completo
-    `);
+    `, [hoy]);
 
     // ── Aplicar motor de ciclos a supervisores ────────────────────────────────
     const supervisoresEnriquecidos = supervisoresRows.map((sv: any) => {
@@ -450,15 +460,25 @@ router.get("/operaciones/pool", async (req, res) => {
           WHEN e.estado_laboral = 'licencia'   THEN 'licencia'
           WHEN e.estado_laboral = 'suspendido' THEN 'suspendido'
           ELSE 'activo'
-        END AS estado_display
+        END AS estado_display,
+        ev_falta.evento_id               AS falta_evento_id,
+        (ev_falta.evento_id IS NOT NULL) AS faltando
       FROM employees e
       LEFT JOIN employee_operational_assignments eoa ON eoa.employee_id = e.id AND eoa.activa = TRUE
       LEFT JOIN operational_zones oz ON oz.id = eoa.zona_operativa_id
       LEFT JOIN turnos t ON t.id = eoa.tipo_turno_id
+      LEFT JOIN LATERAL (
+        SELECT er.id AS evento_id
+        FROM eventos_rrhh er
+        WHERE er.employee_id = e.id AND er.tipo_evento = 'falta'
+          AND er.fecha::date = $1::date AND er.estado NOT IN ('anulado', 'cancelado')
+        ORDER BY er.id DESC
+        LIMIT 1
+      ) ev_falta ON TRUE
       WHERE COALESCE(e.tipo_personal, 'guardia') = 'jefe_servicio'
         AND e.estado_laboral IN ('activo', 'licencia', 'suspendido')
       ORDER BY oz.id NULLS LAST, e.nombre_completo
-    `);
+    `, [hoy]);
 
     // ── Aplicar motor de ciclos a jefes de servicio ──────────────────────────
     // Calculamos estado HOY y MAÑANA para el panel "Jefe de Servicio del Día"
@@ -509,7 +529,9 @@ router.get("/operaciones/pool", async (req, res) => {
           WHEN e.estado_laboral = 'licencia'   THEN 'licencia'
           WHEN e.estado_laboral = 'suspendido' THEN 'suspendido'
           ELSE 'activo'
-        END AS estado_display
+        END AS estado_display,
+        ev_falta.evento_id               AS falta_evento_id,
+        (ev_falta.evento_id IS NOT NULL) AS faltando
       FROM employees e
       LEFT JOIN LATERAL (
         SELECT dias_trabajo, fecha_inicio_ciclo, longitud_ciclo, horas_turno, hora_entrada
@@ -518,6 +540,14 @@ router.get("/operaciones/pool", async (req, res) => {
         ORDER BY slot_numero ASC
         LIMIT 1
       ) ps ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT er.id AS evento_id
+        FROM eventos_rrhh er
+        WHERE er.employee_id = e.id AND er.tipo_evento = 'falta'
+          AND er.fecha::date = $1::date AND er.estado NOT IN ('anulado', 'cancelado')
+        ORDER BY er.id DESC
+        LIMIT 1
+      ) ev_falta ON TRUE
       WHERE COALESCE(e.tipo_personal, 'guardia') IN ('administrativo', 'administrativo_rrhh', 'administrativo_bodega', 'gerencia')
         AND e.estado_laboral IN ('activo', 'licencia', 'suspendido')
       ORDER BY
@@ -529,7 +559,7 @@ router.get("/operaciones/pool", async (req, res) => {
           ELSE 5
         END,
         e.area NULLS LAST, e.nombre_completo
-    `);
+    `, [hoy]);
 
     const administrativosEnriquecidos = administrativosRows.map((ad: any) => {
       if (ad.estado_display !== 'activo') {

@@ -6,6 +6,7 @@ import puestosRouter from "./operaciones/puestos";
 import custodiasAsignacionRouter from "./operaciones/custodias-asignacion";
 import cierreRouter from "./operaciones/cierre";
 import anularFaltaRouter from "./operaciones/anular-falta";
+import faltaPersonalRouter from "./operaciones/falta-personal";
 
 const operacionesRouter = Router();
 
@@ -17,5 +18,6 @@ operacionesRouter.use(puestosRouter);
 operacionesRouter.use(custodiasAsignacionRouter);
 operacionesRouter.use(cierreRouter);
 operacionesRouter.use(anularFaltaRouter);
+operacionesRouter.use(faltaPersonalRouter);
 
 export default operacionesRouter;
