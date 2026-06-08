@@ -10,6 +10,7 @@ import {
 } from "./_helpers/titularidad";
 import { registrarImpactoSalarial } from "./_helpers/salarios";
 import { verificarDiaCerrado } from "./_helpers/fechas";
+import { materializarHEDesdeNovedad } from "./_helpers/horas-extra";
 
 import { validarEmpleadoAsignable } from "../../lib/empleado-fecha-ingreso";
 
@@ -378,6 +379,21 @@ router.post("/operaciones/asignar", async (req, res) => {
         );
       } catch (nomErr) {
         logger.warn({ nomErr }, "A-04: no se pudo actualizar novedad nómina (no bloqueante)");
+      }
+
+      // A-04b: materializar el evento RRHH de HE en vivo, para que aparezca como
+      // tarjeta en RRHH > Eventos (junto a la falta) sin esperar al cierre.
+      // Idempotente con el cierre: si ya existe, solo enlaza; no duplica (no doble pago).
+      if (generaExtra && horasExtraCalc > 0) {
+        await materializarHEDesdeNovedad(pool, {
+          fecha: hoy,
+          employeeId: Number(agenteId),
+          empleadoNombre: agente.nombre_completo,
+          employeeDpi: agente.dpi ?? null,
+          puestoNombre: puesto.nombre,
+          clienteNombre: puesto.cliente_nombre ?? null,
+          usuario: usuario ?? null,
+        });
       }
 
       logger.info({ puestoId, agenteId, hoy, horaInstalacion, horasCalcFinal, generaExtra }, "A-04: segmento registrado en asignación");
@@ -883,6 +899,19 @@ router.post("/operaciones/sustituir", async (req, res) => {
       } catch (nomEntranteErr) {
         logger.warn({ nomEntranteErr }, "A-04: no se pudo actualizar novedad nómina del entrante (no bloqueante)");
       }
+
+      // Red de seguridad: materializar/enlazar el evento RRHH de HE del entrante en
+      // vivo. Cubre los casos en que el bloque creaEventoHE no detectó la HE o su
+      // insert falló. Idempotente: si el evento ya existe, solo asegura el par.
+      await materializarHEDesdeNovedad(pool, {
+        fecha: hoy,
+        employeeId: Number(agenteEntranteId),
+        empleadoNombre: entrante.nombre_completo,
+        employeeDpi: entrante.dpi ?? null,
+        puestoNombre: puesto.nombre,
+        clienteNombre: puesto.cliente_nombre ?? null,
+        usuario: usuario ?? null,
+      });
 
       // Registrar novedad de falta/ausencia para el agente SALIENTE (titular que sale)
       if (agenteSalienteId && tipoEventoRrhh && esRelevo) {

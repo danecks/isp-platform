@@ -675,7 +675,7 @@ router.post("/operaciones/cierre", async (req, res) => {
               const { rows: heExiste } = await client.query(`
                 SELECT id, evento_par_id FROM eventos_rrhh
                 WHERE employee_id = $1 AND DATE(fecha) = $2 AND tipo_evento = 'horas_extra'
-                  AND puesto_nombre = $3 AND cliente_nombre = $4 AND estado != 'anulado'
+                  AND puesto_nombre = $3 AND COALESCE(cliente_nombre,'') = COALESCE($4,'') AND estado != 'anulado'
                 ORDER BY id DESC
                 LIMIT 1
               `, [cov.employee_id, fechaACerrarISO, pf.nombre, pf.cliente_nombre]);

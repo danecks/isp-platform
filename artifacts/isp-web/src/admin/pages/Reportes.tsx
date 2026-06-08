@@ -7,7 +7,7 @@ import {
   Filter, Calendar, Building2, Loader2, BarChart3,
   AlertTriangle, CheckSquare, Users, Briefcase, TrendingUp,
   FileDown, ChevronDown, X, Map, ArrowRight, CalendarClock,
-  Receipt, Pencil, Check
+  Receipt, Pencil, Check, Banknote
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend
@@ -15,7 +15,7 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type TabId = "operaciones" | "emergencias" | "tareas" | "rrhh" | "comercial" | "kpi" | "ssa" | "conciliacion-quincena";
+type TabId = "operaciones" | "emergencias" | "tareas" | "rrhh" | "comercial" | "kpi" | "ssa" | "conciliacion-quincena" | "horas-extra-cash";
 
 interface Filtros {
   desde: string;
@@ -148,6 +148,7 @@ const TABS: { id: TabId; label: string; icon: React.ElementType; roles?: string[
   { id: "kpi", label: "KPI Ejecutivo", icon: TrendingUp },
   { id: "ssa", label: "Facturación SSA", icon: Receipt },
   { id: "conciliacion-quincena", label: "Conciliación Quincena", icon: CalendarClock },
+  { id: "horas-extra-cash", label: "HE en Efectivo", icon: Banknote },
 ];
 
 // ─── REPORTE: Operaciones ─────────────────────────────────────────────────────
@@ -1005,6 +1006,163 @@ function MesLabel({ mes }: { mes: string }) {
   return <>{nombre.charAt(0).toUpperCase() + nombre.slice(1)}</>;
 }
 
+function ReporteHorasExtraCash({ nombre }: { nombre: string }) {
+  const hoy = new Date();
+  const primerDiaMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().slice(0, 10);
+  const hoyIso = hoy.toISOString().slice(0, 10);
+  const [desde, setDesde] = useState(primerDiaMes);
+  const [hasta, setHasta] = useState(hoyIso);
+  const [rows, setRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const cargar = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (desde) params.set("desde", desde);
+      if (hasta) params.set("hasta", hasta);
+      const res = await fetch(`${API_BASE}/rrhh/horas-extra-cash?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      setRows(Array.isArray(data) ? data : []);
+    } catch (e: any) {
+      setError(e.message ?? "Error al cargar el reporte de HE en efectivo");
+    } finally {
+      setLoading(false);
+    }
+  }, [desde, hasta]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const totalHoras = rows.reduce((s, r) => s + (Number(r.horas_extra) || 0), 0);
+  const fmtHoras = (n: unknown) => `${(Number(n) || 0).toLocaleString("es-GT", { maximumFractionDigits: 1 })} h`;
+  const puestoCliente = (r: any) => {
+    const puesto = r.evento_puesto || r.puesto_cubierto_nombre || r.puesto_titular_nombre || "—";
+    return r.cliente_nombre ? `${puesto} — ${r.cliente_nombre}` : puesto;
+  };
+
+  const exportCsv = () => IspPdf.exportCsv(
+    ["Fecha", "Colaborador", "Puesto / Cliente", "Horas Extra", "Aprobado por", "Fecha de pago"],
+    rows.map((r) => [
+      fmtFecha(r.fecha), r.empleado_nombre ?? "", puestoCliente(r),
+      Number(r.horas_extra) || 0, r.horas_extra_aprobadas_por ?? "",
+      r.horas_extra_aprobadas_at ? fmtFecha(r.horas_extra_aprobadas_at) : "",
+    ]),
+    `he-efectivo-${desde}_a_${hasta}.csv`,
+  );
+
+  const exportPdf = async () => {
+    const pdf = await new IspPdf({
+      titulo: "Horas Extra Pagadas en Efectivo",
+      subtitulo: `Período ${fmtFecha(desde)} — ${fmtFecha(hasta)}`,
+      preparedBy: nombre,
+    }).build();
+    pdf.addResumenCards([
+      { label: "Registros", valor: rows.length, color: "blue" },
+      { label: "Total horas extra", valor: fmtHoras(totalHoras), color: "gold" },
+    ]);
+    pdf.addSeccionTitulo("DETALLE");
+    pdf.addTabla(
+      ["Fecha", "Colaborador", "Puesto / Cliente", "Horas", "Aprobado por", "Fecha pago"],
+      rows.map((r) => [
+        fmtFecha(r.fecha), r.empleado_nombre ?? "—", puestoCliente(r),
+        fmtHoras(r.horas_extra), r.horas_extra_aprobadas_por ?? "—",
+        r.horas_extra_aprobadas_at ? fmtFecha(r.horas_extra_aprobadas_at) : "—",
+      ]),
+    );
+    pdf.save(`he-efectivo-${desde}_a_${hasta}.pdf`);
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Controles: rango de fechas + export */}
+      <div className="bg-[#0c1829] border border-white/5 rounded-xl p-4 flex flex-wrap items-end gap-3">
+        <div>
+          <label className="block text-[10px] text-white/40 mb-1">Desde</label>
+          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
+            className="bg-white/4 border border-white/8 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-primary/40" />
+        </div>
+        <div>
+          <label className="block text-[10px] text-white/40 mb-1">Hasta</label>
+          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
+            className="bg-white/4 border border-white/8 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-primary/40" />
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <button onClick={exportCsv} disabled={!rows.length}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/70 hover:text-white disabled:opacity-40">
+            <FileDown className="w-3.5 h-3.5" /> CSV
+          </button>
+          <button onClick={exportPdf} disabled={!rows.length}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-primary/15 border border-primary/25 text-primary hover:bg-primary/25 disabled:opacity-40">
+            <FileText className="w-3.5 h-3.5" /> PDF
+          </button>
+        </div>
+      </div>
+
+      {/* Resumen */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-[#0c1829] border border-white/5 rounded-xl p-4">
+          <p className="text-[10px] text-white/40 uppercase tracking-wider">Registros</p>
+          <p className="text-2xl font-bold text-white">{rows.length}</p>
+        </div>
+        <div className="bg-[#0c1829] border border-white/5 rounded-xl p-4">
+          <p className="text-[10px] text-white/40 uppercase tracking-wider">Total horas extra</p>
+          <p className="text-2xl font-bold text-emerald-400">{fmtHoras(totalHoras)}</p>
+        </div>
+      </div>
+
+      {loading && (
+        <div className="flex items-center justify-center py-16 gap-2 text-white/30">
+          <Loader2 className="w-5 h-5 animate-spin" /> <span className="text-sm">Cargando...</span>
+        </div>
+      )}
+      {error && (
+        <div className="flex items-center gap-2 bg-red-500/8 border border-red-500/20 rounded-xl px-4 py-3">
+          <AlertCircle className="w-4 h-4 text-red-400" />
+          <p className="text-sm text-red-300">{error}</p>
+          <button onClick={cargar} className="ml-auto text-xs text-red-400">Reintentar</button>
+        </div>
+      )}
+      {!loading && !error && (
+        rows.length === 0 ? (
+          <div className="text-center py-16 text-white/30 text-sm">
+            No hay horas extra pagadas en efectivo en este período.
+          </div>
+        ) : (
+          <div className="bg-[#0c1829] border border-white/5 rounded-xl overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-white/40 border-b border-white/8">
+                  <th className="text-left font-medium px-3 py-2.5">Fecha</th>
+                  <th className="text-left font-medium px-3 py-2.5">Colaborador</th>
+                  <th className="text-left font-medium px-3 py-2.5">Puesto / Cliente</th>
+                  <th className="text-right font-medium px-3 py-2.5">Horas extra</th>
+                  <th className="text-left font-medium px-3 py-2.5">Aprobado por</th>
+                  <th className="text-left font-medium px-3 py-2.5">Fecha de pago</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id} className="border-b border-white/4 hover:bg-white/3">
+                    <td className="px-3 py-2 text-white/70 whitespace-nowrap">{fmtFecha(r.fecha)}</td>
+                    <td className="px-3 py-2 text-white/90 font-medium">{r.empleado_nombre ?? "—"}</td>
+                    <td className="px-3 py-2 text-white/50">{puestoCliente(r)}</td>
+                    <td className="px-3 py-2 text-right text-emerald-400 font-semibold whitespace-nowrap">{fmtHoras(r.horas_extra)}</td>
+                    <td className="px-3 py-2 text-white/50">{r.horas_extra_aprobadas_por ?? "—"}</td>
+                    <td className="px-3 py-2 text-white/50 whitespace-nowrap">{r.horas_extra_aprobadas_at ? fmtFecha(r.horas_extra_aprobadas_at) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 function ReporteSsaFacturacion({ nombre }: { nombre: string }) {
   const mesActual = new Date().toISOString().slice(0, 7);
   const [mes, setMes] = useState(mesActual);
@@ -1658,6 +1816,7 @@ export default function Reportes() {
     if (t.id === "rrhh" && !["admin", "rrhh"].includes(rolActual)) return false;
     if (t.id === "kpi" && !["admin"].includes(rolActual)) return false;
     if (t.id === "conciliacion-quincena" && !["admin", "rrhh", "operaciones"].includes(rolActual)) return false;
+    if (t.id === "horas-extra-cash" && !["admin", "rrhh"].includes(rolActual)) return false;
     return true;
   });
 
@@ -1725,8 +1884,8 @@ export default function Reportes() {
           </a>
         )}
 
-        {/* FILTROS (la pestaña SSA usa sus propios controles de mes/cliente) */}
-        {tab !== "ssa" && (
+        {/* FILTROS (SSA y HE en efectivo usan sus propios controles) */}
+        {tab !== "ssa" && tab !== "horas-extra-cash" && (
           <FiltrosBar filtros={filtros} onChange={setFiltros} onReset={() => setFiltros(FILTROS_INICIAL)} />
         )}
 
@@ -1753,9 +1912,10 @@ export default function Reportes() {
         </div>
 
         {/* CONTENIDO */}
-        {tab === "ssa" ? (
+        {(tab === "ssa" || tab === "horas-extra-cash") ? (
           <div className="pb-8">
-            <ReporteSsaFacturacion nombre={nombreUsuario} />
+            {tab === "ssa" && <ReporteSsaFacturacion nombre={nombreUsuario} />}
+            {tab === "horas-extra-cash" && <ReporteHorasExtraCash nombre={nombreUsuario} />}
           </div>
         ) : (
           <>
