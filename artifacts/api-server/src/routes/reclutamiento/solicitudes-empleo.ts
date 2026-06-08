@@ -175,17 +175,19 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo/extraer-dpi", async (req: Requ
         "Authorization": `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o",
-        max_tokens: 400,
+        model: "gpt-4.1",
+        max_tokens: 500,
+        temperature: 0,
         messages: [
           {
             role: "user",
             content: [
               {
                 type: "text",
-                text: `Eres un asistente que extrae datos del Documento Personal de Identificación (DPI/CUI) de Guatemala.
-Analiza la imagen y extrae estos campos. El DPI muestra los apellidos antes que los nombres, pero debes devolverlos en orden NOMBRE APELLIDO (primero el nombre de pila, luego los apellidos).
-Responde SOLO con un JSON válido con estas claves (deja vacío "" si no puedes leer el campo):
+                text: `Eres un asistente experto en leer el Documento Personal de Identificación (DPI/CUI) de Guatemala a partir de una fotografía, incluso si la imagen tiene reflejos, sombras o está ligeramente borrosa o inclinada.
+Lee con cuidado todo el texto visible y extrae estos campos. En el DPI los apellidos aparecen antes que los nombres, pero debes devolverlos en orden NOMBRE APELLIDO (primero los nombres de pila, luego los apellidos).
+El CUI es el número largo de 13 dígitos (puede mostrarse con espacios; quítalos).
+Responde SOLO con un JSON válido con estas claves (deja el valor en "" únicamente si de verdad no logras leer ese campo):
 {
   "nombre_completo": "nombres de pila seguidos de los apellidos (ej: Juan Carlos Pérez García)",
   "dpi": "los 13 dígitos del CUI sin espacios",
@@ -194,7 +196,7 @@ Responde SOLO con un JSON válido con estas claves (deja vacío "" si no puedes 
   "municipio": "municipio de vecindad",
   "departamento": "departamento de vecindad"
 }
-No incluyas explicaciones, solo el JSON.`,
+No incluyas explicaciones ni texto adicional, solo el JSON.`,
               },
               {
                 type: "image_url",
@@ -225,6 +227,19 @@ No incluyas explicaciones, solo el JSON.`,
 
     // Normalizar nombre: sin tildes, en mayúsculas
     if (datos.nombre_completo) datos.nombre_completo = normalizarNombre(datos.nombre_completo);
+
+    // Diagnóstico sin datos personales: registra qué campos quedaron vacíos
+    // para poder detectar en producción cuándo la IA no logra leer el DPI.
+    const campos = ["nombre_completo", "dpi", "fecha_nacimiento", "genero", "municipio", "departamento"];
+    const vacios = campos.filter((c) => !datos[c]);
+    if (vacios.length > 0) {
+      logger.warn(
+        { vacios, totalCampos: campos.length, contentLen: content.length, model: "gpt-4.1" },
+        "extraer-dpi: IA devolvió campos vacíos",
+      );
+    } else {
+      logger.info({ model: "gpt-4.1" }, "extraer-dpi: lectura completa");
+    }
 
     res.json({ datos });
   } catch (err) {
