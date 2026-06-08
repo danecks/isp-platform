@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
-  Loader2, CalendarHeart, Plus, Trash2, Lock, Save, Users, X,
+  Loader2, CalendarHeart, Plus, Trash2, Lock, Save, Users, X, ArrowLeft, ChevronRight,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, fmtFecha, fmtQ } from "./helpers";
@@ -33,6 +33,7 @@ export function FeriadosTrabajados({ desde, hasta }: { desde: string; hasta: str
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [montos, setMontos] = useState<Record<string, string>>({});
+  const [clienteSel, setClienteSel] = useState<string | null>(null);
   const [showAgregar, setShowAgregar] = useState(false);
   const [nuevoFecha, setNuevoFecha] = useState(desde);
   const [nuevoNombre, setNuevoNombre] = useState("");
@@ -54,6 +55,9 @@ export function FeriadosTrabajados({ desde, hasta }: { desde: string; hasta: str
   }, [desde, hasta, toast]);
 
   useEffect(() => { cargar(); }, [cargar]);
+  // Volver a la lista de clientes solo al cambiar de quincena, no en cada
+  // refresco (p. ej. tras "aplicar a todos" se mantiene el cliente abierto).
+  useEffect(() => { setClienteSel(null); }, [desde, hasta]);
 
   const cerrado = data?.periodo_cerrado ?? false;
 
@@ -268,30 +272,74 @@ export function FeriadosTrabajados({ desde, hasta }: { desde: string; hasta: str
         <TablaVacia msg="No hay feriados nacionales ni locales dentro de este período." />
       ) : porCliente.length === 0 ? (
         <TablaVacia msg="Ningún colaborador trabajó un feriado en este período." />
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs border-collapse">
-            <thead className="bg-[#060e1c] border-b border-white/6">
-              <tr>
-                <th className="text-left text-[10px] text-white/40 font-semibold uppercase tracking-wider px-3 py-2 whitespace-nowrap">Colaborador</th>
-                {columnas.map((col) => (
-                  <th key={col.fecha} className="text-right text-[10px] text-white/40 font-semibold uppercase tracking-wider px-3 py-2 whitespace-nowrap"
-                    title={col.nombres.join(" / ")}>
-                    {fmtFecha(col.fecha)}
-                  </th>
-                ))}
-                <th className="text-right text-[10px] text-white/40 font-semibold uppercase tracking-wider px-3 py-2 whitespace-nowrap">Total</th>
-              </tr>
-            </thead>
-            <tbody>
+      ) : (() => {
+        const sel = clienteSel ? porCliente.find(([c]) => c === clienteSel) : undefined;
+
+        // Vista 1 — lista de clientes. Se muestra una tarjeta por cliente con
+        // el número de colaboradores que trabajaron un feriado y el total a
+        // pagar de ese cliente. Al pulsarla se abre el detalle.
+        if (!sel) {
+          return (
+            <div className="p-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {porCliente.map(([cliente, cols]) => {
-                // Colaboradores únicos del cliente
-                const empleados = Array.from(
-                  new Map(cols.map((c) => [c.employee_id, c])).values()
-                ).sort((a, b) => a.nombre_completo.localeCompare(b.nombre_completo));
+                const nEmp = new Set(cols.map((c) => c.employee_id)).size;
+                const totalCli = cols.reduce(
+                  (s, c) => s + (Number(montos[key(c.employee_id, c.feriado_fecha)] ?? c.monto ?? 0) || 0),
+                  0,
+                );
                 return (
+                  <button key={cliente} onClick={() => setClienteSel(cliente)}
+                    className="flex items-center justify-between gap-3 text-left px-4 py-3 rounded-xl bg-white/[0.03] border border-white/8 hover:border-primary/40 hover:bg-primary/5 transition-colors">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-white font-semibold text-sm truncate">
+                        <Users className="w-3.5 h-3.5 text-primary/70 shrink-0" /> {cliente}
+                      </div>
+                      <div className="text-[11px] text-white/40 mt-0.5">
+                        {nEmp} colaborador(es) · <span className="text-primary/80 font-semibold">{fmtQ(totalCli)}</span>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-white/30 shrink-0" />
+                  </button>
+                );
+              })}
+            </div>
+          );
+        }
+
+        // Vista 2 — detalle del cliente seleccionado: solo las personas de ese
+        // cliente que trabajaron el feriado, con su monto editable.
+        const [cliente, cols] = sel;
+        const empleados = Array.from(
+          new Map(cols.map((c) => [c.employee_id, c])).values()
+        ).sort((a, b) => a.nombre_completo.localeCompare(b.nombre_completo));
+        return (
+          <div>
+            <div className="px-4 py-2.5 border-b border-white/6 flex flex-wrap items-center gap-2">
+              <button onClick={() => setClienteSel(null)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-white/60 text-[11px] hover:bg-white/10 transition-colors">
+                <ArrowLeft className="w-3 h-3" /> Clientes
+              </button>
+              <span className="text-xs font-semibold text-white flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-primary/70" /> {cliente}
+              </span>
+              <span className="text-[11px] text-white/40">· {empleados.length} colaborador(es) que trabajaron</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead className="bg-[#060e1c] border-b border-white/6">
+                  <tr>
+                    <th className="text-left text-[10px] text-white/40 font-semibold uppercase tracking-wider px-3 py-2 whitespace-nowrap">Colaborador</th>
+                    {columnas.map((col) => (
+                      <th key={col.fecha} className="text-right text-[10px] text-white/40 font-semibold uppercase tracking-wider px-3 py-2 whitespace-nowrap"
+                        title={col.nombres.join(" / ")}>
+                        {fmtFecha(col.fecha)}
+                      </th>
+                    ))}
+                    <th className="text-right text-[10px] text-white/40 font-semibold uppercase tracking-wider px-3 py-2 whitespace-nowrap">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
                   <FilasCliente
-                    key={cliente}
                     cliente={cliente}
                     empleados={empleados}
                     cols={cols}
@@ -303,12 +351,12 @@ export function FeriadosTrabajados({ desde, hasta }: { desde: string; hasta: str
                     onGuardar={guardarPago}
                     onAplicarCliente={aplicarCliente}
                   />
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
