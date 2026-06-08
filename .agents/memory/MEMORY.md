@@ -1,4 +1,5 @@
 - [Operativo en vivo y slots](operativo-slots.md) — el operativo del portal debe leer puesto_slots (modelo de turnos), no solo agente_id legacy; fórmula de ciclo con módulo positivo.
+- [HE por cobertura: detección descanso](he-cobertura-deteccion-descanso.md) — la regla es "HE solo si el que cubre estaba en descanso/vacaciones"; detectarlo con puesto_slots.empleado_id (puesto_titulares vacía, titular_employee_id NULL).
 - [Anular/Reactivar falta dos fuentes](falta-dos-fuentes.md) — el pizarrón lee faltando de slot + eventos_rrhh (UNION); anular/reactivar deben tocar ambas; snapshot del HE par solo si esta op lo anuló.
 - [HE de cobertura en vivo](he-materializacion-en-vivo.md) — materializar HE desde novedad.horas_extra (no genera_horas_extra, que sustitución marca FALSE); helper idempotente con misma clave de dedupe del cierre → sin doble pago.
 - [Falta personal de oficina](falta-personal-oficina.md) — supervisores/jefes/administrativos tienen su par de endpoints falta-personal/anular (sin puesto); guardias usan /liberar; validar TIPOS_PERSONAL_OFICINA en AMBAS rutas.

@@ -270,16 +270,16 @@ router.post("/operaciones/asignar", async (req, res) => {
       let agenteEnDescansoOVacaciones = false;
       try {
         const { rows: ptRows } = await pool.query(
-          `SELECT pt.puesto_id, po.tipo_turno_id, po.fecha_inicio_ciclo::text AS fic,
+          `SELECT po.tipo_turno_id, po.fecha_inicio_ciclo::text AS fic,
                   t.horas_trabajo::float AS ht, t.horas_descanso::float AS hd,
                   t.nombre AS turno_nombre,
                   ps.dias_trabajo AS slot_dias_trabajo, ps.fecha_inicio_ciclo::text AS slot_fecha_inicio,
                   COALESCE(ps.longitud_ciclo, 14)::int AS slot_longitud_ciclo
-           FROM puesto_titulares pt
-           JOIN puestos_operativos po ON po.id = pt.puesto_id
+           FROM puesto_slots ps
+           JOIN puestos_operativos po ON po.id = ps.puesto_id
            LEFT JOIN turnos t ON t.id = po.tipo_turno_id
-           LEFT JOIN puesto_slots ps ON ps.puesto_id = po.id AND ps.empleado_id = $1 AND ps.activo = TRUE
-           WHERE pt.employee_id = $1 AND pt.activo = TRUE
+           WHERE ps.empleado_id = $1 AND ps.activo = TRUE AND po.activo = TRUE
+           ORDER BY ps.fecha_inicio_ciclo DESC NULLS LAST
            LIMIT 1`,
           [agenteId]
         );
@@ -807,7 +807,8 @@ router.post("/operaciones/sustituir", async (req, res) => {
                       ps.fecha_inicio_ciclo::text AS slot_fecha_inicio
                FROM puesto_slots ps
                JOIN puestos_operativos po ON po.id = ps.puesto_id
-               WHERE po.titular_employee_id = $1 AND po.activo = TRUE AND ps.activo = TRUE
+               WHERE ps.empleado_id = $1 AND ps.activo = TRUE AND po.activo = TRUE
+               ORDER BY ps.fecha_inicio_ciclo DESC NULLS LAST
                LIMIT 1`,
               [agenteEntranteId]
             );
