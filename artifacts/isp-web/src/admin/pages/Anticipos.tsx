@@ -5,6 +5,7 @@ import { AdminLayout } from "../layout/AdminLayout";
 import { StatusBadge } from "../components/StatusBadge";
 import { anticiposApi, employeesApi, type Anticipo, type EmpleadoSlim } from "@/lib/api";
 import { calcularCobroAnticipo } from "@/lib/anticipo-cobro";
+import { IspPdf } from "@/lib/pdfExport";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Wallet,
@@ -77,6 +78,9 @@ const ESTADO_ICONOS: Record<string, React.ReactNode> = {
 export default function Anticipos() {
   const [filtroEstado, setFiltroEstado] = useState<EstadoAnticipo | "todos">("todos");
   const [filtroOrigen, setFiltroOrigen] = useState<"todos" | "whatsapp" | "manual">("todos");
+  const [pdfDesde, setPdfDesde] = useState("");
+  const [pdfHasta, setPdfHasta] = useState("");
+  const [pdfLoading, setPdfLoading] = useState(false);
   const [editando, setEditando] = useState<Anticipo | null>(null);
   const [nuevoEstado, setNuevoEstado] = useState<string>("");
   const [observacion, setObservacion] = useState<string>("");
@@ -252,9 +256,70 @@ export default function Anticipos() {
     });
   }
 
-  const urlExport = anticiposApi.exportCsv(
-    filtroEstado !== "todos" ? { estado: filtroEstado } : undefined
-  );
+  async function exportarPdf() {
+    if (pdfDesde && pdfHasta && pdfDesde > pdfHasta) {
+      toast({
+        title: "Rango de fechas inválido",
+        description: "La fecha 'desde' no puede ser posterior a 'hasta'.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setPdfLoading(true);
+    try {
+      // Reporte sobre lo visible (estado/origen) acotado por el rango de fechas.
+      const rows = filtrados.filter((a) => {
+        const f = new Date(a.fechaSolicitud);
+        if (pdfDesde && f < new Date(pdfDesde + "T00:00:00")) return false;
+        if (pdfHasta && f > new Date(pdfHasta + "T23:59:59")) return false;
+        return true;
+      });
+
+      const montoTotal = rows.reduce((s, a) => s + Number(a.cantidad), 0);
+      const cuenta = (estado: string) => rows.filter((a) => a.estado === estado).length;
+
+      const pdf = await new IspPdf({
+        titulo: "Reporte de Anticipos Salariales",
+        desde: pdfDesde || undefined,
+        hasta: pdfHasta || undefined,
+        preparedBy: currentUser?.nombre,
+      }).build();
+
+      pdf.addSeccionTitulo("RESUMEN");
+      pdf.addResumenCards([
+        { label: "Solicitudes", valor: rows.length, color: "blue" },
+        { label: "Monto Total", valor: fmtQ(montoTotal), color: "gray" },
+        { label: "Pendientes", valor: cuenta("pendiente"), color: "yellow" },
+        { label: "Aprobadas", valor: cuenta("aprobada"), color: "green" },
+      ]);
+
+      pdf.addSeccionTitulo("DETALLE DE ANTICIPOS");
+      if (rows.length > 0) {
+        pdf.addTabla(
+          ["Fecha", "Nombre", "Puesto", "DPI", "Monto (Q)", "Estado", "Período", "Origen"],
+          rows.map((a) => [
+            fmtFechaCorta(a.fechaSolicitud),
+            a.nombre,
+            a.puesto ?? "—",
+            a.dpi ?? "—",
+            fmtQ(Number(a.cantidad)),
+            a.estado,
+            a.periodo?.replace("-dia", " día") ?? "—",
+            a.origen,
+          ]),
+        );
+      } else {
+        pdf.addTextoResumen("No hay anticipos en el período seleccionado.");
+      }
+
+      const sufijo = pdfDesde || pdfHasta
+        ? `${pdfDesde || "inicio"}_a_${pdfHasta || "hoy"}`
+        : new Date().toISOString().split("T")[0];
+      pdf.save(`anticipos-${sufijo}.pdf`);
+    } finally {
+      setPdfLoading(false);
+    }
+  }
 
   return (
     <AdminLayout title="Anticipos Salariales">
@@ -373,14 +438,28 @@ export default function Anticipos() {
               >
                 <RefreshCw className="w-4 h-4" />
               </button>
-              <a
-                href={urlExport}
-                download
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-xs font-medium transition-colors border border-primary/20"
+              <input
+                type="date"
+                value={pdfDesde}
+                onChange={(e) => setPdfDesde(e.target.value)}
+                title="Desde"
+                className="px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/70 text-xs focus:outline-none focus:border-primary/40"
+              />
+              <input
+                type="date"
+                value={pdfHasta}
+                onChange={(e) => setPdfHasta(e.target.value)}
+                title="Hasta"
+                className="px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/70 text-xs focus:outline-none focus:border-primary/40"
+              />
+              <button
+                onClick={exportarPdf}
+                disabled={pdfLoading}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-xs font-medium transition-colors border border-primary/20 disabled:opacity-50"
               >
-                <Download className="w-3.5 h-3.5" />
-                Exportar CSV
-              </a>
+                {pdfLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                Exportar PDF
+              </button>
               <button
                 onClick={() => setModalNuevo(true)}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary/90 transition-colors"
