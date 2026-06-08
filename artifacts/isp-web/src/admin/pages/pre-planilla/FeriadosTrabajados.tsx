@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Loader2, CalendarHeart, Plus, Trash2, Lock, Save, Users, X, ArrowLeft, ChevronRight,
+  ChevronDown, Check,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, fmtFecha, fmtQ } from "./helpers";
@@ -37,7 +38,10 @@ export function FeriadosTrabajados({ desde, hasta }: { desde: string; hasta: str
   const [showAgregar, setShowAgregar] = useState(false);
   const [nuevoFecha, setNuevoFecha] = useState(desde);
   const [nuevoNombre, setNuevoNombre] = useState("");
-  const [nuevoCliente, setNuevoCliente] = useState("");
+  const [clientesDisp, setClientesDisp] = useState<{ id: number; nombre: string }[]>([]);
+  const [clientesSel, setClientesSel] = useState<string[]>([]);
+  const [clienteQuery, setClienteQuery] = useState("");
+  const [showClientes, setShowClientes] = useState(false);
 
   const cargar = useCallback(() => {
     setLoading(true);
@@ -58,6 +62,29 @@ export function FeriadosTrabajados({ desde, hasta }: { desde: string; hasta: str
   // Volver a la lista de clientes solo al cambiar de quincena, no en cada
   // refresco (p. ej. tras "aplicar a todos" se mantiene el cliente abierto).
   useEffect(() => { setClienteSel(null); }, [desde, hasta]);
+
+  // Catálogo de clientes activos para el selector del feriado local.
+  useEffect(() => {
+    apiRequest("/api/operaciones/clientes-disponibles")
+      .then((d: { id: number; nombre: string }[]) => setClientesDisp(Array.isArray(d) ? d : []))
+      .catch(() => { /* el selector queda vacío; el feriado puede ser nacional */ });
+  }, []);
+
+  const clientesFiltrados = useMemo(
+    () => clientesDisp.filter((c) => c.nombre.toLowerCase().includes(clienteQuery.trim().toLowerCase())),
+    [clientesDisp, clienteQuery],
+  );
+  const toggleCliente = (nombre: string) =>
+    setClientesSel((prev) => prev.includes(nombre) ? prev.filter((x) => x !== nombre) : [...prev, nombre]);
+  // Limpia todo el estado del formulario de "Agregar feriado local" para que no
+  // quede selección previa al reabrirlo (cancelar o tras guardar).
+  const cerrarAgregar = () => {
+    setShowAgregar(false);
+    setNuevoNombre("");
+    setClientesSel([]);
+    setClienteQuery("");
+    setShowClientes(false);
+  };
 
   const cerrado = data?.periodo_cerrado ?? false;
 
@@ -149,14 +176,16 @@ export function FeriadosTrabajados({ desde, hasta }: { desde: string; hasta: str
         method: "POST",
         json: {
           fecha: nuevoFecha, nombre: nuevoNombre.trim(),
-          cliente_nombre: nuevoCliente.trim() || null, createdPor: usuarioActual(),
+          clientes: clientesSel, createdPor: usuarioActual(),
           desde, hasta,
         },
       });
-      toast({ title: "Feriado agregado" });
-      setShowAgregar(false);
-      setNuevoNombre("");
-      setNuevoCliente("");
+      toast({
+        title: clientesSel.length > 0
+          ? `Feriado agregado para ${clientesSel.length} cliente(s)`
+          : "Feriado agregado (nacional)",
+      });
+      cerrarAgregar();
       cargar();
     } catch (e: unknown) {
       toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
@@ -226,17 +255,62 @@ export function FeriadosTrabajados({ desde, hasta }: { desde: string; hasta: str
               onChange={(e) => setNuevoNombre(e.target.value)}
               className="bg-[#0c1929] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white" />
           </div>
-          <div className="flex flex-col gap-1 flex-1 min-w-[160px]">
-            <label className="text-[10px] text-white/40 uppercase tracking-wider">Cliente (opcional)</label>
-            <input type="text" value={nuevoCliente} placeholder="Solo para un cliente"
-              onChange={(e) => setNuevoCliente(e.target.value)}
-              className="bg-[#0c1929] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white" />
+          <div className="flex flex-col gap-1 flex-1 min-w-[200px] relative">
+            <label className="text-[10px] text-white/40 uppercase tracking-wider">Clientes (vacío = todos)</label>
+            <button type="button" onClick={() => setShowClientes((s) => !s)}
+              className="bg-[#0c1929] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-left text-white flex items-center justify-between gap-2">
+              <span className="truncate">
+                {clientesSel.length === 0
+                  ? <span className="text-white/30">Todos los clientes (nacional)</span>
+                  : `${clientesSel.length} cliente(s) seleccionado(s)`}
+              </span>
+              <ChevronDown className="w-3.5 h-3.5 text-white/40 shrink-0" />
+            </button>
+            {clientesSel.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {clientesSel.map((c) => (
+                  <span key={c} className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/15 border border-primary/30 text-primary text-[10px]">
+                    <span className="truncate max-w-[120px]">{c}</span>
+                    <button type="button" onClick={() => toggleCliente(c)} className="hover:text-white">
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {showClientes && (
+              <div className="absolute z-20 top-full mt-1 left-0 right-0 bg-[#0c1929] border border-white/15 rounded-lg shadow-xl max-h-64 flex flex-col overflow-hidden">
+                <input autoFocus type="text" value={clienteQuery} placeholder="Buscar cliente…"
+                  onChange={(e) => setClienteQuery(e.target.value)}
+                  className="bg-[#060e1c] border-b border-white/10 px-2 py-1.5 text-xs text-white outline-none" />
+                <div className="overflow-y-auto">
+                  {clientesFiltrados.length === 0 ? (
+                    <div className="px-2 py-2 text-[11px] text-white/30">Sin resultados</div>
+                  ) : clientesFiltrados.map((c) => {
+                    const on = clientesSel.includes(c.nombre);
+                    return (
+                      <button type="button" key={c.id} onClick={() => toggleCliente(c.nombre)}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-white/5">
+                        <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${on ? "bg-primary border-primary" : "border-white/25"}`}>
+                          {on && <Check className="w-2.5 h-2.5 text-black" />}
+                        </span>
+                        <span className="truncate text-white/80">{c.nombre}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <button type="button" onClick={() => setShowClientes(false)}
+                  className="border-t border-white/10 px-2 py-1.5 text-[11px] text-primary/80 hover:text-primary">
+                  Listo
+                </button>
+              </div>
+            )}
           </div>
           <button onClick={agregarFeriado} disabled={saving === "nuevo"}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/20 border border-primary/40 text-primary text-xs font-semibold hover:bg-primary/30 transition-colors disabled:opacity-50">
             {saving === "nuevo" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />} Agregar
           </button>
-          <button onClick={() => setShowAgregar(false)}
+          <button onClick={cerrarAgregar}
             className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/50 text-xs hover:bg-white/10 transition-colors">
             <X className="w-3.5 h-3.5" />
           </button>

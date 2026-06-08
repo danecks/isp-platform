@@ -30,3 +30,9 @@ a dos columnas la misma fecha, que la UI no soporta.
   deja de sumar al bruto.
 - POST/DELETE de feriados requieren desde/hasta y devuelven 409 si la quincena
   está cerrada (periodoCerrado()); el snapshot del cierre congela el monto.
+- El feriado local se asigna a clientes desde el catálogo real
+  (`/api/operaciones/clientes-disponibles` → `clients.nombre`), NO texto libre, y
+  admite varios clientes: el POST acepta `clientes[]` y crea una fila por cliente
+  (transacción) reusando el ON CONFLICT. **Why:** el `cliente_nombre` del feriado se
+  compara contra el cliente resuelto del consolidado (`po.cliente_nombre`); texto
+  libre desalineaba la visibilidad/pago. Vacío = nacional (cliente_nombre NULL).

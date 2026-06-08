@@ -990,28 +990,46 @@ prePlanillaRouter.put("/nomina/pre-planilla/feriados/pago-bulk", async (req, res
 // ─── POST /api/nomina/pre-planilla/feriados ───────────────────────────────────
 // Agrega un feriado local (Semana Santa, feria del municipio, etc.).
 prePlanillaRouter.post("/nomina/pre-planilla/feriados", async (req, res) => {
-  const { fecha, nombre, cliente_nombre, createdPor, desde, hasta } = req.body ?? {};
+  const { fecha, nombre, cliente_nombre, clientes, createdPor, desde, hasta } = req.body ?? {};
   if (!fecha || !nombre || !String(nombre).trim()) {
     return res.status(400).json({ error: "fecha y nombre son requeridos" });
   }
   if (!desde || !hasta) {
     return res.status(400).json({ error: "desde y hasta son requeridos (período de la quincena)" });
   }
+  // Lista de clientes a los que aplica el feriado local. Se acepta un arreglo
+  // `clientes` (selección múltiple) o el campo legacy `cliente_nombre`. Si tras
+  // limpiar queda vacío, el feriado es nacional (cliente_nombre NULL → todos).
+  const limpios = Array.isArray(clientes)
+    ? Array.from(new Set(clientes.map((c: unknown) => String(c ?? "").trim()).filter(Boolean)))
+    : [];
+  const legacy = cliente_nombre && String(cliente_nombre).trim() ? String(cliente_nombre).trim() : null;
+  const lista: (string | null)[] = limpios.length > 0 ? limpios : [legacy];
+  const client = await pool.connect();
   try {
     if (await periodoCerrado(desde, hasta)) {
       return res.status(409).json({ error: "El período está cerrado. No se pueden agregar feriados." });
     }
-    const { rows } = await pool.query(`
-      INSERT INTO nomina_feriados (fecha, nombre, tipo, cliente_nombre, created_por)
-      VALUES ($1::date, $2, 'local', $3, $4)
-      ON CONFLICT (fecha, nombre, COALESCE(cliente_nombre, ''))
-      DO UPDATE SET activo = TRUE
-      RETURNING id, fecha::text AS fecha, nombre, tipo, cliente_nombre
-    `, [fecha, String(nombre).trim(), cliente_nombre ?? null, createdPor ?? null]);
-    res.status(201).json(rows[0]);
+    await client.query("BEGIN");
+    const creados = [];
+    for (const cn of lista) {
+      const { rows } = await client.query(`
+        INSERT INTO nomina_feriados (fecha, nombre, tipo, cliente_nombre, created_por)
+        VALUES ($1::date, $2, 'local', $3, $4)
+        ON CONFLICT (fecha, nombre, COALESCE(cliente_nombre, ''))
+        DO UPDATE SET activo = TRUE
+        RETURNING id, fecha::text AS fecha, nombre, tipo, cliente_nombre
+      `, [fecha, String(nombre).trim(), cn, createdPor ?? null]);
+      creados.push(rows[0]);
+    }
+    await client.query("COMMIT");
+    res.status(201).json(creados.length === 1 ? creados[0] : creados);
   } catch (err) {
+    await client.query("ROLLBACK").catch(() => { /* conexión ya rota */ });
     logger.error({ err }, "POST /nomina/pre-planilla/feriados error");
     res.status(500).json({ error: "Error al agregar el feriado" });
+  } finally {
+    client.release();
   }
 });
 
