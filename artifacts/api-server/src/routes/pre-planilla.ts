@@ -307,24 +307,33 @@ const QUERY_CONSOLIDADO = `
   LEFT JOIN novedades_nomina_diarias n
     ON n.employee_id = e.id
     AND n.fecha BETWEEN $1 AND $2
-  -- TH: buscar el puesto del que fue titular durante el período ($1=desde, $2=hasta)
-  -- Primero busca en puesto_titular_historico; fallback a titular_employee_id actual
+  -- TH: puesto del que el empleado es titular durante el período ($1=desde, $2=hasta).
+  -- Resolución unificada por prioridad (misma lógica que clienteEmpleadoSQL):
+  -- histórico vigente > slots del Pizarrón > titulares intermedios > legacy.
   LEFT JOIN LATERAL (
     SELECT po2.aplica_igss, po2.regimen_igss, po2.fecha_inicio_ciclo, po2.tipo_turno_id,
            po2.cliente_nombre
-    FROM puestos_operativos po2
-    WHERE po2.activo = TRUE
-      AND (
-        EXISTS (
-          SELECT 1 FROM puesto_titular_historico pth
-          WHERE pth.puesto_id = po2.id
-            AND pth.employee_id = e.id
-            AND pth.fecha_inicio <= $2::date
-            AND (pth.fecha_fin IS NULL OR pth.fecha_fin >= $1::date)
-        )
-        OR po2.titular_employee_id = e.id
-      )
-    ORDER BY po2.updated_at DESC NULLS LAST
+    FROM (
+      SELECT pth.puesto_id, 0 AS prio, 0 AS orden
+        FROM puesto_titular_historico pth
+        WHERE pth.employee_id = e.id
+          AND pth.fecha_inicio <= $2::date
+          AND (pth.fecha_fin IS NULL OR pth.fecha_fin >= $1::date)
+      UNION ALL
+      SELECT ps.puesto_id, 1 AS prio, ps.slot_numero AS orden
+        FROM puesto_slots ps
+        WHERE ps.empleado_id = e.id AND ps.activo = TRUE
+      UNION ALL
+      SELECT pt.puesto_id, 2 AS prio, COALESCE(pt.orden, 99) AS orden
+        FROM puesto_titulares pt
+        WHERE pt.employee_id = e.id AND pt.activo = TRUE
+      UNION ALL
+      SELECT po3.id AS puesto_id, 3 AS prio, 0 AS orden
+        FROM puestos_operativos po3
+        WHERE po3.titular_employee_id = e.id AND po3.activo = TRUE
+    ) tu
+    JOIN puestos_operativos po2 ON po2.id = tu.puesto_id AND po2.activo = TRUE
+    ORDER BY tu.prio ASC, tu.orden ASC, po2.updated_at DESC NULLS LAST
     LIMIT 1
   ) po ON TRUE
   LEFT JOIN turnos t
@@ -357,19 +366,33 @@ const QUERY_CONSOLIDADO = `
 // referencias SQL (columna o $N) que correspondan a la consulta que lo usa.
 function clienteEmpleadoSQL(emp: string, desde: string, hasta: string): string {
   return `(
-    SELECT po2.cliente_nombre FROM puestos_operativos po2
-    WHERE po2.activo = TRUE
-      AND (
-        EXISTS (
-          SELECT 1 FROM puesto_titular_historico pth
-          WHERE pth.puesto_id = po2.id
-            AND pth.employee_id = ${emp}
-            AND pth.fecha_inicio <= ${hasta}::date
-            AND (pth.fecha_fin IS NULL OR pth.fecha_fin >= ${desde}::date)
-        )
-        OR po2.titular_employee_id = ${emp}
-      )
-    ORDER BY po2.updated_at DESC NULLS LAST
+    SELECT po2.cliente_nombre
+    FROM (
+      -- Prioridad 0: titular histórico vigente en el período (lo más exacto para
+      -- planillas de quincenas pasadas).
+      SELECT pth.puesto_id, 0 AS prio, 0 AS orden
+        FROM puesto_titular_historico pth
+        WHERE pth.employee_id = ${emp}
+          AND pth.fecha_inicio <= ${hasta}::date
+          AND (pth.fecha_fin IS NULL OR pth.fecha_fin >= ${desde}::date)
+      UNION ALL
+      -- Prioridad 1: slots del Pizarrón Operativo (modelo vigente 24x24).
+      SELECT ps.puesto_id, 1 AS prio, ps.slot_numero AS orden
+        FROM puesto_slots ps
+        WHERE ps.empleado_id = ${emp} AND ps.activo = TRUE
+      UNION ALL
+      -- Prioridad 2: sistema intermedio multi-titular.
+      SELECT pt.puesto_id, 2 AS prio, COALESCE(pt.orden, 99) AS orden
+        FROM puesto_titulares pt
+        WHERE pt.employee_id = ${emp} AND pt.activo = TRUE
+      UNION ALL
+      -- Prioridad 3: campo legacy titular_employee_id.
+      SELECT po3.id AS puesto_id, 3 AS prio, 0 AS orden
+        FROM puestos_operativos po3
+        WHERE po3.titular_employee_id = ${emp} AND po3.activo = TRUE
+    ) tu
+    JOIN puestos_operativos po2 ON po2.id = tu.puesto_id AND po2.activo = TRUE
+    ORDER BY tu.prio ASC, tu.orden ASC, po2.updated_at DESC NULLS LAST
     LIMIT 1
   )`;
 }

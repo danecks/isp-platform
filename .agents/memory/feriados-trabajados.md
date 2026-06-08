@@ -19,11 +19,19 @@ a dos columnas la misma fecha, que la UI no soporta.
   (colaborador, fecha). El frontend deriva columnas por fecha única (no por id);
   el listado de catálogo (agregar/eliminar) sí va por id.
 - Scoping por cliente: usar SIEMPRE la misma resolución canónica que el resto del
-  consolidado (LATERAL `po`: puesto_titular_historico vigente en el período con
-  fallback a titular_employee_id). El helper `clienteEmpleadoSQL(emp,desde,hasta)`
-  encapsula esa lógica; aplicarlo en GET, PUT individual y bulk; el consolidado
-  usa `po.cliente_nombre`. En dev no hay titulares poblados (modelo slots), así que
-  el cliente resuelve NULL para todos — es estado de datos, no del código.
+  consolidado. La resolución del cliente del empleado es un modelo UNIFICADO por
+  prioridad: histórico vigente en el período (0) > puesto_slots (1) > puesto_titulares
+  (2) > legacy titular_employee_id (3); elige el puesto de mayor prioridad y toma su
+  `cliente_nombre`. **Why:** el operativo vigente vive en `puesto_slots`; histórico y
+  legacy están vacíos en los datos reales, así que resolver SOLO por histórico/legacy
+  dejaba el cliente en NULL para todos → todo "Sin cliente asignado" y los feriados
+  locales no mostraban a nadie (el WHERE `f.cliente_nombre = ec.cliente` nunca casa
+  con NULL). **How to apply:** el helper `clienteEmpleadoSQL(emp,desde,hasta)`
+  encapsula esa lógica (GET feriados, PUT individual, PUT bulk) y el LATERAL `po` del
+  QUERY_CONSOLIDADO replica la MISMA cadena (lo usa `pago_feriados` y los campos
+  aplica_igss/regimen_igss/tipo_turno_id). Mantener ambas en lockstep o pestaña y
+  bruto divergen. `puestos_operativos.cliente_nombre` == `clients.nombre` (no
+  nombre_comercial), por eso el selector de `clientes-disponibles` casa con el scoping.
 - Un feriado aplica a un colaborador si es nacional (cliente_nombre NULL) o su
   cliente coincide. El subquery pago_feriados del consolidado exige EXISTS feriado
   activo en período con esa condición de cliente; al desactivar el feriado el pago
