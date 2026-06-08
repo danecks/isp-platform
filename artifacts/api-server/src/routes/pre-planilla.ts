@@ -231,6 +231,31 @@ const QUERY_CONSOLIDADO = `
     -- Cliente principal (puesto operativo del empleado — fuente de verdad)
     po.cliente_nombre                                                           AS cliente_principal,
 
+    -- Pago por feriados/asuetos nacionales trabajados (concepto aparte, default Q0).
+    -- Lo asigna el encargado de nómina por colaborador en la pestaña "Feriados
+    -- trabajados" de la pre-planilla. Suma escalar correlacionada por empleado y período.
+    COALESCE((
+      SELECT SUM(fp.monto)
+      FROM nomina_feriado_pago fp
+      WHERE fp.employee_id = e.id
+        AND fp.periodo_desde = $1::date
+        AND fp.periodo_hasta = $2::date
+        -- Solo cuenta si existe un feriado activo en esa fecha y período que
+        -- APLIQUE a este empleado (nacional o local del cliente de su puesto
+        -- titular). Mismo scoping que la pestaña GET: si el encargado lo desactiva
+        -- o el feriado era de otro cliente, el monto deja de impactar el bruto.
+        -- El registro se conserva. (El pago se modela por fecha, igual que la UI.)
+        AND EXISTS (
+          SELECT 1 FROM nomina_feriados nf
+          WHERE nf.fecha = fp.feriado_fecha
+            AND nf.activo = TRUE
+            AND nf.fecha BETWEEN $1::date AND $2::date
+            -- po.cliente_nombre = cliente canónico del empleado en el período
+            -- (LATERAL po: histórico con fallback al titular actual).
+            AND (nf.cliente_nombre IS NULL OR nf.cliente_nombre = po.cliente_nombre)
+        )
+    ), 0)                                                                       AS pago_feriados,
+
     -- IGSS — elegibilidad del colaborador
     COALESCE(e.aplica_igss_general, FALSE)                                      AS aplica_igss_general,
     COALESCE(e.estado_igss, 'no_activo')                                        AS estado_igss,
@@ -324,6 +349,30 @@ const QUERY_CONSOLIDADO = `
     pr.aprobado_por, pr.aprobado_at
   ORDER BY e.nombre_completo
 `;
+
+// ─── Cliente del puesto del que el empleado fue titular durante el período ────
+// Misma resolución que el LATERAL `po` de QUERY_CONSOLIDADO: busca en
+// puesto_titular_historico (vigente en el período) con fallback al titular
+// actual. Devuelve un sub-SELECT escalar; `emp`, `desde` y `hasta` son las
+// referencias SQL (columna o $N) que correspondan a la consulta que lo usa.
+function clienteEmpleadoSQL(emp: string, desde: string, hasta: string): string {
+  return `(
+    SELECT po2.cliente_nombre FROM puestos_operativos po2
+    WHERE po2.activo = TRUE
+      AND (
+        EXISTS (
+          SELECT 1 FROM puesto_titular_historico pth
+          WHERE pth.puesto_id = po2.id
+            AND pth.employee_id = ${emp}
+            AND pth.fecha_inicio <= ${hasta}::date
+            AND (pth.fecha_fin IS NULL OR pth.fecha_fin >= ${desde}::date)
+        )
+        OR po2.titular_employee_id = ${emp}
+      )
+    ORDER BY po2.updated_at DESC NULLS LAST
+    LIMIT 1
+  )`;
+}
 
 // ─── Detecta si un período es primera o segunda quincena ─────────────────────
 // Primera quincena: periodo_hasta día <= 15
@@ -723,6 +772,280 @@ prePlanillaRouter.get("/nomina/pre-planilla/validacion", async (req, res) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════════════════════
+// FERIADOS TRABAJADOS — módulo dentro de la pre-planilla
+// ════════════════════════════════════════════════════════════════════════════
+// Permite asignar el pago por feriados/asuetos nacionales (y locales) trabajados,
+// por colaborador, mientras la quincena esté ABIERTA. Default Q0, editable. El
+// monto suma al bruto como concepto aparte (QUERY_CONSOLIDADO → pago_feriados) y
+// se congela en el snapshot del cierre.
+//
+// Permiso: estas rutas viven bajo /nomina/* → el middleware las protege con el
+// módulo "nomina" (el prefijo más largo que matchea es "/nomina"). No requiere
+// permiso nuevo: quien ya administra nómina administra los feriados.
+
+// Helper: ¿el período está cerrado? (ignora cierres anulados por reversión)
+async function periodoCerrado(desde: string, hasta: string): Promise<boolean> {
+  const { rows } = await pool.query(
+    `SELECT id FROM pre_planilla_cierres WHERE periodo_desde = $1::date AND periodo_hasta = $2::date AND anulado = FALSE`,
+    [desde, hasta]
+  );
+  return rows.length > 0;
+}
+
+// ─── GET /api/nomina/pre-planilla/feriados ────────────────────────────────────
+// Devuelve los feriados del período + colaboradores que trabajaron algún feriado
+// (agrupables por cliente en el frontend) con el monto actual por feriado.
+prePlanillaRouter.get("/nomina/pre-planilla/feriados", async (req, res) => {
+  const { desde, hasta } = req.query as Record<string, string>;
+  if (!desde || !hasta) {
+    return res.status(400).json({ error: "desde y hasta son requeridos (YYYY-MM-DD)" });
+  }
+  try {
+    // Feriados activos cuya fecha cae dentro del período
+    const { rows: feriados } = await pool.query(`
+      SELECT id, fecha::text AS fecha, nombre, tipo, cliente_nombre
+      FROM nomina_feriados
+      WHERE activo = TRUE AND fecha BETWEEN $1::date AND $2::date
+      ORDER BY fecha ASC, nombre ASC
+    `, [desde, hasta]);
+
+    const fechasFeriado: string[] = feriados.map((f) => f.fecha);
+
+    // Colaboradores que trabajaron al menos un feriado del período, o que ya
+    // tienen un pago de feriado registrado para el período (para que no
+    // desaparezcan montos asignados aunque cambie el operativo).
+    //
+    // Scoping por cliente: un feriado nacional (cliente_nombre NULL) aplica a
+    // todos; un feriado LOCAL acotado a un cliente solo aparece para los
+    // colaboradores de ese cliente (resuelto igual que el consolidado:
+    // puesto_titular_historico vigente en el período, con fallback al titular).
+    let colaboradores: Record<string, unknown>[] = [];
+    if (fechasFeriado.length > 0) {
+      const { rows } = await pool.query(`
+        WITH emp_cliente AS (
+          SELECT
+            e.id AS employee_id,
+            e.nombre_completo,
+            ${clienteEmpleadoSQL("e.id", "$1", "$2")} AS cliente
+          FROM employees e
+          WHERE (e.fecha_baja IS NULL OR e.fecha_baja >= $1::date)
+        ),
+        trabajaron AS (
+          SELECT DISTINCT n.employee_id, n.fecha::date AS feriado_fecha
+          FROM novedades_nomina_diarias n
+          WHERE n.trabajo_dia = TRUE
+            AND n.fecha = ANY($3::date[])
+          UNION
+          SELECT fp.employee_id, fp.feriado_fecha
+          FROM nomina_feriado_pago fp
+          WHERE fp.periodo_desde = $1::date AND fp.periodo_hasta = $2::date
+        )
+        -- Una fila por (colaborador, FECHA), no por feriado: si dos feriados
+        -- caen el mismo día (p. ej. nacional + local del mismo cliente) el pago
+        -- se modela por fecha, así que se colapsan con GROUP BY para no duplicar
+        -- montos ni totales frente al consolidado/bruto.
+        SELECT
+          ec.employee_id,
+          ec.nombre_completo,
+          ec.cliente,
+          f.fecha::text AS feriado_fecha,
+          COALESCE((
+            SELECT fp.monto FROM nomina_feriado_pago fp
+            WHERE fp.employee_id = ec.employee_id
+              AND fp.periodo_desde = $1::date AND fp.periodo_hasta = $2::date
+              AND fp.feriado_fecha = f.fecha
+          ), 0) AS monto
+        FROM nomina_feriados f
+        JOIN trabajaron t ON t.feriado_fecha = f.fecha
+        JOIN emp_cliente ec ON ec.employee_id = t.employee_id
+        WHERE f.activo = TRUE
+          AND f.fecha BETWEEN $1::date AND $2::date
+          AND (f.cliente_nombre IS NULL OR f.cliente_nombre = ec.cliente)
+        GROUP BY ec.employee_id, ec.nombre_completo, ec.cliente, f.fecha
+        ORDER BY ec.cliente NULLS LAST, ec.nombre_completo, f.fecha
+      `, [desde, hasta, fechasFeriado]);
+      colaboradores = rows;
+    }
+
+    res.json({
+      periodo_cerrado: await periodoCerrado(desde, hasta),
+      feriados,
+      colaboradores,
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /nomina/pre-planilla/feriados error");
+    res.status(500).json({ error: "Error al obtener feriados del período" });
+  }
+});
+
+// ─── PUT /api/nomina/pre-planilla/feriados/pago ───────────────────────────────
+// Asigna/edita el monto de un colaborador para un feriado del período.
+prePlanillaRouter.put("/nomina/pre-planilla/feriados/pago", async (req, res) => {
+  const { desde, hasta, employee_id, feriado_fecha, monto, editadoPor } = req.body ?? {};
+  const empId = parseInt(String(employee_id));
+  const montoNum = Number(monto);
+  if (!desde || !hasta || isNaN(empId) || !feriado_fecha || !Number.isFinite(montoNum)) {
+    return res.status(400).json({ error: "desde, hasta, employee_id, feriado_fecha y monto son requeridos" });
+  }
+  if (montoNum < 0) {
+    return res.status(400).json({ error: "El monto no puede ser negativo" });
+  }
+  try {
+    if (await periodoCerrado(desde, hasta)) {
+      return res.status(409).json({ error: "El período está cerrado. No se pueden editar feriados." });
+    }
+    // El feriado debe estar activo, en el período y aplicar a ESTE empleado:
+    // nacional (cliente NULL) o local cuyo cliente coincide con el del puesto
+    // titular vigente del colaborador. Evita pagos invisibles por feriados de
+    // otro cliente.
+    const { rows: feriadoOk } = await pool.query(`
+      SELECT 1 FROM nomina_feriados nf
+      WHERE nf.activo = TRUE AND nf.fecha = $1::date
+        AND nf.fecha BETWEEN $2::date AND $3::date
+        AND (
+          nf.cliente_nombre IS NULL
+          OR nf.cliente_nombre = ${clienteEmpleadoSQL("$4", "$2", "$3")}
+        )
+      LIMIT 1
+    `, [feriado_fecha, desde, hasta, empId]);
+    if (feriadoOk.length === 0) {
+      return res.status(400).json({ error: "Ese feriado no aplica a este colaborador en el período." });
+    }
+    await pool.query(`
+      INSERT INTO nomina_feriado_pago
+        (employee_id, periodo_desde, periodo_hasta, feriado_fecha, monto, editado_por, updated_at)
+      VALUES ($1, $2::date, $3::date, $4::date, $5, $6, NOW())
+      ON CONFLICT (employee_id, periodo_desde, periodo_hasta, feriado_fecha)
+      DO UPDATE SET monto = EXCLUDED.monto, editado_por = EXCLUDED.editado_por, updated_at = NOW()
+    `, [empId, desde, hasta, feriado_fecha, montoNum.toFixed(2), editadoPor ?? null]);
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "PUT /nomina/pre-planilla/feriados/pago error");
+    res.status(500).json({ error: "Error al guardar el pago del feriado" });
+  }
+});
+
+// ─── PUT /api/nomina/pre-planilla/feriados/pago-bulk ──────────────────────────
+// Aplica un monto a TODOS los colaboradores de un cliente que trabajaron un
+// feriado del período (atajo: "este cliente paga Q X por este feriado").
+prePlanillaRouter.put("/nomina/pre-planilla/feriados/pago-bulk", async (req, res) => {
+  const { desde, hasta, cliente, feriado_fecha, monto, editadoPor } = req.body ?? {};
+  const montoNum = Number(monto);
+  if (!desde || !hasta || !feriado_fecha || !Number.isFinite(montoNum)) {
+    return res.status(400).json({ error: "desde, hasta, feriado_fecha y monto son requeridos" });
+  }
+  if (montoNum < 0) {
+    return res.status(400).json({ error: "El monto no puede ser negativo" });
+  }
+  try {
+    if (await periodoCerrado(desde, hasta)) {
+      return res.status(409).json({ error: "El período está cerrado. No se pueden editar feriados." });
+    }
+    // El feriado debe existir, estar activo, caer en el período y aplicar a ese
+    // cliente (nacional = aplica a todos; local = debe coincidir el cliente).
+    const { rows: feriadoOk } = await pool.query(`
+      SELECT 1 FROM nomina_feriados
+      WHERE activo = TRUE AND fecha = $1::date
+        AND fecha BETWEEN $2::date AND $3::date
+        AND (cliente_nombre IS NULL OR cliente_nombre = $4::text)
+      LIMIT 1
+    `, [feriado_fecha, desde, hasta, cliente ?? null]);
+    if (feriadoOk.length === 0) {
+      return res.status(400).json({ error: "Ese feriado no aplica al cliente/período indicado." });
+    }
+    // Empleados que trabajaron ese feriado, filtrados por cliente (NULL = todos).
+    // El cliente se resuelve igual que el consolidado (histórico + fallback).
+    const { rows: empleados } = await pool.query(`
+      SELECT DISTINCT n.employee_id
+      FROM novedades_nomina_diarias n
+      JOIN employees e ON e.id = n.employee_id
+      WHERE n.trabajo_dia = TRUE
+        AND n.fecha = $3::date
+        AND (e.fecha_baja IS NULL OR e.fecha_baja >= $1::date)
+        AND (
+          $4::text IS NULL
+          OR ${clienteEmpleadoSQL("e.id", "$1", "$2")} = $4::text
+        )
+    `, [desde, hasta, feriado_fecha, cliente ?? null]);
+
+    let aplicados = 0;
+    for (const row of empleados) {
+      await pool.query(`
+        INSERT INTO nomina_feriado_pago
+          (employee_id, periodo_desde, periodo_hasta, feriado_fecha, monto, editado_por, updated_at)
+        VALUES ($1, $2::date, $3::date, $4::date, $5, $6, NOW())
+        ON CONFLICT (employee_id, periodo_desde, periodo_hasta, feriado_fecha)
+        DO UPDATE SET monto = EXCLUDED.monto, editado_por = EXCLUDED.editado_por, updated_at = NOW()
+      `, [row.employee_id, desde, hasta, feriado_fecha, montoNum.toFixed(2), editadoPor ?? null]);
+      aplicados++;
+    }
+    res.json({ ok: true, aplicados });
+  } catch (err) {
+    logger.error({ err }, "PUT /nomina/pre-planilla/feriados/pago-bulk error");
+    res.status(500).json({ error: "Error al aplicar el pago por cliente" });
+  }
+});
+
+// ─── POST /api/nomina/pre-planilla/feriados ───────────────────────────────────
+// Agrega un feriado local (Semana Santa, feria del municipio, etc.).
+prePlanillaRouter.post("/nomina/pre-planilla/feriados", async (req, res) => {
+  const { fecha, nombre, cliente_nombre, createdPor, desde, hasta } = req.body ?? {};
+  if (!fecha || !nombre || !String(nombre).trim()) {
+    return res.status(400).json({ error: "fecha y nombre son requeridos" });
+  }
+  if (!desde || !hasta) {
+    return res.status(400).json({ error: "desde y hasta son requeridos (período de la quincena)" });
+  }
+  try {
+    if (await periodoCerrado(desde, hasta)) {
+      return res.status(409).json({ error: "El período está cerrado. No se pueden agregar feriados." });
+    }
+    const { rows } = await pool.query(`
+      INSERT INTO nomina_feriados (fecha, nombre, tipo, cliente_nombre, created_por)
+      VALUES ($1::date, $2, 'local', $3, $4)
+      ON CONFLICT (fecha, nombre, COALESCE(cliente_nombre, ''))
+      DO UPDATE SET activo = TRUE
+      RETURNING id, fecha::text AS fecha, nombre, tipo, cliente_nombre
+    `, [fecha, String(nombre).trim(), cliente_nombre ?? null, createdPor ?? null]);
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "POST /nomina/pre-planilla/feriados error");
+    res.status(500).json({ error: "Error al agregar el feriado" });
+  }
+});
+
+// ─── DELETE /api/nomina/pre-planilla/feriados/:id ─────────────────────────────
+// Desactiva un feriado (soft delete). El re-seed no lo reactiva (ON CONFLICT
+// DO NOTHING), así que también sirve para ocultar un feriado nacional que no
+// aplique. No borra los pagos ya asignados a colaboradores.
+prePlanillaRouter.delete("/nomina/pre-planilla/feriados/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+  const { desde, hasta } = req.query as Record<string, string>;
+  if (isNaN(id)) {
+    return res.status(400).json({ error: "id inválido" });
+  }
+  if (!desde || !hasta) {
+    return res.status(400).json({ error: "desde y hasta son requeridos (período de la quincena)" });
+  }
+  try {
+    if (await periodoCerrado(desde, hasta)) {
+      return res.status(409).json({ error: "El período está cerrado. No se pueden quitar feriados." });
+    }
+    const { rowCount } = await pool.query(
+      `UPDATE nomina_feriados SET activo = FALSE WHERE id = $1`,
+      [id]
+    );
+    if (rowCount === 0) {
+      return res.status(404).json({ error: "Feriado no encontrado" });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "DELETE /nomina/pre-planilla/feriados/:id error");
+    res.status(500).json({ error: "Error al desactivar el feriado" });
+  }
+});
+
 // ─── GET /api/nomina/pre-planilla/cierres ─────────────────────────────────────
 prePlanillaRouter.get("/nomina/pre-planilla/cierres", async (req, res) => {
   try {
@@ -845,6 +1168,7 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
         frecuenciaPago:   String(row.frecuencia_pago ?? "quincenal"),
         quincenaTipo,
         septimosPerdidos: toInt(row.septimos_perdidos),
+        pagoFeriados:     toNum(row.pago_feriados),
       });
       // Redondear por línea antes de acumular (igual que planilla.ts) → convergencia exacta
       totalEstimado += parseFloat(Math.max(0, totalBruto - anticipo - amonestaciones).toFixed(2));

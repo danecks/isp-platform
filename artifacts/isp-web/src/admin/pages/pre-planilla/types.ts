@@ -67,6 +67,7 @@ export interface ColaboradorPre {
   dias_vacaciones: number | string | null;
   dias_incapacidad: number | string | null;
   dias_permiso_con_goce: number | string | null;
+  pago_feriados: number | string | null;
 }
 
 export interface DetalleNovedad {
@@ -183,7 +184,29 @@ export interface AnexoCobertura {
   cliente_nombre: string | null;
 }
 
-export type Tab = "resumen" | "horas_extra" | "faltas" | "anticipos" | "coberturas";
+export type Tab = "resumen" | "horas_extra" | "faltas" | "anticipos" | "coberturas" | "feriados";
+
+export interface FeriadoPeriodo {
+  id: number;
+  fecha: string;
+  nombre: string;
+  tipo: "nacional" | "local";
+  cliente_nombre: string | null;
+}
+
+export interface FeriadoColaborador {
+  employee_id: number;
+  nombre_completo: string;
+  cliente: string | null;
+  feriado_fecha: string;
+  monto: number | string;
+}
+
+export interface FeriadosResponse {
+  periodo_cerrado: boolean;
+  feriados: FeriadoPeriodo[];
+  colaboradores: FeriadoColaborador[];
+}
 
 export interface Validacion {
   periodo_cerrado: boolean;

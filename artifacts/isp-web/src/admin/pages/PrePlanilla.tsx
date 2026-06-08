@@ -49,6 +49,7 @@ import { AnexoHorasExtra } from "./pre-planilla/AnexoHorasExtra";
 import { AnexoFaltas } from "./pre-planilla/AnexoFaltas";
 import { AnexoAnticipos } from "./pre-planilla/AnexoAnticipos";
 import { AnexoCoberturas } from "./pre-planilla/AnexoCoberturas";
+import { FeriadosTrabajados } from "./pre-planilla/FeriadosTrabajados";
 import type { ColaboradorPre, Tab, Validacion } from "./pre-planilla/types";
 
 export default function PrePlanilla() {
@@ -267,6 +268,7 @@ export default function PrePlanilla() {
     { id: "faltas",      label: "Faltas / Susp.",    icon: AlertTriangle, badge: badgeFaltas },
     { id: "anticipos",   label: "Anticipos",         icon: CreditCard, badge: badgeAnt },
     { id: "coberturas",  label: "Coberturas",        icon: Repeat2, badge: badgeCob },
+    { id: "feriados",    label: "Feriados trab.",    icon: Calendar },
   ];
 
   return (
@@ -880,6 +882,8 @@ export default function PrePlanilla() {
 
               {/* ── Tab: Coberturas ──────────────────────────────────────── */}
               {activeTab === "coberturas" && <AnexoCoberturas desde={desde} hasta={hasta} />}
+
+              {activeTab === "feriados" && <FeriadosTrabajados desde={desde} hasta={hasta} />}
             </div>
 
             {/* ── Nota informativa ──────────────────────────────────────── */}

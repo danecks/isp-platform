@@ -113,15 +113,16 @@ export function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: num
   const totalBonifProy = bonIncentivoProy + bon1Proy + bon2Proy + bon3Proy;
 
   const amonestaciones = Number(col.amonestaciones_monto ?? 0);
+  const pagoFeriados = Math.max(safeNum(col.pago_feriados, 0), 0);
 
-  const total = sueldoPeriodo + totalBonifProy + valorHE
+  const total = sueldoPeriodo + totalBonifProy + valorHE + pagoFeriados
               - descFaltas - anticipo - cuotaUniforme - barracaMonto - seguroMonto
               - amonestaciones - igssLaboral - isrQuincenal;
 
   const diasCerrados = Number(col.dias_cerrados ?? 0);
   const sueldoReal = sueldoDia * diasCerrados;
   const igssLaboralReal = col.aplica_igss ? Math.round((sueldoReal - descFaltas) * 0.0483 * 100) / 100 : 0;
-  const totalReal = sueldoReal + totalBonifReal + valorHE
+  const totalReal = sueldoReal + totalBonifReal + valorHE + pagoFeriados
                   - descFaltas - anticipo - cuotaUniforme - barracaMonto - seguroMonto
                   - amonestaciones - igssLaboralReal - isrQuincenal;
 
@@ -130,7 +131,7 @@ export function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: num
     igssLaboral, igssLaboralReal, isrQuincenal, total, diasDesc, diasCerrados, sueldoReal, totalReal,
     bonIncentivoReal, bon1Real, bon2Real, bon3Real, totalBonifReal, diasTrabReal,
     bonIncentivoProy, bon1Proy, bon2Proy, bon3Proy, totalBonifProy, diasTrabProy,
-    amonestaciones,
+    amonestaciones, pagoFeriados,
   };
 }
 

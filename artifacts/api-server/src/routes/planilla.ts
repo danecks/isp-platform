@@ -94,6 +94,8 @@ function calcularLinea(
   const tarifaConf = tarifasHE?.get(jornada) ?? tarifasHE?.get("12h");
   const turnosHECount = tarifaConf && he > 0 ? he / (tarifaConf.horas_turno || 12) : undefined;
 
+  const pagoFeriados = toNum(row.pago_feriados);
+
   const bruto = calcularBruto({
     sueldoBase:       sb,
     horasContrato:    hc,
@@ -106,6 +108,7 @@ function calcularLinea(
     septimosPerdidos: septimos,
     tarifaFijaTurnoHE: tarifaConf?.tarifa ?? null,
     turnosHE:         turnosHECount ?? null,
+    pagoFeriados,
   });
 
   // IGSS Guatemala (Acuerdo 1118 IGSS):
@@ -184,6 +187,7 @@ function calcularLinea(
     desc_faltas:      parseFloat(bruto.descFaltas.toFixed(2)),
     desc_septimo:     parseFloat(bruto.descSeptimo.toFixed(2)),
     valor_he:         parseFloat(bruto.valorHE.toFixed(2)),
+    pago_feriados:    parseFloat(bruto.pagoFeriados.toFixed(2)),
     total_bruto:      totalBrutoRnd,
     anticipos:        parseFloat(anticipo.toFixed(2)),
     igss_trabajador:  igssT,
@@ -412,6 +416,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         total_desc_faltas:            acc.total_desc_faltas            + l.desc_faltas,
         total_desc_septimo:           acc.total_desc_septimo           + l.desc_septimo,
         total_valor_he:               acc.total_valor_he               + l.valor_he,
+        total_pago_feriados:          acc.total_pago_feriados          + l.pago_feriados,
         total_bruto:                  acc.total_bruto                  + l.total_bruto,
         total_igss_trabajador:        acc.total_igss_trabajador        + l.igss_trabajador,
         total_igss_patronal:          acc.total_igss_patronal          + l.igss_patronal,
@@ -426,7 +431,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
       }),
       {
         total_sueldo_periodo: 0, total_desc_faltas: 0, total_desc_septimo: 0,
-        total_valor_he: 0, total_bruto: 0,
+        total_valor_he: 0, total_pago_feriados: 0, total_bruto: 0,
         total_igss_trabajador: 0, total_igss_patronal: 0, total_isr: 0,
         total_bonificacion_incentivo: 0, total_bonificacion_1: 0, total_bonificacion_2: 0, total_bonificacion_3: 0,
         total_anticipos: 0, total_descuento_seguro_vida: 0, total_neto: 0,
@@ -512,7 +517,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
           (planilla_id, employee_id, nombre_completo, dpi, puesto, sede, cliente,
            tipo_jornada, horas_contrato, frecuencia_pago, sueldo_base, periodo_dias,
            dias_trabajados, faltas, suspensiones, horas_trabajadas, horas_extra,
-           sueldo_periodo, desc_faltas, desc_septimo, valor_he, total_bruto, anticipos,
+           sueldo_periodo, desc_faltas, desc_septimo, valor_he, pago_feriados, total_bruto, anticipos,
            aplica_igss, motivo_exclusion_igss,
            igss_trabajador, igss_patronal, isr, bonificacion_incentivo,
            bonificacion_1, bonificacion_2, bonificacion_3,
@@ -521,13 +526,13 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
            revision_estado, observaciones_rrhh,
            descuentos_uniforme, uniforme_cuota_ids,
            descuento_barraca, descuento_seguro_vida)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44)
       `, [
         planillaId, l.employee_id, l.nombre_completo, l.dpi, l.puesto, l.sede, l.cliente,
         l.tipo_jornada, l.horas_contrato, l.frecuencia_pago, l.sueldo_base, l.periodo_dias,
         l.dias_trabajados, l.faltas, l.suspensiones,
         l.horas_trabajadas, l.horas_extra,
-        l.sueldo_periodo, l.desc_faltas, l.desc_septimo, l.valor_he, l.total_bruto, l.anticipos,
+        l.sueldo_periodo, l.desc_faltas, l.desc_septimo, l.valor_he, l.pago_feriados, l.total_bruto, l.anticipos,
         l.aplica_igss, l.motivo_exclusion_igss,
         l.igss_trabajador, l.igss_patronal, l.isr, l.bonificacion_incentivo,
         l.bonificacion_1, l.bonificacion_2, l.bonificacion_3,

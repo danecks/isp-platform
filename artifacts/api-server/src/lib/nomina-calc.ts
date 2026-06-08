@@ -53,6 +53,12 @@ export interface BrutoParams {
    * Si no se proporciona, se calcula como horasExtra / horasDelTurno.
    */
   turnosHE?: number | null;
+  /**
+   * Pago por feriados/asuetos nacionales trabajados en el período.
+   * Concepto aparte que suma al bruto (default 0). Lo asigna el encargado de
+   * nómina por colaborador en la pre-planilla mientras la quincena está abierta.
+   */
+  pagoFeriados?: number;
 }
 
 export interface BrutoResult {
@@ -62,6 +68,7 @@ export interface BrutoResult {
   descFaltas: number;
   descSeptimo: number;
   valorHE: number;
+  pagoFeriados: number;
   totalBruto: number;
 }
 
@@ -117,9 +124,10 @@ export function calcularBruto(p: BrutoParams): BrutoResult {
         ? p.tarifaFijaTurnoHE * (p.turnosHE ?? p.horasExtra)
         : (sueldoDia / horasDia) * 1.5 * p.horasExtra)
     : 0;
-  const totalBruto    = Math.max(0, sueldoPeriodo - descFaltas - descSeptimo + valorHE);
+  const pagoFeriados  = Math.max(0, p.pagoFeriados ?? 0);
+  const totalBruto    = Math.max(0, sueldoPeriodo - descFaltas - descSeptimo + valorHE + pagoFeriados);
 
-  return { sueldoDia, horasDia, sueldoPeriodo, descFaltas, descSeptimo, valorHE, totalBruto };
+  return { sueldoDia, horasDia, sueldoPeriodo, descFaltas, descSeptimo, valorHE, pagoFeriados, totalBruto };
 }
 
 // ─── Parámetros para bonificación incentivo ──────────────────────────────────

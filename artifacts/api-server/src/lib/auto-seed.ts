@@ -2386,6 +2386,107 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: PLAN-02 planilla_lineas — error (no bloqueante)");
   }
 
+  // ── FER-01: catálogo de feriados/asuetos (nacionales fijos + locales) ─────────
+  // Los feriados nacionales fijos de Guatemala se precargan (seed FER-03). El
+  // encargado de nómina puede agregar feriados locales (Semana Santa, ferias del
+  // municipio) por cliente o globales. Si pone activo=FALSE no se reactiva en el
+  // re-seed (ON CONFLICT DO NOTHING en FER-03).
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS nomina_feriados (
+        id             SERIAL PRIMARY KEY,
+        fecha          DATE          NOT NULL,
+        nombre         VARCHAR(120)  NOT NULL,
+        tipo           VARCHAR(20)   NOT NULL DEFAULT 'nacional',  -- 'nacional' | 'local'
+        cliente_nombre VARCHAR(200),  -- solo feriados locales acotados a un cliente (NULL = aplica a todos)
+        activo         BOOLEAN       NOT NULL DEFAULT TRUE,
+        created_por    VARCHAR(100),
+        created_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS nomina_feriados_fecha_idx ON nomina_feriados(fecha)`);
+    // Unicidad por (fecha, nombre, cliente): un mismo feriado local puede existir
+    // para varios clientes (p.ej. "Feria patronal" en municipios distintos), y a la
+    // vez evita duplicar el feriado nacional (cliente NULL → COALESCE '').
+    await pool.query(`ALTER TABLE nomina_feriados DROP CONSTRAINT IF EXISTS nomina_feriados_fecha_nombre_key`);
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS nomina_feriados_fecha_nombre_cliente_uq
+      ON nomina_feriados (fecha, nombre, COALESCE(cliente_nombre, ''))
+    `);
+    logger.info("Auto-migrate: FER-01 tabla nomina_feriados verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: FER-01 — error (no bloqueante)");
+  }
+
+  // ── FER-02: pago por feriado trabajado, por colaborador y período ─────────────
+  // Monto que se paga a un colaborador por trabajar un feriado dentro de una
+  // quincena. Default Q0, editable mientras la quincena esté abierta. La clave
+  // única evita duplicar (mismo empleado / mismo feriado / mismo período).
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS nomina_feriado_pago (
+        id             SERIAL PRIMARY KEY,
+        employee_id    INTEGER       NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        periodo_desde  DATE          NOT NULL,
+        periodo_hasta  DATE          NOT NULL,
+        feriado_fecha  DATE          NOT NULL,
+        monto          NUMERIC(12,2) NOT NULL DEFAULT 0,
+        editado_por    VARCHAR(100),
+        updated_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        UNIQUE(employee_id, periodo_desde, periodo_hasta, feriado_fecha)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS nomina_feriado_pago_periodo_idx ON nomina_feriado_pago(periodo_desde, periodo_hasta)`);
+    logger.info("Auto-migrate: FER-02 tabla nomina_feriado_pago verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: FER-02 — error (no bloqueante)");
+  }
+
+  // ── FER-03: seed de feriados nacionales fijos de Guatemala ────────────────────
+  // Fechas fijas por ley (no Semana Santa, que es variable y la agrega el
+  // encargado). Se siembran varios años hacia adelante. ON CONFLICT DO NOTHING
+  // para no pisar lo que el encargado haya desactivado.
+  try {
+    const feriadosFijos: { md: string; nombre: string }[] = [
+      { md: "01-01", nombre: "Año Nuevo" },
+      { md: "05-01", nombre: "Día del Trabajo" },
+      { md: "06-30", nombre: "Día del Ejército" },
+      { md: "09-15", nombre: "Día de la Independencia" },
+      { md: "10-20", nombre: "Día de la Revolución" },
+      { md: "11-01", nombre: "Día de Todos los Santos" },
+      { md: "12-24", nombre: "Nochebuena" },
+      { md: "12-25", nombre: "Navidad" },
+      { md: "12-31", nombre: "Fin de Año" },
+    ];
+    const anioActual = new Date().getFullYear();
+    const anios = [anioActual, anioActual + 1, anioActual + 2];
+    const values: string[] = [];
+    const params: unknown[] = [];
+    let i = 1;
+    for (const anio of anios) {
+      for (const f of feriadosFijos) {
+        values.push(`($${i++}::date, $${i++}, 'nacional')`);
+        params.push(`${anio}-${f.md}`, f.nombre);
+      }
+    }
+    await pool.query(
+      `INSERT INTO nomina_feriados (fecha, nombre, tipo) VALUES ${values.join(", ")}
+       ON CONFLICT (fecha, nombre, COALESCE(cliente_nombre, '')) DO NOTHING`,
+      params
+    );
+    logger.info("Auto-migrate: FER-03 seed feriados nacionales GT verificado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: FER-03 — error (no bloqueante)");
+  }
+
+  // ── FER-04: pago_feriados en planilla_lineas (línea separada, congelada) ──────
+  try {
+    await pool.query(`ALTER TABLE planilla_lineas ADD COLUMN IF NOT EXISTS pago_feriados NUMERIC(10,2) NOT NULL DEFAULT 0`);
+    logger.info("Auto-migrate: FER-04 pago_feriados en planilla_lineas verificado/creado");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: FER-04 — error (no bloqueante)");
+  }
+
   // ── FREQ-01: frecuencia_pago en employees ────────────────────────────────────
   try {
     await pool.query(`
