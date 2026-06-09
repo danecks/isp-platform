@@ -647,12 +647,13 @@ export function DetalleModal({
                     );
                   })()}
 
-                  {/* Incentivos cash */}
-                  {(data?.incentivos?.length ?? 0) > 0 && (
+                  {/* Incentivos cash — las HE pagadas en efectivo (tipo 'he_efectivo')
+                      NO se muestran aquí: van al reporte "Reportes → HE en Efectivo". */}
+                  {(data?.incentivos?.filter((i) => i.tipo !== "he_efectivo").length ?? 0) > 0 && (
                     <div>
                       <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Incentivos Cash del período</p>
                       <div className="space-y-1.5">
-                        {data!.incentivos.map((inc) => {
+                        {data!.incentivos.filter((inc) => inc.tipo !== "he_efectivo").map((inc) => {
                           const tipoLabel: Record<string, string> = {
                             relevo_cash: "Relevo Cash", bono_cobertura: "Bono Cobertura", motivacion_cobertura: "Motivación",
                           };
@@ -707,7 +708,7 @@ export function DetalleModal({
                     </div>
                   )}
 
-                  {(data?.incentivos?.length ?? 0) === 0 && (
+                  {(data?.incentivos?.filter((i) => i.tipo !== "he_efectivo").length ?? 0) === 0 && (
                     <div>
                       <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Incentivos Cash</p>
                       <p className="text-white/25 text-sm">Sin incentivos cash en este período.</p>

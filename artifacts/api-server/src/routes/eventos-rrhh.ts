@@ -1019,26 +1019,57 @@ eventosRrhhRouter.patch("/rrhh/horas-extra/:novedadId/cash", async (req, res) =>
 });
 
 // ─── GET /api/rrhh/horas-extra-cash ──────────────────────────────────────────
+// Reporte unificado de HE pagadas en efectivo. Junta DOS fuentes:
+//  1) Pizarrón/cobertura → incentivos_cash_cobertura (tipo='he_efectivo'): tiene MONTO en Q.
+//  2) Anexo de HE → novedades_nomina_diarias (horas_extra_estado='pagado_efectivo'): tiene HORAS.
+// Por eso cada fila trae `monto` y/o `horas_extra` (uno puede venir nulo) y un `origen`.
 eventosRrhhRouter.get("/rrhh/horas-extra-cash", async (req, res) => {
   try {
     const { desde, hasta } = req.query as Record<string, string>;
-    const whereDate = desde && hasta
-      ? `AND n.fecha BETWEEN $1 AND $2`
-      : "";
-    const params = desde && hasta ? [desde, hasta] : [];
+    const filtra = Boolean(desde && hasta);
+    const whereNov = filtra ? `AND n.fecha BETWEEN $1 AND $2` : "";
+    const whereInc = filtra ? `AND ic.fecha BETWEEN $3 AND $4` : "";
+    const params = filtra ? [desde, hasta, desde, hasta] : [];
 
     const { rows } = await pool.query(`
-      SELECT n.id, n.fecha, n.employee_id, n.empleado_nombre,
-             n.horas_extra, n.horas_extra_aprobadas_por, n.horas_extra_aprobadas_at,
-             n.puesto_titular_nombre, n.puesto_cubierto_nombre,
-             e.sueldo_base, e.horas_contrato,
-             er.cantidad_horas AS evento_horas, er.cliente_nombre, er.puesto_nombre AS evento_puesto
-      FROM novedades_nomina_diarias n
-      LEFT JOIN employees e ON e.id = n.employee_id
-      LEFT JOIN eventos_rrhh er ON er.id = n.evento_rrhh_id
-      WHERE n.horas_extra_estado = 'pagado_efectivo'
-        ${whereDate}
-      ORDER BY n.fecha DESC, n.empleado_nombre
+      SELECT * FROM (
+        SELECT
+          ('nov-' || n.id)                       AS id,
+          'anexo'                                AS origen,
+          n.fecha,
+          n.employee_id,
+          n.empleado_nombre,
+          n.horas_extra::numeric                 AS horas_extra,
+          NULL::numeric                          AS monto,
+          n.horas_extra_aprobadas_por            AS pagado_por,
+          n.horas_extra_aprobadas_at             AS fecha_pago,
+          COALESCE(er.puesto_nombre, n.puesto_cubierto_nombre, n.puesto_titular_nombre) AS puesto_nombre,
+          er.cliente_nombre
+        FROM novedades_nomina_diarias n
+        LEFT JOIN eventos_rrhh er ON er.id = n.evento_rrhh_id
+        WHERE n.horas_extra_estado = 'pagado_efectivo'
+          ${whereNov}
+
+        UNION ALL
+
+        SELECT
+          ('inc-' || ic.id)                      AS id,
+          'pizarron'                             AS origen,
+          ic.fecha,
+          ic.employee_id,
+          ic.employee_nombre                     AS empleado_nombre,
+          NULL::numeric                          AS horas_extra,
+          ic.monto::numeric                      AS monto,
+          COALESCE(ic.pagado_por, ic.autorizado_por) AS pagado_por,
+          ic.created_at                          AS fecha_pago,
+          ic.puesto_nombre,
+          ic.cliente_nombre
+        FROM incentivos_cash_cobertura ic
+        WHERE ic.tipo = 'he_efectivo'
+          AND ic.estado <> 'cancelado'
+          ${whereInc}
+      ) u
+      ORDER BY u.fecha DESC, u.empleado_nombre
     `, params);
 
     res.json(rows);

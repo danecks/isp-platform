@@ -1037,18 +1037,23 @@ function ReporteHorasExtraCash({ nombre }: { nombre: string }) {
   useEffect(() => { cargar(); }, [cargar]);
 
   const totalHoras = rows.reduce((s, r) => s + (Number(r.horas_extra) || 0), 0);
-  const fmtHoras = (n: unknown) => `${(Number(n) || 0).toLocaleString("es-GT", { maximumFractionDigits: 1 })} h`;
+  const totalMonto = rows.reduce((s, r) => s + (Number(r.monto) || 0), 0);
+  const fmtHoras = (n: unknown) => n == null || n === "" ? "—" : `${(Number(n) || 0).toLocaleString("es-GT", { maximumFractionDigits: 1 })} h`;
+  const fmtQ = (n: unknown) => n == null || n === "" ? "—" : `Q ${(Number(n) || 0).toLocaleString("es-GT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const origenLabel = (o: string) => o === "pizarron" ? "Pizarrón" : o === "anexo" ? "Anexo HE" : (o ?? "—");
   const puestoCliente = (r: any) => {
-    const puesto = r.evento_puesto || r.puesto_cubierto_nombre || r.puesto_titular_nombre || "—";
+    const puesto = r.puesto_nombre || r.evento_puesto || r.puesto_cubierto_nombre || r.puesto_titular_nombre || "—";
     return r.cliente_nombre ? `${puesto} — ${r.cliente_nombre}` : puesto;
   };
 
   const exportCsv = () => IspPdf.exportCsv(
-    ["Fecha", "Colaborador", "Puesto / Cliente", "Horas Extra", "Aprobado por", "Fecha de pago"],
+    ["Fecha", "Colaborador", "Puesto / Cliente", "Origen", "Horas Extra", "Monto (Q)", "Pagado por", "Fecha de pago"],
     rows.map((r) => [
-      fmtFecha(r.fecha), r.empleado_nombre ?? "", puestoCliente(r),
-      Number(r.horas_extra) || 0, r.horas_extra_aprobadas_por ?? "",
-      r.horas_extra_aprobadas_at ? fmtFecha(r.horas_extra_aprobadas_at) : "",
+      fmtFecha(r.fecha), r.empleado_nombre ?? "", puestoCliente(r), origenLabel(r.origen),
+      r.horas_extra != null ? Number(r.horas_extra) : "",
+      r.monto != null ? Number(r.monto) : "",
+      r.pagado_por ?? "",
+      r.fecha_pago ? fmtFecha(r.fecha_pago) : "",
     ]),
     `he-efectivo-${desde}_a_${hasta}.csv`,
   );
@@ -1061,15 +1066,16 @@ function ReporteHorasExtraCash({ nombre }: { nombre: string }) {
     }).build();
     pdf.addResumenCards([
       { label: "Registros", valor: rows.length, color: "blue" },
-      { label: "Total horas extra", valor: fmtHoras(totalHoras), color: "gold" },
+      { label: "Total pagado", valor: fmtQ(totalMonto), color: "green" },
+      { label: "Total horas extra", valor: `${totalHoras.toLocaleString("es-GT", { maximumFractionDigits: 1 })} h`, color: "yellow" },
     ]);
     pdf.addSeccionTitulo("DETALLE");
     pdf.addTabla(
-      ["Fecha", "Colaborador", "Puesto / Cliente", "Horas", "Aprobado por", "Fecha pago"],
+      ["Fecha", "Colaborador", "Puesto / Cliente", "Origen", "Horas", "Monto", "Pagado por", "Fecha pago"],
       rows.map((r) => [
-        fmtFecha(r.fecha), r.empleado_nombre ?? "—", puestoCliente(r),
-        fmtHoras(r.horas_extra), r.horas_extra_aprobadas_por ?? "—",
-        r.horas_extra_aprobadas_at ? fmtFecha(r.horas_extra_aprobadas_at) : "—",
+        fmtFecha(r.fecha), r.empleado_nombre ?? "—", puestoCliente(r), origenLabel(r.origen),
+        fmtHoras(r.horas_extra), fmtQ(r.monto), r.pagado_por ?? "—",
+        r.fecha_pago ? fmtFecha(r.fecha_pago) : "—",
       ]),
     );
     pdf.save(`he-efectivo-${desde}_a_${hasta}.pdf`);
@@ -1102,14 +1108,18 @@ function ReporteHorasExtraCash({ nombre }: { nombre: string }) {
       </div>
 
       {/* Resumen */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <div className="bg-[#0c1829] border border-white/5 rounded-xl p-4">
           <p className="text-[10px] text-white/40 uppercase tracking-wider">Registros</p>
           <p className="text-2xl font-bold text-white">{rows.length}</p>
         </div>
         <div className="bg-[#0c1829] border border-white/5 rounded-xl p-4">
+          <p className="text-[10px] text-white/40 uppercase tracking-wider">Total pagado</p>
+          <p className="text-2xl font-bold text-emerald-400">{fmtQ(totalMonto)}</p>
+        </div>
+        <div className="bg-[#0c1829] border border-white/5 rounded-xl p-4">
           <p className="text-[10px] text-white/40 uppercase tracking-wider">Total horas extra</p>
-          <p className="text-2xl font-bold text-emerald-400">{fmtHoras(totalHoras)}</p>
+          <p className="text-2xl font-bold text-amber-400">{totalHoras.toLocaleString("es-GT", { maximumFractionDigits: 1 })} h</p>
         </div>
       </div>
 
@@ -1138,8 +1148,10 @@ function ReporteHorasExtraCash({ nombre }: { nombre: string }) {
                   <th className="text-left font-medium px-3 py-2.5">Fecha</th>
                   <th className="text-left font-medium px-3 py-2.5">Colaborador</th>
                   <th className="text-left font-medium px-3 py-2.5">Puesto / Cliente</th>
+                  <th className="text-left font-medium px-3 py-2.5">Origen</th>
                   <th className="text-right font-medium px-3 py-2.5">Horas extra</th>
-                  <th className="text-left font-medium px-3 py-2.5">Aprobado por</th>
+                  <th className="text-right font-medium px-3 py-2.5">Monto</th>
+                  <th className="text-left font-medium px-3 py-2.5">Pagado por</th>
                   <th className="text-left font-medium px-3 py-2.5">Fecha de pago</th>
                 </tr>
               </thead>
@@ -1149,9 +1161,13 @@ function ReporteHorasExtraCash({ nombre }: { nombre: string }) {
                     <td className="px-3 py-2 text-white/70 whitespace-nowrap">{fmtFecha(r.fecha)}</td>
                     <td className="px-3 py-2 text-white/90 font-medium">{r.empleado_nombre ?? "—"}</td>
                     <td className="px-3 py-2 text-white/50">{puestoCliente(r)}</td>
-                    <td className="px-3 py-2 text-right text-emerald-400 font-semibold whitespace-nowrap">{fmtHoras(r.horas_extra)}</td>
-                    <td className="px-3 py-2 text-white/50">{r.horas_extra_aprobadas_por ?? "—"}</td>
-                    <td className="px-3 py-2 text-white/50 whitespace-nowrap">{r.horas_extra_aprobadas_at ? fmtFecha(r.horas_extra_aprobadas_at) : "—"}</td>
+                    <td className="px-3 py-2">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${r.origen === "pizarron" ? "text-cyan-300 bg-cyan-500/10 border-cyan-500/20" : "text-violet-300 bg-violet-500/10 border-violet-500/20"}`}>{origenLabel(r.origen)}</span>
+                    </td>
+                    <td className="px-3 py-2 text-right text-amber-400 font-semibold whitespace-nowrap">{fmtHoras(r.horas_extra)}</td>
+                    <td className="px-3 py-2 text-right text-emerald-400 font-semibold whitespace-nowrap">{fmtQ(r.monto)}</td>
+                    <td className="px-3 py-2 text-white/50">{r.pagado_por ?? "—"}</td>
+                    <td className="px-3 py-2 text-white/50 whitespace-nowrap">{r.fecha_pago ? fmtFecha(r.fecha_pago) : "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1790,7 +1806,7 @@ export default function Reportes() {
   const [error, setError] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
-    if (tab === "ssa") { setLoading(false); return; }
+    if (tab === "ssa" || tab === "horas-extra-cash") { setLoading(false); return; }
     setLoading(true);
     setError(null);
     setData(null);
