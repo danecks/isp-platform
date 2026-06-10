@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Lock, X, Loader2, AlertOctagon, AlertTriangle, CheckCheck, XCircle, ChevronRight,
+  CalendarClock, RotateCcw,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "./helpers";
@@ -131,6 +132,52 @@ export function CierreModal({
                   Sin errores ni alertas. La pre-planilla está lista para cerrar.
                 </div>
               )}
+            </div>
+          )}
+
+          {validacion && !validacionLoading && (validacion.dias_anticipados_pago?.length ?? 0) > 0 && (
+            <div className="rounded-lg px-4 py-3 border bg-sky-500/8 border-sky-500/25 space-y-2">
+              <div className="flex items-center gap-2">
+                <CalendarClock className="w-4 h-4 text-sky-400" />
+                <span className="text-xs font-semibold text-white/85">
+                  {validacion.dias_anticipados_pago!.length} día{validacion.dias_anticipados_pago!.length !== 1 ? "s" : ""} se pagará{validacion.dias_anticipados_pago!.length !== 1 ? "n" : ""} por adelantado
+                </span>
+              </div>
+              <p className="text-[11px] text-sky-200/70 leading-relaxed">
+                Estos días aún no están cerrados en el pizarrón. Se pagan ahora "de fe"; si algún
+                colaborador falta esos días, el descuento se aplicará automáticamente en la próxima quincena.
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {validacion.dias_anticipados_pago!.map((f) => (
+                  <span key={f} className="text-[10px] font-mono text-sky-200/80 bg-sky-500/10 border border-sky-500/20 rounded px-1.5 py-0.5">
+                    {f}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {validacion && !validacionLoading && (validacion.ajustes_anticipados?.length ?? 0) > 0 && (
+            <div className="rounded-lg px-4 py-3 border bg-purple-500/8 border-purple-500/25 space-y-2">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-4 h-4 text-purple-400" />
+                <span className="text-xs font-semibold text-white/85">
+                  Ajustes por días anticipados de la quincena anterior
+                </span>
+              </div>
+              <p className="text-[11px] text-purple-200/70 leading-relaxed">
+                Se aplicará el descuento (clawback) a quienes faltaron en días que ya se les habían pagado por adelantado.
+              </p>
+              <div className="space-y-1">
+                {validacion.ajustes_anticipados!.map((a) => (
+                  <div key={a.employee_id} className="flex items-center justify-between text-xs">
+                    <span className="text-purple-100/80">{a.nombre_completo}</span>
+                    <span className="font-semibold text-purple-300">
+                      −{a.dias_descuento} día{a.dias_descuento !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

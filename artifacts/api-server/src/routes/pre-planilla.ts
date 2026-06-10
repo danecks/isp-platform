@@ -405,6 +405,122 @@ function detectarQuincena(hasta: string): "primera" | "segunda" {
   return d.getUTCDate() <= 15 ? "primera" : "segunda";
 }
 
+// ─── Días anticipados (pago por adelantado) y su reconciliación ──────────────
+// Un "día anticipado" = día dentro del período que aún NO está cerrado en el
+// pizarrón (cierre_operativo_diario.estado != 'cerrado'): se paga por adelantado
+// al cerrar antes del fin real de la quincena. En la quincena siguiente, si el
+// agente faltó ese día, se descuenta (clawback) usando dias_descuento ya
+// calculado en novedades_nomina_diarias (3d para turno 24h, 2d para 12h).
+
+async function diasNoCerradosEnPeriodo(desde: string, hasta: string): Promise<string[]> {
+  const { rows } = await pool.query(
+    `SELECT d::date::text AS fecha
+       FROM generate_series($1::date, $2::date, '1 day') d
+      WHERE NOT EXISTS (
+        SELECT 1 FROM cierre_operativo_diario cod
+        WHERE cod.fecha = d::date AND cod.estado = 'cerrado'
+      )
+      ORDER BY d`,
+    [desde, hasta]
+  );
+  return rows.map((r) => r.fecha as string);
+}
+
+interface AjusteAnticipadoEmpleado {
+  employee_id: number;
+  nombre_completo: string;
+  dias_descuento: number;
+  detalle: { fecha: string; dias: number }[];
+}
+
+// Registros anticipados pendientes (de cierres previos) cuya fecha YA está
+// cerrada en el pizarrón. Devuelve el descuento por empleado (clawback) y los
+// registros fuente para marcarlos reconciliados al cerrar el período actual.
+async function reconciliarAnticipados(desde: string): Promise<{
+  porEmpleado: Map<number, AjusteAnticipadoEmpleado>;
+  registros: { id: number; fecha: string; periodo_desde: string; periodo_hasta: string }[];
+}> {
+  const { rows: regs } = await pool.query(
+    `SELECT a.id, a.cierre_id, a.fecha::text AS fecha,
+            a.periodo_desde::text AS periodo_desde, a.periodo_hasta::text AS periodo_hasta
+       FROM pre_planilla_dias_anticipados a
+      WHERE a.estado = 'pendiente'
+        AND a.fecha < $1::date
+        AND EXISTS (
+          SELECT 1 FROM cierre_operativo_diario cod
+          WHERE cod.fecha = a.fecha AND cod.estado = 'cerrado'
+        )
+      ORDER BY a.fecha`,
+    [desde]
+  );
+  const porEmpleado = new Map<number, AjusteAnticipadoEmpleado>();
+  if (regs.length === 0) return { porEmpleado, registros: [] };
+
+  // Elegibilidad: el clawback SOLO aplica a quienes realmente fueron pagados "de
+  // fe" en el cierre que adelantó el día. El snapshot del cierre contiene exactos
+  // los empleados pagados (p.ej. excluye mensuales en 1ª quincena). Mapeamos
+  // fecha → conjunto de employee_id elegibles. null = sin restricción (registro
+  // sin cierre/snapshot, comportamiento heredado seguro).
+  const cierreIds = [...new Set(
+    regs.map((r) => r.cierre_id).filter((x: unknown): x is number => x != null)
+  )];
+  const snapByCierre = new Map<number, Set<number>>();
+  if (cierreIds.length > 0) {
+    const { rows: snaps } = await pool.query(
+      `SELECT id, snapshot FROM pre_planilla_cierres WHERE id = ANY($1::int[])`,
+      [cierreIds]
+    );
+    for (const s of snaps) {
+      const ids = new Set<number>();
+      try {
+        const arr = Array.isArray(s.snapshot) ? s.snapshot : JSON.parse(s.snapshot ?? "[]");
+        for (const row of arr) ids.add(Number(row.employee_id));
+      } catch { /* snapshot ilegible → se trata como sin restricción abajo */ }
+      if (ids.size > 0) snapByCierre.set(Number(s.id), ids);
+    }
+  }
+  const fechaElegibles = new Map<string, Set<number> | null>();
+  for (const r of regs) {
+    const elig = r.cierre_id != null ? snapByCierre.get(Number(r.cierre_id)) ?? null : null;
+    const prev = fechaElegibles.get(r.fecha);
+    if (prev === null) continue; // ya es sin restricción
+    if (!elig) { fechaElegibles.set(r.fecha, null); continue; }
+    fechaElegibles.set(r.fecha, prev ? new Set([...prev, ...elig]) : new Set(elig));
+  }
+
+  const fechas = regs.map((r) => r.fecha);
+  const { rows: faltas } = await pool.query(
+    `SELECT n.employee_id, e.nombre_completo, n.fecha::text AS fecha,
+            COALESCE(n.dias_descuento, 1)::numeric AS dias
+       FROM novedades_nomina_diarias n
+       JOIN employees e ON e.id = n.employee_id
+      WHERE n.fecha = ANY($1::date[])
+        AND n.falta = TRUE
+        AND COALESCE(n.impacto_nomina, 'pendiente') != 'rechazado_rrhh'`,
+    [fechas]
+  );
+  for (const f of faltas) {
+    const id = Number(f.employee_id);
+    // Saltar a quien NO fue pagado de fe ese día (no estaba en el snapshot).
+    const elegibles = fechaElegibles.get(f.fecha);
+    if (elegibles && !elegibles.has(id)) continue;
+    const dias = Number(f.dias) || 0;
+    let e = porEmpleado.get(id);
+    if (!e) {
+      e = { employee_id: id, nombre_completo: f.nombre_completo, dias_descuento: 0, detalle: [] };
+      porEmpleado.set(id, e);
+    }
+    e.dias_descuento += dias;
+    e.detalle.push({ fecha: f.fecha, dias });
+  }
+  return {
+    porEmpleado,
+    registros: regs.map((r) => ({
+      id: r.id, fecha: r.fecha, periodo_desde: r.periodo_desde, periodo_hasta: r.periodo_hasta,
+    })),
+  };
+}
+
 // ─── GET /api/nomina/pre-planilla ─────────────────────────────────────────────
 prePlanillaRouter.get("/nomina/pre-planilla", async (req, res) => {
   const { desde, hasta } = req.query as Record<string, string>;
@@ -415,13 +531,22 @@ prePlanillaRouter.get("/nomina/pre-planilla", async (req, res) => {
   try {
     const { rows } = await pool.query(QUERY_CONSOLIDADO, [desde, hasta]);
     const quincena = detectarQuincena(hasta);
+    // Clawback por días anticipados de cierres previos ya confirmados en el pizarrón
+    const { porEmpleado: ajustesAnt } = await reconciliarAnticipados(desde);
 
     // Anotar colaboradores excluidos por frecuencia de pago
     const annotated = rows.map((row) => {
       const freq = row.frecuencia_pago ?? "quincenal";
       const excluido = quincena === "primera" && freq === "mensual";
+      const aj = ajustesAnt.get(Number(row.employee_id));
+      const extraDesc = aj ? aj.dias_descuento : 0;
       return {
         ...row,
+        // El descuento por días anticipados se suma a los días de descuento del
+        // período para que el bruto (calculado en el front) ya lo refleje.
+        total_dias_descuento: toNum(row.total_dias_descuento) + extraDesc,
+        dias_descuento_anticipados: extraDesc,
+        ajuste_anticipado_detalle: aj?.detalle ?? [],
         quincena_tipo: quincena,
         excluido_frecuencia_pago: excluido,
         motivo_exclusion_frecuencia_pago: excluido
@@ -778,14 +903,25 @@ prePlanillaRouter.get("/nomina/pre-planilla/validacion", async (req, res) => {
       [desde, hasta]
     );
 
+    // Días del período que aún NO están cerrados en el pizarrón: se pagarán por
+    // adelantado al cerrar y quedarán pendientes de reconciliar la próxima quincena.
+    const diasAnticipadosPago = await diasNoCerradosEnPeriodo(desde, hasta);
+    // Ajustes (clawback) por días anticipados de cierres previos ya confirmados.
+    const { porEmpleado: ajustesAntMap } = await reconciliarAnticipados(desde);
+    const ajustesAnticipados = Array.from(ajustesAntMap.values());
+
     res.json({
       periodo_cerrado: false,
       errores_criticos: erroresCriticos,
       alertas,
+      dias_anticipados_pago: diasAnticipadosPago,
+      ajustes_anticipados: ajustesAnticipados,
       resumen: {
         total_colaboradores: parseInt(totalRows[0]?.total ?? "0"),
         errores: erroresCriticos.length,
         alertas: alertas.length,
+        dias_anticipados: diasAnticipadosPago.length,
+        ajustes_anticipados: ajustesAnticipados.length,
         puede_cerrar: erroresCriticos.length === 0,
       },
     });
@@ -1187,6 +1323,21 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
       ? allRows.filter(r => (r.frecuencia_pago ?? "quincenal") === "quincenal")
       : allRows;
 
+    // Clawback por días anticipados de cierres previos ya confirmados: se suma a
+    // los días de descuento de cada empleado ANTES de calcular el bruto, y se
+    // congela en el snapshot para que la planilla refleje exactamente lo pagado.
+    const { porEmpleado: ajustesAnt, registros: regsAnt } = await reconciliarAnticipados(desde);
+    const snapshotRowsAdj = snapshotRows.map((r) => {
+      const aj = ajustesAnt.get(Number(r.employee_id));
+      const extra = aj ? aj.dias_descuento : 0;
+      return {
+        ...r,
+        total_dias_descuento: toNum(r.total_dias_descuento) + extra,
+        dias_descuento_anticipados: extra,
+        ajuste_anticipado_detalle: aj?.detalle ?? [],
+      };
+    });
+
     // Período en días del rango
     const d1 = new Date(desde);
     const d2 = new Date(hasta);
@@ -1195,7 +1346,7 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
     // Calcular total estimado usando calcularBruto() de nomina-calc.ts
     // (misma función que usa la planilla final → total_estimado == total_bruto)
     let totalEstimado = 0;
-    for (const row of snapshotRows) {
+    for (const row of snapshotRowsAdj) {
       const anticipo = toNum(row.anticipos_monto);
       const amonestaciones = toNum(row.amonestaciones_monto);
       const { totalBruto } = calcularBruto({
@@ -1215,24 +1366,84 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
       totalEstimado += parseFloat(Math.max(0, totalBruto - anticipo - amonestaciones).toFixed(2));
     }
 
-    // Guardar cierre
-    const { rows: cierreRows } = await pool.query(`
-      INSERT INTO pre_planilla_cierres (periodo_desde, periodo_hasta, cerrado_por, observaciones, snapshot, total_colaboradores, total_estimado)
-      VALUES ($1::date, $2::date, $3, $4, $5::jsonb, $6, $7)
-      RETURNING id, periodo_desde, periodo_hasta, cerrado_por, cerrado_at, total_colaboradores, total_estimado
-    `, [desde, hasta, cerradoPor, observaciones ?? null, JSON.stringify(snapshotRows), snapshotRows.length, totalEstimado.toFixed(2)]);
+    // Guardar cierre + días anticipados + reconciliación en UNA transacción
+    // ACID. Si algo falla a mitad, se revierte todo (evita estado parcial que
+    // duplicaría clawbacks en quincenas siguientes).
+    const diasAnticipados = await diasNoCerradosEnPeriodo(desde, hasta);
+    let cierreRows: any[];
+    const tx = await pool.connect();
+    try {
+      await tx.query("BEGIN");
 
-    // Marcar revisiones como cerradas
-    await pool.query(`
-      UPDATE pre_planilla_revision SET periodo_cerrado = TRUE
-      WHERE periodo_desde = $1::date AND periodo_hasta = $2::date
-    `, [desde, hasta]);
+      const ins = await tx.query(`
+        INSERT INTO pre_planilla_cierres (periodo_desde, periodo_hasta, cerrado_por, observaciones, snapshot, total_colaboradores, total_estimado)
+        VALUES ($1::date, $2::date, $3, $4, $5::jsonb, $6, $7)
+        RETURNING id, periodo_desde, periodo_hasta, cerrado_por, cerrado_at, total_colaboradores, total_estimado
+      `, [desde, hasta, cerradoPor, observaciones ?? null, JSON.stringify(snapshotRowsAdj), snapshotRowsAdj.length, totalEstimado.toFixed(2)]);
+      cierreRows = ins.rows;
+      const cierreId: number = cierreRows[0].id;
 
-    // Registrar en auditoría
-    await pool.query(`
-      INSERT INTO pre_planilla_auditoria (periodo_desde, periodo_hasta, employee_id, accion, usuario, observaciones, metadata)
-      VALUES ($1::date, $2::date, NULL, 'cierre', $3, $4, $5)
-    `, [desde, hasta, cerradoPor, observaciones ?? null, JSON.stringify({ total_colaboradores: snapshotRows.length, total_estimado: totalEstimado.toFixed(2), forzar: !!forzar })]);
+      // ── Días anticipados (pago por adelantado) ─────────────────────────────
+      // 1) Registrar los días de ESTE período que aún no están cerrados en el
+      //    pizarrón: se pagan de fe y quedan pendientes de reconciliar.
+      for (const fecha of diasAnticipados) {
+        await tx.query(
+          `INSERT INTO pre_planilla_dias_anticipados (cierre_id, periodo_desde, periodo_hasta, fecha, estado)
+           VALUES ($1, $2::date, $3::date, $4::date, 'pendiente')
+           ON CONFLICT (periodo_desde, periodo_hasta, fecha)
+           DO UPDATE SET cierre_id = EXCLUDED.cierre_id`,
+          [cierreId, desde, hasta, fecha]
+        );
+      }
+
+      // 2) Marcar como reconciliados los registros anticipados de cierres previos
+      //    cuyo descuento (clawback) ya quedó aplicado en este cierre.
+      if (regsAnt.length > 0) {
+        const perFecha = new Map<string, { dias: number; empleados: Set<number> }>();
+        for (const aj of ajustesAnt.values()) {
+          for (const d of aj.detalle) {
+            let pf = perFecha.get(d.fecha);
+            if (!pf) { pf = { dias: 0, empleados: new Set() }; perFecha.set(d.fecha, pf); }
+            pf.dias += d.dias;
+            pf.empleados.add(aj.employee_id);
+          }
+        }
+        for (const reg of regsAnt) {
+          const pf = perFecha.get(reg.fecha);
+          await tx.query(
+            `UPDATE pre_planilla_dias_anticipados
+                SET estado = 'reconciliado',
+                    reconciliado_periodo_desde = $2::date,
+                    reconciliado_periodo_hasta = $3::date,
+                    reconciliado_cierre_id = $4,
+                    reconciliado_at = NOW(),
+                    dias_descuento_aplicados = $5,
+                    empleados_afectados = $6
+              WHERE id = $1`,
+            [reg.id, desde, hasta, cierreId, pf?.dias ?? 0, pf?.empleados.size ?? 0]
+          );
+        }
+      }
+
+      // Marcar revisiones como cerradas
+      await tx.query(`
+        UPDATE pre_planilla_revision SET periodo_cerrado = TRUE
+        WHERE periodo_desde = $1::date AND periodo_hasta = $2::date
+      `, [desde, hasta]);
+
+      // Registrar en auditoría
+      await tx.query(`
+        INSERT INTO pre_planilla_auditoria (periodo_desde, periodo_hasta, employee_id, accion, usuario, observaciones, metadata)
+        VALUES ($1::date, $2::date, NULL, 'cierre', $3, $4, $5)
+      `, [desde, hasta, cerradoPor, observaciones ?? null, JSON.stringify({ total_colaboradores: snapshotRows.length, total_estimado: totalEstimado.toFixed(2), forzar: !!forzar })]);
+
+      await tx.query("COMMIT");
+    } catch (txErr) {
+      await tx.query("ROLLBACK");
+      throw txErr;
+    } finally {
+      tx.release();
+    }
 
     // ── Auto-provisionar prestaciones al cerrar la pre-planilla ──────────────
     // Operación best-effort: un error no cancela el cierre, sólo se registra.
@@ -1304,6 +1515,8 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
       ...cierreRows[0],
       mensaje: `Pre-planilla del período ${desde} — ${hasta} cerrada correctamente.`,
       provisiones_generadas: provisionResult,
+      dias_anticipados_registrados: diasAnticipados.length,
+      ajustes_anticipados_aplicados: regsAnt.length,
     });
   } catch (err) {
     logger.error({ err }, "POST /nomina/pre-planilla/cierre error");
@@ -1315,21 +1528,60 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
 prePlanillaRouter.post("/nomina/pre-planilla/reabrir", async (req, res) => {
   const { desde, hasta, usuario } = req.body;
   if (!desde || !hasta) return res.status(400).json({ error: "desde y hasta son requeridos" });
+  const tx = await pool.connect();
   try {
-    const { rowCount } = await pool.query(
+    await tx.query("BEGIN");
+    const { rowCount } = await tx.query(
       `UPDATE pre_planilla_cierres SET anulado = TRUE, anulado_por = $3, anulado_at = NOW()
        WHERE periodo_desde = $1::date AND periodo_hasta = $2::date AND anulado = FALSE`,
       [desde, hasta, usuario ?? "admin"]
     );
-    if (!rowCount) return res.status(404).json({ error: "No hay cierre activo para este período" });
-    await pool.query(
+    if (!rowCount) {
+      await tx.query("ROLLBACK");
+      return res.status(404).json({ error: "No hay cierre activo para este período" });
+    }
+    await tx.query(
       `UPDATE pre_planilla_revision SET periodo_cerrado = FALSE
        WHERE periodo_desde = $1::date AND periodo_hasta = $2::date`, [desde, hasta]
     );
+
+    // Revertir el efecto del cierre sobre los días anticipados:
+    const { rows: cierresPeriodo } = await tx.query(
+      `SELECT id FROM pre_planilla_cierres WHERE periodo_desde = $1::date AND periodo_hasta = $2::date`,
+      [desde, hasta]
+    );
+    const cierreIds = cierresPeriodo.map((r) => r.id);
+    if (cierreIds.length > 0) {
+      // 1) Borrar los registros anticipados creados por este período (se vuelven
+      //    a registrar al re-cerrar).
+      await tx.query(
+        `DELETE FROM pre_planilla_dias_anticipados WHERE cierre_id = ANY($1::int[])`,
+        [cierreIds]
+      );
+      // 2) Devolver a 'pendiente' los registros que este período reconcilió, para
+      //    que el clawback se vuelva a aplicar en el próximo cierre.
+      await tx.query(
+        `UPDATE pre_planilla_dias_anticipados
+            SET estado = 'pendiente',
+                reconciliado_periodo_desde = NULL,
+                reconciliado_periodo_hasta = NULL,
+                reconciliado_cierre_id = NULL,
+                reconciliado_at = NULL,
+                dias_descuento_aplicados = 0,
+                empleados_afectados = 0
+          WHERE reconciliado_cierre_id = ANY($1::int[])`,
+        [cierreIds]
+      );
+    }
+
+    await tx.query("COMMIT");
     res.json({ ok: true, mensaje: "Período reabierto correctamente." });
   } catch (err) {
+    await tx.query("ROLLBACK");
     logger.error({ err }, "POST /nomina/pre-planilla/reabrir error");
     res.status(500).json({ error: "Error al reabrir período" });
+  } finally {
+    tx.release();
   }
 });
 
@@ -1511,13 +1763,16 @@ prePlanillaRouter.get("/nomina/pre-planilla/export", async (req, res) => {
 
   try {
     const { rows } = await pool.query(QUERY_CONSOLIDADO, [desde, hasta]);
+    // Clawback por días anticipados de cierres previos ya confirmados.
+    const { porEmpleado: ajustesAnt } = await reconciliarAnticipados(desde);
 
     const BOM = "\uFEFF";
     const headers = [
       "ID", "Nombre Completo", "DPI",
       "Puesto", "Área", "Sede", "Cliente Principal",
       "Sueldo Base (Q)", "Tipo Jornada", "Día Descanso", "Hrs/Semana",
-      "Estado Laboral", "Días Cerrados", "Días Trabajados", "Faltas", "Días Descuento", "Suspensiones",
+      "Estado Laboral", "Días Cerrados", "Días Trabajados", "Faltas",
+      "Descuento Días Ant.", "Días Descuento", "Suspensiones",
       "Descansos Trabajados", "Horas Trabajadas", "Horas Extra", "Relevos",
       "Anticipos (Q)", "# Anticipos",
       "Estado Revisión", "Observaciones RRHH",
@@ -1530,18 +1785,23 @@ prePlanillaRouter.get("/nomina/pre-planilla/export", async (req, res) => {
 
     const lines = [
       headers.map(esc).join(","),
-      ...rows.map((r) => [
-        r.employee_id, r.nombre_completo, r.dpi ?? "",
-        r.puesto_empleado ?? "", r.area ?? "", r.sede ?? "", r.cliente_principal ?? "",
-        r.sueldo_base ?? "", r.tipo_jornada ?? "", r.dia_descanso ?? "", r.horas_contrato ?? "",
-        r.estado_laboral,
-        r.dias_cerrados, r.dias_trabajados, r.faltas, r.total_dias_descuento, r.suspensiones, r.descansos_trabajados,
-        parseFloat(r.horas_trabajadas || 0).toFixed(2),
-        parseFloat(r.horas_extra || 0).toFixed(2),
-        r.relevos,
-        r.anticipos_monto, r.anticipos_count,
-        r.revision_estado, r.revision_observaciones ?? "",
-      ].map(esc).join(",")),
+      ...rows.map((r) => {
+        const aj = ajustesAnt.get(Number(r.employee_id));
+        const extraDesc = aj ? aj.dias_descuento : 0;
+        return [
+          r.employee_id, r.nombre_completo, r.dpi ?? "",
+          r.puesto_empleado ?? "", r.area ?? "", r.sede ?? "", r.cliente_principal ?? "",
+          r.sueldo_base ?? "", r.tipo_jornada ?? "", r.dia_descanso ?? "", r.horas_contrato ?? "",
+          r.estado_laboral,
+          r.dias_cerrados, r.dias_trabajados, r.faltas,
+          extraDesc, toNum(r.total_dias_descuento) + extraDesc, r.suspensiones, r.descansos_trabajados,
+          parseFloat(r.horas_trabajadas || 0).toFixed(2),
+          parseFloat(r.horas_extra || 0).toFixed(2),
+          r.relevos,
+          r.anticipos_monto, r.anticipos_count,
+          r.revision_estado, r.revision_observaciones ?? "",
+        ].map(esc).join(",");
+      }),
     ];
 
     const filename = `pre-planilla_${desde}_${hasta}.csv`;

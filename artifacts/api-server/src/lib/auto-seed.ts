@@ -1937,6 +1937,35 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: P-NOM-09 pre_planilla_cierres — error (no bloqueante)");
   }
 
+  // ── P-NOM-11: tabla pre_planilla_dias_anticipados (pago por adelantado) ───────
+  // Registra los días pagados "por adelantado" al cerrar una quincena antes del
+  // fin real (días aún no cerrados en el pizarrón). Se reconcilian en la quincena
+  // siguiente: si el agente faltó esos días, se descuenta entonces (clawback).
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pre_planilla_dias_anticipados (
+        id                          SERIAL PRIMARY KEY,
+        cierre_id                   INTEGER REFERENCES pre_planilla_cierres(id) ON DELETE CASCADE,
+        periodo_desde               DATE          NOT NULL,
+        periodo_hasta               DATE          NOT NULL,
+        fecha                       DATE          NOT NULL,
+        estado                      VARCHAR(20)   NOT NULL DEFAULT 'pendiente',
+        reconciliado_periodo_desde  DATE,
+        reconciliado_periodo_hasta  DATE,
+        reconciliado_cierre_id      INTEGER,
+        reconciliado_at             TIMESTAMPTZ,
+        dias_descuento_aplicados    NUMERIC(6,2)  NOT NULL DEFAULT 0,
+        empleados_afectados         INTEGER       NOT NULL DEFAULT 0,
+        created_at                  TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        UNIQUE(periodo_desde, periodo_hasta, fecha)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ppda_estado_fecha_idx ON pre_planilla_dias_anticipados(estado, fecha)`);
+    logger.info("Auto-migrate: P-NOM-11 tabla pre_planilla_dias_anticipados verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: P-NOM-11 pre_planilla_dias_anticipados — error (no bloqueante)");
+  }
+
   // ── P-NOM-10: tabla pre_planilla_auditoria (registro de decisiones) ────────────
   try {
     await pool.query(`

@@ -55,6 +55,8 @@ export interface ColaboradorPre {
   quincena_tipo: string | null;
   tipo_personal: string | null;
   total_dias_descuento: number;
+  dias_descuento_anticipados?: number;
+  ajuste_anticipado_detalle?: { fecha: string; dias: number }[];
   barraca_monto: number;
   barraca_nombre: string | null;
   seguro_prima_mensual: number;
@@ -208,6 +210,13 @@ export interface FeriadosResponse {
   colaboradores: FeriadoColaborador[];
 }
 
+export interface AjusteAnticipado {
+  employee_id: number;
+  nombre_completo: string;
+  dias_descuento: number;
+  detalle: { fecha: string; dias: number }[];
+}
+
 export interface Validacion {
   periodo_cerrado: boolean;
   cierre_id?: number;
@@ -215,5 +224,14 @@ export interface Validacion {
   cerrado_at?: string;
   errores_criticos: { tipo: string; mensaje: string; employee_id?: number }[];
   alertas: { tipo: string; mensaje: string; employee_id?: number }[];
-  resumen: { total_colaboradores: number; errores: number; alertas: number; puede_cerrar: boolean };
+  dias_anticipados_pago?: string[];
+  ajustes_anticipados?: AjusteAnticipado[];
+  resumen: {
+    total_colaboradores: number;
+    errores: number;
+    alertas: number;
+    dias_anticipados?: number;
+    ajustes_anticipados?: number;
+    puede_cerrar: boolean;
+  };
 }

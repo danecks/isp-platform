@@ -661,12 +661,19 @@ export default function PrePlanilla() {
                                   {(() => {
                                     const cerr = Number(r.dias_cerrados);
                                     const desc = Number(r.total_dias_descuento ?? 0);
+                                    const ant = Number(r.dias_descuento_anticipados ?? 0);
                                     const pagados = Math.max(cerr - desc, 0);
                                     return <>
                                       <span className={desc > 0 ? "text-amber-400 font-semibold" : "text-green-400 font-semibold"}>{pagados}</span>
                                       <span className="text-white/25 ml-1">/{cerr}d</span>
                                       {periodoTotalDias != null && cerr < periodoTotalDias && (
                                         <p className="text-[9px] text-white/20">de {periodoTotalDias}d</p>
+                                      )}
+                                      {ant > 0 && (
+                                        <p className="text-[9px] text-purple-400/80"
+                                          title={`Descuento por días pagados por adelantado la quincena anterior en los que faltó: ${(r.ajuste_anticipado_detalle ?? []).map(d => `${d.fecha} (−${d.dias})`).join(", ")}`}>
+                                          −{ant}d quinc. ant.
+                                        </p>
                                       )}
                                     </>;
                                   })()}
