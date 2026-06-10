@@ -2,6 +2,7 @@ import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { snakeToCamel, validDate } from "./_helpers";
+import { liberarTitularidadAgente, lockTitularidadAgente } from "../operaciones/_helpers/titularidad";
 
 const router = Router();
 
@@ -276,6 +277,22 @@ router.patch("/employees/:id/estado", async (req, res) => {
         },
         "RRHH: reactivación desde ficha — eventos suspension cerrados/anulados",
       );
+    }
+
+    // ── Caso 3: BAJA manual desde ficha ───────────────────────────────────────
+    // Al marcar baja, liberar al empleado de TODA titularidad/cobertura del
+    // pizarrón (incluye puesto_slots del modelo 24x24) para que su puesto no
+    // quede ocupado por alguien que ya no trabaja. Suspensión/licencia NO
+    // liberan: el agente regresa y conserva su puesto.
+    if (estadoLaboral === "baja" && estadoAnterior !== "baja") {
+      await lockTitularidadAgente(client, Number(id));
+      const lib = await liberarTitularidadAgente(client, Number(id));
+      if (lib.puestos.length || lib.custodias.length) {
+        logger.info(
+          { employeeId: id, puestos: lib.puestos.map((p) => p.id) },
+          "RRHH: baja desde ficha — titularidad liberada (incluye puesto_slots)",
+        );
+      }
     }
 
     // Devolver empleado actualizado

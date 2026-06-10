@@ -19,6 +19,7 @@ import { Router } from "express";
 import { pool } from "@workspace/db";
 import { getSaldoUniformePendiente } from "./uniformes";
 import { getPermisosForUsername } from "../lib/permisos-middleware";
+import { liberarTitularidadAgente, lockTitularidadAgente } from "./operaciones/_helpers/titularidad";
 import {
   calcularAguinaldo,
   calcularBono14,
@@ -838,16 +839,12 @@ prestacionesRouter.post("/prestaciones/liquidaciones", async (req, res) => {
         [fechaEgreso, causal, liq.id, empId]
       );
 
-      // Desactivar puesto(s) titular(es) del empleado en el pizarrón
-      await db.query(
-        `UPDATE puesto_titulares SET activo = FALSE WHERE employee_id = $1 AND activo = TRUE`,
-        [empId]
-      );
-      await db.query(
-        `UPDATE puestos_operativos SET titular_employee_id = NULL
-         WHERE titular_employee_id = $1`,
-        [empId]
-      );
+      // Liberar al empleado de TODA titularidad/cobertura en el pizarrón:
+      // puestos legacy, puesto_titulares Y puesto_slots (modelo 24x24). Antes
+      // solo se limpiaban las dos primeras, así que un empleado de baja seguía
+      // ocupando su slot y el puesto aparecía descubierto fantasma en el tablero.
+      await lockTitularidadAgente(db, empId);
+      await liberarTitularidadAgente(db, empId);
 
       await db.query("COMMIT");
       return res.status(201).json({ ok: true, liquidacion_id: liq.id, liquidacion: result });

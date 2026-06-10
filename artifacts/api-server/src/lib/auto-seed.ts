@@ -6834,5 +6834,28 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: SUPERV-PLAN-MES-01 — error (no bloqueante)");
   }
 
+  // ── BAJA-SLOT-01: liberar de puesto_slots a empleados dados de BAJA ─────────
+  // Invariante: un empleado de baja no debe ocupar un slot del pizarrón 24x24.
+  // El flujo de liquidación antes solo limpiaba titularidad legacy/puesto_titulares
+  // y dejaba el puesto_slots ocupado → el puesto aparecía descubierto fantasma.
+  // Reconciliación idempotente para registros previos a la corrección. NO toca
+  // suspendido/licencia (regresan y conservan su puesto).
+  try {
+    const { rowCount } = await pool.query(`
+      UPDATE puesto_slots ps
+         SET empleado_id = NULL
+        FROM employees e
+       WHERE ps.empleado_id = e.id
+         AND e.estado_laboral = 'baja'
+    `);
+    if (rowCount && rowCount > 0) {
+      logger.info({ slotsLiberados: rowCount }, "Auto-migrate: BAJA-SLOT-01 slots de empleados de baja liberados");
+    } else {
+      logger.info("Auto-migrate: BAJA-SLOT-01 verificada (sin slots por liberar)");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: BAJA-SLOT-01 — error (no bloqueante)");
+  }
+
   logger.info("Auto-seed completado");
 }

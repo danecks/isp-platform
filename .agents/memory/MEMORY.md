@@ -23,3 +23,4 @@
 - [Borrado de datos no se delega](borrado-datos-no-delegar.md) — limpiezas/borrados masivos sobre preview los corre el agente principal en Build; el task agent usa base aislada temporal y sus cambios de datos NO se fusionan.
 - [Cobro de anticipos (interés flat)](anticipo-cobro-modelo.md) — recargo sobre monto original: 10% 1ª cuota + 5% por cuota extra, cuotas niveladas; fórmula DUPLICADA en backend y frontend, cambiar en ambos.
 - [HE en efectivo dos fuentes](he-efectivo-dos-fuentes.md) — reporte cash une novedades(pagado_efectivo, horas) + incentivos_cash_cobertura(he_efectivo, monto); se ocultan del detalle de pre-planilla normal (solo display, doble pago ya protegido en SQL).
+- [Baja libera puesto_slots](baja-libera-slots.md) — al dar de baja, liberar también puesto_slots (24x24) con liberarTitularidadAgente, no solo titularidad legacy; reconciliación idempotente en auto-seed; suspensión/licencia NO liberan.
