@@ -79,7 +79,75 @@ interface Empleado {
   nombre_completo: string;
 }
 
+// ─── exportar CSV ─────────────────────────────────────────────────────────────
+function exportarCSV(lineas: LineaLibro[], filename: string) {
+  const encabezados = [
+    "No.", "Período Desde", "Período Hasta", "Estado", "Frecuencia",
+    "Nombre Completo", "DPI", "Puesto", "Sede", "Cliente",
+    "Días Contrato", "Días Trabajados", "Faltas", "Suspensiones", "Horas Extra",
+    "Sueldo Base", "Sueldo Período", "Desc. Faltas", "Valor HE",
+    "Bon. Incentivo", "Desc. Séptimo", "Total Bruto",
+    "IGSS Trabajador", "Anticipos", "Otros Descuentos", "Total Neto",
+  ];
+  const filas = lineas.map((l, i) => [
+    i + 1,
+    l.periodo_desde,
+    l.periodo_hasta,
+    l.planilla_estado,
+    l.frecuencia_pago ?? "",
+    l.nombre_completo,
+    l.dpi ?? "",
+    l.puesto ?? "",
+    l.sede ?? "",
+    l.cliente ?? "",
+    l.periodo_dias,
+    l.dias_trabajados,
+    l.faltas,
+    l.suspensiones,
+    l.horas_extra,
+    fmtN(l.sueldo_base),
+    fmtN(l.sueldo_periodo),
+    fmtN(l.desc_faltas),
+    fmtN(l.valor_he),
+    fmtN(l.bonificacion_incentivo),
+    fmtN(l.desc_septimo),
+    fmtN(l.total_bruto),
+    fmtN(l.igss_trabajador),
+    fmtN(l.anticipos),
+    fmtN(l.otros_descuentos),
+    fmtN(l.total_neto),
+  ]);
+
+  const csv = [encabezados, ...filas]
+    .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ─── exportar PDF ─────────────────────────────────────────────────────────────
+// Monto compacto sin prefijo "Q" ni espacio (para que entren las columnas).
+function fmtMonto(v: number | string | null | undefined): string {
+  const n = parseFloat(String(v ?? 0));
+  return n.toLocaleString("es-GT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Período compacto: "01/06 a 15/06/26"
+function fmtPeriodoCorto(desde: string, hasta: string): string {
+  const part = (s: string) => {
+    const iso = (s ?? "").slice(0, 10).split("-");
+    return { y: (iso[0] ?? "").slice(2), m: iso[1] ?? "", d: iso[2] ?? "" };
+  };
+  const a = part(desde), b = part(hasta);
+  return `${a.d}/${a.m} a ${b.d}/${b.m}/${b.y}`;
+}
+
 async function exportarPDF(
   lineas: LineaLibro[],
   opts: { subtitulo?: string; desde?: string; hasta?: string; filename: string },
@@ -104,7 +172,7 @@ async function exportarPDF(
 
   const filas: (string | number)[][] = lineas.map((l, i) => [
     i + 1,
-    `${fmtDate(l.periodo_desde)} al ${fmtDate(l.periodo_hasta)}`,
+    fmtPeriodoCorto(l.periodo_desde, l.periodo_hasta),
     l.nombre_completo,
     l.dpi ?? "—",
     [l.puesto, l.sede].filter(Boolean).join(" / ") || "—",
@@ -112,34 +180,58 @@ async function exportarPDF(
     l.dias_trabajados,
     l.faltas > 0 ? l.faltas : "—",
     dash(l.horas_extra, fmtN(l.horas_extra)),
-    fmtQ(l.sueldo_periodo),
-    dash(l.desc_faltas, fmtQ(l.desc_faltas)),
-    dash(l.valor_he, fmtQ(l.valor_he)),
-    fmtQ(l.bonificacion_incentivo),
-    dash(l.desc_septimo, fmtQ(l.desc_septimo)),
-    fmtQ(l.total_bruto),
-    dash(l.igss_trabajador, fmtQ(l.igss_trabajador)),
-    dash(l.anticipos, fmtQ(l.anticipos)),
-    dash(l.otros_descuentos, fmtQ(l.otros_descuentos)),
-    fmtQ(l.total_neto),
+    fmtMonto(l.sueldo_periodo),
+    dash(l.desc_faltas, fmtMonto(l.desc_faltas)),
+    dash(l.valor_he, fmtMonto(l.valor_he)),
+    fmtMonto(l.bonificacion_incentivo),
+    dash(l.desc_septimo, fmtMonto(l.desc_septimo)),
+    fmtMonto(l.total_bruto),
+    dash(l.igss_trabajador, fmtMonto(l.igss_trabajador)),
+    dash(l.anticipos, fmtMonto(l.anticipos)),
+    dash(l.otros_descuentos, fmtMonto(l.otros_descuentos)),
+    fmtMonto(l.total_neto),
   ]);
 
   const tot = calcTotales(lineas);
   filas.push([
     "", "", `TOTALES (${lineas.length})`, "", "", "", "", "", "",
-    fmtQ(tot.sueldo_periodo),
-    fmtQ(tot.desc_faltas),
-    fmtQ(tot.valor_he),
-    fmtQ(tot.bonificacion_incentivo),
-    fmtQ(tot.desc_septimo),
-    fmtQ(tot.total_bruto),
-    fmtQ(tot.igss_trabajador),
-    fmtQ(tot.anticipos),
-    fmtQ(tot.otros_descuentos),
-    fmtQ(tot.total_neto),
+    fmtMonto(tot.sueldo_periodo),
+    fmtMonto(tot.desc_faltas),
+    fmtMonto(tot.valor_he),
+    fmtMonto(tot.bonificacion_incentivo),
+    fmtMonto(tot.desc_septimo),
+    fmtMonto(tot.total_bruto),
+    fmtMonto(tot.igss_trabajador),
+    fmtMonto(tot.anticipos),
+    fmtMonto(tot.otros_descuentos),
+    fmtMonto(tot.total_neto),
   ]);
 
-  pdf.addTabla(columnas, filas);
+  pdf.addTabla(columnas, filas, undefined, {
+    styles: { fontSize: 6, cellPadding: { top: 1.5, bottom: 1.5, left: 1, right: 1 } },
+    headStyles: { fontSize: 6, cellPadding: { top: 2, bottom: 2, left: 1, right: 1 } },
+    columnStyles: {
+      0:  { halign: "center", cellWidth: 6 },
+      1:  { cellWidth: 20 },
+      2:  { cellWidth: 30 },
+      3:  { cellWidth: 20 },
+      4:  { cellWidth: 24 },
+      5:  { halign: "center", cellWidth: 9 },
+      6:  { halign: "center", cellWidth: 9 },
+      7:  { halign: "center", cellWidth: 8 },
+      8:  { halign: "center", cellWidth: 8 },
+      9:  { halign: "right" },
+      10: { halign: "right" },
+      11: { halign: "right" },
+      12: { halign: "right" },
+      13: { halign: "right" },
+      14: { halign: "right" },
+      15: { halign: "right" },
+      16: { halign: "right" },
+      17: { halign: "right" },
+      18: { halign: "right" },
+    },
+  });
   pdf.save(opts.filename);
 }
 
@@ -355,19 +447,29 @@ function VistaGeneral() {
             Consultar
           </Button>
           {data && data.rows.length > 0 && (
-            <Button
-              variant="outline"
-              onClick={() => exportarPDF(data.rows, {
-                subtitulo: `${MESES[mes - 1]} ${anio}`,
-                desde: `${anio}-${String(mes).padStart(2, "0")}-01`,
-                hasta: `${anio}-${String(mes).padStart(2, "0")}-${String(new Date(anio, mes, 0).getDate()).padStart(2, "0")}`,
-                filename: `libro-salarios-${anio}-${String(mes).padStart(2, "0")}.pdf`,
-              })}
-              className="border-white/15 text-gray-300 hover:text-white gap-2"
-            >
-              <FileText className="w-4 h-4" />
-              Exportar PDF
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                onClick={() => exportarCSV(data.rows, `libro-salarios-${anio}-${String(mes).padStart(2, "0")}.csv`)}
+                className="border-white/15 text-gray-300 hover:text-white gap-2"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                CSV
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => exportarPDF(data.rows, {
+                  subtitulo: `${MESES[mes - 1]} ${anio}`,
+                  desde: `${anio}-${String(mes).padStart(2, "0")}-01`,
+                  hasta: `${anio}-${String(mes).padStart(2, "0")}-${String(new Date(anio, mes, 0).getDate()).padStart(2, "0")}`,
+                  filename: `libro-salarios-${anio}-${String(mes).padStart(2, "0")}.pdf`,
+                })}
+                className="border-white/15 text-gray-300 hover:text-white gap-2"
+              >
+                <FileText className="w-4 h-4" />
+                PDF
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -656,19 +758,29 @@ function VistaIndividual() {
           </Button>
 
           {data && data.rows.length > 0 && (
-            <Button
-              variant="outline"
-              onClick={() => exportarPDF(data.rows, {
-                subtitulo: nombreColaborador,
-                desde,
-                hasta,
-                filename: `libro-salarios-${nombreColaborador.replace(/\s+/g, "-")}-${desde}-${hasta}.pdf`,
-              })}
-              className="border-white/15 text-gray-300 hover:text-white gap-2"
-            >
-              <FileText className="w-4 h-4" />
-              Exportar PDF
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                onClick={() => exportarCSV(data.rows, `libro-salarios-${nombreColaborador.replace(/\s+/g, "-")}-${desde}-${hasta}.csv`)}
+                className="border-white/15 text-gray-300 hover:text-white gap-2"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                CSV
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => exportarPDF(data.rows, {
+                  subtitulo: nombreColaborador,
+                  desde,
+                  hasta,
+                  filename: `libro-salarios-${nombreColaborador.replace(/\s+/g, "-")}-${desde}-${hasta}.pdf`,
+                })}
+                className="border-white/15 text-gray-300 hover:text-white gap-2"
+              >
+                <FileText className="w-4 h-4" />
+                PDF
+              </Button>
+            </>
           )}
         </div>
       </div>

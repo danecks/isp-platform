@@ -313,6 +313,11 @@ export class IspPdf {
     columnas: string[],
     filas: (string | number)[][],
     titulo?: string,
+    tableOpts?: {
+      styles?: Record<string, unknown>;
+      headStyles?: Record<string, unknown>;
+      columnStyles?: Record<number, Record<string, unknown>>;
+    },
   ): void {
     if (titulo) {
       this.checkPageBreak(8);
@@ -335,6 +340,8 @@ export class IspPdf {
         lineColor: COLORS.border,
         lineWidth: 0.2,
         textColor: [50, 60, 75],
+        overflow: "linebreak",
+        ...(tableOpts?.styles ?? {}),
       },
       headStyles: {
         fillColor: COLORS.navy,
@@ -342,7 +349,9 @@ export class IspPdf {
         fontStyle: "bold",
         fontSize: 7.5,
         cellPadding: { top: 3, bottom: 3, left: 3, right: 3 },
+        ...(tableOpts?.headStyles ?? {}),
       },
+      ...(tableOpts?.columnStyles ? { columnStyles: tableOpts.columnStyles } : {}),
       alternateRowStyles: {
         fillColor: [248, 250, 252],
       },
@@ -593,7 +602,12 @@ export class IspPdf {
   // ─── Helper de fechas ────────────────────────────────────────────────────────
   private fmtDate(iso: string): string {
     try {
-      return new Date(iso).toLocaleDateString("es-GT", {
+      // YYYY-MM-DD se interpreta en hora local (no UTC) para evitar
+      // corrimientos de un día en zonas con offset negativo (p. ej. GT).
+      const d = /^\d{4}-\d{2}-\d{2}$/.test(iso)
+        ? (() => { const [y, m, dd] = iso.split("-").map(Number); return new Date(y, m - 1, dd); })()
+        : new Date(iso);
+      return d.toLocaleDateString("es-GT", {
         day: "2-digit", month: "short", year: "numeric",
       });
     } catch {
