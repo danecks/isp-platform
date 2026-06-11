@@ -1620,7 +1620,37 @@ prePlanillaRouter.get("/nomina/pre-planilla/anexo/horas-extra", async (req, res)
         n.fecha,
         n.horas_extra::numeric                                            AS horas_extra,
         n.horas_trabajadas::numeric                                       AS horas_trabajadas,
-        n.puesto_titular_nombre,
+        -- "Titular" en un relevo = NOMBRE DE LA PERSONA titular a quien se
+        -- relevó en el puesto CUBIERTO ese día. No es el nombre del puesto.
+        -- Como la titularidad vive en el modelo de turnos (puesto_slots, 2
+        -- titulares por puesto 24x24), se resuelve cuál slot estaba de turno
+        -- ese día con la misma fórmula de ciclo del operativo:
+        --   cycleDay = ((dias % lc) + lc) % lc + 1, y trabaja si cycleDay ∈ dias_trabajo.
+        -- Solo aplica a relevos (puesto cubierto distinto del titular del agente).
+        COALESCE(
+          n.puesto_titular_nombre,
+          CASE
+            WHEN n.puesto_cubierto_id IS NOT NULL
+             AND n.puesto_cubierto_id IS DISTINCT FROM n.puesto_titular_id
+            THEN (
+              SELECT te.nombre_completo
+              FROM puesto_slots ps
+              JOIN employees te ON te.id = ps.empleado_id
+              WHERE ps.puesto_id = n.puesto_cubierto_id
+                AND ps.activo = TRUE
+                AND ps.fecha_inicio_ciclo IS NOT NULL
+                AND ps.empleado_id IS DISTINCT FROM n.employee_id
+                AND (
+                  (
+                    ((n.fecha::date - ps.fecha_inicio_ciclo::date) % COALESCE(NULLIF(ps.longitud_ciclo, 0), 14)
+                      + COALESCE(NULLIF(ps.longitud_ciclo, 0), 14)) % COALESCE(NULLIF(ps.longitud_ciclo, 0), 14) + 1
+                  ) = ANY(ps.dias_trabajo)
+                )
+              ORDER BY ps.slot_numero
+              LIMIT 1
+            )
+          END
+        )                                                                 AS puesto_titular_nombre,
         n.puesto_cubierto_nombre,
         n.descanso_trabajado,
         n.observaciones,
