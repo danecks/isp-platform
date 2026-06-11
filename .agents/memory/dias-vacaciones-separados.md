@@ -18,3 +18,7 @@ bonificación incentivo se ajusta a días trabajados (regla aparte).
   fuentes ODBC (detalle/histórico del libro) muestran 0 — no tienen desglose de vacaciones.
 - Al editar el CSV de planilla, recordar que la fila de TOTALES se arma por posición fija:
   cualquier columna nueva exige sumar una celda al prefijo vacío o se corre todo.
+- Lo mismo en la tabla en pantalla (PrePlanilla.tsx): el `<tfoot>` se alinea por POSICIÓN,
+  no por nombre. Al agregar una columna al `<thead>`/`<tbody>` hay que sumar también su
+  celda en el footer (aunque sea vacía) o los totales salen "corridos". Regla durable:
+  contar celdas de header = body = footer (contando colSpan) cuando se toca esta tabla.

@@ -847,6 +847,7 @@ export default function PrePlanilla() {
                             </td>
                             <td className="px-3 py-2.5 text-right text-white/80">{fmtQ(totalSueldoBase)}</td>
                             <td className="px-3 py-2.5" />
+                            <td className="px-3 py-2.5" />
                             <td className="px-3 py-2.5 text-center text-red-400">
                               {filtrados.reduce((s, r) => s + Number(r.faltas), 0)}
                             </td>
