@@ -183,6 +183,7 @@ function calcularLinea(
     frecuencia_pago:  frecuencia,
     periodo_dias:     periodoTotalDias,
     dias_trabajados:  toInt(row.dias_trabajados),
+    dias_vacaciones:  toInt(row.dias_vacaciones),
     faltas,
     suspensiones:     susp,
     horas_trabajadas: toNum(row.horas_trabajadas),
@@ -534,8 +535,8 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
            anticipo_ids, novedad_ids, segmento_ids,
            revision_estado, observaciones_rrhh,
            descuentos_uniforme, uniforme_cuota_ids,
-           descuento_barraca, descuento_seguro_vida)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44)
+           descuento_barraca, descuento_seguro_vida, dias_vacaciones)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45)
       `, [
         planillaId, l.employee_id, l.nombre_completo, l.dpi, l.puesto, l.sede, l.cliente,
         l.tipo_jornada, l.horas_contrato, l.frecuencia_pago, l.sueldo_base, l.periodo_dias,
@@ -549,7 +550,7 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
         JSON.stringify(anticipoIds), JSON.stringify([]), JSON.stringify([]),
         l.revision_estado, l.observaciones_rrhh,
         l.descuentos_uniforme, JSON.stringify(uniformeCuotaIds),
-        l.descuento_barraca, l.descuento_seguro_vida,
+        l.descuento_barraca, l.descuento_seguro_vida, l.dias_vacaciones,
       ]);
     }
 
@@ -814,7 +815,7 @@ planillaRouter.get("/nomina/planilla/:id/export", async (req, res) => {
     const headers = [
       "ID", "Nombre", "DPI",
       "Puesto", "Sede", "Cliente", "Jornada", "Hrs/Sem",
-      "Sueldo Base (Q)", "Días Período", "Días Trabajados",
+      "Sueldo Base (Q)", "Días Período", "Días Trabajados", "Días Vacaciones",
       "Faltas", "Suspensiones", "H. Trabajadas", "H. Extra",
       "Sueldo Período (Q)", "Desc. Faltas (Q)", "Valor HE (Q)",
       "IGSS Trab. (Q)", "IGSS Pat. (Q)", "ISR (Q)", "Otros Desc. (Q)",
@@ -831,7 +832,7 @@ planillaRouter.get("/nomina/planilla/:id/export", async (req, res) => {
         l.nombre_completo, l.dpi ?? "",
         l.puesto ?? "", l.sede ?? "", l.cliente ?? "",
         l.tipo_jornada ?? "", l.horas_contrato ?? "",
-        fmtQ(l.sueldo_base), l.periodo_dias, l.dias_trabajados,
+        fmtQ(l.sueldo_base), l.periodo_dias, l.dias_trabajados, l.dias_vacaciones ?? 0,
         l.faltas, l.suspensiones,
         parseFloat(l.horas_trabajadas || 0).toFixed(2),
         parseFloat(l.horas_extra || 0).toFixed(2),
@@ -842,7 +843,7 @@ planillaRouter.get("/nomina/planilla/:id/export", async (req, res) => {
         fmtQ(l.total_neto), l.revision_estado ?? "",
       ].map(esc).join(",")),
       "",
-      ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+      ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
        fmtQ(p.total_sueldo_periodo), fmtQ(p.total_desc_faltas), fmtQ(p.total_valor_he),
        "—", "—", fmtQ(p.total_isr ?? 0), "—",
        fmtQ(p.total_bruto), fmtQ(p.total_anticipos), "",

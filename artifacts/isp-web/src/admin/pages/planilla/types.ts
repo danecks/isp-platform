@@ -29,6 +29,7 @@ export interface PlanillaLinea {
   sueldo_base: string;
   periodo_dias: number;
   dias_trabajados: number;
+  dias_vacaciones?: number;
   faltas: number;
   suspensiones: number;
   horas_trabajadas: string;

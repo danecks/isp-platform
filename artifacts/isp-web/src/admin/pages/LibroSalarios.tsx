@@ -56,6 +56,7 @@ interface LineaLibro {
   sueldo_base:            number;
   periodo_dias:           number;
   dias_trabajados:        number;
+  dias_vacaciones:        number;
   faltas:                 number;
   suspensiones:           number;
   horas_extra:            number;
@@ -84,7 +85,7 @@ function exportarCSV(lineas: LineaLibro[], filename: string) {
   const encabezados = [
     "No.", "Período Desde", "Período Hasta", "Estado", "Frecuencia",
     "Nombre Completo", "DPI", "Puesto", "Sede", "Cliente",
-    "Días Contrato", "Días Trabajados", "Faltas", "Suspensiones", "Horas Extra",
+    "Días Contrato", "Días Trabajados", "Días Vacaciones", "Faltas", "Suspensiones", "Horas Extra",
     "Sueldo Base", "Sueldo Período", "Desc. Faltas", "Valor HE",
     "Bon. Incentivo", "Total Bruto",
     "IGSS Descontado", "Anticipos", "Otros Descuentos", "Total Neto",
@@ -102,6 +103,7 @@ function exportarCSV(lineas: LineaLibro[], filename: string) {
     l.cliente ?? "",
     l.periodo_dias,
     l.dias_trabajados,
+    l.dias_vacaciones ?? 0,
     l.faltas,
     l.suspensiones,
     l.horas_extra,
@@ -161,7 +163,7 @@ async function exportarPDF(
 
   const columnas = [
     "No.", "Período", "Colaborador", "DPI", "Puesto / Sede",
-    "Días Cont.", "Días Trab.", "Faltas", "HE",
+    "Días Cont.", "Días Trab.", "Días Vac.", "Faltas", "HE",
     "Sueldo Período", "Desc. Faltas", "Valor HE",
     "Bon. Incentivo", "Total Bruto",
     "IGSS Descontado", "Anticipos", "Otros Desc.", "Total Líquido",
@@ -177,6 +179,7 @@ async function exportarPDF(
     [l.puesto, l.sede].filter(Boolean).join(" / ") || "—",
     l.periodo_dias,
     l.dias_trabajados,
+    (l.dias_vacaciones ?? 0) > 0 ? l.dias_vacaciones : "—",
     l.faltas > 0 ? l.faltas : "—",
     dash(l.horas_extra, fmtN(l.horas_extra)),
     fmtMonto(l.sueldo_periodo),
@@ -270,6 +273,7 @@ function TablaLineas({ lineas, mostrarPeriodo = false }: { lineas: LineaLibro[];
             <th className="px-3 py-2">Puesto / Sede</th>
             <th className="px-3 py-2 text-center">Días<br/>Cont.</th>
             <th className="px-3 py-2 text-center">Días<br/>Trab.</th>
+            <th className="px-3 py-2 text-center">Días<br/>Vac.</th>
             <th className="px-3 py-2 text-center">Faltas</th>
             <th className="px-3 py-2 text-center">HE</th>
             <th className="px-3 py-2 text-right">Sueldo<br/>Período</th>
@@ -307,6 +311,7 @@ function TablaLineas({ lineas, mostrarPeriodo = false }: { lineas: LineaLibro[];
               </td>
               <td className="px-3 py-2 text-center text-gray-400">{l.periodo_dias}</td>
               <td className="px-3 py-2 text-center text-white">{l.dias_trabajados}</td>
+              <td className="px-3 py-2 text-center text-sky-400/90">{(l.dias_vacaciones ?? 0) > 0 ? l.dias_vacaciones : <span className="text-gray-600">—</span>}</td>
               <td className="px-3 py-2 text-center text-red-400/80">{l.faltas > 0 ? l.faltas : <span className="text-gray-600">—</span>}</td>
               <td className="px-3 py-2 text-center text-blue-400/80">{+l.horas_extra > 0 ? fmtN(l.horas_extra) : <span className="text-gray-600">—</span>}</td>
               <td className="px-3 py-2 text-right text-gray-300">{fmtQ(l.sueldo_periodo)}</td>

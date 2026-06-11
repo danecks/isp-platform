@@ -585,6 +585,7 @@ export default function PrePlanilla() {
                             {th("Turno", "tipo_turno_nombre")}
                             {th("Sueldo Base", "sueldo_base")}
                             {th("Días", "dias_trabajados")}
+                            {th("Vacac.", "dias_vacaciones")}
                             {th("Faltas", "faltas")}
                             {th("Susp.", "suspensiones")}
                             {th("H. Trab.", "horas_trabajadas")}
@@ -677,6 +678,12 @@ export default function PrePlanilla() {
                                       )}
                                     </>;
                                   })()}
+                                </td>
+                                {/* Vacaciones (días de goce en el período, aparte de los trabajados) */}
+                                <td className="px-3 py-2.5 text-center">
+                                  {Number(r.dias_vacaciones ?? 0) > 0
+                                    ? <span className="text-sky-400 font-semibold">{Number(r.dias_vacaciones)}<span className="text-white/25 text-[10px] ml-0.5">d</span></span>
+                                    : <span className="text-white/20">—</span>}
                                 </td>
                                 {/* Faltas */}
                                 <td className="px-3 py-2.5 text-center">

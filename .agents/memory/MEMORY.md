@@ -26,4 +26,5 @@
 - [HE tarifa fija por turno](he-tarifa-fija-turno.md) — HE se paga por config_tarifa_he (Q150/12h, Q300/24h flat), no 1.5x; fuente única calcularValorHE; pre-planilla y planilla resuelven jornada igual.
 - [IGSS reclasifica al generar planilla](igss-planilla-snapshot.md) — el IGSS de planilla_lineas se calcula vivo al generar (no del snapshot); no cambia retroactivo; planilla 'pagada' no se revierte (en real entra la quincena siguiente).
 - [Vacaciones anticipadas mín. 3 meses](vacaciones-anticipadas-minimo.md) — adelantar vacaciones (forzar_anticipada) solo con ≥90 días de servicio; <3 meses bloqueado aun forzando; dias_servicio/aniversario en SQL (CURRENT_DATE) en saldo Y POST para no driftear.
+- [Días vacaciones separados en nómina](dias-vacaciones-separados.md) — vacaciones (tipo_novedad='vacaciones') como columna propia, aparte de trabajados; planillas viejas/ODBC = 0; CSV totales por posición fija.
 - [Baja libera puesto_slots](baja-libera-slots.md) — al dar de baja, liberar también puesto_slots (24x24) con liberarTitularidadAgente, no solo titularidad legacy; reconciliación idempotente en auto-seed; suspensión/licencia NO liberan.

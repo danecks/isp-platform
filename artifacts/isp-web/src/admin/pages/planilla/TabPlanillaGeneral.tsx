@@ -16,6 +16,7 @@ export function TabPlanillaGeneral({ lineas }: { lineas: PlanillaLinea[] }) {
             <TableHead className="text-[#8bacc8] text-xs">Sede / Cliente</TableHead>
             <TableHead className="text-[#8bacc8] text-xs text-right">Sueldo Base</TableHead>
             <TableHead className="text-[#8bacc8] text-xs text-center">Días</TableHead>
+            <TableHead className="text-[#8bacc8] text-xs text-center">Vacac.</TableHead>
             <TableHead className="text-[#8bacc8] text-xs text-center">Faltas</TableHead>
             <TableHead className="text-[#8bacc8] text-xs text-right">Sueldo Período</TableHead>
             <TableHead className="text-[#8bacc8] text-xs text-right">Desc. Faltas</TableHead>
@@ -50,6 +51,11 @@ export function TabPlanillaGeneral({ lineas }: { lineas: PlanillaLinea[] }) {
               </TableCell>
               <TableCell className="text-right text-sm text-white">{fmtQ(l.sueldo_base)}</TableCell>
               <TableCell className="text-center text-sm text-white">{l.periodo_dias}</TableCell>
+              <TableCell className="text-center text-sm">
+                {(l.dias_vacaciones ?? 0) > 0
+                  ? <span className="text-sky-400 font-medium">{l.dias_vacaciones}</span>
+                  : <span className="text-[#8bacc8]/40">—</span>}
+              </TableCell>
               <TableCell className="text-center">
                 {l.faltas > 0 || l.suspensiones > 0 ? (
                   <span className="text-red-400 text-sm font-medium">
