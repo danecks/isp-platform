@@ -84,6 +84,53 @@ export function calcularHorasDia(horasContrato: number | null | undefined): numb
 }
 
 /**
+ * Calcula el valor en quetzales de las horas extra de un colaborador.
+ *
+ * FUENTE ÚNICA para el monto de HE — usada por la pre-planilla (vista previa
+ * y estimado del cierre) y por la planilla final, para que siempre coincidan.
+ *
+ * Si existe tarifa fija por turno (tabla config_tarifa_he: 12h→Q150, 24h→Q300),
+ * valorHE = tarifa × turnos, donde turnos = horasExtra / horas_turno.
+ * Si no hay tarifa configurada, cae a la fórmula legal (sueldoDia/horasDia)×1.5×he.
+ *
+ * `jornada` se resuelve igual que en la planilla: jornada explícita, si no la
+ * duración del turno (turnoHorasTrabajo + "h"), si no "12h".
+ */
+export function calcularValorHE(opts: {
+  sueldoBase: number;
+  horasContrato?: number | null;
+  horasExtra: number;
+  jornada?: string | null;
+  turnoHorasTrabajo?: number | null;
+  tarifasHE?: Map<string, { tarifa: number; horas_turno: number }> | null;
+}): { valorHE: number; tarifaFijaTurnoHE: number | null; turnosHE: number | null } {
+  const he = parseFloat(String(opts.horasExtra ?? 0));
+  if (!he || he <= 0) return { valorHE: 0, tarifaFijaTurnoHE: null, turnosHE: null };
+
+  const jornada = String(
+    opts.jornada ?? (opts.turnoHorasTrabajo ? `${opts.turnoHorasTrabajo}h` : "12h"),
+  );
+  const tarifaConf = opts.tarifasHE?.get(jornada) ?? opts.tarifasHE?.get("12h");
+  if (tarifaConf && tarifaConf.tarifa > 0) {
+    const turnos = he / (tarifaConf.horas_turno || 12);
+    return {
+      valorHE: parseFloat((tarifaConf.tarifa * turnos).toFixed(2)),
+      tarifaFijaTurnoHE: tarifaConf.tarifa,
+      turnosHE: turnos,
+    };
+  }
+
+  // Sin tarifa configurada → fórmula legal 1.5x
+  const sueldoDia = opts.sueldoBase / 30;
+  const horasDia = calcularHorasDia(opts.horasContrato);
+  return {
+    valorHE: parseFloat(((sueldoDia / horasDia) * 1.5 * he).toFixed(2)),
+    tarifaFijaTurnoHE: null,
+    turnosHE: null,
+  };
+}
+
+/**
  * Calcula el sueldo bruto de un colaborador para un período dado.
  * Esta función es la ÚNICA fuente de verdad para el cálculo financiero.
  *

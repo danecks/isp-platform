@@ -74,7 +74,9 @@ export function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: num
   const horasDia = col.horas_contrato ? col.horas_contrato / 6 : 8;
   const valorHora = sueldoDia / horasDia;
   const he = parseFloat(String(col.horas_extra ?? "0"));
-  const valorHE = valorHora * 1.5 * he;
+  // valor_he viene del backend (tarifa fija por turno: 12h→Q150, 24h→Q300).
+  // Si no llegara, cae a la fórmula legal 1.5x para no romper la vista.
+  const valorHE = col.valor_he != null ? Number(col.valor_he) : valorHora * 1.5 * he;
   const anticipo = Number(col.anticipos_monto);
   const cuotaUniforme = Number(col.cuota_uniforme_monto ?? 0);
   const barracaMonto = Number(col.barraca_monto ?? 0);

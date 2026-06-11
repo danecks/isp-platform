@@ -155,7 +155,7 @@ export function DetalleModal({
                       )}
                       {est.valorHE > 0 && (
                         <div className="flex justify-between text-xs">
-                          <span className="text-orange-400/70">+ H. Extra ({heNum.toFixed(1)} h × 1.5x)</span>
+                          <span className="text-orange-400/70">+ H. Extra ({heNum.toFixed(1)} h)</span>
                           <span className="text-orange-400">+{fmtQ(est.valorHE)}</span>
                         </div>
                       )}
@@ -257,7 +257,7 @@ export function DetalleModal({
                         )}
                         {est.valorHE > 0 && (
                           <div className="flex justify-between text-xs">
-                            <span className="text-orange-400/70">+ H. Extra ({heNum.toFixed(1)} h × 1.5x)</span>
+                            <span className="text-orange-400/70">+ H. Extra ({heNum.toFixed(1)} h)</span>
                             <span className="text-orange-400">+{fmtQ(est.valorHE)}</span>
                           </div>
                         )}

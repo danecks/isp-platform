@@ -49,7 +49,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
-import { calcularBruto, calcularBonificacionIncentivo, calcularISRQuincenal, toNum, toInt } from "../lib/nomina-calc";
+import { calcularBruto, calcularBonificacionIncentivo, calcularISRQuincenal, calcularValorHE, toNum, toInt } from "../lib/nomina-calc";
 import { buildUniformeCuotaMap, descontarCuotaUniforme } from "./uniformes";
 import { buildBarracaCuotaMap } from "./barracas";
 import { clasificarIgssDesdeRow, igssTitularChainSQL } from "../lib/igss-clasificacion";
@@ -90,9 +90,14 @@ function calcularLinea(
   // viene del snapshot del cierre, que a su vez viene de QUERY_CONSOLIDADO
   const septimos  = toInt(row.septimos_perdidos);
 
-  const jornada = String(row.jornada ?? (row.turno_horas_trabajo ? `${row.turno_horas_trabajo}h` : "12h"));
-  const tarifaConf = tarifasHE?.get(jornada) ?? tarifasHE?.get("12h");
-  const turnosHECount = tarifaConf && he > 0 ? he / (tarifaConf.horas_turno || 12) : undefined;
+  const heCalc = calcularValorHE({
+    sueldoBase:       sb,
+    horasContrato:    hc,
+    horasExtra:       he,
+    jornada:          row.jornada,
+    turnoHorasTrabajo: toNum(row.turno_horas_trabajo),
+    tarifasHE,
+  });
 
   const pagoFeriados = toNum(row.pago_feriados);
 
@@ -106,8 +111,8 @@ function calcularLinea(
     frecuenciaPago:   frecuencia,
     quincenaTipo,
     septimosPerdidos: septimos,
-    tarifaFijaTurnoHE: tarifaConf?.tarifa ?? null,
-    turnosHE:         turnosHECount ?? null,
+    tarifaFijaTurnoHE: heCalc.tarifaFijaTurnoHE,
+    turnosHE:         heCalc.turnosHE,
     pagoFeriados,
   });
 

@@ -21,6 +21,7 @@ export interface ColaboradorPre {
   descansos_trabajados: number;
   horas_trabajadas: string;
   horas_extra: string;
+  valor_he?: number | null;
   relevos: number;
   dias_sin_horas: number;
   anticipos_monto: number;

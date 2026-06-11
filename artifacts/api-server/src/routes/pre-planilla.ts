@@ -42,7 +42,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
-import { calcularBruto, toNum, toInt } from "../lib/nomina-calc";
+import { calcularBruto, calcularValorHE, toNum, toInt } from "../lib/nomina-calc";
 import { calcularProvisionPeriodo, diasEntreFechas } from "../lib/prestaciones-calc";
 import { igssAplicaCaseSql, igssMotivoCaseSql, igssTitularChainSQL } from "../lib/igss-clasificacion";
 
@@ -401,6 +401,19 @@ function detectarQuincena(hasta: string): "primera" | "segunda" {
 // agente faltó ese día, se descuenta (clawback) usando dias_descuento ya
 // calculado en novedades_nomina_diarias (3d para turno 24h, 2d para 12h).
 
+// Carga la tabla config_tarifa_he (12h→Q150, 24h→Q300) como Map jornada→{tarifa,horas_turno}.
+// La pre-planilla y la planilla final la usan para que el valor de HE coincida.
+async function cargarTarifasHE(): Promise<Map<string, { tarifa: number; horas_turno: number }>> {
+  const m = new Map<string, { tarifa: number; horas_turno: number }>();
+  try {
+    const { rows } = await pool.query(`SELECT jornada, tarifa, horas_turno FROM config_tarifa_he`);
+    for (const r of rows) {
+      m.set(String(r.jornada), { tarifa: parseFloat(r.tarifa), horas_turno: parseInt(r.horas_turno) });
+    }
+  } catch { /* tabla aún no existe → cálculo legal */ }
+  return m;
+}
+
 async function diasNoCerradosEnPeriodo(desde: string, hasta: string): Promise<string[]> {
   const { rows } = await pool.query(
     `SELECT d::date::text AS fecha
@@ -522,6 +535,8 @@ prePlanillaRouter.get("/nomina/pre-planilla", async (req, res) => {
     const quincena = detectarQuincena(hasta);
     // Clawback por días anticipados de cierres previos ya confirmados en el pizarrón
     const { porEmpleado: ajustesAnt } = await reconciliarAnticipados(desde);
+    // Tarifa fija de HE por turno (12h→Q150, 24h→Q300) — misma que la planilla final
+    const tarifasHE = await cargarTarifasHE();
 
     // Anotar colaboradores excluidos por frecuencia de pago
     const annotated = rows.map((row) => {
@@ -529,8 +544,17 @@ prePlanillaRouter.get("/nomina/pre-planilla", async (req, res) => {
       const excluido = quincena === "primera" && freq === "mensual";
       const aj = ajustesAnt.get(Number(row.employee_id));
       const extraDesc = aj ? aj.dias_descuento : 0;
+      const { valorHE } = calcularValorHE({
+        sueldoBase:        toNum(row.sueldo_base),
+        horasContrato:     toNum(row.horas_contrato),
+        horasExtra:        toNum(row.horas_extra),
+        jornada:           row.jornada,
+        turnoHorasTrabajo: toNum(row.turno_horas_trabajo),
+        tarifasHE,
+      });
       return {
         ...row,
+        valor_he: valorHE,
         // El descuento por días anticipados se suma a los días de descuento del
         // período para que el bruto (calculado en el front) ya lo refleje.
         total_dias_descuento: toNum(row.total_dias_descuento) + extraDesc,
@@ -1335,9 +1359,18 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
     // Calcular total estimado usando calcularBruto() de nomina-calc.ts
     // (misma función que usa la planilla final → total_estimado == total_bruto)
     let totalEstimado = 0;
+    const tarifasHECierre = await cargarTarifasHE();
     for (const row of snapshotRowsAdj) {
       const anticipo = toNum(row.anticipos_monto);
       const amonestaciones = toNum(row.amonestaciones_monto);
+      const heCalc = calcularValorHE({
+        sueldoBase:        toNum(row.sueldo_base),
+        horasContrato:     toNum(row.horas_contrato),
+        horasExtra:        toNum(row.horas_extra),
+        jornada:           row.jornada,
+        turnoHorasTrabajo: toNum(row.turno_horas_trabajo),
+        tarifasHE:         tarifasHECierre,
+      });
       const { totalBruto } = calcularBruto({
         sueldoBase:       toNum(row.sueldo_base),
         horasContrato:    toNum(row.horas_contrato),
@@ -1349,6 +1382,8 @@ prePlanillaRouter.post("/nomina/pre-planilla/cierre", async (req, res) => {
         frecuenciaPago:   String(row.frecuencia_pago ?? "quincenal"),
         quincenaTipo,
         septimosPerdidos: toInt(row.septimos_perdidos),
+        tarifaFijaTurnoHE: heCalc.tarifaFijaTurnoHE,
+        turnosHE:         heCalc.turnosHE,
         pagoFeriados:     toNum(row.pago_feriados),
       });
       // Redondear por línea antes de acumular (igual que planilla.ts) → convergencia exacta
