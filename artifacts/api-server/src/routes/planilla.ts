@@ -52,7 +52,7 @@ import { logger } from "../lib/logger";
 import { calcularBruto, calcularBonificacionIncentivo, calcularISRQuincenal, toNum, toInt } from "../lib/nomina-calc";
 import { buildUniformeCuotaMap, descontarCuotaUniforme } from "./uniformes";
 import { buildBarracaCuotaMap } from "./barracas";
-import { clasificarIgssDesdeRow } from "../lib/igss-clasificacion";
+import { clasificarIgssDesdeRow, igssTitularChainSQL } from "../lib/igss-clasificacion";
 
 export const planillaRouter = Router();
 
@@ -223,14 +223,16 @@ async function clasificarIgss(employeeId: number | null): Promise<{
       SELECT
         COALESCE(e.aplica_igss_general, FALSE)  AS aplica_igss_general,
         COALESCE(e.estado_igss, 'no_activo')    AS estado_igss,
-        COALESCE(po.aplica_igss, FALSE)         AS puesto_aplica_igss,
+        -- "Puesto cubre IGSS" = flag del puesto O cliente como Centro de Trabajo IGSS
+        (COALESCE(po.aplica_igss, FALSE) OR COALESCE(po.cliente_igss_aplica, FALSE)) AS puesto_aplica_igss,
         COALESCE(po.regimen_igss, 'no_aplica')  AS puesto_regimen_igss
       FROM employees e
       LEFT JOIN LATERAL (
-        SELECT po2.aplica_igss, po2.regimen_igss
-        FROM puestos_operativos po2
-        WHERE po2.titular_employee_id = e.id AND po2.activo = TRUE
-        ORDER BY po2.updated_at DESC NULLS LAST
+        SELECT po2.aplica_igss, po2.regimen_igss, cl.igss_aplica AS cliente_igss_aplica
+        FROM ${igssTitularChainSQL("e.id", "CURRENT_DATE", "CURRENT_DATE")}
+        JOIN puestos_operativos po2 ON po2.id = tu.puesto_id AND po2.activo = TRUE
+        LEFT JOIN clients cl ON cl.id = po2.cliente_id
+        ORDER BY tu.prio ASC, tu.orden ASC, po2.updated_at DESC NULLS LAST
         LIMIT 1
       ) po ON TRUE
       WHERE e.id = $1
@@ -324,17 +326,19 @@ planillaRouter.post("/nomina/planilla", async (req, res) => {
           e.id                                        AS employee_id,
           COALESCE(e.aplica_igss_general, FALSE)      AS aplica_igss_general,
           COALESCE(e.estado_igss, 'no_activo')        AS estado_igss,
-          COALESCE(po.aplica_igss, FALSE)             AS puesto_aplica_igss
+          -- "Puesto cubre IGSS" = flag del puesto O cliente como Centro de Trabajo IGSS
+          (COALESCE(po.aplica_igss, FALSE) OR COALESCE(po.cliente_igss_aplica, FALSE)) AS puesto_aplica_igss
         FROM employees e
         LEFT JOIN LATERAL (
-          SELECT po2.aplica_igss
-          FROM puestos_operativos po2
-          WHERE po2.titular_employee_id = e.id AND po2.activo = TRUE
-          ORDER BY po2.updated_at DESC NULLS LAST
+          SELECT po2.aplica_igss, cl.igss_aplica AS cliente_igss_aplica
+          FROM ${igssTitularChainSQL("e.id", "$2", "$3")}
+          JOIN puestos_operativos po2 ON po2.id = tu.puesto_id AND po2.activo = TRUE
+          LEFT JOIN clients cl ON cl.id = po2.cliente_id
+          ORDER BY tu.prio ASC, tu.orden ASC, po2.updated_at DESC NULLS LAST
           LIMIT 1
         ) po ON TRUE
         WHERE e.id = ANY($1::int[])
-      `, [empIds]);
+      `, [empIds, desde, hasta]);
 
       // Reglas centralizadas en lib/igss-clasificacion.ts (clasificarIgssDesdeRow).
       for (const r of igssRows) {

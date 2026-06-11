@@ -44,9 +44,15 @@ import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { calcularBruto, toNum, toInt } from "../lib/nomina-calc";
 import { calcularProvisionPeriodo, diasEntreFechas } from "../lib/prestaciones-calc";
-import { IGSS_APLICA_CASE_SQL, IGSS_MOTIVO_CASE_SQL } from "../lib/igss-clasificacion";
+import { igssAplicaCaseSql, igssMotivoCaseSql, igssTitularChainSQL } from "../lib/igss-clasificacion";
 
 export const prePlanillaRouter = Router();
+
+// "Puesto cubre IGSS" = flag del propio puesto (po.aplica_igss) O cliente
+// registrado como Centro de Trabajo IGSS (clients.igss_aplica, expuesto como
+// po.cliente_igss_aplica vía el LATERAL `po` de QUERY_CONSOLIDADO).
+const PUESTO_CUBRE_IGSS_SQL =
+  "(COALESCE(po.aplica_igss, FALSE) OR COALESCE(po.cliente_igss_aplica, FALSE))";
 
 // ─── Query principal (reutilizada en GET y export) ────────────────────────────
 const QUERY_CONSOLIDADO = `
@@ -262,13 +268,13 @@ const QUERY_CONSOLIDADO = `
     e.fecha_inicio_igss,
 
     -- IGSS — régimen del puesto/servicio titular
-    COALESCE(po.aplica_igss, FALSE)                                             AS puesto_aplica_igss,
+    ${PUESTO_CUBRE_IGSS_SQL}                                                    AS puesto_aplica_igss,
     COALESCE(po.regimen_igss, 'no_aplica')                                      AS puesto_regimen_igss,
 
     -- IGSS — clasificación final para este período
-    -- (Reglas centralizadas en lib/igss-clasificacion.ts; ver IGSS_*_CASE_SQL)
-    ${IGSS_APLICA_CASE_SQL}                                                     AS aplica_igss,
-    ${IGSS_MOTIVO_CASE_SQL}                                                     AS motivo_exclusion_igss,
+    -- (Reglas centralizadas en lib/igss-clasificacion.ts; ver igss*CaseSql)
+    ${igssAplicaCaseSql(PUESTO_CUBRE_IGSS_SQL)}                                 AS aplica_igss,
+    ${igssMotivoCaseSql(PUESTO_CUBRE_IGSS_SQL)}                                 AS motivo_exclusion_igss,
 
     -- Amonestaciones económicas activas y pendientes de descuento (AMON-01)
     COALESCE((
@@ -312,27 +318,10 @@ const QUERY_CONSOLIDADO = `
   -- histórico vigente > slots del Pizarrón > titulares intermedios > legacy.
   LEFT JOIN LATERAL (
     SELECT po2.aplica_igss, po2.regimen_igss, po2.fecha_inicio_ciclo, po2.tipo_turno_id,
-           po2.cliente_nombre
-    FROM (
-      SELECT pth.puesto_id, 0 AS prio, 0 AS orden
-        FROM puesto_titular_historico pth
-        WHERE pth.employee_id = e.id
-          AND pth.fecha_inicio <= $2::date
-          AND (pth.fecha_fin IS NULL OR pth.fecha_fin >= $1::date)
-      UNION ALL
-      SELECT ps.puesto_id, 1 AS prio, ps.slot_numero AS orden
-        FROM puesto_slots ps
-        WHERE ps.empleado_id = e.id AND ps.activo = TRUE
-      UNION ALL
-      SELECT pt.puesto_id, 2 AS prio, COALESCE(pt.orden, 99) AS orden
-        FROM puesto_titulares pt
-        WHERE pt.employee_id = e.id AND pt.activo = TRUE
-      UNION ALL
-      SELECT po3.id AS puesto_id, 3 AS prio, 0 AS orden
-        FROM puestos_operativos po3
-        WHERE po3.titular_employee_id = e.id AND po3.activo = TRUE
-    ) tu
+           po2.cliente_nombre, cl.igss_aplica AS cliente_igss_aplica
+    FROM ${igssTitularChainSQL("e.id", "$1", "$2")}
     JOIN puestos_operativos po2 ON po2.id = tu.puesto_id AND po2.activo = TRUE
+    LEFT JOIN clients cl ON cl.id = po2.cliente_id
     ORDER BY tu.prio ASC, tu.orden ASC, po2.updated_at DESC NULLS LAST
     LIMIT 1
   ) po ON TRUE
@@ -353,7 +342,7 @@ const QUERY_CONSOLIDADO = `
     e.area, e.sede, e.supervisor_nombre, e.frecuencia_pago,
     e.bonificacion_incentivo, e.bonificacion_1, e.bonificacion_2, e.bonificacion_3,
     e.aplica_igss_general, e.estado_igss, e.fecha_inicio_igss,
-    po.aplica_igss, po.regimen_igss, po.cliente_nombre,
+    po.aplica_igss, po.cliente_igss_aplica, po.regimen_igss, po.cliente_nombre,
     pr.estado, pr.observaciones, pr.revisado_por, pr.updated_at,
     pr.aprobado_por, pr.aprobado_at
   ORDER BY e.nombre_completo
