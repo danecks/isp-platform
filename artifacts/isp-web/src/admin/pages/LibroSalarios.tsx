@@ -86,8 +86,8 @@ function exportarCSV(lineas: LineaLibro[], filename: string) {
     "Nombre Completo", "DPI", "Puesto", "Sede", "Cliente",
     "Días Contrato", "Días Trabajados", "Faltas", "Suspensiones", "Horas Extra",
     "Sueldo Base", "Sueldo Período", "Desc. Faltas", "Valor HE",
-    "Bon. Incentivo", "Desc. Séptimo", "Total Bruto",
-    "IGSS Trabajador", "Anticipos", "Otros Descuentos", "Total Neto",
+    "Bon. Incentivo", "Total Bruto",
+    "IGSS Descontado", "Anticipos", "Otros Descuentos", "Total Neto",
   ];
   const filas = lineas.map((l, i) => [
     i + 1,
@@ -110,7 +110,6 @@ function exportarCSV(lineas: LineaLibro[], filename: string) {
     fmtN(l.desc_faltas),
     fmtN(l.valor_he),
     fmtN(l.bonificacion_incentivo),
-    fmtN(l.desc_septimo),
     fmtN(l.total_bruto),
     fmtN(l.igss_trabajador),
     fmtN(l.anticipos),
@@ -164,8 +163,8 @@ async function exportarPDF(
     "No.", "Período", "Colaborador", "DPI", "Puesto / Sede",
     "Días Cont.", "Días Trab.", "Faltas", "HE",
     "Sueldo Período", "Desc. Faltas", "Valor HE",
-    "Bon. Incentivo", "Desc. Séptimo", "Total Bruto",
-    "IGSS Trab.", "Anticipos", "Otros Desc.", "Total Líquido",
+    "Bon. Incentivo", "Total Bruto",
+    "IGSS Descontado", "Anticipos", "Otros Desc.", "Total Líquido",
   ];
 
   const dash = (v: number | string, formatted: string) => (+v > 0 ? formatted : "—");
@@ -184,7 +183,6 @@ async function exportarPDF(
     dash(l.desc_faltas, fmtMonto(l.desc_faltas)),
     dash(l.valor_he, fmtMonto(l.valor_he)),
     fmtMonto(l.bonificacion_incentivo),
-    dash(l.desc_septimo, fmtMonto(l.desc_septimo)),
     fmtMonto(l.total_bruto),
     dash(l.igss_trabajador, fmtMonto(l.igss_trabajador)),
     dash(l.anticipos, fmtMonto(l.anticipos)),
@@ -199,7 +197,6 @@ async function exportarPDF(
     fmtMonto(tot.desc_faltas),
     fmtMonto(tot.valor_he),
     fmtMonto(tot.bonificacion_incentivo),
-    fmtMonto(tot.desc_septimo),
     fmtMonto(tot.total_bruto),
     fmtMonto(tot.igss_trabajador),
     fmtMonto(tot.anticipos),
@@ -229,7 +226,6 @@ async function exportarPDF(
       15: { halign: "right" },
       16: { halign: "right" },
       17: { halign: "right" },
-      18: { halign: "right" },
     },
   });
   pdf.save(opts.filename);
@@ -280,9 +276,8 @@ function TablaLineas({ lineas, mostrarPeriodo = false }: { lineas: LineaLibro[];
             <th className="px-3 py-2 text-right">Desc.<br/>Faltas</th>
             <th className="px-3 py-2 text-right">Valor HE</th>
             <th className="px-3 py-2 text-right">Bonif.<br/>Incentivo</th>
-            <th className="px-3 py-2 text-right">Desc.<br/>Séptimo</th>
             <th className="px-3 py-2 text-right font-bold text-white/70">Total<br/>Bruto</th>
-            <th className="px-3 py-2 text-right">IGSS<br/>Trab.</th>
+            <th className="px-3 py-2 text-right">IGSS<br/>Descont.</th>
             <th className="px-3 py-2 text-right">Anticipos</th>
             <th className="px-3 py-2 text-right">Otros<br/>Desc.</th>
             <th className="px-3 py-2 text-right font-bold text-yellow-300/80">Total<br/>Líquido</th>
@@ -318,7 +313,6 @@ function TablaLineas({ lineas, mostrarPeriodo = false }: { lineas: LineaLibro[];
               <td className="px-3 py-2 text-right text-red-400/70">{+l.desc_faltas > 0 ? fmtQ(l.desc_faltas) : <span className="text-gray-600">—</span>}</td>
               <td className="px-3 py-2 text-right text-blue-400/70">{+l.valor_he > 0 ? fmtQ(l.valor_he) : <span className="text-gray-600">—</span>}</td>
               <td className="px-3 py-2 text-right text-green-400/70">{fmtQ(l.bonificacion_incentivo)}</td>
-              <td className="px-3 py-2 text-right text-orange-400/70">{+l.desc_septimo > 0 ? fmtQ(l.desc_septimo) : <span className="text-gray-600">—</span>}</td>
               <td className="px-3 py-2 text-right text-white font-semibold">{fmtQ(l.total_bruto)}</td>
               <td className="px-3 py-2 text-right text-purple-400/70">{+l.igss_trabajador > 0 ? fmtQ(l.igss_trabajador) : <span className="text-gray-600">—</span>}</td>
               <td className="px-3 py-2 text-right text-red-400/70">{+l.anticipos > 0 ? fmtQ(l.anticipos) : <span className="text-gray-600">—</span>}</td>
@@ -334,7 +328,6 @@ function TablaLineas({ lineas, mostrarPeriodo = false }: { lineas: LineaLibro[];
             <td className="px-3 py-3 text-right text-red-400">{fmtQ(tot.desc_faltas)}</td>
             <td className="px-3 py-3 text-right text-blue-400">{fmtQ(tot.valor_he)}</td>
             <td className="px-3 py-3 text-right text-green-400">{fmtQ(tot.bonificacion_incentivo)}</td>
-            <td className="px-3 py-3 text-right text-orange-400">{fmtQ(tot.desc_septimo)}</td>
             <td className="px-3 py-3 text-right text-white">{fmtQ(tot.total_bruto)}</td>
             <td className="px-3 py-3 text-right text-purple-400">{fmtQ(tot.igss_trabajador)}</td>
             <td className="px-3 py-3 text-right text-red-400">{fmtQ(tot.anticipos)}</td>
