@@ -234,8 +234,10 @@ const QUERY_CONSOLIDADO = `
         AND ic.estado != 'cancelado'
     ), 0)                                                                       AS incentivos_cash_count,
 
-    -- Cliente principal (puesto operativo del empleado — fuente de verdad)
-    po.cliente_nombre                                                           AS cliente_principal,
+    -- Cliente principal: puesto operativo del empleado (fuente de verdad). Si el
+    -- empleado no es titular de ningún puesto (p. ej. custodios del pool), se cae
+    -- a su cliente de custodia (titular permanente o asignación del período).
+    COALESCE(po.cliente_nombre, ${custodiaClienteSQL("e.id", "$1", "$2")})       AS cliente_principal,
 
     -- Pago por feriados/asuetos nacionales trabajados (concepto aparte, default Q0).
     -- Lo asigna el encargado de nómina por colaborador en la pestaña "Feriados
@@ -347,6 +349,32 @@ const QUERY_CONSOLIDADO = `
     pr.aprobado_por, pr.aprobado_at
   ORDER BY e.nombre_completo
 `;
+
+// ─── Cliente de custodia (fallback para custodios sin puesto operativo) ──────
+// Los custodios del pool no son titulares de un puesto; su cliente vive en
+// custodia_titulares (asignación permanente por slot) o, si no, en
+// custodia_asignacion_diaria (asignación del día dentro del período). Devuelve
+// el nombre del cliente como sub-SELECT escalar correlacionado por empleado.
+function custodiaClienteSQL(emp: string, desde: string, hasta: string): string {
+  return `(
+    SELECT c.nombre
+    FROM (
+      SELECT ct.cliente_id, 0 AS prio, NULL::date AS fecha
+        FROM custodia_titulares ct
+        WHERE ct.employee_id = ${emp} AND ct.activo = TRUE
+      UNION ALL
+      -- Si no es titular fijo, la asignación diaria más reciente del período
+      -- (desempate determinista cuando hubo varios clientes/días).
+      SELECT cad.cliente_id, 1 AS prio, cad.fecha
+        FROM custodia_asignacion_diaria cad
+        WHERE cad.employee_id = ${emp}
+          AND cad.fecha BETWEEN ${desde}::date AND ${hasta}::date
+    ) cu
+    JOIN clients c ON c.id = cu.cliente_id
+    ORDER BY cu.prio ASC, cu.fecha DESC NULLS LAST
+    LIMIT 1
+  )`;
+}
 
 // ─── Cliente del puesto del que el empleado fue titular durante el período ────
 // Misma resolución que el LATERAL `po` de QUERY_CONSOLIDADO: busca en

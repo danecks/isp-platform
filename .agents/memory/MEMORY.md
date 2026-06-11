@@ -28,5 +28,6 @@
 - [Vacaciones anticipadas mín. 3 meses](vacaciones-anticipadas-minimo.md) — adelantar vacaciones (forzar_anticipada) solo con ≥90 días de servicio; <3 meses bloqueado aun forzando; dias_servicio/aniversario en SQL (CURRENT_DATE) en saldo Y POST para no driftear.
 - [Titular (persona) en anexo HE](he-anexo-titular-slots.md) — en relevo, "Titular" = persona relevada en el puesto cubierto; derivar el slot de turno por ciclo (no hay campo guardado); solo lectura.
 - [Cubierto por en anexo Faltas](he-anexo-faltas-cubierto-por.md) — falta muestra quién la cubrió (persona con HE); enlazar por puesto+fecha (titular_id o slots), no hay campo guardado; solo lectura.
+- [Cliente principal de custodios](cliente-principal-custodios.md) — custodios no tienen puesto; su cliente sale de custodia_titulares/custodia_asignacion_diaria (→clients), no de puestos; COALESCE como fallback; no meter en cadena IGSS.
 - [Días vacaciones separados en nómina](dias-vacaciones-separados.md) — vacaciones (tipo_novedad='vacaciones') como columna propia, aparte de trabajados; planillas viejas/ODBC = 0; CSV totales por posición fija.
 - [Baja libera puesto_slots](baja-libera-slots.md) — al dar de baja, liberar también puesto_slots (24x24) con liberarTitularidadAgente, no solo titularidad legacy; reconciliación idempotente en auto-seed; suspensión/licencia NO liberan.
