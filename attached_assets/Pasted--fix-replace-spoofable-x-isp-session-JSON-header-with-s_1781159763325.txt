@@ -1,0 +1,40 @@
+
+fix: replace spoofable x-isp-session JSON header with server-side session tokens
+Resolves two critical/high authentication vulnerabilities:
+
+VULN 1 (Critical): Unsigned x-isp-session header allowed full internal/admin impersonation
+- Root cause: login returned raw user object; frontend stored it in sessionStorage and
+sent it back as x-isp-session JSON; middleware trusted JSON.parse of that header.
+Attacker could send {"rol":"admin"} or {"username":""} to bypass all auth.
+- Fix: POST /api/auth/login now issues a cryptographically random 32-byte hex session
+token via a new server-side in-memory session store (session-store.ts, TTL 8h).
+permisosMiddleware validates the opaque token against the store; JSON-parsing the header
+is gone entirely. req.authenticatedUser = {username, rol, userId} is set by middleware.
+- Added POST /api/auth/logout to invalidate the server-side session token.
+
+VULN 2 (High): Portal endpoints trusted spoofable client-supplied identity headers
+- Root cause: /portal was in isPublicPath (bypassed middleware); requirePortalAuth only
+checked x-isp-role === "cliente" + DB lookup by x-isp-userid from the client header.
+Attacker could enumerate userId values and impersonate any client user.
+solicitudes-servicio.ts had an even weaker local requirePortalAuth (no user binding at all).
+- Fix: removed /portal and /portal-cliente/visitas from isPublicPath. These routes now
+flow through permisosMiddleware (valid session required). requirePortalAuth in portal.ts
+now gets identity from req.authenticatedUser (server-verified), validates x-isp-clienteid
+linkage in DB by username (not by client-supplied userId). Local weak requirePortalAuth
+in solicitudes-servicio.ts replaced by import from portal.ts.
+
+Additional hardening across all handler files:
+- All local getSession()/getRol() functions that JSON.parsed x-isp-session replaced with
+getReqSession(req) or (req as any).authenticatedUser (uses server-verified identity).
+Files: roles.ts, importacion.ts, importacion-maestro.ts, bodega/_helpers.ts,
+cambios-salariales.ts, falta-personal.ts, anular-falta.ts, asignacion.ts,
+planillas-especiales.ts, tipos-personal-config.ts, reset-datos.ts, amonestaciones.ts,
+visitas.ts (requireAdmin + requireCliente updated).
+- session/permisos removed from isPublicPath (now requires valid session token).
+
+Frontend:
+- AuthContext stores session token under isp_session_token_v1; user object stays in
+isp_admin_session_v2 for UI. Logout clears both keys.
+- httpClient.getSessionToken() now reads the opaque token key (not the JSON user object).
+- portalApi.getPortalHeaders() no longer sends x-isp-role or x-isp-userid (removed
+spoofable identity headers); only x-isp-clienteid is sent as a selection parameter.
