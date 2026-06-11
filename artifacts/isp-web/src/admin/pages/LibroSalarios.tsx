@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { BookOpen, Users, User, Search, Download, ChevronDown, ChevronUp, FileSpreadsheet, Loader2, AlertCircle, Info, X } from "lucide-react";
+import { BookOpen, Users, User, Search, FileText, ChevronDown, ChevronUp, FileSpreadsheet, Loader2, AlertCircle, Info, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AdminLayout } from "../layout/AdminLayout";
 import { getSessionToken } from "@/lib/httpClient";
+import { IspPdf } from "@/lib/pdfExport";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function getSession() {
@@ -78,56 +79,68 @@ interface Empleado {
   nombre_completo: string;
 }
 
-// ─── exportar CSV ─────────────────────────────────────────────────────────────
-function exportarCSV(lineas: LineaLibro[], filename: string) {
-  const encabezados = [
-    "No.", "Período Desde", "Período Hasta", "Estado", "Frecuencia",
-    "Nombre Completo", "DPI", "Puesto", "Sede", "Cliente",
-    "Días Contrato", "Días Trabajados", "Faltas", "Suspensiones", "Horas Extra",
-    "Sueldo Base", "Sueldo Período", "Desc. Faltas", "Valor HE",
-    "Bon. Incentivo", "Bon. 1", "Bon. 2", "Bon. 3", "Desc. Séptimo", "Total Bruto",
-    "IGSS Trabajador", "Anticipos", "Otros Descuentos", "Total Neto",
+// ─── exportar PDF ─────────────────────────────────────────────────────────────
+async function exportarPDF(
+  lineas: LineaLibro[],
+  opts: { subtitulo?: string; desde?: string; hasta?: string; filename: string },
+) {
+  const pdf = await new IspPdf({
+    titulo: "Libro de Salarios",
+    subtitulo: opts.subtitulo,
+    desde: opts.desde,
+    hasta: opts.hasta,
+    orientation: "landscape",
+  }).build();
+
+  const columnas = [
+    "No.", "Período", "Colaborador", "DPI", "Puesto / Sede",
+    "Días Cont.", "Días Trab.", "Faltas", "HE",
+    "Sueldo Período", "Desc. Faltas", "Valor HE",
+    "Bon. Incentivo", "Desc. Séptimo", "Total Bruto",
+    "IGSS Trab.", "Anticipos", "Otros Desc.", "Total Líquido",
   ];
-  const filas = lineas.map((l, i) => [
+
+  const dash = (v: number | string, formatted: string) => (+v > 0 ? formatted : "—");
+
+  const filas: (string | number)[][] = lineas.map((l, i) => [
     i + 1,
-    l.periodo_desde,
-    l.periodo_hasta,
-    l.planilla_estado,
-    l.frecuencia_pago ?? "",
+    `${fmtDate(l.periodo_desde)} al ${fmtDate(l.periodo_hasta)}`,
     l.nombre_completo,
-    l.dpi ?? "",
-    l.puesto ?? "",
-    l.sede ?? "",
-    l.cliente ?? "",
+    l.dpi ?? "—",
+    [l.puesto, l.sede].filter(Boolean).join(" / ") || "—",
     l.periodo_dias,
     l.dias_trabajados,
-    l.faltas,
-    l.suspensiones,
-    l.horas_extra,
-    fmtN(l.sueldo_base),
-    fmtN(l.sueldo_periodo),
-    fmtN(l.desc_faltas),
-    fmtN(l.valor_he),
-    fmtN(l.bonificacion_incentivo),
-    fmtN(l.desc_septimo),
-    fmtN(l.total_bruto),
-    fmtN(l.igss_trabajador),
-    fmtN(l.anticipos),
-    fmtN(l.otros_descuentos),
-    fmtN(l.total_neto),
+    l.faltas > 0 ? l.faltas : "—",
+    dash(l.horas_extra, fmtN(l.horas_extra)),
+    fmtQ(l.sueldo_periodo),
+    dash(l.desc_faltas, fmtQ(l.desc_faltas)),
+    dash(l.valor_he, fmtQ(l.valor_he)),
+    fmtQ(l.bonificacion_incentivo),
+    dash(l.desc_septimo, fmtQ(l.desc_septimo)),
+    fmtQ(l.total_bruto),
+    dash(l.igss_trabajador, fmtQ(l.igss_trabajador)),
+    dash(l.anticipos, fmtQ(l.anticipos)),
+    dash(l.otros_descuentos, fmtQ(l.otros_descuentos)),
+    fmtQ(l.total_neto),
   ]);
 
-  const csv = [encabezados, ...filas]
-    .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
-    .join("\n");
+  const tot = calcTotales(lineas);
+  filas.push([
+    "", "", `TOTALES (${lineas.length})`, "", "", "", "", "", "",
+    fmtQ(tot.sueldo_periodo),
+    fmtQ(tot.desc_faltas),
+    fmtQ(tot.valor_he),
+    fmtQ(tot.bonificacion_incentivo),
+    fmtQ(tot.desc_septimo),
+    fmtQ(tot.total_bruto),
+    fmtQ(tot.igss_trabajador),
+    fmtQ(tot.anticipos),
+    fmtQ(tot.otros_descuentos),
+    fmtQ(tot.total_neto),
+  ]);
 
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
-  a.href     = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  pdf.addTabla(columnas, filas);
+  pdf.save(opts.filename);
 }
 
 // ─── totales de una lista de líneas ──────────────────────────────────────────
@@ -344,11 +357,16 @@ function VistaGeneral() {
           {data && data.rows.length > 0 && (
             <Button
               variant="outline"
-              onClick={() => exportarCSV(data.rows, `libro-salarios-${anio}-${String(mes).padStart(2, "0")}.csv`)}
+              onClick={() => exportarPDF(data.rows, {
+                subtitulo: `${MESES[mes - 1]} ${anio}`,
+                desde: `${anio}-${String(mes).padStart(2, "0")}-01`,
+                hasta: `${anio}-${String(mes).padStart(2, "0")}-${String(new Date(anio, mes, 0).getDate()).padStart(2, "0")}`,
+                filename: `libro-salarios-${anio}-${String(mes).padStart(2, "0")}.pdf`,
+              })}
               className="border-white/15 text-gray-300 hover:text-white gap-2"
             >
-              <Download className="w-4 h-4" />
-              Exportar CSV
+              <FileText className="w-4 h-4" />
+              Exportar PDF
             </Button>
           )}
         </div>
@@ -640,14 +658,16 @@ function VistaIndividual() {
           {data && data.rows.length > 0 && (
             <Button
               variant="outline"
-              onClick={() => exportarCSV(
-                data.rows,
-                `libro-salarios-${nombreColaborador.replace(/\s+/g, "-")}-${desde}-${hasta}.csv`
-              )}
+              onClick={() => exportarPDF(data.rows, {
+                subtitulo: nombreColaborador,
+                desde,
+                hasta,
+                filename: `libro-salarios-${nombreColaborador.replace(/\s+/g, "-")}-${desde}-${hasta}.pdf`,
+              })}
               className="border-white/15 text-gray-300 hover:text-white gap-2"
             >
-              <Download className="w-4 h-4" />
-              Exportar CSV
+              <FileText className="w-4 h-4" />
+              Exportar PDF
             </Button>
           )}
         </div>

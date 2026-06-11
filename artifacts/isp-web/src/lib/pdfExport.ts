@@ -30,6 +30,9 @@ interface PdfOptions {
   /** Fecha que aparece junto a "Emitido:" en el encabezado. Si no se
    *  pasa, se usa la fecha de hoy. Acepta YYYY-MM-DD o ISO. */
   fechaEmision?: string;
+  /** Orientación de la página. Por defecto "portrait". Usar "landscape"
+   *  para reportes con muchas columnas (p. ej. Libro de Salarios). */
+  orientation?: "portrait" | "landscape";
 }
 
 interface ResumenCard {
@@ -74,7 +77,7 @@ export class IspPdf {
 
   constructor(opts: PdfOptions) {
     this.opts = opts;
-    this.doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
+    this.doc = new jsPDF({ orientation: opts.orientation ?? "portrait", unit: "mm", format: "letter" });
     this.pageWidth = this.doc.internal.pageSize.getWidth();
     this.pageHeight = this.doc.internal.pageSize.getHeight();
     this.contentWidth = this.pageWidth - this.marginL - this.marginR;
