@@ -122,11 +122,22 @@ export function TabVacaciones({ emp }: { emp: Empleado }) {
 
   const diasSolicitados = fechaInicio && fechaFin ? calcDiasHabiles(fechaInicio, fechaFin) : (fechaInicio ? 1 : 0);
   const balanceProp     = saldo ? parseFloat(saldo.balance_proporcional) : 0;
-  const esAnticipada    = tipo === "vacaciones" && diasSolicitados > 0 && diasSolicitados > balanceProp;
+  const esAnticipada    = tipo === "vacaciones" && diasSolicitados > 0 && (diasSolicitados > balanceProp || !saldo?.es_elegible);
+  // Las vacaciones anticipadas requieren al menos 3 meses (90 días) de servicio.
+  const cumpleMinAnticipada = (saldo?.dias_servicio ?? 0) >= 90;
+  const bloqueadaPorMinimo  = esAnticipada && !cumpleMinAnticipada;
 
   async function handleRegistrar() {
     if (!fechaInicio) {
       toast({ title: "Fecha requerida", description: "Indica la fecha de inicio.", variant: "destructive" });
+      return;
+    }
+    if (bloqueadaPorMinimo) {
+      toast({
+        title: "No permitido",
+        description: "Las vacaciones anticipadas requieren al menos 3 meses de servicio.",
+        variant: "destructive",
+      });
       return;
     }
     if (esAnticipada && !confirmarAnticipada) { setConfirmarAnticipada(true); return; }
@@ -290,12 +301,25 @@ export function TabVacaciones({ emp }: { emp: Empleado }) {
                     <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Vacaciones anticipadas
                   </div>
                   <p className="text-xs text-amber-200/80 leading-relaxed">
-                    Autorizas <strong>{diasSolicitados} días</strong> pero el colaborador
-                    solo ha ganado <strong>{balanceProp.toFixed(1)} días</strong> proporcionalmente.
-                    El excedente de <strong>{(diasSolicitados - balanceProp).toFixed(1)} días</strong>
-                    {" "}({fmtQ.format((diasSolicitados - balanceProp) * tasaDiaria)}) se
-                    <strong> recuperará automáticamente en la liquidación</strong> si se
-                    da de baja antes de haber ganado ese tiempo.
+                    {!saldo.es_elegible ? (
+                      <>
+                        El colaborador <strong>aún no cumple 1 año</strong> de servicio
+                        (aniversario {fmtFechaVac(saldo.fecha_aniversario)}), por lo que estas son
+                        vacaciones anticipadas. Autorizas <strong>{diasSolicitados} días</strong>;
+                        lo que exceda lo ganado proporcionalmente (<strong>{balanceProp.toFixed(1)} días</strong>)
+                        {" "}se <strong>recuperará automáticamente en la liquidación</strong> si se
+                        da de baja antes de haber ganado ese tiempo.
+                      </>
+                    ) : (
+                      <>
+                        Autorizas <strong>{diasSolicitados} días</strong> pero el colaborador
+                        solo ha ganado <strong>{balanceProp.toFixed(1)} días</strong> proporcionalmente.
+                        El excedente de <strong>{(diasSolicitados - balanceProp).toFixed(1)} días</strong>
+                        {" "}({fmtQ.format((diasSolicitados - balanceProp) * tasaDiaria)}) se
+                        <strong> recuperará automáticamente en la liquidación</strong> si se
+                        da de baja antes de haber ganado ese tiempo.
+                      </>
+                    )}
                   </p>
                   <div className="flex gap-2">
                     <button onClick={() => setConfirmarAnticipada(false)}
@@ -348,6 +372,14 @@ export function TabVacaciones({ emp }: { emp: Empleado }) {
                     </div>
                   )}
 
+                  {bloqueadaPorMinimo && (
+                    <div className="rounded-lg px-3 py-2 text-xs bg-red-500/10 border border-red-400/30 text-red-300 flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      Requiere al menos 3 meses de servicio para anticipar vacaciones
+                      {typeof saldo.dias_servicio === "number" && ` (lleva ${saldo.dias_servicio} días).`}
+                    </div>
+                  )}
+
                   <div className="space-y-1.5">
                     <label className="text-xs text-white/50">Observaciones (opcional)</label>
                     <textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2}
@@ -360,10 +392,10 @@ export function TabVacaciones({ emp }: { emp: Empleado }) {
                       className="flex-1 text-xs text-white/50 border border-white/10 rounded-lg py-2 hover:bg-white/5">
                       Cancelar
                     </button>
-                    <button onClick={handleRegistrar} disabled={saving || !fechaInicio}
+                    <button onClick={handleRegistrar} disabled={saving || !fechaInicio || bloqueadaPorMinimo}
                       className="flex-1 text-xs bg-primary text-black font-semibold rounded-lg py-2 hover:bg-primary/90 flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed">
                       {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
-                      {esAnticipada ? "Revisar · es anticipada" : "Autorizar"}
+                      {bloqueadaPorMinimo ? "No permitido aún" : esAnticipada ? "Revisar · es anticipada" : "Autorizar"}
                     </button>
                   </div>
                 </>

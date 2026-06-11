@@ -505,7 +505,10 @@ vacacionesRouter.post("/vacaciones", async (req, res) => {
 
     // Obtener datos del empleado
     const { rows: empRows } = await client.query(
-      `SELECT id, nombre_completo, tipo_personal, fecha_ingreso
+      `SELECT id, nombre_completo, tipo_personal, fecha_ingreso,
+              (CURRENT_DATE - fecha_ingreso::date)::int AS dias_servicio,
+              ((fecha_ingreso + INTERVAL '1 year')::date <= CURRENT_DATE) AS ya_cumple_anio,
+              (fecha_ingreso + INTERVAL '1 year')::date::text AS fecha_aniversario
        FROM employees WHERE id = $1`,
       [employee_id]
     );
@@ -515,20 +518,33 @@ vacacionesRouter.post("/vacaciones", async (req, res) => {
     }
     const emp = empRows[0];
 
-    // Verificar elegibilidad (solo para vacaciones reales y cuando NO se fuerza anticipada)
+    // Verificar elegibilidad para vacaciones reales.
+    // Regla: con 1 año cumplido es goce normal. Entre 3 meses y 1 año se permite
+    // ADELANTAR (forzar_anticipada). Con menos de 3 meses NO se permite, ni forzando.
     const forzarAnticipada = req.body.forzar_anticipada === true;
-    if (tipo === "vacaciones" && !forzarAnticipada) {
+    if (tipo === "vacaciones") {
       if (!emp.fecha_ingreso) {
         await client.query("ROLLBACK");
         return res.status(400).json({ error: "El empleado no tiene fecha de ingreso registrada" });
       }
-      const aniversario = new Date(emp.fecha_ingreso);
-      aniversario.setFullYear(aniversario.getFullYear() + 1);
-      if (aniversario > new Date(todayGT() + "T12:00:00Z")) {
+      // dias_servicio y aniversario se calculan en SQL (CURRENT_DATE), igual que el
+      // endpoint GET /vacaciones/saldo, para que frontend y backend coincidan exacto.
+      const diasServicio = Number(emp.dias_servicio ?? 0);
+
+      if (forzarAnticipada) {
+        if (diasServicio < 90) {
+          await client.query("ROLLBACK");
+          return res.status(400).json({
+            error: "Las vacaciones anticipadas requieren al menos 3 meses de servicio cumplidos.",
+            dias_servicio: diasServicio,
+            min_dias: 90,
+          });
+        }
+      } else if (!emp.ya_cumple_anio) {
         await client.query("ROLLBACK");
         return res.status(400).json({
-          error: `El empleado aún no cumple 1 año. Aniversario: ${aniversario.toISOString().slice(0, 10)}`,
-          fecha_aniversario: aniversario.toISOString().slice(0, 10),
+          error: `El empleado aún no cumple 1 año. Aniversario: ${emp.fecha_aniversario}`,
+          fecha_aniversario: emp.fecha_aniversario,
           anticipada: true,
         });
       }
