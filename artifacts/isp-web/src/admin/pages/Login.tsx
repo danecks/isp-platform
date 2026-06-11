@@ -9,9 +9,12 @@ import { brand } from "@/config/branding";
 import { getSessionToken } from "@/lib/httpClient";
 
 const RAW_TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
-const IS_REPLIT_PREVIEW = typeof window !== "undefined"
-  && (window.location.hostname.endsWith(".replit.dev") || window.location.hostname.endsWith(".repl.co"));
-const TURNSTILE_SITE_KEY = IS_REPLIT_PREVIEW ? undefined : RAW_TURNSTILE_SITE_KEY;
+// En el entorno de desarrollo/preview no se carga el captcha (la clave de
+// Turnstile no aplica a esos dominios). import.meta.env.DEV es true solo bajo
+// `vite dev`; en el build de producción el compilador lo reemplaza por `false`,
+// así que no queda ninguna referencia al entorno en el código publicado.
+const IS_DEV_PREVIEW = import.meta.env.DEV;
+const TURNSTILE_SITE_KEY = IS_DEV_PREVIEW ? undefined : RAW_TURNSTILE_SITE_KEY;
 
 declare global {
   interface Window {
