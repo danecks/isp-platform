@@ -24,4 +24,5 @@
 - [Cobro de anticipos (interés flat)](anticipo-cobro-modelo.md) — recargo sobre monto original: 10% 1ª cuota + 5% por cuota extra, cuotas niveladas; fórmula DUPLICADA en backend y frontend, cambiar en ambos.
 - [HE en efectivo dos fuentes](he-efectivo-dos-fuentes.md) — reporte cash une novedades(pagado_efectivo, horas) + incentivos_cash_cobertura(he_efectivo, monto); se ocultan del detalle de pre-planilla normal (solo display, doble pago ya protegido en SQL).
 - [HE tarifa fija por turno](he-tarifa-fija-turno.md) — HE se paga por config_tarifa_he (Q150/12h, Q300/24h flat), no 1.5x; fuente única calcularValorHE; pre-planilla y planilla resuelven jornada igual.
+- [IGSS reclasifica al generar planilla](igss-planilla-snapshot.md) — el IGSS de planilla_lineas se calcula vivo al generar (no del snapshot); no cambia retroactivo; planilla 'pagada' no se revierte (en real entra la quincena siguiente).
 - [Baja libera puesto_slots](baja-libera-slots.md) — al dar de baja, liberar también puesto_slots (24x24) con liberarTitularidadAgente, no solo titularidad legacy; reconciliación idempotente en auto-seed; suspensión/licencia NO liberan.
