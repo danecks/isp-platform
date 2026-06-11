@@ -40,7 +40,7 @@ export function AnexoFaltas({ desde, hasta }: { desde: string; hasta: string }) 
         <table className="w-full text-xs border-collapse">
           <thead className="bg-[#060e1c] border-b border-white/6">
             <tr>
-              {["Fecha", "Colaborador", "Sede", "Tipo", "Descuento día", "Puesto cubierto", "Ref. / Contexto"].map((h) => (
+              {["Fecha", "Colaborador", "Sede", "Tipo", "Descuento día", "Cubierto por", "Ref. / Contexto"].map((h) => (
                 <th key={h} className="text-left text-[10px] text-white/40 font-semibold uppercase tracking-wider px-3 py-2 whitespace-nowrap">{h}</th>
               ))}
             </tr>
@@ -87,7 +87,18 @@ export function AnexoFaltas({ desde, hasta }: { desde: string; hasta: string }) 
                     <span className="text-white/20">—</span>
                   )}
                 </td>
-                <td className="px-3 py-2.5 text-white/50">{r.puesto_cubierto_nombre ?? <span className="text-white/20">No cubierto</span>}</td>
+                <td className="px-3 py-2.5">
+                  {r.cubierto_por_nombre ? (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-emerald-300 font-semibold">{r.cubierto_por_nombre}</span>
+                      {r.cubierto_puesto_nombre && (
+                        <span className="text-white/30 text-[10px]">{r.cubierto_puesto_nombre}</span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-white/20">No cubierto</span>
+                  )}
+                </td>
                 <td className="px-3 py-2.5 text-white/30 max-w-[160px] truncate">{r.observaciones ?? "—"}</td>
               </tr>
             ))}

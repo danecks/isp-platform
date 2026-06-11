@@ -27,5 +27,6 @@
 - [IGSS reclasifica al generar planilla](igss-planilla-snapshot.md) — el IGSS de planilla_lineas se calcula vivo al generar (no del snapshot); no cambia retroactivo; planilla 'pagada' no se revierte (en real entra la quincena siguiente).
 - [Vacaciones anticipadas mín. 3 meses](vacaciones-anticipadas-minimo.md) — adelantar vacaciones (forzar_anticipada) solo con ≥90 días de servicio; <3 meses bloqueado aun forzando; dias_servicio/aniversario en SQL (CURRENT_DATE) en saldo Y POST para no driftear.
 - [Titular (persona) en anexo HE](he-anexo-titular-slots.md) — en relevo, "Titular" = persona relevada en el puesto cubierto; derivar el slot de turno por ciclo (no hay campo guardado); solo lectura.
+- [Cubierto por en anexo Faltas](he-anexo-faltas-cubierto-por.md) — falta muestra quién la cubrió (persona con HE); enlazar por puesto+fecha (titular_id o slots), no hay campo guardado; solo lectura.
 - [Días vacaciones separados en nómina](dias-vacaciones-separados.md) — vacaciones (tipo_novedad='vacaciones') como columna propia, aparte de trabajados; planillas viejas/ODBC = 0; CSV totales por posición fija.
 - [Baja libera puesto_slots](baja-libera-slots.md) — al dar de baja, liberar también puesto_slots (24x24) con liberarTitularidadAgente, no solo titularidad legacy; reconciliación idempotente en auto-seed; suspensión/licencia NO liberan.

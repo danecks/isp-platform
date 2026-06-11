@@ -1702,6 +1702,13 @@ prePlanillaRouter.get("/nomina/pre-planilla/anexo/faltas", async (req, res) => {
         n.dias_descuento,
         n.puesto_titular_nombre,
         n.puesto_cubierto_nombre,
+        -- Quién CUBRIÓ esta falta/suspensión ese día (la persona que hizo HE).
+        -- La novedad de la falta no guarda al cubridor; se enlaza buscando una
+        -- cobertura del mismo día sobre el puesto donde el ausente es titular.
+        -- El puesto se toma de puesto_titular_id (si la novedad lo guardó) o se
+        -- deriva del slot del ausente (modelo de turnos puesto_slots).
+        cob.cubierto_por_nombre,
+        cob.cubierto_puesto_nombre,
         n.observaciones,
         n.fuente,
         n.tipo_novedad,
@@ -1711,6 +1718,29 @@ prePlanillaRouter.get("/nomina/pre-planilla/anexo/faltas", async (req, res) => {
         e.sede
       FROM novedades_nomina_diarias n
       JOIN employees e ON e.id = n.employee_id
+      LEFT JOIN LATERAL (
+        SELECT ce.nombre_completo        AS cubierto_por_nombre,
+               c.puesto_cubierto_nombre  AS cubierto_puesto_nombre
+        FROM novedades_nomina_diarias c
+        JOIN employees ce ON ce.id = c.employee_id
+        WHERE c.fecha = n.fecha
+          AND c.puesto_cubierto_id IS NOT NULL
+          AND c.employee_id <> n.employee_id
+          AND c.horas_extra::numeric > 0
+          AND (
+            -- Si la novedad guardó el puesto del ausente, coincidir exacto.
+            c.puesto_cubierto_id = n.puesto_titular_id
+            -- Si no (típico en sustitucion_pizarron), coincidir contra CUALQUIER
+            -- puesto donde el ausente sea titular activo (evita elegir un slot
+            -- arbitrario cuando hay más de uno).
+            OR (n.puesto_titular_id IS NULL AND c.puesto_cubierto_id IN (
+                 SELECT ps.puesto_id FROM puesto_slots ps
+                 WHERE ps.empleado_id = n.employee_id AND ps.activo = TRUE
+               ))
+          )
+        ORDER BY c.horas_extra::numeric DESC, ce.nombre_completo
+        LIMIT 1
+      ) cob ON TRUE
       WHERE n.fecha BETWEEN $1 AND $2
         AND (n.falta = TRUE OR n.suspension = TRUE)
         AND NOT EXISTS (

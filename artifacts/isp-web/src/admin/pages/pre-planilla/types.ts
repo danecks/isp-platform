@@ -145,6 +145,8 @@ export interface AnexoFalta {
   dias_descuento: number | null;
   puesto_titular_nombre: string | null;
   puesto_cubierto_nombre: string | null;
+  cubierto_por_nombre: string | null;
+  cubierto_puesto_nombre: string | null;
   observaciones: string | null;
   fuente: string | null;
   employee_id: number;
