@@ -142,28 +142,25 @@ anticiposRouter.post("/anticipos", async (req, res) => {
     const periodo = getPeriodoActivo() ?? `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-manual`;
 
     // ¿Anticipo extraordinario? Solo el director (rol admin) puede autorizar uno
-    // que se salte el tope dinámico. Resolvemos su identidad contra la BD.
+    // que se salte el tope dinámico. OJO: POST /anticipos es una ruta PÚBLICA
+    // (la usa el kiosco /solicitar-anticipo sin sesión), así que aquí NO se
+    // puede confiar en el `rol` que venga en el header. Igualamos la vía segura
+    // del middleware: exigir username y resolver el rol REAL contra la BD.
     let esExtraordinario = false;
     let autorizadoPor: string | null = null;
     if (extraordinarioBody === true) {
-      let esDirector = false;
       let username: string | null = null;
       const raw = req.headers["x-isp-session"] as string | undefined;
       if (raw) {
         try {
-          const sess = JSON.parse(raw) as { rol?: string; username?: string };
+          const sess = JSON.parse(raw) as { username?: string };
           username = sess.username ?? null;
-          if (sess.username) {
-            const { rol } = await getPermisosForUsername(sess.username);
-            esDirector = rol === "admin";
-          } else {
-            esDirector = sess?.rol === "admin";
-          }
         } catch {
-          esDirector = false;
+          username = null;
         }
       }
-      if (!esDirector) {
+      const rol = username ? (await getPermisosForUsername(username)).rol : "";
+      if (rol !== "admin") {
         return res.status(403).json({
           error: "no_autorizado",
           mensaje: "Solo el director puede autorizar un anticipo extraordinario.",

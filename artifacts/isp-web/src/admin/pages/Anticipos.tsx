@@ -21,6 +21,7 @@ import {
   ExternalLink,
   Plus,
   AlertTriangle,
+  Check,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -139,6 +140,13 @@ export default function Anticipos() {
   const limiteInfo = limiteData?.periodoActual;
   const montoParsed = parseFloat(formCantidad);
   const excedeLimite = limiteInfo?.tieneLimite && limiteInfo.restante !== null && !isNaN(montoParsed) && montoParsed > limiteInfo.restante;
+  // Hay una restricción de tope que un anticipo extraordinario (autorizado por
+  // el director) podría saltar.
+  const hayRestriccionTope = !!(
+    formEmpleadoId &&
+    limiteInfo?.tieneLimite &&
+    (excedeLimite || limiteInfo.enRiesgo || (limiteInfo.restante ?? 0) <= 0)
+  );
 
   const empleadosFiltrados = formBusqueda.length >= 1
     ? empleados.filter((e) =>
@@ -164,6 +172,7 @@ export default function Anticipos() {
     setFormPuesto("");
     setFormDpi("");
     setFormTelefono("");
+    setFormExtraordinario(false);
   }
 
   const { mutate: actualizarEstado, isPending: guardando } = useMutation({
@@ -194,14 +203,20 @@ export default function Anticipos() {
         dpi: formDpi.trim() || undefined,
         telefono: formTelefono.trim() || undefined,
         observaciones: formObservaciones.trim() || undefined,
+        extraordinario: formExtraordinario || undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["anticipos"] });
       setModalNuevo(false);
       setFormEmpleadoId(null); setFormNombre(""); setFormBusqueda("");
       setFormCantidad(""); setFormPuesto(""); setFormDpi("");
-      setFormTelefono(""); setFormObservaciones(""); setMostrarDropdown(false);
-      toast({ title: "Anticipo creado", description: "El anticipo manual fue registrado." });
+      setFormTelefono(""); setFormObservaciones(""); setFormExtraordinario(false); setMostrarDropdown(false);
+      toast({
+        title: formExtraordinario ? "Anticipo extraordinario creado" : "Anticipo creado",
+        description: formExtraordinario
+          ? "Se registró saltándose el tope, con tu autorización."
+          : "El anticipo manual fue registrado.",
+      });
     },
     onError: async (error: unknown) => {
       // Manejo especial de error 422 (excede_limite)
@@ -1011,6 +1026,33 @@ export default function Anticipos() {
                     Ajustar a Q{(limiteInfo.restante ?? 0).toLocaleString("es-GT")}
                   </button>
                 </div>
+              )}
+
+              {/* Anticipo extraordinario — solo el director puede saltar el tope */}
+              {esDirector && hayRestriccionTope && (
+                <button
+                  type="button"
+                  onClick={() => setFormExtraordinario((v) => !v)}
+                  className={`w-full text-left rounded-lg px-3 py-2.5 border flex items-start gap-2 transition-colors ${
+                    formExtraordinario
+                      ? "bg-purple-400/10 border-purple-400/40"
+                      : "bg-white/5 border-white/10 hover:border-white/20"
+                  }`}
+                >
+                  <div className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                    formExtraordinario ? "bg-purple-400 border-purple-400" : "border-white/30"
+                  }`}>
+                    {formExtraordinario && <Check className="w-3 h-3 text-white" />}
+                  </div>
+                  <div className="flex-1 text-xs">
+                    <p className={`font-medium ${formExtraordinario ? "text-purple-200" : "text-white/70"}`}>
+                      Autorizar como anticipo extraordinario
+                    </p>
+                    <p className="text-white/40 mt-0.5">
+                      Se salta el tope bajo tu responsabilidad como director. Queda registrado a tu nombre.
+                    </p>
+                  </div>
+                </button>
               )}
 
               {/* Monto */}
