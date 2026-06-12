@@ -108,12 +108,63 @@ router.post("/operaciones/registrar-falta-custodia", async (req, res) => {
       ? `${motivoNorm} — Custodio ${slotNumero} (${clienteNombre}). ${notas}`
       : `${motivoNorm} — Custodio ${slotNumero} (${clienteNombre})`;
 
-    await pool.query(`
-      INSERT INTO eventos_rrhh (employee_id, employee_nombre, employee_dpi, tipo_evento, fecha, observaciones, notas, usuario_generador, generado_desde, cliente_nombre, puesto_nombre)
-      VALUES ($1, $2, $3, 'falta', $4::date, $5, $6, $7, 'operaciones', $8, $9)
-    `, [empleadoId, emp[0].nombre_completo, '', fechaHoy, motivoNorm, notaEvento, usuario ?? 'sistema', clienteNombre, `Custodio ${slotNumero}`]);
+    const tx = await pool.connect();
+    try {
+      await tx.query("BEGIN");
 
-    logger.info({ clienteId, slotNumero, empleadoId, motivo: motivoNorm }, "Falta custodia registrada");
+      const { rows: evRows } = await tx.query(`
+        INSERT INTO eventos_rrhh (employee_id, employee_nombre, employee_dpi, tipo_evento, fecha, observaciones, notas, usuario_generador, generado_desde, cliente_nombre, puesto_nombre)
+        VALUES ($1, $2, $3, 'falta', $4::date, $5, $6, $7, 'operaciones', $8, $9)
+        RETURNING id
+      `, [empleadoId, emp[0].nombre_completo, '', fechaHoy, motivoNorm, notaEvento, usuario ?? 'sistema', clienteNombre, `Custodio ${slotNumero}`]);
+      const eventoId = evRows[0]?.id ?? null;
+
+      // Descuento por falta de custodio: la jornada de custodios es de 12h ⇒ 2 días
+      // de descuento (igual que un guardia de 12h). Se crea como incidencia PENDIENTE
+      // de RRHH, idéntica a las faltas de guardia diferidas en el cierre:
+      // falta=FALSE + requiere_revision_rrhh=TRUE. Al resolverla RRHH en
+      // /rrhh/incidencias/:id/resolver se pone falta=TRUE y el dias_descuento=2 entra
+      // al cálculo de pre-planilla/planilla. puesto_titular_id es NULL porque los
+      // custodios no son titulares de un puesto operativo. La anulación del evento
+      // (vía /rrhh/eventos/:id/anular) revierte la novedad (falta=FALSE) por fecha+empleado.
+      await tx.query(`
+        INSERT INTO novedades_nomina_diarias
+          (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
+           falta, descuento_dia, impacto_nomina, requiere_revision_rrhh,
+           tipo_novedad, evento_rrhh_id, puesto_titular_id, puesto_titular_nombre, fuente,
+           dias_descuento)
+        VALUES ($1, $2, $3, FALSE, 0, 0, FALSE, FALSE, 'pendiente', TRUE,
+                'falta_total', $4, NULL, $5, 'falta_custodia', 2)
+        ON CONFLICT (fecha, employee_id) DO UPDATE SET
+          trabajo_dia            = FALSE,
+          horas_trabajadas       = 0,
+          tipo_novedad           = COALESCE(novedades_nomina_diarias.tipo_novedad, 'falta_total'),
+          evento_rrhh_id         = COALESCE(novedades_nomina_diarias.evento_rrhh_id, EXCLUDED.evento_rrhh_id),
+          dias_descuento         = EXCLUDED.dias_descuento,
+          puesto_titular_nombre  = COALESCE(novedades_nomina_diarias.puesto_titular_nombre, EXCLUDED.puesto_titular_nombre),
+          fuente                 = COALESCE(novedades_nomina_diarias.fuente, EXCLUDED.fuente),
+          impacto_nomina         = CASE
+            WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+            THEN novedades_nomina_diarias.impacto_nomina
+            ELSE 'pendiente'
+          END,
+          requiere_revision_rrhh = CASE
+            WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh')
+            THEN novedades_nomina_diarias.requiere_revision_rrhh
+            ELSE TRUE
+          END,
+          updated_at             = NOW()
+      `, [fechaHoy, empleadoId, emp[0].nombre_completo, eventoId, `Custodio ${slotNumero}`]);
+
+      await tx.query("COMMIT");
+    } catch (e) {
+      await tx.query("ROLLBACK").catch(() => {});
+      throw e;
+    } finally {
+      tx.release();
+    }
+
+    logger.info({ clienteId, slotNumero, empleadoId, motivo: motivoNorm }, "Falta custodia registrada (descuento 2 días pendiente RRHH)");
     res.json({ ok: true, empleado: emp[0].nombre_completo, slot: `Custodio ${slotNumero}` });
   } catch (err) {
     logger.error({ err }, "POST /operaciones/registrar-falta-custodia error");

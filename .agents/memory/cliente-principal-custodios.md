@@ -22,14 +22,22 @@ titular permanente sobre la asignación del período.
 puesto. El fallback de cliente es un sub-SELECT escalar aparte. Misma lógica aplicaría
 a `clienteEmpleadoSQL` (scoping de feriados) si se quiere consistencia para custodios.
 
-## Jornada y faltas de custodios
+## Jornada y descuento por falta (sigue la jornada)
 - **La jornada de custodios es de 12 horas** (regla de negocio confirmada por el
-  director). Equivale a 2 días de descuento si se aplicara la regla de falta de guardias.
-- La falta de un custodio (`/operaciones/registrar-falta-custodia`) se registra DIRECTO
-  como `eventos_rrhh` tipo 'falta'; NO se difiere al cierre ni crea
-  `novedades_nomina_diarias` con `dias_descuento`. La regla de tramo de jornada del
-  cierre (≥24h ⇒ 3 días, <24h ⇒ 2 días) corre SOLO sobre `puestos_operativos`, así que
-  los custodios quedan sin descuento automático (lo resuelve RRHH a mano).
-- Gotcha relacionada en guardias: el tramo de jornada del cierre lee
-  `turnos.horas_trabajo` vía `po.tipo_turno_id` (jornada del PUESTO), no la jornada del
-  slot del agente que faltó; solo importa en puestos que mezclan 12h y 24h.
+  director) ⇒ su falta descuenta **2 días**.
+- Regla general del descuento por falta: 12h ⇒ 2 días, 24h ⇒ 3 días. El descuento sale
+  de `novedades_nomina_diarias.dias_descuento`, pero pre-planilla solo lo cuenta cuando
+  `falta=TRUE`. El flujo es: se crea incidencia PENDIENTE (`falta=FALSE`,
+  `requiere_revision_rrhh=TRUE`, `dias_descuento=N`) y RRHH la resuelve en
+  `/rrhh/incidencias/:id/resolver` (pone `falta=TRUE`, deja `dias_descuento` intacto).
+  "Automático" = el sistema pre-carga los días correctos; RRHH sigue clasificando.
+- **Custodios**: `/operaciones/registrar-falta-custodia` ahora crea, en una transacción,
+  el `eventos_rrhh` 'falta' MÁS la novedad pendiente con `dias_descuento=2`,
+  `puesto_titular_id=NULL`, `fuente='falta_custodia'`, replicando el patrón del cierre.
+  Antes solo insertaba el evento (sin descuento). La anulación va por
+  `/rrhh/eventos/:id/anular` (C-03 revierte `falta=FALSE` por fecha+empleado) porque
+  `anular-falta.ts` rechaza custodia.
+- **Guardias**: el tramo de jornada del cierre lee la jornada REAL del agente que faltó
+  desde `puesto_slots.horas_turno` (WHERE puesto_id + empleado_id=falta_employee_id),
+  con fallback a `turnos.horas_trabajo` y 24. Antes leía solo el turno del PUESTO
+  (`po.tipo_turno_id`), lo que fallaba en puestos 24x24 con titulares de jornada distinta.

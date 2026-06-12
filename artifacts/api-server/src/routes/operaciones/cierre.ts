@@ -576,7 +576,20 @@ router.post("/operaciones/cierre", async (req, res) => {
     try {
       const { rows: puestosFaltando } = await pool.query(`
         SELECT po.id, po.nombre, po.cliente_nombre, po.falta_employee_id, po.falta_motivo, po.falta_notas, po.falta_usuario,
-               COALESCE(t.horas_trabajo, 24) AS turno_horas
+               -- Días de descuento según la JORNADA REAL del agente que faltó (su slot
+               -- de turno), no la del puesto: 12h ⇒ 2 días, 24h ⇒ 3 días. En un puesto
+               -- 24x24 cada titular puede tener jornada distinta, así que se lee el
+               -- slot del propio falta_employee_id; fallback al turno del puesto y a 24.
+               COALESCE(
+                 (SELECT ps.horas_turno
+                    FROM puesto_slots ps
+                   WHERE ps.puesto_id   = po.id
+                     AND ps.empleado_id = po.falta_employee_id
+                   ORDER BY ps.activo DESC, ps.id DESC
+                   LIMIT 1),
+                 t.horas_trabajo,
+                 24
+               ) AS turno_horas
         FROM puestos_operativos po
         LEFT JOIN turnos t ON t.id = po.tipo_turno_id
         WHERE po.estado_operativo_puesto = 'faltando'
