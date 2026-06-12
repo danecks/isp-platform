@@ -5227,6 +5227,15 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: ANT-CUOTAS-01 — error (no bloqueante)");
   }
 
+  // ── ANT-EXTRA-01: anticipo extraordinario autorizado por admin ───────────────
+  try {
+    await pool.query(`ALTER TABLE anticipos ADD COLUMN IF NOT EXISTS extraordinario  BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE anticipos ADD COLUMN IF NOT EXISTS autorizado_por  VARCHAR(100)`);
+    logger.info("Auto-migrate: ANT-EXTRA-01 columnas de anticipo extraordinario verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: ANT-EXTRA-01 — error (no bloqueante)");
+  }
+
   // ── HIST-PREST-01: tabla de historial de prestaciones pagadas fuera del sistema ──
   try {
     await pool.query(`

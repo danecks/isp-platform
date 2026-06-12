@@ -100,6 +100,7 @@ export default function Anticipos() {
   const [formDpi, setFormDpi] = useState("");
   const [formTelefono, setFormTelefono] = useState("");
   const [formObservaciones, setFormObservaciones] = useState("");
+  const [formExtraordinario, setFormExtraordinario] = useState(false);
 
   const queryClient = useQueryClient();
   const { toast } = useToast();

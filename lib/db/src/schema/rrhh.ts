@@ -72,6 +72,10 @@ export const anticiposTable = pgTable("anticipos", {
   fechaSolicitud: timestamp("fecha_solicitud", { withTimezone: true }).notNull().defaultNow(),
   observaciones: text("observaciones"),
   planillaId: integer("planilla_id"),
+  // Anticipo extraordinario: autorizado por el director (admin) saltándose el
+  // tope dinámico. autorizadoPor guarda el username del admin que lo aprobó.
+  extraordinario: boolean("extraordinario").notNull().default(false),
+  autorizadoPor: varchar("autorizado_por", { length: 100 }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

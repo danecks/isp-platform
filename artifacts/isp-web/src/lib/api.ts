@@ -230,6 +230,7 @@ export const anticiposApi = {
     dpi?: string;
     telefono?: string;
     observaciones?: string;
+    extraordinario?: boolean;
   }) => apiFetch<Anticipo>("/anticipos", { method: "POST", body: JSON.stringify(data) }),
   exportCsv: (params?: { estado?: string; periodo?: string; desde?: string; hasta?: string }) => {
     const qs = new URLSearchParams(params as Record<string, string> ?? {}).toString();

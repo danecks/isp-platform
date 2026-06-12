@@ -128,7 +128,7 @@ anticiposRouter.get("/anticipos", async (req, res) => {
 
 // ── POST /api/anticipos — crear anticipo manual ────────────────────────────
 anticiposRouter.post("/anticipos", async (req, res) => {
-  const { nombre, cantidad, empleadoId, puesto, dpi, telefono, observaciones, origen: origenBody } = req.body ?? {};
+  const { nombre, cantidad, empleadoId, puesto, dpi, telefono, observaciones, origen: origenBody, extraordinario: extraordinarioBody } = req.body ?? {};
 
   if (!nombre || !cantidad) {
     return res.status(400).json({ error: "nombre y cantidad son requeridos" });
@@ -141,8 +141,40 @@ anticiposRouter.post("/anticipos", async (req, res) => {
   try {
     const periodo = getPeriodoActivo() ?? `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-manual`;
 
-    // Validar límite si el colaborador está vinculado
-    if (empleadoId) {
+    // ¿Anticipo extraordinario? Solo el director (rol admin) puede autorizar uno
+    // que se salte el tope dinámico. Resolvemos su identidad contra la BD.
+    let esExtraordinario = false;
+    let autorizadoPor: string | null = null;
+    if (extraordinarioBody === true) {
+      let esDirector = false;
+      let username: string | null = null;
+      const raw = req.headers["x-isp-session"] as string | undefined;
+      if (raw) {
+        try {
+          const sess = JSON.parse(raw) as { rol?: string; username?: string };
+          username = sess.username ?? null;
+          if (sess.username) {
+            const { rol } = await getPermisosForUsername(sess.username);
+            esDirector = rol === "admin";
+          } else {
+            esDirector = sess?.rol === "admin";
+          }
+        } catch {
+          esDirector = false;
+        }
+      }
+      if (!esDirector) {
+        return res.status(403).json({
+          error: "no_autorizado",
+          mensaje: "Solo el director puede autorizar un anticipo extraordinario.",
+        });
+      }
+      esExtraordinario = true;
+      autorizadoPor = username;
+    }
+
+    // Validar límite si el colaborador está vinculado (los extraordinarios lo saltan)
+    if (empleadoId && !esExtraordinario) {
       const limite = await calcularLimiteAnticipo(Number(empleadoId), periodo);
       if (limite.tieneLimite && limite.restante !== null && monto > limite.restante) {
         let mensaje: string;
@@ -185,6 +217,8 @@ anticiposRouter.post("/anticipos", async (req, res) => {
         estado: "pendiente",
         periodo,
         observaciones: observaciones ? String(observaciones).trim() : null,
+        extraordinario: esExtraordinario,
+        autorizadoPor,
         fechaSolicitud: new Date(),
         createdAt: new Date(),
         updatedAt: new Date(),
