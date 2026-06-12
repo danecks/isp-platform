@@ -125,7 +125,10 @@ export default function Anticipos() {
 
   // Límite del colaborador seleccionado (se consulta solo cuando hay uno seleccionado)
   const { data: limiteData } = useQuery<{
-    periodoActual: { limite: number | null; solicitado: number; restante: number | null; tieneLimite: boolean; periodo: string | null };
+    periodoActual: {
+      limite: number | null; solicitado: number; restante: number | null; tieneLimite: boolean; periodo: string | null;
+      liquidacionAcumulada?: number; kpiScore?: number; kpiClasificacion?: string; enRiesgo?: boolean; porcentajeTecho?: number; baseManual?: boolean;
+    };
   }>({
     queryKey: ["anticipo-limite", formEmpleadoId],
     queryFn: () => fetch(`/api/employees/${formEmpleadoId}/anticipos`).then((r) => r.json()),
@@ -955,7 +958,7 @@ export default function Anticipos() {
                 )}
               </div>
 
-              {/* Panel de saldo disponible (solo cuando hay colaborador seleccionado y tiene límite) */}
+              {/* Panel de tope disponible (solo cuando hay colaborador seleccionado y tiene tope) */}
               {formEmpleadoId && limiteInfo?.tieneLimite && (
                 <div className={`rounded-lg px-3 py-2.5 border text-xs flex items-center justify-between gap-2 ${
                   (limiteInfo.restante ?? 0) <= 0
@@ -966,14 +969,23 @@ export default function Anticipos() {
                     <Wallet className={`w-3.5 h-3.5 shrink-0 ${(limiteInfo.restante ?? 0) <= 0 ? "text-red-400" : "text-primary"}`} />
                     <div>
                       <p className="text-white/70">
-                        Límite: <span className="font-bold text-white">Q{(limiteInfo.limite ?? 0).toLocaleString("es-GT")}</span>
-                        {" · "}Solicitado: <span className="text-yellow-400">Q{limiteInfo.solicitado.toLocaleString("es-GT")}</span>
+                        Tope: <span className="font-bold text-white">Q{(limiteInfo.limite ?? 0).toLocaleString("es-GT")}</span>
+                        {" · "}Ya debe: <span className="text-yellow-400">Q{limiteInfo.solicitado.toLocaleString("es-GT")}</span>
                         {" · "}Disponible: <span className={`font-bold ${(limiteInfo.restante ?? 0) <= 0 ? "text-red-400" : "text-green-400"}`}>
                           Q{(limiteInfo.restante ?? 0).toLocaleString("es-GT")}
                         </span>
                       </p>
-                      {limiteInfo.periodo && (
-                        <p className="text-white/25 mt-0.5">Período: {limiteInfo.periodo.replace("-dia", " día")}</p>
+                      {limiteInfo.enRiesgo ? (
+                        <p className="text-red-300 mt-0.5">
+                          KPI en riesgo ({limiteInfo.kpiScore} pts) — sin anticipo hasta recuperar disciplina.
+                        </p>
+                      ) : limiteInfo.baseManual ? (
+                        <p className="text-white/25 mt-0.5">Tope manual de la ficha (sin fecha de ingreso o sueldo para calcular liquidación).</p>
+                      ) : (
+                        <p className="text-white/25 mt-0.5">
+                          30% de la liquidación acumulada (Q{(limiteInfo.liquidacionAcumulada ?? 0).toLocaleString("es-GT")})
+                          {typeof limiteInfo.kpiScore === "number" ? ` × KPI ${limiteInfo.kpiScore}/100` : ""}
+                        </p>
                       )}
                     </div>
                   </div>

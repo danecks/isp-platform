@@ -238,18 +238,11 @@ router.get("/employees/:id/anticipos", async (req, res) => {
       .where(eq(anticiposTable.employeeId, id))
       .orderBy(desc(anticiposTable.fechaSolicitud));
 
-    // Límite del período activo (si existe)
-    const periodoActual = getPeriodoActivo();
-    const limiteInfo = periodoActual
-      ? await calcularLimiteAnticipo(id, periodoActual)
-      : {
-          limite: emp.limiteAnticipo,
-          tipoLimitePeriodo: emp.tipoLimitePeriodo ?? "quincenal",
-          solicitado: 0,
-          restante: emp.limiteAnticipo,
-          tieneLimite: emp.limiteAnticipo !== null,
-          periodo: null,
-        };
+    // Tope dinámico (liquidación acumulada × 30% × KPI). Es una propiedad de la
+    // persona, no de la quincena: se calcula siempre, no solo en días hábiles.
+    const periodoActual = getPeriodoActivo()
+      ?? `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-manual`;
+    const limiteInfo = await calcularLimiteAnticipo(id, periodoActual);
 
     res.json({
       config: {

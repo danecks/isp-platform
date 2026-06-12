@@ -145,15 +145,23 @@ anticiposRouter.post("/anticipos", async (req, res) => {
     if (empleadoId) {
       const limite = await calcularLimiteAnticipo(Number(empleadoId), periodo);
       if (limite.tieneLimite && limite.restante !== null && monto > limite.restante) {
+        let mensaje: string;
+        if (limite.enRiesgo) {
+          mensaje = `${nombre} no puede recibir anticipo: su KPI disciplinario está en riesgo (${limite.kpiScore} pts).`;
+        } else if (limite.restante === 0) {
+          mensaje = `${nombre} ya no tiene saldo disponible (tope Q${(limite.limite ?? 0).toLocaleString("es-GT")}, ya debe Q${limite.solicitado.toLocaleString("es-GT")}).`;
+        } else {
+          mensaje = `El monto Q${monto.toLocaleString("es-GT")} excede el disponible de Q${limite.restante.toLocaleString("es-GT")} (tope Q${(limite.limite ?? 0).toLocaleString("es-GT")} = 30% de la liquidación acumulada ajustado por KPI).`;
+        }
         return res.status(422).json({
           error: "excede_limite",
-          mensaje:
-            limite.restante === 0
-              ? `${nombre} ya no tiene saldo disponible para este período.`
-              : `El monto Q${monto} excede el disponible de Q${limite.restante} para este período.`,
+          mensaje,
           limite: limite.limite,
           solicitado: limite.solicitado,
           restante: limite.restante,
+          liquidacionAcumulada: limite.liquidacionAcumulada,
+          kpiScore: limite.kpiScore,
+          enRiesgo: limite.enRiesgo,
           periodo,
         });
       }
