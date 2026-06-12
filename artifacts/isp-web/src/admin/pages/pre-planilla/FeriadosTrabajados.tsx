@@ -6,7 +6,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, fmtFecha, fmtQ } from "./helpers";
 import { TablaVacia } from "./badges";
-import type { FeriadosResponse, FeriadoPeriodo, FeriadoColaborador } from "./types";
+import type { FeriadosResponse, FeriadoPeriodo, FeriadoColaborador, FeriadoCreado } from "./types";
 
 /**
  * FeriadosTrabajados — pestaña de la pre-planilla para asignar el pago por
@@ -172,19 +172,31 @@ export function FeriadosTrabajados({ desde, hasta }: { desde: string; hasta: str
     }
     setSaving("nuevo");
     try {
-      await apiRequest("/api/nomina/pre-planilla/feriados", {
+      const resp = await apiRequest("/api/nomina/pre-planilla/feriados", {
         method: "POST",
         json: {
           fecha: nuevoFecha, nombre: nuevoNombre.trim(),
           clientes: clientesSel, createdPor: usuarioActual(),
           desde, hasta,
         },
-      });
-      toast({
-        title: clientesSel.length > 0
-          ? `Feriado agregado para ${clientesSel.length} cliente(s)`
-          : "Feriado agregado (nacional)",
-      });
+      }) as FeriadoCreado | FeriadoCreado[];
+      // El backend devuelve `creado`/`estaba_activo` por feriado. Si todos ya
+      // existían activos, no se agregó nada nuevo: avisar en vez de decir
+      // "agregado" (antes daba falso positivo y el director no veía cambios).
+      const arr = Array.isArray(resp) ? resp : [resp];
+      const nuevos = arr.filter((r) => r.creado || r.estaba_activo === false);
+      if (nuevos.length === 0) {
+        toast({
+          title: "Ese feriado ya estaba registrado",
+          description: "Ya existe en este período con esa misma fecha, nombre y cliente. No se duplicó.",
+        });
+      } else {
+        toast({
+          title: clientesSel.length > 0
+            ? `Feriado agregado para ${clientesSel.length} cliente(s)`
+            : "Feriado agregado (nacional)",
+        });
+      }
       cerrarAgregar();
       cargar();
     } catch (e: unknown) {

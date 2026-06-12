@@ -1213,12 +1213,23 @@ prePlanillaRouter.post("/nomina/pre-planilla/feriados", async (req, res) => {
     await client.query("BEGIN");
     const creados = [];
     for (const cn of lista) {
+      // `creado` (xmax = 0) distingue un alta nueva de un conflicto (ya existía).
+      // `estaba_activo` captura el estado PREVIO: si ya existía y estaba activo,
+      // el upsert no agrega nada visible (solo reescribe activo=TRUE), así que el
+      // frontend debe avisar "ya estaba registrado" en vez de "agregado".
       const { rows } = await client.query(`
+        WITH prev AS (
+          SELECT activo FROM nomina_feriados
+          WHERE fecha = $1::date AND nombre = $2
+            AND COALESCE(cliente_nombre, '') = COALESCE($3, '')
+        )
         INSERT INTO nomina_feriados (fecha, nombre, tipo, cliente_nombre, created_por)
         VALUES ($1::date, $2, 'local', $3, $4)
         ON CONFLICT (fecha, nombre, COALESCE(cliente_nombre, ''))
         DO UPDATE SET activo = TRUE
-        RETURNING id, fecha::text AS fecha, nombre, tipo, cliente_nombre
+        RETURNING id, fecha::text AS fecha, nombre, tipo, cliente_nombre,
+                  (xmax = 0) AS creado,
+                  (SELECT activo FROM prev) AS estaba_activo
       `, [fecha, String(nombre).trim(), cn, createdPor ?? null]);
       creados.push(rows[0]);
     }

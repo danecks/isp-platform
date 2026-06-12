@@ -199,6 +199,11 @@ export interface FeriadoPeriodo {
   cliente_nombre: string | null;
 }
 
+export interface FeriadoCreado extends FeriadoPeriodo {
+  creado: boolean;
+  estaba_activo: boolean | null;
+}
+
 export interface FeriadoColaborador {
   employee_id: number;
   nombre_completo: string;
