@@ -35,6 +35,15 @@ versión robusta evita inconsistencias con el admin.
 normalizada (doble módulo). Si `fecha_inicio_ciclo IS NULL`, el fallback usado en
 el portal es `EXTRACT(ISODOW) = ANY(dias_trabajo)` (igual que disponibles-cobertura).
 
+## Trampa UI: DroppablePuesto.tsx tiene DOS bloques de render independientes
+El puesto par 24x24 se renderiza en su PROPIO bloque (early return) y el puesto de
+un solo titular en otro. Toda acción/botón (Anular falta, Reactivar, Registrar
+falta, etc.) que se agregue a un bloque DEBE espejarse en el otro o silenciosamente
+no aparecerá para ese tipo de puesto. Ya mordió: "Anular falta" existía solo en el
+bloque de un titular y no salía en puestos 24x24 aunque el tablero marcaba
+`titular_faltando=true` para ambos. Mismo gating en ambos
+(`titular_faltando` / `falta_anulada_reactivable`, `!es_custodia`).
+
 ## Datos relevantes
 - Cliente 77 = "TEMPLO MORMONA MIRAFLORES" (proyecto activo del portal demo).
 - Prod es READ-ONLY (executeSql production solo SELECT); validar fórmulas ahí.

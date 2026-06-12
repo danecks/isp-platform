@@ -261,6 +261,26 @@ export function DroppablePuesto({
                     <UserMinus className="w-3 h-3" /><span>Quitar: {descansando.nombre.split(" ")[0]}</span>
                   </button>
                 )}
+                {/* Anular falta — restaura el puesto sin afectar nómina (requiere aprobación RRHH) */}
+                {onAnularFalta && puesto.titular_faltando && !puesto.es_custodia && (
+                  <button
+                    onClick={e => { e.stopPropagation(); onAnularFalta(puesto, activo.nombre ?? puesto.titular_nombre ?? "—"); }}
+                    className="flex items-center gap-1 text-[9px] font-semibold text-cyan-300/80 bg-cyan-500/10 border border-cyan-500/25 hover:bg-cyan-500/20 hover:text-cyan-300 rounded-md px-2 py-1 transition-colors"
+                    title="Anular esta falta (pendiente de aprobación RRHH)"
+                  >
+                    <Undo2 className="w-3 h-3" /><span>Anular falta</span>
+                  </button>
+                )}
+                {/* Reactivar falta — deshace una anulación hecha por error (regresa a "faltando") */}
+                {onReactivarFalta && puesto.falta_anulada_reactivable && !puesto.es_custodia && (
+                  <button
+                    onClick={e => { e.stopPropagation(); onReactivarFalta(puesto, activo.nombre ?? puesto.titular_nombre ?? "—"); }}
+                    className="flex items-center gap-1 text-[9px] font-semibold text-emerald-300/80 bg-emerald-500/10 border border-emerald-500/25 hover:bg-emerald-500/20 hover:text-emerald-300 rounded-md px-2 py-1 transition-colors"
+                    title="Reactivar la falta que se anuló por error"
+                  >
+                    <Repeat className="w-3 h-3" /><span>Reactivar</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
