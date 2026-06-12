@@ -609,7 +609,7 @@ export default function Anticipos() {
           className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setEditando(null); }}
         >
-          <div className="bg-[#0c1829] border border-white/10 rounded-2xl w-full max-w-md p-6 space-y-5">
+          <div className="bg-[#0c1829] border border-white/10 rounded-2xl w-full max-w-md p-6 space-y-5 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-white">Revisar Anticipo ANT-{editando.id}</h2>
               <button onClick={() => setEditando(null)} className="text-white/30 hover:text-white text-xl leading-none">×</button>
@@ -903,7 +903,7 @@ export default function Anticipos() {
           className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setModalNuevo(false); }}
         >
-          <div className="bg-[#0c1829] border border-white/10 rounded-2xl w-full max-w-md p-6 space-y-5">
+          <div className="bg-[#0c1829] border border-white/10 rounded-2xl w-full max-w-md p-6 space-y-5 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold text-white">Nuevo anticipo manual</h2>
