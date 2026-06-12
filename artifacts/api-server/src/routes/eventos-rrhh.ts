@@ -654,6 +654,37 @@ eventosRrhhRouter.post("/rrhh/eventos/:id/anular", async (req, res) => {
       logger.warn({ novedadErr, id }, "C-03: error al revertir novedad de nómina (no bloqueante)");
     }
 
+    // Liberar el estado "faltando" del puesto si esta falta lo había marcado.
+    // El pizarrón lee la falta de DOS fuentes (eventos_rrhh + puestos_operativos);
+    // anular solo el evento dejaba el puesto pegado en "faltando" indefinidamente
+    // (la bandera del puesto no tiene fecha), mostrándolo "descubierto" en los días
+    // del titular afectado. Mismo reset que /operaciones/anular-falta. No bloqueante.
+    try {
+      const evento = rows[0];
+      if (evento.employee_id && TIPOS_FALTA.includes(evento.tipo_evento)) {
+        const { rowCount } = await pool.query(
+          `UPDATE puestos_operativos
+              SET estado_operativo_puesto = 'normal',
+                  falta_employee_id       = NULL,
+                  falta_motivo            = NULL,
+                  falta_notas             = NULL,
+                  falta_usuario           = NULL,
+                  updated_at              = NOW()
+            WHERE estado_operativo_puesto = 'faltando'
+              AND falta_employee_id       = $1`,
+          [evento.employee_id],
+        );
+        if ((rowCount ?? 0) > 0) {
+          logger.info(
+            { eventoId: id, employeeId: evento.employee_id, puestosLiberados: rowCount },
+            "Estado 'faltando' del puesto liberado por anulación de falta (eventos-rrhh)",
+          );
+        }
+      }
+    } catch (puestoErr) {
+      logger.warn({ puestoErr, id }, "Error al liberar estado 'faltando' del puesto (no bloqueante)");
+    }
+
     res.json({ ok: true, evento: rows[0], parAnulado });
   } catch (err) {
     logger.error({ err }, "POST /rrhh/eventos/:id/anular error");

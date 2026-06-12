@@ -27,6 +27,12 @@ el agente sigue saliendo faltando porque el evento de RRHH sigue vivo.
   `anulacion_falta` como `'revertido'` (para que deje de ofrecerse Reactivar).
 - El RECHAZO de RRHH de un `anulacion_falta` (eventos-rrhh.ts PATCH estado) también
   debe reponer evento+HE desde el snapshot, no solo el slot.
+- TERCERA ruta (la que mordió): el anular genérico de eventos RRHH también debe
+  limpiar la bandera del puesto, no solo el flujo /operaciones/anular-falta. Antes
+  solo anulaba el evento+HE y dejaba el puesto pegado en 'faltando'.
+  OJO durable: la bandera del puesto NO tiene fecha → una falta vieja anulada deja
+  el puesto "descubierto" en TODOS los días futuros del titular, no solo el día de
+  la falta. Por eso toda anulación de falta debe resetear el puesto del empleado.
 - tablero.ts ofrece el botón vía `falta_anulada_reactivable=true` cuando hay un
   `anulacion_falta` estado='pendiente_aprobacion' para ese puesto
   (`metadata_json->>'puesto_id'`) y fecha.
