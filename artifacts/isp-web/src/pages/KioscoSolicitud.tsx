@@ -1800,7 +1800,10 @@ function PasoFoto({ videoRef, camActiva, camError, fotoUrl, onCapturar, onRehace
           ) : (
             <div className="flex flex-col items-center gap-4">
               <div className="relative w-56 h-56 rounded-full overflow-hidden border-4 border-blue-500 bg-[#0a1628]">
-                <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                {/* Espejo SOLO en el preview (transform CSS) para que centrarse sea natural.
+                    La captura usa el frame crudo del video, así que la foto guardada
+                    queda en orientación real (no invertida). */}
+                <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: "scaleX(-1)" }} />
                 {!camActiva && (
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="text-blue-700 text-center">
