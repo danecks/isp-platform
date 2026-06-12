@@ -5,6 +5,7 @@
 - [Falta personal de oficina](falta-personal-oficina.md) — supervisores/jefes/administrativos tienen su par de endpoints falta-personal/anular (sin puesto); guardias usan /liberar; validar TIPOS_PERSONAL_OFICINA en AMBAS rutas.
 - [Tablero SSA visibilidad](tablero-ssa-visibilidad.md) — el tablero usa fecha <= CURRENT_DATE a propósito (no BETWEEN); SSA activada sigue visible mientras esté abierta aunque venza; salida por estado, no por fecha.
 - [Typecheck baseline api-server](typecheck-baseline.md) — el typecheck del api-server está rojo de base (no es regresión tuya); cómo distinguir errores propios.
+- [Mecánica build de deployment](deploy-build-mecanica.md) — el deploy corre solo el build por artefacto (no typecheck raíz); fallo sin error de compilación = promote/health-check transitorio, re-publicar.
 - [Publicación móvil OTA/APK](mobile-release-publishing.md) — se publica por tags de git en GitHub Actions; APK release solo con tag `mobile-v*` (dispatch no crea release); el sandbox no puede pushear.
 - [Descarga APK desde ispsa.net](descarga-apk-ispsa.md) — /api/descarga-apk sirve el APK desde Object Storage propio (espejo perezoso desde GitHub), no por redirect; resuelve última versión sola.
 - [Datos de contrato fuera del schema](datos-contrato-fuera-schema.md) — estado_civil/sexo/nit/direccion/etc. se persisten con UPDATE crudo (POST y PATCH); editar sin prellenar desde GET /:id los borra (""→NULL).
