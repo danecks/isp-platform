@@ -87,6 +87,8 @@ export function TabPerfil({ emp }: { emp: Empleado }) {
           <Row icon={MessageSquare} label="WhatsApp"       value={emp.waAutorizado ? "Autorizado" : null} />
           <Row icon={Building2} label="Área / Depto."      value={emp.area} />
           <Row icon={Calendar}  label="Fecha de ingreso"   value={fmtFecha(emp.fechaIngreso)} />
+          <Row icon={UserX}     label="Fecha de baja"      value={fmtFecha(emp.fechaBaja)} />
+          <Row icon={Info}      label="Motivo de baja"     value={emp.motivoBaja} />
         </div>
         <DatosPersonalesSection emp={emp} />
       </div>

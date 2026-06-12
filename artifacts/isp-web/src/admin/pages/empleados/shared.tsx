@@ -25,6 +25,8 @@ export interface Empleado {
   waAutorizado: boolean;
   telefonoVerificadoAt: string | null;
   fechaIngreso: string | null;
+  fechaBaja: string | null;
+  motivoBaja: string | null;
   notas: string | null;
   sourceSystem: string;
   syncStatus: string;

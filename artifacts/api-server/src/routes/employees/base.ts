@@ -46,7 +46,7 @@ router.get("/employees", async (req, res) => {
              e.puesto, e.area, e.sede, e.estado_laboral,
              e.cliente_id, e.supervisor_id, e.supervisor_nombre,
              e.sync_status, e.source_system, e.foto_url,
-             e.sueldo_base, e.fecha_ingreso, e.fecha_baja,
+             e.sueldo_base, e.fecha_ingreso, e.fecha_baja, e.motivo_baja,
              COALESCE(e.tipo_personal, 'guardia') AS tipo_personal,
              COALESCE(e.elegible_pool, TRUE) AS elegible_pool,
              COALESCE(e.aplica_igss_general, FALSE) AS aplica_igss_general,
@@ -160,7 +160,9 @@ router.get("/employees/:id", async (req, res) => {
          nit               AS "nit",
          correo            AS "correo",
          sexo              AS "sexo",
-         fecha_ingreso     AS "fechaIngreso"
+         fecha_ingreso     AS "fechaIngreso",
+         fecha_baja        AS "fechaBaja",
+         motivo_baja       AS "motivoBaja"
        FROM employees WHERE id = $1`,
       [id]
     );
@@ -186,6 +188,10 @@ router.get("/employees/:id", async (req, res) => {
       correo:          extra?.correo        ?? null,
       sexo:            extra?.sexo          ?? null,
       fecha_ingreso:   extra?.fechaIngreso   ?? null,
+      fechaBaja:       extra?.fechaBaja      ?? null,
+      motivoBaja:      extra?.motivoBaja     ?? null,
+      fecha_baja:      extra?.fechaBaja      ?? null,
+      motivo_baja:     extra?.motivoBaja     ?? null,
     });
   } catch (err) {
     res.status(500).json({ error: "Error al obtener empleado" });
