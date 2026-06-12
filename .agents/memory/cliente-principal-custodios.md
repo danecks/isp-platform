@@ -21,3 +21,15 @@ titular permanente sobre la asignación del período.
 `igssTitularChainSQL` — esa cadena hace JOIN a puestos_operativos y custodia no tiene
 puesto. El fallback de cliente es un sub-SELECT escalar aparte. Misma lógica aplicaría
 a `clienteEmpleadoSQL` (scoping de feriados) si se quiere consistencia para custodios.
+
+## Jornada y faltas de custodios
+- **La jornada de custodios es de 12 horas** (regla de negocio confirmada por el
+  director). Equivale a 2 días de descuento si se aplicara la regla de falta de guardias.
+- La falta de un custodio (`/operaciones/registrar-falta-custodia`) se registra DIRECTO
+  como `eventos_rrhh` tipo 'falta'; NO se difiere al cierre ni crea
+  `novedades_nomina_diarias` con `dias_descuento`. La regla de tramo de jornada del
+  cierre (≥24h ⇒ 3 días, <24h ⇒ 2 días) corre SOLO sobre `puestos_operativos`, así que
+  los custodios quedan sin descuento automático (lo resuelve RRHH a mano).
+- Gotcha relacionada en guardias: el tramo de jornada del cierre lee
+  `turnos.horas_trabajo` vía `po.tipo_turno_id` (jornada del PUESTO), no la jornada del
+  slot del agente que faltó; solo importa en puestos que mezclan 12h y 24h.
