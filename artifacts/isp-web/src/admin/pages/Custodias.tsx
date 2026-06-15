@@ -685,6 +685,8 @@ function HojaImprimiblePanel({ clienteId, fecha }: { clienteId: number; fecha: s
             <td></td>
             <td></td>
             <td>${a.nombre}</td>
+            <td>${a.ruta || '<span class="empty">—</span>'}</td>
+            <td class="center">${(a.horaSalida || a.horaRegreso) ? `${a.horaSalida || '—'}–${a.horaRegreso || '—'}` : '<span class="empty">—</span>'}</td>
             <td class="center">${a.municion || ""}</td>
             <td class="firma"></td>
           </tr>
@@ -692,7 +694,7 @@ function HojaImprimiblePanel({ clienteId, fecha }: { clienteId: number; fecha: s
         ${Array.from({ length: Math.max(0, 5 - (data?.agentes?.length ?? 0)) }, (_, i) => `
           <tr>
             <td class="center">${(data?.agentes?.length ?? 0) + i + 1}</td>
-            <td></td><td></td><td></td><td></td><td></td><td></td><td class="firma"></td>
+            <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="firma"></td>
           </tr>
         `).join("")}
       </tbody>
@@ -738,6 +740,8 @@ function HojaImprimiblePanel({ clienteId, fecha }: { clienteId: number; fecha: s
               <th className="text-left px-2 py-1.5">Código</th>
               <th className="text-left px-2 py-1.5">No.</th>
               <th className="text-left px-2 py-1.5">Nombres y Apellidos</th>
+              <th className="text-left px-2 py-1.5">Ruta</th>
+              <th className="text-center px-2 py-1.5">Horario</th>
               <th className="text-center px-2 py-1.5">Munición</th>
               <th className="text-left px-2 py-1.5">Firma</th>
             </tr>
@@ -751,6 +755,8 @@ function HojaImprimiblePanel({ clienteId, fecha }: { clienteId: number; fecha: s
                 <td className="px-2 py-1.5 text-white/20 italic">Cliente</td>
                 <td className="px-2 py-1.5 text-white/20 italic">Cliente</td>
                 <td className="px-2 py-1.5 text-white/70 font-medium">{a.nombre}</td>
+                <td className="px-2 py-1.5 text-white/50">{a.ruta || "—"}</td>
+                <td className="px-2 py-1.5 text-white/50 text-center">{(a.horaSalida || a.horaRegreso) ? `${a.horaSalida || "—"}–${a.horaRegreso || "—"}` : "—"}</td>
                 <td className="px-2 py-1.5 text-white/50 text-center">{a.municion || "—"}</td>
                 <td className="px-2 py-1.5 text-white/10">________</td>
               </tr>
