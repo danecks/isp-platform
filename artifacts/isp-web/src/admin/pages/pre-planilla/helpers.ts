@@ -48,10 +48,32 @@ export function fmtQ(n: number | string | null) {
   return `Q${num.toLocaleString("es-GT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export function calcularISRQuincenal(sueldoBaseMensual: number, aplicaIgss: boolean = true): number {
+// Deducción personal anual del ISR (Guatemala), Decreto 13-2026.
+//  • 2026: Q48,000 + Q3,024 extraordinario = Q51,024.
+//  • 2027+: dinámica = 12 salarios mínimos no agrícolas + bonificación incentivo (Q250).
+// DEBE coincidir con deduccionPersonalISR() del backend (api-server/lib/nomina-calc.ts).
+const BONIFICACION_INCENTIVO_ISR = 250;
+const SALARIO_MINIMO_NO_AGRICOLA_ISR: Record<number, number> = {
+  2026: 4252,
+};
+function deduccionPersonalISR(anio: number): number {
+  const y = Number.isFinite(anio) ? anio : new Date().getFullYear();
+  if (y < 2026) return 48000;          // regla histórica (antes del Dto. 13-2026)
+  if (y === 2026) return 48000 + 3024; // Q51,024 (regla transitoria 2026)
+  const conocidos = Object.keys(SALARIO_MINIMO_NO_AGRICOLA_ISR).map(Number);
+  const sm = SALARIO_MINIMO_NO_AGRICOLA_ISR[y]
+    ?? SALARIO_MINIMO_NO_AGRICOLA_ISR[Math.max(...conocidos)];
+  return 12 * (sm + BONIFICACION_INCENTIVO_ISR);
+}
+
+export function calcularISRQuincenal(
+  sueldoBaseMensual: number,
+  aplicaIgss: boolean = true,
+  anio: number = new Date().getFullYear(),
+): number {
   const brutaAnual = sueldoBaseMensual * 12;
   const igssAnual = aplicaIgss ? brutaAnual * 0.0483 : 0;
-  const rentaImponible = brutaAnual - igssAnual - 48000;
+  const rentaImponible = brutaAnual - igssAnual - deduccionPersonalISR(anio);
   if (rentaImponible <= 0) return 0;
   let isrAnual = 0;
   if (rentaImponible <= 300000) {
@@ -62,7 +84,7 @@ export function calcularISRQuincenal(sueldoBaseMensual: number, aplicaIgss: bool
   return Math.round((isrAnual / 24) * 100) / 100;
 }
 
-export function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: number | null) {
+export function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: number | null, anio: number = new Date().getFullYear()) {
   const sb = parseFloat(String(col.sueldo_base ?? "0"));
   if (!sb || !periodoTotalDias) return null;
   const sueldoDia = sb / 30;
@@ -86,7 +108,7 @@ export function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: num
     ? (frec === "quincenal" ? Math.round((primaSeguroMensual / 2) * 100) / 100 : primaSeguroMensual)
     : 0;
   const igssLaboral = col.aplica_igss ? Math.round((sueldoPeriodo - descFaltas) * 0.0483 * 100) / 100 : 0;
-  const isrQuincenal = calcularISRQuincenal(sb, col.aplica_igss);
+  const isrQuincenal = calcularISRQuincenal(sb, col.aplica_igss, anio);
 
   const safeNum = (v: unknown, def = 0) => {
     const n = Number(v);

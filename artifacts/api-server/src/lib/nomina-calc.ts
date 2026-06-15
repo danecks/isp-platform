@@ -264,22 +264,57 @@ export function calcularBonificacionIncentivo(p: BonificacionParams): number {
   return parseFloat(((montoBase / 30) * diasPagables).toFixed(2));
 }
 
+// ── ISR rentas del trabajo (Guatemala) ──────────────────────────────────────
+// Deducción personal anual antes de calcular el ISR, según el Decreto 13-2026
+// (reforma al Decreto 10-2012, "Ley de Actualización Tributaria"; vigente desde
+// el 23-may-2026).
+//
+//  • Año fiscal ≤ 2026: Q48,000 fijos (mínimo vital histórico) + Q3,024 de
+//    deducción extraordinaria transitoria = Q51,024.
+//  • Año fiscal ≥ 2027: la deducción fija se sustituye por un monto DINÁMICO =
+//    12 salarios mínimos mensuales no agrícolas + bonificación incentivo (Q250),
+//    que se actualiza solo cada vez que sube el salario mínimo (Art. 72 bis).
+//
+// Al publicarse el salario mínimo de un nuevo año, agregar su valor en
+// SALARIO_MINIMO_NO_AGRICOLA (la SAT publica la tabla del ISR 5 días hábiles
+// después). Mientras no esté, se usa el último salario mínimo conocido.
+export const BONIFICACION_INCENTIVO = 250;
+export const SALARIO_MINIMO_NO_AGRICOLA: Record<number, number> = {
+  2026: 4252,
+};
+
+export function deduccionPersonalISR(anio: number): number {
+  const y = Number.isFinite(anio) ? anio : new Date().getFullYear();
+  if (y < 2026) return 48000;          // regla histórica (antes del Dto. 13-2026)
+  if (y === 2026) return 48000 + 3024; // Q51,024 (regla transitoria 2026)
+  // 2027+: dinámica = 12 × (salario mínimo no agrícola + bonificación incentivo).
+  const aniosConocidos = Object.keys(SALARIO_MINIMO_NO_AGRICOLA).map(Number);
+  const sm = SALARIO_MINIMO_NO_AGRICOLA[y]
+    ?? SALARIO_MINIMO_NO_AGRICOLA[Math.max(...aniosConocidos)];
+  return 12 * (sm + BONIFICACION_INCENTIVO);
+}
+
 /**
  * Calcula ISR quincenal (Guatemala) usando proyección anual fija.
  *
  * Fórmula:
  *   rentaAnual     = sueldoBase × 12
  *   igssAnual      = rentaAnual × 4.83%
- *   rentaImponible = rentaAnual − igssAnual − Q48,000 (mínimo vital)
+ *   rentaImponible = rentaAnual − igssAnual − deducción personal del año fiscal
  *   ISR anual      = 5% hasta Q300,000 + 7% sobre excedente
  *   ISR quincenal  = ISR anual / 24
  *
- * PENDIENTE LUNES: Verificar si IGSS debe deducirse antes de ISR o no.
+ * La deducción personal depende del año (ver deduccionPersonalISR, Dto. 13-2026).
+ * El IGSS sí se descuenta de la base por ser deducible del ISR (Art. 72 Dto. 10-2012).
  */
-export function calcularISRQuincenal(sueldoBaseMensual: number, aplicaIgss: boolean = true): number {
+export function calcularISRQuincenal(
+  sueldoBaseMensual: number,
+  aplicaIgss: boolean = true,
+  anio: number = new Date().getFullYear(),
+): number {
   const brutaAnual = sueldoBaseMensual * 12;
   const igssAnual = aplicaIgss ? brutaAnual * 0.0483 : 0;
-  const rentaImponible = brutaAnual - igssAnual - 48000;
+  const rentaImponible = brutaAnual - igssAnual - deduccionPersonalISR(anio);
   if (rentaImponible <= 0) return 0;
   let isrAnual = 0;
   if (rentaImponible <= 300000) {

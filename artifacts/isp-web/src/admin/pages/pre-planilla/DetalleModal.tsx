@@ -32,7 +32,7 @@ export function DetalleModal({
     ? Math.round((new Date(hasta).getTime() - new Date(desde).getTime()) / 86400000) + 1
     : null;
 
-  const est = calcularTotalEstimado(col, periodoTotalDias);
+  const est = calcularTotalEstimado(col, periodoTotalDias, desde ? Number(desde.slice(0, 4)) : new Date().getFullYear());
 
   React.useEffect(() => {
     setLoading(true);

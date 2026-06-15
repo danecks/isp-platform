@@ -34,3 +34,4 @@
 - [Cliente principal de custodios](cliente-principal-custodios.md) — custodios no tienen puesto; su cliente sale de custodia_titulares/custodia_asignacion_diaria (→clients), no de puestos; COALESCE como fallback; no meter en cadena IGSS.
 - [Días vacaciones separados en nómina](dias-vacaciones-separados.md) — vacaciones (tipo_novedad='vacaciones') como columna propia, aparte de trabajados; planillas viejas/ODBC = 0; CSV totales por posición fija.
 - [Baja libera puesto_slots](baja-libera-slots.md) — al dar de baja, liberar también puesto_slots (24x24) con liberarTitularidadAgente, no solo titularidad legacy; reconciliación idempotente en auto-seed; suspensión/licencia NO liberan.
+- [ISR deducción Decreto 13-2026](isr-deduccion-decreto-13-2026.md) — deducción personal ya no es fija Q48k: 2026=Q51,024, 2027+ dinámica (12×(salario mínimo no agrícola+Q250)); duplicada front/back; pasa año del período; actualizar tabla salario mínimo cada año.

@@ -226,7 +226,7 @@ export default function PrePlanilla() {
   const totalIncentivos = filtrados.reduce((s, r) => s + Number(r.incentivos_cash_monto), 0);
   const conAlertas = filtrados.filter((r) => Number(r.faltas) > 0 || Number(r.suspensiones) > 0 || Number(r.dias_sin_horas) > 0 || Number(r.faltas_pendientes_rrhh) > 0).length;
   const totalRelevos = filtrados.reduce((s, r) => s + Number(r.relevos), 0);
-  const estimadosPorEmp = filtrados.map((r) => ({ r, e: calcularTotalEstimado(r, periodoTotalDias) }));
+  const estimadosPorEmp = filtrados.map((r) => ({ r, e: calcularTotalEstimado(r, periodoTotalDias, desde ? Number(desde.slice(0, 4)) : new Date().getFullYear()) }));
   const totalIGSS = estimadosPorEmp.reduce((s, { r, e }) => s + (r.aplica_igss ? (e?.igssLaboral ?? 0) : 0), 0);
   const totalISR = estimadosPorEmp.reduce((s, { e }) => s + (e?.isrQuincenal ?? 0), 0);
   const totalSueldoBase = filtrados.reduce((s, r) => s + Number(r.sueldo_base ?? 0), 0);
@@ -606,7 +606,7 @@ export default function PrePlanilla() {
                             const heNum2 = parseFloat(r.horas_extra || "0");
                             const tieneAlerta = Number(r.faltas) > 0 || Number(r.suspensiones) > 0 || Number(r.dias_sin_horas) > 0 || Number(r.faltas_pendientes_rrhh) > 0;
                             const needsReview = tieneAlerta && r.revision_estado === "pendiente";
-                            const est2 = calcularTotalEstimado(r, periodoTotalDias);
+                            const est2 = calcularTotalEstimado(r, periodoTotalDias, desde ? Number(desde.slice(0, 4)) : new Date().getFullYear());
 
                             return (
                               <tr key={r.employee_id}

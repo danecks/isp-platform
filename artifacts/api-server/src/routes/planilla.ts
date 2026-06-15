@@ -165,7 +165,7 @@ function calcularLinea(
   const bonificacion_2 = bonProporcional(toNum(row.bon_2_base));
   const bonificacion_3 = bonProporcional(toNum(row.bon_3_base));
 
-  const isr = calcularISRQuincenal(sb, igssData.aplica_igss);
+  const isr = calcularISRQuincenal(sb, igssData.aplica_igss, Number(desde.slice(0, 4)));
 
   const uniforme = parseFloat(uniformeMonto.toFixed(2));
   const barraca = parseFloat(barracaMonto.toFixed(2));
