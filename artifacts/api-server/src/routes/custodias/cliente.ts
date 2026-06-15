@@ -498,6 +498,9 @@ custodiasClienteRouter.get("/custodias/cliente/:id/hoja-imprimible", async (req,
         arm.marca AS arma_marca,
         arm.serie AS arma_serie,
         arm.tipo AS arma_tipo,
+        cad.ruta_texto,
+        to_char(cad.hora_salida,  'HH24:MI') AS hora_salida,
+        to_char(cad.hora_regreso, 'HH24:MI') AS hora_regreso,
         COALESCE(pm.cantidad_asignada, 0) AS municion
       FROM custodia_asignacion_diaria cad
       JOIN employees e ON e.id = cad.employee_id
@@ -526,6 +529,9 @@ custodiasClienteRouter.get("/custodias/cliente/:id/hoja-imprimible", async (req,
         armaMarca: r.arma_marca || "",
         armaSerie: r.arma_serie || "",
         armaTipo: r.arma_tipo || "",
+        ruta: r.ruta_texto || "",
+        horaSalida: r.hora_salida || "",
+        horaRegreso: r.hora_regreso || "",
         municion: Number(r.municion),
       })),
     });

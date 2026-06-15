@@ -58,6 +58,9 @@ interface HojaImprimible {
     armaMarca: string;
     armaSerie: string;
     armaTipo: string;
+    ruta: string;
+    horaSalida: string;
+    horaRegreso: string;
     municion: number;
   }[];
 }
@@ -667,6 +670,8 @@ function HojaImprimiblePanel({ clienteId, fecha }: { clienteId: number; fecha: s
           <th>Código</th>
           <th>No.</th>
           <th>Nombres y Apellidos</th>
+          <th>Ruta</th>
+          <th>Horario</th>
           <th>Munición</th>
           <th class="firma">Firma</th>
         </tr>
